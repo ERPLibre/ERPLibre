@@ -3056,7 +3056,11 @@ def etat_conteneur(answers, uid=990):
     celui du plan, les ids des comptes posés comme le script les lit, et
     les paquets proposés consignés."""
     engine = answers.engine
-    rootless = "@@ROOTLESS 1 1 1 1 enabled\n" if answers.rootless else ""
+    rootless = (
+        "@@ROOTLESS 1 1 1 1 enabled\n@@USER_BUS 1\n"
+        if answers.rootless
+        else ""
+    )
     facts = ci.parse_probe(sonde_avec(engine, rootless))
     plan = ci.plan_install(facts, answers, NOW)
     etat = ci.written_state(plan, "20261102-101500")
@@ -3749,12 +3753,14 @@ class LeScenarioConteneur(unittest.TestCase):
 
         def installer(cible, answers, log, **kw):
             # Après la première installation, le moteur est là, et en
-            # rootless newuidmap aussi (`@@ROOTLESS`).
+            # rootless newuidmap et le bus de session aussi (`@@ROOTLESS`,
+            # `@@USER_BUS`).
             facts = ci.parse_probe(
                 sonde_avec(None)
                 if not appels
                 else sonde_avec(
-                    lt.MOTEURS[moteur][0], "@@ROOTLESS 1 1 1 1 enabled\n"
+                    lt.MOTEURS[moteur][0],
+                    "@@ROOTLESS 1 1 1 1 enabled\n@@USER_BUS 1\n",
                 )
             )
             ans = answers(facts)

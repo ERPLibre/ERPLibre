@@ -53,6 +53,7 @@ PROBE_PAIRS = [
     ("ACCOUNT", "turnserver 998 998"),
     ("ACCOUNT", "ntfy 997 997"),
     ("ROOTLESS", "0 0 0 1 -"),
+    ("USER_BUS", "1"),
     ("CONTAINER", "erplibre-call-coturn docker 0 running " + COTURN_REF),
     ("IMAGE", "docker 0 " + COTURN_REF),
     ("NTFY_HOST", "2.11.0"),
@@ -182,6 +183,7 @@ class TestParseEngineLines(unittest.TestCase):
         # Sans compte rootless, rien à dire de lui ; newuidmap reste su.
         self.assertIsNone(facts.rootless)
         self.assertTrue(facts.newuidmap)
+        self.assertTrue(facts.user_bus)
         self.assertEqual(
             facts.containers,
             (
@@ -233,6 +235,7 @@ class TestParseEngineLines(unittest.TestCase):
         self.assertEqual(facts.accounts, {})
         self.assertIsNone(facts.rootless)
         self.assertFalse(facts.newuidmap)
+        self.assertFalse(facts.user_bus)
         self.assertEqual(facts.containers, ())
         self.assertEqual(facts.images, ())
         self.assertIsNone(facts.ntfy_host_version)
@@ -256,8 +259,10 @@ class TestParseEngineLines(unittest.TestCase):
             ("COMPOSE_FILE", "pas du base64 !"),
             ("DOCKER_SERVICE", "active"),
             ("PODMAN_RESTART", "en marche;"),
+            ("USER_BUS", "oui"),
         ]
         facts = cc.parse_engine_lines(pairs)
+        self.assertFalse(facts.user_bus)
         self.assertEqual(facts.engines, {})
         self.assertEqual(facts.compose, {})
         self.assertEqual(facts.unpriv_port_start, 1024)
@@ -553,11 +558,11 @@ class TestEnginePackages(unittest.TestCase):
             ),
             (
                 ("debian", "debian", "13", "podman", True),
-                ("podman", "podman-compose", "uidmap"),
+                ("podman", "podman-compose", "uidmap", "dbus-user-session"),
             ),
             (
                 ("ubuntu", "debian", "24.04", "podman", True),
-                ("podman", "podman-compose", "uidmap"),
+                ("podman", "podman-compose", "uidmap", "dbus-user-session"),
             ),
             (
                 ("arch", "arch", "", "podman", True),
@@ -613,6 +618,35 @@ class TestEnginePackages(unittest.TestCase):
                         os_version=version,
                     ),
                 )
+
+    def test_user_bus_package_only_without_its_unit(self):
+        # podman recommande dbus-user-session sans en dépendre : le
+        # rootless le demande tant que l'unité du bus manque.
+        def packages(pairs, os_id="debian", family="debian"):
+            return cc.engine_packages(
+                os_id,
+                family,
+                "podman",
+                True,
+                cc.parse_engine_lines(pairs),
+                os_version="13",
+            )
+
+        present = [("ENGINE", "podman 5.4.2"), ("ROOTLESS", "0 0 0 1 -")]
+        present.append(("COMPOSE", "podman podman-compose"))
+        self.assertEqual(packages(present), ("dbus-user-session",))
+        self.assertEqual(
+            packages(present + [("USER_BUS", "0")]), ("dbus-user-session",)
+        )
+        self.assertEqual(packages(present + [("USER_BUS", "1")]), ())
+        self.assertEqual(packages(present, "arch", "arch"), ())
+        # Rien de tel sans rootless.
+        self.assertNotIn(
+            "dbus-user-session",
+            cc.engine_packages(
+                "debian", "debian", "podman", False, None, os_version="13"
+            ),
+        )
 
     def test_none_facts_means_nothing_present(self):
         self.assertEqual(
@@ -924,6 +958,7 @@ class TestEngineProbeRun(unittest.TestCase):
             None,
         ),
         ("/etc/erplibre-call/compose.yml", "# erplibre-call: managed\nx: 1\n"),
+        ("/usr/lib/systemd/user/dbus.socket", ""),
     )
 
     def assert_read_only(self, calls):
@@ -1022,6 +1057,7 @@ class TestEngineProbeRun(unittest.TestCase):
         self.assertNotIn(("docker", False, NTFY_REF), facts.images)
         self.assertEqual(facts.ntfy_host_version, "2.11.0")
         self.assertTrue(facts.sqlite3)
+        self.assertTrue(facts.user_bus)
         self.assertEqual(
             facts.compose_text, "# erplibre-call: managed\nx: 1\n"
         )
@@ -1067,6 +1103,8 @@ class TestEngineProbeRun(unittest.TestCase):
         self.assertEqual(facts.unpriv_port_start, 1024)
         self.assertIsNone(facts.rootless)
         self.assertFalse(facts.newuidmap)
+        self.assertFalse(facts.user_bus)
+        self.assertIn("@@USER_BUS 0", done.stdout)
         self.assertFalse(facts.sqlite3)
         self.assertIsNone(facts.ntfy_host_version)
         self.assertEqual(facts.compose_text, "")
