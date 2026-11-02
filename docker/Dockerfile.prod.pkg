@@ -1,12 +1,16 @@
-ARG ERPLIBRE_IMAGE_NAME=1.6.0
+# Les défauts suivent la version d'Odoo par défaut et la version d'ERPLibre :
+# une construction lancée sans docker_build.sh prend la base publiée de cette
+# version, et non celle d'une version d'ERPLibre passée. Un test les garde
+# accordés à conf/supported_version_erplibre.json et .erplibre-semver-version.
+ARG ERPLIBRE_IMAGE_NAME=1.8.0
 
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
-ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
+ARG ERPLIBRE_VERSION=odoo18.0_python3.12.16
 # ODOO_VERSION est herite de la base en ENV, et un ENV l'emporte toujours sur
 # un ARG de meme nom : le redeclarer ici poserait une valeur inerte que
 # l'image contredit sans le dire.
-ARG POETRY_VERSION=1.8.3
+ARG POETRY_VERSION=2.5.1
 ENV REPO_MANIFEST_URL=https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
@@ -32,7 +36,7 @@ RUN case "${ERPLIBRE_CODE_OWNER}" in \
       *) echo "ERPLIBRE_CODE_OWNER vaut « odoo » ou « root », pas « ${ERPLIBRE_CODE_OWNER} »." ; exit 1 ;; \
     esac && \
     apt update && \
-    apt install ssh-client git libgirepository1.0-dev -y --no-install-recommends && \
+    apt install openssh-client git libgirepository1.0-dev -y --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
 USER ${ERPLIBRE_CODE_OWNER}

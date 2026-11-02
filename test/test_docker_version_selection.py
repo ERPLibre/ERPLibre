@@ -179,6 +179,22 @@ class TestArgumentsDeConstruction(unittest.TestCase):
         self.assertEqual(set(), prod - _arg_declares(PROD))
         self.assertIn("ERPLIBRE_IMAGE_NAME", _arg_declares(PROD))
 
+    def test_les_defauts_de_la_prod_suivent_odoo_par_defaut(self):
+        """Une construction sans docker_build.sh prend la base publiée de
+        cette version d'ERPLibre, et non celle d'une version passée."""
+        odoo = max(_versions_odoo(), key=float)
+        sortie = subprocess.run(
+            ["python3", "./script/version/get_version.py", "--odoo_version", odoo],
+            cwd=RACINE,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        semver = (RACINE / ".erplibre-semver-version").read_text().strip()
+        self.assertIn(f"ARG ERPLIBRE_VERSION={sortie[3]}", PROD)
+        self.assertIn(f"ARG POETRY_VERSION={sortie[1]}", PROD)
+        self.assertIn(f"ARG ERPLIBRE_IMAGE_NAME={semver}", PROD)
+
     def test_la_version_d_odoo_atteint_le_chemin_de_l_executable(self):
         """ODOO_EXEC_BIN est lu à l'exécution : un chemin figé sur une autre
         version ne se voit qu'au démarrage du conteneur."""
