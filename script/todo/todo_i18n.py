@@ -136,6 +136,18 @@ TRANSLATIONS = {
         "fr": "Version d'Odoo des images : ",
         "en": "Odoo version of the images: ",
     },
+    "The Poetry update failed: the venv is left unchanged.": {
+        "fr": "La mise à jour Poetry a échoué : le venv reste tel quel.",
+        "en": "The Poetry update failed: the venv is left unchanged.",
+    },
+    "Install the new dependencies in the Odoo venv now? [y/N] ": {
+        "fr": "Installer maintenant les nouvelles dépendances dans le venv d'Odoo ? [o/N] ",
+        "en": "Install the new dependencies in the Odoo venv now? [y/N] ",
+    },
+    "To install them later: %s": {
+        "fr": "Pour les installer plus tard : %s",
+        "en": "To install them later: %s",
+    },
     "Odoo %s is not installed: install it first (TODO › Installation).": {
         "fr": "Odoo %s n'est pas installé : installez-le d'abord (TODO › Installation).",
         "en": "Odoo %s is not installed: install it first (TODO › Installation).",
@@ -19838,6 +19850,30 @@ TRANSLATIONS = {
     "ahead of the target": {
         "fr": "en avance sur la cible",
         "en": "ahead of the target",
+    },
+    "back to the snapshot": {
+        "fr": "retour à l'instantané",
+        "en": "back to the snapshot",
+    },
+    "move to the snapshot (not an ancestor)": {
+        "fr": "déplacement vers l'instantané (pas un ancêtre)",
+        "en": "move to the snapshot (not an ancestor)",
+    },
+    "snapshot commit not found": {
+        "fr": "commit de l'instantané introuvable",
+        "en": "snapshot commit not found",
+    },
+    "moved back to the snapshot": {
+        "fr": "revenu à l'instantané",
+        "en": "moved back to the snapshot",
+    },
+    "snapshot commit not found: skipped": {
+        "fr": "commit de l'instantané introuvable : sauté",
+        "en": "snapshot commit not found: skipped",
+    },
+    "snapshot": {
+        "fr": "instantané",
+        "en": "snapshot",
     },
     "fast-forward possible": {
         "fr": "avance rapide possible",

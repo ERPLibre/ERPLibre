@@ -134,7 +134,7 @@ A **pull** is the update of a deployed checkout that carries commits or changes
 of its own: each repository integrates its target with `git pull`'s gestures
 (fast-forward, rebase or merge), after a backup branch, and only what its dry
 run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
-`erplibre_info`.
+`erplibre_info_git_fetch`.
 
 Every git command these tools send, reads included, is printed before it
 runs, as `$ git -C <path> …` with the path relative to the ERPLibre root: the
@@ -186,9 +186,9 @@ count as modified. Nothing is pushed. The pass is recorded under
 
 `--budget SECONDS` bounds a pass: past it, no repository, deepening step, clone
 or install starts any more (`saute_delai`), and the pass still answers.
-`erplibre_info` gives it a budget below the timeout of its call. A call killed
-anyway takes its whole process group with it, and the backups of its pass are
-read back by their stamp; the restart then waits for a new dry run.
+`erplibre_info_git_fetch` gives it a budget below the timeout of its call. A
+call killed anyway takes its whole process group with it, and the backups of its
+pass are read back by their stamp; the restart then waits for a new dry run.
 
 A shallow clone is fetched with `--shallow-since`, never `--depth`, which would
 shorten the history of HEAD. The bound is the oldest boundary of HEAD's history
@@ -220,16 +220,16 @@ puts back the local manifest the pass replaced.
 #### Pull without the menu
 
 `script/git/repo_pull.py` prints one JSON object, for a caller that shows the
-dry run and collects consent, such as `erplibre_info`. `--dry-run` lists in
-`attendus` the `<path>=<target sha>:<HEAD sha>` pins of the repositories it
-would pull; `--apply` takes them back with `--expect`, and `--confirm` must be
-the active Odoo version (exit code 2 otherwise). A plan that changed writes
-nothing (exit code 4). Shallow clones need `--approve-deepen` and the pins of
-`attendus_superficiel`, new repositories `--approve-clone` and one
-`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs
-`poetry install` at the end. `--path` restricts the pass to one repository
-(`.` is the root), `--pass` gives its stamp and `--budget` its time budget.
-Exit code 5 means another pass holds the lock of the checkout.
+dry run and collects consent, such as `erplibre_info_git_fetch`. `--dry-run`
+lists in `attendus` the `<path>=<target sha>:<HEAD sha>` pins of the
+repositories it would pull; `--apply` takes them back with `--expect`, and
+`--confirm` must be the active Odoo version (exit code 2 otherwise). A plan that
+changed writes nothing (exit code 4). Shallow clones need `--approve-deepen` and
+the pins of `attendus_superficiel`, new repositories `--approve-clone` and one
+`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs `poetry
+install` at the end. `--path` restricts the pass to one repository (`.` is the
+root), `--pass` gives its stamp and `--budget` its time budget. Exit code 5
+means another pass holds the lock of the checkout.
 
 ```bash
 .venv.erplibre/bin/python script/git/repo_pull.py --dry-run --pretty
@@ -616,7 +616,7 @@ error, 2 usage, 3 target not found.
 #### Apply an upgrade pass without the menu
 
 `script/git/repo_apply.py --apply --confirm <Odoo version> --expect <path>...` applies a pass for a caller that has
-already shown the dry run and collected consent, such as the Odoo module `erplibre_info`; it prints JSON. It runs the
+already shown the dry run and collected consent, such as the Odoo module `erplibre_info_git_fetch`; it prints JSON. It runs the
 diagnostic again and refuses to write anything (exit code 4) unless the forks without predicted conflict
 (`a_rebaser`, `en_retard`) are exactly the `--expect` paths. `--expect <path>=<upstream sha>:<HEAD sha>` also pins
 the state the dry run showed, from the `cible_sha` and `head` of its diagnostic: a pinned fork whose upstream or

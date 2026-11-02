@@ -85,6 +85,24 @@ même avec des chemins en argument : il n'est pas appelé quand
 « .repo/project.list » nomme un chemin que « repo list -p » ne connaît
 plus.
 
+Retour à un instantané
+----------------------
+« --mode instantane --targets FICHIER » ramène chaque dépôt nommé par le
+fichier de cibles sur son commit, sa branche ou sa HEAD détachée :
+{"racine": {"head", "branch"} | null, "depots": {chemin: {"head",
+"branch", "remote"}}}. L'essai à sec classe chaque dépôt (« a_jour »,
+« recul » quand la cible est un ancêtre de HEAD, « deplacement » quand elle
+est hors de son historique, « commit_introuvable » quand aucun remote ne
+l'a) et peut récupérer un commit absent par son SHA ; les clones que le
+fichier ne nomme pas sont listés (« hors_instantane ») et jamais touchés.
+L'application, épinglée comme le tirage, pose
+« <branche>_avant_retour_<horodatage> » sur HEAD, met de côté un arbre
+modifié et GARDE le stash, puis extrait la branche de la cible (créée sur
+le commit si elle manque) et la ramène par « reset --keep », ou détache
+HEAD sur le commit. La racine passe en dernier, puis le manifeste local
+est régénéré. « --apply-stash CHEMIN=SHA » réapplique un stash sans jamais
+le supprimer.
+
 Rien n'est jamais poussé.
 
 Un tag du manifeste se récupère sous « refs/repo_pull/tags/<t> », jamais
@@ -104,6 +122,7 @@ import contextlib
 import datetime
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
@@ -143,12 +162,12 @@ SCHEMA = 1
 DOSSIER_PASSES = os.path.join("tasks", "git_repo_pull")
 FICHIER_VERROU = ".verrou"
 MOTIF_SAUVEGARDE = re.compile(
-    r"^(?P<branche>.+)_avant_pull_(?P<horodatage>\d{8}T\d{4})$"
+    r"^(?P<branche>.+)_avant_(?:pull|retour)_(?P<horodatage>\d{8}T\d{4})$"
 )
 MOTIF_HORODATAGE = re.compile(r"^\d{8}T\d{4}$")
 MAX_ENTRANTS = 50
 MAX_SORTIE = 4000
-MODES = ("branche", "manifeste")
+MODES = ("branche", "manifeste", "instantane")
 STRATEGIES = ("rebase", "ff", "merge")
 
 EXIT_OK = 0
@@ -190,6 +209,9 @@ VERDICTS = (
     "operation_en_cours",
     "absent",
     "erreur",
+    "recul",
+    "deplacement",
+    "commit_introuvable",
 )
 
 # Les états d'un dépôt après l'application, d'un clone, d'un retour.
@@ -219,10 +241,12 @@ ETATS = (
     "supprime",
     "refuse_courante",
     "saute_delai",
+    "recule",
+    "saute_introuvable",
 )
 
 # Les états où HEAD a bougé : la sauvegarde y reste.
-ETATS_DEPLACES = ("avance", "tire", "stash_garde")
+ETATS_DEPLACES = ("avance", "tire", "stash_garde", "recule")
 
 # Les fichiers du dépôt ERPLibre qui décrivent les dépendances Python.
 FICHIERS_DEPENDANCES_FIXES = (
@@ -347,6 +371,12 @@ def lancer(argv, delai, cwd, env, en_direct=False):
 def nom_sauvegarde(branche, horodatage):
     """« <branche>_avant_pull_<horodatage> »."""
     return f"{branche}_avant_pull_{horodatage}"
+
+
+def nom_retour(branche, horodatage):
+    """« <branche>_avant_retour_<horodatage> », la sauvegarde d'un retour à
+    un instantané."""
+    return f"{branche}_avant_retour_{horodatage}"
 
 
 def branche_de_sauvegarde(branche, attrs):
@@ -744,6 +774,48 @@ def raccorder(dossier, constat, avant, refs, date_borne, delai=DELAI_GIT):
     return tours
 
 
+def _compte(uid):
+    """Le nom du compte `uid`, ou l'uid lui-même s'il n'en a pas."""
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+def ecriture_refusee(dossier, delai=DELAI_GIT):
+    """Rend None quand un fetch peut écrire dans le clone de `dossier`, sinon
+    le motif, qui nomme le dossier, le compte qui tourne et le propriétaire.
+
+    Un fetch écrit FETCH_HEAD dans le dossier git du clone, ses objets et ses
+    références dans le dossier commun ; un projet git-repo pointe vers
+    .repo/, d'où les chemins réels. Sans cette garde, git ne dit que
+    « insufficient permission » ou « Permission denied », sur le premier
+    fichier qui refuse. Dans un conteneur, le motif rappelle que le code
+    appartient au compte choisi à la construction de l'image.
+    """
+    dossiers = []
+    for option in ("--absolute-git-dir", "--git-common-dir"):
+        out, _err, code = git(["rev-parse", option], dossier, delai)
+        if code or not out.strip():
+            return None
+        dossiers.append(os.path.realpath(os.path.join(dossier, out.strip())))
+    dossiers.append(os.path.realpath(os.path.join(dossiers[1], "objects")))
+    for chemin in dict.fromkeys(dossiers):
+        if os.access(chemin, os.W_OK | os.X_OK):
+            continue
+        motif = (
+            f"{chemin} is not writable by {_compte(os.geteuid())}, "
+            f"it belongs to {_compte(os.stat(chemin).st_uid)}"
+        )
+        if os.path.exists("/.dockerenv"):
+            motif += (
+                "; build the image with ERPLIBRE_CODE_OWNER=odoo to pull "
+                "from Odoo"
+            )
+        return motif
+    return None
+
+
 def recuperer(dossier, constat, delai=DELAI_GIT):
     """Récupère la cible du constat. Rend None, ou le motif d'un échec.
 
@@ -758,6 +830,9 @@ def recuperer(dossier, constat, delai=DELAI_GIT):
     cible = constat.get("cible")
     if not remote or remote == ".":
         return None
+    refus = ecriture_refusee(dossier, delai)
+    if refus:
+        return refus
     args = ["fetch", "--quiet", "--no-tags"]
     recuperer_git = git
     avant = date_borne = None
@@ -1824,6 +1899,13 @@ def regenerer_manifeste(racine, donnees, dossier, regenerer=None):
     if _liste(carte) != manifeste.get("_carte"):
         manifeste.update(ecrit=False, erreur="manifeste_different")
         return manifeste
+    return poser_manifeste(racine, sortie, dossier, manifeste)
+
+
+def poser_manifeste(racine, sortie, dossier, manifeste):
+    """Remplace le manifeste local par `sortie`, d'un coup (« os.replace »),
+    après en avoir copié l'ancien dans `dossier`/erplibre_manifest.avant.xml,
+    la copie que `_restaurer` remet en place. Modifie et rend `manifeste`."""
     local = os.path.join(racine, repo_state.MANIFESTE_LOCAL)
     if os.path.isfile(local):
         copie = os.path.join(dossier, "erplibre_manifest.avant.xml")
@@ -2287,17 +2369,768 @@ def _passe(
     return charge, code_deps
 
 
+# ── retour à un instantané ──────────────────────────────────────────────
+
+
+def _cible_lue(chemin, entree):
+    """{head, branch, remote} d'une entrée du fichier de cibles. Lève
+    ValueError sur un commit incomplet ou un nom qui n'est pas un texte."""
+    if not isinstance(entree, dict) or not manifest_freeze.is_sha(
+        entree.get("head")
+    ):
+        raise ValueError(f"--targets: {chemin}: expected a full commit head")
+    cible = {"head": entree["head"]}
+    for cle in ("branch", "remote"):
+        valeur = entree.get(cle)
+        if valeur is not None and not (
+            isinstance(valeur, str) and valeur and not valeur.startswith("-")
+        ):
+            raise ValueError(f"--targets: {chemin}: unreadable {cle}")
+        cible[cle] = valeur
+    return cible
+
+
+def lire_cibles(fichier, racine):
+    """{chemin: {head, branch, remote}} du fichier de cibles d'un retour.
+
+    « racine », quand elle n'est pas null, devient le chemin « . » ;
+    « depots » nomme les clones par leur chemin relatif, normalisé. Lève
+    ValueError sur un fichier illisible, une entrée mal formée, ou un
+    chemin qui sort de la racine ou la désigne.
+    """
+    try:
+        with open(fichier) as fh:
+            charge = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"--targets: {exc}") from exc
+    if not isinstance(charge, dict) or not isinstance(
+        charge.get("depots"), dict
+    ):
+        raise ValueError('--targets: expected {"racine": …, "depots": {…}}')
+    cibles = {}
+    if charge.get("racine") is not None:
+        cibles["."] = _cible_lue(".", charge["racine"])
+    for chemin, entree in charge["depots"].items():
+        normal = repo_state.normaliser(racine, chemin or "")
+        if not chemin or normal in (None, "."):
+            raise ValueError(f"--targets: {chemin}: not a path under the root")
+        cibles[normal] = _cible_lue(chemin, entree)
+    return cibles
+
+
+def branche_valide(dossier, nom):
+    """Vrai quand `nom` est un nom de branche que git accepte et qui ne se
+    lit pas comme une option."""
+    if not nom or nom.startswith("-"):
+        return False
+    _out, _err, code = git(["check-ref-format", "--branch", nom], dossier)
+    return code == 0
+
+
+def remotes_du_retour(dossier, cible, branche, attrs):
+    """Les remotes configurés du clone où chercher le commit d'une cible,
+    dans l'ordre : celui que la cible nomme, celui que suit sa branche,
+    celui que suit la branche extraite, celui du manifeste, puis les
+    autres."""
+    candidats = [
+        cible.get("remote"),
+        cible.get("branch")
+        and config(dossier, f"branch.{cible['branch']}.remote"),
+        branche and config(dossier, f"branch.{branche}.remote"),
+        (attrs or {}).get("remote"),
+    ]
+    out, _err, code = git(["remote"], dossier)
+    candidats += out.split() if not code else []
+    return [
+        x
+        for x in dict.fromkeys(c for c in candidats if c and c != ".")
+        if config(dossier, f"remote.{x}.url")
+    ]
+
+
+def recuperer_commit(dossier, c, cible, attrs, delai=DELAI_GIT):
+    """Récupère par son SHA le commit d'une cible absent du clone. Rend
+    (verdict, motif) : (None, None) quand il est arrivé, sinon
+    « commit_introuvable » ou « fetch_echoue ».
+
+    Chaque remote de `remotes_du_retour` est essayé jusqu'au premier qui
+    l'a. Un remote qui refuse le SHA et répond à « ls-remote » ne l'a pas
+    (« commit_introuvable ») ; un échec sans aucun remote joignable est un
+    « fetch_echoue », comme un clone où le fetch ne peut pas écrire. Un
+    clone superficiel ne reçoit que le commit (« --depth=1 ») : sans
+    borne, le fetch d'un commit plus ancien que sa frontière tirerait tout
+    l'historique sous elle ; `fetch_superficiel` garde celui de HEAD.
+    """
+    sha = cible["head"]
+    refus = ecriture_refusee(dossier, delai)
+    if refus:
+        return "fetch_echoue", refus
+    remotes = remotes_du_retour(dossier, cible, c.get("branche"), attrs)
+    if not remotes:
+        return "commit_introuvable", "no remote configured in the clone"
+    recuperer_git = fetch_superficiel if c.get("superficiel") else git
+    args = ["fetch", "--quiet", "--no-tags"]
+    if c.get("superficiel"):
+        args.append("--depth=1")
+    joignables, echecs = [], []
+    for remote in remotes:
+        _out, err, code = recuperer_git(args + [remote, sha], dossier, delai)
+        if not code and repo_state.resoudre(dossier, sha, delai):
+            return None, None
+        if code:
+            echecs.append(premiere_ligne(err, code))
+        _out, _err, code = git(["ls-remote", remote, "HEAD"], dossier, delai)
+        if not code:
+            joignables.append(remote)
+    if joignables:
+        return "commit_introuvable", (
+            f"commit not found on {', '.join(joignables)}"
+        )
+    return "fetch_echoue", echecs[-1] if echecs else "fetch failed"
+
+
+def constater_retour(
+    racine, chemin, cible, attrs=None, delai=DELAI_GIT, fetch=True
+):
+    """Le constat d'un dépôt face à sa cible d'instantané. Ne lève jamais.
+
+    Même forme que `constater`, plus « cible_branche » (None : HEAD
+    détachée sur le commit) et « quittes », les commits de HEAD que la
+    cible n'a pas ; « locaux » compte ceux d'entre eux qu'aucune référence
+    de suivi ne porte, que seule la sauvegarde gardera. HEAD déjà sur le
+    commit vaut « a_jour » quelle que soit la branche : le code servi est
+    le même. Écrit seulement ce qu'un « fetch » écrit.
+    """
+    c = constat_vide(chemin, attrs)
+    c.update(
+        cible=cible["head"],
+        cible_sha=cible["head"],
+        cible_branche=cible.get("branch"),
+        remote=cible.get("remote"),
+        source_cible="instantane",
+        quittes=None,
+    )
+    dossier = os.path.join(racine, chemin)
+    if not repo_state.a_un_git(dossier):
+        c["verdict"] = "absent"
+        return c
+    head, branche, erreur = repo_state.lire_tete(dossier, delai)
+    if erreur:
+        c.update(verdict="erreur", erreur=erreur)
+        return c
+    c.update(head=head, branche=branche, detache=branche is None)
+    c["sale"], c["non_suivis"] = etat_arbre(dossier, delai)
+    c["superficiel"] = bool(repo_state.est_superficiel(dossier, delai))
+    c["sauvegarde_prefixe"] = nom_retour(branche or "detache", "")
+    operation = operation_en_cours(dossier)
+    if operation:
+        c.update(verdict="operation_en_cours", operation_en_cours=operation)
+        return c
+    if c["cible_branche"] and not branche_valide(dossier, c["cible_branche"]):
+        c.update(
+            verdict="erreur",
+            erreur=f"invalid branch name: {c['cible_branche']}",
+        )
+        return c
+    sha = c["cible_sha"]
+    if not repo_state.resoudre(dossier, sha, delai):
+        if not fetch:
+            c.update(
+                verdict="commit_introuvable", motif="commit not in the clone"
+            )
+            return c
+        verdict, motif = recuperer_commit(dossier, c, cible, attrs, delai)
+        c["fetch"] = "echoue" if verdict else "ok"
+        if verdict:
+            c.update(verdict=verdict, motif=motif)
+            return c
+    c["nos"], c["retard"] = repo_state.avance_retard(dossier, sha, head, delai)
+    c["quittes"] = c["nos"]
+    out, _err, code = git(["merge-base", head, sha], dossier, delai)
+    c["base"] = out.strip() if code == 0 and out.strip() else None
+    if head == sha:
+        c["verdict"] = "a_jour"
+        c["quittes"] = c["locaux"] = 0
+        return c
+    c["locaux"] = commits_locaux(dossier, head, sha, delai)
+    if repo_apply.est_ancetre(dossier, sha, head) is True:
+        c["verdict"] = "recul"
+    else:
+        c["verdict"] = "deplacement"
+    c["applicable"] = True
+    c["stash_prevu"] = bool(c["sale"])
+    c["ecrases"] = fichiers_ecrases(dossier, head, sha, delai)
+    return c
+
+
+def diagnostic_retour(
+    racine, cibles, chemin_seul=None, jobs=None, delai=DELAI_GIT
+):
+    """L'essai à sec d'un retour à un instantané : (données, code).
+
+    `cibles` est le fichier de cibles lu (voir `lire_cibles`). Même
+    enveloppe que `diagnostic`, « mode » valant « instantane », plus
+    « hors_instantane » : la racine mise à part, les clones du checkout,
+    du manifeste ou non, que `cibles` ne nomme pas. `chemin_seul`
+    restreint à une cible : un chemin que le fichier ne nomme pas rend
+    EXIT_CIBLE. Seul un commit absent se récupère.
+    """
+    donnees = {
+        "schema": SCHEMA,
+        "command": "dry-run",
+        "generated_at": repo_state.maintenant(),
+        "root": racine,
+        "version": repo_upgrade.version_active(racine),
+        "mode": "instantane",
+        "chemin_seul": chemin_seul,
+        "depots": [],
+        "hors_instantane": [],
+        "dependances": dependances(racine, None, None),
+        "plan": [],
+        "attendus": [],
+        "counts": {},
+        "errors": [],
+    }
+    projets_locaux, _remotes, _present = repo_state.definitions(racine)
+    if chemin_seul is not None:
+        chemin_seul = repo_state.normaliser(racine, chemin_seul)
+        donnees["chemin_seul"] = chemin_seul
+        if chemin_seul not in cibles:
+            donnees["error"] = "unknown path"
+            return donnees, EXIT_CIBLE
+    else:
+        donnees["hors_instantane"] = [
+            p
+            for p in chemins_du_checkout(racine)
+            if p != "." and p not in cibles
+        ]
+    a_constater = sorted(p for p in cibles if chemin_seul in (None, p))
+    with ThreadPoolExecutor(max_workers=jobs or PARALLELE) as pool:
+        constats = list(
+            pool.map(
+                lambda p: constater_retour(
+                    racine, p, cibles[p], projets_locaux.get(p), delai
+                ),
+                a_constater,
+            )
+        )
+    donnees["depots"] = constats
+    for c in constats:
+        donnees["counts"][c["verdict"]] = (
+            donnees["counts"].get(c["verdict"], 0) + 1
+        )
+        if c.get("erreur"):
+            donnees["errors"].append(f"{c['chemin']}: {c['erreur']}")
+    donnees["plan"] = sorted(c["chemin"] for c in constats if c["applicable"])
+    par_chemin = {c["chemin"]: c for c in constats}
+    donnees["attendus"] = [
+        f"{p}={par_chemin[p]['cible_sha']}:{par_chemin[p]['head']}"
+        for p in donnees["plan"]
+    ]
+    if "." in donnees["plan"]:
+        donnees["dependances"] = dependances(
+            racine, par_chemin["."]["head"], par_chemin["."]["cible_sha"]
+        )
+    return donnees, EXIT_OK
+
+
+def enregistrement_retour(constat, etat=None):
+    """L'enregistrement d'un dépôt dans un retour : celui du tirage, plus
+    « cible_branche », « branche_arrivee » (la branche où le retour laisse
+    le dépôt, None détaché) et « sauvegarde_cible », la sauvegarde de la
+    branche de la cible quand le retour la déplace aussi."""
+    res = enregistrement(constat)
+    res.update(
+        etat=etat,
+        cible_branche=constat.get("cible_branche"),
+        branche_arrivee=None,
+        sauvegarde_cible=None,
+    )
+    res["stash"]["message"] = None
+    if etat == "a_jour":
+        res["arrivee"] = res["depart"]
+    if etat in ("erreur", "saute_introuvable"):
+        res["motif"] = constat.get("erreur") or constat.get("motif")
+    return res
+
+
+# L'état d'un dépôt hors du plan, de son verdict ; « absent » n'en a pas.
+ETATS_HORS_PLAN = {
+    "a_jour": "a_jour",
+    "commit_introuvable": "saute_introuvable",
+    "operation_en_cours": "saute_operation",
+    "erreur": "erreur",
+    "fetch_echoue": "erreur",
+}
+
+
+def retourner(racine, constat, horodatage, delai=DELAI_GIT, echeance=None):
+    """Ramène un dépôt sur sa cible d'instantané. Rend son enregistrement,
+    ne lève jamais.
+
+    Séquence : sauvegarde de HEAD (et de la branche de la cible quand elle
+    est une autre branche, dont la pointe n'est pas le commit), stash des
+    fichiers suivis modifiés, copie des fichiers ignorés que la cible
+    écrase, puis le geste : « reset --keep » sur la branche extraite quand
+    elle est celle de la cible, « checkout » puis « reset --keep » d'une
+    autre branche, « checkout -b » d'une branche absente, « checkout
+    --detach » sans branche. Le stash reste dans la pile, jamais
+    réappliqué. Un geste qui échoue remet le dépôt sur son départ, stash
+    réappliqué et sauvegardes supprimées. Rien ne commence après
+    `echeance` (« saute_delai »).
+    """
+    res = enregistrement_retour(constat)
+    if echue(echeance):
+        res.update(etat="saute_delai", motif=MOTIF_DELAI)
+        return res
+    try:
+        return _retourner(racine, res, horodatage, delai)
+    except Exception as exc:  # un dépôt ne fait pas tomber la passe
+        res["etat"] = "erreur"
+        res["motif"] = f"internal: {type(exc).__name__}: {exc}"
+        return res
+
+
+def _retourner(racine, res, horodatage, delai):
+    dossier = os.path.join(racine, res["chemin"])
+    sorties = []
+
+    def noter(out, err):
+        sorties.append(out + err)
+
+    def finir(etat):
+        res["etat"] = etat
+        res["arrivee"] = repo_apply.sha_de(dossier, "HEAD")
+        res["sortie"] = queue(joindre(res["sortie"], *sorties))
+        return res
+
+    depart = repo_apply.sha_de(dossier, "HEAD")
+    branche_depart = repo_apply.branche_courante(dossier)
+    res.update(
+        depart=depart, branche=branche_depart, detache=branche_depart is None
+    )
+    if operation_en_cours(dossier):
+        return finir("saute_operation")
+    sha, branche_cible = res["cible_sha"], res["cible_branche"]
+    if not repo_state.resoudre(dossier, sha, delai):
+        res["motif"] = "commit not in the clone"
+        return finir("saute_introuvable")
+    if depart == sha:
+        return finir("a_jour")
+
+    autre = branche_cible if branche_cible != branche_depart else None
+    pointe = (
+        repo_apply.sha_de(dossier, f"refs/heads/{autre}") if autre else None
+    )
+    sauvegardes = [
+        (nom_retour(branche_depart or "detache", horodatage), depart)
+    ]
+    if pointe and pointe != sha:
+        sauvegardes.append((nom_retour(autre, horodatage), pointe))
+    if any(repo_apply.branche_existe(dossier, n) for n, _s in sauvegardes):
+        return finir("sauvegarde_existante")
+    for rang, (nom, commit) in enumerate(sauvegardes):
+        out, err, code = git(
+            ["branch", nom, commit], dossier, delai, ecrit=True
+        )
+        noter(out, err)
+        if code:
+            for posee, _s in sauvegardes[:rang]:
+                git(["branch", "-D", posee], dossier, delai, ecrit=True)
+            res.update(sauvegarde=None, sauvegarde_cible=None)
+            res["motif"] = premiere_ligne(err, code)
+            return finir("erreur")
+        res["sauvegarde" if rang == 0 else "sauvegarde_cible"] = nom
+
+    def retirer_sauvegardes():
+        for nom in (res["sauvegarde"], res["sauvegarde_cible"]):
+            if nom:
+                git(["branch", "-D", nom], dossier, delai, ecrit=True)
+        res.update(sauvegarde=None, sauvegarde_cible=None)
+
+    message = f"repo_pull retour {horodatage}"
+    sale, _non_suivis = etat_arbre(dossier, delai)
+    if sale:
+        stash_avant = repo_apply.sha_de(dossier, "refs/stash")
+        out, err, code = git(
+            ["stash", "push", "--quiet", "-m", message],
+            dossier,
+            delai,
+            ecrit=True,
+        )
+        noter(out, err)
+        if code:
+            retirer_sauvegardes()
+            res["motif"] = premiere_ligne(err, code)
+            return finir("erreur")
+        stash_sha = repo_apply.sha_de(dossier, "refs/stash")
+        if stash_sha and stash_sha != stash_avant:
+            res["stash"] = {
+                "etat": "garde",
+                "sha": stash_sha,
+                "commande": f"git -C {res['chemin']} stash apply {stash_sha}",
+                "message": message,
+            }
+        elif etat_arbre(dossier, delai)[0] is not False:
+            retirer_sauvegardes()
+            res["motif"] = (
+                "modified files that git stash cannot save"
+                " (a moved submodule?)"
+            )
+            return finir("erreur")
+    hors_suivi = repo_apply.fichiers_hors_suivi(dossier)
+    copie = None
+    ecrases = fichiers_ecrases(dossier, depart, sha, delai)
+    if ecrases:
+        copie = os.path.join(
+            dossier_passe(horodatage, racine),
+            "ecrases",
+            (
+                res["chemin"].replace("/", "_")
+                if res["chemin"] != "."
+                else "racine"
+            ),
+        )
+        res["ecrases"] = copier_ecrases(dossier, ecrases, copie)
+        res["copie_ecrases"] = os.path.relpath(copie, racine)
+
+    if branche_cible is None:
+        gestes = [["checkout", "--detach", sha]]
+    elif autre is None:
+        gestes = [["reset", "--keep", sha]]
+    elif pointe:
+        gestes = [["checkout", autre], ["reset", "--keep", sha]]
+    else:
+        gestes = [["checkout", "-b", autre, sha]]
+    for geste in gestes:
+        out, err, code = git(geste, dossier, delai, ecrit=True)
+        noter(out, err)
+        if code:
+            break
+    if not code:
+        res["branche_arrivee"] = repo_apply.branche_courante(dossier)
+        if repo_apply.sha_de(dossier, "HEAD") == sha:
+            return finir("recule")
+        err, code = "HEAD is not the target commit after the move", 1
+
+    res["motif"] = premiere_ligne(err, code)
+    remis, sortie = remettre_au_depart(
+        dossier, res, branche_depart, hors_suivi, delai
+    )
+    sorties.append(sortie)
+    if not remis:
+        return finir("restauration_echouee")
+    if copie and res["ecrases"]:
+        copier_ecrases(copie, res["ecrases"], dossier)
+    if autre and not pointe and repo_apply.branche_existe(dossier, autre):
+        git(["branch", "-D", autre], dossier, delai, ecrit=True)
+    retirer_sauvegardes()
+    res["branche_arrivee"] = branche_depart
+    if res["stash"]["sha"]:
+        out, err, code = git(
+            ["stash", "pop", "--quiet"], dossier, delai, ecrit=True
+        )
+        noter(out, err)
+        if code:
+            out, err, _c = git(
+                ["reset", "--hard", "HEAD"], dossier, delai, ecrit=True
+            )
+            noter(out, err)
+        else:
+            res["stash"].update(etat="reapplique", commande=None)
+    return finir("erreur")
+
+
+def regenerer_apres_retour(racine, dossier, etat_actuel, regenerer=None):
+    """Régénère le manifeste local après le retour de la racine et l'écrit.
+
+    Aucune prédiction à comparer : la fusion tourne sur la racine revenue,
+    gelée quand `etat_actuel` (le manifeste local d'avant le retour) l'est.
+    Rend le bloc « manifeste » du tirage : « changements » entre le
+    manifeste d'avant et celui écrit, « copie_avant » que
+    `--restore-backup` remet en place.
+    """
+    regenerer = regenerer or regenerer_defaut
+    manifeste = {
+        "etat_actuel": etat_actuel,
+        "regenere": False,
+        "ecrit": False,
+        "copie_avant": None,
+        "changements": [],
+        "erreur": None,
+    }
+    sortie = os.path.join(dossier, "erplibre_manifest.apres.xml")
+    code, texte = regenerer(racine, racine, sortie, etat_actuel == "frozen")
+    carte = lire_carte(sortie) if not code else None
+    if carte is None:
+        manifeste["erreur"] = erreur_de_regeneration(texte, code)
+        return manifeste
+    manifeste["regenere"] = True
+    actuelle = lire_carte(os.path.join(racine, repo_state.MANIFESTE_LOCAL))
+    manifeste["changements"] = changements(actuelle or {}, carte)
+    return poser_manifeste(racine, sortie, dossier, manifeste)
+
+
+def passe_retour(
+    racine,
+    version,
+    cibles,
+    attendus=(),
+    epingles=None,
+    chemin_seul=None,
+    horodatage=None,
+    regenerer=None,
+    jobs=None,
+    delai=DELAI_GIT,
+    budget=None,
+):
+    """Le retour à un instantané : refait l'essai à sec, vérifie le
+    consentement comme `passe`, ramène chaque dépôt du plan, inscrit.
+
+    Les clones passent d'abord, la racine en dernier, puis le manifeste
+    local est régénéré quand elle a bougé. « resultats » porte aussi les
+    cibles hors du plan, sous leur état (`ETATS_HORS_PLAN`). Rend (charge,
+    code) ; rien n'est écrit avant que le consentement ne tienne.
+    """
+    echeance = echeance_de(budget)
+    horodatage = horodatage or maintenant_horodatage()
+    charge = {
+        "schema": SCHEMA,
+        "command": "apply",
+        "version": version,
+        "mode": "instantane",
+        "chemin_seul": chemin_seul,
+        "horodatage": None,
+        "dossier": None,
+        "plan": [],
+        "attendus": sorted(set(attendus)),
+        "derives": [],
+        "resultats": [],
+        "manifeste": None,
+        "dependances": None,
+        "budget_epuise": False,
+        "error": None,
+    }
+    if not version or repo_upgrade.version_active(racine) != version:
+        charge["error"] = "confirm_mismatch"
+        return charge, EXIT_USAGE
+    try:
+        with verrou(racine):
+            return _passe_retour(
+                racine,
+                charge,
+                cibles,
+                horodatage,
+                epingles,
+                regenerer,
+                jobs,
+                delai,
+                echeance,
+            )
+    except Occupe:
+        charge["error"] = "busy"
+        return charge, EXIT_OCCUPE
+
+
+def _passe_retour(
+    racine,
+    charge,
+    cibles,
+    horodatage,
+    epingles,
+    regenerer,
+    jobs,
+    delai,
+    echeance,
+):
+    dossier = dossier_passe(horodatage, racine)
+    if os.path.exists(dossier):
+        charge["error"] = "stamp_taken"
+        return charge, EXIT_USAGE
+    etat_actuel = repo_state.mode_du_checkout(racine)[0]
+    donnees, code = diagnostic_retour(
+        racine, cibles, charge["chemin_seul"], jobs, delai
+    )
+    if code:
+        charge["error"] = donnees.get("error")
+        return charge, code
+    par_chemin = {c["chemin"]: c for c in donnees["depots"]}
+    plan = charge["plan"] = list(donnees["plan"])
+    charge["dependances"] = donnees["dependances"]
+    if plan != charge["attendus"]:
+        charge["error"] = "plan_changed"
+        return charge, EXIT_PLAN_CHANGE
+    charge["derives"] = repo_apply.derives(
+        [par_chemin[p] for p in plan], epingles
+    )
+    if charge["derives"]:
+        charge["error"] = "plan_changed"
+        return charge, EXIT_PLAN_CHANGE
+    hors_plan = [
+        enregistrement_retour(c, ETATS_HORS_PLAN[c["verdict"]])
+        for c in donnees["depots"]
+        if not c["applicable"] and c["verdict"] in ETATS_HORS_PLAN
+    ]
+    if not plan:
+        charge["resultats"] = hors_plan
+        return charge, EXIT_OK
+
+    os.makedirs(dossier)
+    charge["horodatage"] = horodatage
+    charge["dossier"] = os.path.relpath(dossier, racine)
+    resultats = []
+    ecriture = threading.Lock()
+
+    def inscrire(termine=False):
+        """Inscrit la passe telle qu'elle est : après chaque dépôt, puis à
+        la fin (« termine »)."""
+        with ecriture:
+            ecrire_passe(
+                dossier,
+                {
+                    "horodatage": horodatage,
+                    "termine": termine,
+                    "version": charge["version"],
+                    "mode": "instantane",
+                    "chemin_seul": charge["chemin_seul"],
+                    "diagnostic": public(donnees),
+                    "resultats": list(resultats),
+                    "manifeste": charge["manifeste"],
+                    "dependances": charge["dependances"],
+                    "budget_epuise": charge["budget_epuise"],
+                },
+            )
+
+    def retourner_inscrit(chemin):
+        res = retourner(
+            racine, par_chemin[chemin], horodatage, delai, echeance
+        )
+        with ecriture:
+            resultats.append(res)
+        inscrire()
+        return res
+
+    inscrire()
+    clones = [p for p in plan if p != "."]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(retourner_inscrit, clones))
+    if "." in plan and retourner_inscrit(".")["etat"] == "recule":
+        charge["manifeste"] = regenerer_apres_retour(
+            racine, dossier, etat_actuel, regenerer
+        )
+        inscrire()
+    ordre = {p: i for i, p in enumerate(clones + ["."])}
+    resultats.sort(key=lambda r: ordre.get(r["chemin"], len(ordre)))
+    resultats += hors_plan
+    charge["resultats"] = resultats
+    racine_res = next((r for r in resultats if r["chemin"] == "."), None)
+    if racine_res and racine_res["etat"] == "recule":
+        charge["dependances"] = dependances(
+            racine, racine_res["depart"], racine_res["arrivee"]
+        )
+    else:
+        charge["dependances"] = dependances(racine, None, None)
+    charge["budget_epuise"] = any(
+        r.get("etat") == "saute_delai" for r in resultats
+    )
+    inscrire(termine=True)
+    return charge, EXIT_OK
+
+
+def lire_stash(racine, texte):
+    """(chemin, sha) d'un « CHEMIN=SHA ». Lève ValueError sur un commit
+    incomplet, LookupError sur un chemin qui n'est pas un clone."""
+    chemin, egal, sha = (texte or "").partition("=")
+    if not egal or not manifest_freeze.is_sha(sha):
+        raise ValueError(f"{texte}: expected PATH=STASH_SHA")
+    chemin = repo_state.normaliser(racine, chemin or ".")
+    dossier = os.path.join(racine, chemin) if chemin else None
+    if (
+        chemin is None
+        or not repo_state.a_un_git(dossier)
+        or repo_state.lire_tete(dossier)[2]
+    ):
+        raise LookupError(f"{texte}: unknown path")
+    return chemin, sha
+
+
+def reappliquer_stash(racine, chemin, sha, delai=DELAI_GIT):
+    """« git stash apply <sha> » dans le dépôt `chemin`. Rend (charge, code).
+
+    « etat » vaut « applique », « refuse_sale » (fichiers suivis modifiés
+    ou opération git en cours : rien n'est tenté), « introuvable » (le
+    commit n'est pas un stash du clone, EXIT_CIBLE) ou « conflit » : l'arbre
+    revient alors sur HEAD par « reset --hard HEAD ». « stash apply » ne
+    retire jamais l'entrée de la pile, et rien d'autre n'y touche.
+    """
+    res = {
+        "schema": SCHEMA,
+        "command": "apply-stash",
+        "chemin": chemin,
+        "sha": sha,
+        "etat": None,
+        "motif": None,
+        "conflits": [],
+    }
+    try:
+        with verrou(racine):
+            return _reappliquer_stash(racine, res, delai)
+    except Occupe:
+        res["error"] = "busy"
+        return res, EXIT_OCCUPE
+
+
+def _reappliquer_stash(racine, res, delai):
+    dossier = os.path.join(racine, res["chemin"])
+    sha = res["sha"]
+    if not repo_state.resoudre(dossier, sha, delai) or not (
+        repo_state.resoudre(dossier, f"{sha}^2", delai)
+    ):
+        res.update(etat="introuvable", motif="not a stash commit of the clone")
+        return res, EXIT_CIBLE
+    operation = operation_en_cours(dossier)
+    sale, _n = etat_arbre(dossier, delai)
+    if operation or sale is not False:
+        res["etat"] = "refuse_sale"
+        res["motif"] = (
+            f"{operation} in progress"
+            if operation
+            else "modified tracked files"
+        )
+        return res, EXIT_OK
+    out, err, code = git(
+        ["stash", "apply", "--quiet", sha], dossier, delai, ecrit=True
+    )
+    if not code:
+        res["etat"] = "applique"
+        return res, EXIT_OK
+    res["motif"] = premiere_ligne(err, code)
+    res["conflits"] = repo_apply.fichiers_en_conflit(dossier)
+    _out, err, code = git(
+        ["reset", "--hard", "HEAD"], dossier, delai, ecrit=True
+    )
+    if code:
+        res["motif"] = joindre(res["motif"], premiere_ligne(err, code))
+    res["etat"] = "conflit"
+    return res, EXIT_OK
+
+
 # ── sauvegardes ─────────────────────────────────────────────────────────
 
 
 def chemins_du_checkout(racine):
-    """« . » puis les clones du manifeste local présents sur le disque."""
+    """« . » puis les clones présents sur le disque : ceux du manifeste
+    local, et ceux qu'il ne nomme pas sous « odoo<V>/ », qu'un retour à un
+    instantané peut aussi déplacer."""
     projets, _r, _p = repo_state.definitions(racine)
     lst = ["."] if repo_state.a_un_git(racine) else []
     lst += sorted(
-        p
-        for p in projets
-        if p != "." and repo_state.a_un_git(os.path.join(racine, p))
+        [
+            p
+            for p in projets
+            if p != "." and repo_state.a_un_git(os.path.join(racine, p))
+        ]
+        + repo_state.clones_hors_manifeste(racine, set(projets))
     )
     return lst
 
@@ -2367,7 +3200,10 @@ def lire_designation(racine, texte):
     n'est pas une sauvegarde, LookupError sur un chemin inconnu."""
     chemin, egal, nom = (texte or "").partition("=")
     if not egal or not MOTIF_SAUVEGARDE.match(nom):
-        raise ValueError(f"{texte}: expected PATH=<branch>_avant_pull_<stamp>")
+        raise ValueError(
+            f"{texte}: expected PATH=<branch>_avant_pull_<stamp>"
+            " or PATH=<branch>_avant_retour_<stamp>"
+        )
     chemin = repo_state.normaliser(racine, chemin or ".")
     if chemin is None or chemin not in chemins_du_checkout(racine):
         raise LookupError(f"{texte}: unknown path")
@@ -2379,9 +3215,12 @@ def restaurer_sauvegarde(racine, chemin, nom, delai=DELAI_GIT):
 
     La passe de l'horodatage donne la branche ou la HEAD détachée où le
     dépôt se trouvait, et le commit où elle l'a laissé. Le retour exige la
-    même branche, ou la HEAD détachée, un arbre sans modification suivie,
-    et qu'aucun commit fait depuis ne quitte la branche (« head_deplacee »,
-    voir `head_inchangee`). La branche de sauvegarde reste.
+    branche où la passe l'a laissé, ou la HEAD détachée, un arbre sans
+    modification suivie, et qu'aucun commit fait depuis ne quitte la
+    branche (« head_deplacee », voir `head_inchangee`). Après un retour à
+    un instantané qui a changé de branche, le dépôt revient sur sa branche
+    ou sa HEAD détachée de départ, et la branche de la cible sur sa propre
+    sauvegarde (`gestes_branche_cible`). La branche de sauvegarde reste.
     """
     try:
         with verrou(racine):
@@ -2417,8 +3256,10 @@ def _restaurer(racine, chemin, nom, delai):
         res["etat"] = "refuse_sale"
         return charge, EXIT_OK
     courante = repo_apply.branche_courante(dossier)
+    destination = courante
     if record is not None:
-        attendue = None if record.get("detache") else record.get("branche")
+        destination = None if record.get("detache") else record.get("branche")
+        attendue = record.get("branche_arrivee", destination)
     else:
         attendue = courante if courante == m.group("branche") else None
         if courante is not None and attendue is None:
@@ -2430,15 +3271,19 @@ def _restaurer(racine, chemin, nom, delai):
     if not head_inchangee(dossier, res["depart"], sha, record, delai):
         res["etat"] = "head_deplacee"
         return charge, EXIT_OK
-    if courante:
-        geste = ["reset", "--keep", sha]
+    if destination is None:
+        gestes = [["checkout", "--detach", sha]]
+    elif destination == courante:
+        gestes = [["reset", "--keep", sha]]
     else:
-        geste = ["checkout", "--detach", sha]
-    out, err, code = git(geste, dossier, delai, ecrit=True)
-    if code:
-        res["etat"] = "erreur"
-        res["sortie"] = queue(out + err)
-        return charge, EXIT_OK
+        gestes = [["checkout", destination], ["reset", "--keep", sha]]
+    gestes += gestes_branche_cible(dossier, record)
+    for geste in gestes:
+        out, err, code = git(geste, dossier, delai, ecrit=True)
+        if code:
+            res["etat"] = "erreur"
+            res["sortie"] = queue(out + err)
+            return charge, EXIT_OK
     res.update(etat="revenu", arrivee=sha)
     manifeste = (passe_lue or {}).get("manifeste") or {}
     if (
@@ -2466,6 +3311,18 @@ def _restaurer(racine, chemin, nom, delai):
             passe_lue,
         )
     return charge, EXIT_OK
+
+
+def gestes_branche_cible(dossier, record):
+    """Le geste qui remet la branche de la cible d'un retour sur sa
+    sauvegarde (« sauvegarde_cible »), une fois HEAD revenu sur la branche
+    ou le commit de départ : « branch -f » d'une branche qui n'est plus
+    extraite. Vide pour un tirage, ou quand la sauvegarde manque."""
+    nom = (record or {}).get("sauvegarde_cible")
+    sha = repo_apply.sha_de(dossier, f"refs/heads/{nom}") if nom else None
+    if not sha or not record.get("cible_branche"):
+        return []
+    return [["branch", "-f", record["cible_branche"], sha]]
 
 
 def head_inchangee(dossier, head, sha, record, delai=DELAI_GIT):
@@ -2531,6 +3388,9 @@ LIBELLES_VERDICT = {
     "operation_en_cours": ("operation in progress: skipped", "broken"),
     "absent": ("not cloned", "dim"),
     "erreur": ("error", "broken"),
+    "recul": ("back to the snapshot", "ok"),
+    "deplacement": ("move to the snapshot (not an ancestor)", "watch"),
+    "commit_introuvable": ("snapshot commit not found", "broken"),
 }
 
 LIBELLES_ETAT = {
@@ -2552,9 +3412,15 @@ LIBELLES_ETAT = {
     "clone_echoue": ("clone failed", "broken"),
     "clone_refuse": ("clone refused", "watch"),
     "clone_chemin_occupe": ("path already occupied", "watch"),
+    "recule": ("moved back to the snapshot", "ok"),
+    "saute_introuvable": ("snapshot commit not found: skipped", "broken"),
 }
 
-LIBELLES_MODE = {"manifeste": "manifest", "branche": "branches"}
+LIBELLES_MODE = {
+    "manifeste": "manifest",
+    "branche": "branches",
+    "instantane": "snapshot",
+}
 
 # Les codes d'erreur d'une passe que le menu peut afficher.
 LIBELLES_ERREUR = {
@@ -2782,7 +3648,18 @@ def analyser(argv):
         action="store_true",
         help="poetry install --no-root in the Odoo virtual environment",
     )
+    action.add_argument(
+        "--apply-stash",
+        metavar="PATH=SHA",
+        help="git stash apply a stash commit in a repository; the stash"
+        " stays in the list",
+    )
     parser.add_argument("--mode", choices=MODES, default="manifeste")
+    parser.add_argument(
+        "--targets",
+        metavar="FILE",
+        help="--mode instantane: the JSON file of the snapshot targets",
+    )
     parser.add_argument("--strategy", choices=STRATEGIES, default="rebase")
     parser.add_argument(
         "--path",
@@ -2863,17 +3740,31 @@ def executer(args, racine):
             repo_state.normaliser(racine, args.path) if args.path else None
         )
         return lister_sauvegardes(racine, chemin), EXIT_OK
+    instantane = args.mode == "instantane"
+    cibles = None
+    if (args.dry_run or args.apply) and instantane != bool(args.targets):
+        return {"error": "--mode instantane goes with --targets"}, EXIT_USAGE
+    if instantane and (args.dry_run or args.apply):
+        try:
+            cibles = lire_cibles(args.targets, racine)
+        except ValueError as exc:
+            return {"error": str(exc)}, EXIT_USAGE
     if args.dry_run:
         try:
             with verrou(racine):
-                donnees, code = diagnostic(
-                    racine,
-                    args.mode,
-                    args.strategy,
-                    args.path,
-                    jobs=args.jobs,
-                    delai=args.timeout,
-                )
+                if instantane:
+                    donnees, code = diagnostic_retour(
+                        racine, cibles, args.path, args.jobs, args.timeout
+                    )
+                else:
+                    donnees, code = diagnostic(
+                        racine,
+                        args.mode,
+                        args.strategy,
+                        args.path,
+                        jobs=args.jobs,
+                        delai=args.timeout,
+                    )
         except Occupe:
             return {"command": "dry-run", "error": "busy"}, EXIT_OCCUPE
         return public(donnees), code
@@ -2882,6 +3773,14 @@ def executer(args, racine):
         return {"command": commande, "error": "bad stamp"}, EXIT_USAGE
     if args.install_deps:
         return installer_dependances(racine, version, args.passe)
+    if args.apply_stash:
+        try:
+            chemin, sha = lire_stash(racine, args.apply_stash)
+        except ValueError as exc:
+            return {"error": str(exc)}, EXIT_USAGE
+        except LookupError as exc:
+            return {"error": str(exc)}, EXIT_CIBLE
+        return reappliquer_stash(racine, chemin, sha, args.timeout)
     if args.restore_backup or args.delete_backup:
         texte = args.restore_backup or args.delete_backup
         commande = "restore-backup" if args.restore_backup else "delete-backup"
@@ -2903,6 +3802,19 @@ def executer(args, racine):
         chemin_seul = repo_state.normaliser(racine, args.path)
         if chemin_seul is None:
             return {"command": "apply", "error": "unknown path"}, EXIT_CIBLE
+    if instantane:
+        return passe_retour(
+            racine,
+            version,
+            cibles,
+            attendus=[c for c, _e in lus],
+            epingles={c: e for c, e in lus if e},
+            chemin_seul=chemin_seul,
+            horodatage=args.passe,
+            jobs=args.jobs,
+            delai=args.timeout,
+            budget=args.budget,
+        )
     return passe(
         racine,
         version,
@@ -2950,7 +3862,11 @@ def main(argv=None):
                         else (
                             "restore-backup"
                             if args.restore_backup
-                            else "delete-backup"
+                            else (
+                                "apply-stash"
+                                if args.apply_stash
+                                else "delete-backup"
+                            )
                         )
                     )
                 )

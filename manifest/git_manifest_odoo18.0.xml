@@ -357,7 +357,7 @@
     <project
         name="erplibre_addons.git"
         revision="18.0"
-        freeze-revision="41cef754eda22a79303d0237a06ebba882d88049"
+        freeze-revision="80ce7bb9bebbe7dd36e6493a0e78ad2739769671"
         path="odoo18.0/addons/ERPLibre_erplibre_addons"
         remote="ERPLibre"
         groups="addons,base,odoo18.0"

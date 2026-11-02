@@ -243,7 +243,7 @@ A **pull** is the update of a deployed checkout that carries commits or changes
 of its own: each repository integrates its target with `git pull`'s gestures
 (fast-forward, rebase or merge), after a backup branch, and only what its dry
 run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
-`erplibre_info`.
+`erplibre_info_git_fetch`.
 
 Every git command these tools send, reads included, is printed before it
 runs, as `$ git -C <path> …` with the path relative to the ERPLibre root: the
@@ -272,7 +272,7 @@ constate avant de s'appliquer.
 modifications à lui : chaque dépôt intègre sa cible par les gestes de
 `git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
 et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
-Repo, et le module Odoo `erplibre_info`.
+Repo, et le module Odoo `erplibre_info_git_fetch`.
 
 Chaque commande git que ces outils envoient, lectures comprises, s'affiche
 avant de partir, en `$ git -C <chemin> …` avec le chemin relatif à la racine
@@ -326,9 +326,9 @@ count as modified. Nothing is pushed. The pass is recorded under
 
 `--budget SECONDS` bounds a pass: past it, no repository, deepening step, clone
 or install starts any more (`saute_delai`), and the pass still answers.
-`erplibre_info` gives it a budget below the timeout of its call. A call killed
-anyway takes its whole process group with it, and the backups of its pass are
-read back by their stamp; the restart then waits for a new dry run.
+`erplibre_info_git_fetch` gives it a budget below the timeout of its call. A
+call killed anyway takes its whole process group with it, and the backups of its
+pass are read back by their stamp; the restart then waits for a new dry run.
 
 A shallow clone is fetched with `--shallow-since`, never `--depth`, which would
 shorten the history of HEAD. The bound is the oldest boundary of HEAD's history
@@ -400,9 +400,9 @@ une modification. Rien n'est poussé. La passe s'inscrit sous
 
 `--budget SECONDES` borne une passe : au-delà, aucun dépôt, aucun palier
 d'approfondissement, aucun clonage ni aucune installation ne commence plus
-(`saute_delai`), et la passe répond quand même. `erplibre_info` lui donne un
-budget sous le délai de son appel. Un appel tué malgré tout emporte son groupe
-de processus entier, et les sauvegardes de sa passe se relisent par leur
+(`saute_delai`), et la passe répond quand même. `erplibre_info_git_fetch` lui
+donne un budget sous le délai de son appel. Un appel tué malgré tout emporte son
+groupe de processus entier, et les sauvegardes de sa passe se relisent par leur
 horodatage ; le redémarrage attend alors un nouvel essai à sec.
 
 Un clone superficiel se récupère par `--shallow-since`, jamais `--depth`, qui
@@ -437,28 +437,28 @@ Restaurer la racine remet aussi le manifeste local que la passe avait remplacé.
 #### Pull without the menu
 
 `script/git/repo_pull.py` prints one JSON object, for a caller that shows the
-dry run and collects consent, such as `erplibre_info`. `--dry-run` lists in
-`attendus` the `<path>=<target sha>:<HEAD sha>` pins of the repositories it
-would pull; `--apply` takes them back with `--expect`, and `--confirm` must be
-the active Odoo version (exit code 2 otherwise). A plan that changed writes
-nothing (exit code 4). Shallow clones need `--approve-deepen` and the pins of
-`attendus_superficiel`, new repositories `--approve-clone` and one
-`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs
-`poetry install` at the end. `--path` restricts the pass to one repository
-(`.` is the root), `--pass` gives its stamp and `--budget` its time budget.
-Exit code 5 means another pass holds the lock of the checkout.
+dry run and collects consent, such as `erplibre_info_git_fetch`. `--dry-run`
+lists in `attendus` the `<path>=<target sha>:<HEAD sha>` pins of the
+repositories it would pull; `--apply` takes them back with `--expect`, and
+`--confirm` must be the active Odoo version (exit code 2 otherwise). A plan that
+changed writes nothing (exit code 4). Shallow clones need `--approve-deepen` and
+the pins of `attendus_superficiel`, new repositories `--approve-clone` and one
+`--expect-clone` per path of `plan_nouveaux`; `--approve-deps` runs `poetry
+install` at the end. `--path` restricts the pass to one repository (`.` is the
+root), `--pass` gives its stamp and `--budget` its time budget. Exit code 5
+means another pass holds the lock of the checkout.
 
 <!-- [fr] -->
 #### Tirer sans le menu
 
 `script/git/repo_pull.py` écrit un objet JSON, pour un appelant qui montre
-l'essai à sec et recueille le consentement, tel `erplibre_info`. `--dry-run`
-liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>` des dépôts
-qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm` doit
-valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a changé
-n'écrit rien (code de sortie 4). Les clones superficiels demandent
-`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux
-dépôts `--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
+l'essai à sec et recueille le consentement, tel `erplibre_info_git_fetch`.
+`--dry-run` liste dans `attendus` les épingles `<chemin>=<sha cible>:<sha HEAD>`
+des dépôts qu'il tirerait ; `--apply` les reprend par `--expect`, et `--confirm`
+doit valoir la version d'Odoo active (code de sortie 2 sinon). Un plan qui a
+changé n'écrit rien (code de sortie 4). Les clones superficiels demandent
+`--approve-deepen` et les épingles d'`attendus_superficiel`, les nouveaux dépôts
+`--approve-clone` et un `--expect-clone` par chemin de `plan_nouveaux` ;
 `--approve-deps` lance `poetry install` à la fin. `--path` restreint la passe à
 un dépôt (`.` est la racine), `--pass` donne son horodatage et `--budget` son
 délai. Le code de sortie 5 dit qu'une autre passe tient le verrou du checkout.
@@ -1191,7 +1191,7 @@ reste bornée sur un dépôt aussi grand que le cœur d'Odoo : le diffstat compt
 #### Apply an upgrade pass without the menu
 
 `script/git/repo_apply.py --apply --confirm <Odoo version> --expect <path>...` applies a pass for a caller that has
-already shown the dry run and collected consent, such as the Odoo module `erplibre_info`; it prints JSON. It runs the
+already shown the dry run and collected consent, such as the Odoo module `erplibre_info_git_fetch`; it prints JSON. It runs the
 diagnostic again and refuses to write anything (exit code 4) unless the forks without predicted conflict
 (`a_rebaser`, `en_retard`) are exactly the `--expect` paths. `--expect <path>=<upstream sha>:<HEAD sha>` also pins
 the state the dry run showed, from the `cible_sha` and `head` of its diagnostic: a pinned fork whose upstream or
@@ -1206,7 +1206,7 @@ like a pass of the menu, and nothing is pushed.
 #### Appliquer une passe de mise à niveau sans le menu
 
 `script/git/repo_apply.py --apply --confirm <version d'Odoo> --expect <chemin>...` applique une passe pour un appelant
-qui a déjà montré l'essai à sec et recueilli le consentement, tel le module Odoo `erplibre_info` ; il écrit du JSON.
+qui a déjà montré l'essai à sec et recueilli le consentement, tel le module Odoo `erplibre_info_git_fetch` ; il écrit du JSON.
 Il refait le diagnostic et refuse de rien écrire (code de sortie 4) si les forks sans conflit prédit (`a_rebaser`,
 `en_retard`) ne sont pas exactement les chemins `--expect`. `--expect <chemin>=<sha amont>:<sha HEAD>` épingle en
 plus l'état que l'essai à sec a montré, tiré des `cible_sha` et `head` de son diagnostic : un fork épinglé dont

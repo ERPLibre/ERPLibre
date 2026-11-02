@@ -65,7 +65,8 @@ celui qu'importent les addons, et `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` pour
 
 À chaque démarrage, `docker/entrypoint_pip_extra.sh` installe chaque liste
 avec le pip de son venv, puis lance Odoo sous `odoo` : le conteneur démarre en
-root, car les venvs appartiennent à root. Une exigence déjà satisfaite ne
+root pour que chaque pip tourne sous le propriétaire de son venv,
+l'`ERPLIBRE_CODE_OWNER` de la construction. Une exigence déjà satisfaite ne
 télécharge rien. Une exigence que pip ne peut pas installer arrête le conteneur
 avant Odoo, avec l'erreur de pip dans `docker compose logs`.
 
@@ -78,6 +79,36 @@ Odoo ne peut plus le modifier. Passez le compte :
 ```bash
 docker compose exec -u odoo ERPLibre bash
 ```
+
+### Tirer le code depuis Odoo
+
+`erplibre_info_git_fetch` fait le fetch et le tirage des clones git depuis
+Odoo, ce qui demande deux choses au conteneur :
+
+- le code et ses dépôts git appartiennent au compte qui fait tourner Odoo.
+  L'image se construit avec `ERPLIBRE_CODE_OWNER=odoo`, la valeur par défaut ;
+  `root` construit une image qu'Odoo ne peut pas réécrire, et
+  `script/git/repo_pull.py` refuse ses clones en nommant leur propriétaire. Les
+  images d'ERPLibre 1.6.0 et antérieures laissent le code à root :
+  `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh` ne prépare un
+  tel conteneur que pour les instantanés d'`erplibre_info_git`, et son dernier
+  message nomme la condition qui manque ;
+- Odoo tourne avec une valeur de `--dev` :
+
+```yaml
+    command: odoo --dev=all
+```
+
+Écrivez le `=` : l'entrée de l'image ajoute ses arguments de base de données
+après la commande, et un `--dev` seul prend le suivant, `--db_host`, pour
+valeur. Odoo 18 ne lit `--dev` que sur la ligne de commande, une ligne
+`dev_mode` d'`odoo.conf` est ignorée. `all` active `reload`, `qweb` et `xml`,
+ce qui ralentit le serveur.
+
+Un clone monté depuis l'hôte apporte ses fichiers, pas son git : le `.git`
+d'un projet git-repo est un lien relatif vers `.repo/projects`, qui mène au
+`.repo` du conteneur lui-même. Odoo charge les modules montés, mais un
+instantané lit ce dépôt depuis l'image.
 
 ### Diagnostic Docker-Compose
 

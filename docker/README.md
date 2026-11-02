@@ -64,8 +64,9 @@ one of the tools in `script/`:
 ```
 
 At each start, `docker/entrypoint_pip_extra.sh` installs each list with the
-pip of its venv, then runs Odoo as `odoo`: the container starts as root
-because the venvs belong to root. A satisfied requirement downloads nothing. A
+pip of its venv, then runs Odoo as `odoo`: the container starts as root so
+that each pip runs as the owner of its venv, the `ERPLIBRE_CODE_OWNER` of the
+build. A satisfied requirement downloads nothing. A
 requirement pip cannot install stops the container before Odoo, with pip's
 error in `docker compose logs`.
 
@@ -78,6 +79,35 @@ it. Pass the account:
 ```bash
 docker compose exec -u odoo ERPLibre bash
 ```
+
+### Pulling the code from Odoo
+
+`erplibre_info_git_fetch` fetches and pulls the git clones from Odoo, which
+asks two things of the container:
+
+- the code and its git repositories belong to the account that runs Odoo. The
+  image is built with `ERPLIBRE_CODE_OWNER=odoo`, the default; `root` builds an
+  image Odoo cannot rewrite, and `script/git/repo_pull.py` refuses its clones,
+  naming their owner. The images of ERPLibre 1.6.0 and earlier leave the code
+  to root: `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh`
+  readies such a container for the snapshots of `erplibre_info_git` only, and
+  its last message names the condition that is missing;
+- Odoo runs with a value of `--dev`:
+
+```yaml
+    command: odoo --dev=all
+```
+
+Write the `=`: the entrypoint appends its database arguments after the
+command, and a bare `--dev` takes the next one, `--db_host`, as its value.
+Odoo 18 reads `--dev` from the command line only, a `dev_mode` line of
+`odoo.conf` is ignored. `all` turns on `reload`, `qweb` and `xml`, which slows
+the server down.
+
+A clone mounted from the host brings its files, not its git: the `.git` of a
+git-repo project is a relative link into `.repo/projects`, which resolves to
+the container's own `.repo`. Odoo loads the mounted modules, but a snapshot
+reads that repository from the image.
 
 ### Diagnostic Docker-Compose
 

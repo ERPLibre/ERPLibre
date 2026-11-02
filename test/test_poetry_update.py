@@ -13,6 +13,7 @@ brute à « poetry add », qui garde la dernière contrainte d'un même nom.
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -241,6 +242,50 @@ class TestPoetryAddFailure(unittest.TestCase):
             self.assertEqual(fin.exception.code, 1)
             with open(pyproject) as fh:
                 self.assertEqual(fh.read(), contenu)
+
+
+class TestRestoreLockLink(unittest.TestCase):
+    """« -f » retire le lien « ./poetry.lock » ; restore_lock_link le rend,
+    que le verrou de requirement/ existe encore ou non."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="test_lock_link_")
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+        self.racine = os.path.join(self.dossier, "poetry.lock")
+        os.makedirs(os.path.join(self.dossier, "requirement"))
+        self.cible = os.path.join(self.dossier, "requirement", "poetry.X.lock")
+
+    def ecrire(self, chemin, contenu):
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+
+    def lire(self, chemin):
+        with open(chemin, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_vrai_fichier_remplace_le_verrou_de_requirement(self):
+        self.ecrire(self.cible, "ancien")
+        self.ecrire(self.racine, "nouveau")
+        self.assertTrue(P.restore_lock_link(self.racine, self.cible))
+        self.assertTrue(os.path.islink(self.racine))
+        self.assertEqual("nouveau", self.lire(self.cible))
+        self.assertEqual("nouveau", self.lire(self.racine))
+
+    def test_verrou_de_requirement_absent(self):
+        self.ecrire(self.racine, "nouveau")
+        self.assertTrue(P.restore_lock_link(self.racine, self.cible))
+        self.assertTrue(os.path.islink(self.racine))
+        self.assertEqual("nouveau", self.lire(self.cible))
+
+    def test_lien_deja_en_place_laisse_tel_quel(self):
+        self.ecrire(self.cible, "verrou")
+        os.symlink(self.cible, self.racine)
+        self.assertFalse(P.restore_lock_link(self.racine, self.cible))
+        self.assertEqual("verrou", self.lire(self.cible))
+
+    def test_racine_sans_verrou(self):
+        self.assertFalse(P.restore_lock_link(self.racine, self.cible))
+        self.assertFalse(os.path.lexists(self.racine))
 
 
 if __name__ == "__main__":

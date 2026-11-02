@@ -20,11 +20,15 @@
 # conteneur avant Odoo, plutôt que de laisser un addon ou un script échouer à
 # l'import ; la liste d'ERPLibre passe d'abord.
 #
-# Les venvs appartiennent à root : lancé en root (« user: root » du compose),
-# le script installe, puis s'exécute sous le compte odoo par setpriv. Après
-# l'exec, aucun processus du conteneur ne tourne plus en root. Lancé sous un
-# autre compte, il installe s'il le peut et garde ce compte. USER reste
-# intact : l'entrypoint de l'image y lit l'utilisateur PostgreSQL.
+# Les venvs appartiennent au propriétaire du code de l'image, « odoo » ou
+# « root » selon ERPLIBRE_CODE_OWNER à la construction. Lancé en root
+# (« user: root » du compose), le script fait tourner chaque pip sous le
+# propriétaire de son venv : un fichier posé par root dans un venv d'odoo
+# bloquerait la réinstallation des dépendances qui suit un tirage. Il
+# s'exécute ensuite sous le compte odoo par setpriv ; après l'exec, aucun
+# processus du conteneur ne tourne plus en root. Lancé sous un autre compte,
+# il installe s'il le peut et garde ce compte. USER reste intact :
+# l'entrypoint de l'image y lit l'utilisateur PostgreSQL.
 #
 # L'installation vit dans la couche du conteneur : un redémarrage la garde,
 # une recréation la refait au démarrage suivant.
@@ -35,15 +39,22 @@ prefixe="${ODOO_PREFIX:-/ERPLibre}"
 compte="${ERPLIBRE_RUN_AS:-odoo}"
 suite="${ERPLIBRE_ENTRYPOINT:-/entrypoint.sh}"
 
-# installer VARIABLE PYTHON : pip installe la liste de VARIABLE avec PYTHON ;
-# sort en 1, Odoo non lancé, si pip refuse.
+# installer VARIABLE PYTHON : pip installe la liste de VARIABLE avec PYTHON,
+# sous le propriétaire du venv quand le script tourne en root ; sort en 1,
+# Odoo non lancé, si pip refuse.
 installer() {
-  local variable="$1" python="$2" exigences
+  local variable="$1" python="$2" exigences venv sous=()
   read -ra exigences <<<"${!variable:-}"
   ((${#exigences[@]})) || return 0
+  venv="$(dirname "$(dirname "${python}")")"
+  if [[ "$(id -u)" == 0 && "$(stat -c %u "${venv}")" != 0 ]]; then
+    sous=(setpriv --reuid="$(stat -c %u "${venv}")"
+      --regid="$(stat -c %g "${venv}")" --clear-groups
+      env HOME="$(getent passwd "$(stat -c %u "${venv}")" | cut -d: -f6)")
+  fi
   echo "pip extra (${python}) : ${exigences[*]}"
-  if ! "${python}" -m pip install --disable-pip-version-check --no-input \
-    --no-cache-dir "${exigences[@]}"; then
+  if ! "${sous[@]}" "${python}" -m pip install --disable-pip-version-check \
+    --no-input --no-cache-dir "${exigences[@]}"; then
     echo "Erreur : pip n'a pas installé ${variable} ; Odoo ne démarre pas." >&2
     exit 1
   fi

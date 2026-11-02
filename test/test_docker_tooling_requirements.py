@@ -108,5 +108,29 @@ class TestGarde(unittest.TestCase):
         )
 
 
+class TestOutillageDErplibreInfo(unittest.TestCase):
+    """erplibre_info_git et erplibre_info_git_fetch lancent repo_state.py et
+    repo_pull.py depuis Odoo, avec le venv des outils de l'image : sans
+    click, que repo_state importe par script/todo/git_repo_menu, chaque
+    instantané échoue dans le conteneur."""
+
+    def test_click_est_requis(self):
+        requis = {
+            ligne.strip()
+            for ligne in REQUIS_IMAGE.read_text(encoding="utf-8").splitlines()
+            if ligne.strip() and not ligne.startswith("#")
+        }
+        self.assertIn("click", requis)
+
+    def test_le_dockerfile_importe_ses_points_d_entree_apres_la_synchro(self):
+        garde = DOCKERFILE.index(
+            "import script.git.repo_state, script.git.repo_pull"
+        )
+        self.assertLess(
+            DOCKERFILE.index("update_manifest_local_dev.sh"), garde
+        )
+        self.assertIn("ERPLibre_erplibre_addons/erplibre_info", DOCKERFILE)
+
+
 if __name__ == "__main__":
     unittest.main()
