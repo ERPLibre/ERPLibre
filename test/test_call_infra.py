@@ -10725,7 +10725,10 @@ class TestContainerPlan(unittest.TestCase):
 # Avec FAKE_DOWN_FAIL, le `down` de l'outil de composition échoue sans rien
 # arrêter. La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; celle du
 # paquet FAKE_PURGE_SIGNAL envoie SIGTERM à tout le groupe du script,
-# comme une session coupée ; avec
+# comme une session coupée ; celle du paquet FAKE_PURGE_CUT imprime
+# « lecteur-parti », écrit jusqu'à ce que le lecteur de la sortie ferme son
+# tube, puis envoie FAKE_CUT_SIGNAL (INT par défaut) au groupe, comme un
+# Ctrl-C ou un terminal fermé qui tue aussi ce lecteur ; avec
 # FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
 # avec FAKE_POSTRM, celle de ntfy fait d'abord ce que fait le postrm du
 # .deb : compte supprimé, configuration effacée, dossier retiré s'il est
@@ -10840,6 +10843,12 @@ if [ "$1" = purge ]; then
   fi
   [ "$3" != "${FAKE_PURGE_FAIL:-}" ] || exit 100
   [ "$3" != "${FAKE_PURGE_SIGNAL:-}" ] || kill -TERM 0
+  if [ "$3" = "${FAKE_PURGE_CUT:-}" ]; then
+    trap '' PIPE
+    echo lecteur-parti
+    while printf '.\n' 2>/dev/null; do :; done
+    kill -"${FAKE_CUT_SIGNAL:-INT}" 0
+  fi
   for p; do
     grep -vxF -- "$p" "$FK/installed" > "$FK/installed.new"
     mv "$FK/installed.new" "$FK/installed"
@@ -12007,6 +12016,64 @@ class TestMigrationRun(ContainerSandbox):
         self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
         self.assertIn("bash install_ntfy", self.argv())
+
+    def test_cut_rollback_outlives_the_reader_of_its_output(self):
+        # Le Ctrl-C ou le terminal fermé qui coupe le script tue aussi le
+        # programme qui lit sa sortie : le retour en arrière va à son terme
+        # sans ce lecteur, son récit dans le journal du dossier des copies.
+        # Pour un enfant tué par TERM ou HUP, le shell imprime d'abord une
+        # ligne dans ce tube fermé, avant même son piège.
+        for signal_name in ("INT", "TERM", "HUP"):
+            with self.subTest(signal_name):
+                self.setUp()  # un bac à sable neuf par signal
+                self.cut_with_the_reader_gone(signal_name)
+
+    def cut_with_the_reader_gone(self, signal_name):
+        plan, before = self.to_container(supplied())
+        for tag in ("install_coturn", "install_ntfy"):
+            write(os.path.join(self.out, tag), "sortie\n" * 50, 0o644)
+        env = dict(
+            os.environ,
+            PATH=self.stubs + ":" + os.environ["PATH"],
+            LOG=self.log,
+            FK=self.fk,
+            OUT=self.out,
+            ROOT=self.root,
+            TMPDIR=self.scratch,
+            FAKE_IDS=FAKE_IDS,
+            FAKE_PURGE_CUT="ntfy",
+            FAKE_CUT_SIGNAL=signal_name,
+        )
+        env.pop("XDG_RUNTIME_DIR", None)
+        proc = subprocess.Popen(
+            ["sh", "-c", ci.install_script(plan, STAMP, root=self.root)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+        )
+        try:
+            for line in proc.stdout:
+                if line == b"lecteur-parti\n":
+                    break
+            proc.stdout.close()
+            code = proc.wait(timeout=60)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+        self.assertEqual(code, 129)
+        log = self.path(f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}/rollback.log")
+        markers = ci.marker_lines(self.read(log))
+        self.assertEqual(markers[-1], ("MIGRATION", "rolled-back"))
+        self.assertNotIn(("MIGRATION", "rollback-failed"), markers)
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        argv = self.argv()
+        cut = argv.index("apt-get as=root xdg= purge -y ntfy")
+        self.assertIn("bash install_ntfy", argv[cut:])
+        self.assertIn("bash install_coturn", argv[cut:])
 
     def test_dirs_held_by_a_killed_run_come_back_first(self):
         plan, _before = self.to_container()
