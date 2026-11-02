@@ -4,15 +4,14 @@
 
 """Des pièces jointes sans fichier : lesquelles peut-on encore récupérer ?
 
-« 266 fichiers absents du filestore » ne dit pas quoi faire. La question
+« N fichiers absents du filestore » ne dit pas quoi faire. La question
 utile est ailleurs : combien sont PERDUS, et combien dorment quelque part
 sur la machine en attendant qu'on les remette ?
 
-Mesuré sur une migration réelle : sur 266 absents, 262 étaient des images
-engendrées par des modules — dont 235 drapeaux de pays dont le champ
-n'existe même plus en 18 — et QUATRE étaient de vrais documents. Ces
-quatre-là sont la réponse. Les 262 autres sont du bruit qu'il ne faut pas
-confondre avec eux.
+Après une migration, la plupart des absents sont des images qu'engendrent
+des modules — les drapeaux de pays, dont le champ n'existe même plus en
+18 — et seule une poignée sont de vrais documents. Ceux-là sont la
+réponse ; les autres sont du bruit qu'il ne faut pas confondre avec eux.
 
 Où l'outil cherche
 ------------------
@@ -22,9 +21,8 @@ Où l'outil cherche
 2. Les `filestore/` NICHÉS. `shutil.move(src, dst)` d'Odoo renomme quand
    la destination n'existe pas et IMBRIQUE quand elle existe : une base
    restaurée deux fois sous le même nom se retrouve avec
-   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais. Mesuré :
-   1168 fichiers, 133 Mo, recopiés à l'identique dans les sept bases de
-   la chaîne par le clone.
+   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais, et que
+   le clone recopie à l'identique dans chaque base qui en descend.
 3. Les sauvegardes `.zip`. Leur répertoire central se lit sans tout
    décompresser.
 
@@ -32,12 +30,12 @@ Ce qui n'est PAS récupérable
 ----------------------------
 Un fichier introuvable partout. On le dit alors franchement, avec le
 modèle et l'enregistrement auxquels il se rattache, pour qu'on puisse
-juger de la perte — et non « 266 fichiers absents », devant quoi il n'y
-a rien à décider.
+juger de la perte — et non « N fichiers absents », devant quoi il n'y a
+rien à décider.
 
 Un cas mérite sa propre catégorie : la pièce jointe dont le CHAMP
 n'existe plus. `res.country.image` était un binaire en 12 ; en 18 c'est
-`image_url`, calculé. Les 235 lignes survivent en pointant vers un champ
+`image_url`, calculé. Ses lignes survivent en pointant vers un champ
 disparu : rien ne les lit, rien ne les régénérera, et il n'y a rien à
 récupérer. Les compter comme des pertes serait faux.
 
@@ -304,9 +302,9 @@ def verify_restore(database, zip_path, config_path=None):
     destination n'existe pas et IMBRIQUE quand elle existe. Un dossier
     `filestore/<base>/` laissé par une restauration précédente suffit
     donc à envoyer toute la sauvegarde dans
-    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Mesuré :
-    1168 fichiers, 133 Mo, recopiés ensuite dans les six bases de la
-    chaîne par le clone, sans que rien ne le signale.
+    `filestore/<base>/filestore/`, où Odoo ne regardera jamais ; chaque
+    clone le recopie ensuite dans les bases qui en descendent, sans que
+    rien ne le signale.
     """
     attendus = set(scan_zip(zip_path))
     racine = filestore_root(config_path)
@@ -415,7 +413,7 @@ def audit(database, config_path=None, backups=None):
     # `root` désigne le dossier de CETTE base. Y mettre la racine de tous
     # les filestores faisait chercher le dossier imbriqué à
     # `<data_dir>/filestore/filestore` — inexistant — et l'outil
-    # répondait « rien à ranger » devant 1168 fichiers échoués.
+    # répondait « rien à ranger » devant un filestore imbriqué.
     present = set()
     if os.path.isdir(mien):
         for prefixe in os.listdir(mien):

@@ -5,10 +5,10 @@
 """Séparer ce qui est perdu de ce qui dort quelque part.
 
 Deux propriétés portent l'outil. La première : un fichier retrouvé
-ailleurs n'est PAS une perte, et le dire évite de pleurer sur 266
-fichiers quand trois seulement ont disparu. La seconde : une pièce jointe
-dont le champ n'existe plus n'a rien à récupérer — la ranger avec les
-pertes serait faux dans l'autre sens.
+ailleurs n'est PAS une perte, et le dire évite de pleurer sur des
+centaines de fichiers quand une poignée seulement a disparu. La seconde :
+une pièce jointe dont le champ n'existe plus n'a rien à récupérer — la
+ranger avec les pertes serait faux dans l'autre sens.
 """
 
 import io
@@ -275,7 +275,7 @@ class TestTheAudit(unittest.TestCase):
     def test_the_root_points_at_this_database_directory(self):
         # Y mettre la racine de tous les filestores faisait chercher le
         # dossier imbriqué à `<data_dir>/filestore/filestore` : l'outil
-        # répondait « rien à ranger » devant 1168 fichiers échoués.
+        # répondait « rien à ranger » devant un filestore imbriqué.
         fs.attachments = lambda base: []
         self.assertEqual(fs.audit("ma_base")["root"], "/nulle/part/ma_base")
 
@@ -348,8 +348,8 @@ class TestTheReport(unittest.TestCase):
         self.assertIn(f"3 {todo_i18n.t('more')}", texte)
 
     def test_the_nested_pile_is_reported(self):
-        texte = "\n".join(fs.render(self.rapport(nested_total=1168)))
-        self.assertIn("1168", texte)
+        texte = "\n".join(fs.render(self.rapport(nested_total=740)))
+        self.assertIn("740", texte)
 
     def test_an_unreadable_database_renders_without_crashing(self):
         texte = "\n".join(fs.render({"unavailable": True, "database": "x"}))
@@ -867,7 +867,7 @@ class TestTheDeadRowsThatKeptTheirFile(unittest.TestCase):
 
 
 class TestTheNestedCountIsPerDatabase(unittest.TestCase):
-    """« 1168 fichiers échoués » devant une base qu'on vient de ranger.
+    """« N fichiers échoués » devant une base qu'on vient de ranger.
 
     Le compte agrégeait tous les filestores de la machine : on rangeait,
     le rapport affichait le même chiffre, et l'on rangeait à nouveau.
@@ -1011,7 +1011,7 @@ class TestVerifyingARestore(unittest.TestCase):
         self.assertEqual((r["nested"], r["missing"]), (0, 0))
 
     def test_a_nested_restore_is_caught(self):
-        # Le défaut exact qui a coûté 133 Mo par base, sept fois.
+        # Toute la sauvegarde sous filestore/, là où Odoo ne lit jamais.
         self.pose(
             ["filestore/aa/un", "filestore/bb/deux", "filestore/cc/trois"]
         )
