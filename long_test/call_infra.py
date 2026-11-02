@@ -2588,11 +2588,10 @@ class Harnais:
     copié en une base `noms_bases` par lettre, puis un serveur par base
     sur des ports libres de 127.0.0.1, sans worker ni cron, filtré sur sa
     base, son dossier dans celui de la course (`odoo-<lettre>`). Le chemin
-    d'addons
-    de la 18 porte `ERPLibre_erplibre_addons`, donc `erplibre_turn` :
-    installable, non installé. Chaque base entre au rapport (`course`)
-    AVANT d'exister : une course tuée laisse de quoi la supprimer
-    (`defaire_odoo`)."""
+    d'addons de la 18 porte `ERPLibre_erplibre_addons`, donc
+    `erplibre_turn` : installable, non installé. Chaque base entre au
+    rapport (`course`) AVANT d'exister : une course tuée laisse de quoi la
+    supprimer (`defaire_odoo`)."""
 
     def __init__(
         self,
