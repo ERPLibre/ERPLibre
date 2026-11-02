@@ -9254,7 +9254,8 @@ def _container_restore_lines(svc, record):
     ne relirait pas la base des comptes que l'image a mise à jour : son
     unité reste désactivée et arrêtée, et `@@NTFY_DOWNGRADE <unité>
     <version de l'hôte> <version de l'image>` le dit
-    (NTFY_DOWNGRADE_NOTICE)."""
+    (NTFY_DOWNGRADE_NOTICE). Les données de ntfy reviennent d'abord à son
+    paquet (`_ntfy_handback_lines`)."""
     config, backup, unit = record["config"], record["backup"], record["unit"]
     lines = []
     if backup:
@@ -9272,7 +9273,10 @@ def _container_restore_lines(svc, record):
         f" KEEP_{svc}=1; KEPT=1",
         "fi",
     ]
+    handback = ["  " + line for line in _ntfy_handback_lines(svc, record)]
     if unit is None:
+        if handback:
+            lines += [f'if [ "$KEEP_{svc}" = 0 ]; then', *handback, "fi"]
         return lines
     quoted = shlex.quote(unit)
     start = []
@@ -9298,9 +9302,28 @@ def _container_restore_lines(svc, record):
         if start:
             body += ["  else", *["    " + line for line in start]]
         body.append("  fi")
-    if body:
-        lines += [f'if [ "$KEEP_{svc}" = 0 ]; then', *body, "fi"]
+    if handback or body:
+        lines += [f'if [ "$KEEP_{svc}" = 0 ]; then', *handback, *body, "fi"]
     return lines
+
+
+def _ntfy_handback_lines(svc, record):
+    """Lignes `sh` qui rendent à `ntfy:ntfy` la base des comptes et le cache
+    d'un ntfy dont le paquet reste sur l'hôte (fiche que l'outil n'a pas
+    posée) quand son conteneur tournait sous un autre compte, le compte
+    rootless : l'installation en conteneurs les lui a donnés, et l'unité du
+    paquet, qui tourne sous `ntfy`, ne les ouvrirait plus. [] sinon."""
+    if (
+        svc != "ntfy"
+        or record["installed_by_tool"]
+        or record.get("account") in (None, cc.NTFY_ACCOUNT)
+    ):
+        return []
+    return [
+        f"if [ -d {_host(path)} ]; then chown -R --no-dereference"
+        f" ntfy:ntfy {_host(path)} || failed chown-ntfy; fi"
+        for path in (NTFY_DATA_DIR, NTFY_CACHE_DIR)
+    ]
 
 
 def _container_service_uninstall_lines(svc, record, remove_data):
@@ -9310,7 +9333,8 @@ def _container_service_uninstall_lines(svc, record, remove_data):
     quand l'outil l'avait aussi adoptée, le cache de ntfy retiré, et sa
     base des comptes avec `remove_data`, comme par paquets. Adopté :
     `_container_restore_lines`. Paquet déjà là sans configuration : son
-    unité arrêtée, la configuration de l'outil retirée. Puis
+    unité arrêtée, la configuration de l'outil retirée, les données de
+    ntfy rendues à son paquet (`_ntfy_handback_lines`). Puis
     `_service_data_lines`."""
     lines = [f"# {svc}", f"KEEP_{svc}=0"]
     if record["installed_by_tool"]:
@@ -9332,6 +9356,7 @@ def _container_service_uninstall_lines(svc, record, remove_data):
         if record["unit"] is not None:
             lines += _stop_lines(svc, record["unit"])
         lines += _remove_managed_lines(svc, record["config"])
+        lines += _ntfy_handback_lines(svc, record)
     return lines + _service_data_lines(svc, record, remove_data)
 
 
@@ -9342,7 +9367,9 @@ def _account_data_goes(state, records, account, remove_data):
     est celui du paquet de ntfy. La base de coturn part toujours, ses
     fichiers TLS (de groupe ce compte) avec `remove_data` ; la base des
     comptes de ntfy avec `remove_data`, et seulement si l'outil a posé
-    ntfy."""
+    ntfy. Celle d'un ntfy dont le paquet reste revient à `ntfy`
+    (`_ntfy_handback_lines`) et ne retient pas le compte de son
+    conteneur ; ses fichiers TLS, comme ceux de coturn, si."""
     container = state.get("method") == "container"
     for svc, record in records:
         if container:
@@ -9352,6 +9379,8 @@ def _account_data_goes(state, records, account, remove_data):
         if owner != account:
             continue
         if svc == "coturn":
+            goes = remove_data or not record["tls_files"]
+        elif container and _ntfy_handback_lines(svc, record):
             goes = remove_data or not record["tls_files"]
         else:
             goes = remove_data and record["installed_by_tool"]
