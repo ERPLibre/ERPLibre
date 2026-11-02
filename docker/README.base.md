@@ -124,15 +124,17 @@ celui qu'importent les addons, et `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` pour
 
 <!-- [en] -->
 At each start, `docker/entrypoint_pip_extra.sh` installs each list with the
-pip of its venv, then runs Odoo as `odoo`: the container starts as root
-because the venvs belong to root. A satisfied requirement downloads nothing. A
+pip of its venv, then runs Odoo as `odoo`: the container starts as root so
+that each pip runs as the owner of its venv, the `ERPLIBRE_CODE_OWNER` of the
+build. A satisfied requirement downloads nothing. A
 requirement pip cannot install stops the container before Odoo, with pip's
 error in `docker compose logs`.
 
 <!-- [fr] -->
 À chaque démarrage, `docker/entrypoint_pip_extra.sh` installe chaque liste
 avec le pip de son venv, puis lance Odoo sous `odoo` : le conteneur démarre en
-root, car les venvs appartiennent à root. Une exigence déjà satisfaite ne
+root pour que chaque pip tourne sous le propriétaire de son venv,
+l'`ERPLIBRE_CODE_OWNER` de la construction. Une exigence déjà satisfaite ne
 télécharge rien. Une exigence que pip ne peut pas installer arrête le conteneur
 avant Odoo, avec l'erreur de pip dans `docker compose logs`.
 
@@ -154,6 +156,66 @@ Odoo ne peut plus le modifier. Passez le compte :
 ```bash
 docker compose exec -u odoo ERPLibre bash
 ```
+
+<!-- [en] -->
+### Pulling the code from Odoo
+
+`erplibre_info_git_fetch` fetches and pulls the git clones from Odoo, which
+asks two things of the container:
+
+- the code and its git repositories belong to the account that runs Odoo. The
+  image is built with `ERPLIBRE_CODE_OWNER=odoo`, the default; `root` builds an
+  image Odoo cannot rewrite, and `script/git/repo_pull.py` refuses its clones,
+  naming their owner. The images of ERPLibre 1.6.0 and earlier leave the code
+  to root: `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh`
+  readies such a container for the snapshots of `erplibre_info_git` only, and
+  its last message names the condition that is missing;
+- Odoo runs with a value of `--dev`:
+
+<!-- [fr] -->
+### Tirer le code depuis Odoo
+
+`erplibre_info_git_fetch` fait le fetch et le tirage des clones git depuis
+Odoo, ce qui demande deux choses au conteneur :
+
+- le code et ses dépôts git appartiennent au compte qui fait tourner Odoo.
+  L'image se construit avec `ERPLIBRE_CODE_OWNER=odoo`, la valeur par défaut ;
+  `root` construit une image qu'Odoo ne peut pas réécrire, et
+  `script/git/repo_pull.py` refuse ses clones en nommant leur propriétaire. Les
+  images d'ERPLibre 1.6.0 et antérieures laissent le code à root :
+  `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh` ne prépare un
+  tel conteneur que pour les instantanés d'`erplibre_info_git`, et son dernier
+  message nomme la condition qui manque ;
+- Odoo tourne avec une valeur de `--dev` :
+
+<!-- [common] -->
+```yaml
+    command: odoo --dev=all
+```
+
+<!-- [en] -->
+Write the `=`: the entrypoint appends its database arguments after the
+command, and a bare `--dev` takes the next one, `--db_host`, as its value.
+Odoo 18 reads `--dev` from the command line only, a `dev_mode` line of
+`odoo.conf` is ignored. `all` turns on `reload`, `qweb` and `xml`, which slows
+the server down.
+
+A clone mounted from the host brings its files, not its git: the `.git` of a
+git-repo project is a relative link into `.repo/projects`, which resolves to
+the container's own `.repo`. Odoo loads the mounted modules, but a snapshot
+reads that repository from the image.
+
+<!-- [fr] -->
+Écrivez le `=` : l'entrée de l'image ajoute ses arguments de base de données
+après la commande, et un `--dev` seul prend le suivant, `--db_host`, pour
+valeur. Odoo 18 ne lit `--dev` que sur la ligne de commande, une ligne
+`dev_mode` d'`odoo.conf` est ignorée. `all` active `reload`, `qweb` et `xml`,
+ce qui ralentit le serveur.
+
+Un clone monté depuis l'hôte apporte ses fichiers, pas son git : le `.git`
+d'un projet git-repo est un lien relatif vers `.repo/projects`, qui mène au
+`.repo` du conteneur lui-même. Odoo charge les modules montés, mais un
+instantané lit ce dépôt depuis l'image.
 
 <!-- [en] -->
 ### Diagnostic Docker-Compose
