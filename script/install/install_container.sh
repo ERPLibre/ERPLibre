@@ -7,6 +7,7 @@
 #   sudo bash script/install/install_container.sh docker
 #   sudo bash script/install/install_container.sh docker --rootless --amont
 #   sudo bash script/install/install_container.sh podman
+#   sudo bash script/install/install_container.sh --multiarch
 #
 # Docker pose un démon que root possède : s'en servir sans sudo demande soit
 # le groupe « docker », soit un démon par compte. Podman n'a pas de démon et
@@ -23,6 +24,7 @@ die() { echo "[CONTENEUR] ERREUR: $*" >&2; exit 1; }
 usage() {
     cat <<'USAGE'
 Usage : sudo bash script/install/install_container.sh <moteur> [options]
+        sudo bash script/install/install_container.sh [docker] --multiarch
 
 Moteurs :
   docker    un démon, son client, et un groupe pour l'atteindre
@@ -41,12 +43,18 @@ Sur Arch, « --rootless » pose docker-rootless-extras depuis AUR, par
 l'assistant du compte visé (yay, paru, pikaur ou trizen). AUR n'est pas un
 dépôt officiel : son contenu est bâti localement et n'est pas revu.
   --compte <n> le compte à habiliter, quand SUDO_USER ne le dit pas
+
+  --multiarch  buildx et l'émulation QEMU, pour construire une image arm64 ou
+               s390x sur une autre architecture. Seul, sans moteur, il ne
+               pose que cela sur un Docker déjà installé
 USAGE
 }
 
+ARGS_ORIGINE="$*"
 MOTEUR=""
 MODE="groupe"
 AMONT=false
+MULTIARCH=false
 COMPTE="${SUDO_USER:-}"
 
 while [ $# -gt 0 ]; do
@@ -55,6 +63,7 @@ while [ $# -gt 0 ]; do
         --groupe)      MODE="groupe" ;;
         --rootless)    MODE="rootless" ;;
         --amont)       AMONT=true ;;
+        --multiarch)   MULTIARCH=true ;;
         --compte)      shift; COMPTE="${1:-}" ;;
         -h|--help)     usage; exit 0 ;;
         *)             usage; die "option inconnue : $1" ;;
@@ -62,10 +71,13 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-[ -n "$MOTEUR" ] || { usage; die "nommer le moteur : docker ou podman"; }
+[ -n "$MOTEUR" ] || [ "$MULTIARCH" = true ] \
+    || { usage; die "nommer le moteur : docker ou podman"; }
+[ "$MULTIARCH" = false ] || [ "$MOTEUR" != "podman" ] \
+    || die "--multiarch vise buildx, qui est l'outil de Docker"
 
 check_root() {
-    [ "$(id -u)" -eq 0 ] || die "à lancer en root : sudo bash $0 ${MOTEUR}"
+    [ "$(id -u)" -eq 0 ] || die "à lancer en root : sudo bash $0 ${ARGS_ORIGINE}"
 }
 
 detect_os() {
@@ -159,6 +171,49 @@ paquets_docker() {
         arch)   echo "docker docker-buildx ${compose}" ;;
         rhel)   echo "moby-engine ${compose}" ;;
         suse)   echo "docker ${compose}" ;;
+    esac
+}
+
+# buildx et l'émulation QEMU : construire une image d'une autre architecture
+# fait tourner ses commandes RUN sous un émulateur, que le noyau appelle par
+# binfmt_misc. Il faut donc l'émulateur statique ET son inscription auprès du
+# noyau. Sur Debian, qemu-user-static suffit aux deux versions : trixie en a
+# fait un paquet de transition qui tire qemu-user et qemu-user-binfmt, là où
+# celui de bookworm entre en conflit avec qemu-user-binfmt et ne fait que
+# recommander binfmt-support, qu'une installation sans recommandations omet.
+paquets_multiarch() {
+    local fam="$1" buildx
+    buildx=$(premier_disponible "$fam" docker-buildx docker-buildx-plugin)
+    case "$fam" in
+        debian) echo "${buildx} qemu-user-static binfmt-support" ;;
+        arch)   echo "${buildx} qemu-user-static qemu-user-static-binfmt" ;;
+        rhel)   echo "${buildx} qemu-user-static" ;;
+        suse)   echo "${buildx} qemu-linux-user" ;;
+    esac
+}
+
+# L'inscription des émulateurs auprès du noyau se fait au démarrage : un
+# paquet posé à chaud ne la fait pas toujours lui-même.
+inscrire_emulateurs() {
+    if command -v systemctl >/dev/null \
+        && systemctl list-unit-files systemd-binfmt.service >/dev/null 2>&1; then
+        systemctl restart systemd-binfmt.service \
+            || log "⚠ systemd-binfmt ne redémarre pas — « systemctl status systemd-binfmt »"
+    fi
+    if command -v update-binfmts >/dev/null; then
+        update-binfmts --enable >/dev/null 2>&1 || true
+    fi
+}
+
+verifier_multiarch() {
+    local plateformes
+    command -v docker >/dev/null || { log "docker absent : buildx posé, rien à vérifier"; return 0; }
+    plateformes=$(docker buildx inspect default 2>/dev/null | sed -n 's/^Platforms: *//p')
+    [ -n "$plateformes" ] || die "docker buildx ne répond pas — Docker est-il démarré ?"
+    log "plateformes de buildx : ${plateformes}"
+    case "$plateformes" in
+        *linux/arm64*) ;;
+        *) log "⚠ linux/arm64 absent : l'émulation n'est pas inscrite, redémarrer la machine" ;;
     esac
 }
 
@@ -442,6 +497,7 @@ if [ "$MOTEUR" = "docker" ] && [ "$MODE" = "rootless" ] \
 fi
 
 case "$MOTEUR" in
+    "") ;;
     docker)
         if [ "$AMONT" = true ]; then
             installer_amont
@@ -475,5 +531,12 @@ case "$MOTEUR" in
         log "l'API Docker : systemctl --user enable --now podman.socket"
         ;;
 esac
+
+if [ "$MULTIARCH" = true ]; then
+    # shellcheck disable=SC2046
+    install_packages "$FAM" $(paquets_multiarch "$FAM")
+    inscrire_emulateurs
+    verifier_multiarch
+fi
 
 log "Terminé."

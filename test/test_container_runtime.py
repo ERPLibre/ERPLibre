@@ -15,7 +15,8 @@ Ce que ces tests gardent :
   menu qui réclame un mot de passe à chaque liste d'images ne sert à rien ;
 - le préfixe sudo n'est posé que là où il est la seule voie ;
 - l'installateur couvre les quatre familles de gestionnaires, pour les deux
-  moteurs.
+  moteurs, et pour l'émulation que demande une image d'une autre
+  architecture (--multiarch).
 """
 
 import unittest
@@ -440,6 +441,45 @@ class TestProjets(unittest.TestCase):
             {"moteur": "docker", "sans_sudo": True}, "p", lanceur=lanceur
         )
         self.assertEqual(["p_data"], ressources["volume"])
+
+
+class TestMultiarch(unittest.TestCase):
+    """buildx et QEMU, pour construire une image arm64 ou s390x ailleurs."""
+
+    def setUp(self):
+        self.bloc = INSTALLATEUR[
+            INSTALLATEUR.index("paquets_multiarch() {") : INSTALLATEUR.index(
+                "# L'inscription des émulateurs"
+            )
+        ]
+
+    def test_les_quatre_familles(self):
+        for famille in ("debian", "arch", "rhel", "suse"):
+            with self.subTest(famille=famille):
+                self.assertIn(f"{famille})", self.bloc)
+
+    def test_debian_n_appelle_pas_qemu_user_binfmt(self):
+        """Il entre en conflit avec le qemu-user-static de bookworm ; celui
+        de trixie le tire de lui-même."""
+        self.assertNotIn("qemu-user-binfmt\" ;;", self.bloc)
+        self.assertIn('debian) echo "${buildx} qemu-user-static binfmt-support"', self.bloc)
+
+    def test_arch_pose_l_inscription_aupres_du_noyau(self):
+        self.assertIn("qemu-user-static qemu-user-static-binfmt", self.bloc)
+
+    def test_seul_il_ne_pose_que_l_emulation(self):
+        self.assertIn('[ -n "$MOTEUR" ] || [ "$MULTIARCH" = true ]', INSTALLATEUR)
+        self.assertIn('    "") ;;', INSTALLATEUR)
+
+    def test_podman_est_refuse(self):
+        self.assertIn("--multiarch vise buildx", INSTALLATEUR)
+
+    def test_l_emulation_vient_apres_le_moteur(self):
+        """buildx se vérifie auprès d'un Docker déjà posé."""
+        self.assertLess(
+            INSTALLATEUR.index('case "$MOTEUR" in'),
+            INSTALLATEUR.index("    install_packages \"$FAM\" $(paquets_multiarch"),
+        )
 
 
 if __name__ == "__main__":
