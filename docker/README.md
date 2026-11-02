@@ -205,10 +205,12 @@ docker image prune
 docker rmi $(docker images -q)
 ```
 
-Delete volumes
+Delete the volumes of this project: every database, the Odoo filestore and
+its configuration, for good. The command lists them, then asks for a `y` and
+for the project name typed again; any other answer deletes nothing.
 
 ```bash
-docker compose rm -v
+make docker_volume_clean
 ```
 
 Delete containers
