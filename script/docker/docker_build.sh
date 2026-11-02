@@ -10,6 +10,11 @@ PYTHON_VERSION=$(cat .python-odoo-version | xargs)
 POETRY_VERSION=$(cat .poetry-version | xargs)
 
 ARGS=""
+PLATEFORMES=""
+POUSSER=false
+SUR_BRANCHES=false
+SANS_EXTRA=false
+AFFICHER_PLATEFORMES=false
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
 IS_RELEASE_BETA=false
@@ -40,6 +45,21 @@ for arg in "$@"; do
     IS_RELEASE_ALPHA=true
   elif [ "$arg" == "--release_beta" ]; then
     IS_RELEASE_BETA=true
+  elif [[ "$arg" == --platform=* ]]; then
+    # « --platform=amd64,arm64 » : les architectures à construire.
+    PLATEFORMES="${arg#--platform=}"
+  elif [ "$arg" == "--branches" ]; then
+    # Les dépôts suivent la tête de leur branche au lieu de leur
+    # freeze-revision : une image de développement.
+    SUR_BRANCHES=true
+  elif [ "$arg" == "--without_extra" ]; then
+    # L'installation standard, sans les modules extra que l'image porte
+    # par défaut.
+    SANS_EXTRA=true
+  elif [ "$arg" == "--push" ]; then
+    POUSSER=true
+  elif [ "$arg" == "--print-platforms" ]; then
+    AFFICHER_PLATEFORMES=true
   elif [[ "$arg" == --odoo_* ]]; then
     # « --odoo_15 » designe la version 15.0 du catalogue.
     odoo_demande="${arg#--odoo_}.0"
@@ -60,6 +80,77 @@ if [ "$output_version" != "" ]; then
   PYTHON_VERSION=$(echo "$output_version" | awk 'NR==3')
   ERPLIBRE_VERSION_MAIN=$(echo "$output_version" | awk 'NR==4')
 fi
+
+# trixie pour Odoo 16 et plus, bookworm avant : aucune image Python 3.7 ou
+# 3.8 n'existe sur trixie. La base est « python:<version>-slim-<nom> » : le
+# Python vient de l'image officielle, jamais de Debian, et le nom de version
+# ne change que les paquets du système.
+if [ "${ODOO_VERSION%%.*}" -ge 16 ]; then
+  DEBIAN_NAME=trixie
+else
+  DEBIAN_NAME=bookworm
+fi
+IMAGE_PYTHON="python:${PYTHON_VERSION}-slim-${DEBIAN_NAME}"
+
+# Les architectures que l'image Python publie, parmi celles qu'ERPLibre
+# construit. Le registre fait foi : python:3.12.16-slim-bookworm, par exemple,
+# ne publie pas s390x quand sa variante trixie le fait.
+plateformes_publiees() {
+  docker buildx imagetools inspect "${IMAGE_PYTHON}" 2>/dev/null |
+    awk '/Platform:/ {print $2}' |
+    sed -E 's#^linux/##; s#/v[0-9]+$##' |
+    grep -xE 'amd64|arm64|s390x' | sort -u
+}
+
+if [ "${AFFICHER_PLATEFORMES}" == true ]; then
+  publiees=$(plateformes_publiees | xargs)
+  if [ -z "${publiees}" ]; then
+    echo -e "${Red}Error${Color_Off} ${IMAGE_PYTHON} illisible sur le registre" >&2
+    exit 1
+  fi
+  echo "${publiees}"
+  exit 0
+fi
+
+# L'architecture du démon, celle qu'une construction sans --platform produit.
+ARCH_HOTE=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)
+if [ -z "${ARCH_HOTE}" ]; then
+  case "$(uname -m)" in
+    x86_64) ARCH_HOTE=amd64 ;;
+    aarch64 | arm64) ARCH_HOTE=arm64 ;;
+    *) ARCH_HOTE=$(uname -m) ;;
+  esac
+fi
+PLATEFORMES="${PLATEFORMES:-${ARCH_HOTE}}"
+PLATEFORMES="${PLATEFORMES//,/ }"
+
+# Une architecture étrangère se construit sous émulation QEMU : sans elle,
+# la première commande RUN échoue sur « exec format error », loin de sa
+# cause. La refuser ici nomme le geste qui manque.
+# « linux/amd64, linux/amd64/v2, linux/arm64… » devient une plateforme par
+# ligne, sans la variante, pour une comparaison exacte.
+EMULEES=$(docker buildx inspect default 2>/dev/null |
+  awk -F': *' '/^Platforms:/ {print $2}' |
+  tr ',' '\n' | sed -E 's/^ +//; s#/v[0-9]+$##' | sort -u)
+publiees=$(plateformes_publiees | xargs)
+for arch in ${PLATEFORMES}; do
+  case "${arch}" in
+    amd64 | arm64 | s390x) ;;
+    *)
+      echo -e "${Red}Error${Color_Off} architecture inconnue : ${arch} (amd64, arm64, s390x)"
+      exit 1
+      ;;
+  esac
+  if [ -n "${publiees}" ] && [[ " ${publiees} " != *" ${arch} "* ]]; then
+    echo -e "${Red}Error${Color_Off} ${IMAGE_PYTHON} ne publie pas ${arch} (publie : ${publiees})"
+    exit 1
+  fi
+  if [ "${arch}" != "${ARCH_HOTE}" ] && ! grep -qx "linux/${arch}" <<<"${EMULEES}"; then
+    echo -e "${Red}Error${Color_Off} aucune émulation de linux/${arch} pour docker buildx"
+    echo "  sudo bash script/install/install_container.sh --multiarch"
+    exit 1
+  fi
+done
 
 echo "Build with"
 echo $ERPLIBRE_VERSION_MAIN
@@ -135,46 +226,73 @@ verifier_commit_publie
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
-./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker
-
-ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ODOO_VERSION=${ODOO_VERSION} --build-arg POETRY_VERSION=${POETRY_VERSION} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
-
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
+if ! ./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker; then
   echo -e "${Red}Error${Color_Off} ./script/docker/docker_build.sh when execute docker_update_version.py"
   exit 1
 fi
 
 cd docker
 
-ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
+# Chaque Dockerfile reçoit ses seuls arguments : Docker avertit sur un
+# argument que personne ne lit, et l'avertissement noie celui qui compterait.
+ARGS_BASE="--build-arg PYTHON_VERSION=${PYTHON_VERSION} --build-arg DEBIAN_NAME=${DEBIAN_NAME} --build-arg ODOO_VERSION=${ODOO_VERSION}"
+ARGS_PROD="--build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg POETRY_VERSION=${POETRY_VERSION}"
+ARGS_PROD="${ARGS_PROD} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
 # ERPLIBRE_CODE_OWNER=root construit une image dont Odoo ne peut pas réécrire
 # le code, et donc ne peut pas le tirer ; absent, le Dockerfile prend « odoo ».
 if [[ -n "${ERPLIBRE_CODE_OWNER:-}" ]]; then
-  ARGS="${ARGS} --build-arg ERPLIBRE_CODE_OWNER=${ERPLIBRE_CODE_OWNER}"
+  ARGS_PROD="${ARGS_PROD} --build-arg ERPLIBRE_CODE_OWNER=${ERPLIBRE_CODE_OWNER}"
+fi
+# Sans --branches, le Dockerfile clone chaque dépôt sur son freeze-revision.
+if [ "${SUR_BRANCHES}" == true ]; then
+  ARGS_PROD="${ARGS_PROD} --build-arg EL_FREEZE=0"
+fi
+# Sans --without_extra, l'image porte les modules extra.
+if [ "${SANS_EXTRA}" == true ]; then
+  ARGS_PROD="${ARGS_PROD} --build-arg EL_WITH_EXTRA=0"
 fi
 
-# UNE seule base, bookworm, pour toutes les versions d'Odoo.
-#
-# La base est « python:<version>-slim-<nom> » : le Python vient de l'image
-# officielle, jamais de Debian. Changer de nom de version ne change donc pas
-# l'interpréteur, et les variantes bookworm existent jusqu'à 3.7.17 — vérifié
-# sur le registre. Rien n'obligeait les vieux Odoo à rester sur bullseye, dont
-# le dépôt de sécurité est aujourd'hui démantelé.
-#
-# Le build de wkhtmltopdf suit la version : celui de bullseye réclame
-# libssl1.1, absente de bookworm ; celui de bookworm réclame libssl3, et ses
-# quinze dépendances y sont toutes — vérifié dans l'index.
-ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
 set -e
 
-# Build base
-echo "docker build ${ARGS} -f Dockerfile.base -t ${ERPLIBRE_DOCKER_BASE_VERSION} ."
-docker build ${ARGS} -f Dockerfile.base -t ${ERPLIBRE_DOCKER_BASE_VERSION} .
+# Une étiquette par architecture. Celle de l'hôte garde l'étiquette sans
+# suffixe, celle que lance docker-compose.yml ; les autres prennent
+# « -<arch> ». Pousser donne à chacune son suffixe, puis l'étiquette sans
+# suffixe devient le manifeste qui les réunit : un « docker pull » y prend
+# l'architecture de la machine qui tire.
+poussees_base=()
+poussees_prod=()
+hote_bati=false
+for arch in ${PLATEFORMES}; do
+  suffixe="-${arch}"
+  if [ "${POUSSER}" == false ] && [ "${arch}" == "${ARCH_HOTE}" ]; then
+    suffixe=""
+    hote_bati=true
+  fi
+  base="${ERPLIBRE_DOCKER_BASE_VERSION}${suffixe}"
+  prod="${ERPLIBRE_DOCKER_PROD_VERSION}${suffixe}"
 
-# Build prod
-echo "docker build ${ARGS} -f Dockerfile.prod.pkg -t ${ERPLIBRE_DOCKER_PROD_VERSION} ."
-docker build ${ARGS} -f Dockerfile.prod.pkg -t ${ERPLIBRE_DOCKER_PROD_VERSION} .
+  echo "docker build --platform linux/${arch} ${ARGS} ${ARGS_BASE} -f Dockerfile.base -t ${base} ."
+  docker build --platform "linux/${arch}" ${ARGS} ${ARGS_BASE} -f Dockerfile.base -t "${base}" .
+
+  echo "docker build --platform linux/${arch} ${ARGS} ${ARGS_PROD} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION}${suffixe} -f Dockerfile.prod.pkg -t ${prod} ."
+  docker build --platform "linux/${arch}" ${ARGS} ${ARGS_PROD} --build-arg ERPLIBRE_IMAGE_NAME="${ERPLIBRE_VERSION}${suffixe}" -f Dockerfile.prod.pkg -t "${prod}" .
+
+  if [ "${POUSSER}" == true ]; then
+    docker push "${base}"
+    docker push "${prod}"
+    poussees_base+=("${base}")
+    poussees_prod+=("${prod}")
+  fi
+done
+
+if [ "${POUSSER}" == true ]; then
+  docker buildx imagetools create -t "${ERPLIBRE_DOCKER_BASE_VERSION}" "${poussees_base[@]}"
+  docker buildx imagetools create -t "${ERPLIBRE_DOCKER_PROD_VERSION}" "${poussees_prod[@]}"
+fi
 
 cd -
-docker compose up -d
+if [ "${hote_bati}" == true ]; then
+  docker compose up -d
+else
+  echo "L'architecture de l'hôte (${ARCH_HOTE}) n'est pas bâtie en local : docker compose n'est pas relancé."
+fi

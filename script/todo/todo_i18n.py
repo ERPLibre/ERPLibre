@@ -18445,6 +18445,58 @@ TRANSLATIONS = {
         "fr": "Toutes les versions",
         "en": "All versions",
     },
+    "Output:": {
+        "fr": "Sortie :",
+        "en": "Output:",
+    },
+    "Code:": {
+        "fr": "Code :",
+        "en": "Code:",
+    },
+    "The frozen commits of the manifest": {
+        "fr": "Les commits gelés du manifeste",
+        "en": "The frozen commits of the manifest",
+    },
+    "The head of each branch (development image)": {
+        "fr": "La tête de chaque branche (image de développement)",
+        "en": "The head of each branch (development image)",
+    },
+    "A local tag per architecture": {
+        "fr": "Une étiquette locale par architecture",
+        "en": "A local tag per architecture",
+    },
+    "A multi-architecture manifest pushed to the registry (docker login required)": {
+        "fr": "Un manifeste multi-architecture poussé sur le registre (docker login requis)",
+        "en": "A multi-architecture manifest pushed to the registry (docker login required)",
+    },
+    "Architectures:": {
+        "fr": "Architectures :",
+        "en": "Architectures:",
+    },
+    "Numbers separated by spaces, Enter for %s: ": {
+        "fr": "Numéros séparés par des espaces, Entrée pour %s : ",
+        "en": "Numbers separated by spaces, Enter for %s: ",
+    },
+    "Unreadable platforms for Odoo %s.": {
+        "fr": "Plateformes illisibles pour Odoo %s.",
+        "en": "Unreadable platforms for Odoo %s.",
+    },
+    "%s is not published for Odoo %s: skipped.": {
+        "fr": "%s n'est pas publiée pour Odoo %s : sautée.",
+        "en": "%s is not published for Odoo %s: skipped.",
+    },
+    "No emulation for: %s": {
+        "fr": "Aucune émulation pour : %s",
+        "en": "No emulation for: %s",
+    },
+    "Install buildx and QEMU now? (Y/N): ": {
+        "fr": "Installer buildx et QEMU maintenant ? (O/N) : ",
+        "en": "Install buildx and QEMU now? (Y/N): ",
+    },
+    "Still no emulation for: %s": {
+        "fr": "Toujours aucune émulation pour : %s",
+        "en": "Still no emulation for: %s",
+    },
     "Every version: hours of work, tens of GB.": {
         "fr": "Toutes les versions : des heures, et des dizaines de Go.",
         "en": "Every version: hours of work, tens of GB.",

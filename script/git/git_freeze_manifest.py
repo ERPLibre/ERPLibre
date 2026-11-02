@@ -37,6 +37,7 @@ import argparse
 import concurrent.futures
 import glob
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -207,6 +208,30 @@ def freeze_sources(odoo_version=None):
     )
     chemins = [os.path.join("manifest", nom) for nom in noms]
     return [c for c in chemins if os.path.isfile(c)]
+
+
+# Le nom d'un manifeste propre à une version d'Odoo : le principal, son
+# fragment _dev et ses modules extra.
+_VERSION_MANIFEST = re.compile(r"git_manifest_(extra_)?odoo\d+\.\d+(_dev)?\.xml")
+
+
+def honored_sources(odoo_version=None):
+    """Les fichiers dont la fusion applique les freeze-revision.
+
+    Ceux que le gel écrit (`freeze_sources`), puis les fragments communs à
+    toutes les versions d'Odoo, ceux que listent les CSV de conf/ : un
+    projet commun, image_db ou un outil, n'a pas d'autre fichier où être
+    gelé, et son commit vaut pour chaque version. Le gel d'une autre
+    version installée et celui d'un manifeste privé restent ignorés.
+    """
+    from script.git.git_merge_repo_manifest import common_input_paths
+
+    communs = [
+        chemin
+        for chemin in common_input_paths()
+        if not _VERSION_MANIFEST.fullmatch(os.path.basename(chemin))
+    ]
+    return list(dict.fromkeys(freeze_sources(odoo_version) + communs))
 
 
 def unfreeze_sources():

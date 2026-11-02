@@ -25,6 +25,12 @@ MERGE_FREEZE=()
 if [ "${EL_FREEZE:-0}" = "1" ]; then
   MERGE_FREEZE=(--freeze)
 fi
+# EL_FREEZE_STRICT=1 : avec le gel, un projet sans freeze-revision arrête
+# tout au lieu de suivre sa branche, avant que rien ne soit synchronisé.
+MERGE_STRICT=()
+if [ "${EL_FREEZE_STRICT:-0}" = "1" ]; then
+  MERGE_STRICT=(--strict)
+fi
 MERGE_EXTRA=()
 FORWARD_ARGS=()
 for arg in "$@"; do
@@ -67,8 +73,9 @@ else
   JOBS="$(sysctl -n hw.ncpu)"
 fi
 
-# Generate local manifest
-.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_EXTRA[@]}"
+# Generate local manifest. Un échec de la fusion arrête le script : le sync
+# repartirait sinon sur le manifeste local précédent.
+.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_STRICT[@]}" "${MERGE_EXTRA[@]}" || exit 1
 
 . ./script/manifest/manifest_revision.sh
 MANIFEST_REV=$(manifest_revision) || exit 1

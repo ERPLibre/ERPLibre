@@ -520,15 +520,26 @@ class TestNettoyageGlobal(Banc):
 
 
 class TestConstructionOdoo(Banc):
-    def _banc(self, code=0):
+    """Les réponses se jouent dans l'ordre du menu : la version
+    (click.prompt), les architectures (input), la sortie (click.prompt), le
+    code (click.prompt), le type d'installation (click.prompt), puis le
+    sans-cache (input)."""
+
+    def _banc(self, code=0, publiees=None, emulees=("amd64",)):
         todo = self.todo(code=code)
         todo._container_exige_docker = lambda: ""
         todo._container_versions_odoo = lambda: ["18.0", "17.0", "12.0"]
+        todo._container_arch_hote = lambda prefixe: "amd64"
+        publiees = publiees or {}
+        todo._container_plateformes_publiees = lambda prefixe, v: publiees.get(
+            v, ["amd64", "arm64", "s390x"]
+        )
+        todo._container_plateformes_emulees = lambda prefixe: set(emulees)
         return todo
 
     def test_une_version_choisie_ne_lance_qu_elle(self):
         todo = self._banc()
-        with self.reponses(entrees=["n"], prompts=["3"]):
+        with self.reponses(entrees=["", "n"], prompts=["3", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_12"],
@@ -537,7 +548,7 @@ class TestConstructionOdoo(Banc):
 
     def test_toutes_les_lance_dans_l_ordre_du_catalogue(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "n"], prompts=["4"]):
+        with self.reponses(entrees=["o", "", "n"], prompts=["4", "1", "1", "2"]):
             todo._container_build_odoo()
         self.assertEqual(
             [
@@ -560,7 +571,9 @@ class TestConstructionOdoo(Banc):
         """Une version qui casse n'apprend rien sur les suivantes, et les
         relancer une à une coûte des heures."""
         todo = self._banc(code=1)
-        with self.reponses(entrees=["o", "n"], prompts=["4"]) as sortie:
+        with self.reponses(
+            entrees=["o", "", "n"], prompts=["4", "1", "1", "2"]
+        ) as sortie:
             todo._container_build_odoo()
         self.assertEqual(3, len(todo.execute.commandes))
         rendu = sortie.getvalue()
@@ -569,11 +582,165 @@ class TestConstructionOdoo(Banc):
 
     def test_le_sans_cache_ne_se_demande_qu_une_fois(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "o"], prompts=["4"]):
+        with self.reponses(entrees=["o", "", "o"], prompts=["4", "1", "1", "2"]):
             todo._container_build_odoo()
         for cmd in todo.execute.commandes:
             with self.subTest(cmd=cmd):
                 self.assertTrue(cmd.endswith(" --no-cache"))
+
+    def test_plusieurs_architectures_en_local(self):
+        todo = self._banc(emulees=("amd64", "arm64", "s390x"))
+        with self.reponses(entrees=["1 2", "n"], prompts=["1", "1", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18 --platform=amd64,arm64"],
+            todo.execute.commandes,
+        )
+
+    def test_pousser_nomme_toujours_les_architectures(self):
+        """Le manifeste réunit des étiquettes suffixées, même pour l'hôte."""
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "2", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18 --platform=amd64 --push"],
+            todo.execute.commandes,
+        )
+
+    def test_une_architecture_non_publiee_est_sautee_et_nommee(self):
+        todo = self._banc(
+            publiees={"17.0": ["amd64", "arm64"]},
+            emulees=("amd64", "arm64", "s390x"),
+        )
+        with self.reponses(
+            entrees=["o", "1 3", "n"], prompts=["4", "1", "1", "2"]
+        ) as sortie:
+            todo._container_build_odoo()
+        self.assertEqual(
+            [
+                "./script/docker/docker_build.sh --odoo_18 --platform=amd64,s390x",
+                "./script/docker/docker_build.sh --odoo_17",
+                "./script/docker/docker_build.sh --odoo_12 --platform=amd64,s390x",
+            ],
+            todo.execute.commandes,
+        )
+        self.assertIn("s390x", sortie.getvalue())
+        self.assertIn("17.0", sortie.getvalue())
+
+    def test_un_numero_hors_liste_ne_construit_rien(self):
+        todo = self._banc()
+        with self.reponses(entrees=["9"], prompts=["1"]):
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_sans_emulation_l_installation_est_montree_puis_refusable(self):
+        todo = self._banc()
+        with self.reponses(entrees=["2", "n"], prompts=["1"]) as sortie:
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+        self.assertIn("install_container.sh --multiarch", sortie.getvalue())
+
+    def test_l_installation_acceptee_est_reverifiee(self):
+        todo = self._banc()
+        etats = iter([set(), {"amd64", "arm64"}])
+        todo._container_plateformes_emulees = lambda prefixe: next(etats)
+        with self.reponses(entrees=["2", "o", "n"], prompts=["1", "1", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            [
+                "sudo bash script/install/install_container.sh --multiarch",
+                "./script/docker/docker_build.sh --odoo_18 --platform=arm64",
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_le_code_gele_par_defaut(self):
+        """Sans --branches, docker_build.sh clone sur les freeze-revision."""
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18"],
+            todo.execute.commandes,
+        )
+
+    def test_les_branches_ajoutent_l_option(self):
+        todo = self._banc()
+        with self.reponses(entrees=["", "o"], prompts=["1", "1", "2", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            [
+                "./script/docker/docker_build.sh --odoo_18 --branches"
+                " --no-cache"
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_retour_au_choix_du_code_ne_lance_rien(self):
+        todo = self._banc()
+        with self.reponses(entrees=[""], prompts=["1", "1", "0"]):
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_les_modules_extra_par_defaut(self):
+        """Avec extra, docker_build.sh n'a rien à recevoir de plus."""
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "2"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18"],
+            todo.execute.commandes,
+        )
+
+    def test_l_installation_standard_retire_les_extra(self):
+        todo = self._banc()
+        with self.reponses(entrees=["", "n"], prompts=["1", "1", "1", "1"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_18 --without_extra"],
+            todo.execute.commandes,
+        )
+
+    def test_retour_au_type_d_installation_ne_lance_rien(self):
+        todo = self._banc()
+        with self.reponses(entrees=[""], prompts=["1", "1", "1", "0"]):
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+
+
+class TestPlateformes(Banc):
+    def test_buildx_se_lit_sans_les_variantes(self):
+        todo = self.todo()
+        todo._container_sortie = lambda prefixe, cmd: (
+            "Name:   default\n"
+            "Platforms:  linux/amd64, linux/amd64/v2, linux/arm64, linux/arm/v7"
+        )
+        self.assertEqual(
+            {"amd64", "arm64", "arm"}, todo._container_plateformes_emulees("")
+        )
+
+    def test_les_publiees_viennent_de_docker_build(self):
+        """docker_build.sh choisit l'image Python : une seconde règle
+        divergerait sans que rien ne le dise."""
+        todo = self.todo()
+        vues = []
+
+        def sortie(prefixe, cmd):
+            vues.append(cmd)
+            return "amd64 arm64"
+
+        todo._container_sortie = sortie
+        self.assertEqual(
+            ["amd64", "arm64"], todo._container_plateformes_publiees("", "16.0")
+        )
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_16 --print-platforms"], vues
+        )
+
+    def test_un_registre_muet_ne_rend_rien(self):
+        todo = self.todo()
+        todo._container_sortie = lambda prefixe, cmd: None
+        self.assertEqual([], todo._container_plateformes_publiees("", "18.0"))
 
 
 class TestVersionsOdoo(Banc):

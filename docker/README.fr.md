@@ -39,6 +39,49 @@ docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 pyenv. La construction s'arrête quand ce Python ne sait pas lire `script/`, ce
 qui arrive avec une version d'Odoo dépréciée.
 
+### Base Debian et architectures
+
+`script/docker/docker_build.sh --odoo_<N>` construit Odoo 16 à 18 sur Debian
+trixie et Odoo 12 à 15 sur bookworm, la dernière Debian qui ait une image
+Python 3.7 ou 3.8. Chaque image existe pour amd64, arm64 et s390x :
+
+- `--platform=amd64,arm64,s390x` nomme les architectures, celle de l'hôte par
+  défaut. Une architecture étrangère tourne sous émulation QEMU, que
+  `sudo bash script/install/install_container.sh --multiarch` installe avec
+  buildx ; le script refuse une architecture non émulée ou que l'image Python
+  ne publie pas, et `--print-platforms` liste celles qu'elle publie ;
+- l'architecture de l'hôte garde l'étiquette sans suffixe, celle que lance
+  `docker-compose.yml`, et les autres prennent `-<arch>` ; `--push` pousse
+  chaque architecture avec son suffixe, puis fait de l'étiquette sans suffixe
+  un manifeste qui les réunit, après un `docker login` ;
+- **TODO › Exécution › Docker / Podman › Construire l'image d'une version
+  d'Odoo** demande la version, les architectures et la sortie, et propose
+  l'émulation quand elle manque.
+
+wkhtmltopdf au Qt patché, le seul qui imprime en-tête et pied de page dans les
+PDF d'Odoo, n'existe que pour amd64 et arm64 ; Debian trixie n'empaquette plus
+du tout wkhtmltopdf. Une image s390x imprime ses rapports en HTML. Son client
+PostgreSQL est celui de Debian, 17 sur trixie, le dépôt de PostgreSQL ne
+publiant pas s390x : son `pg_dump` refuse un serveur PostgreSQL 18, si bien
+qu'une sauvegarde depuis Odoo demande un serveur en version 17 au plus.
+
+### Code gelé
+
+L'image clone chaque dépôt sur le commit de son `freeze-revision`, et non sur
+la tête de sa branche : deux constructions du même commit d'ERPLibre portent
+le même code. Les gels des manifestes de la version d'Odoo active
+s'appliquent, et ceux des fragments communs que liste `conf/git_manifest*.csv`,
+comme `image_db` et les outils ; un projet sans `freeze-revision` arrête la
+construction avant toute synchronisation, et il est nommé. Avancer un gel,
+puis le commiter et le pousser, fait entrer un code plus récent dans une
+image. `docker_build.sh --branches` construit une image de développement sur
+les branches.
+
+L'image porte aussi les modules extra, CybroOdoo et le reste du manifeste
+extra de la version, comme l'installation de production du TODO avec modules
+extra. `docker_build.sh --without_extra`, ou l'installation standard dans le
+menu de construction du TODO, les laisse de côté.
+
 ### Exécuter ERPLibre avec Docker-Compose
 
 Allez à la racine de ce projet git.

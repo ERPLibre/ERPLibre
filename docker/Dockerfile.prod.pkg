@@ -1,12 +1,16 @@
-ARG ERPLIBRE_IMAGE_NAME=1.6.0
+# Les défauts suivent la version d'Odoo par défaut et la version d'ERPLibre :
+# une construction lancée sans docker_build.sh prend la base publiée de cette
+# version, et non celle d'une version d'ERPLibre passée. Un test les garde
+# accordés à conf/supported_version_erplibre.json et .erplibre-semver-version.
+ARG ERPLIBRE_IMAGE_NAME=1.8.0
 
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
-ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
+ARG ERPLIBRE_VERSION=odoo18.0_python3.12.16
 # ODOO_VERSION est herite de la base en ENV, et un ENV l'emporte toujours sur
 # un ARG de meme nom : le redeclarer ici poserait une valeur inerte que
 # l'image contredit sans le dire.
-ARG POETRY_VERSION=1.8.3
+ARG POETRY_VERSION=2.5.1
 ENV REPO_MANIFEST_URL=https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
@@ -22,6 +26,21 @@ ENV DOCKER_BUILD=true
 # sorte que rien ne change de propriétaire après coup : un « chown -R »
 # recopierait l'arbre entier dans une couche de plus.
 ARG ERPLIBRE_CODE_OWNER=odoo
+# Chaque dépôt est cloné sur le commit de son freeze-revision, et non sur la
+# tête de sa branche : deux constructions du même commit d'ERPLibre donnent le
+# même code. EL_FREEZE_STRICT refuse un projet sans freeze-revision avant que
+# rien ne soit synchronisé. Les deux sont lus par le script qui génère le
+# manifeste local, appelé plus bas directement et par la mise à jour de
+# l'environnement ; en ARG, ils ne restent pas dans l'image.
+# EL_FREEZE=0 (docker_build.sh --branches) suit les branches.
+ARG EL_FREEZE=1
+ARG EL_FREEZE_STRICT=1
+# Les modules extra (CybroOdoo et le manifeste extra de la version) font
+# partie de l'image, comme l'installation de production du TODO avec modules
+# extra. update_env_version.py les note dans l'état d'ERPLibre, que la
+# génération suivante du manifeste local relit. EL_WITH_EXTRA=0
+# (docker_build.sh --without_extra) construit l'installation standard.
+ARG EL_WITH_EXTRA=1
 
 RUN cat /etc/os-release
 
@@ -32,7 +51,7 @@ RUN case "${ERPLIBRE_CODE_OWNER}" in \
       *) echo "ERPLIBRE_CODE_OWNER vaut « odoo » ou « root », pas « ${ERPLIBRE_CODE_OWNER} »." ; exit 1 ;; \
     esac && \
     apt update && \
-    apt install ssh-client git libgirepository1.0-dev -y --no-install-recommends && \
+    apt install openssh-client git libgirepository1.0-dev -y --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
 USER ${ERPLIBRE_CODE_OWNER}
@@ -80,7 +99,8 @@ RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
     source ./.venv.erplibre/bin/activate && \
-    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
+    extra="" && if [ "${EL_WITH_EXTRA}" = "1" ]; then extra="--with_extra"; fi && \
+    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install ${extra}
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \

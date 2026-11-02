@@ -1,0 +1,15 @@
+# Dépendances de développement d'Odoo 18, hors du verrou de production :
+# aucune installation ne lit encore ce fichier.
+
+# Le rechargement de --dev=reload (compris dans --dev=all) : Odoo prend
+# inotify, puis watchdog, et se passe du rechargement sans l'un ni l'autre.
+# inotify (PyInotify) est sous GPL-2.0, que la LGPL-3 d'Odoo et l'AGPL-3
+# d'ERPLibre ne peuvent pas livrer avec eux ; watchdog est sous Apache-2.0.
+#
+# Sous Linux, Odoo compare la mémoire VIRTUELLE du processus à
+# limit_memory_soft. watchdog surveille récursivement chaque addons_path :
+# sur un checkout complet, la mémoire virtuelle dépasse un limit_memory_soft
+# de 2 Gio, et le serveur se recharge en boucle toutes les quelques secondes.
+# Le rechargement demande donc aussi une limite levée (--limit-memory-soft=0
+# ou plus haute) pendant le développement.
+watchdog==7.0.0
