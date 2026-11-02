@@ -11210,6 +11210,7 @@ class TestContainerInstallRun(ContainerSandbox):
         argv = self.argv()
         self.assertFalse([line for line in argv if " pull " in line])
         self.assertFalse([line for line in argv if " up " in line + " "])
+        self.assertFalse([line for line in argv if " restart " in line])
         self.assertFalse(
             [line for line in argv if line.startswith("useradd ")]
         )
@@ -11237,6 +11238,40 @@ class TestContainerInstallRun(ContainerSandbox):
                 " -p erplibre-call up -d --force-recreate coturn"
             ],
         )
+
+    def test_changed_ntfy_config_restarts_the_running_ntfy(self):
+        first = self.run_script(self.fresh_docker())
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        common = dict(method="container", engine="docker", install_engine=True)
+        for name, ans in (
+            ("port", answers(ntfy_port=9090, **common)),
+            ("certificate", supplied(ntfy_port=9090, **common)),
+        ):
+            with self.subTest(name):
+                plan = self.rerun_plan(ans)
+                self.assertFalse(plan.nothing_to_do)
+                done = self.run_script(plan, FAKE_RECREATE="0")
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                restarts = [
+                    line for line in self.argv() if " restart " in line
+                ]
+                self.assertEqual(
+                    restarts,
+                    [
+                        "docker as=root xdg= compose -f"
+                        " /etc/erplibre-call/compose.yml -p erplibre-call"
+                        " restart ntfy"
+                    ],
+                )
+        # Un conteneur arrêté démarre par `up -d` et lit la configuration
+        # écrite : rien à redémarrer.
+        write(
+            os.path.join(self.fk, "container.erplibre-call-ntfy"), "exited\n"
+        )
+        ans = container_answers(install_engine=True, ntfy_port=9191)
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse([line for line in self.argv() if " restart " in line])
 
     def test_stopped_container_is_brought_up(self):
         first = self.run_script(self.fresh_docker())
