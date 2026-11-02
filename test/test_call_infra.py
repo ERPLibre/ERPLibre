@@ -2155,6 +2155,11 @@ class TestFirewallRun(unittest.TestCase):
             "  *) exit 1 ;;\n"
             "esac\n",
         )
+        # La sonde complète, que certains tests jouent, ne joint ni moteur,
+        # ni certbot, ni base des paquets de l'hôte des tests.
+        engine_probe_stubs(self.stubs)
+        for name in ("certbot", "dpkg-query"):
+            write(os.path.join(self.stubs, name), "#!/bin/sh\nexit 1\n")
 
     def run_script(self, script, ruleset="", handles="", added="", **env):
         files = {}
@@ -2170,6 +2175,7 @@ class TestFirewallRun(unittest.TestCase):
             PATH=self.stubs + ":" + os.environ["PATH"],
             LOG=self.log,
             TMPDIR=self.tmp.name,
+            ENGINE_LOG=os.path.join(self.tmp.name, "engine.log"),
             **files,
             **env,
         )
@@ -5005,7 +5011,13 @@ class TestProductionProbe(unittest.TestCase):
         write(os.path.join(stubs, "uname"), "#!/bin/sh\necho hote\n")
         for name in ("ss", "ip", "ufw", "nft", "iptables", "pacman"):
             write(os.path.join(stubs, name), "#!/bin/sh\nexit 1\n")
-        env = dict(os.environ, PATH=stubs + ":" + os.environ["PATH"])
+        # Aucun moteur de l'hôte des tests n'est joignable.
+        engine_probe_stubs(stubs)
+        env = dict(
+            os.environ,
+            PATH=stubs + ":" + os.environ["PATH"],
+            ENGINE_LOG=os.path.join(tmp.name, "engine.log"),
+        )
         done = subprocess.run(
             ["sh", "-c", ci.probe_script(root=root)],
             capture_output=True,
@@ -10120,6 +10132,35 @@ class TestContainerPlan(unittest.TestCase):
                     plan.new_state["services"], facts.state["services"]
                 )
 
+    def test_container_rerun_keeps_the_recorded_account_and_ids(self):
+        # Le paquet de coturn a depuis posé `turnserver` : la relance garde
+        # le compte de l'état et ses ids, à qui les données appartiennent.
+        for ans, account, uid in (
+            (container_answers(), "erplibre-coturn", 997),
+            (
+                container_answers(engine="podman", rootless=True),
+                "erplibre-call",
+                995,
+            ),
+        ):
+            with self.subTest(rootless=ans.rootless):
+                facts = container_installed(ans)
+                accounts = dict(facts.engines.accounts, turnserver=(998, 998))
+                facts = dataclasses.replace(
+                    facts,
+                    engines=dataclasses.replace(
+                        facts.engines, accounts=accounts
+                    ),
+                )
+                plan = ci.plan_install(
+                    facts, dataclasses.replace(ans, turn_port=3479), NOW
+                )
+                coturn = plan.new_state["services"]["coturn"]
+                self.assertEqual(coturn["account"], account)
+                self.assertEqual((coturn["uid"], coturn["gid"]), (uid, uid))
+                if ans.rootless:
+                    self.assertEqual(plan.new_state["container"]["uid"], 995)
+
     def test_container_rerun_with_something_to_do(self):
         ans = container_answers()
         facts = container_installed(ans)
@@ -10310,6 +10351,30 @@ class TestContainerPlan(unittest.TestCase):
         again = ci.plan_install(back, container_answers(), NOW)
         self.assertEqual(again.migration, "to_container")
         self.assertEqual(again.new_state["container_added"], added)
+        # Second retour : ce que la seconde période a ajouté s'unit à ce
+        # que garde le premier, listes jointes, drapeaux réunis.
+        second = ci.written_state(again, STAMP)
+        for record in second["services"].values():
+            record.update(uid=997, gid=997)
+        second["container"].update(
+            engine_packages_added=["paquet-invente"],
+            images_pulled=[cc.IMAGES["ntfy"]],
+            linger_added=True,
+            restart_unit_enabled=None,
+        )
+        facts2 = dataclasses.replace(facts, state=second)
+        plan2 = ci.plan_install(facts2, answers(), NOW)
+        self.assertEqual(plan2.migration, "to_packages")
+        merged = plan2.new_state["container_added"]
+        self.assertEqual(
+            merged["engine_packages_added"],
+            added["engine_packages_added"] + ["paquet-invente"],
+        )
+        self.assertEqual(merged["images_pulled"], added["images_pulled"])
+        self.assertIs(merged["linger_added"], True)
+        self.assertEqual(
+            merged["restart_unit_enabled"], added["restart_unit_enabled"]
+        )
 
     def test_rootless_low_port_refused_early(self):
         facts = base_facts(engines=engine_facts())
@@ -10514,6 +10579,20 @@ class TestContainerPlan(unittest.TestCase):
         )
 
     def test_engine_switch_on_a_container_host_is_refused(self):
+        # Même moteur, autre mode : les anciens conteneurs garderaient
+        # leurs ports.
+        rootful = container_installed(container_answers(engine="podman"))
+        refusal = self.refusal(
+            rootful, container_answers(engine="podman", rootless=True)
+        )
+        self.assertEqual(refusal.key, "call_infra_engine_switch")
+        self.assertEqual(refusal.values["old"], "podman")
+        self.assertEqual(refusal.values["new"], "podman (rootless)")
+        rootless = container_installed(
+            container_answers(engine="podman", rootless=True)
+        )
+        refusal = self.refusal(rootless, container_answers(engine="podman"))
+        self.assertEqual(refusal.values["old"], "podman (rootless)")
         facts = container_installed(container_answers())
         for ans, new in (
             (container_answers(engine="podman"), "podman"),
@@ -10648,8 +10727,9 @@ class TestContainerPlan(unittest.TestCase):
 # paquet FAKE_PURGE_SIGNAL envoie SIGTERM à tout le groupe du script,
 # comme une session coupée ; avec
 # FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
-# avec FAKE_POSTRM, celle de ntfy fait ce que fait le postrm du .deb :
-# compte supprimé, configuration effacée, dossier retiré s'il est vide.
+# avec FAKE_POSTRM, celle de ntfy fait d'abord ce que fait le postrm du
+# .deb : compte supprimé, configuration effacée, dossier retiré s'il est
+# vide ; un échec demandé vient après.
 _NOTE = (
     '#!/bin/sh\nprintf "%s\\n" "${0##*/} as=${FAKE_AS:-root}'
     ' xdg=${XDG_RUNTIME_DIR:-} $*" >> "$LOG/argv"\n'
@@ -10752,6 +10832,12 @@ mkdir -p "$ROOT/run/user/$id"
     "apt-get": _NOTE
     + r"""
 if [ "$1" = purge ]; then
+  if [ -n "${FAKE_POSTRM:-}" ] && [ "$3" = ntfy ]; then
+    grep -v "^ntfy:" "$FK/passwd" > "$FK/passwd.new"
+    mv "$FK/passwd.new" "$FK/passwd"
+    rm -f "$ROOT/etc/ntfy/server.yml" "$ROOT/etc/ntfy/client.yml"
+    rmdir "$ROOT/etc/ntfy" 2>/dev/null
+  fi
   [ "$3" != "${FAKE_PURGE_FAIL:-}" ] || exit 100
   [ "$3" != "${FAKE_PURGE_SIGNAL:-}" ] || kill -TERM 0
   for p; do
@@ -10767,12 +10853,6 @@ if [ "$1" = purge ]; then
       coturn) rm -f "$ROOT/etc/turnserver.conf" ;;
     esac
   fi
-  if [ -n "${FAKE_POSTRM:-}" ] && [ "$3" = ntfy ]; then
-    grep -v "^ntfy:" "$FK/passwd" > "$FK/passwd.new"
-    mv "$FK/passwd.new" "$FK/passwd"
-    rm -f "$ROOT/etc/ntfy/server.yml" "$ROOT/etc/ntfy/client.yml"
-    rmdir "$ROOT/etc/ntfy" 2>/dev/null
-  fi
   exit 0
 fi
 [ "$1" = install ] || exit 0
@@ -10785,7 +10865,7 @@ exit "${FAKE_APT_RC:-0}"
     'echo "install ok installed"\n',
     "chown": _NOTE,
     "sleep": _NOTE,
-    "id": "#!/bin/sh\nexit 0\n",
+    "id": '#!/bin/sh\nfor a; do :; done\ngrep -q "^$a:" "$FK/passwd"\n',
 }
 # Commandes que le script n'a pas à lancer ici : chacune note son appel et
 # échoue.
@@ -10809,7 +10889,19 @@ CONTAINER_STUBS["podman"] = CONTAINER_STUBS["docker"]
 # paquets présents. FAKE_TOUCH_<étiquette>_<n> : fichiers de la racine que
 # ce passage modifie, comme un service qui écrit dans sa base.
 STUB_BASH_CONTAINER = r"""#!/bin/sh
+# Un installateur que le script n'a pas décodé, ou un certificat qu'il ne
+# lui a pas posé, échoue comme le vrai.
+[ -s "$1" ] || { echo "installateur absent : $1" >&2; exit 98; }
+for f in "${TURN_CERT_FILE:-}" "${TURN_KEY_FILE:-}"; do
+  [ -z "$f" ] || [ -s "$f" ] || { echo "fichier absent : $f" >&2; exit 98; }
+done
 name=$(basename "$1" .sh)
+# FAKE_LINEAGE : la lignée que certbot émet pendant son passage.
+if [ "$name" = install_certbot ] && [ -n "${FAKE_LINEAGE:-}" ]; then
+  mkdir -p "$FAKE_LINEAGE"
+  echo certificat > "$FAKE_LINEAGE/fullchain.pem"
+  echo cle > "$FAKE_LINEAGE/privkey.pem"
+fi
 tag=$name${NGINX_STAGE:+-$NGINX_STAGE}
 n=0
 while [ -e "$LOG/$tag.$n.env" ]; do n=$((n + 1)); done
@@ -11281,6 +11373,33 @@ class TestContainerInstallRun(ContainerSandbox):
             ntfy = state["services"]["ntfy"]
             self.assertEqual((ntfy["uid"], ntfy["gid"]), (995, 995))
 
+    def test_subordinate_range_follows_the_highest_one(self):
+        # Une plage d'un autre compte qui n'est pas de 65 536 ids : la
+        # nouvelle commence à sa fin, sans recouvrement.
+        write(self.path("/etc/subuid"), "autre:100000:70000\n", 0o644)
+        write(self.path("/etc/subgid"), "autre:100000:70000\n", 0o644)
+        done = self.run_script(self.rootless_plan())
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        for kind in ("subuids", "subgids"):
+            self.assertIn(
+                f"usermod as=root xdg= --add-{kind} 170000-235535"
+                " erplibre-call",
+                argv,
+            )
+        # Le compte a déjà sa plage : aucune autre ne s'ajoute.
+        for name in ("subuid", "subgid"):
+            write(
+                self.path(f"/etc/{name}"),
+                "autre:100000:70000\nerplibre-call:300000:65536\n",
+                0o644,
+            )
+        done = self.run_script(self.rootless_plan())
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(
+            [line for line in self.argv() if line.startswith("usermod ")]
+        )
+
     def test_rootless_session_that_never_appears_stops(self):
         # loginctl n'ouvre ici aucune session : la relance n'attend que
         # 30 s simulées (sleep en bouchon) puis s'arrête.
@@ -11504,7 +11623,11 @@ class TestContainerInstallRun(ContainerSandbox):
     def test_production_letsencrypt_second_pass_recreates_coturn_once(self):
         ans = coturn_only(method="container", engine="docker")
         plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
-        done = self.run_script(plan, {"install_certbot": CERTBOT_ISSUED})
+        done = self.run_script(
+            plan,
+            {"install_certbot": CERTBOT_ISSUED},
+            FAKE_LINEAGE=self.path(LINEAGE),
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         argv = self.argv()
         passes = [line for line in argv if line == "bash install_coturn"]
@@ -12094,6 +12217,93 @@ esac
         ntfy = self.env_of("install_ntfy", 0)
         self.assertEqual(ntfy["NTFY_VERSION"], cc.IMAGE_VERSIONS["ntfy"])
         self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_failed_ntfy_purge_gets_its_held_dirs_back(self):
+        # La purge de ntfy échoue une fois ses dossiers mis à l'abri : le
+        # retour en arrière les remet avant de réinstaller.
+        plan, before = self.to_container(supplied())
+        done = self.run_script(plan, FAKE_PURGE_FAIL="ntfy")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("FAILED", "package-ntfy"), markers)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        self.assertEqual(self.user_db(), USER_DB)
+        self.assertEqual(
+            self.read(self.path(ci.NTFY_TLS_DIR + "/ntfy.key")), TURN_KEY
+        )
+        self.assertFalse(os.path.exists(self.path(ci.HOLD_PREFIX + STAMP)))
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_rollback_recreates_the_account_the_postrm_deleted(self):
+        # Le postrm du .deb a supprimé `ntfy`, puis la purge échoue : le
+        # retour en arrière recrée le compte avant de lui rendre ses
+        # données.
+        plan, _before = self.to_container()
+        done = self.run_script(plan, FAKE_PURGE_FAIL="ntfy", FAKE_POSTRM="1")
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("MIGRATION", "rolled-back"), markers)
+        argv = self.argv()
+        useradd = argv.index(
+            "useradd as=root xdg= --system --no-create-home --shell"
+            " /usr/sbin/nologin ntfy"
+        )
+        chown = reowned(argv, "ntfy:ntfy", self.path(ci.NTFY_DATA_DIR))
+        self.assertLess(useradd, chown)
+        self.assertEqual(self.user_db(), USER_DB)
+
+    def test_purge_that_deletes_the_account_is_followed_by_a_reread(self):
+        plan, _before = self.to_container()
+        done = self.run_script(plan, FAKE_POSTRM="1")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = self.argv()
+        purge = argv.index("apt-get as=root xdg= purge -y ntfy")
+        useradd = argv.index(
+            "useradd as=root xdg= --system --no-create-home --shell"
+            " /usr/sbin/nologin ntfy"
+        )
+        self.assertLess(purge, useradd)
+        self.assertIn("ntfy:", self.read(os.path.join(self.fk, "passwd")))
+        self.assertIn("ntfy", self.state()["container"]["accounts_added"])
+
+    def test_symlinked_database_is_never_backed_up(self):
+        plan, before = self.to_container()
+        target = self.path("/etc/ailleurs")
+        write(target, "autre fichier", 0o600)
+        os.remove(self.path(ci.COTURN_DB))
+        os.symlink(target, self.path(ci.COTURN_DB))
+        done = self.run_script(plan)
+        self.assertNotEqual(done.returncode, 0)
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("FAILED", "backup-coturn"), markers)
+        self.assertFalse(
+            os.path.exists(
+                self.path(f"{ci.MIGRATION_BACKUP_DIR}/{STAMP}/turndb")
+            )
+        )
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def test_forward_migration_removes_the_coturn_dropin(self):
+        ans = answers()
+        facts = packages_host(ans)
+        dropin = ci.COTURN_DROPIN.format(unit="coturn")
+        facts.state["services"]["coturn"]["dropin"] = dropin
+        plan = ci.plan_install(
+            facts,
+            dataclasses.replace(ans, method="container", engine="docker"),
+            NOW,
+        )
+        self.assertEqual(plan.migration, "to_container")
+        self.prepare(facts.state)
+        write(self.path(dropin), ci.MARKER + "\n[Service]\n", 0o644)
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(
+            ("REMOVED", f"dropin {dropin}"), ci.marker_lines(done.stdout)
+        )
+        self.assertFalse(os.path.exists(self.path(dropin)))
 
     def test_rollback_keeps_both_tls_pairs(self):
         cert = (TURN_CERT, TURN_KEY)
@@ -13112,6 +13322,23 @@ class TestContainerUninstall(ContainerSandbox):
             )
             self.assertIn(f"REMOVED package {package}", markers)
         self.assertNotIn("KEPT engine docker.io docker-compose", markers)
+
+    def test_coturn_account_kept_while_its_tls_files_stay(self):
+        # Certificat fourni, gardé sans remove_data : turn.crt et turn.key
+        # sont du groupe du compte, qui reste avec eux.
+        ans = supplied(method="container", engine="docker")
+        state = tool_additions(
+            container_installed(ans).state,
+            accounts_added=["erplibre-coturn", "ntfy"],
+            restart_unit_enabled="docker.service",
+        )
+        self.assertTrue(state["services"]["coturn"]["tls_files"])
+        self.host(state)
+        done = self.uninstall(state, remove_data=False, remove_engine=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        markers = self.markers(done)
+        self.assertIn("KEPT account erplibre-coturn", markers)
+        self.assertIsNone(self.first("userdel", "erplibre-coturn"))
 
     def test_image_of_an_older_pin_is_removed(self):
         # Une épingle déplacée depuis : l'état garde la référence que
