@@ -12803,11 +12803,55 @@ class TestContainerUninstall(ContainerSandbox):
         )
         self.host(state)
         write(self.path(backup), NTFY_FOREIGN, 0o640)
-        done = self.uninstall(state)
+        done = self.uninstall(state, FAKE_NTFY_VERSION="2.11.0")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIsNone(self.first("systemctl", " enable "))
         self.assertIsNone(self.first("systemctl", " start "))
         self.assertIsNone(self.first(" exec "))
+        # Rien à démarrer : la version de l'hôte ne compte pas, et aucun
+        # avis ne propose d'activer une unité qui était arrêtée.
+        self.assertIsNone(self.first("ntfy as=root xdg= --version"))
+        self.assertFalse(
+            [m for m in self.markers(done) if m.startswith("NTFY_DOWNGRADE")]
+        )
+
+    def test_admin_in_a_stopped_container_is_said_kept(self):
+        backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
+        state = self.docker_state(accounts_added=[])
+        state["services"]["ntfy"].update(
+            unit="ntfy",
+            installed_by_tool=False,
+            adopted=True,
+            backup=backup,
+            was_active=True,
+            was_enabled="enabled",
+            admin_added=True,
+        )
+        for status, compose, kept in (
+            ("exited", True, True),
+            ("restarting", True, True),
+            ("missing", True, True),
+            # Relance après un `down` réussi : le retrait a déjà été tenté.
+            ("missing", False, False),
+        ):
+            with self.subTest(status=status, compose=compose):
+                self.host(state)
+                write(self.path(backup), NTFY_FOREIGN, 0o640)
+                write(os.path.join(self.fk, "admin"), "", 0o644)
+                name = os.path.join(self.fk, "container.erplibre-call-ntfy")
+                if status == "missing":
+                    os.remove(name)
+                else:
+                    write(name, status + "\n", 0o644)
+                if not compose:
+                    os.remove(self.path(cc.COMPOSE_FILE))
+                done = self.uninstall(state)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                markers = self.markers(done)
+                self.assertIsNone(self.first(" exec "))
+                self.assertNotIn("REMOVED account erplibre", markers)
+                self.assertEqual("KEPT account erplibre" in markers, kept)
+                self.assertEqual(markers[-1], "DONE yes")
 
     def test_rootless_host_ntfy_gets_its_data_back(self):
         # En rootless, l'installation a donné la base des comptes et le
@@ -13018,6 +13062,8 @@ class TestContainerUninstall(ContainerSandbox):
         ci.uninstall_script(state, True, STAMP, remove_engine=True)
         for key, value in (
             ("engine", "sh"),
+            ("engine", ["docker"]),
+            ("engine", {"docker": "docker"}),
             ("rootless", True),
             ("uid", 0),
             ("images_pulled", ["busybox"]),
