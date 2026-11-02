@@ -1339,10 +1339,11 @@ class CallInfraMenuMixin:
         """Ce qu'un script en conteneurs a gardé au lieu de le retirer, une
         ligne chacun : une image que le moteur refuse de retirer
         (`@@IMAGE_KEPT`), les paquets du moteur (`@@KEPT engine`), un
-        compte (`@@KEPT account`), les copies des migrations (`@@KEPT
-        backup`), un ntfy de l'hôte laissé désactivé parce
-        que plus ancien que l'image (`@@NTFY_DOWNGRADE <unité> <hôte>
-        <image>`, NTFY_DOWNGRADE_NOTICE)."""
+        compte de l'hôte (`@@KEPT account`), le compte administrateur de
+        ntfy dans sa base (`@@KEPT ntfy-admin`), les copies des migrations
+        (`@@KEPT backup`), un ntfy de l'hôte laissé désactivé parce que plus
+        ancien que l'image (`@@NTFY_DOWNGRADE <unité> <hôte> <image>
+        <action>`, NTFY_DOWNGRADE_NOTICE)."""
         for name, value in ci.marker_lines(out):
             value = value.strip()
             if name == "IMAGE_KEPT":
@@ -1353,13 +1354,22 @@ class CallInfraMenuMixin:
             elif name == "KEPT" and value.startswith("account "):
                 key = "call_infra_account_kept"
                 values = {"account": value[len("account ") :]}
+            elif name == "KEPT" and value.startswith("ntfy-admin "):
+                key = "call_infra_ntfy_admin_kept"
+                values = {"account": value[len("ntfy-admin ") :]}
             elif name == "KEPT" and value.startswith("backup "):
                 key = "call_infra_backup_kept"
                 values = {"path": value[len("backup ") :]}
             elif name == "NTFY_DOWNGRADE":
-                unit, host, image = (value.split() + ["?", "?", "?"])[:3]
+                words = value.split()
+                unit, host, image = (words + ["?", "?", "?"])[:3]
                 key = ci.NTFY_DOWNGRADE_NOTICE
-                values = {"unit": unit, "host": host, "image": image}
+                values = {
+                    "unit": unit,
+                    "host": host,
+                    "image": image,
+                    "action": " ".join(words[3:]) or "enable --now",
+                }
             else:
                 continue
             print(f"⚠ {self._call_infra_text(key, values)}")
@@ -2179,8 +2189,14 @@ class CallInfraMenuMixin:
         self._call_infra_show_uninstall(state)
         remove_data = _yes(t("call_infra_ask_remove_data"))
         # Ce que l'outil a posé pour les conteneurs ne part que sur un oui,
-        # demandé seulement quand l'état en consigne.
-        added = self._call_infra_engine_added(state)
+        # demandé seulement quand l'état en consigne ; un compte dont les
+        # données restent n'y figure pas, il reste de toute façon.
+        kept = ci.accounts_kept(state, remove_data)
+        added = [
+            item
+            for item in self._call_infra_engine_added(state)
+            if item not in kept
+        ]
         remove_engine = bool(added) and _yes(
             self._call_infra_text(
                 "call_infra_ask_remove_engine", {"added": ", ".join(added)}

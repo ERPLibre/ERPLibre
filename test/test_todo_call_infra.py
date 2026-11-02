@@ -1863,6 +1863,28 @@ class TestContainerUninstall(MenuCase):
             self.prompts,
         )
 
+    def test_the_question_leaves_out_accounts_whose_data_stays(self):
+        # ntfy posé par l'outil : sans « supprimer les données », sa base
+        # des comptes reste, et son compte avec elle.
+        state = container_state(
+            engine_packages_added=["docker.io"],
+            accounts_added=["erplibre-coturn", "ntfy"],
+        )
+        for remove_data, added in (
+            ("n", "docker.io, erplibre-coturn"),
+            ("o", "docker.io, erplibre-coturn, ntfy"),
+        ):
+            with self.subTest(remove_data=remove_data):
+                self.prompts = []
+                host = FakeHost(state=state)
+                self.drive(
+                    "_call_infra_uninstall", host, [remove_data, "n", "n"]
+                )
+                self.assertIn(
+                    t("call_infra_ask_remove_engine").format(added=added),
+                    self.prompts,
+                )
+
     def test_a_return_to_packages_still_offers_the_engine_removal(self):
         state = installed_state()
         state["container_added"] = {
@@ -1899,7 +1921,8 @@ class TestContainerUninstall(MenuCase):
                 f"@@IMAGE_KEPT {ref}\n"
                 "@@KEPT engine docker.io docker-compose\n"
                 "@@KEPT account ntfy\n"
-                "@@NTFY_DOWNGRADE ntfy 2.11.0 2.36.0\n"
+                "@@NTFY_DOWNGRADE ntfy 2.11.0 2.36.0 start\n"
+                "@@KEPT ntfy-admin erplibre\n"
                 "@@KEPT /etc/erplibre-call/tls\n"
                 f"@@KEPT backup {ci.MIGRATION_BACKUP_DIR}\n"
                 "@@DONE yes\n"
@@ -1920,9 +1943,16 @@ class TestContainerUninstall(MenuCase):
         self.assertIn(t("call_infra_account_kept").format(account="ntfy"), out)
         self.assertIn(
             t(ci.NTFY_DOWNGRADE_NOTICE).format(
-                unit="ntfy", host="2.11.0", image="2.36.0"
+                unit="ntfy", host="2.11.0", image="2.36.0", action="start"
             ),
             out,
+        )
+        # Le compte de ntfy n'est pas un compte de l'hôte.
+        self.assertIn(
+            t("call_infra_ntfy_admin_kept").format(account="erplibre"), out
+        )
+        self.assertNotIn(
+            t("call_infra_account_kept").format(account="erplibre"), out
         )
         self.assertIn(t("call_infra_uninstalled"), out)
 

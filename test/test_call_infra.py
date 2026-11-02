@@ -13466,7 +13466,10 @@ class TestContainerUninstall(ContainerSandbox):
                     # désactivée, et c'est dit.
                     self.assertIsNone(enable)
                     self.assertIsNone(start)
-                    self.assertIn("NTFY_DOWNGRADE ntfy 2.11.0 2.36.0", markers)
+                    self.assertIn(
+                        "NTFY_DOWNGRADE ntfy 2.11.0 2.36.0 enable --now",
+                        markers,
+                    )
                 self.assertEqual(markers[-1], "DONE yes")
 
     def test_adopted_unit_left_off_when_it_was_off(self):
@@ -13493,6 +13496,33 @@ class TestContainerUninstall(ContainerSandbox):
         self.assertFalse(
             [m for m in self.markers(done) if m.startswith("NTFY_DOWNGRADE")]
         )
+
+    def test_half_on_unit_gets_only_what_it_had(self):
+        # Activée mais arrêtée, ou l'inverse : l'avis ne propose que ce
+        # que l'unité avait avant l'outil.
+        backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
+        for enabled, active, action in (
+            ("enabled", False, "enable"),
+            ("disabled", True, "start"),
+        ):
+            with self.subTest(action=action):
+                state = self.docker_state(accounts_added=[])
+                state["services"]["ntfy"].update(
+                    unit="ntfy",
+                    installed_by_tool=False,
+                    adopted=True,
+                    backup=backup,
+                    was_active=active,
+                    was_enabled=enabled,
+                )
+                self.host(state)
+                write(self.path(backup), NTFY_FOREIGN, 0o640)
+                done = self.uninstall(state, FAKE_NTFY_VERSION="2.11.0")
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertIn(
+                    f"NTFY_DOWNGRADE ntfy 2.11.0 2.36.0 {action}",
+                    self.markers(done),
+                )
 
     def test_admin_in_a_stopped_container_is_said_kept(self):
         backup = f"{ci.NTFY_CONFIG}.bak-{STAMP}"
@@ -13529,7 +13559,8 @@ class TestContainerUninstall(ContainerSandbox):
                 markers = self.markers(done)
                 self.assertIsNone(self.first(" exec "))
                 self.assertNotIn("REMOVED account erplibre", markers)
-                self.assertEqual("KEPT account erplibre" in markers, kept)
+                self.assertEqual("KEPT ntfy-admin erplibre" in markers, kept)
+                self.assertNotIn("KEPT account erplibre", markers)
                 self.assertEqual(markers[-1], "DONE yes")
 
     def test_rootless_host_ntfy_gets_its_data_back(self):

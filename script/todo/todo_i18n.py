@@ -4004,8 +4004,8 @@ TRANSLATIONS = {
         "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: it could no longer read it. Upgrade ntfy on the host, or keep the containers.",
     },
     "call_infra_uninstall_ntfy_disabled": {
-        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : l'unité {unit} reste désactivée. Mettez à jour ntfy sur l'hôte, puis activez-la (systemctl enable --now {unit}).",
-        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: the {unit} unit stays disabled. Upgrade ntfy on the host, then enable it (systemctl enable --now {unit}).",
+        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : l'unité {unit} reste désactivée et arrêtée. Mettez à jour ntfy sur l'hôte, puis rendez-lui son état d'avant l'outil (systemctl {action} {unit}).",
+        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: the {unit} unit stays disabled and stopped. Upgrade ntfy on the host, then give it back its state from before the tool (systemctl {action} {unit}).",
     },
     "call_infra_engine_switch": {
         "fr": "Les conteneurs tournent sous {old} : passer à {new} demande d'abord de désinstaller, ou de revenir aux paquets.",
@@ -4150,6 +4150,10 @@ TRANSLATIONS = {
     "call_infra_account_kept": {
         "fr": "Compte gardé sur l'hôte : {account}",
         "en": "Account kept on the host: {account}",
+    },
+    "call_infra_ntfy_admin_kept": {
+        "fr": "Le compte {account} de ntfy n'a pas pu être vérifié, son conteneur ne tournant pas : il peut rester dans la base des comptes de ntfy.",
+        "en": "ntfy's {account} account could not be checked, its container not running: it may remain in ntfy's user database.",
     },
     "call_infra_ask_remove_engine": {
         "fr": "Retirer aussi ce que l'outil a ajouté pour les conteneurs ({added}) ? (o/N) : ",
