@@ -4501,11 +4501,13 @@ def _compose_lines(plan):
         f"CHANGED=1; cmp -s {new} {path} && CHANGED=0",
         f"mv -f {new} {path} || fail compose-file",
         "UP=$CHANGED",
+    ]
+    if plan.migration is None:
         # La fiche « container » est sur l'hôte avant que les conteneurs
         # n'existent : une relance après un échec les reconnaît pour siens
-        # (`method_refusal`).
-        "cfiche",
-    ]
+        # (`method_refusal`). Une migration ratée, elle, les arrête et les
+        # retire (`migback`).
+        lines.append("cfiche")
     for svc in services:
         lines += [
             f"cstatus {cc.CONTAINERS[svc]}; E_{svc}=$S",
