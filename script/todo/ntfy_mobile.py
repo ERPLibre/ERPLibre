@@ -11,6 +11,10 @@ exécutés par `LocalHost` ou `SshHost`.
 Chaque appel `ntfy` d'un script porte `--config <fichier>` : sans lui la CLI
 lit `/etc/ntfy/server.yml`. Pour `ntfy user` et `ntfy token`, `--config`
 précède la sous-commande ; `ntfy access` l'accepte avant ses arguments.
+
+`cli` remplace le mot `ntfy` de ces appels : le binaire de l'hôte par
+défaut, ou le préfixe `<moteur> exec -e NTFY_PASSWORD ... ntfy` d'un ntfy
+en conteneur (`call_infra.ntfy_cli`), texte `sh` déjà cité.
 """
 
 import base64
@@ -159,7 +163,7 @@ def unified_diff(old, new, path):
     )
 
 
-def access_script(config, user, prefix, label="erplibre-mobile"):
+def access_script(config, user, prefix, label="erplibre-mobile", cli="ntfy"):
     """Script `sh` qui ouvre l'accès d'un téléphone et crée son jeton.
 
     Anonyme : écriture seule sur `up*` (le serveur Odoo publie sans
@@ -167,34 +171,48 @@ def access_script(config, user, prefix, label="erplibre-mobile"):
     aléatoire jeté, jeton sans expiration. Le jeton est la dernière sortie.
     `user` ne doit pas exister : ntfy refuse un nom pris et `set -e` arrête
     le script, plutôt que de fusionner deux téléphones sous un compte.
+
+    Le mot de passe est tiré sur l'hôte et passe par NTFY_PASSWORD, posée
+    pour la seule commande : avec un `cli` en conteneur, `exec -e
+    NTFY_PASSWORD` sans valeur la reprend à cet environnement, aucun argv
+    ne la porte.
     """
     cfg = shlex.quote(config)
     usr = shlex.quote(user)
     return "\n".join(
         [
             "set -e",
-            f"ntfy access --config {cfg} everyone {shlex.quote('up*')}"
+            f"{cli} access --config {cfg} everyone {shlex.quote('up*')}"
             " write-only",
             'NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)"'
-            f" ntfy user --config {cfg} add {usr}",
-            f"ntfy access --config {cfg} {usr}"
+            f" {cli} user --config {cfg} add {usr}",
+            f"{cli} access --config {cfg} {usr}"
             f" {shlex.quote(prefix + '*')} read-only",
-            f"ntfy token --config {cfg} add"
+            f"{cli} token --config {cfg} add"
             f" {shlex.quote('--label=' + label)} {usr}",
             "",
         ]
     )
 
 
-def inspect_script(config):
+def inspect_script(config, state_path=None):
     """Script qui imprime version, propriétaire, `server.yml`, santé et
     service.
 
     Une ligne `@@NOM valeur` par fait ; `parse_markers` les relit. UNIT est
     l'état de chargement systemd du service `ntfy` : `loaded`, `not-found`
-    quand aucun service ne porte ce nom, `?` sans systemd.
+    quand aucun service ne porte ce nom, `?` sans systemd. VERSION est celle
+    du binaire `ntfy` de l'hôte. Avec `state_path`, `@@STATE <base64>` porte
+    ce fichier quand il existe : l'état de l'infrastructure d'appel, qui dit
+    si ntfy tourne en conteneur.
     """
     cfg = shlex.quote(config)
+    state = []
+    if state_path is not None:
+        path = shlex.quote(state_path)
+        state = [
+            f'if [ -f {path} ]; then echo "@@STATE $(base64 -w0 {path})"; fi'
+        ]
     return "\n".join(
         [
             f"C={cfg}",
@@ -215,6 +233,7 @@ def inspect_script(config):
             'echo "@@HEALTH $(printf %s "$H" | tr -d \'\\n\')"',
             'echo "@@UNIT $(systemctl show -p LoadState --value ntfy'
             ' 2>/dev/null || echo ?)"',
+            *state,
             "",
         ]
     )
@@ -236,16 +255,16 @@ def parse_token(output):
     return match.group(1) if match else None
 
 
-def revoke_script(config, user):
+def revoke_script(config, user, cli="ntfy"):
     """Supprime l'utilisateur, donc ses jetons et son accès."""
     return (
-        f"set -e\nntfy user --config {shlex.quote(config)} del "
+        f"set -e\n{cli} user --config {shlex.quote(config)} del "
         f"{shlex.quote(user)}\n"
     )
 
 
-def list_script(config):
-    return f"ntfy access --config {shlex.quote(config)}\n"
+def list_script(config, cli="ntfy"):
+    return f"{cli} access --config {shlex.quote(config)}\n"
 
 
 def phone_users(output):
@@ -283,21 +302,24 @@ def write_yml_script(config, new_text, stamp):
     )
 
 
-def restart_script():
-    """Redémarre le service ntfy puis imprime son état (`@@ACTIVE`)."""
-    return (
-        "systemctl restart ntfy\n"
-        "sleep 2\n"
-        'echo "@@ACTIVE $(systemctl is-active ntfy)"\n'
-    )
+RESTART = "systemctl restart ntfy"
+ACTIVE = "systemctl is-active ntfy"
 
 
-def restore_command(config, stamp):
+def restart_script(restart=RESTART, active=ACTIVE):
+    """Redémarre ntfy par la commande `restart` puis imprime son état
+    (`@@ACTIVE`), que la commande `active` écrit : l'unité systemd par
+    défaut, l'outil de composition et `inspect` pour un ntfy en conteneur
+    (`call_infra.ntfy_cli`)."""
+    return f'{restart}\nsleep 2\necho "@@ACTIVE $({active})"\n'
+
+
+def restore_command(config, stamp, restart=RESTART):
     """Commande root qui remet la copie `<config>.bak-<stamp>` et relance
-    ntfy, à afficher quand le redémarrage échoue."""
+    ntfy par `restart`, à afficher quand le redémarrage échoue."""
     cfg = shlex.quote(config)
     backup = shlex.quote(f"{config}.bak-{stamp}")
-    return f"cp -p {backup} {cfg} && systemctl restart ntfy"
+    return f"cp -p {backup} {cfg} && {restart}"
 
 
 def build_link(phone_url, token, prefix, cache_s, odoo_url=None):
