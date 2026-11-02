@@ -2310,6 +2310,13 @@ def method_refusal(facts, answers):
     - `call_infra_method_partial` (`service`) : la méthode change alors
       qu'un service consigné n'est pas choisi ; elle est la même pour tout
       l'hôte, chaque service consigné migre ;
+    - `call_infra_method_added` (`service`) : le retour aux paquets ajoute
+      un service que l'état ne consigne pas ; le retour en arrière d'une
+      migration ne défait que les services qu'elle déplace ;
+    - `call_infra_container_over_packages` (`service`) : en conteneurs,
+      un service que l'état ne consigne pas a déjà son unité de paquet
+      sur l'hôte ; seule une migration depuis un état par paquets arrête
+      cette unité et garde ses données ;
     - `call_infra_ntfy_downgrade` (`host`, `image`) : retour aux paquets
       d'un ntfy en conteneur alors que l'hôte porte un binaire ntfy plus
       ancien que celui de l'image, qui a mis à jour la base des comptes ;
@@ -2338,6 +2345,10 @@ def method_refusal(facts, answers):
         for svc in recorded:
             if svc not in answers.services:
                 return Refusal("call_infra_method_partial", service=svc)
+        if answers.method == "packages":
+            for svc in SERVICES:
+                if svc in answers.services and svc not in recorded:
+                    return Refusal("call_infra_method_added", service=svc)
         host = engines.ntfy_host_version
         image = cc.IMAGE_VERSIONS["ntfy"]
         if (
@@ -2347,6 +2358,18 @@ def method_refusal(facts, answers):
             and cc.version_older(host, image)
         ):
             return Refusal("call_infra_ntfy_downgrade", host=host, image=image)
+    if answers.method == "container":
+        for svc in SERVICES:
+            current = facts.coturn if svc == "coturn" else facts.ntfy
+            if (
+                svc in answers.services
+                and svc not in recorded
+                and isinstance(current, dict)
+                and current.get("unit_found")
+            ):
+                return Refusal(
+                    "call_infra_container_over_packages", service=svc
+                )
     if before == "container" and answers.method == "container":
         block = prior.get("container")
         block = block if isinstance(block, dict) else {}

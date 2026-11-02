@@ -10349,6 +10349,53 @@ class TestContainerPlan(unittest.TestCase):
         self.assertEqual(refusal.key, "call_infra_method_partial")
         self.assertEqual(refusal.values["service"], "coturn")
 
+    def test_return_to_packages_adds_no_service(self):
+        facts = container_installed(
+            container_answers(services=frozenset({"coturn"}))
+        )
+        refusal = self.refusal(facts, answers())
+        self.assertEqual(refusal.key, "call_infra_method_added")
+        self.assertEqual(refusal.values["service"], "ntfy")
+        plan = ci.plan_install(
+            facts, answers(services=frozenset({"coturn"})), NOW
+        )
+        self.assertEqual(plan.migration, "to_packages")
+        # Vers les conteneurs, le service ajouté a son conteneur, que le
+        # retour en arrière arrête avec les autres.
+        state = json.loads(PACKAGES_STATE_V1)
+        del state["services"]["ntfy"]
+        facts = packages_facts(state=state, ntfy=None, engines=engine_facts())
+        plan = ci.plan_install(facts, container_answers(), NOW)
+        self.assertEqual(plan.migration, "to_container")
+
+    def test_container_install_over_host_packages_is_refused(self):
+        # Sans état de l'outil, coturn tourne par paquets : l'installer en
+        # conteneurs prendrait ses fichiers sous lui.
+        facts = base_facts(
+            engines=engine_facts(),
+            coturn=service("/etc/turnserver.conf", "listening-port=3478\n"),
+        )
+        refusal = self.refusal(facts, container_answers())
+        self.assertEqual(refusal.key, "call_infra_container_over_packages")
+        self.assertEqual(refusal.values["service"], "coturn")
+        ntfy = base_facts(
+            engines=engine_facts(),
+            ntfy=service(ci.NTFY_CONFIG, "listen-http: :8080\n", unit="ntfy"),
+        )
+        refusal = self.refusal(ntfy, container_answers())
+        self.assertEqual(refusal.values["service"], "ntfy")
+        # Un service non choisi, ou une configuration sans unité, passe.
+        ci.plan_install(
+            ntfy, container_answers(services=frozenset({"coturn"})), NOW
+        )
+        lone = base_facts(
+            engines=engine_facts(),
+            ntfy=config_only(ci.NTFY_CONFIG, "listen-http: :8080\n"),
+        )
+        ci.plan_install(lone, container_answers(), NOW)
+        # Par paquets, l'outil l'adopte, comme avant.
+        ci.plan_install(facts, answers(), NOW)
+
     def test_foreign_container_is_refused(self):
         engines = engine_facts(
             containers=(
