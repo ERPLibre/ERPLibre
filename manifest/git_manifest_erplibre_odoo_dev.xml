@@ -9,6 +9,7 @@
         path="script/OCA_maintainer-tools"
         remote="OCA"
         revision="master"
+        freeze-revision="b8311a95009805a6e5593f0390f52c0fa350117f"
         groups="odoo,code_generator"
     />
     <project
@@ -16,6 +17,7 @@
         path="script/OCA_odoo-module-migrator"
         remote="OCA"
         revision="master"
+        freeze-revision="72fbe20b6715a00010ac1a90be1744fe9257819e"
         groups="odoo"
     />
     <project
@@ -23,6 +25,7 @@
         path="doc/itpp-labs_odoo-development"
         remote="itpp-labs"
         revision="master"
+        freeze-revision="f6ad79ba254aa97f65255a567dfe4efce2676f5f"
         groups="odoo"
     />
     <project
@@ -30,6 +33,7 @@
         path="doc/itpp-labs_odoo-port-docs"
         remote="itpp-labs"
         revision="master"
+        freeze-revision="298d7d632d37c400ffd21ed86df113558d0c721a"
         groups="odoo"
     />
     <project
@@ -37,6 +41,7 @@
         path="doc/itpp-labs_odoo-test-docs"
         remote="itpp-labs"
         revision="master"
+        freeze-revision="bc0d6697069c48aee867b05d7951f90184f4de96"
         groups="odoo"
     />
 </manifest>

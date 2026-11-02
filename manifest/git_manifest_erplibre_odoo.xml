@@ -8,7 +8,7 @@
         remote="ERPLibre"
         clone-depth="1"
         revision="main"
-        freeze-revision="f1601d7fe33cd586e57179cce7adb7d8d9dc0000"
+        freeze-revision="6f3fb36ef178d0615ed46106fc756d835404c7be"
         groups="base"
     />
 </manifest>

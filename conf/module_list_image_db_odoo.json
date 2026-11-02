@@ -729,7 +729,10 @@
                     "web_refresher",
                     "date_range",
                     "partner_contact_access_link",
-                    "queue_job"
+                    "queue_job",
+                    "erplibre_info",
+                    "erplibre_info_git",
+                    "erplibre_info_developer_menu"
                 ]
             }
         ]

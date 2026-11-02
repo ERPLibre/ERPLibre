@@ -96,10 +96,10 @@ class TestWhatAPackageSuggests(unittest.TestCase):
         self.assertEqual(trouve["queue_job"], "odoo18.0_base")
         self.assertEqual(trouve["website_extra"], "odoo18.0_website")
 
-    def test_the_real_18_package_has_its_fifteen(self):
+    def test_the_real_18_package_has_its_eighteen(self):
         reel = modules.read_packages()
         self.assertEqual(
-            len(modules.package_modules("odoo18.0_base", reel)), 15
+            len(modules.package_modules("odoo18.0_base", reel)), 18
         )
 
 
