@@ -865,27 +865,92 @@ utilisateur (`join_call_ice`) ou à un invité entré par un lien d'invitation
    rapport, puis détruit les VM ; quand plus aucun rapport ne nomme de VM,
    il supprime les bases seules, après la même confirmation « OUI ».
 
+Le scénario des conteneurs (`--scenario conteneur`) tourne sur Debian
+seulement, une course par moteur, chacune sur une VM neuve : `docker`,
+`podman` (Podman en root) et `podman-rootless` (Podman sous le compte
+`erplibre-call`), les trois par défaut, un seul avec `--moteur
+docker|podman|podman-rootless`. Chaque course suit le chemin du menu avec
+la méthode « conteneurs » :
+
+1. la VM, ssh, cloud-init et ufw ; aucun moteur sur l'hôte, le menu propose
+   donc les paquets de la distribution (`engine_offer`), et le test
+   accepte ; l'installation les consigne dans l'état (`@@ENGINE_PACKAGE`) ;
+2. coturn et ntfy en mode développement dans leurs conteneurs, avec un
+   certificat fourni pour l'adresse de la VM, puis la vérification depuis
+   cette machine : de vraies allocations TURN en udp, tcp et TLS, la santé
+   de ntfy, et les deux conteneurs en marche sous l'uid que l'état
+   consigne. La base de coturn et celle des comptes de ntfy appartiennent
+   au compte de l'état, jamais à un uid subordonné d'un espace de noms ;
+3. Docker seulement : le rejeu du secret REST du scénario de
+   développement, coturn 4.18 encore en comptes fixes, en information ;
+4. un premier serveur Odoo inventé (seulement le côté coturn de « Ajouter
+   un serveur Odoo », par `odoo_add_script`) fait basculer coturn en mode
+   secret : le conteneur est recréé une fois, et une allocation REST sous
+   le secret de ce serveur aboutit. Un second ne recrée rien : la date de
+   démarrage du conteneur reste la même. Sous le premier secret, le relais
+   vers une adresse privée est accordé, comme le développement le veut ;
+5. le crochet de déploiement lancé à la main sur une fausse lignée, comme
+   en production : il envoie SIGUSR2 à `erplibre-call-coturn`, le
+   conteneur garde son PID, et coturn sert le nouveau certificat ;
+6. la VM redémarre : les deux conteneurs tournent de nouveau, relancés par
+   `docker.service`, par `podman-restart.service`, ou pour Podman sans
+   root par le `podman-restart.service` du compte et sa session
+   permanente (linger) ;
+7. une seconde installation ne change rien ; la désinstallation, données et
+   ajouts de l'outil compris, ne laisse ni conteneur, ni image, ni volume,
+   ni fichier compose, ni compte, ni paquet du moteur, et les ports sont
+   fermés vus d'ici ;
+8. la course `podman` installe ensuite coturn seul en production sur la
+   même VM, avec un certificat fourni et TURN sur TLS en 443 : 443 est tenu
+   par `turnserver` sous un uid non root ; la vérification de production
+   (relais refusé vers une adresse privée compris), puis la
+   désinstallation.
+
+Le scénario de la migration (`--scenario migration`) tourne sur Debian
+seulement : coturn et ntfy par paquets en mode développement, une base d'un
+Odoo 18 de cette machine branchée avec `erplibre_turn` (son nom finit par
+`_a`, son identifiant de course est le sien, `--detruire` la supprime comme
+les autres) et un compte de téléphone. L'hôte passe ensuite aux conteneurs
+sous Podman en root : aucun serveur Odoo n'est à rebrancher, les lignes
+`turn_secret` sont identiques, la vérification est verte, l'Odoo relaie
+toujours par sa propre liste ICE, et le téléphone est toujours listé par la
+CLI du conteneur. Retour aux paquets : fait quand l'hôte n'a pas de binaire
+ntfy plus ancien que l'image, sinon refusé comme prévu
+(`call_infra_ntfy_downgrade`), et l'Odoo relaie toujours. L'Odoo est
+retiré, puis la désinstallation ; la base est supprimée même après un
+échec.
+
+Docker Hub limite les tirages anonymes. Une image refusée par cette limite
+(`@@PULL_FAILED <service> rate-limit`) arrête la course sous le verdict
+`limite-registre`, affiché « limite du registre, réessayer plus tard » : ce
+n'est ni un vert ni un échec, et le test sort par 2 quand rien d'autre n'a
+échoué.
+
 ```
 ./long_test/call_infra.py                  # Debian, puis Arch, chaque scénario
 ./long_test/call_infra.py --distro arch    # un seul système
 ./long_test/call_infra.py --scenario prod  # un seul scénario
 ./long_test/call_infra.py --scenario odoo  # les serveurs Odoo, Debian
+./long_test/call_infra.py --scenario conteneur --moteur podman-rootless
+./long_test/call_infra.py --scenario migration   # paquets ↔ conteneurs
 ./long_test/call_infra.py --dry-run        # le plan, rien de créé
 ./long_test/call_infra.py --garder --scenario dev   # garder les VM
 ./long_test/call_infra.py --detruire       # défaire la dernière course
 ```
 
 Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
-course suivante jusqu'au `--detruire`. Les scénarios d'un système prennent
-le même nom : `--garder` demande donc un seul scénario.
+course suivante jusqu'au `--detruire`. Les courses d'un système prennent le
+même nom : `--garder` demande donc une seule course par système, un seul
+scénario et, pour les conteneurs, un seul `--moteur`.
 
 Le journal de chaque course est un `<scénario>-<système>.log` dans le
-sous-dossier de la course ; les secrets qu'impriment les scripts (le mot de
-passe administrateur de ntfy, la clé du compte de contrôle, le jeton ntfy
-du téléphone) y sont masqués. Le rapport donne un verdict par système et
-par scénario, `OK` ou `ECHEC(<première étape en échec>)`, avec chaque
-étape, les lignes de la vérification et, pour le crochet, les numéros de
-série attendus et servis.
+sous-dossier de la course, `conteneur-<moteur>-debian.log` pour une course
+des conteneurs ; les secrets qu'impriment les scripts (le mot de passe
+administrateur de ntfy, la clé du compte de contrôle, le jeton ntfy du
+téléphone) y sont masqués. Le rapport donne un verdict par système et par
+scénario, `OK`, `ECHEC(<première étape en échec>)` ou `limite-registre`,
+avec chaque étape, les lignes de la vérification et, pour le crochet, les
+numéros de série attendus et servis.
 
 ## Partir d'un hôte qu'on possède déjà
 

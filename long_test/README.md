@@ -805,26 +805,85 @@ guest who came in through an invitation link (`join_call_ice_guest`):
    destroys the VMs; when no report names a VM any more, it drops the
    databases alone, after the same « OUI » confirmation.
 
+The containers scenario (`--scenario conteneur`) runs on Debian only, one
+course per engine, each on a new VM: `docker`, `podman` (Podman as root)
+and `podman-rootless` (Podman under the `erplibre-call` account), the three
+by default, one with `--moteur docker|podman|podman-rootless`. Each course
+takes the menu's path with the method « containers »:
+
+1. the VM, ssh, cloud-init and ufw; no engine on the host, so the menu
+   offers the distribution's packages (`engine_offer`), and the test
+   accepts; the install records them in the state (`@@ENGINE_PACKAGE`);
+2. coturn and ntfy in development mode in their containers, with a
+   supplied certificate for the VM address, then the check from this
+   machine: real TURN allocations over udp, tcp and TLS, ntfy's health,
+   and both containers running under the uid the state records. coturn's
+   database and ntfy's user database belong to the state's account, never
+   to a subordinate uid of a user namespace;
+3. Docker only: the REST secret replay of the development scenario, while
+   coturn 4.18 still runs fixed accounts, as information;
+4. a first invented Odoo server (only coturn's side of « Add an Odoo
+   server », through `odoo_add_script`) switches coturn to secret mode:
+   the container is recreated once, and a REST allocation with that
+   server's secret succeeds. A second one recreates nothing: the
+   container's start date stays the same. Under the first secret, a
+   relay toward a private address is granted, as development allows;
+5. the deploy hook run by hand on a fake lineage, as in production: it
+   sends SIGUSR2 to `erplibre-call-coturn`, the container keeps its PID,
+   and coturn serves the new certificate;
+6. the VM is rebooted: both containers run again, brought back by
+   `docker.service`, by `podman-restart.service`, or for rootless Podman
+   by the account's own `podman-restart.service` and its linger;
+7. a second install changes nothing; the uninstall, data and the tool's
+   additions included, leaves no container, image, volume, compose file,
+   account or engine package, and the ports are closed from this machine;
+8. the `podman` course then installs coturn alone in production on the
+   same VM, with a supplied certificate and TURN over TLS on 443: 443 is
+   held by `turnserver` under a non-root uid; the production check (relay
+   toward a private address refused included), then the uninstall.
+
+The migration scenario (`--scenario migration`) runs on Debian only: coturn
+and ntfy from packages in development mode, one database of a local Odoo 18
+plugged with `erplibre_turn` (its name ends in `_a`, its run identifier is
+its own, `--detruire` drops it like the others) and a phone account. The
+host then moves to containers under Podman as root: no Odoo server has to
+be plugged again, the `turn_secret` rows are identical, the check is green,
+the Odoo still relays through its own ICE list, and the phone is still
+listed by the container's CLI. Back to packages: done when the host has no
+ntfy binary older than the image, otherwise refused as designed
+(`call_infra_ntfy_downgrade`), and the Odoo still relays. The Odoo is
+removed, then the uninstall; the database is dropped even after a failure.
+
+Docker Hub limits anonymous pulls. An image refused by that limit
+(`@@PULL_FAILED <service> rate-limit`) stops the course with the verdict
+`limite-registre`, printed « limite du registre, réessayer plus tard »: it
+is neither green nor a failure, and the run exits with 2 when nothing else
+failed.
+
 ```
 ./long_test/call_infra.py                  # Debian, then Arch, each scenario
 ./long_test/call_infra.py --distro arch    # one system
 ./long_test/call_infra.py --scenario prod  # one scenario
 ./long_test/call_infra.py --scenario odoo  # the Odoo servers, Debian
+./long_test/call_infra.py --scenario conteneur --moteur podman-rootless
+./long_test/call_infra.py --scenario migration   # packages ↔ containers
 ./long_test/call_infra.py --dry-run        # the plan, nothing created
 ./long_test/call_infra.py --garder --scenario dev   # keep the VMs
 ./long_test/call_infra.py --detruire       # undo the last run
 ```
 
 The VM names are fixed: a VM kept by `--garder` makes the next run refuse
-until `--detruire`. The scenarios of a system use the same name, so
-`--garder` needs a single scenario.
+until `--detruire`. The courses of a system use the same name, so
+`--garder` needs one course per system: one scenario, and for the
+containers one `--moteur`.
 
-Each run's log is a `<scenario>-<system>.log` in the run's sub-directory;
-the secrets the scripts print (ntfy's admin password, the check account
-key, the phone's ntfy token) are masked there. The report gives a verdict
-per system and scenario, `OK` or `ECHEC(<first failed step>)`, with each
-step, the check lines and, for the hook, the expected and served serial
-numbers.
+Each run's log is a `<scenario>-<system>.log` in the run's sub-directory,
+`conteneur-<engine>-debian.log` for a containers course; the secrets the
+scripts print (ntfy's admin password, the check account key, the phone's
+ntfy token) are masked there. The report gives a verdict per system and
+scenario, `OK`, `ECHEC(<first failed step>)` or `limite-registre`, with
+each step, the check lines and, for the hook, the expected and served
+serial numbers.
 
 ## Starting from a host you already have
 

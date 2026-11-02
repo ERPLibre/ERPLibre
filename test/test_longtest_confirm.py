@@ -202,19 +202,19 @@ class TestSynchroMobile(unittest.TestCase):
 
 
 class TestInfrastructureDAppel(unittest.TestCase):
-    """Le test de l'infrastructure d'appel mène par défaut ses trois
-    scénarios : sa question annonce les cinq VM, nginx et les bases Odoo
+    """Le test de l'infrastructure d'appel mène par défaut ses cinq
+    scénarios : sa question annonce les neuf VM, nginx et les bases Odoo
     jetables de cette machine, la durée que l'opérateur accepte."""
 
-    def test_sa_question_dit_les_cinq_vm(self):
+    def test_sa_question_dit_les_neuf_vm(self):
         from script.todo.longtest_menu import LongTestMenuMixin as L
 
         avertissement, question = L._longtest_question("", "call_infra.py")
         for cle in (avertissement, question):
             self.assertIn(cle, todo_i18n.TRANSLATIONS)
         textes = todo_i18n.TRANSLATIONS[avertissement]
-        self.assertIn("cinq VM", textes["fr"])
-        self.assertIn("five VMs", textes["en"])
+        self.assertIn("neuf VM", textes["fr"])
+        self.assertIn("nine VMs", textes["en"])
         for langue in ("fr", "en"):
             self.assertIn("nginx", textes[langue])
             self.assertIn("Odoo", textes[langue])

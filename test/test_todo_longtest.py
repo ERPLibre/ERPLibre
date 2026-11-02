@@ -1434,6 +1434,27 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         self.assertLessEqual(set(SCRIPTS_DESCENTE), set(SCRIPTS_DEFAISABLES))
         self.assertIn("install_nixos.py", moteur.SCRIPTS)
 
+    def test_the_call_infra_question_counts_its_vms(self):
+        """Le test de l'infrastructure d'appel crée une VM par course :
+        son avertissement en dit le nombre et nomme chaque scénario, et
+        l'option qui ne lance qu'un moteur, dans les deux langues."""
+        from script.todo import todo_i18n
+
+        avertissement, _q = self.todo._longtest_question("", "call_infra.py")
+        textes = todo_i18n.TRANSLATIONS[avertissement]
+        for langue, nombre in (("en", "nine VMs"), ("fr", "neuf VM")):
+            with self.subTest(langue=langue):
+                texte = textes[langue]
+                self.assertIn(nombre, texte)
+                for mot in (
+                    "Docker",
+                    "Podman",
+                    "migration",
+                    "conteneur",
+                    "--moteur",
+                ):
+                    self.assertIn(mot, texte)
+
     def test_the_host_options_are_built_from_the_host_dict(self):
         self.assertEqual(
             self.todo._longtest_args_hote({"target": "pve9", "jump": ""}),

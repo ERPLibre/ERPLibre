@@ -87,7 +87,7 @@ class LongTestMenuMixin:
                     "Destroy the machines and databases of this test?",
                 )
             return (
-                "This creates five VMs one after the other (development, then production with nginx, on Debian and on Arch, then Odoo servers on one coturn on Debian, with three throwaway Odoo 18 databases on this machine) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod or odoo runs only one.",
+                "This creates nine VMs one after the other (development, then production with nginx, on Debian and on Arch; then on Debian: Odoo servers on one coturn with three throwaway Odoo 18 databases on this machine, coturn and ntfy in containers under Docker, Podman and rootless Podman, and a migration from packages to containers with one more Odoo database) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod, odoo, conteneur or migration runs only one, --moteur only one engine.",
                 "Run the call infrastructure test?",
             )
         if "--detruire" in (args or ""):

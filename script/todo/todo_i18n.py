@@ -8198,18 +8198,24 @@ TRANSLATIONS = {
         "fr": "Infrastructure d'appel sur des VM jetables : le lancer",
         "en": "Call infrastructure on throwaway VMs: run it",
     },
-    "This creates five VMs one after the other (development, then production with nginx, on Debian and on Arch, then Odoo servers on one coturn on Debian, with three throwaway Odoo 18 databases on this machine) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod or odoo runs only one.": {
-        "fr": "Cela crée cinq VM l'une après l'autre (développement, puis"
-        " production avec nginx, sous Debian et sous Arch, puis des"
-        " serveurs Odoo sur un même coturn sous Debian, avec trois bases"
-        " Odoo 18 jetables sur cette machine), et y installe coturn et"
-        " ntfy. call_infra.py --scenario dev, prod ou odoo n'en lance"
-        " qu'un.",
-        "en": "This creates five VMs one after the other (development, then"
-        " production with nginx, on Debian and on Arch, then Odoo servers on"
-        " one coturn on Debian, with three throwaway Odoo 18 databases on"
-        " this machine) and installs coturn and ntfy on them. call_infra.py"
-        " --scenario dev, prod or odoo runs only one.",
+    "This creates nine VMs one after the other (development, then production with nginx, on Debian and on Arch; then on Debian: Odoo servers on one coturn with three throwaway Odoo 18 databases on this machine, coturn and ntfy in containers under Docker, Podman and rootless Podman, and a migration from packages to containers with one more Odoo database) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod, odoo, conteneur or migration runs only one, --moteur only one engine.": {
+        "fr": "Cela crée neuf VM l'une après l'autre (développement, puis"
+        " production avec nginx, sous Debian et sous Arch ; puis sous"
+        " Debian : des serveurs Odoo sur un même coturn avec trois bases"
+        " Odoo 18 jetables sur cette machine, coturn et ntfy en conteneurs"
+        " sous Docker, Podman et Podman sans root, et une migration des"
+        " paquets vers les conteneurs avec une base Odoo de plus), et y"
+        " installe coturn et ntfy. call_infra.py --scenario dev, prod, odoo,"
+        " conteneur ou migration n'en lance qu'un, --moteur un seul"
+        " moteur.",
+        "en": "This creates nine VMs one after the other (development, then"
+        " production with nginx, on Debian and on Arch; then on Debian: Odoo"
+        " servers on one coturn with three throwaway Odoo 18 databases on"
+        " this machine, coturn and ntfy in containers under Docker, Podman"
+        " and rootless Podman, and a migration from packages to containers"
+        " with one more Odoo database) and installs coturn and ntfy on them."
+        " call_infra.py --scenario dev, prod, odoo, conteneur or migration"
+        " runs only one, --moteur only one engine.",
     },
     "This destroys the machines of this test and their disks, stops its local Odoo servers and drops its call_infra_odoo_* databases.": {
         "fr": "Cela détruit les machines de ce test et leurs disques, arrête"
