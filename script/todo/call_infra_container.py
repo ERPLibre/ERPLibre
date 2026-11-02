@@ -915,9 +915,12 @@ def image_identity(ref):
 def same_image(found, pinned):
     """L'image `found`, telle qu'un moteur la rend (`ps`), est-elle
     l'image épinglée `pinned` ? Même dépôt et même condensat
-    (`image_identity`) : Docker rend la référence donnée à la création,
-    Podman la rend sans étiquette (« dépôt@sha256:… »), et une forme sans
-    condensat ne prouve rien."""
+    (`image_identity`) ; une forme sans condensat ne prouve rien. Podman
+    rend la référence sans étiquette (« dépôt@sha256:… »), qui se compare
+    ainsi. Docker rend l'image d'un conteneur de compose en
+    « dépôt:étiquette », sans registre ni condensat : sous Docker, cette
+    comparaison ne reconnaît jamais l'image épinglée, et seul l'identifiant
+    d'image (`runs_pinned`) le peut."""
     found_id = image_identity(found)
     return found_id is not None and found_id == image_identity(pinned)
 
@@ -935,8 +938,9 @@ def runs_pinned(facts, container, svc):
     entrée de `facts.containers`) tourne-t-il l'image épinglée de `svc` ?
     Par identifiant d'image quand la sonde a rendu le sien et celui de la
     référence épinglée sous le même moteur et mode : `ps` ne rend pas la
-    même forme de nom d'un moteur à l'autre (Docker peut omettre registre
-    et condensat). Sans l'un des deux, la forme du nom (`same_image`)."""
+    même forme de nom d'un moteur à l'autre (Docker omet registre et
+    condensat). Sans l'un des deux, la forme du nom (`same_image`), qui ne
+    reconnaît que la forme de Podman."""
     name, engine, rootless, _status, image = container
     pinned = IMAGES[svc]
     found = facts.container_image_ids.get((name, engine, rootless))
