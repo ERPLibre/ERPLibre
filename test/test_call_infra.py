@@ -25,6 +25,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import sqlite3
 import ssl
 import stat
@@ -10723,16 +10724,17 @@ class TestContainerPlan(unittest.TestCase):
 # lequel `runuser` l'a lancé et de son XDG_RUNTIME_DIR. L'état simulé de
 # l'hôte (comptes, groupes, paquets, images, conteneurs) vit dans "$FK".
 # Avec FAKE_DOWN_FAIL, le `down` de l'outil de composition échoue sans rien
-# arrêter. La purge d'apt-get échoue pour le paquet FAKE_PURGE_FAIL ; celle du
-# paquet FAKE_PURGE_SIGNAL envoie SIGTERM à tout le groupe du script,
-# comme une session coupée ; celle du paquet FAKE_PURGE_CUT imprime
-# « lecteur-parti », écrit jusqu'à ce que le lecteur de la sortie ferme son
-# tube, puis envoie FAKE_CUT_SIGNAL (INT par défaut) au groupe, comme un
-# Ctrl-C ou un terminal fermé qui tue aussi ce lecteur ; avec
-# FAKE_PURGE_WIPES, elle efface les dossiers du paquet ;
-# avec FAKE_POSTRM, celle de ntfy fait d'abord ce que fait le postrm du
-# .deb : compte supprimé, configuration effacée, dossier retiré s'il est
-# vide ; un échec demandé vient après.
+# arrêter ; avec FAKE_UP_KILL, son `up` tue tout le groupe du script par
+# SIGKILL, une fois les conteneurs lancés. La purge d'apt-get échoue pour le
+# paquet FAKE_PURGE_FAIL ; celle du paquet FAKE_PURGE_SIGNAL envoie SIGTERM
+# à tout le groupe du script, comme une session coupée ; celle du paquet
+# FAKE_PURGE_CUT imprime « lecteur-parti », écrit jusqu'à ce que le lecteur
+# de la sortie ferme son tube, puis envoie FAKE_CUT_SIGNAL (INT par défaut)
+# au groupe, comme un Ctrl-C ou un terminal fermé qui tue aussi ce lecteur ;
+# avec FAKE_PURGE_WIPES, elle efface les dossiers du paquet ; avec
+# FAKE_POSTRM, celle de ntfy fait d'abord ce que fait le postrm du .deb :
+# compte supprimé, configuration effacée, dossier retiré s'il est vide ; un
+# échec demandé vient après.
 _NOTE = (
     '#!/bin/sh\nprintf "%s\\n" "${0##*/} as=${FAKE_AS:-root}'
     ' xdg=${XDG_RUNTIME_DIR:-} $*" >> "$LOG/argv"\n'
@@ -10745,7 +10747,8 @@ case " $* " in *" up "*)
       eval "st=\${FAKE_STATUS_$s:-running}"
       echo "$st" > "$FK/container.erplibre-call-$s"
     fi
-  done ;;
+  done
+  [ -z "${FAKE_UP_KILL:-}" ] || kill -KILL 0 ;;
   *" down "*) [ -z "${FAKE_DOWN_FAIL:-}" ] || exit 1
     rm -f "$FK"/container.erplibre-call-* ;;
 esac
@@ -11879,18 +11882,123 @@ class TestMigrationRun(ContainerSandbox):
                 return index
         return None
 
-    def test_a_migration_writes_no_fiche_before_up(self):
-        # Une migration ratée arrête et retire ses conteneurs (`migback`) :
-        # aucune fiche n'a à les reconnaître pour siens.
-        plan, _before = self.to_container()
+    def to_container_ready(self):
+        """`to_container` sur un hôte qui a déjà les comptes des conteneurs
+        et les images : seul le lancement laisse une trace, la fiche."""
+        plan, before = self.to_container()
+        with open(os.path.join(self.fk, "passwd"), "a") as handle:
+            handle.write(
+                "erplibre-coturn:x:997:997::/nonexistent:/usr/sbin/nologin\n"
+            )
+        write(
+            os.path.join(self.fk, "images"),
+            "".join(ref + "\n" for ref in cc.IMAGES.values()),
+            0o644,
+        )
+        return plan, before
+
+    def fiche(self):
+        path = self.path(ci.PENDING_DIR + "/container.json")
+        return json.loads(self.read(path)) if os.path.exists(path) else None
+
+    def rerun_facts(self):
+        """Faits de la relance : l'hôte d'avant la migration, sa fiche
+        « container » et les conteneurs de l'outil encore là."""
+        facts = packages_host(answers())
+        containers = tuple(
+            (
+                cc.CONTAINERS[svc],
+                "docker",
+                False,
+                self.read(path).strip(),
+                cc.IMAGES[svc],
+            )
+            for svc in ("coturn", "ntfy")
+            for path in [
+                os.path.join(self.fk, f"container.{cc.CONTAINERS[svc]}")
+            ]
+            if os.path.exists(path)
+        )
+        engines = dataclasses.replace(facts.engines, containers=containers)
+        return dataclasses.replace(
+            facts, engines=engines, container_pending=self.fiche()
+        )
+
+    def test_a_rolled_back_migration_takes_its_fiche_away(self):
+        # La fiche est sur l'hôte avant les conteneurs, comme hors
+        # migration ; un retour en arrière qui les retire la retire aussi :
+        # elle ne consignait rien d'autre.
+        plan, before = self.to_container_ready()
         lines = ci.install_script(plan, STAMP).splitlines()
         up = lines.index("UP=$CHANGED")
-        self.assertNotEqual(lines[up + 1], "cfiche")
-        fresh = ci.plan_install(
-            base_facts(engines=engine_facts()), container_answers(), NOW
+        self.assertEqual(
+            lines[up + 1 : up + 3],
+            ['FA=0; [ -e "$PENDING/container.json" ] && FA=1', "cfiche"],
         )
-        lines = ci.install_script(fresh, STAMP).splitlines()
-        self.assertEqual(lines[lines.index("UP=$CHANGED") + 1], "cfiche")
+        done = self.run_script(plan, FAKE_STATUS_coturn="exited")
+        markers = ci.marker_lines(done.stdout)
+        self.assertEqual(
+            markers[-2:], [("MIGRATION", "rolled-back"), ("SAVED", "no")]
+        )
+        self.assertIsNone(self.fiche())
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+
+    def assert_rerun_takes_them_back(self):
+        """La relance reconnaît les conteneurs laissés pour siens, les
+        retire avant toute copie de base et tout chown, puis termine la
+        migration."""
+        ans = dataclasses.replace(
+            answers(), method="container", engine="docker"
+        )
+        facts = self.rerun_facts()
+        self.assertTrue(facts.engines.containers)
+        self.assertIsNone(ci.method_refusal(facts, ans))
+        # Sans la fiche, ils restent étrangers.
+        refusal = ci.method_refusal(
+            dataclasses.replace(facts, container_pending=None), ans
+        )
+        self.assertEqual(refusal.key, "call_infra_foreign_container")
+        plan = ci.plan_install(facts, ans, NOW)
+        self.assertEqual(plan.migration, "to_container")
+        done = self.run_script(plan)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            ci.marker_lines(done.stdout)[-2:],
+            [("MIGRATION", "done"), ("SAVED", "yes")],
+        )
+        argv = self.argv()
+        remove = argv.index(
+            f"docker as=root xdg= rm -v {cc.CONTAINERS['coturn']}"
+        )
+        down = self.first(argv, " -p erplibre-call down")
+        backup = self.first(argv, "purge-sees ")
+        chown = self.first(argv, "chown as=root xdg= -R")
+        up = self.first(argv, " -p erplibre-call up -d")
+        self.assertLess(remove, down)
+        self.assertLess(down, chown)
+        self.assertLess(down, up)
+        if backup is not None:
+            self.assertLess(down, backup)
+        self.assertEqual(self.state()["method"], "container")
+        self.assertEqual(self.user_db(), USER_DB)
+
+    def test_containers_of_a_killed_migration_are_taken_back(self):
+        plan, _before = self.to_container_ready()
+        done = self.run_script(plan, FAKE_UP_KILL="1")
+        self.assertEqual(done.returncode, -signal.SIGKILL)
+        self.assertIsNotNone(self.fiche())
+        self.assert_rerun_takes_them_back()
+
+    def test_containers_of_a_rollback_without_down_are_taken_back(self):
+        plan, before = self.to_container_ready()
+        done = self.run_script(
+            plan, FAKE_STATUS_coturn="exited", FAKE_DOWN_FAIL="1"
+        )
+        markers = ci.marker_lines(done.stdout)
+        self.assertIn(("ROLLBACK_FAILED", "compose-down"), markers)
+        self.assertEqual(self.read(self.path(ci.STATE_PATH)), before)
+        self.assertIsNotNone(self.fiche())
+        self.assert_rerun_takes_them_back()
 
     def test_pull_precedes_first_stop(self):
         plan, _before = self.to_container()

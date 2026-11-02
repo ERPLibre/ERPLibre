@@ -2304,7 +2304,8 @@ def method_refusal(facts, answers):
     - `call_infra_foreign_container` (`names`) : un conteneur aux noms ou
       à l'image de l'outil que l'état ne consigne pas comme le sien
       (`cc.foreign_containers`), quelle que soit la méthode ; en
-      conteneurs, ceux qu'une installation coupée a lancés (sa fiche
+      conteneurs, ceux qu'une installation ou une migration coupée, ou un
+      retour en arrière dont le `down` a échoué, a lancés (sa fiche
       « container » est sur l'hôte) sous le moteur et le mode choisis
       sont les siens : la relance les reprend ;
     - `call_infra_method_partial` (`service`) : la méthode change alors
@@ -4507,12 +4508,16 @@ def _compose_lines(plan):
         f"mv -f {new} {path} || fail compose-file",
         "UP=$CHANGED",
     ]
-    if plan.migration is None:
-        # La fiche « container » est sur l'hôte avant que les conteneurs
-        # n'existent : une relance après un échec les reconnaît pour siens
-        # (`method_refusal`). Une migration ratée, elle, les arrête et les
-        # retire (`migback`).
-        lines.append("cfiche")
+    if plan.migration is not None:
+        # FA=0 : la fiche n'existe que par la ligne qui suit. Le retour en
+        # arrière qui retire les conteneurs la retire alors aussi
+        # (`_to_container_rollback_lines`) : elle ne consigne rien d'autre.
+        lines.append('FA=0; [ -e "$PENDING/container.json" ] && FA=1')
+    # La fiche « container » est sur l'hôte avant que les conteneurs
+    # n'existent : une relance après un échec, un passage tué ou un retour
+    # en arrière dont le `down` a échoué les reconnaît pour siens
+    # (`method_refusal`).
+    lines.append("cfiche")
     for svc in services:
         lines += [
             f"cstatus {cc.CONTAINERS[svc]}; E_{svc}=$S",
@@ -4909,11 +4914,15 @@ def _to_container_rollback_lines(plan, stamp, records):
     # Les conteneurs s'arrêtent avant que les paquets ne reprennent leurs
     # ports, et avant que leurs données ne changent de propriétaire : sans
     # `down` (CD=0), aucune étape ne touche aux données.
+    # La fiche que ce passage n'a posée que pour ses conteneurs (FA=0,
+    # `_compose_lines`) part avec eux ; sans `down`, elle reste, et la
+    # relance les reconnaît pour siens.
     head = [
         "CD=1",
         f"if [ -f {compose} ]; then",
         *_volume_rm_lines("  "),
         f"  if comp down >/dev/null 2>&1; then rm -f {compose};",
+        '    [ "${FA:-1}" = 1 ] || rm -f "$PENDING/container.json"',
         '  else echo "@@ROLLBACK_FAILED compose-down"; MRB=0; CD=0; fi',
         "fi",
         f"rm -f {_host(COTURN_APPLIED_PENDING)}",
@@ -4927,8 +4936,9 @@ def _to_container_lines(plan, stamp):
     (`_pull_lines`) : rien n'est arrêté tant qu'un pull peut encore
     échouer. Installateurs et certificat décodés une seule fois pour les
     deux méthodes ; `migback` défini (`_to_container_rollback_lines`) et
-    MIG=1, d'où tout `fail` revient aux paquets ; chaque unité de l'état
-    d'avant arrêtée et désactivée, puis les bases copiées
+    MIG=1, d'où tout `fail` revient aux paquets ; les conteneurs de
+    l'outil qu'un passage précédent a laissés retirés ; chaque unité de
+    l'état d'avant arrêtée et désactivée, puis les bases copiées
     (`_migration_backup_lines`), puis le complément d'unité de coturn
     retiré et le paquet de chaque service que l'outil avait posé purgé
     (`_migration_purge_lines`) ; un paquet adopté reste, son unité
@@ -4947,6 +4957,16 @@ def _to_container_lines(plan, stamp):
     lines += _migration_dir_lines(stamp)
     lines += _to_container_rollback_lines(plan, stamp, records)
     lines.append("MIG=1")
+    # Conteneurs de l'outil qu'un passage tué ou un retour en arrière sans
+    # `down` a laissés (leur fiche les a fait reconnaître) : retirés avant
+    # que les bases ne soient copiées et que leurs données ne changent de
+    # propriétaire, sur lesquelles ils écriraient encore.
+    lines += [
+        *_volume_rm_lines(),
+        f"if [ -f {_host(cc.COMPOSE_FILE)} ]; then",
+        f"  {_indented('comp down')} || fail compose-down",
+        "fi",
+    ]
     for svc, record in records.items():
         lines += _migration_stop_lines(svc, record["unit"])
     lines += _migration_backup_lines(records, stamp)
