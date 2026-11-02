@@ -2303,7 +2303,10 @@ def method_refusal(facts, answers):
 
     - `call_infra_foreign_container` (`names`) : un conteneur aux noms ou
       à l'image de l'outil que l'état ne consigne pas comme le sien
-      (`cc.foreign_containers`), quelle que soit la méthode ;
+      (`cc.foreign_containers`), quelle que soit la méthode ; en
+      conteneurs, ceux qu'une installation coupée a lancés (sa fiche
+      « container » est sur l'hôte) sous le moteur et le mode choisis
+      sont les siens : la relance les reprend ;
     - `call_infra_method_partial` (`service`) : la méthode change alors
       qu'un service consigné n'est pas choisi ; elle est la même pour tout
       l'hôte, chaque service consigné migre ;
@@ -2321,7 +2324,12 @@ def method_refusal(facts, answers):
     """
     prior = facts.state if isinstance(facts.state, dict) else {}
     engines = facts.engines or cc.EngineFacts()
-    names = cc.foreign_containers(engines, prior)
+    pending = None
+    if answers.method == "container" and isinstance(
+        facts.container_pending, dict
+    ):
+        pending = (answers.engine, answers.rootless)
+    names = cc.foreign_containers(engines, prior, pending)
     if names:
         return Refusal("call_infra_foreign_container", names=", ".join(names))
     recorded = _recorded(prior)
@@ -4412,6 +4420,10 @@ def _compose_lines(plan):
         f"CHANGED=1; cmp -s {new} {path} && CHANGED=0",
         f"mv -f {new} {path} || fail compose-file",
         "UP=$CHANGED",
+        # La fiche « container » est sur l'hôte avant que les conteneurs
+        # n'existent : une relance après un échec les reconnaît pour siens
+        # (`method_refusal`).
+        "cfiche",
     ]
     for svc in services:
         lines += [
