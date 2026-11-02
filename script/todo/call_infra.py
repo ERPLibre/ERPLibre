@@ -4393,11 +4393,34 @@ def _coturn_container_block(plan, payload=True):
     return lines
 
 
+def _coturn_recreate_lines(on_fail, indent=""):
+    """Lignes `sh` qui recréent le conteneur de coturn, pour qu'il relise
+    sa configuration : arrêté puis retiré avec ses volumes anonymes (`eng
+    rm -v`) quand il existe, puis `comp up -d coturn`. Pas de `up
+    --force-recreate` : podman-compose y retire l'ancien conteneur sans
+    `-v`, et le volume anonyme que l'image de coturn déclare restait sans
+    conteneur à chaque recréation. Aucune donnée n'y vit : chaque montage
+    de l'outil est un chemin de l'hôte. `on_fail` : commande `sh` d'un
+    retrait ou d'un `up` refusé. Suppose `eng` et `comp`."""
+    name = cc.CONTAINERS["coturn"]
+    status = shlex.quote(_STATUS_FORMAT)
+    return [
+        indent + line
+        for line in (
+            f"if eng inspect -f {status} {name} >/dev/null 2>&1; then",
+            f"  eng stop {name} >/dev/null 2>&1",
+            f"  {_indented(f'eng rm -v {name}')} || {on_fail}",
+            "fi",
+            f"{_indented('comp up -d coturn')} || {on_fail}",
+        )
+    ]
+
+
 def _coturn_container_lineage_lines(plan):
     """Second passage d'install_coturn.sh en conteneurs, aux mêmes
     conditions que `_coturn_lineage_lines`, sortie par `cap` ; sur
     `@@RECREATE 1`, le conteneur de coturn est recréé pour lire la
-    configuration TLS."""
+    configuration TLS (`_coturn_recreate_lines`)."""
     lines = [
         "CB=$(mval CERTBOT)",
         'if [ "$LE" = 0 ] || { [ "${CB%% *}" = issued ]'
@@ -4415,9 +4438,7 @@ def _coturn_container_lineage_lines(plan):
         "  } | cap",
         "  step_rc coturn-tls || fail coturn-tls",
         '  if [ "$(mval RECREATE)" = 1 ]; then',
-        "    "
-        + _indented("comp up -d --force-recreate coturn")
-        + " || fail coturn-recreate",
+        *_coturn_recreate_lines("fail coturn-recreate", "    "),
         "  fi",
         "fi",
     ]
@@ -4513,10 +4534,13 @@ def _compose_lines(plan):
     manque ou ne tourne pas, ou que le fichier a changé : podman-compose
     relance sinon `podman run` sur des conteneurs déjà là. Sur `@@RECREATE
     1` de l'installateur de coturn, et quand son conteneur existait déjà,
-    `comp up -d --force-recreate coturn` : il relit sa configuration. De
+    il est recréé (`_coturn_recreate_lines`) : il relit sa configuration. De
     même, quand ce passage a changé ce que ntfy lit (NC=1,
     `_ntfy_container_block`) et que son conteneur tournait déjà, `comp
-    restart ntfy` : rien d'autre ne le redémarre. En
+    restart ntfy` : rien d'autre ne le redémarre. Sous Podman, un fichier
+    changé fait d'abord retirer chaque conteneur de l'outil avec ses
+    volumes anonymes (`_volume_rm_lines`) : podman-compose recrée alors
+    tout le projet, mais par un `down` sans `-v`. En
     production, un conteneur qui ne tourne pas arrête le script avant nginx
     et certbot."""
     state = plan.new_state
@@ -4546,6 +4570,8 @@ def _compose_lines(plan):
     # en arrière dont le `down` a échoué les reconnaît pour siens
     # (`method_refusal`).
     lines.append("cfiche")
+    if state["container"]["engine"] == "podman":
+        lines += ['if [ "$CHANGED" = 1 ]; then', *_volume_rm_lines("  "), "fi"]
     for svc in services:
         lines += [
             f"cstatus {cc.CONTAINERS[svc]}; E_{svc}=$S",
@@ -4558,9 +4584,7 @@ def _compose_lines(plan):
     if "coturn" in services and "coturn" in plan.answers.services:
         lines += [
             'if [ "$(mval RECREATE)" = 1 ] && [ "$E_coturn" != missing ]; then',
-            "  "
-            + _indented("comp up -d --force-recreate coturn")
-            + " || fail compose-recreate",
+            *_coturn_recreate_lines("fail compose-recreate", "  "),
             "fi",
         ]
     if "ntfy" in services and "ntfy" in plan.answers.services:
@@ -7002,8 +7026,8 @@ def _switch_lines(state, mode):
 def _recreate_lines(state):
     """Après l'installateur de `_switch_lines` en conteneurs : seulement
     sur la ligne `@@RECREATE 1` de "$D/coturn.out", le conteneur de coturn
-    recréé par l'outil de composition de l'état (il relit sa
-    configuration), puis sa barrière : en marche, l'empreinte en attente
+    recréé par le moteur et l'outil de composition de l'état
+    (`_coturn_recreate_lines` : il relit sa configuration), puis sa barrière : en marche, l'empreinte en attente
     devient COTURN_APPLIED ; sinon elle est retirée (la relance la
     recalcule) et le script échoue (`switch-recreate`). Sans cette ligne,
     rien ne touche au conteneur."""
@@ -7015,9 +7039,9 @@ def _recreate_lines(state):
         *_engine_shell_lines(block),
         *_status_lines(),
         "if grep -q '^@@RECREATE 1$' \"$D/coturn.out\"; then",
-        "  "
-        + _indented("comp up -d --force-recreate coturn")
-        + f" || {{ rm -f {pending}; fail switch-recreate; }}",
+        *_coturn_recreate_lines(
+            f"{{ rm -f {pending}; fail switch-recreate; }}", "  "
+        ),
         f"  cwait {name}",
         '  if [ "$S" = running ]; then',
         f"    if [ -f {pending} ]; then mv -f {pending} {applied}"

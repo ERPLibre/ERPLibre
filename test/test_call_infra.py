@@ -11728,14 +11728,65 @@ class TestContainerInstallRun(ContainerSandbox):
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="1")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        ups = [line for line in self.argv() if " up " in line + " "]
-        self.assertEqual(
-            ups,
-            [
-                "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
-                " -p erplibre-call up -d --force-recreate coturn"
-            ],
+        argv = self.argv()
+        ups = [line for line in argv if " up " in line + " "]
+        up = (
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d coturn"
         )
+        self.assertEqual(ups, [up])
+        # Retiré avec ses volumes anonymes avant d'être recréé : le volume
+        # que l'image de coturn déclare ne reste pas derrière.
+        stop = "docker as=root xdg= stop erplibre-call-coturn"
+        remove = "docker as=root xdg= rm -v erplibre-call-coturn"
+        self.assertLess(argv.index(stop), argv.index(remove))
+        self.assertLess(argv.index(remove), argv.index(up))
+        self.assertFalse([line for line in argv if "--force-recreate" in line])
+        self.assertFalse(
+            [
+                line
+                for line in argv
+                if "erplibre-call-ntfy" in line
+                and (" rm " in line or " stop " in line)
+            ]
+        )
+
+    def rerun_on_a_changed_compose_file(self, engine):
+        """argv de la relance de `engine` en root, le fichier compose de
+        l'hôte changé depuis le premier passage."""
+        ans = container_answers(engine=engine, install_engine=True)
+        plan = ci.plan_install(base_facts(engines=engine_facts()), ans, NOW)
+        first = self.run_script(plan)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        with open(self.path(cc.COMPOSE_FILE), "a") as handle:
+            handle.write("# change\n")
+        done = self.run_script(self.rerun_plan(ans), FAKE_RECREATE="0")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        return self.argv()
+
+    def test_changed_compose_file_takes_podman_containers_with_volumes(self):
+        # podman-compose recrée tout le projet quand le fichier change, et
+        # retire alors les conteneurs sans -v : l'outil les retire d'abord,
+        # chacun avec ses volumes anonymes.
+        argv = self.rerun_on_a_changed_compose_file("podman")
+        up = argv.index(
+            "podman-compose as=root xdg= -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d"
+        )
+        for svc in ("coturn", "ntfy"):
+            remove = f"podman as=root xdg= rm -v {cc.CONTAINERS[svc]}"
+            self.assertLess(argv.index(remove), up)
+
+    def test_changed_compose_file_leaves_docker_containers_to_compose(self):
+        # Docker compose ne recrée que le service changé et garde ses
+        # volumes anonymes : rien n'est retiré avant son `up`.
+        argv = self.rerun_on_a_changed_compose_file("docker")
+        self.assertIn(
+            "docker as=root xdg= compose -f /etc/erplibre-call/compose.yml"
+            " -p erplibre-call up -d",
+            argv,
+        )
+        self.assertFalse([line for line in argv if " rm " in line])
 
     def test_changed_ntfy_config_restarts_the_running_ntfy(self):
         first = self.run_script(self.fresh_docker())
@@ -11838,8 +11889,13 @@ class TestContainerInstallRun(ContainerSandbox):
         self.assertEqual(
             second["TURN_CERT_FILE"], self.path(LINEAGE) + "/fullchain.pem"
         )
-        recreate = [line for line in argv if "--force-recreate coturn" in line]
+        recreate = [line for line in argv if line.endswith(" up -d coturn")]
         self.assertEqual(len(recreate), 1)
+        self.assertLess(
+            argv.index("docker as=root xdg= rm -v erplibre-call-coturn"),
+            argv.index(recreate[0]),
+        )
+        self.assertFalse([line for line in argv if "--force-recreate" in line])
         self.assertLess(argv.index(passes[0]), argv.index(recreate[0]))
         self.assertLess(
             [
@@ -14423,13 +14479,14 @@ class TestContainerOdoo(OdooSandbox):
         self.put(ci.COTURN_APPLIED_PENDING, "nouvelle\n")
         self.put(ci.COTURN_APPLIED, "ancienne\n")
         script = self.add(state)
-        self.assertEqual(script.count("--force-recreate coturn"), 1)
+        self.assertNotIn("--force-recreate", script)
+        self.assertEqual(script.count("comp up -d coturn"), 1)
         lines = script.splitlines()
         guard = lines.index(
             "if grep -q '^@@RECREATE 1$' \"$D/coturn.out\"; then"
         )
         recreate = next(
-            i for i, ln in enumerate(lines) if "--force-recreate" in ln
+            i for i, ln in enumerate(lines) if "comp up -d coturn" in ln
         )
         self.assertLess(guard, recreate)
         done = self.run_script(script, STUB_BASH_OUT="@@RECREATE 1")
@@ -14439,8 +14496,16 @@ class TestContainerOdoo(OdooSandbox):
         self.assertEqual(env["TURN_SERVICE_USER"], "turnserver")
         self.assertEqual(env["TURN_AUTH"], "secret")
         self.assertEqual(
-            self.calls("docker compose"),
-            [COMPOSE_RUN + " up -d --force-recreate coturn"],
+            self.calls("docker compose"), [COMPOSE_RUN + " up -d coturn"]
+        )
+        docker = self.calls("docker ")
+        self.assertLess(
+            docker.index("docker stop erplibre-call-coturn"),
+            docker.index("docker rm -v erplibre-call-coturn"),
+        )
+        self.assertLess(
+            docker.index("docker rm -v erplibre-call-coturn"),
+            docker.index(COMPOSE_RUN + " up -d coturn"),
         )
         self.assertFalse(os.path.exists(self.path(ci.COTURN_APPLIED_PENDING)))
         with open(self.path(ci.COTURN_APPLIED)) as handle:
@@ -14472,7 +14537,7 @@ class TestContainerOdoo(OdooSandbox):
             self.calls("podman-compose"),
             [
                 "podman-compose -f /etc/erplibre-call/compose.yml"
-                " -p erplibre-call up -d --force-recreate coturn"
+                " -p erplibre-call up -d coturn"
             ],
         )
         prefix = (
@@ -14481,8 +14546,11 @@ class TestContainerOdoo(OdooSandbox):
         )
         self.assertIn(
             f"{prefix} podman-compose -f /etc/erplibre-call/compose.yml"
-            " -p erplibre-call up -d --force-recreate coturn",
+            " -p erplibre-call up -d coturn",
             self.argv(),
+        )
+        self.assertIn(
+            f"{prefix} podman rm -v erplibre-call-coturn", self.argv()
         )
         self.assertIn(
             f"{prefix} podman inspect -f {{{{.State.Status}}}}"
