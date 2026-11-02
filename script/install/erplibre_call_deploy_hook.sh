@@ -12,17 +12,21 @@
 #      (settings.tls) et TLS_DIR present : fullchain.pem et privkey.pem
 #      deviennent turn.crt et turn.key (voir copy_pair) ;
 #      coturn actif recoit SIGUSR2, qui lui fait relire certificat et cle
-#      sans couper les allocations en cours (aucun redemarrage) ; puis
-#      APPLIED_FILE recoit l'empreinte qu'install_coturn.sh calcule, pour
-#      qu'une relance de l'installation ne redemarre pas coturn.
+#      sans couper les allocations en cours (aucun redemarrage) : par
+#      « systemctl kill » pour un coturn de paquet, par le moteur pour un
+#      coturn en conteneur (voir container_engine) ; puis APPLIED_FILE
+#      recoit l'empreinte qu'install_coturn.sh calcule, pour qu'une relance
+#      de l'installation ne redemarre pas coturn.
 #   2. nginx actif : « nginx -t » puis « systemctl reload nginx ». nginx lit
 #      la lignee elle-meme : il est recharge meme quand coturn echoue.
 #
 # ERPLIBRE_CALL_ROOT, vide en service, prefixe chaque chemin du systeme :
 # les tests y mettent une racine temporaire.
 #
-# Sortie : une ligne « @@HOOK <action> » par etape. Code de sortie non nul
-# quand l'etat est illisible, qu'une copie, le signal ou nginx echoue.
+# Sortie : une ligne « @@HOOK <action> » par etape. Code de sortie 2 quand
+# l'etat est illisible ou hors de ce que l'outil ecrit (aucune commande de
+# coturn n'est lancee, nginx est recharge quand meme), 1 quand une copie,
+# le signal ou nginx echoue.
 
 set -uo pipefail
 
@@ -33,6 +37,7 @@ STATE_FILE="$R/etc/erplibre-call/state.json"
 APPLIED_FILE="$R/etc/erplibre-call/coturn.applied"
 RENEWED_LINEAGE="${RENEWED_LINEAGE:-}"
 FAILED=0
+REFUSED=0
 
 hook() { echo "@@HOOK $*"; }
 warn() { echo "[ERPLIBRE-CALL] $*" >&2; }
@@ -50,12 +55,18 @@ applied_digest() {
     fi
 }
 
-# coturn_record : imprime « <unite> <configuration> » de coturn lus dans
-# STATE_FILE, rien quand l'etat n'existe pas ou ne nomme pas coturn,
-# « not-letsencrypt » quand coturn sert un autre certificat (fourni, ou
-# aucun) : la paire en place n'est pas celle de la lignee. Code
-# non nul pour un etat illisible, ou une unite ou un chemin hors de ce que
-# l'outil ecrit : les deux finissent dans des commandes lancees en root.
+# coturn_record : imprime, pour coturn lu dans STATE_FILE,
+# « <unite> <configuration> » par paquets, ou « container <moteur> <nom>
+# <0|1> <compte> <uid> <configuration> » en conteneurs (1 : rootless ;
+# compte et uid de la session rootless, « - » en root) ; rien quand l'etat
+# n'existe pas ou ne nomme pas coturn, « not-letsencrypt » quand coturn
+# sert un autre certificat (fourni, ou aucun) : la paire en place n'est pas
+# celle de la lignee. Code 2 pour un etat illisible, une methode qui ne va
+# pas avec la version, ou une valeur hors de ce que l'outil ecrit : unite,
+# chemin, moteur, nom, compte et uid finissent dans des commandes lancees
+# en root. En conteneurs, tout l'etat passe d'abord les regles de
+# container_block_problem (script/todo/call_infra_container.py), recopiees
+# ici en stdlib : un test fait juger les deux sur la meme liste d'etats.
 # python3 est la, certbot en depend.
 coturn_record() {
     [ -e "$STATE_FILE" ] || return 0
@@ -64,9 +75,88 @@ import json
 import re
 import sys
 
+ENGINES = ("docker", "podman")
+COMPOSE_PROVIDERS = {
+    "docker": (("docker", "compose"), ("docker-compose",)),
+    "podman": (("podman-compose",),),
+}
+CONTAINERS = {"coturn": "erplibre-call-coturn", "ntfy": "erplibre-call-ntfy"}
+COMPOSE_FILE = "/etc/erplibre-call/compose.yml"
+PROJECT = "erplibre-call"
+ACCOUNT_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}\Z")
+MAX_ID = 2**31 - 1
+METHODS = ("packages", "container")
+CONTAINER_VERSION = 2
+
+
+def valid_id(value):
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 1 <= value <= MAX_ID
+    )
+
+
+def valid_account(value):
+    return (
+        isinstance(value, str)
+        and bool(ACCOUNT_RE.match(value))
+        and value != "root"
+    )
+
+
+def block_valid(block):
+    if not isinstance(block, dict) or block.get("engine") not in ENGINES:
+        return False
+    engine, rootless = block["engine"], block.get("rootless")
+    if not isinstance(rootless, bool) or (rootless and engine != "podman"):
+        return False
+    if rootless:
+        if not valid_account(block.get("account")):
+            return False
+        if not valid_id(block.get("uid")):
+            return False
+    elif block.get("account") is not None or block.get("uid") is not None:
+        return False
+    compose = block.get("compose")
+    if not isinstance(compose, (list, tuple)):
+        return False
+    return (
+        tuple(compose) in COMPOSE_PROVIDERS[engine]
+        and block.get("compose_file", COMPOSE_FILE) == COMPOSE_FILE
+        and block.get("project", PROJECT) == PROJECT
+    )
+
+
+def state_valid(state):
+    if not block_valid(state.get("container")):
+        return False
+    services = state.get("services", {})
+    if not isinstance(services, dict):
+        return False
+    for svc, record in services.items():
+        if svc not in CONTAINERS or not isinstance(record, dict):
+            return False
+        if record.get("container") != CONTAINERS[svc]:
+            return False
+        if not valid_account(record.get("account")):
+            return False
+        if not (valid_id(record.get("uid")) and valid_id(record.get("gid"))):
+            return False
+    return True
+
+
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
-        services = json.load(handle).get("services") or {}
+        state = json.load(handle)
+    method = state.get("method", "packages")
+    if method not in METHODS or (method == "container") != (
+        state.get("version") == CONTAINER_VERSION
+    ):
+        sys.exit(2)
+    if method == "container" and not state_valid(state):
+        sys.exit(2)
+    services = state.get("services") or {}
     record = services.get("coturn")
     if record is None:
         sys.exit(0)
@@ -83,10 +173,38 @@ safe = (
     and re.fullmatch(r"(/[A-Za-z0-9._@+-]+)+", config)
     and not {".", ".."} & set(config.split("/"))
 )
-if unit not in ("coturn", "turnserver") or not safe:
+if not safe:
+    sys.exit(2)
+if method == "container":
+    block = state["container"]
+    print(
+        "container",
+        block["engine"],
+        CONTAINERS["coturn"],
+        1 if block["rootless"] else 0,
+        block["account"] if block["rootless"] else "-",
+        block["uid"] if block["rootless"] else "-",
+        config,
+    )
+    sys.exit(0)
+if unit not in ("coturn", "turnserver"):
     sys.exit(2)
 print(unit, config)
 EOF
+}
+
+# container_engine <argument>... : lance le moteur de l'etat avec ces
+# arguments, directement en root ; en rootless, depuis root, sous le compte
+# rootless et dans sa session (XDG_RUNTIME_DIR), ou Podman trouve les
+# conteneurs de ce compte. Lit ENGINE, ROOTLESS, ACCOUNT et RUID, que
+# coturn_renew pose a partir de coturn_record, donc deja valides.
+container_engine() {
+    if [ "$ROOTLESS" = 1 ]; then
+        runuser -u "$ACCOUNT" -- env "XDG_RUNTIME_DIR=/run/user/$RUID" \
+            "$ENGINE" "$@"
+    else
+        "$ENGINE" "$@"
+    fi
 }
 
 # copy_pair <groupe> : remplace turn.crt et turn.key de TLS_DIR par
@@ -137,13 +255,16 @@ record_applied() {
 # coturn_renew : etape 1. APPLIED_FILE n'est reecrit que s'il disait deja
 # chargee la paire en place avec la configuration du disque : SIGUSR2 ne
 # relit que certificat et cle, et un coturn sur une configuration perimee
-# doit rester signale a l'installation, qui le redemarrera.
+# doit rester signale a l'installation, qui le redemarrera. En conteneurs,
+# « inspect » dit si le conteneur tourne : arrete ou absent, il lira la
+# paire copiee a son prochain demarrage. Code 2 pour un etat refuse, avant
+# toute commande de coturn.
 coturn_renew() {
-    local record unit config group before
+    local record kind=packages unit config group before
     if ! record=$(coturn_record); then
         hook "failed state"
         warn "${STATE_FILE} illisible ou hors de ce que l'outil ecrit."
-        return 1
+        return 2
     fi
     if [ -z "$record" ]; then
         hook "coturn-skip not-in-state"
@@ -162,8 +283,14 @@ coturn_renew() {
         hook "coturn-skip no-tls-dir"
         return 0
     fi
-    unit=${record%% *}
-    config="$R${record#* }"
+    if [ "${record%% *}" = container ]; then
+        # unit porte ici le nom du conteneur, celui des marqueurs.
+        read -r kind ENGINE unit ROOTLESS ACCOUNT RUID config <<<"$record"
+        config="$R$config"
+    else
+        unit=${record%% *}
+        config="$R${record#* }"
+    fi
     group=$(stat -c %g "$TLS_DIR") || return 1
     before=$(applied_digest "$config" 2>/dev/null) || before=""
 
@@ -173,13 +300,25 @@ coturn_renew() {
     fi
     hook "copied $TLS_DIR/turn.crt $TLS_DIR/turn.key"
 
-    if ! systemctl is-active --quiet "$unit"; then
-        hook "coturn-inactive $unit"
-        return 0
-    fi
-    if ! systemctl kill -s SIGUSR2 "$unit"; then
-        hook "failed signal $unit"
-        return 1
+    if [ "$kind" = container ]; then
+        if [ "$(container_engine inspect -f '{{.State.Running}}' "$unit" \
+            2>/dev/null)" != true ]; then
+            hook "coturn-inactive $unit"
+            return 0
+        fi
+        if ! container_engine kill --signal SIGUSR2 "$unit"; then
+            hook "failed signal $unit"
+            return 1
+        fi
+    else
+        if ! systemctl is-active --quiet "$unit"; then
+            hook "coturn-inactive $unit"
+            return 0
+        fi
+        if ! systemctl kill -s SIGUSR2 "$unit"; then
+            hook "failed signal $unit"
+            return 1
+        fi
     fi
     hook "signal $unit"
 
@@ -220,8 +359,14 @@ main() {
         hook "skip${name:+ $name}"
         return 0
     fi
-    coturn_renew || FAILED=1
+    coturn_renew
+    case $? in
+        0) ;;
+        2) REFUSED=1 ;;
+        *) FAILED=1 ;;
+    esac
     nginx_reload || FAILED=1
+    [ "$REFUSED" = 0 ] || return 2
     [ "$FAILED" = 0 ]
 }
 
