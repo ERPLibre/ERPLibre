@@ -25,6 +25,7 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import textwrap
 
 import click
@@ -532,7 +533,8 @@ class ContainerMenuMixin:
         return sorted(versions, key=lambda v: float(v), reverse=True)
 
     def _container_build_odoo(self):
-        """Construit l'image d'une ou de TOUTES les versions d'Odoo.
+        """Construit l'image d'une ou de TOUTES les versions d'Odoo, pour une
+        ou plusieurs architectures.
 
         Le balayage ne s'arrête pas au premier échec : une version qui casse
         n'apprend rien sur les suivantes, et les relancer une à une coûte des
@@ -560,6 +562,31 @@ class ContainerMenuMixin:
                 print(t("Nothing to do."))
                 return
         cibles = versions if toutes else [versions[rang]]
+
+        hote = self._container_arch_hote(prefixe)
+        plan = self._container_choix_architectures(prefixe, cibles, hote)
+        if not plan:
+            return
+        etrangeres = sorted(
+            {a for archs in plan.values() for a in archs} - {hote}
+        )
+        if etrangeres and not self._container_assure_emulation(
+            prefixe, etrangeres
+        ):
+            return
+        sortie = self._container_choix_numerote(
+            t("Output:"),
+            [
+                t("A local tag per architecture"),
+                t(
+                    "A multi-architecture manifest pushed to the registry"
+                    " (docker login required)"
+                ),
+            ],
+        )
+        if sortie is None:
+            return
+        pousser = sortie == 1
         sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             sans_cache = " --no-cache"
@@ -567,9 +594,17 @@ class ContainerMenuMixin:
         echecs = []
         for version in cibles:
             court = version.split(".")[0]
+            archs = plan[version]
+            options = ""
+            # La commande d'avant, telle quelle, pour l'architecture de l'hôte
+            # en local : docker_build.sh n'a rien de plus à apprendre.
+            if pousser or archs != [hote]:
+                options += f" --platform={','.join(archs)}"
+            if pousser:
+                options += " --push"
             cmd = (
                 f"{prefixe}./script/docker/docker_build.sh"
-                f" --odoo_{court}{sans_cache}"
+                f" --odoo_{court}{options}{sans_cache}"
             )
             if self.execute.exec_command_live(cmd, source_erplibre=False):
                 echecs.append(version)
@@ -578,6 +613,123 @@ class ContainerMenuMixin:
             print(f"\n{t('Built:')} {', '.join(passees) or '-'}")
             if echecs:
                 print(f"{t('Failed:')} {', '.join(echecs)}")
+
+    def _container_sortie(self, prefixe, commande):
+        """La sortie d'une commande lancée avec le préfixe d'environnement, ou
+        None quand elle échoue."""
+        try:
+            fini = subprocess.run(
+                ["bash", "-c", f"{prefixe}{commande}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return fini.stdout.strip() if fini.returncode == 0 else None
+
+    def _container_arch_hote(self, prefixe):
+        """L'architecture du démon Docker, au sens de Docker : amd64,
+        arm64… — celle d'une construction sans --platform."""
+        arch = self._container_sortie(
+            prefixe, "docker version --format '{{.Server.Arch}}'"
+        )
+        return arch or "amd64"
+
+    def _container_plateformes_publiees(self, prefixe, version):
+        """Les architectures que publie l'image Python d'une version d'Odoo,
+        lues par docker_build.sh, qui choisit cette image. Vide si le
+        registre ne répond pas."""
+        court = version.split(".")[0]
+        sortie = self._container_sortie(
+            prefixe,
+            f"./script/docker/docker_build.sh --odoo_{court} --print-platforms",
+        )
+        return sortie.split() if sortie else []
+
+    def _container_plateformes_emulees(self, prefixe):
+        """Les plateformes que buildx sait construire, sans leur variante."""
+        sortie = self._container_sortie(
+            prefixe, "docker buildx inspect default"
+        )
+        emulees = set()
+        for ligne in (sortie or "").splitlines():
+            if ligne.startswith("Platforms:"):
+                for plateforme in ligne.split(":", 1)[1].split(","):
+                    morceaux = plateforme.strip().split("/")
+                    if len(morceaux) >= 2:
+                        emulees.add(morceaux[1])
+        return emulees
+
+    def _container_choix_architectures(self, prefixe, cibles, hote):
+        """{version: [architectures]} à construire, ou {} pour revenir.
+
+        Une seule question, même pour toutes les versions : chacune ne garde
+        que ce que sa base publie, et ce qu'elle perd est nommé. L'entrée
+        vide garde l'architecture de l'hôte, la seule qui se construise sans
+        émulation.
+        """
+        publiees = {}
+        for version in cibles:
+            archs = self._container_plateformes_publiees(prefixe, version)
+            if not archs:
+                print(f"⚠ {t('Unreadable platforms for Odoo %s.') % version}")
+                archs = [hote]
+            publiees[version] = archs
+        offertes = []
+        for archs in publiees.values():
+            offertes += [a for a in archs if a not in offertes]
+        print(f"\n{t('Architectures:')}")
+        for rang, arch in enumerate(offertes, 1):
+            marque = f" ({t('this machine')})" if arch == hote else ""
+            print(f"  [{rang}] {arch}{marque}")
+        reponse = input(
+            f"💬 {t('Numbers separated by spaces, Enter for %s: ') % hote}"
+        ).strip()
+        if not reponse:
+            choisies = [hote]
+        else:
+            choisies = []
+            for mot in reponse.split():
+                if not mot.isdigit() or not 1 <= int(mot) <= len(offertes):
+                    print(t("Command not found !"))
+                    return {}
+                arch = offertes[int(mot) - 1]
+                if arch not in choisies:
+                    choisies.append(arch)
+        plan = {}
+        for version in cibles:
+            gardees = [a for a in choisies if a in publiees[version]]
+            for arch in choisies:
+                if arch not in gardees:
+                    print(
+                        f"⚠ {t('%s is not published for Odoo %s: skipped.')}"
+                        % (arch, version)
+                    )
+            if gardees:
+                plan[version] = gardees
+        return plan
+
+    def _container_assure_emulation(self, prefixe, archs):
+        """Vrai quand buildx émule chacune des architectures. Sinon, propose
+        l'installation de buildx et de QEMU, commande montrée d'abord."""
+        manquantes = [
+            a for a in archs if a not in self._container_plateformes_emulees(prefixe)
+        ]
+        if not manquantes:
+            return True
+        commande = "sudo bash script/install/install_container.sh --multiarch"
+        print(f"\n⚠ {t('No emulation for: %s') % ', '.join(manquantes)}")
+        print(f"  {commande}")
+        if not self._is_yes(input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")):
+            return False
+        self.execute.exec_command_live(commande, source_erplibre=False)
+        emulees = self._container_plateformes_emulees(prefixe)
+        encore = [a for a in manquantes if a not in emulees]
+        if encore:
+            print(f"⚠ {t('Still no emulation for: %s') % ', '.join(encore)}")
+            return False
+        return True
 
     def _container_compose(self):
         """Démarrer, arrêter, suivre ou lister la composition ERPLibre."""
