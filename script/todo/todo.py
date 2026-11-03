@@ -118,7 +118,13 @@ if __name__ == "__main__":
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
+from script.todo import (
+    dev_tools,
+    ssh_config,
+    todo_etat,
+    todo_install,
+    todo_prefs,
+)
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
@@ -253,6 +259,7 @@ class TODO(
             print(my_file.read())
         self._ask_language()
         print(t("Opening TODO ..."))
+        todo_etat.afficher(self._claude_context_root())
         print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
         help_info = f"""{self._menu_header()}
 [1] {t("Execute")}

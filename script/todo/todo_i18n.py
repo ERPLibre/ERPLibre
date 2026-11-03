@@ -1068,6 +1068,23 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
+    # Bilan d'ouverture du TODO
+    "Git hooks installed": {
+        "fr": "Hooks git installés",
+        "en": "Git hooks installed",
+    },
+    "Git hooks missing: Execute › Git › Settings": {
+        "fr": "Hooks git manquants : Exécution › Git › Configuration",
+        "en": "Git hooks missing: Execute › Git › Settings",
+    },
+    "Git hooks point elsewhere: ": {
+        "fr": "Les hooks git pointent ailleurs : ",
+        "en": "Git hooks point elsewhere: ",
+    },
+    "Git hooks not executable: ": {
+        "fr": "Hooks git non exécutables : ",
+        "en": "Git hooks not executable: ",
+    },
     # Sections du menu Git
     "Settings": {
         "fr": "Configuration",
