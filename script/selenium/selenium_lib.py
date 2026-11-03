@@ -83,8 +83,196 @@ MONTHS_FR = {
     "decembre": 12,
 }
 
+# Pont Selenium → web_tour (Odoo 17+), utilisé par odoo_run_tour.
+#
+# Le verdict d'un tour en mode « auto » ne s'écrit QUE dans la console :
+# « tour succeeded » par console.log, « FAILED: … » par console.error
+# (web_tour/static/src/tour_service/tour_automatic.js). localStorage ne le
+# garde pas, end() efface l'état du tour en cas d'échec comme de succès.
+#
+# Le pont enveloppe donc console.log/error/dir. Il le fait par
+# execute_script plutôt que par WebDriver BiDi : BiDi exige une option posée
+# à la création du pilote, que configure() ne pose pas, et Firefox ne rend
+# pas driver.get_log("browser"). L'enveloppe marche sur l'objet partagé :
+# browser.console d'Odoo EST window.console, et chaque appel relit la
+# propriété. Le verdict va dans sessionStorage, qui survit aux rechargements
+# de l'onglet ; l'enveloppe, elle, disparaît avec la page et se réinjecte au
+# relevé suivant. Les clés sont préfixées pour ne croiser aucune clé d'Odoo.
+_TOUR_CLE = "erplibre_tour"
+
+# Rend l'étape de chargement du client web, puis, une fois prêt, si le tour
+# est au registre et l'url qu'il déclare (vide sans url). La page de
+# connexion charge aussi odoo.loader : elle est reconnue à part pour qu'une
+# session refusée ne passe pas pour une attente.
+_JS_TOUR_SONDE = """
+const nom = arguments[0];
+if (document.querySelector("form.oe_login_form")) {
+    return {etape: "connexion"};
+}
+const o = window.odoo;
+if (!o || !o.loader) { return {etape: "chargeur absent"}; }
+const mod = o.loader.modules.get("@web/core/registry");
+if (!mod) { return {etape: "registre non chargé"}; }
+if (typeof o.startTour !== "function") {
+    return {etape: "service des tours non démarré"};
+}
+const tour = mod.registry.category("web_tour.tours").get(nom, null);
+return {etape: "pret", connu: Boolean(tour), url: (tour && tour.url) || ""};
+"""
+
+# Efface le verdict d'un tour précédent. Seul le démarrage l'appelle : une
+# réinjection après rechargement garde le verdict déjà lu.
+_JS_TOUR_RAZ = """
+const cle = arguments[0];
+for (const k of ["lance", "verdict", "message", "details", "erreurs"]) {
+    window.sessionStorage.removeItem(cle + "." + k);
+}
+"""
+
+# Pose l'enveloppe de la console, une fois par page. Le premier verdict
+# l'emporte ; console.dir, qu'Odoo appelle juste après « FAILED: » avec les
+# étapes voisines de l'échec, complète le message. Le succès exige le
+# message EXACT, comme HttpCase (message == success_signal) : chaque étape
+# écrit par console.log une description qui reprend son contenu, où la
+# phrase peut figurer. Les autres console.error écrits AVANT le verdict
+# (erreur non rattrapée, schéma d'étape invalide, RPC en échec) sont gardés,
+# bornés en nombre et en longueur : ils font échouer un tour qui annonce sa
+# réussite, voir _tour_verdict. Ceux d'après le verdict sont ignorés, comme
+# HttpCase les ignore une fois son résultat posé.
+_JS_TOUR_CROCHET = """
+const cle = arguments[0];
+if (window.__erplibre_tour_crochet) { return false; }
+window.__erplibre_tour_crochet = true;
+const s = window.sessionStorage;
+const c = window.console;
+const log = c.log, error = c.error, dir = c.dir;
+const texte = (args) => args.map((a) => {
+    if (typeof a === "string") { return a; }
+    try { return JSON.stringify(a); } catch (e) { return String(a); }
+}).join(" ");
+c.log = function (...args) {
+    if (!s.getItem(cle + ".verdict")
+            && args.length === 1 && args[0] === "tour succeeded") {
+        s.setItem(cle + ".verdict", "succes");
+    }
+    return log.apply(c, args);
+};
+c.error = function (...args) {
+    if (s.getItem(cle + ".verdict")) { return error.apply(c, args); }
+    const t = texte(args);
+    if (String(args[0]).startsWith("FAILED")) {
+        s.setItem(cle + ".verdict", "echec");
+        s.setItem(cle + ".message", t);
+    } else {
+        const liste = JSON.parse(s.getItem(cle + ".erreurs") || "[]");
+        if (liste.length < 20) {
+            liste.push(t.slice(0, 500));
+            s.setItem(cle + ".erreurs", JSON.stringify(liste));
+        }
+    }
+    return error.apply(c, args);
+};
+c.dir = function (...args) {
+    if (s.getItem(cle + ".verdict") === "echec"
+            && !s.getItem(cle + ".details")) {
+        s.setItem(cle + ".details", texte(args));
+    }
+    return dir.apply(c, args);
+};
+return true;
+"""
+
+# Lance le tour après sa promesse wait_for, comme le fait HttpCase.start_tour
+# (odoo/tests/common.py). « lance » se pose dans la même tâche que
+# startTour, qui écrit current_tour dans localStorage avant tout await en
+# mode auto : « lancé » sans current_tour veut donc dire « terminé ».
+_JS_TOUR_DEMARRE = """
+const [cle, nom, options] = arguments;
+const s = window.sessionStorage;
+odoo.isTourReady(nom).then(() => {
+    s.setItem(cle + ".lance", "1");
+    return odoo.startTour(nom, options);
+}).catch((e) => {
+    s.setItem(cle + ".verdict", "erreur");
+    s.setItem(cle + ".message", String((e && e.message) || e));
+});
+return true;
+"""
+
+_JS_TOUR_RELEVE = """
+const cle = arguments[0];
+const s = window.sessionStorage;
+return {
+    crochet: Boolean(window.__erplibre_tour_crochet),
+    lance: s.getItem(cle + ".lance") === "1",
+    verdict: s.getItem(cle + ".verdict"),
+    message: s.getItem(cle + ".message") || "",
+    details: s.getItem(cle + ".details") || "",
+    erreurs: JSON.parse(s.getItem(cle + ".erreurs") || "[]"),
+    courant: window.localStorage.getItem("current_tour"),
+    index: window.localStorage.getItem("current_tour.index"),
+};
+"""
+
+# Vide l'état de tour que tour_state.js garde dans localStorage. Un tour
+# « auto » interrompu (délai dépassé) y laisse current_tour avec le mode
+# auto : au chargement suivant, tour_service.js le REPREND, et sa macro
+# tourne à côté de celle du tour démarré ensuite, sans exclusion entre les
+# deux ; le premier verdict écrit par l'une serait crédité à l'autre. Sans
+# current_tour, le chargement suivant ne reprend rien, et le rechargement
+# arrête la macro restée en cours. La page courante doit être de l'origine
+# du serveur Odoo.
+_JS_TOUR_ETAT_EFFACE = """
+for (const k of ["current_tour", "current_tour.config",
+                 "current_tour.index", "current_tour.on_error"]) {
+    window.localStorage.removeItem(k);
+}
+return true;
+"""
+
+# Écrit l'Onboarding de l'utilisateur connecté (arguments[0], booléen), par
+# la même méthode que l'interrupteur du menu profil. Un compte dont
+# tour_enabled vaut vrai (l'admin d'une base sans données de démonstration)
+# reçoit sinon une visite native au chargement de /odoo, dont le pointeur se
+# met en travers du tour joué, et dont la fin écrit le même « tour
+# succeeded ».
+_JS_ECRIT_ONBOARDING = """
+const done = arguments[arguments.length - 1];
+fetch("/web/dataset/call_kw/res.users/switch_tour_enabled", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({jsonrpc: "2.0", method: "call", params: {
+        model: "res.users", method: "switch_tour_enabled",
+        args: [!!arguments[0]], kwargs: {}}}),
+}).then((r) => r.json()).then((j) => done(j.error
+    ? {ok: false, message: (j.error.data && j.error.data.message)
+                           || j.error.message}
+    : {ok: true, valeur: j.result})
+).catch((e) => done({ok: false, message: String(e)}));
+"""
+
+# Lit l'Onboarding de l'utilisateur connecté dans les informations de
+# session ; rend {ok, valeur} ou {ok: false, message}.
+_JS_LIT_ONBOARDING = """
+const done = arguments[arguments.length - 1];
+fetch("/web/session/get_session_info", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({jsonrpc: "2.0", method: "call", params: {}}),
+}).then((r) => r.json()).then((j) => done(j.error || !j.result
+    ? {ok: false, message: (j.error && j.error.message) || "réponse vide"}
+    : {ok: true, valeur: !!j.result.tour_enabled})
+).catch((e) => done({ok: false, message: String(e)}));
+"""
+
 
 class SeleniumLib(object):
+    # WebDriver BiDi, demandé à la création du pilote par qui en a besoin :
+    # le lanceur des tours y pose l'enveloppe de la console avant les
+    # scripts de chaque page, voir odoo_pose_crochet_permanent. Faux par
+    # défaut, les autres scripts ouvrent leur navigateur comme avant.
+    bidi = False
+
     def __init__(self, config):
         self.config = config
         self.wait_human_time = config.human_time_speed
@@ -252,6 +440,8 @@ class SeleniumLib(object):
                         f"--window-size={self.config.window_size}"
                     )
 
+                if self.bidi:
+                    chrome_options.enable_bidi = True
                 if self.config.use_network:
                     chrome_options.set_capability(
                         "se:name", "ERPLibre selenium"
@@ -353,6 +543,8 @@ class SeleniumLib(object):
                 firefox_options.add_argument("--disable-dev-shm-usage")
                 firefox_options.add_argument("--disable-dbus")
 
+                if self.bidi:
+                    firefox_options.enable_bidi = True
                 if self.config.use_network:
                     firefox_options.set_capability(
                         "se:name", "ERPLibre selenium"
@@ -1441,6 +1633,269 @@ class SeleniumLib(object):
 
         toggle_data_menu("web_tour.tour_enabled", enable_tour)
         toggle_data_menu("color_scheme.switch", enable_dark_mode)
+
+    def odoo_disable_onboarding(self):
+        """Coupe l'Onboarding du compte connecté ; rend (ok, message).
+
+        Passe par l'appel RPC de l'interrupteur du menu profil plutôt que par
+        un clic : le libellé change avec la langue, et le menu profil porte
+        ailleurs des entrées qui n'existent pas dans tous les montages. Le
+        réglage est écrit EN BASE sur l'utilisateur et le reste après la
+        session. La page courante doit être une page du client web connecté.
+        L'état de tour de localStorage est vidé au passage, voir
+        odoo_clear_tour_state.
+        """
+        try:
+            self.odoo_clear_tour_state()
+        except WebDriverException as e:
+            return False, f"état de tour non vidé : {e.msg}"
+        ok, message = self.odoo_set_onboarding(False)
+        return ok, ("Onboarding coupé" if ok else message)
+
+    def odoo_read_onboarding(self):
+        """Rend l'Onboarding du compte connecté : True, False, ou None quand
+        la session ne répond pas.
+
+        Sert à rétablir la valeur d'origine en fin de passe : couper
+        l'Onboarding écrit en base, et le laisser coupé changerait le compte
+        de qui lance le lanceur.
+        """
+        try:
+            retour = self.driver.execute_async_script(_JS_LIT_ONBOARDING)
+        except WebDriverException:
+            return None
+        if not retour or not retour.get("ok"):
+            return None
+        return bool(retour.get("valeur"))
+
+    def odoo_set_onboarding(self, valeur):
+        """Écrit l'Onboarding du compte connecté ; rend (ok, message)."""
+        try:
+            retour = self.driver.execute_async_script(
+                _JS_ECRIT_ONBOARDING, bool(valeur)
+            )
+        except WebDriverException as e:
+            return False, f"appel switch_tour_enabled impossible : {e.msg}"
+        if not retour or not retour.get("ok"):
+            return False, (retour or {}).get("message", "réponse vide")
+        return True, ""
+
+    def odoo_clear_tour_state(self):
+        """Vide l'état de tour web_tour de localStorage.
+
+        À appeler avant de charger la page de départ d'un tour : un tour
+        interrompu serait sinon repris au chargement, en parallèle du
+        suivant. Lève WebDriverException si la page ne le permet pas.
+        """
+        self.driver.execute_script(_JS_TOUR_ETAT_EFFACE)
+
+    def odoo_wait_tour_registry(self, tour_name, timeout=60):
+        """Attend le service des tours de la page ; rend (ok, message).
+
+        ok vaut True si le tour est au registre web_tour.tours, False s'il
+        n'y est pas ou si la page est celle de connexion, None si le client
+        web ne finit pas de charger dans le délai.
+        """
+        fin = time.time() + timeout
+        dernier = None
+        while time.time() < fin:
+            try:
+                dernier = self.driver.execute_script(_JS_TOUR_SONDE, tour_name)
+            except WebDriverException:
+                # Page en cours de chargement : on relève au tour suivant.
+                dernier = {"etape": "page en chargement"}
+            etape = (dernier or {}).get("etape")
+            if etape == "connexion":
+                return False, "page de connexion : session absente ou refusée"
+            if etape == "pret":
+                if dernier.get("connu"):
+                    return True, "tour au registre"
+                return False, (
+                    f"tour « {tour_name} » absent du registre"
+                    " web_tour.tours : module non installé, ou tour déclaré"
+                    " dans web.assets_tests, que /odoo ne charge qu'en"
+                    " mode test"
+                )
+            time.sleep(0.5)
+        return None, (
+            f"client web non prêt en {timeout} s"
+            f" (dernière étape : {(dernier or {}).get('etape')})"
+        )
+
+    def odoo_pose_crochet_permanent(self):
+        """Pose l'enveloppe de la console dans CHAQUE document à venir ;
+        rend True si c'est fait.
+
+        Par un script de préchargement WebDriver BiDi : il s'exécute à la
+        création de chaque document, avant les scripts de la page. Un
+        console.error écrit au chargement qui suit un rechargement est
+        alors vu, là où la réinjection au relevé suivant arrive jusqu'à une
+        demi-seconde trop tard. Une fois par pilote : un second appel ne
+        repose rien.
+
+        False quand le pilote n'a pas été ouvert avec BiDi (attribut
+        `bidi`), ou que le navigateur refuse : la réinjection au relevé
+        reste alors le seul moyen, comme avant.
+        """
+        if getattr(self, "_crochet_permanent", None) is not None:
+            return self._crochet_permanent
+        self._crochet_permanent = False
+        capacites = getattr(self.driver, "capabilities", None) or {}
+        if not self.bidi or not capacites.get("webSocketUrl"):
+            return False
+        corps = (
+            f"(function () {{ {_JS_TOUR_CROCHET} }})({json.dumps(_TOUR_CLE)});"
+        )
+        try:
+            self.driver.script.add_preload_script(f"() => {{ {corps} }}")
+        except Exception as e:
+            print(
+                f"Enveloppe de la console non préchargée ({e}) : réinjection."
+            )
+            return False
+        self._crochet_permanent = True
+        return True
+
+    def odoo_run_tour(self, tour_name, step_delay=0, timeout=180):
+        """Joue un tour web_tour en mode « auto » ; rend (ok, message).
+
+        ok vaut True si le tour annonce « tour succeeded » sans console.error
+        avant, False s'il annonce « FAILED » ou si la page a écrit un
+        console.error pendant le tour, None si aucun verdict n'est lisible : tour
+        absent, client web pas prêt, délai dépassé, ou tour terminé pendant
+        un rechargement avant la réinjection de l'enveloppe. Le message
+        porte l'étape en échec, ses voisines et les console.error vus.
+        L'enveloppe est préchargée dans chaque document quand le pilote a
+        BiDi, voir odoo_pose_crochet_permanent ; sinon elle se réinjecte
+        au relevé qui suit un rechargement.
+
+        La page courante doit être une page du client web connecté (/odoo).
+        Un tour qui déclare une url est démarré sur cette url, chargée ici,
+        avec startUrl à cette même valeur, comme le fait HttpCase.start_tour.
+        Odoo redirige un tour vers son url dès que startUrl en diffère, et le
+        client réécrit l'adresse au chargement (/odoo devient
+        /odoo/action-<id>) : un startUrl lu sur la page diffère donc
+        presque toujours, et le rechargement qui suit tombe pendant le tour,
+        hors de l'enveloppe de la console. Un tour sans url part de la page
+        courante. step_delay est en millisecondes, timeout en secondes pour
+        le tour entier ; chaque étape garde son propre délai, 10 s par
+        défaut côté Odoo.
+
+        Le tour joué en auto sur une base réelle Y LAISSE les enregistrements
+        qu'il crée : rien ne les annule comme le fait un HttpCase.
+        """
+        ok, message = self.odoo_wait_tour_registry(
+            tour_name, timeout=min(60, timeout)
+        )
+        if not ok:
+            return None, message
+        driver = self.driver
+        # Avant de charger l'url du tour : cette page a déjà l'enveloppe.
+        self.odoo_pose_crochet_permanent()
+        url_tour = (
+            driver.execute_script(_JS_TOUR_SONDE, tour_name) or {}
+        ).get("url")
+        if url_tour:
+            driver.get(self._url_absolue(url_tour))
+            ok, message = self.odoo_wait_tour_registry(
+                tour_name, timeout=min(60, timeout)
+            )
+            if not ok:
+                return None, message
+            chemin = url_tour
+        else:
+            chemin = driver.execute_script("return window.location.pathname")
+        driver.execute_script(_JS_TOUR_RAZ, _TOUR_CLE)
+        driver.execute_script(_JS_TOUR_CROCHET, _TOUR_CLE)
+        driver.execute_script(
+            _JS_TOUR_DEMARRE,
+            _TOUR_CLE,
+            tour_name,
+            {"mode": "auto", "stepDelay": step_delay, "startUrl": chemin},
+        )
+
+        fin = time.time() + timeout
+        releve = {}
+        while time.time() < fin:
+            time.sleep(0.5)
+            try:
+                releve = driver.execute_script(_JS_TOUR_RELEVE, _TOUR_CLE)
+            except WebDriverException:
+                # Le tour recharge la page : le relevé reprend après.
+                continue
+            verdict = releve.get("verdict")
+            if verdict:
+                return self._tour_verdict(tour_name, releve)
+            if not releve.get("crochet"):
+                try:
+                    driver.execute_script(_JS_TOUR_CROCHET, _TOUR_CLE)
+                except WebDriverException:
+                    pass
+                continue
+            if releve.get("lance") and releve.get("courant") != tour_name:
+                return None, self._tour_texte(
+                    f"tour « {tour_name} » terminé sans verdict lisible :"
+                    " la page s'est rechargée et le tour a fini avant la"
+                    " réinjection de l'enveloppe de la console",
+                    releve,
+                )
+        # Le tour tourne encore : son état ne doit pas survivre au prochain
+        # chargement, voir _JS_TOUR_ETAT_EFFACE.
+        try:
+            self.odoo_clear_tour_state()
+        except WebDriverException:
+            pass
+        return None, self._tour_texte(
+            f"tour « {tour_name} » sans verdict en {timeout} s (étape"
+            f" {releve.get('index')}, lancé : {bool(releve.get('lance'))})",
+            releve,
+        )
+
+    def _url_absolue(self, url):
+        """Rend `url` tel quel s'il porte son schéma, sinon rattaché à
+        config.url, la racine du serveur visé."""
+        if "://" in url:
+            return url
+        return f"{self.config.url.rstrip('/')}/{url.lstrip('/')}"
+
+    @staticmethod
+    def _tour_texte(entete, releve):
+        """Assemble un message de tour : en-tête, détail, console.error."""
+        morceaux = [entete]
+        if releve.get("details"):
+            morceaux.append(releve["details"])
+        erreurs = releve.get("erreurs") or []
+        if erreurs:
+            morceaux.append("console.error :")
+            morceaux.extend(f"- {e}" for e in erreurs)
+        return "\n".join(morceaux)
+
+    @classmethod
+    def _tour_verdict(cls, tour_name, releve):
+        """Rend (ok, message) d'un relevé portant un verdict.
+
+        Un succès accompagné de console.error compte comme un échec, comme
+        le compte HttpCase, qui fait échouer le tour au premier
+        console.error : une erreur JavaScript qui n'empêche pas les étapes
+        suivantes de trouver leur cible ne passe pas pour une réussite.
+        """
+        verdict = releve.get("verdict")
+        if verdict == "succes" and releve.get("erreurs"):
+            return False, cls._tour_texte(
+                f"tour « {tour_name} » annoncé réussi, mais la page a écrit"
+                f" {len(releve['erreurs'])} console.error pendant le tour",
+                releve,
+            )
+        if verdict == "succes":
+            return True, cls._tour_texte(
+                f"tour « {tour_name} » réussi", releve
+            )
+        if verdict == "echec":
+            return False, cls._tour_texte(releve.get("message"), releve)
+        return None, cls._tour_texte(
+            f"tour « {tour_name} » non démarré : {releve.get('message')}",
+            releve,
+        )
 
     def odoo_web_form_click_statusbar_button_status_floating(
         self, status_label, timeout=None
