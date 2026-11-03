@@ -6353,15 +6353,29 @@ class TODO(
             f"./script/generate_config.sh"
         )
         if add_arg:
+            # « && » et non « ; » : un filtre qui échoue (sauvegarde sans zip,
+            # aucun dépôt reconnu) ne doit pas être suivi d'un
+            # generate_config.sh, qui écrirait une configuration sans les
+            # dépôts communautaires. config.conf garde alors la première
+            # passe, sans filtre, et l'échec est dit.
             cmd += (
-                f";./script/git/git_repo_update_group.py {add_arg};"
-                f"./script/generate_config.sh"
+                f";./script/git/git_repo_update_group.py {add_arg}"
+                f" && ./script/generate_config.sh"
             )
-        self.execute.exec_command_live(
+        status = self.execute.exec_command_live(
             cmd,
             source_erplibre=False,
             single_source_erplibre=True,
         )
+        if status and add_arg:
+            print(
+                "❌ "
+                + t(
+                    "Configuration not filtered, see the output above:"
+                    " config.conf keeps the first pass, without the filter."
+                )
+            )
+        return status
 
     def generate_config_from_preconfiguration(self):
         choices = [

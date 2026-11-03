@@ -63,6 +63,16 @@ def main():
     else:
         file_path = os.path.join("image_db", config.backup_name)
 
+    # The module list of the backup only exists in its zip: a restore can
+    # still succeed from its _cache_ database, so a missing zip must stop
+    # here rather than yield an empty repository list.
+    die(
+        not os.path.isfile(file_path),
+        f"Backup file not found: {file_path}. Put the backup zip back in"
+        " image_db/, or generate the configuration without"
+        " --from_backup_name.",
+    )
+
     with zipfile.ZipFile(file_path, "r") as zip_ref:
         manifest_file = zip_ref.open("manifest.json")
 
@@ -71,12 +81,19 @@ def main():
     str_module = ";".join(lst_module)
     cmd = f'./script/database/get_repo_from_module.py --module "{str_module}"'
     execute_cmd = execute.Execute()
+    # Muet, puis réimprimé : la sortie de ce script est la liste des dépôts
+    # que lit git_repo_update_group.py, et l'en-tête « Execute command » de
+    # exec_command_live s'y mêlerait comme autant de faux dépôts.
     status, output = execute_cmd.exec_command_live(
         cmd,
+        quiet=True,
         source_erplibre=False,
         single_source_erplibre=True,
         return_status_and_output=True,
     )
+    for line in output:
+        print(line)
+    sys.exit(status)
 
 
 def die(cond, message, code=1):
