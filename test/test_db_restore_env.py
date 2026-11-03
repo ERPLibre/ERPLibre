@@ -353,6 +353,18 @@ class TestRestoreEnv(unittest.TestCase):
         attendu = os.path.join("image_db", "essai.zip")
         self.assertEqual(db_restore.chemin_image("essai"), attendu)
         self.assertEqual(db_restore.chemin_image("essai.zip"), attendu)
+        # Un chemin est gardé tel quel, « .zip » ajouté s'il manque.
+        self.assertEqual(
+            db_restore.chemin_image("sous/essai"), "sous/essai.zip"
+        )
+        self.assertEqual(
+            db_restore.chemin_image("/abs/essai.zip"), "/abs/essai.zip"
+        )
+
+    def test_x_et_x_zip_partagent_un_cache_un_chemin_n_en_a_pas(self):
+        self.assertEqual(db_restore.nom_cache("essai"), "_cache_essai")
+        self.assertEqual(db_restore.nom_cache("essai.zip"), "_cache_essai")
+        self.assertIsNone(db_restore.nom_cache("sous/essai.zip"))
 
     def test_une_archive_illisible_est_laissee_a_odoo(self):
         with open(os.path.join("image_db", "tronquee.zip"), "wb") as f:

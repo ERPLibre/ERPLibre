@@ -613,6 +613,23 @@ class TestVerrousDeMain(Base):
         # Le second ne supprime qu'une base que le premier a FINIE.
         self.assertEqual(odoo.supprimees, ["essai_db"])
 
+    def test_x_zip_clone_le_meme_cache_que_x(self):
+        odoo = self.brancher(FauxOdoo({"_cache_essai": True}))
+        config = self.config(image="essai.zip", only_drop=False)
+        db_restore.restaurer_cible(config, ARG_BASE)
+        self.assertNotIn("_cache_essai.zip", odoo.bases)
+        self.assertTrue(odoo.bases["essai_db"])
+        self.assertFalse([c for c in odoo.commandes if " load " in c])
+
+    def test_une_image_par_chemin_est_restauree_sans_cache(self):
+        odoo = self.brancher(FauxOdoo())
+        config = self.config(image="sous/essai.zip", only_drop=False)
+        db_restore.restaurer_cible(config, ARG_BASE)
+        self.assertEqual(sorted(odoo.bases), ["essai_db"])
+        self.assertIn(
+            f"{ARG_BASE} load essai_db --image sous/essai.zip", odoo.commandes
+        )
+
     def test_la_cible_ne_peut_pas_etre_le_cache(self):
         odoo = self.brancher(FauxOdoo({"_cache_essai": True}))
         config = self.config(database="_cache_essai", only_drop=False)

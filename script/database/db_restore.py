@@ -334,12 +334,30 @@ def chemin_image(image):
     """Le chemin de l'archive de `image`, construit comme Odoo le construit.
 
     « cli/db.py » n'ajoute « .zip » que si le nom ne le porte pas déjà :
-    « --image x » et « --image x.zip » désignent la même archive. Ce qui
-    lit l'archive ici doit suivre la même règle, sinon il cherche
-    « x.zip.zip » et conclut à une image absente qu'Odoo, lui, restaure.
+    « --image x » et « --image x.zip » désignent la même archive. Une
+    valeur qui contient « / » est un chemin, gardé tel quel ; un nom nu vit
+    dans image_db/. Ce qui lit l'archive ici doit suivre la même règle,
+    sinon il cherche une archive qu'Odoo ne lit pas et conclut à une image
+    absente qu'Odoo, lui, restaure.
     """
     nom = image if image.endswith(".zip") else f"{image}.zip"
+    if "/" in nom:
+        return nom
     return os.path.join("image_db", nom)
+
+
+def nom_cache(image):
+    """Le cache de `image`, ou None quand l'image est un chemin.
+
+    Le même nom pour « x » et « x.zip », qui désignent la même archive.
+    Un chemin n'a pas de cache : deux archives de même nom dans deux
+    dossiers partageraient le leur, et l'une serait restaurée à la place
+    de l'autre sans que rien ne le dise.
+    """
+    if "/" in image:
+        return None
+    nom = image[: -len(".zip")] if image.endswith(".zip") else image
+    return f"_cache_{nom}"
 
 
 def verify_filestore(database, image):
@@ -1216,9 +1234,15 @@ def restaurer_cible(config, arg_base):
     passages vers la même base ne se la suppriment pas l'un à l'autre en
     pleine restauration. La liste se relit sous le verrou. Il se prend
     AVANT celui du cache, et jamais l'inverse : deux passages ne peuvent
-    s'attendre en croix.
+    s'attendre en croix. Une image donnée par un chemin est restaurée sans
+    cache, voir « nom_cache ».
     """
-    cache_database = f"_cache_{config.image}"
+    cache_database = nom_cache(config.image)
+    if cache_database is None and not config.ignore_cache:
+        _logger.info(
+            f"## {config.image} est un chemin : restauré sans cache ##"
+        )
+        config.ignore_cache = True
     if config.database == cache_database:
         raise SystemExit(
             f"❌ {config.database} est le cache de l'image {config.image} :"
