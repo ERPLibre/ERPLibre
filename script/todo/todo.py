@@ -120,6 +120,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import (
     dev_tools,
+    healthcheck,
     ssh_config,
     todo_etat,
     todo_install,
@@ -267,6 +268,7 @@ class TODO(
 [3] {t("Assistant")}
 [4] {t("Navigation telemetry (TUI)")}
 [5] {t("Configuration")}
+[6] {t("Healthcheck")}
 [0] 🚪 {t("Quit")}
 """
         while True:
@@ -295,6 +297,8 @@ class TODO(
                 self._todo_telemetry_tui()
             elif status == "5":
                 self.prompt_configuration()
+            elif status == "6":
+                self.prompt_healthcheck()
             # elif status == "3" or status == "install":
             #     print("install")
             else:
@@ -788,6 +792,7 @@ class TODO(
     # stables, pensés pour être copiés afin de situer précisément un menu.
     _MENU_LABELS = {
         "run": "TODO",
+        "prompt_healthcheck": "Healthcheck",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
         "prompt_assistant_llm": "LLM",
@@ -973,6 +978,68 @@ class TODO(
         if 0 <= idx < len(options):
             todo_prefs.set(key, options[idx][0])
             print(f"  ✅ {t(title)} : {self._pref_label(key)}")
+
+    def prompt_healthcheck(self):
+        """Vérifications à sec du checkout et de son environnement.
+
+        Les deux portées partent de la plus étroite — fichiers non commités,
+        ERPLibre seul — et chaque entrée de portée passe à la suivante. Elles
+        valent pour la durée du menu.
+        """
+        portee_fichiers = 0
+        portee_depots = 0
+        while True:
+            ctx = healthcheck.Contexte(
+                self._claude_context_root(),
+                fichiers=healthcheck.PORTEES_FICHIERS[portee_fichiers],
+                depots=healthcheck.PORTEES_DEPOTS[portee_depots],
+                etat_commande_claude=self._claude_command_state,
+                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+            )
+            choices = [
+                {"prompt_description": t("Run every check")},
+                {"section": t("Scope")},
+                {
+                    "prompt_description": (
+                        f"{t('Files:')} "
+                        f"{t(healthcheck.LIBELLES_FICHIERS[ctx.portee_fichiers])}"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Repositories:')} "
+                        f"{t(healthcheck.LIBELLES_DEPOTS[ctx.portee_depots])}"
+                    )
+                },
+                {"section": t("One check")},
+            ]
+            seules = list(healthcheck.VERIFICATIONS)
+            for _section, verification in seules:
+                choices.append(
+                    {"prompt_description": healthcheck.titre(verification)}
+                )
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            try:
+                numero = int(status)
+            except ValueError:
+                numero = -1
+            if numero == 0:
+                return
+            elif numero == 1:
+                healthcheck.lancer(ctx)
+            elif numero == 2:
+                portee_fichiers = (portee_fichiers + 1) % len(
+                    healthcheck.PORTEES_FICHIERS
+                )
+            elif numero == 3:
+                portee_depots = (portee_depots + 1) % len(
+                    healthcheck.PORTEES_DEPOTS
+                )
+            elif 4 <= numero < 4 + len(seules):
+                healthcheck.lancer(ctx, [seules[numero - 4]])
+            else:
+                print(t("Command not found !"))
 
     def prompt_configuration(self):
         """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).

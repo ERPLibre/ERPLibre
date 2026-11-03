@@ -1085,6 +1085,243 @@ TRANSLATIONS = {
         "fr": "Hooks git non exécutables : ",
         "en": "Git hooks not executable: ",
     },
+    # Healthcheck (menu principal [6])
+    "Healthcheck": {
+        "fr": "🩺 Healthcheck",
+        "en": "🩺 Healthcheck",
+    },
+    "Summary": {
+        "fr": "Sommaire",
+        "en": "Summary",
+    },
+    "Code checks": {
+        "fr": "Vérifications du code",
+        "en": "Code checks",
+    },
+    "Environment checks": {
+        "fr": "Vérifications de l'environnement",
+        "en": "Environment checks",
+    },
+    "Files:": {
+        "fr": "Fichiers :",
+        "en": "Files:",
+    },
+    "Repositories:": {
+        "fr": "Dépôts :",
+        "en": "Repositories:",
+    },
+    "uncommitted": {
+        "fr": "non commités",
+        "en": "uncommitted",
+    },
+    "changed since master": {
+        "fr": "modifiés depuis master",
+        "en": "changed since master",
+    },
+    "every tracked file": {
+        "fr": "tous les fichiers suivis",
+        "en": "every tracked file",
+    },
+    "ERPLibre only": {
+        "fr": "ERPLibre seulement",
+        "en": "ERPLibre only",
+    },
+    "ERPLibre and addons": {
+        "fr": "ERPLibre et les addons",
+        "en": "ERPLibre and addons",
+    },
+    "Git conflict in progress": {
+        "fr": "Conflit git en cours",
+        "en": "Git conflict in progress",
+    },
+    "Uncommitted files": {
+        "fr": "Fichiers non commités",
+        "en": "Uncommitted files",
+    },
+    "Unpushed commits": {
+        "fr": "Commits non poussés",
+        "en": "Unpushed commits",
+    },
+    "Comment hygiene": {
+        "fr": "Hygiène des commentaires",
+        "en": "Comment hygiene",
+    },
+    "Docs to regenerate (mmg)": {
+        "fr": "Docs à régénérer (mmg)",
+        "en": "Docs to regenerate (mmg)",
+    },
+    "Addons against the manifest": {
+        "fr": "Addons face au manifeste",
+        "en": "Addons against the manifest",
+    },
+    "Odoo venv": {
+        "fr": "Venv Odoo",
+        "en": "Odoo venv",
+    },
+    "Free disk space": {
+        "fr": "Espace disque libre",
+        "en": "Free disk space",
+    },
+    "Claude commands": {
+        "fr": "Commandes Claude",
+        "en": "Claude commands",
+    },
+    "compared with the known remote refs, without git fetch": {
+        "fr": "comparé aux refs distantes connues, sans git fetch",
+        "en": "compared with the known remote refs, without git fetch",
+    },
+    "not running": {
+        "fr": "arrêté",
+        "en": "not running",
+    },
+    "listening": {
+        "fr": "à l'écoute",
+        "en": "listening",
+    },
+    "no Python file in scope": {
+        "fr": "aucun fichier Python dans la portée",
+        "en": "no Python file in scope",
+    },
+    "no file in scope": {
+        "fr": "aucun fichier dans la portée",
+        "en": "no file in scope",
+    },
+    "no doc in scope": {
+        "fr": "aucune doc dans la portée",
+        "en": "no doc in scope",
+    },
+    "mmg is missing": {
+        "fr": "mmg est absent",
+        "en": "mmg is missing",
+    },
+    "mmg failed": {
+        "fr": "mmg a échoué",
+        "en": "mmg failed",
+    },
+    "not a git checkout": {
+        "fr": "pas un checkout git",
+        "en": "not a git checkout",
+    },
+    "no .erplibre-version": {
+        "fr": "aucun .erplibre-version",
+        "en": "no .erplibre-version",
+    },
+    "free on": {
+        "fr": "libres sur",
+        "en": "free on",
+    },
+    "not available": {
+        "fr": "non disponible",
+        "en": "not available",
+    },
+    "Claude Code is not set up": {
+        "fr": "Claude Code n'est pas configuré",
+        "en": "Claude Code is not set up",
+    },
+    "Redeploy: Execute › GPT code › Claude configs": {
+        "fr": "Redéployer : Exécution › GPT code › Claude configs",
+        "en": "Redeploy: Execute › GPT code › Claude configs",
+    },
+    "repositories": {
+        "fr": "dépôts",
+        "en": "repositories",
+    },
+    "conflicted files": {
+        "fr": "fichiers en conflit",
+        "en": "conflicted files",
+    },
+    "files checked": {
+        "fr": "fichiers vérifiés",
+        "en": "files checked",
+    },
+    "unreadable output": {
+        "fr": "sortie illisible",
+        "en": "unreadable output",
+    },
+    "docs up to date": {
+        "fr": "docs à jour",
+        "en": "docs up to date",
+    },
+    "files to reformat": {
+        "fr": "fichiers à reformater",
+        "en": "files to reformat",
+    },
+    "files to regenerate": {
+        "fr": "fichiers à régénérer",
+        "en": "files to regenerate",
+    },
+    "missing or broken": {
+        "fr": "absent ou cassé",
+        "en": "missing or broken",
+    },
+    "expected": {
+        "fr": "attendu",
+        "en": "expected",
+    },
+    "accepts connections": {
+        "fr": "accepte les connexions",
+        "en": "accepts connections",
+    },
+    "name": {
+        "fr": "nom",
+        "en": "name",
+    },
+    "no base branch": {
+        "fr": "aucune branche de base",
+        "en": "no base branch",
+    },
+    "unreadable by git": {
+        "fr": "illisible par git",
+        "en": "unreadable by git",
+    },
+    "no upstream": {
+        "fr": "sans upstream",
+        "en": "no upstream",
+    },
+    "commits": {
+        "fr": "commits",
+        "en": "commits",
+    },
+    "base not found:": {
+        "fr": "base introuvable :",
+        "en": "base not found:",
+    },
+    "Python files": {
+        "fr": "fichiers Python",
+        "en": "Python files",
+    },
+    "Run every check": {
+        "fr": "🩺 Tout vérifier",
+        "en": "🩺 Run every check",
+    },
+    "Scope": {
+        "fr": "Portée",
+        "en": "Scope",
+    },
+    "One check": {
+        "fr": "Une seule vérification",
+        "en": "One check",
+    },
+    "Odoo HTTP port": {
+        "fr": "Port HTTP d'Odoo",
+        "en": "Odoo HTTP port",
+    },
+    "Python formatting": {
+        "fr": "Formatage Python",
+        "en": "Python formatting",
+    },
+    "XML, JS, CSS and shell files are not checked": {
+        "fr": "les fichiers XML, JS, CSS et shell ne sont pas vérifiés",
+        "en": "XML, JS, CSS and shell files are not checked",
+    },
+    "missing tools:": {
+        "fr": "outils absents :",
+        "en": "missing tools:",
+    },
+    "Fix: make format": {
+        "fr": "Corriger : make format",
+        "en": "Fix: make format",
+    },
     # Sections du menu Git
     "Settings": {
         "fr": "Configuration",
