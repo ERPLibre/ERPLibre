@@ -391,14 +391,18 @@ docker rmi $(docker images -q)
 ```
 
 <!-- [en] -->
-Delete volumes
+Delete the volumes of this project: every database, the Odoo filestore and
+its configuration, for good. The command lists them, then asks for a `y` and
+for the project name typed again; any other answer deletes nothing.
 
 <!-- [fr] -->
-Supprimer les volumes
+Supprimer les volumes de ce projet : toutes les bases, le filestore d'Odoo et
+sa configuration, sans retour. La commande les liste, puis demande un `y` et
+le nom du projet retapé ; toute autre réponse n'efface rien.
 
 <!-- [common] -->
 ```bash
-docker compose rm -v
+make docker_volume_clean
 ```
 
 <!-- [en] -->

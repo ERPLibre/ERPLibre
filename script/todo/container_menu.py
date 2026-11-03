@@ -805,6 +805,11 @@ class ContainerMenuMixin:
             {"prompt_description": t("Run the tests")},
             {"prompt_description": t("Status of the git repositories")},
             {"prompt_description": t("Copy a file into the container")},
+            {
+                "prompt_description": t(
+                    "Delete the volumes: databases, filestore, configuration"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         scripts = {
@@ -813,6 +818,9 @@ class ContainerMenuMixin:
             "3": "./script/docker/docker_gen_config.sh",
             "4": "./script/docker/docker_make_test.sh",
             "5": "./script/docker/docker_repo_show_status.sh",
+            # Le script liste les volumes et demande lui-même ses deux
+            # confirmations : un « y », puis le nom du projet retapé.
+            "7": "./script/docker/docker_volume_clean.sh",
         }
         while True:
             status = click.prompt(help_info)

@@ -206,10 +206,12 @@ docker image prune
 docker rmi $(docker images -q)
 ```
 
-Supprimer les volumes
+Supprimer les volumes de ce projet : toutes les bases, le filestore d'Odoo et
+sa configuration, sans retour. La commande les liste, puis demande un `y` et
+le nom du projet retapé ; toute autre réponse n'efface rien.
 
 ```bash
-docker compose rm -v
+make docker_volume_clean
 ```
 
 Supprimer les conteneurs
