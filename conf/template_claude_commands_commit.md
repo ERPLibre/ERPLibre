@@ -89,6 +89,10 @@ so it would quietly declare the default instead of the truth.
 The first five cover every one of the last 400 commits. Reach for `[REM]`,
 `[MOV]` or `[I18N]` only when one of them genuinely fits better.
 
+A move is its own `[MOV]` commit, made before the `[REF]` that edits the moved
+code: a move mixed with edits reads to git as a deletion plus a new file, and
+`git log --follow` and the blame lose the history.
+
 ### Format
 
 ```
@@ -123,6 +127,10 @@ job — say what the code is about.
 **The test.** Read the subject alone, with no diff and no body. Can you say
 which part of the system it concerns, and what is now different about it? If
 not, it is not finished.
+
+**The imperative test.** The words after the colon complete the sentence "if
+applied, this commit will ...". `bugfix`, `improvements` and `changes` complete
+nothing: they are not summaries.
 
 **Name the thing, then what changed about it.** The symptom, the quoted error
 and the metaphor are EVIDENCE, and evidence belongs in the body. A subject
@@ -194,6 +202,19 @@ Keep, always: the failure mode the change removes, the figure that bounds it,
 and one line naming what you verified and how. A single `Checked: 4 jobs,
 1.63 s at parallelism 1 vs 0.58 s at 4` is worth three paragraphs of prose.
 
+- A `[FIX]` says in one sentence how the failure is reproduced: what to do,
+  what happens, what should happen instead — for the class of situation, not
+  the site where it was seen.
+- A performance figure names the workload and its volume, then before and
+  after: a speed-up without the record count it was measured on bounds
+  nothing.
+
+**Never present a guess as the report.** The diff gives the what; the why
+often lives outside it — the reported scenario, the measured figure. When it
+is not at hand, write from what the code and the tests show, tell the author
+which parts are derived and which are missing, and ask. A plausible reason
+invented to fill the body is worse than a question.
+
 Two tests decide what survives, and they apply to every sentence of the body.
 
 **Tense and subject.** Each sentence says what the code now does or refuses,
@@ -242,12 +263,17 @@ the work.
   link leads to a private exchange no reader of the repository can open, and
   it carries the investigation the message leaves to `tasks/`.
 - No blank line between trailers.
+- `Fixes #123` when the commit closes an issue of this repository's tracker.
+  Never invent a reference: link what exists, leave the trailer out otherwise.
 
 ### Rules
 
 - Subject: imperative mood, **72 characters maximum**, aim for 50.
 - `scope` is the Odoo technical module (`sale_order`, `account`, `stock`) or
   the area of the repository (`script todo`, `qemu ssh`, `migration`).
+  Several modules: `sale_order, stock:`. Many: the main one then `*`
+  (`sale_order, *:`), and the body names the modules `*` stands for.
+- A `[FIX]` comes with a test that fails without it, whenever one is possible.
 - The commit stands on its own: state what was verified, and how. If a claim
   was not checked, say so rather than implying it was. Standing on its own
   means it needs no OTHER COMMIT to be understood — not that it carries the
@@ -260,6 +286,11 @@ A patch under 30 lines in a single file is the reference point. Past ~500
 lines the policy asks for prior agreement with a maintainer — say so instead
 of committing quietly. When several unrelated modules are touched, propose
 splitting into separate commits before writing anything.
+
+Before a branch is integrated, squash the `fixup!` commits and the commits
+that answer a review into the commit they correct (`git rebase --autosquash`):
+the history keeps only commits that should land, each one standing on its
+own. Rewriting a pushed branch is the user's call — propose it, do not do it.
 
 ### Execute
 
