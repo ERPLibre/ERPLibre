@@ -123,9 +123,31 @@ TITRES = {
 }
 
 
+# L'icône de chaque vérification, devant son titre dans le menu, le rapport
+# et le sommaire. Un seul point de code par icône, sans sélecteur de
+# variante : le sommaire aligne les titres par leur longueur en caractères,
+# et une icône à deux points de code y décalerait sa ligne.
+ICONES_VERIFICATIONS = {
+    "verifier_conflits": "💥",
+    "verifier_non_commites": "📝",
+    "verifier_non_pousses": "📤",
+    "verifier_formatage": "🐍",
+    "verifier_hygiene": "🧼",
+    "verifier_docs": "📚",
+    "verifier_manifeste": "🧩",
+    "verifier_hooks": "🪝",
+    "verifier_venv": "🧪",
+    "verifier_disque": "💾",
+    "verifier_postgresql": "🐘",
+    "verifier_odoo": "🌐",
+    "verifier_commandes_claude": "🤖",
+}
+
+
 def titre(verification):
-    """Le titre traduit d'une vérification."""
-    return t(TITRES[verification.__name__])
+    """Le titre traduit d'une vérification, précédé de son icône."""
+    nom = verification.__name__
+    return f"{ICONES_VERIFICATIONS[nom]} {t(TITRES[nom])}"
 
 
 class Contexte:

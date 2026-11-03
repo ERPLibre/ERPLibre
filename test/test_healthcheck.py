@@ -378,6 +378,14 @@ class TestTraductions(unittest.TestCase):
         for _section, verification in h.VERIFICATIONS:
             self.assertIn(verification.__name__, h.TITRES)
 
+    def test_every_check_has_a_one_code_point_icon(self):
+        """Le sommaire aligne par len() : une icône suivie d'un sélecteur
+        de variante (U+FE0F) compterait deux et décalerait sa ligne."""
+        for _section, verification in h.VERIFICATIONS:
+            icone = h.ICONES_VERIFICATIONS[verification.__name__]
+            self.assertEqual(len(icone), 1, verification.__name__)
+            self.assertTrue(h.titre(verification).startswith(f"{icone} "))
+
 
 class TestMenu(unittest.TestCase):
     @classmethod

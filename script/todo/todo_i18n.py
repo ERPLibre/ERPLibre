@@ -1103,12 +1103,12 @@ TRANSLATIONS = {
         "en": "Environment checks",
     },
     "Files:": {
-        "fr": "Fichiers :",
-        "en": "Files:",
+        "fr": "📄 Fichiers :",
+        "en": "📄 Files:",
     },
     "Repositories:": {
-        "fr": "Dépôts :",
-        "en": "Repositories:",
+        "fr": "📁 Dépôts :",
+        "en": "📁 Repositories:",
     },
     "uncommitted": {
         "fr": "non commités",
