@@ -87,10 +87,13 @@ start_warmup() {
   python3 ./script/odoo/warmup_http.py -c "$ODOO_RC" -- "$@" 2>/dev/null &
 }
 
-# run_odoo ODOO_ARGS... : waits for PostgreSQL, then runs Odoo in the
-# foreground with the probe beside it. Odoo's exit status is the container's:
-# under "set -e" a failure ends the script with Odoo's code, and a success,
-# such as a --stop-after-init that went through, ends it with 0.
+# run_odoo ODOO_ARGS... : waits for PostgreSQL, then replaces this shell with
+# Odoo, the probe beside it. Odoo becomes the container's PID 1: it receives
+# the SIGTERM of "docker stop" itself and shuts down gracefully, where a shell
+# in PID 1 ignores it and the container is killed after the stop timeout.
+# Odoo's exit status is the container's. The probe, now Odoo's child, is
+# reaped by the prefork master; under --workers=0 it stays a zombie entry
+# until the container ends.
 run_odoo() {
   cd $ODOO_PREFIX
   if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
@@ -102,7 +105,7 @@ run_odoo() {
     odoo_args+=(-u all -d "${DB_NAME}")
   fi
   start_warmup "${odoo_args[@]}"
-  python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" "${DB_ARGS[@]}" -c "$ODOO_RC"
+  exec python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" "${DB_ARGS[@]}" -c "$ODOO_RC"
 }
 
 case "$1" in
