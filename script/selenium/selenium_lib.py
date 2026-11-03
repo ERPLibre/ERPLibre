@@ -266,6 +266,11 @@ fetch("/web/session/get_session_info", {
 """
 
 
+# La taille de fenêtre de Chrome quand --window_size n'est pas donné : celle
+# de Firefox headless, où les tours sont écrits et joués.
+CHROME_WINDOW_SIZE_DEFAULT = "1366,768"
+
+
 class SeleniumLib(object):
     # WebDriver BiDi, demandé à la création du pilote par qui en a besoin :
     # le lanceur des tours y pose l'enveloppe de la console avant les
@@ -275,6 +280,12 @@ class SeleniumLib(object):
 
     def __init__(self, config):
         self.config = config
+        # --use_firefox_driver vaut vrai par défaut : avec --use_chrome_driver,
+        # il désignerait encore Firefox là où il sert de test, et Chrome
+        # recevrait les extensions de Firefox. get_args le remet à faux, mais
+        # un appelant peut ne pas passer par lui.
+        if getattr(config, "use_chrome_driver", False):
+            config.use_firefox_driver = False
         self.wait_human_time = config.human_time_speed
         self.config_file = config_file.ConfigFile()
         self.kdbx = None
@@ -434,11 +445,16 @@ class SeleniumLib(object):
                 from selenium.webdriver.chrome.service import Service
 
                 chrome_options = ChromeOptions()
-                if self.config.window_size:
-                    # chrome_options.add_argument("--window-size=1920,1080")
-                    chrome_options.add_argument(
-                        f"--window-size={self.config.window_size}"
-                    )
+                # Sans --window_size, Chrome sans écran (headless, ou nœud
+                # d'une grille) ouvre une fenêtre étroite où le client web
+                # replie la barre de statut, et un tour qui y clique échoue.
+                # Il prend alors la taille qu'a Firefox headless.
+                chrome_options.add_argument(
+                    "--window-size="
+                    f"{self.config.window_size or CHROME_WINDOW_SIZE_DEFAULT}"
+                )
+                if self.config.headless:
+                    chrome_options.add_argument("--headless=new")
 
                 if self.bidi:
                     chrome_options.enable_bidi = True
@@ -452,10 +468,19 @@ class SeleniumLib(object):
                         command_executor=driver_url,
                     )
                 else:
-                    from webdriver_manager.chrome import ChromeDriverManager
-
+                    # webdriver_manager s'il est installé ; sinon Selenium
+                    # Manager, qu'embarque Selenium 4, trouve ou télécharge
+                    # le pilote lui-même.
+                    try:
+                        from webdriver_manager.chrome import (
+                            ChromeDriverManager,
+                        )
+                    except ImportError:
+                        ChromeDriverManager = None
                     service = Service(
-                        ChromeDriverManager().install(),
+                        ChromeDriverManager().install()
+                        if ChromeDriverManager
+                        else None,
                         log_path="/tmp/chromedriver.log",
                     )
                     chrome_options.enable_downloads = True
