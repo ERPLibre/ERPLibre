@@ -119,6 +119,21 @@ if [[ "$(head -c 2 -- "$PART_FILE")" != "PK" ]]; then
   exit 1
 fi
 
+# Odoo streams the backup without a Content-Length. When the transfer is cut
+# before the end — a worker killed by an Odoo limit, a proxy that gives up —
+# the connection simply closes, and curl, with no length to compare against,
+# reports success. Only the zip's central directory, written last, proves the
+# file whole.
+if ! python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).getinfo("manifest.json")' \
+  "$PART_FILE" 2>/dev/null; then
+  echo "Backup failed: the zip stops after $(wc -c <"$PART_FILE") bytes," \
+    "before its end." >&2
+  echo "The server or a proxy in front of it cut the transfer: look in the" \
+    "Odoo log for a worker limit (limit_time_cpu, limit_time_real," \
+    "limit_memory_hard), and in the proxy log." >&2
+  exit 1
+fi
+
 # mktemp creates its file 0600: the backup gets the mode the umask gives any
 # new file instead, as when curl wrote the destination itself.
 chmod -- "$(printf '%o' $((0666 & ~0$(umask))))" "$PART_FILE"

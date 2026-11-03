@@ -5,8 +5,9 @@
 
 `script/database/download_remote.sh` appelle curl, ici remplacé par un faux
 placé en tête du PATH, qui joue chaque réponse possible du serveur : un zip,
-la page HTML qu'Odoo rend avec un code 200 quand il refuse la sauvegarde, une
-écriture refusée (code 23), une erreur HTTP (code 22). Dans tous les cas
+la page HTML qu'Odoo rend avec un code 200 quand il refuse la sauvegarde, un
+zip coupé avant sa fin alors que curl rend 0, une écriture refusée (code 23),
+une erreur HTTP (code 22). Dans tous les cas
 d'échec, aucun fichier ne reste sous le nom final, et un fichier qui s'y
 trouvait déjà reste intact.
 
@@ -47,6 +48,7 @@ case "$FAUX_CURL_MODE" in
   html)
     printf '%s' '<html><div class="alert">Database backup error: Database &#39;essai_inconnue&#39; is not known</div></html>' > "$sortie"
     ;;
+  tronque) head -c 60 "$FAUX_CURL_ZIP" > "$sortie" ;;
   ecriture) : > "$sortie"; exit 23 ;;
   http) exit 22 ;;
 esac
@@ -125,6 +127,16 @@ class TestDownloadRemote(unittest.TestCase):
             sortie.stderr,
         )
 
+    def test_un_zip_coupe_avant_sa_fin_est_refuse(self):
+        """Odoo n'annonce pas de longueur : un transfert coupé finit comme
+        un transfert complet, et curl rend 0 sur un zip sans fin."""
+        sortie = self.lancer("tronque")
+        self.assertEqual(1, sortie.returncode)
+        self.assertFalse(self.cible.exists())
+        self.assertEqual([], self.restes())
+        self.assertIn("stops after 60 bytes", sortie.stderr)
+        self.assertNotIn("successfully", sortie.stdout)
+
     def test_une_ecriture_refusee_ne_laisse_aucun_zip_vide(self):
         sortie = self.lancer("ecriture")
         self.assertEqual(1, sortie.returncode)
@@ -135,7 +147,7 @@ class TestDownloadRemote(unittest.TestCase):
 
     def test_un_echec_ne_touche_pas_au_fichier_deja_la(self):
         self.cible.write_bytes(b"ancienne sauvegarde")
-        for mode in ("html", "ecriture", "http"):
+        for mode in ("html", "tronque", "ecriture", "http"):
             with self.subTest(mode=mode):
                 self.assertEqual(1, self.lancer(mode).returncode)
                 self.assertEqual(
