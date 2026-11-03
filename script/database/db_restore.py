@@ -1141,20 +1141,23 @@ def restore_or_clone(config, arg_base, cache_database):
     Le contrôle du filestore ne suit QUE les vraies restaurations. Le
     clone recopie sa source telle quelle : contrôler le miroir dirait
     deux fois la même chose, et la seconde au mauvais endroit.
+
+    L'appelant tient le verrou EXCLUSIF de config.database, voir
+    « restaurer_cible ». Le reprendre ici bloquerait ce processus sur
+    lui-même : « flock » verrouille par fichier ouvert, et un second
+    « open » du même verrou en est un autre.
     """
     if config.ignore_cache:
         _logger.info(
             f"## Restoring {config.image} to database {config.database} ##"
         )
-        with Verrou(config.database) as verrou:
-            verrou.prendre(exclusif=True)
-            restaurer(
-                arg_base,
-                config.image,
-                config.database,
-                neutralize=config.neutralize,
-            )
-            verify_filestore(config.database, config.image)
+        restaurer(
+            arg_base,
+            config.image,
+            config.database,
+            neutralize=config.neutralize,
+        )
+        verify_filestore(config.database, config.image)
         return
 
     with Verrou(cache_database) as verrou:
@@ -1188,6 +1191,49 @@ def restore_or_clone(config, arg_base, cache_database):
         print(redact_secrets(check_output(arg.split(" ")).decode()))
 
 
+def vider_caches(arg_base):
+    """Supprimer chaque cache « _cache_<image> », sous son verrou exclusif.
+
+    Le verrou attend la fin d'un clone ou d'une restauration en cours sur
+    ce cache, et aucun ne commence pendant la suppression. La liste se
+    relit une fois le verrou tenu : un autre passage a pu supprimer le
+    cache entre-temps.
+    """
+    for cache in get_list_db_cache(arg_base)[1]:
+        with Verrou(cache) as verrou:
+            verrou.prendre(exclusif=True)
+            if cache not in get_list_db_cache(arg_base)[1]:
+                continue
+            _logger.info(f"## Delete {cache} ##")
+            drop_database(arg_base, cache)
+
+
+def restaurer_cible(config, arg_base):
+    """Supprimer config.database puis la restaurer ou la cloner, sous son
+    verrou exclusif.
+
+    Le verrou tient de la suppression jusqu'à la fin du clone : deux
+    passages vers la même base ne se la suppriment pas l'un à l'autre en
+    pleine restauration. La liste se relit sous le verrou. Il se prend
+    AVANT celui du cache, et jamais l'inverse : deux passages ne peuvent
+    s'attendre en croix.
+    """
+    cache_database = f"_cache_{config.image}"
+    if config.database == cache_database:
+        raise SystemExit(
+            f"❌ {config.database} est le cache de l'image {config.image} :"
+            " choisissez une autre base cible."
+        )
+    with Verrou(config.database) as verrou:
+        verrou.prendre(exclusif=True)
+        if config.database in bases_existantes(arg_base):
+            _logger.info(f"## Drop {config.database} ##")
+            drop_database(arg_base, config.database)
+        if config.only_drop:
+            return
+        restore_or_clone(config, arg_base, cache_database)
+
+
 def main():
     config = get_config()
 
@@ -1217,24 +1263,11 @@ def main():
         else:
             _logger.info("No master password needed... Continue")
 
-    # Get list of database
-    lst_db, lst_db_cache = get_list_db_cache(arg_base)
-
     if config.clean_cache:
-        for db in lst_db_cache:
-            _logger.info(f"## Delete {db} ##")
-            drop_database(arg_base, db)
-        lst_db, lst_db_cache = get_list_db_cache(arg_base)
+        vider_caches(arg_base)
 
     if config.database:
-        cache_database = f"_cache_{config.image}"
-        # Drop db
-        if config.database in lst_db:
-            _logger.info(f"## Drop {config.database} ##")
-            drop_database(arg_base, config.database)
-        if config.only_drop:
-            return
-        restore_or_clone(config, arg_base, cache_database)
+        restaurer_cible(config, arg_base)
 
     if not config.clean_cache and not config.database:
         print("Nothing to do.")

@@ -96,6 +96,14 @@ class FauxOdoo:
             source, nom = args[3], args[4]
             self.bases[nom] = self.bases[source]
             return b""
+        if action == "drop":
+            # « drop_database » : la base vient d'être listée, son absence
+            # lève comme le ferait Odoo.
+            nom = args[3]
+            if self.bases.pop(nom, None) is None and nom not in self.bases:
+                raise subprocess.CalledProcessError(1, args, b"absente")
+            self.supprimees.append(nom)
+            return b""
         raise AssertionError(args)
 
     def charger(self, args, env=None):
@@ -528,6 +536,90 @@ class TestPassagesSimultanes(Base):
         self.assertEqual(len(restaurations), 1)
         self.assertTrue(odoo.bases["essai_a"])
         self.assertTrue(odoo.bases["essai_b"])
+
+
+class TestVerrousDeMain(Base):
+    """--clean_cache et la base cible passent par les mêmes verrous que la
+    restauration : ils attendent la fin d'un passage en cours."""
+
+    def guetter_attente(self):
+        attente = threading.Event()
+
+        class Guetteur(logging.Handler):
+            def emit(self, record):
+                if "attente" in record.getMessage():
+                    attente.set()
+
+        guetteur = Guetteur()
+        db_restore._logger.addHandler(guetteur)
+        self.addCleanup(db_restore._logger.removeHandler, guetteur)
+        return attente
+
+    def deux_passages(self, odoo, premier, second):
+        """Lance `premier`, bloqué en pleine restauration, puis `second` ;
+        rend (erreurs, attente vue)."""
+        cree, libere = threading.Event(), threading.Event()
+        attente = self.guetter_attente()
+        erreurs = []
+
+        def pendant(_nom):
+            if not cree.is_set():
+                cree.set()
+                libere.wait(10)
+
+        def passage(action):
+            try:
+                action()
+            except BaseException as erreur:  # noqa: BLE001
+                erreurs.append(erreur)
+
+        odoo.pendant_restauration = pendant
+        a = threading.Thread(target=passage, args=(premier,))
+        a.start()
+        self.assertTrue(cree.wait(10))
+        b = threading.Thread(target=passage, args=(second,))
+        b.start()
+        vue = attente.wait(10)
+        libere.set()
+        a.join(10)
+        b.join(10)
+        return erreurs, vue
+
+    def test_clean_cache_attend_la_restauration_du_cache(self):
+        odoo = self.brancher(FauxOdoo())
+        config = self.config(only_drop=False)
+        erreurs, vue = self.deux_passages(
+            odoo,
+            lambda: db_restore.restaurer_cible(config, ARG_BASE),
+            lambda: db_restore.vider_caches(ARG_BASE),
+        )
+        self.assertTrue(vue, "--clean_cache n'attend pas la restauration")
+        self.assertEqual(erreurs, [])
+        # Le clone a eu lieu AVANT la suppression du cache.
+        self.assertTrue(odoo.bases["essai_db"])
+        self.assertNotIn("_cache_essai", odoo.bases)
+
+    def test_deux_passages_vers_la_meme_cible_se_suivent(self):
+        odoo = self.brancher(FauxOdoo())
+        config = self.config(ignore_cache=True, only_drop=False)
+        erreurs, vue = self.deux_passages(
+            odoo,
+            lambda: db_restore.restaurer_cible(config, ARG_BASE),
+            lambda: db_restore.restaurer_cible(config, ARG_BASE),
+        )
+        self.assertTrue(vue, "le second passage n'attend pas le premier")
+        self.assertEqual(erreurs, [])
+        self.assertTrue(odoo.bases["essai_db"])
+        # Le second ne supprime qu'une base que le premier a FINIE.
+        self.assertEqual(odoo.supprimees, ["essai_db"])
+
+    def test_la_cible_ne_peut_pas_etre_le_cache(self):
+        odoo = self.brancher(FauxOdoo({"_cache_essai": True}))
+        config = self.config(database="_cache_essai", only_drop=False)
+        with self.assertRaises(SystemExit) as sortie:
+            db_restore.restaurer_cible(config, ARG_BASE)
+        self.assertIn("cache", str(sortie.exception))
+        self.assertTrue(odoo.bases["_cache_essai"])
 
 
 class TestPsql(unittest.TestCase):
