@@ -546,13 +546,13 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Git, le seul dont todo.json suit des entrées codées en dur.
+    """Le menu Git, où les entrées de todo.json s'insèrent entre sections.
 
-    Ses premières entrées sont écrites à la main, les suivantes viennent de
-    `git_from_makefile` et le repli générique les renumérote tout seul :
-    ajouter une entrée codée en dur pousse celles de todo.json d'un rang sans
-    que rien ne le dise. Une entrée codée en dur oubliée dans le dispatch
-    ferait lancer la commande du voisin sous le libellé attendu.
+    Les entrées de `git_from_makefile` vont dans la section que nomme leur
+    « menu_group » : leur nombre n'est pas connu à la lecture du source, donc
+    chaque entrée codée en dur porte « method » et aucune n'a de numéro
+    dans un « elif ». Une entrée codée en dur sans « method » lancerait la
+    commande de configuration du même rang sous son libellé.
     """
 
     SOURCE = TODO_DIR / "todo.py"
@@ -570,6 +570,103 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install opencode": "_shell_install_opencode",
         "🔃 Update git repo": "prompt_execute_git_repo",
     }
+
+
+class TestGitMenuSections(unittest.TestCase):
+    """Le menu Git tel qu'il s'affiche, entrées de todo.json comprises."""
+
+    @classmethod
+    def setUpClass(cls):
+        import json
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        cls.TODO = TODO
+        with open(TODO_DIR / "todo.json", encoding="utf-8") as fh:
+            cls.config = json.load(fh)["git_from_makefile"]
+
+    def setUp(self):
+        self.obj = self.TODO.__new__(self.TODO)
+
+    def libelles(self, choices):
+        """(section, libellé de l'entrée) dans l'ordre affiché."""
+        rangs, section = [], None
+        for c in choices:
+            if c.get("section"):
+                section = c["section"]
+                continue
+            libelle = c.get("prompt_description_key") or c.get(
+                "prompt_description"
+            )
+            rangs.append((section, libelle))
+        return rangs
+
+    def test_sections_and_order(self):
+        from script.todo.todo_i18n import t
+
+        rangs = self.libelles(self.obj._git_menu_choices(self.config))
+        self.assertEqual(
+            rangs,
+            [
+                (None, t("🔃 Update git repo")),
+                (
+                    t("Settings"),
+                    t("Install git hooks (commit-msg, pre-commit)"),
+                ),
+                (
+                    t("Settings"),
+                    t("Set merge.conflictStyle to zdiff3 (global)"),
+                ),
+                (t("Settings"), "Configure git local editor to vim"),
+                (t("Tools"), t("Add a remote to a local repository")),
+                (t("Tools"), "Generate git patch to /tmp"),
+                (t("Server"), t("Local git server")),
+                (t("Installation"), t("Install Starship on Shell")),
+                (t("Installation"), t("Install Claude Code")),
+                (t("Installation"), t("Install opencode")),
+            ],
+        )
+
+    def test_an_entry_without_group_lands_in_tools(self):
+        """« Ajouter une automatisation » écrit une entrée sans groupe."""
+        from script.todo.todo_i18n import t
+
+        ajout = {"prompt_description": "X", "bash_command": "true"}
+        inconnu = dict(ajout, prompt_description="Y", menu_group="zzz")
+        rangs = self.libelles(self.obj._git_menu_choices([ajout, inconnu]))
+        self.assertIn((t("Tools"), "X"), rangs)
+        self.assertIn((t("Tools"), "Y"), rangs)
+
+    def test_the_typed_number_skips_the_sections(self):
+        """[4] est l'éditeur vim, après trois entrées et une section."""
+        from unittest import mock
+
+        self.obj.config_file = mock.Mock()
+        self.obj.config_file.get_config.return_value = self.config
+        appels = []
+        with (
+            mock.patch.object(self.TODO, "fill_help_info", return_value=""),
+            mock.patch(
+                "script.todo.todo.click.prompt", side_effect=["4", "1", "0"]
+            ),
+            mock.patch.object(
+                self.TODO,
+                "execute_from_configuration",
+                lambda _self, inst: appels.append(inst["bash_command"]),
+                create=True,
+            ),
+            mock.patch.object(
+                self.TODO,
+                "prompt_execute_git_repo",
+                lambda _self: appels.append("repo"),
+            ),
+        ):
+            self.assertIs(self.obj.prompt_execute_git(), False)
+        self.assertEqual(
+            appels, ['git config --global core.editor "vim"', "repo"]
+        )
 
 
 class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):

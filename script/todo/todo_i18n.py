@@ -1068,6 +1068,15 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
+    # Sections du menu Git
+    "Settings": {
+        "fr": "Configuration",
+        "en": "Settings",
+    },
+    "Tools": {
+        "fr": "Outils",
+        "en": "Tools",
+    },
     # Git hooks
     # Starship
     "Install Starship on Shell": {

@@ -3097,86 +3097,95 @@ class TODO(
 
     def prompt_execute_git(self):
         print(f"🤖 {t('Git and shell management tools!')}")
-        choices = [
-            {"prompt_description": t("Local git server")},
-            {"prompt_description": t("Add a remote to a local repository")},
-            {
-                "prompt_description": t(
-                    "Install git hooks (commit-msg, pre-commit)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Set merge.conflictStyle to zdiff3 (global)"
-                )
-            },
-        ]
-
-        # Append config-driven entries
-        config_entries = self.config_file.get_config("git_from_makefile")
-        if config_entries:
-            choices.extend(config_entries)
-
-        # Starship ferme la liste : c'est un outil de shell, pas de git. Son
-        # rang dépend du nombre d'entrées venues de todo.json, donc « method »
-        # porte la destination dans l'entrée elle-même — un numéro codé en dur
-        # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
-        choices.append(
-            {
-                "prompt_description": t("Install Starship on Shell"),
-                "method": "_shell_install_starship",
-            }
+        choices = self._git_menu_choices(
+            self.config_file.get_config("git_from_makefile")
         )
-        choices.append(
-            {
-                "prompt_description": t("Install Claude Code"),
-                "method": "_shell_install_claude_code",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Install opencode"),
-                "method": "_shell_install_opencode",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("🔃 Update git repo"),
-                "method": "prompt_execute_git_repo",
-            }
-        )
-
         help_info = self.fill_help_info(choices)
+        # Les sections ne consomment pas de numéro : le numéro tapé indexe
+        # la liste des seules commandes, dans l'ordre de l'affichage.
+        commandes = [c for c in choices if not c.get("section")]
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == "1":
-                self.prompt_execute_git_local_server()
-            elif status == "2":
-                self._git_add_remote()
-            elif status == "3":
-                self._git_install_hooks()
-            elif status == "4":
-                self._git_set_conflict_style()
+            try:
+                numero = int(status)
+            except ValueError:
+                numero = 0
+            if not 0 < numero <= len(commandes):
+                print(t("Command not found !"))
+                continue
+            instance = commandes[numero - 1]
+            method = instance.get("method")
+            if method:
+                getattr(self, method)()
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        method = instance.get("method")
-                        if method:
-                            getattr(self, method)()
-                        else:
-                            self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+                self.execute_from_configuration(instance)
+
+    # Section où va une entrée de `git_from_makefile`, selon sa clé
+    # « menu_group ». Une entrée sans clé, ou à la clé inconnue, va dans les
+    # outils : c'est la forme qu'écrit « Ajouter une automatisation ».
+    _GIT_MENU_GROUPS = ("configuration", "tools")
+
+    def _git_menu_choices(self, config_entries):
+        """La liste du menu Git, sections comprises, dans l'ordre affiché.
+
+        Chaque entrée codée en dur porte sa destination dans « method » : les
+        entrées de todo.json s'insèrent au milieu des sections, donc aucun
+        rang n'est connu à la lecture du source.
+        """
+        groupes = {nom: [] for nom in self._GIT_MENU_GROUPS}
+        for entree in config_entries or []:
+            groupe = entree.get("menu_group")
+            if groupe not in groupes:
+                groupe = "tools"
+            groupes[groupe].append(entree)
+        return [
+            {
+                "prompt_description": t("🔃 Update git repo"),
+                "method": "prompt_execute_git_repo",
+            },
+            {"section": t("Settings")},
+            {
+                "prompt_description": t(
+                    "Install git hooks (commit-msg, pre-commit)"
+                ),
+                "method": "_git_install_hooks",
+            },
+            {
+                "prompt_description": t(
+                    "Set merge.conflictStyle to zdiff3 (global)"
+                ),
+                "method": "_git_set_conflict_style",
+            },
+            *groupes["configuration"],
+            {"section": t("Tools")},
+            {
+                "prompt_description": t("Add a remote to a local repository"),
+                "method": "_git_add_remote",
+            },
+            *groupes["tools"],
+            {"section": t("Server")},
+            {
+                "prompt_description": t("Local git server"),
+                "method": "prompt_execute_git_local_server",
+            },
+            {"section": t("Installation")},
+            {
+                "prompt_description": t("Install Starship on Shell"),
+                "method": "_shell_install_starship",
+            },
+            {
+                "prompt_description": t("Install Claude Code"),
+                "method": "_shell_install_claude_code",
+            },
+            {
+                "prompt_description": t("Install opencode"),
+                "method": "_shell_install_opencode",
+            },
+        ]
 
     def _git_add_remote(self):
         remote_name = (
