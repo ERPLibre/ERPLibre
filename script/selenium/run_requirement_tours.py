@@ -395,7 +395,10 @@ def jouer(config, selenium_tool, rpc, tours):
 def preparer_session(config, selenium_tool):
     """Ouvre la session navigateur ; rend un message d'erreur, ou None."""
     selenium_tool.driver.get(f"{config.url}/web/login?db={config.db}")
-    web_login.run(config, selenium_tool)
+    # Sans repli sur test/test : les verdicts sont écrits au nom du compte
+    # demandé, jamais d'un autre qui se trouverait accepter.
+    if not web_login.run(config, selenium_tool, no_try_test=True):
+        return "connexion navigateur refusée"
     selenium_tool.driver.get(f"{config.url}{config.start_path}")
     if "/web/login" in selenium_tool.driver.current_url:
         return "connexion navigateur refusée"

@@ -604,6 +604,17 @@ class TestPreparerRpc(unittest.TestCase):
 
 
 class TestPreparerSession(unittest.TestCase):
+    def test_un_refus_de_connexion_arrete_sans_repli(self):
+        """Les verdicts portent le nom du compte demandé : pas de repli
+        sur test/test, qui jouerait les tours sous un autre compte."""
+        outil = FauxOutil({})
+        with mock.patch.object(
+            rrt.web_login, "run", return_value=False
+        ) as connexion:
+            erreur = rrt.preparer_session(config(), outil)
+        self.assertEqual("connexion navigateur refusée", erreur)
+        self.assertTrue(connexion.call_args.kwargs["no_try_test"])
+
     def test_onboarding_non_coupe_est_une_erreur_d_outil(self):
         """La visite native achevée écrirait le même « tour succeeded »."""
         outil = FauxOutil({})

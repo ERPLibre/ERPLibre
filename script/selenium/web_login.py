@@ -12,9 +12,23 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from selenium.common.exceptions import (
+    StaleElementReferenceException,
+    WebDriverException,
+)
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
 from script.selenium import selenium_lib
+
+# Secondes laissées à la connexion pour aboutir ou être refusée. La première
+# ouverture de /odoo après un démarrage d'Odoo assemble les bundles d'assets,
+# et la page de connexion reste affichée tout ce temps.
+DELAI_CONNEXION = 60
+
+# L'alerte qu'Odoo affiche dans le formulaire quand il refuse l'identifiant
+# ou le mot de passe.
+ALERTE_REFUS = ".oe_login_form .alert-danger"
 
 
 def fill_parser(parser):
@@ -48,6 +62,45 @@ def fill_parser(parser):
     )
 
 
+def attendre_issue_connexion(
+    driver, page_avant, delai=DELAI_CONNEXION, pas=0.5
+):
+    """Attend l'issue d'un envoi du formulaire de connexion.
+
+    Rend True quand l'URL a quitté /web/login, False quand une NOUVELLE page
+    de connexion porte l'alerte de refus. `page_avant` est l'élément html de
+    la page d'avant l'envoi : tant qu'il n'est pas périmé, l'alerte visible
+    peut être celle d'un refus précédent, et ne compte pas. Ni l'un ni
+    l'autre au bout de `delai` secondes lève TimeoutException : un serveur
+    lent n'est pas un refus.
+    """
+
+    def issue(drv):
+        if "/web/login" not in drv.current_url:
+            return "connecte"
+        try:
+            page_avant.tag_name
+            return False
+        except StaleElementReferenceException:
+            pass
+        if drv.find_elements(By.CSS_SELECTOR, ALERTE_REFUS):
+            return "refuse"
+        return False
+
+    # Une page en cours de chargement fait lever le pilote : on réessaie.
+    attente = WebDriverWait(
+        driver,
+        delai,
+        poll_frequency=pas,
+        ignored_exceptions=(WebDriverException,),
+    )
+    resultat = attente.until(
+        issue,
+        message=f"connexion sans réponse au bout de {delai} s",
+    )
+    return resultat == "connecte"
+
+
 def run(
     config,
     selenium_tool,
@@ -55,6 +108,13 @@ def run(
     default_password_auth=None,
     no_try_test=False,
 ):
+    """Connecte le navigateur depuis la page /web/login ouverte.
+
+    Rend True une fois connecté, False si Odoo refuse les identifiants. Un
+    refus est retenté une fois avec test/test, sauf `no_try_test`. Lève
+    TimeoutException quand la connexion n'aboutit ni n'échoue dans le
+    délai, voir attendre_issue_connexion.
+    """
     # Trouvez les éléments du formulaire
     courriel_input = selenium_tool.get_element(by=By.NAME, value="login")
     mot_de_passe_input = selenium_tool.get_element(
@@ -65,7 +125,6 @@ def run(
         by=By.CSS_SELECTOR, value="[type='submit']"
     )
 
-    actual_url = selenium_tool.driver.current_url
     # try:
     #     connexion_button = selenium_tool.driver.find_element(
     #         By.XPATH,
@@ -96,6 +155,9 @@ def run(
     mot_de_passe_input.clear()
     courriel_input.send_keys(email_auth)
     mot_de_passe_input.send_keys(pass_auth)
+
+    # La page d'avant l'envoi, pour reconnaître la page qui lui succède.
+    page_avant = selenium_tool.driver.find_element(By.TAG_NAME, "html")
 
     # Cliquez sur le bouton "Connexion"
     try:
@@ -145,20 +207,17 @@ def run(
     #     )
     # )
 
-    if not no_try_test:
-        time.sleep(1)
-        if actual_url in [
-            selenium_tool.driver.current_url,
-            f"{selenium_tool.driver.current_url}?redirect=%2Fweb%3F",
-        ]:
-            run(
-                config,
-                selenium_tool,
-                default_email_auth="test",
-                default_password_auth="test",
-                no_try_test=True,
-            )
-            return
+    if not attendre_issue_connexion(selenium_tool.driver, page_avant):
+        if no_try_test:
+            print(f"Connexion refusée pour « {email_auth} ».")
+            return False
+        return run(
+            config,
+            selenium_tool,
+            default_email_auth="test",
+            default_password_auth="test",
+            no_try_test=True,
+        )
 
     # Remove chatbot if open, because will crash wizard div[4] (to div[5])
     selenium_tool.check_bot_chat_and_close()
@@ -185,6 +244,7 @@ def run(
     )
 
     print("End web_login.py")
+    return True
 
 
 def compute_args(args):
