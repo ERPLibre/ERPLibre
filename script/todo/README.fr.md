@@ -8,6 +8,16 @@ Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
 TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md).
 
+## Journal de session
+
+Chaque lancement écrit un journal sous `~/.local/state/erplibre/todo/`
+(`$XDG_STATE_HOME/erplibre/todo/` s'il est défini) ; TODO en affiche le
+chemin à l'entrée et à la sortie. Il garde les messages des loggers et, pour
+chaque commande que TODO lance, la commande, sa sortie et son code de retour,
+secrets caviardés comme à l'écran. Ce qu'on tape aux invites n'y est pas
+écrit. Les 30 journaux les plus récents restent ; `ERPLIBRE_TODO_LOG=0` le
+coupe.
+
 ## Où vit le code
 
 `todo.py` porte les menus et les aides générales. Tout ce qui tourne autour

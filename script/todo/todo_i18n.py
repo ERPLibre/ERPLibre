@@ -1588,6 +1588,10 @@ TRANSLATIONS = {
         "fr": "Temps d'exécution TODO",
         "en": "TODO execution time",
     },
+    "Session log:": {
+        "fr": "Journal de la session :",
+        "en": "Session log:",
+    },
     "Keyboard interrupt": {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",

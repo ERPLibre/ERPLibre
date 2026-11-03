@@ -90,6 +90,34 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
+# Le journal de session : un fichier texte ouvert par celui qui lance le
+# processus (script/todo/todo_journal.py pour le TODO), où exec_command_live
+# recopie chaque commande, sa sortie et son code de retour, caviardés comme à
+# l'écran. Commun à toutes les instances d'Execute du processus, à côté du
+# log_sink propre à une instance. None : rien n'est recopié.
+_session_journal = None
+
+
+def set_session_journal(handle):
+    """Désigne le fichier du journal de session, ou None pour l'arrêter."""
+    global _session_journal
+    _session_journal = handle
+
+
+def _journaliser(texte):
+    """Écrit dans le journal de session ; une erreur l'arrête, sans lever.
+
+    Un disque plein ou un fichier effacé ne doit jamais faire échouer la
+    commande qu'on est en train de suivre.
+    """
+    global _session_journal
+    if _session_journal is None:
+        return
+    try:
+        _session_journal.write(texte)
+    except Exception:
+        _session_journal = None
+
 
 class Execute:
     def __init__(self) -> None:
@@ -184,6 +212,9 @@ class Execute:
         if not quiet:
             print("🏠 ⬇ Execute command :\n")
             print(redact_secrets(command))
+        _journaliser(
+            f"\n[{datetime.datetime.now():%H:%M:%S}] $ {redact_secrets(command)}\n"
+        )
         output_lines = []
 
         try:
@@ -223,6 +254,7 @@ class Execute:
                 # (« set -x », une trace, odoo_bin.sh) y remettrait le secret
                 # que l'affichage de la commande venait d'écarter.
                 clean = redact_secrets(ligne)
+                _journaliser(clean)
                 if sink:
                     # Chaque ligne passe DÉJÀ ici : c'est le seul endroit où
                     # journaliser sans rien changer à ce que le terminal
@@ -276,6 +308,9 @@ class Execute:
                     print(redact_secrets(pending[shown:]), end="")
                     sys.stdout.flush()
                 retenir(pending)
+                if not pending.endswith("\n"):
+                    # Le code de retour qui suit ouvre sa propre ligne.
+                    _journaliser("\n")
 
             process.wait()
             exit_code = process.returncode
@@ -288,14 +323,17 @@ class Execute:
         # prompt. A crashed command was therefore recorded as a success.
         except FileNotFoundError:
             exit_code = 1
+            _journaliser("Error: command not found.\n")
             if not quiet:
                 print(f"Error: Command '{redact_secrets(command)}' not found.")
         except Exception as e:
             exit_code = 1
+            _journaliser(f"An error occurred: {redact_secrets(str(e))}\n")
             if not quiet:
                 print(f"An error occurred: {redact_secrets(str(e))}")
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
+        _journaliser(f"[code {exit_code}, {duration_sec:.1f} s]\n")
         if humanize:
             duration_delta = datetime.timedelta(seconds=duration_sec)
             human_time = humanize.precisedelta(duration_delta)
