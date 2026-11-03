@@ -973,9 +973,10 @@ class TestTheMigrationWiring(unittest.TestCase):
         self.assertIn("sys.stdin.isatty()", src[debut:fin])
 
     def test_the_clone_path_still_offers_nothing(self):
+        # Du clone à la fin de « restore_or_clone » : rien ne range.
         src = self.source("script/database/db_restore.py")
         debut = src.index("{arg_base} duplicate")
-        fin = src.index("verify_filestore(config.database", debut)
+        fin = src.index("\ndef ", debut)
         self.assertNotIn("offer_tidy", src[debut:fin])
 
 
@@ -1085,19 +1086,28 @@ class TestTheRestoreWiring(unittest.TestCase):
             return handle.read()
 
     def test_db_restore_checks_after_a_real_restore(self):
+        # La définition, puis un appel après chacune des deux vraies
+        # restaurations : la directe (« --ignore_cache ») et celle du cache.
         src = self.source("script/database/db_restore.py")
         self.assertEqual(src.count("verify_filestore("), 3)
-        self.assertIn(
-            "if config.ignore_cache:\n"
-            "        verify_loaded(config.database, arg_base)\n"
-            "        verify_filestore(config.database",
-            src,
+        debut = src.index("def restore_or_clone")
+        corps = src[debut : src.index("\ndef ", debut)]
+        direct = corps.index("if config.ignore_cache:")
+        fin_direct = corps.index("return", direct)
+        self.assertLess(
+            corps.index("restaurer(", direct),
+            corps.index("verify_filestore(config.database", direct),
+            "le contrôle d'après-restauration directe ne la suit plus",
+        )
+        self.assertLess(
+            corps.index("verify_filestore(config.database", direct),
+            fin_direct,
             "le contrôle d'après-restauration directe n'est plus gardé"
             " par ignore_cache",
         )
         self.assertIn(
-            "not config.ignore_cache:",
-            src,
+            "if cache_database not in lst_db_cache",
+            corps,
             "la création du cache n'est plus conditionnée",
         )
 
@@ -1111,7 +1121,7 @@ class TestTheRestoreWiring(unittest.TestCase):
         self.assertIn(
             marque, src, "le contrôle d'après-restauration a disparu"
         )
-        fin = src.index(marque, debut)
+        fin = src.index("\ndef ", debut)
         self.assertNotIn("verify_filestore", src[debut:fin])
 
     def test_the_analyse_menu_offers_the_tool(self):
