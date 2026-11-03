@@ -65,36 +65,55 @@ check_config "db_password" "$PASSWORD"
 cd /ERPLibre
 source .venv.$(cat ".erplibre-version" | xargs)/bin/activate
 
+# start_warmup ODOO_ARGS... : runs script/odoo/warmup_http.py in the
+# background, as run.sh does. Odoo loads a database registry on the first
+# request for it, tens of seconds on a migrated database; the probe takes that
+# wait instead of the first visitor. It reads the port from ODOO_ARGS, then
+# from ODOO_RC, stops at the first HTTP answer or after two minutes, and ends
+# with the container at the latest. Skipped with
+# ERPLIBRE_DISABLE_WARMUP_HTTP=True, or when Odoo serves no HTTP. ODOO_ARGS
+# never carries DB_ARGS: the probe has no use for the database password.
+start_warmup() {
+  if [[ "${ERPLIBRE_DISABLE_WARMUP_HTTP}" == "True" ]] \
+    || [ ! -f ./script/odoo/warmup_http.py ]; then
+    return 0
+  fi
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --no-http | --stop-after-init) return 0 ;;
+    esac
+  done
+  python3 ./script/odoo/warmup_http.py -c "$ODOO_RC" -- "$@" 2>/dev/null &
+}
+
+# run_odoo ODOO_ARGS... : waits for PostgreSQL, then runs Odoo in the
+# foreground with the probe beside it.
+run_odoo() {
+  cd $ODOO_PREFIX
+  if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
+    sleep 999999
+  fi
+  python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+  local odoo_args=("$@")
+  if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
+    odoo_args+=(-u all -d "${DB_NAME}")
+  fi
+  start_warmup "${odoo_args[@]}"
+  python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" "${DB_ARGS[@]}" -c "$ODOO_RC"
+}
+
 case "$1" in
   -- | odoo)
     shift
     if [[ "$1" == "scaffold" ]]; then
       exec odoo "$@" || exec odoo-bin "$@"
     else
-      cd $ODOO_PREFIX
-      if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
-        sleep 999999
-      fi
-      python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
-      if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
-        # --stop-after-init
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC" -u all -d "${DB_NAME}"
-      else
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC"
-      fi
+      run_odoo "$@"
     fi
     ;;
   -*)
-    cd $ODOO_PREFIX
-    if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
-      sleep 999999
-    fi
-    python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
-    if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC" -u all -d "${DB_NAME}"
-    else
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c "$ODOO_RC"
-    fi
+    run_odoo "$@"
     ;;
   *)
     exec "$@"
