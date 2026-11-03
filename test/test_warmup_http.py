@@ -337,5 +337,41 @@ class TestHowRunShWiresIt(unittest.TestCase):
         self.assertIn('-- "${EL_ARGS[@]}" 2>/dev/null &', self.source)
 
 
+class TestEveryWorker(unittest.TestCase):
+    """En prefork, chaque worker charge son registre : une sonde chacun."""
+
+    def _config(self, contenu):
+        vrai = warmup.lib_analyse.read_config
+        warmup.lib_analyse.read_config = lambda *a, **k: contenu
+        self.addCleanup(setattr, warmup.lib_analyse, "read_config", vrai)
+
+    def test_the_command_line_gives_the_count(self):
+        self._config({"workers": "8"})
+        self.assertEqual(warmup.nombre_de_workers(["--workers", "3"]), 3)
+        self.assertEqual(warmup.nombre_de_workers(["--workers=4"]), 4)
+
+    def test_otherwise_the_config_gives_it(self):
+        self._config({"workers": "2"})
+        self.assertEqual(warmup.nombre_de_workers([]), 2)
+
+    def test_threaded_or_unreadable_means_one(self):
+        for valeur in ("0", "", "False", "deux"):
+            self._config({"workers": valeur})
+            self.assertEqual(warmup.nombre_de_workers([]), 1, valeur)
+
+    def test_the_probes_run_at_the_same_time(self):
+        """Une sonde bloquée tant que toutes ne sont pas parties : en série,
+        la première attendrait les autres pour toujours."""
+        import threading
+
+        toutes = threading.Barrier(3, timeout=5)
+
+        def sonde(cible, delai_total):
+            toutes.wait()
+            return True
+
+        self.assertEqual(warmup.sonder_tous("http://x", 3, sonde=sonde), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
