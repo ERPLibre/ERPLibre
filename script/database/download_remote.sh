@@ -62,31 +62,66 @@ fi
 
 ODOO_BACKUP_URL="${ODOO_URL}/web/database/backup"
 
+# --- Destination ---
+# The download goes to a temporary file beside the destination, renamed only
+# once it is a zip: a failure never leaves a truncated or empty .zip under
+# the final name, and never touches a file already there. Creating it now
+# also refuses a missing or read-only directory before the server spends
+# minutes preparing the dump.
+OUTPUT_DIR="$(dirname -- "$OUTPUT_FILE_PATH")"
+if ! PART_FILE="$(mktemp -- "${OUTPUT_FILE_PATH}.part.XXXXXX" 2>/dev/null)"; then
+  echo "Backup failed: cannot write to '${OUTPUT_DIR}'." >&2
+  exit 1
+fi
+trap 'rm -f -- "$PART_FILE"' EXIT
+
 # --- Curl Command to Download Database ---
 echo "Starting Odoo database backup for '${DATABASE_NAME}' from '${ODOO_BACKUP_URL}' to path '${OUTPUT_FILE_PATH}'..."
 
+CURL_ARGS=(
+  -X POST
+  --fail
+  -F "master_pwd=$MASTER_PWD"
+  -F "name=$DATABASE_NAME"
+  -F "backup_format=$BACKUP_FORMAT"
+  -o "$PART_FILE"
+)
 if [ "$QUIET_MODE" = false ]; then
-  curl -X POST \
-    -F "master_pwd=$MASTER_PWD" \
-    -F "name=$DATABASE_NAME" \
-    -F "backup_format=$BACKUP_FORMAT" \
-    -o "$OUTPUT_FILE_PATH" \
-    --progress-bar \
-    "$ODOO_BACKUP_URL"
-else
-  curl -X POST \
-    -F "master_pwd=$MASTER_PWD" \
-    -F "name=$DATABASE_NAME" \
-    -F "backup_format=$BACKUP_FORMAT" \
-    -o "$OUTPUT_FILE_PATH" \
-    "$ODOO_BACKUP_URL"
+  CURL_ARGS+=(--progress-bar)
 fi
 
+curl "${CURL_ARGS[@]}" "$ODOO_BACKUP_URL"
+CURL_STATUS=$?
+
 # --- Verification ---
-if [[ $? -eq 0 ]]; then
-  echo "Backup completed successfully!"
-  echo "File saved to: $OUTPUT_FILE_PATH"
-else
-  echo "Backup failed. Please check the logs." >&2
+if [[ $CURL_STATUS -ne 0 ]]; then
+  echo "Backup failed: curl exited with code ${CURL_STATUS}." >&2
+  # 23: curl could not write what it received.
+  if [[ $CURL_STATUS -eq 23 ]]; then
+    echo "Writing to '${OUTPUT_DIR}' failed: check its free space (df -h)." >&2
+  fi
   exit 1
 fi
+
+# Odoo answers a refused backup (unknown database, wrong master password)
+# with HTTP 200 and an HTML page: only the zip signature tells them apart.
+if [[ "$(head -c 2 -- "$PART_FILE")" != "PK" ]]; then
+  REASON="$(grep -o -m 1 'Database backup error: [^<]*' -- "$PART_FILE" |
+    sed -e "s/&#39;/'/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' \
+      -e 's/&amp;/\&/g')"
+  echo "Backup failed: the server did not send a zip." >&2
+  if [[ -n "$REASON" ]]; then
+    echo "$REASON" >&2
+  fi
+  exit 1
+fi
+
+# mktemp creates its file 0600: the backup gets the mode the umask gives any
+# new file instead, as when curl wrote the destination itself.
+chmod -- "$(printf '%o' $((0666 & ~0$(umask))))" "$PART_FILE"
+if ! mv -- "$PART_FILE" "$OUTPUT_FILE_PATH"; then
+  echo "Backup failed: cannot rename to '${OUTPUT_FILE_PATH}'." >&2
+  exit 1
+fi
+echo "Backup completed successfully!"
+echo "File saved to: $OUTPUT_FILE_PATH"
