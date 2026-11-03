@@ -1,0 +1,111 @@
+diff --git a/.claude/skills/odoo-git/SKILL.md b/.claude/skills/odoo-git/SKILL.md
+index b767834..9f0b97c 100644
+--- a/.claude/skills/odoo-git/SKILL.md
++++ b/.claude/skills/odoo-git/SKILL.md
+@@ -5,11 +5,18 @@ description: >-
+   why-first body, reference trailers), which branch a change targets, branch
+   naming, and pull request hygiene. Use when writing or amending a commit
+   message, choosing the branch a fix or feature goes to, or opening or
+-  updating a pull request on an Odoo repository.
++  updating a pull request in a repository that
++  script/git/commit_convention.py classifies as odoo or oca. Never for
++  ERPLibre's own repositories, which follow the /commit convention.
+ ---
+ 
+ # Odoo git conventions
+ 
++> **ERPLibre:** read [ERPLIBRE.md](ERPLIBRE.md) in this directory before
++> applying anything below. Its entries override this text where Odoo 18
++> (ERPLibre's default) or an earlier version differs from the master/20
++> version it was written for, and where ERPLibre or OCA conventions apply.
++
+ These conventions apply to every commit and pull request on an Odoo repository
+ (community, enterprise, and their forks). They are house rules, not general git
+ advice.
+diff --git a/.claude/skills/odoo-guidelines/SKILL.md b/.claude/skills/odoo-guidelines/SKILL.md
+index 6128068..85cbdbe 100644
+--- a/.claude/skills/odoo-guidelines/SKILL.md
++++ b/.claude/skills/odoo-guidelines/SKILL.md
+@@ -10,6 +10,11 @@ description: >-
+ 
+ # Odoo addon guidelines
+ 
++> **ERPLibre:** read [ERPLIBRE.md](ERPLIBRE.md) in this directory before
++> applying anything below. Its entries override this text where Odoo 18
++> (ERPLibre's default) or an earlier version differs from the master/20
++> version it was written for, and where ERPLibre or OCA conventions apply.
++
+ House rules for code in Odoo addons (`addons/*` and `odoo/addons/*`).
+ Everything an addon ships under `static/` has its own skill:
+ `odoo-web-guidelines`.
+diff --git a/.claude/skills/odoo-review/SKILL.md b/.claude/skills/odoo-review/SKILL.md
+index 7339129..cdfe438 100644
+--- a/.claude/skills/odoo-review/SKILL.md
++++ b/.claude/skills/odoo-review/SKILL.md
+@@ -3,11 +3,17 @@ name: odoo-review
+ description: >-
+   Review Odoo addon code against the house rules, dispatching each changed
+   file to the matching odoo-guidelines, odoo-web-guidelines, and
+-  odoo-security material. Use when reviewing a diff, commit, PR, or module.
++  odoo-security material. Use when reviewing a diff, commit, PR, or module
++  that touches an Odoo addon (a directory holding a __manifest__.py).
+ ---
+ 
+ # Reviewing Odoo code
+ 
++> **ERPLibre:** read [ERPLIBRE.md](ERPLIBRE.md) in this directory before
++> applying anything below. Its entries override this text where Odoo 18
++> (ERPLibre's default) or an earlier version differs from the master/20
++> version it was written for, and where ERPLibre or OCA conventions apply.
++
+ A review has two passes. The house rules, which live in three sibling skills
+ next to this skill's base directory and are read fresh for every review, are
+ the floor. The change is then judged on its merits, as its author's most
+diff --git a/.claude/skills/odoo-security/SKILL.md b/.claude/skills/odoo-security/SKILL.md
+index 602f254..d4d86ee 100644
+--- a/.claude/skills/odoo-security/SKILL.md
++++ b/.claude/skills/odoo-security/SKILL.md
+@@ -5,12 +5,18 @@ description: >-
+   sudo), injection (SQL, domain, eval, XSS via Markup/markup()), untrusted
+   public methods/RPC,
+   controller auth/CSRF, file access, deserialization, returning complex
+-  objects, getattr/setattr, timing attacks. Use when auditing an addon, or
+-  judging whether a specific construct (a sudo, raw SQL, a route, ...) is safe.
++  objects, getattr/setattr, timing attacks. Use when auditing an Odoo addon,
++  or judging whether a specific construct in one (a sudo, raw SQL, a route,
++  ...) is safe.
+ ---
+ 
+ # Security audit of Odoo code
+ 
++> **ERPLibre:** read [ERPLIBRE.md](ERPLIBRE.md) in this directory before
++> applying anything below. Its entries override this text where Odoo 18
++> (ERPLibre's default) or an earlier version differs from the master/20
++> version it was written for, and where ERPLibre or OCA conventions apply.
++
+ Audit Odoo addons for the framework-specific ways access control and injection
+ go wrong. When a feature needs more access than the rules give, it gets the
+ minimum, in the narrowest scope, with a comment saying why; a silent widening
+diff --git a/.claude/skills/odoo-web-guidelines/SKILL.md b/.claude/skills/odoo-web-guidelines/SKILL.md
+index 0941a96..aebcaec 100644
+--- a/.claude/skills/odoo-web-guidelines/SKILL.md
++++ b/.claude/skills/odoo-web-guidelines/SKILL.md
+@@ -4,11 +4,17 @@ description: >-
+   House rules for the web framework code of Odoo addons: the JavaScript,
+   Owl templates and SCSS in static/src/ and static/tests/ of any addon
+   (community, enterprise, or custom). Use when writing, reviewing, or
+-  moving files under static/ in an Odoo addon.
++  moving files under static/ in an Odoo addon. Not for the ERPLibre
++  mobile app under mobile/, which is not an addon.
+ ---
+ 
+ # Odoo web guidelines
+ 
++> **ERPLibre:** read [ERPLIBRE.md](ERPLIBRE.md) in this directory before
++> applying anything below. Its entries override this text where Odoo 18
++> (ERPLibre's default) or an earlier version differs from the master/20
++> version it was written for, and where ERPLibre or OCA conventions apply.
++
+ These rules apply to the web framework code an addon ships in `static/src/` and
+ `static/tests/`: JavaScript, Owl templates (XML) and SCSS. They do not apply to
+ `static/lib/`, which holds vendored or library-style code, nor to the images and
