@@ -40,30 +40,26 @@ elif [[ "$ENV" == "dev" ]] && [ -z ${CURRENT_UID} ]; then
   exit 1
 fi
 
-# set the postgres database host, port, user and password according to the environment
-# and pass them as arguments to the odoo process if not present in the config file
+# The PostgreSQL host, port, user and password come from the environment,
+# unless the configuration file already sets them.
 : ${HOST:=${DB_PORT_5432_TCP_ADDR:='db'}}
 : ${PORT:=${DB_PORT_5432_TCP_PORT:=5432}}
 : ${USER:=${DB_ENV_POSTGRES_USER:=${POSTGRES_USER:='odoo'}}}
 : ${PASSWORD:=${DB_ENV_POSTGRES_PASSWORD:=${POSTGRES_PASSWORD:='odoo'}}}
 
-DB_ARGS=()
-function check_config() {
-  param="$1"
-  value="$2"
-  if grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC"; then
-    value=$(grep -E "^\s*\b${param}\b\s*=" "$ODOO_RC" | cut -d " " -f3 | sed 's/["\n\r]//g')
-  fi
-  DB_ARGS+=("--${param}")
-  DB_ARGS+=("${value}")
-}
-check_config "db_host" "$HOST"
-check_config "db_port" "$PORT"
-check_config "db_user" "$USER"
-check_config "db_password" "$PASSWORD"
-
 cd /ERPLibre
 source .venv.$(cat ".erplibre-version" | xargs)/bin/activate
+
+# They reach Odoo and wait-for-psql.py through a private copy of the
+# configuration (0600, in the container's temporary directory), never through
+# their arguments: any account on the container's host reads a process's
+# arguments with ps, Odoo's for its whole life. The copy is written from the
+# environment, so the password crosses no command line on the way either.
+RUNTIME_ODOO_RC="${TMPDIR:-/tmp}/odoo_runtime.conf"
+ERPLIBRE_DB_HOST="$HOST" ERPLIBRE_DB_PORT="$PORT" ERPLIBRE_DB_USER="$USER" \
+  ERPLIBRE_DB_PASSWORD="$PASSWORD" \
+  python3 /ERPLibre/docker/odoo_rc_db.py "$ODOO_RC" "$RUNTIME_ODOO_RC"
+export ODOO_RC="$RUNTIME_ODOO_RC"
 
 # start_warmup ODOO_ARGS... : runs script/odoo/warmup_http.py in the
 # background, as run.sh does. Odoo loads a database registry on the first
@@ -71,8 +67,7 @@ source .venv.$(cat ".erplibre-version" | xargs)/bin/activate
 # wait instead of the first visitor. It reads the port from ODOO_ARGS, then
 # from ODOO_RC, stops at the first HTTP answer or after two minutes, and ends
 # with the container at the latest. Skipped with
-# ERPLIBRE_DISABLE_WARMUP_HTTP=True, or when Odoo serves no HTTP. ODOO_ARGS
-# never carries DB_ARGS: the probe has no use for the database password.
+# ERPLIBRE_DISABLE_WARMUP_HTTP=True, or when Odoo serves no HTTP.
 start_warmup() {
   if [[ "${ERPLIBRE_DISABLE_WARMUP_HTTP}" == "True" ]] \
     || [ ! -f ./script/odoo/warmup_http.py ]; then
@@ -99,13 +94,13 @@ run_odoo() {
   if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
     sleep 999999
   fi
-  python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+  python3 ./docker/wait-for-psql.py --config "$ODOO_RC" --timeout=30
   local odoo_args=("$@")
   if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
     odoo_args+=(-u all -d "${DB_NAME}")
   fi
   start_warmup "${odoo_args[@]}"
-  exec python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" "${DB_ARGS[@]}" -c "$ODOO_RC"
+  exec python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" -c "$ODOO_RC"
 }
 
 case "$1" in
