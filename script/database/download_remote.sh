@@ -78,10 +78,13 @@ trap 'rm -f -- "$PART_FILE"' EXIT
 # --- Curl Command to Download Database ---
 echo "Starting Odoo database backup for '${DATABASE_NAME}' from '${ODOO_BACKUP_URL}' to path '${OUTPUT_FILE_PATH}'..."
 
+# The master password goes through curl's standard input ("<-"), never its
+# arguments: any account on the host reads those with ps for the whole
+# download. printf is a shell builtin, so it never shows up there either.
 CURL_ARGS=(
   -X POST
   --fail
-  -F "master_pwd=$MASTER_PWD"
+  -F "master_pwd=<-"
   -F "name=$DATABASE_NAME"
   -F "backup_format=$BACKUP_FORMAT"
   -o "$PART_FILE"
@@ -90,7 +93,7 @@ if [ "$QUIET_MODE" = false ]; then
   CURL_ARGS+=(--progress-bar)
 fi
 
-curl "${CURL_ARGS[@]}" "$ODOO_BACKUP_URL"
+curl "${CURL_ARGS[@]}" "$ODOO_BACKUP_URL" < <(printf '%s' "$MASTER_PWD")
 CURL_STATUS=$?
 
 # --- Verification ---

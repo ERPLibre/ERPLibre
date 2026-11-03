@@ -31,9 +31,11 @@ from script.todo import database_manager
 RACINE = Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script/database/download_remote.sh"
 
-# Le faux curl : trouve la valeur de -o, se note comme appelé, puis joue le
-# mode demandé par FAUX_CURL_MODE.
+# Le faux curl : note ses arguments, un par ligne, et son entrée standard,
+# trouve la valeur de -o, puis joue le mode demandé par FAUX_CURL_MODE.
 FAUX_CURL = r"""#!/usr/bin/env bash
+printf '%s\n' "$@" > "$FAUX_CURL_APPELE"
+cat > "$FAUX_CURL_APPELE.stdin"
 sortie=""
 while [ $# -gt 0 ]; do
   if [ "$1" = "-o" ]; then sortie="$2"; shift; fi
@@ -100,6 +102,18 @@ class TestDownloadRemote(unittest.TestCase):
         self.assertEqual(0, sortie.returncode, sortie.stderr)
         self.assertEqual(self.zip.read_bytes(), self.cible.read_bytes())
         self.assertEqual([], self.restes())
+
+    def test_le_mot_de_passe_passe_par_l_entree_standard(self):
+        """Absent des arguments, que tout compte du poste lit par ps ;
+        transmis à l'octet, sans saut de ligne ajouté."""
+        mot_de_passe = "mdp essai ; & ' \" $HOME"
+        self.env["MASTER_PWD"] = mot_de_passe
+        self.assertEqual(0, self.lancer("zip").returncode)
+        arguments = self.appele.read_text(encoding="utf-8")
+        self.assertNotIn("mdp essai", arguments)
+        self.assertIn("master_pwd=<-", arguments.splitlines())
+        entree = Path(f"{self.appele}.stdin").read_text(encoding="utf-8")
+        self.assertEqual(mot_de_passe, entree)
 
     def test_la_page_d_erreur_d_odoo_n_est_pas_un_zip(self):
         sortie = self.lancer("html")
