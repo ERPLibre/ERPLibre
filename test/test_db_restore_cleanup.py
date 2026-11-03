@@ -377,8 +377,9 @@ class TestCharger(unittest.TestCase):
             "    raise OSError(errno.ENOSPC, 'No space left on device')\n"
             "shutil.copyfileobj = plein\n"
             "print('chargement', flush=True)\n"
-            "with zipfile.ZipFile(tampon) as z:\n"
-            "    z.extractall(tempfile.mkdtemp())\n"
+            "with zipfile.ZipFile(tampon) as z,"
+            " tempfile.TemporaryDirectory() as dossier:\n"
+            "    z.extractall(dossier)\n"
         )
         self.assertEqual(code, 1)
         self.assertTrue(manque)
@@ -390,7 +391,11 @@ class TestCharger(unittest.TestCase):
         # data_dir qui manque de place : TMPDIR n'y change rien.
         (code, manque), vu = self.lancer(
             "import errno, os, shutil, tempfile\n"
-            "source, cible = tempfile.mkdtemp(), tempfile.mkdtemp()\n"
+            "racine = tempfile.TemporaryDirectory()\n"
+            "source = os.path.join(racine.name, 'source')\n"
+            "cible = os.path.join(racine.name, 'cible')\n"
+            "os.makedirs(source)\n"
+            "os.makedirs(cible)\n"
             "def autre_disque(*a, **k):\n"
             "    raise OSError(errno.EXDEV, 'Invalid cross-device link')\n"
             "def plein(*a, **k):\n"
@@ -650,6 +655,7 @@ class TestPsql(unittest.TestCase):
             f.write(
                 "[options]\ndb_host = hote-essai\ndb_port = False\n"
                 "db_user = role_essai\ndb_password = mot%de%passe\n"
+                "db_sslmode = verify-full\n"
             )
         patch = mock.patch.dict(os.environ, {"ODOO_RC": self.config})
         patch.start()
@@ -672,6 +678,25 @@ class TestPsql(unittest.TestCase):
         self.assertEqual(env["PGPASSWORD"], "mot%de%passe")
         self.assertEqual(env["PGDATABASE"], "a=b")
         self.assertNotEqual(env.get("PGPORT"), "False")
+
+    def test_psql_est_borne_en_lecture_seule_et_en_duree(self):
+        env = db_restore.environnement_pg("x")
+        self.assertEqual(env["PGSSLMODE"], "verify-full")
+        self.assertEqual(env["PGCONNECT_TIMEOUT"], "10")
+        self.assertIn("default_transaction_read_only=on", env["PGOPTIONS"])
+        self.assertIn("statement_timeout=60s", env["PGOPTIONS"])
+        self.repondre(b"t\n")
+        db_restore.est_chargee("x")
+        _, kw = self.appels[0]
+        self.assertEqual(kw["timeout"], 80)
+
+    def test_un_psql_qui_ne_rend_pas_la_main_donne_un_etat_inconnu(self):
+        def bloque(args, **kw):
+            raise subprocess.TimeoutExpired(args, kw["timeout"])
+
+        with mock.patch.object(db_restore, "check_output", bloque):
+            with self.assertLogs(db_restore._logger, "ERROR"):
+                self.assertIsNone(db_restore.est_chargee("_cache_x"))
 
     def test_est_chargee_sans_invite_ni_privilege(self):
         self.repondre(b"t\n")

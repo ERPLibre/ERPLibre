@@ -209,6 +209,12 @@ def chemin_config():
     return None
 
 
+# Délais de « interroger », en secondes : la connexion, puis la requête.
+# Le sous-processus a les deux, plus une marge, avant d'être abandonné.
+PSQL_DELAI_CONNEXION = 10
+PSQL_DELAI = 60
+
+
 def environnement_pg(database):
     """L'environnement qui connecte « psql » à `database` comme Odoo.
 
@@ -219,9 +225,18 @@ def environnement_pg(database):
     prend les valeurs par défaut de libpq : un autre serveur, ou un autre
     rôle, que celui où Odoo vient de restaurer.
 
+    « db_sslmode » devient PGSSLMODE : la connexion d'Odoo le suit, et un
+    serveur qui exige « verify-full » serait sinon joint sans contrôle de
+    son certificat.
+
     La base passe par PGDATABASE et non par « -d » : libpq lit un « -d »
     qui contient « = » comme une chaîne de connexion entière, alors que
     PGDATABASE reste un nom.
+
+    Les requêtes d'ici ne font que lire : PGOPTIONS ouvre chaque
+    transaction en lecture seule et borne sa durée à PSQL_DELAI secondes,
+    PGCONNECT_TIMEOUT borne la connexion. Un hôte injoignable rend la main
+    au lieu d'attendre le délai TCP du système.
     """
     env = dict(os.environ)
     chemin = chemin_config()
@@ -236,6 +251,7 @@ def environnement_pg(database):
             ("db_port", "PGPORT"),
             ("db_user", "PGUSER"),
             ("db_password", "PGPASSWORD"),
+            ("db_sslmode", "PGSSLMODE"),
         ):
             valeur = ""
             if lecteur is not None:
@@ -243,6 +259,11 @@ def environnement_pg(database):
             if valeur and valeur != "False":
                 env[variable] = valeur
     env["PGDATABASE"] = database
+    env["PGCONNECT_TIMEOUT"] = str(PSQL_DELAI_CONNEXION)
+    env["PGOPTIONS"] = (
+        "-c default_transaction_read_only=on"
+        f" -c statement_timeout={PSQL_DELAI}s"
+    )
     return env
 
 
@@ -265,6 +286,7 @@ def interroger(database, sql, **variables):
             input=sql.encode(),
             env=environnement_pg(database),
             stderr=subprocess.DEVNULL,
+            timeout=PSQL_DELAI_CONNEXION + PSQL_DELAI + 10,
         )
     except Exception as erreur:  # noqa: BLE001
         _logger.error(f"{database} : « psql » ne répond pas ({erreur})")
