@@ -133,7 +133,17 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="ai.git" revision="18.0" freeze-revision="fd68e531db36f6de4f6855b6f699b48af48e12c7" path="odoo18.0/addons/OCA_ai" remote="OCA" groups="addons,odoo18.0" />
+    <project
+        name="ai.git"
+        revision="18.0_dev"
+        freeze-revision="08f878e88f9b9bd77d8a45e81cec9f7099e505a8"
+        path="odoo18.0/addons/OCA_ai"
+        remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="fd68e531db36f6de4f6855b6f699b48af48e12c7"
+        groups="addons,odoo18.0"
+    />
     <project
         name="apps-store.git"
         revision="18.0"
