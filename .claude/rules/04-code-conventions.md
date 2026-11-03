@@ -93,6 +93,14 @@ liste, et elle est vraie demain.
 - Format de commit : `[TYPE] scope: subject`, sujet **en anglais**, à
   l'impératif, 72 caractères au plus. Tags réellement utilisés : `[UPD]`,
   `[FIX]`, `[ADD]`, `[IMP]`, `[REF]`.
+- **Trois conventions, selon le dépôt** : tout ce qui suit vaut pour ERPLibre
+  et pour les dépôts d'addons qui ne sont ni à Odoo ni à l'OCA. Le cœur
+  `odoo<version>/odoo` suit la convention d'Odoo, un dépôt OCA (ou un fork
+  d'un dépôt OCA) celle de l'OCA, en anglais seulement : toutes deux sont
+  dans la skill `odoo-git` et son `ERPLIBRE.md`.
+  `python3 script/git/commit_convention.py <dépôt> --explain` donne la
+  classe d'après les manifestes. `Assisted-by:` et l'interdit de
+  l'identifiant valent dans les trois.
 - **Nommer les fichiers à l'indexation, jamais `git add -A`** : `private/` et
   `tasks/` ne sont pas suivis EXPRÈS, et un ratissage les commit. Il emporte
   aussi ce qui est en cours ailleurs dans le checkout, sous un sujet qui ne le

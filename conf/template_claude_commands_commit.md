@@ -23,6 +23,21 @@ allowed-tools:
 Write a commit that satisfies `AI_POLICY.md` — the OCA generative AI policy
 ERPLibre adopts — and the conventions below.
 
+### Which convention — check the repository first
+
+This convention is ERPLibre's. An OCA module follows the OCA's, the Odoo core
+follows Odoo's, and both live in their own git repositories inside the
+checkout. Ask the ERPLibre root which one the repository being committed
+belongs to:
+
+```bash
+python3 script/git/commit_convention.py <path of the repository> --explain
+```
+
+`erplibre`: go on below. `odoo` or `oca`: stop here and follow the `odoo-git`
+skill with its `ERPLIBRE.md`. The `Assisted-by:` trailer, and nothing
+identifying, hold in all three.
+
 ### Resolve the model — `{MODEL}`
 
 Run this first. It reads the model from the CURRENT session transcript, which
