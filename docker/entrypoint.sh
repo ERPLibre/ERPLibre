@@ -88,7 +88,9 @@ start_warmup() {
 }
 
 # run_odoo ODOO_ARGS... : waits for PostgreSQL, then runs Odoo in the
-# foreground with the probe beside it.
+# foreground with the probe beside it. Odoo's exit status is the container's:
+# under "set -e" a failure ends the script with Odoo's code, and a success,
+# such as a --stop-after-init that went through, ends it with 0.
 run_odoo() {
   cd $ODOO_PREFIX
   if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
@@ -119,5 +121,3 @@ case "$1" in
     exec "$@"
     ;;
 esac
-
-exit 1
