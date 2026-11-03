@@ -1,6 +1,5 @@
 # Selenium video
-PyGObject==3.44.1
-gst
+PyGObject==3.58.1
 # python-vlc
 python-randomword-fr
 webdriver_manager

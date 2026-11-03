@@ -20,9 +20,10 @@ APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
 #
 # « lsb_release » vient du paquet lsb-release, qui arrive avec la tâche
 # « standard ». Les images cloud l'ont ; une Debian posée par
-# debian-installer, non. Les trois variables devenaient alors VIDES, et le
-# script concluait « Your version of Ubuntu is not supported » sur une Debian
-# — vécu sur s390x, la seule architecture qui passe par l'installateur.
+# debian-installer, non. Avec lsb_release seul, les trois variables seraient
+# VIDES et le script conclurait « Your version of Ubuntu is not supported »
+# sur une Debian : c'est le cas de s390x, la seule architecture qui passe par
+# debian-installer.
 #
 # /etc/os-release, lui, appartient à systemd et est toujours là. Il donne
 # ID=debian, VERSION_ID=13 et VERSION_CODENAME=trixie sans rien installer.
@@ -157,20 +158,29 @@ fi
 # sans ce paquet. Sans lui le venv naît infirme — bin/python existe, ni pip ni
 # activate — et tout ce qui en dépend tombe : « repo », la fusion du manifeste
 # (ModuleNotFoundError: No module named 'git'), la configuration PyCharm, la
-# compilation mobile. Mesuré sur une VM Ubuntu 24.04 fraîche.
+# compilation mobile.
 ${APT_GET} install python3-venv -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get python3-venv installation error."
   exit 1
 fi
-# Dependencies for selenium
+# Dépendances de selenium. libgirepository1.0-dev sert le PyGObject 3.44
+# que verrouille Odoo 14.
 ${APT_GET} install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get selenium dependencies installation error."
   exit 1
 fi
+# PyGObject 3.50 et plus, dont le 3.58.1 de script/selenium/requirements.txt,
+# se compile contre girepository-2.0 et exige GLib 2.80. Ce paquet vient avec
+# GLib 2.80 : Debian 13 et Ubuntu 24.04 l'ont, Debian 12 (GLib 2.74) ne l'a
+# ni dans ses dépôts ni dans ses backports. Seul l'enregistrement vidéo de
+# selenium en dépend : son absence est signalée, jamais fatale.
+${APT_GET} install libgirepository-2.0-dev -y \
+  || echo "libgirepository-2.0-dev indisponible (GLib < 2.80, ex. Debian 12) :" \
+    "PyGObject 3.58.1 ne s'y compile pas, la vidéo selenium est indisponible."
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 ${APT_GET} update
