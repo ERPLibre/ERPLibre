@@ -223,6 +223,20 @@ class ImapTransport(Protocol):
 
     def logout(self) -> None: ...
 
+    # Revendication d'un message avant un envoi automatique. FACULTATIVES :
+    # le moteur des règles les cherche par `getattr`, et un transport qui ne
+    # les a pas envoie sans revendiquer.
+
+    def claim_probe(self, folder: str, uid: int, *, uidvalidity: int):
+        """Une `claim.ClaimProbe` : peut-on revendiquer ce message, et
+        comment. N'écrit rien."""
+        ...
+
+    def claim_store(self, uid: int, probe) -> str:
+        """Pose le mot-clé de revendication ; l'un de
+        `claim.STORE_RESULTS`."""
+        ...
+
 
 def _chunks(items: list, size: int):
     for start in range(0, len(items), size):

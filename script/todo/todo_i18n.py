@@ -17506,6 +17506,10 @@ TRANSLATIONS = {
         "fr": ": le serveur a répondu",
         "en": ": the server replied",
     },
+    "mail_err_claim_read_only": {
+        "fr": "boîte de réception en lecture seule : revendication impossible pour l'instant",
+        "en": "inbox is read-only: claim impossible for now",
+    },
     "mail_err_no_body_for_uid": {
         "fr": "aucun corps rendu pour l'UID",
         "en": "no body returned for UID",
@@ -17901,6 +17905,42 @@ TRANSLATIONS = {
         ),
         "en": "Too many messages to catch up; the oldest are skipped.",
     },
+    "mail_rules_claim_failed": {
+        "fr": "Revendication sur le serveur en échec : le message sera repris à la passe suivante.",
+        "en": "Claim on the server failed: the message will be taken up at the next pass.",
+    },
+    "mail_rules_claim_failed_final": {
+        "fr": "Revendication en échec depuis plusieurs passes : message laissé sans envoi (journal l).",
+        "en": "Claim failing over several passes: message left unsent (log l).",
+    },
+    "mail_rules_claim_uncertain_warning": {
+        "fr": "Revendication incertaine après une interruption : message laissé sans envoi ; vérifiez Envoyés, répondez à la main si besoin (journal l).",
+        "en": "Claim uncertain after an interruption: message left unsent; check Sent, reply by hand if needed (log l).",
+    },
+    "mail_rules_send_uncertain_warning": {
+        "fr": "Un envoi interrompu n'est pas renvoyé : vérifiez Envoyés, répondez à la main si besoin (journal l).",
+        "en": "An interrupted send is not sent again: check Sent, reply by hand if needed (log l).",
+    },
+    "mail_rules_claim_none_warning": {
+        "fr": "Ce serveur refuse le mot-clé $ErpLibreRule : sans revendication possible, un seul poste doit porter ces règles.",
+        "en": "This server refuses the $ErpLibreRule keyword: with no claim possible, only one machine may carry these rules.",
+    },
+    "mail_rules_claim_atomic": {
+        "fr": "Revendication des messages sur le serveur : atomique (CONDSTORE).",
+        "en": "Message claim on the server: atomic (CONDSTORE).",
+    },
+    "mail_rules_claim_plain": {
+        "fr": "Revendication non atomique sur ce serveur (pas de CONDSTORE) : si plusieurs postes portent ces règles, deux qui traitent un message au même instant peuvent encore y répondre deux fois.",
+        "en": "Non-atomic claim on this server (no CONDSTORE): if several machines carry these rules, two handling a message at the same instant may still both reply to it.",
+    },
+    "mail_rules_claim_none": {
+        "fr": "Revendication impossible sur ce serveur (mots-clés refusés) : un seul poste doit porter ces règles.",
+        "en": "No claim possible on this server (keywords refused): only one machine may carry these rules.",
+    },
+    "mail_rules_claim_unknown": {
+        "fr": "Revendication des messages : pas encore vérifiée sur ce serveur, elle l'est au premier envoi automatique.",
+        "en": "Message claim: not yet checked on this server; it is checked at the first automatic send.",
+    },
     "mail_rules_ephemeral": {
         "fr": "Règles désactivées en cache éphémère.",
         "en": "Rules are disabled with an ephemeral cache.",
@@ -17918,8 +17958,8 @@ TRANSLATIONS = {
         "en": "Inbox renumbered: rules re-armed.",
     },
     "mail_rules_offline": {
-        "fr": "Règles : hors ligne, réponses en file.",
-        "en": "Rules: offline, replies queued.",
+        "fr": "Règles : hors ligne, envois reportés à la prochaine passe en ligne.",
+        "en": "Rules: offline, sends postponed to the next online pass.",
     },
     "mail_rules_no_inbox": {
         "fr": "Règles : boîte de réception introuvable.",
@@ -18057,6 +18097,34 @@ TRANSLATIONS = {
     "mail_rules_retry_closed": {
         "fr": "nouvel essai clos : {reason}",
         "en": "retry closed: {reason}",
+    },
+    "mail_rules_reason_claimed_elsewhere": {
+        "fr": "déjà revendiqué ($ErpLibreRule posé), quelle que soit la règle",
+        "en": "already claimed ($ErpLibreRule set), whatever the rule",
+    },
+    "mail_rules_reason_claim_uncertain": {
+        "fr": "revendication incertaine après une interruption, laissé sans envoi : vérifiez Envoyés, répondez à la main si besoin",
+        "en": "claim uncertain after an interruption, left unsent: check Sent, reply by hand if needed",
+    },
+    "mail_rules_reason_claim_gone": {
+        "fr": "message disparu du serveur avant sa revendication",
+        "en": "message gone from the server before it could be claimed",
+    },
+    "mail_rules_reason_ready": {
+        "fr": "prêt à partir",
+        "en": "ready to leave",
+    },
+    "mail_rules_reason_sending": {
+        "fr": "envoi en cours",
+        "en": "sending",
+    },
+    "mail_rules_reason_send_uncertain": {
+        "fr": "envoi interrompu, issue inconnue, non renvoyé : vérifiez Envoyés, répondez à la main si besoin",
+        "en": "send interrupted, outcome unknown, not sent again: check Sent, reply by hand if needed",
+    },
+    "mail_rules_reason_claim_failed": {
+        "fr": "revendication impossible après plusieurs passes, laissé sans envoi",
+        "en": "claim failed over several passes, left unsent",
     },
     "mail_rules_reason_media": {
         "fr": "image illisible",
@@ -18749,6 +18817,18 @@ TRANSLATIONS = {
             " List-Id): partial verdict."
         ),
     },
+    "mail_rules_trial_claimed_elsewhere": {
+        "fr": "Déjà revendiqué ($ErpLibreRule posé) : la passe ne l'enverrait pas, quelle que soit la règle.",
+        "en": "Already claimed ($ErpLibreRule set): the pass would not send it, whatever the rule.",
+    },
+    "mail_rules_trial_claimed_here": {
+        "fr": "Revendiqué par ce poste.",
+        "en": "Claimed by this machine.",
+    },
+    "mail_rules_trial_claim_uncertain": {
+        "fr": "Revendication incertaine après une interruption : la passe ne l'enverrait pas.",
+        "en": "Claim uncertain after an interruption: the pass would not send it.",
+    },
     "mail_rules_trial_held": {
         "fr": (
             "Serait RETENU pour relecture, à libérer dans la file d'envoi"
@@ -18903,6 +18983,14 @@ TRANSLATIONS = {
     "mail_service_catchup_failed": {
         "fr": "rattrapage des en-têtes en échec, repris à la passe suivante (voir ~/.erplibre/mail.log)",
         "en": "header catch-up failed, retried on the next pass (see ~/.erplibre/mail.log)",
+    },
+    "mail_service_claim_failed": {
+        "fr": "revendication en échec, reprise à la passe suivante",
+        "en": "claim failed, taken up at the next pass",
+    },
+    "mail_service_menu_held": {
+        "fr": "réponses retenues sur cette machine, à libérer par o ici :",
+        "en": "replies held on this machine, to release with o here:",
     },
     "mail_service_rule_error": {
         "fr": "erreur de règle (voir ~/.erplibre/mail.log)",
@@ -19113,8 +19201,8 @@ TRANSLATIONS = {
         "en": "Linger disabled.",
     },
     "mail_service_one_host_warning": {
-        "fr": "Installez le service sur UNE seule machine par compte : deux machines aux mêmes règles répondraient deux fois.",
-        "en": "Install the service on ONE machine per account: two machines with the same rules would reply twice.",
+        "fr": "Plusieurs machines peuvent porter les mêmes règles, IDENTIQUES et à jour : chaque message est revendiqué sur le serveur (mot-clé $ErpLibreRule) avant tout envoi, une réponse par message ; limites, plafonds et approbations restent propres à chaque machine. La revendication n'est atomique qu'avec CONDSTORE ; sur un serveur qui refuse les mots-clés, une seule machine par compte.",
+        "en": "Several machines may carry the same rules, IDENTICAL and up to date: each message is claimed on the server (keyword $ErpLibreRule) before any send, one reply per message; limits, caps and approvals stay per machine. The claim is atomic only with CONDSTORE; on a server that refuses keywords, one machine per account.",
     },
     "mail_service_dev_checkout_warning": {
         "fr": "Le service exécute le code de ce dépôt tel qu'il est sur le disque, modifications en cours comprises.",

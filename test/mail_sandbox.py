@@ -193,6 +193,25 @@ class RefuseCommand(Fault):
         server.sendNegativeResponse(tag, self.text)
 
 
+@dataclass
+class Interfere(Fault):
+    """Un autre client agit sur la boîte au moment où la commande arrive,
+    puis la commande est servie normalement.
+
+    `action` tourne dans le fil du réacteur, AVANT que le serveur ne
+    traite la commande : elle ne touche qu'aux objets du bac à sable
+    (boîtes, messages), jamais à un client. C'est ainsi qu'un test glisse
+    un changement entre la lecture d'un message et son STORE.
+    """
+
+    action: object = None
+    passes_through = True
+
+    def strike(self, server, tag) -> None:
+        if self.action is not None:
+            self.action()
+
+
 # --------------------------------------------------------------------------
 # Le contenu servi : des octets, tels que le test les déclare
 # --------------------------------------------------------------------------
@@ -259,6 +278,9 @@ class SandboxMessage:
         self._jumeau = jumeau
         self.internal_date = internal_date or b"06-Aug-2026 10:00:00 +0000"
         self.parsed = email.message_from_bytes(raw)
+        # Le MODSEQ du message (RFC 7162) : la boîte lui donne le suivant
+        # de son compteur à la remise et à chaque changement de drapeaux.
+        self.modseq = 0
 
     @property
     def flags(self) -> list:
@@ -369,6 +391,14 @@ class SandboxMailbox:
         # La date en fait partie : un client qui l'oublie fait horodater le
         # dépôt à maintenant, ce qui ne se voit nulle part ailleurs.
         self.appended: list[tuple[bytes, tuple, object]] = []
+        # Faux : le SELECT répond `[READ-ONLY]`, comme une boîte qu'on n'a
+        # que le droit de lire.
+        self.writeable = True
+        # Faux : `store()` jette en silence tout drapeau qui ne commence
+        # pas par « \\ », comme un serveur qui ne garde pas les mots-clés.
+        self.keywords = True
+        # Le compteur de MODSEQ de la boîte, dernier distribué.
+        self.modseq = 1
 
     # -- recherche --------------------------------------------------------
 
@@ -494,8 +524,48 @@ class SandboxMailbox:
             flags,
             internal_date=internal_date,
         )
+        message.modseq = self._next_modseq()
         self.messages.append(message)
         return message
+
+    def _next_modseq(self) -> int:
+        self.modseq += 1
+        return self.modseq
+
+    def by_uid(self, uid: int) -> SandboxMessage | None:
+        """Le message de cet UID, ou None."""
+        return next((m for m in self.messages if m.uid == uid), None)
+
+    def marquer_ailleurs(self, uid: int, *flags, annoncer: bool = False):
+        """Ajoute `flags` au message `uid` comme le ferait un AUTRE client,
+        MODSEQ avancé.
+
+        `annoncer` pousse aussi, à chaque connexion qui a cette boîte
+        sélectionnée, un FETCH non sollicité `(UID u MODSEQ (m))` SANS
+        drapeaux, que la connexion émettra avant sa prochaine réponse
+        étiquetée : c'est ce qu'un serveur CONDSTORE peut envoyer.
+        """
+        message = self.by_uid(uid)
+        if message is None:
+            raise KeyError(uid)
+        if self._appliquer(message, [str(f) for f in flags], 1):
+            if annoncer:
+                numero = self.messages.index(message) + 1
+                ligne = b"%d FETCH (UID %d MODSEQ (%d))" % (
+                    numero,
+                    message.uid,
+                    message.modseq,
+                )
+                for server in list(self.listeners):
+                    queue = getattr(server, "_queuedAsync", None)
+                    if queue is not None:
+                        queue.append(ligne)
+        return message
+
+    def expurger(self, uid: int) -> None:
+        """Retire le message `uid` sans rien annoncer, comme un EXPUNGE
+        venu d'un autre client."""
+        self.messages = [m for m in self.messages if m.uid != uid]
 
     def etiqueter(self, message: SandboxMessage) -> SandboxMessage:
         """Montre ici un message qui existe DÉJÀ ailleurs.
@@ -556,7 +626,7 @@ class SandboxMailbox:
         return sum(1 for m in self.messages if "\\Seen" not in m.flags)
 
     def isWriteable(self) -> bool:
-        return True
+        return self.writeable
 
     def getHierarchicalDelimiter(self) -> str:
         return "."
@@ -598,18 +668,45 @@ class SandboxMailbox:
         ]
 
     def store(self, messages, flags, mode, uid):
+        """Change les drapeaux des messages désignés, et rend
+        `{numéro de séquence: drapeaux}`.
+
+        Des NUMÉROS DE SÉQUENCE même quand `uid` est vrai : Twisted
+        convertit lui-même chaque clé par `getUID()` pour écrire la ligne
+        FETCH. Une clé UID y désignerait un autre message dès que numéros
+        et UID divergent, et lèverait au-delà du dernier numéro, laissant
+        la commande sans réponse.
+        """
         out = {}
-        for number, message in self.fetch(messages, uid):
-            current = set(message.flags)
-            if mode < 0:
-                current -= set(flags)
-            elif mode > 0:
-                current |= set(flags)
-            else:
-                current = set(flags)
-            message.flags = sorted(current)
-            out[number] = message.flags
+        for _number, message in self.fetch(messages, uid):
+            self._appliquer(message, flags, mode)
+            out[self.messages.index(message) + 1] = message.flags
         return out
+
+    def _appliquer(self, message, flags, mode) -> bool:
+        """Change les drapeaux d'un message ; vrai s'ils ont changé, le
+        MODSEQ du message avançant alors.
+
+        Sans `keywords`, les mots-clés (tout drapeau sans « \\ » initial)
+        sont jetés en silence, sans erreur : c'est ce que fait un serveur
+        qui ne les garde pas.
+        """
+        flags = [str(f) for f in flags]
+        if not self.keywords:
+            flags = [f for f in flags if f.startswith("\\")]
+        avant = set(message.flags)
+        current = set(avant)
+        if mode < 0:
+            current -= set(flags)
+        elif mode > 0:
+            current |= set(flags)
+        else:
+            current = set(flags)
+        message.flags = sorted(current)
+        if current != avant:
+            message.modseq = self._next_modseq()
+            return True
+        return False
 
     def expunge(self) -> list:
         """Retire les messages marqués `\\Deleted`. Rend leurs numéros.
@@ -801,7 +898,57 @@ class SandboxIMAP4Server(imap4.IMAP4Server):
             cap[b"UIDPLUS"] = None
         if self.sandbox.etiquettes:
             cap[b"X-GM-EXT-1"] = None
+        if self.sandbox.condstore and (
+            not self.sandbox.condstore_after_login or self.state != "unauth"
+        ):
+            cap[b"CONDSTORE"] = None
         return cap
+
+    def _cbSelectWork(self, mbox, cmdName, tag):
+        """SELECT, avec les codes que Twisted ne sert pas : PERMANENTFLAGS,
+        HIGHESTMODSEQ (CONDSTORE) et NOMODSEQ.
+
+        Recopie des lignes de Twisted, dans le même ordre. Aucune entrée de
+        table à refaire : `_selectWork`, figé dans `select_SELECT`, appelle
+        `self._cbSelectWork`, que Python résout sur l'instance.
+        """
+        if mbox is None:
+            self.sendNegativeResponse(tag, b"No such mailbox")
+            return
+        if "\\noselect" in [s.lower() for s in mbox.getFlags()]:
+            self.sendNegativeResponse(tag, b"Mailbox cannot be selected")
+            return
+
+        flags = [networkString(flag) for flag in mbox.getFlags()]
+        self.sendUntaggedResponse(b"%d EXISTS" % (mbox.getMessageCount(),))
+        self.sendUntaggedResponse(b"%d RECENT" % (mbox.getRecentCount(),))
+        self.sendUntaggedResponse(b"FLAGS (" + b" ".join(flags) + b")")
+        self.sendPositiveResponse(
+            None, b"[UIDVALIDITY %d]" % (mbox.getUIDValidity(),)
+        )
+        sandbox = self.sandbox
+        if sandbox.permanent_flags is not None:
+            jetons = b" ".join(
+                networkString(f) for f in sandbox.permanent_flags
+            )
+            self.sendPositiveResponse(
+                None, b"[PERMANENTFLAGS (" + jetons + b")] Limited"
+            )
+        if sandbox.condstore and sandbox.nomodseq:
+            self.sendPositiveResponse(None, b"[NOMODSEQ] No MODSEQ here")
+        elif sandbox.condstore:
+            self.sendPositiveResponse(
+                None,
+                b"[HIGHESTMODSEQ %d] Highest" % (getattr(mbox, "modseq", 1),),
+            )
+
+        s = mbox.isWriteable() and b"READ-WRITE" or b"READ-ONLY"
+        mbox.addListener(self)
+        self.sendPositiveResponse(
+            tag, b"[" + s + b"] " + cmdName + b" successful"
+        )
+        self.state = "select"
+        self.mbox = mbox
 
     def _cbListWork(self, mailboxes, tag, sub, cmdName):
         """LIST, avec les ATTRIBUTS du dossier.
@@ -836,7 +983,95 @@ class SandboxIMAP4Server(imap4.IMAP4Server):
         """
         if command.upper() == b"EXPUNGE" and self.sandbox.uidplus:
             return self.do_EXPUNGE(tag, uid=1, line=line)
+        if self.sandbox.condstore and self.mbox is not None:
+            haut = command.upper()
+            if haut == b"FETCH" and b"MODSEQ" in line.upper():
+                if not self._meddle(tag, b"FETCH"):
+                    self._fetch_modseq(tag, line)
+                return None
+            if haut == b"STORE":
+                if not self._meddle(tag, b"STORE"):
+                    self._store_condstore(tag, line)
+                return None
         return super().do_UID(tag, command, line)
+
+    def _fetch_modseq(self, tag, line) -> None:
+        """`UID FETCH <ensemble> (… MODSEQ …)` : UID, FLAGS et MODSEQ de
+        chaque message de l'ensemble, quels que soient les autres éléments
+        demandés."""
+        ensemble = imap4.parseIdList(line.split(None, 1)[0])
+        for uid, message in self.mbox.fetch(ensemble, True):
+            self.sendUntaggedResponse(
+                b"%d FETCH (UID %d FLAGS (%b) MODSEQ (%d))"
+                % (
+                    self.mbox.messages.index(message) + 1,
+                    uid,
+                    b" ".join(networkString(f) for f in message.flags),
+                    message.modseq,
+                )
+            )
+        self.sendPositiveResponse(tag, b"FETCH completed")
+
+    _STORE_RE = re.compile(
+        rb"^(\S+)\s+(?:\(UNCHANGEDSINCE\s+(\d+)\)\s+)?"
+        rb"([+-]?FLAGS(?:\.SILENT)?)\s+(.*)$",
+        re.IGNORECASE,
+    )
+
+    def _store_condstore(self, tag, line) -> None:
+        """`UID STORE`, avec ou sans `(UNCHANGEDSINCE m)` (RFC 7162).
+
+        Un message dont le MODSEQ dépasse `m` n'est PAS modifié et entre
+        dans le code `[MODIFIED …]` de la réponse étiquetée. Les autres sont
+        modifiés et annoncés avec leur MODSEQ ; en `.SILENT`, la ligne est
+        quand même émise, sans FLAGS, comme le veut RFC 7162.
+        """
+        match = self._STORE_RE.match(line.strip())
+        if match is None:
+            self.sendBadResponse(tag, b"Malformed STORE")
+            return
+        ensemble = imap4.parseIdList(match.group(1))
+        seuil = int(match.group(2)) if match.group(2) else None
+        genre = match.group(3).upper()
+        silencieux = genre.endswith(b".SILENT")
+        mode = (
+            1
+            if genre.startswith(b"+")
+            else -1
+            if genre.startswith(b"-")
+            else 0
+        )
+        flags, _ = self.arg_flaglist(match.group(4).strip())
+        flags = [f.decode("ascii", "replace") for f in flags]
+        modifies = []
+        for uid, message in self.mbox.fetch(ensemble, True):
+            if seuil is not None and message.modseq > seuil:
+                modifies.append(uid)
+                continue
+            self.mbox._appliquer(message, flags, mode)
+            numero = self.mbox.messages.index(message) + 1
+            if silencieux:
+                self.sendUntaggedResponse(
+                    b"%d FETCH (UID %d MODSEQ (%d))"
+                    % (numero, uid, message.modseq)
+                )
+            else:
+                self.sendUntaggedResponse(
+                    b"%d FETCH (UID %d MODSEQ (%d) FLAGS (%b))"
+                    % (
+                        numero,
+                        uid,
+                        message.modseq,
+                        b" ".join(networkString(f) for f in message.flags),
+                    )
+                )
+        if modifies:
+            liste = b",".join(b"%d" % u for u in modifies)
+            self.sendPositiveResponse(
+                tag, b"[MODIFIED " + liste + b"] Conditional STORE failed"
+            )
+        else:
+            self.sendPositiveResponse(tag, b"Conditional STORE completed")
 
     def do_EXPUNGE(self, tag, uid=0, line=b""):
         """EXPUNGE, et sa forme UIDPLUS qui nomme ce qu'elle retire."""
@@ -874,11 +1109,21 @@ class SandboxIMAP4Server(imap4.IMAP4Server):
         `FETCH` interne — ce qui permet à un `Fault` de viser précisément
         l'une ou l'autre.
         """
+        if self._meddle(tag, cmd):
+            return None
+        return super().dispatchCommand(tag, cmd, rest, uid)
+
+    def _meddle(self, tag, cmd) -> bool:
+        """Déclenche les méchancetés qui visent `cmd` ; vrai si l'une a
+        répondu à la place du serveur (la commande s'arrête là). Une faute
+        qui laisse passer (`passes_through`) agit puis laisse la suite
+        servir la commande."""
         for fault in self.sandbox.faults:
             if fault.matches(cmd):
                 fault.strike(self, tag)
-                return None
-        return super().dispatchCommand(tag, cmd, rest, uid)
+                if not getattr(fault, "passes_through", False):
+                    return True
+        return False
 
     def spew_body(self, part, id, msg, _w=None, _f=None):
         """Sert les en-têtes en octets bruts quand ils ne sont pas ASCII.
@@ -943,7 +1188,15 @@ class ImapSandbox:
     `addCleanup`, qui s'exécute même quand le test échoue.
     """
 
-    def __init__(self, uidplus: bool = True, etiquettes: bool = False):
+    def __init__(
+        self,
+        uidplus: bool = True,
+        etiquettes: bool = False,
+        condstore: bool = False,
+        permanent_flags=None,
+        nomodseq: bool = False,
+        condstore_after_login: bool = False,
+    ):
         # Les serveurs courants annoncent UIDPLUS ; `uidplus=False` sert à
         # éprouver le repli du client sur un serveur qui ne l'a pas.
         self.uidplus = uidplus
@@ -952,6 +1205,21 @@ class ImapSandbox:
         # discriminant documenté : les noms de dossiers ne prouvent rien, et
         # `\\All` désigne une archive ordinaire ailleurs.
         self.etiquettes = etiquettes
+        # Annonce CONDSTORE (RFC 7162) : MODSEQ servi au FETCH, STORE
+        # conditionnel par UNCHANGEDSINCE, HIGHESTMODSEQ au SELECT.
+        self.condstore = condstore
+        # Avec `condstore` : la capacité n'est annoncée qu'une fois
+        # authentifié, comme les serveurs dont la liste d'avant connexion
+        # est réduite.
+        self.condstore_after_login = condstore_after_login
+        # None : rien d'annoncé (tout drapeau est permanent, RFC 3501) ;
+        # une suite de drapeaux : `OK [PERMANENTFLAGS (…)]` au SELECT.
+        self.permanent_flags = (
+            None if permanent_flags is None else tuple(permanent_flags)
+        )
+        # Avec `condstore` : `OK [NOMODSEQ]` au SELECT, une boîte sans
+        # MODSEQ persistant.
+        self.nomodseq = nomodseq
         self.account = SandboxIMAPAccount()
         self.faults: list[Fault] = []
         self.connections: set = set()

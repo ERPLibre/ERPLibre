@@ -24,6 +24,7 @@ from email.header import decode_header
 from email.parser import BytesHeaderParser
 
 from script.todo.mail.charset import decode_bytes
+from script.todo.mail.claim import CLAIM_KEYWORD, ClaimProbe, has_claim
 from script.todo.mail.imap_sync import FolderInfo, HeaderInfo, SelectInfo
 from script.todo.todo_i18n import t
 
@@ -65,6 +66,7 @@ _UID_RE = re.compile(rb"UID\s+(\d+)")
 _SIZE_RE = re.compile(rb"RFC822\.SIZE\s+(\d+)")
 _FLAGS_RE = re.compile(rb"FLAGS\s+\(([^)]*)\)")
 _INTERNALDATE_RE = re.compile(rb'INTERNALDATE\s+"([^"]+)"')
+_MODSEQ_RE = re.compile(rb"MODSEQ\s+\((\d+)\)")
 _LIST_RE = re.compile(rb'^\(([^)]*)\)\s+("[^"]*"|NIL)\s+(.*)$')
 
 
@@ -293,12 +295,81 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
     return out
 
 
+def _lignes_fetch(data):
+    """Les lignes FETCH de `data` qui portent un UID ET des FLAGS, dans
+    l'ordre : `(uid, drapeaux, modseq)`, `modseq` None quand la ligne n'en
+    porte pas.
+
+    Une ligne sans FLAGS (un FETCH non sollicité `(UID u MODSEQ (m))`) ne
+    dit rien des drapeaux ; une ligne sans UID (un FETCH non sollicité
+    numéroté par séquence) ne désigne aucun message sûr. Les deux sont
+    ignorées.
+    """
+    for line in data or ():
+        raw = line[0] if isinstance(line, tuple) else line
+        if not isinstance(raw, (bytes, bytearray)):
+            continue
+        uid_match = _UID_RE.search(raw)
+        flags_match = _FLAGS_RE.search(raw)
+        if not uid_match or not flags_match:
+            continue
+        modseq_match = _MODSEQ_RE.search(raw)
+        yield (
+            int(uid_match.group(1)),
+            flags_match.group(1).decode("ascii", "replace"),
+            int(modseq_match.group(1)) if modseq_match else None,
+        )
+
+
+def _ligne_de(data, uid: int):
+    """`(drapeaux, modseq)` de la DERNIÈRE ligne de `data` qui porte `uid`
+    et des FLAGS, ou None.
+
+    La dernière, parce que `uid()` rend aussi les FETCH non sollicités
+    reçus avant la réponse, qui portent des drapeaux plus anciens. Le
+    MODSEQ est celui de CETTE ligne et jamais le plus grand vu : associé à
+    des drapeaux plus anciens, un MODSEQ plus récent ferait réussir un
+    STORE conditionnel sur un mot-clé posé entre les deux.
+    """
+    trouve = None
+    for numero, flags, modseq in _lignes_fetch(data):
+        if numero == uid:
+            trouve = (flags, modseq)
+    return trouve
+
+
+def _uid_set(text) -> set[int]:
+    """Les UID d'un ensemble IMAP sans `*` (« 1,3:5 »), vide s'il est
+    illisible."""
+    if isinstance(text, (bytes, bytearray)):
+        text = bytes(text).decode("ascii", "replace")
+    out: set[int] = set()
+    for morceau in str(text or "").split(","):
+        debut, _, fin = morceau.strip().partition(":")
+        try:
+            bas = int(debut)
+            haut = int(fin) if fin else bas
+        except ValueError:
+            continue
+        if haut < bas:
+            bas, haut = haut, bas
+        out.update(range(bas, haut + 1))
+    return out
+
+
 class ImaplibTransport:
     """`ImapTransport` réalisé sur `imaplib`. Le client est injecté : les tests
     passent un double, la production passe une connexion TLS."""
 
     def __init__(self, client) -> None:
         self.client = client
+        # Les capacités lues APRÈS l'authentification, à la première sonde
+        # de revendication ; `imaplib` ne remplit `capabilities` qu'avant,
+        # et bien des serveurs n'y annoncent pas encore CONDSTORE.
+        self._capacites: frozenset[str] | None = None
+        # Vrai quand le serveur annonce CONDSTORE mais en refuse la
+        # syntaxe (BAD) : la connexion revendique alors en mode simple.
+        self._sans_condstore = False
 
     @staticmethod
     def _ok(result, label: str):
@@ -407,6 +478,16 @@ class ImaplibTransport:
         return parse_fetch_headers(data)
 
     def fetch_flags(self, uids: list[int]) -> list[tuple[int, str]]:
+        """Les drapeaux des `uids` du dossier sélectionné, `(uid, drapeaux)`.
+
+        Une ligne FETCH sans FLAGS ne dit rien des drapeaux et est ignorée :
+        une fois CONDSTORE activé dans la session, le serveur peut glisser
+        des FETCH non sollicités `(UID u MODSEQ (m))`, et les lire comme
+        « aucun drapeau » effacerait ceux du cache (un message lu
+        redeviendrait non lu). Pour un même UID, la dernière ligne
+        l'emporte : `uid()` rend aussi les FETCH accumulés avant la
+        réponse, plus anciens qu'elle.
+        """
         if not uids:
             return []
         data = self._ok(
@@ -415,25 +496,10 @@ class ImaplibTransport:
             ),
             "FETCH FLAGS",
         )
-        out = []
-        for line in data:
-            raw = line[0] if isinstance(line, tuple) else line
-            if not isinstance(raw, (bytes, bytearray)):
-                continue
-            uid_match = _UID_RE.search(raw)
-            flags_match = _FLAGS_RE.search(raw)
-            if uid_match:
-                out.append(
-                    (
-                        int(uid_match.group(1)),
-                        (
-                            flags_match.group(1).decode("ascii", "replace")
-                            if flags_match
-                            else ""
-                        ),
-                    )
-                )
-        return out
+        out: dict[int, str] = {}
+        for uid, flags, _modseq in _lignes_fetch(data):
+            out[uid] = flags
+        return list(out.items())
 
     def fetch_body(self, uid: int) -> bytes:
         data = self._ok(
@@ -581,6 +647,185 @@ class ImaplibTransport:
                 ),
                 "STORE -FLAGS 1:*",
             )
+
+    # -- revendication d'un message ----------------------------------
+
+    def _capacites_auth(self) -> frozenset[str]:
+        """Les capacités du serveur lues par `CAPABILITY` une fois
+        authentifié, en majuscules, gardées pour la connexion.
+
+        Un échec de la commande retombe sur la liste d'avant connexion
+        (`self.client.capabilities`), sans la garder : la sonde suivante
+        réessaie.
+        """
+        if self._capacites is not None:
+            return self._capacites
+        try:
+            typ, data = self.client.capability()
+        except imaplib.IMAP4.abort:
+            raise
+        except imaplib.IMAP4.error:
+            typ, data = "NO", []
+        derniere = next(
+            (d for d in reversed(data or ()) if d is not None), None
+        )
+        if typ != "OK" or derniere is None:
+            return frozenset(
+                str(c).upper() for c in (self.client.capabilities or ())
+            )
+        if isinstance(derniere, (bytes, bytearray)):
+            derniere = bytes(derniere).decode("ascii", "replace")
+        self._capacites = frozenset(str(derniere).upper().split())
+        return self._capacites
+
+    def _permanent_flags(self) -> tuple[str, ...] | None:
+        """Les drapeaux que le dossier sélectionné garde d'une session à
+        l'autre (code `PERMANENTFLAGS` du SELECT), None s'il n'en annonce
+        pas : RFC 3501 dit alors que tout drapeau est permanent."""
+        _, data = self.client.response("PERMANENTFLAGS")
+        if not data or data[0] is None:
+            return None
+        brut = data[0]
+        if isinstance(brut, (bytes, bytearray)):
+            brut = bytes(brut).decode("ascii", "replace")
+        return tuple(str(brut).strip().strip("()").split())
+
+    def claim_probe(
+        self, folder: str, uid: int, *, uidvalidity: int
+    ) -> ClaimProbe:
+        """Lit, sans rien écrire, si le message `uid` de `folder` peut être
+        revendiqué, et dans quel mode.
+
+        Le SELECT dit l'UIDVALIDITY (autre que `uidvalidity` :
+        `renumbered`, avant tout le reste), `PERMANENTFLAGS` (sans `\\*` ni le mot-clé :
+        `unsupported`, aucun FETCH) et `NOMODSEQ`. Le mode est `atomic`
+        quand le serveur annonce CONDSTORE (ou QRESYNC) une fois
+        authentifié, sans `NOMODSEQ` ni refus antérieur de la syntaxe, et
+        que la ligne FETCH porte un MODSEQ ; `plain` sinon. Un BAD au
+        FETCH avec MODSEQ fait passer la connexion en mode simple. Sans
+        ligne FETCH de cet UID : `gone` ; mot-clé posé : `present` ;
+        sinon `free`.
+
+        Une boîte passée en lecture seule (`[READ-ONLY]`) n'est PAS un
+        serveur sans revendication : la sonde lève `ImapError`, après
+        avoir retiré `READ-ONLY` des réponses du client, sans quoi
+        `imaplib` lèverait sur toute commande suivante de ce client.
+        """
+        try:
+            info = self.select(folder)
+        except imaplib.IMAP4.readonly as exc:
+            self.client.untagged_responses.pop("READ-ONLY", None)
+            raise ImapError(t("mail_err_claim_read_only")) from exc
+        # Lu AVANT tout `response()` : `imaplib` rend `[None]` pour un code
+        # absent comme pour un code présent sans donnée.
+        nomodseq = "NOMODSEQ" in self.client.untagged_responses
+        perm = self._permanent_flags()
+        atomique = bool(
+            {"CONDSTORE", "QRESYNC"} & self._capacites_auth()
+            and not nomodseq
+            and not self._sans_condstore
+        )
+        mode = "atomic" if atomique else "plain"
+        if info.uidvalidity != uidvalidity:
+            return ClaimProbe("renumbered", mode)
+        if perm is not None:
+            admis = {p.lower() for p in perm}
+            if "\\*" not in admis and CLAIM_KEYWORD.lower() not in admis:
+                return ClaimProbe("unsupported", "none", reason="keywords")
+        data = None
+        if atomique:
+            try:
+                data = self._ok(
+                    self.client.uid("FETCH", str(uid), "(UID FLAGS MODSEQ)"),
+                    "FETCH CLAIM",
+                )
+            except imaplib.IMAP4.abort:
+                raise
+            except imaplib.IMAP4.error:
+                self._sans_condstore = True
+                mode = "plain"
+        if data is None:
+            mode = "plain"
+            data = self._ok(
+                self.client.uid("FETCH", str(uid), "(UID FLAGS)"),
+                "FETCH CLAIM",
+            )
+        ligne = _ligne_de(data, uid)
+        if ligne is None:
+            return ClaimProbe("gone", mode)
+        drapeaux, modseq = ligne
+        if mode == "atomic" and modseq is None:
+            mode = "plain"
+        if mode != "atomic":
+            modseq = None
+        if has_claim(drapeaux):
+            return ClaimProbe("present", mode, modseq)
+        return ClaimProbe("free", mode, modseq)
+
+    def claim_store(self, uid: int, probe: ClaimProbe) -> str:
+        """Pose le mot-clé sur `uid` dans le dossier que la sonde vient de
+        sélectionner, et rend l'un de `claim.STORE_RESULTS`.
+
+        En mode `atomic`, le STORE est conditionnel (RFC 7162) :
+        `UNCHANGEDSINCE <modseq de la sonde>`. Un message changé depuis
+        n'est pas modifié, et le serveur le nomme dans un code
+        `[MODIFIED …]` de sa réponse étiquetée, qu'`imaplib` range dans
+        `untagged_responses` comme un code non étiqueté : `modified`. Un
+        BAD à cette syntaxe (serveur qui annonce CONDSTORE et le gère mal)
+        fait passer la connexion en mode simple et rend `retry`, rien
+        n'ayant été appliqué. Un NO, ou un BAD en mode simple, lève
+        `ImapError`.
+
+        Pas de `.SILENT` : la ligne FETCH que le serveur renvoie dit si le
+        mot-clé est GARDÉ (`stored`) ou jeté par un serveur qui ignore les
+        mots-clés (`refused`) ; un OK nu ne prouve ni l'un ni l'autre, ni
+        même que le message existe encore. Sans ligne, les drapeaux sont
+        relus : UID absent, `gone` ; relecture refusée (NO, BAD),
+        `unknown`, car le STORE accepté a peut-être posé le mot-clé. En
+        mode simple, deux machines entre la sonde et le STORE l'une de
+        l'autre se croient toutes deux propriétaires : c'est la limite de
+        ce mode.
+
+        Une panne du lien traverse telle quelle.
+        """
+        # Un MODIFIED laissé par une commande précédente : `imaplib` ne
+        # vide que OK, NO et BAD avant chaque commande.
+        self.client.response("MODIFIED")
+        atomique = probe.mode == "atomic" and probe.modseq is not None
+        args = [str(uid)]
+        if atomique:
+            args.append(f"(UNCHANGEDSINCE {int(probe.modseq)})")
+        args += ["+FLAGS", f"({CLAIM_KEYWORD})"]
+        try:
+            typ, data = self.client.uid("STORE", *args)
+        except imaplib.IMAP4.abort:
+            raise
+        except imaplib.IMAP4.error as exc:
+            if atomique:
+                self._sans_condstore = True
+                return "retry"
+            raise ImapError(
+                f"STORE CLAIM {t('mail_err_server_replied')} BAD"
+            ) from exc
+        if typ != "OK":
+            raise ImapError(
+                f"STORE CLAIM {t('mail_err_server_replied')} {typ}"
+            )
+        _, modifies = self.client.response("MODIFIED")
+        for valeur in modifies or ():
+            if valeur is not None and uid in _uid_set(valeur):
+                return "modified"
+        ligne = _ligne_de(data, uid)
+        if ligne is None:
+            try:
+                relus = dict(self.fetch_flags([uid]))
+            except ImapError:
+                # Le STORE est accepté : le mot-clé est peut-être posé.
+                return "unknown"
+            if uid not in relus:
+                return "gone"
+            return "stored" if has_claim(relus[uid]) else "refused"
+        return "stored" if has_claim(ligne[0]) else "refused"
 
     def create_folder(self, name: str) -> None:
         self._ok(self.client.create(f'"{name}"'), f"CREATE {name}")
