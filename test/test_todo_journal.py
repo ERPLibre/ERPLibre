@@ -9,6 +9,7 @@ l'écran. Il est privé (0600 dans un dossier 0700), borné en nombre, et son
 absence n'empêche jamais le TODO de tourner. Les secrets sont inventés.
 """
 
+import io
 import logging
 import os
 import shutil
@@ -203,6 +204,157 @@ class TestSecretsSuspects(unittest.TestCase):
 
     def test_un_hash_git_n_est_pas_un_secret(self):
         self.assertEqual(self.natures("commit " + "a1b2c3d4" * 5), [])
+
+
+class TestDuplicateur(unittest.TestCase):
+    """La copie de sys.stdout, seule : l'écran inchangé, le journal propre."""
+
+    def setUp(self):
+        self.ecran = io.StringIO()
+        self.journal = []
+        self.d = todo_journal.Duplicateur(self.ecran, self.journal.append)
+
+    def test_l_ecran_recoit_tout_tel_quel(self):
+        texte = "\x1b[32m✅ ok\x1b[0m\n--password invente-41\n"
+        self.d.write(texte)
+        self.assertEqual(self.ecran.getvalue(), texte)
+
+    def test_le_journal_recoit_des_lignes_caviardees_sans_ansi(self):
+        self.d.write("\x1b[32m✅ ok\x1b[0m\n--password invente-42\n")
+        self.assertEqual(self.journal, ["✅ ok\n", "--password '***'\n"])
+
+    def test_flush_pousse_l_invite_en_cours(self):
+        self.d.write("Commande :")
+        self.assertEqual(self.journal, [])
+        self.d.flush()
+        self.assertEqual(self.journal, ["Commande :\n"])
+
+    def test_rien_pendant_exec_command_live(self):
+        with mock.patch.object(execute, "_commandes_en_cours", 1):
+            self.d.write("deja journalise\n")
+        self.assertEqual(self.journal, [])
+
+    def test_un_menu_reaffiche_ne_s_ecrit_qu_une_fois(self):
+        menu = "[1] Un\n[2] Deux\n[3] Trois\n[0] Retour\n"
+        self.d.write(menu)
+        self.d.write(menu)
+        self.assertEqual(self.journal[:4], menu.splitlines(keepends=True))
+        self.assertEqual(
+            self.journal[4:], [f"({todo_journal.t('menu redisplayed')})\n"]
+        )
+
+    def test_l_ecran_alterne_est_suspendu(self):
+        self.d.write("\x1b[?1049h")
+        self.d.write("dessin de l'interface\n")
+        self.d.write("\x1b[?1049l")
+        self.d.write("apres\n")
+        self.assertEqual(
+            self.journal,
+            [
+                f"({todo_journal.t('full-screen display')})\n",
+                "apres\n",
+            ],
+        )
+
+    def test_une_barre_de_progression_garde_son_dernier_etat(self):
+        self.d.write("10%\r50%\r100%\n")
+        self.assertEqual(self.journal, ["100%\n"])
+
+    def test_les_attributs_sont_ceux_du_vrai_flux(self):
+        self.d.write("x")
+        self.assertEqual(self.d.getvalue(), "x")
+        self.assertEqual(self.d.encoding, self.ecran.encoding)
+        self.assertFalse(self.d.closed)
+
+    def test_un_journal_qui_echoue_ne_casse_pas_l_affichage(self):
+        def echoue(_texte):
+            raise OSError("disque plein")
+
+        d = todo_journal.Duplicateur(self.ecran, echoue)
+        d.write("toujours affiche\n")
+        d.flush()
+        self.assertIn("toujours affiche", self.ecran.getvalue())
+
+
+class TestJournalComplet(unittest.TestCase):
+    """Le journal ouvert pour de vrai : stdout, DEBUG, sous-processus."""
+
+    def setUp(self):
+        self.etat = tempfile.mkdtemp(prefix="test_todo_journal_stdout_")
+        self.addCleanup(shutil.rmtree, self.etat, ignore_errors=True)
+        self.addCleanup(todo_journal.fermer)
+        self.chemin = todo_journal.ouvrir(
+            environ={"XDG_STATE_HOME": self.etat}
+        )
+        self.assertIsNotNone(self.chemin)
+
+    def contenu(self):
+        todo_journal.fermer()
+        with open(self.chemin, encoding="utf-8") as fichier:
+            return fichier.read()
+
+    def test_un_print_va_au_journal_et_stdout_revient(self):
+        avant = todo_journal._ouvert["stdout"]
+        print("message du TODO, essai 51")
+        texte = self.contenu()
+        self.assertIn("message du TODO, essai 51\n", texte)
+        self.assertIs(sys.stdout, avant)
+
+    def test_une_commande_n_est_pas_recopiee_deux_fois(self):
+        execute.Execute().exec_command_live(
+            "echo unique-52", source_erplibre=False
+        )
+        texte = self.contenu()
+        # « $ echo unique-52 » puis « unique-52 » : la commande et sa sortie,
+        # une fois chacune, et non leur affichage en plus.
+        self.assertEqual(texte.count("unique-52"), 2)
+
+    def test_ce_qui_est_tape_n_est_pas_ecrit(self):
+        with mock.patch.object(sys, "stdin", io.StringIO("tape-invente-53\n")):
+            reponse = input("Invite essai : ")
+        self.assertEqual(reponse, "tape-invente-53")
+        texte = self.contenu()
+        self.assertIn("Invite essai :", texte)
+        self.assertNotIn("tape-invente-53", texte)
+
+    def test_le_debug_du_depot_va_au_journal_seulement(self):
+        logging.getLogger("script.essai").debug("detail-debug-54")
+        logging.getLogger("bibliotheque.essai").debug("bruit-debug-55")
+        texte = self.contenu()
+        self.assertIn("detail-debug-54", texte)
+        self.assertNotIn("bruit-debug-55", texte)
+
+    def test_lancer_journalise_garde_sortie_et_code(self):
+        code = todo_journal.lancer_journalise(
+            ["sh", "-c", "echo sortie-56; echo --password invente-57; exit 4"]
+        )
+        self.assertEqual(code, 4)
+        texte = self.contenu()
+        self.assertIn("sortie-56\n", texte)
+        self.assertNotIn("invente-57", texte)
+        self.assertIn("[code 4]", texte)
+
+
+class TestConsoleALInfo(unittest.TestCase):
+    """Le DEBUG ouvert pour le journal ne doit pas atteindre la console."""
+
+    def test_la_console_reste_a_info(self):
+        etat = tempfile.mkdtemp(prefix="test_todo_journal_console_")
+        self.addCleanup(shutil.rmtree, etat, ignore_errors=True)
+        console = io.StringIO()
+        handler = logging.StreamHandler(console)
+        racine = logging.getLogger()
+        racine.addHandler(handler)
+        self.addCleanup(racine.removeHandler, handler)
+        todo_journal.ouvrir(environ={"XDG_STATE_HOME": etat})
+        try:
+            logging.getLogger("script.essai").debug("detail-console-58")
+            logging.getLogger("script.essai").info("info-console-59")
+        finally:
+            todo_journal.fermer()
+        self.assertNotIn("detail-console-58", console.getvalue())
+        self.assertIn("info-console-59", console.getvalue())
+        self.assertEqual(handler.level, logging.NOTSET)
 
 
 if __name__ == "__main__":

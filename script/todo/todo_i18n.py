@@ -1174,6 +1174,14 @@ TRANSLATIONS = {
         "fr": "Commandes Claude",
         "en": "Claude commands",
     },
+    "full-screen display": {
+        "fr": "affichage plein terminal",
+        "en": "full-screen display",
+    },
+    "menu redisplayed": {
+        "fr": "menu réaffiché",
+        "en": "menu redisplayed",
+    },
     "TODO session logs": {
         "fr": "Journaux de session du TODO",
         "en": "TODO session logs",

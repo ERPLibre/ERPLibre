@@ -6,26 +6,32 @@
 Chaque lancement ouvre un fichier neuf sous
 `$XDG_STATE_HOME/erplibre/todo/` (`~/.local/state/erplibre/todo/` par
 défaut), commun à tous les checkouts du compte : son en-tête nomme le
-checkout. Il reçoit les messages des loggers et, pour chaque commande que
-lance `Execute.exec_command_live`, la commande, sa sortie et son code de
-retour. Tout y passe par `redact_secrets`, messages et traceback compris.
-Les réponses tapées au clavier n'y passent pas : ni `input()` ni `getpass`
-n'écrivent ce qu'on y saisit.
+checkout. Il reçoit ce que le TODO affiche (sys.stdout, voir Duplicateur),
+les messages des loggers — DEBUG compris pour ceux du dépôt, que la console
+ne montre pas — et, pour chaque commande que lance
+`Execute.exec_command_live` ou `lancer_journalise`, la commande, sa sortie
+et son code de retour. Tout y passe par `redact_secrets`, messages et
+traceback compris. Les réponses tapées au clavier n'y passent pas : ni
+`input()` ni `getpass` n'écrivent ce qu'on y saisit.
 
 Le masquage est un dernier rempart : un secret imprimé sous une forme qu'il
 ne connaît pas passe. Le fichier est donc créé en 0600, le dossier en 0700,
-d'autant qu'une sortie de commande peut nommer des bases et des hôtes. Les `GARDER` journaux les plus récents restent,
-les plus anciens sont effacés à l'ouverture. `ERPLIBRE_TODO_LOG=0` n'ouvre
-rien. Aucune erreur d'ici n'empêche le TODO de démarrer : sans journal, il
-tourne comme avant.
+d'autant qu'une sortie de commande peut nommer des bases et des hôtes. Les
+`GARDER` journaux les plus récents restent, les plus anciens sont effacés à
+l'ouverture. `ERPLIBRE_TODO_LOG=0` n'ouvre rien. Aucune erreur d'ici
+n'empêche le TODO de démarrer : sans journal, il tourne comme avant.
 """
 
+import collections
 import datetime
 import logging
 import os
 import re
+import subprocess
+import sys
 
 from script.execute import execute
+from script.todo.todo_i18n import t
 
 GARDER = 30
 PREFIXE = "todo_"
@@ -35,7 +41,30 @@ FORMAT = (
     " %(message)s"
 )
 
-_ouvert = {"fichier": None, "handler": None}
+_ouvert = {
+    "fichier": None,
+    "handler": None,
+    "stdout": None,
+    "niveaux": [],
+}
+
+# Les séquences de contrôle d'un terminal : couleurs et curseur (CSI), titres
+# (OSC), et les échappements d'un seul caractère. Le journal n'en garde que le
+# texte.
+RE_ANSI = re.compile(
+    r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]"
+)
+# L'écran alternatif qu'ouvre une interface plein terminal (urwid) : ce qui
+# s'y dessine est un redessin d'écran, pas un texte à garder.
+RE_ECRAN_ALTERNE_DEBUT = re.compile(r"\x1b\[\?(?:1049|1047|47)h")
+RE_ECRAN_ALTERNE_FIN = re.compile(r"\x1b\[\?(?:1049|1047|47)l")
+# Une écriture d'au moins tant de lignes est un bloc, un menu le plus souvent :
+# le même bloc réaffiché ne s'écrit qu'une fois parmi les derniers retenus.
+LIGNES_BLOC = 3
+BLOCS_RETENUS = 8
+# Les loggers dont le DEBUG va au journal. Ceux des bibliothèques restent à
+# INFO : leur DEBUG noierait le reste.
+LOGGERS_DEBUG = ("script", "__main__")
 
 
 class FormatCaviarde(logging.Formatter):
@@ -48,6 +77,95 @@ class FormatCaviarde(logging.Formatter):
 
     def format(self, record):
         return execute.redact_secrets(super().format(record))
+
+
+class Duplicateur:
+    """sys.stdout qui recopie au journal ce qu'il affiche.
+
+    L'écran reçoit tout, inchangé. Le journal reçoit les lignes complètes,
+    caviardées et sans séquences ANSI, sauf :
+
+    - pendant exec_command_live, qui journalise déjà commande et sortie ;
+    - pendant un écran alternatif (interface plein terminal) ;
+    - un bloc identique à un bloc récent, remplacé par une mention.
+
+    flush() pousse la ligne en cours : une invite sans saut de ligne, que
+    click.prompt et input() vident avant de lire, arrive ainsi au journal
+    avant ce qui suit. Ce qu'on tape n'est pas écrit par le programme, et
+    n'y arrive donc pas. Tout autre attribut — fileno, isatty, encoding —
+    est celui du vrai flux : input() y retrouve le terminal et l'édition de
+    ligne.
+    """
+
+    def __init__(self, ecran, ecrire):
+        self._ecran = ecran
+        self._ecrire = ecrire
+        self._ligne = ""
+        self._plein_ecran = False
+        self._blocs = collections.deque(maxlen=BLOCS_RETENUS)
+
+    def write(self, texte):
+        retour = self._ecran.write(texte)
+        try:
+            self._copier(texte)
+        except Exception:
+            # Le journal ne doit jamais faire échouer un affichage.
+            pass
+        return retour
+
+    def flush(self):
+        self._ecran.flush()
+        try:
+            self._vider()
+        except Exception:
+            pass
+
+    def __getattr__(self, nom):
+        return getattr(self._ecran, nom)
+
+    def _copier(self, texte):
+        if not isinstance(texte, str) or execute.commande_en_cours():
+            return
+        if self._plein_ecran:
+            if RE_ECRAN_ALTERNE_FIN.search(texte):
+                self._plein_ecran = False
+            return
+        if RE_ECRAN_ALTERNE_DEBUT.search(texte):
+            self._vider()
+            self._plein_ecran = not RE_ECRAN_ALTERNE_FIN.search(texte)
+            self._ecrire(f"({t('full-screen display')})\n")
+            return
+        if texte.count("\n") >= LIGNES_BLOC:
+            empreinte = hash(texte)
+            if empreinte in self._blocs:
+                self._vider()
+                self._ecrire(f"({t('menu redisplayed')})\n")
+                return
+            self._blocs.append(empreinte)
+        *completes, self._ligne = (self._ligne + texte).split("\n")
+        for ligne in completes:
+            self._ecrire_ligne(ligne)
+
+    def _ecrire_ligne(self, ligne):
+        ligne = RE_ANSI.sub("", ligne)
+        # Une barre de progression réécrit sa ligne par « \r » : seul son
+        # dernier état compte.
+        ligne = ligne.rsplit("\r", 1)[-1]
+        self._ecrire(execute.redact_secrets(ligne) + "\n")
+
+    def _vider(self):
+        if self._ligne.strip():
+            self._ecrire_ligne(self._ligne)
+        self._ligne = ""
+
+
+class FiltreJournal(logging.Filter):
+    """INFO et au-delà pour tous ; DEBUG pour les loggers du dépôt seuls."""
+
+    def filter(self, record):
+        if record.levelno >= logging.INFO:
+            return True
+        return record.name.startswith(LOGGERS_DEBUG)
 
 
 def dossier_journaux(environ=None):
@@ -108,11 +226,29 @@ def ouvrir(environ=None, maintenant=None, garder=GARDER):
         f"# TODO ERPLibre, {maintenant:%Y-%m-%d %H:%M:%S},"
         f" checkout {os.getcwd()}, pid {os.getpid()}\n"
     )
+    racine = logging.getLogger()
+    # La console reste à INFO : le DEBUG des loggers du dépôt, ouvert
+    # ci-dessous, ne doit atteindre que le journal.
+    niveaux = []
+    for existant in racine.handlers:
+        if existant.level == logging.NOTSET:
+            existant.setLevel(logging.INFO)
+            niveaux.append((existant, logging.NOTSET))
+    for nom in LOGGERS_DEBUG:
+        logger = logging.getLogger(nom)
+        niveaux.append((logger, logger.level))
+        logger.setLevel(logging.DEBUG)
     handler = logging.StreamHandler(fichier)
+    handler.setLevel(logging.DEBUG)
+    handler.addFilter(FiltreJournal())
     handler.setFormatter(FormatCaviarde(FORMAT, "%Y-%m-%d:%H:%M:%S"))
-    logging.getLogger().addHandler(handler)
+    racine.addHandler(handler)
     execute.set_session_journal(fichier)
-    _ouvert.update(fichier=fichier, handler=handler)
+    stdout = sys.stdout
+    sys.stdout = Duplicateur(stdout, execute._journaliser)
+    _ouvert.update(
+        fichier=fichier, handler=handler, stdout=stdout, niveaux=niveaux
+    )
     try:
         elaguer(dossier, garder)
     except OSError:
@@ -168,9 +304,51 @@ def noter_exception():
     execute._journaliser(traceback.format_exc(), deja_caviarde=False)
 
 
+def lancer_journalise(cmd, **kwargs):
+    """Lance `cmd` sortie au terminal ET au journal ; rend son code.
+
+    Pour un sous-processus qui ne passe pas par exec_command_live : lancé
+    tel quel, il écrit sur le descripteur du terminal, que la copie de
+    sys.stdout ne voit pas. Sa sortie passe ici par un tube, caviardée à
+    l'écran comme au journal, au prix du terminal : un programme qui
+    demande une saisie ou dessine l'écran se lance sans cette aide.
+    """
+    affichee = execute.redact_secrets(" ".join(map(str, cmd)))
+    heure = f"{datetime.datetime.now():%H:%M:%S}"
+    execute._journaliser(f"\n[{heure}] $ {affichee}\n")
+    try:
+        processus = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            **kwargs,
+        )
+    except OSError as err:
+        execute._journaliser(f"{err}\n[code 127]\n", deja_caviarde=False)
+        print(err)
+        return 127
+    for ligne in processus.stdout:
+        propre = execute.redact_secrets(ligne)
+        ecran = _ouvert["stdout"] or sys.stdout
+        ecran.write(propre)
+        ecran.flush()
+        execute._journaliser(propre)
+    code = processus.wait()
+    execute._journaliser(f"[code {code}]\n")
+    return code
+
+
 def fermer():
     """Ferme le journal ouvert par ouvrir() ; sans effet sinon."""
     execute.set_session_journal(None)
+    if _ouvert["stdout"] is not None:
+        if isinstance(sys.stdout, Duplicateur):
+            sys.stdout.flush()
+        sys.stdout = _ouvert["stdout"]
+    for objet, niveau in _ouvert["niveaux"]:
+        objet.setLevel(niveau)
     if _ouvert["handler"] is not None:
         logging.getLogger().removeHandler(_ouvert["handler"])
     if _ouvert["fichier"] is not None:
@@ -178,4 +356,4 @@ def fermer():
             _ouvert["fichier"].close()
         except OSError:
             pass
-    _ouvert.update(fichier=None, handler=None)
+    _ouvert.update(fichier=None, handler=None, stdout=None, niveaux=[])
