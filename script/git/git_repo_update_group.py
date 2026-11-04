@@ -68,18 +68,34 @@ def get_config():
     return args
 
 
+def repos_from_output(lines, root):
+    """Rend les dépôts nommés dans `lines`, relatifs à `root`.
+
+    get_repo_from_backup.py et get_repo_from_module.py écrivent un chemin
+    absolu de dépôt par ligne, mais leur sortie fusionne stderr : une ligne
+    qui n'est pas un chemin sous `root` — journal, en-tête d'exécution,
+    ligne vide — est écartée, faute de quoi elle compterait comme un dépôt
+    et la liste ne serait jamais vide.
+    """
+    prefix = root.rstrip(os.sep) + os.sep
+    return [
+        line.strip()[len(prefix) :]
+        for line in lines
+        if line.strip().startswith(prefix) and line.strip() != prefix
+    ]
+
+
 def main():
     config = get_config()
     git_tool = GitTool()
     execute_cmd = execute.Execute()
-    index_to_remove = len(os.getcwd()) + 1
 
     filter_group = config.group if config.group else None
 
     whitelist = []
     if config.from_backup_path or config.from_backup_name:
         # script/database/get_repo_from_backup.py
-        # --backup_name pir_prod_5_dec_2025_2026-02-04_14h27m54s.zip
+        # --backup_name <nom_de_sauvegarde>.zip
         if config.from_backup_path:
             cmd = f"./script/database/get_repo_from_backup.py --backup_path {config.from_backup_path}"
         else:
@@ -91,9 +107,17 @@ def main():
             single_source_erplibre=True,
             return_status_and_output=True,
         )
-        for line in output:
-            repo_name = line[index_to_remove:].strip()
-            whitelist.append(repo_name)
+        whitelist.extend(repos_from_output(output, os.getcwd()))
+        # An empty whitelist writes an addons_path with no community
+        # repository: every module outside them turns "not installable"
+        # and the database fails much later, far from the cause.
+        if status or not whitelist:
+            print(
+                f"Cannot list the repositories of the backup (exit {status}):"
+                f" config not generated. Details: {cmd}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     if config.database:
         cmd = f"./script/database/get_module_list_from_database.py --database {config.database}"
@@ -113,9 +137,7 @@ def main():
             single_source_erplibre=True,
             return_status_and_output=True,
         )
-        for line in output:
-            repo_name = line[index_to_remove:].strip()
-            whitelist.append(repo_name)
+        whitelist.extend(repos_from_output(output, os.getcwd()))
 
     if config.add_repo:
         extra_repos = [a.strip() for a in config.add_repo.split(";")]

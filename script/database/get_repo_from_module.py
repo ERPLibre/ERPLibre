@@ -62,12 +62,24 @@ def main():
         single_source_erplibre=True,
         return_status_and_output=True,
     )
-    set_path_repo = set()
-    for line_module_path in output:
-        line_repo = os.path.dirname(line_module_path)
-        set_path_repo.add(line_repo)
-    for path_repo in set_path_repo:
+    for path_repo in repos_from_lines(output):
         print(path_repo)
+
+
+def repos_from_lines(lines):
+    """Rend, triés et sans doublon, les dépôts des modules trouvés.
+
+    `lines` est la sortie fusionnée de check_addons_exist.py : un chemin de
+    module par module trouvé, mais aussi, sur la même sortie, le journal
+    d'un module absent ou en conflit. Seule une ligne qui nomme un dossier
+    existant est un module ; le dépôt est son parent.
+    """
+    repos = set()
+    for line in lines:
+        path_module = line.strip()
+        if path_module and os.path.isdir(path_module):
+            repos.add(os.path.dirname(path_module))
+    return sorted(repos)
 
 
 def die(cond, message, code=1):

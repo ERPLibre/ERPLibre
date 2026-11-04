@@ -97,6 +97,16 @@ robot_libre_open:
 robot_libre_open_record:
 	source .venv.erplibre/bin/activate;python ./script/selenium/web_login.py --record_mode
 
+# Joue les tours des requis (devops.requirement.test de type tour) et remonte
+# leur verdict ; compte exécutant, pour le RPC comme pour la connexion
+# navigateur, par ERPLIBRE_REQUIREMENT_RUNNER_LOGIN et
+# ERPLIBRE_REQUIREMENT_RUNNER_PASSWORD. bd= choisit la base, ARGS= ajoute des
+# options, par exemple ARGS="--code ABC-01 --step_delay 800". Aucun mot de
+# passe dans ARGS : make affiche la recette, et argv est lisible de tous.
+.PHONY: robot_libre_requirement_tours
+robot_libre_requirement_tours:
+	source .venv.erplibre/bin/activate;python ./script/selenium/run_requirement_tours.py --headless --no_dark_mode $(if $(bd),--db $(bd)) $(ARGS)
+
 .PHONY: robot_libre_format
 robot_libre_format:
 	parallel ::: "./script/maintenance/format.sh ./odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons/erplibre_devops" "./script/maintenance/format.sh ./odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons/erplibre_devops_me"

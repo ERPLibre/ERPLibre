@@ -626,6 +626,10 @@ TRANSLATIONS = {
         "fr": "Aucune base de données sélectionnée.",
         "en": "No database selected.",
     },
+    "Configuration not filtered, see the output above: config.conf keeps the first pass, without the filter.": {
+        "fr": "Configuration non filtrée, voir la sortie ci-dessus : config.conf garde la première passe, sans le filtre.",
+        "en": "Configuration not filtered, see the output above: config.conf keeps the first pass, without the filter.",
+    },
     "Cannot list the databases (exit code): ": {
         "fr": "Impossible de lister les bases (code de retour) : ",
         "en": "Cannot list the databases (exit code): ",
