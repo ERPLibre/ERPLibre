@@ -11,6 +11,7 @@ import time
 
 from script.todo import todo_install
 from script.todo.qemu_privilege import sudo_prefix
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 
@@ -78,7 +79,7 @@ class QemuAccessMixin:
         print(f"  [1] {t('Local QEMU VMs (virsh)')} *")
         print(f"  [2] {t('Hosts from ~/.ssh/config')}")
         print(f"  [3] {t('Type a host or an IP')}")
-        print(f"  [0] {t('Back')}")
+        print(f"  {retour(t('Back'))}")
         answer = input(t("Choice (0-3, default 1): ")).strip()
         if answer == "0":
             return []

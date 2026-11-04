@@ -25,6 +25,7 @@ from script.todo.mail import accounts as mail_accounts
 from script.todo.mail.accounts import PRESETS, AccountError
 from script.todo.mail.secrets import SecretError, SecretStore
 from script.todo.mail.store import Store, StoreError, resolve_mode
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 CACHE_MODES = ("clear", "encrypted", "ephemeral")
@@ -130,7 +131,7 @@ def prompt_execute_mail(todo) -> None:
 [3] {t("mail_sync_now")}
 [4] {t("mail_cache_menu")}
 [5] {t("mail_stats_menu")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
         if status == "0":
@@ -327,7 +328,7 @@ def prompt_mail_accounts(todo) -> None:
 [5] {t("mail_account_test")}
 [6] {t("mail_account_token")}
 [7] {t("mail_account_signature")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
         if status == "0":
@@ -760,7 +761,7 @@ def prompt_mail_cache(todo) -> None:
 [1] {t("mail_cache_default_mode")} ({current})
 [2] {t("mail_cache_account_mode")}
 [3] {t("mail_cache_size_purge")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
         if status == "0":

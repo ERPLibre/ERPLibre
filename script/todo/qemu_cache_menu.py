@@ -34,6 +34,7 @@ from urllib.parse import urljoin, urlsplit
 import click
 
 from script.qemu import cache_offline
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import get_lang, t
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
@@ -1761,7 +1762,7 @@ class QemuCacheMenuMixin:
         print(f"\n{titre}")
         for i, libelle in enumerate(options, 1):
             print(f"  [{i}] {libelle}")
-        print(f"  [0] {t('Back')}")
+        print(f"  {retour(t('Back'))}")
         while True:
             reponse = click.prompt(t("Choice"), default="1").strip()
             if reponse == "0":

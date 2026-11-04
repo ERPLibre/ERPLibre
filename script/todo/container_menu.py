@@ -33,6 +33,7 @@ import textwrap
 import click
 
 from script.todo import container_db, container_runtime, todo_journal
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
@@ -207,7 +208,7 @@ class ContainerMenuMixin:
         print(f"\n{titre}")
         for rang, option in enumerate(options, 1):
             print(f"  [{rang}] {option}")
-        print(f"  [0] {t('Back')}")
+        print(f"  {retour(t('Back'))}")
         reponse = click.prompt(t("Number"), default=defaut).strip()
         try:
             rang = int(reponse)

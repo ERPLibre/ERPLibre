@@ -43,6 +43,7 @@ import click
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 # Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
@@ -1160,7 +1161,7 @@ class AssistantMenuMixin:
                 # moins bien que deux lignes assumées.
                 print(f"  [{LETTRES[rang]}] {marque} {t(outil.name)}")
                 print(f"        {t(outil.description)[:LARGEUR]}")
-            print(f"  [0] {t('Back')}")
+            print(f"  {retour(t('Back'))}")
             if any(v != "ok" for _, v, _ in appariement):
                 print(
                     f"      ⚠️ {t('a requirement could not be checked')}"
