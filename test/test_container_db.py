@@ -217,6 +217,81 @@ class TestScripts(unittest.TestCase):
         )
         self.assertNotIn("MASTER_PWD", self.p.environ())
 
+    def preparer_mise_a_jour(self):
+        """Des createdb, psql et odoo-bin factices, et un vrai zip."""
+        journal = self.p.racine / "appels"
+        outils = self.p.racine / "outils"
+        outils.mkdir()
+        for nom in ("createdb", "psql"):
+            chemin = outils / nom
+            chemin.write_text(
+                f'#!/usr/bin/env bash\necho "{nom} $*" >> "{journal}"\n'
+            )
+            chemin.chmod(0o755)
+        # Le python du venv : l'extraction (« - ») et « -c » passent au
+        # vrai python ; un appel à odoo-bin est noté, MASTER_PWD compris.
+        python = self.p.prefixe / ".venv.odoo18.0_essai" / "bin" / "python"
+        python.write_text(
+            "#!/usr/bin/env bash\n"
+            'if [ "$1" = "-" ] || [ "$1" = "-c" ]; then '
+            f'exec {sys.executable} "$@"; fi\n'
+            "shift\n"
+            f'echo "odoo $* MASTER_PWD=${{MASTER_PWD:-}}" >> "{journal}"\n'
+            "cat > /dev/null\n"
+        )
+        travail = self.p.data / container_db.TRAVAIL
+        (travail / "tmp").mkdir(parents=True)
+        with zipfile.ZipFile(travail / container_db.ZIP, "w") as z:
+            z.writestr("dump.sql", "-- vide")
+            z.writestr("filestore/ab/abc", "piece")
+        env = self.p.env()
+        env["PATH"] = f"{outils}:{env['PATH']}"
+        return journal, env
+
+    def test_la_mise_a_jour_restaure_sans_charger_puis_u_all(self):
+        journal, env = self.preparer_mise_a_jour()
+        fin = bash(
+            container_db.RESTAURER_MAJ,
+            ["essai_base", "-f", "-n"],
+            env=env,
+            entree=b"maitre-invente-77\n",
+        )
+        self.assertEqual(fin.returncode, 0, fin.stderr)
+        appels = journal.read_text().splitlines()
+        ordre = [
+            a.split()[0] if not a.startswith("odoo ") else a.split()[1]
+            for a in appels
+        ]
+        self.assertEqual(
+            ordre, ["db", "createdb", "psql", "neutralize", "-c", "shell"]
+        )
+        self.assertIn(
+            "drop essai_base MASTER_PWD=maitre-invente-77", appels[0]
+        )
+        self.assertIn(
+            "-T template0 -E unicode --lc-collate=C essai_base", appels[1]
+        )
+        self.assertIn("\\restrict ", appels[2])
+        self.assertIn("-u all --stop-after-init --no-http", appels[4])
+        self.assertEqual(
+            (
+                self.p.data / "filestore" / "essai_base" / "ab" / "abc"
+            ).read_text(),
+            "piece",
+        )
+
+    def test_une_base_deplacee_garde_son_uuid_a_la_mise_a_jour(self):
+        journal, env = self.preparer_mise_a_jour()
+        bash(
+            container_db.RESTAURER_MAJ,
+            ["essai_base", "--move"],
+            env=env,
+        )
+        appels = journal.read_text()
+        self.assertNotIn(" shell ", appels)
+        self.assertNotIn(" drop ", appels)
+        self.assertNotIn("neutralize", appels)
+
     def test_la_suppression_passe_par_db_drop(self):
         bash(container_db.SUPPRIMER, ["essai_base"], env=self.p.env())
         self.assertEqual(
@@ -360,7 +435,13 @@ class TestMenuRestauration(unittest.TestCase):
 
         def dans(cmd, libelle, entree=None, secret=None):
             script = cmd[cmd.index("-c") + 1]
-            for nom in ("RECEVOIR", "RESTAURER", "NETTOYER", "SUPPRIMER"):
+            for nom in (
+                "RECEVOIR",
+                "RESTAURER",
+                "RESTAURER_MAJ",
+                "NETTOYER",
+                "SUPPRIMER",
+            ):
                 if script == getattr(container_db, nom):
                     lances.append((nom, cmd[cmd.index("-c") + 3 :]))
                     self.libelles.append(libelle)
@@ -392,7 +473,7 @@ class TestMenuRestauration(unittest.TestCase):
         return lances, sortie.getvalue()
 
     def test_l_ordre_reception_restauration_nettoyage(self):
-        lances, _ = self.lancer(["n", "", "o"])
+        lances, _ = self.lancer(["n", "", "", "o"])
         self.assertEqual(
             lances,
             [
@@ -403,7 +484,7 @@ class TestMenuRestauration(unittest.TestCase):
         )
 
     def test_le_journal_recoit_un_libelle_et_non_le_script(self):
-        self.lancer(["n", "", "o"])
+        self.lancer(["n", "", "", "o"])
         self.assertEqual(len(self.libelles), 3)
         restauration = self.libelles[1]
         self.assertIn("essai-ERPLibre-1 (odoo)", restauration)
@@ -434,14 +515,14 @@ class TestMenuRestauration(unittest.TestCase):
         )
 
     def test_un_echec_de_copie_nettoie_et_ne_restaure_pas(self):
-        lances, sortie = self.lancer(["n", "", "o"], codes={"RECEVOIR": 1})
+        lances, sortie = self.lancer(["n", "", "", "o"], codes={"RECEVOIR": 1})
         self.assertEqual([n for n, _ in lances], ["RECEVOIR", "NETTOYER"])
 
     def test_une_base_existante_n_est_ecrasee_que_sur_confirmation(self):
         lances, _ = self.lancer(["n"], bases=[("essai_base", True)])
         self.assertEqual(lances, [])
         lances, _ = self.lancer(
-            ["o", "o", "n", "o"], bases=[("essai_base", True)]
+            ["o", "o", "n", "", "o"], bases=[("essai_base", True)]
         )
         self.assertEqual(
             lances[1], ("RESTAURER", ["essai_base", "-f", "-n", "--move"])
@@ -449,17 +530,30 @@ class TestMenuRestauration(unittest.TestCase):
 
     def test_une_base_neuve_ne_demande_pas_le_mot_de_passe(self):
         self.maitre = []
-        self.lancer(["n", "", "o"])
+        self.lancer(["n", "", "", "o"])
         self.assertIn(("RESTAURER", "", True), self.secrets)
 
     def test_restaurer_par_dessus_demande_le_mot_de_passe(self):
         self.maitre = ["maitre-invente-73"]
-        self.lancer(["o", "n", "", "o"], bases=[("essai_base", False)])
+        self.lancer(["o", "n", "", "", "o"], bases=[("essai_base", False)])
         self.assertIn(("RESTAURER", "maitre-invente-73", True), self.secrets)
+
+    def test_la_mise_a_jour_choisit_son_script(self):
+        lances, sortie = self.lancer(["n", "", "o", "o"])
+        self.assertEqual(lances[1], ("RESTAURER_MAJ", ["essai_base"]))
+        self.assertIn("odoo-bin -u all essai_base", self.libelles[1])
+        self.assertIn("odoo-bin -u all", sortie)
+
+    def test_sans_mise_a_jour_un_echec_la_suggere(self):
+        _, sortie = self.lancer(["n", "", "", "o"], codes={"RESTAURER": 1})
+        self.assertIn(
+            container_menu.t("restore again with the module update (-u all)."),
+            sortie,
+        )
 
     def test_par_defaut_une_copie_avec_un_nouvel_uuid(self):
         """Le défaut du gestionnaire web d'Odoo : « This database is a copy »."""
-        lances, sortie = self.lancer(["n", "", "o"])
+        lances, sortie = self.lancer(["n", "", "", "o"])
         self.assertEqual(lances[1], ("RESTAURER", ["essai_base"]))
         self.assertIn(
             container_menu.t("This database is a copy: it gets a new UUID."),
@@ -467,11 +561,11 @@ class TestMenuRestauration(unittest.TestCase):
         )
 
     def test_une_base_deplacee_garde_son_uuid(self):
-        lances, _ = self.lancer(["n", "n", "o"])
+        lances, _ = self.lancer(["n", "n", "", "o"])
         self.assertEqual(lances[1], ("RESTAURER", ["essai_base", "--move"]))
 
     def test_un_refus_final_ne_copie_rien(self):
-        lances, _ = self.lancer(["n", "", "n"])
+        lances, _ = self.lancer(["n", "", "", "n"])
         self.assertEqual(lances, [])
 
     def test_un_nom_invalide_ne_lance_rien(self):
@@ -490,7 +584,7 @@ class TestMenuRestauration(unittest.TestCase):
         self.maitre = ["maitre-invente-74", "maitre-invente-75"]
         todo_bases = [("essai_base", True)]
         lances, _ = self.lancer(
-            ["o", "n", "", "o", "o"],
+            ["o", "n", "", "", "o", "o"],
             bases=todo_bases,
             codes={"RESTAURER": 1},
         )
