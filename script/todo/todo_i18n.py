@@ -1178,6 +1178,10 @@ TRANSLATIONS = {
         "fr": "affichage plein terminal",
         "en": "full-screen display",
     },
+    "output on the terminal": {
+        "fr": "sortie au terminal",
+        "en": "output on the terminal",
+    },
     "menu redisplayed": {
         "fr": "menu réaffiché",
         "en": "menu redisplayed",

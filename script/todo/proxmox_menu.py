@@ -21,7 +21,7 @@ import time
 
 import click
 
-from script.todo import todo_prefs
+from script.todo import todo_journal, todo_prefs
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
 
@@ -1278,7 +1278,7 @@ class ProxmoxMenuMixin:
             )
             argv = pve.ssh_argv(host, remote, tty=True)
             print("\n" + " ".join(shlex.quote(a) for a in argv) + "\n")
-            return subprocess.call(argv) == 0
+            return todo_journal.lancer_au_terminal(argv).returncode == 0
 
         return {
             "host": dict(host, label=self._pve_label(host)),

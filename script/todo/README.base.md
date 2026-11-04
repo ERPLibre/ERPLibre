@@ -21,10 +21,12 @@ and on exit. It keeps what TODO prints — menus, verdicts, reports — with the
 colour codes removed, a menu shown again written once, and a full-screen
 display left out; the loggers' messages, the DEBUG ones of the repository's
 own scripts included, which the console does not show; and, for every command
-TODO runs, the command, its output and its exit code. What is typed at a
-prompt is not recorded, though a line TODO prints back with an answer in it
-is. Everything in it, log messages and crash traceback included, goes
-through the masking the screen uses: secret options and variables, configuration lines such as `admin_passwd = …`,
+TODO runs, the command, its output and its exit code, or only the command and
+its exit code when the command needs the terminal, its output then staying on
+screen. What is typed at a prompt is not recorded, though a line TODO prints
+back with an answer in it is. Everything in it, log messages and crash
+traceback included, goes through the masking the screen uses: secret options
+and variables, configuration lines such as `admin_passwd = …`,
 credentials in a URL, GitHub and GitLab tokens, JSON keys, `odoo-bin -w`,
 `sshpass -p`, `curl -u` and private keys. Masking is a last line of defence,
 not a guarantee: a secret printed in an unknown form stays, so the file is
@@ -84,9 +86,11 @@ verdicts, rapports — sans les codes de couleur, un menu réaffiché écrit une
 seule fois et un affichage plein terminal laissé de côté ; les messages des
 loggers, y compris le DEBUG des scripts du dépôt, que la console ne montre
 pas ; et, pour chaque commande que TODO lance, la commande, sa sortie et son
-code de retour. Ce qu'on tape aux invites n'y est pas écrit, mais une ligne
-que TODO réaffiche avec une réponse l'est. Tout y passe, messages des
-loggers et traceback d'un plantage compris, par le caviardage de l'écran : options et variables de secret, lignes de
+code de retour, ou seulement la commande et son code quand elle a besoin du
+terminal, sa sortie restant alors à l'écran. Ce qu'on tape aux invites n'y
+est pas écrit, mais une ligne que TODO réaffiche avec une réponse l'est. Tout
+y passe, messages des loggers et traceback d'un plantage compris, par le
+caviardage de l'écran : options et variables de secret, lignes de
 configuration comme `admin_passwd = …`, identifiants dans une URL, jetons
 GitHub et GitLab, clés JSON, `odoo-bin -w`, `sshpass -p`, `curl -u` et clés
 privées. Le caviardage est un dernier rempart, pas une garantie : un secret

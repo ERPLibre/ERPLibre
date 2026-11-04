@@ -196,8 +196,10 @@ def create(ask=input, executeur=None) -> bool:
 def _lancer(commande, executeur=None) -> int:
     if executeur is not None:
         return executeur(commande)
+    from script.todo import todo_journal
+
     try:
-        return subprocess.run(commande).returncode
+        return todo_journal.lancer_au_terminal(commande).returncode
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"  ⚠ {exc}")
         return 1

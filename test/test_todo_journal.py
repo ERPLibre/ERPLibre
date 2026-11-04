@@ -334,6 +334,30 @@ class TestJournalComplet(unittest.TestCase):
         self.assertNotIn("invente-57", texte)
         self.assertIn("[code 4]", texte)
 
+    def test_lancer_au_terminal_garde_commande_et_code(self):
+        fini = todo_journal.lancer_au_terminal(
+            ["sh", "-c", "exit 3"], check=False
+        )
+        self.assertEqual(fini.returncode, 3)
+        texte = self.contenu()
+        self.assertIn("$ sh -c exit 3", texte)
+        self.assertIn(todo_journal.t("output on the terminal"), texte)
+        self.assertIn("[code 3]", texte)
+
+    def test_lancer_au_terminal_note_le_code_avant_de_relever(self):
+        import subprocess
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            todo_journal.lancer_au_terminal(["sh", "-c", "exit 5"], check=True)
+        self.assertIn("[code 5]", self.contenu())
+
+    def test_la_commande_au_terminal_est_caviardee(self):
+        todo_journal.lancer_au_terminal(
+            "true --password invente-60", shell=True
+        )
+        self.assertNotIn("invente-60", self.contenu())
+
+
 
 class TestConsoleALInfo(unittest.TestCase):
     """Le DEBUG ouvert pour le journal ne doit pas atteindre la console."""

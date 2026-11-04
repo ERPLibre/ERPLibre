@@ -17,9 +17,11 @@ verdicts, rapports — sans les codes de couleur, un menu réaffiché écrit une
 seule fois et un affichage plein terminal laissé de côté ; les messages des
 loggers, y compris le DEBUG des scripts du dépôt, que la console ne montre
 pas ; et, pour chaque commande que TODO lance, la commande, sa sortie et son
-code de retour. Ce qu'on tape aux invites n'y est pas écrit, mais une ligne
-que TODO réaffiche avec une réponse l'est. Tout y passe, messages des
-loggers et traceback d'un plantage compris, par le caviardage de l'écran : options et variables de secret, lignes de
+code de retour, ou seulement la commande et son code quand elle a besoin du
+terminal, sa sortie restant alors à l'écran. Ce qu'on tape aux invites n'y
+est pas écrit, mais une ligne que TODO réaffiche avec une réponse l'est. Tout
+y passe, messages des loggers et traceback d'un plantage compris, par le
+caviardage de l'écran : options et variables de secret, lignes de
 configuration comme `admin_passwd = …`, identifiants dans une URL, jetons
 GitHub et GitLab, clés JSON, `odoo-bin -w`, `sshpass -p`, `curl -u` et clés
 privées. Le caviardage est un dernier rempart, pas une garantie : un secret

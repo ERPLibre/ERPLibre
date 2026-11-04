@@ -10,7 +10,8 @@ checkout. Il reçoit ce que le TODO affiche (sys.stdout, voir Duplicateur),
 les messages des loggers — DEBUG compris pour ceux du dépôt, que la console
 ne montre pas — et, pour chaque commande que lance
 `Execute.exec_command_live` ou `lancer_journalise`, la commande, sa sortie
-et son code de retour. Tout y passe par `redact_secrets`, messages et
+et son code de retour ; pour `lancer_au_terminal`, la commande et son code,
+la sortie restant au terminal. Tout y passe par `redact_secrets`, messages et
 traceback compris. Les réponses tapées au clavier n'y passent pas : ni
 `input()` ni `getpass` n'écrivent ce qu'on y saisit.
 
@@ -338,6 +339,33 @@ def lancer_journalise(cmd, **kwargs):
     code = processus.wait()
     execute._journaliser(f"[code {code}]\n")
     return code
+
+
+def lancer_au_terminal(cmd, **kwargs):
+    """subprocess.run qui laisse le terminal au programme ; rend son résultat.
+
+    Pour une commande qui a besoin du terminal — une invite, un mot de passe,
+    un affichage plein écran, ssh avec tty — et que lancer_journalise ne
+    peut donc pas faire passer par un tube. Sa sortie reste à l'écran,
+    hors du journal ; la commande et son code de retour y vont. Mêmes
+    arguments et mêmes exceptions que subprocess.run.
+    """
+    texte = cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
+    heure = f"{datetime.datetime.now():%H:%M:%S}"
+    execute._journaliser(
+        f"\n[{heure}] $ {execute.redact_secrets(texte)}"
+        f"  ({t('output on the terminal')})\n"
+    )
+    try:
+        fini = subprocess.run(cmd, **kwargs)
+    except subprocess.CalledProcessError as err:
+        execute._journaliser(f"[code {err.returncode}]\n")
+        raise
+    except (OSError, subprocess.SubprocessError) as err:
+        execute._journaliser(f"{err}\n[code 127]\n", deja_caviarde=False)
+        raise
+    execute._journaliser(f"[code {fini.returncode}]\n")
+    return fini
 
 
 def fermer():

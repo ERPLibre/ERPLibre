@@ -80,8 +80,10 @@ def ensure(prompt=True, ask=input):
 
     cmd = install_command()
     print(f"  {t('Will execute:')} {' '.join(cmd)}")
+    from script.todo import todo_journal
+
     try:
-        status = subprocess.run(cmd).returncode
+        status = todo_journal.lancer_journalise(cmd)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"  ⚠ {exc}")
         return False
