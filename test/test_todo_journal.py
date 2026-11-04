@@ -357,6 +357,12 @@ class TestJournalComplet(unittest.TestCase):
         )
         self.assertNotIn("invente-60", self.contenu())
 
+    def test_la_session_en_cours_se_nomme(self):
+        courant = todo_journal.session_en_cours()
+        self.assertEqual(courant["nom"], os.path.basename(self.chemin))
+        self.assertTrue(courant["affichage"])
+        todo_journal.fermer()
+        self.assertIsNone(todo_journal.session_en_cours())
 
 
 class TestConsoleALInfo(unittest.TestCase):

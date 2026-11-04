@@ -43,6 +43,7 @@ FORMAT = (
 )
 
 _ouvert = {
+    "chemin": None,
     "fichier": None,
     "handler": None,
     "stdout": None,
@@ -248,7 +249,11 @@ def ouvrir(environ=None, maintenant=None, garder=GARDER):
     stdout = sys.stdout
     sys.stdout = Duplicateur(stdout, execute._journaliser)
     _ouvert.update(
-        fichier=fichier, handler=handler, stdout=stdout, niveaux=niveaux
+        chemin=chemin,
+        fichier=fichier,
+        handler=handler,
+        stdout=stdout,
+        niveaux=niveaux,
     )
     try:
         elaguer(dossier, garder)
@@ -303,6 +308,20 @@ def noter_exception():
     import traceback
 
     execute._journaliser(traceback.format_exc(), deja_caviarde=False)
+
+
+def session_en_cours():
+    """{"nom", "affichage"} du journal ouvert par ce processus, ou None.
+
+    « affichage » dit si sys.stdout passe encore par le Duplicateur : un
+    code qui le remplace à son tour coupe la copie sans rien dire.
+    """
+    if _ouvert["fichier"] is None:
+        return None
+    return {
+        "nom": os.path.basename(_ouvert["chemin"] or ""),
+        "affichage": isinstance(sys.stdout, Duplicateur),
+    }
 
 
 def lancer_journalise(cmd, **kwargs):
@@ -384,4 +403,6 @@ def fermer():
             _ouvert["fichier"].close()
         except OSError:
             pass
-    _ouvert.update(fichier=None, handler=None, stdout=None, niveaux=[])
+    _ouvert.update(
+        chemin=None, fichier=None, handler=None, stdout=None, niveaux=[]
+    )
