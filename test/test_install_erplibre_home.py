@@ -35,7 +35,11 @@ Ce que ces tests gardent :
   --no-restart-after-game s'excluent, et un dépôt dont le chemin porte un
   caractère que systemd refuse arrête l'installation ;
 - un système non supporté sort en 2 avec UNE ligne « UNSUPPORTED: » sur la
-  sortie d'erreur, celle que TODO et le test long affichent ;
+  sortie d'erreur, celle que TODO et le test long affichent ; macOS se
+  reconnaît à uname, avant os-release ;
+- le venv manquant se crée par le python3 du système, le script tourne
+  sous « set -euo pipefail », et le bilan d'une installation dit de
+  rouvrir la session ;
 - la liste des versions de GNOME acceptées est celle de metadata.json, lue
   sans python3 ;
 - root est refusé, --extension-only refuse --stream-deck et --uninstall, et
@@ -437,6 +441,17 @@ class LeDryRun(Installateur):
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual([], self.lignes(fini, "gsettings: "))
 
+    def test_no_enable_still_migrates_and_links_the_extension(self):
+        """--no-enable ne retire que l'activation : la migration passe
+        quand même, et reporte sur le nouvel UUID un état déjà activé."""
+        fini = self.lancer("--dry-run", "--no-enable")
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        self.assertIn(
+            str(EXTENSION / "tools/migrate_legacy.py"),
+            self.lignes(fini, "run: "),
+        )
+        self.assertIn(self.lien, self.lignes(fini, "write: "))
+
     def test_extension_only_checks_no_system(self):
         """Ni os-release ni GNOME : un système refusé passe quand même."""
         fini = self.lancer(
@@ -498,6 +513,12 @@ class LeDryRun(Installateur):
 
 
 class LesRefus(Installateur):
+    def test_macos_is_unsupported(self):
+        """uname -s se lit avant os-release : un os-release présent ne
+        fait pas passer macOS pour la distribution qu'il nomme."""
+        self._commande("uname", "echo Darwin\n")
+        self.assertNonSupporte(self.lancer("--dry-run"), "macOS")
+
     def test_nixos_is_unsupported(self):
         self.assertNonSupporte(
             self.lancer("--dry-run", systeme="nixos"), "NixOS"
@@ -1396,6 +1417,57 @@ class TestJeux(unittest.TestCase):
             self.assertEqual([], restes)
 
 
+class TestVenv(unittest.TestCase):
+    """make_venv sous un faux python3 en tête du PATH : celui que le
+    système fournit, et non un python de pyenv."""
+
+    # « -m venv <dossier> » y pose un bin/python qui note ses appels de pip.
+    PYTHON3 = (
+        '#!/bin/sh\necho "python3 $*" >>"$DOSSIER/appels"\n'
+        'if [ "$1 $2" = "-m venv" ]; then\n'
+        '    mkdir -p "$3/bin"\n'
+        '    printf \'#!/bin/sh\\necho "venv $*" >>"$DOSSIER/appels"\\n\''
+        ' >"$3/bin/python"\n'
+        '    chmod 755 "$3/bin/python"\n'
+        "fi\n"
+    )
+
+    def test_an_absent_venv_is_created_by_the_system_python3(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            faux = Path(dossier, "bin")
+            faux.mkdir()
+            for nom, corps in (
+                ("python3", self.PYTHON3),
+                ("pyenv", '#!/bin/sh\necho "pyenv $*" >>"$DOSSIER/appels"\n'),
+            ):
+                (faux / nom).write_text(corps)
+                (faux / nom).chmod(0o755)
+            fragment = (
+                'PATH="$FAUX:$PATH"\nVENV="$DOSSIER/venv"\n'
+                'GAMES_DIR="$DOSSIER/games"\n'
+                'make_venv\nprintf "%s\\n" "${DONE[@]}"\n'
+            )
+            env = {"DOSSIER": dossier, "FAUX": str(faux)}
+            fait = sourcer(fragment, env)
+            premier = Path(dossier, "appels").read_text().splitlines()
+            Path(dossier, "appels").unlink()
+            reprise = sourcer(fragment, env)
+            second = Path(dossier, "appels").read_text().splitlines()
+        venv = "%s/venv" % dossier
+        deck = str(RACINE / "script/stream_deck/requirements.txt")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertEqual("python3 -m venv %s" % venv, premier[0])
+        self.assertEqual(2, len(premier), premier)
+        self.assertTrue(premier[1].startswith("venv -m pip install"))
+        self.assertTrue(premier[1].endswith("-r %s" % deck), premier)
+        self.assertIn("venv created: %s" % venv, fait.stdout)
+        # Un venv déjà là n'est pas recréé : seul pip repasse.
+        self.assertEqual(0, reprise.returncode, reprise.stderr)
+        self.assertEqual(1, len(second), second)
+        self.assertTrue(second[0].startswith("venv -m pip install"))
+        self.assertNotIn("venv created", reprise.stdout)
+
+
 class TestActivation(unittest.TestCase):
     """enable_extension sur un gsettings simulé par des fichiers, en tête du
     PATH, qui note chacun de ses appels. tools/enable_next_login.py, que le
@@ -1710,6 +1782,44 @@ class TestDesinstallation(unittest.TestCase):
         )
         env = {"DOSSIER": dossier, "UUID": UUID, echec: "1"}
         return sourcer(fragment, env), base / UUID
+
+    def test_a_second_full_uninstall_changes_nothing(self):
+        """La seconde exécution lit une liste où l'UUID n'est plus, sous la
+        forme « @as [] » que gsettings rend d'une liste vide : elle n'y
+        écrit rien, et sort en 0."""
+        with tempfile.TemporaryDirectory() as dossier:
+            base = Path(dossier, "extensions")
+            base.mkdir()
+            (base / UUID).symlink_to(EXTENSION)
+            Path(dossier, "venv/bin").mkdir(parents=True)
+            Path(dossier, "enabled-extensions").write_text("['%s']\n" % UUID)
+            journal = Path(dossier, "appels")
+            journal.touch()
+            fragment = (
+                'EXT_LINK="$DOSSIER/extensions/$UUID"\n'
+                'UDEV_RULE="$DOSSIER/absente.rules"\n'
+                'VENV="$DOSSIER/venv"\n'
+                "gsettings_bus() {\n"
+                '    case "$1" in\n'
+                "        get) sed 's/^\\[\\]$/@as []/' \"$DOSSIER/$3\" ;;\n"
+                '        set) echo "set $3 $4" >>"$JOURNAL"\n'
+                '            printf "%s\\n" "$4" >"$DOSSIER/$3" ;;\n'
+                "    esac\n"
+                "}\n"
+                "step_uninstall\n"
+                'echo "--- second ---" >>"$JOURNAL"\n'
+                "step_uninstall\n"
+            )
+            fait = sourcer(
+                fragment,
+                {"DOSSIER": dossier, "UUID": UUID, "JOURNAL": str(journal)},
+            )
+            premier, second = journal.read_text().split("--- second ---\n")
+            liste = Path(dossier, "enabled-extensions").read_text().strip()
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertEqual("set enabled-extensions []\n", premier)
+        self.assertEqual("", second)
+        self.assertEqual("[]", liste)
 
     def test_une_liste_illisible_ne_passe_pas_pour_un_succes(self):
         """gsettings absent ou bus en panne : le reste part quand même, puis
@@ -2633,6 +2743,48 @@ class TestExtensionSeule(unittest.TestCase):
         self.assertNotIn("UNSUPPORTED", fait.stderr)
         self.assertEqual((self.lien / "metadata.json").read_text(), "{}")
         self.assertFalse(self.lien.is_symlink())
+
+
+class TestOptionsDuShell(unittest.TestCase):
+    """Le script tourne sous « set -euo pipefail » : une variable non
+    définie et l'échec d'une commande au milieu d'un tube l'arrêtent,
+    comme l'échec d'une commande seule."""
+
+    def jouer(self, fragment):
+        fait = sourcer(fragment + "echo apres\n")
+        self.assertNotEqual(0, fait.returncode, fait.stdout)
+        self.assertNotIn("apres", fait.stdout)
+
+    def test_a_failed_command_stops_the_script(self):
+        self.jouer("false\n")
+
+    def test_an_unset_variable_stops_the_script(self):
+        self.jouer('echo "${EXEMPLE_NON_DEFINIE}"\n')
+
+    def test_a_failure_inside_a_pipe_stops_the_script(self):
+        self.jouer("false | cat\n")
+
+
+class TestBilan(unittest.TestCase):
+    """Le bilan d'une installation dit de rouvrir la session : sous
+    Wayland, GNOME Shell ne charge une extension nouvelle qu'à
+    l'ouverture de session, et sans l'indication le nouvel UUID semble ne
+    pas marcher. Une désinstallation ne le dit pas."""
+
+    LIGNE = (
+        "[ERPLibre Home] log out and back in: GNOME Shell loads a new"
+        " extension only at session start under Wayland"
+    )
+
+    def test_an_install_says_to_log_out_and_back_in(self):
+        fait = sourcer("UNINSTALL=0\nsummary\n")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertIn(self.LIGNE, fait.stdout.splitlines())
+
+    def test_an_uninstall_does_not(self):
+        fait = sourcer("UNINSTALL=1\nsummary\n")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertNotIn("log out", fait.stdout)
 
 
 class TestTraductions(unittest.TestCase):

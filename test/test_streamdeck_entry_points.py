@@ -428,6 +428,13 @@ class TestRequirements(unittest.TestCase):
         for nom in ("requests", "keyboard", "pyudev", "streamdeck"):
             self.assertIn(nom, self.noms())
 
+    def test_pil_and_cv2_come_from_pillow_and_opencv(self):
+        """Le rendu des touches importe PIL et cv2, dont les paquets pip
+        portent un autre nom que le module."""
+        for nom in ("pillow", "opencv-python"):
+            with self.subTest(nom=nom):
+                self.assertIn(nom, self.noms())
+
     def test_lz4_left_the_venv(self):
         self.assertNotIn("lz4", self.noms())
 

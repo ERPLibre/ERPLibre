@@ -15,7 +15,9 @@ fonctions pures en quelques millisecondes :
   lecture d'enabled-extensions ;
 - l'autologin de chaque famille, rejoué sur un vrai fichier ;
 - le verdict d'un système et le code de sortie de la course ;
-- le refus d'un arbre de travail modifié.
+- le refus d'un arbre de travail modifié ;
+- le bundle de HEAD et son clone, joués sur un dépôt jetable, et le
+  parcours d'un système par mener_un, ses appels vers la VM remplacés.
 """
 
 import configparser
@@ -157,6 +159,29 @@ class LaMatrice(unittest.TestCase):
                 self.assertNotIn(sd.cle(entree), dans)
                 self.assertTrue(entree["raison"])
 
+    def test_the_out_of_scope_systems_are_those_of_the_spec(self):
+        """Chacun est au rapport UNSUPPORTED, avec la raison qui l'écarte,
+        sans VM ni journal, et --only le refuse en donnant cette raison."""
+        self.assertEqual(
+            sorted(sd.cle(e) for e in sd.NON_SUPPORTES),
+            [
+                "almalinux:9",
+                "debian:12",
+                "nixos:25.11",
+                "proxmox:9",
+                "rocky:9",
+            ],
+        )
+        for entree in sd.NON_SUPPORTES:
+            with self.subTest(cle=sd.cle(entree)):
+                ligne = sd.ligne_non_supportee(entree)
+                self.assertEqual(ligne["verdict"], "UNSUPPORTED")
+                self.assertTrue(ligne["etape"])
+                self.assertIsNone(ligne["journal"])
+                with self.assertRaises(ValueError) as ctx:
+                    sd.plan(sd.cle(entree))
+                self.assertIn(ligne["etape"], str(ctx.exception))
+
 
 class LePlan(unittest.TestCase):
     def test_no_filter_gives_the_whole_matrix(self):
@@ -253,6 +278,38 @@ class LesCommandesVisentLExtension(unittest.TestCase):
         for commande in (sd.CMD_SESSION, sd.CMD_INFO, sd.CMD_EXT_INFO):
             with self.subTest(commande=commande[:60]):
                 self.assertIn("/run/user/$(id -u)/bus", commande)
+
+    def test_the_session_is_the_bus_and_gnome_shell_on_it(self):
+        """Le socket du bus de l'utilisateur doit exister, puis
+        NameHasOwner org.gnome.Shell y répondre « (true,) » ; « (false,) »
+        ou une sortie vide, ssh tombé compris, n'est pas une session."""
+        self.assertIn("test -S /run/user/$(id -u)/bus && ", sd.CMD_SESSION)
+        self.assertIn(
+            "--method org.freedesktop.DBus.NameHasOwner org.gnome.Shell",
+            sd.CMD_SESSION,
+        )
+        from unittest import mock
+
+        for sortie, ouverte in (
+            ("(true,)", True),
+            ("(false,)", False),
+            ("", False),
+        ):
+            with self.subTest(sortie=sortie):
+                lues = []
+
+                def sonder(cible, commande, delai=180):
+                    lues.append(commande)
+                    return sortie
+
+                with (
+                    mock.patch.object(sd, "sonder", sonder),
+                    mock.patch.dict(sd.DELAIS_CONTROLE, {"session": 0}),
+                ):
+                    self.assertEqual(
+                        sd.session_ouverte("vm"), (ouverte, sortie)
+                    )
+                self.assertEqual(lues, [sd.CMD_SESSION])
 
     def test_the_gnome_version_is_read(self):
         self.assertEqual(sd.version_gnome("GNOME Shell 46.0\n"), "46.0")
@@ -413,6 +470,28 @@ class LeJournalSansDroitDeLecture(unittest.TestCase):
         self.assertIn("gnome-shell: boom", sortie)
         self.assertEqual(self.lancer(sd.CMD_JOURNAL, "", ""), "\n")
 
+    def test_diagnostic_journal_keeps_the_last_200_lines_of_the_extension(
+        self,
+    ):
+        """Le journal joint à un échec ne garde que les lignes de
+        l'extension et de GNOME Shell, sans égard à la casse, et les 200
+        dernières."""
+        gardees = []
+        lignes = []
+        for i in range(150):
+            for ligne in (
+                f"gnome-shell[1]: ligne {i}",
+                f"[ERPLibreHome] ligne {i}",
+                f"autre[2]: bruit {i}",
+            ):
+                lignes.append(ligne)
+                if not ligne.startswith("autre"):
+                    gardees.append(ligne)
+        lignes.append("ERPLIBRE-HOME: casse")
+        gardees.append("ERPLIBRE-HOME: casse")
+        sortie = self.lancer(sd.CMD_JOURNAL, "\n".join(lignes), "")
+        self.assertEqual(sortie.strip().splitlines(), gardees[-200:])
+
     def test_el10_expects_gnome_49(self):
         gnomes = {
             (e["distro"], e["version"]): e["gnome_attendu"]
@@ -483,6 +562,24 @@ class LesEtapes(unittest.TestCase):
             ],
         )
 
+    def test_each_check_waits_its_own_bounded_time(self):
+        """Une attente bornée par contrôle, en secondes : la session et la
+        réinstallation, qui suivent un démarrage, ont le plus long."""
+        self.assertEqual(
+            sd.DELAIS_CONTROLE,
+            {
+                "session": 300,
+                "extension-active": 120,
+                "extension-dbus": 30,
+                "extension-indicators": 30,
+                "venv": 60,
+                "stream-deck-active": 120,
+                "partial-uninstall-kept": 120,
+                "reinstall-active": 300,
+                "reinstall-indicators": 30,
+            },
+        )
+
     def test_every_name_is_unique(self):
         """« etape » dit seul quelle étape est tombée : aucun nom de
         commande ou de contrôle ne sert deux fois, ni ne reprend un échec
@@ -531,6 +628,34 @@ class LesEtapes(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertTrue(commande.endswith("&& echo ok"))
         self.assertIn("/run/user/$(id -u)/bus", sd.CMD_ENABLED)
+
+    def test_the_udev_check_needs_uaccess_and_the_vendor_id(self):
+        """La règle doit donner le deck à la session (uaccess) et viser le
+        vendeur Elgato (0fd9) : la commande, jouée sur un vrai fichier, ne
+        rend « ok » qu'avec les deux."""
+        with tempfile.TemporaryDirectory() as dossier:
+            regle = os.path.join(dossier, "70-streamdeck.rules")
+            commande = sd.CMD_UDEV.replace(sd.REGLE_UDEV, regle)
+            self.assertNotEqual(commande, sd.CMD_UDEV)
+            for contenu, attendu in (
+                (None, ""),
+                ('SUBSYSTEM=="usb", TAG+="uaccess"\n', ""),
+                ('ATTRS{idVendor}=="0fd9", MODE="0660"\n', ""),
+                (
+                    'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9",'
+                    ' TAG+="uaccess"\n',
+                    "ok",
+                ),
+            ):
+                with self.subTest(contenu=contenu):
+                    if contenu is None:
+                        Path(regle).unlink(missing_ok=True)
+                    else:
+                        Path(regle).write_text(contenu)
+                    fini = subprocess.run(
+                        ["sh", "-c", commande], capture_output=True, text=True
+                    )
+                    self.assertEqual(fini.stdout.strip(), attendu)
 
     def test_the_service_checks_name_the_unit_and_the_checkout(self):
         self.assertIn(sd.FICHIER_UNITE, sd.CMD_UNITE)
@@ -989,6 +1114,36 @@ class LaCreation(unittest.TestCase):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, ligne)
         self.assertNotIn("sudo", argv)
+
+    def test_a_real_creation_runs_deploy_qemu_under_sudo(self):
+        """deploy_qemu.py écrit sous /var/lib/libvirt : hors essai à blanc,
+        la commande que rend argv_creation part derrière sudo."""
+        from unittest import mock
+
+        lancees = []
+
+        def run(argv, **k):
+            lancees.append(argv)
+            return subprocess.CompletedProcess(argv, 0)
+
+        with (
+            mock.patch.object(
+                sd.Descente, "uuid_libvirt", side_effect=["", "u-vm"]
+            ),
+            mock.patch.object(sd, "cle_publique", lambda: None),
+            mock.patch.object(sd, "drapeaux_cache", lambda: []),
+            mock.patch.object(sd.subprocess, "run", run),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rendu = sd.creer_vm("long-sd-x", sd.MATRICE[0], None, False)
+        self.assertEqual(rendu, ("long-sd-x", "u-vm", True))
+        self.assertEqual(
+            lancees,
+            [
+                ["sudo"]
+                + sd.argv_creation(sd.MATRICE[0], "long-sd-x", None, [])
+            ],
+        )
 
     def test_without_a_key_none_is_passed(self):
         self.assertNotIn("--ssh-key", sd.argv_creation(sd.MATRICE[0], "n"))
@@ -1888,6 +2043,66 @@ class LesCinqEtapes(unittest.TestCase):
                 self.assertEqual(self._controler(vm)[0], attendu)
                 self.assertEqual(vm.options[-1], option)
 
+    def test_an_extension_method_that_does_not_answer_fails_dbus(self):
+        """ListPaths et ListDevices doivent rendre un tuple GVariant : une
+        erreur de gdbus ou une sortie vide arrête la base à
+        extension-dbus."""
+        for methode in ("ListPaths", "ListDevices"):
+            for reponse in ("", "Error: GDBus.Error:org.freedesktop.DBus"):
+                with self.subTest(methode=methode, reponse=reponse):
+                    vm = VMSimulee([self.ENTIER] * 3)
+                    sonder = vm.sonder
+                    commande = sd.cmd_methode(methode)
+                    vm.sonder = lambda c, cmd, d=180: (
+                        reponse if cmd == commande else sonder(c, cmd, d)
+                    )
+                    self.assertEqual(self._controler(vm)[0], "extension-dbus")
+                    self.assertEqual(vm.options, [])
+
+    def test_a_second_run_that_rewrites_a_file_is_not_idempotent(self):
+        """Code 0 ne suffit pas : une date changée entre les deux lectures,
+        ou une première lecture vide, fait tomber le contrôle."""
+        for commande, attendu in (
+            (sd.CMD_MTIME_LIEN, "base-idempotent"),
+            (sd.CMD_MTIMES, "stream-deck-idempotent"),
+        ):
+            for lectures in (["avant", "apres"], ["", ""]):
+                with self.subTest(attendu=attendu, lectures=lectures):
+                    vm = VMSimulee([self.ENTIER] * 3)
+                    sonder = vm.sonder
+                    dates = list(lectures)
+
+                    def lire(c, cmd, d=180, commande=commande, dates=dates):
+                        if cmd == commande and dates:
+                            return dates.pop(0)
+                        return sonder(c, cmd, d)
+
+                    vm.sonder = lire
+                    self.assertEqual(self._controler(vm)[0], attendu)
+
+    def test_a_failed_reinstall_or_reboot_fails_reinstall(self):
+        """L'étape 5 tombe à « reinstall » quand l'installateur rend non
+        nul, ou quand la VM ne revient pas de son redémarrage."""
+        vm = VMSimulee([self.ENTIER] * 3)
+        installer = vm.installer
+        bases = []
+
+        def reinstallation_en_echec(cible, log, options=""):
+            if options == "":
+                bases.append(options)
+                if len(bases) == 2:
+                    vm.options.append(options)
+                    return 1, ""
+            return installer(cible, log, options)
+
+        vm.installer = reinstallation_en_echec
+        self.assertEqual(self._controler(vm)[0], "reinstall")
+        self.assertEqual(vm.redemarrages, 0)
+        vm = VMSimulee([self.ENTIER] * 3)
+        vm.redemarrer = lambda cible, log: False
+        self.assertEqual(self._controler(vm)[0], "reinstall")
+        self.assertEqual(vm.options[-1], "")
+
     def test_the_stream_deck_stage_checks_rule_venv_service_extension(self):
         for apres, attendu in (
             ({"regle": False}, "udev"),
@@ -2068,6 +2283,424 @@ class LesCinqEtapes(unittest.TestCase):
         source = SRC[SRC.index("def _absents(") : SRC.index("def controler(")]
         rendus = set(re.findall(r'return "([a-z-]+)"', source))
         self.assertEqual(rendus, declares)
+
+
+class UnSystemeMene(unittest.TestCase):
+    """mener_un() de la création de la VM au verdict, chaque appel vers la
+    VM remplacé par un double qui note son nom dans `self.appels`. Par
+    défaut tout réussit ; un test remplace ce qu'il fait échouer."""
+
+    ENTREE = sd.MATRICE[0]
+    JOURNAL = f"{ENTREE['distro']}-{ENTREE['version']}.log"
+
+    def setUp(self):
+        racine = tempfile.mkdtemp(prefix="sd-mener-")
+        self.addCleanup(shutil.rmtree, racine, ignore_errors=True)
+        self.dossier = os.path.join(racine, "long-sd-19990101-000000")
+        os.makedirs(self.dossier)
+        from unittest import mock
+
+        self.course = sd.Course(
+            mock.Mock(dry_run=False, extras=False),
+            self.dossier + ".log",
+            self.dossier,
+        )
+        self.course.bundle, self.course.head = "x.bundle", "0" * 40
+        self.appels = []
+        self.journaux = []
+
+    def noter(self, nom, rendu):
+        def double(*args, **kwargs):
+            self.appels.append(nom)
+            return rendu
+
+        return double
+
+    def lancer(self, argv, log, delai, entree=None):
+        self.journaux.append(log)
+        commande = argv[-1]
+        self.appels.append("bureau" if commande == "bash -s" else "autologin")
+        return 0
+
+    def mener(self, **doubles):
+        from unittest import mock
+
+        defauts = {
+            "creer_vm": self.noter("creer_vm", ("vm", "u-vm", True)),
+            "adresse_de": self.noter("adresse_de", "192.0.2.1"),
+            "attendre_ssh": self.noter("attendre_ssh", True),
+            "commande_bureau": lambda: "bureau",
+            "lancer": self.lancer,
+            "sonder": lambda *a, **k: "/usr/bin/gnome-shell",
+            "deposer_code": self.noter("deposer_code", True),
+            "installer": self.noter("installer", (0, "")),
+            "redemarrer": self.noter("redemarrer", True),
+            "controler": self.noter(
+                "controler", (None, {"state": 1.0, "error": ""}, "46.0")
+            ),
+            "joindre_diagnostic": self.noter("joindre_diagnostic", None),
+        }
+        defauts.update(doubles)
+        with (
+            mock.patch.multiple(sd, **defauts),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return sd.mener_un(self.course, self.ENTREE)
+
+    def etape(self, ligne):
+        return ligne["verdict"], ligne["etape"]
+
+    def etage(self):
+        return {
+            "niveau": 1,
+            "nom": "vm",
+            "uuid": "u-vm",
+            "alias": "vm",
+            "cree": True,
+        }
+
+    def test_a_created_vm_is_in_the_report_on_disk_before_anything_else(self):
+        """Une course tuée juste après la création laisse de quoi défaire
+        la VM : l'étage est écrit au rapport avant le premier appel vers
+        elle."""
+        lus = []
+
+        def adresse_de(nom, journal):
+            if os.path.exists(self.course.chemin):
+                with open(self.course.chemin, encoding="utf-8") as fh:
+                    lus.append(json.load(fh)["etages"])
+            return ""
+
+        ligne = self.mener(adresse_de=adresse_de)
+        self.assertEqual(lus, [[self.etage()]])
+        self.assertEqual(self.etape(ligne), ("FAILED", "ssh"))
+
+    def test_a_failed_creation_that_defined_the_vm_is_inscribed(self):
+        ligne = self.mener(
+            creer_vm=self.noter("creer_vm", ("vm", "u-vm", False))
+        )
+        self.assertEqual(self.etape(ligne), ("FAILED", "vm"))
+        self.assertEqual(self.course.rapport["etages"], [self.etage()])
+        self.assertEqual(self.appels, ["creer_vm"])
+
+    def test_no_ssh_is_failed_ssh(self):
+        for doubles in (
+            {"adresse_de": self.noter("adresse_de", "")},
+            {"attendre_ssh": self.noter("attendre_ssh", False)},
+        ):
+            with self.subTest(doubles=list(doubles)):
+                self.appels.clear()
+                ligne = self.mener(**doubles)
+                self.assertEqual(self.etape(ligne), ("FAILED", "ssh"))
+                self.assertNotIn("bureau", self.appels)
+                self.assertNotIn("joindre_diagnostic", self.appels)
+
+    def test_after_autologin_the_vm_reboots_before_the_checks(self):
+        ligne = self.mener()
+        self.assertEqual(self.etape(ligne), ("ACTIVE", None))
+        self.assertEqual(
+            self.appels,
+            [
+                "creer_vm",
+                "adresse_de",
+                "attendre_ssh",
+                "bureau",
+                "deposer_code",
+                "installer",
+                "autologin",
+                "redemarrer",
+                "controler",
+            ],
+        )
+
+    def test_a_vm_that_does_not_come_back_from_the_reboot_is_failed_ssh(self):
+        ligne = self.mener(redemarrer=self.noter("redemarrer", False))
+        self.assertEqual(self.etape(ligne), ("FAILED", "ssh"))
+        self.assertNotIn("controler", self.appels)
+
+    def test_a_failure_joins_the_diagnostic_an_unsupported_one_does_not(self):
+        for doubles, attendu, joint in (
+            ({"installer": self.noter("installer", (1, ""))}, "install", True),
+            (
+                {"controler": self.noter("controler", ("session", None, ""))},
+                "session",
+                True,
+            ),
+            (
+                {
+                    "installer": self.noter(
+                        "installer", (2, "UNSUPPORTED: GNOME 52 hors liste\n")
+                    )
+                },
+                "GNOME 52 hors liste",
+                False,
+            ),
+        ):
+            with self.subTest(attendu=attendu):
+                self.appels.clear()
+                ligne = self.mener(**doubles)
+                self.assertEqual(ligne["etape"], attendu)
+                self.assertEqual(
+                    "joindre_diagnostic" in self.appels, joint, self.appels
+                )
+
+    def test_each_system_logs_in_the_folder_of_the_run(self):
+        """Le journal d'un système est rangé sous le dossier de la course,
+        à part des rapports « .json » du premier niveau que lit le défaire
+        partagé."""
+        ligne = self.mener()
+        attendu = os.path.join(self.dossier, self.JOURNAL)
+        self.assertEqual(set(self.journaux), {attendu})
+        self.assertEqual(ligne["journal"], self.JOURNAL)
+
+
+class LesCheminsDeLaCourse(unittest.TestCase):
+    def test_the_log_folder_is_named_after_the_run_journal(self):
+        """Le journal de la course est un « .log » du premier niveau ; le
+        dossier du même nom, sans extension, reçoit le bundle et les
+        journaux des systèmes, que dernier_rapport ne lit jamais."""
+        from unittest import mock
+
+        maison = tempfile.mkdtemp(prefix="sd-chemins-")
+        self.addCleanup(shutil.rmtree, maison, ignore_errors=True)
+        with mock.patch.dict(os.environ, {"HOME": maison}):
+            journal, dossier = sd.chemins_de_course()
+        racine = os.path.join(maison, ".erplibre/longtest")
+        self.assertEqual(os.path.dirname(journal), racine)
+        self.assertEqual(journal, dossier + ".log")
+        self.assertTrue(os.path.basename(dossier).startswith("long-sd-"))
+        self.assertTrue(os.path.isdir(racine))
+
+
+class LeCodeDeposeDansLaVM(unittest.TestCase):
+    """Le bundle de HEAD, cloné dans la VM : creer_bundle et la commande
+    de clone de deposer_code jouent ici sur un dépôt jetable, la VM
+    remplacée par un HOME temporaire."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="sd-code-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.depot = os.path.join(self.tmp, "depot")
+        os.makedirs(self.depot)
+        # Deux commits : le clone est extrait au sha qu'on lui donne, pas
+        # à la tête du bundle.
+        identite = ["-c", "user.name=t", "-c", "user.email=t@exemple.invalid"]
+        subprocess.run(["git", "-C", self.depot, "init", "-q"], check=True)
+        self.shas = []
+        for message in ("un", "deux"):
+            subprocess.run(
+                ["git", "-C", self.depot, *identite, "commit", "-q"]
+                + ["--allow-empty", "-m", message],
+                check=True,
+                timeout=30,
+            )
+            self.shas.append(self.tete(self.depot))
+        self.sha = self.shas[-1]
+
+    @staticmethod
+    def tete(depot):
+        return subprocess.run(
+            ["git", "-C", depot, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    def bundle(self):
+        from unittest import mock
+
+        dossier = os.path.join(self.tmp, "course")
+        os.makedirs(dossier)
+        with (
+            mock.patch.object(sd, "RACINE", self.depot),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return dossier, sd.creer_bundle(dossier, None)
+
+    def test_the_bundle_of_head_is_written_in_the_run_folder(self):
+        dossier, (sha, chemin) = self.bundle()
+        self.assertEqual(sha, self.sha)
+        self.assertEqual(chemin, os.path.join(dossier, "erplibre_home.bundle"))
+        tetes = subprocess.run(
+            ["git", "bundle", "list-heads", chemin],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertIn(f"{self.sha} HEAD", tetes)
+
+    def test_git_scp_then_a_clone_of_the_bundle_checked_out_at_head(self):
+        """Trois commandes, dans l'ordre : git par le gestionnaire de la
+        famille, le bundle copié, le clone du bundle extrait au sha de
+        HEAD. Aucune ne joint un dépôt distant."""
+        from unittest import mock
+
+        _dossier, (_sha, chemin) = self.bundle()
+        voulu = self.shas[0]
+        lancees = []
+
+        def lancer(argv, log, delai, entree=None):
+            lancees.append(argv)
+            return 0
+
+        with mock.patch.object(sd, "lancer", lancer):
+            self.assertTrue(
+                sd.deposer_code("vm", "rhel", chemin, voulu, "x.log")
+            )
+        git, scp, clone = lancees
+        self.assertEqual(git, sd.ssh_base("vm") + [sd.COMMANDE_GIT["rhel"]])
+        self.assertEqual(
+            scp,
+            ["scp"] + sd.OPTIONS_SSH + [chemin, "vm:erplibre_home.bundle"],
+        )
+        self.assertEqual(clone[:-1], sd.ssh_base("vm"))
+        for argv in lancees:
+            self.assertNotIn("github", " ".join(argv).lower())
+        # La commande de clone, jouée dans une « VM » : un HOME qui porte
+        # le bundle copié.
+        maison = os.path.join(self.tmp, "vm")
+        os.makedirs(maison)
+        shutil.copy(chemin, os.path.join(maison, "erplibre_home.bundle"))
+        subprocess.run(
+            ["sh", "-c", clone[-1]],
+            env=dict(os.environ, HOME=maison),
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+        self.assertEqual(
+            self.tete(os.path.join(maison, "git/erplibre")), voulu
+        )
+
+    def test_a_failed_step_stops_the_others(self):
+        from unittest import mock
+
+        for rang in range(3):
+            with self.subTest(rang=rang):
+                lancees = []
+
+                def lancer(argv, log, delai, entree=None, rang=rang):
+                    lancees.append(argv)
+                    return 1 if len(lancees) == rang + 1 else 0
+
+                log = os.path.join(self.tmp, f"echec-{rang}.log")
+                with mock.patch.object(sd, "lancer", lancer):
+                    self.assertFalse(
+                        sd.deposer_code("vm", "debian", "b", "0" * 40, log)
+                    )
+                self.assertEqual(len(lancees), rang + 1)
+
+
+class LaCourseEntiere(unittest.TestCase):
+    """mener() hors essai à blanc, mener_un remplacé : un seul bundle pour
+    toute la course, et chaque système mené, quel que soit le verdict du
+    précédent."""
+
+    def test_one_bundle_per_run_and_every_system_after_a_failure(self):
+        from unittest import mock
+
+        maison = tempfile.mkdtemp(prefix="sd-course-")
+        self.addCleanup(shutil.rmtree, maison, ignore_errors=True)
+        bundles, menes = [], []
+
+        def creer_bundle(dossier, journal):
+            bundles.append(dossier)
+            return "0" * 40, os.path.join(dossier, "erplibre_home.bundle")
+
+        def mener_un(course, entree):
+            menes.append((sd.cle(entree), course.bundle, course.head))
+            return sd.verdict_systeme(entree, None, None, "", echec="vm")
+
+        with (
+            mock.patch.dict(os.environ, {"HOME": maison}),
+            mock.patch.multiple(
+                sd,
+                arbre_propre=lambda racine: True,
+                plan_tient=lambda journal: True,
+                creer_bundle=creer_bundle,
+                mener_un=mener_un,
+                detruire_etage1=lambda *a, **k: True,
+                retirer_alias=lambda *a, **k: None,
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            code = sd.mener(["--only", "ubuntu:24.04,fedora:43"])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(bundles), 1, bundles)
+        dossier = bundles[0]
+        self.assertEqual(
+            os.path.dirname(dossier),
+            os.path.join(maison, ".erplibre/longtest"),
+        )
+        bundle = os.path.join(dossier, "erplibre_home.bundle")
+        self.assertEqual(
+            menes,
+            [
+                ("ubuntu:24.04", bundle, "0" * 40),
+                ("fedora:43", bundle, "0" * 40),
+            ],
+        )
+
+
+class LeJournalDUnSysteme(unittest.TestCase):
+    """Ce qu'un système laisse à son journal : la commande et toute la
+    sortie de chaque installateur, puis, sur un échec, le journal de
+    session filtré et « gnome-extensions info »."""
+
+    def setUp(self):
+        dossier = tempfile.mkdtemp(prefix="sd-journal-")
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        self.log = os.path.join(dossier, "systeme.log")
+
+    def lire(self):
+        with open(self.log, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_every_installer_run_writes_its_command_output_and_code(self):
+        from unittest import mock
+
+        for options, code in (("--stream-deck", 1), ("--uninstall", 0)):
+            with mock.patch.object(
+                sd.subprocess,
+                "run",
+                lambda argv, code=code, options=options, **k: (
+                    subprocess.CompletedProcess(
+                        argv, code, stdout=f"sortie de {options}\n"
+                    )
+                ),
+            ):
+                self.assertEqual(
+                    sd.installer("vm", self.log, options),
+                    (code, f"sortie de {options}\n"),
+                )
+        journal = self.lire()
+        for options, code in (("--stream-deck", 1), ("--uninstall", 0)):
+            with self.subTest(options=options):
+                self.assertIn(
+                    "── cd ~/git/erplibre &&"
+                    f" ./script/install/install_erplibre_home.sh {options}\n"
+                    f"sortie de {options}\n"
+                    f"── code de sortie : {code}\n",
+                    journal,
+                )
+
+    def test_the_diagnostic_holds_the_session_journal_and_the_info(self):
+        from unittest import mock
+
+        lues = []
+
+        def sonder(cible, commande, delai=180):
+            lues.append(commande)
+            return "gnome-shell: boom" if commande == sd.CMD_JOURNAL else ""
+
+        with mock.patch.object(sd, "sonder", sonder):
+            sd.joindre_diagnostic("vm", self.log)
+        self.assertEqual(lues, [sd.CMD_JOURNAL, sd.CMD_EXT_INFO])
+        self.assertEqual(
+            self.lire(),
+            "── journalctl --user -b\ngnome-shell: boom\n"
+            f"── gnome-extensions info {sd.UUID_EXTENSION}\n(rien)\n",
+        )
 
 
 class LeReadme(unittest.TestCase):

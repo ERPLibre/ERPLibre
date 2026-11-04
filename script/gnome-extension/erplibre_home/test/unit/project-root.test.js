@@ -5,6 +5,7 @@ import {projectRootFrom, makeGioReadLink, normalizePath, resolveLinkTarget,
     resolveLinks,
     streamDeckPython, galleryServerCommand, galleryReady}
     from '../../lib/project-root.js';
+import {openDeckArgv} from '../../lib/deck-service.js';
 
 const CHECKOUT = '/opt/depot';
 const EXT_SRC = `${CHECKOUT}/script/gnome-extension/erplibre_home`;
@@ -320,3 +321,169 @@ test('galleryReady needs both the deck venv and the gallery server', () => {
     assert.equal(galleryReady(CHECKOUT, has([venv]), boom), false);
     assert.equal(galleryReady('', has([venv]), has([server])), false);
 });
+
+// A GLib double: file_test answers from `present`, the paths it holds.
+function fakeGLib(present) {
+    return {
+        FileTest: {EXISTS: 'exists', IS_EXECUTABLE: 'exec'},
+        file_test: (p) => present.has(p),
+        get_user_config_dir: () => '/opt/maison/.config',
+        get_home_dir: () => '/opt/maison',
+    };
+}
+
+test('the deck indicator looks the venv up at each click', () => {
+    // Without the unit nor the venv, the click notifies and starts
+    // nothing; the same indicator finds a venv added after the session
+    // started.
+    const body = methodBody(extensionFile('indicators/device.js'),
+        '_launchController', '');
+    const present = new Set();
+    const notices = [];
+    const spawned = [];
+    const launch = new Function('GLib', 'streamDeckPython', 'openDeckArgv',
+        '_notify', '_', 'spawnDetached', body);
+    const fake = {
+        _projectRoot: () => CHECKOUT,
+        _deckUnitExists: () => false,
+        _driveUnit: () => assert.fail('no unit to drive'),
+    };
+    const click = () => launch.call(fake, fakeGLib(present), streamDeckPython,
+        openDeckArgv, (...a) => notices.push(a), (s) => s,
+        (argv) => spawned.push(argv));
+    click();
+    assert.deepEqual(notices, [['Stream Deck', NOT_INSTALLED]]);
+    assert.deepEqual(spawned, []);
+    present.add(DECK_PYTHON);
+    click();
+    assert.equal(notices.length, 1);
+    assert.deepEqual(spawned,
+        [[DECK_PYTHON,
+            `${CHECKOUT}/script/stream_deck/erplibre_controller.py`]]);
+});
+
+test('the gallery entry looks the venv up at each click', async () => {
+    // Without the venv, the click notifies and opens no terminal; a venv
+    // added after the session started is found at the next click.
+    const body = methodBody(extensionFile('indicators/controller.js'),
+        'async _launchGalleryAt', 'cwd');
+    const AsyncFunction = (async () => {}).constructor;
+    const launch = new AsyncFunction('GLib', 'streamDeckPython', '_notify',
+        '_', 'PROJECT_NAME', 'findTerminal', 'cwd', body);
+    const present = new Set();
+    const notices = [];
+    let terminals = 0;
+    const indicator = {};
+    const findTerminal = async () => {
+        terminals++;
+        return null;
+    };
+    const click = () => launch.call(indicator, fakeGLib(present),
+        streamDeckPython, (...a) => notices.push(a), (s) => s,
+        'ERPLibre Home', findTerminal, CHECKOUT);
+    await click();
+    assert.deepEqual(notices, [['ERPLibre Home', NOT_INSTALLED]]);
+    assert.equal(terminals, 0);
+    present.add(DECK_PYTHON);
+    await click();
+    assert.equal(terminals, 1);
+});
+
+test('the deck indicator finds the checkout through projectRootFrom', () => {
+    const body = methodBody(extensionFile('indicators/device.js'),
+        '_projectRoot', '');
+    const projectRoot = new Function('projectRootFrom', 'makeGioReadLink',
+        'Gio', body);
+    const readLink = linksTo({[LINK]: EXT_SRC});
+    const root = projectRoot.call({_extension: {path: LINK}},
+        projectRootFrom, () => readLink, {});
+    assert.equal(root, CHECKOUT);
+    assert.deepEqual(readLink.calls.slice(0, 1), [LINK]);
+});
+
+// _autoLoginSelenium of indicators/erplibre.js run on a fake `this`: the
+// calls it makes, in order, as [name, ...args].
+function seleniumLogin({gitSyncPath = '', present = []} = {}) {
+    const body = methodBody(extensionFile('indicators/erplibre.js'),
+        '_autoLoginSelenium', 'inst, user, pass');
+    const calls = [];
+    const login = new Function('GLib', 'projectRootFrom', 'makeGioReadLink',
+        'Gio', '_notify', '_', 'runProcess', 'inst', 'user', 'pass', body);
+    const fake = {
+        _settings: {get_string: (key) => (key === 'git-sync-path'
+            ? gitSyncPath : '')},
+        _extension: {path: LINK},
+        _autoLoginXdotool: (...a) => calls.push(['xdotool', ...a]),
+    };
+    const rootFrom = (path, readLink) => {
+        calls.push(['projectRootFrom', path]);
+        return projectRootFrom(path, readLink);
+    };
+    login.call(fake, fakeGLib(new Set(present)), rootFrom,
+        () => linksTo({[LINK]: EXT_SRC}), {},
+        (...a) => calls.push(['notify', ...a]), (s) => s,
+        (argv) => calls.push(['run', argv]),
+        {url: 'http://localhost:8069'}, 'u', 'p');
+    return calls;
+}
+
+test('selenium login runs under .venv.erplibre of the extension checkout',
+    () => {
+        const venv = `${CHECKOUT}/.venv.erplibre/bin/python`;
+        assert.deepEqual(seleniumLogin({present: [venv]}), [
+            ['projectRootFrom', LINK],
+            ['run', [venv, `${CHECKOUT}/script/selenium/web_login.py`,
+                '--url', 'http://localhost:8069', '--user', 'u',
+                '--pass', 'p']],
+        ]);
+    });
+
+test('git-sync-path, when set, is the checkout of the selenium login', () => {
+    const calls = seleniumLogin({gitSyncPath: ' /srv/autre ',
+        present: ['/srv/autre/.venv.erplibre/bin/python']});
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], 'run');
+    assert.equal(calls[0][1][0], '/srv/autre/.venv.erplibre/bin/python');
+});
+
+test('without .venv.erplibre, selenium login notifies and uses xdotool',
+    () => {
+        const calls = seleniumLogin();
+        assert.deepEqual(calls.slice(1), [
+            ['notify', 'ERPLibre',
+                '.venv.erplibre missing — falling back to xdotool'],
+            ['xdotool', {url: 'http://localhost:8069'}, 'u', 'p'],
+        ]);
+    });
+
+test('the TODO terminal of an instance sources its .venv.erplibre',
+    async () => {
+        const body = methodBody(extensionFile('indicators/erplibre.js'),
+            'async _launchTodo', 'inst');
+        const AsyncFunction = (async () => {}).constructor;
+        const launch = new AsyncFunction('findTerminal', 'GLib',
+            'buildTerminalArgv', 'spawnDetached', '_notify', '_', 'inst',
+            body);
+        const built = [];
+        const glib = {
+            ...fakeGLib(new Set()),
+            getenv: () => null,
+            mkdir_with_parents: () => 0,
+            find_program_in_path: () => null,
+            timeout_add: () => 0,
+            PRIORITY_DEFAULT: 0,
+            SOURCE_REMOVE: false,
+        };
+        await launch.call({}, async () => 'gnome-terminal', glib,
+            (args) => {
+                built.push(args);
+                return ['terminal'];
+            }, () => true, () => assert.fail('notified'), (s) => s,
+            {local_path: '/srv/instance'});
+        assert.deepEqual(built, [{
+            cwd: '/srv/instance',
+            command: 'source .venv.erplibre/bin/activate && '
+                + 'python3 -u ./script/todo/todo.py',
+            terminal: 'gnome-terminal',
+        }]);
+    });

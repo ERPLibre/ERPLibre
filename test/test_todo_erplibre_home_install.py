@@ -141,6 +141,43 @@ class TestInstallationLocale(unittest.TestCase):
                 self.assertNotIn("not supported", sortie)
                 self.assertIs(rendu, False)
 
+    def test_les_entrees_et_leurs_issues_se_lisent_en_francais(self):
+        """t() d'une clé absente rend la clé, en anglais : chaque libellé
+        et chaque ligne d'issue doit avoir sa traduction française."""
+        todo_i18n._current_lang = "fr"
+        libelles = {
+            "Install ERPLibre Home (local)": (
+                "📦 Installer ERPLibre Home (local)"
+            ),
+            "Install ERPLibre Home Stream Deck (local)": (
+                "📦 Installer ERPLibre Home Stream Deck (local)"
+            ),
+        }
+        for cle, attendu in libelles.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(todo_i18n.t(cle), attendu)
+        issues = (
+            (0, [], "✅ ERPLibre Home installé. Fermer la session"),
+            (1, [], "❌ L'installation d'ERPLibre Home a échoué"),
+            (
+                2,
+                ["UNSUPPORTED: GNOME 52 not in shell-version"],
+                "ERPLibre Home non pris en charge sur ce système :"
+                " GNOME 52 not in shell-version",
+            ),
+            (
+                2,
+                [],
+                "ERPLibre Home non pris en charge sur ce système :"
+                " aucune raison donnée par l'installateur",
+            ),
+        )
+        for methode in ENTREES:
+            for code, lignes, attendu in issues:
+                with self.subTest(methode=methode, code=code, lignes=lignes):
+                    _, sortie, _ = self.lancer(methode, code, lignes)
+                    self.assertIn(attendu, sortie)
+
     def test_le_menu_installation_offre_s_pour_le_stream_deck(self):
         """« s » du choix de version d'Installation mène à la même entrée
         que le menu Stream Deck, ses quatre questions comprises : aucune

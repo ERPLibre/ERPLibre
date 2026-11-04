@@ -6,6 +6,7 @@
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -751,6 +752,31 @@ class SlowKeyTest(unittest.TestCase):
             "STATE/erplibre-home/todo_terminals.json"
         ]
         self.assertEqual(["201"], [t["window_id"] for t in registry])
+
+    def todo_command(self, h):
+        """The command the TODO key's terminal runs, out of its
+        ``script -fqc`` wrapper."""
+        _press, threads, _loop = self.press_slow(h, P.face_key(h, "TODO"))
+        effect = threads["effects"][0]
+        self.assertTrue(effect.startswith("popen "), effect)
+        words = shlex.split(json.loads(effect[len("popen "):])[-1])
+        self.assertEqual(["script", "-fqc"], words[:2])
+        return words[2]
+
+    def test_todo_launch_keeps_the_erplibre_venv_or_the_system_python(self):
+        """todo.py runs under .venv.erplibre, which carries what it
+        imports; without that venv, the terminal still opens and runs
+        todo.py under the system python3."""
+        todo = "<REPO>/script/todo/todo.py"
+        h = self.start(P.launch_world)
+        self.assertEqual(
+            "source '<REPO>/.venv.erplibre/bin/activate'"
+            f" && python3 -u '{todo}'",
+            self.todo_command(h),
+        )
+        h = self.start(P.launch_world)
+        (S.FAKE_REPO / ".venv.erplibre/bin/activate").unlink()
+        self.assertEqual(f"python3 -u '{todo}'", self.todo_command(h))
 
     def test_todo_launch_without_terminal_flashes_err(self):
         h = self.start(P.launch_world)
