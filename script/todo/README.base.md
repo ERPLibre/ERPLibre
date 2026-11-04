@@ -13,6 +13,21 @@ The `mail/` package is the mail client reachable from `Assistant > Mail`:
 several IMAP/SMTP accounts, a local cache, and a Textual TUI. See
 [../../doc/EMAIL.md](../../doc/EMAIL.md).
 
+## Session log
+
+Each run writes a log under `~/.local/state/erplibre/todo/`
+(`$XDG_STATE_HOME/erplibre/todo/` when set); TODO prints its path on entry
+and on exit. It keeps the loggers' messages and, for every command TODO runs,
+the command, its output and its exit code. Everything in it, log messages and
+crash traceback included, goes through the masking the screen uses: secret
+options and variables, configuration lines such as `admin_passwd = …`,
+credentials in a URL, GitHub and GitLab tokens, JSON keys, `odoo-bin -w`,
+`sshpass -p`, `curl -u` and private keys. Masking is a last line of defence,
+not a guarantee: a secret printed in an unknown form stays, so the file is
+private (0600, in a 0700 directory). What is typed at a prompt is not
+recorded. The 30 most recent logs are kept; `ERPLIBRE_TODO_LOG=0` turns it
+off.
+
 ## Where the code lives
 
 `todo.py` carries the menus and the general helpers. Everything around a
@@ -56,6 +71,21 @@ Pour un nouveau projet, copiez todo_example.json vers private/todo/todo_override
 Le paquet `mail/` est le client courriel accessible depuis
 `Assistant > Courriel` : plusieurs comptes IMAP/SMTP, un cache local, et un
 TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md).
+
+## Journal de session
+
+Chaque lancement écrit un journal sous `~/.local/state/erplibre/todo/`
+(`$XDG_STATE_HOME/erplibre/todo/` s'il est défini) ; TODO en affiche le
+chemin à l'entrée et à la sortie. Il garde les messages des loggers et, pour
+chaque commande que TODO lance, la commande, sa sortie et son code de retour.
+Tout y passe, messages des loggers et traceback d'un plantage compris, par le
+caviardage de l'écran : options et variables de secret, lignes de
+configuration comme `admin_passwd = …`, identifiants dans une URL, jetons
+GitHub et GitLab, clés JSON, `odoo-bin -w`, `sshpass -p`, `curl -u` et clés
+privées. Le caviardage est un dernier rempart, pas une garantie : un secret
+imprimé sous une forme inconnue reste, d'où un fichier privé (0600, dans un
+dossier 0700). Ce qu'on tape aux invites n'y est pas écrit. Les 30 journaux
+les plus récents restent ; `ERPLIBRE_TODO_LOG=0` le coupe.
 
 ## Où vit le code
 

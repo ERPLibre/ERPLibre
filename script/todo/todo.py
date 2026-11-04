@@ -124,6 +124,7 @@ from script.todo import (
     ssh_config,
     todo_etat,
     todo_install,
+    todo_journal,
     todo_prefs,
 )
 from script.todo.assistant_menu import AssistantMenuMixin
@@ -6802,6 +6803,9 @@ class TODO(
 
 if __name__ == "__main__":
     start_time = time.time()
+    chemin_journal = todo_journal.ouvrir()
+    if chemin_journal:
+        print(f"📝 {t('Session log:')} {chemin_journal}")
     try:
         todo = TODO()
         if ENABLE_CRASH:
@@ -6813,6 +6817,11 @@ if __name__ == "__main__":
         # top-level prompt; every submenu's click.prompt() would otherwise
         # let Abort escape here as an uncaught exception.
         print(t("Keyboard interrupt"))
+    except Exception:
+        # Le traceback s'affiche quand même : il va aussi au journal, seule
+        # trace d'un plantage une fois le terminal fermé.
+        todo_journal.noter_exception()
+        raise
     finally:
         end_time = time.time()
         duration_sec = end_time - start_time
@@ -6822,3 +6831,6 @@ if __name__ == "__main__":
             print(f"\n{t('TODO execution time')} {humain_time}\n")
         else:
             print(f"\n{t('TODO execution time')} {duration_sec:.2f} sec.\n")
+        if chemin_journal:
+            print(f"📝 {t('Session log:')} {chemin_journal}")
+        todo_journal.fermer()

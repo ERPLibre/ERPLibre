@@ -1170,6 +1170,70 @@ TRANSLATIONS = {
         "fr": "Commandes Claude",
         "en": "Claude commands",
     },
+    "TODO session logs": {
+        "fr": "Journaux de session du TODO",
+        "en": "TODO session logs",
+    },
+    "logs": {
+        "fr": "journaux",
+        "en": "logs",
+    },
+    "no log yet": {
+        "fr": "aucun journal encore",
+        "en": "no log yet",
+    },
+    "disabled (ERPLIBRE_TODO_LOG=0)": {
+        "fr": "désactivé (ERPLIBRE_TODO_LOG=0)",
+        "en": "disabled (ERPLIBRE_TODO_LOG=0)",
+    },
+    "newest:": {
+        "fr": "plus récent :",
+        "en": "newest:",
+    },
+    "oldest:": {
+        "fr": "plus ancien :",
+        "en": "oldest:",
+    },
+    "readable by others:": {
+        "fr": "lisible par d'autres comptes :",
+        "en": "readable by others:",
+    },
+    "Possible secrets:": {
+        "fr": "Secrets possibles :",
+        "en": "Possible secrets:",
+    },
+    "Delete these logs, or teach redact_secrets the missing form": {
+        "fr": "Effacer ces journaux, ou apprendre à redact_secrets la forme qui manque",
+        "en": "Delete these logs, or teach redact_secrets the missing form",
+    },
+    "unmasked known form": {
+        "fr": "forme connue non masquée",
+        "en": "unmasked known form",
+    },
+    "AWS access key": {
+        "fr": "clé d'accès AWS",
+        "en": "AWS access key",
+    },
+    "Slack token": {
+        "fr": "jeton Slack",
+        "en": "Slack token",
+    },
+    "API key sk-": {
+        "fr": "clé d'API sk-",
+        "en": "API key sk-",
+    },
+    "Stripe key": {
+        "fr": "clé Stripe",
+        "en": "Stripe key",
+    },
+    "Google API key": {
+        "fr": "clé d'API Google",
+        "en": "Google API key",
+    },
+    "JWT": {
+        "fr": "JWT",
+        "en": "JWT",
+    },
     "compared with the known remote refs, without git fetch": {
         "fr": "comparé aux refs distantes connues, sans git fetch",
         "en": "compared with the known remote refs, without git fetch",
@@ -1587,6 +1651,10 @@ TRANSLATIONS = {
     "TODO execution time": {
         "fr": "Temps d'exécution TODO",
         "en": "TODO execution time",
+    },
+    "Session log:": {
+        "fr": "Journal de la session :",
+        "en": "Session log:",
     },
     "Keyboard interrupt": {
         "fr": "Interruption clavier",
