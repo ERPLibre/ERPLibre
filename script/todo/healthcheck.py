@@ -1075,6 +1075,17 @@ def verifier_journaux(ctx):
         f"{t('newest:')} {journaux[-1][1]} ({_poids(journaux[-1][2].st_size)})",
         f"{t('oldest:')} {journaux[0][1]}",
     ]
+    # La session en cours : un TODO lancé avec ERPLIBRE_TODO_LOG=0, ou dont
+    # le journal n'a pas pu s'ouvrir, n'en a pas ; la copie de l'affichage
+    # dit si ce que le TODO montre y arrive aussi.
+    courant = todo_journal.session_en_cours()
+    if courant:
+        copie = (
+            t("display copied")
+            if courant["affichage"]
+            else t("display not copied")
+        )
+        details.append(f"{t('current session:')} {courant['nom']} ({copie})")
     # Les bits « groupe » et « autres » : ni le dossier ni un journal ne
     # doivent en porter.
     ouverts = [n for _, n, fiche in journaux if fiche.st_mode & 0o077]

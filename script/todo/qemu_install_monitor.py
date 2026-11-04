@@ -4466,13 +4466,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 with self.suspend():
                     print(f"\n=== {t('Recreate')} — {nom} ===")
                     ok = True
+                    from script.todo import todo_journal
+
                     if os.geteuid() != 0:
                         ok = subprocess.run(["sudo", "-v"]).returncode == 0
                     if ok:
                         cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
                         print(f"→ {cmd}\n")
                         ok = (
-                            subprocess.run(["bash", "-c", cmd]).returncode == 0
+                            todo_journal.lancer_au_terminal(
+                                ["bash", "-c", cmd]
+                            ).returncode
+                            == 0
                         )
                     if ok:
                         arretes = stop_launchers(vm["log"])

@@ -177,6 +177,16 @@ _logger = logging.getLogger(__name__)
 _session_journal = None
 
 
+# Le nombre d'exec_command_live en cours dans le processus (ils peuvent
+# s'imbriquer par un rappel).
+_commandes_en_cours = 0
+
+
+def commande_en_cours():
+    """Vrai pendant qu'exec_command_live affiche une commande et sa sortie."""
+    return _commandes_en_cours > 0
+
+
 def set_session_journal(handle):
     """Désigne le fichier du journal de session, ou None pour l'arrêter."""
     global _session_journal
@@ -228,7 +238,22 @@ class Execute:
                     f"source ./{VENV_ERPLIBRE}/bin/activate;%s"
                 )
 
-    def exec_command_live(
+    def exec_command_live(self, command: str, *args, **kwargs):
+        """Execute a command and display its output live.
+
+        Pendant l'appel, commande_en_cours() est vrai : le journal de session
+        reçoit déjà la commande, sa sortie et son code par _journaliser, et
+        ce que cette méthode affiche n'a pas à y être recopié une seconde
+        fois. Voir _exec_command_live pour les options.
+        """
+        global _commandes_en_cours
+        _commandes_en_cours += 1
+        try:
+            return self._exec_command_live(command, *args, **kwargs)
+        finally:
+            _commandes_en_cours -= 1
+
+    def _exec_command_live(
         self,
         command: str,
         source_erplibre: bool = True,

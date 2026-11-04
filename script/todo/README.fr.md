@@ -12,16 +12,22 @@ TUI Textual. Voir [../../doc/EMAIL.fr.md](../../doc/EMAIL.fr.md).
 
 Chaque lancement écrit un journal sous `~/.local/state/erplibre/todo/`
 (`$XDG_STATE_HOME/erplibre/todo/` s'il est défini) ; TODO en affiche le
-chemin à l'entrée et à la sortie. Il garde les messages des loggers et, pour
-chaque commande que TODO lance, la commande, sa sortie et son code de retour.
-Tout y passe, messages des loggers et traceback d'un plantage compris, par le
+chemin à l'entrée et à la sortie. Il garde ce qu'affiche TODO — menus,
+verdicts, rapports — sans les codes de couleur, un menu réaffiché écrit une
+seule fois et un affichage plein terminal laissé de côté ; les messages des
+loggers, y compris le DEBUG des scripts du dépôt, que la console ne montre
+pas ; et, pour chaque commande que TODO lance, la commande, sa sortie et son
+code de retour, ou seulement la commande et son code quand elle a besoin du
+terminal, sa sortie restant alors à l'écran. Ce qu'on tape aux invites n'y
+est pas écrit, mais une ligne que TODO réaffiche avec une réponse l'est. Tout
+y passe, messages des loggers et traceback d'un plantage compris, par le
 caviardage de l'écran : options et variables de secret, lignes de
 configuration comme `admin_passwd = …`, identifiants dans une URL, jetons
 GitHub et GitLab, clés JSON, `odoo-bin -w`, `sshpass -p`, `curl -u` et clés
 privées. Le caviardage est un dernier rempart, pas une garantie : un secret
 imprimé sous une forme inconnue reste, d'où un fichier privé (0600, dans un
-dossier 0700). Ce qu'on tape aux invites n'y est pas écrit. Les 30 journaux
-les plus récents restent ; `ERPLIBRE_TODO_LOG=0` le coupe.
+dossier 0700). Les 30 journaux les plus récents restent ;
+`ERPLIBRE_TODO_LOG=0` le coupe.
 
 ## Où vit le code
 

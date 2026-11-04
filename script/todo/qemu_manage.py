@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import time
 
-from script.todo import ssh_config, todo_install
+from script.todo import ssh_config, todo_install, todo_journal
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
@@ -1917,7 +1917,7 @@ class QemuManageMixin:
         if shrink and bak and os.path.exists(bak):
             print(f"\n{t('A disk backup was kept:')} {bak}")
             if self._is_yes(input(t("Delete this backup now? (y/N): "))):
-                subprocess.run(["sudo", "rm", "-f", bak], check=False)
+                todo_journal.lancer_journalise(["sudo", "rm", "-f", bak])
                 print(t("Backup deleted."))
             else:
                 print(t("Backup kept (delete later via Clean up QEMU)."))
@@ -2062,7 +2062,7 @@ class QemuManageMixin:
             bak = f"{disk}.bak"
             print(f"\n{t('Backing up the disk before shrinking…')}")
             if (
-                subprocess.run(
+                todo_journal.lancer_journalise(
                     [
                         "sudo",
                         "cp",
@@ -2071,7 +2071,7 @@ class QemuManageMixin:
                         disk,
                         bak,
                     ]
-                ).returncode
+                )
                 != 0
             ):
                 print(t("Backup failed; aborting."))
@@ -2080,7 +2080,9 @@ class QemuManageMixin:
             print(
                 f"⚠  {t('No backup: a failure could leave the disk broken.')}"
             )
-        subprocess.run(["sudo", "modprobe", "nbd", "max_part=16"], check=False)
+        todo_journal.lancer_journalise(
+            ["sudo", "modprobe", "nbd", "max_part=16"]
+        )
         dev = None
         try:
             dev = self._qemu_nbd_connect(disk)
@@ -2100,7 +2102,9 @@ class QemuManageMixin:
             n = self._qemu_part_number(dev, part)
             info = self._qemu_part_info(dev, n)
             # fsck AVANT toute opération.
-            subprocess.run(["sudo", "e2fsck", "-f", "-y", part], check=False)
+            todo_journal.lancer_journalise(
+                ["sudo", "e2fsck", "-f", "-y", part]
+            )
             bs = self._qemu_fs_blocksize(part)
             # Cibles (octets), en gardant 2 Mio pour la GPT de secours + marge.
             part_start_b = start * self._SECT
@@ -2118,9 +2122,9 @@ class QemuManageMixin:
                 f"-> {fs_target_mib} MiB…"
             )
             if (
-                subprocess.run(
+                todo_journal.lancer_journalise(
                     ["sudo", "resize2fs", part, f"{fs_target_mib}M"]
-                ).returncode
+                )
                 != 0
             ):
                 print(t("resize2fs failed; reverting."))
@@ -2136,8 +2140,8 @@ class QemuManageMixin:
                 return self._qemu_shrink_revert(bak, disk, changed=True)
             # Réécrit la partition (mêmes type/UUID/nom -> PARTUUID préservé).
             print(f"{t('Shrinking the partition…')} ({part})")
-            subprocess.run(["sudo", "sgdisk", "-d", n, dev], check=False)
-            rc = subprocess.run(
+            todo_journal.lancer_journalise(["sudo", "sgdisk", "-d", n, dev])
+            rc = todo_journal.lancer_journalise(
                 [
                     "sudo",
                     "sgdisk",
@@ -2151,7 +2155,7 @@ class QemuManageMixin:
                     f"{n}:{info['name']}",
                     dev,
                 ]
-            ).returncode
+            )
             if rc != 0:
                 print(t("Partition rewrite failed; reverting."))
                 return self._qemu_shrink_revert(bak, disk, changed=True)
@@ -2163,7 +2167,7 @@ class QemuManageMixin:
             dev = None
             print(f"{t('Shrinking the qcow2 container…')} {new_gb:g}G")
             if (
-                subprocess.run(
+                todo_journal.lancer_journalise(
                     [
                         "sudo",
                         "qemu-img",
@@ -2172,7 +2176,7 @@ class QemuManageMixin:
                         disk,
                         f"{new_gb:g}G",
                     ]
-                ).returncode
+                )
                 != 0
             ):
                 print(t("Container shrink failed; reverting."))
@@ -2180,7 +2184,7 @@ class QemuManageMixin:
             # Répare la GPT de secours (fin du disque) + fsck final.
             dev = self._qemu_nbd_connect(disk)
             if dev:
-                subprocess.run(["sudo", "sgdisk", "-e", dev], check=False)
+                todo_journal.lancer_journalise(["sudo", "sgdisk", "-e", dev])
                 subprocess.run(
                     ["sudo", "partprobe", dev],
                     check=False,
@@ -2188,8 +2192,8 @@ class QemuManageMixin:
                 )
                 p2 = self._qemu_root_part(dev)[0]
                 if p2:
-                    subprocess.run(
-                        ["sudo", "e2fsck", "-f", "-y", p2], check=False
+                    todo_journal.lancer_journalise(
+                        ["sudo", "e2fsck", "-f", "-y", p2]
                     )
                 self._qemu_nbd_disconnect(dev)
                 dev = None
@@ -2209,13 +2213,13 @@ class QemuManageMixin:
         Renvoie False (la réduction a échoué)."""
         if changed and bak:
             print(t("Restoring the original disk from backup…"))
-            subprocess.run(["sudo", "mv", "-f", bak, disk], check=False)
+            todo_journal.lancer_journalise(["sudo", "mv", "-f", bak, disk])
         elif changed and not bak:
             print(
                 f"⚠  {t('No backup to restore; run fsck on the disk before use.')}"
             )
         elif bak:
-            subprocess.run(["sudo", "rm", "-f", bak], check=False)
+            todo_journal.lancer_journalise(["sudo", "rm", "-f", bak])
         return False
 
     @staticmethod
@@ -2253,7 +2257,7 @@ class QemuManageMixin:
 
     @staticmethod
     def _qemu_nbd_disconnect(dev):
-        subprocess.run(["sudo", "qemu-nbd", "-d", dev], check=False)
+        todo_journal.lancer_journalise(["sudo", "qemu-nbd", "-d", dev])
         time.sleep(1)
 
     @staticmethod

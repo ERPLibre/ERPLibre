@@ -660,7 +660,7 @@ class TODO(
         # TODO check script open_terminal_code_generator.sh
         # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
         try:
-            subprocess.run(
+            todo_journal.lancer_au_terminal(
                 cmd_intern, shell=True, executable="/bin/bash", check=True
             )
         except subprocess.CalledProcessError as e:
@@ -5605,7 +5605,7 @@ class TODO(
                     print(t("Command not found !"))
                 return
             argv = [a for v in versions for a in ("--version", v)]
-        subprocess.run(
+        todo_journal.lancer_au_terminal(
             [
                 os.path.join(".venv.erplibre", "bin", "python"),
                 os.path.join("script", "version", "odoo_version_remove.py"),
@@ -6264,7 +6264,9 @@ class TODO(
         """
         print(f"\n--- {t('Running unit tests')} ---")
         cmd = ["./script/test/run_unit_test.sh", "--tui"]
-        status_code = subprocess.run(cmd, check=False).returncode
+        status_code = todo_journal.lancer_au_terminal(
+            cmd, check=False
+        ).returncode
         if status_code == 0:
             print(f"\n✅ {t('All unit tests passed')}")
         else:

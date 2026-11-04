@@ -484,6 +484,17 @@ class TestJournaux(unittest.TestCase):
         self.assertIn("todo_2026-01-01_10h00m00s_1.log:2", texte)
         self.assertNotIn(cle, texte)
 
+    def test_la_session_en_cours_est_nommee(self):
+        from script.todo import todo_journal
+
+        chemin = todo_journal.ouvrir()
+        self.addCleanup(todo_journal.fermer)
+        r = h.executer(self.ctx, h.verifier_journaux)
+        detail = [d for d in r.details if d.startswith(t("current session:"))]
+        self.assertEqual(len(detail), 1)
+        self.assertIn(os.path.basename(chemin), detail[0])
+        self.assertIn(t("display copied"), detail[0])
+
     def test_au_dela_du_seuil_alerte(self):
         self.journal("todo_2026-01-01_10h00m00s_1.log", 10)
         with mock.patch.object(h, "JOURNAUX_ALERTE", 5):

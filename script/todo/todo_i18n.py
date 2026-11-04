@@ -1174,6 +1174,30 @@ TRANSLATIONS = {
         "fr": "Commandes Claude",
         "en": "Claude commands",
     },
+    "full-screen display": {
+        "fr": "affichage plein terminal",
+        "en": "full-screen display",
+    },
+    "output on the terminal": {
+        "fr": "sortie au terminal",
+        "en": "output on the terminal",
+    },
+    "current session:": {
+        "fr": "session en cours :",
+        "en": "current session:",
+    },
+    "display copied": {
+        "fr": "affichage copié",
+        "en": "display copied",
+    },
+    "display not copied": {
+        "fr": "affichage non copié",
+        "en": "display not copied",
+    },
+    "menu redisplayed": {
+        "fr": "menu réaffiché",
+        "en": "menu redisplayed",
+    },
     "TODO session logs": {
         "fr": "Journaux de session du TODO",
         "en": "TODO session logs",
