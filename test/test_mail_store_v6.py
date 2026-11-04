@@ -390,6 +390,11 @@ class TestRuleLog(StoreCase):
                 "sender",
                 "subject",
                 "queue_id",
+                "rcpt_total",
+                "rcpt_dropped",
+                "rcpt_pending",
+                "sent_at",
+                "retry_sent_at",
             },
         )
 

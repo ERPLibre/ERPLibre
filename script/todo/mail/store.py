@@ -29,6 +29,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
@@ -40,9 +41,15 @@ VALID_MODES = ("clear", "encrypted", "ephemeral")
 # Les issues du journal des règles qui comptent comme un ENVOI pour la limite
 # par expéditeur : un message en file ou retenu partira, ou attend qu'on
 # l'approuve, et répondre de nouveau entre-temps ferait deux réponses.
-RULE_LOG_SEND_OUTCOMES = ("pending", "sent", "queued", "held")
+RULE_LOG_SEND_OUTCOMES = ("pending", "sent", "partial", "queued", "held")
 # Les issues définitives : `rule_log_set_outcome` ne les modifie plus.
-RULE_LOG_TERMINAL = ("sent", "skipped", "failed", "expired")
+# `partial` (message parti vers une partie de ses destinataires) n'avance
+# que par `rule_log_rcpt_result`, `rule_log_retry_closed` et
+# `rule_log_retry_narrowed`.
+RULE_LOG_TERMINAL = ("sent", "partial", "skipped", "failed", "expired")
+# Les issues d'une ligne dont le message est réellement parti, vers tous
+# ses destinataires ou une partie : ce que comptent les plafonds au départ.
+RULE_LOG_DEPARTED = ("sent", "partial")
 OUTBOX_MAX_ATTEMPTS = 3
 # Types d'une entrée automatique de la file ; `auto_redirect` porte son
 # enveloppe dans `sealed_to`.
@@ -129,6 +136,9 @@ CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
 -- `kind` vaut `manual`, ou l'un des types automatiques : `auto_reply`
 -- (réponse), `auto_forward` (transfert, enveloppe dans les octets),
 -- `auto_redirect` (redirection, enveloppe dans `sealed_to`).
+-- `retry` vaut 1 pour le nouvel essai des destinataires refusés
+-- temporairement d'un envoi parti en partie ; son enveloppe est dans
+-- `sealed_to`, quel que soit `kind`.
 CREATE TABLE IF NOT EXISTS outbox (
   id            INTEGER PRIMARY KEY,
   created_at    INTEGER NOT NULL,
@@ -144,11 +154,18 @@ CREATE TABLE IF NOT EXISTS outbox (
   expires_at    INTEGER,
   max_attempts  INTEGER NOT NULL DEFAULT 3,
   perm_attempts INTEGER NOT NULL DEFAULT 0,
-  claimed_at    INTEGER
+  claimed_at    INTEGER,
+  retry         INTEGER NOT NULL DEFAULT 0
 );
 -- v6 : journal des règles, une ligne par (règle, message). Écrit AVANT
 -- l'envoi : UNIQUE(rule_id, msg_key) rend l'envoi « au plus une fois »
 -- entre processus. Expéditeur et sujet scellés, clés hachées.
+-- Un départ refusé en partie y laisse des CODES SMTP, jamais d'adresse :
+-- `rcpt_total` est la taille de l'enveloppe du premier départ,
+-- `rcpt_dropped` les codes des destinataires abandonnés, `rcpt_pending`
+-- ceux qui attendent dans l'entrée de nouvel essai (« 450,550 »).
+-- `retry_sent_at` est le dernier départ d'un nouvel essai ; `sent_at`
+-- reste le premier départ.
 CREATE TABLE IF NOT EXISTS rule_log (
   id             INTEGER PRIMARY KEY,
   rule_id        TEXT NOT NULL,
@@ -164,6 +181,10 @@ CREATE TABLE IF NOT EXISTS rule_log (
   sealed_sender  BLOB,
   sealed_subject BLOB,
   sent_at        INTEGER,
+  rcpt_total     INTEGER,
+  rcpt_dropped   TEXT,
+  rcpt_pending   TEXT,
+  retry_sent_at  INTEGER,
   UNIQUE(rule_id, msg_key)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_log_sender
@@ -201,6 +222,17 @@ OUTBOX_V6_COLUMNS = {
     "perm_attempts": "INTEGER NOT NULL DEFAULT 0",
     "claimed_at": "INTEGER",
 }
+# Les colonnes ajoutées à `outbox` après la v6, sans changer de version.
+OUTBOX_ADDED_COLUMNS = {"retry": "INTEGER NOT NULL DEFAULT 0"}
+# Les colonnes ajoutées à `rule_log` après sa création, sans changer de
+# version, dans l'ordre où elles sont apparues.
+RULE_LOG_ADDED_COLUMNS = {
+    "sent_at": "INTEGER",
+    "rcpt_total": "INTEGER",
+    "rcpt_dropped": "TEXT",
+    "rcpt_pending": "TEXT",
+    "retry_sent_at": "INTEGER",
+}
 
 
 def _ensure_columns(conn) -> list[str]:
@@ -233,21 +265,25 @@ def _ensure_columns(conn) -> list[str]:
 
 
 def _ensure_rule_log_columns(conn) -> None:
-    """Ajoute `sent_at` à un journal des règles créé sans elle, lu dans
-    `PRAGMA table_info` comme pour `messages`. Les lignes existantes
-    gardent `sent_at` nul : leur `at` en tient lieu."""
+    """Ajoute à un journal des règles chaque colonne de
+    `RULE_LOG_ADDED_COLUMNS` qui lui manque, lu dans `PRAGMA table_info`
+    comme pour `messages`. Les lignes existantes les gardent nulles :
+    `at` tient lieu de `sent_at`, et une ligne sans décompte n'a vu aucun
+    refus."""
     presentes = {
         row["name"] for row in conn.execute("PRAGMA table_info(rule_log)")
     }
-    if "sent_at" not in presentes:
-        conn.execute("ALTER TABLE rule_log ADD COLUMN sent_at INTEGER")
+    for nom, genre in RULE_LOG_ADDED_COLUMNS.items():
+        if nom not in presentes:
+            conn.execute(f"ALTER TABLE rule_log ADD COLUMN {nom} {genre}")
 
 
 def _ensure_outbox_columns(conn) -> None:
     """Fait passer la file d'attente de la v4 à la v6.
 
-    Les colonnes de la v6 s'ajoutent si elles manquent, lues dans `PRAGMA
-    table_info` comme pour `messages`.
+    Les colonnes de la v6, puis celles d'`OUTBOX_ADDED_COLUMNS`,
+    s'ajoutent si elles manquent, lues dans `PRAGMA table_info` comme pour
+    `messages`.
 
     La v4 gardait `last_error` en clair. La migration ne peut pas sceller ce
     texte — il est déjà écrit en clair sur le disque, et le sceller n'en
@@ -260,15 +296,65 @@ def _ensure_outbox_columns(conn) -> None:
     }
     if "sealed_error" not in presentes:
         conn.execute("ALTER TABLE outbox ADD COLUMN sealed_error BLOB")
-    for nom, definition in OUTBOX_V6_COLUMNS.items():
+    for nom, definition in {
+        **OUTBOX_V6_COLUMNS,
+        **OUTBOX_ADDED_COLUMNS,
+    }.items():
         if nom not in presentes:
             conn.execute(f"ALTER TABLE outbox ADD COLUMN {nom} {definition}")
     if "last_error" in presentes:
         conn.execute("UPDATE outbox SET last_error = NULL")
 
 
+# Les colonnes d'une entrée de file que lit `Store.outbox`, octets exclus.
+_OUTBOX_COLONNES = (
+    "id, created_at, sealed_to, sealed_subject, held, attempts,"
+    " sealed_error, kind, rule_id, source_key, expires_at, max_attempts,"
+    " perm_attempts, claimed_at, retry"
+)
+
+
 class StoreError(Exception):
     """Cache inutilisable : clé manquante, base corrompue, disque refusé."""
+
+
+def _codes_text(codes) -> str | None:
+    """Codes SMTP en texte « 450,550 », croissants ; None si aucun. Un
+    code qui n'est pas un entier s'écrit 0."""
+    propres = sorted(
+        c if isinstance(c, int) and not isinstance(c, bool) else 0
+        for c in (codes or ())
+    )
+    return ",".join(str(c) for c in propres) if propres else None
+
+
+def _codes_list(text) -> list[int]:
+    """L'inverse de `_codes_text` ; un morceau illisible est ignoré."""
+    codes = []
+    for morceau in str(text or "").split(","):
+        morceau = morceau.strip()
+        if morceau.isdigit():
+            codes.append(int(morceau))
+    return codes
+
+
+def _envelope_key(text) -> list[str]:
+    """Les adresses d'une enveloppe écrite « a, b », sans casse ni blancs,
+    triées : deux écritures de la même enveloppe se comparent égales."""
+    return sorted(
+        morceau.strip().lower()
+        for morceau in str(text or "").split(",")
+        if morceau.strip()
+    )
+
+
+class RcptResult(NamedTuple):
+    """Ce qu'a fait `rule_log_rcpt_result` : `applied` faux quand la ligne
+    était absente ou d'une issue terminale autre que `partial` ;
+    `queue_id` est l'entrée de nouvel essai créée, ou None."""
+
+    applied: bool
+    queue_id: int | None = None
 
 
 def _locked(method):
@@ -974,6 +1060,32 @@ class Store:
 
     # -- File d'attente d'envoi (v4, v6) --------------------------------
 
+    def _sceller_file(
+        self,
+        raw: bytes,
+        recipients: str,
+        subject: str,
+        *,
+        kind: str,
+        retry: bool = False,
+    ) -> tuple[bytes, bytes, bytes]:
+        """Les trois blobs scellés d'une entrée de file : octets,
+        destinataires, sujet.
+
+        Les octets d'une `auto_redirect` ou d'un nouvel essai (`retry`)
+        sont scellés précédés d'`OUTBOX_REDIRECT_GUARD` : leur enveloppe
+        est dans `sealed_to`, et un code qui lirait leurs en-têtes n'y
+        trouve aucun destinataire. Appelable hors de toute transaction :
+        sceller des dizaines de Mio ne tient pas le verrou d'écriture.
+        """
+        if kind == "auto_redirect" or retry:
+            raw = OUTBOX_REDIRECT_GUARD + raw
+        return (
+            self._crypto.seal(raw),
+            self._seal(recipients),
+            self._seal(subject),
+        )
+
     def _inserer_file(
         self,
         db,
@@ -987,27 +1099,37 @@ class Store:
         source_key: str | None,
         expires_at: int | None,
         max_attempts: int,
+        retry: bool = False,
+        sealed: tuple[bytes, bytes, bytes] | None = None,
     ) -> int:
         """INSERT d'une entrée de file, SANS commit : l'appelant décide de
-        la transaction qui l'englobe. Les octets d'une `auto_redirect` sont
-        scellés précédés d'`OUTBOX_REDIRECT_GUARD`."""
-        if kind == "auto_redirect":
-            raw = OUTBOX_REDIRECT_GUARD + raw
+        la transaction qui l'englobe.
+
+        `sealed`, rendu par `_sceller_file`, est écrit tel quel (`raw`,
+        `recipients` et `subject` sont alors ignorés) ; sans lui, les blobs
+        sont scellés ici. `retry` marque l'entrée de nouvel essai.
+        """
+        if sealed is None:
+            sealed = self._sceller_file(
+                raw, recipients, subject, kind=kind, retry=retry
+            )
+        scelle_raw, scelle_to, scelle_sujet = sealed
         curseur = db.execute(
             "INSERT INTO outbox(created_at, sealed_raw, sealed_to,"
             " sealed_subject, held, kind, rule_id, source_key, expires_at,"
-            " max_attempts) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            " max_attempts, retry) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (
                 int(time.time()),
-                self._crypto.seal(raw),
-                self._seal(recipients),
-                self._seal(subject),
+                scelle_raw,
+                scelle_to,
+                scelle_sujet,
                 1 if held else 0,
                 kind,
                 rule_id,
                 source_key,
                 expires_at,
                 int(max_attempts),
+                1 if retry else 0,
             ),
         )
         return curseur.lastrowid
@@ -1111,38 +1233,62 @@ class Store:
         `queued_raw`.
         """
         return [
-            {
-                "id": r["id"],
-                "created_at": r["created_at"],
-                "to": self._open(r["sealed_to"]),
-                "subject": self._open(r["sealed_subject"]),
-                "held": bool(r["held"]),
-                "attempts": r["attempts"],
-                "last_error": self._open(r["sealed_error"]),
-                "kind": r["kind"] or "manual",
-                "rule_id": r["rule_id"],
-                "source_key": r["source_key"],
-                "expires_at": r["expires_at"],
-                "max_attempts": r["max_attempts"],
-                "perm_attempts": r["perm_attempts"],
-                "claimed_at": r["claimed_at"],
-            }
+            self._entree_file(r)
             for r in self._db().execute(
-                "SELECT id, created_at, sealed_to, sealed_subject, held,"
-                " attempts, sealed_error, kind, rule_id, source_key,"
-                " expires_at, max_attempts, perm_attempts, claimed_at"
-                " FROM outbox ORDER BY created_at, id"
+                f"SELECT {_OUTBOX_COLONNES} FROM outbox"
+                " ORDER BY created_at, id"
             )
         ]
 
     @_locked
-    def queued_raw(self, queue_id: int) -> bytes | None:
-        """Les octets d'une entrée, tels que mis en file ; None si elle
-        n'existe plus. Le préfixe d'une `auto_redirect` est retiré."""
+    def queued_entry(self, queue_id: int) -> dict | None:
+        """L'entrée `queue_id` relue dans la base à l'instant, sous la forme
+        d'un élément de `outbox` ; None si elle n'existe plus.
+
+        Ce que la vidange envoie après avoir réservé l'entrée : l'instantané
+        de `outbox` pris au début d'une passe ne voit pas une enveloppe
+        réduite entre-temps par une vidange concurrente.
+        """
         ligne = (
             self._db()
             .execute(
-                "SELECT sealed_raw, kind FROM outbox WHERE id = ?",
+                f"SELECT {_OUTBOX_COLONNES} FROM outbox WHERE id = ?",
+                (queue_id,),
+            )
+            .fetchone()
+        )
+        return self._entree_file(ligne) if ligne else None
+
+    def _entree_file(self, r) -> dict:
+        """Une ligne de `outbox` (colonnes `_OUTBOX_COLONNES`) en dict, les
+        colonnes scellées ouvertes sauf les octets."""
+        return {
+            "id": r["id"],
+            "created_at": r["created_at"],
+            "to": self._open(r["sealed_to"]),
+            "subject": self._open(r["sealed_subject"]),
+            "held": bool(r["held"]),
+            "attempts": r["attempts"],
+            "last_error": self._open(r["sealed_error"]),
+            "kind": r["kind"] or "manual",
+            "rule_id": r["rule_id"],
+            "source_key": r["source_key"],
+            "expires_at": r["expires_at"],
+            "max_attempts": r["max_attempts"],
+            "perm_attempts": r["perm_attempts"],
+            "claimed_at": r["claimed_at"],
+            "retry": bool(r["retry"]),
+        }
+
+    @_locked
+    def queued_raw(self, queue_id: int) -> bytes | None:
+        """Les octets d'une entrée, tels que mis en file ; None si elle
+        n'existe plus. Le préfixe d'une `auto_redirect` ou d'un nouvel
+        essai est retiré."""
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT sealed_raw, kind, retry FROM outbox WHERE id = ?",
                 (queue_id,),
             )
             .fetchone()
@@ -1150,7 +1296,7 @@ class Store:
         if not ligne:
             return None
         raw = self._crypto.open(bytes(ligne[0]))
-        if ligne[1] == "auto_redirect" and raw.startswith(
+        if (ligne[1] == "auto_redirect" or ligne[2]) and raw.startswith(
             OUTBOX_REDIRECT_GUARD
         ):
             raw = raw[len(OUTBOX_REDIRECT_GUARD) :]
@@ -1260,7 +1406,12 @@ class Store:
 
     @_locked
     def record_send_failure(
-        self, queue_id: int, message: str, *, permanent: bool = False
+        self,
+        queue_id: int,
+        message: str,
+        *,
+        permanent: bool = False,
+        release: bool = True,
     ) -> dict:
         """Compte l'échec, garde SON texte scellé, et libère la réservation.
 
@@ -1272,15 +1423,21 @@ class Store:
         `permanent` compte aussi le refus dans `perm_attempts`, que la
         vidange compare à `max_attempts`. Rend les trois compteurs après la
         mise à jour ; une entrée absente les rend à zéro.
+
+        `release` faux garde la réservation : l'appelant écrit encore la
+        suite du refus (clôture, enveloppe réduite) avant qu'une autre
+        vidange puisse reprendre l'entrée, puis la rend (`outbox_release`).
         """
         db = self._db()
         db.execute(
             "UPDATE outbox SET attempts = attempts + 1, sealed_error = ?,"
-            " perm_attempts = perm_attempts + ?, claimed_at = NULL"
+            " perm_attempts = perm_attempts + ?,"
+            " claimed_at = CASE WHEN ? THEN NULL ELSE claimed_at END"
             " WHERE id = ?",
             (
                 self._seal((message or "")[:500]),
                 1 if permanent else 0,
+                1 if release else 0,
                 queue_id,
             ),
         )
@@ -1458,9 +1615,10 @@ class Store:
         Une issue de `RULE_LOG_TERMINAL` n'est jamais réécrite : une vidange
         concurrente peut avoir envoyé l'entrée de file avant que le moteur
         n'écrive `queued`, et rétrograder `sent` ferait croire à un envoi
-        encore à faire. `sent_at` est l'époque du départ réel, que lisent
-        les plafonds par heure (`rule_log_recent_sends`,
-        `rule_log_sent_since`).
+        encore à faire. `partial` en est : un `expired` ou un `failed`
+        effacerait des plafonds un message parti. `sent_at` est l'époque
+        du départ réel, que lisent les plafonds par heure
+        (`rule_log_recent_sends`, `rule_log_sent_since`).
         """
         db = self._db()
         change = self._avancer_issue(
@@ -1468,6 +1626,329 @@ class Store:
         )
         db.commit()
         return change
+
+    def _ecriture(self):
+        """La connexion, sous le verrou d'écriture de SQLite pris AVANT la
+        première lecture (`BEGIN IMMEDIATE`) : une méthode qui relit une
+        ligne puis l'écrit ne croise pas un autre processus entre les
+        deux."""
+        db = self._db()
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        return db
+
+    @_locked
+    def rule_log_rcpt_result(
+        self,
+        rule_id: str,
+        msg_key: str,
+        *,
+        total: int,
+        dropped=(),
+        pending=(),
+        sent_at: int,
+        retry_raw: bytes | None = None,
+        retry_to: str = "",
+        retry_subject: str = "",
+        kind: str = "auto_reply",
+        expires_at: int | None = None,
+        drop_queue_id: int | None = None,
+    ) -> RcptResult:
+        """Inscrit le résultat d'un départ qui a servi au moins un
+        destinataire et en a vu refuser, ou d'un nouvel essai parti.
+
+        `total` est la taille de l'enveloppe essayée (gardée seulement au
+        premier départ), `dropped` les codes des refusés abandonnés,
+        `pending` ceux des refusés qu'un nouvel essai portera. `pending`
+        non vide exige `retry_raw` et `retry_to` (octets et enveloppe de
+        l'entrée de nouvel essai), et réciproquement ; `kind` est l'un
+        d'`OUTBOX_AUTO_KINDS`. Sinon `ValueError`, avant toute écriture.
+
+        Les blobs du nouvel essai sont scellés avant le verrou d'écriture.
+        Puis, en UNE transaction : l'entrée de nouvel essai est créée
+        (jamais retenue, échéance `expires_at`), l'entrée `drop_queue_id`
+        (celle qui vient de partir) est retirée, et la ligne avance :
+        `partial` (raison `rcpt_retry` si quelqu'un attend, sinon
+        `rcpt_refused`), ou `sent` quand plus personne n'attend ni n'a été
+        abandonné (raison `rcpt_retried` après un nouvel essai). Le
+        premier départ écrit `sent_at`, un nouvel essai `retry_sent_at`.
+        Une ligne absente, ou d'une issue terminale autre que `partial`,
+        n'est pas touchée et rien n'est créé ; l'entrée `drop_queue_id`
+        part quand même (le message est parti). Toute erreur annule la
+        transaction entière.
+        """
+        if kind not in OUTBOX_AUTO_KINDS:
+            raise ValueError(kind)
+        dropped = list(dropped or ())
+        pending = list(pending or ())
+        if bool(pending) != bool(retry_raw is not None and retry_to):
+            raise ValueError("pending")
+        sealed = None
+        if pending:
+            sealed = self._sceller_file(
+                retry_raw, retry_to, retry_subject, kind=kind, retry=True
+            )
+        db = self._ecriture()
+        try:
+            ligne = db.execute(
+                "SELECT outcome, reason, rcpt_dropped FROM rule_log"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            ).fetchone()
+            if ligne is None or ligne["outcome"] not in (
+                "pending",
+                "queued",
+                "held",
+                "partial",
+            ):
+                if drop_queue_id is not None:
+                    db.execute(
+                        "DELETE FROM outbox WHERE id = ?", (drop_queue_id,)
+                    )
+                db.commit()
+                return RcptResult(False)
+            nouvel_essai = None
+            if pending:
+                # INSERT avant le DELETE : l'entrée neuve ne reprend jamais
+                # l'identifiant de celle qui vient de partir, qu'une vidange
+                # concurrente peut encore tenir dans son instantané.
+                nouvel_essai = self._inserer_file(
+                    db,
+                    b"",
+                    "",
+                    "",
+                    held=False,
+                    kind=kind,
+                    rule_id=rule_id,
+                    source_key=msg_key,
+                    expires_at=expires_at,
+                    max_attempts=OUTBOX_MAX_ATTEMPTS,
+                    retry=True,
+                    sealed=sealed,
+                )
+            if drop_queue_id is not None:
+                db.execute("DELETE FROM outbox WHERE id = ?", (drop_queue_id,))
+            essai = ligne["outcome"] == "partial"
+            anciens = _codes_list(ligne["rcpt_dropped"]) if essai else []
+            abandon = sorted(anciens + dropped)
+            attente = sorted(pending)
+            if not abandon and not attente:
+                issue = "sent"
+                raison = "rcpt_retried" if essai else ligne["reason"]
+            else:
+                issue = "partial"
+                raison = "rcpt_retry" if attente else "rcpt_refused"
+            colonne = "retry_sent_at" if essai else "sent_at"
+            db.execute(
+                f"UPDATE rule_log SET outcome = ?, reason = ?, {colonne} = ?,"
+                " rcpt_total = COALESCE(rcpt_total, ?),"
+                " rcpt_dropped = ?, rcpt_pending = ?,"
+                " queue_id = COALESCE(?, queue_id)"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (
+                    issue,
+                    raison,
+                    int(sent_at),
+                    int(total),
+                    _codes_text(abandon),
+                    _codes_text(attente),
+                    nouvel_essai,
+                    rule_id,
+                    msg_key,
+                ),
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return RcptResult(True, nouvel_essai)
+
+    @_locked
+    def rule_log_retry_closed(
+        self,
+        rule_id: str,
+        msg_key: str,
+        reason: str,
+        *,
+        drop_queue_id: int | None = None,
+        codes=None,
+    ) -> bool:
+        """Clôt sans départ le nouvel essai d'une ligne `partial` : retire
+        l'entrée `drop_queue_id`, verse les codes en attente (ou `codes`,
+        ceux du dernier refus, quand ils sont donnés) dans les abandonnés,
+        la raison devient `reason`, l'issue reste `partial`.
+
+        Vrai si une ligne a changé. Seule une ligne `partial` dont un
+        nouvel essai attend (`rcpt_retry`) et qui nomme cette entrée
+        (`queue_id`, quand `drop_queue_id` est donné) est touchée : une
+        entrée égarée ne vide pas l'attente d'une autre. L'entrée est
+        retirée quand même. Retrait et écriture forment UNE transaction :
+        une ligne qui annonce un nouvel essai en file en a toujours un.
+        """
+        db = self._ecriture()
+        try:
+            if drop_queue_id is not None:
+                db.execute("DELETE FROM outbox WHERE id = ?", (drop_queue_id,))
+            ligne = db.execute(
+                "SELECT outcome, reason, queue_id, rcpt_dropped, rcpt_pending"
+                " FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            ).fetchone()
+            if (
+                ligne is None
+                or ligne["outcome"] != "partial"
+                or ligne["reason"] != "rcpt_retry"
+                or (
+                    drop_queue_id is not None
+                    and ligne["queue_id"] != drop_queue_id
+                )
+            ):
+                db.commit()
+                return False
+            verses = (
+                list(codes)
+                if codes is not None
+                else _codes_list(ligne["rcpt_pending"])
+            )
+            abandon = _codes_list(ligne["rcpt_dropped"]) + verses
+            db.execute(
+                "UPDATE rule_log SET reason = ?, rcpt_dropped = ?,"
+                " rcpt_pending = NULL WHERE rule_id = ? AND msg_key = ?",
+                (reason, _codes_text(abandon), rule_id, msg_key),
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return True
+
+    @_locked
+    def rule_log_retry_narrowed(
+        self,
+        rule_id: str,
+        msg_key: str,
+        queue_id: int,
+        *,
+        retry_to: str,
+        pending,
+        dropped,
+        tried=None,
+    ) -> bool:
+        """Réduit l'enveloppe de l'entrée de nouvel essai `queue_id` après
+        un refus total où se mêlent des 4xx et d'autres codes :
+        `sealed_to` = `retry_to`, `rcpt_pending` = `pending`, `dropped`
+        ajoutés à `rcpt_dropped`.
+
+        Vrai si la ligne, `partial/rcpt_retry` et liée à `queue_id`, a
+        changé ; sinon rien n'est écrit. `pending` vide : `ValueError`
+        (l'entrée n'a plus rien à réessayer). `retry_to` est scellé avant
+        le verrou ; l'entrée et la ligne s'écrivent en UNE transaction.
+
+        Idempotente : rien n'est écrit quand l'enveloppe en file vaut déjà
+        `retry_to`, ni quand elle diffère de `tried` (l'enveloppe essayée,
+        si elle est donnée). Un refus lu sur une enveloppe déjà réduite
+        n'ajoute donc pas une seconde fois ses codes abandonnés.
+        """
+        pending = list(pending or ())
+        if not pending:
+            raise ValueError("pending")
+        scelle_to = self._seal(retry_to)
+        db = self._ecriture()
+        try:
+            ligne = db.execute(
+                "SELECT outcome, reason, queue_id, rcpt_dropped FROM rule_log"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            ).fetchone()
+            entree = db.execute(
+                "SELECT sealed_to FROM outbox WHERE id = ? AND retry = 1",
+                (queue_id,),
+            ).fetchone()
+            actuelle = (
+                _envelope_key(self._open(entree["sealed_to"]))
+                if entree
+                else None
+            )
+            if (
+                ligne is None
+                or entree is None
+                or ligne["outcome"] != "partial"
+                or ligne["reason"] != "rcpt_retry"
+                or ligne["queue_id"] != queue_id
+                or actuelle == _envelope_key(retry_to)
+                or (
+                    tried is not None
+                    and actuelle != _envelope_key(", ".join(tried))
+                )
+            ):
+                db.commit()
+                return False
+            curseur = db.execute(
+                "UPDATE outbox SET sealed_to = ? WHERE id = ? AND retry = 1",
+                (scelle_to, queue_id),
+            )
+            if curseur.rowcount != 1:
+                db.rollback()
+                return False
+            abandon = _codes_list(ligne["rcpt_dropped"]) + list(dropped or ())
+            db.execute(
+                "UPDATE rule_log SET rcpt_pending = ?, rcpt_dropped = ?"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (
+                    _codes_text(pending),
+                    _codes_text(abandon),
+                    rule_id,
+                    msg_key,
+                ),
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return True
+
+    @_locked
+    def rule_log_retry_departed(
+        self, rule_id: str, msg_key: str, sent_at: int
+    ) -> bool:
+        """Inscrit seulement l'époque du départ d'un nouvel essai
+        (`retry_sent_at`) sur une ligne `partial`. Vrai si une ligne a
+        changé.
+
+        Le repli d'une vidange dont le journal complet n'a pas pu s'écrire :
+        une transaction SMTP partie compte aux plafonds par heure même
+        quand le reste de la ligne n'est pas à jour.
+        """
+        db = self._db()
+        curseur = db.execute(
+            "UPDATE rule_log SET retry_sent_at = ?"
+            " WHERE rule_id = ? AND msg_key = ? AND outcome = 'partial'",
+            (int(sent_at), rule_id, msg_key),
+        )
+        db.commit()
+        return curseur.rowcount > 0
+
+    @_locked
+    def rule_log_state(self, rule_id: str, msg_key: str) -> dict | None:
+        """`outcome`, `reason` et `queue_id` de la ligne, None si elle est
+        absente : ce que la vidange vérifie avant d'envoyer un nouvel
+        essai."""
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT outcome, reason, queue_id FROM rule_log"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            )
+            .fetchone()
+        )
+        if ligne is None:
+            return None
+        return {
+            "outcome": ligne["outcome"],
+            "reason": ligne["reason"],
+            "queue_id": ligne["queue_id"],
+        }
 
     @_locked
     def rule_log_outcome(self, rule_id: str, msg_key: str) -> str | None:
@@ -1530,16 +2011,18 @@ class Store:
     @_locked
     def rule_log_sent_count(self, rule_id: str, fingerprint: str) -> int:
         """Combien de réponses de cette règle, sous cette empreinte, sont
-        réellement parties.
+        réellement parties, vers tous leurs destinataires ou une partie :
+        une ligne par message, quel que soit le nombre de nouveaux essais.
 
         Une règle modifiée change d'empreinte : son compteur repart de zéro.
         """
+        parties = ",".join("?" for _ in RULE_LOG_DEPARTED)
         return (
             self._db()
             .execute(
                 "SELECT COUNT(*) FROM rule_log WHERE rule_id = ?"
-                " AND fingerprint = ? AND outcome = 'sent'",
-                (rule_id, fingerprint),
+                f" AND fingerprint = ? AND outcome IN ({parties})",
+                (rule_id, fingerprint, *RULE_LOG_DEPARTED),
             )
             .fetchone()[0]
         )
@@ -1568,14 +2051,22 @@ class Store:
         l'époque de sa décision (`at`). Une réponse retenue n'y entre pas
         tant qu'elle n'est pas partie : c'est le plafond glissant par heure
         qui la retient.
+
+        Une issue `partial` compte comme `sent` à son premier départ, puis
+        une fois de plus quand un nouvel essai part (`retry_sent_at` à
+        `since` ou après) ; jamais aussi comme `queued` tant que son
+        nouvel essai attend.
         """
+        parties = ",".join("?" for _ in RULE_LOG_DEPARTED)
+        depuis = int(since)
         return (
             self._db()
             .execute(
-                "SELECT COUNT(*) FROM rule_log WHERE"
-                " (outcome = 'sent' AND COALESCE(sent_at, at) >= ?)"
-                " OR (outcome = 'queued' AND at >= ?)",
-                (int(since), int(since)),
+                "SELECT (SELECT COUNT(*) FROM rule_log WHERE"
+                f" (outcome IN ({parties}) AND COALESCE(sent_at, at) >= ?)"
+                " OR (outcome = 'queued' AND at >= ?))"
+                " + (SELECT COUNT(*) FROM rule_log WHERE retry_sent_at >= ?)",
+                (*RULE_LOG_DEPARTED, depuis, depuis, depuis),
             )
             .fetchone()[0]
         )
@@ -1584,13 +2075,22 @@ class Store:
     def rule_log_sent_since(self, since: int) -> int:
         """Combien d'envois automatiques du compte sont réellement partis
         à `since` ou après (`sent_at`, `at` à défaut), file exclue : le
-        compte que la vidange de la file oppose au plafond par heure."""
+        compte que la vidange de la file oppose au plafond par heure.
+
+        Chaque transaction SMTP qui a servi quelqu'un compte une fois, à
+        l'instant où elle part : une ligne `sent` ou `partial` à son
+        premier départ, plus une fois quand un nouvel essai part
+        (`retry_sent_at`).
+        """
+        parties = ",".join("?" for _ in RULE_LOG_DEPARTED)
+        depuis = int(since)
         return (
             self._db()
             .execute(
-                "SELECT COUNT(*) FROM rule_log WHERE outcome = 'sent'"
-                " AND COALESCE(sent_at, at) >= ?",
-                (int(since),),
+                "SELECT (SELECT COUNT(*) FROM rule_log WHERE"
+                f" outcome IN ({parties}) AND COALESCE(sent_at, at) >= ?)"
+                " + (SELECT COUNT(*) FROM rule_log WHERE retry_sent_at >= ?)",
+                (*RULE_LOG_DEPARTED, depuis, depuis),
             )
             .fetchone()[0]
         )
@@ -1598,7 +2098,7 @@ class Store:
     @_locked
     def rule_log_rule_sends(self, rule_id: str, since: int) -> int:
         """Les décisions d'envoi de CETTE règle à `since` ou après, issues
-        `sent`, `queued` et `held`.
+        `sent`, `partial`, `queued` et `held`.
 
         Une réponse retenue compte : elle est décidée, et partira si
         quelqu'un la libère.
@@ -1607,7 +2107,7 @@ class Store:
             self._db()
             .execute(
                 "SELECT COUNT(*) FROM rule_log WHERE rule_id = ? AND at >= ?"
-                " AND outcome IN ('sent', 'queued', 'held')",
+                " AND outcome IN ('sent', 'partial', 'queued', 'held')",
                 (rule_id, int(since)),
             )
             .fetchone()[0]
@@ -1618,7 +2118,15 @@ class Store:
         self, rule_id: str | None = None, limit: int = 200
     ) -> list[dict]:
         """Les lignes du journal, les plus récentes d'abord, expéditeur et
-        sujet ouverts."""
+        sujet ouverts.
+
+        `rcpt_total` (taille de l'enveloppe du premier départ, ou None),
+        `rcpt_dropped` et `rcpt_pending` (codes SMTP des destinataires
+        abandonnés et en attente d'un nouvel essai, listes d'entiers)
+        décrivent un départ refusé en partie ; `sent_at` et
+        `retry_sent_at` sont le premier départ et le dernier nouvel essai
+        parti.
+        """
         clause, params = "", []
         if rule_id is not None:
             clause = " WHERE rule_id = ?"
@@ -1634,6 +2142,11 @@ class Store:
                 "sender": self._open(r["sealed_sender"]),
                 "subject": self._open(r["sealed_subject"]),
                 "queue_id": r["queue_id"],
+                "rcpt_total": r["rcpt_total"],
+                "rcpt_dropped": _codes_list(r["rcpt_dropped"]),
+                "rcpt_pending": _codes_list(r["rcpt_pending"]),
+                "sent_at": r["sent_at"],
+                "retry_sent_at": r["retry_sent_at"],
             }
             for r in self._db().execute(
                 f"SELECT * FROM rule_log{clause} ORDER BY at DESC, id DESC"
