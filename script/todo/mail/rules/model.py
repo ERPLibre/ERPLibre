@@ -54,6 +54,7 @@ REGEX_TEXT_MAX = 10_000
 OUTCOMES = (
     "pending",
     "sent",
+    "partial",
     "queued",
     "held",
     "skipped",

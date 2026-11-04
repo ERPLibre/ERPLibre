@@ -1434,6 +1434,40 @@ def _claim_kept(store, queue_id: int, clock):
         fil.join()
 
 
+class FlushResult(tuple):
+    """(partis, retenus, échoués) d'une vidange, plus en attributs :
+    `partial` (départs refusés en partie), `refused` (destinataires
+    refusés par ces départs), `retried` (entrées de nouvel essai créées),
+    `served` (adresses servies, pour l'écran seulement). Égal au
+    triplet : un appelant qui le déballe le lit comme avant."""
+
+    def __new__(
+        cls,
+        sent=0,
+        held=0,
+        failed=0,
+        *,
+        partial=0,
+        refused=0,
+        retried=0,
+        served=(),
+    ):
+        resultat = super().__new__(cls, (sent, held, failed))
+        resultat.partial = partial
+        resultat.refused = refused
+        resultat.retried = retried
+        resultat.served = tuple(served)
+        return resultat
+
+
+def _served_list(servis) -> list:
+    """Les adresses servies que rend un `send_fn` : sa liste, ou [] pour
+    un double qui ne rend rien d'itérable."""
+    if isinstance(servis, (list, tuple)):
+        return [str(a) for a in servis]
+    return []
+
+
 def flush_outbox(
     session,
     send_fn=None,
@@ -1442,8 +1476,9 @@ def flush_outbox(
     now=None,
     rules_base=None,
     only_ids=None,
-) -> tuple:
-    """Envoie ce qui attend. Rend (partis, retenus, échoués).
+) -> FlushResult:
+    """Envoie ce qui attend. Rend (partis, retenus, échoués), en
+    `FlushResult`.
 
     Appelée à chaque passe de synchronisation : le retour du réseau est
     exactement le moment où la file doit se vider, sans que personne ait à
@@ -1465,8 +1500,16 @@ def flush_outbox(
       `expired`, retenue ou non ;
     - automatique, elle n'est envoyée que si sa règle existe, est active
       et garde l'empreinte de la mise en file ; sinon elle est retirée
-      (`rule_disabled`, `rule_changed`), et une entrée déjà `sent` au
-      journal est retirée sans renvoi ;
+      (`rule_disabled`, `rule_changed`), et une entrée dont le journal
+      dit le message déjà parti (`sent`, `partial`) est retirée sans
+      renvoi ;
+    - nouvel essai (`retry`), elle n'est envoyée que si sa ligne est
+      `partial/rcpt_retry` et la nomme (`queue_id`) ; sinon (entrée
+      égarée, en double, ligne qui n'attend plus rien) elle est retirée
+      sans envoi. Sa clôture sans départ (échéance, règle désactivée ou
+      modifiée, enveloppe illisible, essais épuisés) retire l'entrée et
+      verse les codes en attente dans les abandonnés en une transaction,
+      la ligne restant `partial` ;
     - retenue, relu dans la base et non dans l'instantané, elle reste et
       sa réservation est rendue ;
     - automatique, hors `only_ids`, elle reste en file, réservation rendue,
@@ -1480,12 +1523,33 @@ def flush_outbox(
       restent en file sans nouvel essai : chacune attendrait le même
       délai de connexion ;
     - envoyée, elle est retirée et classée dans Envoyés (`file_in_sent`,
-      sous `verrou`), sauf une redirection ; un APPEND raté ne compte pas
-      comme échec d'envoi ;
+      sous `verrou`), sauf une redirection ou un nouvel essai ; un APPEND
+      raté ne compte pas comme échec d'envoi ;
+    - refusée en partie (le serveur accepte certains destinataires), elle
+      est retirée comme envoyée. Automatique, son journal passe `partial`
+      (`rule_log_rcpt_result`) et les refusés temporaires réessayables
+      partent dans une NOUVELLE entrée, enveloppe limitée à eux, même
+      échéance, octets lus dans la file sans Cci interne ; manuelle, ou
+      sans règle, les refus sont seulement comptés ;
+    - écritures après le départ : aucune exception n'en sort, et l'entrée
+      quitte toujours la file ; en cas d'échec, un repli retire l'entrée
+      et compte l'envoi, le nouvel essai est perdu, et rien ne repart
+      jamais vers un destinataire déjà servi ;
     - refusée, l'erreur est gardée scellée ; après `max_attempts` refus
       PERMANENTS (5xx), un message écrit à la main est retenu (jamais
       détruit), une réponse automatique est retirée
-      (`attempts_exhausted`). Un échec transitoire n'est pas plafonné.
+      (`attempts_exhausted`, codes du dernier refus pour un nouvel
+      essai). Un échec transitoire n'est pas plafonné. Un nouvel essai
+      refusé en entier, 4xx et autres codes mêlés, voit son enveloppe
+      réduite aux 4xx (`rule_log_retry_narrowed`) : un 5xx n'y est tenté
+      qu'une fois de plus. Refusé en entier sans aucun 4xx réessayable,
+      il est clos aussitôt (`smtp_permanent`, codes de ce refus). La
+      réservation tient jusqu'à ce que ces écritures soient faites, et
+      l'entrée envoyée est celle relue après la réservation, jamais celle
+      de l'instantané de la passe.
+
+    Plafond horaire : un nouvel essai s'y juge comme tout envoi
+    automatique, sa propre ligne comprise (son premier départ compte).
 
     Selon son type (`kind`) :
     - `manual` : envoi écrit à la main, enveloppe lue dans ses octets ;
@@ -1496,6 +1560,8 @@ def flush_outbox(
       (`RawOutgoing`) à l'enveloppe relue dans `sealed_to` par
       `parse_envelope` ; illisible, l'entrée est retirée
       (`failed/build_error`) sans connexion ; jamais classée dans Envoyés ;
+    - une entrée de nouvel essai, quel que soit son type, part comme une
+      redirection : à l'enveloppe de `sealed_to`, octets tels quels ;
     - tout autre type (cache écrit par un code plus récent) est retiré
       (`failed/build_error`) sans connexion, jamais envoyé.
 
@@ -1511,19 +1577,24 @@ def flush_outbox(
 
     from script.todo.mail.rules.engine import (
         HOUR_S,
+        OUTBOX_AUTO_TTL_S,
         smtp_failure_is_permanent,
     )
     from script.todo.mail.smtp_send import (
         RawOutgoing,
         SmtpError,
         parse_envelope,
+        recipients,
+        split_refusals,
+        strip_header_fields,
+        to_crlf,
     )
     from script.todo.mail.smtp_send import connect as smtp_connect
     from script.todo.mail.smtp_send import send as smtp_send_fn
-    from script.todo.mail.store import OUTBOX_AUTO_KINDS
+    from script.todo.mail.store import OUTBOX_AUTO_KINDS, RULE_LOG_DEPARTED
 
     if not session.online:
-        return (0, 0, 0)
+        return FlushResult()
     send_fn = send_fn or smtp_send_fn
     connect_fn = connect_fn or smtp_connect
     clock = now or time.time
@@ -1540,22 +1611,68 @@ def flush_outbox(
         if only_ids is None:
             caps = _flush_caps(session, rules_base)
     partis = retenus = echoues = 0
+    partiels = refuses = essais = 0
+    servis_tous = []
     auto_partis = 0
     injoignable = False
-    for entree in entrees:
-        ident = entree["id"]
-        kind = entree.get("kind", "manual")
-        manuelle = kind == "manual"
-        rule_id = entree.get("rule_id")
-        source = entree.get("source_key")
+    for instantane in entrees:
+        ident = instantane["id"]
         instant = int(clock())
         if not store.outbox_claim(ident, instant):
             continue
+        # Relue une fois réservée : une vidange concurrente a pu réduire
+        # l'enveloppe d'un nouvel essai depuis l'instantané de la passe.
+        entree = store.queued_entry(ident)
+        if entree is None:
+            continue
+        kind = entree.get("kind", "manual")
+        manuelle = kind == "manual"
+        retry = bool(entree.get("retry"))
+        rule_id = entree.get("rule_id")
+        source = entree.get("source_key")
 
-        def clore(outcome, reason, ident=ident, rule_id=rule_id, src=source):
-            store.drop_queued(ident)
-            if rule_id:
-                store.rule_log_set_outcome(rule_id, src, outcome, reason)
+        def clore(
+            outcome,
+            reason,
+            codes=None,
+            ident=ident,
+            rule_id=rule_id,
+            src=source,
+            retry=retry,
+        ):
+            if retry and rule_id:
+                try:
+                    change = store.rule_log_retry_closed(
+                        rule_id, src, reason, drop_queue_id=ident, codes=codes
+                    )
+                except Exception as exc:
+                    # Rien n'est parti : l'entrée et sa ligne restent telles
+                    # quelles, et une vidange suivante reprend la clôture.
+                    _logger.error(
+                        "%s : file %s, clôture du nouvel essai en échec (%s)",
+                        name,
+                        ident,
+                        type(exc).__name__,
+                    )
+                    try:
+                        store.outbox_release(ident)
+                    except Exception:
+                        pass
+                    return
+                # La ligne reste `partial` : l'issue générique (`expired`,
+                # `failed`) n'est jamais écrite, elle ne se journalise pas.
+                _logger.info(
+                    "%s : file %s retirée, nouvel essai clos (%s), ligne %s",
+                    name,
+                    ident,
+                    reason,
+                    "partial" if change else "inchangée",
+                )
+                return
+            else:
+                store.drop_queued(ident)
+                if rule_id:
+                    store.rule_log_set_outcome(rule_id, src, outcome, reason)
             _logger.info(
                 "%s : file %s retirée, %s/%s", name, ident, outcome, reason
             )
@@ -1571,7 +1688,23 @@ def flush_outbox(
             if not lisibles:
                 store.outbox_release(ident)
                 continue
-            if rule_id and store.rule_log_outcome(rule_id, source) == "sent":
+            etat = store.rule_log_state(rule_id, source) if rule_id else None
+            if retry:
+                if not (
+                    etat
+                    and etat["outcome"] == "partial"
+                    and etat["reason"] == "rcpt_retry"
+                    and etat["queue_id"] == ident
+                ):
+                    store.drop_queued(ident)
+                    _logger.info(
+                        "%s : file %s retirée sans envoi, nouvel essai que"
+                        " sa ligne n'attend pas",
+                        name,
+                        ident,
+                    )
+                    continue
+            elif etat and etat["outcome"] in RULE_LOG_DEPARTED:
                 store.drop_queued(ident)
                 continue
             regle = regles.get(rule_id) if rule_id else None
@@ -1598,7 +1731,7 @@ def flush_outbox(
             store.outbox_release(ident)
             continue
         enveloppe = None
-        if kind == "auto_redirect":
+        if kind == "auto_redirect" or retry:
             try:
                 enveloppe = parse_envelope(entree.get("to") or "")
             except SmtpError:
@@ -1614,31 +1747,80 @@ def flush_outbox(
         transport = None
         # None avant la connexion, faux pendant, vrai après.
         connecte = None
+        # L'enveloppe essayée, connue AVANT l'envoi : les écritures qui
+        # suivent un départ n'ont rien à recalculer qui puisse lever.
+        attendue = ()
         try:
             if enveloppe is not None:
                 message = RawOutgoing(
                     brut, enveloppe, entree.get("subject") or ""
                 )
+                attendue = tuple(enveloppe)
             else:
                 message = email.message_from_bytes(
                     brut, policy=email.policy.default
                 )
+                attendue = tuple(recipients(message))
             connecte = False
             transport = connect_fn(session.account, session.current_secret())
             connecte = True
             with _claim_kept(store, ident, clock):
-                send_fn(session.account, message, transport)
+                servis = send_fn(session.account, message, transport)
         except Exception as exc:
             injoignable = injoignable or connecte is False
+            # La réservation tient jusqu'à ce que la suite du refus soit
+            # écrite : une vidange concurrente ne reprend jamais l'entrée
+            # avec l'enveloppe d'avant sa réduction.
             info = store.record_send_failure(
-                ident, str(exc), permanent=smtp_failure_is_permanent(exc)
+                ident,
+                str(exc),
+                permanent=smtp_failure_is_permanent(exc),
+                release=False,
             )
             echoues += 1
-            if info["perm_attempts"] >= info["max_attempts"]:
-                if manuelle:
-                    store.set_held(ident, True)
-                else:
-                    clore("failed", "attempts_exhausted")
+            refus_total = dict(getattr(exc, "refused", None) or {})
+            part = (
+                split_refusals(attendue, refus_total)
+                if retry and rule_id and refus_total
+                else None
+            )
+            try:
+                if part is not None and not part.retry:
+                    # Plus aucun 4xx réessayable : abandon dès ce refus.
+                    clore(
+                        "failed",
+                        "smtp_permanent",
+                        codes=_codes_of(refus_total),
+                    )
+                elif info["perm_attempts"] >= info["max_attempts"]:
+                    if manuelle:
+                        store.set_held(ident, True)
+                    else:
+                        clore(
+                            "failed",
+                            "attempts_exhausted",
+                            codes=(_codes_of(refus_total) or None)
+                            if retry
+                            else None,
+                        )
+                elif part is not None:
+                    _narrow_retry(
+                        store, part, rule_id, source, ident, tried=attendue
+                    )
+            except Exception as again:
+                if not retry:
+                    raise
+                _logger.error(
+                    "%s : file %s, écriture après un refus en échec (%s)",
+                    name,
+                    ident,
+                    type(again).__name__,
+                )
+            finally:
+                try:
+                    store.outbox_release(ident)
+                except Exception:
+                    pass
             continue
         finally:
             if transport is not None:
@@ -1646,14 +1828,91 @@ def flush_outbox(
                     transport.quit()
                 except Exception:
                     pass
-        if rule_id:
-            store.rule_log_set_outcome(
-                rule_id, source, "sent", sent_at=int(clock())
-            )
-        store.drop_queued(ident)
         partis += 1
         if not manuelle:
             auto_partis += 1
+        servis_tous.extend(_served_list(servis))
+        refus = dict(getattr(servis, "refused", None) or {})
+        essayee = tuple(getattr(servis, "envelope", None) or ()) or attendue
+        if refus:
+            partiels += 1
+            refuses += len(refus)
+        depart = int(clock())
+        try:
+            if not manuelle and rule_id and (refus or retry):
+                part = split_refusals(essayee, refus)
+                res = store.rule_log_rcpt_result(
+                    rule_id,
+                    source,
+                    total=len(essayee),
+                    dropped=part.dropped_codes,
+                    pending=part.retry_codes,
+                    sent_at=depart,
+                    retry_raw=(
+                        strip_header_fields(to_crlf(brut), ("X-ERPLibre-Bcc",))
+                        if part.retry
+                        else None
+                    ),
+                    retry_to=", ".join(part.retry),
+                    retry_subject=entree.get("subject") or "",
+                    kind=kind,
+                    expires_at=expire or instant + OUTBOX_AUTO_TTL_S,
+                    drop_queue_id=ident,
+                )
+                if res.queue_id:
+                    essais += 1
+                if res.applied:
+                    _logger.info(
+                        "%s : file %s partie, refusés %d, codes %s,"
+                        " nouvel essai %s",
+                        name,
+                        ident,
+                        part.count,
+                        ",".join(
+                            str(c)
+                            for c in sorted(
+                                part.retry_codes + part.dropped_codes
+                            )
+                        ),
+                        res.queue_id,
+                    )
+                else:
+                    _logger.info(
+                        "%s : file %s partie, nouvel essai non créé, ligne %s",
+                        name,
+                        ident,
+                        store.rule_log_outcome(rule_id, source),
+                    )
+            else:
+                # Envoi complet, manuel, ou automatique sans règle (cache
+                # écrit ailleurs) : les refus éventuels sont seulement
+                # comptés.
+                if rule_id:
+                    store.rule_log_set_outcome(
+                        rule_id, source, "sent", sent_at=depart
+                    )
+                store.drop_queued(ident)
+        except Exception as exc:
+            _logger.error(
+                "%s : file %s partie, écriture du journal en échec (%s),"
+                " nouvel essai abandonné",
+                name,
+                ident,
+                type(exc).__name__,
+            )
+            _after_departure_fallback(
+                store,
+                ident,
+                rule_id=rule_id if not manuelle else None,
+                source=source,
+                kind=kind,
+                total=len(essayee),
+                codes=_codes_of(refus),
+                partial=bool(refus or retry),
+                sent_at=depart,
+                name=name,
+                retry=retry,
+            )
         if enveloppe is not None:
             continue
         erreur = file_in_sent(session, message, verrou)
@@ -1664,7 +1923,143 @@ def flush_outbox(
                 ident,
                 type(erreur).__name__,
             )
-    return (partis, retenus, echoues)
+    return FlushResult(
+        partis,
+        retenus,
+        echoues,
+        partial=partiels,
+        refused=refuses,
+        retried=essais,
+        served=servis_tous,
+    )
+
+
+def outbox_status_text(result) -> str:
+    """La ligne d'état d'une vidange : partis, puis départs partiels et
+    nouveaux essais créés s'il y en a, puis échecs, séparés par « — ».
+    Des nombres seulement : `result.served` n'y entre jamais. Lit un
+    triplet nu comme un `FlushResult` sans partiel."""
+    partis, _, echoues = result
+    morceaux = [f"{t('mail_outbox_flushed')} {partis}"]
+    morceaux += outbox_partial_items(result)
+    if echoues:
+        morceaux.append(f"{t('mail_outbox_failed')} {echoues}")
+    return " — ".join(morceaux)
+
+
+def outbox_partial_items(result) -> list:
+    """Les éléments « partiels N » et « nouveaux essais en file : N »
+    d'une vidange, [] sans départ partiel ni nouvel essai."""
+    elements = []
+    partiel = getattr(result, "partial", 0)
+    if partiel:
+        elements.append(f"{t('mail_outbox_partial')} {partiel}")
+    essais = getattr(result, "retried", 0)
+    if essais:
+        elements.append(f"{t('mail_outbox_retried')} {essais}")
+    return elements
+
+
+def _codes_of(refused: dict) -> list:
+    """Les codes de `refused` ({adresse: code}), croissants ; un code qui
+    n'est pas un entier compte 0."""
+    return sorted(
+        c if isinstance(c, int) and not isinstance(c, bool) else 0
+        for c in (refused or {}).values()
+    )
+
+
+def _narrow_retry(store, part, rule_id, source, ident, tried) -> None:
+    """Après le refus total d'un nouvel essai : quand des 4xx
+    réessayables s'y mêlent à d'autres codes, réduit l'enveloppe de
+    l'entrée aux 4xx et abandonne les autres. Sinon rien : tous 4xx,
+    l'entrée reste telle quelle. `tried` est l'enveloppe essayée : une
+    entrée dont l'enveloppe a changé depuis n'est pas réduite deux
+    fois."""
+    if part.retry and part.dropped_codes:
+        store.rule_log_retry_narrowed(
+            rule_id,
+            source,
+            ident,
+            retry_to=", ".join(part.retry),
+            pending=part.retry_codes,
+            dropped=part.dropped_codes,
+            tried=tried,
+        )
+
+
+def _after_departure_fallback(
+    store,
+    ident,
+    *,
+    rule_id,
+    source,
+    kind,
+    total,
+    codes,
+    partial,
+    sent_at,
+    name,
+    retry=False,
+) -> None:
+    """Le repli des écritures qui suivent un départ : chaque écriture
+    dans son propre `try`, aucune exception ne sort.
+
+    D'abord le résultat du départ SANS nouvel essai (tous les refusés
+    abandonnés) ; s'il échoue, le retrait de l'entrée puis la ligne
+    `sent`, ou, pour un nouvel essai (`retry`) dont la ligne `partial`
+    ne s'écrit plus, la seule époque de son départ (`retry_sent_at`) :
+    la transaction compte aux plafonds par heure. Au pire, le nouvel
+    essai est perdu ; l'entrée ne repart jamais vers ses destinataires
+    déjà servis. Si même le retrait échoue (cache inutilisable), l'entrée
+    reste réservée et une vidange la reprendra après
+    `OUTBOX_CLAIM_STALE_S`.
+    """
+    from script.todo.mail.store import OUTBOX_AUTO_KINDS
+
+    if rule_id and partial and kind in OUTBOX_AUTO_KINDS:
+        try:
+            store.rule_log_rcpt_result(
+                rule_id,
+                source,
+                total=total,
+                dropped=codes,
+                sent_at=sent_at,
+                kind=kind,
+                drop_queue_id=ident,
+            )
+            return
+        except Exception as exc:
+            _logger.error(
+                "%s : file %s, repli du journal en échec (%s)",
+                name,
+                ident,
+                type(exc).__name__,
+            )
+    try:
+        store.drop_queued(ident)
+    except Exception as exc:
+        _logger.error(
+            "%s : file %s partie mais non retirée (%s)",
+            name,
+            ident,
+            type(exc).__name__,
+        )
+    if rule_id:
+        try:
+            if retry:
+                store.rule_log_retry_departed(rule_id, source, sent_at)
+            else:
+                store.rule_log_set_outcome(
+                    rule_id, source, "sent", sent_at=sent_at
+                )
+        except Exception as exc:
+            _logger.error(
+                "%s : file %s, ligne non écrite (%s)",
+                name,
+                ident,
+                type(exc).__name__,
+            )
 
 
 def _released_gone_text(store, entree) -> str:
@@ -1673,14 +2068,24 @@ def _released_gone_text(store, entree) -> str:
 
     Une vidange concurrente a pu la réserver et l'envoyer : le journal de
     sa règle, passé à `sent`, le dit, et le statut nomme les
-    destinataires. Un journal `expired` dit une échéance passée ou une
-    règle modifiée ou désactivée. Sans règle ni journal, rien ne distingue
-    un envoi d'un retrait : le texte dit seulement que l'entrée n'est plus
-    en file.
+    destinataires ; passé à `partial`, le statut renvoie au journal des
+    règles, seul à savoir qui l'a reçu. Un nouvel essai dont la ligne
+    `partial` porte une raison de clôture (autre que `rcpt_*`) a quitté
+    la file sans partir : échéance, règle modifiée ou désactivée,
+    enveloppe illisible. Un journal `expired` dit une échéance passée ou
+    une règle modifiée ou désactivée. Sans règle ni journal, rien ne
+    distingue un envoi d'un retrait : le texte dit seulement que l'entrée
+    n'est plus en file.
     """
     rule_id = (entree or {}).get("rule_id")
     if rule_id:
-        issue = store.rule_log_outcome(rule_id, entree.get("source_key"))
+        etat = store.rule_log_state(rule_id, entree.get("source_key"))
+        issue = etat["outcome"] if etat else None
+        if issue == "partial":
+            raison = str(etat.get("reason") or "")
+            if entree.get("retry") and not raison.startswith("rcpt_"):
+                return t("mail_outbox_release_retry_closed")
+            return t("mail_outbox_release_gone_partial")
         if issue == "sent":
             return f"{t('mail_sent_to')} {entree.get('to') or ''}".rstrip()
         if issue == "expired":
@@ -1710,6 +2115,9 @@ def send_released(
     l'envoie seule ; celle-ci n'envoie rien. Hors ligne ou après un échec
     transitoire, l'entrée reste en file et part à une passe suivante.
 
+    Un départ refusé en partie se dit tel quel : nombre de refusés,
+    adresses servies, nouvel essai en file. Texte d'écran seulement.
+
     Peut attendre `verrou` le temps d'une passe entière : fil de travail
     seulement, jamais celui de l'interface. Ne lève pas pour un échec
     d'envoi, qui se lit dans le texte rendu.
@@ -1724,14 +2132,27 @@ def send_released(
         return _released_gone_text(store, entree)
     if not session.online:
         return t("mail_outbox_release_offline")
-    partis, _, echoues = flush_outbox(
+    # L'objet rendu est gardé : ses attributs disent un départ partiel ;
+    # un double qui rend un triplet nu n'en porte pas.
+    r = flush_outbox(
         session,
         send_fn=send_fn,
         connect_fn=connect_fn,
         verrou=verrou,
         only_ids=[queue_id],
     )
+    partis, _, echoues = r
     apres = lire()
+    if getattr(r, "partial", 0):
+        texte = (
+            f"{t('mail_outbox_release_partial')} {getattr(r, 'refused', 0)}"
+        )
+        servis = getattr(r, "served", ())
+        if servis:
+            texte += f" — {t('mail_sent_to')} {', '.join(servis)}"
+        if getattr(r, "retried", 0):
+            texte += f" — {t('mail_outbox_release_retried')}"
+        return texte
     if partis:
         return f"{t('mail_sent_to')} {avant.get('to') or ''}"
     if echoues:
@@ -1785,6 +2206,20 @@ class DeliverOffline(Exception):
     """`deliver(..., queue_offline=False)` sur une session hors ligne."""
 
 
+class DeliverStatus(str):
+    """Le texte de statut de `deliver`, avec ce qu'il résume : `served`
+    (liste), `envelope` (tuple) et `refused` ({adresse: code}, 0 code
+    inconnu). Égal au texte : un appelant qui l'affiche le lit comme
+    avant."""
+
+    def __new__(cls, text="", *, served=(), envelope=(), refused=None):
+        statut = super().__new__(cls, text)
+        statut.served = list(served)
+        statut.envelope = tuple(envelope)
+        statut.refused = dict(refused or {})
+        return statut
+
+
 def deliver(
     session,
     msg,
@@ -1793,8 +2228,9 @@ def deliver(
     verrou=None,
     *,
     queue_offline=True,
-) -> str:
-    """Envoie, puis dépose une copie dans Envoyés. Rend le texte de statut.
+) -> DeliverStatus:
+    """Envoie, puis dépose une copie dans Envoyés. Rend le texte de statut,
+    en `DeliverStatus` : servis, enveloppe et refusés y sont en attributs.
 
     L'ordre n'est pas négociable : l'APPEND vient APRÈS l'envoi, et son échec
     n'annule rien. Le message est déjà parti ; le signaler comme un échec
@@ -1817,6 +2253,11 @@ def deliver(
     que soit `queue_offline` : une entrée manuelle perdrait son enveloppe.
     En ligne, il part à son enveloppe et n'est NI classé dans Envoyés NI
     suivi d'une relecture d'Envoyés : sa copie porterait le From d'un tiers.
+
+    Un serveur qui refuse une partie des destinataires : le statut les
+    NOMME avec leur code, pour que l'utilisateur sache à qui renvoyer. Ce
+    texte est d'écran seulement ; un appelant automatique lit
+    `DeliverStatus.refused`, jamais le texte.
     """
     from script.todo.mail.smtp_send import RawOutgoing, recipients
     from script.todo.mail.smtp_send import connect as smtp_connect
@@ -1836,7 +2277,7 @@ def deliver(
             ", ".join(recipients(msg)),
             msg.get("Subject", ""),
         )
-        return t("mail_queued")
+        return DeliverStatus(t("mail_queued"))
 
     send_fn = send_fn or smtp_send_fn
     transport = None
@@ -1849,14 +2290,33 @@ def deliver(
         if transport is not None:
             transport.quit()
 
-    status = f"{t('mail_sent_to')} {', '.join(served)}"
     expected = list(msg.envelope) if brut else recipients(msg)
-    if len(served) < len(expected):
-        # Refus partiel : les adresses refusées ne sont pas dites servies.
-        refused = len(expected) - len(served)
-        status = f"{status} — {t('mail_refused_by_server')} {refused}"
+    envelope = tuple(getattr(served, "envelope", None) or ()) or tuple(
+        expected
+    )
+    refused = getattr(served, "refused", None)
+    if refused is None:
+        # Un `send_fn` qui rend une simple liste : chaque adresse attendue
+        # absente des servis est un refus de code inconnu.
+        servis_bas = {str(a).lower() for a in served}
+        refused = {a: 0 for a in expected if a.lower() not in servis_bas}
+    refused = dict(refused)
+
+    def _status(texte):
+        # Enveloppé à la toute fin : un texte reconstruit plus haut perdrait
+        # ses attributs.
+        return DeliverStatus(
+            texte, served=served, envelope=envelope, refused=refused
+        )
+
+    status = f"{t('mail_sent_to')} {', '.join(served)}"
+    if refused:
+        ordre = [a for a in envelope if a in refused]
+        ordre += [a for a in refused if a not in ordre]
+        detail = ", ".join(f"{a} ({refused[a] or '?'})" for a in ordre)
+        status = f"{status} — {t('mail_refused_by_server')} {detail}"
     if brut:
-        return status
+        return _status(status)
     sent_folder = resolve_sent_folder(session)
     exc = file_in_sent(session, msg, verrou)
     if exc is not None:
@@ -1879,7 +2339,7 @@ def deliver(
         # cette relecture aurait raté.
         with garde:
             session.syncer.sync_one(sent_folder)
-    return status
+    return _status(status)
 
 
 _LOG_TAIL_LINES = 200
@@ -4374,16 +4834,13 @@ def run_tui(
             # exactement le moment où elle doit se vider, et un message
             # envoyé apparaît alors dans la passe qui suit.
             try:
-                partis, _, echoues = flush_outbox(session)
+                # L'objet rendu est gardé : ses attributs comptent les
+                # départs partiels ; un double qui rend un triplet nu n'en
+                # porte pas.
+                r = flush_outbox(session)
+                partis, _, echoues = r
                 if partis or echoues:
-                    self.set_status(
-                        f"{t('mail_outbox_flushed')} {partis}"
-                        + (
-                            f" — {t('mail_outbox_failed')} {echoues}"
-                            if echoues
-                            else ""
-                        )
-                    )
+                    self.set_status(outbox_status_text(r))
             except Exception:
                 _logger.exception("vidange de la file a échoué")
             try:
@@ -4828,6 +5285,9 @@ def run_tui(
         premier envoi d'une règle, c'est relâcher une réponse qu'on a lue.
         Un transfert ou une redirection d'une règle le dit sous l'en-tête ;
         le message d'origine joint ou redirigé y est listé comme le reste.
+        Une entrée de nouvel essai (destinataires refusés temporairement
+        d'un envoi parti en partie) le dit dans sa ligne et son aperçu :
+        elle ne porte que ces destinataires.
 
         Une entrée de transfert peut peser des dizaines de Mio : ses octets
         sont déchiffrés et analysés dans un fil, jamais sur celui de
@@ -4960,6 +5420,8 @@ def run_tui(
             }.get(entree.get("kind"))
             if genre:
                 texte.append(f"\n{t(genre)}", style="dim")
+            if entree.get("retry"):
+                texte.append(f"\n{t('mail_outbox_retry')}", style="dim")
             return texte
 
         @staticmethod
@@ -5022,6 +5484,8 @@ def run_tui(
                 texte.append(f"{t('mail_outbox_auto')} ", style="bold")
             texte.append(entree["subject"] or t("mail_no_subject"))
             texte.append(f"\n{entree['to']}", style="dim")
+            if entree.get("retry"):
+                texte.append(f"\n{t('mail_outbox_retry')}", style="dim")
             if automatique and entree.get("expires_at"):
                 texte.append(
                     f"\n{t('mail_outbox_expires')}"
@@ -6392,9 +6856,9 @@ def run_tui(
                 return Text("")
             ligne = lignes[0]
             issue = t(f"mail_rules_outcome_{ligne['outcome']}")
-            raison = ligne["reason"]
+            raison = rules_engine.log_reason_text(ligne)
             if raison:
-                issue = f"{issue} ({t(f'mail_rules_reason_{raison}')})"
+                issue = f"{issue} ({raison})"
             return Text(f"{format_epoch(ligne['at'])} {issue}")
 
         def reload_rules(self, select_id=None) -> None:
@@ -6620,8 +7084,10 @@ def run_tui(
         """Touche `l` de la liste des règles : les dernières lignes du
         journal, la plus récente d'abord.
 
-        Issue et raison sont traduites ; expéditeur et sujet viennent des
-        messages, donc de qui les a écrits, et passent en `Text`.
+        Issue et raison sont traduites ; une issue `partial` y ajoute le
+        nombre de destinataires refusés et leurs codes, jamais leurs
+        adresses. Expéditeur et sujet viennent des messages, donc de qui
+        les a écrits, et passent en `Text`.
         """
 
         BINDINGS = [
@@ -6663,12 +7129,11 @@ def run_tui(
                 status.update(Text(str(exc), style="bold red"))
                 return
             for ligne in lignes:
-                raison = ligne["reason"]
                 table.add_row(
                     format_epoch(ligne["at"]),
                     Text(self.names.get(ligne["rule_id"], ligne["rule_id"])),
                     Text(t(f"mail_rules_outcome_{ligne['outcome']}")),
-                    Text(t(f"mail_rules_reason_{raison}") if raison else ""),
+                    Text(rules_engine.log_reason_text(ligne)),
                     Text(ligne["sender"] or ""),
                     Text(ligne["subject"] or ""),
                 )

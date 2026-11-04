@@ -16267,6 +16267,11 @@ TRANSLATIONS = {
     },
     "mail_outbox_flushed": {"fr": "File : envoyés", "en": "Outbox: sent"},
     "mail_outbox_failed": {"fr": "échecs", "en": "failures"},
+    "mail_outbox_partial": {"fr": "partiels", "en": "partial"},
+    "mail_outbox_retried": {
+        "fr": "nouveaux essais en file :",
+        "en": "retries queued:",
+    },
     "mail_outbox_sending": {
         "fr": "Envoi du message relâché…",
         "en": "Sending the released message…",
@@ -16301,6 +16306,24 @@ TRANSLATIONS = {
     "mail_outbox_release_held": {
         "fr": "retenu de nouveau : rien n'est parti",
         "en": "held again: nothing was sent",
+    },
+    "mail_outbox_release_partial": {
+        "fr": "parti en partie, destinataires refusés par le serveur :",
+        "en": "partly sent, recipients refused by the server:",
+    },
+    "mail_outbox_release_gone_partial": {
+        "fr": "parti en partie : voir le journal des règles (l)",
+        "en": "partly sent: see the rules log (l)",
+    },
+    "mail_outbox_release_retried": {
+        "fr": "un nouvel essai attend dans la file",
+        "en": "a retry waits in the outbox",
+    },
+    "mail_outbox_release_retry_closed": {
+        "fr": "nouvel essai retiré de la file sans envoi : voir le journal"
+        " des règles (l)",
+        "en": "retry removed from the outbox without sending: see the rules"
+        " log (l)",
     },
     "mail_outbox_held_auto_one": {
         "fr": "{n} envoi automatique attend votre approbation",
@@ -17698,6 +17721,14 @@ TRANSLATIONS = {
     },
     "mail_rules_status_queued": {"fr": "en file :", "en": "queued:"},
     "mail_rules_status_failed": {"fr": "échecs :", "en": "failed:"},
+    "mail_rules_status_partial": {
+        "fr": "envois partiels :",
+        "en": "partial sends:",
+    },
+    "mail_rules_status_retried": {
+        "fr": "nouvel essai en file (o) :",
+        "en": "retry queued (o):",
+    },
     "mail_rules_cap_warning": {
         "fr": (
             "Plafond d'envois automatiques atteint ; le reste est retenu (o)"
@@ -17851,6 +17882,26 @@ TRANSLATIONS = {
         "fr": "essais épuisés",
         "en": "attempts exhausted",
     },
+    "mail_rules_reason_rcpt_retry": {
+        "fr": "destinataires refusés, nouvel essai en file",
+        "en": "recipients refused, retry queued",
+    },
+    "mail_rules_reason_rcpt_refused": {
+        "fr": "destinataires refusés pour de bon",
+        "en": "recipients refused for good",
+    },
+    "mail_rules_reason_rcpt_retried": {
+        "fr": "remis à tous après un nouvel essai",
+        "en": "delivered to all after a retry",
+    },
+    "mail_rules_rcpt_detail": {
+        "fr": "refusés : {refused} sur {total} (codes {codes})",
+        "en": "refused: {refused} of {total} (codes {codes})",
+    },
+    "mail_rules_retry_closed": {
+        "fr": "nouvel essai clos : {reason}",
+        "en": "retry closed: {reason}",
+    },
     "mail_rules_reason_media": {
         "fr": "image illisible",
         "en": "unreadable image",
@@ -17887,6 +17938,7 @@ TRANSLATIONS = {
     "mail_rules_outcome_skipped": {"fr": "ignoré", "en": "skipped"},
     "mail_rules_outcome_failed": {"fr": "échec", "en": "failed"},
     "mail_rules_outcome_expired": {"fr": "expiré", "en": "expired"},
+    "mail_rules_outcome_partial": {"fr": "partiel", "en": "partial"},
     # -- Règles de courriel entrant : écrans (préfixe mail_rules_) --------
     # Touche e du client, éditeurs de règle, de condition et de réponse,
     # aperçu de la file d'envoi, et entrée [6] du menu Courriel. Les
@@ -18171,6 +18223,10 @@ TRANSLATIONS = {
     },
     "mail_outbox_auto": {"fr": "[auto]", "en": "[auto]"},
     "mail_outbox_expires": {"fr": "expire le", "en": "expires"},
+    "mail_outbox_retry": {
+        "fr": "nouvel essai des destinataires refusés temporairement",
+        "en": "retry for the recipients refused temporarily",
+    },
     # -- Rapport de statistiques : gabarit et rendu ----------------------
     # Libellés du rapport que rend une règle stats (rules/report.py, lus
     # par `_label` dans la langue du rapport), fautes de gabarit, et une

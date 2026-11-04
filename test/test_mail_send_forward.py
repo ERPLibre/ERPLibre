@@ -926,7 +926,7 @@ class TestSendRaw(ForwardCase):
         servis = send(self.account, msg, SmtplibTransport(Partiel()))
         self.assertEqual(servis, [CAROLE])
 
-    def test_the_status_of_a_partial_refusal_counts_the_refused(self):
+    def test_the_status_of_a_partial_refusal_names_the_refused(self):
         from types import SimpleNamespace
 
         from script.todo.mail.tui import deliver
@@ -937,9 +937,9 @@ class TestSendRaw(ForwardCase):
         statut = deliver(session, sortie, send_fn=lambda *a: [CAROLE])
         self.assertEqual(
             statut,
-            f"{t('mail_sent_to')} {CAROLE} — {t('mail_refused_by_server')} 1",
+            f"{t('mail_sent_to')} {CAROLE} —"
+            f" {t('mail_refused_by_server')} {refusee} (?)",
         )
-        self.assertNotIn(refusee, statut)
 
     def test_a_refusal_carries_the_smtp_code(self):
         refus = smtplib.SMTPRecipientsRefused({CAROLE: (550, b"inconnu")})

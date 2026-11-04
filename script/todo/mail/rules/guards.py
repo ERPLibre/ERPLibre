@@ -105,6 +105,9 @@ ENGINE_REASONS = (
     "body_unavailable",
     "regex_timeout",
     "stats_cap",
+    "rcpt_retry",
+    "rcpt_refused",
+    "rcpt_retried",
 )
 SEND = "send"
 # Avance tolérée d'une date de réception sur l'horloge locale, en secondes.

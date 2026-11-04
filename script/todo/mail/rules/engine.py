@@ -24,6 +24,11 @@ Garanties :
   `status="error"` sans avancer le curseur sur ce message, qui se
   réévalue à la passe suivante, puisque rien n'a pu l'y journaliser.
 
+Un envoi direct que le serveur accepte pour une partie de son enveloppe
+seulement est journalisé `partial` : les refusés temporaires (4xx) ont une
+entrée de nouvel essai en file, à leur seule adresse, les autres sont
+abandonnés ; seuls leurs codes sont écrits, jamais leurs adresses.
+
 Une règle `forward` relaie le message au lieu d'y répondre. Ses octets
 complets ne sont lus (BODY.PEEK[], qui ne marque pas lu) que lorsqu'elle a
 décidé d'envoyer, une fois par message pour toutes les règles, et jamais
@@ -74,7 +79,10 @@ from script.todo.mail.rules.storage import EngineState
 from script.todo.mail.smtp_send import (
     RawOutgoing,
     SmtpError,
+    outgoing_bytes,
+    recipients,
     smtp_address,
+    split_refusals,
 )
 from script.todo.mail.store import StoreError
 from script.todo.todo_i18n import t
@@ -151,13 +159,17 @@ class EngineReport:
     `status` est l'un de `STATUSES`. `active_rules` compte les règles
     actives exécutables relues sous verrou ; à 0, le rendu reste muet.
     `warnings` porte des textes traduits ; `errors` des codes et textes
-    sans adresse ni sujet.
+    sans adresse ni sujet. `partial` compte les départs que le serveur a
+    refusés pour une partie des destinataires (aussi comptés dans
+    `sent`), `retried` les entrées de nouvel essai créées par la passe.
     """
 
     account: str
     status: str = "ok"
     active_rules: int = 0
     sent: int = 0
+    partial: int = 0
+    retried: int = 0
     queued: int = 0
     held: int = 0
     failed: int = 0
@@ -265,6 +277,10 @@ def summary_items(report: EngineReport, *, with_status: bool = True) -> list:
     if report.status in _QUIET_STATUSES and not busy and not report.warnings:
         return []
     items = [f"{t('mail_rules_status_sent')} {report.sent}"]
+    if report.partial:
+        items.append(f"{t('mail_rules_status_partial')} {report.partial}")
+    if report.retried:
+        items.append(f"{t('mail_rules_status_retried')} {report.retried}")
     if report.held:
         items.append(f"{t('mail_rules_status_held')} {report.held}")
     if report.queued:
@@ -276,6 +292,36 @@ def summary_items(report: EngineReport, *, with_status: bool = True) -> list:
         items.append(t(status_key))
     items.extend(report.warnings)
     return items
+
+
+def log_reason_text(entry: dict) -> str:
+    """La raison traduite d'une ligne de `rule_log_entries`, suivie, pour
+    une issue `partial`, du décompte des destinataires refusés
+    (`mail_rules_rcpt_detail`) ; « » sans raison ni décompte. Un code 0 se
+    lit « ? ».
+
+    Une ligne `partial` dont la raison n'est pas `rcpt_*` est un nouvel
+    essai clos sans départ : sa raison se lit « nouvel essai clos : … »,
+    jamais comme celle d'un message que personne n'a reçu.
+    """
+    raison = entry.get("reason") or ""
+    texte = t(f"mail_rules_reason_{raison}") if raison else ""
+    if entry.get("outcome") != "partial":
+        return texte
+    if raison and not raison.startswith("rcpt_"):
+        texte = t("mail_rules_retry_closed").format(reason=texte)
+    codes = list(entry.get("rcpt_dropped") or ()) + list(
+        entry.get("rcpt_pending") or ()
+    )
+    if not codes:
+        return texte
+    refuses = len(codes)
+    detail = t("mail_rules_rcpt_detail").format(
+        refused=refuses,
+        total=entry.get("rcpt_total") or refuses,
+        codes=", ".join(str(c) if c else "?" for c in sorted(codes)),
+    )
+    return f"{texte} — {detail}" if texte else detail
 
 
 def hold_reason(
@@ -1300,6 +1346,11 @@ class _Pass:
         """Réserve le message au journal, puis choisit sa sortie : écarté
         (plafond quotidien d'un rapport), retenu, file ou envoi direct.
 
+        Un envoi direct refusé pour une partie de son enveloppe passe par
+        `_partial` ; une erreur de cette écriture, autre qu'une panne du
+        cache, laisse la ligne `sent` (le message est parti) et perd le
+        nouvel essai, sans jamais passer le message en échec.
+
         Le Message-ID d'un message construit par nous entre dans
         `auto_sent` avant l'envoi ; celui d'une redirection est celui de
         l'original et n'y entre pas.
@@ -1353,7 +1404,7 @@ class _Pass:
             # Sans `queue_offline=False`, une session tombée hors ligne
             # depuis le contrôle ci-dessus mettrait la réponse en file comme
             # un envoi manuel, hors de l'échéance et des contrôles de règle.
-            deliver_fn(
+            statut = deliver_fn(
                 self.session, msg, verrou=self.verrou, queue_offline=False
             )
         except DeliverOffline:
@@ -1389,10 +1440,103 @@ class _Pass:
             self.sends_this_pass += 1
             self._queue(rule, msg_key, msg, now, "queued", "smtp_transient")
             return
+        refus = getattr(statut, "refused", None) or {}
+        if refus:
+            try:
+                self._partial(rule, msg_key, msg, statut, refus, now)
+            except _STORE_FAILURES:
+                raise
+            except Exception as exc:
+                # Le message est parti : la ligne compte comme partie, et
+                # seul le nouvel essai est perdu.
+                store.rule_log_set_outcome(
+                    rule.id, msg_key, "sent", sent_at=now
+                )
+                self.sends_this_pass += 1
+                self.result.sent += 1
+                _logger.error(
+                    "règles %s : règle %s, sent, journal du refus partiel"
+                    " en échec (%s), nouvel essai abandonné",
+                    self.name,
+                    rule.id,
+                    type(exc).__name__,
+                )
+            return
         store.rule_log_set_outcome(rule.id, msg_key, "sent", sent_at=now)
         self.sends_this_pass += 1
         self.result.sent += 1
         _logger.info("règles %s : règle %s, sent", self.name, rule.id)
+
+    def _partial(self, rule, msg_key, msg, statut, refused, now) -> None:
+        """Inscrit un départ que le serveur a accepté pour une partie de
+        l'enveloppe : issue `partial`, nouvel essai en file pour les refusés
+        temporaires, abandon des autres. Compte un envoi dans la passe.
+
+        L'enveloppe essayée est celle du statut (`DeliverStatus.envelope`),
+        écrite comme les clés de `refused` ; à défaut, celle du message.
+        Le nouvel essai porte les octets du départ sans Cci interne et
+        expire `OUTBOX_AUTO_TTL_S` après la décision, comme l'aurait fait
+        une entrée en file. Le serveur n'est pas tenu pour injoignable. Le
+        journal applicatif ne reçoit que des nombres et des codes.
+        """
+        enveloppe = tuple(getattr(statut, "envelope", ()) or ())
+        if not enveloppe:
+            if isinstance(msg, RawOutgoing):
+                enveloppe = tuple(msg.envelope)
+            else:
+                enveloppe = tuple(recipients(msg))
+        part = split_refusals(enveloppe, refused)
+        if isinstance(msg, RawOutgoing):
+            sujet = msg.subject
+        else:
+            sujet = msg["Subject"] or ""
+        res = self.store.rule_log_rcpt_result(
+            rule.id,
+            msg_key,
+            total=len(enveloppe),
+            dropped=part.dropped_codes,
+            pending=part.retry_codes,
+            sent_at=now,
+            retry_raw=outgoing_bytes(msg) if part.retry else None,
+            retry_to=", ".join(part.retry),
+            retry_subject=sujet,
+            kind=self._queue_kind(rule, msg),
+            expires_at=int(now) + OUTBOX_AUTO_TTL_S,
+        )
+        self.sends_this_pass += 1
+        self.result.sent += 1
+        self.result.partial += 1
+        if res.queue_id:
+            self.result.retried += 1
+        if not res.applied:
+            _logger.info(
+                "règles %s : règle %s, nouvel essai non créé, ligne %s",
+                self.name,
+                rule.id,
+                self.store.rule_log_outcome(rule.id, msg_key),
+            )
+            return
+        _logger.info(
+            "règles %s : règle %s, partial, refusés %d, codes %s, file %s",
+            self.name,
+            rule.id,
+            part.count,
+            ",".join(
+                str(c) for c in sorted(part.retry_codes + part.dropped_codes)
+            ),
+            res.queue_id,
+        )
+
+    @staticmethod
+    def _queue_kind(rule, msg) -> str:
+        """Le type d'entrée de file d'un envoi : `auto_redirect` pour une
+        redirection, `auto_forward` pour un transfert, `auto_reply`
+        sinon."""
+        if isinstance(msg, RawOutgoing):
+            return "auto_redirect"
+        return (
+            "auto_forward" if rule.action.kind == "forward" else "auto_reply"
+        )
 
     def _queue(self, rule, msg_key, msg, now, outcome, reason) -> None:
         """Met le message en file ET avance le journal, en une transaction.
@@ -1401,18 +1545,11 @@ class _Pass:
         l'entrée (`auto_redirect`) ; un transfert (`auto_forward`) et une
         réponse (`auto_reply`) portent la leur dans leurs en-têtes.
         """
-        from script.todo.mail.smtp_send import recipients
-
         if isinstance(msg, RawOutgoing):
             to_text, subject = ", ".join(msg.envelope), msg.subject
-            kind = "auto_redirect"
         else:
             to_text, subject = ", ".join(recipients(msg)), msg["Subject"]
-            kind = (
-                "auto_forward"
-                if rule.action.kind == "forward"
-                else "auto_reply"
-            )
+        kind = self._queue_kind(rule, msg)
         queue_id = self.store.queue_auto(
             msg.as_bytes(),
             to_text,
