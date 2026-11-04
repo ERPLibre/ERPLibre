@@ -66,6 +66,19 @@ test('the state is read in a short bounded series after the start', () => {
     assert.ok(at[at.length - 1] <= 10000, String(at));
 });
 
+test('the state is read 1.5, 3, 5 and 8 s after the start', async () => {
+    // A program still running is read at every time of the series: the
+    // waits, summed one after the other, give the read times.
+    const waits = [];
+    await awaitDeckStart({
+        wait: async ms => { waits.push(ms); },
+        readProps: async () => SHOWN.running,
+    });
+    let elapsed = 0;
+    assert.deepEqual(waits.map(ms => (elapsed += ms)),
+        [1500, 3000, 5000, 8000]);
+});
+
 // Runs awaitDeckStart on `states` read in turn; returns the outcome, the
 // waits asked for and the number of reads.
 async function series(states) {

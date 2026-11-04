@@ -252,6 +252,30 @@ class LaCollecte(unittest.TestCase):
                 self.assertEqual(texte.split()[:2], list(recu["lock"]))
                 self.assertEqual(attendu, recu["lock_running"])
 
+    def test_only_the_main_lock_is_read_never_the_inner_one(self):
+        """deck.inner, tenu dans un jeu à côté du verrou, ne dit pas qui
+        tient le deck : l'état le dit libre et la diagnostic ne propose
+        aucun « kill » quand seul deck.inner est tenu."""
+        todo_i18n._current_lang = "en"
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+        interieur = self.tmp / "deck.inner"
+        os.chmod(self.tmp, 0o700)
+        tenu = open(interieur, "w", encoding="utf-8")
+        self.addCleanup(tenu.close)
+        tenu.write("%d tiler\n" % os.getpid())
+        tenu.flush()
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        recu = self.collecter({})
+        self.assertIsNone(recu["lock"])
+        self.assertFalse(recu["lock_running"])
+        self.assertEqual([], recu["lock_pids"])
+        self.assertIn("Deck lock: free", statut.status_lines(recu))
+        verrou = {k: recu[k] for k in ("lock", "lock_running", "lock_pids")}
+        problemes = statut.diagnosis_lines(
+            faits(unit_active="failed", **verrou)
+        )
+        self.assertNotIn("kill", repr(problemes))
+
 
 class LEtat(unittest.TestCase):
     def setUp(self):

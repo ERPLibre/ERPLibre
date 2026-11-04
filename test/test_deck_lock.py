@@ -33,7 +33,8 @@ Ce que ces tests gardent :
   encore son auteur ;
 - deux programmes du deck dans un même jeu s'excluent par deck.inner ;
   l'un après l'autre, ils tournent ; l'enveloppe ne le prend pas, et hors
-  jeu il n'est jamais lu ;
+  jeu il n'est jamais lu ; il se crée privé comme le verrou, et un enfant
+  du programme qui le tient ne le garde pas ;
 - SIGTERM devient SystemExit : les finally et atexit d'un programme du
   deck passent ;
 - le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
@@ -371,6 +372,43 @@ RESTER = (
     " deck_lock.acquire_or_exit(sys.argv[2], sys.argv[3]);"
     " print('pret', flush=True); time.sleep(30)"
 )
+
+
+# Un programme du deck qui prend le verrou, lance sans fermer ses
+# descripteurs un enfant qui lui survit, puis sort en écrivant le PID de
+# l'enfant : argv = dossier du module, chemin.
+LAISSER_UN_ENFANT = (
+    "import subprocess, sys; sys.path.insert(0, sys.argv[1]);"
+    " import deck_lock; deck_lock.acquire_or_exit('tiler', sys.argv[2]);"
+    " e = subprocess.Popen(['sleep', '30'], close_fds=False,"
+    " stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
+    " stderr=subprocess.DEVNULL); print(e.pid)"
+)
+
+# Un jeu qui lance LAISSER_UN_ENFANT, puis, l'enfant vivant, un second
+# programme du deck ; il écrit « vivant <code> <sortie> » du second et tue
+# l'enfant. argv = close_fds des deux lancements, python, LAISSER_UN_ENFANT,
+# PRENDRE, dossier du module, chemin.
+APRES_UN_ENFANT = """
+import os, signal, subprocess, sys
+cf = sys.argv[1] == "True"
+py, laisser, prendre, dossier, chemin = sys.argv[2:]
+premier = subprocess.run(
+    [py, "-c", laisser, dossier, chemin],
+    stdin=subprocess.DEVNULL, capture_output=True, close_fds=cf, text=True,
+)
+enfant = int(premier.stdout)
+try:
+    os.kill(enfant, 0)
+    second = subprocess.run(
+        [py, "-c", prendre, dossier, "controller", chemin],
+        stdin=subprocess.DEVNULL, capture_output=True, close_fds=cf,
+        text=True,
+    )
+    print("vivant", second.returncode, second.stdout.strip(), second.stderr)
+finally:
+    os.kill(enfant, signal.SIGKILL)
+"""
 
 
 def vivant(pid):
@@ -899,6 +937,71 @@ class LaCommandeSousVerrou(unittest.TestCase):
         )
         self.assertEqual(0, fini.returncode, fini.stderr)
 
+    def test_the_inner_lock_is_created_private(self):
+        """deck.inner se crée en 0600, quel que soit le umask du jeu :
+        un autre compte ne le lit ni ne le tient."""
+        fini = self.lancer(
+            "game",
+            sys.executable,
+            "-c",
+            PRENDRE.format(fonction="acquire_or_exit"),
+            str(DECK_DIR),
+            "tiler",
+            self.chemin,
+            stdin=subprocess.DEVNULL,
+            umask=0o022,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        interieur = os.path.join(os.path.dirname(self.chemin), "deck.inner")
+        self.assertEqual(0o600, os.stat(interieur).st_mode & 0o777)
+
+    def test_a_symlinked_inner_lock_is_refused_and_its_target_kept(self):
+        """Un lien posé à la place de deck.inner n'est pas suivi : le
+        programme du deck ne tourne pas, et le fichier que le lien désigne
+        garde son contenu."""
+        dossier = os.path.dirname(self.chemin)
+        os.makedirs(dossier, mode=0o700)
+        cible = os.path.join(self.run_dir, "cible")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("exemple\n")
+        os.symlink(cible, os.path.join(dossier, "deck.inner"))
+        fini = self.lancer(
+            "game",
+            sys.executable,
+            "-c",
+            PRENDRE.format(fonction="acquire_or_exit"),
+            str(DECK_DIR),
+            "tiler",
+            self.chemin,
+            stdin=subprocess.DEVNULL,
+        )
+        self.assertNotEqual(0, fini.returncode)
+        self.assertEqual("", fini.stdout)
+        with open(cible, encoding="utf-8") as fh:
+            self.assertEqual("exemple\n", fh.read())
+
+    def test_a_child_of_a_deck_program_does_not_keep_the_inner_lock(self):
+        """deck.inner part avec son programme : un enfant que le programme
+        du deck laisse derrière lui, lancé sans fermer ses descripteurs,
+        n'écarte pas le programme du deck suivant du même jeu."""
+        for close_fds in ("True", "False"):
+            with self.subTest(close_fds=close_fds):
+                fini = self.lancer(
+                    "game",
+                    sys.executable,
+                    "-c",
+                    APRES_UN_ENFANT,
+                    close_fds,
+                    sys.executable,
+                    LAISSER_UN_ENFANT,
+                    PRENDRE.format(fonction="acquire_or_exit"),
+                    str(DECK_DIR),
+                    self.chemin,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertEqual("vivant 0 pret", fini.stdout.strip())
+                self.attendre_le_verrou_libre()
+
     def test_sigterm_to_the_wrapper_ends_the_game(self):
         """« kill <pid> », que la diagnostic propose quand un jeu tient le
         deck, vise l'enveloppe : elle passe SIGTERM au jeu et sort avec son
@@ -1124,6 +1227,108 @@ class LesProgrammesLePrennent(unittest.TestCase):
             "sdc.close_decks()", ast.unparse(essai.finalbody[0]).strip()
         )
         self.assertIn("self.lst_deck.append(deck)", source)
+
+    def test_sigterm_resets_the_controller_deck_and_exits_143(self):
+        """Le contrôleur tourne sur des modules factices, avec un deck qui
+        note chaque appel et s'arrête en cours d'ouverture : SIGTERM le
+        remet à zéro, puis le ferme, et le processus sort en 143."""
+        with tempfile.TemporaryDirectory() as dossier:
+            notes = os.path.join(dossier, "notes")
+            factices = os.path.join(dossier, "factices")
+            for nom, texte in CONTROLEUR_FACTICE.items():
+                fichier = os.path.join(factices, nom)
+                os.makedirs(os.path.dirname(fichier), exist_ok=True)
+                with open(fichier, "w", encoding="utf-8") as fh:
+                    fh.write(texte.format(notes=notes))
+            proc = subprocess.Popen(
+                [sys.executable, str(DECK_DIR / "erplibre_controller.py")],
+                env=dict(
+                    os.environ,
+                    PYTHONPATH=factices,
+                    XDG_RUNTIME_DIR=dossier,
+                    XDG_CACHE_HOME=dossier,
+                ),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            self.addCleanup(proc.kill)
+            for ligne in proc.stdout:
+                if ligne == "pret\n":
+                    break
+            proc.send_signal(signal.SIGTERM)
+            self.assertEqual(128 + signal.SIGTERM, proc.wait(10))
+            proc.stdout.close()
+            with open(notes, encoding="utf-8") as fh:
+                self.assertEqual(
+                    ["open", "reset", "reset", "close"], fh.read().split()
+                )
+
+
+# Les modules que le contrôleur importe, réduits à ce qu'il en lit avant
+# d'animer : son deck note open, reset et close dans {notes}, et s'arrête
+# sur deck_type(), après que init() l'a ouvert et remis à zéro.
+CONTROLEUR_FACTICE = {
+    "cv2.py": "",
+    "requests.py": "",
+    "PIL/__init__.py": "",
+    "PIL/Image.py": "",
+    "PIL/ImageDraw.py": "",
+    "PIL/ImageFont.py": "",
+    "PIL/ImageOps.py": "",
+    "PIL/ImageSequence.py": "",
+    "StreamDeck/__init__.py": "",
+    "StreamDeck/Devices/__init__.py": "",
+    "StreamDeck/Devices/StreamDeck.py": (
+        "DialEventType = TouchscreenEventType = None\n"
+    ),
+    "StreamDeck/ImageHelpers/__init__.py": "",
+    "StreamDeck/ImageHelpers/PILHelper.py": "",
+    "StreamDeck/Transport/__init__.py": "",
+    "StreamDeck/Transport/Transport.py": (
+        "class TransportError(Exception):\n    pass\n"
+    ),
+    "StreamDeck/DeviceManager.py": """\
+import time
+
+
+class ProbeError(Exception):
+    pass
+
+
+class Deck:
+    def note(self, quoi):
+        with open({notes!r}, "a", encoding="utf-8") as fh:
+            fh.write(quoi + "\\n")
+
+    def is_visual(self):
+        return True
+
+    def open(self):
+        self.note("open")
+
+    def reset(self):
+        self.note("reset")
+
+    def close(self):
+        self.note("close")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def deck_type(self):
+        print("pret", flush=True)
+        time.sleep(30)
+
+
+class DeviceManager:
+    def enumerate(self):
+        return [Deck()]
+""",
+}
 
 
 if __name__ == "__main__":

@@ -594,6 +594,54 @@ class LesTraductions(unittest.TestCase):
                 self.assertTrue(entree.get("fr") and entree.get("en"))
 
 
+# Le sous-menu Stream Deck, entrée par entrée : le numéro tapé, le début du
+# libellé affiché sous ce numéro, l'action qu'il lance.
+POSITIONS = (
+    ("1", "Games - ", "prompt_execute_streamdeck_games"),
+    ("2", "Status - ", "_streamdeck_status"),
+    ("3", "Service - ", "_streamdeck_service"),
+    ("4", "Deck program - ", "_streamdeck_program"),
+    ("5", "Autostart - ", "_streamdeck_autostart"),
+    ("6", "Diagnosis - ", "_streamdeck_diagnosis"),
+    ("7", "Install ERPLibre Home (local)", "_erplibre_home_install_local"),
+    (
+        "8",
+        "Install ERPLibre Home Stream Deck (local)",
+        "_erplibre_home_streamdeck_install_local",
+    ),
+    ("9", "Uninstall - ", "_streamdeck_uninstall"),
+    ("10", "Extension - ", "_streamdeck_extension"),
+)
+
+
+class LesPositionsDuSousMenu(Menu):
+    def test_each_entry_keeps_its_number(self):
+        """Un numéro tapé de mémoire lance toujours la même action : deux
+        entrées échangées avec leur dispatch changeraient ce qu'il fait."""
+        todo = TODO.__new__(TODO)
+        for numero, libelle, methode in POSITIONS:
+            with (
+                self.subTest(numero=numero),
+                mock.patch.object(TODO, methode) as entree,
+                mock.patch.object(
+                    streamdeck_menu.click,
+                    "prompt",
+                    side_effect=[numero, "0"],
+                ) as invite,
+                mock.patch.object(TODO, "_menu_header", return_value=""),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                todo.prompt_execute_streamdeck()
+                entree.assert_called_once_with()
+                ligne = [
+                    ligne
+                    for ligne in invite.call_args[0][0].splitlines()
+                    if ligne.startswith("[%s] " % numero)
+                ]
+                self.assertEqual(1, len(ligne), ligne)
+                self.assertIn(libelle, ligne[0])
+
+
 class LeReglageDesJeux(Menu):
     def test_it_writes_off_without_the_unit_and_restarts_nothing(self):
         commandes, _, _ = self.jouer("_streamdeck_games_setting", ("2",))

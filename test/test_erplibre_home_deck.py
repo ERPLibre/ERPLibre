@@ -186,6 +186,19 @@ class LeCheck(Copie):
                 self.assertIn(str(self.reglages), fini.stderr)
                 self.assertEqual("", fini.stdout)
 
+    def test_an_unknown_program_is_refused_in_one_line(self):
+        """Le refus nomme le réglage, le fichier et les valeurs admises sur
+        une seule ligne : le journal de l'unité la montre entière."""
+        self.venv()
+        self.usb("3-2", "0fd9")
+        self.regler("DECK_PROGRAM=exemple\n")
+        for options in (("--check",), ()):
+            with self.subTest(options=options):
+                fini = self.lancer(*options)
+                self.assertEqual(1, fini.returncode)
+                self.assertEqual(1, len(fini.stderr.strip().splitlines()))
+                self.assertIn("tiler, controller or none", fini.stderr)
+
     def test_an_unknown_option_exits_one(self):
         fini = self.lancer("--exemple")
         self.assertEqual(1, fini.returncode)
