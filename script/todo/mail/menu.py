@@ -270,6 +270,7 @@ def prompt_mail_rules(todo, *, base=None) -> None:
         try:
             if status == "1":
                 _list_rules(account.name, rules_base)
+                _print_claim_mode(account.name, rules_base)
             elif status in ("2", "3", "4"):
                 _change_rule(account.name, rules_base, status)
             elif status == "5":
@@ -315,6 +316,7 @@ def _service_menu(
     """
     from script.todo.mail import service
 
+    comptes = _load_accounts()
     while True:
         print(
             service.status_text(
@@ -323,6 +325,8 @@ def _service_menu(
                 )
             )
         )
+        for ligne in _claim_lines(comptes) + _held_lines(default_base()):
+            print(ligne)
         help_info = f"""{todo._menu_header()}
 [1] {t("mail_service_menu_install")}
 [2] {t("mail_service_menu_credential")}
@@ -349,6 +353,54 @@ def _service_menu(
             _service_uninstall(run)
         else:
             print(t("Command not found !"))
+
+
+def _print_claim_mode(account_name: str, rules_base) -> None:
+    """Imprime le mode de revendication du serveur du compte, tel que la
+    dernière passe l'a inscrit dans l'état du moteur."""
+    from script.todo.mail.rules import engine, storage
+
+    print(
+        engine.claim_mode_text(
+            storage.load_claim_mode(account_name, rules_base)
+        )
+    )
+
+
+def _claim_lines(accounts) -> list[str]:
+    """Une ligne par compte dont le serveur ne permet qu'une revendication
+    non atomique, ou aucune ; rien pour un mode atomique ou inconnu. Lu
+    dans l'état du moteur de chaque compte, sous la base par défaut."""
+    from script.todo.mail.rules import engine, storage
+
+    lignes = []
+    for account in accounts:
+        mode = storage.load_claim_mode(account.name)
+        if mode in ("plain", "none"):
+            lignes.append(
+                f"  {_printable(account.name)} : {engine.claim_mode_text(mode)}"
+            )
+    return lignes
+
+
+def _held_lines(base) -> list[str]:
+    """Une ligne par compte dont la dernière passe du service a laissé des
+    réponses automatiques retenues : elles n'attendent que sous le `o` de
+    CETTE machine, la revendication les lui ayant données."""
+    from script.todo.mail.rules import run as rules_run
+
+    lignes = []
+    for nom, entree in sorted(rules_run.load_state(base).items()):
+        nombre = entree.get("held", 0)
+        if (
+            isinstance(nombre, int)
+            and not isinstance(nombre, bool)
+            and nombre > 0
+        ):
+            lignes.append(
+                f"  {_printable(nom)} : {t('mail_service_menu_held')} {nombre}"
+            )
+    return lignes
 
 
 def _service_install(todo, run) -> None:
