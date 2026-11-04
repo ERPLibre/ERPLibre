@@ -234,9 +234,23 @@ class TestDataDirectories(unittest.TestCase):
         self.assertIn(
             "`${base}/%s/log.jsonl`" % name, _text(EXT / "lib/log.js")
         )
-        extension = _text(EXT / "extension.js")
-        self.assertIn("`${base}/%s/mpv/${id}.json`" % name, extension)
-        self.assertIn("`${base}/%s/claude`" % name, extension)
+        # Every state path extension.js builds on its own: the mpv reader,
+        # the Claude writer's directory and the Claude reader's file, which
+        # must sit in the directory the hook and the writer fill.
+        self.assertEqual(
+            sorted(
+                re.findall(
+                    r"`\$\{base\}/([^`]*)`", _text(EXT / "extension.js")
+                )
+            ),
+            sorted(
+                [
+                    "%s/mpv/${id}.json" % name,
+                    "%s/claude" % name,
+                    "%s/claude/${sid}.json" % name,
+                ]
+            ),
+        )
         erplibre = _text(EXT / "indicators/erplibre.js")
         self.assertIn("`${stateBase}/%s/todo`" % name, erplibre)
         self.assertIn("`${stateBase}/%s`" % name, erplibre)
@@ -336,6 +350,10 @@ class TestGitSync(unittest.TestCase):
         self.assertNotIn(f"{DOMAIN}.json", src)
 
 
+# Style classes GNOME Shell defines; the extension reuses them as they are.
+SHELL_STYLE_CLASSES = ("system-status-icon",)
+
+
 class TestStyleClasses(unittest.TestCase):
     def test_dialog_and_button_classes_are_erplibre_home(self):
         classes = []
@@ -345,12 +363,13 @@ class TestStyleClasses(unittest.TestCase):
             classes += re.findall(
                 r"(?:styleClass|style_class)\s*:\s*'([^']*)'", _text(path)
             )
-        own = [c for c in classes if re.search(r"-(dialog|btn)\b", c)]
-        self.assertIn(f"{DOMAIN}-dialog", own)
-        self.assertIn(f"{DOMAIN}-btn", own)
+        own = (f"{DOMAIN}-dialog", f"{DOMAIN}-btn")
+        self.assertIn(own[0], classes)
+        self.assertIn(own[1], classes)
+        # Any class outside the two shared ones and GNOME Shell's own is a
+        # name that left the shared set, whatever its suffix.
         self.assertEqual(
-            [c for c in own if c not in (f"{DOMAIN}-dialog", f"{DOMAIN}-btn")],
-            [],
+            [c for c in classes if c not in own + SHELL_STYLE_CLASSES], []
         )
         for path in sorted((EXT / "ui").glob("*-dialog.js")):
             with self.subTest(dialog=path.name):
