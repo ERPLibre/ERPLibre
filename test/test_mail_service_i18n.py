@@ -46,6 +46,7 @@ SERVICE_KEYS = (
     "mail_service_kind_network",
     "mail_service_kind_busy",
     "mail_service_kind_cache",
+    "mail_service_kind_mode",
     "mail_service_kind_config",
     "mail_service_kind_other",
     "mail_service_outbox_error",

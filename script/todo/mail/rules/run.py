@@ -69,6 +69,7 @@ EXIT_BY_KIND = {
     "network": EXIT_NETWORK,
     "busy": EXIT_BUSY,
     "cache": EXIT_CONFIG,
+    "mode": EXIT_CONFIG,
     "config": EXIT_CONFIG,
     "other": EXIT_FAILURE,
 }
@@ -181,23 +182,29 @@ def service_folder_for(account) -> Callable:
     return retenu
 
 
-def _vault_refs(account) -> list:
+def _vault_refs(account, base=None) -> list:
     """Les références de coffre dont l'ouverture du compte a besoin : son
-    secret de connexion, et la clé de son cache s'il est chiffré."""
+    secret de connexion, et la clé de son cache s'il est chiffré. Le mode
+    est résolu sous `base`, cache inscrit compris : un compte qui hérite
+    d'un cache chiffré demande sa clé même sans préférence lisible."""
     refs = [secret_ref_for(account)]
-    if resolve_mode(account) == "encrypted":
+    if resolve_mode(account, base=base) == "encrypted":
         refs.append(account.cache_key_ref())
     return [ref or "" for ref in refs]
 
 
-def kdbx_refs(account) -> list:
+def kdbx_refs(account, base=None) -> list:
     """Les références `kdbx:` dont l'ouverture du compte a besoin."""
-    return [ref for ref in _vault_refs(account) if ref.startswith("kdbx:")]
+    return [
+        ref for ref in _vault_refs(account, base) if ref.startswith("kdbx:")
+    ]
 
 
-def keyring_refs(account) -> list:
+def keyring_refs(account, base=None) -> list:
     """Les références `keyring:` dont l'ouverture du compte a besoin."""
-    return [ref for ref in _vault_refs(account) if ref.startswith("keyring:")]
+    return [
+        ref for ref in _vault_refs(account, base) if ref.startswith("keyring:")
+    ]
 
 
 def load_state(base) -> dict:
@@ -370,7 +377,7 @@ def _locked_main(args, deps: ServiceDeps, out, base: Path) -> int:
             if not quiet or args.account is not None:
                 _emit(out, f"{nom} : {t('mail_service_account_disabled')}")
             continue
-        if resolve_mode(account) == "ephemeral":
+        if resolve_mode(account, base=base) == "ephemeral":
             _emit(out, f"{nom} : {t('mail_service_account_ephemeral')}")
             continue
         try:
@@ -402,7 +409,7 @@ def _locked_main(args, deps: ServiceDeps, out, base: Path) -> int:
     maitre = credential.read_master_password(deps.env)
     manager = KdbxManager(config_file, password=maitre, interactive=False)
     secrets = SecretStore(kdbx_manager=manager, use_keyring=deps.use_keyring)
-    if any(kdbx_refs(account) for account in a_traiter):
+    if any(kdbx_refs(account, base) for account in a_traiter):
         if manager.get_kdbx() is None:
             raison = manager.last_error or "unreadable"
             cle = "mail_service_vault_" + raison
@@ -418,7 +425,7 @@ def _locked_main(args, deps: ServiceDeps, out, base: Path) -> int:
                 cle = "mail_service_vault_wrong_password_config"
             _emit(out, f"{t('mail_service_vault_locked')} {t(cle)}")
             return worst_exit(codes + [EXIT_VAULT])
-    if deps.use_keyring and any(keyring_refs(a) for a in a_traiter):
+    if deps.use_keyring and any(keyring_refs(a, base) for a in a_traiter):
         # Sondé d'avance, puis avant chaque lecture : le trousseau peut se
         # verrouiller entre-temps, et le service ne le déverrouille jamais.
         probleme = mail_secrets.keyring_headless_problem(deps.env)

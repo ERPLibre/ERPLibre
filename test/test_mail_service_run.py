@@ -713,6 +713,161 @@ def journalisation():
         menu._LOG_CONFIGURED = etat[4]
 
 
+class TestCacheMode(ServiceCase):
+    """Le mode inscrit dans le cache, vu du service : un refus de mode est
+    une affaire de configuration (8), une conversion en cours fait sauter
+    le compte (6), une clé absente est une panne du coffre."""
+
+    CLE = "kdbx:ERPLibre/Mail/perso/cache-key"
+
+    def cache(self, mode, base=None, **kw):
+        from mail_cache_fixtures import FauxCoffre
+
+        from script.todo.mail.store import Store
+
+        coffre = FauxCoffre()
+        store = Store(
+            self.compte("perso"),
+            mode=mode,
+            secrets=coffre,
+            base=base or self.base,
+            **kw,
+        )
+        store.open()
+        store.close()
+        return coffre.values.get(self.CLE)
+
+    def test_a_cache_in_another_mode_exits_config_with_a_neutral_line(self):
+        self.comptes(self.compte("perso"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+        self.cache("encrypted")
+        with journalisation():
+            code, sortie = self.lancer(configure_logging=True)
+        self.assertEqual(code, run.EXIT_CONFIG)
+        self.assertEqual(
+            sortie,
+            f"perso : {t('mail_service_kind_mode')} CacheModeMismatch\n",
+        )
+        self.assertEqual(self.connexions, [])
+        journal = (self.home / ".erplibre" / "mail.log").read_text()
+        self.assertIn(
+            t("mail_err_cache_mode_mismatch").format(
+                account="perso", inscribed="encrypted", requested="clear"
+            ),
+            journal,
+        )
+
+    def test_a_cache_being_converted_exits_busy_and_stays_quiet(self):
+        from script.todo.mail.store import cache_exclusive
+
+        self.comptes(self.compte("perso"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+        self.cache("clear")
+        with cache_exclusive("perso", self.base) as tenu:
+            self.assertTrue(tenu)
+            premier = self.lancer("--quiet")
+            second = self.lancer("--quiet")
+        self.assertEqual((premier[0], second[0]), (6, 6))
+        self.assertEqual(
+            premier[1], f"perso : {t('mail_service_kind_busy')} CacheBusy\n"
+        )
+        self.assertEqual(second[1], "")
+
+    def test_vault_refs_follow_the_inscribed_mode(self):
+        """Sous une base qui n'est pas celle par défaut : la base passée
+        est celle qui est sondée."""
+        autre = self.home / "autre"
+        self.cache("encrypted", base=autre)
+        compte = self.compte("perso", cache_mode=None)
+        self.assertEqual(
+            run.kdbx_refs(compte, autre),
+            ["kdbx:ERPLibre/Mail/perso", self.CLE],
+        )
+        self.assertEqual(run.kdbx_refs(compte), ["kdbx:ERPLibre/Mail/perso"])
+
+    def test_vault_refs_follow_a_pending_swap(self):
+        import base64
+        import json
+
+        from script.todo.mail.store import (
+            CACHE_CTL_DIRNAME,
+            inscribed_mode,
+            new_key,
+        )
+
+        compte = self.compte("perso", cache_mode=None)
+        self.comptes(compte)
+        self.regle("perso")
+        self.cache("clear")
+        ctl = self.base / CACHE_CTL_DIRNAME / "perso"
+        (ctl / "new").mkdir(parents=True)
+        cle = new_key()
+        self.cache("encrypted", base=ctl / "new", key=cle, lock_held=True)
+        (ctl / "convert.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "phase": "swapping",
+                    "source": "clear",
+                    "target": "encrypted",
+                    "started_at": 1,
+                }
+            )
+        )
+        self.assertIn(self.CLE, run.kdbx_refs(compte, self.base))
+        self.coffre(
+            {
+                "kdbx:ERPLibre/Mail/perso": SECRET_IMAP,
+                self.CLE: base64.b64encode(cle).decode(),
+            }
+        )
+        code, _sortie = self.lancer()
+        self.assertEqual(code, run.EXIT_OK)
+        self.assertEqual(inscribed_mode(compte, self.base), "encrypted")
+        self.assertEqual(sorted(os.listdir(ctl)), ["lock"])
+
+    def test_an_invalid_cache_mode_exits_config_with_its_class_name(self):
+        import sqlite3
+
+        self.comptes(self.compte("perso"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+        self.cache("clear")
+        conn = sqlite3.connect(self.base / "perso" / "cache.db")
+        conn.execute(
+            "UPDATE meta SET value = 'magique' WHERE key = 'cache_mode'"
+        )
+        conn.commit()
+        conn.close()
+        code, sortie = self.lancer()
+        self.assertEqual(code, run.EXIT_CONFIG)
+        self.assertEqual(
+            sortie, f"perso : {t('mail_service_kind_mode')} CacheModeInvalid\n"
+        )
+
+    def test_a_missing_cache_key_exits_vault(self):
+        from pykeepass import PyKeePass
+
+        self.comptes(self.compte("perso", cache_mode="encrypted"))
+        self.regle("perso")
+        self.coffre({"kdbx:ERPLibre/Mail/perso": SECRET_IMAP})
+        self.cache("encrypted")
+        avant = self.kdbx.read_bytes()
+        code, sortie = self.lancer()
+        self.assertEqual(code, run.EXIT_VAULT)
+        self.assertEqual(
+            sortie, f"perso : {t('mail_service_kind_vault')} CacheKeyMissing\n"
+        )
+        self.assertEqual(self.kdbx.read_bytes(), avant)
+        kp = PyKeePass(str(self.kdbx), password=MAITRE)
+        self.assertEqual(
+            [e.title for e in kp.entries if "cache-key" in (e.title or "")],
+            [],
+        )
+
+
 class TestRuleWarnings(ServiceCase):
     def test_a_rule_warning_text_goes_to_the_log_not_the_journal(self):
         self.comptes(self.compte("perso"))

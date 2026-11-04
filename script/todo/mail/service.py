@@ -771,8 +771,8 @@ def accounts_need_credential(accounts, base=None) -> bool:
 
     return any(
         account.enabled
-        and resolve_mode(account) != "ephemeral"
-        and any(kdbx_refs(account))
+        and resolve_mode(account, base=base) != "ephemeral"
+        and any(kdbx_refs(account, base))
         and traite(account)
         for account in accounts or ()
     )
