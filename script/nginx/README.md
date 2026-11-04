@@ -1,6 +1,17 @@
 
 # Deployment from Odoo
 
+## Database backups larger than 1 GiB
+
+The templates, Odoo 12 to 18, give `/web/database/backup` its own location.
+With nginx's default `proxy_max_temp_file_size` of 1024m, a larger backup
+arrives cut short: nginx stops reading Odoo past that size, the Odoo worker
+gives up after its 2 s socket timeout, and the zip stops at about 1 GiB. That
+location spools the whole backup to nginx's temporary directory
+(`/var/lib/nginx/proxy` on Debian and Ubuntu), which therefore needs as much
+free disk as the largest backup; raise `20480m` past that size. nginx takes
+`k` or `m` for this directive, not `g`.
+
 ## Support Wildcard
 
 You can support Wildcard domain, like *.mysite.com

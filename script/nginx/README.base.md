@@ -6,6 +6,17 @@
 <!-- [en] -->
 # Deployment from Odoo
 
+## Database backups larger than 1 GiB
+
+The templates, Odoo 12 to 18, give `/web/database/backup` its own location.
+With nginx's default `proxy_max_temp_file_size` of 1024m, a larger backup
+arrives cut short: nginx stops reading Odoo past that size, the Odoo worker
+gives up after its 2 s socket timeout, and the zip stops at about 1 GiB. That
+location spools the whole backup to nginx's temporary directory
+(`/var/lib/nginx/proxy` on Debian and Ubuntu), which therefore needs as much
+free disk as the largest backup; raise `20480m` past that size. nginx takes
+`k` or `m` for this directive, not `g`.
+
 ## Support Wildcard
 
 You can support Wildcard domain, like *.mysite.com
@@ -14,6 +25,18 @@ Generate manually the certificate :
 
 <!-- [fr] -->
 # Déploiement depuis Odoo
+
+## Sauvegardes de base de plus de 1 Gio
+
+Les templates, d'Odoo 12 à 18, donnent à `/web/database/backup` son propre
+bloc `location`. Avec le `proxy_max_temp_file_size` par défaut de nginx,
+1024m, une sauvegarde plus grosse arrive coupée : au-delà de cette taille,
+nginx cesse de lire Odoo, le worker d'Odoo abandonne après le délai de 2 s de
+sa socket, et le zip s'arrête vers 1 Gio. Ce bloc garde la sauvegarde entière
+dans le répertoire temporaire de nginx (`/var/lib/nginx/proxy` sur Debian et
+Ubuntu), qui doit donc avoir autant d'espace libre que la plus grosse
+sauvegarde ; montez `20480m` au-delà de cette taille. nginx accepte `k` ou `m`
+pour cette directive, pas `g`.
 
 ## Support Wildcard
 

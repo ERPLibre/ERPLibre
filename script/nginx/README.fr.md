@@ -1,6 +1,18 @@
 
 # Déploiement depuis Odoo
 
+## Sauvegardes de base de plus de 1 Gio
+
+Les templates, d'Odoo 12 à 18, donnent à `/web/database/backup` son propre
+bloc `location`. Avec le `proxy_max_temp_file_size` par défaut de nginx,
+1024m, une sauvegarde plus grosse arrive coupée : au-delà de cette taille,
+nginx cesse de lire Odoo, le worker d'Odoo abandonne après le délai de 2 s de
+sa socket, et le zip s'arrête vers 1 Gio. Ce bloc garde la sauvegarde entière
+dans le répertoire temporaire de nginx (`/var/lib/nginx/proxy` sur Debian et
+Ubuntu), qui doit donc avoir autant d'espace libre que la plus grosse
+sauvegarde ; montez `20480m` au-delà de cette taille. nginx accepte `k` ou `m`
+pour cette directive, pas `g`.
+
 ## Support Wildcard
 
 Vous pouvez supporter les domaines Wildcard, comme *.mysite.com

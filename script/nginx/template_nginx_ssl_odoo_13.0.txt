@@ -60,6 +60,19 @@ server {
        proxy_pass http://erplibre_SERVER_NAME_chat;
     }
 
+    # Database backups. Past proxy_max_temp_file_size (1024m by default),
+    # nginx stops reading the response until the client catches up; the Odoo
+    # worker then gives up after its 2 s socket timeout and closes the
+    # connection, and the client receives a zip cut short. Here nginx spools
+    # the whole backup to its temporary directory, which needs that much free
+    # disk. This directive takes k or m, not g.
+    location /web/database/backup {
+        proxy_pass http://erplibre_SERVER_NAME;
+        proxy_redirect off;
+        proxy_max_temp_file_size 20480m;
+        proxy_read_timeout 1800s;
+    }
+
     # cache some static data in memory for 60mins.
     location ~ /[a-zA-Z0-9_-]*/static/ {
         proxy_cache_valid 200 302 60m;
