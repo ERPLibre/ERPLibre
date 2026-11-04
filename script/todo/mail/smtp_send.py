@@ -51,7 +51,10 @@ class SmtpError(Exception):
     `code` porte le code de réponse SMTP quand le serveur en a rendu un
     (voir `smtp_code`), `None` sinon : erreur de construction, panne réseau.
     `permanent` force le verdict quand il ne dépend pas d'un code : un
-    message sans destinataire ne partira à aucun nouvel essai.
+    message sans destinataire ne partira à aucun nouvel essai. `refused`
+    porte, quand le serveur a refusé chaque destinataire de l'enveloppe,
+    leur code ({adresse telle qu'écrite dans l'enveloppe: code}, 0 quand
+    la réponse n'en porte pas d'entier) ; vide sinon.
     """
 
     def __init__(
@@ -60,10 +63,12 @@ class SmtpError(Exception):
         code: int | None = None,
         *,
         permanent: bool | None = None,
+        refused: dict | None = None,
     ):
         super().__init__(message)
         self.code = code
         self._permanent = permanent
+        self.refused = dict(refused or {})
 
     @property
     def permanent(self) -> bool:
@@ -524,7 +529,53 @@ def connect(account, secret: str) -> SmtplibTransport:
     return SmtplibTransport(client)
 
 
-def send(account, msg, transport: SmtpTransport) -> list[str]:
+class Served(list):
+    """Les destinataires servis par un envoi, dans l'ordre de l'enveloppe.
+
+    `envelope` : toute l'enveloppe essayée, forme d'envoi.
+    `refused` : {adresse telle qu'écrite dans `envelope`: code SMTP} des
+    destinataires que le serveur a refusés alors qu'il en acceptait
+    d'autres ; 0 quand la réponse ne porte pas de code entier. Égale à la
+    liste des servis : un appelant qui l'ignore la lit comme avant.
+    """
+
+    def __init__(self, served=(), *, envelope=(), refused=None):
+        super().__init__(served)
+        self.envelope = tuple(envelope)
+        self.refused = dict(refused or {})
+
+
+def _refused_codes(to_addrs, refused) -> dict:
+    """Les refus d'un transport ({adresse: (code, texte)}, comme
+    `smtplib`) ramenés à l'enveloppe : {adresse de `to_addrs`: code}.
+
+    Une adresse s'apparie sans égard à la casse ; une clé qui ne
+    correspond à aucune adresse de l'enveloppe est ignorée. Le code est
+    `entry[0]` quand c'est un entier (`bool` exclu), 0 sinon.
+    """
+    if not isinstance(refused, dict) or not refused:
+        return {}
+    par_cle = {}
+    for cle, entree in refused.items():
+        code = entree[0] if isinstance(entree, tuple) and entree else entree
+        if not isinstance(code, int) or isinstance(code, bool):
+            code = 0
+        par_cle[str(cle).lower()] = code
+    return {
+        adresse: par_cle[adresse.lower()]
+        for adresse in to_addrs
+        if adresse.lower() in par_cle
+    }
+
+
+def _lowest_code(codes) -> int | None:
+    """Le plus petit code non nul de `codes`, ou None : 0 n'est pas un
+    code SMTP, et masquerait un 5xx voisin."""
+    vrais = [c for c in codes if c]
+    return min(vrais) if vrais else None
+
+
+def send(account, msg, transport: SmtpTransport) -> Served:
     """Remet le message. Rend les destinataires servis, lève `SmtpError` sinon.
 
     Un `RawOutgoing` part par `transport.send_raw` à son enveloppe telle
@@ -532,7 +583,9 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
     sont pas relus. Tout autre message part par `send_message` aux
     destinataires de `recipients()`, sans le Cci interne. Un destinataire
     que le serveur refuse alors qu'il en accepte d'autres n'est pas rendu
-    parmi les servis.
+    parmi les servis : il est dans `Served.refused`, avec son code. Quand
+    le serveur les refuse tous, `SmtpError.refused` les porte ; un départ
+    sans aucun servi n'est jamais rendu comme un succès.
     """
     raw = isinstance(msg, RawOutgoing)
     to_addrs = list(msg.envelope) if raw else recipients(msg)
@@ -554,13 +607,26 @@ def send(account, msg, transport: SmtpTransport) -> list[str]:
         # destinataire rejeté) : une seule erreur de haut niveau, avec le
         # texte du serveur conservé pour l'utilisateur, et son code pour
         # distinguer un refus permanent d'un échec à réessayer.
+        import smtplib
+
+        refus = {}
+        if isinstance(exc, smtplib.SMTPRecipientsRefused):
+            refus = _refused_codes(to_addrs, exc.recipients)
         raise SmtpError(
-            f"{t('mail_err_send_refused')} {exc}", code=smtp_code(exc)
+            f"{t('mail_err_send_refused')} {exc}",
+            code=smtp_code(exc),
+            refused=refus,
         ) from exc
-    if isinstance(refused, dict) and refused:
-        rejected = {str(addr).lower() for addr in refused}
-        return [addr for addr in to_addrs if addr.lower() not in rejected]
-    return to_addrs
+    refus = _refused_codes(to_addrs, refused)
+    if refus and len(refus) == len(to_addrs):
+        codes = sorted(refus.values())
+        raise SmtpError(
+            f"{t('mail_err_send_refused')} {', '.join(str(c) for c in codes)}",
+            code=_lowest_code(codes),
+            refused=refus,
+        )
+    servis = [adresse for adresse in to_addrs if adresse not in refus]
+    return Served(servis, envelope=to_addrs, refused=refus)
 
 
 def without_bcc(msg):
@@ -1060,6 +1126,83 @@ def to_crlf(raw: bytes) -> bytes:
     qu'après un LF.
     """
     return _EOL_RE.sub(b"\r\n", raw)
+
+
+def outgoing_bytes(msg) -> bytes:
+    """Les octets d'un envoi, pour une remise ultérieure à une enveloppe
+    explicite.
+
+    `raw` d'un `RawOutgoing`, inchangé (`send_raw` le passe par `to_crlf`
+    au départ). Tout autre message : `msg.as_bytes()`, en CRLF, sans le
+    Cci interne `X-ERPLibre-Bcc` — remis tel quel à une enveloppe
+    explicite, il montrerait toutes les destinations à chacune. Une seule
+    sérialisation, sans copie du message ; un multipart sans frontière
+    fixée en reçoit une tirée au hasard.
+    """
+    if isinstance(msg, RawOutgoing):
+        return msg.raw
+    return strip_header_fields(to_crlf(msg.as_bytes()), ("X-ERPLibre-Bcc",))
+
+
+@dataclass(frozen=True)
+class Refusals:
+    """Le partage des destinataires refusés d'un départ.
+
+    `retry` : adresses refusées en 4xx qu'une enveloppe peut porter
+    (`smtp_address`), dans l'ordre de l'enveloppe, en forme d'envoi.
+    `retry_codes` : leurs codes, croissants. `dropped_codes` : les codes
+    des autres refusés (5xx, code inconnu 0, adresse refusée par
+    `smtp_address`), croissants.
+    """
+
+    retry: tuple[str, ...] = ()
+    retry_codes: tuple[int, ...] = ()
+    dropped_codes: tuple[int, ...] = ()
+
+    @property
+    def count(self) -> int:
+        """Le nombre de destinataires refusés, réessayés ou abandonnés."""
+        return len(self.retry_codes) + len(self.dropped_codes)
+
+
+def split_refusals(envelope, refused: dict) -> Refusals:
+    """Partage `refused` ({adresse: code}, clés écrites comme dans
+    `envelope`) en nouvel essai et abandon.
+
+    Réessayable : `400 <= code < 500` et `smtp_address(adresse)` ne lève
+    pas ; l'adresse gardée est sa forme d'envoi. Les clés se comparent à
+    `envelope` sans casse ; une clé hors enveloppe est ignorée, une
+    adresse de l'enveloppe ne compte qu'une fois. La `SmtpError` de
+    `smtp_address` est écartée sans rien en garder : son texte porte
+    l'adresse.
+    """
+    par_cle = {str(cle).lower(): code for cle, code in (refused or {}).items()}
+    retry, retry_codes, dropped = [], [], []
+    vues = set()
+    for adresse in envelope or ():
+        cle = str(adresse).lower()
+        if cle not in par_cle or cle in vues:
+            continue
+        vues.add(cle)
+        code = par_cle[cle]
+        if not isinstance(code, int) or isinstance(code, bool):
+            code = 0
+        forme = None
+        if 400 <= code < 500:
+            try:
+                forme = smtp_address(str(adresse))
+            except SmtpError:
+                forme = None
+        if forme is None:
+            dropped.append(code)
+        else:
+            retry.append(forme)
+            retry_codes.append(code)
+    return Refusals(
+        retry=tuple(retry),
+        retry_codes=tuple(sorted(retry_codes)),
+        dropped_codes=tuple(sorted(dropped)),
+    )
 
 
 def original_x_loops(src) -> list[str]:
