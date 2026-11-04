@@ -1336,6 +1336,11 @@ encrypted*, *kdbx.password in clear text (not recommended)* — the
 fallback read from the private configuration —, or *no vault password*
 (see "Running without the client"); the password itself is never shown.
 It is read in the background: the screen never waits on `systemctl`.
+The line under it says how the server lets a pass claim a message (see
+"Several machines on one mailbox"): *atomic (CONDSTORE)*, *non-atomic
+claim on this server* or *no claim possible*, in yellow for the last two,
+or *not yet checked* before the first automatic send. It is read again
+after every pass of the client.
 
 Rules apply in order, and **all** of them apply: a message that matches two
 rules gets two replies. A rule with "stop here" ends the list for that
@@ -1839,7 +1844,12 @@ and nothing is held.
 
 | Situation | What happens |
 |---|---|
-| account offline | the reply is queued and leaves at the next online pass |
+| account offline | left for the next online pass: the message must be claimed on the server first (queued as before on a server that refuses keywords) |
+| message already claimed (another machine, or the keyword already set) | skipped (*already claimed*), never sent here |
+| claim on the server fails | left for the next pass, with a warning; after five passes in a row, failed (*claim failed over several passes*), not sent |
+| interrupted during the claim | keyword found set when the claim is tried again: skipped (*claim uncertain*), check Sent and reply by hand if needed; keyword absent: claimed again, then sent |
+| interrupted before the send | taken up at the next pass, by this machine only |
+| interrupted during the send | failed (*send interrupted, outcome unknown*), not sent again: check Sent and reply by hand if needed |
 | temporary server refusal | queued; the rest of the pass's replies are queued too, without trying the server again |
 | permanent server refusal | logged as failed, not retried |
 | queued for 24 h | dropped from the queue (*expired*), held or not |
@@ -1989,8 +1999,11 @@ one after the other.
 `Mail > [6] Incoming mail rules`, any account with a persistent cache, then
 `[8]` — the same screen either way; `[7]` stays reachable with no account
 left, to uninstall.
-It starts with the state of the service, then offers `[1]` install or
-update, `[2]` the vault password for the service, `[3]` run a pass now,
+It starts with the state of the service — followed by one line per account
+whose server allows only a non-atomic claim, or none, and one per account
+whose replies the service holds for approval (to release with `o` on this
+machine, see "Several machines on one mailbox") —, then offers `[1]`
+install or update, `[2]` the vault password for the service, `[3]` run a pass now,
 `[4]` uninstall, `[0]` back. `[1]` asks the minutes between two passes —
 1 to 1440, 5 by default, the installed value when there is one — then
 writes `erplibre-mail-rules.service` and `erplibre-mail-rules.timer` into
@@ -2047,9 +2060,8 @@ mailboxes every N minutes. `[1]` from another checkout shows both paths and
 asks `(y/N)` before pointing the service at the new one. A moved or deleted
 checkout makes systemd fail before the command starts — exit 200 when the
 folder is missing, 203 when the venv interpreter is —: reinstall with
-`[8] > [1]`. Install the service on **one machine per account**: the locks
-and the rules log are local to a machine, so two machines carrying the same
-rules would answer every message twice.
+`[8] > [1]`. One checkout per machine; several machines per account are
+possible, under the conditions of "Several machines on one mailbox".
 
 **Linger.** Without it, the systemd user manager — and the timer with
 it — runs only while you have a session open. `[1]` reads it with
@@ -2150,6 +2162,81 @@ disk.
 when the encrypted password exists, whether to remove it too `(Y/n)` — it
 is removed unless you answer no —, stops and disables the timer, removes both units, and, when linger is on,
 offers `(y/N)` to turn it off: other services may depend on it.
+
+### Several machines on one mailbox
+
+Before any automatic send — reply, report, forward or redirect — a pass
+sets the IMAP keyword `$ErpLibreRule` on the original message, in INBOX. A
+machine that finds it already set does not send, and logs *already
+claimed ($ErpLibreRule set), whatever the rule*. Every pass does it: the
+TUI, the menu and the headless service. A laptop and a server, or two
+desktops, may therefore carry the same rules on the same account and each
+message gets one answer.
+
+**Atomic or not.** When the server offers CONDSTORE, the keyword is set by
+a conditional store: of two machines at the same instant, only one wins,
+and another flag set meanwhile (the message read on a phone) only makes
+the pass read the message again. Without CONDSTORE, the machine reads the
+message before and after setting the keyword: two machines at the very
+same instant may still both reply, and the rules screen and the service
+menu say *non-atomic claim on this server*.
+
+**What is shared, what is not.** One answer per MESSAGE. The limit per
+sender also counts a message another machine claimed, and a send that was
+interrupted. But the caps per pass and per hour, the daily cap of reports,
+the "hold the first sends" approvals and the recognition of our own sends
+(the loop guard of forwards) stay **per machine**.
+
+**Requirements.** The SAME rules on every machine: the keyword holds for
+ALL the rules, so a rule present on one machine only never applies to a
+message the other one claimed — a forward to the accounting mailbox
+carried by one machine alone would never leave. And every machine up to
+date, the checkout the service runs from included: an older machine
+neither sets nor reads the keyword, and an older conversion tool refuses a
+newer cache.
+
+**A reply held on the service's machine** waits only under the `o` of
+THAT machine: the claim gave the message to it, the other machine logged
+*already claimed*. The service menu says how many replies the service
+holds. Give the "hold the first sends" approvals there, or keep a single
+machine while a rule is not approved yet. The claim holds for the life of
+the message: a held reply is released where it was held, an entry
+deleted from the outbox leaves the message unanswered, and a retry after a
+partial refusal does not claim again. Entries already in the outbox when
+the machine is updated were not claimed, and leave as before.
+
+**A server that refuses keywords.** When the server does not keep the
+keyword, the pass sends as before, warns once (*This server refuses the
+$ErpLibreRule keyword…*) and the rules screen says so for good: keep one
+machine per account. An inbox that turned read-only sends nothing: the
+message waits for the next pass. A claim that fails five passes in a row
+leaves the message unsent (*claim failed over several passes*).
+
+**Interruptions.** The machine that claimed a message and stopped before
+sending it takes it up at its next pass; no other machine ever does. A
+send interrupted while in progress is never sent again (*send interrupted,
+outcome unknown*). An interruption during the claim itself — a plain
+network cut included, or a server that accepts the claim and then refuses
+to confirm it — is settled when the claim is tried again: if the keyword
+is already set, no one knows which machine set it, and the message stays
+unsent (*claim uncertain*) rather than risk two answers; otherwise the
+claim is simply made again and the message leaves. After *send
+interrupted* or *claim uncertain*, **check Sent and reply by hand if
+needed**: no one will take that message up.
+
+*Already claimed* with no other machine: a message put back into INBOX
+after being handled (it gets a new UID and keeps the keyword), or a cache
+rebuilt on this machine.
+
+The trial `s` never claims, and says when the message is already claimed —
+by this machine, by another, or after an interruption. The keyword does
+not show in the message list; other clients, and the other users of a
+shared mailbox, may show it as a tag. It is removed from a message moved
+to another account BY THIS CLIENT; another client copies it along, and the
+rules of the receiving account then skip that message. The cache keeps,
+per INBOX message, whether the claim is this machine's or another's,
+without any time; the keyword itself is already in the cached copy of the
+flags.
 
 ### Where rules live
 
@@ -2256,6 +2343,12 @@ dans la configuration privée —, ou *pas de mot de passe du coffre* (voir
 « Tourner sans le client ») ; le mot de passe lui-même n'est jamais
 affiché. Elle se lit en arrière-plan : l'écran n'attend jamais
 `systemctl`.
+La ligne suivante dit comment le serveur permet à une passe de
+revendiquer un message (voir « Plusieurs postes sur une même boîte ») :
+*atomique (CONDSTORE)*, *revendication non atomique sur ce serveur* ou
+*revendication impossible*, en jaune pour les deux dernières, ou *pas
+encore vérifiée* avant le premier envoi automatique. Elle est relue après
+chaque passe du client.
 
 Les règles s'appliquent dans l'ordre, et **toutes** s'appliquent : un
 message qui correspond à deux règles reçoit deux réponses. Une règle
@@ -2792,7 +2885,12 @@ une recréation : le journal suit, et rien n'est retenu.
 
 | Situation | Ce qui se passe |
 |---|---|
-| compte hors ligne | la réponse est mise en file et part à la prochaine passe en ligne |
+| compte hors ligne | laissée à la prochaine passe en ligne : le message doit d'abord être revendiqué sur le serveur (mise en file comme avant sur un serveur qui refuse les mots-clés) |
+| message déjà revendiqué (une autre machine, ou le mot-clé déjà posé) | écarté (*déjà revendiqué*), jamais envoyé d'ici |
+| revendication en échec sur le serveur | laissé à la passe suivante, avec un avertissement ; après cinq passes de suite, en échec (*revendication impossible après plusieurs passes*), non envoyé |
+| interruption pendant la revendication | mot-clé trouvé posé quand la revendication est refaite : écarté (*revendication incertaine*), vérifiez Envoyés, répondez à la main si besoin ; mot-clé absent : revendiqué de nouveau, puis envoyé |
+| interruption avant l'envoi | repris à la passe suivante, par cette machine seulement |
+| interruption pendant l'envoi | en échec (*envoi interrompu, issue inconnue*), non renvoyé : vérifiez Envoyés, répondez à la main si besoin |
 | refus temporaire du serveur | mise en file ; les autres réponses de la passe aussi, sans réessayer le serveur |
 | refus définitif du serveur | journalisée en échec, pas retentée |
 | 24 h en file | retirée de la file (*expiré*), retenue ou non |
@@ -2956,7 +3054,11 @@ règles ne peuvent pas tourner. Les comptes sont traités l'un après l'autre.
 **Installer.** `Courriel > [7] Service sans interface (systemd)`, ou
 `Courriel > [6] Règles du courrier entrant`, n'importe quel compte à cache
 persistant, puis `[8]` — le même écran dans les deux cas ; `[7]` reste
-accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service, puis propose `[1]`
+accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service — suivi d'une ligne
+par compte dont le serveur ne permet qu'une revendication non atomique, ou
+aucune, et d'une par compte dont le service retient des réponses à
+approuver (à libérer par `o` sur cette machine, voir « Plusieurs postes sur
+une même boîte ») —, puis propose `[1]`
 installer ou mettre à jour, `[2]` le mot de passe du coffre pour le
 service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[0]`
 retour. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
@@ -3019,10 +3121,9 @@ lancé depuis un autre dépôt montre les deux chemins et demande `(o/N)`
 avant de faire pointer le service vers le nouveau. Un dépôt déplacé ou
 effacé fait échouer systemd avant que la commande ne démarre — sortie 200
 quand le dossier manque, 203 quand c'est l'interpréteur du venv — :
-réinstaller par `[8] > [1]`. Installez le service sur **une seule machine
-par compte** : les verrous et le journal des règles sont locaux à une
-machine, deux machines aux mêmes règles répondraient donc deux fois à
-chaque message.
+réinstaller par `[8] > [1]`. Un dépôt par machine ; plusieurs machines
+par compte sont possibles, aux conditions de « Plusieurs postes sur une
+même boîte ».
 
 **Linger.** Sans lui, le gestionnaire systemd de l'utilisateur — et la
 minuterie avec lui — ne tourne que pendant une session ouverte. `[1]` le
@@ -3128,6 +3229,86 @@ le mot de passe chiffré existe, s'il faut le retirer aussi `(O/n)` — il
 est retiré sauf si vous répondez non —, arrête et désactive la minuterie, retire les deux unités, et, si le
 linger est actif, propose `(o/N)` de le retirer : d'autres services
 peuvent en dépendre.
+
+### Plusieurs postes sur une même boîte
+
+Avant tout envoi automatique — réponse, rapport, transfert ou
+redirection —, une passe pose le mot-clé IMAP `$ErpLibreRule` sur le
+message d'origine, dans INBOX. Une machine qui le trouve déjà posé
+n'envoie rien, et journalise *déjà revendiqué ($ErpLibreRule posé), quelle
+que soit la règle*. Toute passe le fait : le TUI, le menu et le service
+sans interface. Un portable et un serveur, ou deux postes, peuvent donc
+porter les mêmes règles sur le même compte, et chaque message reçoit une
+réponse.
+
+**Atomique ou non.** Quand le serveur offre CONDSTORE, le mot-clé est posé
+par un STORE conditionnel : de deux machines au même instant, une seule
+gagne, et un autre drapeau posé entre-temps (le message lu sur un
+téléphone) ne fait que relire le message. Sans CONDSTORE, la machine relit
+le message avant et après avoir posé le mot-clé : deux machines au même
+instant peuvent encore répondre toutes deux, et l'écran des règles comme
+le menu du service disent *revendication non atomique sur ce serveur*.
+
+**Ce qui est partagé, ce qui ne l'est pas.** Une réponse par MESSAGE. La
+limite par expéditeur compte aussi un message qu'une autre machine a
+revendiqué, et un envoi interrompu. Mais les plafonds par passe et par
+heure, le plafond quotidien des rapports, les approbations « retenir les
+premiers envois » et la reconnaissance de nos propres envois (l'anti-boucle
+des transferts) restent **propres à chaque machine**.
+
+**Exigences.** Les MÊMES règles sur chaque machine : le mot-clé vaut pour
+TOUTES les règles, donc une règle présente sur une seule machine ne
+s'applique jamais à un message que l'autre a revendiqué — un transfert
+vers la boîte de la comptabilité porté par une seule machine ne
+partirait jamais. Et toutes les machines à jour, dépôt du service
+compris : une machine ancienne ne pose ni ne lit le mot-clé, et un ancien
+outil de conversion refuse un cache plus récent.
+
+**Une réponse retenue sur la machine du service** n'attend que sous le `o`
+de CETTE machine : la revendication lui a donné le message, l'autre machine
+a journalisé *déjà revendiqué*. Le menu du service dit combien de réponses
+le service retient. Faites-y les approbations « retenir les premiers
+envois », ou gardez une seule machine tant qu'une règle n'est pas
+approuvée. La revendication vaut pour la vie du message : une réponse
+retenue se libère là où elle l'a été, une entrée supprimée de la file
+laisse le message sans réponse, et un nouvel essai après un refus partiel
+ne revendique pas de nouveau. Les entrées déjà en file au moment de la
+mise à jour n'avaient pas été revendiquées, et partent comme avant.
+
+**Un serveur qui refuse les mots-clés.** Quand le serveur ne garde pas le
+mot-clé, la passe envoie comme avant, avertit une fois (*Ce serveur refuse
+le mot-clé $ErpLibreRule…*) et l'écran des règles le dit à demeure : une
+seule machine par compte. Une boîte de réception passée en lecture seule
+n'envoie rien : le message attend la passe suivante. Une revendication qui
+échoue cinq passes de suite laisse le message sans envoi (*revendication
+impossible après plusieurs passes*).
+
+**Interruptions.** La machine qui a revendiqué un message et s'est
+arrêtée avant de l'envoyer le reprend à sa passe suivante ; aucune autre
+machine ne le reprend jamais. Un envoi interrompu en cours n'est jamais
+renvoyé (*envoi interrompu, issue inconnue*). Une interruption pendant la
+revendication elle-même — une simple coupure réseau comprise, ou un
+serveur qui accepte la revendication puis refuse de la confirmer — se
+tranche quand la revendication est refaite : si le mot-clé est déjà posé,
+nul ne sait quelle machine l'a posé, et le message reste sans envoi
+(*revendication incertaine*) plutôt que de risquer deux réponses ; sinon,
+la revendication est simplement refaite et le message part. Après *envoi
+interrompu* ou *revendication incertaine*, **vérifiez Envoyés et
+répondez à la main si besoin** : personne ne reprendra ce message.
+
+*Déjà revendiqué* sans autre machine : un message remis dans INBOX après
+traitement (il reçoit un nouvel UID et garde le mot-clé), ou un cache
+recréé sur cette machine.
+
+L'essai `s` ne revendique jamais, et dit quand le message est déjà
+revendiqué — par cette machine, par une autre, ou après une interruption.
+Le mot-clé ne s'affiche pas dans la liste des messages ; d'autres
+clients, et les autres utilisateurs d'une boîte partagée, peuvent le
+montrer comme étiquette. Il est retiré d'un message déplacé vers un autre
+compte PAR CE CLIENT ; un autre client le recopie, et les règles du compte
+d'arrivée écartent alors ce message. Le cache garde, par message d'INBOX,
+si la revendication est celle de cette machine ou d'une autre, sans
+aucune heure ; le mot-clé lui-même est déjà dans la copie des drapeaux.
 
 ### Où vivent les règles
 

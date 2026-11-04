@@ -713,6 +713,12 @@ dans la configuration privée —, ou *pas de mot de passe du coffre* (voir
 « Tourner sans le client ») ; le mot de passe lui-même n'est jamais
 affiché. Elle se lit en arrière-plan : l'écran n'attend jamais
 `systemctl`.
+La ligne suivante dit comment le serveur permet à une passe de
+revendiquer un message (voir « Plusieurs postes sur une même boîte ») :
+*atomique (CONDSTORE)*, *revendication non atomique sur ce serveur* ou
+*revendication impossible*, en jaune pour les deux dernières, ou *pas
+encore vérifiée* avant le premier envoi automatique. Elle est relue après
+chaque passe du client.
 
 Les règles s'appliquent dans l'ordre, et **toutes** s'appliquent : un
 message qui correspond à deux règles reçoit deux réponses. Une règle
@@ -1249,7 +1255,12 @@ une recréation : le journal suit, et rien n'est retenu.
 
 | Situation | Ce qui se passe |
 |---|---|
-| compte hors ligne | la réponse est mise en file et part à la prochaine passe en ligne |
+| compte hors ligne | laissée à la prochaine passe en ligne : le message doit d'abord être revendiqué sur le serveur (mise en file comme avant sur un serveur qui refuse les mots-clés) |
+| message déjà revendiqué (une autre machine, ou le mot-clé déjà posé) | écarté (*déjà revendiqué*), jamais envoyé d'ici |
+| revendication en échec sur le serveur | laissé à la passe suivante, avec un avertissement ; après cinq passes de suite, en échec (*revendication impossible après plusieurs passes*), non envoyé |
+| interruption pendant la revendication | mot-clé trouvé posé quand la revendication est refaite : écarté (*revendication incertaine*), vérifiez Envoyés, répondez à la main si besoin ; mot-clé absent : revendiqué de nouveau, puis envoyé |
+| interruption avant l'envoi | repris à la passe suivante, par cette machine seulement |
+| interruption pendant l'envoi | en échec (*envoi interrompu, issue inconnue*), non renvoyé : vérifiez Envoyés, répondez à la main si besoin |
 | refus temporaire du serveur | mise en file ; les autres réponses de la passe aussi, sans réessayer le serveur |
 | refus définitif du serveur | journalisée en échec, pas retentée |
 | 24 h en file | retirée de la file (*expiré*), retenue ou non |
@@ -1413,7 +1424,11 @@ règles ne peuvent pas tourner. Les comptes sont traités l'un après l'autre.
 **Installer.** `Courriel > [7] Service sans interface (systemd)`, ou
 `Courriel > [6] Règles du courrier entrant`, n'importe quel compte à cache
 persistant, puis `[8]` — le même écran dans les deux cas ; `[7]` reste
-accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service, puis propose `[1]`
+accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service — suivi d'une ligne
+par compte dont le serveur ne permet qu'une revendication non atomique, ou
+aucune, et d'une par compte dont le service retient des réponses à
+approuver (à libérer par `o` sur cette machine, voir « Plusieurs postes sur
+une même boîte ») —, puis propose `[1]`
 installer ou mettre à jour, `[2]` le mot de passe du coffre pour le
 service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[0]`
 retour. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
@@ -1476,10 +1491,9 @@ lancé depuis un autre dépôt montre les deux chemins et demande `(o/N)`
 avant de faire pointer le service vers le nouveau. Un dépôt déplacé ou
 effacé fait échouer systemd avant que la commande ne démarre — sortie 200
 quand le dossier manque, 203 quand c'est l'interpréteur du venv — :
-réinstaller par `[8] > [1]`. Installez le service sur **une seule machine
-par compte** : les verrous et le journal des règles sont locaux à une
-machine, deux machines aux mêmes règles répondraient donc deux fois à
-chaque message.
+réinstaller par `[8] > [1]`. Un dépôt par machine ; plusieurs machines
+par compte sont possibles, aux conditions de « Plusieurs postes sur une
+même boîte ».
 
 **Linger.** Sans lui, le gestionnaire systemd de l'utilisateur — et la
 minuterie avec lui — ne tourne que pendant une session ouverte. `[1]` le
@@ -1585,6 +1599,86 @@ le mot de passe chiffré existe, s'il faut le retirer aussi `(O/n)` — il
 est retiré sauf si vous répondez non —, arrête et désactive la minuterie, retire les deux unités, et, si le
 linger est actif, propose `(o/N)` de le retirer : d'autres services
 peuvent en dépendre.
+
+### Plusieurs postes sur une même boîte
+
+Avant tout envoi automatique — réponse, rapport, transfert ou
+redirection —, une passe pose le mot-clé IMAP `$ErpLibreRule` sur le
+message d'origine, dans INBOX. Une machine qui le trouve déjà posé
+n'envoie rien, et journalise *déjà revendiqué ($ErpLibreRule posé), quelle
+que soit la règle*. Toute passe le fait : le TUI, le menu et le service
+sans interface. Un portable et un serveur, ou deux postes, peuvent donc
+porter les mêmes règles sur le même compte, et chaque message reçoit une
+réponse.
+
+**Atomique ou non.** Quand le serveur offre CONDSTORE, le mot-clé est posé
+par un STORE conditionnel : de deux machines au même instant, une seule
+gagne, et un autre drapeau posé entre-temps (le message lu sur un
+téléphone) ne fait que relire le message. Sans CONDSTORE, la machine relit
+le message avant et après avoir posé le mot-clé : deux machines au même
+instant peuvent encore répondre toutes deux, et l'écran des règles comme
+le menu du service disent *revendication non atomique sur ce serveur*.
+
+**Ce qui est partagé, ce qui ne l'est pas.** Une réponse par MESSAGE. La
+limite par expéditeur compte aussi un message qu'une autre machine a
+revendiqué, et un envoi interrompu. Mais les plafonds par passe et par
+heure, le plafond quotidien des rapports, les approbations « retenir les
+premiers envois » et la reconnaissance de nos propres envois (l'anti-boucle
+des transferts) restent **propres à chaque machine**.
+
+**Exigences.** Les MÊMES règles sur chaque machine : le mot-clé vaut pour
+TOUTES les règles, donc une règle présente sur une seule machine ne
+s'applique jamais à un message que l'autre a revendiqué — un transfert
+vers la boîte de la comptabilité porté par une seule machine ne
+partirait jamais. Et toutes les machines à jour, dépôt du service
+compris : une machine ancienne ne pose ni ne lit le mot-clé, et un ancien
+outil de conversion refuse un cache plus récent.
+
+**Une réponse retenue sur la machine du service** n'attend que sous le `o`
+de CETTE machine : la revendication lui a donné le message, l'autre machine
+a journalisé *déjà revendiqué*. Le menu du service dit combien de réponses
+le service retient. Faites-y les approbations « retenir les premiers
+envois », ou gardez une seule machine tant qu'une règle n'est pas
+approuvée. La revendication vaut pour la vie du message : une réponse
+retenue se libère là où elle l'a été, une entrée supprimée de la file
+laisse le message sans réponse, et un nouvel essai après un refus partiel
+ne revendique pas de nouveau. Les entrées déjà en file au moment de la
+mise à jour n'avaient pas été revendiquées, et partent comme avant.
+
+**Un serveur qui refuse les mots-clés.** Quand le serveur ne garde pas le
+mot-clé, la passe envoie comme avant, avertit une fois (*Ce serveur refuse
+le mot-clé $ErpLibreRule…*) et l'écran des règles le dit à demeure : une
+seule machine par compte. Une boîte de réception passée en lecture seule
+n'envoie rien : le message attend la passe suivante. Une revendication qui
+échoue cinq passes de suite laisse le message sans envoi (*revendication
+impossible après plusieurs passes*).
+
+**Interruptions.** La machine qui a revendiqué un message et s'est
+arrêtée avant de l'envoyer le reprend à sa passe suivante ; aucune autre
+machine ne le reprend jamais. Un envoi interrompu en cours n'est jamais
+renvoyé (*envoi interrompu, issue inconnue*). Une interruption pendant la
+revendication elle-même — une simple coupure réseau comprise, ou un
+serveur qui accepte la revendication puis refuse de la confirmer — se
+tranche quand la revendication est refaite : si le mot-clé est déjà posé,
+nul ne sait quelle machine l'a posé, et le message reste sans envoi
+(*revendication incertaine*) plutôt que de risquer deux réponses ; sinon,
+la revendication est simplement refaite et le message part. Après *envoi
+interrompu* ou *revendication incertaine*, **vérifiez Envoyés et
+répondez à la main si besoin** : personne ne reprendra ce message.
+
+*Déjà revendiqué* sans autre machine : un message remis dans INBOX après
+traitement (il reçoit un nouvel UID et garde le mot-clé), ou un cache
+recréé sur cette machine.
+
+L'essai `s` ne revendique jamais, et dit quand le message est déjà
+revendiqué — par cette machine, par une autre, ou après une interruption.
+Le mot-clé ne s'affiche pas dans la liste des messages ; d'autres
+clients, et les autres utilisateurs d'une boîte partagée, peuvent le
+montrer comme étiquette. Il est retiré d'un message déplacé vers un autre
+compte PAR CE CLIENT ; un autre client le recopie, et les règles du compte
+d'arrivée écartent alors ce message. Le cache garde, par message d'INBOX,
+si la revendication est celle de cette machine ou d'une autre, sans
+aucune heure ; le mot-clé lui-même est déjà dans la copie des drapeaux.
 
 ### Où vivent les règles
 

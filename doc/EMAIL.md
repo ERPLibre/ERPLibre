@@ -666,6 +666,11 @@ encrypted*, *kdbx.password in clear text (not recommended)* — the
 fallback read from the private configuration —, or *no vault password*
 (see "Running without the client"); the password itself is never shown.
 It is read in the background: the screen never waits on `systemctl`.
+The line under it says how the server lets a pass claim a message (see
+"Several machines on one mailbox"): *atomic (CONDSTORE)*, *non-atomic
+claim on this server* or *no claim possible*, in yellow for the last two,
+or *not yet checked* before the first automatic send. It is read again
+after every pass of the client.
 
 Rules apply in order, and **all** of them apply: a message that matches two
 rules gets two replies. A rule with "stop here" ends the list for that
@@ -1169,7 +1174,12 @@ and nothing is held.
 
 | Situation | What happens |
 |---|---|
-| account offline | the reply is queued and leaves at the next online pass |
+| account offline | left for the next online pass: the message must be claimed on the server first (queued as before on a server that refuses keywords) |
+| message already claimed (another machine, or the keyword already set) | skipped (*already claimed*), never sent here |
+| claim on the server fails | left for the next pass, with a warning; after five passes in a row, failed (*claim failed over several passes*), not sent |
+| interrupted during the claim | keyword found set when the claim is tried again: skipped (*claim uncertain*), check Sent and reply by hand if needed; keyword absent: claimed again, then sent |
+| interrupted before the send | taken up at the next pass, by this machine only |
+| interrupted during the send | failed (*send interrupted, outcome unknown*), not sent again: check Sent and reply by hand if needed |
 | temporary server refusal | queued; the rest of the pass's replies are queued too, without trying the server again |
 | permanent server refusal | logged as failed, not retried |
 | queued for 24 h | dropped from the queue (*expired*), held or not |
@@ -1319,8 +1329,11 @@ one after the other.
 `Mail > [6] Incoming mail rules`, any account with a persistent cache, then
 `[8]` — the same screen either way; `[7]` stays reachable with no account
 left, to uninstall.
-It starts with the state of the service, then offers `[1]` install or
-update, `[2]` the vault password for the service, `[3]` run a pass now,
+It starts with the state of the service — followed by one line per account
+whose server allows only a non-atomic claim, or none, and one per account
+whose replies the service holds for approval (to release with `o` on this
+machine, see "Several machines on one mailbox") —, then offers `[1]`
+install or update, `[2]` the vault password for the service, `[3]` run a pass now,
 `[4]` uninstall, `[0]` back. `[1]` asks the minutes between two passes —
 1 to 1440, 5 by default, the installed value when there is one — then
 writes `erplibre-mail-rules.service` and `erplibre-mail-rules.timer` into
@@ -1377,9 +1390,8 @@ mailboxes every N minutes. `[1]` from another checkout shows both paths and
 asks `(y/N)` before pointing the service at the new one. A moved or deleted
 checkout makes systemd fail before the command starts — exit 200 when the
 folder is missing, 203 when the venv interpreter is —: reinstall with
-`[8] > [1]`. Install the service on **one machine per account**: the locks
-and the rules log are local to a machine, so two machines carrying the same
-rules would answer every message twice.
+`[8] > [1]`. One checkout per machine; several machines per account are
+possible, under the conditions of "Several machines on one mailbox".
 
 **Linger.** Without it, the systemd user manager — and the timer with
 it — runs only while you have a session open. `[1]` reads it with
@@ -1480,6 +1492,81 @@ disk.
 when the encrypted password exists, whether to remove it too `(Y/n)` — it
 is removed unless you answer no —, stops and disables the timer, removes both units, and, when linger is on,
 offers `(y/N)` to turn it off: other services may depend on it.
+
+### Several machines on one mailbox
+
+Before any automatic send — reply, report, forward or redirect — a pass
+sets the IMAP keyword `$ErpLibreRule` on the original message, in INBOX. A
+machine that finds it already set does not send, and logs *already
+claimed ($ErpLibreRule set), whatever the rule*. Every pass does it: the
+TUI, the menu and the headless service. A laptop and a server, or two
+desktops, may therefore carry the same rules on the same account and each
+message gets one answer.
+
+**Atomic or not.** When the server offers CONDSTORE, the keyword is set by
+a conditional store: of two machines at the same instant, only one wins,
+and another flag set meanwhile (the message read on a phone) only makes
+the pass read the message again. Without CONDSTORE, the machine reads the
+message before and after setting the keyword: two machines at the very
+same instant may still both reply, and the rules screen and the service
+menu say *non-atomic claim on this server*.
+
+**What is shared, what is not.** One answer per MESSAGE. The limit per
+sender also counts a message another machine claimed, and a send that was
+interrupted. But the caps per pass and per hour, the daily cap of reports,
+the "hold the first sends" approvals and the recognition of our own sends
+(the loop guard of forwards) stay **per machine**.
+
+**Requirements.** The SAME rules on every machine: the keyword holds for
+ALL the rules, so a rule present on one machine only never applies to a
+message the other one claimed — a forward to the accounting mailbox
+carried by one machine alone would never leave. And every machine up to
+date, the checkout the service runs from included: an older machine
+neither sets nor reads the keyword, and an older conversion tool refuses a
+newer cache.
+
+**A reply held on the service's machine** waits only under the `o` of
+THAT machine: the claim gave the message to it, the other machine logged
+*already claimed*. The service menu says how many replies the service
+holds. Give the "hold the first sends" approvals there, or keep a single
+machine while a rule is not approved yet. The claim holds for the life of
+the message: a held reply is released where it was held, an entry
+deleted from the outbox leaves the message unanswered, and a retry after a
+partial refusal does not claim again. Entries already in the outbox when
+the machine is updated were not claimed, and leave as before.
+
+**A server that refuses keywords.** When the server does not keep the
+keyword, the pass sends as before, warns once (*This server refuses the
+$ErpLibreRule keyword…*) and the rules screen says so for good: keep one
+machine per account. An inbox that turned read-only sends nothing: the
+message waits for the next pass. A claim that fails five passes in a row
+leaves the message unsent (*claim failed over several passes*).
+
+**Interruptions.** The machine that claimed a message and stopped before
+sending it takes it up at its next pass; no other machine ever does. A
+send interrupted while in progress is never sent again (*send interrupted,
+outcome unknown*). An interruption during the claim itself — a plain
+network cut included, or a server that accepts the claim and then refuses
+to confirm it — is settled when the claim is tried again: if the keyword
+is already set, no one knows which machine set it, and the message stays
+unsent (*claim uncertain*) rather than risk two answers; otherwise the
+claim is simply made again and the message leaves. After *send
+interrupted* or *claim uncertain*, **check Sent and reply by hand if
+needed**: no one will take that message up.
+
+*Already claimed* with no other machine: a message put back into INBOX
+after being handled (it gets a new UID and keeps the keyword), or a cache
+rebuilt on this machine.
+
+The trial `s` never claims, and says when the message is already claimed —
+by this machine, by another, or after an interruption. The keyword does
+not show in the message list; other clients, and the other users of a
+shared mailbox, may show it as a tag. It is removed from a message moved
+to another account BY THIS CLIENT; another client copies it along, and the
+rules of the receiving account then skip that message. The cache keeps,
+per INBOX message, whether the claim is this machine's or another's,
+without any time; the keyword itself is already in the cached copy of the
+flags.
 
 ### Where rules live
 
