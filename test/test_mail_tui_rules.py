@@ -428,6 +428,66 @@ class TestServiceLine(RulesCase):
         self.assertEqual(self.appels_systeme, [])
 
 
+class TestClaimLine(RulesCase):
+    """La ligne du mode de revendication du serveur, sous l'état du
+    service : lue dans l'état du moteur, relue après une passe."""
+
+    def static(self, app, selector):
+        from textual.widgets import Static
+
+        return self.q(app, selector, Static)
+
+    def mode(self, mode):
+        storage.save_state(
+            "perso", storage.EngineState(claim_mode=mode), base=self.base
+        )
+
+    async def test_the_rules_screen_shows_the_claim_mode(self):
+        from script.todo.mail.rules import engine
+
+        self.mode("plain")
+        app = self._app()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            ligne = self.static(app, "#rules_claim").content
+        self.assertEqual(str(ligne), engine.claim_mode_text("plain"))
+        self.assertEqual(str(ligne.style), "yellow")
+
+    async def test_an_atomic_claim_is_not_highlighted(self):
+        self.mode("atomic")
+        app = self._app()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            ligne = self.static(app, "#rules_claim").content
+        self.assertEqual(str(ligne), t("mail_rules_claim_atomic"))
+        self.assertEqual(str(ligne.style), "")
+
+    async def test_an_unknown_claim_mode_says_not_yet_checked(self):
+        app = self._app()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            ligne = self.text_of(app, "#rules_claim")
+        self.assertEqual(ligne, t("mail_rules_claim_unknown"))
+
+    async def test_a_rules_pass_refreshes_the_claim_line_of_an_open_rules_screen(
+        self,
+    ):
+        app = self._app()
+        async with app.run_test(size=self.SIZE) as pilot:
+            await self.open_rules(app, pilot)
+            self.assertEqual(
+                self.text_of(app, "#rules_claim"),
+                t("mail_rules_claim_unknown"),
+            )
+            self.mode("none")
+            app._run_rules(
+                [(Session(self.account, self.store, None, password="x"), None)]
+            )
+            await pilot.pause()
+            ligne = self.text_of(app, "#rules_claim")
+        self.assertEqual(ligne, t("mail_rules_claim_none"))
+
+
 class TestFilterEditor(RulesCase):
     async def test_a_nested_filter_is_written_as_expected(self):
         """ET(De glob, NON(Sujet mot), OU(À/Cc exact, Corps contient))."""

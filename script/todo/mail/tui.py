@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+from script.todo.mail.claim import without_claim
 from script.todo.mail.imap_sync import Syncer
 from script.todo.mail.store import Store, sweep_orphan_ephemeral
 
@@ -1215,6 +1216,15 @@ def rule_trial_lines(sim) -> list[tuple[str, str]]:
                 "yellow",
             )
         )
+    # `getattr` : une `Simulation` construite par un code plus ancien n'a
+    # pas d'état de revendication, et reste lisible.
+    revendication = {
+        "elsewhere": ("mail_rules_trial_claimed_elsewhere", "yellow"),
+        "uncertain": ("mail_rules_trial_claim_uncertain", "yellow"),
+        "here": ("mail_rules_trial_claimed_here", "dim"),
+    }.get(getattr(sim, "claim", "") or "")
+    if revendication is not None:
+        lines.append((t(revendication[0]), revendication[1]))
     if sim.authenticated is not None:
         if sim.auth_serv_id:
             lines.append(
@@ -4264,7 +4274,9 @@ def run_tui(
                     raw = session.avec_lien(
                         lambda _t: session.syncer.fetch_body(source, meta.uid)
                     )
-                    drapeaux = [d for d in (meta.flags or "").split() if d]
+                    # Sans le mot-clé de revendication : les règles du
+                    # compte d'arrivée liraient le message comme déjà traité.
+                    drapeaux = without_claim(meta.flags)
 
                     def deposer(transport):
                         transport.append(cible, raw, drapeaux, meta.date)
@@ -4794,6 +4806,7 @@ def run_tui(
                         _logger.info(
                             "règles %s : %s", rapport.account, rapport.status
                         )
+                self._rafraichir_revendication()
                 ligne = engine.summary_line(rapports)
                 if ligne:
                     precedent = self._status_text()
@@ -4807,6 +4820,24 @@ def run_tui(
                         self.refresh_current_folder()
             except Exception:
                 _logger.exception("passe des règles en échec")
+
+        def _rafraichir_revendication(self) -> None:
+            """Relit la ligne de revendication de l'écran des règles s'il
+            est l'écran actif : une passe vient peut-être d'inscrire le
+            mode du serveur. Un écran fermé entre-temps est ignoré."""
+
+            def faire() -> None:
+                ecran = self.screen
+                if isinstance(ecran, RulesScreen):
+                    ecran.refresh_claim()
+
+            try:
+                if self._thread_id_differs():
+                    self.call_from_thread(faire)
+                else:
+                    faire()
+            except (RuntimeError, NoMatches):
+                pass
 
         def _status_text(self) -> str:
             """Le texte de `#status`, lu sur le fil de l'interface."""
@@ -6702,6 +6733,7 @@ def run_tui(
         #rules_caps Input { width: 12; }
         #rules_caps Button { width: auto; }
         #rules_service { height: auto; padding: 0 1; color: $text-muted; }
+        #rules_claim { height: auto; padding: 0 1; color: $text-muted; }
         #rules_hint { height: auto; padding: 0 1; color: $text-muted; }
         #rules_status { height: auto; padding: 0 1; }
         """
@@ -6739,6 +6771,7 @@ def run_tui(
                     yield Static(
                         t("mail_service_status_reading"), id="rules_service"
                     )
+                    yield Static("", id="rules_claim")
                     yield Static("", id="rules_hint")
                     yield Static("", id="rules_status")
 
@@ -6766,6 +6799,7 @@ def run_tui(
             self.query_one("#rules_hint", Static).update(
                 Text(self._hint_text())
             )
+            self.refresh_claim()
             self.reload_rules()
             self._load_caps()
             table.focus()
@@ -6803,6 +6837,23 @@ def run_tui(
                 self.app.call_from_thread(self._afficher_service, texte)
             except (RuntimeError, NoMatches):
                 pass
+
+        def refresh_claim(self) -> None:
+            """Relit le mode de revendication du serveur (`state.json` du
+            moteur, un petit fichier lu sans fil) et l'écrit sous l'état du
+            service ; jaune quand la revendication n'est pas atomique, ou
+            impossible. Rien pour un écran sans base."""
+            if self.base is None:
+                return
+            try:
+                ligne = self.query_one("#rules_claim", Static)
+            except NoMatches:
+                return
+            mode = rules_storage.load_claim_mode(
+                self.account_name, base=self.base
+            )
+            style = "yellow" if mode in ("plain", "none") else ""
+            ligne.update(Text(rules_engine.claim_mode_text(mode), style=style))
 
         def _afficher_service(self, texte: str) -> None:
             try:

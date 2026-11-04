@@ -12,6 +12,7 @@ qui précéderait le dépôt, ou qui suivrait un dépôt non confirmé, perdrait
 le message pour de bon — aucun serveur ne le rendrait, et la corbeille
 elle-même ne le verrait jamais passer.
 """
+
 import unittest
 
 try:
@@ -152,6 +153,64 @@ class TestRemovingTheSource(DeuxComptesCase):
         lien.select("INBOX")
         self.assertFalse(lien.discard([1]))
         self.assertEqual(len(muet.folder("INBOX").messages), 1)
+
+
+def _application(sessions):
+    """La `MailApp` construite sans écran, capturée à sa création."""
+    import textual.app
+
+    from script.todo.mail.tui import run_tui
+
+    captees = []
+    origine = textual.app.App.__init__
+
+    def capte(app, *args, **kwargs):
+        origine(app, *args, **kwargs)
+        captees.append(app)
+
+    textual.app.App.__init__ = capte
+    try:
+        run_tui(run_app=False, sessions=sessions)
+    finally:
+        textual.app.App.__init__ = origine
+    return captees[-1]
+
+
+@requires_servers
+class TestMovingDropsTheClaimKeyword(MailSandboxCase):
+    def session(self, sandbox, nom):
+        from script.todo.mail.imap_sync import Syncer
+        from script.todo.mail.tui import Session
+
+        compte = sandbox_account(imap_port=sandbox.port, name=nom)
+        store = self.temp_store(compte)
+        lien = self.imap_transport(sandbox, compte)
+        session = Session(compte, store, Syncer(store, lien), password="x")
+        session.sync()
+        return session
+
+    def test_moving_to_another_account_drops_the_claim_keyword(self):
+        """Le compte d'arrivée lirait le mot-clé comme une revendication
+        déjà faite, et ses règles n'y répondraient jamais."""
+        source = self.imap_server()
+        source.folder("INBOX").deliver(
+            DEVIS, flags=["\\Seen", "$ErpLibreRule"]
+        )
+        cible = self.imap_server()
+        cible.folder("INBOX")
+        archives = cible.folder("Archives")
+        depart = self.session(source, "source")
+        arrivee = self.session(cible, "cible")
+        etat = depart.store.folder_state("INBOX")
+        meta = depart.store.list_messages(etat["id"])[0]
+        self.assertIn("$ErpLibreRule", meta.flags.split())
+        app = _application([depart, arrivee])
+        reussi, erreur = app._deplacer_ailleurs(
+            depart, "INBOX", meta, arrivee, "Archives", seul=False
+        )
+        self.assertEqual((reussi, erreur), (True, None))
+        _octets, drapeaux, _date = archives.appended[0]
+        self.assertEqual(list(drapeaux), ["\\Seen"])
 
 
 if __name__ == "__main__":
