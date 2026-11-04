@@ -19,7 +19,9 @@ Trois règles, et elles tiennent au fait qu'elle tourne À CÔTÉ du serveur
    ferait chercher une panne qui n'existe pas.
 2. Elle s'arrête à la PREMIÈRE réponse, quelle qu'elle soit. Un 303 vers
    /web/login, un 404, un 500 : tous prouvent que le registre est chargé,
-   ce qui est l'objet. Seul le refus de connexion ne compte pas.
+   ce qui est l'objet. Seul le refus de connexion ne compte pas. En mode
+   prefork, une requête par worker, toutes en même temps : chaque worker
+   charge son propre registre.
 3. Elle meurt au bout de deux minutes. Le réveil est un confort ; une
    sonde qui survit à son serveur en est un autre, mauvais.
 
@@ -127,6 +129,26 @@ def adresse(argv=(), config_path=None, journal=None):
     return hote, port
 
 
+def nombre_de_workers(argv=(), config_path=None):
+    """Le nombre de processus qui servent HTTP, au moins 1.
+
+    En mode prefork, chaque worker charge SON registre à sa première
+    requête : réveiller le serveur, c'est réveiller chacun d'eux. `--workers`
+    de la ligne de commande d'abord, puis `workers` de la configuration ;
+    0, ou absent, est le mode threadé, un seul registre.
+    """
+    valeur = None
+    for index, argument in enumerate(argv):
+        if argument == "--workers" and index + 1 < len(argv):
+            valeur = argv[index + 1]
+        elif argument.startswith("--workers="):
+            valeur = argument.split("=", 1)[1]
+    if valeur is None:
+        valeur = lib_analyse.read_config(config_path).get("workers", "")
+    valeur = str(valeur).strip()
+    return max(1, int(valeur)) if valeur.isdigit() else 1
+
+
 def base_a_reveiller(argv=(), config_path=None):
     """La base dont on veut le registre, ou None.
 
@@ -190,6 +212,30 @@ def sonder(
     return False
 
 
+def sonder_tous(cible, workers, delai_total=DELAI_TOTAL, sonde=None):
+    """Lance `workers` sondes EN MÊME TEMPS ; rend le nombre de réponses.
+
+    Un worker qui charge son registre n'accepte pas d'autre connexion : la
+    deuxième requête simultanée atterrit sur un autre worker, et ainsi de
+    suite. Envoyées l'une après l'autre, elles iraient toutes au premier,
+    déjà réveillé.
+    """
+    import threading
+
+    sonde = sonde or sonder
+    reponses = []
+
+    def une():
+        reponses.append(sonde(cible, delai_total=delai_total))
+
+    fils = [threading.Thread(target=une, daemon=True) for _ in range(workers)]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join()
+    return sum(1 for ok in reponses if ok)
+
+
 def main(argv=None):
     """Toujours rendre 0 : personne ne doit lire ce code de retour.
 
@@ -219,9 +265,11 @@ def main(argv=None):
             args.odoo_args, args.config
         )
         cible = url(hote, port, database)
+        workers = nombre_de_workers(args.odoo_args, args.config)
         if not args.quiet:
-            print(f"🔥 warmup: {cible}", flush=True)
-        sonder(cible, delai_total=args.timeout)
+            fois = f" ×{workers}" if workers > 1 else ""
+            print(f"🔥 warmup: {cible}{fois}", flush=True)
+        sonder_tous(cible, workers, delai_total=args.timeout)
     except Exception:  # noqa: BLE001 - le réveil est un confort, pas un dû
         pass
     return 0
