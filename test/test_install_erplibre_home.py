@@ -21,10 +21,12 @@ Ce que ces tests gardent :
 - --stream-deck clone les jeux, quand ils manquent, à la révision que leur
   manifeste nomme, main, que chaque exécution suit ; un clone ordinaire
   propre y est amené, une branche ou du travail local le retient, un clone
-  qui échoue ne laisse rien ;
+  qui échoue ne laisse rien, un checkout de repo ne bouge pas ; ils passent
+  avant le venv, qui installe leurs dépendances ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
 - --uninstall retire tout, --uninstall --stream-deck tout sauf
-  l'extension, et aucun des deux ne vérifie le système ;
+  l'extension ; aucun des deux ne vérifie le système ni ne retire les
+  jeux ;
 - le niveau Stream Deck écrit l'unité du service et ses réglages ; une
   option absente garde la valeur déjà en place, le défaut ne vaut que pour
   une clé absente ; il n'active l'unité qu'avec --autostart et ne la
@@ -387,6 +389,21 @@ class LeDryRun(Installateur):
         fini = self.lancer("--dry-run", "--stream-deck")
         (ligne,) = self.lignes(fini, "games: ")
         self.assertIn(str(RACINE / "script/stream_deck/games"), ligne)
+
+    def test_the_games_come_before_the_venv_that_takes_their_requirements(
+        self,
+    ):
+        """Le venv installe le requirements.txt des jeux s'il est là : des
+        jeux clonés après lui laisseraient une première installation sans
+        leurs dépendances jusqu'à la suivante."""
+        fini = self.lancer("--dry-run", "--stream-deck")
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        etapes = [
+            ligne.split(":")[0]
+            for ligne in fini.stdout.splitlines()
+            if ligne.startswith(("games: ", "venv: "))
+        ]
+        self.assertEqual(["games", "venv"], etapes)
 
     def test_the_translations_use_msgfmt_check_at_both_levels(self):
         attendus = [str(EXTENSION / "tools/migrate_legacy.py")] + [
@@ -1296,6 +1313,52 @@ class TestJeux(unittest.TestCase):
             self.assertEqual("games updated: %s (main)\n" % jeux, fait.stdout)
             self.assertTrue((jeux / "autre.py").exists())
 
+    def test_a_repo_checkout_with_a_linked_git_is_never_moved(self):
+        """Le .git d'un projet de repo est un lien : repo sync le met à
+        jour, et l'installateur n'y fait ni fetch ni checkout, même quand
+        main a avancé."""
+        with tempfile.TemporaryDirectory() as dossier:
+            _sha, manifeste = depot_de_jeux(dossier)
+            self.sur_main(manifeste)
+            self.cloner(dossier, manifeste)
+            jeux = Path(dossier, "games")
+            avant = self.tete(jeux)
+            depot = Path(dossier, "jeux.git")
+            Path(depot, "game_neuf.py").write_text("")
+            subprocess.run(
+                ["git", "-C", str(depot), "add", "game_neuf.py"], check=True
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(depot),
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "trois",
+                ],
+                check=True,
+            )
+            projet = Path(dossier, "projet.git")
+            shutil.move(jeux / ".git", projet)
+            os.symlink(projet, jeux / ".git")
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual("\n", fait.stdout)
+            self.assertEqual(avant, self.tete(jeux))
+            self.assertFalse((jeux / "game_neuf.py").exists())
+            fait = sourcer(
+                'GAMES_DIR="$DOSSIER/games"\nGAMES_MANIFEST="$MANIFESTE"\n'
+                "DRY_RUN=1\nstep_games\n",
+                {"DOSSIER": dossier, "MANIFESTE": manifeste},
+            )
+            self.assertEqual("games: keep %s\n" % jeux, fait.stdout)
+
     def test_the_old_repo_layout_is_left_to_repo(self):
         """Un .git répertoire dont objects/ est un lien : l'ancienne
         disposition de repo, que l'installateur ne met pas à jour."""
@@ -1580,6 +1643,47 @@ class TestDesinstallation(unittest.TestCase):
             self.assertIn("sudo udevadm control --reload-rules", premier)
             self.assertNotIn("gsettings", premier + second)
             self.assertEqual(second, "")
+
+    def test_neither_uninstall_removes_the_games(self):
+        """Les jeux sont un dépôt git que l'installateur n'a pas toujours
+        cloné lui-même, avec ses branches et son travail local : les deux
+        désinstallations le laissent, comme le checkout d'ERPLibre."""
+        for niveau in ("0", "1"):
+            with self.subTest(stream_deck=niveau):
+                with tempfile.TemporaryDirectory() as dossier:
+                    base = Path(dossier, "extensions")
+                    base.mkdir()
+                    (base / UUID).symlink_to(EXTENSION)
+                    Path(dossier, "70-streamdeck.rules").write_text("x\n")
+                    Path(dossier, "venv/bin").mkdir(parents=True)
+                    jeux = Path(dossier, "games")
+                    (jeux / ".git").mkdir(parents=True)
+                    (jeux / "games_cli.py").write_text("x")
+                    fragment = (
+                        'EXT_LINK="$DOSSIER/extensions/$UUID"\n'
+                        'UDEV_RULE="$DOSSIER/70-streamdeck.rules"\n'
+                        'VENV="$DOSSIER/venv"\n'
+                        'GAMES_DIR="$DOSSIER/games"\n'
+                        'sudo() { "$@"; }\n'
+                        "udevadm() { :; }\n"
+                        "gsettings_bus() {\n"
+                        '    [ "$1" = get ] && echo "[\'$UUID\']"\n'
+                        "    return 0\n"
+                        "}\n"
+                        'STREAM_DECK="$NIVEAU"\n'
+                        "step_uninstall\n"
+                    )
+                    fait = sourcer(
+                        fragment,
+                        {"DOSSIER": dossier, "UUID": UUID, "NIVEAU": niveau},
+                    )
+                    self.assertEqual(0, fait.returncode, fait.stderr)
+                    self.assertFalse(Path(dossier, "venv").exists())
+                    self.assertTrue(jeux.is_dir())
+                    self.assertEqual(
+                        [".git", "games_cli.py"], sorted(os.listdir(jeux))
+                    )
+                    self.assertNotIn(str(jeux), fait.stdout)
 
     # gsettings simulé : « get » lit le fichier de la clé, « set »
     # l'écrit ; ECHEC_GET ou ECHEC_SET font échouer l'opération.

@@ -8,13 +8,17 @@ script/stream_deck/.
 Ce que ces tests gardent :
 
 - ERPLibre ne suit aucun fichier de games/, qu'il ignore, ni aucun jeu à
-  côté du programme du deck ;
-- le manifeste des jeux suit leur branche main, à leur chemin ; seule
+  côté du programme du deck ; le programme du deck, le contrôleur et le
+  service ne lisent rien de games/ ;
+- le manifeste des jeux suit leur branche main, à leur chemin, dans le
+  groupe streamdeck, sous le remote TechnoLibre du mobile ; seule
   conf/git_manifest_streamdeck.csv le nomme, que git_merge_repo_manifest.py
   ne lit que si les jeux sont là ou avec --with_streamdeck, comme pour le
   mobile : un serveur Odoo ne les clone pas ;
 - games_contract porte une version MAJEUR.MINEUR, et des jeux clonés dont
   la version MAJEURE diffère font échouer la suite ;
+- l'extension GNOME parle à la galerie sur le port 8042, celui que la
+  galerie du clone sert ;
 - le menu TODO et la galerie trouvent exactement les jeux du clone.
 
 Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque.
@@ -37,6 +41,9 @@ GAMES_DIR = DECK_DIR / "games"
 GAMES_PATH = "script/stream_deck/games"
 MANIFESTE = "manifest/git_manifest_streamdeck_game.xml"
 CONTRAT = DECK_DIR / "games_contract"
+CONTROLEUR_JS = (
+    ROOT / "script/gnome-extension/erplibre_home/indicators/controller.js"
+)
 sys.argv = ["todo.py"]
 from script.todo import todo as todo_mod  # noqa: E402
 
@@ -91,6 +98,27 @@ class LaFrontiere(unittest.TestCase):
         self.assertTrue((DECK_DIR / "Assets").is_dir())
         self.assertTrue((DECK_DIR / "erplibre_controller.py").is_file())
 
+    def test_the_deck_program_controller_and_service_never_read_games(self):
+        """Le programme du deck, le contrôleur, le verrou et le point
+        d'entrée du service tournent sans games/ : un chemin vers les jeux
+        dans l'un d'eux les rendrait dépendants d'un clone que seul le
+        niveau Stream Deck pose."""
+        motif = re.compile(
+            r"games_cli|DECK_GAMES_DIR|deck_games_present"
+            r"|stream_deck/games|[\"'/]games[\"'/]"
+        )
+        fichiers = sorted((DECK_DIR / "erplibre_streamdeck").rglob("*.py"))
+        self.assertTrue(fichiers)
+        fichiers += [
+            DECK_DIR / "erplibre_controller.py",
+            DECK_DIR / "deck_lock.py",
+            ROOT / "script/install/erplibre_home_deck.sh",
+        ]
+        for fichier in fichiers:
+            with self.subTest(fichier=str(fichier.relative_to(ROOT))):
+                texte = fichier.read_text(encoding="utf-8")
+                self.assertEqual([], motif.findall(texte))
+
 
 class LeManifeste(unittest.TestCase):
     def setUp(self):
@@ -113,6 +141,30 @@ class LeManifeste(unittest.TestCase):
             remotes[self.projet.get("remote")],
         )
         self.assertEqual("main", self.projet.get("revision"))
+
+    def test_it_belongs_to_the_streamdeck_group(self):
+        """Les init de repo qui nomment leurs groupes prennent les jeux
+        par streamdeck ; un projet hors de ce groupe en sortirait, et repo
+        supprimerait son répertoire."""
+        groupes = self.projet.get("groups", "").split(",")
+        self.assertIn("streamdeck", groupes)
+
+    def test_its_remote_is_named_technolibre_like_the_mobile(self):
+        """repo nomme le remote git d'un projet d'après celui du
+        manifeste : la documentation donne « git fetch TechnoLibre main »
+        pour un checkout de repo, comme pour le mobile."""
+        self.assertEqual("TechnoLibre", self.projet.get("remote"))
+        mobile = ET.parse(ROOT / "manifest/git_manifest_mobile_home.xml")
+        remotes_du_mobile = {
+            r.get("name"): r.get("fetch")
+            for r in mobile.getroot().iter("remote")
+        }
+        (remote,) = [
+            r
+            for r in self.racine.iter("remote")
+            if r.get("name") == "TechnoLibre"
+        ]
+        self.assertEqual(remotes_du_mobile["TechnoLibre"], remote.get("fetch"))
 
     def test_only_the_streamdeck_list_names_it(self):
         """Les listes générales entrent dans toute fusion, celle d'un
@@ -148,6 +200,31 @@ class LeContrat(unittest.TestCase):
             "games_cli", GAMES_DIR / "games_cli.py"
         ).CONTRACT_VERSION
         self.assertEqual(self.majeure(attendue), self.majeure(clonee))
+
+
+def port_de_l_extension():
+    """Le port de GALLERY_PORT dans controller.js, après avoir vérifié que
+    GALLERY_URL, par où passent /api/games et /launch/<id>, s'en sert."""
+    texte = CONTROLEUR_JS.read_text(encoding="utf-8")
+    (port,) = re.findall(r"^const GALLERY_PORT = (\d+);$", texte, re.M)
+    (url,) = re.findall(r"^const GALLERY_URL = `([^`]*)`;$", texte, re.M)
+    if url != "http://localhost:${GALLERY_PORT}":
+        raise AssertionError("GALLERY_URL n'est pas sur GALLERY_PORT : " + url)
+    return int(port)
+
+
+class LePortDeLaGalerie(unittest.TestCase):
+    """Contrat 5 : la galerie sert sur 8042, et l'extension GNOME l'y
+    cherche. Un port qui diverge montre la galerie hors ligne dans le menu
+    de l'extension alors qu'elle tourne."""
+
+    def test_the_extension_talks_to_the_gallery_on_8042(self):
+        self.assertEqual(8042, port_de_l_extension())
+
+    @SANS_JEUX
+    def test_the_extension_talks_on_the_port_the_gallery_serves(self):
+        galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
+        self.assertEqual(galerie.PORT, port_de_l_extension())
 
 
 @SANS_JEUX
