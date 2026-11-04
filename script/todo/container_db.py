@@ -136,10 +136,23 @@ cat > "$travail/__ZIP__"
 """.replace("__TRAVAIL__", TRAVAIL).replace("__ZIP__", ZIP)
 )
 
+# La première ligne de l'entrée standard : le mot de passe maître, que la
+# commande « db » d'ERPLibre (erplibre_odoo_cli_base) exige pour drop et pour
+# « load -f » d'une base existante, et lit dans MASTER_PWD. Il arrive par
+# l'entrée standard et non par « exec -e MASTER_PWD=… », que ps montre sur
+# l'hôte et que sudo effacerait. Une ligne vide laisse MASTER_PWD tel que
+# l'environnement du conteneur le donne, ou absent.
+_MOT_DE_PASSE_MAITRE = r"""
+IFS= read -r saisi || true
+if [ -n "$saisi" ]; then export MASTER_PWD="$saisi"; fi
+unset saisi
+"""
+
 # $1 : la base ; la suite : les options de « db load ». L'absence de la
 # commande « db » (antérieure à Odoo 18) sort en 3 avant de rien toucher.
 RESTAURER = (
     _ODOO
+    + _MOT_DE_PASSE_MAITRE
     + r"""
 travail="$data_dir/__TRAVAIL__"
 base=$1
@@ -164,6 +177,7 @@ rm -rf "$data_dir/__TRAVAIL__"
 # laisserait sur le volume.
 SUPPRIMER = (
     _ODOO
+    + _MOT_DE_PASSE_MAITRE
     + r"""
 if [ ! -f "$(dirname "$bin")/odoo/cli/db.py" ]; then
   echo "odoo-bin db: absent"

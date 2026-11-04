@@ -35,8 +35,12 @@ from script.todo.todo import TODO  # noqa: E402
 MOT_DE_PASSE = "motdepasse-essai-7f3a"
 
 
-def bash(script, args=(), env=None, entree=None):
-    """Lance `script` comme le fait « exec … bash -c script bash args »."""
+def bash(script, args=(), env=None, entree=b""):
+    """Lance `script` comme le fait « exec … bash -c script bash args ».
+
+    L'entrée est vide par défaut, et non celle du lanceur de tests : un
+    script qui lit une ligne y attendrait jusqu'au délai.
+    """
     return subprocess.run(
         ["bash", "-c", script, "bash", *args],
         env=env,
@@ -183,6 +187,36 @@ class TestScripts(unittest.TestCase):
         self.assertFalse((self.p.data / container_db.TRAVAIL).exists())
         self.assertTrue(self.p.data.is_dir())
 
+    def test_le_mot_de_passe_maitre_arrive_par_l_entree_standard(self):
+        for script, args in (
+            (container_db.RESTAURER, ["essai_base", "-f"]),
+            (container_db.SUPPRIMER, ["essai_base"]),
+        ):
+            fin = bash(
+                script, args, env=self.p.env(), entree=b"maitre-invente-71\n"
+            )
+            self.assertEqual(fin.returncode, 0, fin.stderr)
+            self.assertEqual(
+                self.p.environ()["MASTER_PWD"], "maitre-invente-71"
+            )
+            self.assertNotIn("maitre-invente-71", " ".join(self.p.argv()))
+
+    def test_une_ligne_vide_garde_le_mot_de_passe_du_conteneur(self):
+        bash(
+            container_db.SUPPRIMER,
+            ["essai_base"],
+            env=self.p.env(MASTER_PWD="du-conteneur-72"),
+            entree=b"\n",
+        )
+        self.assertEqual(self.p.environ()["MASTER_PWD"], "du-conteneur-72")
+        bash(
+            container_db.SUPPRIMER,
+            ["essai_base"],
+            env=self.p.env(),
+            entree=b"",
+        )
+        self.assertNotIn("MASTER_PWD", self.p.environ())
+
     def test_la_suppression_passe_par_db_drop(self):
         bash(container_db.SUPPRIMER, ["essai_base"], env=self.p.env())
         self.assertEqual(
@@ -303,6 +337,8 @@ class TestMenuRestauration(unittest.TestCase):
     }
 
     def setUp(self):
+        # Les réponses à getpass, dans l'ordre ; un appel de trop lève.
+        self.maitre = ["maitre-invente-70"]
         self._tmp = tempfile.TemporaryDirectory()
         self.zip = os.path.join(self._tmp.name, "essai_base.zip")
         with zipfile.ZipFile(self.zip, "w") as z:
@@ -313,6 +349,7 @@ class TestMenuRestauration(unittest.TestCase):
 
     def lancer(self, entrees, prompts=("essai_base",), bases=(), codes=None):
         self.libelles = []
+        self.secrets = []
         todo = TODO.__new__(TODO)
         todo.db_manager = FauxGestionnaire(self.zip)
         todo._container_fiche = lambda: {"moteur": "docker", "sans_sudo": True}
@@ -321,12 +358,13 @@ class TestMenuRestauration(unittest.TestCase):
         lances = []
         codes = dict(codes or {})
 
-        def dans(cmd, libelle, entree=None):
+        def dans(cmd, libelle, entree=None, secret=None):
             script = cmd[cmd.index("-c") + 1]
             for nom in ("RECEVOIR", "RESTAURER", "NETTOYER", "SUPPRIMER"):
                 if script == getattr(container_db, nom):
                     lances.append((nom, cmd[cmd.index("-c") + 3 :]))
                     self.libelles.append(libelle)
+                    self.secrets.append((nom, secret, "-i" in cmd))
                     return codes.get(nom, 0)
             raise AssertionError(cmd)
 
@@ -343,6 +381,11 @@ class TestMenuRestauration(unittest.TestCase):
                 container_menu.click, "prompt", side_effect=list(prompts)
             ),
             mock.patch("builtins.input", lambda *a: next(suite, "")),
+            mock.patch.object(
+                container_menu.getpass,
+                "getpass",
+                side_effect=lambda *a: self.maitre.pop(0),
+            ),
             contextlib.redirect_stdout(sortie),
         ):
             todo._container_restaurer_base()
@@ -367,6 +410,15 @@ class TestMenuRestauration(unittest.TestCase):
         self.assertIn("odoo-bin db load essai_base", restauration)
         for libelle in self.libelles:
             self.assertNotIn("\n", libelle)
+
+    def test_le_secret_est_la_premiere_ligne_de_l_entree(self):
+        todo = TODO.__new__(TODO)
+        code = todo._container_dans(
+            ["sh", "-c", 'read l; [ "$l" = "maitre-invente-76" ]'],
+            "libelle",
+            secret="maitre-invente-76",
+        )
+        self.assertEqual(code, 0)
 
     def test_l_execution_passe_par_le_journal(self):
         todo = TODO.__new__(TODO)
@@ -394,6 +446,16 @@ class TestMenuRestauration(unittest.TestCase):
         self.assertEqual(
             lances[1], ("RESTAURER", ["essai_base", "-f", "-n", "--move"])
         )
+
+    def test_une_base_neuve_ne_demande_pas_le_mot_de_passe(self):
+        self.maitre = []
+        self.lancer(["n", "", "o"])
+        self.assertIn(("RESTAURER", "", True), self.secrets)
+
+    def test_restaurer_par_dessus_demande_le_mot_de_passe(self):
+        self.maitre = ["maitre-invente-73"]
+        self.lancer(["o", "n", "", "o"], bases=[("essai_base", False)])
+        self.assertIn(("RESTAURER", "maitre-invente-73", True), self.secrets)
 
     def test_par_defaut_une_copie_avec_un_nouvel_uuid(self):
         """Le défaut du gestionnaire web d'Odoo : « This database is a copy »."""
@@ -425,6 +487,7 @@ class TestMenuRestauration(unittest.TestCase):
         )
 
     def test_la_base_vide_laissee_par_un_echec_peut_partir(self):
+        self.maitre = ["maitre-invente-74", "maitre-invente-75"]
         todo_bases = [("essai_base", True)]
         lances, _ = self.lancer(
             ["o", "n", "", "o", "o"],
@@ -435,6 +498,7 @@ class TestMenuRestauration(unittest.TestCase):
             [n for n, _ in lances],
             ["RECEVOIR", "RESTAURER", "NETTOYER", "SUPPRIMER"],
         )
+        self.assertIn(("SUPPRIMER", "maitre-invente-75", True), self.secrets)
 
 
 if __name__ == "__main__":
