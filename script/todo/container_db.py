@@ -239,6 +239,11 @@ def executer(fiche, conteneur, script, args=(), interactif=False):
     )
 
 
+def libelle(conteneur, action):
+    """La ligne du journal pour une commande lancée dans le conteneur."""
+    return f"exec {conteneur['nom']} ({compte(conteneur)}): {action}"
+
+
 def lire_sonde(sortie):
     """La sortie de SONDE en dictionnaire.
 

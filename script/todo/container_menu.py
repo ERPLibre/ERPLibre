@@ -31,7 +31,7 @@ import textwrap
 
 import click
 
-from script.todo import container_db, container_runtime
+from script.todo import container_db, container_runtime, todo_journal
 from script.todo.todo_i18n import t
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
@@ -1161,21 +1161,22 @@ class ContainerMenuMixin:
     # ------------------------------------------------------------------
     # Les bases du conteneur ERPLibre
 
-    def _container_dans(self, cmd, entree=None):
-        """Lance une commande « exec » au terminal et rend son code.
+    def _container_dans(self, cmd, libelle, entree=None):
+        """Lance une commande « exec » et rend son code.
 
         Hors de exec_command_live : celui-ci recopie la commande à l'écran,
         et ces commandes portent un script shell entier. Le menu annonce
-        lui-même ce qu'il lance, en une ligne.
+        lui-même ce qu'il lance, en une ligne ; le journal de session reçoit
+        `libelle` à la place du script, puis la sortie et le code. Aucune
+        de ces commandes ne demande de saisie : le tube de lancer_journalise
+        ne leur retire rien.
         """
         # Ce que le menu vient d'écrire doit précéder la sortie du conteneur,
         # même quand stdout n'est pas un terminal.
         sys.stdout.flush()
-        try:
-            return subprocess.run(cmd, stdin=entree).returncode
-        except OSError as err:
-            print(f"❌ {err}")
-            return 127
+        return todo_journal.lancer_journalise(
+            cmd, libelle=libelle, stdin=entree
+        )
 
     def _container_cible_erplibre(self, fiche):
         """Le conteneur ERPLibre en marche à viser, ou None.
@@ -1371,6 +1372,11 @@ class ContainerMenuMixin:
                         container_db.RECEVOIR,
                         interactif=True,
                     ),
+                    container_db.libelle(
+                        conteneur,
+                        f"cat > {sonde['data_dir']}/{container_db.TRAVAIL}"
+                        f"/{container_db.ZIP}",
+                    ),
                     entree=entree,
                 )
             if code == 0:
@@ -1381,11 +1387,19 @@ class ContainerMenuMixin:
                         conteneur,
                         container_db.RESTAURER,
                         [nom, *options],
-                    )
+                    ),
+                    container_db.libelle(
+                        conteneur,
+                        f"odoo-bin db load {' '.join([*options, nom])}",
+                    ),
                 )
         finally:
             self._container_dans(
-                container_db.executer(fiche, conteneur, container_db.NETTOYER)
+                container_db.executer(fiche, conteneur, container_db.NETTOYER),
+                container_db.libelle(
+                    conteneur,
+                    f"rm -rf {sonde['data_dir']}/{container_db.TRAVAIL}",
+                ),
             )
         if code == 0:
             print(f"✅ {t('Database restored:')} {nom}")
@@ -1403,7 +1417,8 @@ class ContainerMenuMixin:
                 self._container_dans(
                     container_db.executer(
                         fiche, conteneur, container_db.SUPPRIMER, [nom]
-                    )
+                    ),
+                    container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
                 )
 
     def _container_supprimer_base(self):
@@ -1440,7 +1455,8 @@ class ContainerMenuMixin:
         code = self._container_dans(
             container_db.executer(
                 fiche, conteneur, container_db.SUPPRIMER, [nom]
-            )
+            ),
+            container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
         )
         if code == 0:
             print(f"✅ {t('Database deleted:')} {nom}")

@@ -312,6 +312,7 @@ class TestMenuRestauration(unittest.TestCase):
         self._tmp.cleanup()
 
     def lancer(self, entrees, prompts=("essai_base",), bases=(), codes=None):
+        self.libelles = []
         todo = TODO.__new__(TODO)
         todo.db_manager = FauxGestionnaire(self.zip)
         todo._container_fiche = lambda: {"moteur": "docker", "sans_sudo": True}
@@ -320,11 +321,12 @@ class TestMenuRestauration(unittest.TestCase):
         lances = []
         codes = dict(codes or {})
 
-        def dans(cmd, entree=None):
+        def dans(cmd, libelle, entree=None):
             script = cmd[cmd.index("-c") + 1]
             for nom in ("RECEVOIR", "RESTAURER", "NETTOYER", "SUPPRIMER"):
                 if script == getattr(container_db, nom):
                     lances.append((nom, cmd[cmd.index("-c") + 3 :]))
+                    self.libelles.append(libelle)
                     return codes.get(nom, 0)
             raise AssertionError(cmd)
 
@@ -355,6 +357,28 @@ class TestMenuRestauration(unittest.TestCase):
                 ("RESTAURER", ["essai_base"]),
                 ("NETTOYER", []),
             ],
+        )
+
+    def test_le_journal_recoit_un_libelle_et_non_le_script(self):
+        self.lancer(["n", "", "o"])
+        self.assertEqual(len(self.libelles), 3)
+        restauration = self.libelles[1]
+        self.assertIn("essai-ERPLibre-1 (odoo)", restauration)
+        self.assertIn("odoo-bin db load essai_base", restauration)
+        for libelle in self.libelles:
+            self.assertNotIn("\n", libelle)
+
+    def test_l_execution_passe_par_le_journal(self):
+        todo = TODO.__new__(TODO)
+        with mock.patch.object(
+            container_menu.todo_journal, "lancer_journalise", return_value=7
+        ) as lancer:
+            code = todo._container_dans(
+                ["docker", "exec"], "libelle", "entree"
+            )
+        self.assertEqual(code, 7)
+        lancer.assert_called_once_with(
+            ["docker", "exec"], libelle="libelle", stdin="entree"
         )
 
     def test_un_echec_de_copie_nettoie_et_ne_restaure_pas(self):
