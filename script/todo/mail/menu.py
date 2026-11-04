@@ -15,7 +15,6 @@ import getpass
 import logging
 import os
 import resource
-import shutil
 import sys
 import unicodedata
 import warnings
@@ -29,11 +28,33 @@ from script.todo.mail import account_setup
 from script.todo.mail import accounts as mail_accounts
 from script.todo.mail.accounts import PRESETS, AccountError
 from script.todo.mail.secrets import SecretError, SecretStore
-from script.todo.mail.store import Store, StoreError, resolve_mode
+from script.todo.mail.store import (
+    CONVERT_STATE_NAME,
+    PERSISTENT_MODES,
+    PROBE_UNKNOWN,
+    CacheBusy,
+    CacheKeyMissing,
+    CacheModeMismatch,
+    Store,
+    StoreError,
+    cache_ctl_dir,
+    cache_exclusive,
+    cache_root,
+    default_base,
+    epoch_salted_clear,
+    has_clear_residue,
+    inscribed_mode,
+    mode_request,
+    probe_connection,
+    resolve_mode,
+    shown_mode,
+)
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 CACHE_MODES = ("clear", "encrypted", "ephemeral")
+
+_logger = logging.getLogger(__name__)
 
 # Chemin proposé par défaut pour un kdbx nouvellement créé — voir
 # `account_setup.py`, la seule source de vérité, aussi utilisée par le TUI.
@@ -115,10 +136,22 @@ def secret_store_for(todo) -> SecretStore:
 
 
 def cache_summary(accounts, base=None, prefs_get=None) -> list[dict]:
-    """Nom, mode effectif et taille sur disque, pour l'écran de cache."""
+    """Nom, mode effectif, mode inscrit et taille sur disque, pour l'écran
+    de cache.
+
+    `inscribed` est le mode inscrit dans le cache persistant (None sans
+    cache) ; `refused` dit qu'une ouverture serait refusée : le mode
+    demandé est persistant et le cache en inscrit un autre (illisible
+    exclu : l'ouverture tranche alors sous son verrou)."""
     rows = []
     for account in accounts:
-        mode = resolve_mode(account, prefs_get)
+        mode = resolve_mode(account, prefs_get, base=base)
+        inscrit = inscribed_mode(account, base)
+        refused = (
+            mode in PERSISTENT_MODES
+            and inscrit not in (None, PROBE_UNKNOWN)
+            and inscrit != mode
+        )
         size = 0
         try:
             root = Store(account, mode=mode, base=base).root
@@ -131,7 +164,15 @@ def cache_summary(accounts, base=None, prefs_get=None) -> list[dict]:
             # inaccessible ne doivent pas empêcher d'afficher les AUTRES
             # comptes : la taille retombe simplement à zéro pour celui-ci.
             size = 0
-        rows.append({"name": account.name, "mode": mode, "size": size})
+        rows.append(
+            {
+                "name": account.name,
+                "mode": mode,
+                "size": size,
+                "inscribed": inscrit,
+                "refused": refused,
+            }
+        )
     return rows
 
 
@@ -205,7 +246,7 @@ def prompt_mail_rules(todo, *, base=None) -> None:
     if account is None:
         return
     rules_base = storage.base_of(
-        Store(account, mode=resolve_mode(account), base=base)
+        Store(account, mode=resolve_mode(account, base=base), base=base)
     )
     if rules_base is None:
         print(t("mail_rules_ephemeral"))
@@ -579,11 +620,11 @@ def _show_rules_log(todo, account, base_rules, base=None) -> None:
         }
     except RuleError:
         noms = {}
-    mode = resolve_mode(account)
     magasin = Store(
         account,
-        mode=mode,
-        secrets=secret_store_for(todo) if mode != "clear" else None,
+        secrets=secret_store_for(todo)
+        if _needs_vault(account, base)
+        else None,
         base=base,
     )
     try:
@@ -612,14 +653,27 @@ def _show_rules_log(todo, account, base_rules, base=None) -> None:
         )
 
 
+def _needs_vault(account, base=None) -> bool:
+    """Vrai si l'ouverture du cache du compte peut demander une clé : son
+    mode résolu n'est pas `clear`, ou son cache ne se lit pas (l'ouverture
+    tranche alors sous son verrou, et peut le trouver chiffré)."""
+    return (
+        resolve_mode(account, base=base) != "clear"
+        or inscribed_mode(account, base) == PROBE_UNKNOWN
+    )
+
+
 def _open_store(todo, account, base=None) -> Store:
     """Le cache du compte, ouvert ; le coffre n'est demandé que pour un
-    cache chiffré."""
-    mode = resolve_mode(account)
+    cache chiffré. Le `Store` ne reçoit pas de mode : une reprise de
+    conversion faite par sa propre ouverture, ou une inscription lue sous
+    son verrou, décident alors à sa place quand le compte ne demande
+    rien."""
     magasin = Store(
         account,
-        mode=mode,
-        secrets=secret_store_for(todo) if mode != "clear" else None,
+        secrets=secret_store_for(todo)
+        if _needs_vault(account, base)
+        else None,
         base=base,
     )
     magasin.open()
@@ -814,7 +868,6 @@ def _show_stats(todo, *, base=None) -> None:
     pour afficher des chiffres qu'il rend sans elle.
     """
     from script.todo.mail import stats
-    from script.todo.mail.store import Store, resolve_mode
 
     comptes = _load_accounts()
     if not comptes:
@@ -822,14 +875,13 @@ def _show_stats(todo, *, base=None) -> None:
         return
     coffre = None
     for compte in comptes:
-        mode = resolve_mode(compte)
-        if mode != "clear" and coffre is None:
+        besoin = _needs_vault(compte, base)
+        if besoin and coffre is None:
             coffre = secret_store_for(todo)
         print(f"\n=== {compte.name} ===")
         magasin = Store(
             compte,
-            mode=mode,
-            secrets=coffre if mode != "clear" else None,
+            secrets=coffre if besoin else None,
             base=base,
         )
         try:
@@ -1315,7 +1367,10 @@ def _pick_account(prompt_key="mail_ask_account"):
         return None, accounts
 
 
-def _delete_account(todo) -> None:
+def _delete_account(todo, *, base=None) -> None:
+    """Retire le compte de la configuration. Son cache reste sur le
+    disque ; une ancienne copie laissée par une conversion interrompue est
+    effacée, sous le verrou exclusif s'il s'obtient."""
     account, accounts = _pick_account()
     if account is None:
         return
@@ -1326,7 +1381,26 @@ def _delete_account(todo) -> None:
         # garder le compte dans la configuration.
         pass
     mail_accounts.save([a for a in accounts if a.name != account.name])
+    _finish_pending_conversion(account.name, base)
     print(t("mail_account_deleted"))
+
+
+def _finish_pending_conversion(nom: str, base=None) -> None:
+    """`cache_convert.recover` sous l'exclusif, s'il s'obtient et que le
+    dossier de contrôle du compte existe ; une erreur est consignée, jamais
+    levée."""
+    from script.todo.mail import cache_convert
+
+    try:
+        if not os.path.lexists(cache_ctl_dir(nom, base, create=False)):
+            return
+        with cache_exclusive(nom, base) as tenu:
+            if tenu:
+                cache_convert.recover(nom, base)
+    except (StoreError, OSError) as exc:
+        _logger.warning(
+            "reprise de conversion de %s impossible : %s", nom, exc
+        )
 
 
 def _write_template() -> None:
@@ -1449,13 +1523,17 @@ def _test_account(todo) -> None:
     print(f"{t('mail_connection_ok')} {len(folders)}")
 
 
-def prompt_mail_cache(todo) -> None:
+def prompt_mail_cache(todo, *, base=None) -> None:
+    """Menu [4] : défaut général du mode, mode d'un compte, taille et
+    purge, conversion d'un cache d'un mode à l'autre. `base` est la base
+    des caches (`default_base()` sans elle)."""
     while True:
         current = todo_prefs.get("mail_cache_mode", "clear")
         help_info = f"""{todo._menu_header()}
 [1] {t("mail_cache_default_mode")} ({current})
 [2] {t("mail_cache_account_mode")}
 [3] {t("mail_cache_size_purge")}
+[4] {t("mail_cache_convert")}
 {retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
@@ -1464,7 +1542,7 @@ def prompt_mail_cache(todo) -> None:
         if status == "1":
             mode = input(t("mail_ask_mode")).strip()
             if mode in CACHE_MODES:
-                todo_prefs.set("mail_cache_mode", mode)
+                _reconcile_default(todo, mode, base=base)
             else:
                 print(t("Command not found !"))
         elif status == "2":
@@ -1472,38 +1550,469 @@ def prompt_mail_cache(todo) -> None:
             if account is None:
                 continue
             mode = input(t("mail_ask_mode")).strip()
-            account.cache_mode = mode if mode in CACHE_MODES else None
-            mail_accounts.save(accounts)
+            _account_mode_entry(
+                todo,
+                account,
+                accounts,
+                mode if mode in CACHE_MODES else None,
+                base=base,
+            )
         elif status == "3":
-            _cache_size_and_purge(todo)
+            _cache_size_and_purge(todo, base=base)
+        elif status == "4":
+            _convert_entry(todo, base=base)
         else:
             print(t("Command not found !"))
 
 
-def _cache_size_and_purge(todo) -> None:
+class _NoAccountMode:
+    """Un compte sans mode propre : `mode_request` n'y lit que la
+    préférence générale."""
+
+    cache_mode = None
+
+
+def _general_request(prefs_get=None) -> str | None:
+    """La préférence générale si elle est lisible et valide, sinon None."""
+    return mode_request(_NoAccountMode(), prefs_get)
+
+
+def _settle_account_mode(account, accounts, target, prefs_get=None) -> None:
+    """Le réglage du compte une fois son cache converti en `target`.
+
+    Une demande `ephemeral` n'est jamais touchée ; un mode propre différent
+    de la cible devient la cible ; un compte qui hérite d'une préférence
+    lisible différente de la cible est épinglé sur la cible ; sinon rien.
+    `accounts` est enregistré si le compte change ; l'erreur d'écriture
+    (`AccountError`, `OSError`) remonte, et `convert_cache` la rend par
+    `mode_saved`."""
+    if mode_request(account, prefs_get) == "ephemeral":
+        return
+    if account.cache_mode is not None:
+        if account.cache_mode == target:
+            return
+    else:
+        general = _general_request(prefs_get)
+        if general is None or general == target:
+            return
+    account.cache_mode = target
+    mail_accounts.save(accounts)
+
+
+def _offer_conversion(
+    todo, account, source, target, *, on_committed, base=None
+) -> bool:
+    """Demande confirmation (`mail_cache_convert_confirm_<target>` : vers
+    `clear`, la question avertit que sujets, adresses, corps et index
+    deviennent lisibles sur le disque), puis convertit. Rend vrai si le
+    cache est désormais en `target`."""
+    question = t(f"mail_cache_convert_confirm_{target}").format(
+        account=account.name, source=source, target=target
+    )
+    if input(question).strip().lower() not in _YES:
+        return False
+    return _run_conversion(
+        todo, account, target, on_committed=on_committed, base=base
+    )
+
+
+def _run_conversion(todo, account, target, *, on_committed, base=None) -> bool:
+    """`convert_cache` avec le coffre du CLI, une progression sur une
+    ligne, la question des pertes de reconnaissance et `on_committed`,
+    puis le résumé. Rend vrai si le cache est désormais en `target`.
+
+    Ne lève jamais : sur toute exception, Ctrl-C compris, la cible est
+    atteinte quand `ConvertError.committed` le dit (l'état sur le disque
+    a passé le point de non-retour, rescellement compris) ; une autre
+    exception relit le mode inscrit, qui ne tranche que si la cible
+    diffère de la source. Atteinte, `on_committed` est rappelé (il est
+    idempotent) et le message dit que l'effacement de l'ancienne copie
+    s'achève à la prochaine ouverture ; sinon le cache est resté dans sa
+    source."""
+    from script.todo.mail import cache_convert
+
+    nom = account.name
+    source = inscribed_mode(account, base)
+
+    def progression(etape, fait, total):
+        texte = t(f"mail_cache_convert_progress_{etape}").format(
+            done=fait, total=total
+        )
+        print(f"\r{texte}", end="\n" if fait >= total else "", flush=True)
+
+    def pertes(journal, envois):
+        question = t("mail_cache_convert_losses_confirm").format(
+            journal=journal, auto_sent=envois
+        )
+        return input(question).strip().lower() in _YES
+
+    try:
+        resultat = cache_convert.convert_cache(
+            account,
+            target,
+            secrets=secret_store_for(todo),
+            base=base,
+            progress=progression,
+            confirm_losses=pertes,
+            on_committed=on_committed,
+        )
+    except (Exception, KeyboardInterrupt) as exc:
+        print()
+        if isinstance(exc, cache_convert.ConvertError):
+            atteint = exc.committed
+        else:
+            try:
+                atteint = (
+                    source != target
+                    and inscribed_mode(account, base) == target
+                )
+            except Exception:
+                atteint = False
+        if atteint:
+            try:
+                on_committed(target)
+            except Exception as erreur:
+                _logger.error(
+                    "mode du compte %s non enregistré : %s", nom, erreur
+                )
+                print(
+                    t("mail_cache_convert_mode_unsaved").format(target=target)
+                )
+            print(
+                t("mail_cache_convert_incomplete").format(
+                    account=nom, target=target
+                )
+            )
+            return True
+        if isinstance(exc, cache_convert.ConvertError) and exc.reason != (
+            "incomplete"
+        ):
+            print(exc)
+        else:
+            print(
+                t("mail_cache_convert_cancelled").format(
+                    account=nom, source=source
+                )
+            )
+        return False
+    print(
+        t("mail_cache_converted").format(
+            account=nom,
+            target=target,
+            messages=resultat.messages,
+            bodies=resultat.bodies,
+            journal=resultat.rule_log,
+        )
+    )
+    if resultat.legacy_keys or resultat.legacy_auto_sent:
+        print(
+            t("mail_cache_convert_legacy").format(
+                journal=resultat.legacy_keys,
+                auto_sent=resultat.legacy_auto_sent,
+            )
+        )
+    if not resultat.mode_saved:
+        print(t("mail_cache_convert_mode_unsaved").format(target=target))
+    return True
+
+
+def _has_clear_residue(account, base=None) -> bool:
+    """Vrai si le cache persistant du compte garde des restes clairs."""
+    racine = cache_root(account, "clear", base)
+    try:
+        with probe_connection(racine / "cache.db") as conn:
+            return conn is not None and has_clear_residue(conn, racine)
+    except Exception:
+        return False
+
+
+def _needs_reseal(account, base=None) -> bool:
+    """Vrai si le cache persistant du compte a son journal des règles salé
+    en clair (`epoch_salted_clear`) : en `encrypted`, il ne s'ouvre
+    qu'après un rescellement."""
+    racine = cache_root(account, "clear", base)
+    try:
+        with probe_connection(racine / "cache.db") as conn:
+            return conn is not None and epoch_salted_clear(conn)
+    except Exception:
+        return False
+
+
+def _convert_entry(todo, *, base=None) -> None:
+    """[4] : convertit le cache d'un compte dans l'autre mode persistant.
+
+    Un compte qui demande `ephemeral` (lui-même ou par la préférence dont
+    il hérite) n'est pas converti ; un compte sans cache, dont le cache ne
+    se lit pas ou porte un mode inconnu, non plus. Un cache `encrypted`
+    qui garde des restes clairs se voit d'abord proposer un rescellement
+    en entier ; refusé, la question habituelle (vers `clear`) suit."""
+    account, accounts = _pick_account()
+    if account is None:
+        return
+    nom = account.name
+    if mode_request(account) == "ephemeral":
+        print(t("mail_cache_convert_ephemeral").format(account=nom))
+        return
+    inscrit = inscribed_mode(account, base)
+    if inscrit is None:
+        print(t("mail_cache_convert_no_cache").format(account=nom))
+        return
+    if inscrit == PROBE_UNKNOWN:
+        print(t("mail_cache_unreadable").format(account=nom))
+        return
+    if inscrit not in PERSISTENT_MODES:
+        print(
+            t("mail_err_cache_mode_invalid").format(
+                account=nom, inscribed=shown_mode(inscrit)
+            )
+        )
+        return
+
+    def regle(cible):
+        _settle_account_mode(account, accounts, cible)
+
+    if inscrit == "encrypted" and _has_clear_residue(account, base):
+        question = t("mail_cache_reseal_confirm").format(account=nom)
+        if input(question).strip().lower() in _YES:
+            _run_conversion(
+                todo, account, "encrypted", on_committed=regle, base=base
+            )
+            return
+    cible = "clear" if inscrit == "encrypted" else "encrypted"
+    _offer_conversion(
+        todo, account, inscrit, cible, on_committed=regle, base=base
+    )
+
+
+def _account_mode_entry(
+    todo, account, accounts, nouveau, *, base=None
+) -> None:
+    """[2] : le mode propre d'un compte (`nouveau`, None pour hériter).
+
+    Si la demande qui en résulte (le mode saisi, sinon la préférence
+    lisible) est persistante et diffère du mode inscrit dans un cache
+    existant, la conversion est proposée ; le mode saisi n'est enregistré
+    que si elle aboutit (par `on_committed`). Refusée ou annulée avant
+    l'échange : rien n'est enregistré. `encrypted` sur un cache chiffré au
+    journal salé en clair, qui ne s'ouvrirait pas, propose de même le
+    rescellement. `ephemeral` sur un compte qui a un cache s'enregistre et
+    dit que ce cache reste sur le disque."""
+    demande = nouveau or _general_request()
+    inscrit = inscribed_mode(account, base)
+
+    def enregistre(_cible=None):
+        account.cache_mode = nouveau
+        mail_accounts.save(accounts)
+
+    if (
+        demande in PERSISTENT_MODES
+        and inscrit in PERSISTENT_MODES
+        and demande != inscrit
+    ):
+        if not _offer_conversion(
+            todo, account, inscrit, demande, on_committed=enregistre, base=base
+        ):
+            print(t("mail_cache_account_mode_unchanged"))
+        return
+    if (
+        demande == "encrypted"
+        and inscrit == "encrypted"
+        and _needs_reseal(account, base)
+    ):
+        question = t("mail_cache_reseal_confirm").format(account=account.name)
+        if input(question).strip().lower() not in _YES or not _run_conversion(
+            todo, account, "encrypted", on_committed=enregistre, base=base
+        ):
+            print(t("mail_cache_account_mode_unchanged"))
+        return
+    enregistre()
+    if nouveau == "ephemeral" and inscrit is not None:
+        montre = (
+            t("mail_cache_mode_unreadable")
+            if inscrit == PROBE_UNKNOWN
+            else shown_mode(inscrit)
+        )
+        print(
+            t("mail_cache_ephemeral_keeps_disk").format(
+                account=account.name, mode=montre
+            )
+        )
+
+
+def _reconcile_default(todo, mode, *, base=None) -> None:
+    """[1] : le défaut général passe à `mode` sans laisser aucun compte
+    refusé.
+
+    Les comptes qui en héritent (`cache_mode` nul) et dont le cache inscrit
+    un autre mode persistant sont, dans CET ordre : épinglés sur leur mode
+    inscrit (un seul enregistrement ; s'il échoue, la préférence n'est pas
+    écrite), puis la préférence est écrite, puis la conversion est
+    proposée compte par compte ; une conversion aboutie les désépingle. Un
+    Ctrl-C ou une erreur à n'importe quel moment laisse donc chaque compte
+    ouvrable. `ephemeral` n'épingle rien : il dit seulement que les caches
+    restent sur le disque."""
+    accounts = _load_accounts()
+    inscrits = {}
+    for account in accounts:
+        if account.cache_mode is None:
+            inscrit = inscribed_mode(account, base)
+            if inscrit in PERSISTENT_MODES and inscrit != mode:
+                inscrits[account.name] = inscrit
+    concernes = [a for a in accounts if a.name in inscrits]
+    if mode == "ephemeral":
+        todo_prefs.set("mail_cache_mode", mode)
+        for account in concernes:
+            print(
+                t("mail_cache_ephemeral_keeps_disk").format(
+                    account=account.name, mode=inscrits[account.name]
+                )
+            )
+        return
+    if concernes:
+        for account in concernes:
+            account.cache_mode = inscrits[account.name]
+        try:
+            mail_accounts.save(accounts)
+        except (AccountError, OSError) as exc:
+            for account in concernes:
+                account.cache_mode = None
+            print(exc)
+            return
+    todo_prefs.set("mail_cache_mode", mode)
+    epingles = {a.name for a in concernes}
+    try:
+        for account in concernes:
+
+            def desepingle(_cible, account=account):
+                account.cache_mode = None
+                try:
+                    mail_accounts.save(accounts)
+                except BaseException:
+                    account.cache_mode = inscrits[account.name]
+                    raise
+                epingles.discard(account.name)
+
+            _offer_conversion(
+                todo,
+                account,
+                inscrits[account.name],
+                mode,
+                on_committed=desepingle,
+                base=base,
+            )
+    finally:
+        for account in concernes:
+            if account.name in epingles:
+                print(
+                    t("mail_cache_default_pinned").format(
+                        account=account.name, mode=inscrits[account.name]
+                    )
+                )
+
+
+def _cache_size_and_purge(todo, *, base=None) -> None:
+    """[3] : la taille de chaque cache, puis la purge d'un compte.
+
+    Une ligne signale un compte dont le réglage contredit le cache. La
+    purge ouvre le cache dans le mode qu'il inscrit et garde `meta`, le
+    journal des règles et la file ; elle n'efface jamais rien sur un refus
+    de mode ni pendant une conversion. Un cache illisible est effacé en
+    entier, sous le verrou exclusif ; un cache de mode inconnu, ou chiffré
+    sans sa clé, seulement après une seconde question."""
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return
-    for row in cache_summary(accounts):
-        print(f"  {row['name']} — {row['mode']} — {row['size'] // 1024} ko")
+    for row in cache_summary(accounts, base=base):
+        ko = row["size"] // 1024
+        if row["refused"]:
+            refus = t("mail_cache_summary_refused").format(
+                requested=row["mode"], inscribed=shown_mode(row["inscribed"])
+            )
+            print(f"  {row['name']} — {refus} — {ko} ko")
+        else:
+            print(f"  {row['name']} — {row['mode']} — {ko} ko")
     account, _ = _pick_account()
     if account is None:
         return
     if input(t("mail_purge_confirm")).strip().lower() not in ("o", "y"):
         return
-    store = Store(account, secrets=secret_store_for(todo))
+    _purge(todo, account, base)
+
+
+def _purge(todo, account, base=None) -> None:
+    nom = account.name
+    _finish_pending_conversion(nom, base)
+    inscrit = inscribed_mode(account, base)
+    if inscrit == PROBE_UNKNOWN:
+        _erase_cache(account, base)
+        return
+    if inscrit is not None and inscrit not in PERSISTENT_MODES:
+        question = t("mail_cache_purge_invalid_confirm").format(
+            account=nom, inscribed=shown_mode(inscrit)
+        )
+        if input(question).strip().lower() in _YES:
+            _erase_cache(account, base)
+        return
+    mode = inscrit or resolve_mode(account, base=base)
+    store = Store(
+        account,
+        mode=mode,
+        secrets=secret_store_for(todo) if mode != "clear" else None,
+        base=base,
+    )
     try:
         store.open()
-    except StoreError as exc:
-        # Le cache est illisible : on ne peut pas le vider par SQL, mais c'est
-        # exactement le cas où l'utilisateur a besoin qu'il disparaisse.
+    except CacheKeyMissing as exc:
         print(exc)
-        shutil.rmtree(store.root, ignore_errors=True)
-        print(t("mail_purged"))
+        question = t("mail_cache_purge_no_key_confirm").format(account=nom)
+        if input(question).strip().lower() in _YES:
+            _erase_cache(account, base)
+        return
+    except (CacheBusy, CacheModeMismatch) as exc:
+        print(exc)
+        return
+    except StoreError as exc:
+        # Le cache est illisible : on ne peut pas le vider par SQL, mais
+        # c'est exactement le cas où l'utilisateur a besoin qu'il
+        # disparaisse.
+        print(exc)
+        _erase_cache(account, base)
         return
     try:
         store.purge_all()
     finally:
         store.close()
+    print(t("mail_purged"))
+
+
+def _erase_cache(account, base=None) -> None:
+    """Efface entièrement le cache persistant du compte, sous le verrou
+    exclusif puis le verrou d'écriture SQLite de sa base (`hold_writers` :
+    un processus qui y écrit sans prendre le verrou d'usage refuse
+    l'effacement) : la racine, les copies d'une conversion et son état.
+    Effacer la seule racine laisserait une reprise faire renaître une copie
+    que l'utilisateur vient de purger. La base illisible peut porter du
+    clair, d'où l'effacement sûr."""
+    from script.todo.mail.cache_convert import hold_writers, secure_erase
+
+    nom = account.name
+    base = Path(base) if base is not None else default_base()
+    occupe = t("mail_cache_convert_busy_open").format(account=nom)
+    with cache_exclusive(nom, base) as tenu:
+        if not tenu:
+            print(occupe)
+            return
+        with hold_writers(base / nom / "cache.db") as libre:
+            if not libre:
+                print(occupe)
+                return
+            ctl = cache_ctl_dir(nom, base)
+            for chemin in (
+                base / nom,
+                ctl / "old",
+                ctl / "new",
+                ctl / CONVERT_STATE_NAME,
+            ):
+                secure_erase(chemin)
     print(t("mail_purged"))
