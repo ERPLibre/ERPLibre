@@ -1078,8 +1078,29 @@ class SentMessage:
 
 
 class _CaptureHandler:
-    def __init__(self):
+    def __init__(self, rcpt_refusals=None):
         self.messages: list[SentMessage] = []
+        # Adresse en minuscules → réponse complète (« 450 4.2.1 … ») : ces
+        # destinataires sont refusés au RCPT TO. Le dict est partagé avec
+        # `SmtpSandbox` : le muter entre deux envois change les refus.
+        self.rcpt_refusals = rcpt_refusals if rcpt_refusals is not None else {}
+        # Chaque adresse proposée au RCPT TO, acceptée ou non, dans l'ordre.
+        self.rcpt_attempts: list[str] = []
+
+    async def handle_RCPT(self, server, session, envelope, address, options):
+        """Refuse les adresses de `rcpt_refusals`, accepte les autres.
+
+        Dès que ce crochet existe, `aiosmtpd` n'ajoute plus lui-même
+        l'adresse ni ses options à l'enveloppe : il ne le fait que si le
+        crochet rend `MISSING`.
+        """
+        self.rcpt_attempts.append(address)
+        reponse = self.rcpt_refusals.get(address.lower())
+        if reponse is not None:
+            return reponse
+        envelope.rcpt_tos.append(address)
+        envelope.rcpt_options.extend(options)
+        return "250 OK"
 
     async def auth_XOAUTH2(self, server, args):
         """`AUTH XOAUTH2 <base64>`, en un seul aller.
@@ -1137,7 +1158,11 @@ class SmtpSandbox:
     seul point à corriger.
     """
 
-    def __init__(self, *, require_auth: bool = False):
+    def __init__(self, *, require_auth: bool = False, rcpt_refusals=None):
+        """`rcpt_refusals` : {adresse en minuscules: réponse SMTP complète}
+        des destinataires refusés au RCPT TO. Le même dict est gardé par le
+        gestionnaire : le muter (`clear`, `pop`, affectation de clé), jamais
+        le réaffecter, change les refus entre deux envois."""
         from aiosmtpd.controller import Controller
         from aiosmtpd.smtp import AuthResult, LoginPassword
 
@@ -1175,7 +1200,10 @@ class SmtpSandbox:
                     self.port = self.server.sockets[0].getsockname()[1]
                 super()._trigger_server()
 
-        self.handler = _CaptureHandler()
+        self.rcpt_refusals: dict[str, str] = (
+            rcpt_refusals if rcpt_refusals is not None else {}
+        )
+        self.handler = _CaptureHandler(rcpt_refusals=self.rcpt_refusals)
         self.controller = _Port0Controller(
             self.handler,
             hostname="127.0.0.1",
@@ -1190,6 +1218,11 @@ class SmtpSandbox:
     @property
     def messages(self) -> list[SentMessage]:
         return self.handler.messages
+
+    @property
+    def rcpt_attempts(self) -> list[str]:
+        """Chaque adresse proposée au RCPT TO, acceptée ou refusée."""
+        return self.handler.rcpt_attempts
 
     def start(self) -> "SmtpSandbox":
         # Marqué vivant AVANT de démarrer : `Controller.start()` lance déjà

@@ -730,5 +730,172 @@ class TestForwardRuleEndToEnd(MailSandboxCase):
         self.assertEqual(len(self.smtp.messages), 2)
 
 
+TEMP = "refus.temporaire@example.net"
+DEF = "refus.definitif@example.net"
+
+
+@unittest.skipIf(
+    bool(SANDBOX_MISSING), f"serveurs de test absents ({SANDBOX_MISSING})"
+)
+class TestPartialRefusalEndToEnd(MailSandboxCase):
+    """Un serveur SMTP qui refuse TEMP en 450 et DEF en 550 au RCPT TO.
+
+    INBOX reçoit un message de Denis ; la règle le relaie à Carole, TEMP et
+    DEF. Horloge fixe partout : la passe à `RECU + 600`, chaque vidange à
+    `RECU + 1200`, d'où une échéance, des instants de départ et une
+    fenêtre horaire cohérents.
+    """
+
+    def setUp(self):
+        from script.todo.mail import imap_transport
+        from script.todo.mail.imap_sync import Syncer
+        from script.todo.mail.tui import Session
+
+        self.imap = self.imap_server()
+        self.smtp = self.smtp_server(
+            rcpt_refusals={
+                TEMP: "450 4.2.1 Mailbox busy",
+                DEF: "550 5.1.1 No such user",
+            }
+        )
+        self.inbox = self.imap.folder("INBOX")
+        self.sent = self.imap.folder("INBOX.Sent", attributs=("\\Sent",))
+        self.inbox.deliver(
+            message(
+                DENIS,
+                OWN,
+                "<partiel-1@example.org>",
+                "Devis",
+                RECU,
+            ),
+            uid=1,
+            internal_date=RECU_IMAP,
+        )
+        self.account = sandbox_account(
+            imap_port=self.imap.port,
+            smtp_port=self.smtp.port,
+            name="perso",
+            address=OWN,
+        )
+        self.store = self.temp_store(self.account)
+        self.base = Path(self.store.root).parent
+        transport = imap_transport.connect(self.account, PASSWORD)
+        self.addCleanup(transport.logout)
+        self.session = Session(
+            self.account,
+            self.store,
+            Syncer(self.store, transport),
+            password=PASSWORD,
+        )
+
+    def regle(self, mode):
+        from script.todo.mail.rules import storage
+        from script.todo.mail.rules.model import Armed, new_rule
+
+        rule = new_rule("forward", f"Relais {mode}")
+        rule.action.body = "Transmis par la boîte des règles."
+        rule.action.options.update(targets=[CAROLE, TEMP, DEF], mode=mode)
+        storage.upsert_rule(
+            "perso", rule, rearm=Armed(42, 1, RECU - 3600), base=self.base
+        )
+        self.store.rule_log_claim(
+            rule.id,
+            f"pre-{rule.id}",
+            outcome="sent",
+            at=RECU - 30 * 86400,
+            fingerprint=rule.fingerprint(),
+        )
+        return rule
+
+    def passe(self):
+        from script.todo.mail.rules import engine
+
+        return engine.run_pass(
+            self.session,
+            report=self.session.sync(),
+            all_accounts=[],
+            now=lambda: RECU + 600,
+        )
+
+    def vider(self):
+        from script.todo.mail.tui import flush_outbox
+
+        return flush_outbox(self.session, now=lambda: RECU + 1200)
+
+    def ligne(self, rule):
+        return next(
+            e for e in self.store.rule_log_entries(rule.id) if e["at"] > RECU
+        )
+
+    def depart_puis_nouvel_essai(self, mode):
+        """La passe, puis la levée du refus de TEMP et une vidange ; rend
+        la règle."""
+        rule = self.regle(mode)
+        bilan = self.passe()
+        self.assertEqual((bilan.sent, bilan.partial, bilan.retried), (1, 1, 1))
+        self.smtp.rcpt_refusals.pop(TEMP)
+        self.assertEqual(self.vider(), (1, 0, 0))
+        return rule
+
+    def test_a_forward_reaches_the_accepted_then_the_retry_reaches_the_4xx_alone(
+        self,
+    ):
+        from script.todo.mail.rules import engine
+        from script.todo.todo_i18n import t
+
+        rule = self.regle("inline")
+        self.passe()
+        self.assertEqual(len(self.smtp.messages), 1)
+        self.assertEqual(self.smtp.messages[0].rcpt_tos, [CAROLE])
+        ligne = self.ligne(rule)
+        self.assertEqual(
+            (ligne["outcome"], ligne["reason"]), ("partial", "rcpt_retry")
+        )
+        [essai] = self.store.outbox()
+        self.assertTrue(essai["retry"])
+        self.assertEqual(essai["to"], TEMP)
+        self.smtp.rcpt_refusals.pop(TEMP)
+        self.assertEqual(self.vider(), (1, 0, 0))
+        self.assertEqual(len(self.smtp.messages), 2)
+        premier, second = self.smtp.messages
+        self.assertEqual(second.rcpt_tos, [TEMP])
+        self.assertEqual(
+            second.headers()["Message-ID"], premier.headers()["Message-ID"]
+        )
+        self.assertNotIn(b"X-ERPLibre-Bcc", second.content)
+        self.assertNotIn(CAROLE.encode(), second.content)
+        self.assertNotIn(DEF.encode(), second.content)
+        ligne = self.ligne(rule)
+        self.assertEqual(
+            (ligne["outcome"], ligne["reason"]), ("partial", "rcpt_refused")
+        )
+        self.assertEqual(ligne["rcpt_dropped"], [550])
+        self.assertIn(
+            t("mail_rules_rcpt_detail").format(
+                refused=1, total=3, codes="550"
+            ),
+            engine.log_reason_text(ligne),
+        )
+        self.assertEqual(self.store.outbox(), [])
+        self.assertEqual(len(self.sent.appended), 1)
+
+    def test_a_redirect_partly_refused_never_reaches_the_served_twice(self):
+        self.depart_puis_nouvel_essai("redirect")
+        tous = [a for m in self.smtp.messages for a in m.rcpt_tos]
+        self.assertEqual(tous.count(CAROLE), 1)
+        self.assertEqual(tous.count(TEMP), 1)
+        premier, second = self.smtp.messages
+        self.assertEqual(second.content, premier.content)
+        self.assertEqual(second.content.count(b"Resent-From:"), 1)
+        self.assertEqual(self.sent.appended, [])
+
+    def test_a_5xx_recipient_is_never_tried_again(self):
+        self.depart_puis_nouvel_essai("inline")
+        self.assertEqual(self.smtp.rcpt_attempts.count(DEF), 1)
+        self.assertEqual(self.smtp.rcpt_attempts.count(TEMP), 2)
+        self.assertEqual(self.vider(), (0, 0, 0))
+        self.assertEqual(self.smtp.rcpt_attempts.count(DEF), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -319,6 +319,37 @@ class TestSmtpRefusals(MailSandboxCase):
         with self.assertRaises(SmtpError):
             connect(account, PASSWORD)
 
+    def test_the_sandbox_refuses_the_recipients_it_is_told_to(self):
+        """Un 450 et un 550 au RCPT TO sur le fil : `send()` rend le servi,
+        les deux refusés avec leur code ; le dict muté entre deux envois
+        change les refus."""
+        from script.todo.mail.smtp_send import build_message, connect, send
+
+        temp = "refus.temporaire@example.net"
+        definitif = "refus.definitif@example.net"
+        servi = "carole.regle@example.org"
+        smtp = self.smtp_server(
+            rcpt_refusals={
+                temp: "450 4.2.1 Mailbox busy",
+                definitif: "550 5.1.1 No such user",
+            }
+        )
+        account = sandbox_account(smtp_port=smtp.port)
+        transport = connect(account, PASSWORD)
+        self.addCleanup(transport.quit)
+        msg = build_message(account, [servi, temp, definitif], "Devis", "B")
+        servis = send(account, msg, transport)
+        self.assertEqual(list(servis), [servi])
+        self.assertEqual(servis.refused, {temp: 450, definitif: 550})
+        self.assertEqual(smtp.messages[0].rcpt_tos, [servi])
+        self.assertEqual(smtp.rcpt_attempts, [servi, temp, definitif])
+        smtp.rcpt_refusals.pop(temp)
+        servis = send(
+            account, build_message(account, [temp], "D", "B"), transport
+        )
+        self.assertEqual(list(servis), [temp])
+        self.assertEqual(smtp.messages[1].rcpt_tos, [temp])
+
 
 @requires_servers
 class TestConnectionDroppedMidSync(MailSandboxCase):
