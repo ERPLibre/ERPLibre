@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
 
 app = S.load_package()
+import deck_lock  # noqa: E402
+
 from erplibre_streamdeck import context  # noqa: E402
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck import paths  # noqa: E402
@@ -559,6 +562,185 @@ class ReplugTest(MainCase):
         manager.script.insert(0, [first])
         app.main()
         self.assertEqual([1], self.shut)
+
+
+class BuildSideEffectTest(AppCase):
+    def test_build_takes_no_deck_lock_and_installs_no_signal_handler(self):
+        """build() is what a test drives, and a replug runs it again in
+        the process that already holds the lock."""
+        runtime = tempfile.TemporaryDirectory()
+        self.addCleanup(runtime.cleanup)
+        before = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, before)
+        self.put("good", "")
+        with (
+            mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime.name}),
+            mock.patch.object(deck_lock, "acquire_or_exit") as acquire_or_exit,
+            mock.patch.object(deck_lock, "acquire") as acquire,
+            mock.patch.object(deck_lock, "exit_on_sigterm") as exit_on_sigterm,
+        ):
+            self.build()
+        self.assertEqual(
+            (0, 0, 0),
+            (
+                acquire_or_exit.call_count,
+                acquire.call_count,
+                exit_on_sigterm.call_count,
+            ),
+        )
+        self.assertEqual([], os.listdir(runtime.name))
+        self.assertEqual(before, signal.getsignal(signal.SIGTERM))
+
+
+class MainStartTest(MainCase):
+    def test_main_starts_the_loop_in_its_own_thread(self):
+        ran = threading.Event()
+        threads = []
+
+        def hook(kernel):
+            def loop():
+                threads.append(threading.get_ident())
+                ran.set()
+
+            kernel.loop = loop
+
+        deck = self.run_main(hook)
+        deck.stop = KeyboardInterrupt()
+        app.main()
+        self.assertTrue(ran.wait(timeout=5), "the loop never ran")
+        self.assertEqual(1, len(threads))
+        self.assertNotEqual(threading.get_ident(), threads[0])
+
+    def test_main_prints_from_the_first_dbus_check_alone(self):
+        """A second probe costs gdbus's timeout at start and may answer
+        otherwise than the one the kernel keeps."""
+        answers = iter([True, False, False])
+        probe = mock.Mock(available=lambda: next(answers))
+        deck = self.run_main()
+        deck.stop = KeyboardInterrupt()
+        out = io.StringIO()
+        with (
+            mock.patch.object(K, "dbus_mod", probe),
+            contextlib.redirect_stdout(out),
+        ):
+            app.main()
+        self.assertIn("D-Bus tiler extension detected!", out.getvalue())
+        self.assertNotIn("not found", self.journal.getvalue())
+        self.assertEqual([False, False], list(answers))
+
+
+class ShutdownLockDelayTest(AppCase):
+    def test_shutdown_waits_five_seconds_for_a_held_lock(self):
+        kernel = K.Kernel(self.deck, [])
+        waits = []
+
+        class BusyLock:
+            def acquire(self, timeout=-1):
+                waits.append(timeout)
+                return False
+
+            def release(self):
+                raise AssertionError("released a lock it did not take")
+
+        kernel.lock = BusyLock()
+        app._shutdown(kernel, None)
+        self.assertEqual([5.0], waits)
+        self.assertIn(
+            "kernel lock still held after 5 s", self.journal.getvalue()
+        )
+
+
+class ReplugSettingsTest(MainCase):
+    def test_the_settings_are_read_once_and_reused_after_a_replug(self):
+        reads = []
+
+        def read():
+            reads.append(1)
+            return dict(plugins_off=[], session_refresh_sec=1.5 * len(reads))
+
+        back = RecordingDeck(5, 3)
+        back.stop = SystemExit(143)
+        manager = ScriptedManager([back])
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with (
+            mock.patch.object(app, "read_deck_settings", read),
+            self.assertRaises(SystemExit),
+        ):
+            app.main()
+        self.assertEqual(1, len(reads))
+        self.assertEqual(
+            [{"session_refresh_sec": 1.5}] * 2,
+            [k.settings for k in self.kernels],
+        )
+
+    def test_a_changed_open_error_is_journaled_again(self):
+        """A deck whose open fails one way, then another (its device
+        node replaced, its permission changed) is told each time."""
+        bad = RecordingDeck(5, 3)
+        bad.open = mock.Mock(
+            side_effect=[
+                S.TransportError("first error"),
+                S.TransportError("first error"),
+                S.TransportError("second error"),
+            ]
+        )
+        manager = ScriptedManager([bad], [bad], [bad], KeyboardInterrupt())
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        app.main()
+        lines = [
+            ln
+            for ln in self.journal.getvalue().splitlines()
+            if "Stream Deck found but not opened" in ln
+        ]
+        self.assertEqual(2, len(lines), lines)
+        self.assertIn("first error", lines[0])
+        self.assertIn("second error", lines[1])
+
+
+# The poll main() starts from, read before MainCase shortens it.
+REPLUG_POLL_SEC = app.REPLUG_POLL_SEC
+
+
+class ReplugPeriodTest(MainCase):
+    """The waits of main() over decks that come back and vanish, on a
+    clock that moves only when main() sleeps or a deck stays."""
+
+    def test_the_replug_poll_is_2_s_doubled_to_30_s_within_10_s(self):
+        clock = S.FakeClock()
+
+        class StayingDeck(RecordingDeck):
+            def __init__(self, stay):
+                super().__init__(5, 3)
+                self.stay = stay
+
+            def is_open(self):
+                if threading.get_ident() == self.owner and self.stop is None:
+                    clock.advance(self.stay)
+                return super().is_open()
+
+        # How long each deck that comes back stays before it vanishes.
+        stays = [0.0, 9.9, 10.1, 0.0, 0.0, 0.0, 0.0, 0.0]
+        backs = [StayingDeck(s) for s in stays] + [StayingDeck(0.0)]
+        backs[-1].stop = SystemExit(143)
+        manager = ScriptedManager(*[[d] for d in backs])
+        first = self.run_main(manager=manager)
+        manager.script.insert(0, [first])
+        with (
+            mock.patch.object(app, "REPLUG_POLL_SEC", REPLUG_POLL_SEC),
+            mock.patch.object(
+                app, "_wait_for_deck", wraps=app._wait_for_deck
+            ) as wait,
+            mock.patch("time.monotonic", clock.monotonic),
+            mock.patch("time.sleep", clock.sleep),
+            self.assertRaises(SystemExit),
+        ):
+            app.main()
+        self.assertEqual(
+            [2.0, 4.0, 8.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0],
+            [c.args[0] for c in wait.call_args_list],
+        )
 
 
 if __name__ == "__main__":

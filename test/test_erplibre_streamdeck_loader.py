@@ -3,12 +3,16 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Plugin discovery: both directories, refusals, DECK_PLUGINS_OFF."""
 
+import contextlib
+import importlib.util
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamdeck_stubs as S  # noqa: E402
@@ -233,6 +237,156 @@ class ListPluginsTest(unittest.TestCase):
         for path in loader.REPO_DIR.glob("*.py"):
             if not path.name.startswith("_"):
                 self.assertIn(f"{path.stem}: active", done.stdout)
+
+
+class ModuleNameTest(LoaderCase):
+    def test_repo_and_user_plugins_have_their_module_names(self):
+        """The repository's plugins import under the package, the user's
+        under erplibre_streamdeck_user: a user file that replaces a
+        repository plugin never takes its module's name."""
+        self.put(self.user, "mine.py", GOOD.format(page="m"))
+        self.addCleanup(sys.modules.pop, "erplibre_streamdeck_user.mine", None)
+        off = sorted(S.REPO_PLUGINS - {"dev_reload"})
+        plugins, report = loader.load(off=off, user_dir=self.user)
+        by_id = {p.id: p.plugin for p in plugins}
+        self.assertEqual(["dev_reload", "mine"], sorted(by_id), report.lines())
+        for pid, name in (
+            ("dev_reload", "erplibre_streamdeck.plugins.dev_reload"),
+            ("mine", "erplibre_streamdeck_user.mine"),
+        ):
+            self.assertIn(name, sys.modules)
+            self.assertIs(sys.modules[name].PLUGIN, by_id[pid])
+
+
+class OffTest(LoaderCase):
+    def test_an_id_turned_off_is_never_imported(self):
+        """Turning a plugin off is how a user stops one whose import
+        hangs or breaks: importing it first would still run it."""
+        marker = self.user / "imported"
+        self.put(
+            self.user,
+            "noisy.py",
+            f"open({str(marker)!r}, 'w').close()\n" + GOOD.format(page="n"),
+        )
+        plugins, report = self.load(off=["noisy"])
+        self.assertEqual([], plugins)
+        self.assertEqual(("off", ""), self.status(report)["noisy"])
+        self.assertFalse(marker.exists())
+        self.assertNotIn("erplibre_streamdeck_user.noisy", sys.modules)
+
+    def test_unknown_ids_turned_off_change_nothing(self):
+        """DECK_PLUGINS_OFF may name a plugin since removed: the deck
+        loads as without it, and the TODO diagnosis names it."""
+        self.put(self.repo, "kept.py", GOOD.format(page="k"))
+        plugins, report = self.load()
+        plugins_off, report_off = self.load(off=["gone", "", "kept_not"])
+        self.assertEqual(
+            [(p.id, p.origin) for p in plugins],
+            [(p.id, p.origin) for p in plugins_off],
+        )
+        self.assertEqual(report.lines(), report_off.lines())
+
+
+class MainModuleCase(unittest.TestCase):
+    """__main__.py loaded in this process under another name, so its
+    sys.path setup runs and its __main__ block does not; sys.path is
+    restored after each test."""
+
+    def setUp(self):
+        S.wipe()
+        self.addCleanup(S.wipe)
+        saved = list(sys.path)
+        self.addCleanup(sys.path.__setitem__, slice(None), saved)
+
+    def load_main(self):
+        spec = importlib.util.spec_from_file_location(
+            "erplibre_streamdeck_main_under_test", S.PACKAGE / "__main__.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+
+class MainSysPathTest(MainModuleCase):
+    def test_the_package_directory_leaves_sys_path(self):
+        """Run as a directory, Python puts that directory first on
+        sys.path: left there, the package's dbus.py, settings.py and
+        paths.py would shadow any top-level module of those names."""
+        sys.path[:0] = [str(S.PACKAGE), os.path.relpath(S.PACKAGE)]
+        self.load_main()
+        self.assertEqual(str(S.DECK_DIR), sys.path[0])
+        self.assertNotIn(
+            str(S.PACKAGE), [os.path.abspath(p or os.curdir) for p in sys.path]
+        )
+
+
+class ListPluginsInProcessTest(MainModuleCase):
+    def list_plugins(self):
+        """list_plugins()'s exit code and lines, with the deck lock,
+        the SIGTERM handler and DeviceManager replaced by mocks."""
+        from erplibre_streamdeck import app
+
+        main = self.load_main()
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                main.deck_lock, "acquire_or_exit"
+            ) as acquire_or_exit,
+            mock.patch.object(main.deck_lock, "acquire") as acquire,
+            mock.patch.object(
+                main.deck_lock, "exit_on_sigterm"
+            ) as exit_on_sigterm,
+            mock.patch.object(app, "DeviceManager") as manager,
+            contextlib.redirect_stdout(out),
+        ):
+            code = main.list_plugins()
+        self.untouched = (
+            acquire_or_exit.call_count,
+            acquire.call_count,
+            exit_on_sigterm.call_count,
+            manager.call_count,
+        )
+        return code, out.getvalue().splitlines()
+
+    def conf(self, text):
+        (S.CONFIG / "erplibre-home" / "streamdeck.conf").write_text(
+            text, encoding="utf-8"
+        )
+
+    def user_plugin(self, pid, kw):
+        directory = S.CONFIG / "erplibre-home" / "deck-plugins"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{pid}.py").write_text(
+            "from erplibre_streamdeck.plugin import *\n"
+            f"PLUGIN = Plugin(api=PLUGIN_API, {kw})\n",
+            encoding="utf-8",
+        )
+        self.addCleanup(
+            sys.modules.pop, f"erplibre_streamdeck_user.{pid}", None
+        )
+
+    def test_it_neither_opens_the_deck_nor_takes_the_lock(self):
+        code, lines = self.list_plugins()
+        self.assertEqual(0, code)
+        self.assertIn("tiling: active: repo", lines)
+        self.assertEqual((0, 0, 0, 0), self.untouched)
+
+    def test_the_ids_of_deck_plugins_off_print_as_off(self):
+        self.conf("DECK_PLUGINS_OFF=tiling, timers\n")
+        _, lines = self.list_plugins()
+        self.assertIn("tiling: off", lines)
+        self.assertIn("timers: off", lines)
+        self.assertIn("sound: active: repo", lines)
+
+    def test_a_raising_setup_still_lists_as_active(self):
+        """The list is what the loader finds: setup runs only when the
+        deck starts, where its failure refuses the plugin."""
+        self.user_plugin("late", "setup=lambda ctx: 1 / 0")
+        _, lines = self.list_plugins()
+        self.assertEqual(
+            ["late: active: user"],
+            [ln for ln in lines if ln.startswith("late:")],
+        )
 
 
 if __name__ == "__main__":

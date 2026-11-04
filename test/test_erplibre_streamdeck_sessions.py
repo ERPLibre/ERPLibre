@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""The Claude and mpv session pages: they refresh when what they show
-changes and go home when the session ends."""
+"""The session pages of Claude, mpv and the TODO terminals: they refresh
+when what they show changes, the TODO page every second, and go home
+when the session ends. A Claude session's status comes from the stamps
+its hook writes."""
 
 import contextlib
 import io
@@ -22,6 +24,7 @@ from erplibre_streamdeck import paths  # noqa: E402
 from erplibre_streamdeck.plugin import LoadedPlugin  # noqa: E402
 from erplibre_streamdeck.plugins import claude_sessions  # noqa: E402
 from erplibre_streamdeck.plugins import mpv_sessions  # noqa: E402
+from erplibre_streamdeck.plugins import todo_terminals  # noqa: E402
 from erplibre_streamdeck.ui import render  # noqa: E402
 
 
@@ -202,6 +205,75 @@ class MpvPageTest(SessionPagesCase):
         self.assertEqual([], n)
         self.tick(k, 1.0)
         self.assertEqual([1], n)
+
+
+class ClaudeStatusTest(SessionPagesCase):
+    """The status of a session is that of its latest hook stamp; on a
+    tie, notification wins over stop, stop over tool, tool over
+    active."""
+
+    CASES = (
+        ({"ts_active": 5}, "active"),
+        ({"ts_active": 5, "ts_tool": 6}, "working"),
+        ({"ts_active": 5, "ts_tool": 6, "ts_stop": 7}, "awaiting_stop"),
+        (
+            {"ts_tool": 6, "ts_stop": 7, "ts_notification": 8},
+            "awaiting_notification",
+        ),
+        ({"ts_notification": 8, "ts_stop": 9}, "awaiting_stop"),
+        ({"ts_active": 9, "ts_tool": 6, "ts_notification": 8}, "active"),
+        ({"ts_active": 9, "ts_tool": 9}, "working"),
+        ({"ts_tool": 9, "ts_stop": 9}, "awaiting_stop"),
+        ({"ts_stop": 9, "ts_notification": 9}, "awaiting_notification"),
+        ({}, "active"),
+    )
+
+    def test_status_follows_the_latest_stamp(self):
+        for stamps, status in self.CASES:
+            with self.subTest(stamps=stamps):
+                S.wipe()
+                self.write("claude", "a.json", dict(stamps, session_id="a"))
+                self.assertEqual(
+                    [status],
+                    [s["status"] for s in claude_sessions.load_sessions()],
+                )
+
+
+class TodoPageTest(SessionPagesCase):
+    """The TODO session page reads the terminal registry and draws again
+    every second, so a menu todo.py prints shows within a second."""
+
+    def test_the_session_page_refreshes_every_second(self):
+        reads = []
+
+        def live(dbus):
+            reads.append(self.clock.now)
+            return {"101"}
+
+        k = self.kernel(todo_terminals)
+        k.state("p").window_id = "101"
+        terminal = [{"window_id": "101", "name": "todo"}]
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(
+            mock.patch.object(todo_terminals, "live_window_ids", live)
+        )
+        stack.enter_context(
+            mock.patch.object(
+                todo_terminals, "load_registry", lambda: list(terminal)
+            )
+        )
+        k.goto(todo_terminals.PAGE_ID)
+        start = self.clock.now
+        self.tick(k, 0)
+        n = self.count_renders(k)
+        reads.clear()
+        for offset in (0.9, 1.0, 1.9, 2.0):
+            self.clock.now = start + offset
+            k.step(self.clock.now)
+        self.assertEqual(todo_terminals.PAGE_ID, k.page_id)
+        self.assertEqual([1.0, 2.0], [round(t - start, 1) for t in reads])
+        self.assertEqual(2, len(n))
 
 
 if __name__ == "__main__":

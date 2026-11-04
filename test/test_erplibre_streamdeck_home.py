@@ -302,5 +302,166 @@ class IsolationTest(DashboardTest):
         self.assertEqual("ok", self.deck.rendering()[14][1])
 
 
+class FixtureOrderTest(unittest.TestCase):
+    def test_a_key_already_taken_is_skipped_by_a_later_fixture(self):
+        def fixture(pid, order, keys):
+            return LoadedPlugin(
+                pid,
+                Plugin(
+                    api=PLUGIN_API,
+                    fixtures=[
+                        Fixture(order, lambda geo, hk: keys, None, None)
+                    ],
+                ),
+                "repo",
+                Path(f"{pid}.py"),
+            )
+
+        button = LoadedPlugin(
+            "btn",
+            Plugin(
+                api=PLUGIN_API,
+                home_button=HomeButton(1, face("B"), lambda ctx: None),
+            ),
+            "repo",
+            Path("btn.py"),
+        )
+        geo = Geometry(5, 3, 15)
+        alloc = home.allocate(
+            geo,
+            [
+                button,
+                fixture("first", 1, [0, 13]),
+                fixture("later", 2, [13, 14]),
+            ],
+        )
+        self.assertEqual(0, alloc.home_keys["btn"])
+        self.assertEqual(
+            {13: "first", 14: "later"},
+            {k: v[0] for k, v in alloc.fixtures.items()},
+        )
+
+    def test_the_mic_takes_order_10_and_the_layout_shortcuts_20(self):
+        """A fixture of a user plugin claims the mic key and the first
+        shortcut key: below 10 it takes both, between 10 and 20 the
+        second only, above 20 neither."""
+        from erplibre_streamdeck.plugins import layouts, sound
+
+        repo = [
+            LoadedPlugin(pid, module.PLUGIN, "repo", Path(f"{pid}.py"))
+            for pid, module in (("layouts", layouts), ("sound", sound))
+        ]
+        geo = Geometry(8, 4, 32)
+        mic, first_shortcut = 24, 25
+        for order, owners in (
+            (9, ("probe", "probe")),
+            (11, ("sound", "probe")),
+            (19, ("sound", "probe")),
+            (21, ("sound", "layouts")),
+        ):
+            probe = LoadedPlugin(
+                "probe",
+                Plugin(
+                    api=PLUGIN_API,
+                    fixtures=[
+                        Fixture(
+                            order,
+                            lambda geo, hk: [mic, first_shortcut],
+                            None,
+                            None,
+                        )
+                    ],
+                ),
+                "user",
+                Path("probe.py"),
+            )
+            fixtures = home.allocate(geo, repo + [probe]).fixtures
+            self.assertEqual(
+                owners,
+                (fixtures[mic][0], fixtures[first_shortcut][0]),
+                order,
+            )
+
+
+class FaceAndPressFailureTest(unittest.TestCase):
+    """A face or a press that raises, on a button, a fixture or a tile."""
+
+    def setUp(self):
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(mock.patch.object(render, "set_key", S.recorder()))
+        self.journal = io.StringIO()
+        stack.enter_context(contextlib.redirect_stderr(self.journal))
+        self.deck = S.FakeDeck(5, 3)
+
+    def plugin(self, fail):
+        def check(value):
+            if fail["on"]:
+                raise RuntimeError("plugin")
+            return value
+
+        return LoadedPlugin(
+            "z",
+            Plugin(
+                api=PLUGIN_API,
+                home_button=HomeButton(
+                    1,
+                    lambda ctx: check(KeyFace((3, 3, 3), "b")),
+                    lambda ctx: check(None),
+                ),
+                fixtures=[
+                    Fixture(
+                        1,
+                        lambda geo, hk: [13],
+                        lambda ctx, key, i: check(KeyFace((3, 3, 3), "f")),
+                        lambda ctx, key, i: check(None),
+                    )
+                ],
+                tiles=[
+                    TileProvider(
+                        1,
+                        lambda ctx: ["t"],
+                        lambda ctx, item: check(KeyFace((3, 3, 3), item)),
+                        lambda ctx, item: check(None),
+                    )
+                ],
+            ),
+            "repo",
+            Path("z.py"),
+        )
+
+    def kernel_of(self, fail):
+        with mock.patch.object(K, "dbus_mod", mock.Mock(available=bool)):
+            return K.Kernel(self.deck, [self.plugin(fail)])
+
+    def test_a_raising_face_paints_its_key_empty(self):
+        fail = {"on": False}
+        k = self.kernel_of(fail)
+        k.render()
+        keys = {"b": 0, "f": 13, "t": k.home.pool[0]}
+        screen = self.deck.rendering()
+        self.assertEqual(list(keys), [screen[key][1] for key in keys.values()])
+        fail["on"] = True
+        k.render()
+        screen = self.deck.rendering()
+        empty = "%02x%02x%02x" % home.EMPTY.color
+        for label, key in keys.items():
+            self.assertEqual([empty, ""], screen[key][:2], label)
+
+    def test_a_raising_fixture_or_tile_press_flashes_err(self):
+        for what in ("fixture", "tile"):
+            with self.subTest(what=what):
+                fail = {"on": False}
+                k = self.kernel_of(fail)
+                k.render()
+                fail["on"] = True
+                key = 13 if what == "fixture" else k.home.pool[0]
+                k.handle_key(key, True)
+                self.assertEqual("err", k.flash_result)
+                self.assertIn(
+                    f"z: {what} press failed", self.journal.getvalue()
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

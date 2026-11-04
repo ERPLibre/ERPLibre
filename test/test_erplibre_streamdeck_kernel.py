@@ -1020,5 +1020,287 @@ class JobTest(KernelCase):
         self.assertIsNone(k.flash_result)
 
 
+class ContextTest(KernelCase):
+    """What a plugin's Context gives it: its own state, the journal, the
+    flash and the kernel lock."""
+
+    def test_each_plugin_has_its_own_state_namespace(self):
+        k = self.kernel(
+            self.page_plugin("a", "pa"), self.page_plugin("b", "pb")
+        )
+        k.ctx("a").state().value = 1
+        self.assertFalse(hasattr(k.ctx("b").state(), "value"))
+        self.assertIsNot(k.ctx("a").state(), k.ctx("b").state())
+        self.assertIs(k.ctx("b").state(), k.ctx("a").state("b"))
+
+    def test_log_and_flash_reason_are_one_line_under_the_plugin_id(self):
+        k = self.kernel(self.page_plugin())
+        k.ctx("p").log("disk full")
+        k.ctx("p").flash(False, "no window")
+        self.assertEqual(
+            "[erplibre-home] p: disk full\n[erplibre-home] p: no window\n",
+            self.journal.getvalue(),
+        )
+
+    def test_flash_records_without_rendering(self):
+        """The plugin renders or leaves its page right after: a flash
+        that rendered would draw the deck twice."""
+        k = self.kernel(self.page_plugin())
+        k.goto("pg")
+        self.deck.screen.clear()
+        k.ctx("p").flash(False)
+        self.assertEqual({}, self.deck.screen)
+        self.assertEqual("err", k.flash_result)
+
+    def test_locked_is_the_kernel_lock(self):
+        """A thread the plugin starts takes ctx.locked() before touching
+        its state: any other lock lets it run beside a key press."""
+        k = self.kernel(self.page_plugin())
+        with k.ctx("p").locked():
+            self.assertTrue(k.lock.locked())
+        self.assertFalse(k.lock.locked())
+
+
+class LockHeldTest(KernelCase):
+    """The key callback and the loop hold the kernel lock across every
+    plugin call they make; only Poll.read and the D-Bus recheck run
+    without it."""
+
+    CALLS = (
+        "page render",
+        "page handle",
+        "page tick",
+        "home face",
+        "home press",
+        "home tick",
+        "fixture face",
+        "fixture press",
+        "tile items",
+        "tile face",
+        "tile press",
+        "poll active",
+        "poll store",
+    )
+
+    def test_every_plugin_callback_runs_with_the_lock_held(self):
+        held = {}
+
+        def probe(name, value=None):
+            def call(*args):
+                held.setdefault(name, []).append(self.k.lock.locked())
+                return value
+
+            return call
+
+        def press(ctx):
+            probe("home press")(ctx)
+            ctx.goto("pg")
+
+        face = KeyFace((1, 1, 1), "x")
+        page = Page(
+            "pg",
+            None,
+            probe("page render"),
+            probe("page handle"),
+            tick=probe("page tick"),
+        )
+        fixture = Fixture(
+            1,
+            lambda geo, hk: [13],
+            probe("fixture face", face),
+            probe("fixture press"),
+        )
+        tiles = TileProvider(
+            1,
+            probe("tile items", ["t"]),
+            probe("tile face", face),
+            probe("tile press"),
+        )
+        poll = Poll(
+            0.0, probe("poll active", True), lambda: 1, probe("poll store")
+        )
+        self.k = self.kernel(
+            loaded(
+                "p",
+                Plugin(
+                    api=PLUGIN_API,
+                    pages=[page],
+                    home_button=HomeButton(1, probe("home face", face), press),
+                    home_tick=probe("home tick"),
+                    fixtures=[fixture],
+                    tiles=[tiles],
+                    polls=[poll],
+                ),
+            )
+        )
+        self.deck.polls = 1
+        self.k.loop()  # home tick, then the refresh
+        for key in (13, self.k.home.pool[0], 0, 3):
+            self.k.on_key(self.deck, key, True)
+        self.k.set_flash(True)
+        self.clock.advance(K.RESULT_FLASH_SEC + 0.1)
+        self.deck.polls = 2
+        self.k.loop()  # the flash ends, the page tick
+        self.assertEqual(2, len(held["page render"]))
+        self.assertEqual(sorted(self.CALLS), sorted(held))
+        for name, values in held.items():
+            self.assertEqual([True] * len(values), values, name)
+        self.assertFalse(self.k.lock.locked())
+
+    def test_the_key_callback_holds_the_lock_during_the_press(self):
+        """The loop thread runs between two presses: a press dispatched
+        without the lock would run beside a loop pass."""
+        held = []
+        k = self.kernel(
+            self.page_plugin(
+                handle=lambda ctx, key: held.append(k.lock.locked())
+            )
+        )
+        k.goto("pg")
+        k.on_key(self.deck, 3, True)
+        self.assertEqual([True], held)
+        self.assertFalse(k.lock.locked())
+
+
+class IsolationDetailTest(KernelCase):
+    def test_a_handle_failure_is_journaled_with_its_traceback(self):
+        def handle(ctx, key):
+            raise ValueError("bad")
+
+        k = self.kernel(self.page_plugin(handle=handle))
+        k.goto("pg")
+        k.handle_key(4, True)
+        journal = self.journal.getvalue()
+        self.assertIn(
+            "[erplibre-home] p: page pg handle failed: ValueError('bad')",
+            journal,
+        )
+        self.assertIn("Traceback (most recent call last)", journal)
+        self.assertIn('raise ValueError("bad")', journal)
+
+    def test_a_render_that_raises_draws_the_home_screen(self):
+        home = loaded(
+            "h",
+            Plugin(
+                api=PLUGIN_API,
+                home_button=HomeButton(
+                    1, lambda ctx: KeyFace((1, 1, 1), "H"), lambda ctx: None
+                ),
+            ),
+        )
+
+        def render_(ctx):
+            raise ValueError("bad")
+
+        k = self.kernel(home, self.page_plugin(render=render_))
+        self.deck.screen.clear()
+        k.goto("pg")
+        self.assertEqual("idle", k.page_id)
+        self.assertIn(0, self.deck.screen, "home not drawn")
+        self.assertEqual("H", self.deck.screen[0][1])
+        self.assertIn("p: page pg render failed", self.journal.getvalue())
+
+    def test_a_different_error_of_the_same_call_is_journaled_at_once(self):
+        errors = iter(
+            [
+                ValueError("a"),
+                ValueError("a"),
+                ValueError("b"),
+                TypeError("b"),
+            ]
+        )
+
+        def handle(ctx, key):
+            raise next(errors)
+
+        k = self.kernel(self.page_plugin(handle=handle))
+        for _ in range(4):
+            k.goto("pg")
+            self.clock.advance(1)
+            k.handle_key(4, True)
+        lines = [
+            ln
+            for ln in self.journal.getvalue().splitlines()
+            if "page pg handle failed" in ln
+        ]
+        self.assertEqual(
+            ["ValueError('a')", "ValueError('b')", "TypeError('b')"],
+            [ln.split("failed: ")[1] for ln in lines],
+        )
+
+
+class HomeStepTest(KernelCase):
+    def test_home_ticks_asking_for_a_render_get_one_per_pass(self):
+        ticks, renders = [], []
+
+        def tick(ctx, now):
+            ticks.append(now)
+            return True
+
+        k = self.kernel(
+            loaded("a", Plugin(api=PLUGIN_API, home_tick=tick)),
+            loaded("b", Plugin(api=PLUGIN_API, home_tick=tick)),
+        )
+        with mock.patch.object(k, "render", lambda: renders.append(1)):
+            for _ in range(3):
+                k.step(self.clock.now)
+                self.clock.advance(0.3)
+        self.assertEqual(6, len(ticks))
+        self.assertEqual(3, len(renders))
+
+    def test_a_raising_home_tick_is_journaled_once_and_the_deck_goes_on(
+        self,
+    ):
+        ran = []
+
+        def boom(ctx, now):
+            raise ValueError("bad")
+
+        k = self.kernel(
+            loaded("a", Plugin(api=PLUGIN_API, home_tick=boom)),
+            loaded(
+                "b",
+                Plugin(
+                    api=PLUGIN_API, home_tick=lambda ctx, now: ran.append(now)
+                ),
+            ),
+        )
+        self.deck.polls = 3
+        k.loop()
+        self.assertEqual(3, len(ran))
+        self.assertTrue(k.running)
+        self.assertEqual("idle", k.page_id)
+        self.assertEqual(
+            1, self.journal.getvalue().count("a: home tick failed")
+        )
+
+    def test_the_home_screen_redraws_every_two_seconds(self):
+        renders = []
+        k = self.kernel()
+        start = self.clock.now
+        with mock.patch.object(
+            k, "render", lambda: renders.append(self.clock.now - start)
+        ):
+            for offset in (0.0, 1.95, 2.05, 4.0, 4.1):
+                self.clock.now = start + offset
+                k.step(self.clock.now)
+        self.assertEqual([0.0, 2.05, 4.1], [round(t, 2) for t in renders])
+
+
+class FlashDurationTest(KernelCase):
+    def test_the_flash_lasts_half_a_second(self):
+        k = self.kernel(self.page_plugin())
+        k.goto("pg")
+        start = self.clock.now
+        k.set_flash(True)
+        self.clock.now = start + 0.49
+        k.handle_key(1, True)
+        self.clock.now = start + 0.51
+        k.handle_key(2, True)
+        self.assertEqual(
+            [("handle", 2)], [c for c in self.calls if c[0] == "handle"]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

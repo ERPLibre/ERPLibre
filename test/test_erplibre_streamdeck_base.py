@@ -210,5 +210,28 @@ class StyleTest(unittest.TestCase):
         )
 
 
+class UserPluginDirDefaultTest(unittest.TestCase):
+    def test_unset_or_empty_xdg_config_home_means_dot_config(self):
+        for env in ({"XDG_CONFIG_HOME": ""}, {}):
+            with (
+                self.subTest(env=env),
+                mock.patch.dict(os.environ, dict(env, HOME="/x/home")),
+            ):
+                if not env:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
+                self.assertEqual(
+                    "/x/home/.config/erplibre-home/deck-plugins",
+                    str(paths.user_plugin_dir()),
+                )
+
+
+class DbusTimeoutTest(unittest.TestCase):
+    def test_call_waits_three_seconds_by_default(self):
+        done = subprocess.CompletedProcess([], 0, "(true,)\n", "")
+        with mock.patch("subprocess.run", return_value=done) as run:
+            dbus.call("HotReload")
+        self.assertEqual(3, run.call_args.kwargs["timeout"])
+
+
 if __name__ == "__main__":
     unittest.main()

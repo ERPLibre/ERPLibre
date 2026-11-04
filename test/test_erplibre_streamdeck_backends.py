@@ -1256,6 +1256,12 @@ class TranslateShutdownTest(unittest.TestCase):
         translate._shutdown(self.ctx)
         self.assertEqual([], S.TRANSLATOR.calls)
 
+    def test_the_streaming_translator_is_terminated(self):
+        proc = S.FakePopen(["python3", "translator_stream.py"])
+        self.st.streaming_proc = proc
+        translate._shutdown(self.ctx)
+        self.assertEqual(-15, proc.returncode)
+
 
 if __name__ == "__main__":
     unittest.main()
