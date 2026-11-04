@@ -98,6 +98,9 @@ server {
         proxy_redirect off;
         proxy_max_temp_file_size 20480m;
         proxy_read_timeout 1800s;
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+        proxy_cookie_flags session_id samesite=lax secure;  # requires nginx 1.19.8
     }
 
     # cache some static data in memory for 60mins.
