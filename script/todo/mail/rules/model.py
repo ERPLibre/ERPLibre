@@ -328,6 +328,10 @@ class MessageView:
     adresse choisie par l'expéditeur (notre adresse dans To, par exemple).
     Laissés à None, ils prennent la forme décodée : une ligne du cache n'a
     qu'elle.
+
+    `flags` porte les drapeaux du serveur au moment du FETCH, séparés par
+    des blancs (« » : inconnus) : le moteur y lit le mot-clé de
+    revendication avant tout échange.
     """
 
     uid: int
@@ -345,6 +349,7 @@ class MessageView:
     frm_raw: str | None = None
     to_raw: str | None = None
     cc_raw: str | None = None
+    flags: str = ""
 
     def __post_init__(self) -> None:
         for nom in ("frm", "to", "cc"):
@@ -384,6 +389,7 @@ def message_view(header, uidvalidity: int) -> MessageView:
         frm_raw=_raw_of(header, "frm_raw"),
         to_raw=_raw_of(header, "to_raw"),
         cc_raw=_raw_of(header, "cc_raw"),
+        flags=str(getattr(header, "flags", "") or ""),
     )
 
 

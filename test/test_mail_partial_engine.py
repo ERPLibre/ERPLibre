@@ -301,7 +301,9 @@ class TestEnginePartial(PartialEngineCase):
             bilan = self.passe()
         self.assertEqual(bilan.status, "error")
         self.assertEqual(bilan.failed, 0)
-        self.assertEqual(self.journal(rule), [("pending", None)])
+        # Remis à l'envoi : la passe suivante le dira `send_uncertain`
+        # au lieu de le renvoyer.
+        self.assertEqual(self.journal(rule), [("pending", "sending")])
 
     def test_the_engine_reads_the_envelope_from_the_delivery_status(self):
         """Le statut écrit TEMP autrement que le message : c'est sa forme,

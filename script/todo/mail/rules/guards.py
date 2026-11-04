@@ -108,6 +108,13 @@ ENGINE_REASONS = (
     "rcpt_retry",
     "rcpt_refused",
     "rcpt_retried",
+    "claimed_elsewhere",
+    "claim_uncertain",
+    "claim_gone",
+    "ready",
+    "sending",
+    "send_uncertain",
+    "claim_failed",
 )
 SEND = "send"
 # Avance tolérée d'une date de réception sur l'horloge locale, en secondes.

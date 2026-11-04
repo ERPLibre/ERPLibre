@@ -6,18 +6,28 @@
 `run_pass` assemble le reste du paquet : il relit les règles sous le verrou
 du compte, arme celles qui ne le sont pas, prend les messages arrivés
 depuis le curseur, passe chacun aux garde-fous puis, si la décision est
-d'envoyer, construit la réponse et choisit sa sortie : envoi direct, file
-(hors ligne, refus temporaire) ou retenue (plafonds, premier envoi, cache
-recréé).
+d'envoyer, construit la réponse, revendique le message sur le serveur et
+choisit sa sortie : envoi direct, file (refus temporaire, lien perdu après
+la revendication, serveur sans revendication hors ligne) ou retenue
+(plafonds, premier envoi, cache recréé).
 
 Garanties :
 - au plus une réponse par (règle, message) : la ligne du journal est écrite
   AVANT tout envoi, et `UNIQUE(rule_id, msg_key)` la réserve entre
   processus ;
+- au plus une machine répond à un message : avant tout envoi automatique,
+  la passe pose le mot-clé `claim.CLAIM_KEYWORD` sur le message d'INBOX
+  (STORE conditionnel quand le serveur annonce CONDSTORE) ; une machine
+  qui le trouve posé s'abstient (`claimed_elsewhere`). La table locale
+  `rule_claim` dit quelles revendications sont les siennes : une passe
+  interrompue avant l'envoi est reprise par la MÊME machine, jamais par
+  une autre, et un envoi interrompu en cours n'est jamais renvoyé
+  (`send_uncertain`) ;
 - le curseur (`state.json`, hors du cache) n'avance que sur un message vu
   jusqu'au bout par toutes les règles actives ; un message qu'on n'a pas pu
-  évaluer (hors ligne, FETCH en échec) reste un TROU et se réévalue à la
-  passe suivante ;
+  évaluer (hors ligne, FETCH en échec, revendication en échec) reste un
+  TROU et se réévalue à la passe suivante, `CLAIM_PASSES_MAX` fois au plus
+  pour une revendication ;
 - un message dont le traitement lève est journalisé en échec et ne bloque
   ni le curseur ni les messages suivants ; une panne du cache lui-même
   (`_STORE_FAILURES` : base occupée, disque plein) arrête la passe en
@@ -56,6 +66,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from script.todo.mail.claim import has_claim
+from script.todo.mail.imap_transport import ImapError
 from script.todo.mail.rules import filter as rules_filter
 from script.todo.mail.rules import guards, markup, storage
 from script.todo.mail.rules import model as rules_model
@@ -115,6 +127,23 @@ STATS_DAILY_MAX = 20
 # `FORWARD_MAX_BYTES`), là où une réponse retenue pèse quelques Kio.
 FORWARD_CAP_HELD_MAX = 20
 DAY_S = 86400
+# STORE de revendication au plus par message et par passe ; au-delà d'un
+# message qui change sans cesse, il redevient un trou.
+CLAIM_ATTEMPTS = 3
+# Les raisons qui écartent un message que la revendication n'a pas donné
+# à cette machine.
+CLAIM_SKIPS = ("claimed_elsewhere", "claim_uncertain", "claim_gone")
+# Passes de suite où la revendication d'un message peut échouer avant que
+# le message ne soit inscrit en échec ; sans borne, il resterait un trou
+# à chaque passe et retiendrait le curseur.
+CLAIM_PASSES_MAX = 5
+# Issues journalisées d'une règle qui, à la première évaluation, n'avait
+# pas apparié (ou n'arrêtait pas) : toute autre ligne rejoue `stop_after`.
+_UNMATCHED_LOGGED = (
+    ("skipped", "too_old"),
+    ("skipped", "bad_date"),
+    ("failed", "body_unavailable"),
+)
 
 STATUSES = (
     "ok",
@@ -162,6 +191,9 @@ class EngineReport:
     sans adresse ni sujet. `partial` compte les départs que le serveur a
     refusés pour une partie des destinataires (aussi comptés dans
     `sent`), `retried` les entrées de nouvel essai créées par la passe.
+    `claim_mode` est le mode de revendication du serveur connu à la fin
+    de la passe (`claim.CLAIM_MODES`) : celui de `state.json` au départ,
+    celui de la dernière revendication ensuite, « » s'il est inconnu.
     """
 
     account: str
@@ -176,11 +208,21 @@ class EngineReport:
     skipped: collections.Counter = field(default_factory=collections.Counter)
     warnings: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    claim_mode: str = ""
 
     def warn(self, text: str) -> None:
         """Ajoute un avertissement, une seule fois par texte."""
         if text not in self.warnings:
             self.warnings.append(text)
+
+
+def claim_mode_text(mode: str) -> str:
+    """La ligne qui dit le mode de revendication d'un serveur
+    (`mail_rules_claim_<mode>`), « pas encore vérifiée » pour un mode
+    inconnu."""
+    if mode in ("atomic", "plain", "none"):
+        return t(f"mail_rules_claim_{mode}")
+    return t("mail_rules_claim_unknown")
 
 
 def find_inbox(store) -> str | None:
@@ -608,6 +650,11 @@ class _Hole(Exception):
     """Le message ne peut pas être évalué maintenant : il reste un trou."""
 
 
+class _ClaimHole(_Hole):
+    """Trou de revendication, lien ouvert : le message est repris à la
+    passe suivante, sans que la passe se dise hors ligne."""
+
+
 def run_pass(
     session: EngineSession,
     *,
@@ -706,6 +753,10 @@ class _Pass:
         self.report = storage.ReportSettings()
         self._mailbox = None
         self._requesters = None
+        # Le verdict de revendication de chaque UID d'INBOX déjà établi par
+        # la passe : une seconde règle sur le même message ne refait aucun
+        # échange, et un échec n'est compté qu'une fois par message.
+        self.claims: dict[int, str] = {}
 
     # -- déroulé -------------------------------------------------------
 
@@ -790,6 +841,17 @@ class _Pass:
                     self.result.status = "no_rules"
                     return
 
+        # Sous le verrou du compte, toute ligne `pending` est celle d'une
+        # passe morte : réglée AVANT le contrôle de renumérotation.
+        _supprimees, incertaines = store.rule_log_resume()
+        if incertaines:
+            self.result.warn(t("mail_rules_send_uncertain_warning"))
+            _logger.info(
+                "règles %s : %d envoi(s) interrompu(s), send_uncertain",
+                name,
+                incertaines,
+            )
+
         inbox = find_inbox(store)
         fstate = store.folder_state(inbox) if inbox else None
         if not fstate or not fstate.get("uidvalidity"):
@@ -804,6 +866,7 @@ class _Pass:
         now = self.now()
 
         st = storage.load_state(name, base)
+        self.result.claim_mode = st.claim_mode
         epoch = store.cache_epoch()
         if st.uidvalidity and st.uidvalidity != uidv:
             # Boîte renumérotée : tout y semble neuf. Les règles repartent
@@ -815,7 +878,16 @@ class _Pass:
                 base=base,
                 lock_held=True,
             )
-            st = EngineState(uidv, last_uid, epoch, st.hold_until, [])
+            # Le mode de revendication est celui du serveur, qu'une
+            # renumérotation ne change pas.
+            st = EngineState(
+                uidv,
+                last_uid,
+                epoch,
+                st.hold_until,
+                [],
+                claim_mode=st.claim_mode,
+            )
             storage.save_state(name, st, base=base, lock_held=True)
             self.result.status = "rearmed"
             return
@@ -895,9 +967,13 @@ class _Pass:
                 continue
             try:
                 self._message(header)
-            except _Hole:
+            except _Hole as exc:
                 holes.add(uid)
-                if self.result.status == "ok":
+                # Un trou de revendication, lien ouvert, n'est pas « hors
+                # ligne » : son avertissement dit le reste.
+                if self.result.status == "ok" and not isinstance(
+                    exc, _ClaimHole
+                ):
                     self.result.status = "offline"
                 continue
             treated.add(uid)
@@ -1090,7 +1166,22 @@ class _Pass:
             # « arrêter ici » vaut comme pour un échec de construction.
             self._fail(rule, view, msg_key, "build_error", exc)
             return rule.stop_after
+        if d.reason == "duplicate":
+            # Message réévalué (passe interrompue, trou d'une règle
+            # suivante) : la décision d'arrêt de la première évaluation est
+            # rejouée d'après sa ligne. Sans cela, une règle qui a envoyé
+            # (ou peut-être envoyé) n'arrêterait plus, et la suivante
+            # répondrait une seconde fois au même message.
+            etat = self.store.rule_log_state(rule.id, msg_key)
+            if etat is None:
+                return False
+            ligne = (etat["outcome"], etat["reason"])
+            return ligne not in _UNMATCHED_LOGGED and rule.stop_after
         if d.reason == guards.SEND:
+            code = self._claim_hint(view)
+            if code is not None:
+                self._skip_claimed(rule, view, msg_key, d, code)
+                return d.matched and rule.stop_after
             try:
                 self._send(rule, view, msg_key, d, raw)
             except (_Hole, *_STORE_FAILURES):
@@ -1345,8 +1436,18 @@ class _Pass:
         return True
 
     def _dispatch(self, rule, view, msg_key, d, msg) -> None:
-        """Réserve le message au journal, puis choisit sa sortie : écarté
-        (plafond quotidien d'un rapport), retenu, file ou envoi direct.
+        """Choisit la sortie du message, dans cet ordre : écarté (plafond
+        quotidien d'un rapport, qui n'envoie rien, donc ne revendique
+        rien) ; revendication sur le serveur (`_server_claim`), qui écarte
+        un message revendiqué ailleurs ou laisse un trou ; réservation au
+        journal (`pending/ready`) ; retenue, file ou envoi direct, la
+        ligne passant à `pending/sending` juste avant `deliver_fn`.
+
+        La revendication précède la réservation : un trou ou un écart ne
+        laisse ainsi aucune ligne `pending`. Elle a lieu une fois pour la
+        vie du message : une réponse retenue ou mise en file part plus
+        tard sans nouvel échange. `hold_reason` est calculé avant elle ;
+        il ne lit que le journal et l'heure, qu'elle ne change pas.
 
         Un envoi direct refusé pour une partie de son enveloppe passe par
         `_partial` ; une erreur de cette écriture, autre qu'une panne du
@@ -1358,13 +1459,6 @@ class _Pass:
         l'original et n'y entre pas.
         """
         store, now = self.store, self.now()
-        if not self._claim(rule, view, msg_key, d, "pending", None):
-            # Un autre processus a réservé ce message pour cette règle.
-            self.result.skipped["duplicate"] += 1
-            return
-        if not isinstance(msg, RawOutgoing):
-            store.mark_auto_sent(msg["Message-ID"] or "", rule.id, now)
-
         hold = hold_reason(
             store,
             rule,
@@ -1377,10 +1471,28 @@ class _Pass:
         if hold == "stats_cap":
             # Ni file ni retenue : une demande libérée plus tard partirait
             # avec des chiffres périmés.
-            store.rule_log_set_outcome(rule.id, msg_key, "skipped", hold)
-            self.result.skipped[hold] += 1
+            if self._claim(rule, view, msg_key, d, "skipped", hold):
+                self.result.skipped[hold] += 1
             _logger.info("règles %s : règle %s, stats_cap", self.name, rule.id)
             return
+        verdict = self._server_claim(view)
+        if verdict in CLAIM_SKIPS:
+            self._skip_claimed(rule, view, msg_key, d, verdict)
+            return
+        if verdict == "claim_failed":
+            if self._claim(rule, view, msg_key, d, "failed", "claim_failed"):
+                self.result.failed += 1
+            _logger.info(
+                "règles %s : règle %s, claim_failed", self.name, rule.id
+            )
+            return
+        if not self._claim(rule, view, msg_key, d, "pending", "ready"):
+            # Un autre processus a réservé ce message pour cette règle.
+            self.result.skipped["duplicate"] += 1
+            return
+        if not isinstance(msg, RawOutgoing):
+            store.mark_auto_sent(msg["Message-ID"] or "", rule.id, now)
+
         if hold is not None:
             if hold in ("pass_cap", "hour_cap"):
                 self.result.warn(t("mail_rules_cap_warning"))
@@ -1402,6 +1514,9 @@ class _Pass:
         deliver_fn = self.deliver_fn
         if deliver_fn is None:
             from script.todo.mail.tui import deliver as deliver_fn
+        # Dès ici le message peut partir : une passe interrompue au-delà
+        # ne le renvoie jamais (`rule_log_resume`).
+        store.rule_log_set_outcome(rule.id, msg_key, "pending", "sending")
         try:
             # Sans `queue_offline=False`, une session tombée hors ligne
             # depuis le contrôle ci-dessus mettrait la réponse en file comme
@@ -1468,6 +1583,213 @@ class _Pass:
         self.sends_this_pass += 1
         self.result.sent += 1
         _logger.info("règles %s : règle %s, sent", self.name, rule.id)
+
+    # -- revendication sur le serveur --------------------------------
+
+    def _claim_hint(self, view) -> str | None:
+        """`claimed_elsewhere` ou `claim_uncertain` quand les drapeaux lus
+        à la synchronisation portent le mot-clé et que la ligne locale
+        n'est pas `owned` ; None sinon. Aucun échange avec le serveur :
+        rien n'est rendu ni téléchargé pour un message déjà revendiqué.
+        Le serveur reste l'autorité : un message sans mot-clé à la
+        synchronisation passe par la revendication complète."""
+        memo = self.claims.get(view.uid)
+        if memo is not None:
+            return memo if memo in CLAIM_SKIPS else None
+        if not has_claim(view.flags):
+            return None
+        local = self.store.rule_claim_state(self.uidv, view.uid)
+        if local == "owned":
+            return None
+        code = "claim_uncertain" if local == "intent" else "claimed_elsewhere"
+        self.claims[view.uid] = code
+        return code
+
+    def _skip_claimed(self, rule, view, msg_key, d, code) -> None:
+        """`skipped/<code>` au journal, avec les empreintes d'expéditeur et
+        de cible (la limite par expéditeur compte un message revendiqué
+        ailleurs), compté s'il est neuf. `claim_uncertain` avertit pour
+        une ligne neuve seulement : une ligne déjà là n'avertit pas."""
+        if self._claim(rule, view, msg_key, d, "skipped", code):
+            self.result.skipped[code] += 1
+            if code == "claim_uncertain":
+                self.result.warn(t("mail_rules_claim_uncertain_warning"))
+        _logger.info("règles %s : règle %s, %s", self.name, rule.id, code)
+
+    def _server_claim(self, view) -> str:
+        """La revendication du message pour cette machine : `owned` ou
+        `unclaimed` (envoyer), une raison de `CLAIM_SKIPS`, ou
+        `claim_failed` (échecs bornés atteints). `_Hole` hors ligne,
+        `_ClaimHole` quand elle ne peut pas être établie maintenant.
+
+        Une ligne locale finale suffit, sans échange : `owned` (deuxième
+        règle, reprise après une passe interrompue), `lost`, `unclaimed`.
+        Hors ligne, un serveur connu pour ne pas permettre la
+        revendication (`none`) envoie comme avant ; tout autre message
+        attend la passe suivante en ligne.
+        """
+        uid = view.uid
+        if uid in self.claims:
+            return self.claims[uid]
+        local = self.store.rule_claim_state(self.uidv, uid)
+        verdict = {
+            "owned": "owned",
+            "lost": "claimed_elsewhere",
+            "unclaimed": "unclaimed",
+        }.get(local)
+        if verdict is None:
+            if not self.session.online:
+                if self.state.claim_mode != "none":
+                    raise _Hole()
+                verdict = "unclaimed"
+            else:
+                verdict = self._claim_on_server(view)
+        self.claims[uid] = verdict
+        return verdict
+
+    def _claim_on_server(self, view) -> str:
+        """Sonde puis STORE du mot-clé, en un seul `avec_lien` sous le
+        verrou d'échange ; rend le verdict de `_server_claim`.
+
+        L'intention est inscrite avant chaque STORE, et retirée dès que le
+        STORE n'a sûrement pas été appliqué (MODIFIED, refus du serveur).
+        Un STORE accepté dont la relecture est refusée (`unknown`) la
+        garde : c'est un échec de revendication, et la passe suivante
+        trouve le mot-clé incertain ou le message libre.
+        Une intention trouvée au début d'un essai (passe tuée pendant le
+        STORE, lien coupé et rouvert par `avec_lien`) rend un mot-clé
+        présent INCERTAIN : notre STORE est peut-être passé, ou un autre
+        poste a revendiqué entre-temps ; rien ne part. MODIFIED relit le
+        message : un autre drapeau posé ailleurs (lu sur un téléphone)
+        suffit à le provoquer, et seul le mot-clé fait renoncer.
+        """
+        store, uidv, uid, inbox = self.store, self.uidv, view.uid, self.inbox
+
+        def act(transport):
+            sonde = getattr(transport, "claim_probe", None)
+            if sonde is None:
+                return "silent", ""
+            # Relu à CHAQUE essai : une reprise de `avec_lien` après un
+            # lien mort en plein STORE trouve l'intention de l'essai
+            # précédent.
+            douteux = store.rule_claim_state(uidv, uid) == "intent"
+            mode = ""
+            for _ in range(CLAIM_ATTEMPTS):
+                probe = sonde(inbox, uid, uidvalidity=uidv)
+                mode = probe.mode
+                if douteux and probe.status in ("present", "unsupported"):
+                    return "uncertain", mode
+                if probe.status != "free":
+                    return probe.status, mode
+                store.rule_claim_intent(uidv, uid)
+                try:
+                    res = transport.claim_store(uid, probe)
+                except ImapError:
+                    # Le serveur a répondu NO ou BAD : rien n'est appliqué.
+                    store.rule_claim_drop_intent(uidv, uid)
+                    raise
+                if res == "stored":
+                    store.rule_claim_set(uidv, uid, "owned", mode=mode)
+                    return "stored", mode
+                if res == "refused":
+                    # Le serveur ne garde pas le mot-clé ; après une
+                    # intention antérieure, rien ne part.
+                    return ("uncertain" if douteux else "refused"), "none"
+                if res == "gone":
+                    return "gone", mode
+                if res == "unknown":
+                    # STORE accepté, mot-clé peut-être posé : l'intention
+                    # reste, et la passe suivante relit le message.
+                    return "unknown", mode
+                # `modified` ou `retry` : STORE non appliqué, intention
+                # retirée, puis relecture (en mode simple après `retry`).
+                store.rule_claim_drop_intent(uidv, uid)
+                douteux = False
+            return "busy", mode
+
+        try:
+            with self.garde:
+                res = self.session.avec_lien(act)
+        except _STORE_FAILURES:
+            raise
+        except Exception as exc:
+            _logger.error(
+                "règles %s : revendication UID %s en échec (%s)",
+                self.name,
+                uid,
+                type(exc).__name__,
+            )
+            return self._claim_failure(uid)
+        if res is None:
+            raise _Hole()
+        issue, mode = res
+        _logger.info(
+            "règles %s : revendication UID %s, %s, mode %s",
+            self.name,
+            uid,
+            issue,
+            mode or "-",
+        )
+        if issue == "renumbered":
+            # La passe suivante réarme : ni avertissement ni échec.
+            raise _ClaimHole()
+        self._note_claim_mode(
+            mode, impose=issue in ("stored", "refused") or mode == "none"
+        )
+        if issue == "stored":
+            return "owned"
+        if issue == "present":
+            store.rule_claim_set(uidv, uid, "lost", mode=mode)
+            return "claimed_elsewhere"
+        if issue == "uncertain":
+            return "claim_uncertain"
+        if issue == "gone":
+            store.rule_claim_drop_intent(uidv, uid)
+            return "claim_gone"
+        if issue == "refused":
+            store.rule_claim_set(uidv, uid, "unclaimed", mode="none")
+            return "unclaimed"
+        if issue in ("unsupported", "silent"):
+            return "unclaimed"
+        return self._claim_failure(uid)
+
+    def _claim_failure(self, uid: int) -> str:
+        """Compte une passe de plus où la revendication du message a
+        échoué : `claim_failed` (définitif) à `CLAIM_PASSES_MAX`, sinon
+        `_ClaimHole`. Rien ne part sans revendication : un doublon
+        resterait possible."""
+        n = self.store.rule_claim_failed(self.uidv, uid)
+        if n >= CLAIM_PASSES_MAX:
+            self.result.warn(t("mail_rules_claim_failed_final"))
+            _logger.error(
+                "règles %s : revendication UID %s, claim_failed après %d"
+                " passes",
+                self.name,
+                uid,
+                n,
+            )
+            return "claim_failed"
+        self.result.warn(t("mail_rules_claim_failed"))
+        raise _ClaimHole()
+
+    def _note_claim_mode(self, mode: str, *, impose: bool = False) -> None:
+        """Retient le mode de revendication du serveur dans l'état du
+        moteur et le bilan.
+
+        Tant que l'état dit `none`, seule une issue qui `impose` (STORE
+        confirmé, ou refus) le change : une sonde ordinaire ne le fait pas
+        osciller, et l'avertissement ne revient pas à chaque passe. Le
+        passage à `none` avertit une fois. L'état est écrit par le
+        prochain `_advance`.
+        """
+        if not mode or mode == self.state.claim_mode:
+            return
+        if self.state.claim_mode == "none" and not impose:
+            return
+        self.state.claim_mode = mode
+        self.result.claim_mode = mode
+        if mode == "none":
+            self.result.warn(t("mail_rules_claim_none_warning"))
 
     def _partial(self, rule, msg_key, msg, statut, refused, now) -> None:
         """Inscrit un départ que le serveur a accepté pour une partie de
@@ -1626,7 +1948,11 @@ class Simulation:
     les réglages n'exigent aucun identifiant de serveur. `forward` est
     l'aperçu d'une règle `forward` (`ForwardPreview`), qui n'a jamais de
     `rendered`. `kind` est le type de l'action de la règle essayée.
-    `sendable` dit si l'essai peut être envoyé à soi-même.
+    `sendable` dit si l'essai peut être envoyé à soi-même. `claim` dit si
+    le message est déjà revendiqué : `here` (par cette machine),
+    `elsewhere` (mot-clé posé par une autre, ou ligne locale `lost`),
+    `uncertain` (mot-clé posé après une revendication interrompue ici),
+    « » sinon.
     """
 
     rule_enabled: bool
@@ -1646,6 +1972,7 @@ class Simulation:
     auth_serv_unset: bool = False
     forward: ForwardPreview | None = None
     kind: str = ""
+    claim: str = ""
 
     @property
     def sendable(self) -> bool:
@@ -1679,12 +2006,15 @@ def simulate(
 
     Ni journal, ni `state.json`, ni `rules.json`, ni `auto_sent`, ni
     instantané du rapport ne sont écrits, et le verrou du compte n'est pas
-    pris. `header` est un `HeaderInfo` (en-têtes complets) ou une ligne du
-    cache (`headers_complete` faux). `report_settings` remplace les
-    réglages du rapport lus du disque. `raw_loader` rend les octets
-    complets du message (`make_raw_loader`) pour l'aperçu d'une règle
-    `forward` ; None, l'aperçu dit que le message est indisponible. Ne lève
-    jamais : une exception devient `error`.
+    pris. L'essai ne revendique jamais : il DIT seulement l'état de la
+    revendication (`Simulation.claim`), lu dans les drapeaux de l'en-tête
+    et la ligne locale, sans sonde ni STORE. `header` est un `HeaderInfo`
+    (en-têtes complets) ou une ligne du cache (`headers_complete` faux).
+    `report_settings` remplace les réglages du rapport lus du disque.
+    `raw_loader` rend les octets complets du message (`make_raw_loader`)
+    pour l'aperçu d'une règle `forward` ; None, l'aperçu dit que le
+    message est indisponible. Ne lève jamais : une exception devient
+    `error`.
     """
     sim = Simulation(
         rule_enabled=bool(rule.enabled),
@@ -1749,6 +2079,7 @@ def _simulate(
     is_stats = rule.action.kind == "stats"
     view = message_view(header, uidvalidity)
     msg_key = store.message_key(view.msgid, uidvalidity, view.uid)
+    sim.claim = _trial_claim(store, view, uidvalidity)
     settings = report_settings
     if settings is None:
         settings = storage.ReportSettings()
@@ -1877,6 +2208,24 @@ def _simulate(
     sim.subject, sim.rendered = subject, rendered
 
 
+def _trial_claim(store, view, uidvalidity: int) -> str:
+    """L'état de revendication d'un message pour l'essai, en lecture
+    seule : `here`, `elsewhere`, `uncertain` ou « »."""
+    try:
+        local = store.rule_claim_state(uidvalidity, view.uid)
+    except Exception:
+        # Un cache sans la table (double de test) ou occupé : l'essai dit
+        # ce qu'il lit des drapeaux seuls.
+        local = None
+    if local == "owned":
+        return "here"
+    if has_claim(view.flags):
+        return "uncertain" if local == "intent" else "elsewhere"
+    if local == "lost":
+        return "elsewhere"
+    return ""
+
+
 def _trial_forward_ids(name: str, base, rule) -> frozenset:
     """Les règles `forward` du compte, plus la règle essayée si elle en est
     une et n'est pas encore enregistrée ; un fichier illisible n'en donne
@@ -1942,7 +2291,8 @@ def send_trial(
     now: Callable[[], float] = time.time,
 ) -> str:
     """Envoie la réponse simulée à l'adresse du compte ; rend le statut de
-    `deliver`.
+    `deliver`. Ne revendique jamais : l'essai part au compte lui-même,
+    pas en réponse au message.
 
     Le sujet porte le préfixe d'essai ; ni `In-Reply-To` ni `References` :
     l'essai n'entre pas dans le fil d'un tiers. Le Message-ID est inscrit

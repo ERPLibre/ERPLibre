@@ -439,20 +439,6 @@ class TestCaps(EngineCase):
 
 
 class TestOutputs(EngineCase):
-    def test_offline_queues_with_a_24h_expiry(self):
-        rule = self.regle()
-        self.imap.recevoir(1)
-        rapport = self.session.sync()
-        self.session.syncer = None
-        bilan = self.passe(report=rapport)
-        self.assertEqual(bilan.queued, 1)
-        entree = self.store.outbox()[0]
-        self.assertEqual(entree["expires_at"], self.horloge() + 86400)
-        self.assertFalse(entree["held"])
-        self.assertEqual(
-            self.store.rule_log_entries(rule.id)[0]["reason"], "offline"
-        )
-
     def test_going_offline_during_the_send_queues_an_auto_entry(self):
         """La session passe hors ligne entre le contrôle du moteur et
         l'envoi : la réponse entre en file comme réponse AUTOMATIQUE
