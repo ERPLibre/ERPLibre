@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from script.todo import healthcheck as h
-from script.todo.todo_i18n import TRANSLATIONS
+from script.todo.todo_i18n import TRANSLATIONS, t
 
 RACINE_DEPOT = Path(__file__).resolve().parent.parent
 ENV_GIT = {
@@ -424,6 +424,71 @@ class TestMenu(unittest.TestCase):
                 (h.FICHIERS_NON_COMMITES, h.DEPOTS_TOUS, None),
             ],
         )
+
+
+class TestJournaux(unittest.TestCase):
+    """Les journaux de session : compte, poids, droits."""
+
+    def setUp(self):
+        self.etat = tempfile.mkdtemp(prefix="hc_journaux_")
+        self.addCleanup(shutil.rmtree, self.etat, ignore_errors=True)
+        env = mock.patch.dict(
+            os.environ, {"XDG_STATE_HOME": self.etat, "ERPLIBRE_TODO_LOG": ""}
+        )
+        env.start()
+        self.addCleanup(env.stop)
+        self.dossier = os.path.join(self.etat, "erplibre", "todo")
+        self.ctx = h.Contexte(self.etat)
+
+    def journal(self, nom, taille, mode=0o600):
+        os.makedirs(self.dossier, mode=0o700, exist_ok=True)
+        chemin = os.path.join(self.dossier, nom)
+        with open(chemin, "w") as fh:
+            fh.write("x" * taille)
+        os.chmod(chemin, mode)
+        return chemin
+
+    def test_sans_dossier_rien_encore(self):
+        r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.INFO)
+        self.assertIn(t("no log yet"), r.resume)
+
+    def test_compte_et_poids_des_seuls_journaux_du_todo(self):
+        self.journal("todo_2026-01-01_10h00m00s_1.log", 1024)
+        self.journal("todo_2026-01-02_10h00m00s_2.log", 2048)
+        self.journal("autre.txt", 999999)
+        r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.OK)
+        self.assertIn(f"2 {t('logs')}, 3.0 Kio", r.resume)
+        self.assertTrue(r.commandes)
+
+    def test_un_journal_lisible_par_d_autres_alerte(self):
+        self.journal("todo_2026-01-01_10h00m00s_1.log", 10, mode=0o644)
+        r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.ALERTE)
+        self.assertIn("todo_2026-01-01_10h00m00s_1.log", r.details[-1])
+
+    def test_desactive_par_la_variable(self):
+        with mock.patch.dict(os.environ, {"ERPLIBRE_TODO_LOG": "0"}):
+            r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.SAUTE)
+
+    def test_un_secret_dans_un_journal_alerte_sans_etre_recopie(self):
+        cle = "AKIA" + "Z" * 16
+        chemin = self.journal("todo_2026-01-01_10h00m00s_1.log", 0)
+        with open(chemin, "w") as fh:
+            fh.write("ligne propre\nexport CLE=" + cle + "\n")
+        r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.ALERTE)
+        texte = "\n".join(r.details)
+        self.assertIn("todo_2026-01-01_10h00m00s_1.log:2", texte)
+        self.assertNotIn(cle, texte)
+
+    def test_au_dela_du_seuil_alerte(self):
+        self.journal("todo_2026-01-01_10h00m00s_1.log", 10)
+        with mock.patch.object(h, "JOURNAUX_ALERTE", 5):
+            r = h.executer(self.ctx, h.verifier_journaux)
+        self.assertEqual(r.statut, h.ALERTE)
 
 
 if __name__ == "__main__":

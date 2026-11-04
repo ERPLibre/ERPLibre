@@ -38,7 +38,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from script.todo import todo_etat
+from script.todo import todo_etat, todo_journal
 from script.todo.todo_i18n import t
 
 OK = "ok"
@@ -91,6 +91,9 @@ OPERATIONS_GIT = (
     ("REVERT_HEAD", "revert"),
 )
 RE_SUIVI = re.compile(r"ahead (\d+)")
+# Au-delà, les journaux de session pèsent assez pour qu'on le dise : une
+# installation d'Odoo journalisée en entier en fait des dizaines de Mio.
+JOURNAUX_ALERTE = 1024**3
 
 
 @dataclass
@@ -120,6 +123,7 @@ TITRES = {
     "verifier_postgresql": "PostgreSQL",
     "verifier_odoo": "Odoo HTTP port",
     "verifier_commandes_claude": "Claude commands",
+    "verifier_journaux": "TODO session logs",
 }
 
 
@@ -141,6 +145,7 @@ ICONES_VERIFICATIONS = {
     "verifier_postgresql": "🐘",
     "verifier_odoo": "🌐",
     "verifier_commandes_claude": "🤖",
+    "verifier_journaux": "📜",
 }
 
 
@@ -1029,6 +1034,78 @@ def verifier_commandes_claude(ctx):
     return Resultat(nom, OK, f"{len(ctx.commandes_claude)} {t('up to date')}")
 
 
+def _poids(octets):
+    """Une taille lisible, à l'unité du disque : « 3.2 Mio »."""
+    for unite, facteur in (("Gio", 1024**3), ("Mio", 1024**2), ("Kio", 1024)):
+        if octets >= facteur:
+            return f"{octets / facteur:.1f} {unite}"
+    return f"{octets} o"
+
+
+def verifier_journaux(ctx):
+    """Les journaux de session du TODO : combien, quel poids, privés ?
+
+    Ils vivent dans le home, communs à tous les checkouts du compte (voir
+    todo_journal). Le caviardage n'étant qu'un dernier rempart, un fichier
+    ou un dossier lisible par d'autres comptes est une alerte.
+    """
+    nom = titre(verifier_journaux)
+    dossier = todo_journal.dossier_journaux()
+    affiche = dossier.replace(os.path.expanduser("~"), "~", 1)
+    ctx.noter(f"ls -l {affiche}/{todo_journal.PREFIXE}*{todo_journal.SUFFIXE}")
+    if os.environ.get("ERPLIBRE_TODO_LOG", "").strip() == "0":
+        return Resultat(nom, SAUTE, t("disabled (ERPLIBRE_TODO_LOG=0)"))
+    if not os.path.isdir(dossier):
+        return Resultat(nom, INFO, f"{t('no log yet')} · {affiche}")
+    journaux = []
+    for entree in os.scandir(dossier):
+        if (
+            entree.name.startswith(todo_journal.PREFIXE)
+            and entree.name.endswith(todo_journal.SUFFIXE)
+            and entree.is_file(follow_symlinks=False)
+        ):
+            fiche = entree.stat(follow_symlinks=False)
+            journaux.append((fiche.st_mtime, entree.name, fiche))
+    if not journaux:
+        return Resultat(nom, INFO, f"{t('no log yet')} · {affiche}")
+    journaux.sort()
+    poids = sum(fiche.st_size for _, _, fiche in journaux)
+    resume = f"{len(journaux)} {t('logs')}, {_poids(poids)} · {affiche}"
+    details = [
+        f"{t('newest:')} {journaux[-1][1]} ({_poids(journaux[-1][2].st_size)})",
+        f"{t('oldest:')} {journaux[0][1]}",
+    ]
+    # Les bits « groupe » et « autres » : ni le dossier ni un journal ne
+    # doivent en porter.
+    ouverts = [n for _, n, fiche in journaux if fiche.st_mode & 0o077]
+    if os.stat(dossier).st_mode & 0o077:
+        ouverts.insert(0, f"{affiche}/")
+    # Le contenu : ce que le caviardage a laissé passer, par fichier et
+    # numéro de ligne, sans jamais la valeur.
+    ctx.noter("todo_journal.secrets_suspects(<journal>)")
+    suspects = []
+    for _date, nom_journal, _fiche in journaux:
+        for numero, nature in todo_journal.analyser(
+            os.path.join(dossier, nom_journal)
+        ):
+            suspects.append(f"{nom_journal}:{numero} — {t(nature)}")
+    if suspects:
+        details.append(f"{t('Possible secrets:')} {len(suspects)}")
+        details += _limiter(suspects)
+        details.append(
+            t("Delete these logs, or teach redact_secrets the missing form")
+        )
+    if ouverts:
+        details.append(
+            f"{t('readable by others:')} {', '.join(_limiter(ouverts))}"
+        )
+    if ouverts or suspects:
+        return Resultat(nom, ALERTE, resume, details)
+    if poids >= JOURNAUX_ALERTE:
+        return Resultat(nom, ALERTE, resume, details)
+    return Resultat(nom, OK, resume, details)
+
+
 # Les vérifications, dans l'ordre du rapport : (section, fonction).
 VERIFICATIONS = (
     ("code", verifier_conflits),
@@ -1044,6 +1121,7 @@ VERIFICATIONS = (
     ("environnement", verifier_postgresql),
     ("environnement", verifier_odoo),
     ("environnement", verifier_commandes_claude),
+    ("environnement", verifier_journaux),
 )
 
 

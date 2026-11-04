@@ -23,6 +23,7 @@ tourne comme avant.
 import datetime
 import logging
 import os
+import re
 
 from script.execute import execute
 
@@ -117,6 +118,47 @@ def ouvrir(environ=None, maintenant=None, garder=GARDER):
     except OSError:
         pass
     return chemin
+
+
+# Des secrets que redact_secrets ne masque pas, reconnaissables à leur seule
+# forme : la détection les signale pour qu'on les traite, sans les réécrire.
+SUSPECTS = (
+    ("AWS access key", re.compile(r"\bA(?:KIA|SIA)[0-9A-Z]{16}\b")),
+    ("Slack token", re.compile(r"\bxox[abposr]-[0-9A-Za-z-]{10,}")),
+    ("API key sk-", re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}")),
+    ("Stripe key", re.compile(r"\b[rs]k_live_[0-9A-Za-z]{16,}")),
+    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+    ("JWT", re.compile(r"\beyJ[\w-]{8,}\.eyJ[\w-]{8,}\.[\w-]{8,}")),
+)
+
+
+def secrets_suspects(lignes):
+    """[(numéro, nature)] des lignes qui portent probablement un secret.
+
+    Deux familles : une forme que redact_secrets SAIT masquer mais qui est
+    restée en clair — un journal écrit avant que la forme soit connue — et
+    une forme de jeton qu'il ne masque pas. Seule la nature est rendue,
+    jamais la valeur : le rapport qui la cite ne doit pas la recopier.
+    """
+    trouvees = []
+    for numero, ligne in enumerate(lignes, 1):
+        if execute.redact_secrets(ligne) != ligne:
+            trouvees.append((numero, "unmasked known form"))
+            continue
+        for nature, motif in SUSPECTS:
+            if motif.search(ligne):
+                trouvees.append((numero, nature))
+                break
+    return trouvees
+
+
+def analyser(chemin):
+    """secrets_suspects() d'un fichier de journal, [] s'il est illisible."""
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fichier:
+            return secrets_suspects(fichier)
+    except OSError:
+        return []
 
 
 def noter_exception():

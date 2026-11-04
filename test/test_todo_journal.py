@@ -174,5 +174,36 @@ class TestJournalSession(unittest.TestCase):
         self.assertIn("RuntimeError: plantage inventé", self.contenu(chemin))
 
 
+class TestSecretsSuspects(unittest.TestCase):
+    """Ce que l'analyse des journaux signale, et ce qu'elle laisse. Valeurs
+    inventées."""
+
+    def natures(self, *lignes):
+        return todo_journal.secrets_suspects(lignes)
+
+    def test_une_forme_connue_restee_en_clair(self):
+        self.assertEqual(
+            self.natures("ok", "odoo --db_password invente-31"),
+            [(2, "unmasked known form")],
+        )
+
+    def test_une_ligne_deja_masquee_ne_compte_pas(self):
+        self.assertEqual(self.natures("odoo --db_password '***'"), [])
+
+    def test_les_jetons_que_le_masquage_ne_connait_pas(self):
+        cle_aws = "AKIA" + "Q" * 16
+        trouvees = self.natures(
+            f"export ID={cle_aws}",
+            "xoxb-" + "1" * 12,
+            "eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10,
+        )
+        self.assertEqual(
+            [n for _, n in trouvees], ["AWS access key", "Slack token", "JWT"]
+        )
+
+    def test_un_hash_git_n_est_pas_un_secret(self):
+        self.assertEqual(self.natures("commit " + "a1b2c3d4" * 5), [])
+
+
 if __name__ == "__main__":
     unittest.main()
