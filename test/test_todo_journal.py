@@ -334,6 +334,15 @@ class TestJournalComplet(unittest.TestCase):
         self.assertNotIn("invente-57", texte)
         self.assertIn("[code 4]", texte)
 
+    def test_un_libelle_remplace_la_commande_au_journal(self):
+        todo_journal.lancer_journalise(
+            ["sh", "-c", "echo script-long-61"], libelle="libelle-lisible-62"
+        )
+        texte = self.contenu()
+        self.assertIn("$ libelle-lisible-62", texte)
+        self.assertNotIn("echo script-long-61", texte)
+        self.assertIn("script-long-61\n", texte)
+
     def test_lancer_au_terminal_garde_commande_et_code(self):
         fini = todo_journal.lancer_au_terminal(
             ["sh", "-c", "exit 3"], check=False

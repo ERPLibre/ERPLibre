@@ -451,6 +451,34 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestContainerMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Docker / Podman, dont les sections ne consomment pas de
+    numéro : la section des bases, ajoutée en fin, ne doit rien décaler."""
+
+    SOURCE = TODO_DIR / "container_menu.py"
+    ENTRY = "def prompt_execute_container(self):"
+    END = "def _container_libelle_moteur(self, nom):"
+
+    EXPECTED = {
+        "Diagnostic": "_container_diagnostic",
+        "Service": "_container_service",
+        "Install Docker": "_container_install",
+        "Install Podman": "_container_install",
+        "Images one by one": "_container_nettoyer_images",
+        "Images": "_container_inventaire",
+        "Containers": "_container_inventaire",
+        "Networks": "_container_reseaux",
+        "Remove unused": "_container_nettoyage",
+        "By workspace": "_container_nettoyer_projets",
+        "Build an image": "_container_build_odoo",
+        "Compose": "_container_compose",
+        "ERPLibre container": "_container_erplibre",
+        "Disk space": "_container_espace_disque",
+        "Restore a .zip backup": "_container_restaurer_base",
+        "Delete a database": "_container_supprimer_base",
+    }
+
+
 class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Analyse, qui n'avait aucun garde.
 

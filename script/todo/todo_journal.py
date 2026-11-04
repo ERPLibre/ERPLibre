@@ -324,7 +324,7 @@ def session_en_cours():
     }
 
 
-def lancer_journalise(cmd, **kwargs):
+def lancer_journalise(cmd, libelle=None, **kwargs):
     """Lance `cmd` sortie au terminal ET au journal ; rend son code.
 
     Pour un sous-processus qui ne passe pas par exec_command_live : lancé
@@ -332,8 +332,11 @@ def lancer_journalise(cmd, **kwargs):
     sys.stdout ne voit pas. Sa sortie passe ici par un tube, caviardée à
     l'écran comme au journal, au prix du terminal : un programme qui
     demande une saisie ou dessine l'écran se lance sans cette aide.
+
+    `libelle` remplace la commande au journal quand elle porte un script
+    entier, illisible sur une ligne.
     """
-    affichee = execute.redact_secrets(" ".join(map(str, cmd)))
+    affichee = execute.redact_secrets(libelle or " ".join(map(str, cmd)))
     heure = f"{datetime.datetime.now():%H:%M:%S}"
     execute._journaliser(f"\n[{heure}] $ {affichee}\n")
     try:

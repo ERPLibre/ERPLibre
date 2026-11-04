@@ -26,11 +26,12 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import textwrap
 
 import click
 
-from script.todo import container_runtime
+from script.todo import container_db, container_runtime, todo_journal
 from script.todo.todo_i18n import t
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
@@ -120,6 +121,18 @@ class ContainerMenuMixin:
                     "ERPLibre container - shell, databases, tests, status"
                 )
             },
+            {"section": t("ERPLibre databases")},
+            {
+                "prompt_description": t(
+                    "Disk space - engine, container, reclaimable"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Restore a .zip backup into the container"
+                )
+            },
+            {"prompt_description": t("Delete a database of the container")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -154,6 +167,12 @@ class ContainerMenuMixin:
                 self._container_compose()
             elif status == "13":
                 self._container_erplibre()
+            elif status == "14":
+                self._container_espace_disque()
+            elif status == "15":
+                self._container_restaurer_base()
+            elif status == "16":
+                self._container_supprimer_base()
             else:
                 print(t("Command not found !"))
 
@@ -1138,3 +1157,312 @@ class ContainerMenuMixin:
             echecs,
             t("An image another workspace still uses is kept."),
         )
+
+    # ------------------------------------------------------------------
+    # Les bases du conteneur ERPLibre
+
+    def _container_dans(self, cmd, libelle, entree=None):
+        """Lance une commande « exec » et rend son code.
+
+        Hors de exec_command_live : celui-ci recopie la commande à l'écran,
+        et ces commandes portent un script shell entier. Le menu annonce
+        lui-même ce qu'il lance, en une ligne ; le journal de session reçoit
+        `libelle` à la place du script, puis la sortie et le code. Aucune
+        de ces commandes ne demande de saisie : le tube de lancer_journalise
+        ne leur retire rien.
+        """
+        # Ce que le menu vient d'écrire doit précéder la sortie du conteneur,
+        # même quand stdout n'est pas un terminal.
+        sys.stdout.flush()
+        return todo_journal.lancer_journalise(
+            cmd, libelle=libelle, stdin=entree
+        )
+
+    def _container_cible_erplibre(self, fiche):
+        """Le conteneur ERPLibre en marche à viser, ou None.
+
+        Celui de la composition du répertoire courant d'abord, comme les
+        scripts de script/docker/ ; le seul en marche ensuite ; sinon la
+        question.
+        """
+        conteneurs = container_db.conteneurs_erplibre(fiche)
+        if not conteneurs:
+            print(f"⚠ {t('No ERPLibre container is running.')}")
+            print(f"  {t('See [12] Compose to start it.')}")
+            return None
+        ici = container_db.du_dossier(conteneurs, os.getcwd())
+        if ici:
+            return ici
+        if len(conteneurs) == 1:
+            return conteneurs[0]
+        rang = self._container_choix_numerote(
+            t("Running ERPLibre containers:"),
+            [f"{c['nom']}  —  {c['dossier'] or '?'}" for c in conteneurs],
+        )
+        return conteneurs[rang] if rang is not None else None
+
+    def _container_sonder(self, fiche, conteneur):
+        """Le répertoire de données d'Odoo et l'espace libre du conteneur."""
+        cmd = container_db.executer(fiche, conteneur, container_db.SONDE)
+        _code, sortie = container_runtime.lancer(cmd, timeout=30)
+        return container_db.lire_sonde(sortie)
+
+    def _container_lister_bases(self, fiche, conteneur):
+        """[(base, vide)] du PostgreSQL du conteneur, ou None s'il se tait."""
+        cmd = container_db.executer(fiche, conteneur, container_db.LISTE)
+        code, sortie = container_runtime.lancer(cmd, timeout=120)
+        if code != 0:
+            return None
+        return container_db.lire_liste(sortie)
+
+    def _container_afficher_sonde(self, sonde):
+        lisible = container_db.lisible
+        print(f"  {t('Odoo data directory:')} {sonde['data_dir'] or '?'}")
+        print(
+            f"    {t('free:')} {lisible(sonde['libre_data'])}"
+            f"  ({sonde['montage_data'] or '?'})"
+        )
+        print(
+            f"  /tmp  {t('free:')} {lisible(sonde['libre_tmp'])}"
+            f"  ({sonde['montage_tmp'] or '?'})"
+        )
+        if not sonde["ecriture"]:
+            print(f"  ⚠ {t('Odoo account cannot write there: no restore.')}")
+
+    def _container_espace_disque(self):
+        """L'espace qui décide d'une restauration, du moteur au conteneur.
+
+        Trois niveaux, parce que chacun peut manquer seul : le disque qui
+        porte le moteur (images, couches, volumes), ce que le moteur peut
+        rendre, et, dans chaque conteneur ERPLibre, /tmp et le répertoire de
+        données d'Odoo.
+        """
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        lisible = container_db.lisible
+        moteur = fiche["moteur"]
+        cmd = container_runtime.commande(
+            fiche, ["info", "-f", container_db.FORMAT_RACINE[moteur]]
+        )
+        code, sortie = container_runtime.lancer(cmd, timeout=30)
+        lignes = [x for x in sortie.splitlines() if x.startswith("/")]
+        racine = lignes[-1].strip() if code == 0 and lignes else ""
+        print(f"💽 {t('Engine storage:')} {racine or '?'}")
+        if racine:
+            try:
+                usage = shutil.disk_usage(racine)
+                print(
+                    f"  {t('free:')} {lisible(usage.free)}"
+                    f" / {lisible(usage.total)}"
+                )
+            except OSError as err:
+                print(f"  ⚠ {err}")
+        print(f"\n{t('Reclaimable by the engine:')}", flush=True)
+        cmd = container_runtime.commande(fiche, ["system", "df"])
+        self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
+        for conteneur in container_db.conteneurs_erplibre(fiche):
+            print(f"\n📦 {conteneur['nom']}")
+            self._container_afficher_sonde(
+                self._container_sonder(fiche, conteneur)
+            )
+        print(f"\n{t('A web restore writes to /tmp twice the .zip,')}")
+        print(f"{t('then its uncompressed content: see [15] instead.')}")
+
+    def _container_restaurer_base(self):
+        """Restaurer une sauvegarde .zip dans le conteneur ERPLibre.
+
+        Le zip voyage par l'entrée standard jusqu'au répertoire de données
+        d'Odoo, et « odoo-bin db load » s'y extrait (voir container_db). La
+        place se vérifie AVANT de copier quoi que ce soit, sur la taille
+        décompressée que donne l'index du zip, et le dossier de travail
+        s'efface quoi qu'il arrive.
+        """
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        conteneur = self._container_cible_erplibre(fiche)
+        if not conteneur:
+            return
+        depart = os.path.join(os.getcwd(), "image_db")
+        if not os.path.isdir(depart):
+            depart = os.getcwd()
+        chemin = self.db_manager.select_backup_path(depart)
+        if not chemin:
+            print(t("Nothing to do."))
+            return
+        tailles = container_db.tailles_sauvegarde(chemin)
+        if not tailles:
+            print(
+                f"❌ {t('Not an Odoo backup (.zip with dump.sql):')} {chemin}"
+            )
+            return
+        lisible = container_db.lisible
+        print(f"\n📦 {conteneur['nom']}")
+        print(
+            f"  {t('Backup:')} {lisible(tailles['zip'])}"
+            f" — dump.sql {lisible(tailles['dump'])},"
+            f" filestore {lisible(tailles['filestore'])}"
+            f" ({tailles['fichiers']} {t('files')})"
+        )
+        sonde = self._container_sonder(fiche, conteneur)
+        self._container_afficher_sonde(sonde)
+        if not sonde["ecriture"]:
+            return
+        besoin = container_db.besoin(tailles)
+        print(f"  {t('Needed (estimate):')} {lisible(besoin)}")
+        libre = sonde["libre_data"]
+        if libre is not None and besoin > libre:
+            print(f"⚠ {t('Not enough free space for this restore.')}")
+            if not self._is_yes(input(f"💬 {t('Continue anyway? (Y/N): ')}")):
+                print(t("Nothing to do."))
+                return
+
+        bases = self._container_lister_bases(fiche, conteneur)
+        if bases is None:
+            print(f"⚠ {t('PostgreSQL did not list the databases.')}")
+            bases = []
+        vides = dict(bases)
+        nom = click.prompt(
+            t("Database name"),
+            default=container_db.nom_par_defaut(chemin) or None,
+        ).strip()
+        if not container_db.RE_NOM_BASE.match(nom):
+            print(f"❌ {t('Invalid database name:')} {nom}")
+            return
+        options = []
+        if nom in vides:
+            etat = t("empty") if vides[nom] else t("with data")
+            print(f"⚠ {t('The database already exists:')} {nom} ({etat})")
+            if not self._is_yes(
+                input(f"💬 {t('Drop it and restore over it? (Y/N): ')}")
+            ):
+                print(t("Nothing to do."))
+                return
+            options.append("-f")
+        if self._is_yes(
+            input(f"💬 {t('Neutralize (mail servers, crons)? (Y/N): ')}")
+        ):
+            options.append("-n")
+        # Le défaut du gestionnaire web d'Odoo : une copie reçoit un nouvel
+        # UUID, et deux bases ne se disputent pas les services qui les
+        # identifient par lui. « Déplacée » garde celui d'origine.
+        print(f"  {t('This database is a copy: it gets a new UUID.')}")
+        print(f"  {t('This database was moved: it keeps its original UUID.')}")
+        if not self._is_yes_default_yes(
+            input(f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}")
+        ):
+            options.append("--move")
+        print(
+            f"\n{t('Will execute:')} odoo-bin db load"
+            f" {' '.join(options + [nom])}"
+            f" {sonde['data_dir']}/{container_db.TRAVAIL}/{container_db.ZIP}"
+        )
+        if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+            print(t("Nothing to do."))
+            return
+
+        try:
+            print(f"📤 {t('Copying the backup into the container...')}")
+            with open(chemin, "rb") as entree:
+                code = self._container_dans(
+                    container_db.executer(
+                        fiche,
+                        conteneur,
+                        container_db.RECEVOIR,
+                        interactif=True,
+                    ),
+                    container_db.libelle(
+                        conteneur,
+                        f"cat > {sonde['data_dir']}/{container_db.TRAVAIL}"
+                        f"/{container_db.ZIP}",
+                    ),
+                    entree=entree,
+                )
+            if code == 0:
+                print(f"📥 {t('Restoring...')}")
+                code = self._container_dans(
+                    container_db.executer(
+                        fiche,
+                        conteneur,
+                        container_db.RESTAURER,
+                        [nom, *options],
+                    ),
+                    container_db.libelle(
+                        conteneur,
+                        f"odoo-bin db load {' '.join([*options, nom])}",
+                    ),
+                )
+        finally:
+            self._container_dans(
+                container_db.executer(fiche, conteneur, container_db.NETTOYER),
+                container_db.libelle(
+                    conteneur,
+                    f"rm -rf {sonde['data_dir']}/{container_db.TRAVAIL}",
+                ),
+            )
+        if code == 0:
+            print(f"✅ {t('Database restored:')} {nom}")
+            return
+        if code == 3:
+            print(
+                f"❌ {t('This Odoo has no db command: use the web manager.')}"
+            )
+            return
+        print(f"❌ {t('The restore failed, code')} {code}.")
+        restes = dict(self._container_lister_bases(fiche, conteneur) or [])
+        if restes.get(nom):
+            print(f"⚠ {t('The failed restore left an empty database:')} {nom}")
+            if self._is_yes(input(f"💬 {t('Delete it? (Y/N): ')}")):
+                self._container_dans(
+                    container_db.executer(
+                        fiche, conteneur, container_db.SUPPRIMER, [nom]
+                    ),
+                    container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
+                )
+
+    def _container_supprimer_base(self):
+        """Supprimer une base du conteneur, filestore compris.
+
+        Le nom se RETAPE : recopier un nom long oblige à regarder ce qu'on
+        détruit, là où un numéro se tape par réflexe. Une base vide — ce que
+        laisse une restauration interrompue — est signalée comme telle.
+        """
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        conteneur = self._container_cible_erplibre(fiche)
+        if not conteneur:
+            return
+        bases = self._container_lister_bases(fiche, conteneur)
+        if bases is None:
+            print(f"⚠ {t('PostgreSQL did not list the databases.')}")
+            return
+        if not bases:
+            print(t("No database in this container."))
+            return
+        rang = self._container_choix_numerote(
+            t("Databases:"),
+            [f"{nom}  ({t('empty')})" if vide else nom for nom, vide in bases],
+        )
+        if rang is None:
+            return
+        nom = bases[rang][0]
+        print(f"\n⚠ {t('This deletes the database and its filestore:')} {nom}")
+        if input(f"💬 {t('Type its name to confirm: ')}").strip() != nom:
+            print(t("Nothing to do."))
+            return
+        code = self._container_dans(
+            container_db.executer(
+                fiche, conteneur, container_db.SUPPRIMER, [nom]
+            ),
+            container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
+        )
+        if code == 0:
+            print(f"✅ {t('Database deleted:')} {nom}")
+        elif code == 3:
+            print(
+                f"❌ {t('This Odoo has no db command: use the web manager.')}"
+            )
+        else:
+            print(f"❌ {t('The deletion failed, code')} {code}.")

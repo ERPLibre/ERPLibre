@@ -373,6 +373,9 @@ FORMAT_IMAGES = (
 ETIQ_PROJET = "com.docker.compose.project"
 ETIQ_PROJET_PODMAN = "io.podman.compose.project"
 ETIQ_DOSSIER = "com.docker.compose.project.working_dir"
+# Le nom du service dans le fichier compose. Un conteneur qui ne la porte pas
+# se reconnaît encore à son nom (container_db.est_erplibre).
+ETIQ_SERVICE = "com.docker.compose.service"
 
 # Un identifiant de conteneur. Filtrer sur lui écarte les avertissements que
 # Podman sans privilège écrit sur stderr, que le lanceur mêle à la sortie.
@@ -453,9 +456,23 @@ def _inspecter_conteneurs(fiche, lanceur=lancer):
                 or etiquettes.get(ETIQ_PROJET_PODMAN)
                 or "",
                 "dossier": etiquettes.get(ETIQ_DOSSIER, ""),
+                "service": etiquettes.get(ETIQ_SERVICE, ""),
+                # Le compte que « exec » prend par défaut, « » valant root.
+                "utilisateur": config.get("User") or "",
+                "env": _environnement(config.get("Env") or []),
             }
         )
     return fiches
+
+
+def _environnement(lignes):
+    """Les variables « NOM=valeur » du conteneur, en dictionnaire."""
+    env = {}
+    for ligne in lignes:
+        nom, egal, valeur = ligne.partition("=")
+        if egal:
+            env[nom] = valeur
+    return env
 
 
 def lister_projets(fiche, lanceur=lancer):
