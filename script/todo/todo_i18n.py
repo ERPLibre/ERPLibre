@@ -1069,6 +1069,10 @@ TRANSLATIONS = {
         "en": "Error adding remote: ",
     },
     # Bilan d'ouverture du TODO
+    "(active)": {
+        "fr": "(active)",
+        "en": "(active)",
+    },
     "Git hooks installed": {
         "fr": "Hooks git installés",
         "en": "Git hooks installed",

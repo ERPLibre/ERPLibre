@@ -9,6 +9,7 @@ bornée par un délai. Aucune ne lève : une vérification qui échoue retire sa
 ligne du bilan et n'empêche jamais le menu de s'ouvrir.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -20,6 +21,15 @@ DELAI_GIT = 3
 # Les hooks que le dépôt fournit, et l'endroit où core.hooksPath doit pointer.
 HOOKS_GIT = ("commit-msg", "pre-commit")
 CHEMIN_HOOKS_GIT = os.path.join("script", "git", "hooks")
+
+# Les versions d'Odoo installées et leur Python : l'état d'ERPLibre d'abord,
+# la liste de .repo/ à défaut ; le catalogue donne le Python d'une version que
+# ni l'un ni l'autre ne précise.
+ETAT_ERPLIBRE = ".erplibre-state.json"
+VERSIONS_INSTALLEES = os.path.join(".repo", "installed_odoo_version.txt")
+CATALOGUE = os.path.join("conf", "supported_version_erplibre.json")
+# Le Python du venv d'outillage (.venv.erplibre), distinct de celui d'Odoo.
+PYTHON_OUTILLAGE = os.path.join("conf", "python-erplibre-version")
 
 # « v1.8.0 », ou « v1.8.0-391-g48722e8c » quand des commits suivent le tag.
 RE_DESCRIBE = re.compile(r"^v?(\d+\.\d+\.\d+)(?:-(\d+)-g([0-9a-f]+))?$")
@@ -75,19 +85,87 @@ def version_erplibre(racine):
     return trouve.group(1) if trouve else ""
 
 
-def ligne_versions(racine):
-    """« ERPLibre 1.8.0 · Odoo 18.0 · Python 3.12.16 », sans les absents."""
+def _json(chemin):
+    """Le contenu JSON d'un fichier, ou {} s'il est absent ou illisible."""
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            donnees = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return donnees if isinstance(donnees, dict) else {}
+
+
+def _cle_version(version):
+    """« 18.0 » → (18, 0) : « 9.0 » se range sous « 18.0 », pas au-dessus."""
+    return tuple(int(x) if x.isdigit() else 0 for x in version.split("."))
+
+
+def versions_odoo(racine):
+    """[(odoo, python, active)] : l'active d'abord, puis les autres versions
+    installées, de la plus récente à la plus ancienne. python vaut "" quand
+    rien ne le donne."""
+    catalogue = {
+        entree.get("odoo_version"): entree.get("python_version", "")
+        for entree in _json(os.path.join(racine, CATALOGUE)).values()
+        if isinstance(entree, dict)
+    }
+    installees = {}
+    etat = _json(os.path.join(racine, ETAT_ERPLIBRE)).get("odoo_versions")
+    if isinstance(etat, dict):
+        for version, fiche in etat.items():
+            if isinstance(fiche, dict) and fiche.get("installed"):
+                installees[version] = fiche.get("python") or ""
+    else:
+        lignes = _lire(os.path.join(racine, VERSIONS_INSTALLEES)).splitlines()
+        for ligne in lignes:
+            version = ligne.strip().removeprefix("odoo")
+            if version:
+                installees[version] = ""
+    versions = []
+    active = _lire(os.path.join(racine, ".odoo-version"))
+    if active:
+        python = _lire(os.path.join(racine, ".python-odoo-version"))
+        versions.append(
+            (
+                active,
+                python or installees.get(active) or catalogue.get(active, ""),
+                True,
+            )
+        )
+    for version in sorted(
+        set(installees) - {active}, key=_cle_version, reverse=True
+    ):
+        python = installees[version] or catalogue.get(version, "")
+        versions.append((version, python, False))
+    return versions
+
+
+def lignes_versions(racine):
+    """Les lignes de versions, sans les absentes.
+
+    « ERPLibre 1.8.0 · Python 3.15.2 », le Python étant celui de
+    l'outillage (.venv.erplibre), puis une ligne par version d'Odoo
+    installée avec son Python — l'active marquée dès qu'il y en a d'autres.
+    """
+    lignes = []
     morceaux = []
     erplibre = version_erplibre(racine)
     if erplibre:
         morceaux.append(f"ERPLibre {erplibre}")
-    odoo = _lire(os.path.join(racine, ".odoo-version"))
-    if odoo:
-        morceaux.append(f"Odoo {odoo}")
-    python = _lire(os.path.join(racine, ".python-odoo-version"))
-    if python:
-        morceaux.append(f"Python {python}")
-    return " · ".join(morceaux)
+    outillage = _lire(os.path.join(racine, PYTHON_OUTILLAGE))
+    if outillage:
+        morceaux.append(f"Python {outillage}")
+    if morceaux:
+        lignes.append(" · ".join(morceaux))
+    versions = versions_odoo(racine)
+    for odoo, python, active in versions:
+        ligne = f"Odoo {odoo}"
+        if python:
+            ligne += f" · Python {python}"
+        if active and len(versions) > 1:
+            ligne += f"  {t('(active)')}"
+        lignes.append(ligne)
+    return lignes
 
 
 def ligne_hooks_git(racine):
@@ -121,13 +199,14 @@ def ligne_hooks_git(racine):
 def bilan(racine):
     """Les lignes du bilan d'ouverture, dans l'ordre d'affichage."""
     lignes = []
-    for verification in (ligne_versions, ligne_hooks_git):
+    for verification in (lignes_versions, ligne_hooks_git):
         try:
-            ligne = verification(racine)
+            sortie = verification(racine)
         except Exception:
-            ligne = ""
-        if ligne:
-            lignes.append(ligne)
+            sortie = ""
+        if isinstance(sortie, str):
+            sortie = [sortie]
+        lignes.extend(ligne for ligne in sortie if ligne)
     return lignes
 
 

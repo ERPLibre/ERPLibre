@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le bilan d'ouverture du TODO : versions et hooks git."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -108,17 +109,93 @@ class TestBilan(unittest.TestCase):
     def test_without_tag_the_changelog_gives_the_version(self):
         self.assertEqual(todo_etat.version_erplibre(self.racine), "9.9.1")
 
-    def test_versions_line_skips_what_is_missing(self):
-        with open(os.path.join(self.racine, ".odoo-version"), "w") as fh:
-            fh.write("18.0\n")
+    def ecrire(self, chemin, contenu):
+        chemin = os.path.join(self.racine, chemin)
+        os.makedirs(os.path.dirname(chemin) or self.racine, exist_ok=True)
+        with open(chemin, "w") as fh:
+            fh.write(contenu)
+
+    def test_versions_lines_skip_what_is_missing(self):
+        self.ecrire(".odoo-version", "18.0\n")
         self.assertEqual(
-            todo_etat.ligne_versions(self.racine),
-            "ERPLibre 9.9.1 · Odoo 18.0",
+            todo_etat.lignes_versions(self.racine),
+            ["ERPLibre 9.9.1", "Odoo 18.0"],
+        )
+
+    def test_other_installed_versions_follow_the_active_one(self):
+        """L'état d'ERPLibre donne les versions installées et leur Python ;
+        une version désinstallée n'apparaît pas, « 9.0 » se range sous
+        « 18.0 »."""
+        self.ecrire(".odoo-version", "16.0\n")
+        self.ecrire(".python-odoo-version", "3.10.14\n")
+        self.ecrire(
+            todo_etat.ETAT_ERPLIBRE,
+            json.dumps(
+                {
+                    "odoo_versions": {
+                        "9.0": {"installed": True, "python": "2.7.18"},
+                        "16.0": {"installed": True, "python": "3.10.14"},
+                        "18.0": {"installed": True, "python": "3.12.16"},
+                        "17.0": {"installed": False, "python": "3.10.18"},
+                    }
+                }
+            ),
+        )
+        actif = t("(active)")
+        self.assertEqual(
+            todo_etat.lignes_versions(self.racine)[1:],
+            [
+                f"Odoo 16.0 · Python 3.10.14  {actif}",
+                "Odoo 18.0 · Python 3.12.16",
+                "Odoo 9.0 · Python 2.7.18",
+            ],
+        )
+
+    def test_without_state_the_repo_list_and_catalogue_answer(self):
+        self.ecrire(".odoo-version", "18.0\n")
+        self.ecrire(todo_etat.VERSIONS_INSTALLEES, "odoo18.0\nodoo17.0\n")
+        self.ecrire(
+            todo_etat.CATALOGUE,
+            json.dumps(
+                {
+                    "odoo17.0_python3.10.18": {
+                        "odoo_version": "17.0",
+                        "python_version": "3.10.18",
+                    },
+                    "odoo18.0_python3.12.16": {
+                        "odoo_version": "18.0",
+                        "python_version": "3.12.16",
+                    },
+                }
+            ),
+        )
+        self.assertEqual(
+            todo_etat.lignes_versions(self.racine)[1:],
+            [
+                f"Odoo 18.0 · Python 3.12.16  {t('(active)')}",
+                "Odoo 17.0 · Python 3.10.18",
+            ],
+        )
+
+    def test_the_tooling_python_joins_the_erplibre_line(self):
+        self.ecrire(todo_etat.PYTHON_OUTILLAGE, "3.15.2\n")
+        self.ecrire(".odoo-version", "18.0\n")
+        self.assertEqual(
+            todo_etat.lignes_versions(self.racine),
+            ["ERPLibre 9.9.1 · Python 3.15.2", "Odoo 18.0"],
+        )
+
+    def test_an_unreadable_state_is_ignored(self):
+        self.ecrire(".odoo-version", "18.0\n")
+        self.ecrire(todo_etat.ETAT_ERPLIBRE, "{pas du json")
+        self.assertEqual(
+            todo_etat.lignes_versions(self.racine),
+            ["ERPLibre 9.9.1", "Odoo 18.0"],
         )
 
     def test_a_failing_check_never_breaks_the_report(self):
         with mock.patch.object(
-            todo_etat, "ligne_versions", side_effect=RuntimeError
+            todo_etat, "lignes_versions", side_effect=RuntimeError
         ):
             lignes = todo_etat.bilan(self.racine)
         self.assertEqual(len(lignes), 1)
