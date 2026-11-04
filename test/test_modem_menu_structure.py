@@ -58,6 +58,9 @@ class TestStructure(unittest.TestCase):
         corps = source[debut:fin]
         numeros = {ligne.split("]")[0].strip("[")
                    for ligne in corps.splitlines() if ligne.startswith("[")}
+        # L'entrée « [0] Retour » s'écrit par retour(), en bleu poudre.
+        if any(ligne.startswith("{retour(") for ligne in corps.splitlines()):
+            numeros.add("0")
         self.assertEqual(
             numeros,
             {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},

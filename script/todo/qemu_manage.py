@@ -22,6 +22,7 @@ from script.todo.qemu_privilege import (
     system_path,
     virsh_argv,
 )
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 # Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
@@ -1427,7 +1428,7 @@ class QemuManageMixin:
             )
         print(f"\n  [1] {t('Reopen that monitoring')} *")
         print(f"  [2] {t('Deploy anyway (new run)')}")
-        print(f"  [0] {t('Back')}")
+        print(f"  {retour(t('Back'))}")
         sel = input(t("Choice (number, blank = reopen): ")).strip()
         if sel == "2":
             return False

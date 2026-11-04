@@ -21,11 +21,15 @@ from script.todo import (
 from script.todo.version_manager import get_odoo_version
 
 try:
+    from script.todo.todo_couleur import retour
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - fallback when i18n is unavailable
 
     def t(key: str) -> str:
         return key
+
+    def retour(libelle: str) -> str:
+        return f"[0] {libelle}"
 
 
 new_path = os.path.normpath(
@@ -622,7 +626,7 @@ class TodoUpgrade:
             print(f"   [4] {t('Recorded decisions (journal)')}")
             print(f"   [5] {t('Executed commands (last 30)')}")
             print(f"   [t] {t('Migration state (full screen)')}")
-            print(f"   [0] {t('Back')}")
+            print(f"   {retour(t('Back'))}")
             # `self.ask` : cet écran est atteint DEPUIS execute_odoo_upgrade,
             # donc après la question d'auto-exécution. Un input() nu y
             # arrêtait une migration automatique sans rien signaler.

@@ -20,11 +20,15 @@ from script.todo.sms import steps as steps_mod
 from script.todo.sms.steps import STEPS
 
 try:
+    from script.todo.todo_couleur import retour
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
 
     def t(key: str) -> str:
         return key
+
+    def retour(libelle: str) -> str:
+        return f"[0] {libelle}"
 
 
 def prompt_execute_sms(todo, materiel: str = "mobile") -> None:
@@ -45,7 +49,7 @@ def prompt_execute_sms(todo, materiel: str = "mobile") -> None:
 [1] {t("sms_run_all")}
 {_lignes_etapes(state.spec)}
 {_lignes_de_queue(queue)}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
         if status == "0":

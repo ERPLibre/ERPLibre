@@ -30,6 +30,7 @@ except Exception:
     # directe reste. Un menu qui ne s'ouvre plus serait pire.
     todo_file_browser = None
 
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 from script.vpn import anyconnect_xml, presets, profiles
 from script.vpn.drivers import DRIVERS, get_driver
@@ -658,7 +659,7 @@ class VpnMenuMixin:
             )
         if unproven:
             print(f"    * {t(UNPROVEN_NOTE)}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         default_letter = DRIVER_LETTERS[names.index(default)]
         answer = input(
             f"{t('Choice')} [{default_letter} = {DRIVERS[default].label}] : "

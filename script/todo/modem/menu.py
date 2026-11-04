@@ -33,11 +33,15 @@ from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
 
 try:
+    from script.todo.todo_couleur import retour
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
 
     def t(key: str) -> str:
         return key
+
+    def retour(libelle: str) -> str:
+        return f"[0] {libelle}"
 
 
 def _bandeau():
@@ -146,7 +150,7 @@ def prompt_execute_modem(todo) -> None:
 [7] {t("modem_menu_voip")}
 [8] {t("modem_menu_service")}
 [9] {t("modem_gateway_agent")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
         if status == "0":
@@ -185,7 +189,7 @@ def _sous_menu(titre, entrees):
         lignes = [f"  {titre}", ""]
         for numero, (libelle, _action) in enumerate(entrees, start=1):
             lignes.append(f"[{numero}] {libelle}")
-        lignes.append(f"[0] {t('Back')}")
+        lignes.append(f"{retour(t('Back'))}")
         choix = click.prompt("\n".join(lignes))
         print()
         if choix == "0":
@@ -514,7 +518,7 @@ def _repondeur(todo=None):
 [6] {t("modem_ans_pin")} — {_etat_code_messagerie(todo)}
 [7] {t("modem_ans_pin_hand")} — {_etat_nip_du_service()}
 [8] {t("modem_ans_fetch")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
         choix = click.prompt(help_info)
         print()
         if choix == "0":
@@ -613,7 +617,7 @@ def _repondeur_code(todo):
     print("  " + t("modem_ans_pin_why"))
     print(f"  [1] {t('modem_ans_pin_enter')}")
     print(f"  [2] {t('modem_ans_pin_delete')}")
-    print(f"  [0] {t('Back')}")
+    print(f"  {retour(t('Back'))}")
     choix = input("  > ").strip()
     try:
         if choix == "1" and todo is not None and not code_mod.kdbx_configure(todo):
@@ -688,7 +692,7 @@ def _repondeur_recuperer(todo):
     print()
     print(f"  [1] {t('modem_ans_fetch_one')}")
     print(f"  [2] {t('modem_ans_fetch_survey')}")
-    print(f"  [0] {t('Back')}")
+    print(f"  {retour(t('Back'))}")
     choix = input("  > ").strip()
     if choix not in ("1", "2"):
         return
@@ -762,7 +766,7 @@ def _repondeur_messages():
     print(f"  [3] {t('modem_ans_fetched')} — "
           + (t("modem_ans_count") % len(recuperes) if recuperes
              else t("modem_ans_none")))
-    print(f"  [0] {t('Back')}")
+    print(f"  {retour(t('Back'))}")
     choix = input("  > ").strip()
     if choix == "1":
         _repondeur_messages_erplibre()
@@ -913,7 +917,7 @@ def _choisir_technologie():
     print()
     print("  [1] erplibre_sip_go — " + t("voip_go_pitch"))
     print("  [2] Asterisk        — " + t("voip_ast_pitch"))
-    print("  [0] " + t("Back"))
+    print("  " + retour(t("Back")))
     return input("  > ").strip()
 
 
@@ -1356,7 +1360,7 @@ def _regle_udev():
     print()
     print("  [1] " + t("modem_udev_install"))
     print("  [2] " + t("modem_udev_remove"))
-    print("  [0] " + t("Back"))
+    print("  " + retour(t("Back")))
     choix = input("  > ").strip()
     if choix == "1":
         ok, message = udev_mod.poser()

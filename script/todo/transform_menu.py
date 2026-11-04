@@ -43,6 +43,7 @@ import subprocess
 import click
 
 from script.todo import transform_setup
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 try:
@@ -1118,7 +1119,7 @@ class TransformMenuMixin:
         print(f"[1] {t('A local database')}")
         print(f"[2] {t('A local backup .zip')}")
         print(f"[3] {t('A remote backup (https + master password)')}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         reponse = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if reponse == "1":

@@ -142,6 +142,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -244,7 +245,7 @@ class TODO(
         print("🌍 " + t("Choose language / Choisir la langue") + ":")
         print(f"[1] 🇫🇷 {t('French')}")
         print(f"[2] 🇬🇧 {t('English')}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         choice = ""
         while choice not in ("0", "1", "2"):
             choice = input(t("Select: ")).strip()
@@ -320,7 +321,7 @@ class TODO(
 [2] {t("mail_menu")}
 [3] {t("sms_menu")}
 [4] {t("modem_menu")}
-[0] {t("Back")}"""
+{retour(t('Back'))}"""
             status = click.prompt(help_info)
             print()
             if status == "0":
@@ -366,7 +367,7 @@ class TODO(
 [16] {t("Network - Network tools")}
 [17] {t("Security - Dependency security audit")}
 [18] {t("Docker / Podman - Container engines")}
-[0] {t("Back")}
+{retour(t('Back'))}
 """
         while True:
             status = click.prompt(help_info)
@@ -1100,7 +1101,7 @@ class TODO(
         # consommer de numéro : la numérotation reste continue sur les vraies
         # commandes (compatible avec les elif codés en dur des menus).
         help_info = self._menu_header() + "\n"
-        help_end = f"[0] {t('Back')}\n"
+        help_end = f"{retour(t('Back'))}\n"
         n = 0
         for instance in choices:
             section = instance.get("section")
@@ -4875,7 +4876,7 @@ class TODO(
         print()
         print(f"[1] {t('A database')}")
         print(f"[2] {t('A backup .zip, without restoring it')}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
@@ -5278,7 +5279,7 @@ class TODO(
         print(f"[1] {t('Hybrid: the default personal-data models, adjusted')}")
         print(f"[2] {t('Whitelist: only the models I name')}")
         print(f"[3] {t('Blacklist: every model except those I name')}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         mode = {"1": "hybrid", "2": "whitelist", "3": "blacklist"}.get(answer)
@@ -5360,7 +5361,7 @@ class TODO(
         print(f"[2] {t('A local backup .zip')}")
         print(f"[3] {t('A remote backup (https + master password)')}")
         print(f"[4] {t('A live remote instance')}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
@@ -5595,7 +5596,7 @@ class TODO(
                 return
             for i, version in enumerate(choix, 1):
                 print(f"[{i}] {version}")
-            print(f"[0] {t('Back')}")
+            print(f"{retour(t('Back'))}")
             versions = odoo_version_remove.versions_choisies(
                 input(t("Versions to remove, numbers separated by spaces: ")),
                 choix,
@@ -5662,7 +5663,7 @@ class TODO(
                 marques.append(t("Odoo version active"))
             suffixe = f" ({', '.join(marques)})" if marques else ""
             print(f"[{i}] Odoo {version}{suffixe}")
-        print(f"[0] {t('Back')}")
+        print(f"{retour(t('Back'))}")
         reponse = input(t("Odoo version of the images: ")).strip()
         if not reponse.isdigit() or not 0 < int(reponse) <= len(versions):
             return None
@@ -5731,7 +5732,7 @@ class TODO(
             )
             for i, nom in enumerate(images, 1):
                 print(f"[{i}] {nom}")
-            print(f"[0] {t('Back')}")
+            print(f"{retour(t('Back'))}")
             reponse = input(t("Image to regenerate: ")).strip()
             if not reponse.isdigit() or not 0 < int(reponse) <= len(images):
                 return

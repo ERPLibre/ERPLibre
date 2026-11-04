@@ -9,6 +9,7 @@ from datetime import datetime
 
 import click
 
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 
@@ -512,7 +513,7 @@ class QemuMenuMixin:
 
             self._qemu_stats_vms(mon)
             print(f"\n   [r] {t('Reset the statistics')}")
-            print(f"   [0] {t('Back')}")
+            print(f"   {retour(t('Back'))}")
             answer = input(f"💬 {t('Your choice')} : ").strip().lower()
             if answer in ("", "0"):
                 return

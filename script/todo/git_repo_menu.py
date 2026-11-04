@@ -50,6 +50,7 @@ from script.git import (  # noqa: E402
     repo_apply,
     repo_upgrade,
 )
+from script.todo.todo_couleur import retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
@@ -1222,7 +1223,7 @@ class GitRepoMenuMixin:
             "  [6] 🧮"
             f" {t('Matrix: the ERPLibre branches and tags side by side')}"
         )
-        print(f"  [0] {t('Back')}")
+        print(f"  {retour(t('Back'))}")
         choix = input("  : ").strip()
         cas = {
             "1": ("HEAD", git_freeze_diff.CLONES),
