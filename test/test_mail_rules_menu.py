@@ -308,6 +308,97 @@ class TestJournal(RulesMenuCase):
             self.lancer("5", "0")
         coffre.assert_not_called()
 
+    def test_the_menu_log_prints_partial_with_its_detail(self):
+        regle = self.regles("Absence")[0]
+        store = Store(self.account, mode="clear", base=self.base)
+        store.open()
+        try:
+            store.rule_log_claim(
+                regle.id, "cle-1", outcome="pending", at=T0, sender=CAROLE
+            )
+            store.rule_log_rcpt_result(
+                regle.id,
+                "cle-1",
+                total=3,
+                dropped=(550, 0),
+                sent_at=T0,
+                kind="auto_forward",
+            )
+        finally:
+            store.close()
+        sortie = self.lancer("5", "0")
+        detail = t("mail_rules_rcpt_detail").format(
+            refused=2, total=3, codes="?, 550"
+        )
+        self.assertIn(
+            f"{t('mail_rules_outcome_partial')}"
+            f" ({t('mail_rules_reason_rcpt_refused')} — {detail})",
+            sortie,
+        )
+        self.assertNotIn("refus.definitif@example.net", sortie)
+
+
+class TestSyncLine(unittest.TestCase):
+    """La ligne de la file dans « Synchroniser maintenant » du menu."""
+
+    def lancer(self, rendu) -> str:
+        from types import SimpleNamespace
+
+        account = account_from_preset("perso", OWN, "generic")
+
+        class FausseSession:
+            def __init__(self):
+                self.account = account
+                self.online = True
+                self.error = ""
+
+            def sync(self):
+                return SimpleNamespace(new_messages=0, errors=[], purged=[])
+
+            def close(self):
+                pass
+
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(menu, "_load_accounts", return_value=[account]),
+            mock.patch(
+                "script.todo.mail.tui.open_sessions",
+                return_value=[FausseSession()],
+            ),
+            mock.patch(
+                "script.todo.mail.tui.flush_outbox", return_value=rendu
+            ),
+            mock.patch("script.todo.mail.rules.engine.run_pass"),
+            contextlib.redirect_stdout(sortie),
+        ):
+            menu._sync_now(mock.MagicMock())
+        return sortie.getvalue()
+
+    def test_the_menu_sync_line_counts_partial_sends_and_retries(self):
+        from script.todo.mail.tui import FlushResult
+
+        temp = "refus.temporaire@example.net"
+        sortie = self.lancer(
+            FlushResult(
+                3, 0, 0, partial=1, refused=1, retried=1, served=[temp]
+            )
+        )
+        self.assertIn(
+            f"perso : {t('mail_outbox_flushed')} 3"
+            f" — {t('mail_outbox_partial')} 1"
+            f" — {t('mail_outbox_retried')} 1",
+            sortie,
+        )
+        self.assertNotIn(temp, sortie)
+
+    def test_the_menu_sync_line_still_reads_a_plain_triple(self):
+        sortie = self.lancer((2, 0, 1))
+        self.assertIn(
+            f"perso : {t('mail_outbox_flushed')} 2"
+            f" — {t('mail_outbox_failed')} 1",
+            sortie,
+        )
+
 
 class TestReportSettings(RulesMenuCase):
     def test_menu_report_settings_saves_and_prints_a_preview(self):

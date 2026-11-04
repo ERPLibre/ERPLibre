@@ -642,6 +642,49 @@ class TestPass(ServiceCase):
             sortie, f"{t('mail_service_unexpected')} RuntimeError\n"
         )
 
+    def test_the_service_line_counts_partial_sends_without_any_address(self):
+        from script.todo.mail.tui import FlushResult
+
+        temp = "refus.temporaire@example.net"
+        rendu = FlushResult(
+            2, 0, 0, partial=1, refused=2, retried=1, served=[CAROLE, temp]
+        )
+        with (
+            journalisation(),
+            mock.patch(
+                "script.todo.mail.tui.flush_outbox", return_value=rendu
+            ),
+        ):
+            code, sortie = self.lancer(configure_logging=True)
+        self.assertEqual(code, run.EXIT_OK)
+        self.assertIn(
+            f"{t('mail_outbox_flushed')} 2 · {t('mail_outbox_partial')} 1"
+            f" · {t('mail_outbox_retried')} 1",
+            sortie,
+        )
+        journal = (self.home / ".erplibre" / "mail.log").read_text()
+        for adresse in (CAROLE, temp):
+            self.assertNotIn(adresse, sortie)
+            self.assertNotIn(adresse, journal)
+
+    def test_a_failing_drain_logs_the_exception_type_not_its_text(self):
+        from script.todo.mail.smtp_send import SmtpError
+
+        temp = "refus.temporaire@example.net"
+        panne = SmtpError(f"adresse refusée {temp!r}", code=451)
+        with (
+            journalisation(),
+            mock.patch("script.todo.mail.tui.flush_outbox", side_effect=panne),
+        ):
+            code, sortie = self.lancer(configure_logging=True)
+        self.assertEqual(code, run.EXIT_OK)
+        self.assertIn(t("mail_service_outbox_error"), sortie)
+        journal = (self.home / ".erplibre" / "mail.log").read_text()
+        self.assertIn("file en échec : SmtpError code 451", journal)
+        for texte in (temp, "refus.temporaire", "adresse refusée"):
+            self.assertNotIn(texte, sortie)
+            self.assertNotIn(texte, journal)
+
 
 @contextlib.contextmanager
 def journalisation():

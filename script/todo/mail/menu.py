@@ -569,7 +569,7 @@ def _show_rules_log(todo, account, base_rules, base=None) -> None:
     """
     import time
 
-    from script.todo.mail.rules import storage
+    from script.todo.mail.rules import engine, storage
     from script.todo.mail.rules.model import RuleError
 
     try:
@@ -601,10 +601,10 @@ def _show_rules_log(todo, account, base_rules, base=None) -> None:
         print(t("mail_rules_log_empty"))
     for ligne in lignes:
         quand = time.strftime("%Y-%m-%d %H:%M", time.localtime(ligne["at"]))
-        raison = ligne["reason"]
+        raison = engine.log_reason_text(ligne)
         texte = t(f"mail_rules_outcome_{ligne['outcome']}")
         if raison:
-            texte += f" ({t(f'mail_rules_reason_{raison}')})"
+            texte += f" ({raison})"
         nom = noms.get(ligne["rule_id"], ligne["rule_id"])
         print(
             f"  {quand}  {_printable(nom)}  {texte}"
@@ -901,6 +901,7 @@ def _sync_now(todo) -> None:
         held_auto_counts,
         held_auto_text,
         open_sessions,
+        outbox_status_text,
     )
 
     accounts = _load_accounts()
@@ -925,15 +926,14 @@ def _sync_now(todo) -> None:
         # message écrit hors ligne dort jusqu'à la prochaine ouverture du
         # client — le seul endroit d'où la file partait.
         try:
-            partis, _, echoues = flush_outbox(session)
+            # L'objet rendu est gardé : ses attributs comptent les départs
+            # partiels ; un double qui rend un triplet nu n'en porte pas.
+            r = flush_outbox(session)
+            partis, _, echoues = r
             if partis or echoues:
-                ligne = (
-                    f"{session.account.name} :"
-                    f" {t('mail_outbox_flushed')} {partis}"
+                lignes.append(
+                    f"{session.account.name} : {outbox_status_text(r)}"
                 )
-                if echoues:
-                    ligne += f" — {t('mail_outbox_failed')} {echoues}"
-                lignes.append(ligne)
         except Exception as exc:
             lignes.append(f"{session.account.name} : {exc}")
         try:

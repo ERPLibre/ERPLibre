@@ -463,11 +463,13 @@ def _process(
     autre qu'un état qui dure, un nombre retenu qui change, ou une panne
     qui n'est pas la répétition de la précédente.
     """
+    from script.todo.mail.smtp_send import smtp_code
     from script.todo.mail.tui import (
         flush_outbox,
         held_auto_counts,
         held_auto_text,
         open_session,
+        outbox_partial_items,
     )
 
     nom = account.name
@@ -519,13 +521,26 @@ def _process(
         fail, kind_fail = "", ""
 
         try:
-            partis, _, echoues = flush_outbox(session, now=deps.now)
+            r = flush_outbox(session, now=deps.now)
+            partis, _, echoues = r
         except Exception as exc:
-            _logger.info("%s : file en échec : %s", nom, exc)
+            # Le type de l'exception et son code SMTP, jamais son texte :
+            # une erreur d'adresse ou un refus du serveur y cite le
+            # destinataire.
+            code_smtp = getattr(exc, "code", None)
+            if not isinstance(code_smtp, int) or isinstance(code_smtp, bool):
+                code_smtp = smtp_code(exc)
+            _logger.info(
+                "%s : file en échec : %s%s",
+                nom,
+                type(exc).__name__,
+                f" code {code_smtp}" if code_smtp else "",
+            )
             elements.append(t("mail_service_outbox_error"))
         else:
             if partis:
                 elements.append(f"{t('mail_outbox_flushed')} {partis}")
+            elements.extend(outbox_partial_items(r))
             if echoues:
                 elements.append(f"{t('mail_outbox_failed')} {echoues}")
 
