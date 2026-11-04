@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync, statSync} from 'node:fs';
 import {DECK_UNIT, CONTROLLER_REL, DECK_ENTRY_REL, DECK_READ_AT_MS,
     deckUnitPath, deckLockPath, openDeckArgv, restartDeckArgv, deckStateArgv,
     deckRunning, deckCheckArgv, deckStartFailure, parseUnitShow,
@@ -250,6 +250,14 @@ test('active, activating and reloading count as running', () => {
         assert.equal(deckRunning(state), true, state);
     for (const state of ['inactive', 'failed', 'deactivating', '', null])
         assert.equal(deckRunning(state), false, String(state));
+});
+
+test('the controller path is relative to the checkout root', () => {
+    // The extension lives under script/gnome-extension/erplibre_home: the
+    // checkout root is five levels above this file.
+    const root = new URL('../../../../../', import.meta.url);
+    assert.equal(CONTROLLER_REL, 'script/stream_deck/erplibre_controller.py');
+    assert.ok(statSync(new URL(CONTROLLER_REL, root)).isFile());
 });
 
 test('the check runs the entry point of the checkout with --check', () => {

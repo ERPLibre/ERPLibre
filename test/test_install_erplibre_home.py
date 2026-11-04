@@ -2495,6 +2495,29 @@ class TestExtensionSeule(unittest.TestCase):
         self.assertEqual(fait.returncode, 1, fait.stderr)
         self.assertNotIn("UNSUPPORTED", fait.stderr)
 
+    @unittest.skipUnless(
+        OUTILS_EXTENSION, "glib-compile-schemas ou msgfmt absent"
+    )
+    def test_une_migration_en_echec_n_arrete_pas_l_installation(self):
+        """Sous « set -e », une migration qui rend non nul arrêterait
+        l'installation avant le lien : elle est notée et le lien se pose."""
+        migration = self.source / "tools/migrate_legacy.py"
+        migration.write_text("#!/bin/sh\nexit 3\n")
+        fait = self.lancer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("legacy migration did not run", fait.stdout)
+        self.assertEqual(os.readlink(self.lien), str(self.source))
+
+    @unittest.skipUnless(
+        OUTILS_EXTENSION, "glib-compile-schemas ou msgfmt absent"
+    )
+    def test_une_migration_sans_bit_d_execution_n_arrete_rien(self):
+        (self.source / "tools/migrate_legacy.py").chmod(0o644)
+        fait = self.lancer()
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("legacy migration did not run", fait.stdout)
+        self.assertEqual(os.readlink(self.lien), str(self.source))
+
     def test_un_repertoire_ordinaire_arrete_l_installation_et_reste(self):
         """Une copie posée à la main par une ancienne installation : le
         script s'arrête en 1 en nommant le chemin, et n'y touche pas."""
@@ -2573,9 +2596,14 @@ class TestLectureShellVersion(unittest.TestCase):
 
 
 def recette(cible):
-    """Les lignes de recette de `cible` dans make.streamdeck.Makefile."""
+    """Les lignes de recette de `cible` dans make.streamdeck.Makefile,
+    que la règle nomme des prérequis ou non."""
     lignes = MAKEFILE_STREAMDECK.read_text().splitlines()
-    debut = lignes.index("%s:" % cible) + 1
+    debut = 1 + next(
+        i
+        for i, ligne in enumerate(lignes)
+        if ligne == "%s:" % cible or ligne.startswith("%s: " % cible)
+    )
     recette_ = []
     for ligne in lignes[debut:]:
         if not ligne.startswith("\t"):
@@ -2611,6 +2639,40 @@ class TestMakefile(unittest.TestCase):
                 for ligne in lignes
             )
         )
+
+    def test_l_installation_dit_de_rouvrir_la_session_sous_wayland(self):
+        """Wayland ne lit le répertoire des extensions qu'à l'ouverture de
+        session : sans l'indication, le nouvel UUID semble ne pas marcher."""
+        indication = [
+            ligne
+            for ligne in recette("erplibre_home_install_extension")
+            if "Wayland" in ligne
+        ]
+        self.assertEqual(len(indication), 1)
+        self.assertIn("log out", indication[0])
+        self.assertIn("log in", indication[0])
+
+    def test_les_cibles_de_l_extension_existent(self):
+        """Chaque cible porte le nom erplibre_home_ et lance ce qu'elle
+        annonce."""
+        texte = MAKEFILE_STREAMDECK.read_text()
+        attendues = {
+            "uninstall_extension": '@rm -rf "$(ERPLIBRE_HOME_EXT_DST)"',
+            "reload": "$(ERPLIBRE_HOME_DBUS_IFACE).HotReload",
+            "reload_clean": "$(ERPLIBRE_HOME_DBUS_IFACE).HotExit",
+            "dev_nested": "$(ERPLIBRE_HOME_EXT_SRC)/dev_nested.sh",
+            "e2e_nested": "$(ERPLIBRE_HOME_EXT_SRC)/test/e2e_nested.sh",
+        }
+        for suffixe, extrait in attendues.items():
+            cible = "erplibre_home_" + suffixe
+            with self.subTest(cible=cible):
+                self.assertIn(".PHONY: %s\n" % cible, texte)
+                self.assertTrue(
+                    any(extrait in ligne for ligne in recette(cible))
+                )
+        for script in ("dev_nested.sh", "test/e2e_nested.sh"):
+            with self.subTest(script=script):
+                self.assertTrue(os.access(EXTENSION / script, os.X_OK))
 
     def test_aucune_compilation_de_schema_n_avale_son_echec(self):
         for ligne in MAKEFILE_STREAMDECK.read_text().splitlines():

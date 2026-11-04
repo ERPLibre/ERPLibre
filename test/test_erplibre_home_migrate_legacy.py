@@ -130,6 +130,9 @@ class TestPlanDconf(unittest.TestCase):
     def test_whitespace_is_empty(self):
         self.assertFalse(mig.plan_dconf("\n  \n", ""))
 
+    def test_new_only_loads_nothing(self):
+        self.assertFalse(mig.plan_dconf("", "[/]\nb=2\n"))
+
 
 class TestDataDirs(unittest.TestCase):
     def setUp(self):
@@ -203,6 +206,33 @@ class TestDataDirs(unittest.TestCase):
         rec = Recorder()
         mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
         self.assertEqual((rec.said, rec.warned), ([], []))
+
+    def test_conflict_is_one_line_naming_both_paths(self):
+        src = self.bases[2] / "streamdeck-tiler"
+        dst = self.bases[2] / "erplibre-home"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "f").write_text("y")
+        rec = Recorder()
+        mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
+        self.assertEqual(len(rec.warned), 1)
+        self.assertNotIn("\n", rec.warned[0])
+        self.assertIn(str(src), rec.warned[0])
+        self.assertIn(str(dst), rec.warned[0])
+
+    def test_move_renames_the_directory_itself(self):
+        """A copy then delete would leave a half-copied tree behind when
+        interrupted; a rename moves the same directory in one step."""
+        src = self.bases[0] / "streamdeck-tiler"
+        (src / "sub").mkdir(parents=True)
+        (src / "sub" / "f").write_text("x")
+        inodes = (src.stat().st_ino, (src / "sub" / "f").stat().st_ino)
+        rec = Recorder()
+        mig.migrate_data_dirs(self.bases, rec.say, rec.warn)
+        dst = self.bases[0] / "erplibre-home"
+        self.assertEqual(
+            (dst.stat().st_ino, (dst / "sub" / "f").stat().st_ino), inodes
+        )
 
 
 class TestRemoveLegacyExtensions(unittest.TestCase):
@@ -324,6 +354,21 @@ class TestMigrateDconf(unittest.TestCase):
         self.assertNotIn(LOAD_NEW, [c[0] for c in rec.calls])
         self.assertEqual(len(rec.warned), 1)
 
+    def test_old_path_is_only_read(self):
+        """The old path stays as it was, so going back to the old
+        extension finds its settings."""
+        rec = Recorder({DUMP_OLD: (0, "[/]\na=1\n"), DUMP_NEW: (0, "")})
+        mig.migrate_dconf(rec.run, rec.say, rec.warn)
+        self.assertIn(LOAD_NEW, [c[0] for c in rec.calls])
+        old = [c for c, _ in rec.calls if DUMP_OLD[2] in c]
+        self.assertEqual(old, [DUMP_OLD])
+
+    def test_new_only_loads_nothing(self):
+        rec = Recorder({DUMP_OLD: (0, ""), DUMP_NEW: (0, "[/]\nb=2\n")})
+        mig.migrate_dconf(rec.run, rec.say, rec.warn)
+        self.assertNotIn(LOAD_NEW, [c[0] for c in rec.calls])
+        self.assertEqual((rec.said, rec.warned), ([], []))
+
 
 class TestHooks(unittest.TestCase):
     def setUp(self):
@@ -420,6 +465,90 @@ class TestHooks(unittest.TestCase):
         mig.migrate_hooks(self.installer, rec.say, rec.warn)
         self.assertEqual(len(rec.warned), 1)
 
+    def _backups(self):
+        return list(self.installer.SETTINGS.parent.glob("settings.json.bak-*"))
+
+    def test_every_legacy_entry_goes_in_one_pass(self):
+        """Every event, and every checkout the old hook was installed
+        from, is cleaned by one run."""
+        other_old = "/elsewhere/hooks/streamdeck-tiler-hook.py"
+        self._write(
+            {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": self.old_cmd},
+                                {"type": "command", "command": other_old},
+                            ]
+                        }
+                    ],
+                    "PostToolUse": [
+                        {"hooks": [{"type": "command", "command": other_old}]}
+                    ],
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": self.old_cmd}
+                            ]
+                        }
+                    ],
+                }
+            }
+        )
+        rec = Recorder()
+        self.assertTrue(mig.migrate_hooks(self.installer, rec.say, rec.warn))
+        commands = self._commands(self._read())
+        self.assertNotIn(self.old_cmd, commands)
+        self.assertNotIn(other_old, commands)
+        self.assertEqual(len(self._backups()), 1)
+        rec2 = Recorder()
+        self.assertFalse(
+            mig.migrate_hooks(self.installer, rec2.say, rec2.warn)
+        )
+
+    def test_new_hook_only_is_neither_rewritten_nor_backed_up(self):
+        self._write(
+            {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": self.new_cmd}
+                            ]
+                        }
+                    ]
+                }
+            }
+        )
+        before = self.installer.SETTINGS.read_bytes()
+        rec = Recorder()
+        self.assertFalse(mig.migrate_hooks(self.installer, rec.say, rec.warn))
+        self.assertEqual(self.installer.SETTINGS.read_bytes(), before)
+        self.assertEqual(self._backups(), [])
+        self.assertEqual((rec.said, rec.warned), ([], []))
+
+    def test_old_and_new_hooks_keep_the_new_one(self):
+        self._write(
+            {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": self.new_cmd},
+                                {"type": "command", "command": self.old_cmd},
+                            ]
+                        }
+                    ]
+                }
+            }
+        )
+        rec = Recorder()
+        self.assertTrue(mig.migrate_hooks(self.installer, rec.say, rec.warn))
+        self.assertEqual(self._commands(self._read()), [self.new_cmd])
+        self.assertEqual(len(self._backups()), 1)
+        self.assertEqual(rec.warned, [])
+
 
 class TestSessionBus(unittest.TestCase):
     def test_address_in_environment(self):
@@ -498,6 +627,85 @@ class TestMain(unittest.TestCase):
         self.assertEqual(second.stdout.strip().splitlines(),
                          [line for line in first.stdout.strip().splitlines()
                           if "no session bus" in line])
+
+    def _main(self, home, **xdg):
+        env = {
+            "HOME": str(home),
+            "XDG_RUNTIME_DIR": str(_tmp(self)),
+            "PATH": os.environ.get("PATH", ""),
+            **xdg,
+        }
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return proc
+
+    def test_config_and_cache_default_bases_are_migrated(self):
+        home = _tmp(self)
+        for base in (".config", ".cache"):
+            (home / base / "streamdeck-tiler").mkdir(parents=True)
+            (home / base / "streamdeck-tiler" / "f").write_text(base)
+        self._main(home)
+        for base in (".config", ".cache"):
+            with self.subTest(base=base):
+                self.assertFalse((home / base / "streamdeck-tiler").exists())
+                self.assertEqual(
+                    (home / base / "erplibre-home" / "f").read_text(), base
+                )
+
+    def test_xdg_config_and_cache_bases_are_followed(self):
+        home = _tmp(self)
+        xdg = {"XDG_CONFIG_HOME": "cfg", "XDG_CACHE_HOME": "cch"}
+        for name in xdg.values():
+            (home / name / "streamdeck-tiler").mkdir(parents=True)
+        self._main(home, **{k: str(home / v) for k, v in xdg.items()})
+        for name in xdg.values():
+            with self.subTest(base=name):
+                self.assertFalse((home / name / "streamdeck-tiler").exists())
+                self.assertTrue((home / name / "erplibre-home").is_dir())
+
+    def test_a_failing_step_does_not_stop_the_next_ones(self):
+        if os.geteuid() == 0:
+            self.skipTest("root reads any directory")
+        home = _tmp(self)
+        ext = home / ".local" / "share" / "gnome-shell" / "extensions"
+        ext.mkdir(parents=True)
+        ext.chmod(0)
+        self.addCleanup(ext.chmod, 0o755)
+        (home / ".local" / "state" / "streamdeck-tiler").mkdir(parents=True)
+        proc = self._main(home)
+        self.assertIn("extensions not migrated", proc.stderr)
+        self.assertTrue((home / ".local" / "state" / "erplibre-home").is_dir())
+
+    def test_hooks_never_installed_are_not_installed(self):
+        """Only a workstation that ran the old hook gets the new one."""
+        home = _tmp(self)
+        settings = home / ".claude" / "settings.json"
+        settings.parent.mkdir()
+        settings.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Stop": [
+                            {
+                                "hooks": [
+                                    {"type": "command", "command": "/bin/true"}
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        before = settings.read_bytes()
+        proc = self._main(home)
+        self.assertEqual(settings.read_bytes(), before)
+        self.assertNotIn("Claude hooks", proc.stdout)
 
 
 if __name__ == "__main__":
