@@ -40,6 +40,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from script.todo.mail.claim import CLAIM_MODES
 from script.todo.mail.rules import svg
 from script.todo.mail.rules.lock import file_lock
 from script.todo.mail.rules.model import (
@@ -101,7 +102,9 @@ class EngineState:
     `cache_epoch` l'époque du cache vue à la dernière passe ; avant
     `hold_until` (époque), tout envoi automatique est retenu. `done` liste
     les UID au-dessus du curseur déjà évalués (un trou les précède) : le
-    moteur ne les réévalue pas.
+    moteur ne les réévalue pas. `claim_mode` est le mode de revendication
+    du serveur vu à la dernière revendication (`claim.CLAIM_MODES`), « »
+    tant qu'aucune n'a eu lieu.
     """
 
     uidvalidity: int | None = None
@@ -109,6 +112,7 @@ class EngineState:
     cache_epoch: str | None = None
     hold_until: int = 0
     done: list = dataclasses.field(default_factory=list)
+    claim_mode: str = ""
 
 
 @dataclass
@@ -733,7 +737,31 @@ def load_state(account_name: str, base: Path | None = None) -> EngineState:
         cache_epoch=_optional(data, "cache_epoch", str),
         hold_until=_optional(data, "hold_until", int) or 0,
         done=_uid_list(data, "done"),
+        claim_mode=_claim_mode(data),
     )
+
+
+def _claim_mode(data: dict) -> str:
+    """Le mode de revendication inscrit, « » pour toute autre valeur.
+
+    Sans lever, contrairement aux autres champs : un mode illisible
+    (version future, fichier retouché) ne sert qu'à l'affichage et se
+    réécrit à la revendication suivante ; il n'a pas à arrêter le moteur.
+    """
+    value = data.get("claim_mode")
+    return value if isinstance(value, str) and value in CLAIM_MODES else ""
+
+
+def load_claim_mode(account_name: str, base: Path | None = None) -> str:
+    """Le mode de revendication du serveur inscrit dans l'état du moteur,
+    « » s'il est inconnu ou l'état illisible. Ne crée rien, ne lève
+    jamais : sert à l'affichage."""
+    try:
+        return load_state(account_name, base).claim_mode
+    except Exception:
+        # Un état illisible, un nom de compte refusé : la ligne d'écran
+        # dit alors « pas encore vérifiée », sans faire tomber l'écran.
+        return ""
 
 
 def _uid_list(data: dict, key: str) -> list:

@@ -106,6 +106,17 @@ HASHED_COLUMNS = {
 # par expéditeur : un message en file ou retenu partira, ou attend qu'on
 # l'approuve, et répondre de nouveau entre-temps ferait deux réponses.
 RULE_LOG_SEND_OUTCOMES = ("pending", "sent", "partial", "queued", "held")
+# Issues hors `RULE_LOG_SEND_OUTCOMES` qui comptent pour la limite par
+# expéditeur : un envoi fait par une autre machine, ou peut-être parti.
+RULE_LOG_SEND_LIKE = (
+    ("skipped", "claimed_elsewhere"),
+    ("skipped", "claim_uncertain"),
+    ("failed", "send_uncertain"),
+)
+# Les états d'une revendication locale ; `retry` et `intent` ne sont pas
+# définitifs.
+RULE_CLAIM_STATES = ("retry", "intent", "owned", "lost", "unclaimed")
+RULE_CLAIM_FINAL = ("owned", "lost", "unclaimed")
 # Les issues définitives : `rule_log_set_outcome` ne les modifie plus.
 # `partial` (message parti vers une partie de ses destinataires) n'avance
 # que par `rule_log_rcpt_result`, `rule_log_retry_closed` et
@@ -270,6 +281,23 @@ CREATE TABLE IF NOT EXISTS auto_sent (
   rule_id      TEXT,
   at           INTEGER NOT NULL,
   sealed_msgid BLOB
+);
+-- Revendication côté serveur d'un message d'INBOX, une ligne par
+-- (uidvalidity, uid) : `intent` est écrit avant le STORE du mot-clé,
+-- `owned` quand le STORE est confirmé, `lost` quand le mot-clé était déjà
+-- posé par un autre, `unclaimed` quand le serveur ne permet pas la
+-- revendication, `retry` quand aucun STORE n'est en cours. `failures`
+-- compte les passes dont la revendication a échoué. `mode` est celui du
+-- serveur à ce moment. Ni scellé ni salé, et sans heure : un UID n'est
+-- pas une donnée de message, et une heure le relierait à une action.
+CREATE TABLE IF NOT EXISTS rule_claim (
+  id          INTEGER PRIMARY KEY,
+  uidvalidity INTEGER NOT NULL,
+  uid         INTEGER NOT NULL,
+  state       TEXT NOT NULL,
+  mode        TEXT,
+  failures    INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(uidvalidity, uid)
 );
 """
 
@@ -2791,28 +2819,180 @@ class Store:
         """Le moment du dernier envoi de CETTE règle vers cet expéditeur OU
         cette cible ; `None` s'il n'y en a pas.
 
-        Compte comme envoi toute issue de `RULE_LOG_SEND_OUTCOMES`. Le From
-        est la clé principale : une adresse d'enveloppe qui change à chaque
-        message (VERP, BATV, SRS) ne contourne donc pas la limite. Une
-        empreinte vide ou `None` ne correspond à aucune ligne.
+        Compte comme envoi toute issue de `RULE_LOG_SEND_OUTCOMES`, et les
+        couples (issue, raison) de `RULE_LOG_SEND_LIKE` : un message qu'une
+        AUTRE machine a revendiqué y a reçu sa réponse, et un envoi
+        interrompu est peut-être parti. Sans eux, deux machines
+        répondraient chacune à un message différent du même expéditeur
+        dans la fenêtre. L'heure comptée est celle où cette machine a écrit
+        sa ligne, postérieure au départ réel : la fenêtre s'allonge un peu,
+        jamais ne raccourcit.
+
+        Le From est la clé principale : une adresse d'enveloppe qui change
+        à chaque message (VERP, BATV, SRS) ne contourne donc pas la limite.
+        Une empreinte vide ou `None` ne correspond à aucune ligne.
         """
         envois = ",".join("?" for _ in RULE_LOG_SEND_OUTCOMES)
+        semblables = " OR ".join(
+            "(outcome = ? AND reason = ?)" for _ in RULE_LOG_SEND_LIKE
+        )
         ligne = (
             self._db()
             .execute(
                 "SELECT MAX(at) FROM rule_log WHERE rule_id = ?"
                 " AND (sender_hash = ? OR target_hash = ?)"
-                f" AND outcome IN ({envois})",
+                f" AND (outcome IN ({envois}) OR {semblables})",
                 (
                     rule_id,
                     sender_hash or None,
                     target_hash or None,
                     *RULE_LOG_SEND_OUTCOMES,
+                    *(v for couple in RULE_LOG_SEND_LIKE for v in couple),
                 ),
             )
             .fetchone()
         )
         return ligne[0] if ligne and ligne[0] is not None else None
+
+    @_locked
+    def rule_log_resume(self) -> tuple[int, int]:
+        """Règle les lignes `pending` laissées par une passe morte ; rend
+        `(supprimées, incertaines)`.
+
+        Une ligne `pending` n'a d'autre écrivain que le moteur, toujours
+        sous le verrou du compte, qui se relâche quand le processus meurt :
+        appelée en début de passe sous ce verrou, toute ligne `pending` est
+        celle d'une passe qui n'a pas fini. `pending/ready` (revendiqué,
+        rien n'est parti) est SUPPRIMÉE : le message, curseur non avancé,
+        est réévalué comme neuf. `pending/sending` (remis à l'envoi) et
+        `pending` sans raison (ligne d'une version qui ne marquait pas
+        l'envoi) passent en `failed/send_uncertain` : le message est
+        peut-être parti avant que l'issue ne s'écrive, il n'est jamais
+        renvoyé. En une transaction ; toute erreur annule tout.
+        """
+        db = self._ecriture()
+        try:
+            supprimees = db.execute(
+                "DELETE FROM rule_log WHERE outcome = 'pending'"
+                " AND reason = 'ready'"
+            ).rowcount
+            incertaines = db.execute(
+                "UPDATE rule_log SET outcome = 'failed',"
+                " reason = 'send_uncertain' WHERE outcome = 'pending'"
+                " AND (reason IS NULL OR reason <> 'ready')"
+            ).rowcount
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return supprimees, incertaines
+
+    # -- Revendication des messages sur le serveur -------------------
+
+    @_locked
+    def rule_claim_state(self, uidvalidity: int, uid: int) -> str | None:
+        """L'état de revendication inscrit pour ce message d'INBOX, None
+        sans ligne."""
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT state FROM rule_claim WHERE uidvalidity = ?"
+                " AND uid = ?",
+                (int(uidvalidity), int(uid)),
+            )
+            .fetchone()
+        )
+        return ligne[0] if ligne else None
+
+    @_locked
+    def rule_claim_intent(self, uidvalidity: int, uid: int) -> str:
+        """Inscrit l'intention de revendiquer, et rend l'état inscrit.
+
+        Validée AVANT que l'appelant n'envoie le STORE : un processus tué
+        pendant le STORE laisse `intent`, que la passe suivante reconnaît.
+        Seule une ligne `retry` (ou l'absence de ligne) devient `intent` ;
+        un état final reste ce qu'il est.
+        """
+        db = self._db()
+        db.execute(
+            "INSERT INTO rule_claim(uidvalidity, uid, state, mode)"
+            " VALUES(?, ?, 'intent', NULL)"
+            " ON CONFLICT(uidvalidity, uid) DO UPDATE SET state = 'intent'"
+            " WHERE rule_claim.state = 'retry'",
+            (int(uidvalidity), int(uid)),
+        )
+        db.commit()
+        return self._etat_revendication(db, uidvalidity, uid)
+
+    @_locked
+    def rule_claim_drop_intent(self, uidvalidity: int, uid: int) -> None:
+        """Ramène une ligne `intent` à `retry`, compteur d'échecs gardé.
+
+        Appelée quand le STORE n'a sûrement PAS été appliqué (MODIFIED,
+        refus du serveur) : sinon un mot-clé posé ensuite par une autre
+        machine se lirait comme une revendication peut-être nôtre.
+        """
+        db = self._db()
+        db.execute(
+            "UPDATE rule_claim SET state = 'retry' WHERE uidvalidity = ?"
+            " AND uid = ? AND state = 'intent'",
+            (int(uidvalidity), int(uid)),
+        )
+        db.commit()
+
+    @_locked
+    def rule_claim_set(
+        self, uidvalidity: int, uid: int, state: str, *, mode: str = ""
+    ) -> str:
+        """Inscrit un état final (`RULE_CLAIM_FINAL`), et rend l'état
+        inscrit après l'appel.
+
+        Un état final n'est jamais réécrit : seules une ligne `intent` ou
+        `retry`, ou l'absence de ligne, prennent `state`. Un état hors de
+        `RULE_CLAIM_FINAL` lève `ValueError` avant toute écriture.
+        """
+        if state not in RULE_CLAIM_FINAL:
+            raise ValueError(state)
+        db = self._db()
+        db.execute(
+            "INSERT INTO rule_claim(uidvalidity, uid, state, mode)"
+            " VALUES(?, ?, ?, ?)"
+            " ON CONFLICT(uidvalidity, uid) DO UPDATE SET"
+            " state = excluded.state, mode = excluded.mode"
+            " WHERE rule_claim.state IN ('intent', 'retry')",
+            (int(uidvalidity), int(uid), state, mode or None),
+        )
+        db.commit()
+        return self._etat_revendication(db, uidvalidity, uid)
+
+    @_locked
+    def rule_claim_failed(self, uidvalidity: int, uid: int) -> int:
+        """Compte une passe de plus dont la revendication a échoué, et rend
+        le nouveau compte. L'état n'est pas touché : une `intent` reste
+        `intent`."""
+        db = self._db()
+        db.execute(
+            "INSERT INTO rule_claim(uidvalidity, uid, state, mode, failures)"
+            " VALUES(?, ?, 'retry', NULL, 1)"
+            " ON CONFLICT(uidvalidity, uid) DO UPDATE SET"
+            " failures = rule_claim.failures + 1",
+            (int(uidvalidity), int(uid)),
+        )
+        db.commit()
+        ligne = db.execute(
+            "SELECT failures FROM rule_claim WHERE uidvalidity = ?"
+            " AND uid = ?",
+            (int(uidvalidity), int(uid)),
+        ).fetchone()
+        return int(ligne[0]) if ligne else 0
+
+    @staticmethod
+    def _etat_revendication(db, uidvalidity, uid) -> str | None:
+        ligne = db.execute(
+            "SELECT state FROM rule_claim WHERE uidvalidity = ? AND uid = ?",
+            (int(uidvalidity), int(uid)),
+        ).fetchone()
+        return ligne[0] if ligne else None
 
     @_locked
     def rule_log_sent_count(self, rule_id: str, fingerprint: str) -> int:

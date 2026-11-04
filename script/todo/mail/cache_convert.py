@@ -124,6 +124,7 @@ COPIED_TABLES = (
     "outbox",
     "rule_log",
     "auto_sent",
+    "rule_claim",
 )
 # Les clés de `meta` que la base neuve écrit elle-même.
 _META_OWN_KEYS = ("cache_mode", "schema_version", "cache_epoch_check")
@@ -810,7 +811,13 @@ class _Copier:
         compte = lambda db, table: db.execute(
             f"SELECT count(*) FROM {table}"
         ).fetchone()[0]  # noqa: E731
-        for table in ("folders", "messages", "outbox", "rule_log"):
+        for table in (
+            "folders",
+            "messages",
+            "outbox",
+            "rule_log",
+            "rule_claim",
+        ):
             if compte(src_db, table) != compte(dst_db, table):
                 raise _VerifyFailed(f"lignes {table}")
         if (
@@ -841,7 +848,13 @@ class _Copier:
                 raise _VerifyFailed("époque")
         if len(dst_meta) != attendu or dst_meta.get("cache_mode") != target:
             raise _VerifyFailed("meta")
-        for table in ("folders", "messages", "outbox", "rule_log"):
+        for table in (
+            "folders",
+            "messages",
+            "outbox",
+            "rule_log",
+            "rule_claim",
+        ):
             self._verify_rows(table)
         for (dossier, uid), empreinte in self.body_hashes.items():
             lu = dst.read_body(dossier, uid)
