@@ -661,6 +661,32 @@ class LeReglageDesJeux(Menu):
         self.assertIn("invalid", sortie)
         self.assertEqual("GAMES=on\n", self.reglages.read_text())
 
+    def test_enter_does_not_replace_an_invalid_value(self):
+        """Une valeur invalide n'a pas de défaut : Entrée est hors liste,
+        aucune option n'est marquée, et seul le choix tapé s'écrit."""
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("GAMES=peut-etre\n")
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("", "2"))
+        self.assertIn("Invalid selection!", sortie)
+        self.assertNotIn(" *", sortie)
+        self.assertEqual("GAMES=off\n", self.reglages.read_text())
+
+    def test_the_entry_shows_the_current_value(self):
+        for texte, attendu in (
+            (None, "Games: Enabled"),
+            ("GAMES=on\n", "Games: Enabled"),
+            ("GAMES=off\n", "Games: Disabled"),
+        ):
+            with self.subTest(texte=texte):
+                if texte is None:
+                    if self.reglages.exists():
+                        self.reglages.unlink()
+                else:
+                    self.reglages.parent.mkdir(parents=True, exist_ok=True)
+                    self.reglages.write_text(texte)
+                _, sortie, _ = self.jouer("_streamdeck_games_setting", ("0",))
+                self.assertEqual(attendu, sortie.splitlines()[0])
+
     def test_the_submenu_offers_the_entry(self):
         todo = TODO.__new__(TODO)
         with (

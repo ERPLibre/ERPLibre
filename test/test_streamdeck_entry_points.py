@@ -170,6 +170,34 @@ class TestMakefileUsesTheVenv(unittest.TestCase):
         ):
             self.assertNotIn(GARDE, self.regles[cible][0], cible)
 
+    def test_the_translator_targets_are_never_gated(self):
+        """Les outils du traducteur ne sont pas des jeux : ni GAMES ni
+        l'absence de games/ ne les arrêtent."""
+        cibles = [
+            c for c in self.regles if c.startswith("streamdeck_translator")
+        ]
+        for cible in (
+            "streamdeck_translator_test",
+            "streamdeck_translator_stream",
+            "streamdeck_translator_unittest",
+            "streamdeck_translator_install_whisper",
+            "streamdeck_translator_install_ollama",
+        ):
+            self.assertIn(cible, cibles)
+        for cible in cibles:
+            prerequis = self.regles[cible][0]
+            self.assertNotIn(GARDE, prerequis, cible)
+            self.assertNotIn("streamdeck_games_present", prerequis, cible)
+
+    def test_the_deck_program_targets_are_phony(self):
+        """Sans .PHONY, un fichier du même nom à la racine rendrait la
+        cible « à jour » et le programme du deck ne démarrerait pas."""
+        phony = set()
+        for ligne in re.findall(r"(?m)^\.PHONY:(.*)$", self.texte):
+            phony.update(ligne.split())
+        for cible in ("streamdeck_erplibre", "streamdeck_tiler"):
+            self.assertIn(cible, phony)
+
     def test_the_rules_were_actually_parsed(self):
         # Une forme de fichier que l'analyse ne lit plus doit tomber ici,
         # plutôt que de déclarer conforme une liste vide.
@@ -301,6 +329,62 @@ class TestMakefileGuard(unittest.TestCase):
         self.assertNotIn("faux-python", res.stdout)
         res = self.make("streamdeck_erplibre")
         self.assertEqual(0, res.returncode, res.stderr)
+
+    def test_an_unknown_games_value_stops_a_game_target_too(self):
+        """Une valeur inconnue fait rendre 2 à deck_games_enabled, et non
+        1 : la garde refuse aussi, avec la valeur dans le message."""
+        conf = os.path.join(self.tmp, "erplibre-home", "streamdeck.conf")
+        os.makedirs(os.path.dirname(conf))
+        for valeur in ("yes", ""):
+            with self.subTest(valeur=valeur):
+                with open(conf, "w", encoding="utf-8") as f:
+                    f.write(f"GAMES={valeur}\n")
+                res = self.make("streamdeck_snake")
+                self.assertNotEqual(0, res.returncode)
+                self.assertIn(
+                    f"Stream Deck games are disabled (GAMES={valeur} in",
+                    res.stderr,
+                )
+                self.assertNotIn("faux-python", res.stdout)
+
+    def test_games_off_never_gates_the_translator_tools(self):
+        conf = os.path.join(self.tmp, "erplibre-home", "streamdeck.conf")
+        os.makedirs(os.path.dirname(conf))
+        with open(conf, "w", encoding="utf-8") as f:
+            f.write("GAMES=off\n")
+        for cible in (
+            "streamdeck_translator_doctor",
+            "streamdeck_translator_test",
+            "streamdeck_translator_stream",
+            "streamdeck_translator_unittest",
+        ):
+            with self.subTest(cible=cible):
+                res = self.make(cible, jeux=False)
+                self.assertEqual(0, res.returncode, res.stderr)
+                self.assertIn("faux-python", res.stdout)
+
+    def test_the_gallery_runs_the_server_of_the_games_clone(self):
+        res = self.make("streamdeck_gallery")
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertEqual(
+            "faux-python script/stream_deck/games/gallery_server.py",
+            res.stdout.strip(),
+        )
+
+    def test_the_tiler_unittest_target_discovers_the_deck_tests(self):
+        """streamdeck_tiler_unittest garde son nom ; son motif est celui
+        des tests du programme du deck, et il en trouve là où il
+        cherche."""
+        res = self.make("streamdeck_tiler_unittest")
+        self.assertEqual(0, res.returncode, res.stderr)
+        mots = res.stdout.split()
+        self.assertEqual(
+            ["faux-python", "-m", "unittest", "discover"], mots[:4]
+        )
+        motif = mots[mots.index("-p") + 1]
+        self.assertEqual("test_erplibre_streamdeck*.py", motif)
+        dossier = ROOT / mots[mots.index("-s") + 1]
+        self.assertTrue(list(dossier.glob(motif)), dossier)
 
     def test_missing_games_stop_the_game_and_gallery_targets(self):
         """Ni games/ ni la galerie : le programme du deck, lui, ne dépend
@@ -695,6 +779,18 @@ class TestTilerCommandLine(unittest.TestCase):
             self.assertIn("usage:", res.stderr, args)
             self.assertEqual("", res.stdout, args)
 
+    def test_the_deck_program_is_not_a_game(self):
+        """« --meta » est l'option par laquelle la galerie reconnaît un
+        jeu : le programme du deck la refuse comme toute option inconnue,
+        et son paquet ne déclare pas de GAME_META."""
+        res = self.lancer("--meta")
+        self.assertEqual(2, res.returncode, res.stderr)
+        self.assertIn("usage:", res.stderr)
+        self.assertEqual("", res.stdout)
+        for source in (DECK_DIR / "erplibre_streamdeck").rglob("*.py"):
+            texte = source.read_text(encoding="utf-8")
+            self.assertNotIn("GAME_META", texte, str(source))
+
 
 class TestControllerCommandLine(unittest.TestCase):
     """La ligne de commande du contrôleur : -h et --help sortent en 0, une
@@ -849,6 +945,70 @@ class TestTodoGamesLauncher(unittest.TestCase):
                 self.assertIn(
                     todo_mod.service.settings_path(), out.getvalue()
                 )
+
+    def refus_des_jeux(self, python, valeur):
+        """Joue le menu des jeux avec `python` pour venv et GAMES=`valeur`
+        dans les réglages ; rend (rendu, sortie, scan)."""
+        todo = todo_mod.TODO.__new__(todo_mod.TODO)
+        with (
+            mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", self.present),
+            mock.patch.object(
+                todo_mod.service,
+                "read_settings",
+                return_value={"GAMES": valeur},
+            ),
+            mock.patch.object(
+                todo_mod.TODO, "_scan_streamdeck_games", return_value=[]
+            ) as scan,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            rendu = todo.prompt_execute_streamdeck_games()
+        return rendu, out.getvalue(), scan
+
+    def test_an_unknown_games_value_is_refused_too(self):
+        todo_i18n._current_lang = "en"
+        for valeur in ("yes", ""):
+            with self.subTest(valeur=valeur):
+                rendu, sortie, scan = self.refus_des_jeux(self.present, valeur)
+                self.assertFalse(rendu)
+                self.assertIn("Stream Deck games are disabled (GAMES)", sortie)
+                scan.assert_not_called()
+
+    def test_the_venv_is_checked_before_the_games_setting(self):
+        """Sans venv, le menu dit d'abord comment l'installer : GAMES=on
+        n'y suffirait pas."""
+        todo_i18n._current_lang = "en"
+        rendu, sortie, scan = self.refus_des_jeux(self.absent, "off")
+        self.assertFalse(rendu)
+        self.assertEqual(MESSAGE_SANS_VENV, sortie.strip())
+        scan.assert_not_called()
+
+    def test_a_game_is_described_by_its_file_name_key(self):
+        """game_<id>.py prend la description de la clé i18n « game_<id> »,
+        dans la langue de l'utilisateur ; sans clé, la première ligne de
+        sa docstring."""
+        with tempfile.TemporaryDirectory() as tmp:
+            chemins = []
+            for nom in ("game_2048.py", "game_exemple_sans_cle.py"):
+                chemin = os.path.join(tmp, nom)
+                with open(chemin, "w", encoding="utf-8") as f:
+                    f.write('"""\nLa docstring du jeu.\n"""\n')
+                chemins.append(chemin)
+            for langue in ("en", "fr"):
+                with self.subTest(langue=langue):
+                    todo_i18n._current_lang = langue
+                    todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                    with mock.patch("glob.glob", return_value=chemins):
+                        jeux = todo._scan_streamdeck_games()
+                    attendu = todo_i18n.TRANSLATIONS["game_2048"][langue]
+                    self.assertEqual(
+                        [
+                            f"2048 — {attendu}",
+                            "Exemple Sans Cle — La docstring du jeu.",
+                        ],
+                        [j["description"] for j in jeux],
+                    )
 
     def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)

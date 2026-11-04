@@ -73,6 +73,15 @@ class LaFrontiere(unittest.TestCase):
                     0, git("check-ignore", "-q", chemin).returncode
                 )
 
+    def test_the_former_save_directory_stays_ignored(self):
+        """Un checkout qui n'a pas encore déplacé les sauvegardes des jeux
+        les garde sous script/stream_deck/save/ sans les voir dans
+        git status."""
+        self.assertEqual(
+            0,
+            git("check-ignore", "-q", "script/stream_deck/save/x").returncode,
+        )
+
     def test_no_game_is_left_next_to_the_deck_program(self):
         self.assertEqual(
             "", git("ls-files", "script/stream_deck/game_*.py").stdout

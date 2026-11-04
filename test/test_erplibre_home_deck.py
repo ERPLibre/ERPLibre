@@ -254,6 +254,20 @@ class LeLancement(Copie):
         sortie, _ = proc.communicate(timeout=30)
         self.assertEqual(str(proc.pid), sortie.strip())
 
+    def test_games_off_or_unknown_never_gates_the_launch(self):
+        """GAMES ne coupe que les jeux : sans option, le programme du deck
+        démarre quelle que soit sa valeur."""
+        self.venv()
+        for valeur in ("off", "yes"):
+            with self.subTest(valeur=valeur):
+                self.regler(f"GAMES={valeur}\n")
+                fini = self.lancer()
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertEqual(
+                    str(self.depot / "script/stream_deck/erplibre_streamdeck"),
+                    fini.stdout.splitlines()[-1],
+                )
+
     def test_none_runs_nothing(self):
         self.venv()
         self.regler("DECK_PROGRAM=none\n")

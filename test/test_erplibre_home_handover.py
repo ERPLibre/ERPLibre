@@ -372,6 +372,23 @@ class Passation(unittest.TestCase):
         self.assertEqual(1, fini.returncode)
         self.assertIn("usage", fini.stderr)
 
+    def test_no_command_is_a_usage_error_even_with_games_off(self):
+        """L'usage passe avant GAMES : un appel sans commande sort en 1
+        avec l'usage, et non en 4, et rien n'est arrêté."""
+        self.unite("active")
+        self.regler("GAMES=off\n")
+        fini = subprocess.run(
+            [str(self.passation)],
+            capture_output=True,
+            text=True,
+            env=self.environ(),
+            timeout=30,
+        )
+        self.assertEqual(1, fini.returncode, fini.stderr)
+        self.assertIn("usage", fini.stderr)
+        self.assertNotIn("disabled", fini.stderr)
+        self.assertEqual("", self.journal.read_text(encoding="utf-8"))
+
 
 class LeScript(unittest.TestCase):
     def test_it_is_executable_valid_shell(self):

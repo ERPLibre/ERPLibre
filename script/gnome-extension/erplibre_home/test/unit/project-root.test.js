@@ -267,6 +267,44 @@ test('the ERPLibre submenu shows only when the gallery lists a tool', () => {
     assert.ok(!src.includes("_('No ERPLibre tools')"));
 });
 
+// The body of `name(args) { ... }` in `src`, braces balanced: the method
+// of a GObject class that node cannot import, run on a fake `this`.
+function methodBody(src, name, args) {
+    const head = `    ${name}(${args}) {`;
+    const start = src.indexOf(head);
+    assert.ok(start >= 0, `${name} not found`);
+    let depth = 0;
+    for (let i = start + head.length - 1; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        if (src[i] === '}' && --depth === 0)
+            return src.slice(start + head.length, i);
+    }
+    throw new Error(`${name} has no closing brace`);
+}
+
+test('the ERPLibre submenu lists exactly the gallery entries of section erplibre', () => {
+    const body = methodBody(extensionFile('indicators/controller.js'),
+        '_populateGames', 'games');
+    const populate = new Function('games', '_', body);
+    const filled = new Map();
+    const fake = {
+        _erplibreSection: {name: 'erplibre', visible: false},
+        _gamesSection: {name: 'games'},
+        _fillSection(section, items) {
+            filled.set(section.name, items.map(g => g.id));
+        },
+    };
+    populate.call(fake, [
+        {id: 'snake', name: 'Snake'},
+        {id: 'doc', name: 'Doc', section: 'erplibre'},
+        {id: 'outil', name: 'Outil', section: 'tools'},
+        {id: 'apps', name: 'Apps', section: 'erplibre'},
+    ], s => s);
+    assert.equal(fake._erplibreSection.visible, true);
+    assert.deepEqual(filled.get('erplibre'), ['apps', 'doc']);
+    assert.deepEqual(filled.get('games'), ['outil', 'snake']);
+});
+
 test('galleryReady needs both the deck venv and the gallery server', () => {
     const venv = `${CHECKOUT}/.venv.streamdeck/bin/python`;
     const server = `${CHECKOUT}/script/stream_deck/games/gallery_server.py`;
