@@ -20490,6 +20490,175 @@ TRANSLATIONS = {
         "fr": "bascule sur la cible du manifeste",
         "en": "switch to the manifest target",
     },
+    # Menu Docker / Podman : bases du conteneur ERPLibre
+    "ERPLibre databases": {
+        "fr": "Bases ERPLibre",
+        "en": "ERPLibre databases",
+    },
+    "Disk space - engine, container, reclaimable": {
+        "fr": "💽 Espace disque - moteur, conteneur, récupérable",
+        "en": "💽 Disk space - engine, container, reclaimable",
+    },
+    "Restore a .zip backup into the container": {
+        "fr": "📥 Restaurer une sauvegarde .zip dans le conteneur",
+        "en": "📥 Restore a .zip backup into the container",
+    },
+    "Delete a database of the container": {
+        "fr": "🗑 Supprimer une base du conteneur",
+        "en": "🗑 Delete a database of the container",
+    },
+    "No ERPLibre container is running.": {
+        "fr": "Aucun conteneur ERPLibre n'est en marche.",
+        "en": "No ERPLibre container is running.",
+    },
+    "See [12] Compose to start it.": {
+        "fr": "Voir [12] Composition pour le démarrer.",
+        "en": "See [12] Compose to start it.",
+    },
+    "Running ERPLibre containers:": {
+        "fr": "Conteneurs ERPLibre en marche :",
+        "en": "Running ERPLibre containers:",
+    },
+    "Odoo data directory:": {
+        "fr": "Répertoire de données d'Odoo :",
+        "en": "Odoo data directory:",
+    },
+    "free:": {
+        "fr": "libre :",
+        "en": "free:",
+    },
+    "Odoo account cannot write there: no restore.": {
+        "fr": "le compte d'Odoo n'y écrit pas : aucune restauration possible.",
+        "en": "Odoo account cannot write there: no restore.",
+    },
+    "Engine storage:": {
+        "fr": "Stockage du moteur :",
+        "en": "Engine storage:",
+    },
+    "Reclaimable by the engine:": {
+        "fr": "Récupérable par le moteur :",
+        "en": "Reclaimable by the engine:",
+    },
+    "A web restore writes to /tmp twice the .zip,": {
+        "fr": "Une restauration par le web écrit dans /tmp deux fois le .zip,",
+        "en": "A web restore writes to /tmp twice the .zip,",
+    },
+    "then its uncompressed content: see [15] instead.": {
+        "fr": "puis son contenu décompressé : préférer [15].",
+        "en": "then its uncompressed content: see [15] instead.",
+    },
+    "Not an Odoo backup (.zip with dump.sql):": {
+        "fr": "Pas une sauvegarde Odoo (.zip avec dump.sql) :",
+        "en": "Not an Odoo backup (.zip with dump.sql):",
+    },
+    "Backup:": {
+        "fr": "Sauvegarde :",
+        "en": "Backup:",
+    },
+    "Needed (estimate):": {
+        "fr": "Nécessaire (estimation) :",
+        "en": "Needed (estimate):",
+    },
+    "Not enough free space for this restore.": {
+        "fr": "Pas assez d'espace libre pour cette restauration.",
+        "en": "Not enough free space for this restore.",
+    },
+    "Continue anyway? (Y/N): ": {
+        "fr": "Continuer quand même ? (O/N) : ",
+        "en": "Continue anyway? (Y/N): ",
+    },
+    "PostgreSQL did not list the databases.": {
+        "fr": "PostgreSQL n'a pas listé les bases.",
+        "en": "PostgreSQL did not list the databases.",
+    },
+    "Database name": {
+        "fr": "Nom de la base",
+        "en": "Database name",
+    },
+    "Invalid database name:": {
+        "fr": "Nom de base invalide :",
+        "en": "Invalid database name:",
+    },
+    "with data": {
+        "fr": "avec des données",
+        "en": "with data",
+    },
+    "The database already exists:": {
+        "fr": "La base existe déjà :",
+        "en": "The database already exists:",
+    },
+    "Drop it and restore over it? (Y/N): ": {
+        "fr": "La supprimer et restaurer par-dessus ? (O/N) : ",
+        "en": "Drop it and restore over it? (Y/N): ",
+    },
+    "Neutralize (mail servers, crons)? (Y/N): ": {
+        "fr": "Neutraliser (serveurs de courriel, tâches planifiées) ? (O/N) : ",
+        "en": "Neutralize (mail servers, crons)? (Y/N): ",
+    },
+    "This database is a copy: it gets a new UUID.": {
+        "fr": "Cette base est une copie : elle reçoit un nouvel UUID.",
+        "en": "This database is a copy: it gets a new UUID.",
+    },
+    "This database was moved: it keeps its original UUID.": {
+        "fr": "Cette base a été déplacée : elle garde son UUID d'origine.",
+        "en": "This database was moved: it keeps its original UUID.",
+    },
+    "Is this database a copy? If unsure, yes. (Y/n): ": {
+        "fr": "Cette base est-elle une copie ? Dans le doute, oui. (O/n) : ",
+        "en": "Is this database a copy? If unsure, yes. (Y/n): ",
+    },
+    "Copying the backup into the container...": {
+        "fr": "Copie de la sauvegarde dans le conteneur...",
+        "en": "Copying the backup into the container...",
+    },
+    "Restoring...": {
+        "fr": "Restauration...",
+        "en": "Restoring...",
+    },
+    "Database restored:": {
+        "fr": "Base restaurée :",
+        "en": "Database restored:",
+    },
+    "This Odoo has no db command: use the web manager.": {
+        "fr": "Cet Odoo n'a pas de commande db : passer par le gestionnaire web.",
+        "en": "This Odoo has no db command: use the web manager.",
+    },
+    "The restore failed, code": {
+        "fr": "La restauration a échoué, code",
+        "en": "The restore failed, code",
+    },
+    "The failed restore left an empty database:": {
+        "fr": "La restauration ratée a laissé une base vide :",
+        "en": "The failed restore left an empty database:",
+    },
+    "Delete it? (Y/N): ": {
+        "fr": "La supprimer ? (O/N) : ",
+        "en": "Delete it? (Y/N): ",
+    },
+    "No database in this container.": {
+        "fr": "Aucune base dans ce conteneur.",
+        "en": "No database in this container.",
+    },
+    "Databases:": {
+        "fr": "Bases :",
+        "en": "Databases:",
+    },
+    "This deletes the database and its filestore:": {
+        "fr": "Ceci supprime la base et son filestore :",
+        "en": "This deletes the database and its filestore:",
+    },
+    "Type its name to confirm: ": {
+        "fr": "Retaper son nom pour confirmer : ",
+        "en": "Type its name to confirm: ",
+    },
+    "Database deleted:": {
+        "fr": "Base supprimée :",
+        "en": "Database deleted:",
+    },
+    "The deletion failed, code": {
+        "fr": "La suppression a échoué, code",
+        "en": "The deletion failed, code",
+    },
 }
 
 
