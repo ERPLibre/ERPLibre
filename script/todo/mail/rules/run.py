@@ -273,6 +273,10 @@ _FIXED_WARNING_KEYS = (
     "mail_rules_catchup_warning",
     "mail_stats_snapshot_unsaved",
     "mail_rules_cap_warning",
+    "mail_rules_claim_uncertain_warning",
+    "mail_rules_send_uncertain_warning",
+    "mail_rules_claim_none_warning",
+    "mail_rules_claim_failed_final",
 )
 
 
@@ -594,6 +598,24 @@ def _process(
                 ],
             )
             element = t("mail_service_catchup_failed")
+            elements.append(element)
+            durables.append(element)
+            code = worst_exit([code, EXIT_NETWORK])
+            if not fail:
+                fail, kind_fail = f"network:{EXIT_NETWORK}", "network"
+        if t("mail_rules_claim_failed") in bilan.warnings:
+            # Un trou de revendication peut durer plusieurs passes : son
+            # élément est durable, comme le rattrapage en échec, sans quoi
+            # `--quiet` écrirait une ligne à chaque intervalle.
+            bilan = replace(
+                bilan,
+                warnings=[
+                    w
+                    for w in bilan.warnings
+                    if w != t("mail_rules_claim_failed")
+                ],
+            )
+            element = t("mail_service_claim_failed")
             elements.append(element)
             durables.append(element)
             code = worst_exit([code, EXIT_NETWORK])

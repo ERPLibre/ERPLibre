@@ -78,27 +78,10 @@ def question():
 )
 class TestServiceEndToEnd(MailSandboxCase):
     def setUp(self):
-        from script.todo.mail import accounts as mail_accounts
-        from script.todo.mail.rules import storage
-        from script.todo.mail.rules.model import (
-            Armed,
-            Condition,
-            Group,
-            new_rule,
-        )
-        from script.todo.mail.secrets import SecretStore, create_kdbx
-        from script.todo.mail.store import Store
+        from script.todo.mail.rules.model import Condition, Group, new_rule
 
-        home = tempfile.TemporaryDirectory()
-        self.addCleanup(home.cleanup)
-        self.home = Path(home.name)
-        rustine = mock.patch.dict(
-            os.environ,
-            {
-                "HOME": str(self.home),
-                "XDG_CONFIG_HOME": str(self.home / ".config"),
-            },
-        )
+        self.home = self.nouveau_home()
+        rustine = mock.patch.dict(os.environ, self.environ(self.home))
         rustine.start()
         self.addCleanup(rustine.stop)
         self.addCleanup(os.chdir, os.getcwd())
@@ -120,45 +103,69 @@ class TestServiceEndToEnd(MailSandboxCase):
             name="perso",
             address=OWN,
         )
-        mail_accounts.save([self.account])
-
-        self.kdbx = self.home / "coffre.kdbx"
-        create_kdbx(str(self.kdbx), MAITRE)
-        self.secrets = SecretStore(
-            kdbx_manager=self.manager(), use_keyring=False
+        self.rule = new_rule("reply", "Absence")
+        self.rule.action.body = "Je suis absente."
+        self.rule.filter = Group("all", [Condition("body", "bonjour")])
+        self.kdbx, self.secrets, self.creds, self.base = self.installer(
+            self.home
         )
-        self.secrets.set(self.account.secret_ref, PASSWORD)
-        self.creds = self.home / "creds"
-        self.creds.mkdir()
-        self.credential(MAITRE)
-
-        self.base = self.home / ".erplibre" / "mail"
-        rule = new_rule("reply", "Absence")
-        rule.action.body = "Je suis absente."
-        rule.filter = Group("all", [Condition("body", "bonjour")])
-        storage.upsert_rule(
-            "perso", rule, rearm=Armed(42, 1, RECU - 3600), base=self.base
-        )
-        store = Store(self.account, mode="clear", base=self.base)
-        store.open()
-        try:
-            store.rule_log_claim(
-                rule.id,
-                "pre-approuvee",
-                outcome="sent",
-                at=RECU - 30 * 86400,
-                fingerprint=rule.fingerprint(),
-            )
-        finally:
-            store.close()
         self.connexions = 0
         self.sorties = []
 
-    def manager(self):
+    def nouveau_home(self) -> Path:
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        return Path(home.name)
+
+    @staticmethod
+    def environ(home) -> dict:
+        return {"HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+
+    def installer(self, home):
+        """Prépare une machine sous `home`, qui doit être le HOME courant :
+        compte, coffre et son credential, la règle (même identifiant d'une
+        machine à l'autre), armée et déjà approuvée. Rend (coffre, magasin
+        de secrets, dossier des credentials, base)."""
+        from script.todo.mail import accounts as mail_accounts
+        from script.todo.mail import credential
+        from script.todo.mail.rules import storage
+        from script.todo.mail.rules.model import Armed
+        from script.todo.mail.secrets import SecretStore, create_kdbx
+        from script.todo.mail.store import Store
+
+        mail_accounts.save([self.account])
+        kdbx = home / "coffre.kdbx"
+        create_kdbx(str(kdbx), MAITRE)
+        secrets = SecretStore(
+            kdbx_manager=self.manager(kdbx), use_keyring=False
+        )
+        secrets.set(self.account.secret_ref, PASSWORD)
+        creds = home / "creds"
+        creds.mkdir()
+        (creds / credential.CREDENTIAL_ID).write_text(MAITRE)
+        base = home / ".erplibre" / "mail"
+        storage.upsert_rule(
+            "perso", self.rule, rearm=Armed(42, 1, RECU - 3600), base=base
+        )
+        store = Store(self.account, mode="clear", base=base)
+        store.open()
+        try:
+            store.rule_log_claim(
+                self.rule.id,
+                "pre-approuvee",
+                outcome="sent",
+                at=RECU - 30 * 86400,
+                fingerprint=self.rule.fingerprint(),
+            )
+        finally:
+            store.close()
+        return kdbx, secrets, creds, base
+
+    def manager(self, kdbx=None):
         from script.todo.kdbx_manager import KdbxManager
 
         return KdbxManager(
-            FakeConfig({"kdbx": {"path": str(self.kdbx)}}),
+            FakeConfig({"kdbx": {"path": str(kdbx or self.kdbx)}}),
             password=MAITRE,
             interactive=False,
         )
@@ -232,6 +239,26 @@ class TestServiceEndToEnd(MailSandboxCase):
         for sortie in self.sorties:
             self.assertTrue(sortie)
             self.assert_clean(sortie)
+
+    def test_two_machines_running_the_service_reply_once(self):
+        """Deux machines, chacune son HOME (comptes, cache, règles, coffre),
+        la même règle, la même boîte : le message est revendiqué par la
+        première, la seconde s'abstient."""
+        from script.todo.mail.rules import run
+
+        self.assertEqual(self.lancer()[0], run.EXIT_OK)
+        autre = self.nouveau_home()
+        with mock.patch.dict(os.environ, self.environ(autre)):
+            kdbx, _secrets, creds, base = self.installer(autre)
+            code, sortie = self.lancer(
+                config_file=FakeConfig({"kdbx": {"path": str(kdbx)}}),
+                env={"CREDENTIALS_DIRECTORY": str(creds)},
+            )
+        self.assertEqual(code, run.EXIT_OK, sortie)
+        self.assertNotIn(str(autre), sortie)
+        self.assertEqual(len(self.smtp.messages), 1)
+        self.assertIn("$ErpLibreRule", self.inbox.by_uid(1).flags)
+        self.assertTrue((base / ".rules" / "perso").is_dir())
 
     # -- pannes -----------------------------------------------------------
 
