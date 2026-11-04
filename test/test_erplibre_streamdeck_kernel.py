@@ -1147,6 +1147,57 @@ class LockHeldTest(KernelCase):
             self.assertEqual([True] * len(values), values, name)
         self.assertFalse(self.k.lock.locked())
 
+    def test_the_redraw_after_the_extension_appears_holds_the_lock(self):
+        """recheck_dbus runs outside the lock; the home render it asks
+        for, once the extension is found, runs under it again."""
+        held = {}
+
+        def probe(name, value):
+            def call(*args):
+                held.setdefault(name, []).append(k.lock.locked())
+                return value
+
+            return call
+
+        face = KeyFace((1, 1, 1), "x")
+        dbus = FakeDbus(ok=False)
+        k = self.kernel(
+            loaded(
+                "p",
+                Plugin(
+                    api=PLUGIN_API,
+                    home_button=HomeButton(
+                        1, probe("home face", face), lambda ctx: None
+                    ),
+                    tiles=[
+                        TileProvider(
+                            1,
+                            probe("tile items", ["t"]),
+                            probe("tile face", face),
+                            lambda ctx, item: None,
+                        )
+                    ],
+                ),
+            ),
+            dbus=dbus,
+        )
+        # The home refresh is stamped one second before the recheck is
+        # due, so the only render of the next pass is the recheck's.
+        self.clock.advance(K.DBUS_RECHECK_SEC - 1)
+        k.step(self.clock.now)
+        held.clear()
+        dbus.ok = True
+        self.clock.advance(1)
+        k.step(self.clock.now)
+        self.assertTrue(k.dbus_ok)
+        self.assertEqual(2, dbus.checks)
+        self.assertEqual(
+            ["home face", "tile face", "tile items"], sorted(held)
+        )
+        for name, values in held.items():
+            self.assertEqual([True] * len(values), values, name)
+        self.assertFalse(k.lock.locked())
+
     def test_the_key_callback_holds_the_lock_during_the_press(self):
         """The loop thread runs between two presses: a press dispatched
         without the lock would run beside a loop pass."""
