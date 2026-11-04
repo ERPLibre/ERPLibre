@@ -476,8 +476,10 @@ relecture du serveur : au lancement, par `r` / `Shift+R`, au minuteur
 le menu CLI, et à chaque passe du service sans interface une fois installé,
 pour un compte qui a une règle active (voir « Tourner sans le
 client »). Une passe qui envoie ou qui échoue le dit — le TUI dans sa
-ligne de statut pendant la passe, le menu sous le nom du compte. L'ordre
-est conservé : deux messages d'un même échange arriveraient sinon inversés.
+ligne de statut pendant la passe, le menu sous le nom du compte ;
+*partiels* et *nouveaux essais en file :* s'y ajoutent quand le serveur a
+refusé certaines destinations. L'ordre est conservé : deux messages d'un
+même échange arriveraient sinon inversés.
 
 Deux choses laissent un message en attente : un compte hors ligne ne vide
 rien, et un message retenu est sauté. L'état réseau d'un compte est fixé à
@@ -500,7 +502,14 @@ par une règle — réponses, rapports, transferts et redirections — sont
 marqués `[auto]` et portent une échéance ; le volet sous la liste montre
 l'aperçu de celui dont le bouton a le focus, lu en arrière-plan pour qu'un
 gros transfert ne fige jamais l'écran, et nomme un transfert ou une
-redirection comme tels (voir « Règles du courrier entrant »).
+redirection comme tels (voir « Règles du courrier entrant »). Une entrée de
+nouvel essai le dit — *nouvel essai des destinataires refusés
+temporairement* : elle ne porte que les destinations qu'un serveur a
+refusées pour l'instant quand le reste du message est parti ; elle n'est
+jamais classée de nouveau dans Envoyés, et part sous les plafonds du compte
+comme tout envoi automatique. Relâchée après son échéance, ou une fois sa
+règle modifiée, elle quitte la file sans partir, et la ligne de statut dit
+*nouvel essai retiré de la file sans envoi*.
 
 Tant que des messages automatiques attendent retenus, la ligne de statut
 s'ouvre sur eux après chaque passe et au lancement — *perso : 1 envoi
@@ -1010,17 +1019,24 @@ installé : fermer le client ne l'arrête pas alors. Au-delà de 20 envois
 par passe ou de 60 par heure (les plafonds du compte, un budget **partagé**
 avec les réponses et les rapports), les transferts entrent **retenus** dans
 la file d'envoi, attendent un geste sous `o`, et expirent après 24 h ; une
-fois que la règle a 20 entrées dans la file, les messages suivants ne sont
-plus retenus mais écartés, et jamais transférés (voir « Plafonds »). Du
+fois que la règle a 20 entrées dans la file, nouveaux essais compris, les
+messages suivants ne sont plus retenus mais écartés, et jamais transférés
+(voir « Plafonds »). Du
 courrier peut alors ne jamais partir, sans erreur visible hors la file et
 le journal. Chaque transfert classé dans Envoyés double l'espace qu'occupe
 le message (jusqu'à 25 Mio par message), et un quota IMAP plein fait
-rebondir le courrier entrant. Un serveur qui accepte certaines destinations
-et en refuse d'autres annonce un succès : les refusées sont perdues, et le
-journal dit *envoyé* ; un message envoyé tout de suite depuis le client
-les compte sur sa ligne de statut (*destinataires refusés par le serveur*), sans les
-nommer parmi les servis. Pour tout faire suivre, la redirection de votre
-serveur de courrier est conseillée.
+rebondir le courrier entrant.
+
+Un serveur peut accepter certaines destinations et en refuser d'autres. Le
+message part alors vers celles qu'il accepte, et le journal des règles dit
+*partiel*, avec le nombre de refusées et leurs codes SMTP — jamais leurs
+adresses. Une destination refusée pour l'instant (code `4xx`) obtient son
+propre nouvel essai dans la file : le même message, vers elle seule,
+jusqu'à l'échéance de l'envoi d'origine (24 h après la décision de la
+règle), sous les mêmes plafonds. Une destination refusée pour de bon
+(`5xx`) est abandonnée aussitôt, y compris quand un nouvel essai est
+refusé à son tour. Une redirection n'est jamais renvoyée à une destination qui l'a déjà
+reçue.
 
 ### Garde-fous
 
@@ -1082,7 +1098,7 @@ règles confondues — réponses, rapports et transferts se partagent ce
 budget. Au-delà, ils sont retenus dans la file d'envoi et la ligne de statut avertit *Plafond d'envois automatiques
 atteint ; le reste est retenu (o) ou ignoré (journal l).* Un transfert retenu garde une copie
 entière de l'original : une règle de redirection qui a déjà **20** entrées
-dans la file n'en retient plus, et les messages suivants sont journalisés
+dans la file, nouveaux essais compris, n'en retient plus, et les messages suivants sont journalisés
 *plafond de la passe atteint* ou *plafond horaire atteint* sans être
 téléchargés, ni transférés. Les deux plafonds se règlent sous la liste
 des règles, ou par la clé `caps` de `rules.json`
@@ -1095,6 +1111,11 @@ partis dans l'heure ; le reste attend en file une vidange suivante. Un
 arriéré accumulé pendant que le serveur d'envoi était injoignable part
 ainsi au rythme horaire, pas d'un bloc. Un envoi compte dans l'heure où il
 part réellement. *Relâcher* sous `o` est un geste et n'est pas plafonné.
+Un envoi partiel compte pour un envoi à son départ, et son nouvel essai
+pour un de plus au sien : le plafond par heure compte les envois SMTP, et
+un nouvel essai attend comme tout envoi automatique. Rien n'est réservé à
+un nouvel essai en attente : si les plafonds restent pleins, il peut
+atteindre son échéance et expirer.
 
 **Retenue du premier envoi.** Tant qu'une règle n'a pas réellement envoyé
 ses premières réponses — une par défaut, jusqu'à 10 —, chaque nouvelle
@@ -1132,6 +1153,10 @@ approbation (o).*
 | message à transférer : compte hors ligne quand il faut le télécharger | laissé à la prochaine passe en ligne |
 | message à transférer : téléchargement refusé par le serveur | journalisé en échec (*corps illisible*), pas retenté |
 | message à transférer : plus de 25 Mio une fois téléchargé | écarté (*message trop gros pour être transféré*) |
+| des destinations refusées pour l'instant (`4xx`) | envoyé aux autres, journalisé *partiel* ; un nouvel essai vers ces seules destinations attend dans la file |
+| des destinations refusées pour de bon (`5xx`) | envoyé aux autres, journalisé *partiel* ; celles-là sont abandonnées |
+| un nouvel essai qui expire, ou dont la règle change | retiré ; la ligne reste *partiel*, *nouvel essai clos : expiré* (ou la raison) |
+| un nouvel essai refusé de nouveau pour de bon, sans plus aucun `4xx` | retiré aussitôt ; la ligne reste *partiel*, *nouvel essai clos : refus définitif du serveur* |
 
 Un transfert ou une redirection attend dans la file d'envoi comme une
 réponse, scellé avec ses destinations : une redirection en file garde son
@@ -1146,8 +1171,10 @@ journal des règles donne le résultat et la raison de chaque message.
 Après une passe qui a fait quelque chose, une ligne s'ajoute à la ligne de
 statut, par compte ayant des règles actives — par exemple `perso :
 envois automatiques : 2, en attente d'approbation (o) : 1`. Le compte
-réunit réponses, transferts et redirections. Une
-passe qui n'a rien trouvé à faire n'ajoute rien.
+réunit réponses, transferts et redirections ; *envois partiels* et
+*nouvel essai en file (o)* s'y ajoutent quand le serveur a refusé
+certaines destinations. Une passe qui n'a rien trouvé à faire n'ajoute
+rien.
 
 Une seule passe à la fois traite un compte, quel que soit le processus —
 TUI ou menu. Une autre attend jusqu'à 30 s, puis renonce avec *Règles :
@@ -1932,6 +1959,10 @@ jeton en place vaut toujours et la passe suivante réessaie.
   partie locale ASCII (le domaine peut porter des accents), et un original
   redirigé dont les en-têtes portent de l'UTF-8 brut part tel quel : un
   serveur strict peut le refuser.
+- **Aucun nouvel essai pour un message écrit à la main refusé en partie**
+  — envoyé directement, la ligne d'état nomme les destinataires refusés et
+  leurs codes : renvoyez-leur à la main ; parti de la file, elle ne fait
+  que les compter.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez

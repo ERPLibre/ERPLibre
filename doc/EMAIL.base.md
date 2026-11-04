@@ -930,8 +930,9 @@ on `Mail > [3] Synchronise now` from the CLI menu, and at every pass of the
 headless service once installed, for an account with an enabled rule (see
 "Running without the client"). A pass that sends or
 fails something says so — the TUI in its status line while the pass runs,
-the menu under the account name. Order is preserved: two messages of one
-exchange would otherwise arrive reversed.
+the menu under the account name; *partial* and *retries queued:* appear
+when the server refused some destinations. Order is preserved: two
+messages of one exchange would otherwise arrive reversed.
 
 Two things keep a message waiting: an offline account flushes nothing, and
 a held message is skipped. An account's network state is settled when the
@@ -954,7 +955,13 @@ Automatic messages queued by a rule — replies,
 reports, forwards and redirects — are marked `[auto]` and carry an expiry;
 the pane under the list previews the one whose button has focus, read in
 the background so that a large forward never freezes the screen, and names
-a forward or a redirect as such (see "Incoming mail rules").
+a forward or a redirect as such (see "Incoming mail rules"). A retry entry
+says *retry for the recipients refused temporarily*: it carries only the
+destinations a server refused for now when the rest of the message left;
+it is never filed into Sent again, and it leaves under the account caps
+like any automatic send. Released once its deadline has passed, or once its
+rule has changed, it leaves the outbox without sending, and the status line
+says *retry removed from the outbox without sending*.
 
 While automatic messages wait held, the status line opens with them after
 every pass and at launch — *perso : 1 automatic send awaits your approval
@@ -993,8 +1000,10 @@ relecture du serveur : au lancement, par `r` / `Shift+R`, au minuteur
 le menu CLI, et à chaque passe du service sans interface une fois installé,
 pour un compte qui a une règle active (voir « Tourner sans le
 client »). Une passe qui envoie ou qui échoue le dit — le TUI dans sa
-ligne de statut pendant la passe, le menu sous le nom du compte. L'ordre
-est conservé : deux messages d'un même échange arriveraient sinon inversés.
+ligne de statut pendant la passe, le menu sous le nom du compte ;
+*partiels* et *nouveaux essais en file :* s'y ajoutent quand le serveur a
+refusé certaines destinations. L'ordre est conservé : deux messages d'un
+même échange arriveraient sinon inversés.
 
 Deux choses laissent un message en attente : un compte hors ligne ne vide
 rien, et un message retenu est sauté. L'état réseau d'un compte est fixé à
@@ -1017,7 +1026,14 @@ par une règle — réponses, rapports, transferts et redirections — sont
 marqués `[auto]` et portent une échéance ; le volet sous la liste montre
 l'aperçu de celui dont le bouton a le focus, lu en arrière-plan pour qu'un
 gros transfert ne fige jamais l'écran, et nomme un transfert ou une
-redirection comme tels (voir « Règles du courrier entrant »).
+redirection comme tels (voir « Règles du courrier entrant »). Une entrée de
+nouvel essai le dit — *nouvel essai des destinataires refusés
+temporairement* : elle ne porte que les destinations qu'un serveur a
+refusées pour l'instant quand le reste du message est parti ; elle n'est
+jamais classée de nouveau dans Envoyés, et part sous les plafonds du compte
+comme tout envoi automatique. Relâchée après son échéance, ou une fois sa
+règle modifiée, elle quitte la file sans partir, et la ligne de statut dit
+*nouvel essai retiré de la file sans envoi*.
 
 Tant que des messages automatiques attendent retenus, la ligne de statut
 s'ouvre sur eux après chaque passe et au lancement — *perso : 1 envoi
@@ -1501,16 +1517,21 @@ and with the headless service once installed: closing the client does not
 stop it then. Beyond 20 sends per pass or 60 per hour (the account's caps,
 a budget **shared** with replies and reports), forwards enter the outbox
 **held**, wait for a gesture under `o`, and expire after 24 h; once the
-rule has 20 entries in the outbox, further messages are not held but
-skipped, and never forwarded (see "Caps"). Mail can then never leave, with
+rule has 20 entries in the outbox, retries included, further messages are
+not held but skipped, and never forwarded (see "Caps"). Mail can then never leave, with
 no error visible outside the outbox and the rules log. Each
 forward filed into Sent doubles the space the message takes (up to 25 MiB
-per message), and an IMAP quota that fills up bounces incoming mail. A
-server that accepts some destinations and refuses others reports a
-success: the refused ones are lost, and the log says *sent*; a message sent
-at once from the client counts them on its status line (*recipients
-refused by the server*), without naming them among those served. To send
-everything on, use your mail server's redirection.
+per message), and an IMAP quota that fills up bounces incoming mail.
+
+A server may accept some destinations and refuse others. The message then
+leaves to those it accepted, and the rules log says *partial*, with how
+many were refused and their SMTP codes — never their addresses. A
+destination refused for now (a `4xx` code) gets a retry of its own in the
+outbox: the same message, to that destination only, until the deadline of
+the original send (24 h after the rule decided), under the same caps. A
+destination refused for good (`5xx`) is given up at once, including when
+a retry is refused again. A redirect is never sent again to a destination that
+already has it.
 
 ### Safeguards
 
@@ -1570,7 +1591,7 @@ replies, reports and forwards share that budget. Beyond that, they are held
 in the outbox and the status line warns
 *Automatic send cap reached; the rest is held (o) or skipped (log l).* A held forward keeps
 a full copy of the original, so a forward rule that already has **20**
-entries in the outbox holds no more: further messages are logged *pass cap
+entries in the outbox, retries included, holds no more: further messages are logged *pass cap
 reached* or *hourly cap reached* without being downloaded, and are not
 forwarded. Both caps are set under the rule list, or by the `caps` key of
 `rules.json` (`{"per_pass": 20, "per_hour": 60}`, whole numbers of at
@@ -1581,7 +1602,11 @@ automatic sends leave, and none once 60 have really left in the last hour;
 the rest stays queued for a later drain. A backlog built up while the
 mail server was unreachable thus leaves at the hourly pace, not all at
 once. A send counts in the hour it really leaves. *Release* under `o` is a
-gesture and is not capped.
+gesture and is not capped. A partial send counts as one send when it
+leaves, and its retry as one more when it leaves: the hourly cap counts
+SMTP sends, so a retry waits like any other automatic send. Nothing is set
+aside for a waiting retry: when the caps stay full, it may reach its
+deadline and expire.
 
 **Holding the first send.** Until a rule has really sent its first
 replies — one by default, up to 10 — each new reply waits **held** in the
@@ -1615,6 +1640,10 @@ automatic replies await your approval (o).*
 | message to forward: account offline when it must be downloaded | left for the next online pass |
 | message to forward: download refused by the server | logged as failed (*unreadable body*), not retried |
 | message to forward: larger than 25 MiB once downloaded | skipped (*message too large to forward*) |
+| some destinations refused for now (`4xx`) | sent to the others, logged *partial*; a retry to those destinations alone waits in the outbox |
+| some destinations refused for good (`5xx`) | sent to the others, logged *partial*; those are given up |
+| a retry that expires, or whose rule changes | dropped; the line stays *partial*, *retry closed: expired* (or the reason) |
+| a retry refused again for good, no `4xx` left | dropped at once; the line stays *partial*, *retry closed: permanent server refusal* |
 
 A forward or a redirect waits in the outbox like a reply, sealed with its
 destinations: a queued redirect keeps its envelope and leaves to those
@@ -1628,7 +1657,8 @@ carries an address or a subject.
 After a pass that did something, one line is appended to the status line,
 per account with enabled rules — for instance `perso : automatic sends:
 2, awaiting approval (o): 1`. The count covers replies, forwards and
-redirects alike. A pass that found nothing to do adds
+redirects alike; *partial sends* and *retry queued (o)* appear when the
+server refused some destinations. A pass that found nothing to do adds
 nothing.
 
 One pass at a time handles an account, whatever the process — TUI or menu.
@@ -2428,17 +2458,24 @@ installé : fermer le client ne l'arrête pas alors. Au-delà de 20 envois
 par passe ou de 60 par heure (les plafonds du compte, un budget **partagé**
 avec les réponses et les rapports), les transferts entrent **retenus** dans
 la file d'envoi, attendent un geste sous `o`, et expirent après 24 h ; une
-fois que la règle a 20 entrées dans la file, les messages suivants ne sont
-plus retenus mais écartés, et jamais transférés (voir « Plafonds »). Du
+fois que la règle a 20 entrées dans la file, nouveaux essais compris, les
+messages suivants ne sont plus retenus mais écartés, et jamais transférés
+(voir « Plafonds »). Du
 courrier peut alors ne jamais partir, sans erreur visible hors la file et
 le journal. Chaque transfert classé dans Envoyés double l'espace qu'occupe
 le message (jusqu'à 25 Mio par message), et un quota IMAP plein fait
-rebondir le courrier entrant. Un serveur qui accepte certaines destinations
-et en refuse d'autres annonce un succès : les refusées sont perdues, et le
-journal dit *envoyé* ; un message envoyé tout de suite depuis le client
-les compte sur sa ligne de statut (*destinataires refusés par le serveur*), sans les
-nommer parmi les servis. Pour tout faire suivre, la redirection de votre
-serveur de courrier est conseillée.
+rebondir le courrier entrant.
+
+Un serveur peut accepter certaines destinations et en refuser d'autres. Le
+message part alors vers celles qu'il accepte, et le journal des règles dit
+*partiel*, avec le nombre de refusées et leurs codes SMTP — jamais leurs
+adresses. Une destination refusée pour l'instant (code `4xx`) obtient son
+propre nouvel essai dans la file : le même message, vers elle seule,
+jusqu'à l'échéance de l'envoi d'origine (24 h après la décision de la
+règle), sous les mêmes plafonds. Une destination refusée pour de bon
+(`5xx`) est abandonnée aussitôt, y compris quand un nouvel essai est
+refusé à son tour. Une redirection n'est jamais renvoyée à une destination qui l'a déjà
+reçue.
 
 ### Garde-fous
 
@@ -2500,7 +2537,7 @@ règles confondues — réponses, rapports et transferts se partagent ce
 budget. Au-delà, ils sont retenus dans la file d'envoi et la ligne de statut avertit *Plafond d'envois automatiques
 atteint ; le reste est retenu (o) ou ignoré (journal l).* Un transfert retenu garde une copie
 entière de l'original : une règle de redirection qui a déjà **20** entrées
-dans la file n'en retient plus, et les messages suivants sont journalisés
+dans la file, nouveaux essais compris, n'en retient plus, et les messages suivants sont journalisés
 *plafond de la passe atteint* ou *plafond horaire atteint* sans être
 téléchargés, ni transférés. Les deux plafonds se règlent sous la liste
 des règles, ou par la clé `caps` de `rules.json`
@@ -2513,6 +2550,11 @@ partis dans l'heure ; le reste attend en file une vidange suivante. Un
 arriéré accumulé pendant que le serveur d'envoi était injoignable part
 ainsi au rythme horaire, pas d'un bloc. Un envoi compte dans l'heure où il
 part réellement. *Relâcher* sous `o` est un geste et n'est pas plafonné.
+Un envoi partiel compte pour un envoi à son départ, et son nouvel essai
+pour un de plus au sien : le plafond par heure compte les envois SMTP, et
+un nouvel essai attend comme tout envoi automatique. Rien n'est réservé à
+un nouvel essai en attente : si les plafonds restent pleins, il peut
+atteindre son échéance et expirer.
 
 **Retenue du premier envoi.** Tant qu'une règle n'a pas réellement envoyé
 ses premières réponses — une par défaut, jusqu'à 10 —, chaque nouvelle
@@ -2550,6 +2592,10 @@ approbation (o).*
 | message à transférer : compte hors ligne quand il faut le télécharger | laissé à la prochaine passe en ligne |
 | message à transférer : téléchargement refusé par le serveur | journalisé en échec (*corps illisible*), pas retenté |
 | message à transférer : plus de 25 Mio une fois téléchargé | écarté (*message trop gros pour être transféré*) |
+| des destinations refusées pour l'instant (`4xx`) | envoyé aux autres, journalisé *partiel* ; un nouvel essai vers ces seules destinations attend dans la file |
+| des destinations refusées pour de bon (`5xx`) | envoyé aux autres, journalisé *partiel* ; celles-là sont abandonnées |
+| un nouvel essai qui expire, ou dont la règle change | retiré ; la ligne reste *partiel*, *nouvel essai clos : expiré* (ou la raison) |
+| un nouvel essai refusé de nouveau pour de bon, sans plus aucun `4xx` | retiré aussitôt ; la ligne reste *partiel*, *nouvel essai clos : refus définitif du serveur* |
 
 Un transfert ou une redirection attend dans la file d'envoi comme une
 réponse, scellé avec ses destinations : une redirection en file garde son
@@ -2564,8 +2610,10 @@ journal des règles donne le résultat et la raison de chaque message.
 Après une passe qui a fait quelque chose, une ligne s'ajoute à la ligne de
 statut, par compte ayant des règles actives — par exemple `perso :
 envois automatiques : 2, en attente d'approbation (o) : 1`. Le compte
-réunit réponses, transferts et redirections. Une
-passe qui n'a rien trouvé à faire n'ajoute rien.
+réunit réponses, transferts et redirections ; *envois partiels* et
+*nouvel essai en file (o)* s'y ajoutent quand le serveur a refusé
+certaines destinations. Une passe qui n'a rien trouvé à faire n'ajoute
+rien.
 
 Une seule passe à la fois traite un compte, quel que soit le processus —
 TUI ou menu. Une autre attend jusqu'à 30 s, puis renonce avec *Règles :
@@ -3778,6 +3826,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **No SMTPUTF8** — a forward destination must have an ASCII local part
   (the domain may carry accents), and a redirected original whose headers
   carry raw UTF-8 leaves as is: a strict server may refuse it.
+- **No retry for a hand-written message partly refused** — sent directly,
+  the status line names the refused recipients and their codes: send again
+  to them by hand; sent from the outbox, it only counts them.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
@@ -3803,6 +3854,10 @@ phases add.
   partie locale ASCII (le domaine peut porter des accents), et un original
   redirigé dont les en-têtes portent de l'UTF-8 brut part tel quel : un
   serveur strict peut le refuser.
+- **Aucun nouvel essai pour un message écrit à la main refusé en partie**
+  — envoyé directement, la ligne d'état nomme les destinataires refusés et
+  leurs codes : renvoyez-leur à la main ; parti de la file, elle ne fait
+  que les compter.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
