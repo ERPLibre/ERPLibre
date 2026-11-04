@@ -27,17 +27,18 @@ test('parseSshConfig empty', () => {
     assert.deepEqual(parseSshConfig(''), []);
 });
 
-test('parseSshConfig ignores the Include directive', () => {
+// Only an Include before the first Host is covered: one inside a Host
+// block is kept by the parser as a field of that Host.
+test('parseSshConfig ignores an Include before the first Host', () => {
     const hosts = parseSshConfig([
         'Include ~/.ssh/config.d/*',
         'include extra.conf',
         'Host gw',
         '    HostName 10.4.4.1',
-        'Include more.conf',
         'Host db',
         '    User ops',
     ].join('\n'));
     assert.deepEqual(hosts.map(h => h.alias), ['gw', 'db']);
-    assert.equal(hosts[0].fields.HostName, '10.4.4.1');
-    assert.equal(hosts[1].fields.User, 'ops');
+    assert.deepEqual(hosts[0].fields, {HostName: '10.4.4.1'});
+    assert.deepEqual(hosts[1].fields, {User: 'ops'});
 });

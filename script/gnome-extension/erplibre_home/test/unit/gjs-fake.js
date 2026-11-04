@@ -16,7 +16,8 @@
  *   caller writes lands in `record.stdin`.
  * - GLib file functions and Gio.File read and write the real file system;
  *   the user directories, `$USER` and the host name come from `fake.env`,
- *   which points at a fresh temporary directory.
+ *   which points at a fresh temporary directory, removed at the next
+ *   `fake.reset()` or at process exit.
  * - GLib.find_program_in_path finds only the names in `fake.programs`.
  * - GLib.timeout_add and friends record {ms, fn} in `fake.timeouts` and
  *   never fire by themselves.
@@ -99,6 +100,11 @@ function freshEnv() {
     return {root, env};
 }
 
+/** Remove a directory made by freshEnv; '' (none yet) is a no-op. */
+function removeRoot(root) {
+    if (root) fs.rmSync(root, {recursive: true, force: true});
+}
+
 export const fake = {
     spawned: [],
     onSpawn: () => ({}),
@@ -114,8 +120,12 @@ export const fake = {
     settings: null,
     root: '',
     env: {},
-    /** Forget every record and start from a fresh temporary directory. */
+    /**
+     * Forget every record and start from a fresh temporary directory; the
+     * previous one is removed, and the last one goes at process exit.
+     */
     reset() {
+        removeRoot(this.root);
         for (const k of ['spawned', 'timeouts', 'notified', 'panel',
             'clipboard', 'widgets', 'exported', 'http', 'dialogs'])
             this[k] = [];
@@ -128,6 +138,7 @@ export const fake = {
     },
 };
 fake.reset();
+process.on('exit', () => removeRoot(fake.root));
 
 /** Let the pending callbacks and promise chains of the fakes run. */
 export async function settle(rounds = 20) {
