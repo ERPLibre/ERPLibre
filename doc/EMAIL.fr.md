@@ -133,7 +133,7 @@ ligne. Trois modes contrôlent ce que ce cache laisse sur le disque :
 | Mode | Ce qui reste sur le disque | Clé de chiffrement |
 |---|---|---|
 | `clear` (par défaut) | `~/.erplibre/mail/<compte>/cache.db` et les fichiers `.eml`, lisibles en clair | aucune |
-| `encrypted` | même emplacement, mais l'expéditeur, les destinataires, le sujet, l'extrait, le Message-ID et le corps des messages sont scellés en AES-256-GCM à partir du changement de mode (voir plus bas) | générée une fois, rangée dans le coffre à côté du mot de passe (`.../cache-key`) |
+| `encrypted` | même emplacement, mais l'expéditeur, les destinataires, le sujet, l'extrait, le Message-ID et le corps des messages sont scellés en AES-256-GCM (voir plus bas) | générée une fois, rangée dans le coffre à côté du mot de passe (`.../cache-key`) |
 | `ephemeral` | sous `/dev/shm/erplibre-mail-<pid>/<compte>/` (ou le dossier temporaire système si `/dev/shm` n'est pas inscriptible), scellé comme `encrypted` | tirée en RAM à chaque lancement, jamais écrite nulle part, et tout le dossier est effacé à la fermeture de la session |
 
 Même en mode `encrypted` ou `ephemeral`, les champs techniques dont le SQL
@@ -146,23 +146,81 @@ Message-ID, corps du message, et les messages en attente d'envoi jusqu'à la
 raison de leur échec. Le client ne construit pas d'index plein texte pour
 un cache scellé : la recherche y déchiffre ligne à ligne (voir Recherche).
 
-**Changer de mode ne revient pas sur ce qui est déjà écrit.** Un mode ne
-vaut que pour les écritures qui le suivent. Une fois le compte passé en
-`encrypted`, les lignes écrites en `clear` gardent leur enveloppe en clair,
-et les fichiers `.eml` déjà téléchargés restent sur le disque — plus relus,
-pas effacés non plus. L'index plein texte fait exception : il est supprimé
-quand le compte quitte le mode `clear`, parce qu'il tient à découvert les
-sujets et les extraits que les lignes scellées protègent, et il se
-reconstruit depuis le cache si le compte y revient. Pour repartir scellé,
-effacez le dossier de cache du compte (`~/.erplibre/mail/<compte>/`), puis
-resynchronisez — tout revient sous la clé.
+**Chaque cache inscrit son mode.** Un cache écrit dans son propre
+`cache.db` le mode dans lequel il est né, et c'est cette inscription qui
+compte. Un compte dont le réglage demande un autre mode — son
+`cache_mode`, ou le défaut général dont il hérite — est refusé, avec un
+message qui nomme les deux modes, par le client, le menu et le service
+sans interface, avant toute écriture et avant qu'aucune clé ne soit
+tirée. Sans réglage lisible (préférences absentes, illisibles ou de
+valeur inconnue), le mode inscrit est utilisé, jamais `clear` par
+défaut. Un cache écrit avant cette inscription la reçoit à sa prochaine
+ouverture, d'après ce qu'il contient réellement : une ligne scellée, un
+corps `.eml.enc` ou une empreinte salée par une clé le rendent
+`encrypted` ; un cache vide prend le mode dans lequel on l'ouvre.
+
+**Convertir un cache.** `Courriel > [4] Cache > [4] Convertir le cache
+d'un compte` réécrit tout le cache dans l'autre mode, `clear` →
+`encrypted` ou l'inverse : chaque ligne est descellée puis scellée de
+nouveau, chaque empreinte recalculée sous le nouveau sel, chaque corps
+que le cache lit réécrit, et l'index plein texte supprimé ou reconstruit. L'état lu et
+répondu, la file d'envoi et le journal des règles — ce qui est parti,
+retenu ou refusé, les plafonds, la limite par expéditeur — suivent : les
+règles ne répondent pas de nouveau à un message déjà traité, et rien
+n'est retenu comme après un cache recréé. Une ligne du journal écrite
+avant que les lignes ne gardent leur propre référence, et dont le
+message a quitté le cache depuis, compte toujours pour les plafonds mais
+ne reconnaît plus ce message, et un de nos propres envois parmi elles
+n'est plus reconnu comme tel ; la conversion compte ces lignes et
+demande avant de continuer. La conversion demande confirmation, prévient
+avant de passer en `clear` que sujets, adresses, corps et index de
+recherche deviennent lisibles sur le disque, et exige le client et toute
+synchronisation depuis le menu fermés, y compris un client lancé avant
+la dernière mise à jour ; le service sans interface saute le compte
+pendant ce temps (code de sortie 6). De la première ligne lue jusqu'à
+l'effacement de l'ancienne copie, la conversion tient le verrou
+d'écriture de la base : un client qui ne prend pas le verrou du cache
+n'y valide plus rien, ses écritures échouent au lieu d'aboutir dans une
+copie sur le point d'être effacée, et un client qui écrit encore refuse
+la conversion. Un cache chiffré dont la
+clé manque au coffre est refusé, et aucune clé neuve n'est tirée. Elle
+construit la nouvelle copie à côté de l'ancienne, la vérifie ligne par
+ligne et corps par corps, puis les échange ; un processus tué au milieu
+laisse l'ancien cache ou le nouveau, jamais les deux, et la prochaine
+ouverture achève ou défait l'échange. Il faut un espace libre de l'ordre
+de la taille du cache. L'ancienne copie est réécrite en zéros puis
+supprimée ; sur un SSD, un système de fichiers à copie sur écriture ou
+sous des instantanés, cette réécriture n'atteint pas tous les blocs, et
+le chiffrement du disque reste la vraie protection. Revenir à `clear`
+laisse la clé au coffre, inutilisée. Un compte `ephemeral` n'a rien sur
+le disque à convertir. Un cache passé en `encrypted` avant l'inscription
+des modes peut garder des lignes et des corps `.eml` de sa période
+`clear` : `[4]` propose alors d'abord de le resceller en entier. Les
+lignes et le journal des règles suivent ; ces corps `.eml`, non — le
+cache chiffré ne les lisait plus, et rien ne prouve qu'ils correspondent
+encore à leur message — et sont téléchargés de nouveau à la lecture du
+message. Un tel cache dont le journal des règles a lui-même été écrit
+pendant la période `clear` ne s'ouvre qu'une fois rescellé : ouvert tel
+quel, il prendrait ce journal pour celui d'une autre clé et le viderait.
+Ce qui
+reste d'une ancienne copie après une conversion interrompue est effacé à
+la prochaine ouverture du compte, par `[3]`, ou à la suppression du
+compte.
 
 Réglez le **défaut général** dans `Courriel > [4] Cache > [1] Mode de cache
-par défaut` ; c'est la préférence `mail_cache_mode` (défaut `clear`).
-**Surchargez-le par compte** dans `Courriel > [4] Cache > [2] Mode de cache
-d'un compte` — ceci écrit le champ `cache_mode` du compte dans
-`accounts.json` ; le laisser à `null` là-bas veut dire « hérite du défaut
-général ».
+par défaut` ; c'est la préférence `mail_cache_mode` (défaut `clear`). Il
+décide du mode d'un cache neuf. Le changer quand un compte qui en hérite a
+déjà un cache dans l'autre mode demande, compte par compte, s'il faut
+convertir ce cache maintenant ; sinon le mode du compte est fixé à celui
+que son cache inscrit, pour qu'il continue de s'ouvrir. **Surchargez-le
+par compte** dans `Courriel > [4] Cache > [2] Mode de cache d'un compte` —
+ceci écrit le champ `cache_mode` du compte dans `accounts.json` ; le
+laisser à `null` là-bas veut dire « hérite du défaut général ». Choisir un
+autre mode que celui qu'inscrit un cache existant propose la conversion ;
+refuser laisse le compte tel quel. Choisir `encrypted` pour un cache
+chiffré dont le journal des règles a été écrit en clair propose de même
+le rescellement. Choisir `ephemeral` laisse le cache sur le disque,
+inutilisé (`[3]` l'efface).
 
 `Courriel > [4] Cache > [3] Taille du cache et purge` liste le mode
 effectif et l'espace disque de chaque compte, et vide les messages, les
@@ -170,7 +228,12 @@ dossiers et les fichiers téléchargés d'un compte (après confirmation) — la
 prochaine synchronisation les reconstruit à partir de zéro. L'index plein
 texte est vidé avec eux : rien ne continue de répondre pour des messages
 qui ne sont plus là. Le fichier `cache.db` lui-même reste, et avec lui ce
-qui attend dans la file d'envoi.
+qui attend dans la file d'envoi. Un compte dont le réglage contredit son
+cache est signalé. La purge ouvre le cache dans le mode qu'il inscrit et
+garde le journal des règles et la file d'envoi. Un cache qui inscrit un
+mode inconnu, ou dont la clé manque au coffre, n'est effacé en entier
+qu'après une seconde question ; un cache illisible dans lequel un autre
+processus écrit encore n'est jamais effacé.
 
 ## Le TUI
 
@@ -347,6 +410,7 @@ réduire : seul le `Message-ID` relie les deux.
 | `~/.erplibre/mail/.rules/<compte>/rules.json` | les règles du courrier entrant de ce compte et ses plafonds d'envoi, **en clair** même avec un cache chiffré (mode 0600 ; voir « Règles du courrier entrant ») |
 | `~/.erplibre/mail/.rules/<compte>/state.json`, `lock` | l'endroit de la boîte de réception où le moteur des règles s'est arrêté, et le verrou qui empêche deux passes simultanées |
 | `~/.erplibre/mail/.rules/<compte>/media/` | les copies des images que porte une réponse (dossier 0700, fichiers 0600) |
+| `~/.erplibre/mail/.cache_ctl/<compte>/` | le verrou qui marque le cache du compte ouvert (partagé) ou en conversion (exclusif), et, pendant une conversion, son état et la copie en cours (dossier 0700) |
 | `~/.erplibre/mail/.service.lock`, `.service_state.json` | le verrou du service sans interface, tenu toute une passe, et le dernier état rendu par chaque compte, pour que `--quiet` n'écrive un état qui dure qu'à son changement (mode 0600) |
 | `~/.erplibre/locks/kdbx-<hash>.lock` | le verrou que prend toute écriture dans le coffre KDBX (dossier 0700 ; voir « Tourner sans le client ») |
 | `~/.config/systemd/user/erplibre-mail-rules.service`, `.timer` | les unités du service sans interface, écrites par `Courriel > [7] > [1]` |
@@ -411,6 +475,48 @@ vrai trousseau est déverrouillé.
 Rien à faire — le client purge et resynchronise ce dossier tout seul à la
 prochaine synchronisation. La liste des messages se vide puis se remplit
 brièvement.
+
+**« Le cache du compte … est inscrit en mode encrypted ; son ouverture en
+mode clear est refusée. »**
+Le réglage du compte, ou le défaut général dont il hérite, demande un
+autre mode que celui dans lequel le cache a été écrit : un `accounts.json`
+ou un fichier de préférences édité, un compte recréé sous le nom d'un
+ancien cache, ou un mode changé depuis le menu avant que les caches
+n'inscrivent leur mode — l'inscription suit alors ce que le cache contient
+réellement : un cache passé en `encrypted` sans rien scellé depuis est
+inscrit `clear`, un cache revenu en `clear` qui porte encore des lignes
+scellées est inscrit `encrypted`. Remettez le compte dans `Courriel > [4]
+Cache > [2]`, ou convertissez le cache par `[4]`. Rien n'a été lu ni
+écrit.
+
+**« Le cache du compte … est en encrypted, mais son journal des règles a
+été écrit en clair ».**
+Le cache est passé de `clear` à `encrypted` et retour depuis le menu
+avant que les caches n'inscrivent leur mode, et son journal des règles
+date d'une période `clear`. Ouvert tel quel, ce journal serait vidé.
+Rescellez-le par `Courriel > [4] Cache > [4]`, ou réglez le compte sur
+`encrypted` par `[2]`, qui propose le même rescellement ; le journal
+suit. Rien n'a été écrit.
+
+**« Le cache de « … » ne se lit pas ».**
+`cache.db` est abîmé, ou un autre processus l'a tenu au-delà du délai.
+La conversion ne touche à rien ; si le cache reste illisible, `[3]`
+l'efface, sauf si un processus y écrit encore.
+
+**« Le cache du compte … porte un mode inconnu ».**
+Le cache a été écrit par une version plus récente, ou retouché. Ni `[2]`
+ni `[4]` n'y peuvent rien ; `[3]` l'efface après une seconde question,
+journal des règles compris.
+
+**« La clé du cache chiffré du compte … est absente du coffre ».**
+Le coffre ouvert n'est pas celui qui porte la clé (un autre fichier, une
+entrée déplacée, un compte recréé). Aucune clé neuve n'est tirée : elle
+rendrait le cache illisible et viderait son journal des règles. Rétablissez
+ce coffre ; sans lui, `[3]` efface le cache après une seconde question.
+
+**« le cache de ce compte est en cours de conversion ».**
+Une conversion tient le cache : attendez qu'elle se termine. Le service
+sans interface saute le compte pendant ce temps (code de sortie 6).
 
 **« cache illisible, purgez-le et resynchronisez : ... ».**
 Le `cache.db` du compte est corrompu. `Courriel > [4] Cache > [3] Taille
@@ -1136,7 +1242,8 @@ renommer la règle, la déplacer ou changer ses limites ne le relance pas.
 avec lui. Les réponses sont alors retenues pour approbation jusqu'à ce que
 la plus longue limite des règles actives soit écoulée, et la ligne de
 statut affiche *Cache recréé : les réponses automatiques attendent votre
-approbation (o).*
+approbation (o).* Une conversion (`Courriel > [4] Cache > [4]`) n'est pas
+une recréation : le journal suit, et rien n'est retenu.
 
 ### Quand une réponse ne peut pas partir
 
@@ -1422,9 +1529,9 @@ le mot de passe chiffré : `[3]` (lancer une passe maintenant), puis
 | 3 | coffre verrouillé : aucun mot de passe maître, mot de passe refusé, secret absent, trousseau système injoignable ou verrouillé |
 | 4 | réseau : serveur injoignable, lien coupé, dossier non synchronisé, en-têtes des nouveaux messages non rapatriés (repris à la passe suivante) |
 | 5 | erreur de règle : `rules.json` illisible, ou passe du moteur en échec |
-| 6 | déjà en cours : une autre passe, le client ou le menu tient le compte, ou le cache est occupé |
+| 6 | déjà en cours : une autre passe, le client ou le menu tient le compte, ou le cache est occupé, ou le cache est en conversion |
 | 7 | authentification refusée : le serveur refuse le mot de passe ou le jeton |
-| 8 | `accounts.json` ou un cache illisible |
+| 8 | `accounts.json` ou un cache illisible, ou un cache ouvert dans un autre mode que celui qu'il inscrit |
 
 Avec plusieurs comptes, le code rendu est le premier présent dans l'ordre
 1, 8, 3, 7, 5, 4, 6, 0 : ce qui demande une personne passe devant ce qui se
