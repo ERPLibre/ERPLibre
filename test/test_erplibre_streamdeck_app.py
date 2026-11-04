@@ -142,6 +142,15 @@ class ReadDeckSettingsTest(AppCase):
                 1.0, app.read_deck_settings()["session_refresh_sec"], value
             )
 
+    def test_a_decimal_comma_reads_as_one(self):
+        """The library reads only the dot: a comma, which the TODO menu
+        accepts and writes as a dot, is not a period in the file."""
+        for value in ("0,5", "2,5"):
+            self.conf(f"DECK_SESSION_REFRESH_SEC={value}\n")
+            self.assertEqual(
+                1.0, app.read_deck_settings()["session_refresh_sec"], value
+            )
+
     def test_half_second_and_sixty_are_kept(self):
         for value, expected in (("0.5", 0.5), ("60", 60.0)):
             self.conf(f"DECK_SESSION_REFRESH_SEC={value}\n")
@@ -250,10 +259,13 @@ class ScriptedManager:
 
 
 class MainCase(AppCase):
-    def run_main(self, kernel_hook=lambda kernel: None, manager=None):
+    def run_main(self, kernel_hook=lambda kernel: None, manager=None,
+                 refresh=1.0):
         """Patch main()'s collaborators: each built kernel runs one
-        plugin `p` whose shutdown appends to self.shut, and lands in
-        self.kernels; the decks come from `manager`, else S.DEVICES."""
+        plugin `p` whose shutdown appends to self.shut, gets the
+        settings main() gives build(), and lands in self.kernels; the
+        decks come from `manager`, else S.DEVICES; streamdeck.conf reads
+        as the period `refresh`."""
         deck = RecordingDeck(5, 3)
         self.shut = []
         self.kernels = []
@@ -262,7 +274,7 @@ class MainCase(AppCase):
         ), "user", Path("p.py"))
 
         def build(d, plugins_off=(), settings=None):
-            kernel = K.Kernel(d, [plugin])
+            kernel = K.Kernel(d, [plugin], settings)
             kernel_hook(kernel)
             self.kernel = kernel
             self.kernels.append(kernel)
@@ -279,7 +291,7 @@ class MainCase(AppCase):
         stack.enter_context(
             mock.patch.object(
                 app, "read_deck_settings",
-                lambda: dict(plugins_off=[], session_refresh_sec=1.0),
+                lambda: dict(plugins_off=[], session_refresh_sec=refresh),
             )
         )
         stack.enter_context(
@@ -342,6 +354,40 @@ class ShutdownTest(MainCase):
         self.assertEqual(1, journal.count("No HID device."), journal)
         self.assertFalse(kernel.lock.locked())
 
+    def test_shutdown_holds_the_lock_when_it_is_free(self):
+        held = []
+        kernel = K.Kernel(self.deck, [LoadedPlugin("p", Plugin(
+            api=PLUGIN_API,
+            shutdown=lambda ctx: held.append(kernel.lock.locked()),
+        ), "user", Path("p.py"))])
+        app._shutdown(kernel, None)
+        self.assertEqual([True], held)
+        self.assertFalse(kernel.lock.locked())
+        self.assertNotIn("kernel lock", self.journal.getvalue())
+
+    def test_running_is_false_before_the_lock_is_waited_for(self):
+        """While the shutdown waits for the lock, a loop pass or a key
+        press that gets it first must already see the kernel stopped:
+        it then paints nothing and drops the jobs' results."""
+        kernel = K.Kernel(self.deck, [])
+        seen = []
+        real = kernel.lock
+
+        class WatchedLock:
+            def acquire(self, timeout=-1):
+                seen.append(kernel.running)
+                return real.acquire(timeout=timeout)
+
+            def release(self):
+                real.release()
+
+            def locked(self):
+                return real.locked()
+
+        kernel.lock = WatchedLock()
+        app._shutdown(kernel, None)
+        self.assertEqual([False], seen)
+
     def test_sigterm_with_the_deck_gone_exits_with_its_code(self):
         deck = self.run_main()
         deck.stop = SystemExit(143)
@@ -400,6 +446,19 @@ class ReplugTest(MainCase):
         )
         self.assertEqual(["open", "reset", "brightness 80"], first.events)
         self.assertEqual([1, 1], self.shut)
+
+    def test_every_kernel_gets_the_period_read_at_start(self):
+        back = RecordingDeck(5, 3)
+        back.stop = SystemExit(143)
+        manager = ScriptedManager([back])
+        first = self.run_main(manager=manager, refresh=2.5)
+        manager.script.insert(0, [first])
+        with self.assertRaises(SystemExit):
+            app.main()
+        self.assertEqual(
+            [{"session_refresh_sec": 2.5}] * 2,
+            [k.settings for k in self.kernels],
+        )
 
     def test_a_deck_that_fails_to_open_is_tried_again(self):
         bad = RecordingDeck(5, 3)

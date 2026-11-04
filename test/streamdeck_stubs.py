@@ -549,18 +549,21 @@ def recorder():
 
 class FakeThread:
     """threading.Thread whose start() queues the target: the test runs
-    it with Harness.run_threads(), outside any lock."""
+    it with Harness.run_threads(), outside any lock. It keeps the
+    `daemon` it was made with, and `joined` once join() was called."""
 
     queue = []
 
     def __init__(self, target=None, args=(), kwargs=None, daemon=None):
         self.target, self.args, self.kwargs = target, args, kwargs or {}
+        self.daemon = daemon
+        self.joined = False
 
     def start(self):
         FakeThread.queue.append(self)
 
     def join(self, timeout=None):
-        pass
+        self.joined = True
 
 
 # ---------------------------------------------------------------- targets

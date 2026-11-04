@@ -253,6 +253,18 @@ class LaPeriodeDeRafraichissement(unittest.TestCase):
                     attendu, service.session_refresh_sec(lu)
                 )
 
+    def test_a_decimal_comma_gives_one_in_shell_and_python(self):
+        """Seul le point se lit : la virgule, que le menu TODO accepte
+        et réécrit en point, ne fait pas une période dans le fichier."""
+        for contenu in (
+            "DECK_SESSION_REFRESH_SEC=0,5\n",
+            "DECK_SESSION_REFRESH_SEC=2,5\n",
+        ):
+            with self.subTest(contenu=contenu):
+                sortie, lu = self.shell(contenu)
+                self.assertEqual("1", sortie)
+                self.assertEqual(1.0, service.session_refresh_sec(lu))
+
     def test_the_shell_prints_the_value_as_written(self):
         for contenu, attendu in (
             ("DECK_SESSION_REFRESH_SEC=0.5\n", "0.5"),

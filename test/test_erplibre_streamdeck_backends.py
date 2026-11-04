@@ -154,6 +154,23 @@ class PollRepeatTest(unittest.TestCase):
             "[erplibre-home] bluetooth: x: recovered", lines[-1]
         )
 
+    def test_a_bluetooth_job_writes_every_failure(self):
+        """A job's read answers a press: each of its failures is
+        written, where the poll's RepeatLog keeps a repeat quiet."""
+        broken = FileNotFoundError(2, "No such file or directory")
+        fresh = RepeatLog(bluetooth._log, "x")
+        with mock.patch.object(bluetooth, "_POLL_LOG", fresh), \
+                mock.patch("shutil.which", return_value="/usr/bin/x"), \
+                mock.patch("subprocess.run", side_effect=broken), \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            for _ in range(2):
+                bluetooth._job(lambda: None)()
+        lines = err.getvalue().splitlines()
+        self.assertEqual(6, len(lines), lines)
+        self.assertEqual(
+            2, sum("bluetoothctl show error" in x for x in lines)
+        )
+
 
 class BluetoothTest(unittest.TestCase):
     def test_powered_from_bluetoothctl(self):
@@ -901,6 +918,41 @@ class CachedRenderTest(unittest.TestCase):
         h.wait(P.FLASH_GAP)
         h.press(7)
         self.assertEqual([], S.FakeThread.queue)
+
+    def test_bluetooth_toggle_without_adapter_journals_every_press(self):
+        h = self.start(P.bt_na_world)
+        h.goto("bluetooth")
+        for _ in range(3):
+            h.loop(1)
+            h.press(6)
+            self.assertEqual("ERR", h.deck.screen[6][1])
+            h.wait(P.FLASH_GAP)
+        self.assertEqual(
+            3, h.journal.getvalue().count("unavailable or no adapter")
+        )
+
+    def test_polls_run_at_their_periods(self):
+        """Each poll's period in seconds, all below RepeatLog.FORGET_SEC:
+        a poll that keeps running never finds its failure journal
+        forgotten between two passes."""
+        periods = {
+            (sound, 0): 1.0,
+            (sound, 1): 2.0,
+            (bluetooth, 0): 2.0,
+            (timers, 0): 2.0,
+            (todo_terminals, 0): 2.0,
+            (todo_terminals, 1): 1.0,
+            (todo_terminals, 2): 0.0,
+        }
+        for (plugin, index), period in periods.items():
+            self.assertEqual(
+                period, self.poll(plugin, index).period,
+                (plugin.__name__, index),
+            )
+        h = self.start(P.full_world)
+        for lp in h.target.kernel.plugins:
+            for poll in lp.plugin.polls:
+                self.assertLess(poll.period, RepeatLog.FORGET_SEC, lp.id)
 
     def test_bluetooth_poll_reads_power_and_devices(self):
         h = self.start(P.bt_off_world)

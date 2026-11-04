@@ -81,6 +81,21 @@ class LoaderTest(LoaderCase):
         self.assertEqual("refused", st["old"][0])
         self.assertIn("api 0", st["old"][1])
 
+    def test_a_plugin_written_for_api_1_still_loads(self):
+        """The API grew optional fields (polls, jobs, settings) without
+        changing its number: a plugin written for the first API, and
+        none of them, keeps loading."""
+        self.put(
+            self.user,
+            "first.py",
+            "from erplibre_streamdeck.plugin import HomeButton, Plugin\n"
+            "PLUGIN = Plugin(api=1, home_button=HomeButton(1, print, "
+            "print))\n",
+        )
+        plugins, report = self.load()
+        self.assertEqual(["first"], [p.id for p in plugins])
+        self.assertEqual("active", self.status(report)["first"][0])
+
     def test_duplicate_page_id(self):
         self.put(self.repo, "a.py", GOOD.format(page="same"))
         self.put(self.repo, "b.py", GOOD.format(page="same"))

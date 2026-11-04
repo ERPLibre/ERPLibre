@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Atomic JSON writes and process liveness of the deck package."""
 
+import io
 import json
 import os
 import sys
@@ -90,6 +91,35 @@ class WriteAtomicTest(unittest.TestCase):
         self.assertTrue(link.is_symlink())
         self.assertEqual({"a": 4}, json.loads(real.read_text()))
 
+    def test_temp_file_is_replaced_from_the_target_directory(self):
+        """os.replace is atomic only within one file system: a temporary
+        file elsewhere would fail to move, or be copied."""
+        with mock.patch("os.replace", wraps=os.replace) as replace:
+            jsonfile.write_atomic(self.path, {"a": 1})
+        src, dst = replace.call_args.args
+        self.assertEqual(os.path.dirname(dst), os.path.dirname(src))
+        self.assertEqual(os.path.realpath(self.path), dst)
+
+    def test_temp_file_is_flushed_and_fsynced_before_replace(self):
+        """A crash after the replace must not leave an empty file: the
+        whole text is on disk before the new name points to it."""
+        events = []
+        real_fsync = os.fsync
+
+        def fsync(fd):
+            events.append(("fsync", os.fstat(fd).st_size))
+            real_fsync(fd)
+
+        def replace(src, dst):
+            events.append(("replace", None))
+            os.rename(src, dst)
+
+        with mock.patch("os.fsync", fsync), \
+                mock.patch("os.replace", replace):
+            jsonfile.write_atomic(self.path, {"a": 1})
+        size = len(json.dumps({"a": 1}, indent=2))
+        self.assertEqual([("fsync", size), ("replace", None)], events)
+
     def test_write_leaves_the_process_umask_alone(self):
         # The umask is process-wide: setting it in a job thread would
         # widen or narrow the files every other thread creates.
@@ -110,6 +140,27 @@ class LivenessTest(unittest.TestCase):
         self.assertIsNotNone(ms)
         self.assertLess(ms, time.time() * 1000 + 1000)
 
+    def test_start_converts_ticks_and_boot_time_to_epoch_ms(self):
+        files = {
+            "/proc/7/stat": self.LINE,
+            "/proc/stat": "cpu  1 2 3\nbtime 1700000000\nprocesses 9\n",
+        }
+
+        def fake_open(path, *args, **kwargs):
+            return io.StringIO(files[path])
+
+        real_sysconf = os.sysconf
+
+        def sysconf(name):
+            return 250 if name == "SC_CLK_TCK" else real_sysconf(name)
+
+        with mock.patch.object(liveness, "open", fake_open, create=True), \
+                mock.patch("os.sysconf", sysconf):
+            # 987654 ticks at 250 Hz after boot: 3950.616 s.
+            self.assertEqual(
+                1_700_003_950_616, liveness.started_ms(7)
+            )
+
     def test_missing_pid(self):
         self.assertIsNone(liveness.started_ms(4194304))
         self.assertFalse(liveness.alive(4194304, 0))
@@ -119,6 +170,11 @@ class LivenessTest(unittest.TestCase):
             self.assertTrue(liveness.alive(7, 9_000))      # 1 s late: slack
             self.assertTrue(liveness.alive(7, 20_000))     # born before
             self.assertFalse(liveness.alive(7, 4_000))     # 6 s younger
+
+    def test_start_exactly_at_the_slack_is_alive(self):
+        with mock.patch.object(liveness, "started_ms", return_value=10_000):
+            self.assertTrue(liveness.alive(7, 5_000))
+            self.assertFalse(liveness.alive(7, 4_999))
 
 
 class LoaderTest(unittest.TestCase):
@@ -151,6 +207,13 @@ class LoaderTest(unittest.TestCase):
         with mock.patch.object(liveness, "started_ms", return_value=9000):
             out = self.claude(pid=7, ts_active=1000, ts_stop=50000)
         self.assertEqual([], out)
+
+    def test_claude_zero_stamps_do_not_count(self):
+        """An empty stamp is 0, the epoch: counted, it would make every
+        process younger than the session and drop it."""
+        with mock.patch.object(liveness, "started_ms", return_value=9000):
+            out = self.claude(pid=7, ts_active=0, ts_stop=0, ts_tool=10000)
+        self.assertEqual(1, len(out))
 
     def test_claude_without_stamps_checks_proc(self):
         self.assertEqual(1, len(self.claude(pid=os.getpid())))

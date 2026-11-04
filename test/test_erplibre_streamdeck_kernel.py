@@ -7,6 +7,7 @@ import contextlib
 import io
 import os
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,6 +18,7 @@ import streamdeck_stubs as S  # noqa: E402
 S.install()
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
+    Fixture,
     HomeButton,
     KeyFace,
     LoadedPlugin,
@@ -31,6 +33,31 @@ from erplibre_streamdeck.ui import colors, render  # noqa: E402
 # The real painter: KernelCase replaces it with a recorder, which takes
 # any text; the real one calls len() on it.
 REAL_SET_KEY = render.set_key
+
+
+class StrictLock:
+    """The kernel lock, whose acquire never waits: taken again while it
+    is held, it raises where a threading.Lock would hang the test."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+
+    def acquire(self, blocking=True, timeout=-1):
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("kernel lock taken twice")
+        return True
+
+    def release(self):
+        self._lock.release()
+
+    def locked(self):
+        return self._lock.locked()
+
+    def __enter__(self):
+        return self.acquire()
+
+    def __exit__(self, *exc):
+        self.release()
 
 
 class FakeDbus:
@@ -467,6 +494,57 @@ class PollTest(KernelCase):
         self.k.step(self.clock.now)
         self.assertEqual(["render", "tick"], order)
 
+    def test_each_poll_keeps_its_own_period(self):
+        reads = []
+        polls = [
+            Poll(period, lambda ctx: True,
+                 lambda period=period: reads.append(period),
+                 lambda ctx, data: False)
+            for period in (1.0, 3.0)
+        ]
+        self.k = self.kernel(loaded("p", Plugin(
+            api=PLUGIN_API, polls=polls
+        )))
+        for _ in range(6):
+            self.k.step(self.clock.now)
+            self.clock.advance(1)
+        self.assertEqual(6, reads.count(1.0))
+        self.assertEqual(2, reads.count(3.0))
+
+    def test_failing_active_or_store_is_isolated(self):
+        """A raising active() leaves its poll unread, a raising store()
+        asks no render; both are journaled once and the other polls and
+        the page tick run on."""
+        def boom(*args):
+            raise ValueError("bad")
+
+        reads, stored, renders, ticks = [], [], [], []
+        polls = [
+            Poll(0.0, boom, lambda: reads.append(0), lambda c, d: True),
+            Poll(0.0, lambda ctx: True, lambda: 1, boom),
+            Poll(0.0, lambda ctx: True, lambda: 2,
+                 lambda ctx, data: stored.append(data) or False),
+        ]
+        page = Page(
+            "pg", None, lambda ctx: renders.append(1), print,
+            tick=lambda ctx, now: ticks.append(now),
+        )
+        self.k = self.kernel(loaded("p", Plugin(
+            api=PLUGIN_API, pages=[page], polls=polls
+        )))
+        self.k.goto("pg")
+        renders.clear()
+        for _ in range(3):
+            self.k.step(self.clock.now)
+            self.clock.advance(1)
+        self.assertEqual([], reads)
+        self.assertEqual([2, 2, 2], stored)
+        self.assertEqual(3, len(ticks))
+        self.assertEqual([], renders)
+        journal = self.journal.getvalue()
+        self.assertEqual(1, journal.count("p: poll 0 active failed"))
+        self.assertEqual(1, journal.count("p: poll 1 store failed"))
+
 
 class RecheckDbusTest(KernelCase):
     def test_rechecks_while_missing_then_stops(self):
@@ -479,6 +557,18 @@ class RecheckDbusTest(KernelCase):
         self.assertTrue(k.recheck_dbus(self.clock.now + K.DBUS_RECHECK_SEC))
         self.assertFalse(k.recheck_dbus(self.clock.now + 100))
         self.assertEqual(2, dbus.checks)
+
+    def test_recheck_runs_without_the_lock(self):
+        """gdbus may wait for its timeout: a recheck under the lock
+        would hold every key press as long."""
+        dbus = FakeDbus(ok=False)
+        k = self.kernel(dbus=dbus)
+        held = []
+        dbus.available = lambda: held.append(k.lock.locked()) or True
+        self.clock.advance(K.DBUS_RECHECK_SEC)
+        k.step(self.clock.now)
+        self.assertEqual([False], held)
+        self.assertTrue(k.dbus_ok)
 
 
 class LeftoverTest(KernelCase):
@@ -522,6 +612,13 @@ class LeftoverTest(KernelCase):
         self.deck.screen.clear()
         k.running = False
         k.render()
+        self.assertEqual({}, self.deck.screen)
+
+    def test_paint_draws_nothing_after_running_is_false(self):
+        k = self.kernel(self.page_plugin())
+        self.deck.screen.clear()
+        k.running = False
+        k.paint(3, KeyFace(colors.OK, "x"))
         self.assertEqual({}, self.deck.screen)
 
 
@@ -818,6 +915,109 @@ class JobTest(KernelCase):
         k.step(self.clock.now)          # flash expired: render only
         k.step(self.clock.now)
         self.assertEqual([1], reads)
+
+    def test_the_worker_is_a_daemon_never_joined(self):
+        """A job may wait minutes on a dialog: a joined or non-daemon
+        worker would hold the service's stop as long."""
+        k = self.kernel(self.slow_plugin(lambda: True))
+        k.goto("pg")
+        k.handle_key(3, True)
+        worker = S.FakeThread.queue[0]
+        self.run_jobs()
+        k.step(self.clock.now)
+        k.running = False
+        k.shutdown()
+        self.assertIs(True, worker.daemon)
+        self.assertFalse(worker.joined)
+
+    def test_then_runs_under_the_lock_and_work_without_it(self):
+        """The press arrives through on_key, which holds the lock:
+        run_blocking taking it again would deadlock the deck."""
+        held = []
+        k = self.kernel(self.slow_plugin(
+            lambda: held.append(("work", k.lock.locked())) or True,
+            lambda ctx, r, e: held.append(("then", k.lock.locked())),
+        ))
+        k.lock = StrictLock()
+        k.goto("pg")
+        k.on_key(self.deck, 3, True)
+        self.assertIn("p", k.busy)
+        self.assertNotIn("failed", self.journal.getvalue())
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual([("work", False), ("then", True)], held)
+
+    def test_raising_work_without_then_flashes_err(self):
+        k = self.kernel(self.slow_plugin(lambda: 1 / 0))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.run_jobs()
+        k.step(self.clock.now)
+        self.assertEqual("err", k.flash_result)
+
+    def test_run_blocking_says_whether_the_job_started(self):
+        returns = []
+
+        def handle(ctx, key):
+            returns.append(ctx.run_blocking(lambda: True))
+            returns.append(ctx.run_blocking(lambda: True))
+
+        k = self.kernel(self.page_plugin(handle=handle))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.assertEqual([True, False], returns)
+        self.assertEqual("err", k.flash_result)
+        self.assertEqual(1, len(S.FakeThread.queue))
+        self.assertIn("p", k.busy)
+
+    def test_busy_plugin_fixture_and_tile_flash_err(self):
+        calls = []
+
+        def press(ctx):
+            calls.append("button")
+            ctx.run_blocking(lambda: True)
+
+        k = self.kernel(loaded("h", Plugin(
+            api=PLUGIN_API,
+            home_button=HomeButton(
+                1, lambda ctx: KeyFace((1, 1, 1), "h"), press
+            ),
+            fixtures=[Fixture(
+                1, lambda geo, hk: [14],
+                lambda ctx, key, i: KeyFace((1, 1, 1), "f"),
+                lambda ctx, key, i: calls.append("fixture"),
+            )],
+            tiles=[TileProvider(
+                1, lambda ctx: ["t"],
+                lambda ctx, item: KeyFace((1, 1, 1), item),
+                lambda ctx, item: calls.append("tile"),
+            )],
+        )))
+        k.render()
+        tile = k.home.pool[0]
+        k.handle_key(k.home.home_keys["h"], True)
+        for key in (14, tile):
+            self.clock.advance(K.RESULT_FLASH_SEC)
+            k.handle_key(key, True)
+            self.assertEqual("err", k.flash_result, key)
+        self.assertEqual(["button"], calls)
+
+    def test_other_plugins_work_while_one_is_busy(self):
+        calls = []
+        k = self.kernel(
+            self.home_plugin("h", calls=calls),
+            self.home_plugin("o", calls=calls),
+            self.page_plugin(),
+        )
+        k.handle_key(k.home.home_keys["h"], True)
+        self.clock.advance(1)
+        k.handle_key(k.home.home_keys["o"], True)
+        self.assertEqual(["h", "o"], calls)
+        self.assertEqual({"h", "o"}, set(k.busy))
+        k.goto("pg")
+        k.handle_key(3, True)
+        self.assertIn(("handle", 3), self.calls)
+        self.assertIsNone(k.flash_result)
 
 
 if __name__ == "__main__":

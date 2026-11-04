@@ -104,6 +104,19 @@ class ClaudePageTest(SessionPagesCase):
         self.tick(k, 1.5)
         self.assertEqual([1], n)
 
+    def test_changed_message_or_description_renders_once(self):
+        for change in (
+            {"notification_message": "allow?"},
+            {"description": "other topic"},
+        ):
+            with self.subTest(change=change):
+                k = self.shown()
+                n = self.count_renders(k)
+                self.put(**change)
+                self.tick(k, 1.5)
+                self.tick(k, 1.5)
+                self.assertEqual([1], n)
+
     def test_removed_file_goes_home(self):
         k = self.shown()
         (paths.state_dir() / "claude" / "a.json").unlink()

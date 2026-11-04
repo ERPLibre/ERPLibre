@@ -277,6 +277,30 @@ class IsolationTest(DashboardTest):
         ]
         self.assertEqual(1, len(lines), lines)
 
+    def test_fixture_face_failure_is_journaled_once_per_key(self):
+        """A fixture spans several keys: one that fails next to one that
+        paints is written once, under the key that fails."""
+        def face_(ctx, key, index):
+            if index == 0:
+                raise RuntimeError("face")
+            return KeyFace((3, 3, 3), "ok")
+
+        z = LoadedPlugin("z", Plugin(api=PLUGIN_API, fixtures=[
+            Fixture(5, lambda geo, hk: [13, 14], face_,
+                    lambda c, k, i: None)]), "repo", Path("z.py"))
+        journal = io.StringIO()
+        with contextlib.redirect_stderr(journal):
+            k = self.kernel(extra=[z])
+            for _ in range(3):
+                k.render()
+        lines = [
+            ln for ln in journal.getvalue().splitlines()
+            if "fixture face" in ln and "failed" in ln
+        ]
+        self.assertEqual(1, len(lines), lines)
+        self.assertIn("z: fixture face 13 failed", lines[0])
+        self.assertEqual("ok", self.deck.rendering()[14][1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -177,6 +177,18 @@ class RepeatLogTest(unittest.TestCase):
         self.run_pass()
         self.assertEqual(["bluetoothctl show error: X"], self.lines)
 
+    def test_a_pause_is_forgotten_after_ten_seconds(self):
+        now = [0.0]
+        self.log = RepeatLog(self.lines.append, "Bluetooth read",
+                             clock=lambda: now[0])
+        self.run_pass("bluetoothctl show error: X")
+        now[0] += 9.5
+        self.run_pass("bluetoothctl show error: X")
+        self.assertEqual(1, len(self.lines))
+        now[0] += 10.5
+        self.run_pass("bluetoothctl show error: X")
+        self.assertEqual(2, len(self.lines))
+
 
 class StyleTest(unittest.TestCase):
     def test_restore_clamps_and_survives_garbage(self):
