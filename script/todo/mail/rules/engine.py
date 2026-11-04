@@ -1057,6 +1057,8 @@ class _Pass:
             sender_hash=store.address_hash(sender) or None,
             target_hash=store.address_hash(target) or None,
             fingerprint=rule.fingerprint(),
+            msg_ref=store.message_ref(view.msgid, self.uidv, view.uid),
+            target=target,
         )
 
     def _apply(self, rule, view, msg_key, loader, raw=None) -> bool:

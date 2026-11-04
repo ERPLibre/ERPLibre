@@ -17,9 +17,13 @@ recoller les fils de discussion sans le lire.
 from __future__ import annotations
 
 import base64
+import contextlib
 import email.utils
+import fcntl
 import functools
 import hashlib
+import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -27,16 +31,76 @@ import stat
 import threading
 import time
 import urllib.parse
+import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from script.todo.mail.crypto import build_crypto, new_key
+from script.todo.mail.crypto import (
+    CLEAR_MAGIC,
+    SEALED_MAGIC,
+    build_crypto,
+    new_key,
+)
 from script.todo.todo_i18n import t
+
+_logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 6
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
+# Les modes qui écrivent sur le disque : seuls ceux-là s'inscrivent dans
+# une racine persistante et se convertissent l'un en l'autre.
+PERSISTENT_MODES = ("clear", "encrypted")
+# La clé de `meta` qui porte le mode inscrit.
+CACHE_MODE_KEY = "cache_mode"
+# Dossier de contrôle des caches, sous la base ; le point initial
+# n'appartient à aucun compte.
+CACHE_CTL_DIRNAME = ".cache_ctl"
+CACHE_LOCK_NAME = "lock"
+CONVERT_STATE_NAME = "convert.json"
+# Les phases d'une conversion, dans l'ordre où elles s'écrivent dans
+# `convert.json`.
+CONVERT_PHASES = ("building", "swapping", "cleaning")
+# Préfixe d'une clé de journal dont la préimage est perdue : elle ne
+# correspond plus à aucun message.
+LEGACY_KEY_PREFIX = "legacy:"
+# Ce que rend la sonde quand `cache.db` existe mais ne se lit pas (base
+# abîmée, occupée) : distinct de None, qui dit « aucun cache ». Hors
+# `VALID_MODES`, il n'est jamais pris pour un mode.
+PROBE_UNKNOWN = "<unreadable>"
+# Colonnes qu'un cache ancien garde après migration et qu'un cache neuf
+# n'a pas ; la conversion les laisse derrière elle. Chacune est vide
+# (NULL) après migration.
+LEGACY_SOURCE_COLUMNS = {("outbox", "last_error")}
+# Les colonnes scellées de chaque table, que la conversion descelle puis
+# rescelle et que la détection du mode lit.
+SEALED_COLUMNS = {
+    "messages": (
+        "sealed_msgid",
+        "sealed_from",
+        "sealed_to",
+        "sealed_subject",
+        "sealed_snippet",
+    ),
+    "outbox": ("sealed_raw", "sealed_to", "sealed_subject", "sealed_error"),
+    "rule_log": (
+        "sealed_sender",
+        "sealed_subject",
+        "sealed_msg_ref",
+        "sealed_target",
+    ),
+    "auto_sent": ("sealed_msgid",),
+}
+# Les colonnes d'empreintes salées par la clé, que la conversion
+# recalcule ou traduit.
+HASHED_COLUMNS = {
+    "messages": ("msgid_hash", "in_reply_to_hash", "references_hashes"),
+    "outbox": ("source_key",),
+    "rule_log": ("msg_key", "sender_hash", "target_hash"),
+    "auto_sent": ("msgid_hash",),
+}
 
 # Les issues du journal des règles qui comptent comme un ENVOI pour la limite
 # par expéditeur : un message en file ou retenu partira, ou attend qu'on
@@ -166,6 +230,9 @@ CREATE TABLE IF NOT EXISTS outbox (
 -- ceux qui attendent dans l'entrée de nouvel essai (« 450,550 »).
 -- `retry_sent_at` est le dernier départ d'un nouvel essai ; `sent_at`
 -- reste le premier départ.
+-- `sealed_msg_ref` et `sealed_target` sont les préimages scellées de
+-- `msg_key` et `target_hash`, pour recalculer ces empreintes sous un autre
+-- sel.
 CREATE TABLE IF NOT EXISTS rule_log (
   id             INTEGER PRIMARY KEY,
   rule_id        TEXT NOT NULL,
@@ -185,6 +252,8 @@ CREATE TABLE IF NOT EXISTS rule_log (
   rcpt_dropped   TEXT,
   rcpt_pending   TEXT,
   retry_sent_at  INTEGER,
+  sealed_msg_ref BLOB,
+  sealed_target  BLOB,
   UNIQUE(rule_id, msg_key)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_log_sender
@@ -194,10 +263,13 @@ CREATE INDEX IF NOT EXISTS idx_rule_log_target
 CREATE INDEX IF NOT EXISTS idx_rule_log_at ON rule_log(at);
 -- v6 : empreintes des Message-ID que les règles ont émis ; les
 -- statistiques de réponse excluent ces envois.
+-- `sealed_msgid` est la préimage scellée de `msgid_hash`, pour recalculer
+-- cette empreinte sous un autre sel.
 CREATE TABLE IF NOT EXISTS auto_sent (
-  msgid_hash TEXT PRIMARY KEY,
-  rule_id    TEXT,
-  at         INTEGER NOT NULL
+  msgid_hash   TEXT PRIMARY KEY,
+  rule_id      TEXT,
+  at           INTEGER NOT NULL,
+  sealed_msgid BLOB
 );
 """
 
@@ -232,7 +304,12 @@ RULE_LOG_ADDED_COLUMNS = {
     "rcpt_dropped": "TEXT",
     "rcpt_pending": "TEXT",
     "retry_sent_at": "INTEGER",
+    "sealed_msg_ref": "BLOB",
+    "sealed_target": "BLOB",
 }
+# Les colonnes ajoutées à `auto_sent` après sa création, sans changer de
+# version.
+AUTO_SENT_ADDED_COLUMNS = {"sealed_msgid": "BLOB"}
 
 
 def _ensure_columns(conn) -> list[str]:
@@ -278,6 +355,18 @@ def _ensure_rule_log_columns(conn) -> None:
             conn.execute(f"ALTER TABLE rule_log ADD COLUMN {nom} {genre}")
 
 
+def _ensure_auto_sent_columns(conn) -> None:
+    """Ajoute à `auto_sent` chaque colonne d'`AUTO_SENT_ADDED_COLUMNS` qui
+    lui manque, lue dans `PRAGMA table_info`. Les lignes existantes la
+    gardent nulle : leur préimage n'est pas connue."""
+    presentes = {
+        row["name"] for row in conn.execute("PRAGMA table_info(auto_sent)")
+    }
+    for nom, genre in AUTO_SENT_ADDED_COLUMNS.items():
+        if nom not in presentes:
+            conn.execute(f"ALTER TABLE auto_sent ADD COLUMN {nom} {genre}")
+
+
 def _ensure_outbox_columns(conn) -> None:
     """Fait passer la file d'attente de la v4 à la v6.
 
@@ -316,6 +405,62 @@ _OUTBOX_COLONNES = (
 
 class StoreError(Exception):
     """Cache inutilisable : clé manquante, base corrompue, disque refusé."""
+
+
+def shown_mode(value) -> str:
+    """Un mode tel qu'un message le montre : la valeur si elle est l'un de
+    `VALID_MODES`, sinon sa `repr` tronquée à 20 caractères."""
+    return value if value in VALID_MODES else repr(value)[:20]
+
+
+class CacheModeMismatch(StoreError):
+    """Ouverture refusée : le cache est inscrit dans un autre mode que
+    celui demandé. `account`, `inscribed` (valeur lue, éventuellement
+    hors `VALID_MODES`) et `requested` sont des attributs ; le texte est
+    `mail_err_cache_mode_mismatch` formaté."""
+
+    _TEXT_KEY = "mail_err_cache_mode_mismatch"
+
+    def __init__(self, account: str, inscribed: str, requested: str):
+        self.account = account
+        self.inscribed = inscribed
+        self.requested = requested
+        super().__init__(
+            t(self._TEXT_KEY).format(
+                account=account,
+                inscribed=shown_mode(inscribed),
+                requested=shown_mode(requested),
+            )
+        )
+
+
+class CacheModeInvalid(CacheModeMismatch):
+    """Ouverture refusée : le cache porte une inscription hors
+    `PERSISTENT_MODES` (version future, base retouchée, `ephemeral` dans
+    une racine persistante). Le texte est `mail_err_cache_mode_invalid`
+    formaté : il ne propose pas [2], qui n'y peut rien."""
+
+    _TEXT_KEY = "mail_err_cache_mode_invalid"
+
+
+class CacheNeedsReseal(CacheModeMismatch):
+    """Ouverture en `encrypted` refusée : le cache inscrit `encrypted`, mais
+    son contrôle d'époque est salé en clair (`epoch_salted_clear`), donc son
+    journal des règles l'est aussi. Ouvert ainsi, le premier
+    `cache_epoch()` prendrait ce sel pour une clé changée et viderait le
+    journal ; seul le rescellement par `cache_convert` le traduit. Le
+    texte est `mail_err_cache_needs_reseal` formaté."""
+
+    _TEXT_KEY = "mail_err_cache_needs_reseal"
+
+
+class CacheBusy(StoreError):
+    """Le cache est tenu en exclusif (conversion en cours)."""
+
+
+class CacheKeyMissing(StoreError):
+    """Le cache est chiffré et sa clé manque au coffre ; aucune clé n'a
+    été créée. Texte : `mail_err_cache_key_missing` formaté."""
 
 
 def _codes_text(codes) -> str | None:
@@ -455,10 +600,10 @@ def _ensure_fts(conn, mode: str) -> bool:
     que l'écran annonce plutôt que de le laisser deviner.
     """
     if mode != "clear":
-        # Un cache passé en chiffré garde sinon l'index constitué du temps
-        # où il était clair : `messages` serait scellée, et la table d'à
-        # côté rendrait les mêmes sujets et extraits par un simple SELECT.
-        # Le retour au mode clair le reconstruit depuis le cache.
+        # Un cache mêlé, détecté chiffré, garde sinon l'index constitué du
+        # temps où il était clair : `messages` serait scellée, et la table
+        # d'à côté rendrait les mêmes sujets et extraits par un simple
+        # SELECT. Une conversion vers le mode clair le reconstruit.
         conn.execute("DROP TABLE IF EXISTS messages_fts")
         return False
     # Les colonnes RÉELLES décident, comme pour la migration : une table
@@ -522,20 +667,427 @@ def split_message_ids(value: str) -> list[str]:
     ]
 
 
-def resolve_mode(account, prefs_get=None) -> str:
-    """Le mode du compte, sinon le défaut général, sinon `clear`.
+def salted_hash(salt: bytes, text: str) -> str:
+    """sha256(salt + texte UTF-8), en hexadécimal : l'empreinte de toutes
+    les colonnes de `HASHED_COLUMNS`."""
+    return hashlib.sha256(salt + (text or "").encode("utf-8")).hexdigest()
 
-    Un défaut général illisible ne doit pas empêcher d'ouvrir le cache :
-    on retombe sur le mode le plus permissif, jamais sur une erreur.
-    """
-    if account.cache_mode in VALID_MODES:
+
+def mode_request(account, prefs_get=None) -> str | None:
+    """Le mode DEMANDÉ : `account.cache_mode` valide, sinon la préférence
+    générale lue avec le défaut "" si elle est valide, sinon None.
+    `prefs_get(clé, défaut)` par défaut : `todo_prefs.get`.
+
+    Le défaut "" compte : `todo_prefs.get` rendrait sinon sa propre valeur
+    par défaut pour une clé absente ou un fichier illisible, qui se lirait
+    comme une demande."""
+    if getattr(account, "cache_mode", None) in VALID_MODES:
         return account.cache_mode
     if prefs_get is None:
         from script.todo import todo_prefs
 
         prefs_get = todo_prefs.get
-    general = prefs_get("mail_cache_mode", "clear")
-    return general if general in VALID_MODES else "clear"
+    try:
+        general = prefs_get("mail_cache_mode", "")
+    except (OSError, ValueError, TypeError):
+        return None
+    return (
+        general
+        if isinstance(general, str) and general in VALID_MODES
+        else None
+    )
+
+
+def _ctl_root(base: Path | None) -> Path:
+    return (
+        Path(base if base is not None else default_base()) / CACHE_CTL_DIRNAME
+    )
+
+
+def cache_ctl_dir(
+    account_name: str, base: Path | None = None, *, create: bool = True
+) -> Path:
+    """`<base>/.cache_ctl/<compte>/`, créé en 0700 avec son parent quand
+    `create` ; refuse un lien symbolique ou un dossier d'un autre
+    utilisateur (`_assert_private_dir`), à chaque niveau, créé ou non.
+    Sans `create`, un niveau absent n'est ni créé ni une erreur."""
+    racine = _ctl_root(base)
+    dossier = racine / account_name
+    if create:
+        racine.parent.mkdir(parents=True, exist_ok=True)
+    for niveau in (racine, dossier):
+        if create:
+            try:
+                niveau.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+        try:
+            _assert_private_dir(niveau)
+        except FileNotFoundError:
+            if create:
+                raise
+            break
+        if create:
+            os.chmod(niveau, 0o700)
+    return dossier
+
+
+def read_convert_state(
+    account_name: str, base: Path | None = None
+) -> dict | None:
+    """L'état d'une conversion, `{"phase": "unreadable"}` s'il est
+    illisible, None s'il n'existe pas. Ne crée rien.
+
+    Est illisible tout fichier qui n'est pas un objet JSON de `version` 1,
+    de phase dans `CONVERT_PHASES`, de source et cible dans
+    `PERSISTENT_MODES`."""
+    chemin = (
+        cache_ctl_dir(account_name, base, create=False) / CONVERT_STATE_NAME
+    )
+    if not os.path.lexists(chemin):
+        return None
+    illisible = {"phase": "unreadable"}
+    try:
+        fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as handle:
+            data = json.loads(handle.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return illisible
+    if (
+        not isinstance(data, dict)
+        or data.get("version") != 1
+        or data.get("phase") not in CONVERT_PHASES
+        or data.get("source") not in PERSISTENT_MODES
+        or data.get("target") not in PERSISTENT_MODES
+    ):
+        return illisible
+    return data
+
+
+def rw_uri(db_path: Path) -> str:
+    """L'URI SQLite `mode=rw` de `db_path`, chemin échappé : elle n'ouvre
+    qu'une base existante, jamais ne la crée (voir `probe_connection`)."""
+    return (
+        "file:"
+        + urllib.request.pathname2url(str(Path(db_path).absolute()))
+        + "?mode=rw"
+    )
+
+
+@contextlib.contextmanager
+def probe_connection(db_path: Path) -> Iterator[sqlite3.Connection | None]:
+    """Une connexion de SONDE sur `db_path` : None si le fichier n'existe
+    pas (`os.path.lexists`, aucune connexion tentée). Fermée à la sortie ;
+    ne crée rien.
+
+    L'URI porte le chemin ÉCHAPPÉ (`pathname2url`) : un nom de compte peut
+    contenir `?`, `#` ou `%`, et non échappé, `<base>/a?b/cache.db` ferait
+    ouvrir — et créer, la requête étant perdue — `<base>/a`, une base vide.
+    `mode=rw` et non `mode=ro` : `rw` ne crée jamais la base, et rejoue un
+    journal chaud (processus tué en pleine écriture), que `ro` refuse ; le
+    rejeu ne change rien de ce qui était validé. Un fichier protégé en
+    écriture est ouvert en lecture seule par SQLite."""
+    if not os.path.lexists(db_path):
+        yield None
+        return
+    conn = sqlite3.connect(
+        rw_uri(db_path), uri=True, timeout=STORE_BUSY_TIMEOUT_S
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _tables(conn) -> set:
+    return {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+
+
+def _columns(conn, table: str) -> list:
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+
+
+def _read_inscription(conn) -> str | None:
+    """La valeur de `meta.cache_mode`, None si la table ou la clé manque."""
+    if "meta" not in _tables(conn):
+        return None
+    row = conn.execute(
+        "SELECT value FROM meta WHERE key = ?", (CACHE_MODE_KEY,)
+    ).fetchone()
+    return None if row is None else row[0]
+
+
+def _sealed_starts_with(conn, magic: bytes) -> bool:
+    """Vrai si une colonne de `SEALED_COLUMNS` commence par `magic` ; les
+    tables et colonnes absentes sont sautées."""
+    for table, colonnes in SEALED_COLUMNS.items():
+        # Une table absente n'a aucune colonne : elle est sautée aussi.
+        presentes = set(_columns(conn, table))
+        retenues = [c for c in colonnes if c in presentes]
+        if not retenues:
+            continue
+        condition = " OR ".join(f"substr({c}, 1, 2) = ?" for c in retenues)
+        if conn.execute(
+            f"SELECT 1 FROM {table} WHERE {condition} LIMIT 1",
+            (magic,) * len(retenues),
+        ).fetchone():
+            return True
+    return False
+
+
+def _has_body_file(root: Path, suffix: str) -> bool:
+    """Vrai si un dossier de corps de `root` (sous-dossier direct) porte un
+    fichier dont le nom finit par `suffix`. Aucun lien n'est suivi ; le
+    parcours s'arrête au premier trouvé."""
+    try:
+        dossiers = list(os.scandir(root))
+    except OSError:
+        return False
+    for dossier in dossiers:
+        if not dossier.is_dir(follow_symlinks=False):
+            continue
+        try:
+            with os.scandir(dossier.path) as entrees:
+                for entree in entrees:
+                    if entree.name.endswith(suffix) and entree.is_file(
+                        follow_symlinks=False
+                    ):
+                        return True
+        except OSError:
+            continue
+    return False
+
+
+def _epoch_check(conn) -> str | None:
+    if "meta" not in _tables(conn):
+        return None
+    row = conn.execute(
+        "SELECT value FROM meta WHERE key = 'cache_epoch_check'"
+    ).fetchone()
+    return row[0] if row and row[0] else None
+
+
+def detect_mode(conn, root: Path) -> str | None:
+    """Le mode d'un cache sans inscription, d'après ce qu'il contient.
+
+    Toute preuve de chiffrement l'emporte : une colonne scellée qui
+    commence par `SEALED_MAGIC`, un contrôle d'époque salé par une clé, un
+    corps `*.eml.enc`. À défaut, une preuve de clair : une colonne scellée
+    qui commence par `CLEAR_MAGIC`, l'index plein texte, un contrôle
+    d'époque salé en clair, un corps `*.eml`. Rien : None (cache vide).
+    Un cache mêlé (lignes en clair ET scellées) est donc `encrypted` : seul
+    ce mode les lit toutes. `conn` est lu, jamais écrit ; les tables et
+    colonnes absentes sont sautées ; les fichiers ne sont parcourus que si
+    la base ne tranche pas."""
+    controle_clair = salted_hash(b"clear", "cache_epoch")
+    controle = _epoch_check(conn)
+    if _sealed_starts_with(conn, SEALED_MAGIC):
+        return "encrypted"
+    if controle is not None and controle != controle_clair:
+        return "encrypted"
+    if _has_body_file(root, ".eml.enc"):
+        return "encrypted"
+    if (
+        _sealed_starts_with(conn, CLEAR_MAGIC)
+        or "messages_fts" in _tables(conn)
+        or controle == controle_clair
+        or _has_body_file(root, ".eml")
+    ):
+        return "clear"
+    return None
+
+
+def epoch_salted_clear(conn) -> bool:
+    """Vrai si `meta.cache_epoch_check` est salé en clair : le journal des
+    règles a été écrit sous le sel clair. Sur un cache `encrypted`, il
+    n'est lisible qu'après un rescellement."""
+    return _epoch_check(conn) == salted_hash(b"clear", "cache_epoch")
+
+
+def has_clear_residue(conn, root: Path) -> bool:
+    """Vrai si un cache chiffré garde des restes clairs : une colonne
+    scellée commençant par `CLEAR_MAGIC`, un contrôle d'époque salé en
+    clair, un fichier `*.eml` dans un dossier de corps, ou la table
+    `messages_fts`."""
+    return (
+        _sealed_starts_with(conn, CLEAR_MAGIC)
+        or epoch_salted_clear(conn)
+        or "messages_fts" in _tables(conn)
+        or _has_body_file(root, ".eml")
+    )
+
+
+def _probe_root(root: Path) -> str | None:
+    """Le mode inscrit dans `root/cache.db`, sinon `detect_mode`, par
+    `probe_connection` ; None sans `cache.db` ou sur base sans aucune
+    preuve ; `PROBE_UNKNOWN` sur toute `sqlite3.Error` ou `OSError` alors
+    que `cache.db` existe (base abîmée, occupée au-delà du délai). Une
+    valeur inscrite hors `VALID_MODES` est rendue telle quelle (le refus
+    la montre). Ne crée rien."""
+    db_path = Path(root) / "cache.db"
+    if not os.path.lexists(db_path):
+        return None
+    try:
+        with probe_connection(db_path) as conn:
+            if conn is None:
+                return None
+            inscrit = _read_inscription(conn)
+            if inscrit is not None:
+                return inscrit
+            return detect_mode(conn, Path(root))
+    except (sqlite3.Error, OSError):
+        return PROBE_UNKNOWN
+
+
+def recovery_plan(
+    r: bool, o: bool, n: bool, phase: str | None
+) -> tuple[str, str]:
+    """La décision de reprise d'une conversion, sans rien toucher.
+
+    `r`, `o`, `n` disent si la racine, l'ancienne copie (`ctl/old`) et la
+    copie neuve (`ctl/new`) existent ; `phase` est celle de `convert.json`,
+    None (pas d'état) valant "unreadable". Rend `(action, issue)` :
+    `action` ∈ "none", "erase_new", "forward", "restore_old", "erase_old",
+    "inconsistent" ; `issue` ∈ "none", "rolled_back", "rolled_forward",
+    "cleaned", "inconsistent". "forward" met la copie neuve à la place de
+    la racine puis efface l'ancienne ; "restore_old" remet l'ancienne
+    copie en racine puis efface la neuve. Une copie neuve qui n'a pas
+    atteint `swapping` n'est jamais promue : elle n'est pas vérifiée.
+    Partagée par `cache_convert.recover` et `inscribed_mode`."""
+    phase = phase or "unreadable"
+    incoherent = ("inconsistent", "inconsistent")
+    apres_echange = phase in ("swapping", "cleaning")
+    if r and o and n:
+        return incoherent
+    if not o and not n:
+        return ("none", "none")
+    if r and not o and n:
+        if phase == "swapping":
+            return ("forward", "rolled_forward")
+        if phase == "cleaning":
+            return incoherent
+        return ("erase_new", "rolled_back")
+    if not r and o and n:
+        if apres_echange:
+            return ("forward", "rolled_forward")
+        return ("restore_old", "rolled_back")
+    if not r and o and not n:
+        return ("restore_old", "rolled_back")
+    if r and o and not n:
+        if apres_echange:
+            return ("erase_old", "cleaned")
+        return incoherent
+    # Reste : ni racine ni ancienne copie, seulement la neuve.
+    if phase == "swapping":
+        return ("forward", "rolled_forward")
+    return incoherent
+
+
+def inscribed_mode(account, base: Path | None = None) -> str | None:
+    """Le mode du cache PERSISTANT du compte, tel qu'il SERA après une
+    éventuelle reprise de conversion.
+
+    `recovery_plan` sur la racine, les copies et la phase, puis
+    `_probe_root` de la copie qui sera la racine : la neuve quand l'issue
+    est `rolled_forward`, l'ancienne quand elle revient, sinon la racine ;
+    une issue incohérente sonde la racine si elle existe, sinon rend
+    `PROBE_UNKNOWN`. Sans état ni copies : `_probe_root` de la racine. Ne
+    crée rien, ne prend aucun verrou. `StoreError` ou `OSError` venues du
+    dossier de contrôle : l'état est ignoré (la racine seule est sondée) ;
+    venues de la sonde : `PROBE_UNKNOWN`."""
+    base = Path(base) if base is not None else default_base()
+    nom = account.name
+    racine = base / nom
+    cible = racine
+    try:
+        ctl = cache_ctl_dir(nom, base, create=False)
+        etat = read_convert_state(nom, base)
+        o = os.path.lexists(ctl / "old" / nom)
+        n = os.path.lexists(ctl / "new" / nom)
+        if etat is not None or o or n:
+            r = os.path.lexists(racine)
+            action, issue = recovery_plan(r, o, n, (etat or {}).get("phase"))
+            if issue == "rolled_forward":
+                cible = ctl / "new" / nom
+            elif action == "restore_old":
+                cible = ctl / "old" / nom
+            elif issue == "inconsistent" and not r:
+                return PROBE_UNKNOWN
+    except (StoreError, OSError):
+        cible = racine
+    try:
+        return _probe_root(cible)
+    except (StoreError, OSError):
+        return PROBE_UNKNOWN
+
+
+def resolve_mode(account, prefs_get=None, base: Path | None = None) -> str:
+    """Le mode dans lequel ouvrir le cache du compte.
+
+    Dans l'ordre : `account.cache_mode` s'il est valide, puis la
+    préférence générale si elle est valide (ce sont des DEMANDES, voir
+    `mode_request`) ; à défaut le mode inscrit dans le cache persistant
+    (`inscribed_mode`) s'il est l'un de `PERSISTENT_MODES` ; sinon `clear`,
+    le mode d'un cache neuf. Jamais `clear` quand un cache existe sans
+    demande lisible : préférences absentes, illisibles ou inconnues
+    laissent le cache décider. Une inscription hors `PERSISTENT_MODES` ou
+    illisible n'est jamais rendue : l'ouverture la refuse ou la tranche.
+    Ne lève pas : `StoreError` et `OSError` sont interceptées."""
+    demande = mode_request(account, prefs_get)
+    if demande is not None:
+        return demande
+    try:
+        inscrit = inscribed_mode(account, base)
+    except (StoreError, OSError):
+        inscrit = PROBE_UNKNOWN
+    return inscrit if inscrit in PERSISTENT_MODES else "clear"
+
+
+@contextlib.contextmanager
+def cache_exclusive(
+    account_name: str, base: Path | None = None
+) -> Iterator[bool]:
+    """`flock` EXCLUSIF sans attente sur le verrou d'usage du cache ; rend
+    s'il est tenu. Le bloc s'exécute dans les deux cas, comme `file_lock`.
+    Crée le dossier de contrôle. Un verrou inutilisable (lien symbolique,
+    dossier refusé) lève `StoreError`."""
+    fd = _open_usage_lock(account_name, base)
+    held = False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held = True
+        except BlockingIOError:
+            held = False
+        except OSError as exc:
+            raise StoreError(
+                f"{t('mail_err_cache_lock_unusable')} {exc}"
+            ) from exc
+        yield held
+    finally:
+        if held:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _open_usage_lock(account_name: str, base: Path | None) -> int:
+    """Le descripteur du verrou d'usage `<base>/.cache_ctl/<compte>/lock`,
+    créé en 0600, jamais à travers un lien. Toute panne devient
+    `StoreError` : laissée en `OSError`, elle se lirait comme une panne
+    réseau."""
+    try:
+        ctl = cache_ctl_dir(account_name, base)
+        flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
+        return os.open(ctl / CACHE_LOCK_NAME, flags, 0o600)
+    except StoreError as exc:
+        raise StoreError(f"{t('mail_err_cache_lock_unusable')} {exc}") from exc
+    except OSError as exc:
+        raise StoreError(f"{t('mail_err_cache_lock_unusable')} {exc}") from exc
 
 
 def default_base() -> Path:
@@ -630,22 +1182,232 @@ class Store:
         key: bytes | None = None,
         secrets=None,
         base: Path | None = None,
+        lock_held: bool = False,
     ) -> None:
+        """`mode` passé est une demande ferme ; None le résout par
+        `resolve_mode` (avec `base`) et laisse l'ouverture adopter le mode
+        inscrit quand le compte ne demande rien. `lock_held` dit que
+        l'appelant tient déjà le verrou d'usage en exclusif (conversion) :
+        l'ouverture ne prend alors ni verrou ni reprise."""
         self.account = account
-        self.mode = mode or resolve_mode(account)
+        self._mode_explicit = mode is not None
+        self.mode = mode or resolve_mode(account, base=base)
+        self._base = base
         self.root = cache_root(account, self.mode, base)
         self._key = key
+        self._key_given = key is not None
         self._secrets = secrets
+        self._lock_held = lock_held
+        self._usage_fd: int | None = None
+        # Ce qu'a rendu la sonde de l'ouverture : None (aucun cache, ou
+        # aucune preuve), un mode, ou `PROBE_UNKNOWN`. Seul None permet de
+        # créer une clé au coffre.
+        self._probed: str | None = None
         self._conn: sqlite3.Connection | None = None
         self._crypto = None
         self._lock = threading.RLock()
 
     # -- Cycle de vie ---------------------------------------------------
 
+    def _persistent_base(self) -> Path:
+        return Path(self._base) if self._base is not None else default_base()
+
     @_locked
     def open(self) -> None:
+        """Ouvre le cache, dans cet ordre pour un cache persistant :
+        reprise d'une conversion interrompue, verrou d'usage partagé,
+        pré-contrôle du mode par la sonde (avant toute clé et toute
+        écriture), puis ouverture et contrôle définitif sous le verrou
+        d'écriture. Un refus de mode lève `CacheModeMismatch` (ou
+        `CacheModeInvalid`, `CacheNeedsReseal`) sans rien écrire ; une
+        conversion en cours lève
+        `CacheBusy`. Un cache éphémère ne fait que s'inscrire."""
         if self._conn is not None:
             return
+        if self.mode == "ephemeral":
+            self._open_db()
+            return
+        if not self._lock_held:
+            self._recover_if_needed()
+            self._take_usage_lock()
+        try:
+            self._precheck()
+            self._open_db()
+        except BaseException:
+            self._release_usage_lock()
+            raise
+
+    def _recover_if_needed(self) -> None:
+        """Achève ou défait une conversion interrompue avant d'ouvrir.
+
+        Lancée quand `convert.json` existe ou qu'une copie reste sous le
+        dossier de contrôle, et seulement si le verrou exclusif s'obtient
+        sans attente. Une reprise qui échoue laisse ouvrir la racine si
+        elle existe (elle porte sa propre inscription, que le contrôle de
+        mode protège) et consigne l'échec à `mail.log` ; sans racine,
+        l'erreur remonte. Une racine absente à côté de copies n'est jamais
+        recréée vide : `CacheBusy` si un autre tient le cache, sinon
+        `StoreError`."""
+        nom = self.account.name
+        base = self._persistent_base()
+
+        def restes() -> bool:
+            try:
+                ctl = cache_ctl_dir(nom, base, create=False)
+                return (
+                    read_convert_state(nom, base) is not None
+                    or os.path.lexists(ctl / "old")
+                    or os.path.lexists(ctl / "new")
+                )
+            except (StoreError, OSError):
+                return False
+
+        if not restes():
+            return
+        with cache_exclusive(nom, base) as tenu:
+            if tenu:
+                from script.todo.mail import cache_convert
+
+                try:
+                    cache_convert.recover(nom, base)
+                except (StoreError, OSError) as exc:
+                    if not os.path.lexists(base / nom):
+                        raise
+                    _logger.warning(
+                        "reprise de conversion impossible, ouverture de la"
+                        " racine : %s",
+                        exc,
+                    )
+        if not self._mode_explicit:
+            self.mode = resolve_mode(self.account, base=self._base)
+            self.root = cache_root(self.account, self.mode, self._base)
+        if (
+            self.mode != "ephemeral"
+            and not os.path.lexists(self.root)
+            and restes()
+        ):
+            if not tenu:
+                raise CacheBusy(t("mail_err_cache_busy_converting"))
+            raise StoreError(
+                t("mail_err_cache_convert_inconsistent").format(
+                    path=_ctl_root(base) / nom
+                )
+            )
+
+    def _take_usage_lock(self) -> None:
+        """Prend le verrou d'usage en PARTAGÉ, sans attente, jusqu'à
+        `close()`. Tenu en exclusif (conversion) : `CacheBusy`."""
+        fd = _open_usage_lock(self.account.name, self._persistent_base())
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            raise CacheBusy(t("mail_err_cache_busy_converting")) from None
+        except OSError as exc:
+            os.close(fd)
+            raise StoreError(
+                f"{t('mail_err_cache_lock_unusable')} {exc}"
+            ) from exc
+        self._usage_fd = fd
+
+    def _release_usage_lock(self) -> None:
+        fd, self._usage_fd = self._usage_fd, None
+        if fd is None:
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+    def _refuse(self, inscrit: str) -> None:
+        """Lève le refus qui correspond à `inscrit`, lu dans le cache."""
+        if inscrit not in PERSISTENT_MODES:
+            raise CacheModeInvalid(self.account.name, inscrit, self.mode)
+        raise CacheModeMismatch(self.account.name, inscrit, self.mode)
+
+    def _may_adopt(self) -> bool:
+        """Vrai si l'ouverture peut prendre le mode inscrit à la place du
+        sien : le `Store` n'a pas reçu de mode et le compte n'en demande
+        aucun (préférences absentes, illisibles ou inconnues)."""
+        return not self._mode_explicit and mode_request(self.account) is None
+
+    def _adopt(self, inscrit: str) -> None:
+        """Prend le mode inscrit ; une clé ne peut pas être créée pour lui."""
+        self.mode = inscrit
+        self._probed = inscrit
+        if not self._key_given:
+            self._key = None
+        self._crypto = None
+
+    def _precheck(self) -> None:
+        """Pré-contrôle par la sonde, avant toute clé et toute écriture."""
+        self._probed = _probe_root(self.root)
+        sonde = self._probed
+        if sonde is None or sonde == PROBE_UNKNOWN or sonde == self.mode:
+            return
+        if sonde in PERSISTENT_MODES and self._may_adopt():
+            self._adopt(sonde)
+            return
+        self._refuse(sonde)
+
+    def _settle_inscription(self, conn) -> str | None:
+        """Le contrôle définitif, sous `BEGIN IMMEDIATE` : lit
+        `meta.cache_mode`, sinon le détecte, sinon prend `self.mode`, et
+        l'inscrit s'il manquait. Rend le mode à adopter quand il diffère et
+        que l'adoption est permise ; lève le refus sinon, et
+        `CacheNeedsReseal` pour un cache chiffré au journal salé en clair
+        hors conversion ; None quand l'ouverture continue."""
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (CACHE_MODE_KEY,)
+        ).fetchone()
+        inscrit = row[0] if row is not None else None
+        if self.mode == "ephemeral":
+            if inscrit is None:
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+                    (CACHE_MODE_KEY, self.mode),
+                )
+            return None
+        absent = inscrit is None
+        if absent:
+            inscrit = detect_mode(conn, self.root) or self.mode
+        if inscrit != self.mode:
+            if inscrit in PERSISTENT_MODES and self._may_adopt():
+                return inscrit
+            self._refuse(inscrit)
+        if (
+            inscrit == "encrypted"
+            and not self._lock_held
+            and epoch_salted_clear(conn)
+        ):
+            # La conversion (`lock_held`) lit ce cache pour le resceller ;
+            # toute autre ouverture viderait son journal des règles.
+            raise CacheNeedsReseal(self.account.name, inscrit, self.mode)
+        if absent:
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+                (CACHE_MODE_KEY, inscrit),
+            )
+        return None
+
+    def _open_db(self) -> None:
+        """Ouvre la base et la migre ; adopte au plus une fois le mode
+        inscrit lu sous le verrou d'écriture (sonde refaite)."""
+        adopte = None
+        for _essai in range(2):
+            if adopte is not None:
+                self._adopt(adopte)
+                self._precheck()
+                # Une sonde muette ne fait pas oublier le mode lu sous le
+                # verrou : aucune clé ne doit être créée pour ce cache.
+                if self._probed in (None, PROBE_UNKNOWN):
+                    self._probed = adopte
+            adopte = self._open_db_once(allow_adopt=_essai == 0)
+            if adopte is None:
+                return
+        raise CacheModeMismatch(self.account.name, adopte, self.mode)
+
+    def _open_db_once(self, *, allow_adopt: bool) -> str | None:
         self._crypto = build_crypto(self.mode, self._resolve_key())
         self._prepare_root()
         db_path = self.root / "cache.db"
@@ -668,9 +1430,19 @@ class Store:
             # finisse et relit des colonnes déjà là, au lieu d'ajouter
             # deux fois la même (« duplicate column name »).
             conn.execute("BEGIN IMMEDIATE")
+            # Le mode se tranche AVANT `_ensure_fts`, qui supprimerait
+            # l'index d'un cache clair ouvert en chiffré.
+            adopte = self._settle_inscription(conn)
+            if adopte is not None:
+                if not allow_adopt:
+                    self._refuse(adopte)
+                conn.rollback()
+                conn.close()
+                return adopte
             _ensure_columns(conn)
             _ensure_outbox_columns(conn)
             _ensure_rule_log_columns(conn)
+            _ensure_auto_sent_columns(conn)
             neuf = _ensure_fts(conn, self.mode)
             # REPLACE, pas IGNORE : un cache d'avant la v2 porte encore
             # « 1 », et l'ignorer laisserait la version mentir sur une base
@@ -687,6 +1459,13 @@ class Store:
             raise StoreError(
                 f"{t('mail_err_cache_unreadable')} {db_path} ({exc})"
             ) from exc
+        except BaseException:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                finally:
+                    conn.close()
+            raise
         # Publié SEULEMENT une fois le schéma en place. `sqlite3.connect` est
         # paresseux : une base corrompue n'échoue qu'à `executescript`, donc
         # affecter `self._conn` plus tôt laisserait un open() raté derrière lui
@@ -701,20 +1480,25 @@ class Store:
             self._reindexer()
         if db_path.exists():
             os.chmod(db_path, 0o600)
+        return None
 
     @_locked
     def close(self) -> None:
-        if self._conn is None:
-            return
+        """Ferme la base, puis relâche le verrou d'usage."""
         try:
-            self._conn.commit()
-        except sqlite3.Error:
-            # Fermer prime sur sauver : un commit refusé ne doit pas laisser la
-            # connexion ouverte pour toujours.
-            pass
+            if self._conn is None:
+                return
+            try:
+                self._conn.commit()
+            except sqlite3.Error:
+                # Fermer prime sur sauver : un commit refusé ne doit pas
+                # laisser la connexion ouverte pour toujours.
+                pass
+            finally:
+                self._conn.close()
+                self._conn = None
         finally:
-            self._conn.close()
-            self._conn = None
+            self._release_usage_lock()
 
     def cleanup(self) -> None:
         """Efface la racine du compte. Appelé à la sortie en mode éphémère.
@@ -782,6 +1566,15 @@ class Store:
         # Chemin rapide : une clé présente se lit sans verrou ni relecture
         # du coffre, qui coûteraient une dérivation de clé par compte.
         stored = self._secrets.get(ref)
+        if stored is None and self._probed is not None:
+            # Le cache existe déjà (inscrit, détecté chiffré, ou illisible) :
+            # une clé neuve rendrait ses lignes scellées illisibles, et le
+            # premier `cache_epoch()` viderait son journal des règles.
+            raise CacheKeyMissing(
+                t("mail_err_cache_key_missing").format(
+                    account=self.account.name
+                )
+            )
         if stored is None:
             update = getattr(self._secrets, "update", None)
             if callable(update):
@@ -812,8 +1605,7 @@ class Store:
         return self._crypto.open(bytes(blob)).decode("utf-8", "replace")
 
     def _msgid_hash(self, msgid: str) -> str:
-        salt = self._key or b"clear"
-        return hashlib.sha256(salt + (msgid or "").encode("utf-8")).hexdigest()
+        return salted_hash(self._key or b"clear", msgid)
 
     def _hash_or_none(self, msgid: str):
         """L'empreinte, ou NULL si l'en-tête est absent.
@@ -1471,14 +2263,14 @@ class Store:
         adresse = (address or "").strip().lower()
         return self._msgid_hash("addr:" + adresse) if adresse else ""
 
-    def message_key(self, msgid: str, uidvalidity: int, uid: int) -> str:
-        """La clé d'un message dans le journal des règles.
+    @staticmethod
+    def message_ref(msgid: str, uidvalidity: int, uid: int) -> str:
+        """La préimage de la clé d'un message dans le journal des règles.
 
-        Avec un Message-ID, c'est son empreinte, égale à
-        `messages.msgid_hash`. Sans, c'est celle de
-        « ␠uid:<uidvalidity>:<uid> » : l'empreinte de la chaîne vide serait
-        commune à TOUS les messages sans Message-ID, et le premier journalisé
-        ferait passer les autres pour des doublons.
+        Le Message-ID `strip()`é ; sans Message-ID,
+        « ␠uid:<uidvalidity>:<uid> » : la chaîne vide serait commune à TOUS
+        les messages sans Message-ID, et le premier journalisé ferait
+        passer les autres pour des doublons.
 
         L'espace de tête rend les deux espaces de clés disjoints : un
         Message-ID passe par `strip()`, il ne commence donc jamais par un
@@ -1487,8 +2279,14 @@ class Store:
         """
         msgid = (msgid or "").strip()
         if msgid:
-            return self._msgid_hash(msgid)
-        return self._msgid_hash(f" uid:{int(uidvalidity)}:{int(uid)}")
+            return msgid
+        return f" uid:{int(uidvalidity)}:{int(uid)}"
+
+    def message_key(self, msgid: str, uidvalidity: int, uid: int) -> str:
+        """La clé d'un message dans le journal des règles : l'empreinte de
+        `message_ref`. Avec un Message-ID, elle égale
+        `messages.msgid_hash`."""
+        return self._msgid_hash(self.message_ref(msgid, uidvalidity, uid))
 
     # -- Lecture pour le moteur de règles (v6) ---------------------------
 
@@ -1525,20 +2323,26 @@ class Store:
         sender: str = "",
         subject: str = "",
         queue_id: int | None = None,
+        msg_ref: str | None = None,
+        target: str = "",
     ) -> bool:
         """Inscrit (règle, message) au journal. Vrai si la ligne vient
         d'être créée.
 
         `INSERT OR IGNORE` sur `UNIQUE(rule_id, msg_key)` : de deux
         processus qui traitent le même message, un seul obtient `True`, et
-        c'est lui seul qui envoie. Expéditeur et sujet sont scellés.
+        c'est lui seul qui envoie. Expéditeur et sujet sont scellés, comme
+        `msg_ref` (la préimage de `msg_key`, `message_ref`) et `target`
+        (l'adresse de `target_hash`) : une conversion recalcule ces
+        empreintes sous un autre sel à partir d'eux.
         """
         db = self._db()
         curseur = db.execute(
             "INSERT OR IGNORE INTO rule_log(rule_id, msg_key, sender_hash,"
             " target_hash, fingerprint, at, received_at, outcome, reason,"
-            " queue_id, sealed_sender, sealed_subject)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            " queue_id, sealed_sender, sealed_subject, sealed_msg_ref,"
+            " sealed_target)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 rule_id,
                 msg_key,
@@ -1552,6 +2356,8 @@ class Store:
                 queue_id,
                 self._seal(sender),
                 self._seal(subject),
+                self._seal(msg_ref) if msg_ref else None,
+                self._seal(target) if target else None,
             ),
         )
         db.commit()
@@ -2170,9 +2976,9 @@ class Store:
             return
         db = self._db()
         db.execute(
-            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at)"
-            " VALUES(?,?,?)",
-            (self._msgid_hash(msgid), rule_id, int(at)),
+            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at,"
+            " sealed_msgid) VALUES(?,?,?,?)",
+            (self._msgid_hash(msgid), rule_id, int(at), self._seal(msgid)),
         )
         db.commit()
 
@@ -2181,7 +2987,12 @@ class Store:
         """`mark_auto_sent` pour chaque (msgid, rule_id, at), en une
         transaction ; un Message-ID vide est ignoré."""
         rows = [
-            (self._msgid_hash(msgid.strip()), rule_id, int(at))
+            (
+                self._msgid_hash(msgid.strip()),
+                rule_id,
+                int(at),
+                self._seal(msgid.strip()),
+            )
             for msgid, rule_id, at in items
             if (msgid or "").strip()
         ]
@@ -2189,8 +3000,8 @@ class Store:
             return
         db = self._db()
         db.executemany(
-            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at)"
-            " VALUES(?,?,?)",
+            "INSERT OR IGNORE INTO auto_sent(msgid_hash, rule_id, at,"
+            " sealed_msgid) VALUES(?,?,?,?)",
             rows,
         )
         db.commit()
@@ -2252,6 +3063,9 @@ class Store:
 
         Le tirage se fait sous `BEGIN IMMEDIATE` avec relecture : deux
         processus qui la tirent en même temps lisent la même.
+
+        Une conversion recopie l'époque et recalcule son contrôle : elle
+        n'est pas une recréation.
         """
         db = self._db()
         controle = self._msgid_hash("cache_epoch")
@@ -3018,6 +3832,20 @@ class Store:
 
     @_locked
     def write_body(self, folder_name: str, uid: int, raw: bytes) -> None:
+        """Écrit le corps scellé (`_write_body_file`) puis marque le message
+        `has_body`."""
+        self._write_body_file(folder_name, uid, raw)
+        db = self._db()
+        db.execute(
+            "UPDATE messages SET has_body = 1 WHERE uid = ? AND folder_id ="
+            " (SELECT id FROM folders WHERE name = ?)",
+            (uid, folder_name),
+        )
+        db.commit()
+
+    def _write_body_file(self, folder_name: str, uid: int, raw: bytes) -> None:
+        """Le corps scellé, écrit atomiquement à `_body_path`, SANS toucher
+        la base."""
         path = self._body_path(folder_name, uid)
         path.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(path.parent, 0o700)
@@ -3044,13 +3872,6 @@ class Store:
                 pass
             raise
         os.chmod(path, 0o600)
-        db = self._db()
-        db.execute(
-            "UPDATE messages SET has_body = 1 WHERE uid = ? AND folder_id ="
-            " (SELECT id FROM folders WHERE name = ?)",
-            (uid, folder_name),
-        )
-        db.commit()
 
     @_locked
     def read_body(self, folder_name: str, uid: int) -> bytes | None:

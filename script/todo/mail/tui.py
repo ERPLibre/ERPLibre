@@ -110,10 +110,10 @@ _LAYOUT_I18N_KEYS = dict(MAIL_LAYOUTS)
 def resolve_layout(value: str) -> str:
     """La disposition retenue pour `value`, sinon `columns`.
 
-    Même motif que `store.resolve_mode` pour `mail_cache_mode` : une valeur
-    absente ou corrompue dans `todo_prefs` (édition manuelle, ancienne
-    version qui listait moins de dispositions) ne doit jamais empêcher le
-    client de s'ouvrir — elle retombe sur la disposition par défaut.
+    Une valeur absente ou corrompue dans `todo_prefs` (édition manuelle,
+    ancienne version qui listait moins de dispositions) ne doit jamais
+    empêcher le client de s'ouvrir — elle retombe sur la disposition par
+    défaut.
     """
     return value if value in _LAYOUT_IDS else _LAYOUT_IDS[0]
 
@@ -256,7 +256,7 @@ def resolve_pane_sizes(stored, layout_id: str) -> dict:
     """Les tailles personnalisées de `layout_id` dans `stored`
     (`todo_prefs.get("mail_pane_sizes")`), filtrées et validées.
 
-    Même motif que `resolve_layout`/`store.resolve_mode` : un magasin
+    Même motif que `resolve_layout` : un magasin
     absent, du mauvais type, une entrée de disposition absente ou du
     mauvais type, une clé de volet inconnue, ou une valeur non numérique,
     booléenne (un `bool` EST un `int` en Python — jamais une taille valide)

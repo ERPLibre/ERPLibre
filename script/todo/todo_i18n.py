@@ -16160,6 +16160,134 @@ TRANSLATIONS = {
         "fr": "Taille du cache et purge",
         "en": "Cache size and purge",
     },
+    "mail_cache_convert": {
+        "fr": "Convertir le cache d'un compte (clear ↔ encrypted)",
+        "en": "Convert an account's cache (clear ↔ encrypted)",
+    },
+    "mail_cache_convert_confirm_encrypted": {
+        "fr": "Convertir le cache de « {account} » de {source} en {target} ? Il est recopié en entier ; le client et la synchronisation doivent rester fermés, y compris un client lancé avant la dernière mise à jour, et le service saute le compte pendant ce temps. (o/N) ",
+        "en": "Convert the cache of “{account}” from {source} to {target}? It is copied in full; the client and sync must stay closed, including a client started before the last update, and the service skips the account meanwhile. (y/N) ",
+    },
+    "mail_cache_convert_confirm_clear": {
+        "fr": "Convertir le cache de « {account} » de {source} en {target} ? Sujets, adresses, corps et index de recherche deviendront lisibles sur le disque. Il est recopié en entier ; le client et la synchronisation doivent rester fermés, y compris un client lancé avant la dernière mise à jour, et le service saute le compte pendant ce temps. (o/N) ",
+        "en": "Convert the cache of “{account}” from {source} to {target}? Subjects, addresses, bodies and the search index will become readable on disk. It is copied in full; the client and sync must stay closed, including a client started before the last update, and the service skips the account meanwhile. (y/N) ",
+    },
+    "mail_cache_reseal_confirm": {
+        "fr": "Le cache de « {account} » est en encrypted mais garde, en clair, des données écrites avant son passage en encrypted. Le resceller en entier ? Le journal des règles suit ; les corps de messages écrits en clair à cette époque ne sont pas gardés, ils seront téléchargés de nouveau à la lecture. (o/N) ",
+        "en": "The cache of “{account}” is encrypted but still holds, in the clear, data written before it went encrypted. Reseal it in full? The rules journal comes along; message bodies written in the clear back then are not kept, they will be downloaded again when read. (y/N) ",
+    },
+    "mail_cache_convert_losses_confirm": {
+        "fr": "{journal} lignes du journal des règles et {auto_sent} envois inscrits visent un message absent du cache : ils compteront toujours pour les plafonds, mais ne reconnaîtront plus ce message s'il revient, et ceux de nos propres envois ne seront plus reconnus comme tels (garde contre les boucles). Continuer ? (o/N) ",
+        "en": "{journal} rules journal lines and {auto_sent} recorded sends point at a message no longer in the cache: they will still count toward the caps, but will no longer recognise that message if it comes back, and those among our own sends will no longer be recognised as ours (loop guard). Continue? (y/N) ",
+    },
+    "mail_cache_convert_declined": {
+        "fr": "Conversion abandonnée : rien n'a été touché.",
+        "en": "Conversion abandoned: nothing was touched.",
+    },
+    "mail_cache_convert_no_key": {
+        "fr": "La clé du cache chiffré de « {account} » est absente du coffre : conversion refusée, rien n'a été écrit, ni au cache ni au coffre.",
+        "en": "The key of the encrypted cache of “{account}” is missing from the vault: conversion refused, nothing was written, to the cache or the vault.",
+    },
+    "mail_cache_convert_unsupported_root": {
+        "fr": "Le dossier du cache de « {account} » est un lien symbolique ou un autre système de fichiers : conversion refusée, rien n'a été touché.",
+        "en": "The cache folder of “{account}” is a symbolic link or another filesystem: conversion refused, nothing was touched.",
+    },
+    "mail_cache_convert_incomplete": {
+        "fr": "Cache de « {account} » converti en {target} ; l'effacement de l'ancienne copie s'achève à la prochaine ouverture.",
+        "en": "Cache of “{account}” converted to {target}; erasing the old copy completes at the next opening.",
+    },
+    "mail_cache_purge_no_key_confirm": {
+        "fr": "Sans sa clé, le cache de « {account} » ne se lit plus, journal des règles compris. L'effacer entièrement ? (o/N) ",
+        "en": "Without its key, the cache of “{account}” can no longer be read, rules journal included. Erase it entirely? (y/N) ",
+    },
+    "mail_cache_purge_invalid_confirm": {
+        "fr": "Le cache de « {account} » porte un mode inconnu ({inscribed}) et ne s'ouvre pas. L'effacer entièrement, journal des règles et file d'envoi compris ? (o/N) ",
+        "en": "The cache of “{account}” records an unknown mode ({inscribed}) and does not open. Erase it entirely, rules journal and outbox included? (y/N) ",
+    },
+    "mail_cache_convert_progress_rows": {
+        "fr": "Lignes recopiées : {done}/{total}",
+        "en": "Rows copied: {done}/{total}",
+    },
+    "mail_cache_convert_progress_bodies": {
+        "fr": "Corps recopiés : {done}/{total}",
+        "en": "Bodies copied: {done}/{total}",
+    },
+    "mail_cache_converted": {
+        "fr": "Cache de « {account} » converti en {target} : {messages} messages, {bodies} corps, {journal} lignes du journal des règles conservées.",
+        "en": "Cache of “{account}” converted to {target}: {messages} messages, {bodies} bodies, {journal} rules journal lines kept.",
+    },
+    "mail_cache_convert_legacy": {
+        "fr": "{journal} lignes du journal et {auto_sent} envois inscrits visent un message absent du cache : ils comptent toujours pour les plafonds, sans plus le reconnaître.",
+        "en": "{journal} journal lines and {auto_sent} recorded sends point at a message no longer in the cache: they still count toward the caps, without recognising it.",
+    },
+    "mail_cache_convert_no_cache": {
+        "fr": "Aucun cache sur le disque pour « {account} ».",
+        "en": "No cache on disk for “{account}”.",
+    },
+    "mail_cache_convert_ephemeral": {
+        "fr": "« {account} » est en mode ephemeral : rien sur le disque à convertir.",
+        "en": "“{account}” is in ephemeral mode: nothing on disk to convert.",
+    },
+    "mail_cache_unreadable": {
+        "fr": "Le cache de « {account} » ne se lit pas (base abîmée, ou tenue par un autre processus au-delà du délai) : rien n'a été touché. S'il reste illisible, Courriel › [4] Cache › [3] l'efface, journal des règles compris.",
+        "en": "The cache of “{account}” cannot be read (damaged database, or held by another process past the timeout): nothing was touched. If it stays unreadable, Mail › [4] Cache › [3] erases it, rules journal included.",
+    },
+    "mail_cache_mode_unreadable": {
+        "fr": "illisible",
+        "en": "unreadable",
+    },
+    "mail_cache_convert_same_mode": {
+        "fr": "Le cache de « {account} » est déjà en {target}.",
+        "en": "The cache of “{account}” is already {target}.",
+    },
+    "mail_cache_convert_busy_open": {
+        "fr": "Le cache de « {account} » est ouvert ailleurs (client, synchronisation, menu ou service, y compris un client lancé avant la dernière mise à jour) : fermez-le puis recommencez.",
+        "en": "The cache of “{account}” is open elsewhere (client, sync, menu or service, including a client started before the last update): close it and try again.",
+    },
+    "mail_cache_convert_busy_rules": {
+        "fr": "Une passe des règles de « {account} » est en cours : réessayez dans un instant.",
+        "en": "A rules pass of “{account}” is running: try again in a moment.",
+    },
+    "mail_cache_convert_no_space": {
+        "fr": "Espace disque insuffisant : la conversion demande {need} Mo libres, {free} Mo disponibles.",
+        "en": "Not enough disk space: the conversion needs {need} MB free, {free} MB available.",
+    },
+    "mail_cache_convert_unreadable": {
+        "fr": "Une donnée du cache ne s'ouvre pas avec la clé du coffre : conversion annulée, cache inchangé.",
+        "en": "Some cache data does not open with the vault key: conversion cancelled, cache unchanged.",
+    },
+    "mail_cache_convert_verify_failed": {
+        "fr": "La copie ne correspond pas à l'original : conversion annulée, cache inchangé.",
+        "en": "The copy does not match the original: conversion cancelled, cache unchanged.",
+    },
+    "mail_cache_convert_failed": {
+        "fr": "Conversion annulée, cache inchangé :",
+        "en": "Conversion cancelled, cache unchanged:",
+    },
+    "mail_cache_convert_cancelled": {
+        "fr": "Conversion interrompue avant l'échange : le cache de « {account} » reste en {source}.",
+        "en": "Conversion interrupted before the swap: the cache of “{account}” stays {source}.",
+    },
+    "mail_cache_convert_mode_unsaved": {
+        "fr": "Cache converti, mais le mode du compte n'a pas été enregistré : réglez-le sur {target} ([2]).",
+        "en": "Cache converted, but the account mode was not saved: set it to {target} ([2]).",
+    },
+    "mail_cache_default_pinned": {
+        "fr": "« {account} » garde son cache en {mode} : ce mode est fixé sur le compte ([4] pour le convertir).",
+        "en": "“{account}” keeps its cache in {mode}: that mode is set on the account ([4] converts it).",
+    },
+    "mail_cache_ephemeral_keeps_disk": {
+        "fr": "« {account} » passe en ephemeral ; son cache sur le disque ({mode}) reste en place, inutilisé ([3] pour l'effacer).",
+        "en": "“{account}” goes ephemeral; its disk cache ({mode}) stays in place, unused ([3] erases it).",
+    },
+    "mail_cache_account_mode_unchanged": {
+        "fr": "Mode du compte inchangé.",
+        "en": "Account mode unchanged.",
+    },
+    "mail_cache_summary_refused": {
+        "fr": "demandé {requested}, inscrit {inscribed} : ouverture refusée",
+        "en": "asked {requested}, recorded {inscribed}: opening refused",
+    },
     "mail_no_account": {
         "fr": "Aucun compte configuré. Ajoutez-en un d'abord.",
         "en": "No account configured. Add one first.",
@@ -17329,6 +17457,34 @@ TRANSLATIONS = {
     "mail_err_cache_unreadable": {
         "fr": "cache illisible, purgez-le et resynchronisez :",
         "en": "unreadable cache, purge it and resynchronise:",
+    },
+    "mail_err_cache_mode_mismatch": {
+        "fr": "Le cache du compte « {account} » est inscrit en mode {inscribed} ; son ouverture en mode {requested} est refusée. Courriel › [4] Cache › [4] le convertit, ou [2] remet le compte en {inscribed}.",
+        "en": "The cache of account “{account}” is recorded as {inscribed}; opening it as {requested} is refused. Mail › [4] Cache › [4] converts it, or [2] sets the account back to {inscribed}.",
+    },
+    "mail_err_cache_mode_invalid": {
+        "fr": "Le cache du compte « {account} » porte un mode inconnu ({inscribed}) : il ne s'ouvre pas, et ni [2] ni [4] n'y peuvent rien. Courriel › [4] Cache › [3] peut l'effacer, journal des règles compris.",
+        "en": "The cache of account “{account}” records an unknown mode ({inscribed}): it does not open, and neither [2] nor [4] can help. Mail › [4] Cache › [3] can erase it, rules journal included.",
+    },
+    "mail_err_cache_needs_reseal": {
+        "fr": "Le cache du compte « {account} » est en encrypted, mais son journal des règles a été écrit en clair : l'ouvrir ainsi viderait ce journal (envois faits, plafonds, limite par expéditeur). Rien n'a été écrit. Courriel › [4] Cache › [4] le rescelle sans rien perdre.",
+        "en": "The cache of account “{account}” is encrypted, but its rules journal was written in the clear: opening it as is would empty that journal (sends made, caps, per-sender limit). Nothing was written. Mail › [4] Cache › [4] reseals it without losing anything.",
+    },
+    "mail_err_cache_key_missing": {
+        "fr": "La clé du cache chiffré du compte « {account} » est absente du coffre : aucune clé neuve n'a été créée, rien n'a été lu ni écrit. Rétablissez le coffre qui la porte ; sans elle, Courriel › [4] Cache › [3] efface ce cache.",
+        "en": "The key of the encrypted cache of account “{account}” is missing from the vault: no new key was created, nothing was read or written. Restore the vault that holds it; without it, Mail › [4] Cache › [3] erases this cache.",
+    },
+    "mail_err_cache_lock_unusable": {
+        "fr": "verrou du cache inutilisable :",
+        "en": "cache lock unusable:",
+    },
+    "mail_err_cache_busy_converting": {
+        "fr": "le cache de ce compte est en cours de conversion ; réessayez à la fin.",
+        "en": "this account's cache is being converted; try again once it ends.",
+    },
+    "mail_err_cache_convert_inconsistent": {
+        "fr": "état de conversion incohérent sous {path} : rien n'a été touché ; vérifiez ce dossier à la main.",
+        "en": "inconsistent conversion state under {path}: nothing was touched; check that folder by hand.",
     },
     "mail_err_mode_requires_key_no_vault": {
         "fr": "exige une clé : aucun coffre fourni",
@@ -18727,6 +18883,10 @@ TRANSLATIONS = {
         "fr": "configuration :",
         "en": "configuration:",
     },
+    "mail_service_kind_mode": {
+        "fr": "mode du cache refusé :",
+        "en": "cache mode refused:",
+    },
     "mail_service_kind_other": {"fr": "erreur :", "en": "error:"},
     "mail_service_outbox_error": {
         "fr": "file : erreur (voir le journal)",
@@ -19057,8 +19217,8 @@ TRANSLATIONS = {
         "en": "authentication refused",
     },
     "mail_service_exit_8": {
-        "fr": "configuration ou cache illisible",
-        "en": "configuration or cache unreadable",
+        "fr": "configuration, cache illisible ou mode du cache refusé",
+        "en": "configuration, unreadable cache or cache mode refused",
     },
     "mail_service_exit_200": {
         "fr": "dossier du dépôt introuvable : réinstaller (Courriel [7] › [1])",

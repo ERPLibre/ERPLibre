@@ -14,7 +14,13 @@ from script.todo.mail.imap_transport import ImapAuthError, ImapError
 from script.todo.mail.oauth import OAuthError, RefreshRefused
 from script.todo.mail.secrets import MissingSecret, SecretError
 from script.todo.mail.smtp_send import SmtpAuthError
-from script.todo.mail.store import StoreError
+from script.todo.mail.store import (
+    CacheBusy,
+    CacheKeyMissing,
+    CacheModeInvalid,
+    CacheModeMismatch,
+    StoreError,
+)
 
 
 def enchaine(exc, cause):
@@ -84,6 +90,21 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(errors.classify(enveloppe), "busy")
         occupe = sqlite3.OperationalError("database table is busy")
         self.assertEqual(errors.classify(occupe), "busy")
+
+    def test_a_mode_mismatch_is_its_own_kind(self):
+        exc = CacheModeMismatch("perso", "encrypted", "clear")
+        self.assertEqual(errors.classify(exc), "mode")
+        self.assertIn("mode", errors.KINDS)
+
+    def test_an_invalid_cache_mode_is_kind_mode(self):
+        exc = CacheModeInvalid("perso", "magique", "clear")
+        self.assertEqual(errors.classify(exc), "mode")
+
+    def test_a_cache_being_converted_is_busy(self):
+        self.assertEqual(errors.classify(CacheBusy("conversion")), "busy")
+
+    def test_a_missing_cache_key_is_a_vault_failure(self):
+        self.assertEqual(errors.classify(CacheKeyMissing("clé")), "vault")
 
     def test_anything_else_is_other(self):
         self.assertEqual(errors.classify(ValueError("x")), "other")

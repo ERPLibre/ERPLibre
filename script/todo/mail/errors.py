@@ -18,7 +18,16 @@ from __future__ import annotations
 
 import re
 
-KINDS = ("vault", "auth", "network", "busy", "cache", "config", "other")
+KINDS = (
+    "vault",
+    "auth",
+    "network",
+    "busy",
+    "cache",
+    "mode",
+    "config",
+    "other",
+)
 
 # Profondeur de la chaîne `__cause__`/`__context__` parcourue : assez pour
 # une panne de socket enveloppée deux ou trois fois, et une borne contre une
@@ -55,8 +64,9 @@ def _busy_text(exc: BaseException) -> bool:
 def classify(exc: BaseException) -> str:
     """La famille d'une panne d'ouverture ou de synchronisation.
 
-    Rend l'un de `KINDS`. Le premier test qui répond gagne : coffre, refus
-    du secret, jeton OAuth, réponse IMAP, socket, base occupée, cache,
+    Rend l'un de `KINDS`. Le premier test qui répond gagne : coffre (clé
+    du cache absente comprise), refus du secret, jeton OAuth, réponse IMAP,
+    socket, mode du cache refusé, cache en conversion, base occupée, cache,
     configuration, puis `other`.
     """
     import imaplib
@@ -65,9 +75,14 @@ def classify(exc: BaseException) -> str:
     from script.todo.mail import imap_transport, oauth, smtp_send
     from script.todo.mail.accounts import AccountError
     from script.todo.mail.secrets import SecretError
-    from script.todo.mail.store import StoreError
+    from script.todo.mail.store import (
+        CacheBusy,
+        CacheKeyMissing,
+        CacheModeMismatch,
+        StoreError,
+    )
 
-    vault_types = (SecretError,)
+    vault_types = (SecretError, CacheKeyMissing)
     try:
         from script.todo import kdbx_write
     except ImportError:
@@ -98,6 +113,10 @@ def classify(exc: BaseException) -> str:
         return "other"
     if isinstance(exc, lien_mort):
         return "network"
+    if isinstance(exc, CacheModeMismatch):
+        return "mode"
+    if isinstance(exc, CacheBusy):
+        return "busy"
     if any(
         isinstance(maillon, sqlite3.OperationalError) and _busy_text(maillon)
         for maillon in _chain(exc)

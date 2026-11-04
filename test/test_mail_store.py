@@ -54,15 +54,25 @@ class TestResolveMode(unittest.TestCase):
 
     def test_falls_back_to_general_default(self):
         acc = account_from_preset("perso", "a@x.ca", "generic")
-        self.assertEqual(
-            resolve_mode(acc, lambda k, d=None: "ephemeral"), "ephemeral"
-        )
+        with tempfile.TemporaryDirectory() as base:
+            self.assertEqual(
+                resolve_mode(
+                    acc, lambda k, d=None: "ephemeral", base=Path(base)
+                ),
+                "ephemeral",
+            )
 
     def test_unknown_general_default_falls_back_to_clear(self):
+        """Sans demande lisible ni cache sur le disque : `clear`. La base
+        est temporaire, sinon le vrai dossier du compte serait sondé."""
         acc = account_from_preset("perso", "a@x.ca", "generic")
-        self.assertEqual(
-            resolve_mode(acc, lambda k, d=None: "magique"), "clear"
-        )
+        with tempfile.TemporaryDirectory() as base:
+            self.assertEqual(
+                resolve_mode(
+                    acc, lambda k, d=None: "magique", base=Path(base)
+                ),
+                "clear",
+            )
 
 
 class TestPrefsWriteNeverLosesTheMode(unittest.TestCase):

@@ -3,12 +3,19 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Recherche sur tout le cache : index FTS5 en clair, balayage déchiffré
 en mode chiffré. Le mode change le COÛT, jamais le résultat."""
+
 import tempfile
 import unittest
 from pathlib import Path
 
 from script.todo.mail.accounts import account_from_preset
-from script.todo.mail.store import MessageMeta, Store, new_key
+from script.todo.mail.crypto import AesGcmCrypto
+from script.todo.mail.store import (
+    CacheModeMismatch,
+    MessageMeta,
+    Store,
+    new_key,
+)
 
 
 class SearchCase(unittest.TestCase):
@@ -170,12 +177,38 @@ class TestTheIndexDoesNotOutliveWhatItIndexes(SearchCase):
         self.store.open()
         return self.store
 
-    def test_turning_on_encryption_takes_the_index_away(self):
-        """Sans cela, le mode chiffré protège les lignes de `messages` et
-        laisse à côté une table qui rend les mêmes sujets par un SELECT."""
+    def test_reopening_as_encrypted_is_refused_and_keeps_the_index(self):
+        """Le cache est inscrit `clear` : l'ouvrir en chiffré est refusé
+        AVANT `_ensure_fts`, qui supprimerait l'index, et la recherche
+        reste indexée à la réouverture en clair."""
         self.assertIn("messages_fts", self._tables(self.store))
-        store = self._rouvrir("encrypted", new_key())
+        with self.assertRaises(CacheModeMismatch):
+            self._rouvrir("encrypted", new_key())
+        store = self._rouvrir("clear")
+        self.assertIn("messages_fts", self._tables(store))
+        self.assertTrue(store.search_is_indexed())
+        self.assertIn("Devis pour la toiture", self.sujets("toiture"))
+
+    def test_an_old_mixed_cache_detected_encrypted_loses_its_index(self):
+        """Un cache d'avant l'inscription, clair et indexé, qui porte une
+        ligne scellée : il est détecté `encrypted`, l'ouverture chiffrée est
+        acceptée et l'index, qui rendrait les sujets en clair, part."""
+        key = new_key()
+        db = self.store._db()
+        scelle = AesGcmCrypto(key).seal(b"Sujet scelle")
+        db.execute(
+            "UPDATE messages SET sealed_subject = ? WHERE uid = 1", (scelle,)
+        )
+        db.execute("DELETE FROM meta WHERE key = 'cache_mode'")
+        db.commit()
+        store = self._rouvrir("encrypted", key)
         self.assertNotIn("messages_fts", self._tables(store))
+        inscrit = (
+            store._db()
+            .execute("SELECT value FROM meta WHERE key = 'cache_mode'")
+            .fetchone()[0]
+        )
+        self.assertEqual(inscrit, "encrypted")
 
     def test_purging_the_cache_empties_the_index_too(self):
         """« Effacer le cache » qui laisse l'index intact n'efface rien de
@@ -187,14 +220,6 @@ class TestTheIndexDoesNotOutliveWhatItIndexes(SearchCase):
         self.store.purge_folder("INBOX")
         restants = self._indexes(self.store)
         self.assertEqual(restants, ["Devis archivé"])
-
-    def test_coming_back_to_clear_rebuilds_the_index(self):
-        """Retirer l'index ne doit pas rendre la recherche muette au retour
-        : elle se reconstruit depuis les lignes du cache."""
-        key = new_key()
-        self._rouvrir("encrypted", key)
-        store = self._rouvrir("clear")
-        self.assertIn("messages_fts", self._tables(store))
 
 
 class TestIndexIsRebuilt(SearchCase):
