@@ -384,16 +384,19 @@ class DatabaseManager:
             return_status_and_command=True,
             new_env=my_env,
         )
+        # The script already said why it failed, and wrote no file.
+        if status:
+            return status, output_path, database_name
         try:
-            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
-                manifest_file_1 = zip_ref.open("manifest.json")
+            with zipfile.ZipFile(output_path, "r") as zip_ref:
+                zip_ref.getinfo("manifest.json")
             _logger.info(
-                f"Log file '{default_output_path}' is complete and validated."
+                f"Backup file '{output_path}' is complete and validated."
             )
         except Exception as e:
             _logger.error(e)
             _logger.error(
-                "Failed to read manifest.json from backup file"
-                f" '{default_output_path}'."
+                f"Failed to read manifest.json from backup file '{output_path}'."
             )
+            status = 1
         return status, output_path, database_name
