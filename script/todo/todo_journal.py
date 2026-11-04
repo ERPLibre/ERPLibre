@@ -8,11 +8,13 @@ Chaque lancement ouvre un fichier neuf sous
 défaut), commun à tous les checkouts du compte : son en-tête nomme le
 checkout. Il reçoit les messages des loggers et, pour chaque commande que
 lance `Execute.exec_command_live`, la commande, sa sortie et son code de
-retour, caviardés comme à l'écran. Les réponses tapées au clavier n'y passent
-pas : ni `input()` ni `getpass` n'écrivent ce qu'on y saisit.
+retour. Tout y passe par `redact_secrets`, messages et traceback compris.
+Les réponses tapées au clavier n'y passent pas : ni `input()` ni `getpass`
+n'écrivent ce qu'on y saisit.
 
-Le fichier est créé en 0600, le dossier en 0700 : une sortie de commande peut
-nommer des bases et des hôtes. Les `GARDER` journaux les plus récents restent,
+Le masquage est un dernier rempart : un secret imprimé sous une forme qu'il
+ne connaît pas passe. Le fichier est donc créé en 0600, le dossier en 0700,
+d'autant qu'une sortie de commande peut nommer des bases et des hôtes. Les `GARDER` journaux les plus récents restent,
 les plus anciens sont effacés à l'ouverture. `ERPLIBRE_TODO_LOG=0` n'ouvre
 rien. Aucune erreur d'ici n'empêche le TODO de démarrer : sans journal, il
 tourne comme avant.
@@ -33,6 +35,18 @@ FORMAT = (
 )
 
 _ouvert = {"fichier": None, "handler": None}
+
+
+class FormatCaviarde(logging.Formatter):
+    """Le format du journal, passé par redact_secrets.
+
+    Les loggers du processus écrivent ce qu'on leur donne, une commande
+    entière comprise : sans ce filtre, ils seraient la seule voie vers le
+    journal à ne rien masquer. La ligne finale est filtrée, traceback compris.
+    """
+
+    def format(self, record):
+        return execute.redact_secrets(super().format(record))
 
 
 def dossier_journaux(environ=None):
@@ -94,7 +108,7 @@ def ouvrir(environ=None, maintenant=None, garder=GARDER):
         f" checkout {os.getcwd()}, pid {os.getpid()}\n"
     )
     handler = logging.StreamHandler(fichier)
-    handler.setFormatter(logging.Formatter(FORMAT, "%Y-%m-%d:%H:%M:%S"))
+    handler.setFormatter(FormatCaviarde(FORMAT, "%Y-%m-%d:%H:%M:%S"))
     logging.getLogger().addHandler(handler)
     execute.set_session_journal(fichier)
     _ouvert.update(fichier=fichier, handler=handler)
@@ -109,7 +123,7 @@ def noter_exception():
     """Écrit au journal le traceback de l'exception en cours de traitement."""
     import traceback
 
-    execute._journaliser(traceback.format_exc())
+    execute._journaliser(traceback.format_exc(), deja_caviarde=False)
 
 
 def fermer():

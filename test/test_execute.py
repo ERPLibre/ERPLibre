@@ -230,5 +230,117 @@ class TestRedactSecrets(unittest.TestCase):
         self.assertIsNone(redact_secrets(None))
 
 
+class TestRedactSecretsFormes(unittest.TestCase):
+    """Les formes de secret qui ne portent pas « password » dans un nom
+    d'option ou de variable : une ligne de configuration, une URL, un jeton
+    reconnaissable à son préfixe, une option courte propre à un outil, du
+    JSON, une clé privée. Chaque cas vérifie que la valeur part ET que ce
+    qui la précède reste lisible. Valeurs inventées.
+    """
+
+    def masque(self, texte, secret, reste):
+        sortie = redact_secrets(texte)
+        self.assertNotIn(secret, sortie)
+        self.assertIn(reste, sortie)
+        return sortie
+
+    def test_ligne_de_configuration_odoo(self):
+        self.masque(
+            "admin_passwd = invente-adm1", "invente-adm1", "admin_passwd = "
+        )
+        self.masque(
+            "db_password = invente-db2", "invente-db2", "db_password = "
+        )
+
+    def test_ligne_yaml(self):
+        self.masque("  api_key: invente-yaml3", "invente-yaml3", "api_key: ")
+
+    def test_variable_en_minuscules(self):
+        self.masque(
+            "export pgpassword=invente-pg4", "invente-pg4", "pgpassword="
+        )
+
+    def test_la_commande_apres_la_variable_reste(self):
+        """« PGPASSWORD=x psql » : la règle de configuration ne doit pas
+        avaler la commande qui suit la valeur."""
+        self.masque(
+            "PGPASSWORD=invente-pg5 psql -d essai",
+            "invente-pg5",
+            "psql -d essai",
+        )
+
+    def test_identifiants_dans_une_url(self):
+        sortie = self.masque(
+            "postgresql://odoo:invente-url6@db:5432/essai",
+            "invente-url6",
+            "postgresql://odoo:",
+        )
+        self.assertIn("@db:5432/essai", sortie)
+
+    def test_jeton_github_seul_dans_une_url(self):
+        jeton = "ghp_" + "A" * 36
+        self.masque(
+            f"origin  https://{jeton}@github.com/essai/depot.git (fetch)",
+            jeton,
+            "@github.com/essai/depot.git",
+        )
+
+    def test_jeton_gitlab(self):
+        jeton = "glpat-" + "b" * 20
+        self.masque(f"TOKEN est {jeton}", jeton, "TOKEN est")
+
+    def test_json(self):
+        self.masque(
+            '{"login": "essai", "password": "invente-json7"}',
+            "invente-json7",
+            '"login": "essai"',
+        )
+
+    def test_option_w_d_odoo(self):
+        self.masque(
+            "./odoo-bin -r odoo -w invente-w8 -d essai",
+            "invente-w8",
+            "-d essai",
+        )
+        self.masque("odoo_bin.sh -w 'invente w9'", "invente w9", "-w ")
+
+    def test_sshpass_et_mysql(self):
+        self.masque(
+            "sshpass -p invente-ssh10 ssh essai", "invente-ssh10", "ssh essai"
+        )
+        self.masque(
+            "mysql -u root -pinvente-my11 base", "invente-my11", "base"
+        )
+
+    def test_curl_utilisateur_et_mot_de_passe(self):
+        self.masque(
+            "curl -u admin:invente-curl12 http://essai.invalid",
+            "invente-curl12",
+            "-u admin:",
+        )
+
+    def test_cle_privee_dans_un_meme_texte(self):
+        texte = (
+            "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+            "b3BlbnNzaC1rZXktdjEinvente13\n"
+            "-----END OPENSSH PRIVATE KEY-----\n"
+        )
+        sortie = self.masque(
+            texte, "invente13", "-----END OPENSSH PRIVATE KEY-----"
+        )
+        self.assertIn("-----BEGIN OPENSSH PRIVATE KEY-----", sortie)
+
+    def test_les_autres_options_courtes_restent(self):
+        """« -w » et « -u » veulent dire autre chose hors de leur outil."""
+        for commande in (
+            "grep -w motif fichier.txt",
+            "docker exec -u odoo:odoo essai-ERPLibre-1 bash",
+            "curl -w '%{http_code}' http://essai.invalid",
+            "ssh://git@github.com/essai/depot.git",
+            "Password: ",
+        ):
+            self.assertEqual(redact_secrets(commande), commande)
+
+
 if __name__ == "__main__":
     unittest.main()

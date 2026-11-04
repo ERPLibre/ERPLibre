@@ -71,6 +71,43 @@ class TestJournalSession(unittest.TestCase):
         logging.getLogger("essai.journal").error("zip incomplet, essai")
         self.assertIn("zip incomplet, essai", self.contenu(chemin))
 
+    def test_les_messages_des_loggers_sont_caviardes(self):
+        """Un logger écrit ce qu'on lui donne : le journal masque quand même."""
+        chemin = self.ouvrir()
+        logging.getLogger("essai.journal").error(
+            "Run cmd: odoo-bin --db_password invente-log21"
+        )
+        texte = self.contenu(chemin)
+        self.assertNotIn("invente-log21", texte)
+        self.assertIn("Run cmd: odoo-bin --db_password", texte)
+
+    def test_le_traceback_est_caviarde(self):
+        chemin = self.ouvrir()
+        try:
+            raise RuntimeError("echec de curl -u admin:invente-tb22 http://x")
+        except RuntimeError:
+            todo_journal.noter_exception()
+        texte = self.contenu(chemin)
+        self.assertNotIn("invente-tb22", texte)
+        self.assertIn("RuntimeError: echec de curl -u admin:", texte)
+
+    def test_une_cle_privee_affichee_ligne_par_ligne(self):
+        """La sortie arrive ligne par ligne : le corps de la clé, sans aucun
+        mot qui le signale, est masqué jusqu'à la ligne de fin."""
+        chemin = self.ouvrir()
+        execute.Execute().exec_command_live(
+            "printf '%s\\n' '-----BEGIN RSA PRIVATE KEY-----'"
+            " 'MIIEinvente23' 'invente24==' '-----END RSA PRIVATE KEY-----'"
+            " 'apres la cle'",
+            source_erplibre=False,
+            quiet=True,
+        )
+        texte = self.contenu(chemin)
+        self.assertNotIn("invente23", texte)
+        self.assertNotIn("invente24", texte)
+        self.assertIn("-----END RSA PRIVATE KEY-----", texte)
+        self.assertIn("apres la cle", texte)
+
     def test_le_journal_est_prive(self):
         chemin = self.ouvrir()
         self.assertEqual(0o600, stat.S_IMODE(os.stat(chemin).st_mode))

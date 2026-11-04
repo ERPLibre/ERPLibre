@@ -47,7 +47,8 @@ _SECRET_OPTION = re.compile(
 )
 _SECRET_ENV = re.compile(
     r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\w*=)"
-    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
+    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
+    re.IGNORECASE,
 )
 # Un jeton porté par un en-tête n'a ni nom d'option ni nom de variable : il
 # suit le mot « Bearer », et les deux règles ci-dessus passent à côté. Le
@@ -59,6 +60,56 @@ _SECRET_HEADER = re.compile(
 )
 
 
+# Les formes qui ne portent pas le mot « password » dans un nom d'option ou de
+# variable. Chacune garde ce qui précède la valeur — l'option, la clé,
+# l'utilisateur — pour que la ligne reste lisible.
+#
+# Une ligne de configuration, « db_password = x » ou « password: x » : le
+# blanc autour du séparateur la distingue de « PGPASSWORD=x psql », dont
+# _SECRET_ENV masque la valeur seule sans avaler la commande qui suit.
+_SECRET_CONFIG = re.compile(
+    r"(?P<cle>^[ \t]*[\w.-]*(?:passw|pwd|secret|token|api[-_]?key)[\w.-]*"
+    r"(?:[ \t]+[=:][ \t]*|[=:][ \t]+))(?P<val>\S.*?)[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_SECRET_JSON = re.compile(
+    r'(?P<cle>"[^"\n]*(?:passw|pwd|secret|token|api[-_]?key)[^"\n]*"\s*:\s*)'
+    r'(?P<val>"(?:[^"\\\n]|\\.)*")',
+    re.IGNORECASE,
+)
+# « scheme://utilisateur:motdepasse@hôte » : l'utilisateur reste.
+_SECRET_URL = re.compile(
+    r"(?P<pre>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)(?P<val>[^\s@/]+)(?=@)",
+    re.IGNORECASE,
+)
+# Les jetons d'accès de GitHub et GitLab se reconnaissent à leur préfixe, même
+# seuls dans une URL (« https://ghp_…@github.com »).
+_SECRET_JETON = re.compile(
+    r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|glpat-[\w-]{20,})"
+)
+# Les options courtes qui portent un mot de passe, propres à un outil : « -w »
+# d'odoo-bin (db_password), « -p » de sshpass, « -pVALEUR » collé de mysql,
+# « -u user:pass » de curl. Ailleurs ces lettres veulent dire autre chose
+# (« grep -w », « docker exec -u odoo:odoo ») et restent intactes.
+_SECRET_OUTIL = re.compile(
+    r"(?P<opt>\bodoo(?:-bin|_bin\.sh)?\b[^\n]*?\s-w\s+"
+    r"|\bsshpass\b[^\n]*?\s-p\s*"
+    r"|\b(?:mysql|mariadb|mysqldump)\b[^\n]*?\s-p(?=[^\s'\"])"
+    r"|\bcurl\b[^\n]*?\s(?:-u|--user)\s*['\"]?[^\s:'\"]+:)"
+    r"(?P<val>'[^']*'|\"[^\"]*\"|[^\s'\"]+)"
+)
+# Une clé privée PEM entière dans un même texte (un message, un traceback).
+# La sortie d'une commande arrive, elle, ligne par ligne : voir
+# _caviarder_ligne, qui suit l'état d'une ligne à l'autre.
+_PEM_DEBUT = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+_PEM_FIN = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY-----")
+_PEM_BLOC = re.compile(
+    r"(?P<debut>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----).*?"
+    r"(?P<fin>-----END [A-Z0-9 ]*PRIVATE KEY-----)",
+    re.DOTALL,
+)
+
+
 def redact_secrets(text):
     """Remplace la valeur des options, variables et en-têtes de secret.
 
@@ -66,12 +117,40 @@ def redact_secrets(text):
     plutôt qu'à la construction est ce qui rend la garantie tenable : il n'y a
     qu'une poignée de sorties ici, alors que les commandes se construisent
     partout dans le dépôt.
+
+    Un dernier rempart, pas une garantie : un secret qu'un programme imprime
+    sous une forme imprévue passe.
     """
     if not text:
         return text
-    text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
-    text = _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
-    return _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
+    masque = "'***'"
+    text = _PEM_BLOC.sub(
+        lambda m: m.group("debut") + masque + m.group("fin"), text
+    )
+    text = _SECRET_OPTION.sub(lambda m: m.group("opt") + masque, text)
+    text = _SECRET_OUTIL.sub(lambda m: m.group("opt") + masque, text)
+    text = _SECRET_ENV.sub(lambda m: m.group("var") + masque, text)
+    text = _SECRET_CONFIG.sub(lambda m: m.group("cle") + masque, text)
+    text = _SECRET_JSON.sub(lambda m: m.group("cle") + '"***"', text)
+    text = _SECRET_URL.sub(lambda m: m.group("pre") + masque, text)
+    text = _SECRET_JETON.sub(masque, text)
+    return _SECRET_HEADER.sub(lambda m: m.group("schema") + masque, text)
+
+
+def _caviarder_ligne(ligne, dans_cle):
+    """Une ligne de sortie caviardée, et si la suivante est dans une clé PEM.
+
+    Entre « -----BEGIN … PRIVATE KEY----- » et sa fin, chaque ligne devient
+    '***' : le corps d'une clé n'a aucun mot qui la signale.
+    """
+    if dans_cle:
+        if _PEM_FIN.search(ligne):
+            return ligne, False
+        fin = ligne[len(ligne.rstrip("\r\n")) :]
+        return "'***'" + fin, True
+    if _PEM_DEBUT.search(ligne) and not _PEM_FIN.search(ligne):
+        return ligne, True
+    return redact_secrets(ligne), False
 
 
 new_path = os.path.normpath(
@@ -104,8 +183,11 @@ def set_session_journal(handle):
     _session_journal = handle
 
 
-def _journaliser(texte):
+def _journaliser(texte, deja_caviarde=True):
     """Écrit dans le journal de session ; une erreur l'arrête, sans lever.
+
+    `deja_caviarde=False` fait passer le texte par redact_secrets : pour ce
+    qui ne vient pas de exec_command_live, comme un traceback.
 
     Un disque plein ou un fichier effacé ne doit jamais faire échouer la
     commande qu'on est en train de suivre.
@@ -114,6 +196,8 @@ def _journaliser(texte):
     if _session_journal is None:
         return
     try:
+        if not deja_caviarde:
+            texte = redact_secrets(texte)
         _session_journal.write(texte)
     except Exception:
         _session_journal = None
@@ -246,14 +330,18 @@ class Execute:
             pending = ""
             shown = 0
 
-            def retenir(ligne):
-                """Journaliser et retenir une ligne complète, caviardée."""
+            # Vrai entre le début et la fin d'une clé privée affichée.
+            dans_cle = False
+
+            def retenir(clean):
+                """Journaliser et retenir une ligne complète, DÉJÀ caviardée.
+
+                La sortie du sous-processus passe par le MÊME filtre que la
+                commande : un outil qui réaffiche ses propres arguments
+                (« set -x », une trace, odoo_bin.sh) y remettrait le secret
+                que l'affichage de la commande venait d'écarter.
+                """
                 nonlocal sink
-                # La sortie du sous-processus passe par le MÊME filtre que la
-                # commande : un outil qui réaffiche ses propres arguments
-                # (« set -x », une trace, odoo_bin.sh) y remettrait le secret
-                # que l'affichage de la commande venait d'écarter.
-                clean = redact_secrets(ligne)
                 _journaliser(clean)
                 if sink:
                     # Chaque ligne passe DÉJÀ ici : c'est le seul endroit où
@@ -286,10 +374,16 @@ class Execute:
                         break
                     ligne = pending[: coupe + 1]
                     pending = pending[coupe + 1 :]
+                    clean, dans_cle = _caviarder_ligne(ligne, dans_cle)
                     if not quiet:
-                        print(redact_secrets(ligne[shown:]), end="")
+                        # Un début de ligne déjà montré comme invite ne se
+                        # réaffiche pas : seule la suite part à l'écran.
+                        if shown:
+                            print(redact_secrets(ligne[shown:]), end="")
+                        else:
+                            print(clean, end="")
                     shown = 0
-                    retenir(ligne)
+                    retenir(clean)
                 if not quiet:
                     if len(pending) > shown:
                         # Le reliquat sans saut de ligne EST l'invite : la
@@ -307,7 +401,7 @@ class Execute:
                 if not quiet:
                     print(redact_secrets(pending[shown:]), end="")
                     sys.stdout.flush()
-                retenir(pending)
+                retenir(_caviarder_ligne(pending, dans_cle)[0])
                 if not pending.endswith("\n"):
                     # Le code de retour qui suit ouvre sa propre ligne.
                     _journaliser("\n")
