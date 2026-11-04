@@ -1,8 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {fake, makeSettings, settle} from './gjs-fake.js';
 import {
     GALLERY_ACTION_HEADER, launchRefusal, galleryTargets,
 } from '../../lib/gallery-launch.js';
+
+// After gjs-fake.js: the indicator imports gi:// modules statically.
+const {indicatorDescriptor: controllerDescriptor} =
+    await import('../../indicators/controller.js');
 
 test('GALLERY_ACTION_HEADER: the header the gallery requires to act', () => {
     assert.equal(GALLERY_ACTION_HEADER, 'X-Stream-Deck-Gallery');
@@ -76,4 +81,35 @@ test('galleryTargets: no root, blank or missing paths are skipped', () => {
         [{path: '/srv/a', label: '', own: false, ready: true}]);
     assert.deepEqual(galleryTargets('', [], yes), []);
     assert.deepEqual(galleryTargets(ROOT, undefined, yes).length, 1);
+});
+
+function find(menu, label) {
+    for (const it of menu.items) {
+        if (it.text === label) return it;
+        const found = it.menu ? find(it.menu, label) : null;
+        if (found) return found;
+    }
+    return null;
+}
+
+test('the controller lists the :8042 games and launches one', async () => {
+    fake.reset();
+    const settings = makeSettings();
+    const ind = controllerDescriptor.ctor({
+        extension: {getSettings: () => settings, path: fake.root},
+        openPrefs() {}});
+    fake.http = [];
+    ind.menu.emit('open-state-changed', true);
+    const list = fake.http.find(m => m.uri.endsWith('/api/games'));
+    assert.ok(list, 'the open menu asks the gallery for its games');
+    assert.equal(list.method, 'GET');
+    assert.equal(list.uri, 'http://localhost:8042/api/games');
+
+    list.callback(list.session,
+        {body: JSON.stringify([{id: 'snake', name: 'Snake'}])});
+    await settle();
+    find(ind.menu, 'Snake').activate();
+    const launch = fake.http.at(-1);
+    assert.equal(launch.uri, 'http://localhost:8042/launch/snake');
+    assert.equal(launch.headers[GALLERY_ACTION_HEADER], '1');
 });

@@ -50,6 +50,10 @@ Ce que ces tests gardent :
 - une reprise ne réécrit ni la règle udev ni le lien, et un répertoire
   ordinaire à la place du lien n'est jamais écrasé ;
 - seul unsupported sort en 2 : le code 2 d'une commande appelée sort en 1.
+- les .mo portent le domaine gettext de metadata.json, que le schéma
+  déclare aussi ; « make test_gnome_extension » valide le schéma en
+  --strict avant de lancer node sur chaque test unitaire, et
+  « make extension_i18n_compile » compile chaque po/ sous ce domaine.
 """
 
 import importlib.util
@@ -423,6 +427,21 @@ class LeDryRun(Installateur):
             with self.subTest(niveau=niveau):
                 fini = self.lancer("--dry-run", *niveau)
                 self.assertEqual(attendus, self.lignes(fini, "run: "))
+
+    def test_the_mo_files_carry_the_gettext_domain_of_metadata(self):
+        """GNOME Shell loads <domain>.mo for the gettext-domain of
+        metadata.json, and the schema names the same domain."""
+        fini = self.lancer("--dry-run")
+        sorties = [
+            Path(ligne.split(" -o ")[1].split(" ")[0]).name
+            for ligne in self.lignes(fini, "run: ")
+            if ligne.startswith("msgfmt ")
+        ]
+        self.assertEqual(sorties, ["%s.mo" % domaine()] * len(langues()))
+        schema = next((EXTENSION / "schemas").glob("*.gschema.xml"))
+        self.assertEqual(
+            ET.parse(schema).getroot().get("gettext-domain"), domaine()
+        )
 
     def test_it_calls_no_sudo_and_writes_nothing(self):
         fini = self.lancer("--dry-run", "--stream-deck", "--with-extras")
@@ -2951,6 +2970,119 @@ class TestMakefile(unittest.TestCase):
                     recette(cible),
                     ["./script/install/install_erplibre_home.sh" + options],
                 )
+
+
+MAKEFILE_TEST = RACINE / "conf/make.test.Makefile"
+MAKEFILE_INSTALLATION = RACINE / "conf/make.installation.Makefile"
+EXT_REL = "script/gnome-extension/erplibre_home"
+
+
+def domaine():
+    """Le domaine gettext que metadata.json déclare à GNOME Shell."""
+    with open(EXTENSION / "metadata.json", encoding="utf-8") as flux:
+        return json.load(flux)["gettext-domain"]
+
+
+class TestCiblesDeLExtension(unittest.TestCase):
+    """Les cibles make de l'extension, lancées pour de vrai dans une copie.
+
+    La copie ne porte que ce que la cible lit, sous le chemin relatif que
+    sa recette nomme ; node est remplacé par un témoin qui note ses
+    arguments, glib-compile-schemas et msgfmt sont les vrais.
+    """
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.depot = Path(dossier.name) / "depot"
+        self.source = self.depot / EXT_REL
+        self.bin = Path(dossier.name) / "bin"
+        self.bin.mkdir()
+        self.trace_node = Path(dossier.name) / "node.appele"
+        node = self.bin / "node"
+        node.write_text('#!/bin/sh\necho "$@" >>"%s"\n' % self.trace_node)
+        node.chmod(0o755)
+
+    def faire(self, makefile, cible):
+        return subprocess.run(
+            ["make", "--no-print-directory", "-f", str(makefile), cible],
+            cwd=self.depot,
+            env=dict(
+                os.environ,
+                PATH="%s:%s" % (self.bin, os.environ.get("PATH", "")),
+            ),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def copier_l_extension(self):
+        shutil.copytree(EXTENSION / "schemas", self.source / "schemas")
+        (self.source / "test/unit").mkdir(parents=True)
+        for test in (EXTENSION / "test/unit").glob("*.test.js"):
+            (self.source / "test/unit" / test.name).write_text("")
+
+    @unittest.skipUnless(
+        shutil.which("glib-compile-schemas"), "glib-compile-schemas absent"
+    )
+    def test_test_gnome_extension_valide_le_schema_puis_lance_node(self):
+        self.copier_l_extension()
+        fait = self.faire(MAKEFILE_TEST, "test_gnome_extension")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        tests = sorted(
+            "%s/test/unit/%s" % (EXT_REL, p.name)
+            for p in (EXTENSION / "test/unit").glob("*.test.js")
+        )
+        self.assertIn("%s/test/unit/extension.test.js" % EXT_REL, tests)
+        self.assertEqual(
+            self.trace_node.read_text().split(), ["--test", *tests]
+        )
+        self.assertIn(
+            "test_gnome_extension",
+            next(
+                ligne
+                for ligne in MAKEFILE_TEST.read_text().splitlines()
+                if ligne.startswith("test_full_fast:")
+            ),
+        )
+
+    @unittest.skipUnless(
+        shutil.which("glib-compile-schemas"), "glib-compile-schemas absent"
+    )
+    def test_un_schema_refuse_en_strict_arrete_test_gnome_extension(self):
+        """Un défaut qui ne se lit pas dans son type : sans --strict,
+        glib-compile-schemas ignore le fichier et sort en 0."""
+        self.copier_l_extension()
+        schema = next((self.source / "schemas").glob("*.gschema.xml"))
+        schema.write_text(
+            '<schemalist><schema id="org.example.casse" '
+            'path="/org/example/casse/"><key name="k" type="b">'
+            "<default>peut-etre</default></key></schema></schemalist>"
+        )
+        fait = self.faire(MAKEFILE_TEST, "test_gnome_extension")
+        self.assertNotEqual(fait.returncode, 0)
+        self.assertFalse(self.trace_node.exists())
+
+    @unittest.skipUnless(shutil.which("msgfmt"), "msgfmt absent")
+    def test_extension_i18n_compile_compile_chaque_po_au_nom_du_domaine(
+        self,
+    ):
+        (self.source / "po").mkdir(parents=True)
+        for po in (EXTENSION / "po").glob("*.po"):
+            shutil.copy2(po, self.source / "po")
+        fait = self.faire(MAKEFILE_INSTALLATION, "extension_i18n_compile")
+        self.assertEqual(fait.returncode, 0, fait.stderr)
+        self.assertIn("fr", langues())
+        self.assertEqual(
+            sorted(
+                str(p.relative_to(self.source / "locale"))
+                for p in (self.source / "locale").rglob("*.mo")
+            ),
+            [
+                "%s/LC_MESSAGES/%s.mo" % (langue, domaine())
+                for langue in langues()
+            ],
+        )
 
 
 if __name__ == "__main__":

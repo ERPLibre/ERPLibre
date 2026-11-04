@@ -1,6 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {existsSync, readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {fake, settle} from './gjs-fake.js';
 import {
+    runProcess,
+    spawnDetached,
     buildTerminalArgv,
     buildBrowserArgv,
     buildMpvArgv,
@@ -111,4 +116,50 @@ test('formatPosition seconds → hh:mm:ss', () => {
     assert.equal(formatPosition(5025), '01:23:45');
     assert.equal(formatPosition(0),    '00:00:00');
     assert.equal(formatPosition(59),   '00:00:59');
+});
+
+test('a malformed URL reaches the player verbatim', () => {
+    // The player, not the extension, reports a bad URL.
+    for (const url of ['not a url', 'htp:/x y', '://', 'https://']) {
+        assert.deepEqual(buildBrowserArgv(url), ['xdg-open', url]);
+        assert.equal(buildMpvArgv(url, '').at(-1), url);
+        assert.equal(buildMpvArgv(url, '1:00').at(-1), url);
+    }
+});
+
+/** The entries of the extension log, once the async append landed. */
+async function logEntries() {
+    const path = join(fake.env.XDG_STATE_HOME, 'erplibre-home', 'log.jsonl');
+    for (let i = 0; i < 50 && !existsSync(path); i++) await settle();
+    return readFileSync(path, 'utf8').trim().split('\n')
+        .map(l => JSON.parse(l));
+}
+
+test('a spawn that fails notifies and logs under the program', async () => {
+    fake.reset();
+    fake.onSpawn = () => { throw new Error('No such file'); };
+    const notified = [];
+    const ok = await spawnDetached(['mpv', 'https://v.test/a'],
+        {notify: (t, b) => notified.push([t, b]), title: 'Media'});
+    assert.equal(ok, false);
+    assert.deepEqual(notified, [['Media', 'Spawn failed: No such file']]);
+    const [entry] = await logEntries();
+    assert.equal(entry.level, 'error');
+    assert.equal(entry.source, 'mpv');
+    assert.equal(entry.message, 'mpv https://v.test/a :: No such file');
+});
+
+test('a command that exits non-zero notifies and logs its exit', async () => {
+    fake.reset();
+    fake.onSpawn = () => ({exit: 3, stderr: 'locked'});
+    const notified = [];
+    const res = await runProcess(['xdotool', 'key', 'Tab'],
+        {notify: (t, b) => notified.push([t, b]), title: 'ERPLibre'});
+    assert.equal(res.ok, false);
+    assert.equal(res.exit, 3);
+    assert.deepEqual(notified, [['ERPLibre', 'Command failed: xdotool']]);
+    const [entry] = await logEntries();
+    assert.equal(entry.level, 'error');
+    assert.equal(entry.source, 'xdotool');
+    assert.equal(entry.message, 'xdotool key Tab :: exit=3 locked');
 });

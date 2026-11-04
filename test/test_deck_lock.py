@@ -39,6 +39,8 @@ Ce que ces tests gardent :
   deck passent ;
 - le tiler et le contrôleur prennent le verrou avant d'ouvrir le deck,
   remettent le deck à zéro sur SIGTERM, et le tiler sort en 3 sans deck.
+- le contrôleur tient son PID dans <cache>/erplibre-home/controller.pid
+  tant qu'il tourne, et l'en retire à la sortie.
 """
 
 import ast
@@ -1101,7 +1103,6 @@ class SigtermPropre(unittest.TestCase):
             with open(notes, encoding="utf-8") as fh:
                 self.assertEqual(["finally", "atexit"], fh.read().split())
 
-
     def test_sigterm_raises_its_own_system_exit(self):
         """Un code qui isole les SystemExit d'un greffon reconnaît
         l'arrêt du service à sa classe."""
@@ -1263,6 +1264,42 @@ class LesProgrammesLePrennent(unittest.TestCase):
                 self.assertEqual(
                     ["open", "reset", "reset", "close"], fh.read().split()
                 )
+
+    def test_the_controller_holds_its_pidfile_while_it_runs(self):
+        """Restart deck lit le PID du contrôleur dans
+        <cache>/erplibre-home/controller.pid. Il s'y écrit au lancement et
+        disparaît à la sortie : un PID resté là, repris par un autre
+        processus, serait tué à sa place."""
+        with tempfile.TemporaryDirectory() as dossier:
+            factices = os.path.join(dossier, "factices")
+            for nom, texte in CONTROLEUR_FACTICE.items():
+                fichier = os.path.join(factices, nom)
+                os.makedirs(os.path.dirname(fichier), exist_ok=True)
+                with open(fichier, "w", encoding="utf-8") as fh:
+                    fh.write(texte.format(notes=os.path.join(dossier, "n")))
+            pidfile = os.path.join(dossier, "erplibre-home", "controller.pid")
+            proc = subprocess.Popen(
+                [sys.executable, str(DECK_DIR / "erplibre_controller.py")],
+                env=dict(
+                    os.environ,
+                    PYTHONPATH=factices,
+                    XDG_RUNTIME_DIR=dossier,
+                    XDG_CACHE_HOME=dossier,
+                ),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            self.addCleanup(proc.kill)
+            for ligne in proc.stdout:
+                if ligne == "pret\n":
+                    break
+            with open(pidfile, encoding="utf-8") as fh:
+                self.assertEqual(str(proc.pid), fh.read().strip())
+            proc.send_signal(signal.SIGTERM)
+            proc.wait(10)
+            proc.stdout.close()
+            self.assertFalse(os.path.exists(pidfile))
 
 
 # Les modules que le contrôleur importe, réduits à ce qu'il en lit avant

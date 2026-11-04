@@ -26,3 +26,18 @@ test('parseSshConfig keeps wildcards but flag isWildcardHost', () => {
 test('parseSshConfig empty', () => {
     assert.deepEqual(parseSshConfig(''), []);
 });
+
+test('parseSshConfig ignores the Include directive', () => {
+    const hosts = parseSshConfig([
+        'Include ~/.ssh/config.d/*',
+        'include extra.conf',
+        'Host gw',
+        '    HostName 10.4.4.1',
+        'Include more.conf',
+        'Host db',
+        '    User ops',
+    ].join('\n'));
+    assert.deepEqual(hosts.map(h => h.alias), ['gw', 'db']);
+    assert.equal(hosts[0].fields.HostName, '10.4.4.1');
+    assert.equal(hosts[1].fields.User, 'ops');
+});
