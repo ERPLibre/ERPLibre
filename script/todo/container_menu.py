@@ -21,6 +21,7 @@ Mixin de la classe TODO : ses méthodes vivent sur la même instance que celles
 des autres fichiers, elles s'appellent donc par « self. » sans rien importer.
 """
 
+import getpass
 import json
 import os
 import shlex
@@ -1161,7 +1162,17 @@ class ContainerMenuMixin:
     # ------------------------------------------------------------------
     # Les bases du conteneur ERPLibre
 
-    def _container_dans(self, cmd, libelle, entree=None):
+    def _container_mot_de_passe_maitre(self):
+        """Le mot de passe maître d'Odoo, saisi sans écho ; "" s'il est vide.
+
+        La commande « db » d'ERPLibre l'exige pour supprimer une base et pour
+        restaurer par-dessus une base existante. Vide, elle essaie le
+        défaut d'Odoo, « admin ». getpass n'écrit pas ce qu'on tape : il
+        n'atteint ni l'écran ni le journal de session.
+        """
+        return getpass.getpass(f"🔑 {t('Odoo master password: ')}")
+
+    def _container_dans(self, cmd, libelle, entree=None, secret=None):
         """Lance une commande « exec » et rend son code.
 
         Hors de exec_command_live : celui-ci recopie la commande à l'écran,
@@ -1170,13 +1181,29 @@ class ContainerMenuMixin:
         `libelle` à la place du script, puis la sortie et le code. Aucune
         de ces commandes ne demande de saisie : le tube de lancer_journalise
         ne leur retire rien.
+
+        `secret`, quand il est donné, devient la première ligne de l'entrée
+        standard, que le script lit (container_db._MOT_DE_PASSE_MAITRE) :
+        ni la ligne de commande ni le journal ne le voient.
         """
         # Ce que le menu vient d'écrire doit précéder la sortie du conteneur,
         # même quand stdout n'est pas un terminal.
         sys.stdout.flush()
-        return todo_journal.lancer_journalise(
-            cmd, libelle=libelle, stdin=entree
-        )
+        if secret is None:
+            return todo_journal.lancer_journalise(
+                cmd, libelle=libelle, stdin=entree
+            )
+        lecture, ecriture = os.pipe()
+        try:
+            os.write(ecriture, (secret + "\n").encode())
+        finally:
+            os.close(ecriture)
+        try:
+            return todo_journal.lancer_journalise(
+                cmd, libelle=libelle, stdin=lecture
+            )
+        finally:
+            os.close(lecture)
 
     def _container_cible_erplibre(self, fiche):
         """Le conteneur ERPLibre en marche à viser, ou None.
@@ -1331,6 +1358,7 @@ class ContainerMenuMixin:
             print(f"❌ {t('Invalid database name:')} {nom}")
             return
         options = []
+        secret_restauration = ""
         if nom in vides:
             etat = t("empty") if vides[nom] else t("with data")
             print(f"⚠ {t('The database already exists:')} {nom} ({etat})")
@@ -1340,6 +1368,7 @@ class ContainerMenuMixin:
                 print(t("Nothing to do."))
                 return
             options.append("-f")
+            secret_restauration = self._container_mot_de_passe_maitre()
         if self._is_yes(
             input(f"💬 {t('Neutralize (mail servers, crons)? (Y/N): ')}")
         ):
@@ -1387,11 +1416,13 @@ class ContainerMenuMixin:
                         conteneur,
                         container_db.RESTAURER,
                         [nom, *options],
+                        interactif=True,
                     ),
                     container_db.libelle(
                         conteneur,
                         f"odoo-bin db load {' '.join([*options, nom])}",
                     ),
+                    secret=secret_restauration,
                 )
         finally:
             self._container_dans(
@@ -1416,9 +1447,14 @@ class ContainerMenuMixin:
             if self._is_yes(input(f"💬 {t('Delete it? (Y/N): ')}")):
                 self._container_dans(
                     container_db.executer(
-                        fiche, conteneur, container_db.SUPPRIMER, [nom]
+                        fiche,
+                        conteneur,
+                        container_db.SUPPRIMER,
+                        [nom],
+                        interactif=True,
                     ),
                     container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
+                    secret=self._container_mot_de_passe_maitre(),
                 )
 
     def _container_supprimer_base(self):
@@ -1452,11 +1488,17 @@ class ContainerMenuMixin:
         if input(f"💬 {t('Type its name to confirm: ')}").strip() != nom:
             print(t("Nothing to do."))
             return
+        secret = self._container_mot_de_passe_maitre()
         code = self._container_dans(
             container_db.executer(
-                fiche, conteneur, container_db.SUPPRIMER, [nom]
+                fiche,
+                conteneur,
+                container_db.SUPPRIMER,
+                [nom],
+                interactif=True,
             ),
             container_db.libelle(conteneur, f"odoo-bin db drop {nom}"),
+            secret=secret,
         )
         if code == 0:
             print(f"✅ {t('Database deleted:')} {nom}")

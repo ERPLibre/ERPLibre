@@ -20595,6 +20595,10 @@ TRANSLATIONS = {
         "fr": "Neutraliser (serveurs de courriel, tâches planifiées) ? (O/N) : ",
         "en": "Neutralize (mail servers, crons)? (Y/N): ",
     },
+    "Odoo master password: ": {
+        "fr": "Mot de passe maître d'Odoo : ",
+        "en": "Odoo master password: ",
+    },
     "This database is a copy: it gets a new UUID.": {
         "fr": "Cette base est une copie : elle reçoit un nouvel UUID.",
         "en": "This database is a copy: it gets a new UUID.",
