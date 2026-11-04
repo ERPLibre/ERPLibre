@@ -28,6 +28,9 @@ img2pdf
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
 pre-commit
+# odoo_bin.sh runs Odoo under « coverage run » when ODOO_MODE_COVERAGE=true:
+# coverage must sit in the interpreter that runs Odoo, this venv.
+coverage==7.16.2
 
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
 cryptography==3.4.8
