@@ -373,7 +373,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         # sondent sans confirmation les VM de la machine ou les hôtes de
         # ~/.ssh/config, le retrait d'une version d'Odoo, la restauration
         # par-dessus et l'effacement d'une base ou des volumes du conteneur
-        # ERPLibre, ce qui, dans la démonstration de la passerelle et le
+        # ERPLibre, la synchronisation et la reconfiguration des dépôts de
+        # Repo, ce qui, dans la démonstration de la passerelle et le
         # modem, installe, agit en root, écrit une règle ou un service
         # système, envoie un SMS ou passe un vrai appel, et la remise à
         # zéro des préférences. Les `kwargs`
@@ -398,6 +399,19 @@ class TestLArbreDesMenus(unittest.TestCase):
         network = "TODO › Execute › Network"
         docker = "TODO › Execute › Docker / Podman"
         modem = "TODO › Assistant › Modem"
+        # Les trois entrées de Repo qui lancent `repo sync` ou
+        # `make repo_configure_all` sans confirmation.
+        repo = [
+            ("🔄 Synchronize the repositories", {}),
+            (
+                "🔁 Switch to development: each repository follows its branch",
+                {},
+            ),
+            (
+                "📌 Switch to production: each repository on its frozen commit",
+                {"freeze": True},
+            ),
+        ]
         self.assertEqual(
             dangerous,
             [
@@ -429,6 +443,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                     "TODO › Execute › Uninstall › Remove every Odoo version",
                     {"tout": True},
                 ),
+                *[(f"{git} › Repo › {label}", kw) for label, kw in repo],
                 (f"{git} › ➖ Remove a repository from a manifest", {}),
                 (f"{git} › 🪦 List the orphan forks of an organisation", {}),
                 (f"{git} › 🧹 Clean the merged branches of a repository", {}),

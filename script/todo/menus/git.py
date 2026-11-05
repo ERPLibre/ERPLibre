@@ -151,11 +151,17 @@ REPO = Menu(
     "prompt_execute_git_repo",
     "Repo",
     [
+        # Synchroniser et reconfigurer lancent `repo sync` ou
+        # `make repo_configure_all` sur le checkout sans rien demander : ni
+        # la TUI ni la page web ne les lancent (`danger`).
         Section("Update"),
-        Entry("🔄 Synchronize the repositories", "_git_repo_sync"),
+        Entry(
+            "🔄 Synchronize the repositories", "_git_repo_sync", danger=True
+        ),
         Entry(
             "🔁 Switch to development: each repository follows its branch",
             "_git_repo_reconfigurer",
+            danger=True,
         ),
         Entry("⬇️ Pull the repositories", "_git_repo_tirer"),
         Section("Upgrade"),
@@ -174,6 +180,7 @@ REPO = Menu(
             "📌 Switch to production: each repository on its frozen commit",
             "_git_repo_reconfigurer",
             kwargs={"freeze": True},
+            danger=True,
         ),
         Entry(
             "🫗 Unfreeze the versions",
