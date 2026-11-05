@@ -349,15 +349,15 @@ class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
 class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
     """Une liste de prix absente n'est un défaut que si on l'a demandée.
 
-    Mesuré : six utilisateurs étaient membres DIRECTS de
+    Des utilisateurs peuvent être membres DIRECTS de
     `product.group_product_pricelist` — hérité d'un palier de migration —
-    alors que `base.group_user` ne l'impliquait pas. La case des réglages
-    était donc décochée, et la réparation créait quand même une liste.
-    Odoo prévenait ensuite à chaque ouverture des réglages qu'il allait
-    l'archiver.
+    alors que `base.group_user` ne l'implique pas. La case des réglages
+    est alors décochée, et une réparation qui compterait les membres
+    créerait quand même une liste, qu'Odoo annonce ensuite à chaque
+    ouverture des réglages qu'il va l'archiver.
 
     `res.config.settings` lit ce que `base.group_user` IMPLIQUE ; le
-    contrôle pose désormais la même question.
+    contrôle pose la même question.
     """
 
     def _controle(self):
@@ -386,14 +386,13 @@ class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
 class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
     """Une réparation qui n'écoute pas son détecteur fabrique des doublons.
 
-    Mesuré sur une migration de bout en bout : la liste de prix avait
-    traversé les six paliers, PARTAGÉE entre sociétés (company_id vide).
-    `_activate_or_create_pricelists` ne compte pas une liste partagée
-    comme appartenant à la société — elle en a donc créé une seconde,
-    vide, à côté de celle du client.
+    Une liste de prix qui traverse les paliers peut être PARTAGÉE entre
+    sociétés (company_id vide). `_activate_or_create_pricelists` ne
+    compte pas une liste partagée comme appartenant à la société : seule,
+    elle en créerait une seconde, vide, à côté de celle du client.
 
-    Le détecteur `pricelist_missing`, lui, disait déjà « rien ne manque ».
-    Il fallait que la réparation le lui demande.
+    Le détecteur `pricelist_missing`, lui, dit déjà « rien ne manque » :
+    la réparation le lui demande.
     """
 
     def _source(self):
