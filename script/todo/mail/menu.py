@@ -300,6 +300,25 @@ def _ask_yes(key: str) -> bool:
     return input(f"{t(key)} ").strip().lower() in _YES
 
 
+def _ask_text_yes(question: str) -> bool:
+    """Pose `question` suivie de (o/N) ; vrai seulement sur une réponse de
+    `_YES`."""
+    return (
+        input(f"{question} {t('mail_menu_yes_no')} ").strip().lower() in _YES
+    )
+
+
+def _ask_typed_word(question: str) -> bool:
+    """Confirmation d'un risque de double envoi : imprime `question`, puis
+    demande de taper le mot affiché ; vrai seulement si la saisie, blancs
+    retirés, l'égale sans tenir compte de la casse. Ni `o` ni une
+    réponse vide ne suffisent."""
+    mot = t("mail_confirm_risk_word")
+    print(question)
+    saisie = input(f"{t('mail_confirm_risk_ask')} {mot} : ").strip().lower()
+    return bool(saisie) and saisie == mot.strip().lower()
+
+
 def _service_menu(
     todo,
     *,
@@ -332,6 +351,8 @@ def _service_menu(
 [2] {t("mail_service_menu_credential")}
 [3] {t("mail_service_menu_start")}
 [4] {t("mail_service_menu_uninstall")}
+[5] {t("mail_service_menu_held_release")}
+[6] {t("mail_service_menu_claim_release")}
 {retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
@@ -351,8 +372,249 @@ def _service_menu(
                 print(f"{t('mail_service_install_failed')} {sortie}")
         elif status == "4":
             _service_uninstall(run)
+        elif status == "5":
+            _service_held(todo)
+        elif status == "6":
+            _service_claims(todo)
         else:
             print(t("Command not found !"))
+
+
+def _service_stores(todo, base):
+    """Les comptes actifs dont le cache peut porter des règles, chacun
+    avec une fonction qui ouvre son cache (coffre seulement s'il est
+    chiffré) ; un cache éphémère n'a pas de règles et n'est pas rendu."""
+    comptes = []
+    for account in _load_accounts():
+        if not getattr(account, "enabled", True):
+            continue
+        if resolve_mode(account, base=base) == "ephemeral":
+            continue
+
+        def ouvrir(account=account):
+            magasin = Store(
+                account,
+                secrets=secret_store_for(todo)
+                if _needs_vault(account, base)
+                else None,
+                base=base,
+            )
+            magasin.open()
+            return magasin
+
+        comptes.append((account, ouvrir))
+    return comptes
+
+
+def _choose(nombre: int) -> int | None:
+    """Le numéro choisi dans une liste de `nombre` lignes, None pour
+    revenir ou pour un numéro hors liste (dit à l'écran)."""
+    choix = str(click.prompt(t("mail_service_pick"), default="0")).strip()
+    if choix == "0":
+        return None
+    if not choix.isdigit() or not 1 <= int(choix) <= nombre:
+        print(t("Command not found !"))
+        return None
+    return int(choix)
+
+
+def _service_held(todo, *, open_session_fn=None, base=None) -> None:
+    """[5] du menu du service : relire et relâcher les envois automatiques
+    retenus de tous les comptes, depuis une machine sans écran.
+
+    La liste est lue en direct, caches ouverts puis refermés ; l'entrée
+    choisie est montrée (aperçu), puis relâchée après un « oui » par
+    `release.release_held`, qui revendique son message sur le serveur. Un
+    relâchement qui demande confirmation pose sa question de risque (mot à
+    taper), au plus deux fois : un verdict qui change entre-temps pose la
+    sienne. Aucune panne ne fait sortir du menu.
+    """
+    try:
+        _service_held_work(todo, open_session_fn=open_session_fn, base=base)
+    except Exception as exc:
+        _logger.exception("menu du service : envois retenus")
+        print(f"{t('mail_rules_error')} {type(exc).__name__}")
+
+
+def _service_held_work(todo, *, open_session_fn, base) -> None:
+    import time
+
+    from script.todo.mail import tui
+    from script.todo.mail.rules import release
+    from script.todo.mail.store import OUTBOX_AUTO_KINDS
+
+    maintenant = int(time.time())
+    lignes = []
+    for account, ouvrir in _service_stores(todo, base):
+        try:
+            magasin = ouvrir()
+        except Exception as exc:
+            print(
+                f"  {_printable(account.name)} : {t('mail_rules_error')} {exc}"
+            )
+            continue
+        try:
+            for e in magasin.outbox():
+                if not e["held"] or e["kind"] not in OUTBOX_AUTO_KINDS:
+                    continue
+                if e["expires_at"] and e["expires_at"] < maintenant:
+                    continue
+                etat = (
+                    magasin.rule_log_state(e["rule_id"], e["source_key"])
+                    if e["rule_id"]
+                    else None
+                )
+                lignes.append((account, e, (etat or {}).get("reason") or ""))
+        finally:
+            magasin.close()
+    if not lignes:
+        print(t("mail_service_held_none"))
+        return
+    for n, (account, e, raison) in enumerate(lignes, start=1):
+        texte_raison = t("mail_rules_reason_" + raison) if raison else ""
+        echeance = (
+            f"{t('mail_outbox_expires')} {tui.format_epoch(e['expires_at'])}"
+            if e["expires_at"]
+            else ""
+        )
+        print(
+            f"[{n}] {_printable(account.name)} — {_printable(e['subject'])}"
+            f" — {_printable(e['to'])} — {texte_raison} — {echeance}"
+        )
+    choix = _choose(len(lignes))
+    if choix is None:
+        return
+    account, entree, _raison = lignes[choix - 1]
+    session = (open_session_fn or tui.open_session)(
+        account,
+        secret_store_for(todo),
+        base=base,
+        config_get=_config_get(todo),
+    )
+    try:
+        if session.store is None:
+            print(f"  {_printable(account.name)} : {session.error}")
+            return
+        brut = session.store.queued_raw(entree["id"])
+        if brut is None:
+            print(t("mail_outbox_release_gone"))
+            return
+        texte, en_ligne, jointes = tui.outbox_entry_preview(brut)
+        print(t("mail_outbox_preview"))
+        for ligne in texte:
+            print(f"  {_printable(ligne)}")
+        for nom in en_ligne:
+            print(f"  {_printable(nom)} — {t('mail_rules_image_inline')}")
+        for nom in jointes:
+            print(f"  {_printable(nom)} — {t('mail_rules_image_attached')}")
+        if not _ask_text_yes(t("mail_service_held_release_ask")):
+            return
+        res = release.release_held(session, entree["id"], entree=entree)
+        for _ in range(2):
+            if res.status != "confirm":
+                break
+            if not _ask_typed_word(res.question):
+                print(t("mail_outbox_release_declined"))
+                return
+            res = release.release_held(
+                session, entree["id"], entree=entree, force=res.verdict
+            )
+        if res.status == "confirm":
+            print(t("mail_outbox_release_declined"))
+            return
+        print(_printable(res.text))
+    finally:
+        session.close()
+
+
+def _service_claims(todo, *, base=None) -> None:
+    """[6] du menu du service : libérer à la main un message dont la
+    revendication est incertaine ou en échec, depuis une machine sans
+    écran. Liste les lignes libérables de tous les comptes ; pour la
+    ligne choisie, dit le refus que le geste opposerait
+    (`release.release_claim_refusal`), sinon pose la question propre à
+    l'issue (mot à taper), puis libère par `release.release_claim`.
+    Aucune panne ne fait sortir du menu."""
+    try:
+        _service_claims_work(todo, base=base)
+    except Exception as exc:
+        _logger.exception("menu du service : revendications")
+        print(f"{t('mail_rules_error')} {type(exc).__name__}")
+
+
+def _service_claims_work(todo, *, base) -> None:
+    import time
+
+    from script.todo.mail.rules import engine, release, storage
+    from script.todo.mail.rules.model import RuleError
+
+    lignes = []
+    for account, ouvrir in _service_stores(todo, base):
+        try:
+            magasin = ouvrir()
+        except Exception as exc:
+            print(
+                f"  {_printable(account.name)} : {t('mail_rules_error')} {exc}"
+            )
+            continue
+        try:
+            try:
+                noms = {
+                    r.id: r.name or r.id
+                    for r in storage.load(
+                        account.name, storage.base_of(magasin)
+                    )
+                }
+            except RuleError:
+                noms = {}
+            inbox = engine.find_inbox(magasin)
+            etat = magasin.folder_state(inbox) if inbox else None
+            repli = {}
+            if etat and etat.get("uidvalidity"):
+                repli = {
+                    "inbox_folder_id": etat["id"],
+                    "inbox_uidvalidity": etat["uidvalidity"],
+                }
+            for ligne in magasin.rule_log_releasable(50, **repli):
+                lignes.append((account, ouvrir, noms, ligne))
+        finally:
+            magasin.close()
+    if not lignes:
+        print(t("mail_service_claims_none"))
+        return
+    for n, (account, _ouvrir, noms, ligne) in enumerate(lignes, start=1):
+        quand = time.strftime("%Y-%m-%d %H:%M", time.localtime(ligne["at"]))
+        regle = noms.get(ligne["rule_id"], ligne["rule_id"])
+        issue = t(f"mail_rules_outcome_{ligne['outcome']}")
+        print(
+            f"[{n}] {_printable(account.name)} — {quand} — {_printable(regle)}"
+            f" — {issue} ({engine.log_reason_text(ligne)})"
+            f" — {_printable(ligne['sender'])} — {_printable(ligne['subject'])}"
+        )
+    choix = _choose(len(lignes))
+    if choix is None:
+        return
+    account, ouvrir, _noms, ligne = lignes[choix - 1]
+    magasin = ouvrir()
+    try:
+        refus = release.release_claim_refusal(
+            magasin, ligne["rule_id"], ligne["msg_key"]
+        )
+        if refus is not None:
+            print(_printable(refus))
+            return
+        raison = (
+            "uncertain" if ligne["reason"] == "claim_uncertain" else "failed"
+        )
+        if not _ask_typed_word(t("mail_rules_release_confirm_" + raison)):
+            print(t("mail_rules_release_declined"))
+            return
+        _ok, texte = release.release_claim(
+            magasin, account.name, ligne["rule_id"], ligne["msg_key"]
+        )
+    finally:
+        magasin.close()
+    print(_printable(texte))
 
 
 def _print_claim_mode(account_name: str, rules_base) -> None:
@@ -385,8 +647,11 @@ def _claim_lines(accounts) -> list[str]:
 
 def _held_lines(base) -> list[str]:
     """Une ligne par compte dont la dernière passe du service a laissé des
-    réponses automatiques retenues : elles n'attendent que sous le `o` de
-    CETTE machine, la revendication les lui ayant données."""
+    envois automatiques retenus, comptés à cette passe (`.service_state.
+    json`) : compter en direct ouvrirait chaque cache, donc le coffre d'un
+    cache chiffré, à chaque tour du menu. Ils ne sont pas revendiqués, et
+    se relâchent par [5] ou par `o`, depuis n'importe quelle machine qui
+    les retient."""
     from script.todo.mail.rules import run as rules_run
 
     lignes = []
