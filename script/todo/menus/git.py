@@ -72,9 +72,18 @@ REPO = Menu(
     "prompt_execute_git_repo",
     "Repo",
     [
+        # Synchroniser et reconfigurer lancent `repo sync` ou
+        # `make repo_configure_all` sur le checkout sans rien demander : ni
+        # la TUI ni la page web ne les lancent (`danger`).
         Section("Update"),
-        Entry("🔄 Synchronize the repositories", "_git_repo_sync"),
-        Entry("🔁 Reconfigure and synchronize", "_git_repo_reconfigurer"),
+        Entry(
+            "🔄 Synchronize the repositories", "_git_repo_sync", danger=True
+        ),
+        Entry(
+            "🔁 Reconfigure and synchronize",
+            "_git_repo_reconfigurer",
+            danger=True,
+        ),
         Entry("⬇️ Pull the repositories", "_git_repo_tirer"),
         Section("Upgrade"),
         Entry("🌐 Add the upstream remotes", "_git_repo_ajouter_remotes"),
@@ -92,6 +101,7 @@ REPO = Menu(
             "📌 Reconfigure on the frozen commits",
             "_git_repo_reconfigurer",
             kwargs={"freeze": True},
+            danger=True,
         ),
         Entry(
             "🫗 Unfreeze the versions",

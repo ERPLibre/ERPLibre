@@ -370,7 +370,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         # sondent sans confirmation les VM de la machine ou les hôtes de
         # ~/.ssh/config, le retrait d'une version d'Odoo, la restauration
         # par-dessus et l'effacement d'une base ou des volumes du conteneur
-        # ERPLibre, ce qui, dans la démonstration de la passerelle et le
+        # ERPLibre, la synchronisation et la reconfiguration des dépôts de
+        # Repo, ce qui, dans la démonstration de la passerelle et le
         # modem, installe, agit en root, écrit une règle ou un service
         # système, envoie un SMS ou passe un vrai appel, et la remise à
         # zéro des préférences. Les `kwargs`
@@ -394,9 +395,20 @@ class TestLArbreDesMenus(unittest.TestCase):
         network = "TODO › Execute › Network"
         docker = "TODO › Execute › Docker / Podman"
         modem = "TODO › Assistant › Modem"
+        # Repo s'ouvre d'Update et de Git : ses trois entrées qui lancent
+        # `repo sync` ou `make repo_configure_all` sans confirmation.
+        repo = [
+            ("🔄 Synchronize the repositories", {}),
+            ("🔁 Reconfigure and synchronize", {}),
+            ("📌 Reconfigure on the frozen commits", {"freeze": True}),
+        ]
         self.assertEqual(
             dangerous,
             [
+                *[
+                    (f"TODO › Execute › Code › Update › Repo › {label}", kw)
+                    for label, kw in repo
+                ],
                 *[
                     (f"{longtest} › {label}", kwargs)
                     for label, kwargs in (
@@ -426,6 +438,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                     {"tout": True},
                 ),
                 ("TODO › Execute › Database › Erase a database", {}),
+                *[(f"{git} › Repo › {label}", kw) for label, kw in repo],
                 *[
                     (
                         f"{actions} › {label}",
