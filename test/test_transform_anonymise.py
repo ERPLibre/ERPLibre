@@ -292,12 +292,16 @@ class TestOrdreDesGestes(BaseDialogue):
         )
 
     def test_renoncer_a_la_provenance_n_appelle_RIEN(self):
-        execute = _Execute()
-        menu = _menu(execute=execute)
-        self._repondre("0")
-        menu._transform_anonymise_base()
-        self.assertEqual(menu.flots, [])
-        self.assertEqual(execute.commandes, [])
+        """[0], une réponse vide ou Ctrl+D à la provenance."""
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                execute = _Execute()
+                menu = _menu(execute=execute)
+                entrees = self._repondre(reponse)
+                menu._transform_anonymise_base()
+                self.assertEqual(entrees.reponses, [])
+                self.assertEqual(menu.flots, [])
+                self.assertEqual(execute.commandes, [])
 
 
 class TestExportDuZip(BaseDialogue):
