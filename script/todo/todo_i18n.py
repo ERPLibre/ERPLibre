@@ -20089,10 +20089,6 @@ TRANSLATIONS = {
         "fr": "Aucun dépôt ne reste en conflit.",
         "en": "No repository is left in conflict.",
     },
-    "Repository number (empty to go back): ": {
-        "fr": "Numéro du dépôt (vide pour revenir) : ",
-        "en": "Repository number (empty to go back): ",
-    },
     "Nothing left in conflict here.": {
         "fr": "Plus rien en conflit ici.",
         "en": "Nothing left in conflict here.",
@@ -20153,9 +20149,9 @@ TRANSLATIONS = {
         "fr": "Rien à publier dans la dernière passe.",
         "en": "Nothing to publish in the last pass.",
     },
-    "Numbers to publish, separated by commas (all, empty to cancel): ": {
-        "fr": "Numéros à publier, séparés par des virgules (all, vide pour annuler) : ",
-        "en": "Numbers to publish, separated by commas (all, empty to cancel): ",
+    "Repositories to publish": {
+        "fr": "Dépôts à publier",
+        "en": "Repositories to publish",
     },
     "Cancelled: nothing was pushed.": {
         "fr": "Annulé : rien n'a été poussé.",
@@ -20481,13 +20477,9 @@ TRANSLATIONS = {
         "fr": "git n'a pas pu compter les commits",
         "en": "git could not count the commits",
     },
-    "tig on fork N: its commits since the base": {
-        "fr": "tig sur le fork N : ses commits depuis la base",
-        "en": "tig on fork N: its commits since the base",
-    },
-    "tig on each fork, one after another": {
-        "fr": "tig sur chaque fork, l'un après l'autre",
-        "en": "tig on each fork, one after another",
+    "tig on the chosen forks: their commits since the base": {
+        "fr": "tig sur les forks choisis : leurs commits depuis la base",
+        "en": "tig on the chosen forks: their commits since the base",
     },
     "Diffstat and groups": {
         "fr": "Diffstat et regroupements",
@@ -20550,13 +20542,13 @@ TRANSLATIONS = {
         "fr": "Tirer les dépôts",
         "en": "Pull the repositories",
     },
-    "Mode: 1 manifest, 2 branches": {
-        "fr": "Mode : 1 manifeste, 2 branches",
-        "en": "Mode: 1 manifest, 2 branches",
+    "Mode": {
+        "fr": "Mode",
+        "en": "Mode",
     },
-    "Strategy (rebase, ff, merge)": {
-        "fr": "Stratégie (rebase, ff, merge)",
-        "en": "Strategy (rebase, ff, merge)",
+    "Strategy": {
+        "fr": "Stratégie",
+        "en": "Strategy",
     },
     "Querying each remote, this takes a few seconds.": {
         "fr": "Interrogation de chaque remote, quelques secondes.",

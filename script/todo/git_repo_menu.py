@@ -46,12 +46,13 @@ sys.path.append(new_path)
 from script.git import (  # noqa: E402
     git_freeze_diff,
     git_freeze_manifest,
+    git_module_diff,
     manifest_freeze,
     repo_apply,
     repo_upgrade,
 )
+from script.todo import ui  # noqa: E402
 from script.todo.menus import git as menus_git  # noqa: E402
-from script.todo.todo_couleur import retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 from script.todo.ui.navigator import navigate  # noqa: E402
 
@@ -87,6 +88,13 @@ ETATS = {
     "revenu": "back to the state managed by repo",
     "publie": "published (one)",
 }
+
+# Les choix de `_git_repo_choisir_comparaison` qui suivent les paires de
+# `git_module_diff.COMPARAISONS` : l'avant-dernier gel, deux révisions
+# saisies et la matrice, qui se calculent une fois choisis.
+GEL_PRECEDENT = "previous"
+REVISIONS = "revisions"
+MATRICE = "matrix"
 
 # Les libellés d'un décompte, au pluriel, quand ETATS nomme un seul dépôt.
 DECOMPTES = {
@@ -179,27 +187,6 @@ def ligne_du_gel(sources, forks):
     return ligne
 
 
-def choix_numeros(saisie, candidats):
-    """Les éléments de `candidats` que `saisie` désigne, ou None.
-
-    « all » les rend tous ; sinon des numéros séparés par des virgules,
-    chacun entre 1 et len(candidats). Un numéro hors de ces bornes ou qui
-    n'est pas un entier rend None.
-    """
-    if saisie == "all":
-        return list(candidats)
-    choisis = []
-    for morceau in saisie.split(","):
-        try:
-            numero = int(morceau)
-        except ValueError:
-            return None
-        if not 1 <= numero <= len(candidats):
-            return None
-        choisis.append(candidats[numero - 1])
-    return choisis
-
-
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         """Repo, déclaré dans REPO (`menus/git.py`). Rend False sur [0]."""
@@ -289,23 +276,29 @@ class GitRepoMenuMixin:
         `repo_pull` s'importe ici et non en tête : `repo_state`, qu'il
         importe, importe ce module.
 
+        Le mode et la stratégie se choisissent (`ui.choose`), le manifeste
+        et « rebase » par défaut : [0] ou Ctrl+D à l'un ou à l'autre
+        reviennent sans rien interroger.
+
         Rend le nombre de dépôts avancés ou tirés.
         """
         from script.git import repo_pull
 
         oui = ("o", "oui", "y", "yes")
         version = repo_upgrade.version_active(RACINE) or "?"
-        choix = click.prompt(
-            t("Mode: 1 manifest, 2 branches"),
-            default="1",
-            type=click.Choice(["1", "2"]),
+        mode = ui.choose(
+            t("Mode"),
+            ["manifeste", "branche"],
+            default="manifeste",
+            labels=[t("manifest"), t("branches")],
         )
-        mode = "branche" if choix == "2" else "manifeste"
-        strategie = click.prompt(
-            t("Strategy (rebase, ff, merge)"),
-            default="rebase",
-            type=click.Choice(repo_pull.STRATEGIES),
+        if mode is None:
+            return 0
+        strategie = ui.choose(
+            t("Strategy"), list(repo_pull.STRATEGIES), default="rebase"
         )
+        if strategie is None:
+            return 0
         print(f"   {t('Querying each remote, this takes a few seconds.')}")
         try:
             with repo_pull.verrou(RACINE):
@@ -587,49 +580,46 @@ class GitRepoMenuMixin:
         )
 
     def _git_repo_parcourir_forks(self, forks):
-        """La table des forks qui portent un commit gelé ET une base amont
-        gelée, puis les gestes qui ouvrent « base..gel » dans tig.
+        """Les forks qui portent un commit gelé ET une base amont gelée, à
+        ouvrir dans tig sur « base..gel ».
 
-        La table se lit dans les clones, sans réseau. « N » ouvre la plage
-        du fork N (plusieurs numéros séparés par des virgules aussi), « a »
-        chacune de celles qui s'ouvrent ; un tig quitté autrement que par
-        « q » arrête la suite. Sans ligne ouvrable, rien n'est demandé.
+        La liste se lit dans les clones, sans réseau, et se choisit en choix
+        multiple (`ui.choose`) : chaque fork choisi ouvre sa plage, un fork
+        sans plage dit sa raison, et un tig quitté autrement que par « q »
+        arrête la suite. La question revient jusqu'à une réponse vide, [0]
+        ou Ctrl+D. Sans ligne ouvrable, la liste s'imprime et rien n'est
+        demandé.
         """
         lignes = repo_upgrade.nos_commits_geles(forks, RACINE)
         if not lignes:
             return
-        print()
-        print(f"  {t('Our frozen commits since the frozen upstream base:')}")
         largeur = max(len(lg["chemin"] or "") for lg in lignes)
-        for numero, lg in enumerate(lignes, 1):
+        libelles = []
+        for lg in lignes:
             plage = f"{lg['base'][:12]}..{lg['gel'][:12]}"
             if lg["motif"]:
                 fin = f"⚠ {lg['motif']}"
             else:
                 fin = f"+{lg['nos']} {t('ours')}"
-            print(
-                f"  {numero:>3}  {lg['chemin'] or '':<{largeur}}"
-                f"  {plage}  {fin}"
-            )
+            libelles.append(f"{lg['chemin'] or '':<{largeur}}  {plage}  {fin}")
+        titre = t("Our frozen commits since the frozen upstream base:")
         if all(lg["motif"] for lg in lignes):
+            print()
+            print(f"  {titre}")
+            for numero, libelle in enumerate(libelles, 1):
+                print(f"  {numero:>3}  {libelle}")
             return
         while True:
             print()
-            print(f"  N   🐯 {t('tig on fork N: its commits since the base')}")
-            print(f"  a   🐯 {t('tig on each fork, one after another')}")
-            print(f"  ⏎   {t('Back')}")
-            choix = input("  : ").strip().lower()
-            if choix in ("", "0"):
+            tig = t("tig on the chosen forks: their commits since the base")
+            choisis = ui.choose(
+                f"  {titre}\n  🐯 {tig}",
+                lignes,
+                multi=True,
+                labels=libelles,
+            )
+            if not choisis:
                 return
-            if choix == "a":
-                choisis = [lg for lg in lignes if not lg["motif"]]
-            elif choix == "all":
-                choisis = None
-            else:
-                choisis = choix_numeros(choix, lignes)
-            if choisis is None:
-                print(t("Command not found !"))
-                continue
             for lg in choisis:
                 if lg["motif"]:
                     print(f"⚠  {lg['chemin']} — {lg['motif']}")
@@ -766,6 +756,11 @@ class GitRepoMenuMixin:
         disparaître de la file, et l'enregistrement seul ne le saurait pas.
         La réconciliation (voir `_git_repo_reconcilier`) inscrit l'issue
         d'un tel rebase dans la passe avant de dresser la file.
+
+        Le dépôt se choisit (`ui.choose`), puis ses gestes s'offrent
+        (`_git_repo_resoudre`) ; la file se redresse ensuite. Une réponse
+        vide, [0] ou Ctrl+D reviennent et rendent le nombre de dépôts
+        encore en conflit.
         """
         passe = repo_apply.lire_passe(racine=RACINE)
         if not passe:
@@ -783,25 +778,21 @@ class GitRepoMenuMixin:
             if not file_attente:
                 print(f"✅ {t('No repository is left in conflict.')}")
                 return 0
-            print(f"\n🧩 {t('Conflict queue')} — {len(file_attente)}")
-            for i, res in enumerate(file_attente, 1):
-                fichiers = repo_apply.fichiers_en_conflit(
-                    os.path.join(RACINE, res["chemin"])
+            libelles = []
+            for res in file_attente:
+                chemin = os.path.join(RACINE, res["chemin"])
+                nombre = len(repo_apply.fichiers_en_conflit(chemin))
+                libelles.append(
+                    f"{res['chemin']} — {nombre} {t('conflicting files')}"
                 )
-                print(
-                    f"  [{i}] {res['chemin']} — {len(fichiers)} "
-                    f"{t('conflicting files')}"
-                )
-            choix = input(
-                f"💬 {t('Repository number (empty to go back): ')}"
-            ).strip()
-            if not choix:
+            print()
+            res = ui.choose(
+                f"🧩 {t('Conflict queue')} — {len(file_attente)}",
+                file_attente,
+                labels=libelles,
+            )
+            if res is None:
                 return len(file_attente)
-            try:
-                res = file_attente[int(choix) - 1]
-            except (ValueError, IndexError):
-                print(t("Command not found !"))
-                continue
             self._git_repo_resoudre(res, passe["horodatage"])
 
     def _git_repo_resoudre(self, res, horodatage=None):
@@ -910,7 +901,9 @@ class GitRepoMenuMixin:
     def _git_repo_publier(self):
         """Pousse sur leur fork les branches datées de la dernière passe.
 
-        Chaque dépôt montre ce qui partirait — remote, branche, ancienne et
+        Les dépôts se choisissent en choix multiple (`ui.choose`) : une
+        réponse vide, [0] ou Ctrl+D ne poussent rien. Chaque dépôt choisi
+        montre ce qui partirait — remote, branche, ancienne et
         nouvelle pointe, forcé ou non — et rien ne part sans confirmation.
         Avant un push forcé, une ancienne pointe qu'aucun tag ni aucune
         autre branche ne retient reçoit d'abord un tag ou une branche, au
@@ -933,20 +926,18 @@ class GitRepoMenuMixin:
         if not candidats:
             print(f"↩️  {t('Nothing to publish in the last pass.')}")
             return 0
-        for i, res in enumerate(candidats, 1):
-            print(
-                f"  [{i}] {res['chemin']}  [{res['branche']}]"
+        choisis = ui.choose(
+            t("Repositories to publish"),
+            candidats,
+            multi=True,
+            labels=[
+                f"{res['chemin']}  [{res['branche']}]"
                 f" {t(ETATS.get(res['etat'], res['etat']))}"
-            )
-        choix = input(
-            f"💬 {t('Numbers to publish, separated by commas (all, empty to cancel): ')}"
-        ).strip()
-        if not choix:
+                for res in candidats
+            ],
+        )
+        if not choisis:
             print(f"↩️  {t('Cancelled: nothing was pushed.')}")
-            return 0
-        choisis = choix_numeros(choix, candidats)
-        if choisis is None:
-            print(t("Command not found !"))
             return 0
         publies = []
         for res in choisis:
@@ -1004,19 +995,23 @@ class GitRepoMenuMixin:
     def _git_repo_retenir(self, chemin, plan, passe):
         """Pose un tag ou une branche sur l'ancienne pointe, puis la pousse.
 
-        Le nom proposé se modifie avant la confirmation. Rend True quand
-        plus aucun commit n'est à retenir.
+        Le genre se choisit (`ui.choose`), le tag par défaut ; [0] ou
+        Ctrl+D ne posent rien. Le nom proposé se modifie avant la
+        confirmation. Rend True quand plus aucun commit n'est à retenir.
         """
         ancien = plan["ancien"]
         print(
             f"  ⚠  {ancien[:12]}"
             f" {t('is retained by no tag or branch: the forced push would lose it.')}"
         )
-        genre = click.prompt(
+        genre = ui.choose(
             f"  {t('Keep it with a tag or a branch?')}",
-            type=click.Choice(["tag", "branch"]),
+            ["tag", "branch"],
             default="tag",
         )
+        if genre is None:
+            print(f"  ↩️  {t('Cancelled: nothing was pushed.')}")
+            return False
         horodatage = passe["horodatage"]
         if genre == "tag":
             defaut = repo_apply.nom_par_defaut_tag(
@@ -1147,7 +1142,6 @@ class GitRepoMenuMixin:
         relit les lignes sans refaire la comparaison. Rend 0, ou 2 sur une
         révision inconnue.
         """
-        print(f"🔀 {t('Compare two freezes')}")
         cas = self._git_repo_choisir_comparaison()
         if not cas:
             return 0
@@ -1161,40 +1155,37 @@ class GitRepoMenuMixin:
         return 0
 
     def _git_repo_choisir_comparaison(self):
-        """(gauche, droite) que l'on compare, ou None pour revenir."""
-        print(f"  [1] 💻 {t('Committed freeze → clones (real state)')}")
-        print(f"  [2] 📝 {t('Written freeze (manifest/) → clones')}")
-        print(
-            f"  [3] 🚧 {t('Committed freeze → written freeze, not committed')}"
-        )
-        print(f"  [4] ⏪ {t('Previous freeze → last freeze')}")
-        print(f"  [5] 🎯 {t('Two revisions of your choice')}")
-        print(
-            "  [6] 🧮"
-            f" {t('Matrix: the ERPLibre branches and tags side by side')}"
-        )
-        print(f"  {retour(t('Back'))}")
-        choix = input("  : ").strip()
-        cas = {
-            "1": ("HEAD", git_freeze_diff.CLONES),
-            "2": (git_freeze_diff.WORKTREE, git_freeze_diff.CLONES),
-            "3": ("HEAD", git_freeze_diff.WORKTREE),
+        """(gauche, droite) que l'on compare, choisi par `ui.choose`, ou
+        None pour revenir : [0], une réponse vide, Ctrl+D, la matrice, qui
+        s'affiche sans rien comparer, ou l'avant-dernier gel choisi quand
+        moins de deux commits ont changé un gel."""
+        libelles = {
+            "1": f"💻 {t('Committed freeze → clones (real state)')}",
+            "2": f"📝 {t('Written freeze (manifest/) → clones')}",
+            "3": f"🚧 {t('Committed freeze → written freeze, not committed')}",
+            GEL_PRECEDENT: f"⏪ {t('Previous freeze → last freeze')}",
+            REVISIONS: f"🎯 {t('Two revisions of your choice')}",
+            MATRICE: (
+                "🧮"
+                f" {t('Matrix: the ERPLibre branches and tags side by side')}"
+            ),
         }
-        if choix in cas:
-            return cas[choix]
-        if choix == "4":
+        cle = ui.choose(
+            f"🔀 {t('Compare two freezes')}",
+            list(libelles),
+            labels=list(libelles.values()),
+        )
+        if cle == GEL_PRECEDENT:
             paire = git_freeze_diff.previous_freeze(RACINE)
             if not paire:
                 print(f"⚠  {t('Fewer than two commits changed a freeze.')}")
             return paire
-        if choix == "5":
+        if cle == REVISIONS:
             return self._git_repo_saisir_revisions()
-        if choix == "6":
+        if cle == MATRICE:
             self._git_repo_matrice()
             return None
-        if choix not in ("", "0"):
-            print(t("Command not found !"))
-        return None
+        return git_module_diff.COMPARAISONS.get(cle)
 
     def _git_repo_saisir_revisions(self):
         """Demande les deux côtés : un numéro des listes affichées (commits

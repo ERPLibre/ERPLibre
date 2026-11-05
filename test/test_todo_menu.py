@@ -2622,10 +2622,13 @@ class TestGitRepoPull(unittest.TestCase):
         code=0,
         installe=({}, 0),
         verrou=None,
+        choix=("manifeste", "rebase"),
     ):
         """Lance l'entrée, `repo_pull` simulé ; `verrou` remplace celui du
-        checkout. Rend (passe, installer, input) ; les lignes affichées
-        sont dans `self.affiche`."""
+        checkout. `choix` répond aux choix du mode et de la stratégie, ou,
+        None, les laisse à `ui.choose`, que lit alors `input` avant
+        `reponses`. Rend (passe, installer, input) ; les lignes affichées
+        sont dans `self.affiche`, les choix doublés dans `self.choose`."""
         charge = charge or {
             "horodatage": "20990101T0800",
             "dossier": "tasks/git_repo_pull/20990101T0800",
@@ -2648,15 +2651,21 @@ class TestGitRepoPull(unittest.TestCase):
                 self.rp, "installer_dependances", return_value=installe
             ) as installer,
             m.patch.object(
-                self.menu.click, "prompt", side_effect=["1", "rebase"]
-            ) as self.prompt,
+                self.menu.ui,
+                "choose",
+                **(
+                    {"side_effect": list(choix)}
+                    if choix
+                    else {"wraps": self.menu.ui.choose}
+                ),
+            ) as self.choose,
             m.patch.object(
                 self.menu.repo_upgrade, "version_active", return_value="X.0"
             ),
             m.patch("builtins.input", side_effect=list(reponses)) as entree,
             m.patch("builtins.print") as affiche,
         ):
-            self.obj._git_repo_tirer()
+            self.code = self.obj._git_repo_tirer()
         self.affiche = "\n".join(
             " ".join(str(x) for x in c.args) for c in affiche.call_args_list
         )
@@ -2818,10 +2827,35 @@ class TestGitRepoPull(unittest.TestCase):
             self.affiche,
         )
 
-    def test_le_mode_est_un_choix(self):
+    def test_le_mode_et_la_strategie_sont_des_choix(self):
         self.tirer(self.donnees(), [])
-        _args, kw = self.prompt.call_args_list[0]
-        self.assertEqual(list(kw["type"].choices), ["1", "2"])
+        (mode, strategie) = self.choose.call_args_list
+        self.assertEqual(mode.args[1], ["manifeste", "branche"])
+        self.assertEqual(mode.kwargs["default"], "manifeste")
+        self.assertEqual(strategie.args[1], list(self.rp.STRATEGIES))
+        self.assertEqual(strategie.kwargs["default"], "rebase")
+
+    def test_un_numero_puis_le_defaut(self):
+        # « 2 » choisit les branches ; une réponse vide, « rebase », le
+        # défaut marqué ; « 01 » n'est pas un numéro affiché.
+        self.tirer(self.donnees(), ["01", "2", ""], choix=None)
+        self.assertEqual(
+            self.diagnostic.call_args.args[1:], ("branche", "rebase")
+        )
+        self.assertIn(self.menu.t("Invalid choice: ") + "01", self.affiche)
+
+    def test_retour_au_mode_ou_a_la_strategie_n_interroge_rien(self):
+        # [0] ou Ctrl+D, au mode comme à la stratégie : ni essai à sec ni
+        # passe, aucune question de plus.
+        for reponses in (["0"], [EOFError()], ["1", "0"], ["", EOFError()]):
+            with self.subTest(reponses=reponses):
+                passe, _i, entree = self.tirer(
+                    self.donnees(["x/a"]), reponses, choix=None
+                )
+                self.assertEqual(self.code, 0)
+                self.diagnostic.assert_not_called()
+                passe.assert_not_called()
+                self.assertEqual(entree.call_count, len(reponses))
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):
@@ -3055,12 +3089,16 @@ class TestGitRepoPublish(unittest.TestCase):
             "a_retenir": list(a_retenir),
         }
 
-    def _publier(self, plan, confirms, prompts=(), saisie="1", **remplaces):
+    def _publier(
+        self, plan, confirms, prompts=(), saisies=("1",), **remplaces
+    ):
         """Lance la publication, `repo_apply` et les questions remplacés.
 
-        `saisie` répond au choix des numéros ; `remplaces` remplace d'autres
-        fonctions de `repo_apply` (nom=mock). Rend (code, publier, retenir,
-        mettre_a_jour_passe, geler)."""
+        `saisies` répondent, par `input`, aux choix (`ui.choose`) des
+        dépôts, puis du genre de la référence qui retient ; `prompts`, au
+        nom de cette référence ; `remplaces` remplace d'autres fonctions de
+        `repo_apply` (nom=mock). Rend (code, publier, retenir,
+        mettre_a_jour_passe, geler) ; l'affichage est dans `self.sortie`."""
         from contextlib import ExitStack
 
         mock = self.mock
@@ -3082,8 +3120,9 @@ class TestGitRepoPublish(unittest.TestCase):
             for nom, faux in remplaces.items():
                 pile.enter_context(mock.patch.object(self.ra, nom, faux))
             pile.enter_context(
-                mock.patch("builtins.input", return_value=saisie)
+                mock.patch("builtins.input", side_effect=list(saisies))
             )
+            self.sortie = pile.enter_context(redirect_stdout(io.StringIO()))
             pile.enter_context(
                 mock.patch.object(
                     self.menu.click, "confirm", side_effect=list(confirms)
@@ -3119,7 +3158,10 @@ class TestGitRepoPublish(unittest.TestCase):
     def test_retention_ref_needs_its_own_confirmation(self):
         plan = self._plan(force=True, a_retenir=[self.SHA_A])
         code, publier, retenir, _m, _g = self._publier(
-            plan, [False], prompts=["tag", "ERPLibre/v9.9.9_odooX.0"]
+            plan,
+            [False],
+            prompts=["ERPLibre/v9.9.9_odooX.0"],
+            saisies=["1", "1"],
         )
         self.assertEqual(code, 0)
         retenir.assert_not_called()
@@ -3128,7 +3170,10 @@ class TestGitRepoPublish(unittest.TestCase):
     def test_retention_ref_pushed_before_the_forced_push(self):
         plan = self._plan(force=True, a_retenir=[self.SHA_A])
         _c, publier, retenir, _m, _g = self._publier(
-            plan, [True, True, False], prompts=["branch", "X.0_avant"]
+            plan,
+            [True, True, False],
+            prompts=["X.0_avant"],
+            saisies=["1", "branch"],
         )
         retenir.assert_called_once_with(
             self.mock.ANY,
@@ -3139,26 +3184,58 @@ class TestGitRepoPublish(unittest.TestCase):
         )
         publier.assert_called_once()
 
-    def test_selection_out_of_range_is_refused(self):
-        """« 0 » et les négatifs indexeraient la liste par la fin."""
-        for saisie in ("0", "-1", "2", "1,0", "x"):
-            with self.subTest(saisie=saisie), self.mock.patch(
-                "builtins.print"
-            ) as affiche:
-                code, publier, _r, _m, _g = self._publier(
-                    self._plan(), [], saisie=saisie
+    def test_retention_kind_back_pushes_nothing(self):
+        # [0] ou Ctrl+D au genre de la référence : ni référence ni push,
+        # aucune confirmation demandée.
+        plan = self._plan(force=True, a_retenir=[self.SHA_A])
+        for genre in ("0", EOFError()):
+            with self.subTest(genre=genre):
+                code, publier, retenir, maj, _g = self._publier(
+                    plan, [], saisies=["1", genre]
+                )
+                self.assertEqual(code, 0)
+                retenir.assert_not_called()
+                publier.assert_not_called()
+                maj.assert_not_called()
+
+    def test_selection_out_of_range_is_named_then_asked_again(self):
+        """« 0 » revient ; « -1 », « 2 », « 01 » et « x » ne sont pas un
+        numéro affiché : chacun se dit, et la question revient."""
+        code, publier, _r, _m, _g = self._publier(
+            self._plan(), [], saisies=["-1", "2", "01", "x", "0"]
+        )
+        self.assertEqual(code, 0)
+        publier.assert_not_called()
+        self.assertEqual(
+            self.sortie.getvalue().count(self.menu.t("Invalid choice: ")), 4
+        )
+
+    def test_empty_back_or_ctrl_d_pushes_nothing(self):
+        # Une réponse vide d'un choix multiple ne choisit rien, jamais tout.
+        for saisie in ("", "0", EOFError()):
+            with self.subTest(saisie=saisie):
+                code, publier, retenir, maj, _g = self._publier(
+                    self._plan(), [], saisies=[saisie]
                 )
                 self.assertEqual(code, 0)
                 publier.assert_not_called()
-                affiche.assert_any_call(self.menu.t("Command not found !"))
+                retenir.assert_not_called()
+                maj.assert_not_called()
+                self.assertIn(
+                    self.menu.t("Cancelled: nothing was pushed."),
+                    self.sortie.getvalue(),
+                )
 
-    def test_numbers_pick_their_repositories(self):
-        lst = [{"n": 1}, {"n": 2}, {"n": 3}]
-        self.assertEqual(
-            self.menu.choix_numeros("3,1", lst), [{"n": 3}, {"n": 1}]
-        )
-        self.assertEqual(self.menu.choix_numeros("all", lst), lst)
-        self.assertIsNone(self.menu.choix_numeros("4", lst))
+    def test_all_picks_every_publishable_repository(self):
+        autre = dict(self.res, chemin="x/b")
+        self.passe["resultats"].append(autre)
+        for saisie in ("all", "tout", "*", "1-2", "2 1"):
+            with self.subTest(saisie=saisie):
+                code, publier, _r, _m, _g = self._publier(
+                    self._plan(), [True, True, False], saisies=[saisie]
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(publier.call_count, 2)
 
     def test_a_refused_plan_pushes_nothing_and_asks_nothing(self):
         plan = dict(self._plan(), refus="remote moved")
@@ -3331,6 +3408,28 @@ class TestGitRepoPublish(unittest.TestCase):
                 f"cd {chemin} && git diff --diff-filter=U",
             ],
         )
+
+    def test_the_queue_picks_a_repository_then_comes_back(self):
+        # La file : un numéro tel qu'affiché ouvre les gestes du dépôt ;
+        # une faute se dit ; une réponse vide revient sur le compte.
+        passe = dict(self.passe)
+        patch = self.mock.patch.object
+        with (
+            patch(self.ra, "lire_passe", return_value=passe),
+            patch(self.ra, "reconcilier_passe", return_value=[]),
+            patch(self.ra, "rebase_en_cours", return_value=True),
+            patch(self.ra, "fichiers_en_conflit", return_value=["a.py"]),
+            patch(type(self.obj), "_git_repo_resoudre") as resoudre,
+            self.mock.patch("builtins.input", side_effect=["2", "1", ""]),
+            redirect_stdout(io.StringIO()) as sortie,
+        ):
+            self.assertEqual(self.obj._git_repo_file_conflits(), 1)
+        resoudre.assert_called_once_with(self.res, "20990101T0800")
+        self.assertIn(
+            f"[1] x/a — 1 {self.menu.t('conflicting files')}",
+            sortie.getvalue(),
+        )
+        self.assertIn(self.menu.t("Invalid choice: ") + "2", sortie.getvalue())
 
 
 class TestGitRepoCompareFreezes(unittest.TestCase):
@@ -3566,13 +3665,17 @@ class TestGitRepoForkCommits(unittest.TestCase):
         self.assertIn(f"+2 {self.menu.t('ours')}", texte)
         self.assertIn("not cloned", texte)
 
-    def test_a_ouvre_chacune_et_s_arrete_sur_une_erreur(self):
-        tig, _, _ = self.parcourir(self.lignes(), "a")
-        self.assertEqual(
-            [c.args[0] for c in tig.call_args_list],
-            ["/racine/x/a", "/racine/x/c"],
-        )
-        tig, _, _ = self.parcourir(self.lignes(), "a", code=-2)
+    def test_tout_ouvre_chacune_et_s_arrete_sur_une_erreur(self):
+        # « tout », « all », « * » ou une plage : chaque fork qui a une
+        # plage l'ouvre, celui qui n'en a pas dit sa raison.
+        for saisie in ("tout", "all", "*", "1-3", "3 1"):
+            with self.subTest(saisie=saisie):
+                tig, _, texte = self.parcourir(self.lignes(), saisie)
+                self.assertEqual(
+                    sorted(c.args[0] for c in tig.call_args_list),
+                    ["/racine/x/a", "/racine/x/c"],
+                )
+        tig, _, _ = self.parcourir(self.lignes(), "tout", code=-2)
         self.assertEqual(tig.call_count, 1)
 
     def test_une_ligne_sans_plage_dit_sa_raison(self):
@@ -3582,12 +3685,19 @@ class TestGitRepoForkCommits(unittest.TestCase):
 
     def test_saisies_refusees(self):
         tig, saisie, texte = self.parcourir(
-            self.lignes(), "-1", "4", "x", "all", "1,", "0"
+            self.lignes(), "-1", "4", "x", "01", "a", "0"
         )
         tig.assert_not_called()
-        self.assertEqual(texte.count(self.menu.t("Command not found !")), 5)
+        self.assertEqual(texte.count(self.menu.t("Invalid choice: ")), 5)
         # « 0 » revient : la saisie vide ajoutée derrière n'est pas lue.
         self.assertEqual(saisie.call_count, 6)
+
+    def test_vide_ou_ctrl_d_reviennent_sans_rien_ouvrir(self):
+        for saisie in ("", EOFError()):
+            with self.subTest(saisie=saisie):
+                tig, entree, _ = self.parcourir(self.lignes(), saisie)
+                tig.assert_not_called()
+                self.assertEqual(entree.call_count, 1)
 
     def test_rien_a_offrir(self):
         tig, saisie, _ = self.parcourir([])

@@ -134,10 +134,7 @@ RAW_CALLS = {
     "script/todo/container_menu.py": 22,
     "script/todo/database_manager.py": 12,
     "script/todo/kdbx_manager.py": 1,
-    # Sélecteurs ajoutés par develop, à migrer : le mode et la stratégie
-    # du tirage, les forks à ouvrir, la file des conflits, les dépôts à
-    # publier, le genre de la référence qui retient, la comparaison de gels.
-    "script/todo/git_repo_menu.py": 22,
+    "script/todo/git_repo_menu.py": 15,
     "script/todo/longtest_menu.py": 5,
     # Questions ajoutées par develop, à migrer : le jeton OAuth, la
     # signature d'un compte (+4).
