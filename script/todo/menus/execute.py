@@ -236,8 +236,7 @@ UPDATE = Menu(
         ),
         Entry("Upgrade Odoo - Migration Database", "_upgrade_odoo"),
         Entry("Upgrade Poetry - Dependency of Odoo", "upgrade_poetry"),
-        # Repo dessine son menu lui-même (`git_repo_menu.py`).
-        Entry("🔃 Update git repo", "prompt_execute_git_repo", crumb="Repo"),
+        Entry("🔃 Update git repo", "prompt_execute_git_repo"),
     ],
     intro="Development update",
     render="once",

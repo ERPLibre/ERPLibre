@@ -1076,130 +1076,6 @@ class RegistryCoherence:
         self.assertIs(self.menu.back, self.BACK)
 
 
-class MenuCoherence:
-    """Socle : un menu écrit en liste de dictionnaires est-il cohérent ?
-
-    Ce piège-là ne dépend pas du menu : seules les entrées
-    « prompt_description » consomment un numéro (les « section » sont des
-    titres), et le dispatch les renumérote à la main. Insérer une entrée avant
-    la dernière décale tout ce qui suit sans que rien ne proteste.
-
-    Les menus de TODO sont déclarés au registre (`RegistryCoherence`) ;
-    ce socle reste pour les menus écrits à la main, Repo
-    (`git_repo_menu.py`), qui n'est pas encore migré.
-
-    Une entrée peut aussi porter sa destination dans « method » plutôt que
-    dans un « elif status » numéroté. Elle échappe alors à la renumérotation
-    par construction, et EXPECTED la vérifie contre cette clé.
-
-    À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
-    « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
-    EXPECTED (où mène chaque entrée, par le début de son libellé).
-    """
-
-    SOURCE = None
-    ENTRY = ""
-    END = ""
-    EXPECTED = {}
-    MINIMUM = 10
-
-    RE_ENTRY = re.compile(
-        r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
-    )
-    # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
-    # une entrée expliquée devenait invisible pour ce test, qui annonçait alors
-    # « 18 affichées, 17 dispatchées » sans qu'aucune entrée ne manque. Un test
-    # ne doit pas dépendre de l'endroit où quelqu'un met un commentaire.
-    RE_DISPATCH_CALL = re.compile(
-        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
-        r"\s*(?:status = )?self\.(\w+)\("
-    )
-    # Une entrée qui porte sa destination dans « method » se dispatche seule,
-    # par le repli générique. Elle n'a pas de numéro dans le code, donc aucune
-    # renumérotation ne peut la désaligner : c'est le seul moyen de placer une
-    # entrée codée en dur APRÈS des entrées venues de la configuration, dont
-    # le nombre n'est pas connu à la lecture du source.
-    RE_SELF_DISPATCH = re.compile(
-        r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
-        r'\s*"method": "(\w+)"'
-    )
-
-    def setUp(self):
-        source = self.SOURCE.read_text(encoding="utf-8")
-        start = source.index(self.ENTRY)
-        end = source.index(self.END, start)
-        self.body = source[start:end]
-        self.self_dispatch = dict(self.RE_SELF_DISPATCH.findall(self.body))
-        num = 0
-        self.shown = []
-        for kind, label in self.RE_ENTRY.findall(self.body):
-            if kind == "prompt_description":
-                num += 1
-                self.shown.append((num, label))
-        self.numbered = [
-            (n, label)
-            for n, label in self.shown
-            if label not in self.self_dispatch
-        ]
-        self.dispatch = [
-            (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
-        ]
-
-    def test_the_menu_was_actually_parsed(self):
-        """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
-        self.assertGreater(len(self.shown), self.MINIMUM)
-        self.assertEqual(len(self.numbered), len(self.dispatch))
-
-    def test_numbering_is_contiguous_from_one(self):
-        self.assertEqual(
-            [n for n, _ in self.shown],
-            list(range(1, len(self.shown) + 1)),
-        )
-
-    def test_every_shown_entry_has_the_matching_dispatch(self):
-        self.assertEqual(
-            [n for n, _ in self.numbered], [n for n, _ in self.dispatch]
-        )
-
-    def _key(self, label):
-        for key in self.EXPECTED:
-            if label.startswith(key):
-                return key
-        return label
-
-    def test_every_entry_reaches_the_method_it_names(self):
-        dct = dict(self.dispatch)
-        for num, label in self.shown:
-            key = self._key(label)
-            self.assertIn(
-                key,
-                self.EXPECTED,
-                f"entrée [{num}] « {label} » absente d'EXPECTED :"
-                " déclarez où elle mène",
-            )
-            atteint = self.self_dispatch.get(label, dct.get(num))
-            self.assertEqual(
-                atteint,
-                self.EXPECTED[key],
-                f"[{num}] « {label} » mène à {atteint}"
-                f" au lieu de {self.EXPECTED[key]}",
-            )
-
-    def test_expected_table_has_no_stale_entry(self):
-        keys = {self._key(label) for _, label in self.shown}
-        self.assertEqual(set(self.EXPECTED) - keys, set())
-
-    def test_self_dispatched_entries_name_a_real_method(self):
-        """« method » est une chaîne : rien ne la relie au code sans ceci."""
-        from script.todo.todo import TODO
-
-        for label, method in self.self_dispatch.items():
-            self.assertTrue(
-                hasattr(TODO, method),
-                f"« {label} » mène à {method}, qui n'existe pas",
-            )
-
-
 class TestDeployMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Deploy : cloner, monter et joindre ERPLibre en local, puis les hôtes
     distants, les VM et le cache de leurs téléchargements, et les VPN.
@@ -2528,19 +2404,11 @@ class TestMailCacheMenuNumbering(MailCoherence, unittest.TestCase):
         )
 
 
-class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu de mise à jour et de mise à niveau des dépôts git.
+class TestGitRepoMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Repo : la mise à jour et la mise à niveau des dépôts git, en
+    quatre sections, qui ne prennent aucun numéro."""
 
-    Ses entrées sont séparées par des titres de section, qui ne consomment
-    aucun numéro : une section ajoutée entre deux entrées ne doit décaler
-    aucun dispatch, et c'est précisément ce que ce socle vérifie.
-    """
-
-    SOURCE = TODO_DIR / "git_repo_menu.py"
-    ENTRY = "def prompt_execute_git_repo(self):"
-    END = "def _git_repo_sync(self):"
-    MINIMUM = 9
-
+    MENU = "prompt_execute_git_repo"
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
         "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
@@ -2563,11 +2431,25 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         """« Tirer les dépôts » ferme la section de la mise à jour en [3] ;
         « Ajouter les remotes amont » ouvre celle de la mise à niveau en
         [4], la passe à sec suit en [5], la comparaison en [15]."""
-        rangs = {label: num for num, label in self.shown}
+        rangs = {e.key: n for n, e in enumerate(self.entries, 1)}
         self.assertEqual(rangs["⬇️ Pull the repositories"], 3)
         self.assertEqual(rangs["🌐 Add the upstream remotes"], 4)
         self.assertEqual(rangs["🔍 Upgrade — dry run"], 5)
         self.assertEqual(rangs["🔀 Compare two freezes"], 15)
+
+    def test_the_freeze_entries_pass_their_flag(self):
+        """Les commits gelés et le dégel passent leur drapeau à la même
+        action que la reconfiguration et le gel ; le menu dit son état sous
+        le fil d'Ariane."""
+        drapeaux = {e.key: e.kwargs for e in self.entries if e.kwargs}
+        self.assertEqual(
+            drapeaux,
+            {
+                "📌 Reconfigure on the frozen commits": {"freeze": True},
+                "🫗 Unfreeze the versions": {"unfreeze": True},
+            },
+        )
+        self.assertEqual(self.menu.state, "_git_repo_etat")
 
     def test_the_upstream_remotes_entry_reports_without_diagnosing(self):
         from unittest import mock
@@ -2594,7 +2476,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         ) as diagnostic, mock.patch(
             "builtins.print"
         ):
-            self.assertEqual(Menu()._git_repo_choix("4"), None)
+            self.assertEqual(Menu()._git_repo_ajouter_remotes(), 1)
         ajouter.assert_called_once()
         rendu.assert_called_once()
         diagnostic.assert_not_called()
@@ -3331,29 +3213,124 @@ class TestGitRepoPublish(unittest.TestCase):
                 getattr(self.obj, methode)()
                 faux.assert_called_once_with(passe, racine=self.menu.RACINE)
 
+    def resoudre(self, *reponses, **remplaces):
+        """Ouvre les gestes du dépôt en conflit de la passe, par le
+        navigateur : `reponses` répondent à sa question, `remplaces`
+        remplacent des fonctions de `repo_apply` (nom=mock), et
+        `fichiers_en_conflit` rend une liste vide sauf mention. Rend
+        (ce que rend le menu, ses dessins) ; les gestes de shell sont
+        dans `self.lances`."""
+        from contextlib import ExitStack
+
+        dessins, self.lances = [], []
+
+        class Execute:
+            def exec_command_live(inner, cmd, source_erplibre=True):
+                self.lances.append(cmd)
+                return 0
+
+        self.obj.execute = Execute()
+        self.obj.fill_help_info = lambda choices, state=None: (
+            dessins.append((state, [c["prompt_description"] for c in choices]))
+            or ""
+        )
+        remplaces.setdefault(
+            "fichiers_en_conflit", self.mock.Mock(return_value=[])
+        )
+        with ExitStack() as pile:
+            for nom, faux in remplaces.items():
+                pile.enter_context(self.mock.patch.object(self.ra, nom, faux))
+            pile.enter_context(
+                self.mock.patch("click.prompt", side_effect=list(reponses))
+            )
+            pile.enter_context(redirect_stdout(io.StringIO()))
+            rendu = self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        return rendu, dessins
+
     def test_abort_in_the_conflict_queue_is_recorded(self):
-        patch = self.mock.patch.object
-        with patch(self.ra, "fichiers_en_conflit", return_value=[]), patch(
-            self.ra, "abandonner_rebase"
-        ), patch(self.ra, "noter_resolution") as noter, self.mock.patch(
-            "builtins.input", return_value="7"
-        ):
-            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        noter = self.mock.Mock()
+        abandon = self.mock.Mock()
+        rendu, _d = self.resoudre(
+            "7", abandonner_rebase=abandon, noter_resolution=noter
+        )
+        self.assertIs(rendu, True)
+        abandon.assert_called_once()
         self.assertEqual(
             noter.call_args[0][:3], ("20990101T0800", self.res, "abandonne")
         )
 
     def test_continue_that_finishes_records_the_rebase(self):
-        patch = self.mock.patch.object
-        with patch(self.ra, "fichiers_en_conflit", return_value=[]), patch(
-            self.ra, "continuer_rebase", return_value=("", "", 0)
-        ), patch(self.ra, "rebase_en_cours", return_value=False), patch(
-            self.ra, "noter_resolution"
-        ) as noter, self.mock.patch(
-            "builtins.input", return_value="5"
-        ):
-            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        noter = self.mock.Mock()
+        self.resoudre(
+            "5",
+            continuer_rebase=self.mock.Mock(return_value=("", "", 0)),
+            rebase_en_cours=self.mock.Mock(return_value=False),
+            noter_resolution=noter,
+        )
         self.assertEqual(noter.call_args[0][2], "rebase")
+
+    def test_back_or_ctrl_d_leaves_the_repository_as_is(self):
+        # [0], Ctrl+C et Ctrl+D referment les gestes sans toucher au dépôt
+        # ni à la passe.
+        import click
+
+        for reponse in ("0", click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(reponse=reponse):
+                gestes = {
+                    nom: self.mock.Mock()
+                    for nom in (
+                        "garder_le_notre",
+                        "prendre_l_amont",
+                        "marquer_resolus",
+                        "continuer_rebase",
+                        "sauter_le_commit",
+                        "abandonner_rebase",
+                        "revenir_a_repo",
+                        "noter_resolution",
+                    )
+                }
+                rendu, _d = self.resoudre(reponse, **gestes)
+                self.assertFalse(rendu)
+                for nom, faux in gestes.items():
+                    faux.assert_not_called()
+                self.assertEqual(self.lances, [])
+
+    def test_a_gesture_that_keeps_the_rebase_asks_again(self):
+        # Garder le nôtre résout les fichiers en conflit, puis la question
+        # revient, l'état relu : le dépôt, puis ses fichiers.
+        fichiers = self.mock.Mock(side_effect=[["a.py"], ["a.py"], []])
+        garder = self.mock.Mock()
+        resolus = self.mock.Mock()
+        rendu, dessins = self.resoudre(
+            "3",
+            "0",
+            fichiers_en_conflit=fichiers,
+            garder_le_notre=garder,
+            marquer_resolus=resolus,
+        )
+        self.assertFalse(rendu)
+        chemin = os.path.join(self.menu.RACINE, "x/a")
+        garder.assert_called_once_with(chemin, ["a.py"])
+        resolus.assert_called_once_with(chemin, ["a.py"])
+        etats = [etat for etat, _libelles in dessins]
+        self.assertEqual(etats[0], "▸ x/a\n     a.py")
+        self.assertEqual(
+            etats[1],
+            f"▸ x/a\n  {self.menu.t('Nothing left in conflict here.')}",
+        )
+        self.assertEqual(len(dessins[0][1]), 8)
+
+    def test_the_shell_opens_in_the_repository(self):
+        rendu, _d = self.resoudre("1", "2", "0")
+        self.assertFalse(rendu)
+        chemin = os.path.join(self.menu.RACINE, "x/a")
+        self.assertEqual(
+            self.lances,
+            [
+                f"cd {chemin} && $SHELL",
+                f"cd {chemin} && git diff --diff-filter=U",
+            ],
+        )
 
 
 class TestGitRepoCompareFreezes(unittest.TestCase):
@@ -4380,13 +4357,11 @@ class TestMenuLabels(unittest.TestCase):
         "execute_odoo_upgrade",
         "select_database",
     }
-    # Menus ajoutés par develop, à migrer : écrits à la main, ils tiennent
-    # leur segment de l'entrée qui les ouvre (`Entry.crumb`), le temps de
-    # leur action. La liste ne fait que rétrécir : un menu migré déclare
-    # son `Menu` et son `crumb`.
-    ECRANS_A_MIGRER = {
-        "prompt_execute_git_repo": "Repo",
-    }
+    # Les menus écrits à la main qui tiennent leur segment de l'entrée qui
+    # les ouvre (`Entry.crumb`), le temps de leur action : il n'en reste
+    # aucun, et la liste refuse un nom, un menu neuf déclarant son `Menu`
+    # et son `crumb`.
+    ECRANS_A_MIGRER = {}
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
     # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
     # feuille de l'entrée qui l'ouvre. La liste ne fait que rétrécir : un
@@ -4422,6 +4397,8 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
+        "prompt_execute_git_repo": "Repo",
+        "_git_repo_gestes": "Conflict queue",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_local": "Actions",
         "_prompt_git_server_production": "Actions",

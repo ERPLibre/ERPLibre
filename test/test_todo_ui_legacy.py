@@ -134,8 +134,10 @@ RAW_CALLS = {
     "script/todo/container_menu.py": 22,
     "script/todo/database_manager.py": 12,
     "script/todo/kdbx_manager.py": 1,
-    # Menu ajouté par develop, à migrer : Repo.
-    "script/todo/git_repo_menu.py": 24,
+    # Sélecteurs ajoutés par develop, à migrer : le mode et la stratégie
+    # du tirage, les forks à ouvrir, la file des conflits, les dépôts à
+    # publier, le genre de la référence qui retient, la comparaison de gels.
+    "script/todo/git_repo_menu.py": 22,
     "script/todo/longtest_menu.py": 5,
     # Questions ajoutées par develop, à migrer : le jeton OAuth, la
     # signature d'un compte (+4).
@@ -185,9 +187,6 @@ NUMBERED_LOOPS = {
 # registre : la liste ne fait que rétrécir, un menu migré en sort, et son
 # test refuse un nom de plus.
 DEVELOP_LOOPS = {
-    ("script/todo/git_repo_menu.py", "_git_repo_resoudre"): (
-        "menu ajouté par develop, à migrer"
-    ),
     ("script/todo/modem/menu.py", "_repondeur"): (
         "menu ajouté par develop, à migrer"
     ),
@@ -996,7 +995,6 @@ class TestGuards(unittest.TestCase):
         self.assertLessEqual(
             set(DEVELOP_LOOPS),
             {
-                ("script/todo/git_repo_menu.py", "_git_repo_resoudre"),
                 ("script/todo/modem/menu.py", "_repondeur"),
                 ("script/todo/modem/menu.py", "prompt_execute_modem"),
             },

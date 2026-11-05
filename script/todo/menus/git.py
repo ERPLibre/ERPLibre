@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus de la famille Git : Git, qu'ouvre Execute, Git local server et
+"""Menus de la famille Git : Git, qu'ouvre Execute, Repo, qu'ouvrent Git
+et Update, et le menu d'un dépôt en conflit, qu'ouvre sa file d'attente,
+dont les méthodes vivent dans `git_repo_menu.py` ; Git local server et
 ses deux menus Actions, l'un du serveur local, l'autre du serveur de
 production ; GPT code, qu'ouvre Execute, Claude configs, Plugins, RTK et
 Claude Code, dont la méthode vit dans `assistant_menu.py` ; Automation,
@@ -18,8 +20,7 @@ GIT = Menu(
     "prompt_execute_git",
     "Git",
     [
-        # Repo dessine son menu lui-même (`git_repo_menu.py`).
-        Entry("🔃 Update git repo", "prompt_execute_git_repo", crumb="Repo"),
+        Entry("🔃 Update git repo", "prompt_execute_git_repo"),
         Section("Settings"),
         Entry(
             "Install git hooks (commit-msg, pre-commit)", "_git_install_hooks"
@@ -61,6 +62,94 @@ GIT = Menu(
     ],
     intro="Git and shell management tools!",
     render="once",
+)
+
+# La mise à jour des dépôts, qui suit le manifeste, puis leur mise à
+# niveau sur l'amont de chaque fork, qui réécrit leur historique. La ligne
+# d'état dit la version d'Odoo active, le nombre de forks, le mode du
+# manifeste local et le gel des fichiers de `manifest/`.
+REPO = Menu(
+    "prompt_execute_git_repo",
+    "Repo",
+    [
+        Section("Update"),
+        Entry("🔄 Synchronize the repositories", "_git_repo_sync"),
+        Entry("🔁 Reconfigure and synchronize", "_git_repo_reconfigurer"),
+        Entry("⬇️ Pull the repositories", "_git_repo_tirer"),
+        Section("Upgrade"),
+        Entry("🌐 Add the upstream remotes", "_git_repo_ajouter_remotes"),
+        Entry("🔍 Upgrade — dry run", "_git_repo_a_sec"),
+        Entry("⬆️ Apply the upgrade", "_git_repo_appliquer"),
+        Entry("🧩 Conflict queue", "_git_repo_file_conflits"),
+        Entry("📤 Publish the updated forks", "_git_repo_publier"),
+        Section("Observe"),
+        Entry("📊 Report of the last pass", "_git_repo_rapport"),
+        Entry("🖥️ Browse the upgrade on screen", "_git_repo_ecran"),
+        Entry("🔗 Fork and upstream status", "_git_repo_etat_forks"),
+        Section("Versions"),
+        Entry("🧊 Freeze the versions", "_git_repo_geler"),
+        Entry(
+            "📌 Reconfigure on the frozen commits",
+            "_git_repo_reconfigurer",
+            kwargs={"freeze": True},
+        ),
+        Entry(
+            "🫗 Unfreeze the versions",
+            "_git_repo_geler",
+            kwargs={"unfreeze": True},
+        ),
+        Entry("🔀 Compare two freezes", "_git_repo_comparer"),
+    ],
+    intro="Update and upgrade the git repositories",
+    mark="🔃",
+    state="_git_repo_etat",
+    render="once",
+)
+
+# Les gestes sur un dépôt resté en conflit, celui que la file d'attente a
+# choisi et que `_git_repo_resoudre` pose avec l'horodatage de sa passe :
+# la ligne d'état liste ses fichiers en conflit, relue à chaque tour. Un
+# geste qui quitte le rebase rend vrai et referme le menu.
+CONFLICT = Menu(
+    "_git_repo_gestes",
+    "Conflict queue",
+    [
+        Entry(
+            "🐚 Open a shell here",
+            "_git_repo_geste",
+            kwargs={"geste": "shell"},
+        ),
+        Entry(
+            "👀 Show the conflicting diff",
+            "_git_repo_geste",
+            kwargs={"geste": "diff"},
+        ),
+        Entry("⬅️ Keep ours", "_git_repo_geste", kwargs={"geste": "notre"}),
+        Entry("➡️ Take upstream", "_git_repo_geste", kwargs={"geste": "amont"}),
+        Entry(
+            "▶️ Continue the rebase",
+            "_git_repo_geste",
+            kwargs={"geste": "continuer"},
+        ),
+        Entry(
+            "⏭️ Skip this commit",
+            "_git_repo_geste",
+            kwargs={"geste": "sauter"},
+        ),
+        Entry(
+            "⏸️ Abort this rebase",
+            "_git_repo_geste",
+            kwargs={"geste": "abandonner"},
+        ),
+        Entry(
+            "↩️ Return to the state managed by repo",
+            "_git_repo_geste",
+            kwargs={"geste": "revenir"},
+        ),
+    ],
+    state="_git_repo_conflit_etat",
+    closes_on_result=True,
+    abort_closes=True,
 )
 
 GIT_LOCAL_SERVER = Menu(

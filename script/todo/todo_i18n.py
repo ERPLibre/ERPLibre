@@ -20097,41 +20097,37 @@ TRANSLATIONS = {
         "fr": "Plus rien en conflit ici.",
         "en": "Nothing left in conflict here.",
     },
-    "Open a shell here": {
-        "fr": "Ouvrir un shell ici",
-        "en": "Open a shell here",
+    "🐚 Open a shell here": {
+        "fr": "🐚 Ouvrir un shell ici",
+        "en": "🐚 Open a shell here",
     },
-    "Show the conflicting diff": {
-        "fr": "Montrer le diff en conflit",
-        "en": "Show the conflicting diff",
+    "👀 Show the conflicting diff": {
+        "fr": "👀 Montrer le diff en conflit",
+        "en": "👀 Show the conflicting diff",
     },
-    "Keep ours": {
-        "fr": "Garder le nôtre",
-        "en": "Keep ours",
+    "⬅️ Keep ours": {
+        "fr": "⬅️ Garder le nôtre",
+        "en": "⬅️ Keep ours",
     },
-    "Take upstream": {
-        "fr": "Prendre l'amont",
-        "en": "Take upstream",
+    "➡️ Take upstream": {
+        "fr": "➡️ Prendre l'amont",
+        "en": "➡️ Take upstream",
     },
-    "Continue the rebase": {
-        "fr": "Continuer le rebase",
-        "en": "Continue the rebase",
+    "▶️ Continue the rebase": {
+        "fr": "▶️ Continuer le rebase",
+        "en": "▶️ Continue the rebase",
     },
-    "Skip this commit": {
-        "fr": "Sauter ce commit",
-        "en": "Skip this commit",
+    "⏭️ Skip this commit": {
+        "fr": "⏭️ Sauter ce commit",
+        "en": "⏭️ Skip this commit",
     },
-    "Abort this rebase": {
-        "fr": "Abandonner ce rebase",
-        "en": "Abort this rebase",
+    "⏸️ Abort this rebase": {
+        "fr": "⏸️ Abandonner ce rebase",
+        "en": "⏸️ Abort this rebase",
     },
-    "Return to the state managed by repo": {
-        "fr": "Revenir à l'état géré par repo",
-        "en": "Return to the state managed by repo",
-    },
-    "Later": {
-        "fr": "Plus tard",
-        "en": "Later",
+    "↩️ Return to the state managed by repo": {
+        "fr": "↩️ Revenir à l'état géré par repo",
+        "en": "↩️ Return to the state managed by repo",
     },
     "Rebase finished.": {
         "fr": "Rebase terminé.",

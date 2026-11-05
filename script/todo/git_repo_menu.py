@@ -50,8 +50,10 @@ from script.git import (  # noqa: E402
     repo_apply,
     repo_upgrade,
 )
+from script.todo.menus import git as menus_git  # noqa: E402
 from script.todo.todo_couleur import retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
+from script.todo.ui.navigator import navigate  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
 # venv : lancé depuis un autre répertoire, il ne trouve pas son interpréteur
@@ -200,79 +202,21 @@ def choix_numeros(saisie, candidats):
 
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
+        """Repo, déclaré dans REPO (`menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.REPO)
+
+    def _git_repo_etat(self):
+        """La ligne d'état de Repo : la version d'Odoo active, le nombre de
+        ses forks et le mode du manifeste local, puis, quand les fichiers
+        de `manifest/` se lisent, la ligne de leur gel."""
         version = repo_upgrade.version_active(RACINE) or "?"
         forks = repo_upgrade.etat_forks(version)
-        print(f"🔃 {t('Update and upgrade the git repositories')}")
-        print(
+        etat = (
             f"   Odoo {version} · {len(forks)} {t('forks')}"
             f" · {libelle_mode(etat_manifeste_local())}"
         )
         ligne = ligne_du_gel(gel_des_sources(), forks)
-        if ligne:
-            print(ligne)
-        choices = [
-            {"section": t("Update")},
-            {"prompt_description": t("🔄 Synchronize the repositories")},
-            {"prompt_description": t("🔁 Reconfigure and synchronize")},
-            {"prompt_description": t("⬇️ Pull the repositories")},
-            {"section": t("Upgrade")},
-            {"prompt_description": t("🌐 Add the upstream remotes")},
-            {"prompt_description": t("🔍 Upgrade — dry run")},
-            {"prompt_description": t("⬆️ Apply the upgrade")},
-            {"prompt_description": t("🧩 Conflict queue")},
-            {"prompt_description": t("📤 Publish the updated forks")},
-            {"section": t("Observe")},
-            {"prompt_description": t("📊 Report of the last pass")},
-            {"prompt_description": t("🖥️ Browse the upgrade on screen")},
-            {"prompt_description": t("🔗 Fork and upstream status")},
-            {"section": t("Versions")},
-            {"prompt_description": t("🧊 Freeze the versions")},
-            {"prompt_description": t("📌 Reconfigure on the frozen commits")},
-            {"prompt_description": t("🫗 Unfreeze the versions")},
-            {"prompt_description": t("🔀 Compare two freezes")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            self._git_repo_choix(status)
-
-    def _git_repo_choix(self, status):
-        """Lance l'entrée numéro `status` du menu, hors « 0 »."""
-        if status == "1":
-            self._git_repo_sync()
-        elif status == "2":
-            self._git_repo_reconfigurer()
-        elif status == "3":
-            self._git_repo_tirer()
-        elif status == "4":
-            self._git_repo_ajouter_remotes()
-        elif status == "5":
-            self._git_repo_a_sec()
-        elif status == "6":
-            self._git_repo_appliquer()
-        elif status == "7":
-            self._git_repo_file_conflits()
-        elif status == "8":
-            self._git_repo_publier()
-        elif status == "9":
-            self._git_repo_rapport()
-        elif status == "10":
-            self._git_repo_ecran()
-        elif status == "11":
-            self._git_repo_etat_forks()
-        elif status == "12":
-            self._git_repo_geler()
-        elif status == "13":
-            self._git_repo_reconfigurer(freeze=True)
-        elif status == "14":
-            self._git_repo_geler(unfreeze=True)
-        elif status == "15":
-            self._git_repo_comparer()
-        else:
-            print(t("Command not found !"))
+        return f"{etat}\n{ligne}" if ligne else etat
 
     def _git_repo_sync(self):
         """Ramène chaque dépôt sur la révision de son manifeste local.
@@ -861,7 +805,8 @@ class GitRepoMenuMixin:
             self._git_repo_resoudre(res, passe["horodatage"])
 
     def _git_repo_resoudre(self, res, horodatage=None):
-        """Les gestes offerts sur un dépôt en conflit.
+        """Les gestes offerts sur `res`, un dépôt en conflit de la passe
+        `horodatage`, déclarés dans CONFLICT (`menus/git.py`).
 
         « Garder le nôtre » et « prendre l'amont » traversent
         `repo_apply`, qui porte l'inversion de « ours » et « theirs »
@@ -871,69 +816,74 @@ class GitRepoMenuMixin:
         Un geste qui quitte le rebase (le dernier « Continuer » ou
         « Sauter », « Abandonner », « Revenir ») réécrit l'enregistrement
         du dépôt dans la passe `horodatage` : la publication et le rapport
-        lisent cet état, et non un conflit qui n'existe plus.
+        lisent cet état, et non un conflit qui n'existe plus. Il referme
+        le menu ; [0], Ctrl+C ou Ctrl+D le referment sans geste.
         """
+        self._git_repo_conflit = {"res": res, "horodatage": horodatage}
+        return self._git_repo_gestes()
+
+    def _git_repo_gestes(self):
+        """CONFLICT, sur le dépôt que `_git_repo_resoudre` a posé."""
+        return navigate(self, menus_git.CONFLICT)
+
+    def _git_repo_conflit_etat(self):
+        """Le dépôt en conflit, puis chacun de ses fichiers en conflit, ou
+        la mention qu'il n'en reste aucun."""
+        res = self._git_repo_conflit["res"]
+        fichiers = repo_apply.fichiers_en_conflit(
+            os.path.join(RACINE, res["chemin"])
+        )
+        lignes = [f"▸ {res['chemin']}"]
+        lignes += [f"     {fichier}" for fichier in fichiers]
+        if not fichiers:
+            lignes.append(f"  {t('Nothing left in conflict here.')}")
+        return "\n".join(lignes)
+
+    def _git_repo_geste(self, geste):
+        """Le geste `geste` de CONFLICT sur le dépôt que
+        `_git_repo_resoudre` a posé. Rend True quand le dépôt a quitté son
+        rebase, ce qui referme le menu."""
+        res = self._git_repo_conflit["res"]
+        horodatage = self._git_repo_conflit["horodatage"]
         chemin = os.path.join(RACINE, res["chemin"])
-        while True:
+        if geste == "shell":
+            self.execute.exec_command_live(
+                f"cd {chemin} && $SHELL", source_erplibre=False
+            )
+        elif geste == "diff":
+            self.execute.exec_command_live(
+                f"cd {chemin} && git diff --diff-filter=U",
+                source_erplibre=False,
+            )
+        elif geste in ("notre", "amont"):
             fichiers = repo_apply.fichiers_en_conflit(chemin)
-            if not fichiers:
-                print(f"  {t('Nothing left in conflict here.')}")
-            print(f"\n▸ {res['chemin']}")
-            for fichier in fichiers:
-                print(f"     {fichier}")
-            print(f"  [1] 🐚 {t('Open a shell here')}")
-            print(f"  [2] 👀 {t('Show the conflicting diff')}")
-            print(f"  [3] ⬅️  {t('Keep ours')}")
-            print(f"  [4] ➡️  {t('Take upstream')}")
-            print(f"  [5] ▶️  {t('Continue the rebase')}")
-            print(f"  [6] ⏭️  {t('Skip this commit')}")
-            print(f"  [7] ⏸️  {t('Abort this rebase')}")
-            print(f"  [8] ↩️  {t('Return to the state managed by repo')}")
-            print(f"  [0] 🔙 {t('Later')}")
-            choix = input("  : ").strip()
-            if choix in ("0", ""):
-                return
-            if choix == "1":
-                self.execute.exec_command_live(
-                    f"cd {chemin} && $SHELL", source_erplibre=False
-                )
-            elif choix == "2":
-                self.execute.exec_command_live(
-                    f"cd {chemin} && git diff --diff-filter=U",
-                    source_erplibre=False,
-                )
-            elif choix == "3":
+            if geste == "notre":
                 repo_apply.garder_le_notre(chemin, fichiers)
-                repo_apply.marquer_resolus(chemin, fichiers)
-            elif choix == "4":
+            else:
                 repo_apply.prendre_l_amont(chemin, fichiers)
-                repo_apply.marquer_resolus(chemin, fichiers)
-            elif choix == "5":
+            repo_apply.marquer_resolus(chemin, fichiers)
+        elif geste in ("continuer", "sauter"):
+            if geste == "continuer":
                 _out, err, code = repo_apply.continuer_rebase(chemin)
                 if code:
                     print(f"  ⚠  {err.strip()[:200]}")
-                if not repo_apply.rebase_en_cours(chemin):
-                    self._git_repo_noter(horodatage, res, "rebase")
-                    print(f"  ✅ {t('Rebase finished.')}")
-                    return
-            elif choix == "6":
-                repo_apply.sauter_le_commit(chemin)
-                if not repo_apply.rebase_en_cours(chemin):
-                    self._git_repo_noter(horodatage, res, "rebase")
-                    print(f"  ✅ {t('Rebase finished.')}")
-                    return
-            elif choix == "7":
-                repo_apply.abandonner_rebase(chemin)
-                self._git_repo_noter(horodatage, res, "abandonne")
-                print(f"  ↩️  {t('Rebase aborted.')}")
-                return
-            elif choix == "8":
-                repo_apply.revenir_a_repo(chemin, res.get("depart"))
-                self._git_repo_noter(horodatage, res, "revenu")
-                print(f"  ↩️  {t('Back to the state managed by repo.')}")
-                return
             else:
-                print(t("Command not found !"))
+                repo_apply.sauter_le_commit(chemin)
+            if not repo_apply.rebase_en_cours(chemin):
+                self._git_repo_noter(horodatage, res, "rebase")
+                print(f"  ✅ {t('Rebase finished.')}")
+                return True
+        elif geste == "abandonner":
+            repo_apply.abandonner_rebase(chemin)
+            self._git_repo_noter(horodatage, res, "abandonne")
+            print(f"  ↩️  {t('Rebase aborted.')}")
+            return True
+        elif geste == "revenir":
+            repo_apply.revenir_a_repo(chemin, res.get("depart"))
+            self._git_repo_noter(horodatage, res, "revenu")
+            print(f"  ↩️  {t('Back to the state managed by repo.')}")
+            return True
+        return False
 
     def _git_repo_reconcilier(self, passe):
         """Aligne `passe` sur l'état réel des dépôts, voir
