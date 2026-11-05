@@ -7,8 +7,8 @@ Lui crée une VM et prend des heures ; ceux-ci gardent sa forme en quelques
 millisecondes. Ce qu'ils tiennent :
 
 - il envoie la commande du MENU, pas une chaîne à lui. Un test qui
-  installerait par ses propres soins prouverait SON chemin, et c'est
-  précisément là que se cachaient les pannes ;
+  installerait par ses propres soins prouverait SON chemin, et non celui
+  du menu, où se cachent les pannes ;
 - le verdict porte sur l'ÉTAT de la machine, pas sur un code de retour :
   « nixos-rebuild switch » rend 4 sur un système pourtant activé, et chaque
   bloc d'outil du menu rend 0 par construction ;
@@ -88,8 +88,8 @@ class LePlan(unittest.TestCase):
 
     def test_the_free_space_asked_for_is_what_gets_written(self):
         """Un qcow2 n'est pas préalloué : il ne prend que ce qu'on y écrit.
-        Comparer les 40 Go du disque VIRTUEL à l'espace libre faisait refuser
-        le test sur une machine qui pouvait parfaitement le mener."""
+        Comparer les 40 Go du disque VIRTUEL à l'espace libre ferait refuser
+        le test sur une machine qui peut parfaitement le mener."""
         self.assertIn("DISQUE_ECRIT_GO", SRC)
         i = SRC.index("if disque <")
         self.assertIn("DISQUE_ECRIT_GO", SRC[i : i + 120])
@@ -180,9 +180,9 @@ class LeDefaire(unittest.TestCase):
     """La forme du rapport n'est pas libre : c'est le CONTRAT du défaire
     partagé de descente.py, et rien dans le langage ne l'impose.
 
-    Le rapport écrit d'abord n'avait pas d'« etages » — dernier_rapport
-    l'écartait comme « rien créé », « --detruire » répondait « rien à
-    défaire », et la VM survivait à ce qui devait l'effacer."""
+    Un rapport sans « etages », dernier_rapport l'écarte comme « rien
+    créé » : « --detruire » répond alors « rien à défaire », et la VM
+    survit à ce qui doit l'effacer."""
 
     ETAGE = {
         "niveau": 1,
@@ -240,7 +240,7 @@ class LeDefaire(unittest.TestCase):
         self.assertIn("rien ne sera détruit", sortie)
 
     def test_a_report_without_that_shape_finds_nothing(self):
-        """La preuve que le contrat compte : la forme écrite d'abord."""
+        """La preuve que le contrat compte : un rapport sans « etages »."""
         sortie = self._defaire(
             {
                 "outil": "install_nixos",
@@ -279,22 +279,30 @@ class LeVerrouEtLeMenu(unittest.TestCase):
 
     def test_the_menu_offers_it_dry_and_for_real(self):
         from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+        from script.todo.menus import proxmox
 
-        menu = (RACINE / "script/todo/longtest_menu.py").read_text(
-            encoding="utf-8"
+        entrees = {
+            entry.key: (entry.action, entry.kwargs)
+            for entry in proxmox.LONGTEST.entries
+        }
+        self.assertEqual(
+            entrees["ERPLibre on NixOS: run it"], ("_longtest_nixos", None)
         )
-        self.assertIn("ERPLibre on NixOS: run it", menu)
-        self.assertIn("ERPLibre on NixOS: plan only (dry-run)", menu)
+        self.assertEqual(
+            entrees["ERPLibre on NixOS: plan only (dry-run)"],
+            ("_longtest_nixos", {"dry_run": True}),
+        )
         self.assertIn("install_nixos.py", SCRIPTS_DEFAISABLES)
 
     def test_the_menu_does_not_pass_a_depth(self):
         """Une seule machine : « --depth » n'a pas de sens ici, et le script
         le refuserait."""
-        menu = (RACINE / "script/todo/longtest_menu.py").read_text(
-            encoding="utf-8"
-        )
-        bloc = menu.split('if script == "install_nixos.py":')[1][:400]
-        self.assertNotIn("--depth", bloc)
+        import inspect
+
+        from script.todo.longtest_menu import LongTestMenuMixin
+
+        source = inspect.getsource(LongTestMenuMixin._longtest_nixos)
+        self.assertNotIn("--depth", source)
 
     def test_every_label_is_translated(self):
         from script.todo.todo_i18n import TRANSLATIONS
@@ -361,8 +369,9 @@ class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
         self.assertNotIn("sudo", ligne)
 
     def test_its_sibling_does_the_same(self):
-        """descente.py crée l'étage 1 de la même façon, et l'oubli y était
-        le même : un correctif posé d'un seul côté laisse l'autre au mur."""
+        """descente.py crée l'étage 1 de la même façon, avec la même
+        exigence : un correctif posé d'un seul côté laisserait l'autre au
+        mur."""
         src = (RACINE / "long_test/descente.py").read_text(encoding="utf-8")
         self.assertIn('([] if self.dry_run else ["sudo"]) + [', src)
 
@@ -372,8 +381,8 @@ class LaSondeEnvfsNommeSesChemins(unittest.TestCase):
 
     « ls /usr/bin » y rend un répertoire vide alors que
     « /usr/bin/python3.12 » s'ouvre : un glob passe par readdir, donc ne rend
-    rien. Le contrôle déclarait absent ce qui est là — il éprouvait envfs de
-    la seule façon dont envfs ne peut pas répondre.
+    rien. Un contrôle par glob déclarerait absent ce qui est là — il
+    éprouverait envfs de la seule façon dont envfs ne peut pas répondre.
     """
 
     def test_no_glob_is_used_against_that_filesystem(self):

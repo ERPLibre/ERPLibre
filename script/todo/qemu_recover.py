@@ -18,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 
+from script.execute.execute import Execute
 from script.todo.qemu_privilege import (
     install_cmd_for,
     system_env,
@@ -148,24 +149,26 @@ class QemuRecoverMixin:
         print(f"\n⚠  {t('This VM is running.')}")
         print(f"   {t('Reading a live disk sees a possibly torn state:')}")
         print(f"   {t('a half-written file, an unreplayed journal.')}")
+        # Aucune valeur courante : une réponse vide renonce comme [0], sans
+        # arrêter la VM sans qu'on l'ait choisi explicitement.
         choix = self._qemu_pick(
             t("What do you want to do?"),
-            ["read", "shutdown", "cancel"],
-            "shutdown",
+            ["read", "shutdown"],
+            None,
             [
                 t("Read anyway (read-only, no risk for the VM)"),
                 t("Shut the VM down cleanly, then read"),
-                t("Cancel"),
             ],
         )
-        if choix == "cancel":
+        if choix is None:
             return False
         if choix == "read":
             return True
         return self._qemu_shutdown_wait(name)
 
     def _qemu_recover_pick_filesystem(self, disk):
-        """Système de fichiers choisi dans le disque, ou "" si aucun.
+        """Système de fichiers choisi dans le disque ; "" quand le disque
+        n'en montre aucun, None pour [0].
 
         « list-filesystems » les rend tous, y compris ceux qu'on ne peut pas
         monter — swap, partitions vides. Les montrer quand même : leur absence
@@ -275,6 +278,8 @@ class QemuRecoverMixin:
             self.execute.exec_command_live(
                 cmd, source_erplibre=False, new_env={"PATH": system_path()}
             )
+            if Execute.interrupted:
+                return
 
     def _qemu_recover_files(self):
         """Récupère des fichiers dans le disque d'une VM, sans la démarrer."""
@@ -283,11 +288,9 @@ class QemuRecoverMixin:
             return
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
-        name = self._qemu_domname(name)
         disk = self._qemu_main_disk(name)
         if not disk:
             print(f"  ⚠ {t('No disk found for this VM.')}")

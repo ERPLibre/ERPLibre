@@ -8,15 +8,18 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
-from script.todo import todo_i18n
+from script.execute.execute import Execute
+from script.todo import todo_i18n, ui
 from script.todo.todo import (
     ANDROID_DIR,
     CONFIG_FILE,
@@ -30,6 +33,7 @@ from script.todo.todo import (
     TODO,
     VENV_ERPLIBRE,
 )
+from script.todo.ui import port
 from script.todo.version_manager import (
     INSTALLED_ODOO_VERSION_FILE,
     ODOO_VERSION_FILE,
@@ -93,6 +97,21 @@ class TestFillHelpInfo(unittest.TestCase):
         self.assertIn("Command:", result)
         self.assertIn("[0] Back", result)
         self.assertNotIn("[1]", result)
+
+    def test_the_header_writes_the_crumbs_of_the_navigator(self):
+        # L'en-tête écrit le fil d'Ariane que tient le navigateur, puis la
+        # ligne d'état, et fait du fil la clé de télémétrie du menu ; hors
+        # de tout menu, il n'écrit ni fil ni clé.
+        from script.todo.ui import navigator
+
+        with patch("script.todo.todo_telemetry.record") as record:
+            self.assertNotIn("📍", self.todo._menu_header())
+            with navigator.crumbs_at(["TODO", "Forged"]):
+                header = self.todo._menu_header("forged state")
+        self.assertEqual(
+            header.split("\n")[:2], ["📍 TODO › Forged", "forged state"]
+        )
+        record.assert_called_once_with("TODO › Forged")
 
 
 class TestGetOdooVersion(unittest.TestCase):
@@ -201,6 +220,64 @@ class TestOnDirSelected(unittest.TestCase):
         self.assertEqual(todo.dir_path, "/some/path")
 
 
+class TestRestartScript(unittest.TestCase):
+    """La relance de TODO, dans un répertoire temporaire qui porte un venv
+    vide : os.execve et os.execv sont des doubles, rien ne remplace le
+    processus du test."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(tmp.name)
+        os.makedirs(os.path.join(VENV_ERPLIBRE, "bin"))
+
+    def restart(self, argv):
+        """`restart_script` sous `argv` ; rend les doubles d'os.execve et
+        d'os.execv. `self.flushed` dit, à chaque appel d'os.execve, si la
+        sortie standard avait été vidée depuis sa dernière écriture."""
+        todo = TODO.__new__(TODO)  # sans __init__, qui lit le checkout
+        env = {"PATH": "/forged/bin", "PYTHONHOME": "/forged"}
+        out, self.flushed = MagicMock(), []
+        out.write.side_effect = lambda text: out.flush.reset_mock()
+        with (
+            patch.object(sys, "argv", argv),
+            patch.dict(os.environ, env),
+            patch.object(os, "execve") as execve,
+            patch.object(os, "execv") as execv,
+            redirect_stdout(out),
+        ):
+            execve.side_effect = lambda *a: self.flushed.append(
+                out.flush.called
+            )
+            todo.restart_script("forged error")
+        return execve, execv
+
+    def test_the_argv_list_is_passed_as_is_without_a_shell(self):
+        argv = ["script/todo/todo.py", "--name", "a b; touch forged", "$HOME"]
+        execve, execv = self.restart(argv)
+        execv.assert_not_called()
+        venv = os.path.abspath(VENV_ERPLIBRE)
+        python = os.path.join(venv, "bin", "python")
+        [(path, args, env)] = [call.args for call in execve.call_args_list]
+        self.assertEqual((path, args), (python, [python, *argv]))
+        self.assertEqual(env["VIRTUAL_ENV"], venv)
+        self.assertEqual(env["PATH"], f"{venv}/bin{os.pathsep}/forged/bin")
+        self.assertNotIn("PYTHONHOME", env)
+        # Ce qui a été imprimé part avant que le processus ne soit remplacé.
+        self.assertEqual(self.flushed, [True])
+        with open(ERROR_LOG_PATH, encoding="utf-8") as error:
+            self.assertEqual(error.read(), "forged error")
+
+    def test_an_error_already_logged_restarts_nothing(self):
+        # Une erreur qui revient à chaque démarrage ne boucle pas.
+        with open(ERROR_LOG_PATH, "w", encoding="utf-8") as error:
+            error.write("first error")
+        execve, execv = self.restart(["script/todo/todo.py"])
+        execve.assert_not_called()
+        execv.assert_not_called()
+
+
 class TestExecuteFromConfiguration(unittest.TestCase):
     def test_with_command(self):
         todo = TODO()
@@ -261,22 +338,39 @@ class TestExecuteFromConfiguration(unittest.TestCase):
         todo.execute_from_configuration(dct, ignore_makefile=True)
         todo.execute.exec_command_live.assert_not_called()
 
-    def test_with_callback(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        callback = MagicMock()
-        dct = {"callback": callback}
-        todo.execute_from_configuration(dct)
-        callback.assert_called_once_with(dct)
-
     def test_makefile_error_stops_execution(self):
+        # La cible make échoue : la commande bash de l'instance ne part pas.
         todo = TODO()
         todo.execute = MagicMock()
         todo.execute.exec_command_live.return_value = 1
-        callback = MagicMock()
-        dct = {"makefile_cmd": "broken", "callback": callback}
+        dct = {"makefile_cmd": "broken", "bash_command": "forged_command"}
         todo.execute_from_configuration(dct)
-        callback.assert_not_called()
+        self.assertEqual(todo.execute.exec_command_live.call_count, 1)
+
+    def test_run_db_opens_only_a_database_the_instance_names(self):
+        # Sans « database », run.sh recevrait « -d None » : l'instance ne
+        # lance que ses commandes, et le dit.
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.prompt_execute_selenium_and_run_db = MagicMock()
+        with redirect_stdout(io.StringIO()) as out:
+            todo.execute_from_configuration(
+                {"bash_command": "forged_one"}, exec_run_db=True
+            )
+            todo.execute_from_configuration(
+                {"database": "forged"}, exec_run_db=True
+            )
+        opened = todo.prompt_execute_selenium_and_run_db.call_args_list
+        self.assertEqual([c.args[0] for c in opened], ["forged"])
+        todo.execute.exec_command_live.assert_called_once_with(
+            "forged_one", source_erplibre=False
+        )
+        self.assertIn(
+            todo_i18n.t(
+                "This instance names no database: Odoo is not started."
+            ),
+            out.getvalue(),
+        )
 
 
 class TestConstants(unittest.TestCase):
@@ -572,28 +666,49 @@ class TestClaudeCommandTemplates(unittest.TestCase):
     """
 
     @staticmethod
-    def _deployed_templates():
-        """Les gabarits nommés dans les appels à `_setup_claude_command`."""
+    def _deployed_pairs():
+        """(commande, gabarit) de chaque déploiement de Claude configs :
+        les `kwargs` des entrées déclarées qui mènent à
+        `_setup_claude_command`, puis les appels de todo.py à cette
+        méthode, leurs deux premiers arguments écrits en position ou
+        nommés `command_name` et `template_filename`."""
         import ast
 
+        from script.todo.menus import git as menus_git
+
+        pairs = [
+            (e.kwargs["command_name"], e.kwargs["template_filename"])
+            for e in menus_git.CLAUDE_CONFIGS.entries
+            if e.action == "_setup_claude_command"
+        ]
         source = Path("script/todo/todo.py").read_text(encoding="utf-8")
-        found = []
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Call):
                 continue
             attr = getattr(node.func, "attr", None)
             if attr != "_setup_claude_command":
                 continue
-            # (nom_de_commande, nom_de_gabarit) : les deux sont des littéraux,
-            # sans quoi le test ne peut rien affirmer.
+            named = {k.arg: k.value for k in node.keywords}
             args = [
+                node.args[i] if i < len(node.args) else named.get(name)
+                for i, name in enumerate(("command_name", "template_filename"))
+            ]
+            # Les deux sont des littéraux, sans quoi le test ne peut rien
+            # affirmer.
+            values = [
                 a.value
-                for a in node.args
+                for a in args
                 if isinstance(a, ast.Constant) and isinstance(a.value, str)
             ]
-            if len(args) >= 2:
-                found.append(args[1])
-        return found
+            if len(values) == 2:
+                pairs.append(tuple(values))
+        return pairs
+
+    @staticmethod
+    def _deployed_templates():
+        """Les gabarits que nomment les déploiements de Claude configs."""
+        pairs = TestClaudeCommandTemplates._deployed_pairs()
+        return [template for _, template in pairs]
 
     def test_every_menu_template_exists(self):
         templates = self._deployed_templates()
@@ -609,22 +724,7 @@ class TestClaudeCommandTemplates(unittest.TestCase):
         """Le `name:` du frontmatter donne le nom de la commande `/…` ; un
         gabarit qui en déclare un autre déploie un fichier dont le contenu
         parle d'une commande différente."""
-        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
-        import ast
-
-        pairs = []
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Call):
-                continue
-            if getattr(node.func, "attr", None) != "_setup_claude_command":
-                continue
-            args = [
-                a.value
-                for a in node.args
-                if isinstance(a, ast.Constant) and isinstance(a.value, str)
-            ]
-            if len(args) >= 2:
-                pairs.append((args[0], args[1]))
+        pairs = self._deployed_pairs()
         self.assertTrue(pairs)
         for command, template in pairs:
             with self.subTest(command=command):
@@ -741,6 +841,146 @@ class TestListeCommandesClaude(unittest.TestCase):
         invisible à la liste et à l'écran de contexte."""
         nommes = set(TestClaudeCommandTemplates._deployed_templates())
         self.assertEqual(nommes, set(TODO._CLAUDE_COMMAND_TEMPLATES.values()))
+
+
+class TestClaudeAddAutomation(unittest.TestCase):
+    """GPT code › Add an automation : la commande s'écrit dans une liste
+    `<section>_from_makefile` de todo.json qu'un menu lit, et nulle part
+    ailleurs. todo.json est une copie temporaire."""
+
+    def setUp(self):
+        # L'ajout écrit le todo.json voisin de todo.py, que `add` détourne
+        # vers une copie : le vrai, suivi par git, reste tel quel.
+        import script.todo.todo as module
+
+        real = Path(module.__file__).with_name("todo.json")
+        before = real.read_bytes()
+        self.addCleanup(
+            lambda: self.assertTrue(real.read_bytes() == before, real)
+        )
+
+    def add(self, *answers):
+        """(todo.json après l'ajout, texte affiché) quand l'ajout reçoit
+        `answers`, sur un todo.json qui n'a que `git_from_makefile`."""
+        import script.todo.todo as module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "todo.json"
+            config.write_text('{"git_from_makefile": []}\n')
+            with (
+                patch.object(module, "__file__", str(Path(tmp) / "todo.py")),
+                patch("builtins.input", side_effect=answers),
+                redirect_stdout(io.StringIO()) as out,
+            ):
+                TODO()._claude_add_automation()
+            return json.loads(config.read_text()), out.getvalue()
+
+    def test_only_a_section_a_menu_reads_is_written(self):
+        # Sans réponse, la section est git ; config, network et process
+        # n'ont aucun menu.
+        config, _ = self.add("Forged", "forged_command", "")
+        added = {
+            "prompt_description": "Forged",
+            "bash_command": "forged_command",
+        }
+        self.assertEqual(config, {"git_from_makefile": [added]})
+        refused = todo_i18n.t("No menu reads this section: ")
+        for section in ("config", "network", "process", "forged"):
+            with self.subTest(section=section):
+                config, out = self.add("Forged", "forged_command", section)
+                self.assertEqual(config, {"git_from_makefile": []})
+                self.assertIn(refused + section, out)
+
+    def test_each_offered_section_is_read_by_a_menu(self):
+        # Un menu écrit à la main (get_config) ou déclaré (FromConfig)
+        # nomme sa liste en littéral, premier argument de l'appel, sous
+        # script/todo ; le même texte dans un commentaire ou ailleurs ne
+        # compte pas.
+        root = Path(__file__).resolve().parent.parent / "script" / "todo"
+        read = set()
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and node.args):
+                    continue
+                name = getattr(node.func, "id", None) or getattr(
+                    node.func, "attr", None
+                )
+                first = node.args[0]
+                if name in ("get_config", "FromConfig") and isinstance(
+                    first, ast.Constant
+                ):
+                    read.add(first.value)
+        for section in TODO._AUTOMATION_SECTIONS:
+            with self.subTest(section=section):
+                self.assertIn(f"{section}_from_makefile", read)
+
+    def test_the_question_names_each_offered_section(self):
+        # Dans chaque langue, la question de la section nomme chaque
+        # section de _AUTOMATION_SECTIONS ; « forged » est refusée avant
+        # toute lecture de todo.json.
+        import script.todo.todo as module
+
+        with (
+            patch.object(module, "t", side_effect=lambda key: key),
+            patch(
+                "builtins.input",
+                side_effect=["Forged", "forged_command", "forged"],
+            ) as question,
+            redirect_stdout(io.StringIO()),
+        ):
+            TODO()._claude_add_automation()
+        key = question.call_args_list[2].args[0]
+        for lang in todo_i18n.LANGUAGES:
+            text = todo_i18n.TRANSLATIONS[key][lang]
+            for section in TODO._AUTOMATION_SECTIONS:
+                with self.subTest(lang=lang, section=section):
+                    self.assertRegex(text, rf"\b{section}\b")
+
+
+class TestGitAddRemote(unittest.TestCase):
+    """Git › Add a remote : le nom et l'adresse tapés arrivent à git tels
+    quels, chacun en un argument ; la commande est un double."""
+
+    def answer(self, answers, status=0):
+        """(commande lancée, texte affiché) quand l'ajout reçoit
+        `answers` et que la commande rend `status`."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = status
+        with (
+            patch("builtins.input", side_effect=answers),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            todo._git_add_remote()
+        command = todo.execute.exec_command_live.call_args.args[0]
+        return command, out.getvalue()
+
+    def test_the_name_and_the_address_reach_git_as_typed(self):
+        # Un blanc ne coupe pas une réponse, un « ; » ne lance rien après
+        # git, et un nom qui commence par « - » suit « -- », qui termine
+        # les options de git ; sans nom, le remote s'appelle localhost.
+        name, address = "forged name", "/forged dir/repo.git; forged"
+        for answers, arguments in (
+            ([name, address], [name, address]),
+            (["", "forged-address"], ["localhost", "forged-address"]),
+            (["-x", "forged-address"], ["-x", "forged-address"]),
+        ):
+            with self.subTest(answers=answers):
+                command, _ = self.answer(answers)
+                self.assertEqual(
+                    shlex.split(command),
+                    ["git", "remote", "add", "--", *arguments],
+                )
+
+    def test_a_failure_of_git_is_reported(self):
+        # La commande rend son code sans lever : un remote qui existe déjà
+        # fait sortir git en 3, et rien n'a été ajouté.
+        _, out = self.answer(["forged", "forged-address"], status=3)
+        self.assertNotIn(todo_i18n.t("Remote added successfully!"), out)
+        self.assertIn(f"{todo_i18n.t('Error adding remote: ')}3", out)
+        _, out = self.answer(["forged", "forged-address"])
+        self.assertIn(todo_i18n.t("Remote added successfully!"), out)
 
 
 class TestClaudePlugins(unittest.TestCase):
@@ -1029,6 +1269,35 @@ class TestDropSeveralDatabases(unittest.TestCase):
         self.assertIn(f"{todo_i18n.t('Erased:')} alpha, gamma", texte)
         self.assertIn(f"{todo_i18n.t('Not erased:')} beta", texte)
 
+    def test_un_ctrl_c_arrete_l_effacement(self):
+        # La première suppression est interrompue : elle rend -2 et pose
+        # Execute.interrupted. Les bases suivantes ne sont pas effacées, et
+        # le bilan les compte parmi celles qui restent.
+        manager = self.manager(["1 2 3"])
+        lancees = []
+
+        def executer(commande, **_kwargs):
+            if commande.endswith("db list"):
+                return (0, list(self.BASES))
+            lancees.append(commande)
+            Execute.interrupted = True
+            return (-2, [])
+
+        manager._execute.exec_command_live.side_effect = executer
+        sortie = io.StringIO()
+        with (
+            patch.object(Execute, "interrupted", False),
+            patch("builtins.input", return_value="yes"),
+            patch("sys.stdout", sortie),
+        ):
+            manager._drop_selected_databases()
+        self.assertEqual(["./odoo_bin.sh db drop alpha"], lancees)
+        texte = sortie.getvalue()
+        self.assertNotIn(todo_i18n.t("Erased:"), texte)
+        self.assertIn(
+            f"{todo_i18n.t('Not erased:')} alpha, beta, gamma", texte
+        )
+
     def test_le_menu_mene_a_la_selection_multiple(self):
         manager = self.manager(["2", "0"])
         with patch("builtins.input", return_value=""):
@@ -1234,6 +1503,30 @@ class TestRestoreFromDatabase(unittest.TestCase):
         )
         self.assertEqual(1, len(cmds), cmds)
 
+    def test_a_ctrl_c_stops_the_chain(self):
+        # La restauration interrompue rend 0 : seul Execute.interrupted
+        # dit que la chaîne s'arrête là.
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+
+        def executer(_commande, **_kwargs):
+            Execute.interrupted = True
+            return (0, [])
+
+        todo.db_manager._execute.exec_command_live.side_effect = executer
+        with (
+            patch.object(Execute, "interrupted", False),
+            patch(
+                "builtins.input",
+                side_effect=["1", "backup", "mydb", "", "y", "o", "o"],
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            todo.db_manager.restore_from_database()
+        self.assertEqual(
+            1, todo.db_manager._execute.exec_command_live.call_count
+        )
+
     def test_a_name_without_zip_finds_the_archive(self):
         cmds = self.restaurer(["1", "backup", "", "", "n", ""])
         self.assertIn("--image backup.zip", cmds[0])
@@ -1260,6 +1553,90 @@ class TestRestoreFromDatabase(unittest.TestCase):
             todo.db_manager.restore_from_database()
         todo.db_manager._execute.exec_command_live.assert_not_called()
 
+    def choisir(self, *par_ui, reponses=(), parcouru="backup.zip"):
+        """(commandes lancées, port qui a répondu, double d'`input`) quand
+        le choix de la source reçoit `par_ui` d'un ScriptedPort, `input`
+        les `reponses` suivantes, et le navigateur de fichiers rend
+        `parcouru`."""
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        todo.db_manager.open_file_image_db = lambda: parcouru
+        scripted = port.ScriptedPort(list(par_ui))
+        with (
+            ui.bind(scripted),
+            patch("builtins.input", side_effect=list(reponses)) as asked,
+            redirect_stdout(io.StringIO()),
+        ):
+            todo.db_manager.restore_from_database()
+        live = todo.db_manager._execute.exec_command_live
+        return [c.args[0] for c in live.call_args_list], scripted, asked
+
+    def test_the_source_is_chosen_by_its_number(self):
+        # La source se choisit par son numéro (`ui.choose`) : le
+        # navigateur, [2], est le défaut d'une réponse vide, et [0] revient.
+        commands, scripted, _ = self.choisir(
+            "1", reponses=["backup", "", "", "n", ""]
+        )
+        self.assertIn("--image backup.zip", commands[0])
+        [choice] = scripted.events
+        self.assertEqual(
+            [o["key"] for o in choice["options"]], ["1", "2", "0"]
+        )
+        self.assertEqual(choice["default"], "2")
+
+    def test_an_empty_answer_or_two_browses_image_db(self):
+        for answer in ("", "2"):
+            commands, _, _ = self.choisir(
+                answer, reponses=["", "", "n", ""], parcouru="parcouru.zip"
+            )
+            self.assertIn("--image parcouru.zip", commands[0], answer)
+
+    def test_zero_or_a_typo_restore_nothing(self):
+        # Ni commande ni autre question : une faute est nommée, et la
+        # question revient sans ouvrir le navigateur.
+        for par_ui, refused in ((("0",), []), (("x", "3", "0"), ["x", "3"])):
+            commands, scripted, asked = self.choisir(*par_ui)
+            self.assertEqual(commands, [], par_ui)
+            self.assertEqual(asked.call_count, 0, par_ui)
+            notices = [
+                e["text"] for e in scripted.events if e["t"] == "notice"
+            ]
+            self.assertEqual(
+                notices,
+                [f"{todo_i18n.t('Invalid choice: ')}{a}" for a in refused],
+            )
+
+
+class TestGenerateConfigFromASource(unittest.TestCase):
+    """Execute › Config › Generate from backup file et Generate from
+    database : la source se choisit d'abord, par le navigateur d'image_db
+    ou la liste des bases, tous deux doublés, et la commande l'est aussi.
+    Le navigateur quitté sans fichier rend "", [0] à la liste des bases
+    rend False."""
+
+    def generated(self, browsed, database):
+        """Les commandes lancées par les deux entrées, le navigateur
+        rendant `browsed` et la liste des bases `database`."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.db_manager.open_file_image_db = lambda: browsed
+        todo.db_manager.select_database = lambda: database
+        todo.generate_config_from_backup()
+        todo.generate_config_from_database()
+        return [
+            c.args[0] for c in todo.execute.exec_command_live.call_args_list
+        ]
+
+    def test_only_a_chosen_source_generates(self):
+        # Sans source, rien : ni la génération de base, ni celle qui lirait
+        # « --from_backup_name » vide ou « --database False ».
+        self.assertEqual(self.generated("", False), [])
+        commands = self.generated("forged_backup.zip", "forged_db")
+        self.assertEqual(len(commands), 2, commands)
+        self.assertIn("--from_backup_name forged_backup.zip ", commands[0])
+        self.assertIn("--database forged_db && ", commands[1])
+
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
     @patch("script.todo.database_manager.click")
@@ -1281,16 +1658,205 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         self.assertIn(" dump ", cmd)
         self.assertIn("test_db", cmd)
 
+    @patch("builtins.input")
+    def test_no_database_chosen_makes_no_backup(self, mock_input):
+        # select_database rend False sur [0], sans base, ou quand
+        # PostgreSQL ne répond pas : ni nom de sauvegarde demandé, ni
+        # commande lancée, que le nom soit vide ou non.
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager.select_database = MagicMock(return_value=False)
+        for name in ("", "forged.zip"):
+            mock_input.return_value = name
+            todo.db_manager.create_backup_from_database()
+        mock_input.assert_not_called()
+        todo.db_manager._execute.exec_command_live.assert_not_called()
+
+
+class TestDownloadDatabaseBackup(unittest.TestCase):
+    """Database › Download database : les réponses sont tapées par des
+    doubles, les commandes et l'archive aussi ; rien ne part."""
+
+    def download(self, answers, listed, status=0, typed=()):
+        """(ce que rend le dialogue, les chemins que lit `zipfile.ZipFile`)
+        quand `input` reçoit `answers`, le nom demandé à la main `typed`, et
+        que la liste des bases distantes rend `status` et les lignes
+        `listed`. Garde les commandes lancées et la sortie imprimée."""
+        todo = TODO()
+        execute = todo.db_manager._execute = MagicMock()
+        execute.exec_command_live.side_effect = [
+            (status, listed),
+            (0, "forged"),
+        ]
+        out = io.StringIO()
+        self.scripted = port.ScriptedPort(typed)
+        with (
+            ui.bind(self.scripted),
+            patch("builtins.input", side_effect=answers),
+            patch("getpass.getpass", return_value="forged"),
+            patch("zipfile.ZipFile") as archive,
+            redirect_stdout(out),
+        ):
+            done = todo.db_manager.download_database_backup_cli()
+        self.commands = [
+            c.args[0] for c in execute.exec_command_live.call_args_list
+        ]
+        self.printed = out.getvalue()
+        return done, [c.args[0] for c in archive.call_args_list]
+
+    def test_it_checks_the_archive_at_the_path_typed(self):
+        done, read = self.download(["forged", "forged.zip"], ["forged_one"])
+        self.assertEqual(done, (0, "forged.zip", "forged_one"))
+        self.assertEqual(read, ["forged.zip"])
+
+    def test_a_shown_number_or_name_picks_its_database(self):
+        # « 2 » est le numéro affiché de forged_two, et son nom le choisit
+        # aussi ; « 02 » ou un nom absent de la liste sont dits invalides et
+        # la question revient ; « 0 » ou une réponse vide annulent, sans
+        # chemin ni autre commande que la liste.
+        listed = ["forged_one", "forged_two"]
+        for typed, name, refused in (
+            (["2"], "forged_two", []),
+            (["forged_two"], "forged_two", []),
+            (
+                ["02", "forged_other", "1"],
+                "forged_one",
+                ["02", "forged_other"],
+            ),
+            (["0"], "", []),
+            ([""], "", []),
+        ):
+            with self.subTest(typed=typed):
+                done, read = self.download(["forged", ""], listed, typed=typed)
+                if name:
+                    path = done[1]
+                    self.assertTrue(path.startswith(f"./image_db/{name}_"))
+                    self.assertEqual(done, (0, path, name))
+                    self.assertEqual(read, [path])
+                else:
+                    self.assertEqual((done, read), ((1, "", ""), []))
+                    self.assertEqual(len(self.commands), 1)
+                notices = [
+                    e["text"]
+                    for e in self.scripted.events
+                    if e.get("t") == "notice"
+                ]
+                self.assertEqual(
+                    notices,
+                    [f"{todo_i18n.t('Invalid choice: ')}{a}" for a in refused],
+                )
+
+    def test_a_list_that_fails_asks_the_name_by_hand(self):
+        # list_remote.py rend 1, et son erreur arrive dans la sortie
+        # fusionnée : elle n'est pas un nom de base.
+        done, _ = self.download(
+            ["https://forged.invalid", ""],
+            ["Connection Error: forged refusal"],
+            status=1,
+            typed=["forged_typed"],
+        )
+        self.assertEqual((done[0], done[2]), (0, "forged_typed"))
+        self.assertNotIn("Connection Error", done[1])
+        self.assertIn(
+            todo_i18n.t("Cannot read the list of remote databases."),
+            self.printed,
+        )
+
+    def test_a_blank_name_cancels(self):
+        # Liste en échec, ou vide : ni chemin, ni mot de passe, ni
+        # download_remote.sh ; la liste est la seule commande lancée.
+        for listed, status in (
+            (["Connection Error: forged refusal"], 1),
+            ([], 0),
+        ):
+            done, read = self.download(
+                ["https://forged.invalid", "", ""], listed, status, [""]
+            )
+            self.assertEqual(done, (1, "", ""), listed)
+            self.assertEqual(read, [], listed)
+            self.assertEqual(len(self.commands), 1, self.commands)
+            self.assertIn("list_remote.py", self.commands[0])
+
+
+class TestADownloadCancelledStopsItsCaller(unittest.TestCase):
+    """Les appelants de `download_database_backup_cli` qui agissent sur ce
+    qu'il rend : Analyse › Monitoring et Transform data › Anonymise
+    restaurent l'archive, la migration de base la retient et la lit. La
+    liste distante échoue et le nom tapé est vide : le dialogue rend
+    (1, "", ""), et rien n'est téléchargé, restauré ni retenu."""
+
+    def setUp(self):
+        self.todo = TODO()
+        self.execute = self.todo.db_manager._execute = MagicMock()
+        self.execute.exec_command_live.side_effect = [
+            (1, ["Connection Error: forged refusal"]),
+            (0, "forged"),
+        ]
+        self.enterContext(ui.bind(port.ScriptedPort([""])))
+        self.enterContext(
+            patch(
+                "builtins.input",
+                side_effect=["https://forged.invalid", "", ""],
+            )
+        )
+        self.enterContext(patch("getpass.getpass", return_value="forged"))
+        self.enterContext(patch("zipfile.ZipFile"))
+        self.enterContext(redirect_stdout(io.StringIO()))
+        self.enterContext(patch("click.prompt", return_value="3"))
+
+    def assert_only_the_list_ran(self):
+        commands = [
+            c.args[0] for c in self.execute.exec_command_live.call_args_list
+        ]
+        self.assertEqual(len(commands), 1, commands)
+        self.assertIn("list_remote.py", commands[0])
+
+    def test_monitoring_restores_nothing(self):
+        with patch.object(self.todo, "_monitoring_restore") as restore:
+            self.assertIsNone(self.todo._monitoring_select_source())
+        restore.assert_not_called()
+        self.assert_only_the_list_ran()
+
+    def test_anonymise_restores_nothing(self):
+        with patch.object(self.todo, "_monitoring_restore") as restore:
+            self.assertIsNone(self.todo._transform_anonymise_source())
+        restore.assert_not_called()
+        self.assert_only_the_list_ran()
+
+    def test_the_database_upgrade_keeps_no_file(self):
+        from script.todo import todo_upgrade
+
+        upgrade = todo_upgrade.TodoUpgrade(self.todo)
+        home = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(
+            patch.object(
+                todo_upgrade,
+                "UPGRADE_DATABASE_CONFIG_LOG",
+                os.path.join(home, "absent.json"),
+            )
+        )
+        with (
+            patch.object(upgrade, "prompt_auto_execute"),
+            patch.object(upgrade, "ask_ui", return_value="cli"),
+            patch.object(upgrade, "ask", return_value="remote"),
+            patch.object(upgrade, "write_config") as write_config,
+            self.assertLogs(todo_upgrade._logger, "ERROR"),
+        ):
+            self.assertIsNone(upgrade.execute_odoo_upgrade())
+        write_config.assert_not_called()
+        self.assertNotIn("migration_file", upgrade.dct_progression)
+        self.assert_only_the_list_ran()
+
 
 class TestModuleLevelAbortExit(unittest.TestCase):
     """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
     Ctrl+D/EOF - see click's own `termui.prompt_func`) is NOT a
-    `KeyboardInterrupt` subclass. Only the top-level menu's `click.prompt`
-    call is wrapped locally, inside `run()` (todo.py around line 149) -
-    every submenu (`prompt_assistant`, etc.) lets `Abort` propagate
-    uncaught. These tests drive the real script end to end (not a mock of
-    the dispatch chain) to prove the module-level guard around
-    `todo.run()` (todo.py around line 7159) now catches it too.
+    `KeyboardInterrupt` subclass. At the question of the main menu, which
+    declares `quits`, the navigator turns it into `SystemExit(0)`; every
+    submenu (`prompt_assistant`, etc.) lets `Abort` go up out of `run()`.
+    These tests drive the real script end to end (not a mock of the
+    dispatch chain): the module-level guard around `todo.run()` catches
+    the Abort of a submenu, and the main menu ends TODO cleanly.
     """
 
     def _run_todo(self, stdin_text):
@@ -1311,15 +1877,14 @@ class TestModuleLevelAbortExit(unittest.TestCase):
 
     def test_ctrl_d_in_a_submenu_exits_cleanly(self):
         # "3" enters the Assistant submenu; the immediate EOF that follows
-        # raises Abort from a click.prompt() call that run() does not wrap.
+        # raises Abort at its question, which lets it go up out of run().
         result = self._run_todo("3\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
         self.assertNotIn("click.exceptions.Abort", result.stderr)
 
     def test_ctrl_d_on_the_top_menu_still_exits_cleanly(self):
-        # Regression guard: the pre-existing local handler in run() must
-        # keep working once the module-level guard is added alongside it.
+        # EOF at the question of the main menu ends TODO with code 0.
         result = self._run_todo("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)

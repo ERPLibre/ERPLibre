@@ -9,6 +9,9 @@ ENV_VAR_FILE = "./env_var.sh"
 
 _current_lang = None
 
+# Langues que TRANSLATIONS porte pour chaque clé.
+LANGUAGES = ("fr", "en")
+
 TRANSLATIONS = {
     # Main menu
     "Importation success!": {
@@ -319,9 +322,9 @@ TRANSLATIONS = {
         "fr": "active",
         "en": "active",
     },
-    "Odoo version of the images: ": {
-        "fr": "Version d'Odoo des images : ",
-        "en": "Odoo version of the images: ",
+    "Odoo version of the images:": {
+        "fr": "Version d'Odoo des images :",
+        "en": "Odoo version of the images:",
     },
     "The Poetry update failed: the venv is left unchanged.": {
         "fr": "La mise à jour Poetry a échoué : le venv reste tel quel.",
@@ -347,13 +350,13 @@ TRANSLATIONS = {
         "fr": "GNU parallel manque : installez le paquet « parallel ».",
         "en": "GNU parallel is missing: install the « parallel » package.",
     },
-    "Image to regenerate: ": {
-        "fr": "Image à regénérer : ",
-        "en": "Image to regenerate: ",
+    "Image to regenerate:": {
+        "fr": "Image à regénérer :",
+        "en": "Image to regenerate:",
     },
-    "Versions to remove, numbers separated by spaces: ": {
-        "fr": "Versions à retirer, numéros séparés par des espaces : ",
-        "en": "Versions to remove, numbers separated by spaces: ",
+    "Odoo versions to remove:": {
+        "fr": "Versions d'Odoo à retirer :",
+        "en": "Odoo versions to remove:",
     },
     "Config - Configuration file management": {
         "fr": "🔧 Config - Traitement du fichier de configuration",
@@ -969,18 +972,11 @@ TRANSLATIONS = {
         "fr": "Depuis ~/.ssh/config",
         "en": "From ~/.ssh/config",
     },
-    "Your choice (1/2): ": {
-        "fr": "Votre choix (1/2) : ",
-        "en": "Your choice (1/2): ",
-    },
     "No SSH hosts found in ~/.ssh/config": {
         "fr": "Aucun hôte SSH trouvé dans ~/.ssh/config",
         "en": "No SSH hosts found in ~/.ssh/config",
     },
-    "Select SSH host number: ": {
-        "fr": "Numéro de l'hôte SSH à sélectionner : ",
-        "en": "Select SSH host number: ",
-    },
+    "Which SSH host?": {"fr": "Quel hôte SSH ?", "en": "Which SSH host?"},
     "Invalid selection!": {
         "fr": "Sélection invalide!",
         "en": "Invalid selection!",
@@ -1097,6 +1093,10 @@ TRANSLATIONS = {
     "Do you want a new instance?": {
         "fr": "Voulez-vous une nouvelle instance?",
         "en": "Do you want a new instance?",
+    },
+    "This instance names no database: Odoo is not started.": {
+        "fr": "Cette instance ne nomme aucune base : Odoo n'est pas lancé.",
+        "en": "This instance names no database: Odoo is not started.",
     },
     "SSH port-forwarding": {
         "fr": "🚇 SSH port-forwarding",
@@ -1216,6 +1216,31 @@ TRANSLATIONS = {
     "No database on this PostgreSQL server.": {
         "fr": "Aucune base sur ce serveur PostgreSQL.",
         "en": "No database on this PostgreSQL server.",
+    },
+    "Which image to restore?": {
+        "fr": "Quelle image restaurer ?",
+        "en": "Which image to restore?",
+    },
+    "By filename from image_db": {
+        "fr": "Par son nom de fichier dans image_db",
+        "en": "By filename from image_db",
+    },
+    "Which database?": {"fr": "Quelle base ?", "en": "Which database?"},
+    "File name in image_db (empty to go back): ": {
+        "fr": "Nom du fichier dans image_db (vide pour revenir) : ",
+        "en": "File name in image_db (empty to go back): ",
+    },
+    "Cannot read the list of remote databases.": {
+        "fr": "Impossible de lire la liste des bases distantes.",
+        "en": "Cannot read the list of remote databases.",
+    },
+    "Database name (empty to cancel): ": {
+        "fr": "Nom de la base (vide pour annuler) : ",
+        "en": "Database name (empty to cancel): ",
+    },
+    "Download cancelled.": {
+        "fr": "Téléchargement annulé.",
+        "en": "Download cancelled.",
     },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
@@ -1975,6 +2000,63 @@ TRANSLATIONS = {
         "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
         "en": "Install with extra modules (CybroOdoo - large, slow)",
     },
+    "Detect first installation from code source.": {
+        "fr": "Recherche d'une première installation depuis le code source.",
+        "en": "Detect first installation from code source.",
+    },
+    "First system installation? (Y/N)": {
+        "fr": (
+            "Première installation du système ? Le système s'installe"
+            " d'abord (O/N) : "
+        ),
+        "en": (
+            "First system installation? This will process system"
+            " installation before (Y/N): "
+        ),
+    },
+    "Wait after OS installation before continue.": {
+        "fr": (
+            "Attendre la fin de l'installation du système avant de continuer."
+        ),
+        "en": "Wait after OS installation before continue.",
+    },
+    "Open Pycharm? (Y/N): ": {
+        "fr": "Ouvrir Pycharm ? (O/N) : ",
+        "en": "Open Pycharm? (Y/N): ",
+    },
+    "Close Pycharm once it is done": {
+        "fr": (
+            "👹 ATTENDRE, puis fermer Pycharm une fois son traitement fini,"
+            " avant de continuer ce guide."
+        ),
+        "en": (
+            "👹 WAIT and Close Pycharm when processing is done before"
+            " continue this guide."
+        ),
+    },
+    "ERPLibre only without Odoo, with the required Python": {
+        "fr": "ERPLibre seul, sans Odoo, avec le Python requis",
+        "en": "ERPLibre only without Odoo, with the required Python",
+    },
+    "Install all Odoo version with ERPLibre": {
+        "fr": "Installer toutes les versions d'Odoo avec ERPLibre",
+        "en": "Install all Odoo version with ERPLibre",
+    },
+    "ERPLibre with mobile home": {
+        "fr": "ERPLibre avec l'application mobile",
+        "en": "ERPLibre with mobile home",
+    },
+    " - Installed": {"fr": " - Installée", "en": " - Installed"},
+    " - Actual": {"fr": " - Actuelle", "en": " - Actual"},
+    " - Default": {"fr": " - Par défaut", "en": " - Default"},
+    " - Deprecated": {"fr": " - Dépréciée", "en": " - Deprecated"},
+    "Wait after installation and open projects by terminal.": {
+        "fr": (
+            "Attendre la fin de l'installation, puis ouvrir les projets par"
+            " le terminal."
+        ),
+        "en": "Wait after installation and open projects by terminal.",
+    },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "🧪 Test - Instance de base minimale",
@@ -2067,6 +2149,16 @@ TRANSLATIONS = {
         "fr": "🎯 Migration OCA Odoo 19 - Jalons",
         "en": "🎯 OCA migration Odoo 19 milestone",
     },
+    "Select version to upgrade Odoo CE (5-17) : ": {
+        "fr": "Version d'Odoo CE à migrer (5-17) : ",
+        "en": "Select version to upgrade Odoo CE (5-17) : ",
+    },
+    "Select version to show what change for Odoo CE version (8-18) : ": {
+        "fr": "Version d'Odoo CE dont voir les changements (8-18) : ",
+        "en": (
+            "Select version to show what change for Odoo CE version (8-18) : "
+        ),
+    },
     "Download database to create backup (.zip)": {
         "fr": (
             "⬇  Télécharger une base de données pour créer une"
@@ -2075,7 +2167,7 @@ TRANSLATIONS = {
         "en": "⬇  Download database to create backup (.zip)",
     },
     "Restore from backup (.zip)": {
-        "fr": "♻  Restaurer a partir d'une sauvegarde (.zip)",
+        "fr": "♻  Restaurer à partir d'une sauvegarde (.zip)",
         "en": "♻  Restore from backup (.zip)",
     },
     "Create backup (.zip)": {
@@ -2099,15 +2191,15 @@ TRANSLATIONS = {
         "en": "🧱 Generate all configuration",
     },
     "Generate from pre-configuration": {
-        "fr": "📋 Générer a partir de la pre-configuration",
+        "fr": "📋 Générer à partir de la pré-configuration",
         "en": "📋 Generate from pre-configuration",
     },
     "Generate from backup file": {
-        "fr": "💾 Générer a partir d'un fichier de sauvegarde",
+        "fr": "💾 Générer à partir d'un fichier de sauvegarde",
         "en": "💾 Generate from backup file",
     },
     "Generate from database": {
-        "fr": "🗄  Générer a partir de la base de données",
+        "fr": "🗄  Générer à partir de la base de données",
         "en": "🗄  Generate from database",
     },
     "base": {
@@ -4071,9 +4163,13 @@ TRANSLATIONS = {
         "fr": "Commande bash à exécuter : ",
         "en": "Bash command to execute: ",
     },
-    "Menu section (git/code/config/network/process): ": {
-        "fr": "Section du menu (git/code/config/network/process) : ",
-        "en": "Menu section (git/code/config/network/process): ",
+    "Menu section (git/code/update/qemu/proxmox): ": {
+        "fr": "Section du menu (git/code/update/qemu/proxmox) : ",
+        "en": "Menu section (git/code/update/qemu/proxmox): ",
+    },
+    "No menu reads this section: ": {
+        "fr": "Aucun menu ne lit cette section : ",
+        "en": "No menu reads this section: ",
     },
     "Automation added successfully in todo.json!": {
         "fr": "Automatisation ajoutée avec succès dans todo.json!",
@@ -4200,6 +4296,15 @@ TRANSLATIONS = {
     "Keyboard interrupt": {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
+    },
+    "Command interrupted (Ctrl+C).": {
+        "fr": "Commande interrompue (Ctrl+C).",
+        "en": "Command interrupted (Ctrl+C).",
+    },
+    # Mode enregistrement (make todo_record).
+    "Events recorded in:": {
+        "fr": "Événements enregistrés dans :",
+        "en": "Events recorded in:",
     },
     # GPT code section
     "GPT code - AI assistant tools": {
@@ -6021,10 +6126,6 @@ TRANSLATIONS = {
         "fr": "⚖ Le témoin : deux VM SANS le cache",
         "en": "⚖ The control: two VMs WITHOUT the cache",
     },
-    "All three, one after another": {
-        "fr": "🔁 Les trois, l'un après l'autre",
-        "en": "🔁 All three, one after another",
-    },
     "Which load?": {
         "fr": "Quelle charge ?",
         "en": "Which load?",
@@ -6611,14 +6712,6 @@ TRANSLATIONS = {
         "fr": "Distribution :",
         "en": "Distribution:",
     },
-    "Choice (number or name, default: ubuntu): ": {
-        "fr": "Choix (numéro ou nom, défaut : ubuntu) : ",
-        "en": "Choice (number or name, default: ubuntu): ",
-    },
-    "Invalid selection, using ubuntu": {
-        "fr": "Sélection invalide, utilisation d'ubuntu",
-        "en": "Invalid selection, using ubuntu",
-    },
     "Version for": {
         "fr": "Version des",
         "en": "Version for",
@@ -6698,10 +6791,6 @@ TRANSLATIONS = {
         "fr": "Choix (1-4, défaut 1) :",
         "en": "Choice (1-4, default 1):",
     },
-    "Choice (1-5, default 1):": {
-        "fr": "Choix (1-5, défaut 1) :",
-        "en": "Choice (1-5, default 1):",
-    },
     "Custom - set vCPU, RAM and disk": {
         "fr": "Personnalisé — choisir vCPU, RAM et disque",
         "en": "Custom — set vCPU, RAM and disk",
@@ -6763,11 +6852,6 @@ TRANSLATIONS = {
         "fr": "VM (défaut = aucune modification) :",
         "en": "VMs (default = no change):",
     },
-    "Modify which VMs? (numbers, comma-separated; blank = none): ": {
-        "fr": "Modifier quelles VM ? (numéros séparés par des virgules ; "
-        "vide = aucune) : ",
-        "en": "Modify which VMs? (numbers, comma-separated; blank = none): ",
-    },
     "new name (blank = keep):": {
         "fr": "nouveau nom (vide = garder) :",
         "en": "new name (blank = keep):",
@@ -6796,9 +6880,132 @@ TRANSLATIONS = {
         "fr": "suivi d'installation",
         "en": "install monitoring",
     },
+    "Navigation telemetry": {
+        "fr": "📊 Télémétrie de navigation",
+        "en": "📊 Navigation telemetry",
+    },
     "Navigation telemetry (TUI)": {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
+    },
+    "Navigation telemetry (WEB)": {
+        "fr": "🌐 Télémétrie de navigation (WEB)",
+        "en": "🌐 Navigation telemetry (WEB)",
+    },
+    "Stop the web interface": {
+        "fr": "⏹️ Arrêter l'interface web",
+        "en": "⏹️ Stop the web interface",
+    },
+    "Web interface: running on {url} (sessions: {n})": {
+        "fr": "🌐 Interface web : active sur {url} (sessions : {n})",
+        "en": "🌐 Web interface: running on {url} (sessions: {n})",
+    },
+    "Web interface: stopped": {
+        "fr": "🌐 Interface web : arrêtée",
+        "en": "🌐 Web interface: stopped",
+    },
+    "Web interface ready": {
+        "fr": "✅ Interface web prête",
+        "en": "✅ Web interface ready",
+    },
+    "Opened in your browser. The link works once, for 2 minutes.": {
+        "fr": "Ouverte dans votre navigateur. Le lien ne sert qu'une fois,"
+        " pendant 2 minutes.",
+        "en": "Opened in your browser. The link works once, for 2 minutes.",
+    },
+    "If the page did not open, use this link within 2 minutes:": {
+        "fr": "Si la page ne s'est pas ouverte, utilisez ce lien dans les 2"
+        " minutes :",
+        "en": "If the page did not open, use this link within 2 minutes:",
+    },
+    "No display on this host. On your workstation, run:": {
+        "fr": "Aucun affichage sur cet hôte. Sur votre poste, lancez :",
+        "en": "No display on this host. On your workstation, run:",
+    },
+    "Then open this link within 2 minutes:": {
+        "fr": "Puis ouvrez ce lien dans les 2 minutes :",
+        "en": "Then open this link within 2 minutes:",
+    },
+    "The web interface did not start. Last lines of its log:": {
+        "fr": "❌ L'interface web n'a pas démarré. Dernières lignes de son"
+        " journal :",
+        "en": "❌ The web interface did not start. Last lines of its log:",
+    },
+    "The web interface did not start.": {
+        "fr": "❌ L'interface web n'a pas démarré.",
+        "en": "❌ The web interface did not start.",
+    },
+    "The web interface needs {pkg}. Install it with:": {
+        "fr": "❌ L'interface web a besoin de {pkg}. Installez-le avec :",
+        "en": "❌ The web interface needs {pkg}. Install it with:",
+    },
+    "The web interface refuses to run as root.": {
+        "fr": "❌ L'interface web refuse de tourner en root.",
+        "en": "❌ The web interface refuses to run as root.",
+    },
+    "Web interface stopped": {
+        "fr": "⏹️ Interface web arrêtée",
+        "en": "⏹️ Web interface stopped",
+    },
+    "The web interface is not running.": {
+        "fr": "ℹ️ L'interface web n'est pas lancée.",
+        "en": "ℹ️ The web interface is not running.",
+    },
+    "{n} web sessions are running a command. Stop them anyway?": {
+        "fr": "{n} sessions web exécutent une commande. Les arrêter quand"
+        " même ?",
+        "en": "{n} web sessions are running a command. Stop them anyway?",
+    },
+    "Telemetry opened in this page.": {
+        "fr": "Télémétrie ouverte dans cette page.",
+        "en": "Telemetry opened in this page.",
+    },
+    "This TODO runs in the web interface: stop the interface from a"
+    " terminal.": {
+        "fr": "Ce TODO tourne dans l'interface web : arrêtez-la depuis un"
+        " terminal.",
+        "en": "This TODO runs in the web interface: stop the interface from a"
+        " terminal.",
+    },
+    "Desktop window": {
+        "fr": "🖥️ Fenêtre bureautique",
+        "en": "🖥️ Desktop window",
+    },
+    "The desktop window needs pywebview and a web engine. Install them"
+    " with:": {
+        "fr": "❌ La fenêtre bureautique a besoin de pywebview et d'un moteur"
+        " web. Installez-les avec :",
+        "en": "❌ The desktop window needs pywebview and a web engine. Install"
+        " them with:",
+    },
+    "Opening the page in the browser instead.": {
+        "fr": "La page s'ouvre dans le navigateur à la place.",
+        "en": "Opening the page in the browser instead.",
+    },
+    "Desktop window launched. If it does not show, its log:": {
+        "fr": "🖥️ Fenêtre bureautique lancée. Si elle ne paraît pas, son"
+        " journal :",
+        "en": "🖥️ Desktop window launched. If it does not show, its log:",
+    },
+    "The desktop window did not start. Last lines of its log:": {
+        "fr": "❌ La fenêtre bureautique n'a pas démarré. Dernières lignes de"
+        " son journal :",
+        "en": "❌ The desktop window did not start. Last lines of its log:",
+    },
+    "The desktop window did not open: its process opened the page in the"
+    " browser instead. Last lines of its log:": {
+        "fr": "⚠️ La fenêtre bureautique ne s'est pas ouverte : son processus"
+        " a ouvert la page dans le navigateur à la place. Dernières lignes de"
+        " son journal :",
+        "en": "⚠️ The desktop window did not open: its process opened the page"
+        " in the browser instead. Last lines of its log:",
+    },
+    "The desktop window did not open, and no browser took the page. Last"
+    " lines of its log:": {
+        "fr": "⚠️ La fenêtre bureautique ne s'est pas ouverte, et aucun"
+        " navigateur n'a pris la page. Dernières lignes de son journal :",
+        "en": "⚠️ The desktop window did not open, and no browser took the"
+        " page. Last lines of its log:",
     },
     "Configuration": {
         "fr": "🔩 Configuration",
@@ -6840,10 +7047,6 @@ TRANSLATIONS = {
         "fr": "TUI, blocs repliables par VM",
         "en": "TUI, collapsible blocks per VM",
     },
-    "Choice (number, blank = keep):": {
-        "fr": "Choix (numéro, vide = garder) :",
-        "en": "Choice (number, blank = keep):",
-    },
     "SSH port forwarding (open Odoo in the browser)": {
         "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
         "en": "🔌 SSH port forwarding (open Odoo in the browser)",
@@ -6851,10 +7054,6 @@ TRANSLATIONS = {
     "SSH port forwarding": {
         "fr": "Redirection de port SSH",
         "en": "SSH port forwarding",
-    },
-    "Host (number or name):": {
-        "fr": "Hôte (numéro ou nom) :",
-        "en": "Host (number or name):",
     },
     "Remote port (default:": {
         "fr": "Port distant (défaut :",
@@ -6989,11 +7188,7 @@ TRANSLATIONS = {
         "fr": "~/.ssh/config ne contient aucun hôte.",
         "en": "~/.ssh/config holds no host.",
     },
-    "Which hosts? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quels hôtes ? (numéros séparés par des virgules ; "
-        "vide = tous) : ",
-        "en": "Which hosts? (numbers, comma-separated; blank = all): ",
-    },
+    "Which hosts?": {"fr": "Quels hôtes ?", "en": "Which hosts?"},
     "Host or IP:": {
         "fr": "Hôte ou IP :",
         "en": "Host or IP:",
@@ -7010,11 +7205,7 @@ TRANSLATIONS = {
         "fr": "Profondeur (1 = ces machines seulement, défaut :",
         "en": "Depth (1 = these machines only, default:",
     },
-    "Which VMs? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quelles VM ? (numéros séparés par des virgules ; "
-        "vide = toutes) : ",
-        "en": "Which VMs? (numbers, comma-separated; blank = all): ",
-    },
+    "Which VMs?": {"fr": "Quelles VM ?", "en": "Which VMs?"},
     "Depth (default:": {
         "fr": "Profondeur (défaut :",
         "en": "Depth (default:",
@@ -7480,10 +7671,6 @@ TRANSLATIONS = {
         "fr": "Déployer quand même (nouveau run)",
         "en": "Deploy anyway (new run)",
     },
-    "Choice (number, blank = reopen): ": {
-        "fr": "Choix (numéro, vide = rouvrir) : ",
-        "en": "Choice (number, blank = reopen): ",
-    },
     "Python interpreter:": {
         "fr": "Interpreteur Python :",
         "en": "Python interpreter:",
@@ -7495,10 +7682,6 @@ TRANSLATIONS = {
     "pyenv (compiles from source)": {
         "fr": "pyenv (compile depuis les sources)",
         "en": "pyenv (compiles from source)",
-    },
-    "Choice (number, blank = mise): ": {
-        "fr": "Choix (numero, vide = mise) : ",
-        "en": "Choice (number, blank = mise): ",
     },
     "mise has no binary for:": {
         "fr": "mise ne publie pas de binaire pour :",
@@ -7535,10 +7718,6 @@ TRANSLATIONS = {
     "Installing the desktop (long):": {
         "fr": "Installation du bureau (long) :",
         "en": "Installing the desktop (long):",
-    },
-    "Choice (number, blank = server): ": {
-        "fr": "Choix (numero, vide = serveur) : ",
-        "en": "Choice (number, blank = server): ",
     },
     "Installing the GNOME desktop (long)": {
         "fr": "Installation du bureau GNOME (long)",
@@ -7628,9 +7807,9 @@ TRANSLATIONS = {
         "fr": "deb uniquement (epiphany-browser)",
         "en": "deb only (epiphany-browser)",
     },
-    "Flatpak tooling, no Flathub": {
-        "fr": "outillage Flatpak, sans Flathub",
-        "en": "Flatpak tooling, no Flathub",
+    "flatpak (tooling, no Flathub)": {
+        "fr": "flatpak (outillage, sans Flathub)",
+        "en": "flatpak (tooling, no Flathub)",
     },
     "snap (Ubuntu default, Firefox)": {
         "fr": "snap (défaut Ubuntu, Firefox)",
@@ -8103,7 +8282,6 @@ TRANSLATIONS = {
         "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
         "en": "(the hypervisor only relays; -J puts the VM last)",
     },
-    "Choice": {"fr": "Choix", "en": "Choice"},
     "failed steps": {"fr": "étapes en échec", "en": "failed steps"},
     "Failed steps": {"fr": "Étapes en échec", "en": "Failed steps"},
     "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
@@ -8377,6 +8555,10 @@ TRANSLATIONS = {
         "fr": "Télémétrie réinitialisée.",
         "en": "Telemetry reset.",
     },
+    "Dangerous command: run it from its menu.": {
+        "fr": "Commande dangereuse : lancez-la depuis son menu.",
+        "en": "Dangerous command: run it from its menu.",
+    },
     "tree from code": {
         "fr": "arbre issu du code",
         "en": "tree from code",
@@ -8426,6 +8608,199 @@ TRANSLATIONS = {
     "Network": {"fr": "Réseau", "en": "Network"},
     "Battery": {"fr": "Batterie", "en": "Battery"},
     "Temperature": {"fr": "Température", "en": "Temperature"},
+    # Page web de télémétrie : vues, recherche, tri et relevé système.
+    "Tree": {"fr": "Arbre", "en": "Tree"},
+    "List": {"fr": "Liste", "en": "List"},
+    "Kanban": {"fr": "Kanban", "en": "Kanban"},
+    "Sort": {"fr": "Tri", "en": "Sort"},
+    "Code order": {"fr": "Ordre du code", "en": "Code order"},
+    "Most used": {"fr": "Les plus utilisés", "en": "Most used"},
+    "CPU": {"fr": "Processeur", "en": "CPU"},
+    # Page web : vue Sessions, le vrai TODO dans un terminal.
+    "Sessions": {"fr": "Sessions", "en": "Sessions"},
+    "Open a TODO session": {
+        "fr": "Ouvrir une session TODO",
+        "en": "Open a TODO session",
+    },
+    "Reconnect": {"fr": "Se reconnecter", "en": "Reconnect"},
+    "Connecting…": {"fr": "Connexion…", "en": "Connecting…"},
+    "Session ended": {"fr": "Session terminée", "en": "Session ended"},
+    "Output truncated": {"fr": "Sortie tronquée", "en": "Output truncated"},
+    "Too many sessions: close one first.": {
+        "fr": "Trop de sessions : fermez-en une d'abord.",
+        "en": "Too many sessions: close one first.",
+    },
+    "Too many sessions opened in a minute; try again in %s s.": {
+        "fr": "Trop de sessions ouvertes en une minute ; réessayer dans %s s.",
+        "en": "Too many sessions opened in a minute; try again in %s s.",
+    },
+    "Connection expired: reopen the interface from TODO › Navigation telemetry.": {
+        "fr": "Connexion expirée : rouvrir l'interface depuis TODO › Télémétrie de navigation.",
+        "en": "Connection expired: reopen the interface from TODO › Navigation telemetry.",
+    },
+    # Page web : l'offre de source de l'AGPL §13, au pied de la page.
+    "Source (AGPL-3.0)": {
+        "fr": "Source (AGPL-3.0)",
+        "en": "Source (AGPL-3.0)",
+    },
+    "License": {"fr": "Licence", "en": "License"},
+    "Commit": {"fr": "Commit", "en": "Commit"},
+    "Branch": {"fr": "Branche", "en": "Branch"},
+    "Local changes": {"fr": "Modifications locales", "en": "Local changes"},
+    "unknown": {"fr": "inconnu", "en": "unknown"},
+    "none (masculine)": {"fr": "aucun", "en": "none"},
+    "Vendored libraries": {
+        "fr": "Bibliothèques vendorées",
+        "en": "Vendored libraries",
+    },
+    "Opened in another tab.": {
+        "fr": "Ouverte dans un autre onglet.",
+        "en": "Opened in another tab.",
+    },
+    "This session no longer exists.": {
+        "fr": "Cette session n'existe plus.",
+        "en": "This session no longer exists.",
+    },
+    "Connection lost.": {"fr": "Connexion perdue.", "en": "Connection lost."},
+    # Page web : état du terminal d'une session (TtyWatch).
+    "Raw mode": {"fr": "Mode brut", "en": "Raw mode"},
+    "Nothing reads the terminal: keystrokes ignored.": {
+        "fr": "Rien ne lit le terminal : frappes ignorées.",
+        "en": "Nothing reads the terminal: keystrokes ignored.",
+    },
+    "Hidden answer": {"fr": "Réponse masquée", "en": "Hidden answer"},
+    "Send": {"fr": "Envoyer", "en": "Send"},
+    "The prompt ended: the hidden answer was not sent.": {
+        "fr": "L'invite a pris fin : la réponse masquée n'est pas partie.",
+        "en": "The prompt ended: the hidden answer was not sent.",
+    },
+    "Quick answers": {"fr": "Réponses rapides", "en": "Quick answers"},
+    "A new prompt began: pending keystrokes were not sent.": {
+        "fr": "Une invite a commencé : les frappes en attente ne sont "
+        "pas parties.",
+        "en": "A new prompt began: pending keystrokes were not sent.",
+    },
+    "Stopped: pending keystrokes were thrown away.": {
+        "fr": "Arrêt : les frappes en attente ont été jetées.",
+        "en": "Stopped: pending keystrokes were thrown away.",
+    },
+    "Keystrokes pending while no tab was open were thrown away.": {
+        "fr": "Des frappes en attente sans onglet ouvert ont été jetées.",
+        "en": "Keystrokes pending while no tab was open were thrown away.",
+    },
+    # Page web : menus et questions de TODO en widgets natifs.
+    "Menu": {"fr": "Menu", "en": "Menu"},
+    "Filter entries": {"fr": "Filtrer les entrées", "en": "Filter entries"},
+    "No entry matches the filter.": {
+        "fr": "Aucune entrée ne correspond au filtre.",
+        "en": "No entry matches the filter.",
+    },
+    "Other answer": {"fr": "Autre réponse", "en": "Other answer"},
+    "TODO question": {"fr": "Question de TODO", "en": "TODO question"},
+    "Answer yes": {"fr": "Oui", "en": "Yes"},
+    "Answer no": {"fr": "Non", "en": "No"},
+    "Time left: %s s": {
+        "fr": "Temps restant : %s s",
+        "en": "Time left: %s s",
+    },
+    "Validate": {"fr": "Valider", "en": "Validate"},
+    "Terminal": {"fr": "Terminal", "en": "Terminal"},
+    "Hidden answer not sent: a control character, or too long.": {
+        "fr": "Réponse masquée non envoyée : un caractère de contrôle, ou "
+        "trop longue.",
+        "en": "Hidden answer not sent: a control character, or too long.",
+    },
+    "Full screen": {"fr": "Plein écran", "en": "Full screen"},
+    # Page web : lancer un nœud de la télémétrie dans une session.
+    "Launch": {"fr": "Lancer", "en": "Launch"},
+    "Path interrupted at: %s": {
+        "fr": "Chemin interrompu à : %s",
+        "en": "Path interrupted at: %s",
+    },
+    # Page web : le code de TODO a changé sous les sessions ouvertes.
+    "TODO's code changed: open sessions still run the old one. Reopen a "
+    "session to use it.": {
+        "fr": "Le code de TODO a changé : les sessions ouvertes tournent "
+        "encore l'ancien. Rouvrir une session pour l'utiliser.",
+        "en": "TODO's code changed: open sessions still run the old one. "
+        "Reopen a session to use it.",
+    },
+    "Reopen a session": {
+        "fr": "Rouvrir une session",
+        "en": "Reopen a session",
+    },
+    # Page web : le sélecteur de chemins d'une question de TODO.
+    "Path": {"fr": "Chemin", "en": "Path"},
+    "Open": {"fr": "Ouvrir", "en": "Open"},
+    "Choose this directory": {
+        "fr": "Choisir ce répertoire",
+        "en": "Choose this directory",
+    },
+    "Parent directory": {"fr": "Répertoire parent", "en": "Parent directory"},
+    "Cannot list this directory: %s": {
+        "fr": "Impossible de lister ce répertoire : %s",
+        "en": "Cannot list this directory: %s",
+    },
+    "Only the first %s entries are shown.": {
+        "fr": "Seules les %s premières entrées sont montrées.",
+        "en": "Only the first %s entries are shown.",
+    },
+    "Path not sent: a control character, or too long.": {
+        "fr": "Chemin non envoyé : un caractère de contrôle, ou trop long.",
+        "en": "Path not sent: a control character, or too long.",
+    },
+    # Page web : les erreurs fixes d'une liste du sélecteur de chemins.
+    "Too many reads at once, try again": {
+        "fr": "Trop de lectures à la fois, réessayez",
+        "en": "Too many reads at once, try again",
+    },
+    "The read took too long": {
+        "fr": "La lecture a pris trop de temps",
+        "en": "The read took too long",
+    },
+    "Not an absolute path": {
+        "fr": "Pas un chemin absolu",
+        "en": "Not an absolute path",
+    },
+    "Session refused, reload the page": {
+        "fr": "Session refusée, rechargez la page",
+        "en": "Session refused, reload the page",
+    },
+    "A character that cannot be sent": {
+        "fr": "Un caractère qui ne peut être envoyé",
+        "en": "A character that cannot be sent",
+    },
+    # Page web dans la fenêtre bureautique : le dialogue de fichiers.
+    "System dialog": {"fr": "Dialogue du système", "en": "System dialog"},
+    # Page web dans la fenêtre bureautique : notification de fin de commande.
+    "Command ended: exit code %s, %s s": {
+        "fr": "Commande terminée : code de sortie %s, %s s",
+        "en": "Command ended: exit code %s, %s s",
+    },
+    # Page web : vue Historique, les journaux des tâches des sessions ; la
+    # clé « History » est déclarée plus haut, avec le menu de TODO.
+    "Purge": {"fr": "Purger", "en": "Purge"},
+    "Purge the whole task history? A task still running is kept.": {
+        "fr": "Purger tout l'historique des tâches ? Une tâche en cours reste.",
+        "en": "Purge the whole task history? A task still running is kept.",
+    },
+    "Tasks removed:": {"fr": "Tâches retirées :", "en": "Tasks removed:"},
+    "No task recorded yet.": {
+        "fr": "Aucune tâche enregistrée pour l'instant.",
+        "en": "No task recorded yet.",
+    },
+    "More": {"fr": "Suite", "en": "More"},
+    "Date": {"fr": "Date", "en": "Date"},
+    "Task": {"fr": "Tâche", "en": "Task"},
+    "Commands": {"fr": "Commandes", "en": "Commands"},
+    "Exit code": {"fr": "Code de retour", "en": "Exit code"},
+    "Duration": {"fr": "Durée", "en": "Duration"},
+    "answered in the terminal": {
+        "fr": "répondu dans le terminal",
+        "en": "answered in the terminal",
+    },
+    "cancelled": {"fr": "annulée", "en": "cancelled"},
+    "bytes omitted": {"fr": "octets omis", "en": "bytes omitted"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",
@@ -8485,14 +8860,6 @@ TRANSLATIONS = {
     "Resize a VM disk": {
         "fr": "📐 Redimensionner le disque d'une VM",
         "en": "📐 Resize a VM disk",
-    },
-    "VM name to resize: ": {
-        "fr": "Nom de la VM à redimensionner : ",
-        "en": "VM name to resize: ",
-    },
-    "VM not found.": {
-        "fr": "VM introuvable.",
-        "en": "VM not found.",
     },
     "Main disk not found for this VM.": {
         "fr": "Disque principal introuvable pour cette VM.",
@@ -8717,14 +9084,6 @@ TRANSLATIONS = {
         "fr": "Runs d'installation (du plus récent) :",
         "en": "Install runs (most recent first):",
     },
-    "Choice (number, blank = last): ": {
-        "fr": "Choix (numéro, vide = le dernier) : ",
-        "en": "Choice (number, blank = last): ",
-    },
-    "Invalid selection.": {
-        "fr": "Sélection invalide.",
-        "en": "Invalid selection.",
-    },
     "Resolving VM IP...": {
         "fr": "Résolution de l'IP de la VM…",
         "en": "Resolving VM IP...",
@@ -8745,10 +9104,6 @@ TRANSLATIONS = {
         "fr": "Installer un autre navigateur",
         "en": "Install another browser",
     },
-    "Choice (number, blank = w3m): ": {
-        "fr": "Choix (numéro, vide = w3m) : ",
-        "en": "Choice (number, blank = w3m): ",
-    },
     "Unknown package manager; install it manually.": {
         "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
         "en": "Unknown package manager; install it manually.",
@@ -8757,13 +9112,29 @@ TRANSLATIONS = {
         "fr": "Installer maintenant ? (o/N) : ",
         "en": "Install now? (y/N): ",
     },
+    "w3m — light, renders some HTML": {
+        "fr": "w3m — léger, rend un peu de HTML",
+        "en": "w3m — light, renders some HTML",
+    },
+    "lynx — text browser": {
+        "fr": "lynx — navigateur texte",
+        "en": "lynx — text browser",
+    },
+    "links — text / graphical": {
+        "fr": "links — texte / graphique",
+        "en": "links — text / graphical",
+    },
+    "elinks — text, tabs": {
+        "fr": "elinks — texte, onglets",
+        "en": "elinks — text, tabs",
+    },
+    "No CLI browser available.": {
+        "fr": "Aucun navigateur CLI disponible.",
+        "en": "No CLI browser available.",
+    },
     "Which browser to view the page?": {
         "fr": "Quel navigateur pour voir la page ?",
         "en": "Which browser to view the page?",
-    },
-    "Choice (number, blank = first): ": {
-        "fr": "Choix (numéro, vide = le premier) : ",
-        "en": "Choice (number, blank = first): ",
     },
     "Page may not have loaded: Odoo not started on :8069, "
     "or network/firewall.": {
@@ -8895,14 +9266,6 @@ TRANSLATIONS = {
     "Enter": {
         "fr": "Entrée",
         "en": "Enter",
-    },
-    "Nothing": {
-        "fr": "Rien",
-        "en": "Nothing",
-    },
-    "Choice: ": {
-        "fr": "Choix : ",
-        "en": "Choice: ",
     },
     "Available VMs:": {
         "fr": "VM disponibles :",
@@ -9099,10 +9462,6 @@ TRANSLATIONS = {
         "fr": "VM de cet hôte :",
         "en": "VMs on this host:",
     },
-    "Selection (number): ": {
-        "fr": "Sélection (numéro) : ",
-        "en": "Selection (number): ",
-    },
     "Deploy a VM on the Proxmox host": {
         "fr": "🚀 Déployer une VM sur l'hôte Proxmox",
         "en": "🚀 Deploy a VM on the Proxmox host",
@@ -9182,10 +9541,6 @@ TRANSLATIONS = {
     "freeze cloud-init, fix /etc/hosts, restart pmxcfs": {
         "fr": "geler cloud-init, corriger /etc/hosts, relancer pmxcfs",
         "en": "freeze cloud-init, fix /etc/hosts, restart pmxcfs",
-    },
-    "leave it alone": {
-        "fr": "ne rien toucher",
-        "en": "leave it alone",
     },
     "Cannot tell which address reaches this host.": {
         "fr": "Impossible de savoir quelle adresse atteint cet hôte.",
@@ -9303,10 +9658,6 @@ TRANSLATIONS = {
     "Start from another existing host": {
         "fr": "Partir d'un autre hôte existant",
         "en": "Start from another existing host",
-    },
-    "Choice (1-3, default 1): ": {
-        "fr": "Choix (1-3, défaut 1) : ",
-        "en": "Choice (1-3, default 1): ",
     },
     "Address (user@host, blank = cancel): ": {
         "fr": "Adresse (utilisateur@hôte, vide = annuler) : ",
@@ -9803,10 +10154,6 @@ TRANSLATIONS = {
         "fr": "cette VM n'a pas d'écran virtuel",
         "en": "this VM has no virtual screen",
     },
-    "Unknown VM(s):": {
-        "fr": "VM inconnue(s) :",
-        "en": "Unknown VM(s):",
-    },
     "Target state:": {
         "fr": "État cible :",
         "en": "Target state:",
@@ -9822,10 +10169,6 @@ TRANSLATIONS = {
     "Production (/opt/erplibre, SELinux enforced)": {
         "fr": "Production (/opt/erplibre, SELinux confiné)",
         "en": "Production (/opt/erplibre, SELinux enforced)",
-    },
-    "Choice (1-2, default 1): ": {
-        "fr": "Choix (1-2, défaut 1) : ",
-        "en": "Choice (1-2, default 1): ",
     },
     "Open (start)": {
         "fr": "Ouvrir (démarrer)",
@@ -9946,28 +10289,13 @@ TRANSLATIONS = {
         "fr": "VM prête — installation ERPLibre en cours",
         "en": "VM ready - starting the ERPLibre install",
     },
-    "Choice (number or name, blank = native):": {
-        "fr": "Choix (numéro ou nom, vide = native) :",
-        "en": "Choice (number or name, blank = native):",
-    },
-    "Pick exact versions (comma-separated list)": {
-        "fr": "Choisir des versions précises (liste séparée par des virgules)",
-        "en": "Pick exact versions (comma-separated list)",
-    },
-    "Selection (numbers, 'all', 'principal' or 'granulaire',"
-    " default: all): ": {
-        "fr": "Sélection (numéros, « all », « principal » ou « granulaire »,"
-        " défaut : all) : ",
-        "en": "Selection (numbers, 'all', 'principal' or 'granulaire',"
-        " default: all): ",
+    "Pick exact versions (flat list)": {
+        "fr": "Choisir des versions précises (liste à plat)",
+        "en": "Pick exact versions (flat list)",
     },
     "All versions:": {
         "fr": "Toutes les versions :",
         "en": "All versions:",
-    },
-    "Selection (comma-separated numbers): ": {
-        "fr": "Sélection (numéros séparés par des virgules) : ",
-        "en": "Selection (comma-separated numbers): ",
     },
     "s390x images only exist for:": {
         "fr": "images s390x disponibles seulement pour :",
@@ -9995,18 +10323,6 @@ TRANSLATIONS = {
         "en": "s390x is emulated (TCG): boot and install are much "
         "slower than x86.",
     },
-    "Choice (number or version, blank = default):": {
-        "fr": "Choix (numéro ou version, vide = défaut) :",
-        "en": "Choice (number or version, blank = default):",
-    },
-    "Invalid selection, using": {
-        "fr": "Sélection invalide, utilisation de",
-        "en": "Invalid selection, using",
-    },
-    "select all": {
-        "fr": "tout sélectionner",
-        "en": "select all",
-    },
     "Delete VM(s)": {
         "fr": "🗑  Effacer une ou plusieurs VM",
         "en": "🗑  Delete VM(s)",
@@ -10018,10 +10334,6 @@ TRANSLATIONS = {
     "Select VMs to delete:": {
         "fr": "Sélectionner les VM à effacer :",
         "en": "Select VMs to delete:",
-    },
-    "Selection (numbers, or 'all'): ": {
-        "fr": "Sélection (numéros, ou « all ») : ",
-        "en": "Selection (numbers, or 'all'): ",
     },
     "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
         "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",
@@ -10133,10 +10445,6 @@ TRANSLATIONS = {
     "stop (pulls the plug)": {
         "fr": "arrêter (coupe le courant)",
         "en": "stop (pulls the plug)",
-    },
-    "Choice (blank = back): ": {
-        "fr": "Choix (vide = retour) : ",
-        "en": "Choice (blank = back): ",
     },
     "Confirm? (y/N): ": {
         "fr": "Confirmer ? (o/N) : ",
@@ -10261,14 +10569,6 @@ TRANSLATIONS = {
     "The main version of each distro (marked *)": {
         "fr": "La version principale de chaque distro (marquée *)",
         "en": "The main version of each distro (marked *)",
-    },
-    "Selection (numbers, 'all' or 'principal', default: all): ": {
-        "fr": "Sélection (numéros, « all » ou « principal », défaut : all) : ",
-        "en": "Selection (numbers, 'all' or 'principal', default: all): ",
-    },
-    "Selection (numbers, or 'all', default: all): ": {
-        "fr": "Sélection (numéros, ou « all », défaut : all) : ",
-        "en": "Selection (numbers, or 'all', default: all): ",
     },
     "Nothing selected.": {
         "fr": "Rien de sélectionné.",
@@ -10455,10 +10755,6 @@ TRANSLATIONS = {
     "What to install on the VM(s)?": {
         "fr": "Que veut-on installer sur la/les VM ?",
         "en": "What to install on the VM(s)?",
-    },
-    "Choice (number, blank = Odoo 18): ": {
-        "fr": "Choix (numéro, vide = Odoo 18) : ",
-        "en": "Choice (number, blank = Odoo 18): ",
     },
     "ERPLibre + all Odoo versions": {
         "fr": "ERPLibre + toutes les versions Odoo",
@@ -11205,10 +11501,6 @@ TRANSLATIONS = {
         "fr": "Branches :",
         "en": "Branches:",
     },
-    "Choice (number or name, default:": {
-        "fr": "Choix (numéro ou nom, défaut :",
-        "en": "Choice (number or name, default:",
-    },
     "no IP obtained, ERPLibre clone skipped.": {
         "fr": "aucune IP obtenue, clonage ERPLibre ignoré.",
         "en": "no IP obtained, ERPLibre clone skipped.",
@@ -11221,21 +11513,9 @@ TRANSLATIONS = {
         "fr": "Nom de la VM (requis) : ",
         "en": "VM name (required): ",
     },
-    "VM name is required!": {
-        "fr": "Le nom de la VM est requis !",
-        "en": "VM name is required!",
-    },
     "VM name: ": {
         "fr": "Nom de la VM : ",
         "en": "VM name: ",
-    },
-    "VM name or ID: ": {
-        "fr": "Nom ou ID de la VM : ",
-        "en": "VM name or ID: ",
-    },
-    "VM name or ID (or 'all'): ": {
-        "fr": "Nom ou ID de la VM (ou « all ») : ",
-        "en": "VM name or ID (or 'all'): ",
     },
     "RAM in MB (blank = version minimum): ": {
         "fr": "RAM en Mo (vide = minimum de la version) : ",
@@ -12319,29 +12599,17 @@ TRANSLATIONS = {
         "fr": "Installation impossible d'ici.",
         "en": "Cannot install from here.",
     },
-    "Enter = cancel": {
-        "fr": "Entrée = annuler",
-        "en": "Enter = cancel",
-    },
     "Go ahead?": {
         "fr": "On y va ?",
         "en": "Go ahead?",
-    },
-    "Ignored, not in the list:": {
-        "fr": "Ignorés, absents de la liste :",
-        "en": "Ignored, not in the list:",
     },
     "Install some of the": {
         "fr": "Installer une partie des",
         "en": "Install some of the",
     },
-    "Numbers, space separated:": {
-        "fr": "Numéros, séparés par des espaces :",
-        "en": "Numbers, space separated:",
-    },
-    "every one of them": {
-        "fr": "tous",
-        "en": "every one of them",
+    "Modules to install:": {
+        "fr": "Modules à installer :",
+        "en": "Modules to install:",
     },
     "need repair first": {
         "fr": "à réparer d'abord",
@@ -16078,6 +16346,7 @@ TRANSLATIONS = {
         "fr": "📜 Afficher tous les champs",
         "en": "📜 Show every field",
     },
+    "Which source?": {"fr": "Quelle source ?", "en": "Which source?"},
     "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
     "A backup .zip, without restoring it": {
         "fr": "🗜  Une sauvegarde .zip, sans la restaurer",
@@ -16088,6 +16357,29 @@ TRANSLATIONS = {
         "en": "Path to the backup .zip (empty to cancel): ",
     },
     "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    # Choix d'un chemin par le port (pick_path).
+    "No such directory: ": {
+        "fr": "Répertoire introuvable : ",
+        "en": "No such directory: ",
+    },
+    "Not a file: ": {"fr": "Pas un fichier : ", "en": "Not a file: "},
+    "Not a directory: ": {
+        "fr": "Pas un répertoire : ",
+        "en": "Not a directory: ",
+    },
+    "File path (empty to cancel): ": {
+        "fr": "Chemin du fichier (vide pour annuler) : ",
+        "en": "File path (empty to cancel): ",
+    },
+    "Directory path (empty to cancel): ": {
+        "fr": "Chemin du répertoire (vide pour annuler) : ",
+        "en": "Directory path (empty to cancel): ",
+    },
+    "Invalid choice: ": {"fr": "Choix invalide : ", "en": "Invalid choice: "},
+    "Several: 1 3, 2-5 or all; empty for none: ": {
+        "fr": "Plusieurs : 1 3, 2-5 ou tout ; vide pour aucun : ",
+        "en": "Several: 1 3, 2-5 or all; empty for none: ",
+    },
     "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
     "Odoo backup .zip to inspect, without restoring it": {
         "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
@@ -17151,10 +17443,6 @@ TRANSLATIONS = {
     "mail_ask_imap_host": {"fr": "Serveur IMAP : ", "en": "IMAP server: "},
     "mail_ask_smtp_host": {"fr": "Serveur SMTP : ", "en": "SMTP server: "},
     "mail_ask_account": {"fr": "Quel compte ? ", "en": "Which account? "},
-    "mail_ask_mode": {
-        "fr": "Mode (clear / encrypted / ephemeral) : ",
-        "en": "Mode (clear / encrypted / ephemeral): ",
-    },
     "mail_app_password_note": {
         "fr": "Ce fournisseur exige un mot de passe d'application.",
         "en": "This provider requires an app password.",
@@ -17173,6 +17461,7 @@ TRANSLATIONS = {
         "fr": "Compte supprimé.",
         "en": "Account deleted.",
     },
+    "mail_size_kb": {"fr": "ko", "en": "KB"},
     "mail_connection_ok": {
         "fr": "Connexion réussie.",
         "en": "Connection succeeded.",
@@ -17378,8 +17667,6 @@ TRANSLATIONS = {
         "fr": "Choisir un fichier existant",
         "en": "Choose an existing file",
     },
-    "mail_kdbx_menu_cancel": {"fr": "Annuler", "en": "Cancel"},
-    "mail_kdbx_ask_choice": {"fr": "Votre choix : ", "en": "Your choice: "},
     "mail_kdbx_ask_path_new": {
         "fr": "Chemin du nouveau fichier kdbx",
         "en": "Path for the new kdbx file",
@@ -18308,10 +18595,6 @@ TRANSLATIONS = {
         "en": "Development tools:",
     },
     "Disk needed:": {"fr": "Disque nécessaire :", "en": "Disk needed:"},
-    "Numbers separated by spaces, [all], blank = none:": {
-        "fr": "Numéros séparés par des espaces, [tous], vide = aucun :",
-        "en": "Numbers separated by spaces, [all], blank = none:",
-    },
     "No graphical VM: these tools are not installed.": {
         "fr": "Aucune VM graphique : ces outils ne seront pas installés.",
         "en": "No graphical VM: these tools are not installed.",
@@ -19600,10 +19883,7 @@ TRANSLATIONS = {
         "fr": "Préréglage illisible : ",
         "en": "Unreadable preset: ",
     },
-    "Preset number (0 to go back)": {
-        "fr": "Numéro du préréglage (0 pour revenir)",
-        "en": "Preset number (0 to go back)",
-    },
+    "Which preset?": {"fr": "Quel préréglage ?", "en": "Which preset?"},
     "An empty answer keeps the preset value.": {
         "fr": "Une réponse vide garde la valeur du préréglage.",
         "en": "An empty answer keeps the preset value.",
@@ -19698,10 +19978,7 @@ TRANSLATIONS = {
         "fr": "Nom du profil (minuscules, chiffres, « - » ou « _ »)",
         "en": "Profile name (lowercase, digits, - or _)",
     },
-    "Profile number (0 to go back)": {
-        "fr": "Numéro du profil (0 pour revenir)",
-        "en": "Profile number (0 to go back)",
-    },
+    "Which profile?": {"fr": "Quel profil ?", "en": "Which profile?"},
     "Profile saved: ": {
         "fr": "Profil enregistré : ",
         "en": "Profile saved: ",
@@ -19733,10 +20010,6 @@ TRANSLATIONS = {
     "Unknown driver: ": {
         "fr": "Pilote inconnu : ",
         "en": "Unknown driver: ",
-    },
-    "Unknown choice.": {
-        "fr": "Choix inconnu.",
-        "en": "Unknown choice.",
     },
     "The installation requires sudo.": {
         "fr": "L'installation demande sudo.",
@@ -19893,10 +20166,6 @@ TRANSLATIONS = {
     "No secret to store: this one authenticates over SSH.": {
         "fr": "Aucun secret à déposer : celui-là s'authentifie par SSH.",
         "en": "No secret to store: this one authenticates over SSH.",
-    },
-    "Several technologies match: ": {
-        "fr": "Plusieurs technologies correspondent : ",
-        "en": "Several technologies match: ",
     },
     "Authentication through a web form (SAML / SSO)?": {
         "fr": "Authentification par formulaire web (SAML / SSO) ?",
@@ -20274,10 +20543,7 @@ TRANSLATIONS = {
         "fr": "Ce que le filtre contrôle : adresses, courriels, chemins de compte. Pas les noms.",
         "en": "What the filter checks",
     },
-    "cancel": {
-        "fr": "annuler",
-        "en": "cancel",
-    },
+    "Send it?": {"fr": "L'envoyer ?", "en": "Send it?"},
     "Nothing has been sent.": {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
@@ -20339,10 +20605,16 @@ TRANSLATIONS = {
         "fr": "🤖 Claude Code - sessions locales",
         "en": "🤖 Claude Code - local sessions",
     },
+    # La même phrase sans sa marque : l'intro de Claude Code, que 🤖 précède.
+    "Local Claude Code sessions": {
+        "fr": "Claude Code - sessions locales",
+        "en": "Claude Code - local sessions",
+    },
     "List local sessions": {
         "fr": "📋 Lister les sessions locales",
         "en": "📋 List local sessions",
     },
+    "Which session?": {"fr": "Quelle session ?", "en": "Which session?"},
     "Ask a question to a session": {
         "fr": "❓ Poser une question à une session",
         "en": "❓ Ask a question to a session",
@@ -21467,10 +21739,6 @@ TRANSLATIONS = {
         "fr": "Docker pose un démon que root possède.",
         "en": "Docker runs a daemon owned by root.",
     },
-    "Mode": {
-        "fr": "Mode",
-        "en": "Mode",
-    },
     "Use vendor packages? (Y/N): ": {
         "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
         "en": "Use vendor packages? (Y/N): ",
@@ -21490,10 +21758,6 @@ TRANSLATIONS = {
     "Odoo version:": {
         "fr": "Version d'Odoo :",
         "en": "Odoo version:",
-    },
-    "Number": {
-        "fr": "Numéro",
-        "en": "Number",
     },
     "Rebuild without cache? (Y/N): ": {
         "fr": "Reconstruire sans cache ? (O/N) : ",
@@ -21711,10 +21975,6 @@ TRANSLATIONS = {
         "fr": "L'unité a refusé. Son état, puis son journal :",
         "en": "The unit refused. Its state, then its journal:",
     },
-    "All versions": {
-        "fr": "Toutes les versions",
-        "en": "All versions",
-    },
     "Output:": {
         "fr": "Sortie :",
         "en": "Output:",
@@ -21767,9 +22027,9 @@ TRANSLATIONS = {
         "fr": "Toujours aucune émulation pour : %s",
         "en": "Still no emulation for: %s",
     },
-    "Every version: hours of work, tens of GB.": {
-        "fr": "Toutes les versions : des heures, et des dizaines de Go.",
-        "en": "Every version: hours of work, tens of GB.",
+    "Several versions: hours of work, tens of GB.": {
+        "fr": "Plusieurs versions : des heures, et des dizaines de Go.",
+        "en": "Several versions: hours of work, tens of GB.",
     },
     "Built:": {
         "fr": "Construites :",
@@ -21791,13 +22051,13 @@ TRANSLATIONS = {
         "fr": "🎯 Images à la pièce",
         "en": "Images one by one",
     },
-    "Numbers (1 3, 2-5, * for all, empty to cancel)": {
-        "fr": "Numéros (1 3, 2-5, * pour tout, vide pour annuler)",
-        "en": "Numbers (1 3, 2-5, * for all, empty to cancel)",
+    "Images to remove:": {
+        "fr": "Images à effacer :",
+        "en": "Images to remove:",
     },
-    "Invalid selection: nothing removed.": {
-        "fr": "Sélection invalide : rien n'est effacé.",
-        "en": "Invalid selection: nothing removed.",
+    "Workspaces to remove:": {
+        "fr": "Espaces de travail à effacer :",
+        "en": "Workspaces to remove:",
     },
     "No image.": {
         "fr": "Aucune image.",
@@ -24339,7 +24599,7 @@ def get_lang() -> str:
             )
             if match:
                 lang = match.group(1)
-                if lang in ("fr", "en"):
+                if lang in LANGUAGES:
                     _current_lang = lang
                     return _current_lang
         except OSError:
@@ -24347,7 +24607,7 @@ def get_lang() -> str:
 
     # 2. Check env var
     env_lang = os.environ.get("EL_LANG")
-    if env_lang in ("fr", "en"):
+    if env_lang in LANGUAGES:
         _current_lang = env_lang
         return _current_lang
 
@@ -24384,6 +24644,31 @@ def set_lang(lang: str) -> None:
             f.write(content)
 
 
+def use_lang(lang: str) -> None:
+    """Fixe la langue de CE processus sans rien écrire.
+
+    Pour un processus qui sert une session à part, comme un worker de
+    l'interface web : `set_lang` persiste le choix dans env_var.sh, fichier
+    versionné qui règle aussi le terminal de l'utilisateur.
+    """
+    if lang not in LANGUAGES:
+        raise ValueError(f"unknown language: {lang!r}")
+    global _current_lang
+    _current_lang = lang
+
+
+def translate(key: str, lang: str) -> str:
+    """Traduction de `key` dans `lang`, sans toucher à la langue du processus.
+
+    Clé inconnue : la clé elle-même. Langue absente de l'entrée : le
+    français, comme `t`.
+    """
+    entry = TRANSLATIONS.get(key)
+    if entry is None:
+        return key
+    return entry.get(lang, entry.get("fr", key))
+
+
 def lang_is_configured() -> bool:
     """Check if a language has been explicitly set."""
     if os.path.exists(ENV_VAR_FILE):
@@ -24397,8 +24682,4 @@ def lang_is_configured() -> bool:
 
 
 def t(key: str) -> str:
-    entry = TRANSLATIONS.get(key)
-    if entry is None:
-        return key
-    lang = get_lang()
-    return entry.get(lang, entry.get("fr", key))
+    return translate(key, get_lang())

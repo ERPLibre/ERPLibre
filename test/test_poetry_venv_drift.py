@@ -1022,9 +1022,16 @@ class TestLeMenu(unittest.TestCase):
         )
 
     def test_le_fil_d_ariane_nomme_le_menu(self):
-        self.assertEqual(
-            "Python", TODO._MENU_LABELS.get("prompt_execute_python")
-        )
+        # Python dessine son menu lui-même : son segment de fil d'Ariane
+        # est le `crumb` de l'entrée qui l'ouvre, au registre.
+        from script.todo.menus.execute import EXECUTE
+
+        crumbs = [
+            entree.crumb
+            for entree in EXECUTE.entries
+            if getattr(entree, "action", None) == "prompt_execute_python"
+        ]
+        self.assertEqual(["Python"], crumbs)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,178 @@
+// Protocole de /ws vu de la page, sans OWL ni DOM : le premier message,
+// les trames des frappes, l'état que dit une fermeture, l'avis d'un jet de
+// frappes, l'identifiant de session que le fragment de l'URL garde pour un
+// rechargement, ce qui reste à lire au terminal, et quand il se replie.
+import {carriesScreen} from "./prompt.js";
+
+// Fermetures du hub autres que la fin d'une session, qu'annonce `bye`. En
+// 1013, la raison « rate N » dit trop de sessions ouvertes en une minute,
+// N les secondes à attendre ; toute autre, trop de sessions ouvertes.
+const CLOSED = {1013: "full", 4001: "taken", 4404: "gone"};
+const RATE = /^rate (\d+)$/;
+// Avis de ce que le hub n'a pas écrit (`dropped`), selon sa raison : des
+// clés de traduction.
+const DROP_LABELS = {
+    unread: "Nothing reads the terminal: keystrokes ignored.",
+    question: "A new prompt began: pending keystrokes were not sent.",
+    stop: "Stopped: pending keystrokes were thrown away.",
+    secret: "The prompt ended: the hidden answer was not sent.",
+    detached: "Keystrokes pending while no tab was open were thrown away.",
+};
+// Octets par trame de frappes : le hub ferme en 1009 un message de plus de
+// 64 Kio, qu'un collage peut dépasser.
+export const FRAME = 32 * 1024;
+
+// Premier message d'une connexion. Sans `session`, le hub en ouvre une ;
+// avec, il s'y rattache et rejoue sa sortie à partir du décalage `after`.
+export function helloMessage({csrf, lang, cols, rows, session, after}) {
+    const hello = {t: "hello", csrf, lang, cols, rows};
+    if (session) {
+        Object.assign(hello, {session, after});
+    }
+    return JSON.stringify(hello);
+}
+
+// `bytes` en tranches de FRAME octets au plus, dans l'ordre. Couper un
+// caractère UTF-8 est sans effet : le terminal reçoit les octets à la suite.
+export function frames(bytes) {
+    const out = [];
+    for (let at = 0; at < bytes.length; at += FRAME) {
+        out.push(bytes.subarray(at, at + FRAME));
+    }
+    return out;
+}
+
+// État d'une connexion fermée : « ended » après `bye`, sinon celui que
+// disent le code et sa raison `reason`, « lost » pour tout autre.
+export function closedState(code, bye, reason = "") {
+    if (bye) {
+        return "ended";
+    }
+    if (code === 1013 && RATE.test(reason)) {
+        return "rate";
+    }
+    return CLOSED[code] || "lost";
+}
+
+// Les secondes à attendre que dit la raison « rate N » d'une fermeture, ou
+// null pour toute autre raison.
+export function retryAfter(reason) {
+    const match = RATE.exec(reason || "");
+    return match ? Number(match[1]) : null;
+}
+
+// L'avis d'un `dropped` de raison `reason` ; une raison que la page ne
+// connaît pas, fût-elle le nom d'une propriété de tout objet, dit celui de
+// `unread`.
+export function dropLabel(reason) {
+    return Object.hasOwn(DROP_LABELS, reason) ? DROP_LABELS[reason] : DROP_LABELS.unread;
+}
+
+// Identifiant de session du fragment, ou null.
+export function sessionOf(hash) {
+    return new URLSearchParams(hash.replace(/^#/, "")).get("session");
+}
+
+// Fragment qui porte `id` (ou plus aucune session) et garde le reste.
+export function withSession(hash, id) {
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    if (id) {
+        params.set("session", id);
+    } else {
+        params.delete("session");
+    }
+    return `#${params}`;
+}
+
+// Invites à réponse rapide, en fin de ligne : [y/N], (Y/n), [o/N], (O/n),
+// (yes/no) et (yes/no/[fingerprint]), suivies au plus d'un « ? » ou d'un
+// « : ». Rend les réponses que proposent les boutons, ou aucune.
+const QUICK = /(?:\[([yo])\/n\]|\(([yo])\/n\)|\((yes)\/no(?:\/\[fingerprint\])?\))\s*[?:]?$/i;
+
+export function quickAnswers(line) {
+    const match = QUICK.exec(line);
+    if (!match) {
+        return [];
+    }
+    const yes = (match[1] || match[2] || match[3]).toLowerCase();
+    return [yes, yes === "yes" ? "no" : "n"];
+}
+
+// Lignes d'une suite de rangées `{text, wrapped}` : une rangée que le
+// terminal a coupée (`wrapped`, suite de la précédente) s'y rejoint.
+export function joinWrapped(rows) {
+    const lines = [];
+    for (const {text, wrapped} of rows) {
+        if (wrapped && lines.length) {
+            lines[lines.length - 1] += text;
+        } else {
+            lines.push(text);
+        }
+    }
+    return lines;
+}
+
+// Dernière ligne non vide, sans ses espaces de fin, ou "".
+export function lastLine(lines) {
+    for (let at = lines.length - 1; at >= 0; at--) {
+        const line = lines[at].trimEnd();
+        if (line) {
+            return line;
+        }
+    }
+    return "";
+}
+
+// Vrai quand le terminal attend un secret : écho coupé en mode canonique.
+// Un texte « password: » avec l'écho actif n'en est jamais un.
+export function asksSecret(tty) {
+    return tty.echo === false && tty.canon === true;
+}
+
+// Phase de la vue d'une session : la question structurée ouverte (son qid),
+// une commande en cours, l'écran alternatif. Le choix du bouton Terminal ne
+// vaut que pour la phase où il a été fait.
+export function foldPhase({question, running, altscreen}) {
+    return `${question?.qid ?? 0}|${Boolean(running)}|${Boolean(altscreen)}`;
+}
+
+// Le choix du bouton Terminal ({phase, open}) quand la vue est à la phase
+// `phase` : gardé dans la sienne, oublié dès qu'elle change, pour qu'une
+// phase semblable plus tard — une autre commande, un autre moment sans
+// question — ne le retrouve pas.
+export function heldOverride(override, phase) {
+    return override?.phase === phase ? override : null;
+}
+
+// Vrai quand, après le message `message` du hub, ce que TODO a écrit
+// depuis la dernière réponse reste à lire au terminal (`ran` : ce qu'il en
+// était avant) : la sortie d'une commande finie (`run_end`), un avis du
+// worker (`notice`, une erreur et la fin de sa trace), ce qu'une question
+// dit avoir au-dessus d'elle (`printed`). `answered` l'efface, comme
+// `run_start`, pendant lequel la commande se montre d'elle-même.
+export function stillToRead(ran, message) {
+    if (message.t === "answered" || message.t === "run_start") {
+        return false;
+    }
+    if (message.t === "run_end" || message.t === "notice") {
+        return true;
+    }
+    return ran || ((message.t === "menu" || message.t === "ask") && Boolean(message.printed));
+}
+
+// Vrai quand le terminal se montre. L'invite d'un programme que TODO
+// lance (un lecteur, ou l'écho coupé, sans question structurée) le montre
+// toujours. Sinon le choix du bouton Terminal (`override`) l'emporte dans
+// sa phase ; sinon il se montre pendant une commande (`run_start` …
+// `run_end`), en écran alternatif, tant que ce que TODO a écrit depuis la
+// dernière réponse reste à lire (`ran`, voir `stillToRead`), et sous toute
+// question qui ne porte pas tout son écran (`carriesScreen`).
+export function terminalShown({question, running, altscreen, ran, tty, override}) {
+    if (!question && tty && (tty.reader === true || asksSecret(tty))) {
+        return true;
+    }
+    if (override && override.phase === foldPhase({question, running, altscreen})) {
+        return override.open;
+    }
+    return Boolean(running || altscreen || ran || !carriesScreen(question));
+}

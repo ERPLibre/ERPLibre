@@ -8,6 +8,9 @@ import logging
 import os
 import zipfile
 
+from script.execute.execute import Execute
+from script.todo import ui
+from script.todo.menus import run as menus_run
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -30,15 +33,18 @@ try:
     import click
 
     from script.todo import todo_file_browser
+    from script.todo.ui.navigator import navigate
 except Exception:
     click = None
     todo_file_browser = None
+    navigate = None
 
 
 class DatabaseManager:
     def __init__(self, execute, fill_help_info) -> None:
         self._execute = execute
-        self._fill_help_info = fill_help_info
+        # Celui de TODO : `navigate` dessine ERASE par lui.
+        self.fill_help_info = fill_help_info
         self._dir_path: str | None = None
 
     def _on_dir_selected(self, path: str) -> None:
@@ -76,13 +82,14 @@ class DatabaseManager:
         return databases
 
     def select_database(self) -> str | bool:
-        """Faire choisir UNE base parmi celles que PostgreSQL expose."""
+        """Faire choisir UNE base parmi celles que PostgreSQL expose ; rend
+        son nom, ou False sur [0], sans base, ou quand la liste échoue."""
         databases = self._list_databases()
         if not databases:
             return False
 
         choices = [{"prompt_description": a} for a in databases]
-        help_info = self._fill_help_info(choices)
+        help_info = self.fill_help_info(choices)
         valid_choices = [str(a + 1) for a in range(len(databases))]
 
         while True:
@@ -112,7 +119,7 @@ class DatabaseManager:
 
         choices = [{"prompt_description": a} for a in databases]
         help_info = (
-            self._fill_help_info(choices)
+            self.fill_help_info(choices)
             + t("Numbers separated by spaces, e.g. 1 3 4")
             + "\n"
         )
@@ -146,30 +153,10 @@ class DatabaseManager:
         return answer in ("oui", "yes")
 
     def drop_database(self) -> None:
-        print(f"⚠️  {t('Erase databases — irreversible operation!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Erase ALL databases (make db_drop_all)"
-                )
-            },
-            {"prompt_description": t("Erase one or more databases")},
-        ]
-        help_info = self._fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._drop_all_databases()
-                return
-            elif status == "2":
-                self._drop_selected_databases()
-                return
-            else:
-                print(t("Command not found !"))
+        """Effacer toutes les bases, ou celles qu'on choisit (ERASE,
+        `menus/run.py`) : le menu se referme après l'un ou l'autre, et sur
+        [0]."""
+        return navigate(self, menus_run.ERASE)
 
     def _drop_all_databases(self) -> None:
         if not self._confirm_drop(
@@ -187,8 +174,9 @@ class DatabaseManager:
         """Effacer les bases choisies, après UNE confirmation qui les nomme.
 
         Toutes sont nommées avant la question : on confirme ce qu'on lit.
-        Un échec n'arrête pas les suivantes — chaque base est indépendante —
-        et le bilan dit lesquelles restent.
+        Un échec n'arrête pas les suivantes — chaque base est indépendante —,
+        un Ctrl+C si : les bases qui suivent restent intactes. Le bilan dit
+        celles qui restent, échouées ou jamais tentées.
         """
         names = self.select_databases()
         if not names:
@@ -208,7 +196,7 @@ class DatabaseManager:
         if not self._confirm_drop(message):
             print(t("Database deletion cancelled."))
             return
-        failed = []
+        erased = []
         for name in names:
             status, _output = self._execute.exec_command_live(
                 f"./odoo_bin.sh db drop {name}",
@@ -216,20 +204,34 @@ class DatabaseManager:
                 source_erplibre=False,
                 single_source_erplibre=True,
             )
-            if status:
-                failed.append(name)
-        erased = [name for name in names if name not in failed]
+            if not status:
+                erased.append(name)
+            if Execute.interrupted:
+                break
+        failed = [name for name in names if name not in erased]
         if erased:
             print(f"✅ {t('Erased:')} {', '.join(erased)}")
         if failed:
             print(f"❌ {t('Not erased:')} {', '.join(failed)}")
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
+        """Restaurer une image de `image_db` : [1] en demande le nom, [2],
+        le défaut d'une réponse vide, ouvre le navigateur de fichiers ; [0],
+        un nom vide à [1] et le navigateur quitté sans fichier rendent la
+        main sans rien restaurer."""
         path_image_db = os.path.join(os.getcwd(), "image_db")
-        print(f"[1] {t('By file name, from image_db')}")
-        print(f"[] {t('Browse image_db')} {path_image_db}")
-        status = input(f"\U0001f4ac {t('Select: ')}")
-        if status == "1":
+        status = ui.choose(
+            f"\U0001f4ac {t('Which image to restore?')}",
+            ["name", "browse"],
+            default="browse",
+            labels=[
+                t("By file name, from image_db"),
+                f"{t('Browse image_db')} {path_image_db}",
+            ],
+        )
+        if status is None:
+            return
+        if status == "name":
             file_name = self._ask_image_db_file_name(path_image_db)
         else:
             file_name = self.open_file_image_db()
@@ -255,10 +257,11 @@ class DatabaseManager:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
-            if status:
+            if status or Execute.interrupted:
                 # Chaque étape suppose la précédente faite : mettre à jour
                 # ou neutraliser une base mal restaurée ne fait qu'empiler
-                # une seconde erreur sur la première.
+                # une seconde erreur sur la première. Un Ctrl+C arrête la
+                # chaîne même quand la commande interrompue rend 0.
                 print(f"❌ {t('Step failed, the next ones are skipped:')}")
                 print(f"   {commande}")
                 return
@@ -411,8 +414,9 @@ class DatabaseManager:
         if status:
             print(f"❌ {t('The duplication failed.')}")
             return
-        # RELIRE plutôt que croire : c'est le contrôle qui manquait aux
-        # trois modules maison, dont aucun ne posait le drapeau.
+        # Relire la copie plutôt que croire la commande : un module de
+        # neutralisation peut réussir sans poser le drapeau, et seul l'état
+        # relu dit ce qui a pris.
         if neutraliser:
             self._report_neutralize(cible)
 
@@ -434,7 +438,12 @@ class DatabaseManager:
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
+        """Sauvegarde en .zip la base que choisit `select_database`, et
+        rien quand il n'en rend pas (False sur [0], sans base, ou quand
+        PostgreSQL ne répond pas)."""
         database_name = self.select_database()
+        if not database_name:
+            return
         backup_name = input(
             "\U0001f4ac Backup name (default = name+date.zip) : "
         )
@@ -503,7 +512,19 @@ class DatabaseManager:
     def download_database_backup_cli(
         self, show_remote_list: bool = True
     ) -> tuple[int, str, str]:
+        """Télécharger la sauvegarde d'une base distante. Rend (code de
+        download_remote.sh, chemin de l'archive, nom de la base), ou
+        (1, "", "") sans rien télécharger sur [0] ou une réponse vide au
+        choix de la base, comme sur un nom tapé vide.
+
+        La base se choisit par son numéro ou son nom dans ce que liste
+        `list_remote.py`, ou se tape quand la liste n'est pas demandée, est
+        vide ou échoue. Sa sortie mêle l'erreur à la sortie
+        (`exec_command_live`) : en échec, son code non nul l'écarte, et
+        aucune ligne n'est prise pour un nom.
+        """
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
+        output_lines = []
         if show_remote_list:
             status, output_lines = self._execute.exec_command_live(
                 f"python3 ./script/database/list_remote.py --raw"
@@ -512,18 +533,24 @@ class DatabaseManager:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
-            if len(output_lines) > 1:
-                for index, output in enumerate(output_lines):
-                    print(f"{index + 1} - {output}")
-                database_name = input("Select id of database :").strip()
-            elif len(output_lines) == 1:
-                database_name = output_lines[0].strip()
-            else:
-                database_name = input(
-                    "Cannot read remote database, Database name :\n"
-                )
+            if status:
+                print(f"❌ {t('Cannot read the list of remote databases.')}")
+                output_lines = []
+        if len(output_lines) > 1:
+            # Une base de la liste, par son numéro ou son nom ; [0] ou une
+            # réponse vide annule.
+            database_name = ui.choose(
+                t("Which database?"), [name.strip() for name in output_lines]
+            )
+        elif len(output_lines) == 1:
+            database_name = output_lines[0].strip()
         else:
-            database_name = input("Database name :\n")
+            database_name = ui.ask(
+                t("Database name (empty to cancel): ")
+            ).strip()
+        if not database_name:
+            print(t("Download cancelled."))
+            return 1, "", ""
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         default_output_path = f"./image_db/{database_name}_{timestamp}.zip"

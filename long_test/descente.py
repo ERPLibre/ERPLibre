@@ -140,9 +140,10 @@ def parse_capacite(texte):
 
     return (
         lire(r"^COEURS=\s*(\d+)"),
-        # « MEM=MemAvailable:  7056288 kB » : le sed colle un « = », pas un
-        # deux-points. L'expression attendait le second et rendait zéro — un
-        # plan dimensionné sur zéro mébioctet n'annonce aucun étage.
+        # La ligne lue a la forme « MEM=MemAvailable:    5120000 kB » : le sed
+        # de CAPACITE_CMD colle un « = » après MEM, pas un deux-points. Une
+        # expression qui attendrait le second rendrait zéro, et un plan
+        # dimensionné sur zéro mébioctet n'annonce aucun étage.
         lire(r"^MEM=MemAvailable:\s*(\d+)", 1024),
         lire(r"^DISQUE=\s*(\d+)"),
     )

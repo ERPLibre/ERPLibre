@@ -26,9 +26,11 @@ import io
 import os
 import unittest
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+from script.execute.execute import Execute  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo_upgrade import TodoUpgrade  # noqa: E402
 
@@ -165,6 +167,18 @@ class TestItAlwaysStops(Harness):
 
     def test_the_bound_is_three(self):
         self.assertEqual(TodoUpgrade.MAX_ERROR_RETRY, 3)
+
+    def test_ctrl_c_stops_the_migration_without_its_error_menu(self):
+        # Un Ctrl+C n'est pas un échec à réparer : en mode auto, le défaut
+        # « 3 » rejouerait la commande qu'on vient d'arrêter.
+        obj = self.upgrade(resets=[True] * 20)
+        with patch.object(Execute, "interrupted", True):
+            with self.assertRaises(KeyboardInterrupt):
+                self.executer(obj)
+        self.assertEqual(len(self.lst_run), 1)
+        self.assertEqual(self.lst_reset, [])
+        statuts = [e["status"] for e in obj.dct_progression["lst_event"]]
+        self.assertEqual(statuts, [1])
 
     def test_a_command_that_succeeds_never_asks(self):
         obj = self.upgrade(echec=False)

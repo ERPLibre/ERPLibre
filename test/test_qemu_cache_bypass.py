@@ -293,6 +293,29 @@ class TestLeMenageDesExceptions(unittest.TestCase):
         self.assertIn("--bypass-del 52:54:00:00:00:04", cmd)
         self.assertIn("nft -f -", cmd)
 
+    def test_un_ctrl_c_arrete_le_menage(self):
+        """Ctrl+C sur une commande arrête le lot : pas une de plus, là où
+        un simple échec passe à l'exception suivante."""
+        from script.execute.execute import Execute
+        from script.todo import qemu_cache_menu as menu
+
+        execute = mock.MagicMock()
+        execute.exec_command_live.side_effect = lambda *a, **k: setattr(
+            Execute, "interrupted", True
+        )
+        orphelines = [("52:54:00:00:00:05", "une"), ("52:54:00:00:00:06", "")]
+        with (
+            mock.patch.object(Execute, "interrupted", False),
+            mock.patch.object(menu.os.path, "isfile", return_value=True),
+            mock.patch.object(
+                menu.QemuCacheMenuMixin,
+                "_cache_bypass_orphelines",
+                return_value=orphelines,
+            ),
+        ):
+            menu.bypass_menage(execute)
+        self.assertEqual(execute.exec_command_live.call_count, 1)
+
     def test_sans_cache_pose_le_menage_ne_fait_rien(self):
         from script.todo import qemu_cache_menu as menu
 

@@ -340,16 +340,15 @@ def recreer(args, runner) -> int:
 def demander(question: str) -> bool:
     """Question fermée posée sur le terminal. Vaut NON par défaut.
 
-    Lue sur /dev/tty quand il existe : le menu TODO branche l'entrée standard
-    du script sur autre chose que le clavier, et une question sans réponse
-    possible vaudrait acceptation silencieuse.
+    Entrée standard au clavier, par `input` : la question suit, sur la
+    sortie standard, la liste de ce qu'elle va toucher, même quand un tube
+    les relaie, comme sous le menu TODO. Entrée standard redirigée, elle se
+    lit sur /dev/tty (`read_tty_line` de deploy_qemu), où une fin de
+    fichier ne répond pas NON sans rien demander ; sans terminal de
+    contrôle, par `input` encore.
     """
-    try:
-        with open("/dev/tty", "r+") as tty:
-            tty.write(question)
-            tty.flush()
-            reponse = tty.readline()
-    except OSError:
+    reponse = None if sys.stdin.isatty() else DQ.read_tty_line(question)
+    if reponse is None:
         try:
             reponse = input(question)
         except EOFError:

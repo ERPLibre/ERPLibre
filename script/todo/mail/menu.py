@@ -5,7 +5,9 @@
 
 Ce module est le SEUL point de contact entre le paquet `mail` et le CLI :
 `todo.py` importe `prompt_execute_mail` et rien d'autre. Le sens de la
-dépendance est volontaire — `mail` ne doit jamais importer `todo`.
+dépendance est volontaire — `mail` ne doit jamais importer `todo`. Les
+menus du courriel sont déclarés dans `script/todo/menus/assistant.py`, et
+s'ouvrent sur `MailMenus`, qui porte leurs actions.
 """
 
 from __future__ import annotations
@@ -17,16 +19,15 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import click
-
-from script.todo import todo_prefs
+from script.todo import todo_prefs, ui
 from script.todo.mail import account_setup
 from script.todo.mail import accounts as mail_accounts
 from script.todo.mail.accounts import PRESETS, AccountError
 from script.todo.mail.secrets import SecretError, SecretStore
 from script.todo.mail.store import Store, StoreError, resolve_mode
-from script.todo.todo_couleur import retour
+from script.todo.menus import assistant as menus_assistant
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 CACHE_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -75,14 +76,14 @@ def _configure_mail_logging() -> None:
     logger = logging.getLogger("script.todo.mail")
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
-    # `todo.py` appelle `logging.basicConfig()` à l'IMPORT (ligne 68), ce qui
-    # pose un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
-    # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
-    # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
-    # terminal que Textual possède pendant tout le TUI, silencieusement. La
-    # fuite se voit aussi hors du TUI : sous `unittest`, les lignes du paquet
-    # se mêlent à la sortie pointillée dès qu'un test importe `todo` avant
-    # les tests courriel dans le même processus.
+    # `todo.py` appelle `logging.basicConfig()` à l'IMPORT, ce qui pose un
+    # `StreamHandler` sur le logger RACINE. `propagate` vaut `True` par
+    # défaut : sans cette ligne, chaque `_logger.exception(...)` du paquet
+    # remonterait AUSSI jusqu'à ce gestionnaire — donc sur le terminal que
+    # Textual possède pendant tout le TUI, silencieusement. La fuite se voit
+    # aussi hors du TUI : sous `unittest`, les lignes du paquet se mêlent à
+    # la sortie pointillée dès qu'un test importe `todo` avant les tests
+    # courriel dans le même processus.
     logger.propagate = False
     _LOG_CONFIGURED = True
 
@@ -123,31 +124,12 @@ def _load_accounts():
 
 
 def prompt_execute_mail(todo) -> None:
+    """Le menu du courriel (MAIL, `menus/assistant.py`), sous le fil
+    d'Ariane du menu de `todo` qui l'ouvre : le client, les comptes, une
+    synchronisation, le cache. Branche d'abord le journal du paquet. Rend
+    None sur [0]."""
     _configure_mail_logging()
-    while True:
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_open_tui")}
-[2] {t("mail_accounts_menu")}
-[3] {t("mail_sync_now")}
-[4] {t("mail_cache_menu")}
-[5] {t("mail_stats_menu")}
-{retour(t('Back'))}"""
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            _open_tui(todo)
-        elif status == "2":
-            prompt_mail_accounts(todo)
-        elif status == "3":
-            _sync_now(todo)
-        elif status == "4":
-            prompt_mail_cache(todo)
-        elif status == "5":
-            _show_stats(todo)
-        else:
-            print(t("Command not found !"))
+    return navigate(MailMenus(todo), menus_assistant.MAIL)
 
 
 def _show_stats(todo, *, base=None) -> None:
@@ -218,7 +200,7 @@ def _open_tui(todo) -> None:
     secrets = secret_store_for(todo)
     sessions = open_sessions(accounts, secrets, config_get=_config_get(todo))
     try:
-        # Un TUI sans aucun compte n'est plus une impasse : `config_file` et
+        # Un TUI sans aucun compte n'est pas une impasse : `config_file` et
         # `secrets` lui permettent d'en créer un depuis l'écran d'ajout.
         run_tui(
             sessions=sessions,
@@ -293,8 +275,7 @@ def _sync_now(todo) -> None:
         lignes += [f"  {e}" for e in report.errors]
         if report.purged:
             lignes.append(
-                f"  {t('mail_folders_resynced')}"
-                f" {', '.join(report.purged)}"
+                f"  {t('mail_folders_resynced')} {', '.join(report.purged)}"
             )
         return "\n".join(lignes)
 
@@ -319,36 +300,10 @@ def _sync_now(todo) -> None:
 
 
 def prompt_mail_accounts(todo) -> None:
-    while True:
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_account_list")}
-[2] {t("mail_account_add")}
-[3] {t("mail_account_delete")}
-[4] {t("mail_account_template")}
-[5] {t("mail_account_test")}
-[6] {t("mail_account_token")}
-[7] {t("mail_account_signature")}
-{retour(t('Back'))}"""
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            _list_accounts()
-        elif status == "2":
-            _add_account(todo)
-        elif status == "3":
-            _delete_account(todo)
-        elif status == "4":
-            _write_template()
-        elif status == "5":
-            _test_account(todo)
-        elif status == "6":
-            _set_oauth_token(todo)
-        elif status == "7":
-            _set_signature()
-        else:
-            print(t("Command not found !"))
+    """Les comptes (MAIL_ACCOUNTS, `menus/assistant.py`) : les lister, en
+    ajouter, en supprimer, écrire un modèle, en tester un. Rend None sur
+    [0]."""
+    return navigate(MailMenus(todo), menus_assistant.MAIL_ACCOUNTS)
 
 
 def _list_accounts() -> None:
@@ -357,7 +312,7 @@ def _list_accounts() -> None:
         print(t("mail_no_account"))
         return
     for account in accounts:
-        mark = "" if account.enabled else " (désactivé)"
+        mark = "" if account.enabled else f" ({t('disabled')})"
         print(
             f"  {account.name}{mark} — {account.email}"
             f" — {account.imap.host} / {account.smtp.host}"
@@ -368,21 +323,21 @@ def _ensure_kdbx(todo) -> bool:
     """Vrai si un kdbx est utilisable pour la suite de `_add_account`.
 
     Si `kdbx.path` est déjà configuré, ne pose aucune question — c'est le
-    cas courant après la première utilisation. Sinon, offre les deux choix
-    promis par la conception : créer un nouveau `.kdbx` ou en choisir un
-    existant.
+    cas courant après la première utilisation. Sinon, offre deux choix :
+    créer un nouveau `.kdbx` ou en choisir un existant ; [0] n'en fait
+    rien.
     """
     if todo.config_file.get_config_value(["kdbx", "path"]):
         return True
 
-    print(t("mail_kdbx_none_configured"))
-    print(f"  [1] {t('mail_kdbx_menu_create')}")
-    print(f"  [2] {t('mail_kdbx_menu_choose')}")
-    print(f"  [0] {t('mail_kdbx_menu_cancel')}")
-    choice = input(t("mail_kdbx_ask_choice")).strip()
-    if choice == "1":
+    choice = ui.choose(
+        t("mail_kdbx_none_configured"),
+        range(2),
+        labels=[t("mail_kdbx_menu_create"), t("mail_kdbx_menu_choose")],
+    )
+    if choice == 0:
         return _create_kdbx_interactive(todo)
-    if choice == "2":
+    if choice == 1:
         return _choose_kdbx_interactive(todo)
     return False
 
@@ -432,14 +387,21 @@ def _add_account(todo) -> None:
     email_addr = input(t("mail_ask_email")).strip()
     display = input(t("mail_ask_display_name")).strip()
 
+    # Un fournisseur se choisit par son numéro ou par son libellé ; une
+    # réponse vide prend le générique, qui demande les serveurs ; [0]
+    # renonce au compte.
     keys = list(PRESETS)
-    for index, key in enumerate(keys, start=1):
-        print(f"  [{index}] {PRESETS[key]['label']}")
-    choice = input(t("mail_ask_preset")).strip()
-    try:
-        preset_key = keys[int(choice) - 1]
-    except (ValueError, IndexError):
-        preset_key = "generic"
+    labels = [PRESETS[key]["label"] for key in keys]
+    rank = ui.choose(
+        t("mail_ask_preset").strip(),
+        range(len(keys)),
+        default=keys.index("generic"),
+        labels=labels,
+        names={label: index for index, label in enumerate(labels)},
+    )
+    if rank is None:
+        return
+    preset_key = keys[rank]
 
     vault = "kdbx" if "kdbx" in store.available_backends() else "keyring"
     try:
@@ -606,18 +568,17 @@ def _obtenir_jeton(todo, account) -> str:
     return getpass.getpass(t("mail_ask_refresh_token"))
 
 
-def _pick_account(prompt_key="mail_ask_account"):
+def _pick_account():
+    """(le compte choisi, ou None, et tous les comptes) : un compte se
+    choisit par son numéro tel que la liste l'écrit ou par son nom, sous
+    les règles de `ui.choose` ; None pour [0] ou une réponse vide."""
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return None, []
-    for index, account in enumerate(accounts, start=1):
-        print(f"  [{index}] {account.name}")
-    choice = input(t(prompt_key)).strip()
-    try:
-        return accounts[int(choice) - 1], accounts
-    except (ValueError, IndexError):
-        return None, accounts
+    names = [account.name for account in accounts]
+    name = ui.choose(t("mail_ask_account").strip(), names)
+    return (None if name is None else accounts[names.index(name)]), accounts
 
 
 def _delete_account(todo) -> None:
@@ -646,12 +607,11 @@ def _write_template() -> None:
 def _looks_like_auth_failure(cause) -> bool:
     """Le serveur a-t-il RÉPONDU, ou n'est-il rien revenu ?
 
-    La question n'est pas « le message ressemble-t-il à un refus » : la
-    première version cherchait « invalid credentials » et compagnie, et a
-    manqué le cas le plus clair qui soit — Gmail répond
-    « [ALERT] Application-specific password required » une fois la double
-    authentification active, sans employer aucun de ces mots. Une liste de
-    libellés attendus est toujours en retard sur les serveurs réels.
+    La question n'est pas « le message ressemble-t-il à un refus » : une
+    liste de libellés attendus est toujours en retard sur les serveurs
+    réels. Gmail répond « [ALERT] Application-specific password required »
+    une fois la double authentification active, sans « invalid
+    credentials » ni aucun mot d'un refus.
 
     On teste donc l'inverse, qui est structurel : `imaplib` lève
     `IMAP4.error` quand le SERVEUR a parlé, et un `OSError` (délai,
@@ -755,34 +715,42 @@ def _test_account(todo) -> None:
 
 
 def prompt_mail_cache(todo) -> None:
-    while True:
-        current = todo_prefs.get("mail_cache_mode", "clear")
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_cache_default_mode")} ({current})
-[2] {t("mail_cache_account_mode")}
-[3] {t("mail_cache_size_purge")}
-{retour(t('Back'))}"""
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            mode = input(t("mail_ask_mode")).strip()
-            if mode in CACHE_MODES:
-                todo_prefs.set("mail_cache_mode", mode)
-            else:
-                print(t("Command not found !"))
-        elif status == "2":
-            account, accounts = _pick_account()
-            if account is None:
-                continue
-            mode = input(t("mail_ask_mode")).strip()
-            account.cache_mode = mode if mode in CACHE_MODES else None
-            mail_accounts.save(accounts)
-        elif status == "3":
-            _cache_size_and_purge(todo)
-        else:
-            print(t("Command not found !"))
+    """Le cache (MAIL_CACHE, `menus/assistant.py`) : le mode par défaut,
+    celui d'un compte, la taille et la purge. Redessiné à chaque tour, le
+    mode par défaut relu. Rend None sur [0]."""
+    return navigate(MailMenus(todo), menus_assistant.MAIL_CACHE)
+
+
+def _cache_mode() -> str:
+    """Le mode de cache par défaut, que Cache montre entre parenthèses."""
+    return todo_prefs.get("mail_cache_mode", "clear")
+
+
+def _set_cache_mode() -> None:
+    """Demande le mode de cache par défaut, par son numéro ou son nom, et
+    le retient ; [0] le laisse tel quel."""
+    mode = ui.choose(t("mail_cache_default_mode"), CACHE_MODES)
+    if mode is not None:
+        todo_prefs.set("mail_cache_mode", mode)
+
+
+def _set_account_cache_mode() -> None:
+    """Demande un compte, puis son mode de cache, par son numéro ou son
+    nom, ou le mode par défaut, la dernière entrée ; [0] laisse le compte
+    tel quel."""
+    account, accounts = _pick_account()
+    if account is None:
+        return
+    mode = ui.choose(
+        t("mail_cache_account_mode"),
+        [*CACHE_MODES, ""],
+        labels=[*CACHE_MODES, t("mail_cache_default_mode")],
+        names=dict(zip(CACHE_MODES, CACHE_MODES)),
+    )
+    if mode is None:
+        return
+    account.cache_mode = mode or None
+    mail_accounts.save(accounts)
 
 
 def _cache_size_and_purge(todo) -> None:
@@ -791,7 +759,8 @@ def _cache_size_and_purge(todo) -> None:
         print(t("mail_no_account"))
         return
     for row in cache_summary(accounts):
-        print(f"  {row['name']} — {row['mode']} — {row['size'] // 1024} ko")
+        size = f"{row['size'] // 1024} {t('mail_size_kb')}"
+        print(f"  {row['name']} — {row['mode']} — {size}")
     account, _ = _pick_account()
     if account is None:
         return
@@ -812,3 +781,39 @@ def _cache_size_and_purge(todo) -> None:
     finally:
         store.close()
     print(t("mail_purged"))
+
+
+class MailMenus:
+    """L'objet sur lequel s'ouvrent les menus du courriel : chaque action
+    qu'ils nomment est la fonction de ce module de même nom, qui le reçoit
+    à la place du TODO qu'il enveloppe ; tout autre attribut,
+    `fill_help_info` compris, est celui de ce TODO. Les menus se dessinent
+    ainsi sous le fil d'Ariane du menu de TODO qui les ouvre, sans segment
+    propre, et leur clé de télémétrie est la sienne."""
+
+    def __init__(self, todo):
+        self.todo = todo.todo if isinstance(todo, MailMenus) else todo
+
+    def __getattr__(self, name):
+        return getattr(self.todo, name)
+
+    prompt_mail_accounts = prompt_mail_accounts
+    prompt_mail_cache = prompt_mail_cache
+    _open_tui = _open_tui
+    _sync_now = _sync_now
+    _add_account = _add_account
+    _delete_account = _delete_account
+    _test_account = _test_account
+    _cache_size_and_purge = _cache_size_and_purge
+    _list_accounts = staticmethod(_list_accounts)
+    _write_template = staticmethod(_write_template)
+    _cache_mode = staticmethod(_cache_mode)
+    _set_cache_mode = staticmethod(_set_cache_mode)
+    _set_account_cache_mode = staticmethod(_set_account_cache_mode)
+    _set_oauth_token = _set_oauth_token
+    _set_signature = staticmethod(_set_signature)
+
+    def _show_stats(self):
+        """La fonction `_show_stats` du module, lue à l'appel : le nom, dans
+        le corps d'une méthode, est celui du module et non de la classe."""
+        return _show_stats(self)

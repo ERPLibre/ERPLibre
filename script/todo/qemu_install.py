@@ -6,7 +6,7 @@
 import re
 import shlex
 
-from script.todo import dev_tools
+from script.todo import dev_tools, ui
 from script.todo.deploy_form_lib import VM_LOGIN_FILE, VM_LOGIN_READ_CMD
 from script.todo.todo_i18n import t
 
@@ -40,14 +40,19 @@ class QemuInstallMixin:
     )
 
     def _qemu_ask_prod(self):
-        """Environnement cible : dev (défaut) ou prod. En PROD : ERPLibre est
-        installé dans /opt/erplibre (au lieu de ~/git/erplibre) et le service
-        systemd reste CONFINÉ par SELinux (pas d'unconfined)."""
-        print(f"\n{t('Target environment?')}")
-        print(f"  [1] {t('Development (~/git/erplibre, SELinux relaxed)')} *")
-        print(f"  [2] {t('Production (/opt/erplibre, SELinux enforced)')}")
-        sel = input(t("Choice (1-2, default 1): ")).strip()
-        return sel == "2"
+        """Environnement cible (`ui.choose`) : False pour dev, le défaut
+        marqué, True pour prod, None pour [0]. En PROD : ERPLibre est
+        installé dans /opt/erplibre (au lieu de ~/git/erplibre) et le
+        service systemd reste CONFINÉ par SELinux (pas d'unconfined)."""
+        return ui.choose(
+            t("Target environment?"),
+            [False, True],
+            default=False,
+            labels=[
+                t("Development (~/git/erplibre, SELinux relaxed)"),
+                t("Production (/opt/erplibre, SELinux enforced)"),
+            ],
+        )
 
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
@@ -132,8 +137,9 @@ class QemuInstallMixin:
         return install_cmd.strip() not in self._qemu_no_erplibre_cmds()
 
     def _qemu_pick_install_profile(self, distro=""):
-        """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
-        finale exécutée dans ~/git/erplibre).
+        """Ce qu'on installe sur la VM (`ui.choose`) : (libellé, commande
+        finale exécutée dans ~/git/erplibre), par son numéro ou son
+        libellé, le premier sur une réponse vide ; None pour [0].
 
         Le profil qu'un système impose passe en tête, et devient donc le
         défaut de la réponse vide.
@@ -142,17 +148,28 @@ class QemuInstallMixin:
         impose = self._qemu_distro_profile(distro)
         if impose:
             profiles.sort(key=lambda p: p[0] != impose[0])
-        print(f"\n{t('What to install on the VM(s)?')}")
-        for i, (label, _cmd) in enumerate(profiles, 1):
-            print(f"  [{i}] {label}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(profiles):
-                return profiles[idx]
-        except ValueError:
-            pass
-        return profiles[0]  # défaut : ERPLibre + Odoo 18
+        return ui.choose(
+            t("What to install on the VM(s)?"),
+            profiles,
+            default=profiles[0],
+            labels=[label for label, _cmd in profiles],
+            names={profile[0]: profile for profile in profiles},
+        )
+
+    def _qemu_install_questions(self, distro="", ask_prod=True):
+        """La branche, dev ou prod, puis ce qu'on installe, l'un après
+        l'autre : (branche, prod, (libellé, commande)), ou None dès qu'un
+        [0] renonce. Sans `ask_prod`, prod vaut False sans question."""
+        branch = self._qemu_pick_branch()
+        if branch is None:
+            return None
+        prod = self._qemu_ask_prod() if ask_prod else False
+        if prod is None:
+            return None
+        profile = self._qemu_pick_install_profile(distro)
+        if profile is None:
+            return None
+        return branch, prod, profile
 
     @staticmethod
     def _qemu_install_dir(prod):
@@ -372,8 +389,8 @@ class QemuInstallMixin:
         )
 
     # Bureaux disponibles, par gestionnaire de paquets. Une seule source pour
-    # la TUI et la CLI. Les noms ont été relevés distribution par
-    # distribution, pas déduits : Arch n'a PAS xrdp dans ses dépôts officiels
+    # la TUI et la CLI. Chaque nom vient du dépôt de sa distribution, sans
+    # rien déduire : Arch n'a PAS xrdp dans ses dépôts officiels
     # (AUR seulement) et prend TigerVNC, avec un port et un client différents.
     #
     # Côté dnf on installe un ENVIRONNEMENT, pas un groupe : le groupe
@@ -453,11 +470,11 @@ class QemuInstallMixin:
     # joint alors pas le store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES.
     # L'installation paraît figée et rien dans le log ne dit pourquoi.
     #
-    # La famille est CLOSE et relevée dans l'index du dépôt, pas devinée : trois
+    # La famille est CLOSE, et l'index du dépôt la donne entière : trois
     # paquets sources portent une version « …snap1… », firefox, chromium-browser
     # et thunderbird — avec toutes leurs déclinaisons (firefox-locale-*,
-    # chromium-codecs-*). Les corriger un à un a coûté deux VM figées : firefox
-    # sous GNOME, puis thunderbird sous Cinnamon.
+    # chromium-codecs-*). Un seul d'oublié fige l'installation : firefox sous
+    # GNOME, thunderbird sous Cinnamon.
     #
     # Les trois ne sont que RECOMMANDÉS, et avec des solutions de rechange :
     #   Recommends: firefox-esr | firefox | chromium | epiphany-browser | …
@@ -467,17 +484,16 @@ class QemuInstallMixin:
     # le premier repli était « chromium-browser », un paquet de transition lui
     # aussi.
     #
-    # Un épinglage apt sur « Pin: version *snap1* » aurait été plus général —
-    # essayé en glob et en regex, il ne bloque rien. Mesuré sur une VM 26.04 :
-    # avec cette liste, GNOME (844 paquets) et Cinnamon (1167) n'en tirent
-    # AUCUN, sans erreur apt.
+    # Un épinglage apt sur « Pin: version *snap1* » serait plus général, mais
+    # il ne bloque rien, en glob comme en regex. Avec cette liste, GNOME et
+    # Cinnamon n'en tirent AUCUN sur Ubuntu 26.04, sans erreur apt.
     _QEMU_APT_NO_SNAP = (
         "epiphany-browser evolution"
         " firefox- chromium- chromium-browser- thunderbird-"
     )
 
     # Magasin d'applications d'une VM graphique. Ubuntu livre snapd dans son
-    # image cloud (vérifié : 2.75.2 en 26.04) et gnome-core RECOMMANDE
+    # image cloud, et gnome-core RECOMMANDE
     # « firefox », qui n'y est plus qu'un paquet de transition lançant
     # « snap install ». Trois réponses possibles, et il faut choisir :
     #
@@ -494,7 +510,7 @@ class QemuInstallMixin:
     # serveur, rien ne tire de snap.
     QEMU_APP_STORES = (
         ("deb", "deb only (epiphany-browser)"),
-        ("flatpak", "Flatpak tooling, no Flathub"),
+        ("flatpak", "flatpak (tooling, no Flathub)"),
         ("snap", "snap (Ubuntu default, Firefox)"),
     )
 
@@ -617,7 +633,7 @@ class QemuInstallMixin:
         inscriptible, que rien ne consulte sans qu'on le dise — nix mis à
         part, qui a son fragment de service.
 
-        PAS par /etc/environment : mesuré sur une VM, le pam_env de sshd porte
+        PAS par /etc/environment : sur NixOS, le pam_env de sshd porte
         « readenv=0 » et son fichier de configuration est un lien vers le
         store. Aucun chemin PAM n'est inscriptible avant la première
         reconstruction, et c'est précisément avant elle que le clone a lieu.
@@ -692,8 +708,8 @@ class QemuInstallMixin:
             + cache_env_reload()
             + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
-            # est écrit par cloud-init lui aussi : mesuré sur une VM, la
-            # session ssh est acceptée une seconde avant qu'il existe, donc
+            # est écrit par cloud-init lui aussi : la session ssh peut être
+            # acceptée avant qu'il existe, donc
             # une garde évaluée en tête de commande est fausse et n'exporte
             # rien. Tout ce qui suit perd alors l'autorité — le clone du dépôt
             # échoue sur « self-signed certificate », quand nix, qui lit son
@@ -759,15 +775,15 @@ class QemuInstallMixin:
             "sudo systemctl disable --now dnf-automatic.timer "
             "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
             "fi; "
-            # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
-            # « systemd-analyze critical-chain » sur une VM s390x —
+            # snapd tient le CHEMIN CRITIQUE du démarrage, près d'une minute
+            # sur une VM émulée (« systemd-analyze critical-chain ») :
             # multi-user.target attend snapd.seeded. C'est du temps payé pour
             # rien quand aucun snap n'est voulu. On désactive plutôt que
             # désinstaller, pour rester réversible d'un « systemctl enable ».
             #
             # Sauf si le magasin RETENU est snap : le couper puis laisser un
-            # postinst appeler « snap install » est exactement ce qui figeait
-            # une VM graphique trente minutes durant.
+            # postinst appeler « snap install » fige l'installation d'une VM
+            # graphique.
             + (
                 ""
                 if app_store == "snap"
@@ -893,7 +909,9 @@ class QemuInstallMixin:
             # nouveaux miroirs, qui servent les mêmes versions. Sans
             # « || true » : un échec ici laisserait des index que le système
             # ne suit pas.
-            + "sudo pacman -Syu --noconfirm || { " + fail + "}; "
+            + "sudo pacman -Syu --noconfirm || { "
+            + fail
+            + "}; "
             "fi; "
         )
 
@@ -1397,7 +1415,8 @@ class QemuInstallMixin:
             # Le chemin, jamais la valeur : le journal est lisible de tous.
             f"if sudo test -s {pw_file}; then "
             f'echo "     {t("Password kept in the VM, read it with:")} '
-            f'{VM_LOGIN_READ_CMD}"; fi; ' + self._qemu_tunnel_hint(3389, "RDP")
+            f'{VM_LOGIN_READ_CMD}"; fi; '
+            + self._qemu_tunnel_hint(3389, "RDP")
             # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
             # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
             # sans session à ouvrir, ne le remplacerait pas.
@@ -1877,7 +1896,7 @@ class QemuInstallMixin:
         `alias` : un second nom pour la même commande. L'archive d'Android
         Studio n'installe que « studio », mais personne ne tape « studio » —
         on cherche « android-studio », on ne trouve rien, et on conclut que
-        l'installation a échoué alors qu'elle est bien là. Vécu."""
+        l'installation a échoué alors qu'elle est bien là."""
         return (
             f"b=$(ls {root}/bin/{link}.sh {root}/bin/{link} 2>/dev/null "
             "| head -1); "
@@ -1923,7 +1942,7 @@ class QemuInstallMixin:
             # Déjà posé ? On ne retélécharge pas. Rejouer une
             # installation est le cas NORMAL — une qui est morte, un outil
             # ajouté après coup — et le téléchargement en est la partie
-            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # longue, plusieurs minutes pour Android Studio comme pour
             # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
             # rejoue de toute façon, lui est idempotent et bon marché.
             "if [ -x /opt/pycharm/bin/pycharm.sh ]; then "
@@ -1981,8 +2000,7 @@ class QemuInstallMixin:
         )
 
     # Serveur X virtuel, par gestionnaire de paquets. Les noms ne se
-    # ressemblent pas d'une famille à l'autre — relevés dans chaque dépôt, pas
-    # devinés.
+    # ressemblent pas d'une famille à l'autre : chacun est celui de son dépôt.
     _QEMU_XVFB_PKG = {
         "apt": "xvfb",
         "dnf": "xorg-x11-server-Xvfb",
@@ -1990,8 +2008,8 @@ class QemuInstallMixin:
         "pacman": "xorg-server-xvfb",
     }
 
-    # Attente maximale du .idea, en tours de 5 s — cinq minutes. Mesuré sur une
-    # VM Ubuntu 26.04 à 16 Go : le projet est écrit en 195 s, indexation du
+    # Attente maximale du .idea, en tours de 5 s — cinq minutes. Sur une VM de
+    # 16 Go, le projet s'écrit en un peu plus de trois minutes, indexation du
     # dépôt en cours. On n'attend donc PAS la fin de cette indexation, qui dure
     # bien plus et dont personne n'a besoin ici : pycharm_configuration.py ne
     # réclame que le .iml et misc.xml.
@@ -2049,15 +2067,16 @@ class QemuInstallMixin:
         d'aucune bibliothèque graphique, et rien ne transite par « ssh -X ».
 
         TROIS fenêtres bloqueraient une session où personne ne peut cliquer, et
-        chacune a été rencontrée avant d'être écartée : politique de
-        confidentialité, partage de données, et surtout « faites-vous confiance
-        à ce projet ? ». C'est celle-là qui figeait tout — le journal s'arrêtait
-        1,3 s après le démarrage, sans jamais ouvrir le projet, et il a fallu
-        « idea.trust.all.projects » pour le débloquer. Le consentement, lui, est
-        écrit REFUSÉ : aucune statistique ne part.
+        chacune s'écarte ici : politique de confidentialité, partage de
+        données, et surtout « faites-vous confiance à ce projet ? ». C'est
+        celle-là qui fige tout — le journal s'arrête une seconde après le
+        démarrage, sans jamais ouvrir le projet — et
+        « idea.trust.all.projects » la lève. Le consentement, lui, est écrit
+        REFUSÉ : aucune statistique ne part.
 
-        Mesuré sur une VM Ubuntu 26.04 à 16 Go : .idea complet en 195 s, et
-        pycharm_configuration.py écrit ensuite ses exclusions dans le .iml.
+        Sur une VM de 16 Go, le .idea est complet en un peu plus de trois
+        minutes, et pycharm_configuration.py écrit ensuite ses exclusions dans
+        le .iml.
 
         Tout est gardé. Sans Xvfb, sans PyCharm, ou sans .idea au bout du
         délai, on le dit et l'installation continue : elle n'en dépend pas,
@@ -2096,15 +2115,15 @@ class QemuInstallMixin:
             # « setsid » donne au tout son PROPRE groupe de processus, et
             # c'est le groupe qu'on tuera. Sans lui, « $!  » est le PID de
             # xvfb-run — un script — et le tuer n'atteint ni PyCharm, ni Xvfb,
-            # ni les cef_server qu'il a lancés. Mesuré sur
-            # erplibre-ubuntu-2604-gnome : PyCharm tournait encore 45 minutes
-            # plus tard avec 1,9 Go, et la compilation de l'APK qui suivait
-            # s'est fait tuer par le noyau, faute de mémoire.
+            # ni les cef_server qu'il a lancés : PyCharm tourne encore des
+            # dizaines de minutes plus tard avec près de 2 Go, et la
+            # compilation de l'APK qui suit se fait tuer par le noyau, faute
+            # de mémoire.
             # Les watches inotify AVANT d'ouvrir : le dépôt mobile pose
             # 123 000 fichiers d'assets, et la limite par défaut est dépassée
             # dès l'analyse — « inotify_add_watch(...): No space left on
             # device », puis « watch root cannot be watched: -2 », puis aucun
-            # .idea écrit. Mesuré sur erplibre-ubuntu-2604-gnome, deux fois.
+            # .idea écrit.
             # 524288 est la valeur que JetBrains documente lui-même.
             "cur=$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null "
             '|| echo 0); if [ "$cur" -lt 524288 ] 2>/dev/null; then '
@@ -2113,12 +2132,11 @@ class QemuInstallMixin:
             "sudo sysctl -q -p /etc/sysctl.d/60-erplibre-inotify.conf "
             f'2>/dev/null; echo "   {t("inotify watches raised for the IDE")}"; '
             "fi; "
-            # DEUX tentatives, et c'est mesuré : la première ouverture d'un
-            # dépôt neuf indexe 212 000 fichiers, plante son configurateur
+            # DEUX tentatives : la première ouverture d'un dépôt neuf indexe
+            # plus de 200 000 fichiers, plante son configurateur
             # d'interpréteur (« PythonSdkConfigurator - homeDir is null ») et
             # n'écrit AUCUN .idea, même au bout de cinq minutes. La seconde, sur
-            # les caches que la première a laissés, l'écrit en 25 secondes —
-            # constaté sur deux VM différentes.
+            # les caches que la première a laissés, l'écrit en une demi-minute.
             ": > /tmp/pycharm-first-run.log; "
             "for attempt in 1 2; do "
             'PYCHARM_VM_OPTIONS="$HOME/.pycharm-headless.vmoptions" '
@@ -2141,10 +2159,9 @@ class QemuInstallMixin:
             # Par NOM de processus (« -x »), jamais par ligne de commande. Un
             # « pkill -f /opt/pycharm » attrape aussi le ssh QUI PORTE cette
             # installation — sa ligne de commande contient le script entier,
-            # donc ce chemin. Vécu : une installation est morte en silence, sa
-            # session ssh emportée, 48 minutes perdues. Mesuré ensuite : par
-            # nom, 3 processus réels attrapés et 0 faux ; par ligne de commande,
-            # 4 dont le ssh. Les noms sont ceux relevés dans la VM — pycharm,
+            # donc ce chemin — et l'installation meurt alors en silence, sa
+            # session ssh emportée. Par nom, seuls les processus de l'IDE sont
+            # pris, et jamais le ssh. Les noms sont ceux de la VM — pycharm,
             # Xvfb, fsnotifier, cef_server — et « -u » borne au compte courant.
             #
             # « pgrep -c » IMPRIME 0 et rend 1 quand il ne trouve rien : un
@@ -2182,7 +2199,7 @@ class QemuInstallMixin:
             # Déjà posé ? On ne retélécharge pas. Rejouer une
             # installation est le cas NORMAL — une qui est morte, un outil
             # ajouté après coup — et le téléchargement en est la partie
-            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # longue, plusieurs minutes pour Android Studio comme pour
             # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
             # rejoue de toute façon, lui est idempotent et bon marché.
             "if [ -x /opt/android-studio/bin/studio ]; then "
@@ -2416,17 +2433,17 @@ class QemuInstallMixin:
         ("SDK location not found", "SDK not found (ANDROID_HOME)"),
         ("have not been accepted", "SDK licences not accepted"),
         ("NDK not configured", "NDK missing"),
-        # Vécu : Capacitor 8 réclame un JDK 21 quand l'installateur amont pose
-        # un 17, et Gradle s'arrête là.
+        # Capacitor 8 réclame un JDK 21 quand l'installateur amont pose un 17,
+        # et Gradle s'arrête là.
         (
             "Cannot find a Java installation",
             "JDK required by the project missing",
         ),
-        # Vécu aussi : le JDK est là, mais Gradle TOURNE sur un plus ancien.
+        # Le JDK est là, mais Gradle TOURNE sur un plus ancien.
         ("invalid source release", "Gradle running on too old a JDK"),
         ("cannot overwrite", "SDK already there (upstream installer replays)"),
-        # Vécu : sentencepiece bâtit protoc pour la CIBLE et l'exécute sur
-        # l'hôte. Le message est cryptique ; la cause, non.
+        # sentencepiece bâtit protoc pour la CIBLE et l'exécute sur l'hôte.
+        # Le message est cryptique ; la cause, non.
         ("Exec format error", "cross-compiled protoc run on the host"),
         ("Unsupported class file major version", "JDK/Gradle mismatch"),
         ("Could not determine java version", "JDK/Gradle mismatch"),
@@ -2436,26 +2453,26 @@ class QemuInstallMixin:
         ),
         ("npm ERR!", "npm dependencies"),
         ("Test Files", "Vitest tests failed"),
-        # Vécu : le manifeste rend 0 sans avoir cloné, et l'étape suivante
+        # Le manifeste peut rendre 0 sans avoir cloné, et l'étape suivante
         # tombe sur un cd impossible. Le motif nomme la vraie cause.
         #
         # SANS APOSTROPHE, et ce n'est pas cosmétique : ces motifs partent dans
-        # un « grep -q '<motif>' », entre apostrophes. « can't cd to » fermait
-        # la chaîne et rendait tout le bloc invalide — attrapé par bash -n.
+        # un « grep -q '<motif>' », entre apostrophes, qu'un « can't cd to »
+        # fermerait, rendant tout le bloc invalide — bash -n le voit.
         ("cd: can", "mobile repository missing"),
-        # Vécu aussi : sans python3.12-venv, .venv.erplibre n'existe pas, et
-        # rien de ce qui suit ne peut synchroniser le manifeste.
+        # Sans python3.12-venv, .venv.erplibre n'existe pas, et rien de ce qui
+        # suit ne peut synchroniser le manifeste.
         ("virtual environment", "ERPLibre venv missing (incomplete install)"),
         ("No module named", "ERPLibre venv incomplete (no pip: python3-venv)"),
-        # Vécu sur erplibre-ubuntu-2604-gnome : le noyau a tué le démon Gradle
-        # (6,8 Go de RSS sur 12 Go, sans swap), et Gradle n'en sait rien — il
-        # dit seulement que son démon « a disparu ». Le motif nomme la mémoire,
-        # et le contexte l'établit au lieu de le supposer.
-        # Vécu, et c'est en amont : « Too many zip entries 123678 (MAX=65535) ».
-        # Un APK est un ZIP classique, borné à 65 535 entrées, et le dépôt
-        # mobile embarque 122 684 fichiers sous assets/public/repos — des
-        # dépôts Odoo entiers — pour 337 fichiers qui sont l'application. Rien
-        # ici ne peut le corriger : c'est au projet mobile de ne pas les
+        # Le noyau tue le démon Gradle quand la mémoire manque (une VM sans
+        # swap), et Gradle n'en sait rien — il dit seulement que son démon « a
+        # disparu ». Le motif nomme la mémoire, et le contexte l'établit au
+        # lieu de le supposer.
+        # En amont : « Too many zip entries … (MAX=65535) ». Un APK est un ZIP
+        # classique, borné à 65 535 entrées, et un dépôt mobile qui embarque
+        # des dépôts Odoo entiers sous assets/public/repos les dépasse de loin,
+        # pour quelques centaines de fichiers qui sont l'application. Rien ici
+        # ne peut le corriger : c'est au projet mobile de ne pas les
         # empaqueter. On le NOMME, avec le chiffre, plutôt que de laisser lire
         # 5 000 lignes de Gradle.
         (
@@ -2475,11 +2492,10 @@ class QemuInstallMixin:
         de mégaoctets. On cherche donc les motifs connus, et à défaut on montre
         les dernières lignes — c'est toujours mieux que rien.
 
-        La recherche porte sur la FIN du journal, pas sur tout. Vécu : le
-        diagnostic a annoncé « licences SDK non acceptées » quand la panne était
-        un JDK manquant — le motif venait de la revue de licences d'une étape
-        RÉUSSIE, trois étapes plus haut. Nommer la mauvaise cause coûte plus
-        cher que se taire."""
+        La recherche porte sur la FIN du journal, pas sur tout : sur tout le
+        journal, la revue de licences d'une étape RÉUSSIE, plus haut, ferait
+        annoncer « licences SDK non acceptées » quand la panne est un JDK
+        manquant. Nommer la mauvaise cause coûte plus cher que se taire."""
         lines = ""
         for entry in self._QEMU_MOBILE_DIAG:
             pat, cause = entry[0], entry[1]
@@ -2535,9 +2551,9 @@ class QemuInstallMixin:
             # l'installateur y écrit ne sert qu'aux sessions futures, pas à la
             # compilation qui suit immédiatement.
             #
-            # Le JDK le PLUS RÉCENT installé, et non celui des alternatives.
-            # Mesuré : avec JAVA_HOME sur le 17 que pose l'installateur amont,
-            # Gradle tourne en 17 et s'arrête sur « invalid source release: 21 »
+            # Le JDK le PLUS RÉCENT installé, et non celui des alternatives :
+            # avec JAVA_HOME sur le 17 que pose l'installateur amont, Gradle
+            # tourne en 17 et s'arrête sur « invalid source release: 21 »
             # — les modules de Capacitor 8 compilent en 21. Le tri est
             # « sort -V », donc java-21 passe après java-17, pas avant.
             "export JAVA_HOME=$(ls -d /usr/lib/jvm/java-*-openjdk-* "
@@ -2555,20 +2571,21 @@ class QemuInstallMixin:
         return (
             # Le « test -f » n'est pas une ceinture de plus : c'est la seule
             # vérité disponible. update_manifest_local_mobile.sh finit par
-            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné —
-            # vécu, faute de .venv.erplibre. L'étape passait, et c'est le « cd »
-            # suivant qui échouait, deux étapes plus loin.
+            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné,
+            # faute de .venv.erplibre par exemple. L'étape passerait, et c'est
+            # le « cd » suivant qui échouerait, deux étapes plus loin.
             # Le venv d'ERPLibre d'abord, et nommément : tout ce qui suit en
             # dépend — c'est lui qui porte « repo », qui synchronise le
-            # manifeste. Vécu avec le profil « ERPLibre seul », dont le code
-            # note lui-même « problem installing with q, the script depend on
-            # odoo » : sans venv, le manifeste rendait 0 sans rien cloner et
-            # l'échec ne se voyait que deux étapes plus loin.
+            # manifeste. Le profil « ERPLibre seul » le note lui-même
+            # (« problem installing with q, the script depend on odoo ») :
+            # sans venv, le manifeste rend 0 sans rien cloner, et l'échec ne
+            # se voit que deux étapes plus loin.
             f'mstep "{t("ERPLibre venv (everything below needs it)")}" '
             # « activate », et non « bin/python » : sans python3-venv, le venv
             # naît INFIRME — bin/python existe (un lien), mais ni pip ni
-            # activate ni site-packages. La sonde passait, et l'échec ne se
-            # voyait que deux étapes plus loin, en « No module named git ».
+            # activate ni site-packages. Une sonde sur bin/python passerait,
+            # et l'échec ne se verrait que deux étapes plus loin, en « No
+            # module named git ».
             f"'test -f {el_dir}/.venv.erplibre/bin/activate' && "
             f'mstep "{t("mobile repository (additive manifest)")}" '
             f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh; "
@@ -2578,10 +2595,10 @@ class QemuInstallMixin:
             # « headless » se passe de PulseAudio. Celui qui ouvre une FENÊTRE —
             # le cas d'un « ssh -X » — lie libpulse.so.0, absente des images
             # cloud, et s'arrête sur « cannot open shared object file » même
-            # avec « -no-audio ». Mesuré : c'est la SEULE bibliothèque qui
-            # manque, tout le reste des dépendances Qt voyage dans le bundle.
+            # avec « -no-audio ». C'est la SEULE bibliothèque qui manque : tout
+            # le reste des dépendances Qt voyage dans le bundle.
             #
-            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : mesuré,
+            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : sans lui,
             # Gradle s'arrête sur « Cannot find a Java installation matching
             # {languageVersion=21} » — les modules de Capacitor 8 réclament 21.
             # Les deux JDK cohabitent, et Gradle choisit par sa chaîne d'outils.
@@ -2590,7 +2607,7 @@ class QemuInstallMixin:
             "-o DPkg::Lock::Timeout=600 install -y unzip wget xauth "
             "libpulse0 openjdk-21-jdk' && "
             # L'installateur amont n'est PAS idempotent : au second passage il
-            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ». Mesuré.
+            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ».
             # On ne le rejoue donc que s'il reste quelque chose à poser — un
             # déploiement qui se répète ne doit pas échouer sur une réussite
             # précédente.
@@ -2630,11 +2647,11 @@ class QemuInstallMixin:
         """
         return (
             # Du swap AVANT de compiler, et ce n'est pas de la prudence : le
-            # démon Gradle a atteint 6,8 Go de RSS hors tas — son -Xmx1536m ne
-            # le borne pas — sur une VM de 12 Go SANS swap, et le noyau l'a tué
-            # deux fois de suite. « --max-workers=2 » n'y a rien changé :
-            # mesuré, le pic est passé de 10,3 à 11,2 Go. C'est donc de la marge
-            # qu'il faut, pas moins de parallélisme.
+            # démon Gradle dépasse plusieurs Go de RSS hors tas — son
+            # -Xmx1536m ne le borne pas — et, sur une VM de 12 Go SANS swap, le
+            # noyau le tue. « --max-workers=2 » n'y change rien, le pic montant
+            # même un peu : c'est de la marge qu'il faut, pas moins de
+            # parallélisme.
             #
             # Jamais bloquant : une image sur btrfs refuse un fichier d'échange
             # ordinaire, et une compilation qui tient en mémoire n'en a pas
@@ -2663,10 +2680,10 @@ class QemuInstallMixin:
             #
             # Ces dépôts entrent en PACKS, et c'est ce qui rend la chose
             # possible : un APK est un ZIP borné à 65535 entrées, quand les
-            # 139 dépôts pèsent plus de 116 000 fichiers. Un fichier par source
-            # donnait « Too many zip entries 123678 (MAX=65535) » et rien du
-            # tout ; regroupés, ils tiennent en 391 tranches — mesuré, avec
-            # 3 002 entrées dans l'APK.
+            # dépôts du manifeste pèsent plus de cent mille fichiers. Un
+            # fichier par source donne « Too many zip entries » et rien du
+            # tout ; regroupés, ils tiennent en quelques centaines de tranches,
+            # et l'APK en quelques milliers d'entrées.
             #
             # Lié par « && » : un transfert vide fait échouer la VM, au même
             # titre qu'un APK manquant. Une application qui ne porte pas le code
@@ -2682,8 +2699,8 @@ class QemuInstallMixin:
             #     et de sentencepiece, pour trois qui ne serviront jamais ici ;
             #   - sentencepiece bâtit son « protoc » POUR LA CIBLE puis tente de
             #     l'exécuter sur l'hôte. En arm64 cela donne « Exec format
-            #     error » et la compilation s'arrête — mesuré. En x86_64 la
-            #     cible et l'hôte coïncident, et le défaut ne se manifeste pas.
+            #     error » et la compilation s'arrête. En x86_64 la cible et
+            #     l'hôte coïncident, et le défaut ne se manifeste pas.
             #     Un APK arm64 demandera un correctif au projet mobile.
             f'mstep "{t("debug APK (gradle)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile/android && "
@@ -2754,9 +2771,9 @@ class QemuInstallMixin:
             "else "
             # /dev/kvm est en root:kvm 0660 : sans appartenir au groupe,
             # l'émulateur refuse de démarrer sur « ProbeKVM: This user doesn't
-            # have permissions to use KVM ». Mesuré. L'appartenance ne prend
-            # qu'à la prochaine session — ce qui tombe bien, la session utile
-            # est justement celle du « ssh -X » qui viendra ensuite.
+            # have permissions to use KVM ». L'appartenance ne prend qu'à la
+            # prochaine session — ce qui tombe bien, la session utile est
+            # justement celle du « ssh -X » qui viendra ensuite.
             "sudo usermod -aG kvm $(id -un) 2>/dev/null || true; "
             f'echo "   {t("user added to the kvm group (effective at next login)")}"; '
             "fi; "
@@ -2800,8 +2817,8 @@ class QemuInstallMixin:
             # ne lit NI ~/.profile NI ~/.bashrc — Ubuntu place même un
             # « return » en tête du second pour les shells non interactifs.
             # Le PATH que l'installateur y écrit ne s'applique donc jamais
-            # à ces commandes, et « emulator » y répond « command not
-            # found ». Vécu, sur la ligne que ce message affichait lui-même.
+            # à ces commandes, et un « emulator » sans chemin y répond
+            # « command not found ».
             f'echo "   {t("open it from your workstation:")} '
             # « -XC » et non « -X » : la compression X11 change tout sur un
             # écran distant. Les autres drapeaux viennent de la même autorité
@@ -2812,7 +2829,6 @@ class QemuInstallMixin:
             f'echo "   {t("then install the APK:")} '
             # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
             # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».
-            # Mesuré sur l'émulateur.
             "ssh $(id -un)@$ip "
             '\\"$HOME/android/platform-tools/adb install -r -t '
             f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
@@ -2887,9 +2903,9 @@ class QemuInstallMixin:
                 + self._qemu_android_prologue_cmd()
                 + self._qemu_android_sdk_steps(el_dir)
                 # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que
-                # la première commande du groupe suivant : mesuré, un APK
-                # manquant laissait tourner l'émulateur puis rendait 0 — la VM
-                # repassait au vert alors que rien n'avait compilé.
+                # la première commande du groupe suivant : un APK manquant
+                # laisse tourner l'émulateur puis rend 0, et la VM repasse au
+                # vert alors que rien n'a compilé.
                 + " && ".join(f"{{ {g}; }}" for g in groups)
                 + "; }"
             )

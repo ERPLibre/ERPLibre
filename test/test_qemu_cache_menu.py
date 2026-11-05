@@ -2,15 +2,11 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""L'entrée « cache QEMU » du menu Déploiement mène-t-elle où elle le dit ?
+"""Le cache QEMU : son entrée dans Deploy, ses menus et leurs clés i18n.
 
-Le sous-menu est écrit deux fois — une liste de `prompt_description` qui
-numérote l'affichage, et une chaîne d'`elif status == "N"` qui dispatche.
-Insérer une entrée au milieu décale les deux, et une seule erreur envoie
-l'opérateur dans un autre écran sans que rien ne proteste. Les épreuves du
-menu Déploiement n'écrivent donc aucun numéro en dur : chacune déduit le
-numéro d'une entrée de son rang dans la liste, puis vérifie que la branche de
-ce numéro appelle la méthode attendue.
+Chaque entrée mène-t-elle où elle le dit ? Deploy et les menus du cache
+sont déclarés au registre : le numéro d'une entrée y est sa place, et
+`entrees_de` en lit la déclaration.
 
 Le test vérifie aussi que chaque clé i18n de l'entrée résout DANS LES DEUX
 LANGUES. Une clé absente rend sa propre chaîne anglaise, donc un menu
@@ -19,6 +15,8 @@ ne lève.
 """
 
 import ast
+import contextlib
+import io
 import re
 import sys
 import unittest
@@ -127,147 +125,21 @@ CLES = (
     "Replay anyway?",
 )
 
+
 CACHE_PY = RACINE / "script" / "todo" / "qemu_cache_menu.py"
 
 
-def corps_de(nom, suivant):
-    """Le corps d'une méthode de qemu_cache_menu.py, dispatch compris."""
-    src = CACHE_PY.read_text(encoding="utf-8")
-    debut = src.index(f"def {nom}(self):")
-    return src[debut : src.index(f"def {suivant}(self", debut)]
+def entrees_de(menu):
+    """(clé, action, kwargs) de chaque entrée numérotée de `menu`, un menu
+    de `script/todo/menus/deploy.py`, dans l'ordre de ses numéros."""
+    from script.todo.menus import deploy as menus_deploy
+    from script.todo.ui.registry import Entry
 
-
-def affichage_et_dispatch(corps):
-    """Rend (nombre d'entrées affichées, numéros atteignables, triés).
-
-    Un numéro s'atteint de deux façons : une branche « status == "N" », ou
-    une entrée d'une table qui associe le numéro à un verbe. Ne compter que
-    les branches ferait passer pour un trou ce qu'une table couvre.
-
-    Le zéro sort : il ferme le menu et n'est jamais affiché.
-    """
-    affichees = len(re.findall(r'"prompt_description": t\(', corps))
-    numeros = set(re.findall(r'if status == "(\d+)":', corps))
-    # Toute table qui associe un numéro à quelque chose compte : le dispatch
-    # passe tantôt par une branche, tantôt par une table de verbes ou de
-    # granularités. N'en connaître qu'une ferait passer pour un trou ce
-    # qu'une autre couvre.
-    for table in re.findall(r"=\s*\{([^}]*)\}", corps):
-        numeros |= set(re.findall(r'"(\d+)"\s*:', table))
-    numeros.discard("0")
-    return affichees, sorted(int(n) for n in numeros)
-
-
-def corps_du_sous_menu():
-    """Le corps de prompt_execute_deploy(), affichage et dispatch compris."""
-    src = TODO_PY.read_text(encoding="utf-8")
-    debut = src.index("def prompt_execute_deploy(self):")
-    fin = src.index("def prompt_execute_deploy_ssh(self):", debut)
-    return src[debut:fin]
-
-
-def cablage_du_deploiement():
-    """Rend (libellés, branches) de prompt_execute_deploy(), lus dans l'arbre.
-
-    `libellés` : la clé i18n de chaque entrée numérotée, dans l'ordre de la
-    liste `choices` écrite dans la méthode — la première porte le numéro 1.
-    Une entrée {"section": …} ne consomme pas de numéro : c'est la règle de
-    fill_help_info. Cette liste tient lieu d'écran : une entrée que la
-    méthode ajouterait ensuite à `choices` (append, insert) décalerait
-    l'affichage sans figurer ici.
-
-    `branches` : {numéro: méthode appelée}, en suivant la chaîne d'`elif`
-    depuis `if status == "0"`, dans l'ordre où l'exécution la parcourt. Un
-    numéro répété garde sa PREMIÈRE branche, la seule que l'exécution
-    atteint ; un `if status == "N"` détaché de la chaîne n'y est pas relevé.
-
-    L'arbre et non le texte : un libellé que le formateur coupe sur trois
-    lignes, ou un commentaire glissé entre une branche et son appel, ne
-    change rien au résultat.
-    """
-    arbre = ast.parse(TODO_PY.read_text(encoding="utf-8"))
-    methode = next(
-        (
-            n
-            for n in ast.walk(arbre)
-            if isinstance(n, ast.FunctionDef)
-            and n.name == "prompt_execute_deploy"
-        ),
-        None,
-    )
-    if methode is None:
-        raise AssertionError("prompt_execute_deploy absent de todo.py")
-
-    def numero(noeud):
-        """Le N d'un `if status == "N"`, None pour tout autre nœud.
-
-        La saisie est une chaîne comparée telle quelle : `status == 11`,
-        `status != "11"` ou `status == "011"` ne répondent jamais à « 11 »,
-        et ne comptent donc pas comme sa branche.
-        """
-        if not (
-            isinstance(noeud, ast.If)
-            and isinstance(noeud.test, ast.Compare)
-            and isinstance(noeud.test.left, ast.Name)
-            and noeud.test.left.id == "status"
-            and len(noeud.test.ops) == 1
-            and isinstance(noeud.test.ops[0], ast.Eq)
-            and isinstance(noeud.test.comparators[0], ast.Constant)
-            and isinstance(noeud.test.comparators[0].value, str)
-        ):
-            return None
-        valeur = noeud.test.comparators[0].value
-        if valeur.isdigit() and str(int(valeur)) == valeur:
-            return int(valeur)
-        return None
-
-    libelles = []
-    tete = None
-    for noeud in ast.walk(methode):
-        if (
-            isinstance(noeud, ast.Assign)
-            and isinstance(noeud.value, ast.List)
-            and any(
-                isinstance(c, ast.Name) and c.id == "choices"
-                for c in noeud.targets
-            )
-        ):
-            for entree in noeud.value.elts:
-                cles = [
-                    k.value
-                    for k in getattr(entree, "keys", [])
-                    if isinstance(k, ast.Constant)
-                ]
-                if "section" in cles:
-                    continue
-                textes = [
-                    n.value
-                    for v in getattr(entree, "values", [])
-                    for n in ast.walk(v)
-                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
-                ]
-                libelles.append(textes[0] if textes else "")
-        elif tete is None and numero(noeud) == 0:
-            tete = noeud
-    if not libelles:
-        raise AssertionError("aucune liste « choices » dans le menu")
-    if tete is None:
-        raise AssertionError('aucune chaîne « if status == "0" » dans le menu')
-    branches = {}
-    noeud = tete
-    while numero(noeud) is not None:
-        appels = [
-            n.func.attr
-            for instruction in noeud.body
-            for n in ast.walk(instruction)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-        ]
-        branches.setdefault(numero(noeud), appels[0] if appels else "")
-        # Un `elif` est, dans l'arbre, le seul nœud du `orelse` de la branche
-        # qui le précède ; un `else` final arrête la chaîne.
-        suite = noeud.orelse
-        noeud = suite[0] if len(suite) == 1 else None
-    return libelles, branches
+    return [
+        (entree.key, entree.action, entree.kwargs or {})
+        for entree in getattr(menus_deploy, menu).entries
+        if isinstance(entree, Entry)
+    ]
 
 
 class TestEntreeDuCache(unittest.TestCase):
@@ -276,77 +148,16 @@ class TestEntreeDuCache(unittest.TestCase):
     CACHE = "QEMU cache - Download mirror for local VMs"
 
     def setUp(self):
-        self.corps = corps_du_sous_menu()
-
-    def rang(self, libelles, cle):
-        """Le numéro que la liste écrite donne à l'entrée `cle`."""
-        self.assertIn(cle, libelles, f"« {cle} » n'est plus dans le menu")
-        return libelles.index(cle) + 1
-
-    def test_entree_affichee(self):
-        self.assertIn(
-            "QEMU cache - Download mirror for local VMs",
-            self.corps,
-            "l'entrée du cache ne s'affiche pas dans le menu Déploiement",
-        )
+        self.entrees = [
+            (cle, action) for cle, action, _ in entrees_de("DEPLOY")
+        ]
 
     def test_entree_dispatchee(self):
-        libelles, branches = cablage_du_deploiement()
-        rang = self.rang(libelles, self.CACHE)
-        self.assertEqual(
-            branches.get(rang),
-            "prompt_execute_qemu_cache",
-            f"l'entrée {rang} ne mène pas au sous-menu du cache",
-        )
+        """L'entrée du cache ouvre son menu."""
+        self.assertIn((self.CACHE, "prompt_execute_qemu_cache"), self.entrees)
 
     def test_vpn_reste_le_dernier(self):
-        """Toute entrée insérée avant lui le pousse : sans quoi deux entrées
-        partagent un numéro, et la seconde est inatteignable."""
-        libelles, branches = cablage_du_deploiement()
-        # Le VPN se reconnaît au début de son libellé : la suite du texte peut
-        # changer sans que le menu change.
-        rangs = [
-            i
-            for i, libelle in enumerate(libelles, start=1)
-            if libelle.startswith("VPN - ")
-        ]
-        self.assertEqual(
-            len(rangs),
-            1,
-            "une seule entrée au libellé commençant par « VPN - » attendue,"
-            f" rangs : {rangs}",
-        )
-        rang = rangs[0]
-        self.assertEqual(
-            rang,
-            len(libelles),
-            "le VPN n'est plus la dernière entrée du menu",
-        )
-        self.assertEqual(
-            branches.get(rang),
-            "prompt_execute_vpn",
-            f"l'entrée {rang}, le VPN, ne mène pas à son sous-menu",
-        )
-
-    def test_numeros_sans_trou_ni_doublon(self):
-        numeros = [
-            int(n) for n in re.findall(r'elif status == "(\d+)":', self.corps)
-        ]
-        self.assertEqual(
-            numeros,
-            sorted(numeros),
-            f"les numéros du dispatch ne sont pas croissants : {numeros}",
-        )
-        self.assertEqual(
-            len(numeros),
-            len(set(numeros)),
-            f"un numéro est dispatché deux fois : {numeros}",
-        )
-        self.assertEqual(
-            numeros,
-            list(range(1, len(numeros) + 1)),
-            f"les numéros ne sont pas consécutifs à partir de 1 : {numeros}",
-        )
+        self.assertEqual(self.entrees[-1][1], "prompt_execute_vpn")
 
     def test_methode_existe(self):
         src = TODO_PY.read_text(encoding="utf-8")
@@ -358,76 +169,198 @@ class TestEntreeDuCache(unittest.TestCase):
 
 
 class TestSousMenusDuCache(unittest.TestCase):
-    """Affichage et dispatch sont écrits deux fois, et rien ne les relie.
+    """Le nombre d'entrées de chaque menu du cache, et où mène chacune.
 
-    La liste de `prompt_description` numérote l'écran ; la chaîne d'`elif
-    status` décide où l'on va. Une entrée insérée au milieu de l'une sans
-    l'autre envoie l'opérateur ailleurs qu'où il a lu, ou rend la dernière
-    entrée inatteignable — dans les deux cas sans un mot d'erreur.
+    Déclaré au registre, un menu numérote une entrée par sa place : une
+    entrée insérée au milieu décale ensemble l'affichage et le dispatch.
     """
 
-    def verifier(self, nom, suivant, attendues):
-        affichees, numeros = affichage_et_dispatch(corps_de(nom, suivant))
+    def compter(self, menu, attendues):
         self.assertEqual(
-            affichees, attendues, f"{nom} n'affiche pas {attendues} entrées"
-        )
-        self.assertEqual(
-            numeros,
-            list(range(1, attendues + 1)),
-            f"{nom} : le dispatch {numeros} ne suit pas l'affichage",
+            len(entrees_de(menu)),
+            attendues,
+            f"{menu} n'affiche pas {attendues} entrées",
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 12)
+        self.compter("QEMU_CACHE", 12)
 
     def test_le_menu_du_service(self):
-        self.verifier("_cache_service", "_cache_journal_service", 6)
+        self.compter("CACHE_SERVICE", 6)
 
     def test_le_menu_des_exceptions(self):
-        self.verifier("_cache_exceptions", "_cache_miroir_git", 2)
+        self.compter("CACHE_EXCEPTIONS", 2)
 
     def test_le_menu_des_miroirs(self):
-        self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 5)
+        self.compter("CACHE_GIT_MIRRORS", 5)
 
     def test_le_menu_du_nettoyage(self):
-        self.verifier("_cache_nettoyage_auto", "_cache_nettoyage_etat", 4)
+        self.compter("CACHE_CLEANUP", 4)
 
     def test_le_menu_de_lage(self):
         """Six depuis qu'on peut oublier UNE entrée : les cinq autres
         montrent l'âge ou effacent en gros, celle-là vise une URL."""
-        self.verifier("_cache_age", "_cache_lancer", 6)
+        self.compter("CACHE_AGE", 6)
 
     def test_letat_du_service_est_la_troisieme(self):
-        """Sous le diagnostic, comme demandé : le décalage du guide et des
-        tests est la moitié du changement, et c'est celle qui casse."""
-        corps = corps_de("prompt_execute_qemu_cache", "_cache_systemctl")
-        for numero, methode in (
-            ("3", "_cache_service"),
-            ("4", "_cache_exceptions"),
-            ("5", "_cache_miroir_git"),
-            ("6", "_cache_age"),
-            ("7", "_cache_guide"),
-            ("8", "_cache_tests"),
-            ("9", "_cache_combler"),
-            ("10", "_cache_journaux"),
-            ("11", "_cache_transfert"),
-            ("12", "_cache_nettoyage_auto"),
-        ):
-            self.assertRegex(
-                corps,
-                rf'elif status == "{numero}":\s*\n\s*self\.{methode}\(\)',
-                f"l'entrée {numero} ne mène pas à {methode}",
-            )
+        """L'état du service suit le diagnostic, et chaque entrée qui le
+        suit mène à sa méthode."""
+        self.assertEqual(
+            [action for _, action, _ in entrees_de("QEMU_CACHE")[2:]],
+            [
+                "_cache_service",
+                "_cache_exceptions",
+                "_cache_miroir_git",
+                "_cache_age",
+                "_cache_guide",
+                "_cache_tests",
+                "_cache_combler",
+                "_cache_journaux",
+                "_cache_transfert",
+                "_cache_nettoyage_auto",
+            ],
+        )
 
     def test_les_quatre_verbes_systemd(self):
-        """start, enable, disable et stop, et pas un cinquième par erreur."""
-        corps = corps_de("_cache_service", "_cache_journal_service")
-        verbes = re.search(r"verbes = \{([^}]*)\}", corps)
-        self.assertIsNotNone(verbes, "la table des verbes a disparu")
+        """Les quatre verbes systemd, start, enable, disable et stop, puis
+        l'état détaillé, « status --no-pager », et le journal, qui n'en
+        passe aucun : six entrées, et pas une septième par erreur."""
         self.assertEqual(
-            re.findall(r'"(\w+)"', verbes.group(1))[1::2],
-            ["start", "enable", "disable", "stop"],
+            [
+                kwargs.get("verbe")
+                for _, _, kwargs in entrees_de("CACHE_SERVICE")
+            ],
+            [
+                "start",
+                "enable",
+                "disable",
+                "stop",
+                "status --no-pager",
+                None,
+            ],
         )
+
+
+class TestLesExceptionsDuCache(unittest.TestCase):
+    """Exceptions : [1] rend au cache les exceptions dont la VM n'existe
+    plus, relues au moment de l'entrée, [2] celle d'une MAC tapée. Chacune
+    se lance aussi seule, comme depuis la TUI de télémétrie. Les retraits
+    sont des doubles : aucune règle du cache n'est touchée."""
+
+    def setUp(self):
+        from script.todo import todo_i18n as i18n
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
+
+    def todo(self, orphelines):
+        """Un TODO dont les exceptions périmées sont `orphelines`, et qui
+        note dans `retirees` chaque MAC rendue au cache."""
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.retirees = []
+        todo._cache_bypass_lire = lambda: [("52:54:00:0f:0e:0d", "forged-vm")]
+        todo._cache_bypass_orphelines = lambda entrees=None: list(orphelines)
+        todo._cache_bypass_retirer = todo.retirees.append
+        return todo
+
+    def test_les_orphelines_se_relisent_et_partent(self):
+        todo = self.todo([("52:54:00:0f:0e:0d", "forged-vm")])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertIs(todo._cache_retirer_orphelines(), True)
+        self.assertEqual(todo.retirees, ["52:54:00:0f:0e:0d"])
+
+    def test_sans_orpheline_rien_ne_part_et_c_est_dit(self):
+        todo = self.todo([])
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIs(todo._cache_retirer_orphelines(), False)
+        self.assertEqual(todo.retirees, [])
+        self.assertIn("Nothing is stale.", sortie.getvalue())
+
+    def test_une_mac_tapee_part_une_reponse_vide_non(self):
+        for tapee, retirees in (
+            (" 52:54:00:0f:0e:0d ", ["52:54:00:0f:0e:0d"]),
+            ("  ", []),
+        ):
+            todo = self.todo([])
+            with mock.patch("click.prompt", return_value=tapee):
+                self.assertIs(todo._cache_retirer_par_mac(), True)
+            self.assertEqual(todo.retirees, retirees)
+
+    def test_le_menu_se_referme_sur_une_entree_qui_a_retire(self):
+        # Rien de périmé : [1] le dit et la question revient ; [2] retire
+        # la MAC tapée et referme le menu, qui rend True.
+        todo = self.todo([])
+        with (
+            mock.patch(
+                "script.todo.qemu_cache_menu.os.path.isfile",
+                return_value=True,
+            ),
+            mock.patch(
+                "click.prompt", side_effect=["1", "2", "52:54:00:0f:0e:0d"]
+            ),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
+            self.assertIs(todo._cache_exceptions(), True)
+        self.assertEqual(todo.retirees, ["52:54:00:0f:0e:0d"])
+        self.assertEqual(sortie.getvalue().count("Nothing is stale."), 1)
+
+
+class TestLesJournauxDuCache(unittest.TestCase):
+    """Logs : les trois vues du journal d'accès lisent son chemin dans la
+    configuration du service au moment de l'entrée, et se lancent aussi
+    seules, comme depuis la TUI de télémétrie. `_cache_suivre` est un
+    double : aucun « tail » ne part."""
+
+    def vue(self, journal, **kwargs):
+        """(appels de `_cache_suivre`, texte affiché) quand la vue
+        `_cache_voir_acces(**kwargs)` se lance seule, la configuration du
+        service nommant `journal`."""
+        import tempfile
+
+        from script.todo import todo_i18n as i18n
+        from script.todo.todo import TODO
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        todo = TODO.__new__(TODO)
+        vus = []
+        todo._cache_suivre = lambda chemin, **options: vus.append(
+            (chemin, options)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "env"
+            conf.write_text(f"EL_ACCESS_LOG={journal.format(tmp=tmp)}\n")
+            (Path(tmp) / "access.log").write_text("")
+            with (
+                mock.patch(
+                    "script.todo.qemu_cache_menu.CACHE_CONF", str(conf)
+                ),
+                contextlib.redirect_stdout(io.StringIO()) as sortie,
+            ):
+                todo._cache_voir_acces(**kwargs)
+        return [
+            (chemin.removeprefix(tmp), options) for chemin, options in vus
+        ], sortie.getvalue()
+
+    def test_chaque_vue_suit_le_journal_de_la_configuration(self):
+        for kwargs, options in (
+            ({}, {"amont": False, "suivre": True}),
+            ({"amont": True}, {"amont": True, "suivre": True}),
+            ({"suivre": False}, {"amont": False, "suivre": False}),
+        ):
+            with self.subTest(**kwargs):
+                vus, _ = self.vue("{tmp}/access.log", **kwargs)
+                self.assertEqual(vus, [("/access.log", options)])
+
+    def test_sans_journal_rien_ne_part_et_c_est_dit(self):
+        vus, sortie = self.vue("{tmp}/absent.log")
+        self.assertEqual(vus, [])
+        self.assertIn("No access log yet:", sortie)
 
 
 class TestLeTransfertDuCache(unittest.TestCase):
@@ -747,7 +680,7 @@ class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
             def _cache_place_libre(self):
                 return "?"
 
-            def fill_help_info(self, choices):
+            def fill_help_info(self, choices, state=None):
                 return ""
 
             def _cache_miroir_remplir(self, liste):
@@ -813,6 +746,47 @@ class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
 
         self.assertEqual(self.remplir("3"), depots_des_manifestes(str(RACINE)))
 
+    def remplir_seule(self, methode, **kwargs):
+        """La liste que reçoit le remplissage quand l'entrée `methode` se
+        lance seule, comme depuis la TUI de télémétrie."""
+        from script.todo.todo import TODO
+
+        vu = {}
+
+        class Faux(TODO):
+            def __init__(self):
+                pass
+
+            def _cache_miroir_remplir(self, liste):
+                vu["liste"] = list(liste)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            getattr(Faux(), methode)(**kwargs)
+        return vu.get("liste")
+
+    def test_chaque_entree_seule_relit_sa_liste(self):
+        from script.todo.qemu_cache_menu import (
+            depots_des_manifestes,
+            manifeste_extra,
+        )
+
+        v = self.version()
+        extra = depots_des_manifestes(
+            str(RACINE), fichiers=[manifeste_extra(v)]
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_version"),
+            depots_des_manifestes(str(RACINE), v),
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_version", extra=True),
+            extra or None,
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_tout"),
+            depots_des_manifestes(str(RACINE)),
+        )
+
 
 class TestLesIconesDeLAssistant(unittest.TestCase):
     """Chaque choix de l'assistant porte une icône, système compris.
@@ -850,7 +824,6 @@ class TestLesIconesDeLAssistant(unittest.TestCase):
         cles = [e[1] for e in M._CACHE_ESSAIS] + [
             c[1] for c in M._CACHE_CHARGES
         ]
-        cles.append("All three, one after another")
         for cle in cles:
             for langue in ("fr", "en"):
                 valeur = todo_i18n.TRANSLATIONS[cle][langue]
@@ -860,10 +833,10 @@ class TestLesIconesDeLAssistant(unittest.TestCase):
 
 
 class TestLAssistantDesTests(unittest.TestCase):
-    """Trois questions — quel essai, quelle charge, quel système — puis les
-    essais choisis, l'un après l'autre.
+    """Trois questions — quels essais, quelle charge, quel système — puis
+    les essais choisis, l'un après l'autre.
 
-    Deux propriétés que rien d'autre ne tient. « Les trois » doit lancer TROIS
+    Deux propriétés que rien d'autre ne tient. « tout » doit lancer TROIS
     commandes, chacune portant le système et la charge choisis : en oublier un
     ferait mesurer autre chose que ce qui a été demandé, sans rien dire. Et la
     confirmation porte sur le LOT : la reposer à chaque essai la rendrait
@@ -885,16 +858,19 @@ class TestLAssistantDesTests(unittest.TestCase):
         it = iter(reponses)
         # « click.confirm » et « longtest_menu.click.confirm » sont le MÊME
         # objet : un seul mock les couvre, et c'est ce qui rend le compte
-        # d'appels lisible — une question en tout, pas une par essai.
+        # d'appels lisible — une question en tout, pas une par essai. Les
+        # choix répondent par input ; épuisées, les réponses sont vides.
         with (
-            mock.patch("click.prompt", side_effect=lambda *a, **k: next(it)),
+            mock.patch("builtins.input", side_effect=lambda *a: next(it, "")),
             mock.patch("click.confirm", return_value=True) as confirme,
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
         ):
             Faux()._cache_assistant()
+        self.sortie = sortie.getvalue()
         return lancees, confirme
 
     def test_les_trois_lancent_trois_commandes(self):
-        lancees, _c = self.assistant(["4", "1", "2"])
+        lancees, _c = self.assistant(["tout", "1", "2"])
         self.assertEqual(len(lancees), 3, f"lancées : {lancees}")
         options = {"", "--hors-ligne", "--sans-cache"}
         for attendu in options:
@@ -905,7 +881,7 @@ class TestLAssistantDesTests(unittest.TestCase):
             )
 
     def test_le_systeme_et_la_charge_suivent_chaque_essai(self):
-        lancees, _c = self.assistant(["4", "2", "3"])
+        lancees, _c = self.assistant(["*", "2", "3"])
         for cmd in lancees:
             self.assertIn("--distro debian", cmd)
             self.assertIn("--charge erplibre", cmd)
@@ -918,7 +894,7 @@ class TestLAssistantDesTests(unittest.TestCase):
     def test_une_seule_question_pour_tout_le_lot(self):
         """Trois essais, une question. La reposer à chaque essai la rendrait
         machinale, ce qui est exactement ce qui fait qu'on cesse de la lire."""
-        lancees, confirme = self.assistant(["4", "1", "2"])
+        lancees, confirme = self.assistant(["all", "1", "2"])
         self.assertEqual(len(lancees), 3)
         self.assertEqual(
             confirme.call_count,
@@ -927,9 +903,37 @@ class TestLAssistantDesTests(unittest.TestCase):
         )
 
     def test_renoncer_ne_lance_rien(self):
-        for reponses in (["0"], ["4", "0"], ["4", "1", "0"]):
-            lancees, _c = self.assistant(reponses)
+        # Aucun essai sur une réponse vide ; [0] à chaque question.
+        for reponses in ([""], ["0"], ["tout", "0"], ["tout", "1", "0"]):
+            lancees, confirme = self.assistant(reponses)
             self.assertEqual(lancees, [], f"réponses {reponses}")
+            self.assertEqual(confirme.call_count, 0, f"réponses {reponses}")
+
+    def test_les_reponses_suivent_les_regles_d_un_choix(self):
+        """« 4 » n'est pas un essai : dit invalide, la question revient ;
+        une plage choisit deux essais ; une réponse vide prend la première
+        charge et le premier système, que la liste marque."""
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        lancees, _c = self.assistant(["4", "2-3"])
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}4", self.sortie)
+        self.assertEqual(len(lancees), 2, f"lancées : {lancees}")
+        self.assertIn(todo_i18n.t("(default)"), self.sortie)
+        distro, charge = M._cache_systemes()[0][0], M._CACHE_CHARGES[0][0]
+        for cmd in lancees:
+            self.assertIn(f"--distro {distro} --charge {charge}", cmd)
+
+    def test_un_systeme_se_choisit_par_son_nom_sans_son_icone(self):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        libelle = dict(M._cache_systemes())["debian"]
+        nom = libelle.partition(" ")[2]
+        lancees, _c = self.assistant(["1", "1", libelle, nom])
+        self.assertIn(
+            f"{todo_i18n.t('Invalid choice: ')}{libelle}", self.sortie
+        )
+        self.assertEqual(len(lancees), 1, f"lancées : {lancees}")
+        self.assertIn("--distro debian", lancees[0])
 
 
 class TestToutesLesClesDuFichier(unittest.TestCase):
@@ -1249,6 +1253,39 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
         rendu = self.ecrire("EL_MAX_SIZE=50G\n", "EL_MAX_SIZE", "")
         self.assertEqual(rendu, "EL_MAX_SIZE=\n")
 
+    def test_chaque_reglage_pose_sa_question_et_sa_lecture(self):
+        # Chaque réglage se lance seul, comme depuis la TUI de télémétrie :
+        # sa question et la lecture qui refuse une valeur viennent de sa
+        # clé. La première réponse est refusée, la seconde s'écrit : une
+        # seule écriture, la valeur refusée n'en lance aucune.
+        from script.todo import qemu_cache_menu as menu
+        from script.todo import todo_i18n as i18n
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        faux = menu.QemuCacheMenuMixin.__new__(menu.QemuCacheMenuMixin)
+        for cle, question, refusee, lue in (
+            ("EL_PURGE_AGE", "Not served since", "50G", "90j"),
+            ("EL_MAX_SIZE", "Size ceiling", "90j", "50G"),
+        ):
+            faux.execute = mock.MagicMock()
+            with (
+                self.subTest(cle=cle),
+                mock.patch("click.prompt", side_effect=[refusee, lue]) as vu,
+                mock.patch("click.confirm", return_value=True),
+                contextlib.redirect_stdout(io.StringIO()) as sortie,
+            ):
+                faux._cache_nettoyage_regler(cle=cle)
+                faux._cache_nettoyage_regler(cle=cle)
+                self.assertIn(
+                    f"Unreadable value: {refusee}", sortie.getvalue()
+                )
+                self.assertTrue(vu.call_args.args[0].startswith(question))
+                faux.execute.exec_command_live.assert_called_once()
+                [cmd] = faux.execute.exec_command_live.call_args.args
+                self.assertIn(f"{cle}={lue}", cmd)
+
     def test_sans_reglage_rien_n_est_lance(self):
         import contextlib
         import io
@@ -1303,14 +1340,10 @@ class OublierUneUrlDepuisLeMenu(unittest.TestCase):
         self.assertIn("shlex.quote(url)", self._src())
 
     def test_the_entry_is_offered_in_the_cleanup_menu(self):
-        from pathlib import Path
-
-        racine = Path(__file__).resolve().parent.parent
-        menu = (racine / "script/todo/qemu_cache_menu.py").read_text(
-            encoding="utf-8"
+        self.assertIn(
+            ("Clean - Forget one URL", "_cache_oublier_url", {}),
+            entrees_de("CACHE_AGE"),
         )
-        self.assertIn('t("Clean - Forget one URL")', menu)
-        self.assertIn("self._cache_oublier_url()", menu)
 
 
 if __name__ == "__main__":

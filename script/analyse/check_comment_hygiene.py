@@ -13,10 +13,10 @@ Trois familles, de sûreté très différente :
 - `identifiant` — adresse IP, courriel, chemin de compte. Une
   correspondance est une trouvaille : ces formes n'ont aucune raison d'être
   dans un commentaire.
-- `récit` — marqueur de témoignage (« vécu sur », « mesuré le »), date
-  absolue, première personne. Une correspondance est un SIGNAL À RELIRE : la
-  même phrase peut énoncer un fait durable. L'outil ne trie pas à la place
-  du lecteur.
+- `récit` — marqueur de témoignage (« vécu sur », « mesuré le »), le même
+  en aparté (« … — vécu. »), date absolue, première personne. Une
+  correspondance est un SIGNAL À RELIRE : la même phrase peut énoncer un
+  fait durable. L'outil ne trie pas à la place du lecteur.
 - `nom` — un nom de machine pleinement qualifié. Aussi un signal à relire,
   et pour une raison plus dure : un nom d'hôte NU ne se distingue
   mécaniquement ni d'un mot ordinaire ni du nom d'un logiciel, donc cette
@@ -101,6 +101,22 @@ RECIT = re.compile(
     re.IGNORECASE,
 )
 
+# L'aparté : le même témoignage, seul entre deux ponctuations, détaché de
+# la phrase qui énonce le fait — après un tiret, une parenthèse, une
+# virgule, un deux-points, un point-virgule ou une fin de phrase, et avant
+# une ponctuation ou la fin de sa ligne (« … — vécu, », « (mesuré) »,
+# « … : constaté. », « … voulus. Mesuré. »). Pris dans la phrase (« est
+# mesuré pire », « que le journal a rapportée. »), le participe énonce le
+# fait et ne se signale pas. « vecu » sans accent n'a pas de présent qui
+# s'écrive pareil, au contraire de « mesure ». La fin de ligne se lit dans
+# le texte que `inspect` recolle par des sauts de ligne.
+APARTE = re.compile(
+    r"(?:^|(?<=[—–(,:;])|(?<=[—–(,:;]\s)|(?<=[.!?]\s))"
+    r"(?:v[ée]cu|mesuré|rapporté|constaté|observé|signalé)e?s?"
+    r"(?=\s?[,.;:)!?]|\n|$)",
+    re.IGNORECASE,
+)
+
 # Une date absolue date le commentaire : le fonctionnement, lui, n'a pas de date.
 DATE = re.compile(
     r"\b\d{4}-\d{2}-\d{2}\b"
@@ -118,6 +134,7 @@ PERSONNE = re.compile(
 
 MOTIFS_RECIT = (
     ("témoignage", RECIT),
+    ("aparté", APARTE),
     ("date", DATE),
     ("personne", PERSONNE),
 )
@@ -380,12 +397,16 @@ def recits(texte):
 
     Toutes les occurrences, et non la première : un bloc de vingt lignes en
     porte souvent plusieurs, et n'en montrer qu'une cache le reste du travail.
+    Une position que deux motifs relèvent ne compte qu'une fois, pour le
+    premier de MOTIFS_RECIT : « Vécu : » est un témoignage, et aussi un
+    aparté. Un extrait à cheval sur deux lignes se rend sur une seule.
     """
-    trouves = []
+    trouves = {}
     for nom, motif in MOTIFS_RECIT:
         for trouve in motif.finditer(texte):
-            trouves.append((nom, trouve.group(0).strip(), trouve.start()))
-    return sorted(trouves, key=lambda t: t[2])
+            extrait = trouve.group(0).strip().replace("\n", " ")
+            trouves.setdefault(trouve.start(), (nom, extrait, trouve.start()))
+    return sorted(trouves.values(), key=lambda t: t[2])
 
 
 def noms_dhote(texte):
@@ -430,9 +451,14 @@ def inspect(chemin, source=None, termes=None):
 
     trouvailles = []
     for bloc in blocs(chemin, source):
+        # Le récit se cherche dans les lignes recollées par des sauts de
+        # ligne, où l'aparté qui clôt une ligne sans ponctuation garde sa
+        # fin ; le séparateur fait un caractère comme l'espace du texte du
+        # bloc, et les positions restent les siennes.
+        lignes = "\n".join(texte for _, texte in bloc["lines"])
         familles = (
             ("identifiant", identifiants(bloc["text"], termes)),
-            ("récit", recits(bloc["text"])),
+            ("récit", recits(lignes)),
             ("nom", noms_dhote(bloc["text"])),
         )
         for genre, trouves in familles:
