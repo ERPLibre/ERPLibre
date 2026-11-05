@@ -133,6 +133,7 @@ from script.todo.database_manager import DatabaseManager
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.module_menu import ModuleMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -217,6 +218,7 @@ class TODO(
     AssistantMenuMixin,
     ContainerMenuMixin,
     GitRepoMenuMixin,
+    ModuleMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -348,25 +350,26 @@ class TODO(
 [5] {t("Process - Execution tools")}
 [6] {t("Uninstall - Remove an Odoo version")}
 [7] {t("Image Odoo - Database images for a quick installation")}
+[8] {t("Analyse module - Odoo modules of the checkout")}
 
 ── {t("Data")} ──
-[8] {t("Database - Database tools")}
-[9] {t("Analyse - Odoo database analysis")}
-[10] {t("Transform data - Transform your data")}
+[9] {t("Database - Database tools")}
+[10] {t("Analyse - Odoo database analysis")}
+[11] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[11] {t("Git - Git and shell tools")}
-[12] {t("Doc - Documentation search")}
+[12] {t("Git - Git and shell tools")}
+[13] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[13] {t("GPT code - AI assistant tools")}
-[14] {t("Automation - Demonstration of developed features")}
+[14] {t("GPT code - AI assistant tools")}
+[15] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[15] {t("Deploy - Deploy ERPLibre locally")}
-[16] {t("Network - Network tools")}
-[17] {t("Security - Dependency security audit")}
-[18] {t("Docker / Podman - Container engines")}
+[16] {t("Deploy - Deploy ERPLibre locally")}
+[17] {t("Network - Network tools")}
+[18] {t("Security - Dependency security audit")}
+[19] {t("Docker / Podman - Container engines")}
 {retour(t('Back'))}
 """
         while True:
@@ -403,46 +406,50 @@ class TODO(
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_module_analysis()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_analyse()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_transform()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "16":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "17":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "18":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "19":
                 status = self.prompt_execute_container()
                 if status is not False:
                     return
@@ -820,6 +827,7 @@ class TODO(
         "prompt_execute_process": "Process",
         "prompt_execute_uninstall": "Uninstall",
         "prompt_execute_image_db": "Image Odoo",
+        "prompt_execute_module_analysis": "Analyse module",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
         "prompt_execute_update": "Update",

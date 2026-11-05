@@ -13,6 +13,7 @@ from unittest import mock
 
 from script.git import git_freeze_diff
 from script.git import git_module_diff as gmd
+from script.todo import module_menu
 
 ENV = dict(
     os.environ,
@@ -268,6 +269,42 @@ class TestDepotsDuChoix(unittest.TestCase):
         )
         self.assertEqual(depots[1]["remote"], "ERPLibre")
         self.assertIsNone(depots[1]["old"])
+
+
+def resultat_vide(**kw):
+    vide = {
+        "modules": [],
+        "par_depot": {},
+        "repli": [],
+        "sans_branche": [],
+        "sans_ancien": [],
+        "absents": [],
+        "echecs": [],
+    }
+    vide.update(kw)
+    return vide
+
+
+class TestRendre(unittest.TestCase):
+    def test_les_modules_finissent_la_sortie_un_par_ligne(self):
+        lignes = module_menu.rendre(
+            resultat_vide(
+                modules=["a_mod", "b_mod"],
+                sans_branche=[("x", "OCA/18.0")],
+                repli=[("y", "F/18.0_dev")],
+                absents=[("z", "00000000")],
+            ),
+            3,
+            "18.0",
+        )
+        self.assertEqual(lignes[-3:], ["", "a_mod", "b_mod"])
+        for attendu in ("OCA/18.0 : x", "F/18.0_dev : y", "00000000 : z"):
+            self.assertTrue(any(attendu in lg for lg in lignes), attendu)
+
+    def test_aucun_module(self):
+        for mode in (gmd.MODE_BRANCHE, gmd.MODE_GEL):
+            lignes = module_menu.rendre(resultat_vide(), 0, "18.0", mode)
+            self.assertNotIn("", lignes)
 
 
 if __name__ == "__main__":

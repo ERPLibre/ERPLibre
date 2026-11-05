@@ -108,6 +108,78 @@ TRANSLATIONS = {
         "fr": "🖼️ Image Odoo - Images de base pour une installation rapide",
         "en": "🖼️ Image Odoo - Database images for a quick installation",
     },
+    "Analyse module - Odoo modules of the checkout": {
+        "fr": "🧩 Analyse module - Les modules Odoo du checkout",
+        "en": "🧩 Analyse module - Odoo modules of the checkout",
+    },
+    "Analyse the Odoo modules of the checkout": {
+        "fr": "Analyser les modules Odoo du checkout",
+        "en": "Analyse the Odoo modules of the checkout",
+    },
+    "🔀 Modules that differ from the version branch": {
+        "fr": "🔀 Modules différents de la branche de la version",
+        "en": "🔀 Modules that differ from the version branch",
+    },
+    "🔁 Modules a freeze comparison changed (old → new)": {
+        "fr": "🔁 Modules changés par une comparaison de gels (ancien → nouveau)",
+        "en": "🔁 Modules a freeze comparison changed (old → new)",
+    },
+    "Outside any freeze, they compare to their branch.": {
+        "fr": "Hors de tout gel, ils se comparent à leur branche.",
+        "en": "Outside any freeze, they compare to their branch.",
+    },
+    "repositories, from the old to the new commit": {
+        "fr": "dépôts, de l'ancien au nouveau commit",
+        "en": "repositories, from the old to the new commit",
+    },
+    "No version branch, manifest branch taken:": {
+        "fr": "Pas de branche de la version, branche du manifeste prise :",
+        "en": "No version branch, manifest branch taken:",
+    },
+    "New project, no old commit:": {
+        "fr": "Projet apparu, sans ancien commit :",
+        "en": "New project, no old commit:",
+    },
+    "Commit missing from the clone, fetch it:": {
+        "fr": "Commit absent du clone, à aller chercher (fetch) :",
+        "en": "Commit missing from the clone, fetch it:",
+    },
+    "Repositories: those this freeze comparison sees changed": {
+        "fr": "Les dépôts : ceux que cette comparaison de gels voit changés",
+        "en": "Repositories: those this freeze comparison sees changed",
+    },
+    "git repositories, absent from the manifest": {
+        "fr": "dépôts git, absents du manifeste",
+        "en": "git repositories, absent from the manifest",
+    },
+    "Include them?": {
+        "fr": "Les inclure ?",
+        "en": "Include them?",
+    },
+    "repositories compared with": {
+        "fr": "dépôts comparés à",
+        "en": "repositories compared with",
+    },
+    "(references of the last fetch, no network)": {
+        "fr": "(références du dernier fetch, sans réseau)",
+        "en": "(references of the last fetch, no network)",
+    },
+    "No remote branch": {
+        "fr": "Pas de branche distante",
+        "en": "No remote branch",
+    },
+    "Git failed:": {
+        "fr": "Échec de git :",
+        "en": "Git failed:",
+    },
+    "No module differs.": {
+        "fr": "Aucun module ne diffère.",
+        "en": "No module differs.",
+    },
+    "modules differ:": {
+        "fr": "modules diffèrent :",
+        "en": "modules differ:",
+    },
     "Database images for a quick installation!": {
         "fr": "Images de base de données pour une installation rapide !",
         "en": "Database images for a quick installation!",
