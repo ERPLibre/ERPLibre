@@ -3716,7 +3716,7 @@ class TodoUpgrade:
     def run_on_terminal(self, cmd):
         """Le terminal, tel quel, sans rien garder — pour les PLEINS ÉCRANS.
 
-        C'est devenu l'exception : `run_captured` garde la sortie sans que
+        C'est l'exception : `run_captured` garde la sortie sans que
         la commande s'en aperçoive, et presque tout passe par lui. Deux
         appels restent ici, pour une raison précise.
 
@@ -3882,8 +3882,9 @@ class TodoUpgrade:
         est devenu `table__col_index` — et rien ne retire le premier. Les
         deux restent, et PostgreSQL les entretient TOUS LES DEUX à chaque
         écriture. Le doublon vient du chemin de migration lui-même, et non
-        d'un accident d'exécution : une base qui passe 17 avec de tels index
-        le porte, quel que soit le déroulé.
+        d'un accident d'exécution : toute base qui franchit le palier 17
+        avec des index à l'ancien nom porte ces doublons, quel que soit le
+        déroulé.
 
         À partir de 17 seulement : avant, la convention n'a pas changé et
         l'outil ne trouverait rien — le lancer six fois pour rien ferait

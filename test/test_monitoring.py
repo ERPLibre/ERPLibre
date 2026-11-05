@@ -402,8 +402,8 @@ class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
     `product.group_product_pricelist` — hérité d'un palier de migration —
     alors que `base.group_user` ne l'implique pas. La case des réglages
     est alors décochée, et une réparation qui compterait les membres
-    créerait quand même une liste, qu'Odoo annonce ensuite à chaque
-    ouverture des réglages qu'il va l'archiver.
+    créerait quand même une liste, et Odoo annoncerait ensuite, à chaque
+    ouverture des réglages, qu'il va l'archiver.
 
     `res.config.settings` lit ce que `base.group_user` IMPLIQUE ; le
     contrôle pose la même question.

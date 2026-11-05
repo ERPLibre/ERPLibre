@@ -98,7 +98,7 @@ class TestLesInvitesFurentTrouvees(unittest.TestCase):
         self.assertGreater(len(_invites()), 20)
 
     def test_a_known_prompt_is_among_them(self):
-        # Une invite que `click.prompt` pose encore, celle du réseau à
+        # Une invite que `click.prompt` pose, celle du réseau à
         # balayer de l'assistant ; le menu principal pose la sienne par
         # `fill_help_info`, hors de cette recherche.
         cles = {cle for _, cle, _ in _invites()}

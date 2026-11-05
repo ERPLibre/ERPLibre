@@ -18,12 +18,14 @@ savoir ce qui sera touché n'est pas un consentement : c'est un pari ».
 
 Ce que ce mixin EMPRUNTE à `TODO`
 ---------------------------------
-`_is_yes`, `_is_yes_default_yes`, `fill_help_info`, `execute`,
-`db_manager`, `_dir_path`, et — pour l'anonymisation d'une base —
-`_monitoring_restore` et `_monitoring_write_flow`. La liste est écrite
-ici parce qu'un emprunt tacite se casse en silence : une méthode
-renommée dans `todo.py` ne lève qu'à l'exécution de l'entrée, et un
-bouchon de test qui ne la fournit pas passe au vert sans rien éprouver.
+`_is_yes`, `_is_yes_default_yes`, `execute`, et — pour l'anonymisation
+d'une base — `_database_source`, qui choisit, restaure ou télécharge la
+base, et `_monitoring_write_flow`. `_dir_path`, que remplit le
+navigateur de fichiers, est un état du mixin, et non un emprunt. La
+liste est écrite ici parce qu'un emprunt tacite se casse en silence :
+une méthode renommée dans `todo.py` ne lève qu'à l'exécution de
+l'entrée, et un bouchon de test qui ne la fournit pas passe au vert sans
+rien éprouver.
 
 Les deux emprunts de `monitoring` sont VOULUS : `anonymize.py` sait déjà
 remplacer les données d'une base, et `_monitoring_write_flow` sait déjà
@@ -1062,10 +1064,11 @@ class TransformMenuMixin:
         # c'est précisément celle-là qu'il faut pouvoir retrouver.
         self._transform_noter_base(base, depuis_zip)
         if not ecrit:
-            # Sans cette garde, un renoncement produisait un zip de la
+            # Sans cette garde, un renoncement produirait un zip de la
             # base NON anonymisée, annoncé comme le résultat d'une
-            # anonymisation — le pire des deux mondes : l'opérateur croit
-            # tenir une copie transmissible et tient l'original.
+            # anonymisation — le pire des deux mondes : l'opérateur
+            # croirait tenir une copie transmissible et tiendrait
+            # l'original.
             print(f"   {t('Nothing was written; no backup was drawn.')}")
             print(f"   {t('Database kept: ')}{base}")
             return

@@ -180,7 +180,7 @@ class TestLesChoix(Banc):
         self.assertNotIn("[2] ", arrivee)
 
     def test_the_letters_of_old_are_said_invalid(self):
-        """« m » et « r » ne se lisent plus : un numéro, ou Entrée pour le
+        """« m » et « r » sont des fautes : un numéro, ou Entrée pour le
         navigateur, le défaut marqué."""
         gestes = self.migrer(["m", "r", "0"])
         self.assertEqual(gestes, [])
