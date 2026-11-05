@@ -1350,10 +1350,11 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
 
 class TestADownloadCancelledStopsItsCaller(unittest.TestCase):
     """Les appelants de `download_database_backup_cli` qui agissent sur ce
-    qu'il rend : Analyse › Monitoring et Transform data › Anonymise
-    restaurent l'archive, la migration de base la retient et la lit. La
-    liste distante échoue et le nom tapé est vide : le dialogue rend
-    (1, "", ""), et rien n'est téléchargé, restauré ni retenu."""
+    qu'il rend : la question de la provenance d'Analyse › Monitoring et de
+    Transform data › Anonymise restaure l'archive, la migration de base la
+    retient et la lit. La liste distante échoue et le nom tapé est vide :
+    le dialogue rend (1, "", ""), et rien n'est téléchargé, restauré ni
+    retenu."""
 
     def setUp(self):
         self.todo = TODO()
@@ -1372,7 +1373,6 @@ class TestADownloadCancelledStopsItsCaller(unittest.TestCase):
         self.enterContext(patch("getpass.getpass", return_value="forged"))
         self.enterContext(patch("zipfile.ZipFile"))
         self.enterContext(redirect_stdout(io.StringIO()))
-        self.enterContext(patch("click.prompt", return_value="3"))
 
     def assert_only_the_list_ran(self):
         commands = [
@@ -1382,14 +1382,21 @@ class TestADownloadCancelledStopsItsCaller(unittest.TestCase):
         self.assertIn("list_remote.py", commands[0])
 
     def test_monitoring_restores_nothing(self):
-        with patch.object(self.todo, "_monitoring_restore") as restore:
-            self.assertIsNone(self.todo._monitoring_select_source())
+        # La provenance, une sauvegarde distante, puis le dialogue.
+        with (
+            ui.bind(port.ScriptedPort(["3", ""])),
+            patch.object(self.todo, "_monitoring_restore") as restore,
+        ):
+            self.assertIsNone(self.todo._database_source(live=True))
         restore.assert_not_called()
         self.assert_only_the_list_ran()
 
     def test_anonymise_restores_nothing(self):
-        with patch.object(self.todo, "_monitoring_restore") as restore:
-            self.assertIsNone(self.todo._transform_anonymise_source())
+        with (
+            ui.bind(port.ScriptedPort(["3", ""])),
+            patch.object(self.todo, "_monitoring_restore") as restore,
+        ):
+            self.assertIsNone(self.todo._database_source())
         restore.assert_not_called()
         self.assert_only_the_list_ran()
 

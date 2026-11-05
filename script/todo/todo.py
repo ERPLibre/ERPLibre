@@ -4621,10 +4621,10 @@ class TODO(
         from script.analyse import monitoring, monitoring_tui
 
         print(f"🛰  {t('Inspect an instance.')}")
-        source = self._monitoring_select_source()
+        source = self._database_source(live=True)
         if not source:
             return
-        kind, target = source
+        kind, target, _depuis_zip = source
         print()
         print(monitoring.describe_source(kind, target))
         print()
@@ -4782,46 +4782,59 @@ class TODO(
             else check_instance_state.COPY
         )
 
-    def _monitoring_select_source(self):
-        """(genre, cible), ou None si l'on renonce.
+    def _database_source(self, live=False):
+        """(genre, cible, depuis_zip) de la base qu'Analyse › Monitoring
+        ausculte ou que Transform data › Anonymiser réécrit, ou None si
+        l'on renonce : [0], une réponse vide, Ctrl+D, ou une provenance qui
+        ne rend pas de base.
 
-        Le zip et la sauvegarde distante mènent tous deux à une base
-        restaurée : passé la restauration, ils ne se distinguent plus, et
-        le reste du code n'a pas à savoir d'où ils venaient.
+        Une base locale se prend telle quelle ; une sauvegarde .zip, locale
+        ou téléchargée, se restaure d'abord, et `depuis_zip` le dit : passé
+        la restauration, les trois ont le genre KIND_DATABASE. Avec `live`,
+        une quatrième provenance, une instance vivante, se joint par RPC
+        (`_monitoring_live`).
         """
         from script.analyse import monitoring
 
-        print()
         # La base locale d'abord : c'est la provenance la plus directe, et
         # `_analyse_select_source` du même menu range déjà la base avant la
-        # sauvegarde. Deux ordres différents dans un même menu se paient en
-        # hésitation à chaque usage.
-        print(f"[1] {t('A local database')}")
-        print(f"[2] {t('A local backup .zip')}")
-        print(f"[3] {t('A remote backup (https + master password)')}")
-        print(f"[4] {t('A live remote instance')}")
-        print(f"{retour(t('Back'))}")
-        answer = click.prompt(t("Command:"), prompt_suffix=" ")
+        # sauvegarde.
+        provenances = ["database", "zip", "remote", "live"]
+        libelles = [
+            t("A local database"),
+            t("A local backup .zip"),
+            t("A remote backup (https + master password)"),
+            t("A live remote instance"),
+        ]
+        montrees = 4 if live else 3
         print()
-        if answer == "1":
+        provenance = ui.choose(
+            t("Which source?"),
+            provenances[:montrees],
+            labels=libelles[:montrees],
+        )
+        if provenance == "live":
+            return self._monitoring_live()
+        if provenance == "database":
             database = self.db_manager.select_database()
-            return (monitoring.KIND_DATABASE, database) if database else None
-        if answer == "2":
+            return (
+                (monitoring.KIND_DATABASE, database, False)
+                if database
+                else None
+            )
+        if provenance == "zip":
             path = self.db_manager.select_backup_path()
-            database = self._monitoring_restore(path) if path else None
-            return (monitoring.KIND_DATABASE, database) if database else None
-        if answer == "3":
+        elif provenance == "remote":
             status, path, _name = (
                 self.db_manager.download_database_backup_cli()
             )
             if status or not path or not os.path.isfile(path):
                 print(f"❌ {t('The download did not produce a usable file.')}")
                 return None
-            database = self._monitoring_restore(path)
-            return (monitoring.KIND_DATABASE, database) if database else None
-        if answer == "4":
-            return self._monitoring_live()
-        return None
+        else:
+            return None
+        database = self._monitoring_restore(path) if path else None
+        return (monitoring.KIND_DATABASE, database, True) if database else None
 
     def _monitoring_live(self):
         """Se connecter pour de bon, ou ne pas prétendre l'être.
@@ -4859,7 +4872,7 @@ class TODO(
             print(f"❌ {t('Cannot connect: ')}{exc}")
             return None
         print(f"✅ {t('Connected as uid')} {uid}, {t('Odoo')} {version}")
-        return (monitoring.KIND_LIVE, f"{base_url} · {database}")
+        return (monitoring.KIND_LIVE, f"{base_url} · {database}", False)
 
     def _monitoring_restore(self, zip_path):
         """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
