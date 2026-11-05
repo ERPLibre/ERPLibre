@@ -1497,6 +1497,35 @@ class TestConfigurationMenuNumbering(RegistryCoherence, unittest.TestCase):
                 self.assertEqual(title, entry.key)
 
 
+class TestHealthcheckMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """L'entrée [6] du menu principal : tout vérifier, les deux portées,
+    puis une vérification par élément que rend `_healthcheck_checks`."""
+
+    MENU = "prompt_healthcheck"
+    BACK = None
+    EXPECTED = {
+        "Run every check": "_healthcheck_run",
+        "Files": "_healthcheck_scope",
+        "Repositories": "_healthcheck_scope",
+    }
+
+    def test_each_scope_entry_cycles_its_own_axis(self):
+        from script.todo.todo import TODO
+
+        axes = [e.kwargs["axe"] for e in self.entries if e.kwargs]
+        self.assertEqual(axes, list(TODO._HEALTHCHECK_AXES))
+
+    def test_one_check_runs_through_the_same_action(self):
+        from script.todo.ui.registry import FromMethod
+
+        [checks] = [e for e in self.menu.entries if isinstance(e, FromMethod)]
+        self.assertEqual(
+            (checks.method, checks.action, checks.kwarg),
+            ("_healthcheck_checks", "_healthcheck_run", "check"),
+        )
+        self.assertEqual(self.menu.opens, "_healthcheck_open")
+
+
 class TestUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Update : les mises à jour de todo.json, puis la migration d'Odoo,
     celle de Poetry et celle des dépôts git, toujours les trois dernières."""
@@ -4337,7 +4366,6 @@ class TestMenuLabels(unittest.TestCase):
     ECRANS_A_MIGRER = {
         "prompt_execute_git_repo": "Repo",
         "prompt_execute_module_analysis": "Analyse module",
-        "prompt_healthcheck": "Healthcheck",
     }
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
     # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
@@ -4355,6 +4383,7 @@ class TestMenuLabels(unittest.TestCase):
     SEGMENTS = {
         "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
+        "prompt_healthcheck": "Healthcheck",
         "prompt_execute": "Execute",
         "prompt_execute_code": "Code",
         "debug_ide": "Debug",

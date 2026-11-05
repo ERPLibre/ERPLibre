@@ -1283,6 +1283,10 @@ TRANSLATIONS = {
         "fr": "📁 Dépôts :",
         "en": "📁 Repositories:",
     },
+    "Repositories": {
+        "fr": "Dépôts",
+        "en": "Repositories",
+    },
     "uncommitted": {
         "fr": "non commités",
         "en": "uncommitted",

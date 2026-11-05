@@ -397,14 +397,27 @@ class TestMenu(unittest.TestCase):
 
         cls.TODO = TODO
 
-    def test_scopes_cycle_and_one_check_runs_alone(self):
-        obj = self.TODO.__new__(self.TODO)
-        appels = []
+    def jouer(self, obj, *reponses):
+        """(appels de `lancer`, libellés de chaque dessin) du menu ouvert
+        sur `obj`, qui reçoit `reponses` : (portée des fichiers, portée des
+        dépôts, vérifications) par appel, et les libellés numérotés, dans
+        l'ordre, par dessin."""
+        appels, dessins = [], []
+
+        def dessiner(_todo, choices, **_kwargs):
+            dessins.append(
+                [
+                    c["prompt_description"]
+                    for c in choices
+                    if "section" not in c
+                ]
+            )
+            return ""
+
         with (
-            mock.patch.object(self.TODO, "fill_help_info", return_value=""),
+            mock.patch.object(self.TODO, "fill_help_info", dessiner),
             mock.patch(
-                "script.todo.todo.click.prompt",
-                side_effect=["2", "3", "1", "4", "2", "2", "1", "0"],
+                "script.todo.todo.click.prompt", side_effect=list(reponses)
             ),
             mock.patch.object(
                 h,
@@ -414,7 +427,49 @@ class TestMenu(unittest.TestCase):
                 ),
             ),
         ):
-            obj.prompt_healthcheck()
+            self.assertIsNone(obj.prompt_healthcheck())
+        return appels, dessins
+
+    def test_each_scope_entry_shows_its_scope(self):
+        obj = self.TODO.__new__(self.TODO)
+        _appels, dessins = self.jouer(obj, "2", "3", "0")
+        portees = [dessin[1:3] for dessin in dessins]
+        fichiers, depots = t("Files"), t("Repositories")
+        self.assertEqual(
+            portees,
+            [
+                [
+                    f"{fichiers}  ({t('uncommitted')})",
+                    f"{depots}  ({t('ERPLibre only')})",
+                ],
+                [
+                    f"{fichiers}  ({t('changed since master')})",
+                    f"{depots}  ({t('ERPLibre only')})",
+                ],
+                [
+                    f"{fichiers}  ({t('changed since master')})",
+                    f"{depots}  ({t('ERPLibre and addons')})",
+                ],
+            ],
+        )
+        titres = [h.titre(v) for _section, v in h.VERIFICATIONS]
+        self.assertEqual(dessins[0][3:], titres)
+
+    def test_scopes_start_narrow_at_each_opening(self):
+        # Les portées valent pour la durée du menu : rouvert, il repart de
+        # la plus étroite de chaque axe.
+        obj = self.TODO.__new__(self.TODO)
+        self.jouer(obj, "2", "3", "0")
+        appels, _dessins = self.jouer(obj, "1", "0")
+        self.assertEqual(
+            appels, [(h.FICHIERS_NON_COMMITES, h.DEPOTS_ERPLIBRE, None)]
+        )
+
+    def test_scopes_cycle_and_one_check_runs_alone(self):
+        obj = self.TODO.__new__(self.TODO)
+        appels, _dessins = self.jouer(
+            obj, "2", "3", "1", "4", "2", "2", "1", "0"
+        )
         self.assertEqual(
             appels,
             [

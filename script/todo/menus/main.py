@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le menu principal et deux des menus qu'il ouvre : l'entrée [4],
-Navigation telemetry, et Configuration. Install et Assistant, qu'il ouvre
-aussi, sont déclarés avec leurs familles, dans `proxmox.py` et
-`assistant.py` ; Healthcheck, l'entrée [6], dessine son menu lui-même.
+"""Le menu principal et trois des menus qu'il ouvre : l'entrée [4],
+Navigation telemetry, Configuration et Healthcheck. Install et Assistant,
+qu'il ouvre aussi, sont déclarés avec leurs familles, dans `proxmox.py` et
+`assistant.py`.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
 """
 
-from script.todo.ui.registry import Entry, Menu, Section
+from script.todo.ui.registry import Entry, FromMethod, Menu, Section
 
 # Le menu principal, dessiné une fois après le logo et la langue qu'écrit
 # `run` ; [0] quitte TODO (`quits`).
@@ -23,9 +23,7 @@ MAIN = Menu(
         Entry("Assistant", "prompt_assistant"),
         Entry("Navigation telemetry", "prompt_telemetry"),
         Entry("Configuration", "prompt_configuration"),
-        # Healthcheck dessine son menu lui-même (`prompt_healthcheck`) : ses
-        # portées changent son contenu à chaque tour.
-        Entry("Healthcheck", "prompt_healthcheck", crumb="Healthcheck"),
+        Entry("Healthcheck", "prompt_healthcheck"),
     ],
     intro="=> Enter your choice by number and press Enter!",
     back=None,
@@ -74,4 +72,33 @@ CONFIGURATION = Menu(
         Entry("Reset all preferences", "_reset_preferences", danger=True),
     ],
     back=None,
+)
+
+# Les vérifications à sec du checkout. Chaque entrée de portée passe son
+# axe à la portée suivante, et le suffixe dit celle en cours ; l'ouverture
+# (`opens`) remet chaque axe à sa portée la plus étroite. Une vérification
+# par élément de `_healthcheck_checks`.
+HEALTHCHECK = Menu(
+    "prompt_healthcheck",
+    "Healthcheck",
+    [
+        Entry("Run every check", "_healthcheck_run"),
+        Section("Scope"),
+        Entry(
+            "Files",
+            "_healthcheck_scope",
+            kwargs={"axe": "fichiers"},
+            suffix="_healthcheck_scope_label",
+        ),
+        Entry(
+            "Repositories",
+            "_healthcheck_scope",
+            kwargs={"axe": "depots"},
+            suffix="_healthcheck_scope_label",
+        ),
+        Section("One check"),
+        FromMethod("_healthcheck_checks", "_healthcheck_run", "check"),
+    ],
+    back=None,
+    opens="_healthcheck_open",
 )
