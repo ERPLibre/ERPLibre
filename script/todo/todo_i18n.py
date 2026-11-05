@@ -21101,6 +21101,28 @@ TRANSLATIONS = {
         "fr": "La suppression a échoué, code",
         "en": "The deletion failed, code",
     },
+    "What do you migrate?": {
+        "fr": "Que migrer ?",
+        "en": "What do you migrate?",
+    },
+    "One module": {"fr": "Un module", "en": "One module"},
+    "One repo": {"fr": "Un dépôt", "en": "One repo"},
+    "Directory browser": {
+        "fr": "Navigateur de répertoires",
+        "en": "Directory browser",
+    },
+    "Find the module by:": {
+        "fr": "Trouver le module par :",
+        "en": "Find the module by:",
+    },
+    "From odoo version": {
+        "fr": "Depuis la version d'Odoo",
+        "en": "From odoo version",
+    },
+    "To odoo version": {
+        "fr": "Vers la version d'Odoo",
+        "en": "To odoo version",
+    },
 }
 
 

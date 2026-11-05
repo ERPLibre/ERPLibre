@@ -17,6 +17,7 @@ from script.todo import (
     auto_ask,
     migration_status,
     todo_file_browser,
+    ui,
 )
 from script.todo.version_manager import get_odoo_version
 
@@ -1013,6 +1014,12 @@ class TodoUpgrade:
         todo_file_browser.exit_program()
 
     def execute_module_upgrade(self):
+        """Execute › Code › Upgrade Module : migrer le code d'un module, des
+        modules d'un dépôt ou d'un répertoire pris au navigateur, d'une
+        version d'Odoo à une autre, palier par palier. Chaque choix suit
+        les règles d'un sélecteur ; [0], Ctrl+D, ou une réponse vide d'un
+        choix sans défaut reviennent avant que le checkout change de
+        version d'Odoo ou que rien ne soit migré."""
         print("Welcome to Odoo module upgrade processus with ERPLibre 🤖")
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
@@ -1028,31 +1035,33 @@ class TodoUpgrade:
                         f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
                     )
 
-        print(
-            "Migrate a directory repo to migrate all module, or select a directory module."
-        )
-        print("[m] Migrate one module")
-        print("[r] Migrate one repo")
-        print("[]  Directory browser")
-
         lst_dir_path = []
         from_version = 0
         to_version = 0
 
-        status = input("💬 What do you choose : ").strip().lower()
-        if status == "m":
-            print("[p] Path (default)")
-            print("[n] Name")
-
-            status = input("💬 What do you choose : ").strip().lower()
-            if status == "n":
+        status = ui.choose(
+            f"💬 {t('What do you migrate?')}",
+            ["module", "repo", "browse"],
+            default="browse",
+            labels=[t("One module"), t("One repo"), t("Directory browser")],
+        )
+        if status is None:
+            return
+        if status == "module":
+            status = ui.choose(
+                f"💬 {t('Find the module by:')}",
+                ["path", "name"],
+                default="path",
+                labels=[t("Path"), t("Name")],
+            )
+            if status is None:
+                return
+            if status == "name":
                 module_name = input("💬 Module name : ").strip().lower()
-                from_version = int(
-                    input("💬 From odoo version (12 to 18) : ").strip()
-                )
-                to_version = int(
-                    input("💬 To odoo version (12 to 18) : ").strip()
-                )
+                versions = self._module_upgrade_versions()
+                if versions is None:
+                    return
+                from_version, to_version = versions
                 self.switch_odoo(from_version)
                 # TODO detect path
                 (
@@ -1076,7 +1085,7 @@ class TodoUpgrade:
                 lst_dir_path.extend(lst_module_exist)
             else:
                 self.dir_path = input("💬 Path : ").strip()
-        elif status == "r":
+        elif status == "repo":
             self.dir_path = input("💬 Path : ").strip()
         else:
             self.dir_path = None
@@ -1098,11 +1107,10 @@ class TodoUpgrade:
             return
 
         if not from_version:
-            from_version = int(
-                input("💬 From odoo version (12 to 18) : ").strip()
-            )
-        if not to_version:
-            to_version = int(input("💬 To odoo version (12 to 18) : ").strip())
+            versions = self._module_upgrade_versions()
+            if versions is None:
+                return
+            from_version, to_version = versions
 
         # TODO ask option direct migration
 
@@ -1191,6 +1199,23 @@ class TodoUpgrade:
                 f"💬 {t('Please validate git commit on repos, press to')}"
                 f" {t('continue')} : "
             ).strip()
+
+    @staticmethod
+    def _module_upgrade_versions():
+        """(version de départ, version d'arrivée) d'Upgrade Module, deux
+        entiers de 12 à 18, l'arrivée offerte parmi les versions qui
+        suivent le départ ; chacune se choisit par son numéro ou par la
+        version affichée. None sur [0], une réponse vide ou Ctrl+D à l'une
+        des deux questions."""
+        versions = [str(version) for version in range(12, 19)]
+        depart = ui.choose(f"💬 {t('From odoo version')} :", versions[:-1])
+        if depart is None:
+            return None
+        suivantes = versions[versions.index(depart) + 1 :]
+        arrivee = ui.choose(f"💬 {t('To odoo version')} :", suivantes)
+        if arrivee is None:
+            return None
+        return int(depart), int(arrivee)
 
     def internal_module_upgrade(
         self,
@@ -1354,13 +1379,13 @@ class TodoUpgrade:
         # L'écran de statistiques ne fait rien : on y revient autant de fois
         # qu'on veut, et on repose ensuite le choix d'interface.
         while True:
-            ui = self.ask_ui()
-            if ui is None:
+            interface = self.ask_ui()
+            if interface is None:
                 return
-            if ui != "stats":
+            if interface != "stats":
                 break
             self.show_stats()
-        use_tui = ui == "tui"
+        use_tui = interface == "tui"
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
             old_dct_progression = self.read_progression()
