@@ -1032,7 +1032,8 @@ class TodoUpgrade:
         version d'Odoo à une autre, palier par palier. Chaque choix suit
         les règles d'un sélecteur ; [0], Ctrl+D, ou une réponse vide d'un
         choix sans défaut reviennent avant que le checkout change de
-        version d'Odoo ou que rien ne soit migré."""
+        version d'Odoo ou que rien ne soit migré, comme un nom de module
+        vide."""
         print("Welcome to Odoo module upgrade processus with ERPLibre 🤖")
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
@@ -1071,6 +1072,9 @@ class TodoUpgrade:
                 return
             if status == "name":
                 module_name = input("💬 Module name : ").strip().lower()
+                # Un nom vide ne désigne aucun module : rien à basculer.
+                if not module_name:
+                    return
                 versions = self._module_upgrade_versions()
                 if versions is None:
                     return

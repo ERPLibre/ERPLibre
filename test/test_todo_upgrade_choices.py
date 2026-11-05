@@ -149,6 +149,13 @@ class TestLesChoix(Banc):
                     gestes = self.migrer([*avant, retour])
                     self.assertEqual(gestes, [])
 
+    def test_an_empty_module_name_switches_nothing(self):
+        """Un nom de module vide, ou fait de blancs, revient avant que les
+        versions soient demandées : le checkout ne bascule pas."""
+        for nom in ("", "   "):
+            with self.subTest(nom=nom):
+                self.assertEqual(self.migrer(["1", "2", nom]), [])
+
     def test_a_module_by_name_switches_to_the_chosen_start(self):
         """Le module par son nom, la version de départ par la version
         affichée, l'arrivée par son numéro : le checkout bascule sur le
