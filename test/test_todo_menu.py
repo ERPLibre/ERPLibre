@@ -1205,8 +1205,9 @@ class MenuCoherence:
     la dernière décale tout ce qui suit sans que rien ne proteste.
 
     Les menus de TODO sont déclarés au registre (`RegistryCoherence`) ;
-    ce socle reste pour les menus écrits à la main, Repo
-    (`git_repo_menu.py`), qui n'est pas encore migré.
+    ce socle reste pour les menus écrits à la main que develop a ajoutés,
+    Python, PAdES seal et la mise à jour d'Install, qui ne sont pas encore
+    migrés.
 
     Une entrée peut aussi porter sa destination dans « method » plutôt que
     dans un « elif status » numéroté. Elle échappe alors à la renumérotation
@@ -2955,19 +2956,11 @@ class TestMailCacheMenuNumbering(MailCoherence, unittest.TestCase):
         )
 
 
-class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu de mise à jour et de mise à niveau des dépôts git.
+class TestGitRepoMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Repo : la mise à jour et la mise à niveau des dépôts git, en
+    quatre sections, qui ne prennent aucun numéro."""
 
-    Ses entrées sont séparées par des titres de section, qui ne consomment
-    aucun numéro : une section ajoutée entre deux entrées ne doit décaler
-    aucun dispatch, et c'est précisément ce que ce socle vérifie.
-    """
-
-    SOURCE = TODO_DIR / "git_repo_menu.py"
-    ENTRY = "def prompt_execute_git_repo(self):"
-    END = "def _git_repo_sync(self):"
-    MINIMUM = 9
-
+    MENU = "prompt_execute_git_repo"
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
         "🔁 Switch to development: each repository follows its branch": "_git_repo_reconfigurer",
@@ -2990,11 +2983,27 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         """« Tirer les dépôts » ferme la section de la mise à jour en [3] ;
         « Ajouter les remotes amont » ouvre celle de la mise à niveau en
         [4], la passe à sec suit en [5], la comparaison en [15]."""
-        rangs = {label: num for num, label in self.shown}
+        rangs = {e.key: n for n, e in enumerate(self.entries, 1)}
         self.assertEqual(rangs["⬇️ Pull the repositories"], 3)
         self.assertEqual(rangs["🌐 Add the upstream remotes"], 4)
         self.assertEqual(rangs["🔍 Upgrade — dry run"], 5)
         self.assertEqual(rangs["🔀 Compare two freezes"], 15)
+
+    def test_the_freeze_entries_pass_their_flag(self):
+        """Les commits gelés et le dégel passent leur drapeau à la même
+        action que la reconfiguration et le gel ; le menu dit son état sous
+        le fil d'Ariane."""
+        drapeaux = {e.key: e.kwargs for e in self.entries if e.kwargs}
+        self.assertEqual(
+            drapeaux,
+            {
+                "📌 Switch to production: each repository on its frozen commit": {
+                    "freeze": True
+                },
+                "🫗 Unfreeze the versions": {"unfreeze": True},
+            },
+        )
+        self.assertEqual(self.menu.state, "_git_repo_etat")
 
     def test_the_upstream_remotes_entry_reports_without_diagnosing(self):
         from unittest import mock
@@ -3021,7 +3030,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
             mock.patch.object(ru, "passe_diagnostic") as diagnostic,
             mock.patch("builtins.print"),
         ):
-            self.assertEqual(Menu()._git_repo_choix("4"), None)
+            self.assertEqual(Menu()._git_repo_ajouter_remotes(), 1)
         ajouter.assert_called_once()
         rendu.assert_called_once()
         diagnostic.assert_not_called()
@@ -3767,30 +3776,124 @@ class TestGitRepoPublish(unittest.TestCase):
                 getattr(self.obj, methode)()
                 faux.assert_called_once_with(passe, racine=self.menu.RACINE)
 
+    def resoudre(self, *reponses, **remplaces):
+        """Ouvre les gestes du dépôt en conflit de la passe, par le
+        navigateur : `reponses` répondent à sa question, `remplaces`
+        remplacent des fonctions de `repo_apply` (nom=mock), et
+        `fichiers_en_conflit` rend une liste vide sauf mention. Rend
+        (ce que rend le menu, ses dessins) ; les gestes de shell sont
+        dans `self.lances`."""
+        from contextlib import ExitStack
+
+        dessins, self.lances = [], []
+
+        class Execute:
+            def exec_command_live(inner, cmd, source_erplibre=True):
+                self.lances.append(cmd)
+                return 0
+
+        self.obj.execute = Execute()
+        self.obj.fill_help_info = lambda choices, state=None: (
+            dessins.append((state, [c["prompt_description"] for c in choices]))
+            or ""
+        )
+        remplaces.setdefault(
+            "fichiers_en_conflit", self.mock.Mock(return_value=[])
+        )
+        with ExitStack() as pile:
+            for nom, faux in remplaces.items():
+                pile.enter_context(self.mock.patch.object(self.ra, nom, faux))
+            pile.enter_context(
+                self.mock.patch("click.prompt", side_effect=list(reponses))
+            )
+            pile.enter_context(redirect_stdout(io.StringIO()))
+            rendu = self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        return rendu, dessins
+
     def test_abort_in_the_conflict_queue_is_recorded(self):
-        patch = self.mock.patch.object
-        with (
-            patch(self.ra, "fichiers_en_conflit", return_value=[]),
-            patch(self.ra, "abandonner_rebase"),
-            patch(self.ra, "noter_resolution") as noter,
-            self.mock.patch("builtins.input", return_value="7"),
-        ):
-            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        noter = self.mock.Mock()
+        abandon = self.mock.Mock()
+        rendu, _d = self.resoudre(
+            "7", abandonner_rebase=abandon, noter_resolution=noter
+        )
+        self.assertIs(rendu, True)
+        abandon.assert_called_once()
         self.assertEqual(
             noter.call_args[0][:3], ("20990101T0800", self.res, "abandonne")
         )
 
     def test_continue_that_finishes_records_the_rebase(self):
-        patch = self.mock.patch.object
-        with (
-            patch(self.ra, "fichiers_en_conflit", return_value=[]),
-            patch(self.ra, "continuer_rebase", return_value=("", "", 0)),
-            patch(self.ra, "rebase_en_cours", return_value=False),
-            patch(self.ra, "noter_resolution") as noter,
-            self.mock.patch("builtins.input", return_value="5"),
-        ):
-            self.obj._git_repo_resoudre(self.res, "20990101T0800")
+        noter = self.mock.Mock()
+        self.resoudre(
+            "5",
+            continuer_rebase=self.mock.Mock(return_value=("", "", 0)),
+            rebase_en_cours=self.mock.Mock(return_value=False),
+            noter_resolution=noter,
+        )
         self.assertEqual(noter.call_args[0][2], "rebase")
+
+    def test_back_or_ctrl_d_leaves_the_repository_as_is(self):
+        # [0], Ctrl+C et Ctrl+D referment les gestes sans toucher au dépôt
+        # ni à la passe.
+        import click
+
+        for reponse in ("0", click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(reponse=reponse):
+                gestes = {
+                    nom: self.mock.Mock()
+                    for nom in (
+                        "garder_le_notre",
+                        "prendre_l_amont",
+                        "marquer_resolus",
+                        "continuer_rebase",
+                        "sauter_le_commit",
+                        "abandonner_rebase",
+                        "revenir_a_repo",
+                        "noter_resolution",
+                    )
+                }
+                rendu, _d = self.resoudre(reponse, **gestes)
+                self.assertFalse(rendu)
+                for nom, faux in gestes.items():
+                    faux.assert_not_called()
+                self.assertEqual(self.lances, [])
+
+    def test_a_gesture_that_keeps_the_rebase_asks_again(self):
+        # Garder le nôtre résout les fichiers en conflit, puis la question
+        # revient, l'état relu : le dépôt, puis ses fichiers.
+        fichiers = self.mock.Mock(side_effect=[["a.py"], ["a.py"], []])
+        garder = self.mock.Mock()
+        resolus = self.mock.Mock()
+        rendu, dessins = self.resoudre(
+            "3",
+            "0",
+            fichiers_en_conflit=fichiers,
+            garder_le_notre=garder,
+            marquer_resolus=resolus,
+        )
+        self.assertFalse(rendu)
+        chemin = os.path.join(self.menu.RACINE, "x/a")
+        garder.assert_called_once_with(chemin, ["a.py"])
+        resolus.assert_called_once_with(chemin, ["a.py"])
+        etats = [etat for etat, _libelles in dessins]
+        self.assertEqual(etats[0], "▸ x/a\n     a.py")
+        self.assertEqual(
+            etats[1],
+            f"▸ x/a\n  {self.menu.t('Nothing left in conflict here.')}",
+        )
+        self.assertEqual(len(dessins[0][1]), 8)
+
+    def test_the_shell_opens_in_the_repository(self):
+        rendu, _d = self.resoudre("1", "2", "0")
+        self.assertFalse(rendu)
+        chemin = os.path.join(self.menu.RACINE, "x/a")
+        self.assertEqual(
+            self.lances,
+            [
+                f"cd {chemin} && $SHELL",
+                f"cd {chemin} && git diff --diff-filter=U",
+            ],
+        )
 
 
 class TestGitRepoCompareFreezes(unittest.TestCase):
@@ -4883,7 +4986,6 @@ class TestMenuLabels(unittest.TestCase):
     # leur action. La liste ne fait que rétrécir : un menu migré déclare
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
-        "prompt_execute_git_repo": "Repo",
         "prompt_execute_python": "Python",
         "prompt_execute_system": "System",
         "prompt_execute_seal": "PAdES seal",
@@ -4925,6 +5027,8 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git repository",
+        "prompt_execute_git_repo": "Repo",
+        "_git_repo_gestes": "Conflict queue",
         "prompt_execute_shell": "Shell",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_local": "Actions",

@@ -306,9 +306,9 @@ class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
     `_monitoring_select_source` imprime « [2] Une sauvegarde .zip » d'un
     côté et teste `answer == "2"` de l'autre. Rien ne relie les deux :
     insérer « une base locale » en tête décale tout le reste à la main.
-    C'est le piège exact que `MenuCoherence` garde pour les autres menus,
-    et celui-ci n'entre pas dans son moule — il s'imprime, il ne se
-    déclare pas.
+    C'est le piège que le registre des menus écarte, le numéro d'une
+    entrée y étant sa place, et celui-ci n'entre pas dans son moule — il
+    s'imprime, il ne se déclare pas.
     """
 
     def setUp(self):
