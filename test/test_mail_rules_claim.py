@@ -388,13 +388,14 @@ class TestClaimedElsewhere(ClaimCase):
 
 
 class TestOutputsKeepTheClaim(ClaimCase):
-    def test_a_held_reply_is_claimed_before_it_is_held(self):
+    def test_a_held_reply_is_held_without_any_claim(self):
         self.regle(approuvee=False)
         self.imap.recevoir(1)
         bilan = self.passe()
         self.assertEqual((bilan.sent, bilan.held), (0, 1))
-        self.assertEqual(self.imap.calls, ["probe", "store"])
-        self.assertEqual(self.revendication(), "owned")
+        self.assertEqual(self.imap.calls, [])
+        self.assertIsNone(self.revendication())
+        self.assertFalse(has_claim(self.imap.messages()[1].flags))
 
     def test_a_reply_queued_after_a_transient_refusal_is_flushed_without_a_new_claim(
         self,

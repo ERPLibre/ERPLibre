@@ -16453,6 +16453,42 @@ TRANSLATIONS = {
         "en": "retry removed from the outbox without sending: see the rules"
         " log (l)",
     },
+    "mail_outbox_release_needs_server": {
+        "fr": "hors ligne : relâcher un envoi automatique exige le serveur, qui doit d'abord revendiquer son message ; il reste retenu",
+        "en": "offline: releasing an automatic send needs the server, which must claim its message first; it stays held",
+    },
+    "mail_outbox_release_no_rules": {
+        "fr": "règles du compte absentes ou illisibles : il reste retenu ; rétablissez le fichier des règles (voir ~/.erplibre/mail.log)",
+        "en": "the account's rules are missing or unreadable: it stays held; restore the rules file (see ~/.erplibre/mail.log)",
+    },
+    "mail_outbox_release_claimed_elsewhere": {
+        "fr": "déjà revendiqué par une autre machine ($ErpLibreRule posé) : retiré de la file, rien n'est parti d'ici (journal l)",
+        "en": "already claimed by another machine ($ErpLibreRule set): removed from the outbox, nothing left from here (log l)",
+    },
+    "mail_outbox_release_claim_failed": {
+        "fr": "revendication sur le serveur en échec : il reste retenu, réessayez",
+        "en": "claim on the server failed: it stays held, try again",
+    },
+    "mail_outbox_release_busy": {
+        "fr": "envoi en cours de traitement ailleurs : il reste retenu, réessayez",
+        "en": "send being handled elsewhere: it stays held, try again",
+    },
+    "mail_outbox_release_declined": {
+        "fr": "relâchement abandonné : il reste retenu, rien n'est parti",
+        "en": "release given up: it stays held, nothing was sent",
+    },
+    "mail_outbox_release_confirm_uncertain": {
+        "fr": "Revendication incertaine : une revendication précédente de ce message a été interrompue, et le mot-clé $ErpLibreRule est posé. Cette réponse n'est pas partie d'ici. Le mot-clé vient soit de cette revendication interrompue — alors aucune machine n'a répondu —, soit d'une autre machine, qui a peut-être répondu. Vérifiez Envoyés. L'envoyer quand même, au risque d'un double envoi ?",
+        "en": "Claim uncertain: an earlier claim of this message was interrupted, and the $ErpLibreRule keyword is set. This reply did not leave from here. The keyword comes either from that interrupted claim — then no machine answered —, or from another machine, which may have answered. Check Sent. Send it anyway, at the risk of a double send?",
+    },
+    "mail_outbox_release_confirm_gone": {
+        "fr": "Le message d'origine n'est plus dans la boîte de réception (rangé ou supprimé) : il ne peut pas être revendiqué. Si une autre machine porte la même règle, elle a pu y répondre ; si cette réponse est aussi retenue là-bas, supprimez-la là-bas, sinon elle partira aussi. L'envoyer quand même, au risque d'un double envoi ?",
+        "en": "The original message is no longer in the inbox (filed or deleted): it cannot be claimed. If another machine carries the same rule, it may have answered; if this reply is also held there, delete it there, or it will leave too. Send it anyway, at the risk of a double send?",
+    },
+    "mail_outbox_release_confirm_renumbered": {
+        "fr": "La boîte de réception a été renumérotée depuis la retenue : le message d'origine ne peut plus être désigné ni revendiqué. Si une autre machine porte la même règle, elle a pu y répondre ; si cette réponse est aussi retenue là-bas, supprimez-la là-bas, sinon elle partira aussi. L'envoyer quand même, au risque d'un double envoi ?",
+        "en": "The inbox was renumbered since the send was held: the original message can no longer be designated or claimed. If another machine carries the same rule, it may have answered; if this reply is also held there, delete it there, or it will leave too. Send it anyway, at the risk of a double send?",
+    },
     "mail_outbox_held_auto_one": {
         "fr": "{n} envoi automatique attend votre approbation",
         "en": "{n} automatic send awaits your approval",
@@ -16462,8 +16498,8 @@ TRANSLATIONS = {
         "en": "{n} automatic sends await your approval",
     },
     "mail_outbox_held_auto_menu_hint": {
-        "fr": "à relâcher dans la file d'envoi du client, touche o",
-        "en": "to release in the client's outbox, key o",
+        "fr": "à relâcher par o dans le client, ou par [7] › [5] du menu courriel (menu du service)",
+        "en": "to release with o in the client, or with [7] › [5] of the mail menu (service menu)",
     },
     "mail_folder_binding": {"fr": "Dossiers", "en": "Folders"},
     "mail_folder_close": {"fr": "Fermer", "en": "Close"},
@@ -17229,6 +17265,14 @@ TRANSLATIONS = {
         "fr": "Entrée pour confirmer, Échap pour renoncer.",
         "en": "Enter to confirm, Escape to give up.",
     },
+    "mail_confirm_risk_ask": {
+        "fr": "Pour confirmer, tapez",
+        "en": "To confirm, type",
+    },
+    "mail_confirm_risk_word": {
+        "fr": "ENVOYER",
+        "en": "SEND",
+    },
     "mail_confirm_yes": {"fr": "Confirmer", "en": "Confirm"},
     "mail_confirm_no": {"fr": "Renoncer", "en": "Give up"},
     "mail_flagged_binding": {
@@ -17910,12 +17954,12 @@ TRANSLATIONS = {
         "en": "Claim on the server failed: the message will be taken up at the next pass.",
     },
     "mail_rules_claim_failed_final": {
-        "fr": "Revendication en échec depuis plusieurs passes : message laissé sans envoi (journal l).",
-        "en": "Claim failing over several passes: message left unsent (log l).",
+        "fr": "Revendication en échec depuis plusieurs passes : message laissé sans envoi ; libérable à la main (r dans le journal l, ou [6] du menu du service).",
+        "en": "Claim failing over several passes: message left unsent; can be released by hand (r in log l, or [6] of the service menu).",
     },
     "mail_rules_claim_uncertain_warning": {
-        "fr": "Revendication incertaine après une interruption : message laissé sans envoi ; vérifiez Envoyés, répondez à la main si besoin (journal l).",
-        "en": "Claim uncertain after an interruption: message left unsent; check Sent, reply by hand if needed (log l).",
+        "fr": "Revendication incertaine après une interruption : message laissé sans envoi ; vérifiez Envoyés, puis libérez-le si besoin (r dans le journal l, ou [6] du menu du service).",
+        "en": "Claim uncertain after an interruption: message left unsent; check Sent, then release it if needed (r in log l, or [6] of the service menu).",
     },
     "mail_rules_send_uncertain_warning": {
         "fr": "Un envoi interrompu n'est pas renvoyé : vérifiez Envoyés, répondez à la main si besoin (journal l).",
@@ -17940,6 +17984,10 @@ TRANSLATIONS = {
     "mail_rules_claim_unknown": {
         "fr": "Revendication des messages : pas encore vérifiée sur ce serveur, elle l'est au premier envoi automatique.",
         "en": "Message claim: not yet checked on this server; it is checked at the first automatic send.",
+    },
+    "mail_rules_held_claimed_elsewhere": {
+        "fr": "Envois retenus retirés de la file : leur message est déjà revendiqué par une autre machine (journal l).",
+        "en": "Held sends removed from the outbox: their message is already claimed by another machine (log l).",
     },
     "mail_rules_ephemeral": {
         "fr": "Règles désactivées en cache éphémère.",
@@ -18103,8 +18151,8 @@ TRANSLATIONS = {
         "en": "already claimed ($ErpLibreRule set), whatever the rule",
     },
     "mail_rules_reason_claim_uncertain": {
-        "fr": "revendication incertaine après une interruption, laissé sans envoi : vérifiez Envoyés, répondez à la main si besoin",
-        "en": "claim uncertain after an interruption, left unsent: check Sent, reply by hand if needed",
+        "fr": "revendication incertaine après une interruption, laissé sans envoi : vérifiez Envoyés, puis libérez-le à la main si besoin",
+        "en": "claim uncertain after an interruption, left unsent: check Sent, then release it by hand if needed",
     },
     "mail_rules_reason_claim_gone": {
         "fr": "message disparu du serveur avant sa revendication",
@@ -18113,6 +18161,10 @@ TRANSLATIONS = {
     "mail_rules_reason_ready": {
         "fr": "prêt à partir",
         "en": "ready to leave",
+    },
+    "mail_rules_reason_ready_released": {
+        "fr": "libéré à la main, prêt à partir",
+        "en": "released by hand, ready to leave",
     },
     "mail_rules_reason_sending": {
         "fr": "envoi en cours",
@@ -18123,8 +18175,16 @@ TRANSLATIONS = {
         "en": "send interrupted, outcome unknown, not sent again: check Sent, reply by hand if needed",
     },
     "mail_rules_reason_claim_failed": {
-        "fr": "revendication impossible après plusieurs passes, laissé sans envoi",
-        "en": "claim failed over several passes, left unsent",
+        "fr": "revendication impossible après plusieurs passes, laissé sans envoi : libérable à la main",
+        "en": "claim failed over several passes, left unsent: can be released by hand",
+    },
+    "mail_rules_reason_released": {
+        "fr": "libéré à la main, réévalué à la prochaine passe en ligne",
+        "en": "released by hand, evaluated again at the next online pass",
+    },
+    "mail_rules_reason_release_unmatched": {
+        "fr": "libéré à la main ; à la réévaluation, la règle n'a rien décidé pour ce message (désactivée, réarmée, filtre changé, ou arrêtée par une règle précédente)",
+        "en": "released by hand; when evaluated again, the rule decided nothing for this message (disabled, re-armed, filter changed, or stopped by an earlier rule)",
     },
     "mail_rules_reason_media": {
         "fr": "image illisible",
@@ -18218,6 +18278,54 @@ TRANSLATIONS = {
     "mail_rules_log_empty": {
         "fr": "Le journal des règles est vide.",
         "en": "The rules log is empty.",
+    },
+    "mail_rules_log_release": {
+        "fr": "Libérer",
+        "en": "Release",
+    },
+    "mail_rules_log_release_key": {
+        "fr": "(r)",
+        "en": "(r)",
+    },
+    "mail_rules_log_release_hint": {
+        "fr": "r : libérer à la main un message à revendication incertaine ou en échec",
+        "en": "r: release by hand a message whose claim is uncertain or failed",
+    },
+    "mail_rules_release_confirm_uncertain": {
+        "fr": "Libérer ce message à la main ? Rien n'est parti de cette machine. Le mot-clé $ErpLibreRule est posé : soit par notre revendication interrompue — alors aucune machine n'a répondu —, soit par une autre machine, qui a peut-être répondu. Vérifiez Envoyés d'abord. Libéré, il est réévalué à la prochaine passe en ligne, sans limite d'âge mais avec les autres garde-fous de la règle, et peut partir, au risque d'un double envoi.",
+        "en": "Release this message by hand? Nothing left from this machine. The $ErpLibreRule keyword is set: either by our interrupted claim — then no machine answered —, or by another machine, which may have answered. Check Sent first. Once released, it is evaluated again at the next online pass, without the age limit but with the rule's other safeguards, and may leave, at the risk of a double send.",
+    },
+    "mail_rules_release_confirm_failed": {
+        "fr": "Libérer ce message à la main ? Rien n'est parti de cette machine, mais une autre machine a pu le revendiquer et y répondre : vérifiez Envoyés d'abord. Libéré, ses échecs sont remis à zéro et la prochaine passe en ligne le revendique de nouveau sur le serveur : s'il porte déjà le mot-clé $ErpLibreRule, il ne part pas ; sinon il est réévalué sans limite d'âge mais avec les autres garde-fous de la règle, et peut partir. Un serveur sans CONDSTORE laisse un risque de double envoi.",
+        "en": "Release this message by hand? Nothing left from this machine, but another machine may have claimed and answered it: check Sent first. Once released, its failures are reset and the next online pass claims it on the server again: if it already carries the $ErpLibreRule keyword, it does not leave; otherwise it is evaluated again without the age limit but with the rule's other safeguards, and may leave. A server without CONDSTORE leaves a risk of a double send.",
+    },
+    "mail_rules_release_done": {
+        "fr": "Message libéré : réévalué à la prochaine passe en ligne.",
+        "en": "Message released: evaluated again at the next online pass.",
+    },
+    "mail_rules_release_not_releasable": {
+        "fr": "Seul un message à revendication incertaine ou en échec se libère à la main.",
+        "en": "Only a message whose claim is uncertain or failed can be released by hand.",
+    },
+    "mail_rules_release_no_origin": {
+        "fr": "Le message de cette ligne ne se retrouve pas dans la boîte de réception (ligne d'une version antérieure, ou plusieurs copies du même message) : répondez à la main si besoin.",
+        "en": "This line's message cannot be found in the inbox (line from an earlier version, or several copies of the same message): reply by hand if needed.",
+    },
+    "mail_rules_release_renumbered": {
+        "fr": "La boîte de réception a été renumérotée depuis : le message ne se retrouve plus.",
+        "en": "The inbox was renumbered since: the message can no longer be found.",
+    },
+    "mail_rules_release_absent": {
+        "fr": "Le message n'est pas dans la boîte de réception en cache : synchronisez puis réessayez ; rangé ailleurs ou supprimé, il ne peut pas être réévalué.",
+        "en": "The message is not in the cached inbox: synchronize and try again; filed elsewhere or deleted, it cannot be evaluated again.",
+    },
+    "mail_rules_release_no_inbox": {
+        "fr": "Boîte de réception absente du cache : synchronisez puis réessayez.",
+        "en": "Inbox missing from the cache: synchronize and try again.",
+    },
+    "mail_rules_release_declined": {
+        "fr": "Libération abandonnée : rien n'a changé.",
+        "en": "Release given up: nothing changed.",
     },
     "mail_rules_name": {"fr": "Nom de la règle", "en": "Rule name"},
     "mail_rules_enabled": {"fr": "Règle active", "en": "Rule enabled"},
@@ -18989,8 +19097,32 @@ TRANSLATIONS = {
         "en": "claim failed, taken up at the next pass",
     },
     "mail_service_menu_held": {
-        "fr": "réponses retenues sur cette machine, à libérer par o ici :",
-        "en": "replies held on this machine, to release with o here:",
+        "fr": "envois automatiques retenus à la dernière passe du service, à relâcher par [5] ou par o dans le client :",
+        "en": "automatic sends held at the service's last pass, to release with [5] or o in the client:",
+    },
+    "mail_service_held_where": {
+        "fr": "o dans le client, ou [5] du menu du service",
+        "en": "o in the client, or [5] of the service menu",
+    },
+    "mail_service_held_none": {
+        "fr": "Aucun envoi automatique retenu.",
+        "en": "No held automatic send.",
+    },
+    "mail_service_claims_none": {
+        "fr": "Aucun message à libérer.",
+        "en": "No message to release.",
+    },
+    "mail_service_pick": {
+        "fr": "Numéro (0 pour revenir)",
+        "en": "Number (0 to go back)",
+    },
+    "mail_service_held_release_ask": {
+        "fr": "Relâcher et envoyer cet envoi automatique ?",
+        "en": "Release and send this automatic send?",
+    },
+    "mail_menu_yes_no": {
+        "fr": "(o/N)",
+        "en": "(y/N)",
     },
     "mail_service_rule_error": {
         "fr": "erreur de règle (voir ~/.erplibre/mail.log)",
@@ -19108,6 +19240,14 @@ TRANSLATIONS = {
         "fr": "Désinstaller",
         "en": "Uninstall",
     },
+    "mail_service_menu_held_release": {
+        "fr": "Envois automatiques retenus : relire et relâcher",
+        "en": "Held automatic sends: review and release",
+    },
+    "mail_service_menu_claim_release": {
+        "fr": "Revendications incertaines ou en échec : libérer un message",
+        "en": "Uncertain or failed claims: release a message",
+    },
     "mail_service_ask_interval": {
         "fr": "Minutes entre deux passes (1 à 1440)",
         "en": "Minutes between two passes (1 to 1440)",
@@ -19201,8 +19341,8 @@ TRANSLATIONS = {
         "en": "Linger disabled.",
     },
     "mail_service_one_host_warning": {
-        "fr": "Plusieurs machines peuvent porter les mêmes règles, IDENTIQUES et à jour : chaque message est revendiqué sur le serveur (mot-clé $ErpLibreRule) avant tout envoi, une réponse par message ; limites, plafonds et approbations restent propres à chaque machine. La revendication n'est atomique qu'avec CONDSTORE ; sur un serveur qui refuse les mots-clés, une seule machine par compte.",
-        "en": "Several machines may carry the same rules, IDENTICAL and up to date: each message is claimed on the server (keyword $ErpLibreRule) before any send, one reply per message; limits, caps and approvals stay per machine. The claim is atomic only with CONDSTORE; on a server that refuses keywords, one machine per account.",
+        "fr": "Plusieurs machines peuvent porter les mêmes règles, IDENTIQUES et à jour : chaque message est revendiqué sur le serveur (mot-clé $ErpLibreRule) avant tout envoi, une réponse par message ; un envoi retenu ne l'est qu'au moment où on le relâche, depuis n'importe laquelle. Limites, plafonds et approbations restent propres à chaque machine. La revendication n'est atomique qu'avec CONDSTORE : sans lui, deux relâchements simultanés de la même réponse peuvent partir tous deux ; sur un serveur qui refuse les mots-clés, une seule machine par compte.",
+        "en": "Several machines may carry the same rules, IDENTICAL and up to date: each message is claimed on the server (keyword $ErpLibreRule) before any send, one reply per message; a held send is claimed only when it is released, from any of them. Limits, caps and approvals stay per machine. The claim is atomic only with CONDSTORE: without it, two simultaneous releases of the same reply may both leave; on a server that refuses keywords, one machine per account.",
     },
     "mail_service_dev_checkout_warning": {
         "fr": "Le service exécute le code de ce dépôt tel qu'il est sur le disque, modifications en cours comprises.",

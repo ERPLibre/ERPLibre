@@ -112,9 +112,12 @@ ENGINE_REASONS = (
     "claim_uncertain",
     "claim_gone",
     "ready",
+    "ready_released",
     "sending",
     "send_uncertain",
     "claim_failed",
+    "released",
+    "release_unmatched",
 )
 SEND = "send"
 # Avance tolérée d'une date de réception sur l'horloge locale, en secondes.
@@ -171,7 +174,9 @@ class GuardContext:
     qu'une règle `stats` exige du premier `Authentication-Results`.
     `is_own_send()` dit si le message (son Message-ID, ou le premier
     identifiant de son `In-Reply-To`) est l'un de nos envois de règle ;
-    seule une règle `forward` le consulte.
+    seule une règle `forward` le consulte. `age_waived` est vrai pour un
+    message libéré à la main : l'utilisateur a demandé sa réévaluation,
+    l'âge ne l'écarte plus.
     """
 
     now: int
@@ -181,6 +186,7 @@ class GuardContext:
     last_send_at: Callable[[str, str], int | None]
     auth_serv_id: str = ""
     is_own_send: Callable[[], bool] = _never
+    age_waived: bool = False
 
 
 @dataclass(frozen=True)
@@ -700,7 +706,8 @@ def decide(
 
     L'âge se mesure sur la date de réception du serveur, jamais sur
     l'en-tête Date que l'expéditeur choisit ; une date inconnue est trop
-    vieille. `filter.BodyUnavailable` traverse : le moteur décide si le
+    vieille. `ctx.age_waived` lève la limite d'âge, jamais le contrôle
+    d'une date inconnue. `filter.BodyUnavailable` traverse : le moteur décide si le
     message devient un trou ou un échec.
 
     Une règle `stats` répond à From ; son Return-Path, s'il porte une
@@ -742,7 +749,9 @@ def decide(
     if ctx.is_logged():
         return verdict("duplicate", False)
     age = ctx.now - view.internaldate
-    if view.internaldate == 0 or age > rule.max_age_hours * 3600:
+    if view.internaldate == 0 or (
+        not ctx.age_waived and age > rule.max_age_hours * 3600
+    ):
         return verdict("too_old", False)
     if view.internaldate > ctx.now + FUTURE_SKEW_S:
         return verdict("bad_date", False)

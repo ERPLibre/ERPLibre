@@ -277,6 +277,7 @@ _FIXED_WARNING_KEYS = (
     "mail_rules_send_uncertain_warning",
     "mail_rules_claim_none_warning",
     "mail_rules_claim_failed_final",
+    "mail_rules_held_claimed_elsewhere",
 )
 
 
@@ -636,7 +637,9 @@ def _process(
             nombre for _, nombre in held_auto_counts([session], now=deps.now())
         )
         if retenus:
-            element = held_auto_text(retenus) + " (o)"
+            element = (
+                f"{held_auto_text(retenus)} ({t('mail_service_held_where')})"
+            )
             elements.append(element)
             durables.append(element)
         held_change = retenus != precedent.get("held", 0)

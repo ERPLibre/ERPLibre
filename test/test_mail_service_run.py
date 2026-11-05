@@ -581,9 +581,10 @@ class TestPass(ServiceCase):
                 ):
                     sorties.append(self.lancer("--quiet"))
         self.assertEqual([code for code, _ in sorties], [0, 0, 0])
-        self.assertIn("(o)", sorties[0][1])
+        ou = f"({t('mail_service_held_where')})"
+        self.assertIn(ou, sorties[0][1])
         self.assertEqual(sorties[1][1], "")
-        self.assertIn("(o)", sorties[2][1])
+        self.assertIn(ou, sorties[2][1])
         self.assertEqual(len(sorties[2][1].splitlines()), 1)
 
     def test_a_held_account_lock_is_busy_and_repeats_silently(self):

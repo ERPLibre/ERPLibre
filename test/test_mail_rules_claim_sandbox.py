@@ -143,6 +143,19 @@ class TwoMachinesCase(MailSandboxCase):
     def drapeaux(self, uid=1):
         return list(self.inbox.by_uid(uid).flags)
 
+    def verifier_une_retenue_retiree(self):
+        """A retient sans revendiquer, B (approuvée) répond : la passe
+        suivante de A retire son entrée, d'après les drapeaux relus."""
+        a, b = self.machines(a_approuvee=False)
+        self.assertEqual(a.passe().held, 1)
+        self.assertEqual(b.passe().sent, 1)
+        self.assertEqual(len(self.smtp.messages), 1)
+        bilan = a.passe()
+        self.assertEqual(a.store.outbox(), [])
+        self.assertEqual(a.ligne(self.rule), ("skipped", "claimed_elsewhere"))
+        self.assertEqual(bilan.skipped["claimed_elsewhere"], 1)
+        self.assertEqual(len(self.smtp.messages), 1)
+
 
 @unittest.skipIf(
     bool(SANDBOX_MISSING), f"serveurs de test absents ({SANDBOX_MISSING})"
@@ -212,26 +225,25 @@ class TestTwoMachinesWithCondstore(TwoMachinesCase):
         self.assertEqual(a.passe().sent, 1)
         self.assertEqual(len(self.smtp.messages), 1)
 
-    def test_a_held_reply_belongs_to_the_machine_that_claimed_it(self):
-        from script.todo.mail.tui import flush_outbox
+    def test_a_held_reply_is_dropped_once_the_other_machine_replied(self):
+        self.verifier_une_retenue_retiree()
 
+    def test_hold_first_on_one_machine_no_longer_makes_the_other_abstain(
+        self,
+    ):
         a, b = self.machines(a_approuvee=False)
         self.assertEqual(a.passe().held, 1)
-        self.assertEqual(b.passe().sent, 0)
-        entree = a.store.outbox()[0]
-        a.store.set_held(entree["id"], False)
-        partis = flush_outbox(a.session, now=lambda: RECU + 700)
-        self.assertEqual(partis[0], 1)
-        self.assertEqual(len(self.smtp.messages), 1)
-
-    def test_hold_first_on_one_machine_makes_the_other_abstain(self):
-        a, b = self.machines(a_approuvee=False)
-        a.passe()
+        self.assertNotIn(KEYWORD, self.drapeaux())
         bilan = b.passe()
-        self.assertEqual(b.ligne(self.rule), ("skipped", "claimed_elsewhere"))
-        self.assertEqual((bilan.sent, len(self.smtp.messages)), (0, 0))
-        self.assertTrue(a.store.outbox()[0]["held"])
-        self.assertEqual(b.store.outbox(), [])
+        self.assertEqual(b.ligne(self.rule), ("sent", None))
+        self.assertEqual((bilan.sent, len(self.smtp.messages)), (1, 1))
+        self.assertIn(KEYWORD, self.drapeaux())
+
+    def test_a_held_reply_carries_no_keyword_on_the_server(self):
+        a = Machine(self, self.rule, approuvee=False)
+        self.assertEqual(a.passe().held, 1)
+        self.assertNotIn(KEYWORD, self.drapeaux())
+        self.assertIsNone(a.store.rule_claim_state(42, 1))
 
     def test_the_engine_state_says_atomic(self):
         a, _b = self.machines()
@@ -263,6 +275,9 @@ class TestTwoMachinesWithoutCondstore(TwoMachinesCase):
         self.assertEqual(a.passe().sent, 0)
         self.assertEqual(b.passe().sent, 0)
         self.assertEqual(len(self.smtp.messages), 2)
+
+    def test_a_held_reply_is_dropped_once_the_other_machine_replied(self):
+        self.verifier_une_retenue_retiree()
 
     def test_the_engine_state_says_plain(self):
         a, _b = self.machines()
