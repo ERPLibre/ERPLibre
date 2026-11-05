@@ -90,6 +90,7 @@ SEALED_COLUMNS = {
         "sealed_subject",
         "sealed_msg_ref",
         "sealed_target",
+        "sealed_origin",
     ),
     "auto_sent": ("sealed_msgid",),
 }
@@ -114,9 +115,35 @@ RULE_LOG_SEND_LIKE = (
     ("failed", "send_uncertain"),
 )
 # Les états d'une revendication locale ; `retry` et `intent` ne sont pas
-# définitifs.
-RULE_CLAIM_STATES = ("retry", "intent", "owned", "lost", "unclaimed")
+# définitifs, `released` est une revendication affirmée à la main dont le
+# message attend sa réévaluation.
+RULE_CLAIM_STATES = (
+    "retry",
+    "intent",
+    "owned",
+    "lost",
+    "unclaimed",
+    "released",
+)
 RULE_CLAIM_FINAL = ("owned", "lost", "unclaimed")
+# Les lignes du journal qu'un geste de l'utilisateur peut libérer : la
+# machine n'a pas pu établir sa revendication, le message est resté sans
+# envoi.
+RULE_LOG_RELEASABLE = (
+    ("skipped", "claim_uncertain"),
+    ("failed", "claim_failed"),
+)
+# Les issues de `rule_log_release`.
+RELEASE_RESULTS = (
+    "released",
+    "not_releasable",
+    "no_origin",
+    "renumbered",
+    "absent",
+)
+# Délai minimal, en secondes, laissé à une entrée revendiquée au
+# relâchement pour partir avant son échéance.
+RELEASE_SEND_MARGIN_S = 60
 # Les issues définitives : `rule_log_set_outcome` ne les modifie plus.
 # `partial` (message parti vers une partie de ses destinataires) n'avance
 # que par `rule_log_rcpt_result`, `rule_log_retry_closed` et
@@ -244,6 +271,9 @@ CREATE TABLE IF NOT EXISTS outbox (
 -- `sealed_msg_ref` et `sealed_target` sont les préimages scellées de
 -- `msg_key` et `target_hash`, pour recalculer ces empreintes sous un autre
 -- sel.
+-- `sealed_origin` est l'UID d'INBOX du message évalué,
+-- `<uidvalidity>:<uid>`, scellé : la libération retrouve le message sans
+-- relier en clair un UID à une heure.
 CREATE TABLE IF NOT EXISTS rule_log (
   id             INTEGER PRIMARY KEY,
   rule_id        TEXT NOT NULL,
@@ -265,6 +295,7 @@ CREATE TABLE IF NOT EXISTS rule_log (
   retry_sent_at  INTEGER,
   sealed_msg_ref BLOB,
   sealed_target  BLOB,
+  sealed_origin  BLOB,
   UNIQUE(rule_id, msg_key)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_log_sender
@@ -286,7 +317,9 @@ CREATE TABLE IF NOT EXISTS auto_sent (
 -- (uidvalidity, uid) : `intent` est écrit avant le STORE du mot-clé,
 -- `owned` quand le STORE est confirmé, `lost` quand le mot-clé était déjà
 -- posé par un autre, `unclaimed` quand le serveur ne permet pas la
--- revendication, `retry` quand aucun STORE n'est en cours. `failures`
+-- revendication, `retry` quand aucun STORE n'est en cours, `released`
+-- quand l'utilisateur a affirmé la revendication à la main ; le message
+-- attend sa réévaluation. `failures`
 -- compte les passes dont la revendication a échoué. `mode` est celui du
 -- serveur à ce moment. Ni scellé ni salé, et sans heure : un UID n'est
 -- pas une donnée de message, et une heure le relierait à une action.
@@ -334,6 +367,7 @@ RULE_LOG_ADDED_COLUMNS = {
     "retry_sent_at": "INTEGER",
     "sealed_msg_ref": "BLOB",
     "sealed_target": "BLOB",
+    "sealed_origin": "BLOB",
 }
 # Les colonnes ajoutées à `auto_sent` après sa création, sans changer de
 # version.
@@ -528,6 +562,18 @@ class RcptResult(NamedTuple):
 
     applied: bool
     queue_id: int | None = None
+
+
+def _origin_pair(texte: str) -> tuple[int, int] | None:
+    """« <uidvalidity>:<uid> » lu en deux entiers positifs ; None pour
+    toute autre forme, sans jamais lever."""
+    gauche, sep, droite = (texte or "").partition(":")
+    if not sep or not gauche.isdigit() or not droite.isdigit():
+        return None
+    uidv, uid = int(gauche), int(droite)
+    if uidv <= 0 or uid <= 0:
+        return None
+    return uidv, uid
 
 
 def _locked(method):
@@ -2225,6 +2271,53 @@ class Store:
         db.commit()
 
     @_locked
+    def outbox_unhold_claimed(
+        self, queue_id: int, *, expires_floor: int
+    ) -> bool:
+        """Lève la retenue d'une entrée dont le message vient d'être
+        revendiqué, en repoussant son échéance à au moins `expires_floor`,
+        en un seul UPDATE ; vrai si l'entrée était retenue. Une échéance
+        tombée pendant la revendication laisserait le mot-clé posé sans
+        réponse ; une entrée sans échéance le reste."""
+        db = self._db()
+        curseur = db.execute(
+            "UPDATE outbox SET held = 0, expires_at = CASE"
+            " WHEN expires_at IS NULL THEN NULL"
+            " ELSE MAX(expires_at, ?) END"
+            " WHERE id = ? AND held = 1",
+            (int(expires_floor), queue_id),
+        )
+        db.commit()
+        return curseur.rowcount == 1
+
+    @_locked
+    def outbox_drop_claimed(
+        self, queue_id: int, rule_id: str, msg_key: str
+    ) -> bool:
+        """Retire une entrée RETENUE dont le message est revendiqué par une
+        autre machine, et passe sa ligne `skipped/claimed_elsewhere`, en
+        une transaction ; vrai si l'entrée est retirée. Une entrée en cours
+        d'envoi (réservée) ou relâchée entre-temps n'est jamais retirée."""
+        db = self._ecriture()
+        try:
+            supprimee = db.execute(
+                "DELETE FROM outbox WHERE id = ? AND held = 1"
+                " AND claimed_at IS NULL",
+                (queue_id,),
+            ).rowcount
+            if not supprimee:
+                db.rollback()
+                return False
+            self._avancer_issue(
+                db, rule_id, msg_key, "skipped", "claimed_elsewhere", None
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return True
+
+    @_locked
     def record_send_failure(
         self,
         queue_id: int,
@@ -2353,24 +2446,54 @@ class Store:
         queue_id: int | None = None,
         msg_ref: str | None = None,
         target: str = "",
+        origin: tuple[int, int] | None = None,
     ) -> bool:
         """Inscrit (règle, message) au journal. Vrai si la ligne vient
-        d'être créée.
+        d'être créée, ou reprise.
 
-        `INSERT OR IGNORE` sur `UNIQUE(rule_id, msg_key)` : de deux
-        processus qui traitent le même message, un seul obtient `True`, et
-        c'est lui seul qui envoie. Expéditeur et sujet sont scellés, comme
-        `msg_ref` (la préimage de `msg_key`, `message_ref`) et `target`
-        (l'adresse de `target_hash`) : une conversion recalcule ces
-        empreintes sous un autre sel à partir d'eux.
+        Un conflit sur `UNIQUE(rule_id, msg_key)` laisse la ligne telle
+        quelle : de deux processus qui traitent le même message, un seul
+        obtient `True`, et c'est lui seul qui envoie. Seule une ligne
+        `skipped/released` (message libéré à la main, en attente de sa
+        réévaluation) est reprise et réécrite en entier, colonnes de départ
+        remises à NULL ; l'UPDATE conditionnel ne la donne qu'à une seule
+        évaluation, même entre processus. Une réservation `pending/ready`
+        qui reprend une telle ligne s'écrit `pending/ready_released` :
+        `rule_log_resume` rend alors la libération au lieu d'effacer la
+        ligne, le message étant déjà derrière le curseur.
+
+        Expéditeur et sujet sont scellés, comme `msg_ref` (la préimage de
+        `msg_key`, `message_ref`) et `target` (l'adresse de `target_hash`) :
+        une conversion recalcule ces empreintes sous un autre sel à partir
+        d'eux. `origin`, `(uidvalidity, uid)` du message dans INBOX, est
+        scellée de même : c'est elle qui retrouve le message à libérer.
         """
         db = self._db()
         curseur = db.execute(
-            "INSERT OR IGNORE INTO rule_log(rule_id, msg_key, sender_hash,"
+            "INSERT INTO rule_log(rule_id, msg_key, sender_hash,"
             " target_hash, fingerprint, at, received_at, outcome, reason,"
             " queue_id, sealed_sender, sealed_subject, sealed_msg_ref,"
-            " sealed_target)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " sealed_target, sealed_origin)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(rule_id, msg_key) DO UPDATE SET"
+            " sender_hash = excluded.sender_hash,"
+            " target_hash = excluded.target_hash,"
+            " fingerprint = excluded.fingerprint, at = excluded.at,"
+            " received_at = excluded.received_at,"
+            " outcome = excluded.outcome,"
+            " reason = CASE WHEN excluded.outcome = 'pending'"
+            " AND excluded.reason = 'ready' THEN 'ready_released'"
+            " ELSE excluded.reason END,"
+            " queue_id = excluded.queue_id,"
+            " sealed_sender = excluded.sealed_sender,"
+            " sealed_subject = excluded.sealed_subject,"
+            " sealed_msg_ref = excluded.sealed_msg_ref,"
+            " sealed_target = excluded.sealed_target,"
+            " sealed_origin = excluded.sealed_origin, sent_at = NULL,"
+            " rcpt_total = NULL, rcpt_dropped = NULL, rcpt_pending = NULL,"
+            " retry_sent_at = NULL"
+            " WHERE rule_log.outcome = 'skipped'"
+            " AND rule_log.reason = 'released'",
             (
                 rule_id,
                 msg_key,
@@ -2386,6 +2509,7 @@ class Store:
                 self._seal(subject),
                 self._seal(msg_ref) if msg_ref else None,
                 self._seal(target) if target else None,
+                self._seal_origin(origin),
             ),
         )
         db.commit()
@@ -2394,16 +2518,362 @@ class Store:
     @_locked
     def rule_log_seen(self, rule_id: str, msg_key: str) -> bool:
         """Vrai si (règle, message) est déjà au journal, quelle que soit
-        l'issue."""
+        l'issue, sauf `skipped/released` : un message libéré à la main
+        attend d'être évalué de nouveau, la ligne ne compte pas comme
+        « déjà journalisé »."""
         return (
             self._db()
             .execute(
-                "SELECT 1 FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+                "SELECT 1 FROM rule_log WHERE rule_id = ? AND msg_key = ?"
+                " AND NOT (outcome = 'skipped' AND reason = 'released')",
                 (rule_id, msg_key),
             )
             .fetchone()
             is not None
         )
+
+    def _seal_origin(self, origin) -> bytes | None:
+        """`origin` scellée, `<uidvalidity>:<uid>` ; None sans origine."""
+        if origin is None:
+            return None
+        uidv, uid = origin
+        return self._seal(f"{int(uidv)}:{int(uid)}")
+
+    def _read_origin(self, blob) -> tuple[int, int] | None:
+        """L'origine scellée ouverte, deux entiers positifs ; None sans
+        valeur ou pour une valeur illisible, sans jamais lever."""
+        if blob is None:
+            return None
+        try:
+            texte = self._open(blob)
+        except Exception:
+            return None
+        return _origin_pair(texte)
+
+    @_locked
+    def rule_log_origin(
+        self, rule_id: str, msg_key: str
+    ) -> tuple[int, int] | None:
+        """L'origine de la ligne, `(uidvalidity, uid)` ; None sans ligne,
+        sans origine, ou pour une valeur illisible."""
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT sealed_origin FROM rule_log"
+                " WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            )
+            .fetchone()
+        )
+        return self._read_origin(ligne[0]) if ligne else None
+
+    def _release_origin(
+        self,
+        db,
+        ligne,
+        inbox_folder_id: int | None,
+        inbox_uidvalidity: int | None,
+    ) -> tuple[int, int] | None:
+        """L'origine d'une ligne pour la libération à la main seulement.
+
+        `sealed_origin` d'abord ; sinon, pour une ligne écrite avant que
+        le journal ne la porte, la préimage scellée d'un message sans
+        Message-ID (« ␠uid:<v>:<u> »), ou l'unique message d'INBOX en
+        cache dont `msgid_hash` égale le `msg_key` de la ligne (les deux
+        sont l'empreinte de `message_ref`). Deux copies, ou aucune : None.
+        Ne lève jamais pour une valeur illisible.
+        """
+        origine = self._read_origin(ligne["sealed_origin"])
+        if origine is not None:
+            return origine
+        try:
+            ref = self._open(ligne["sealed_msg_ref"])
+        except Exception:
+            ref = ""
+        if ref.startswith(" uid:"):
+            return _origin_pair(ref[len(" uid:") :])
+        if inbox_folder_id is None or not inbox_uidvalidity:
+            return None
+        copies = db.execute(
+            "SELECT uid FROM messages WHERE folder_id = ? AND msgid_hash = ?"
+            " LIMIT 2",
+            (int(inbox_folder_id), ligne["msg_key"]),
+        ).fetchall()
+        if len(copies) != 1:
+            return None
+        return int(inbox_uidvalidity), int(copies[0][0])
+
+    def _release_refusal(
+        self,
+        db,
+        ligne,
+        inbox_folder_id: int | None,
+        inbox_uidvalidity: int | None,
+    ) -> tuple[str | None, tuple[int, int] | None]:
+        """Ce que la libération à la main ferait de `ligne` :
+        `(None, origine)` quand elle la libérerait, `(refus, None)` sinon,
+        `refus` étant une issue de `RELEASE_RESULTS` : ligne absente ou
+        d'une autre issue (`not_releasable`), origine introuvable
+        (`no_origin`), d'une autre UIDVALIDITY que celle d'INBOX
+        (`renumbered`), message absent du cache d'INBOX (`absent`). Sans
+        INBOX connue, une ligne libérable par son issue rend
+        `no_origin`. Ne lit que le cache, n'écrit rien."""
+        if (
+            ligne is None
+            or (ligne["outcome"], ligne["reason"]) not in RULE_LOG_RELEASABLE
+        ):
+            return "not_releasable", None
+        origine = self._release_origin(
+            db, ligne, inbox_folder_id, inbox_uidvalidity
+        )
+        if origine is None:
+            return "no_origin", None
+        if inbox_folder_id is None or not inbox_uidvalidity:
+            return "no_origin", None
+        uidv, uid = origine
+        if uidv != int(inbox_uidvalidity):
+            return "renumbered", None
+        if (
+            db.execute(
+                "SELECT 1 FROM messages WHERE folder_id = ? AND uid = ?",
+                (int(inbox_folder_id), uid),
+            ).fetchone()
+            is None
+        ):
+            return "absent", None
+        return None, origine
+
+    @_locked
+    def rule_log_release_check(
+        self,
+        rule_id: str,
+        msg_key: str,
+        *,
+        inbox_folder_id: int | None,
+        inbox_uidvalidity: int | None,
+    ) -> str | None:
+        """Le refus que `rule_log_release` opposerait à cette ligne, None
+        quand elle la libérerait. Lu avant la question de risque : un geste
+        voué au refus ne demande pas d'accepter un double envoi."""
+        db = self._db()
+        ligne = db.execute(
+            "SELECT * FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+            (rule_id, msg_key),
+        ).fetchone()
+        return self._release_refusal(
+            db, ligne, inbox_folder_id, inbox_uidvalidity
+        )[0]
+
+    @_locked
+    def rule_log_release(
+        self,
+        rule_id: str,
+        msg_key: str,
+        *,
+        inbox_folder_id: int,
+        inbox_uidvalidity: int,
+    ) -> str:
+        """Libère à la main le message d'une ligne dont la revendication n'a
+        pas pu être établie ; rend une issue de `RELEASE_RESULTS`.
+
+        Toutes les lignes du message (même `msg_key`, même origine) qui
+        portent la MÊME issue que la ligne choisie passent
+        `skipped/released` : le geste porte sur le message, que toutes ses
+        règles réévaluent ensemble à la passe suivante, et la question
+        posée à l'utilisateur dépend de l'issue. `claim_uncertain` :
+        la revendication locale devient `released` (affirmée à la main,
+        elle vaut `owned` sans aucun échange). `claim_failed` : son compte
+        d'échecs est remis à zéro et son état gardé, pour qu'une
+        revendication normale pose le mot-clé à la passe suivante.
+
+        Aucun échange avec le serveur : rien n'est posé ni relu ici.
+        L'heure des lignes ne change pas : une heure de geste humain se
+        relierait, par la revendication en clair, à l'UID du message.
+
+        Refus, sans rien écrire : ligne absente ou non libérable
+        (`not_releasable`), origine introuvable (`no_origin`), boîte
+        renumérotée depuis (`renumbered`), message absent du cache d'INBOX
+        (`absent`). En une transaction ; toute erreur annule tout.
+        """
+        db = self._ecriture()
+        try:
+            ligne = db.execute(
+                "SELECT * FROM rule_log WHERE rule_id = ? AND msg_key = ?",
+                (rule_id, msg_key),
+            ).fetchone()
+            refus, origine = self._release_refusal(
+                db, ligne, inbox_folder_id, inbox_uidvalidity
+            )
+            if refus is not None:
+                db.rollback()
+                return refus
+            issue = (ligne["outcome"], ligne["reason"])
+            uidv, uid = origine
+            scellee = self._seal_origin(origine)
+            for autre in db.execute(
+                "SELECT * FROM rule_log WHERE msg_key = ? AND outcome = ?"
+                " AND reason = ?",
+                (msg_key, *issue),
+            ).fetchall():
+                if (
+                    self._release_origin(
+                        db, autre, inbox_folder_id, inbox_uidvalidity
+                    )
+                    != origine
+                ):
+                    continue
+                db.execute(
+                    "UPDATE rule_log SET outcome = 'skipped',"
+                    " reason = 'released', sealed_origin = ? WHERE id = ?",
+                    (scellee, autre["id"]),
+                )
+            if issue == ("skipped", "claim_uncertain"):
+                db.execute(
+                    "INSERT INTO rule_claim(uidvalidity, uid, state, mode,"
+                    " failures) VALUES(?, ?, 'released', NULL, 0)"
+                    " ON CONFLICT(uidvalidity, uid) DO UPDATE SET"
+                    " state = 'released', failures = 0",
+                    (uidv, uid),
+                )
+            else:
+                db.execute(
+                    "UPDATE rule_claim SET failures = 0"
+                    " WHERE uidvalidity = ? AND uid = ?",
+                    (uidv, uid),
+                )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return "released"
+
+    @_locked
+    def rule_log_releasable(
+        self,
+        limit: int = 50,
+        *,
+        inbox_folder_id: int | None = None,
+        inbox_uidvalidity: int | None = None,
+    ) -> list[dict]:
+        """Les lignes que la libération à la main accepterait
+        (`_release_refusal`), les plus récentes d'abord, au plus `limit`,
+        sous la forme d'un élément de `rule_log_entries`. Une ligne que le
+        geste refuserait (origine introuvable, boîte renumérotée, message
+        absent du cache d'INBOX) n'est pas offerte."""
+        db = self._db()
+        issues = " OR ".join(
+            "(outcome = ? AND reason = ?)" for _ in RULE_LOG_RELEASABLE
+        )
+        rendues = []
+        for r in db.execute(
+            f"SELECT * FROM rule_log WHERE {issues} ORDER BY at DESC, id DESC",
+            [v for couple in RULE_LOG_RELEASABLE for v in couple],
+        ):
+            if len(rendues) >= int(limit):
+                break
+            if (
+                self._release_refusal(
+                    db, r, inbox_folder_id, inbox_uidvalidity
+                )[0]
+                is not None
+            ):
+                continue
+            entree = self._entree_journal(r)
+            entree["releasable"] = True
+            rendues.append(entree)
+        return rendues
+
+    @_locked
+    def rule_log_released_uids(self, uidvalidity: int) -> list[int]:
+        """Les UID d'INBOX des messages libérés à la main sous cette
+        UIDVALIDITY (lignes `skipped/released`), croissants, sans
+        doublon : ceux que la passe suivante réévalue."""
+        uids = set()
+        for r in self._db().execute(
+            "SELECT sealed_origin FROM rule_log WHERE outcome = 'skipped'"
+            " AND reason = 'released'"
+        ):
+            origine = self._read_origin(r[0])
+            if origine is not None and origine[0] == int(uidvalidity):
+                uids.add(origine[1])
+        return sorted(uids)
+
+    @_locked
+    def rule_release_settle(
+        self, uidvalidity: int, uid: int, *, gone: bool
+    ) -> int:
+        """Règle un message libéré à la main une fois réévalué ; rend le
+        nombre de lignes du journal touchées.
+
+        Les lignes encore `skipped/released` de ce message sont celles
+        dont la règle n'a rien décidé à la réévaluation (désactivée,
+        réarmée, filtre changé, arrêtée par une règle précédente) : elles
+        passent `skipped/release_unmatched`, et le geste reste lisible au
+        journal. `gone` (message absent du serveur) : `skipped/claim_gone`.
+        Une revendication `released` devient `owned`. En une transaction.
+        """
+        db = self._ecriture()
+        try:
+            raison = "claim_gone" if gone else "release_unmatched"
+            n = 0
+            for r in db.execute(
+                "SELECT id, sealed_origin FROM rule_log"
+                " WHERE outcome = 'skipped' AND reason = 'released'"
+            ).fetchall():
+                if self._read_origin(r["sealed_origin"]) != (
+                    int(uidvalidity),
+                    int(uid),
+                ):
+                    continue
+                db.execute(
+                    "UPDATE rule_log SET reason = ? WHERE id = ?",
+                    (raison, r["id"]),
+                )
+                n += 1
+            db.execute(
+                "UPDATE rule_claim SET state = 'owned' WHERE uidvalidity = ?"
+                " AND uid = ? AND state = 'released'",
+                (int(uidvalidity), int(uid)),
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return n
+
+    @_locked
+    def rule_release_settle_stale(self, uidvalidity: int) -> int:
+        """Clôt `skipped/claim_gone` les libérations d'une AUTRE
+        UIDVALIDITY (ou d'origine illisible) ; rend le nombre de lignes du
+        journal touchées. Une boîte renumérotée ne désigne plus ces
+        messages, et la réévaluation ne lit que l'UIDVALIDITY courante.
+        Leurs revendications `released` deviennent `owned`. En une
+        transaction."""
+        db = self._ecriture()
+        try:
+            n = 0
+            for r in db.execute(
+                "SELECT id, sealed_origin FROM rule_log"
+                " WHERE outcome = 'skipped' AND reason = 'released'"
+            ).fetchall():
+                origine = self._read_origin(r["sealed_origin"])
+                if origine is not None and origine[0] == int(uidvalidity):
+                    continue
+                db.execute(
+                    "UPDATE rule_log SET reason = 'claim_gone' WHERE id = ?",
+                    (r["id"],),
+                )
+                n += 1
+            db.execute(
+                "UPDATE rule_claim SET state = 'owned' WHERE state = 'released'"
+                " AND uidvalidity != ?",
+                (int(uidvalidity),),
+            )
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return n
 
     def _avancer_issue(
         self, db, rule_id, msg_key, outcome, reason, queue_id, sent_at=None
@@ -2864,11 +3334,15 @@ class Store:
         appelée en début de passe sous ce verrou, toute ligne `pending` est
         celle d'une passe qui n'a pas fini. `pending/ready` (revendiqué,
         rien n'est parti) est SUPPRIMÉE : le message, curseur non avancé,
-        est réévalué comme neuf. `pending/sending` (remis à l'envoi) et
-        `pending` sans raison (ligne d'une version qui ne marquait pas
-        l'envoi) passent en `failed/send_uncertain` : le message est
-        peut-être parti avant que l'issue ne s'écrive, il n'est jamais
-        renvoyé. En une transaction ; toute erreur annule tout.
+        est réévalué comme neuf. `pending/ready_released` (réévaluation
+        d'un message libéré à la main, rien n'est parti) redevient
+        `skipped/released`, origine gardée : le message est derrière le
+        curseur, et seule cette ligne le fait réévaluer de nouveau.
+        `pending/sending` (remis à l'envoi) et `pending` sans raison
+        (ligne d'une version qui ne marquait pas l'envoi) passent en
+        `failed/send_uncertain` : le message est peut-être parti avant
+        que l'issue ne s'écrive, il n'est jamais renvoyé. En une
+        transaction ; toute erreur annule tout.
         """
         db = self._ecriture()
         try:
@@ -2876,6 +3350,11 @@ class Store:
                 "DELETE FROM rule_log WHERE outcome = 'pending'"
                 " AND reason = 'ready'"
             ).rowcount
+            db.execute(
+                "UPDATE rule_log SET outcome = 'skipped', reason = 'released',"
+                " queue_id = NULL WHERE outcome = 'pending'"
+                " AND reason = 'ready_released'"
+            )
             incertaines = db.execute(
                 "UPDATE rule_log SET outcome = 'failed',"
                 " reason = 'send_uncertain' WHERE outcome = 'pending'"
@@ -2985,6 +3464,25 @@ class Store:
             (int(uidvalidity), int(uid)),
         ).fetchone()
         return int(ligne[0]) if ligne else 0
+
+    @_locked
+    def rule_claim_affirm(self, uidvalidity: int, uid: int, state: str) -> str:
+        """Inscrit une revendication affirmée par l'utilisateur, `owned` ou
+        `released`, quel que soit l'état précédent, compteur d'échecs remis
+        à zéro ; rend l'état inscrit. Tout autre état lève `ValueError`
+        avant toute écriture."""
+        if state not in ("owned", "released"):
+            raise ValueError(state)
+        db = self._db()
+        db.execute(
+            "INSERT INTO rule_claim(uidvalidity, uid, state, mode, failures)"
+            " VALUES(?, ?, ?, NULL, 0)"
+            " ON CONFLICT(uidvalidity, uid) DO UPDATE SET"
+            " state = excluded.state, failures = 0",
+            (int(uidvalidity), int(uid), state),
+        )
+        db.commit()
+        return self._etat_revendication(db, uidvalidity, uid)
 
     @staticmethod
     def _etat_revendication(db, uidvalidity, uid) -> str | None:
@@ -3101,7 +3599,12 @@ class Store:
 
     @_locked
     def rule_log_entries(
-        self, rule_id: str | None = None, limit: int = 200
+        self,
+        rule_id: str | None = None,
+        limit: int = 200,
+        *,
+        inbox_folder_id: int | None = None,
+        inbox_uidvalidity: int | None = None,
     ) -> list[dict]:
         """Les lignes du journal, les plus récentes d'abord, expéditeur et
         sujet ouverts.
@@ -3111,35 +3614,54 @@ class Store:
         abandonnés et en attente d'un nouvel essai, listes d'entiers)
         décrivent un départ refusé en partie ; `sent_at` et
         `retry_sent_at` sont le premier départ et le dernier nouvel essai
-        parti.
+        parti. `id` et `msg_key` désignent la ligne ; `releasable` dit
+        que `rule_log_release` l'accepterait (`_release_refusal`) : issue
+        de `RULE_LOG_RELEASABLE`, origine retrouvée, de l'UIDVALIDITY
+        d'INBOX, message présent dans son cache. INBOX et son UIDVALIDITY
+        servent aussi au repli des lignes anciennes.
         """
         clause, params = "", []
         if rule_id is not None:
             clause = " WHERE rule_id = ?"
             params.append(rule_id)
         params.append(int(limit))
-        return [
-            {
-                "rule_id": r["rule_id"],
-                "at": r["at"],
-                "received_at": r["received_at"],
-                "outcome": r["outcome"],
-                "reason": r["reason"],
-                "sender": self._open(r["sealed_sender"]),
-                "subject": self._open(r["sealed_subject"]),
-                "queue_id": r["queue_id"],
-                "rcpt_total": r["rcpt_total"],
-                "rcpt_dropped": _codes_list(r["rcpt_dropped"]),
-                "rcpt_pending": _codes_list(r["rcpt_pending"]),
-                "sent_at": r["sent_at"],
-                "retry_sent_at": r["retry_sent_at"],
-            }
-            for r in self._db().execute(
-                f"SELECT * FROM rule_log{clause} ORDER BY at DESC, id DESC"
-                " LIMIT ?",
-                params,
-            )
-        ]
+        db = self._db()
+        rendues = []
+        for r in db.execute(
+            f"SELECT * FROM rule_log{clause} ORDER BY at DESC, id DESC"
+            " LIMIT ?",
+            params,
+        ).fetchall():
+            entree = self._entree_journal(r)
+            entree["releasable"] = (
+                r["outcome"],
+                r["reason"],
+            ) in RULE_LOG_RELEASABLE and self._release_refusal(
+                db, r, inbox_folder_id, inbox_uidvalidity
+            )[0] is None
+            rendues.append(entree)
+        return rendues
+
+    def _entree_journal(self, r) -> dict:
+        """Une ligne de `rule_log` en dict, expéditeur et sujet ouverts,
+        sans `releasable`."""
+        return {
+            "id": r["id"],
+            "msg_key": r["msg_key"],
+            "rule_id": r["rule_id"],
+            "at": r["at"],
+            "received_at": r["received_at"],
+            "outcome": r["outcome"],
+            "reason": r["reason"],
+            "sender": self._open(r["sealed_sender"]),
+            "subject": self._open(r["sealed_subject"]),
+            "queue_id": r["queue_id"],
+            "rcpt_total": r["rcpt_total"],
+            "rcpt_dropped": _codes_list(r["rcpt_dropped"]),
+            "rcpt_pending": _codes_list(r["rcpt_pending"]),
+            "sent_at": r["sent_at"],
+            "retry_sent_at": r["retry_sent_at"],
+        }
 
     # -- Envois automatiques (v6) ---------------------------------------
 
@@ -3948,6 +4470,22 @@ class Store:
             )
         }
         return [u for u in uids if u not in connus]
+
+    @_locked
+    def message_flags(self, folder_id: int, uid: int) -> str | None:
+        """Les drapeaux du message en cache, « » s'ils sont inconnus ;
+        None sans message."""
+        ligne = (
+            self._db()
+            .execute(
+                "SELECT flags FROM messages WHERE folder_id = ? AND uid = ?",
+                (int(folder_id), int(uid)),
+            )
+            .fetchone()
+        )
+        if ligne is None:
+            return None
+        return ligne[0] or ""
 
     @_locked
     def known_uids(self, folder_id: int, last_n: int = 500) -> list[int]:

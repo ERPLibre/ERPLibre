@@ -382,6 +382,9 @@ class TestRuleLog(StoreCase):
         self.assertEqual(
             set(entrees[0]),
             {
+                "id",
+                "msg_key",
+                "releasable",
                 "rule_id",
                 "at",
                 "received_at",
