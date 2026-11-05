@@ -500,6 +500,7 @@ class TestWhereBlockingIsStillRight(unittest.TestCase):
         import inspect
 
         source = inspect.getsource(TodoUpgrade.execute_module_upgrade)
+        source += inspect.getsource(TodoUpgrade._module_upgrade_versions)
         for question in ("Module name", "Path", "From odoo version"):
             self.assertIn(question, source)
 
