@@ -1171,6 +1171,25 @@ like any automatic send. Released once its deadline has passed, or once its
 rule has changed, it leaves the outbox without sending, and the status line
 says *retry removed from the outbox without sending*.
 
+Releasing an **automatic** send first claims its message on the server
+(see "Several machines on one mailbox"): a held reply carries no claim
+until then. Offline, the release is refused and the entry stays held — a
+message written by hand, or an account whose server refuses keywords,
+leaves as before once the network is back, and so does a message this
+machine has already claimed (an earlier release, a second rule on the same
+message, a message released by hand): it is released and leaves when the
+network is back. With the account's rules missing or unreadable, the
+release is refused and the entry stays held: *the account's rules are
+missing or unreadable*. Already claimed by another
+machine, the entry is removed without sending: *already claimed by another
+machine*. When the original message was filed away from the inbox, when
+the inbox was renumbered, or when an earlier claim was interrupted, a
+question says the risk of a double send before sending anyway; it is only
+accepted by typing the word it shows (`Enter` alone gives up). An entry
+that could no longer leave — deadline passed, rule changed or disabled —
+is removed without claiming anything. A second press while a release is
+under way is ignored: the button stays disabled until it is done.
+
 While automatic messages wait held, the status line opens with them after
 every pass and at launch — *perso : 1 automatic send awaits your approval
 (o)* — until none is left; `Mail > [3] Synchronise now` prints the same line
@@ -1242,6 +1261,27 @@ jamais classée de nouveau dans Envoyés, et part sous les plafonds du compte
 comme tout envoi automatique. Relâchée après son échéance, ou une fois sa
 règle modifiée, elle quitte la file sans partir, et la ligne de statut dit
 *nouvel essai retiré de la file sans envoi*.
+
+Relâcher un envoi **automatique** revendique d'abord son message sur le
+serveur (voir « Plusieurs postes sur une même boîte ») : une réponse
+retenue ne porte aucune revendication jusque-là. Hors ligne, le
+relâchement est refusé et l'entrée reste retenue — un message écrit à la
+main, ou un compte dont le serveur refuse les mots-clés, part comme avant
+au retour du réseau, de même qu'un message que cette machine a déjà
+revendiqué (relâchement antérieur, seconde règle sur le même message,
+message libéré à la main) : il est relâché et part au retour du réseau.
+Règles du compte absentes ou illisibles, le relâchement est refusé et
+l'entrée reste retenue : *règles du compte absentes ou illisibles*. Déjà
+revendiqué par une autre machine, l'entrée est
+retirée sans envoi : *déjà revendiqué par une autre machine*. Quand le
+message d'origine a été rangé hors de la boîte de réception, quand la
+boîte a été renumérotée, ou quand une revendication précédente a été
+interrompue, une question dit le risque de double envoi avant d'envoyer
+quand même ; elle ne s'accepte qu'en tapant le mot qu'elle affiche
+(`Entrée` seule renonce). Une entrée qui ne pouvait plus partir —
+échéance passée, règle modifiée ou désactivée — est retirée sans rien
+revendiquer. Un second appui pendant un relâchement est ignoré : le bouton
+reste désactivé jusqu'à la fin.
 
 Tant que des messages automatiques attendent retenus, la ligne de statut
 s'ouvre sur eux après chaque passe et au lancement — *perso : 1 envoi
@@ -1326,6 +1366,15 @@ re-armed.*
 | `s` | try it on a recent inbox message (see "Testing a rule") |
 | `l` | the rules log: the latest 200 decisions — date, rule, result, reason, sender, subject |
 | `Escape` | close |
+
+In the rules log, `r` releases by hand the message of the line under the
+cursor when its claim is *uncertain* or *failed over several passes* (see
+"Several machines on one mailbox"); a hint above the table announces it as
+soon as such a line is listed, older ones beyond the latest 200 included,
+and the reason of each such line ends with *(r)*. On a line the release
+would refuse — inbox renumbered since, message no longer in the cached
+inbox, line whose message cannot be found — `r` says why, without asking
+the question.
 
 Under the table, *Cap per pass* and *Cap per hour* set the account's send
 caps (see "Safeguards"), saved by their own button.
@@ -1845,9 +1894,10 @@ and nothing is held.
 | Situation | What happens |
 |---|---|
 | account offline | left for the next online pass: the message must be claimed on the server first (queued as before on a server that refuses keywords) |
+| held (approval, cap, rebuilt cache) | held without a claim; claimed when released — offline, the release is refused unless this machine has already claimed the message; already claimed, the entry is removed (*already claimed*) |
 | message already claimed (another machine, or the keyword already set) | skipped (*already claimed*), never sent here |
-| claim on the server fails | left for the next pass, with a warning; after five passes in a row, failed (*claim failed over several passes*), not sent |
-| interrupted during the claim | keyword found set when the claim is tried again: skipped (*claim uncertain*), check Sent and reply by hand if needed; keyword absent: claimed again, then sent |
+| claim on the server fails | left for the next pass, with a warning; after five passes in a row, failed (*claim failed over several passes*), not sent; can be released by hand (`r` in the rules log, or `[6]` of the service menu) |
+| interrupted during the claim | keyword found set when the claim is tried again: skipped (*claim uncertain*), check Sent; can be released by hand (`r` in the rules log, or `[6]` of the service menu); keyword absent: claimed again, then sent |
 | interrupted before the send | taken up at the next pass, by this machine only |
 | interrupted during the send | failed (*send interrupted, outcome unknown*), not sent again: check Sent and reply by hand if needed |
 | temporary server refusal | queued; the rest of the pass's replies are queued too, without trying the server again |
@@ -1971,7 +2021,8 @@ line `→ mode : destinations`), `[2]` enable / disable one,
 `[3]` move one up or down, `[4]` delete one (asks first), `[5]` the latest
 50 lines of the rules log, `[6]` the statistics report settings, `[7]` try
 a rule on a message, `[8]` the headless service (see "Running without the
-client"), `[0]` back. `[6]` prints the time zone, asks each
+client" — its `[5]` and `[6]` release held sends and uncertain or failed
+claims from a machine without a screen), `[0]` back. `[6]` prints the time zone, asks each
 setting with its current value as default — `-` empties the language or
 the server identifier — saves them, then prints `{{rapport}}` computed on
 the cache, without a requester. `[7]` asks for a rule, opens the account
@@ -2001,10 +2052,20 @@ one after the other.
 left, to uninstall.
 It starts with the state of the service — followed by one line per account
 whose server allows only a non-atomic claim, or none, and one per account
-whose replies the service holds for approval (to release with `o` on this
-machine, see "Several machines on one mailbox") —, then offers `[1]`
+whose automatic sends were held at the service's last pass (to release
+with `[5]`, or `o` in the client, see "Several machines on one mailbox")
+—, then offers `[1]`
 install or update, `[2]` the vault password for the service, `[3]` run a pass now,
-`[4]` uninstall, `[0]` back. `[1]` asks the minutes between two passes —
+`[4]` uninstall, `[5]` review and release the held automatic sends of
+every account, `[6]` release by hand a message whose claim is uncertain or
+failed, `[0]` back. `[5]` reads the outbox of each account afresh, lists
+the held automatic sends — account, subject, recipients, reason, expiry —,
+shows the chosen one's preview, then asks before releasing it; the release
+claims its message on the server, like `o` in the client, and asks again,
+by a word to type, when it cannot be claimed safely. `[6]` lists the lines
+of the rules logs whose claim is *uncertain* or *failed over several
+passes* and that a release would accept, asks the question of that
+outcome — a word to type —, then releases the message. Neither entry ever leaves the menu on a failure. `[1]` asks the minutes between two passes —
 1 to 1440, 5 by default, the installed value when there is one — then
 writes `erplibre-mail-rules.service` and `erplibre-mail-rules.timer` into
 `~/.config/systemd/user/` (the configuration directory of the systemd user
@@ -2084,7 +2145,8 @@ the root of the checkout:
 
 writes one line per account (`--account` is the same as `--compte`). A
 line carries the account name and counts — new messages, automatic sends,
-held — never an address, a subject, a secret nor the text of a server or
+held, the latter followed by where to release them: *o in the client, or
+[5] of the service menu* — never an address, a subject, a secret nor the text of a server or
 rule error: only the kind of failure, the error's class name and, when the
 server gave one, its IMAP response code in brackets such as
 `[AUTHENTICATIONFAILED]`. A rule warning that would quote a file name or
@@ -2195,15 +2257,30 @@ date, the checkout the service runs from included: an older machine
 neither sets nor reads the keyword, and an older conversion tool refuses a
 newer cache.
 
-**A reply held on the service's machine** waits only under the `o` of
-THAT machine: the claim gave the message to it, the other machine logged
-*already claimed*. The service menu says how many replies the service
-holds. Give the "hold the first sends" approvals there, or keep a single
-machine while a rule is not approved yet. The claim holds for the life of
-the message: a held reply is released where it was held, an entry
-deleted from the outbox leaves the message unanswered, and a retry after a
-partial refusal does not claim again. Entries already in the outbox when
-the machine is updated were not claimed, and leave as before.
+**Held sends.** A reply held — first sends awaiting approval, a cap, a
+rebuilt cache — is NOT claimed while it is held: the claim happens when it
+is released, with `o` in the client, or with the entry `[5]` of the
+service menu on a machine without a screen (`[7] › [5]` of the mail menu,
+or `[8] › [5]` of the rules menu), from any machine that holds it. The
+first release leaves; the others find the keyword and remove their entry
+(*already claimed*). A machine whose rule is already approved answers at
+once, and the next pass of the other one removes its held entry, from the
+flags read at its sync. Approving on a single machine is therefore
+enough. The release needs the server; on a server that refuses keywords,
+it sends as before. A machine that stops between the claim and the send
+takes the message up at its next release (or its next flush), never
+another one. The release also learns the server's claim mode, shown on
+the rules screen and the service menu. **Limits.** Without CONDSTORE, two
+simultaneous releases of the same reply may both leave. A message filed
+away from the inbox (or an inbox renumbered) can no longer be claimed: the
+release asks before sending anyway, and if two machines hold the same
+reply, each one sends it after its own confirmation — delete the entry on
+the other machine.
+
+The claim holds for the life of the message: an entry deleted from the
+outbox leaves the message unanswered, and a retry after a partial refusal
+does not claim again. Entries already in the outbox when the machine is
+updated were not claimed, and leave as before.
 
 **A server that refuses keywords.** When the server does not keep the
 keyword, the pass sends as before, warns once (*This server refuses the
@@ -2221,8 +2298,32 @@ to confirm it — is settled when the claim is tried again: if the keyword
 is already set, no one knows which machine set it, and the message stays
 unsent (*claim uncertain*) rather than risk two answers; otherwise the
 claim is simply made again and the message leaves. After *send
-interrupted* or *claim uncertain*, **check Sent and reply by hand if
-needed**: no one will take that message up.
+interrupted*, **check Sent and reply by hand if needed**: no one will take
+that message up. After *claim uncertain* or *claim failed over several
+passes*, no one will take that message up unless you release it.
+
+**Releasing by hand.** *Claim uncertain* and *claim failed over several
+passes* are released with `r` on the line of the rules log `l`, or with
+the entry `[6]` of the service menu (`[7] › [6]` of the mail menu, `[8] ›
+[6]` of the rules menu), after a question that says the risk of a double
+send and is accepted only by typing the word it shows. Nothing left from
+this machine; for *claim uncertain*, the keyword is either ours (an
+interrupted claim: no one answered) or another machine's (which may have
+answered); for *claim failed*, another machine may have answered. Check
+Sent first. For *claim uncertain*, the machine takes the claim as its own
+WITHOUT writing anything on the server; for *claim failed*, its failures
+are reset and the next pass claims the message normally — the keyword is
+set, and a message already claimed elsewhere does not leave. The line says
+*released by hand*, and the next online pass evaluates the message again,
+WITHOUT the age limit but with the rule's other safeguards: it may leave.
+A rule that no longer decides anything for it (disabled, re-armed, filter
+changed) says so: *released by hand; when evaluated again, the rule
+decided nothing…*. A pass interrupted before the message leaves keeps the
+release for the next one. Only these two outcomes are released; the
+message must still be in the cached inbox, under the same numbering (sync
+first if needed): otherwise `r` and `[6]` say why without asking the
+question, and `[6]` does not list the line. Another machine does not see
+the release of a *claim uncertain*.
 
 *Already claimed* with no other machine: a message put back into INBOX
 after being handled (it gets a new UID and keeps the keyword), or a cache
@@ -2236,7 +2337,9 @@ to another account BY THIS CLIENT; another client copies it along, and the
 rules of the receiving account then skip that message. The cache keeps,
 per INBOX message, whether the claim is this machine's or another's,
 without any time; the keyword itself is already in the cached copy of the
-flags.
+flags. The rules log keeps, sealed, the INBOX UID of each line's message,
+so that a release finds it; a release by hand does not change the time of
+the line.
 
 ### Where rules live
 
@@ -2331,6 +2434,16 @@ statut affiche *Boîte de réception renumérotée : règles réarmées.*
 | `s` | l'essayer sur un message récent de la boîte de réception (voir « Tester une règle ») |
 | `l` | le journal des règles : les 200 dernières décisions — date, règle, résultat, raison, expéditeur, sujet |
 | `Échap` | fermer |
+
+Dans le journal des règles, `r` libère à la main le message de la ligne
+sous le curseur quand sa revendication est *incertaine* ou *impossible
+après plusieurs passes* (voir « Plusieurs postes sur une même boîte ») ;
+une indication au-dessus de la table l'annonce dès qu'une telle ligne est
+listée, plus anciennes que les 200 dernières comprises, et la raison de
+chacune de ces lignes finit par *(r)*. Sur une ligne que la libération
+refuserait — boîte de réception renumérotée depuis, message absent de la
+boîte de réception en cache, ligne dont le message ne se retrouve pas —
+`r` dit pourquoi, sans poser la question.
 
 Sous la table, *Plafond par passe* et *Plafond par heure* règlent les
 plafonds d'envoi du compte (voir « Garde-fous »), enregistrés par leur
@@ -2886,9 +2999,10 @@ une recréation : le journal suit, et rien n'est retenu.
 | Situation | Ce qui se passe |
 |---|---|
 | compte hors ligne | laissée à la prochaine passe en ligne : le message doit d'abord être revendiqué sur le serveur (mise en file comme avant sur un serveur qui refuse les mots-clés) |
+| retenue (approbation, plafond, cache recréé) | retenue sans revendication ; revendiquée au relâchement — hors ligne, le relâchement est refusé, sauf pour un message que cette machine a déjà revendiqué ; déjà revendiquée, l'entrée est retirée (*déjà revendiqué*) |
 | message déjà revendiqué (une autre machine, ou le mot-clé déjà posé) | écarté (*déjà revendiqué*), jamais envoyé d'ici |
-| revendication en échec sur le serveur | laissé à la passe suivante, avec un avertissement ; après cinq passes de suite, en échec (*revendication impossible après plusieurs passes*), non envoyé |
-| interruption pendant la revendication | mot-clé trouvé posé quand la revendication est refaite : écarté (*revendication incertaine*), vérifiez Envoyés, répondez à la main si besoin ; mot-clé absent : revendiqué de nouveau, puis envoyé |
+| revendication en échec sur le serveur | laissé à la passe suivante, avec un avertissement ; après cinq passes de suite, en échec (*revendication impossible après plusieurs passes*), non envoyé ; libérable à la main (`r` dans le journal des règles, ou `[6]` du menu du service) |
+| interruption pendant la revendication | mot-clé trouvé posé quand la revendication est refaite : écarté (*revendication incertaine*), vérifiez Envoyés ; libérable à la main (`r` dans le journal des règles, ou `[6]` du menu du service) ; mot-clé absent : revendiqué de nouveau, puis envoyé |
 | interruption avant l'envoi | repris à la passe suivante, par cette machine seulement |
 | interruption pendant l'envoi | en échec (*envoi interrompu, issue inconnue*), non renvoyé : vérifiez Envoyés, répondez à la main si besoin |
 | refus temporaire du serveur | mise en file ; les autres réponses de la passe aussi, sans réessayer le serveur |
@@ -3024,7 +3138,9 @@ activer / désactiver une, `[3]` en monter ou descendre une, `[4]` en
 supprimer une (demande confirmation), `[5]` les 50 dernières lignes du
 journal des règles, `[6]` les paramètres du rapport de statistiques, `[7]`
 essayer une règle sur un message, `[8]` le service sans interface (voir
-« Tourner sans le client »), `[0]` retour. `[6]` imprime le fuseau,
+« Tourner sans le client » — ses `[5]` et `[6]` relâchent les envois
+retenus et libèrent les revendications incertaines ou en échec depuis une
+machine sans écran), `[0]` retour. `[6]` imprime le fuseau,
 demande chaque réglage avec sa valeur actuelle pour défaut — `-` vide la
 langue ou l'identifiant du serveur —, les enregistre, puis imprime
 `{{rapport}}` calculé sur le cache, sans demandeur. `[7]` demande une
@@ -3056,12 +3172,23 @@ règles ne peuvent pas tourner. Les comptes sont traités l'un après l'autre.
 persistant, puis `[8]` — le même écran dans les deux cas ; `[7]` reste
 accessible quand il ne reste aucun compte, pour désinstaller. Il s'ouvre sur l'état du service — suivi d'une ligne
 par compte dont le serveur ne permet qu'une revendication non atomique, ou
-aucune, et d'une par compte dont le service retient des réponses à
-approuver (à libérer par `o` sur cette machine, voir « Plusieurs postes sur
-une même boîte ») —, puis propose `[1]`
+aucune, et d'une par compte dont des envois automatiques étaient retenus à
+la dernière passe du service (à relâcher par `[5]`, ou par `o` dans le
+client, voir « Plusieurs postes sur une même boîte ») —, puis propose `[1]`
 installer ou mettre à jour, `[2]` le mot de passe du coffre pour le
-service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[0]`
-retour. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
+service, `[3]` lancer une passe maintenant, `[4]` désinstaller, `[5]`
+relire et relâcher les envois automatiques retenus de tous les comptes,
+`[6]` libérer à la main un message dont la revendication est incertaine ou
+en échec, `[0]` retour. `[5]` relit la file de chaque compte, liste les
+envois automatiques retenus — compte, objet, destinataires, raison,
+échéance —, montre l'aperçu de celui qu'on choisit, puis demande avant de
+le relâcher ; le relâchement revendique son message sur le serveur, comme
+`o` dans le client, et demande de nouveau, par un mot à taper, quand il ne
+peut pas le revendiquer sans risque. `[6]` liste les lignes des journaux
+des règles dont la revendication est *incertaine* ou *impossible après
+plusieurs passes* et qu'une libération accepterait, pose la question
+propre à cette issue — un mot à taper —, puis libère le message. Aucune des deux ne fait sortir du menu
+sur une panne. `[1]` demande les minutes entre deux passes — 1 à 1440, 5 par
 défaut, la valeur installée s'il y en a une —, puis écrit
 `erplibre-mail-rules.service` et `erplibre-mail-rules.timer` dans
 `~/.config/systemd/user/` (le dossier de configuration du gestionnaire
@@ -3147,7 +3274,8 @@ changement ; le code de sortie le dit quand même à chaque passe. Une passe
 
 écrit une ligne par compte (`--account` vaut `--compte`). Une ligne porte le
 nom du compte et des comptes — nouveaux messages, envois automatiques,
-retenues —, jamais une adresse, un sujet, un secret ni le texte d'une
+retenues, suivies de l'endroit où les relâcher : *o dans le client, ou
+[5] du menu du service* —, jamais une adresse, un sujet, un secret ni le texte d'une
 erreur de serveur ou de règle : seulement le genre de la panne, le nom de
 la classe de l'erreur et, quand le serveur en a donné un, son code de
 réponse IMAP entre crochets, comme `[AUTHENTICATIONFAILED]`. Un
@@ -3264,16 +3392,33 @@ partirait jamais. Et toutes les machines à jour, dépôt du service
 compris : une machine ancienne ne pose ni ne lit le mot-clé, et un ancien
 outil de conversion refuse un cache plus récent.
 
-**Une réponse retenue sur la machine du service** n'attend que sous le `o`
-de CETTE machine : la revendication lui a donné le message, l'autre machine
-a journalisé *déjà revendiqué*. Le menu du service dit combien de réponses
-le service retient. Faites-y les approbations « retenir les premiers
-envois », ou gardez une seule machine tant qu'une règle n'est pas
-approuvée. La revendication vaut pour la vie du message : une réponse
-retenue se libère là où elle l'a été, une entrée supprimée de la file
-laisse le message sans réponse, et un nouvel essai après un refus partiel
-ne revendique pas de nouveau. Les entrées déjà en file au moment de la
-mise à jour n'avaient pas été revendiquées, et partent comme avant.
+**Envois retenus.** Une réponse retenue — premiers envois à approuver,
+plafond, cache recréé — n'est PAS revendiquée tant qu'elle est retenue :
+la revendication a lieu au relâchement, par `o` dans le client, ou par
+l'entrée `[5]` du menu du service sur une machine sans écran (`[7] › [5]`
+du menu courriel, ou `[8] › [5]` du menu des règles), depuis n'importe
+quelle machine qui la retient. Le premier relâchement part ; les autres
+trouvent le mot-clé et retirent leur entrée (*déjà revendiqué*). Une
+machine dont la règle est déjà approuvée répond tout de suite, et la passe
+suivante de l'autre retire son entrée retenue, d'après les drapeaux lus à
+sa synchronisation. Approuver sur une seule machine suffit donc. Le
+relâchement exige le serveur ; sur un serveur qui refuse les mots-clés, il
+envoie comme avant. Une machine qui s'arrête entre la revendication et
+l'envoi reprend le message à son relâchement suivant (ou à sa vidange
+suivante), jamais une autre. Le relâchement apprend aussi le mode de
+revendication du serveur, affiché sur l'écran des règles et le menu du
+service. **Limites.** Sans CONDSTORE, deux relâchements simultanés de la
+même réponse peuvent partir tous deux. Un message rangé hors de la boîte
+de réception (ou une boîte renumérotée) ne peut plus être revendiqué : le
+relâchement demande avant d'envoyer quand même, et si deux machines
+retiennent la même réponse, chacune l'envoie après sa propre confirmation
+— supprimez l'entrée sur l'autre machine.
+
+La revendication vaut pour la vie du message : une entrée supprimée de la
+file laisse le message sans réponse, et un nouvel essai après un refus
+partiel ne revendique pas de nouveau. Les entrées déjà en file au moment
+de la mise à jour n'avaient pas été revendiquées, et partent comme
+avant.
 
 **Un serveur qui refuse les mots-clés.** Quand le serveur ne garde pas le
 mot-clé, la passe envoie comme avant, avertit une fois (*Ce serveur refuse
@@ -3293,8 +3438,36 @@ tranche quand la revendication est refaite : si le mot-clé est déjà posé,
 nul ne sait quelle machine l'a posé, et le message reste sans envoi
 (*revendication incertaine*) plutôt que de risquer deux réponses ; sinon,
 la revendication est simplement refaite et le message part. Après *envoi
-interrompu* ou *revendication incertaine*, **vérifiez Envoyés et
-répondez à la main si besoin** : personne ne reprendra ce message.
+interrompu*, **vérifiez Envoyés et répondez à la main si besoin** :
+personne ne reprendra ce message. Après *revendication incertaine* ou
+*revendication impossible après plusieurs passes*, personne ne reprendra
+ce message, à moins que vous ne le libériez.
+
+**Libérer à la main.** *Revendication incertaine* et *revendication
+impossible après plusieurs passes* se libèrent par `r` sur la ligne du
+journal des règles `l`, ou par l'entrée `[6]` du menu du service
+(`[7] › [6]` du menu courriel, `[8] › [6]` du menu des règles), après une
+question qui dit le risque de double envoi et ne s'accepte qu'en tapant le
+mot qu'elle affiche. Rien n'est parti de cette machine ; pour une
+*revendication incertaine*, le mot-clé est soit le nôtre (revendication
+interrompue : personne n'a répondu), soit celui d'une autre machine (qui a
+peut-être répondu) ; pour une *revendication impossible*, une autre
+machine a pu répondre. Vérifiez Envoyés d'abord. Pour une *revendication
+incertaine*, la machine tient la revendication pour sienne SANS rien
+écrire sur le serveur ; pour une *revendication impossible*, ses échecs
+sont remis à zéro et la passe suivante revendique le message
+normalement — le mot-clé est posé, et un message déjà revendiqué ailleurs
+ne part pas. La ligne dit *libéré à la main*, et la prochaine passe en
+ligne réévalue le message, SANS limite d'âge mais avec les autres
+garde-fous de la règle : il peut partir. Une règle qui ne décide plus rien
+pour lui (désactivée, réarmée, filtre changé) le dit : *libéré à la
+main ; à la réévaluation, la règle n'a rien décidé…*. Une passe
+interrompue avant le départ du message garde la libération pour la
+suivante. Seules ces deux issues se libèrent ; le message doit être encore
+dans la boîte de réception en cache, sous la même numérotation
+(synchronisez au besoin) : sinon `r` et `[6]` disent pourquoi sans poser
+la question, et `[6]` ne liste pas la ligne. Une autre machine ne voit pas
+la libération d'une *revendication incertaine*.
 
 *Déjà revendiqué* sans autre machine : un message remis dans INBOX après
 traitement (il reçoit un nouvel UID et garde le mot-clé), ou un cache
@@ -3309,6 +3482,9 @@ compte PAR CE CLIENT ; un autre client le recopie, et les règles du compte
 d'arrivée écartent alors ce message. Le cache garde, par message d'INBOX,
 si la revendication est celle de cette machine ou d'une autre, sans
 aucune heure ; le mot-clé lui-même est déjà dans la copie des drapeaux.
+Le journal des règles garde, scellé, l'UID d'INBOX du message de chaque
+ligne, pour qu'une libération le retrouve ; une libération à la main ne
+change pas l'heure de la ligne.
 
 ### Où vivent les règles
 
