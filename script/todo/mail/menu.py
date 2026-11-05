@@ -423,7 +423,11 @@ def _add_account(todo) -> None:
     # mot de passe du tout est justement celui qu'il faut prévenir.
     print(f"  {t(PRESETS[preset_key]['note_key'])}")
 
-    account.auth = _demander_authentification(preset_key)
+    auth = _demander_authentification(preset_key)
+    if auth is None:
+        print(t("mail_nothing_written"))
+        return
+    account.auth = auth
     if account.auth == "oauth":
         secret = _obtenir_jeton(todo, account)
         if not secret:
@@ -446,13 +450,16 @@ def _add_account(todo) -> None:
     print(t("mail_account_saved"))
 
 
-def _demander_authentification(preset_key: str) -> str:
-    """« login » ou « oauth », selon ce que le fournisseur accepte encore.
+def _demander_authentification(preset_key: str) -> str | None:
+    """« login » ou « oauth », selon ce que le fournisseur accepte encore,
+    ou None quand l'utilisateur renonce au compte.
 
     La question n'est posée que lorsqu'il y a un CHOIX. Un fournisseur sans
     OAuth ne doit pas se voir proposer une voie qui n'existe pas ; un
     fournisseur qui n'accepte plus de mot de passe ne doit pas se voir
-    proposer une impasse.
+    proposer une impasse. Le choix passe par `ui.choose`, le mot de passe
+    d'application en défaut marqué d'une réponse vide ; [0] ou Ctrl+D
+    rendent None.
     """
     preset = PRESETS.get(preset_key, {})
     if not preset.get("oauth"):
@@ -460,10 +467,11 @@ def _demander_authentification(preset_key: str) -> str:
     if not preset.get("app_password"):
         print(t("mail_oauth_only_here"))
         return "oauth"
-    print(f"  [1] {t('mail_auth_choice_password')}")
-    print(f"  [2] {t('mail_auth_choice_oauth')}")
-    return (
-        "oauth" if input(t("mail_ask_auth_kind")).strip() == "2" else "login"
+    return ui.choose(
+        t("mail_ask_auth_kind"),
+        ["login", "oauth"],
+        default="login",
+        labels=[t("mail_auth_choice_password"), t("mail_auth_choice_oauth")],
     )
 
 
@@ -541,8 +549,10 @@ def _obtenir_jeton(todo, account) -> str:
     Le parcours d'autorisation n'est proposé que lorsqu'un identifiant
     client est configuré — sans lui, la page du fournisseur répondrait
     « invalid_client », et l'utilisateur chercherait la panne chez lui.
-    Rend la chaîne vide quand rien n'a été obtenu ; l'appelant n'écrit
-    alors rien plutôt que d'effacer le jeton en place.
+    La voie se choisit alors par `ui.choose`, le navigateur en défaut
+    marqué d'une réponse vide. Rend la chaîne vide quand rien n'a été
+    obtenu, [0] ou Ctrl+D à ce choix compris ; l'appelant n'écrit alors
+    rien plutôt que d'effacer le jeton en place.
     """
     from script.todo.mail import oauth
 
@@ -554,9 +564,18 @@ def _obtenir_jeton(todo, account) -> str:
         identifiant = ""
 
     if identifiant:
-        print(f"  [1] {t('mail_oauth_choice_browser')}")
-        print(f"  [2] {t('mail_oauth_choice_paste')}")
-        if input(t("mail_ask_oauth_way")).strip() != "2":
+        voie = ui.choose(
+            t("mail_ask_oauth_way"),
+            ["browser", "paste"],
+            default="browser",
+            labels=[
+                t("mail_oauth_choice_browser"),
+                t("mail_oauth_choice_paste"),
+            ],
+        )
+        if voie is None:
+            return ""
+        if voie == "browser":
             print(t("mail_oauth_opening_browser"))
             try:
                 return oauth.authorize(

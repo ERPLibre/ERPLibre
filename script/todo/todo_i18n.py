@@ -15331,8 +15331,8 @@ TRANSLATIONS = {
         "en": "Paste a token obtained elsewhere",
     },
     "mail_ask_oauth_way": {
-        "fr": "Comment obtenir le jeton [1] : ",
-        "en": "How to obtain the token [1]: ",
+        "fr": "Comment obtenir le jeton :",
+        "en": "How to obtain the token:",
     },
     "mail_oauth_opening_browser": {
         "fr": (
@@ -15349,8 +15349,8 @@ TRANSLATIONS = {
         "en": "OAuth refresh token: ",
     },
     "mail_ask_auth_kind": {
-        "fr": "Authentification [1] : ",
-        "en": "Authentication [1]: ",
+        "fr": "Authentification :",
+        "en": "Authentication:",
     },
     "mail_auth_choice_password": {
         "fr": "Mot de passe d'application",

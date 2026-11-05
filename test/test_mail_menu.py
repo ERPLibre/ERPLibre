@@ -1098,6 +1098,34 @@ class TestAddingAnOAuthAccount(unittest.TestCase):
         self.assertEqual(compte.auth, "login")
         coffre.set.assert_called_once_with(compte.secret_ref, "mot-de-passe")
 
+    def test_the_kind_is_a_choice_by_number(self):
+        """« oauth » n'est pas un numéro affiché : la faute est nommée et la
+        question revient, où toute réponse autre que « 2 » donnait le mot
+        de passe."""
+        from unittest.mock import patch
+
+        with patch("script.todo.ui.port.TerminalPort.notice") as notice:
+            coffre, compte = self._ajouter(
+                "gmail",
+                ["perso", "moi@x.ca", "", self._numero("gmail"), "oauth", "2"],
+                "jeton-collé",
+            )
+        self.assertEqual(compte.auth, "oauth")
+        self.assertIn("oauth", notice.call_args.args[0])
+
+    def test_back_or_ctrl_d_at_the_kind_saves_nothing(self):
+        """[0] ou Ctrl+D au choix de l'authentification : ni compte, ni
+        secret, ni question de plus."""
+        for retour in ("0", EOFError()):
+            with self.subTest(retour=retour):
+                coffre, compte = self._ajouter(
+                    "gmail",
+                    ["perso", "moi@x.ca", "", self._numero("gmail"), retour],
+                    "mot-de-passe",
+                )
+                self.assertIsNone(compte)
+                coffre.set.assert_not_called()
+
     def test_a_provider_without_oauth_is_never_asked_the_question(self):
         """iCloud n'en offre pas : poser la question ferait choisir une
         voie qui n'existe pas."""
@@ -1151,6 +1179,28 @@ class TestReplacingAToken(unittest.TestCase):
         compte cesse de se synchroniser."""
         _, coffre, _ = self._lancer(secret="")
         coffre.set.assert_not_called()
+
+    def test_back_or_ctrl_d_at_the_account_writes_nothing(self):
+        """[0], une réponse vide ou Ctrl+D au choix du compte : aucun jeton
+        demandé ni écrit."""
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        for retour in ("0", "", EOFError()):
+            with (
+                self.subTest(retour=retour),
+                patch.object(menu, "secret_store_for") as coffre,
+                patch.object(
+                    menu, "_load_accounts", return_value=[self._compte()]
+                ),
+                patch("builtins.input", side_effect=[retour]),
+                patch("getpass.getpass") as secret,
+                patch("builtins.print"),
+            ):
+                menu._set_oauth_token(MagicMock())
+            secret.assert_not_called()
+            coffre.return_value.set.assert_not_called()
 
 
 class TestAuthorisingInTheBrowser(unittest.TestCase):
@@ -1221,6 +1271,25 @@ class TestAuthorisingInTheBrowser(unittest.TestCase):
             compte.refresh_token_ref(), "jeton-collé"
         )
 
+    def test_back_or_ctrl_d_at_the_way_writes_nothing(self):
+        """[0] ou Ctrl+D au choix de la voie : ni navigateur, ni jeton
+        collé, rien d'écrit."""
+        for retour in ("0", EOFError()):
+            with self.subTest(retour=retour):
+                _, coffre, mock_auth, sortie = self._lancer(
+                    "un-client", ["1", retour]
+                )
+                mock_auth.assert_not_called()
+                coffre.set.assert_not_called()
+                self.assertIn(t("mail_nothing_written"), sortie)
+
+    def test_an_empty_answer_takes_the_browser(self):
+        compte, coffre, mock_auth, _ = self._lancer("un-client", ["1", ""])
+        mock_auth.assert_called_once()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "r-du-navigateur"
+        )
+
     def test_a_failed_authorisation_writes_nothing(self):
         """Le compte garde le jeton qu'il avait : un parcours abandonné ne
         doit pas couper un compte qui marchait."""
@@ -1234,6 +1303,45 @@ class TestAuthorisingInTheBrowser(unittest.TestCase):
         )
         coffre.set.assert_not_called()
         self.assertIn("refusée", sortie)
+
+
+class TestSignatureAccount(unittest.TestCase):
+    """La signature se change sur un compte choisi : [0], une réponse vide
+    ou Ctrl+D au choix du compte ne lisent ni n'écrivent rien."""
+
+    def test_back_or_ctrl_d_writes_nothing(self):
+        from unittest.mock import patch
+
+        import script.todo.mail.menu as menu
+
+        compte = account_from_preset("perso", "a@x.ca", "generic")
+        for retour in ("0", "", EOFError()):
+            with (
+                self.subTest(retour=retour),
+                patch.object(menu, "_load_accounts", return_value=[compte]),
+                patch.object(menu.mail_accounts, "save") as save,
+                patch("builtins.input", side_effect=[retour]) as entree,
+                patch("builtins.print"),
+            ):
+                menu._set_signature()
+            save.assert_not_called()
+            self.assertEqual(entree.call_count, 1)
+
+    def test_the_chosen_account_gets_the_lines(self):
+        from unittest.mock import patch
+
+        import script.todo.mail.menu as menu
+
+        compte = account_from_preset("perso", "a@x.ca", "generic")
+        with (
+            patch.object(menu, "_load_accounts", return_value=[compte]),
+            patch.object(menu.mail_accounts, "save") as save,
+            patch("builtins.input", side_effect=["perso", "Ana", ""]),
+            patch("builtins.print"),
+        ):
+            menu._set_signature()
+        save.assert_called_once()
+        self.assertEqual(compte.signature, "Ana")
 
 
 class TestRetryPassword(unittest.TestCase):
