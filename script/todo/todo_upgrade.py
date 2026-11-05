@@ -726,27 +726,40 @@ class TodoUpgrade:
         )
 
     def stats_cow(self, stats, database_name):
-        """Instantanés COW, et différence entre deux d'entre eux."""
+        """Instantanés COW, et différence entre deux d'entre eux, choisis
+        l'un puis l'autre, chacun par son numéro ou par son nom, le second
+        parmi ceux qui restent ; [0], une réponse vide ou Ctrl+D à l'un des
+        deux ne comparent rien."""
         snaps = stats["cow"]
         if len(snaps) < 2:
             print(f"   {t('Need two snapshots to diff.')}")
             return
-        for index, snap in enumerate(snaps, 1):
-            print(
-                f"   [{index}] {snap['label']:<18} "
-                f"{str(snap['count']):>4} {t('views')}   {snap['taken_at']}"
+        labels = [
+            f"{snap['label']:<18} {str(snap['count']):>4} {t('views')}"
+            f"   {snap['taken_at']}"
+            for snap in snaps
+        ]
+        noms = [snap["label"] for snap in snaps]
+        names = {
+            nom: rang for rang, nom in enumerate(noms) if noms.count(nom) == 1
+        }
+        choisis = []
+        for question in (
+            t("Diff from which snapshot?"),
+            t("To which snapshot?"),
+        ):
+            offerts = [r for r in range(len(snaps)) if r not in choisis]
+            rang = ui.choose(
+                f"💬 {question}",
+                offerts,
+                labels=[labels[r] for r in offerts],
+                names={nom: r for nom, r in names.items() if r in offerts},
             )
-        raw = input(
-            f"💬 {t('Diff which two? (e.g. 1,2 — blank to skip)')} : "
-        ).strip()
-        parts = [p.strip() for p in raw.replace(",", " ").split()]
-        if len(parts) != 2 or not all(p.isdigit() for p in parts):
-            return
-        first, second = (int(p) - 1 for p in parts)
-        if not (0 <= first < len(snaps) and 0 <= second < len(snaps)):
-            return
+            if rang is None:
+                return
+            choisis.append(rang)
         self.diff_cow_views(
-            database_name, snaps[first]["label"], snaps[second]["label"]
+            database_name, *(snaps[r]["label"] for r in choisis)
         )
 
     @staticmethod

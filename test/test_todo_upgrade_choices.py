@@ -176,5 +176,62 @@ class TestLesChoix(Banc):
         self.assertIn(f"{t('Directory browser')} {t('(default)')}", self.ecran)
 
 
+class TestLesInstantanesCOW(unittest.TestCase):
+    """Les statistiques de migration › COW : deux instantanés à comparer,
+    l'un puis l'autre ; la comparaison est un double."""
+
+    SNAPS = [
+        {"label": "forged_snap_before", "count": 3, "taken_at": "t1"},
+        {"label": "forged_snap_after", "count": 4, "taken_at": "t2"},
+        {"label": "forged_snap_final", "count": 5, "taken_at": "t3"},
+    ]
+
+    def comparer(self, *reponses, snaps=None):
+        """Les paires comparées, et l'écran imprimé dans `self.ecran`."""
+        upgrade = TodoUpgrade(todo=None)
+        paires = []
+        upgrade.diff_cow_views = lambda base, a, b: paires.append((a, b))
+        ecran = io.StringIO()
+        with (
+            mock.patch.object(builtins, "input", side_effect=reponses),
+            contextlib.redirect_stdout(ecran),
+        ):
+            upgrade.stats_cow({"cow": snaps or self.SNAPS}, "forged_db")
+        self.ecran = ecran.getvalue()
+        return paires
+
+    def test_two_snapshots_by_number_or_name(self):
+        self.assertEqual(
+            self.comparer("1", "forged_snap_final"),
+            [("forged_snap_before", "forged_snap_final")],
+        )
+
+    def test_back_an_empty_answer_or_ctrl_d_at_either_compare_nothing(self):
+        for avant in ([], ["2"]):
+            for retour in ("0", "", EOFError()):
+                with self.subTest(avant=avant, retour=retour):
+                    self.assertEqual(self.comparer(*avant, retour), [])
+
+    def test_a_typo_is_said_and_asked_again(self):
+        self.assertEqual(
+            self.comparer("1,2", "1", "3", "1"),
+            [("forged_snap_before", "forged_snap_after")],
+        )
+        self.assertEqual(self.ecran.count(t("Invalid choice: ")), 2)
+
+    def test_the_second_choice_offers_the_others_only(self):
+        """Le second choix n'offre plus le premier : son nom n'y est pas
+        lu, et ses numéros ne vont que jusqu'au nombre qui reste."""
+        self.assertEqual(
+            self.comparer("1", "forged_snap_before", "3", "1"),
+            [("forged_snap_before", "forged_snap_after")],
+        )
+        self.assertEqual(self.ecran.count(t("Invalid choice: ")), 2)
+
+    def test_a_single_snapshot_asks_nothing(self):
+        self.assertEqual(self.comparer(snaps=self.SNAPS[:1]), [])
+        self.assertIn(t("Need two snapshots to diff."), self.ecran)
+
+
 if __name__ == "__main__":
     unittest.main()
