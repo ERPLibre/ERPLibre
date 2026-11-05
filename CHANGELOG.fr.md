@@ -520,6 +520,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › QEMU/KVM › Déployer une ou plusieurs VM nomme le magasin d'applications flatpak « flatpak (outillage, sans Flathub) », dans les questions comme dans le formulaire, ouvert sur le nom que sa réponse accepte : la liste écrivait « outillage Flatpak, sans Flathub » et refusait « Flatpak » tapé tel qu'écrit, n'acceptant que « flatpak », qu'elle n'écrivait jamais
 - Exécution › Test › Tests longs - vraies VM, des heures : renoncer à l'hôte d'où part un test — [0] à la liste des hôtes Proxmox, ou une adresse vide pour un autre hôte ou pour une machine NixOS qu'on possède déjà — dit « Annulé. » et ne lance rien, là où Profondeur Proxmox imbriqué, Profondeur QEMU imbriqué et ERPLibre sur NixOS continuaient et créaient une VM neuve, une fois confirmés
 - Configuration › Interface de déploiement QEMU, Affichage pendant le déploiement et Interface de la migration Odoo n'écrivent rien quand la valeur courante est choisie par son numéro, comme une réponse vide déjà : une préférence jamais réglée suit encore le défaut de TODO au lieu d'être stockée dans ~/.erplibre/todo_prefs.json
+- Exécution › Code › Mise à jour de module revient quand son navigateur de répertoires est quitté sans répertoire, là où TODO s'arrêtait sur une erreur
 
 ## Retiré
 

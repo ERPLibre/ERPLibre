@@ -1088,6 +1088,10 @@ class TodoUpgrade:
                 initial_dir, self.on_dir_selected, open_dir=True
             )
             file_browser.run_main_frame()
+            # Le navigateur quitté sans choix laisse `dir_path` vide ou à
+            # None ; None ferait lever TypeError à `os.path.exists`.
+            if not self.dir_path:
+                return
 
         if not lst_dir_path and not os.path.exists(self.dir_path):
             _logger.error(f"Path '{self.dir_path}' not exists.")
