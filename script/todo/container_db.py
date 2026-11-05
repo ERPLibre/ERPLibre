@@ -166,6 +166,90 @@ export TMPDIR="$travail/tmp"
 """.replace("__TRAVAIL__", TRAVAIL).replace("__ZIP__", ZIP)
 )
 
+# La restauration d'une sauvegarde faite sur une version PRÉCÉDENTE du code :
+# « db load » charge les modules sans les mettre à jour, et un module dont
+# une colonne est nouvelle échoue alors au chargement (« column … does not
+# exist »). Ce script restaure donc comme restore_db d'Odoo, mais sans
+# charger les modules, puis lance « -u all ». $1 : la base ; la suite :
+# -f (remplacer), -n (neutraliser), --move (garder l'UUID).
+RESTAURER_MAJ = (
+    _ODOO
+    + _MOT_DE_PASSE_MAITRE
+    + r"""
+travail="$data_dir/__TRAVAIL__"
+base=$1
+shift
+force=0
+neutraliser=0
+deplacer=0
+for option in "$@"; do
+  case "$option" in
+    -f) force=1 ;;
+    -n) neutraliser=1 ;;
+    --move) deplacer=1 ;;
+  esac
+done
+if [ ! -f "$(dirname "$bin")/odoo/cli/db.py" ]; then
+  echo "odoo-bin db: absent"
+  exit 3
+fi
+set -e
+"$py" - "$travail/__ZIP__" "$travail/tmp" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    archive.extractall(
+        sys.argv[2],
+        [
+            nom
+            for nom in archive.namelist()
+            if nom == "dump.sql" or nom.startswith("filestore/")
+        ],
+    )
+PY
+# « db drop » d'ERPLibre vérifie le mot de passe maître, comme « load -f ».
+if [ "$force" = 1 ]; then
+  "$py" "$bin" db -c "$rc" drop "$base"
+fi
+# Comme _create_empty_database et restore_db d'Odoo : template0, unicode,
+# collation C ; « \restrict » empêche le dump de passer des méta-commandes.
+createdb -T template0 -E unicode --lc-collate=C "$base"
+jeton=$("$py" -c "import secrets; print(secrets.token_hex())")
+# Le dump de pg_dump 17.6+ s'encadre lui-même de « \restrict » et
+# « \unrestrict » ; sous le jeton déjà posé, psql refuse ces deux lignes et
+# l'écrit, sans rien perdre du SQL. Odoo l'envoie à /dev/null ; ici seule la
+# PREMIÈRE occurrence de chacun de ces deux refus est retirée. Une méta-commande
+# glissée ailleurs dans le dump, bloquée elle aussi, produit un refus de plus
+# qui reste visible, comme toute autre erreur.
+psql -q -d "$base" -c "\restrict $jeton" -f "$travail/tmp/dump.sql" \
+  >/dev/null 2>"$travail/psql.err"
+awk '
+  index($0, "backslash commands are restricted") && !restreint++ { next }
+  index($0, "unrestrict: wrong key") && !cle++ { next }
+  { print }
+' "$travail/psql.err" >&2
+# Neutralisée AVANT de charger les modules, comme le fait restore_db : la
+# copie d'une production n'envoie rien pendant la mise à jour.
+if [ "$neutraliser" = 1 ]; then
+  "$py" "$bin" neutralize -c "$rc" -d "$base"
+fi
+if [ -d "$travail/tmp/filestore" ]; then
+  mkdir -p "$data_dir/filestore"
+  rm -rf "$data_dir/filestore/$base"
+  mv "$travail/tmp/filestore" "$data_dir/filestore/$base"
+fi
+"$py" "$bin" -c "$rc" -d "$base" -u all --stop-after-init --no-http
+# Une copie reçoit un nouvel UUID, comme le « copy » de restore_db.
+if [ "$deplacer" = 0 ]; then
+  "$py" "$bin" shell -c "$rc" -d "$base" --no-http <<'PY'
+env["ir.config_parameter"].init(force=True)
+env.cr.commit()
+PY
+fi
+""".replace("__TRAVAIL__", TRAVAIL).replace("__ZIP__", ZIP)
+)
+
 NETTOYER = (
     _CONF
     + r"""

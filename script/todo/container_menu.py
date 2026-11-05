@@ -1383,9 +1383,25 @@ class ContainerMenuMixin:
             input(f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}")
         ):
             options.append("--move")
+        # Une sauvegarde d'une version précédente du code ne se charge pas
+        # sans mise à jour de ses modules : la question se pose avant
+        # l'exécution, la réponse choisit le script.
+        print(f"  {t('A backup from an earlier ERPLibre needs its modules')}")
+        print(f"  {t('updated: without it, Odoo refuses to load the base.')}")
+        question = t("Update every module after the restore (-u all)? (y/N): ")
+        mise_a_jour = self._is_yes(input(f"💬 {question}"))
+        script = (
+            container_db.RESTAURER_MAJ
+            if mise_a_jour
+            else container_db.RESTAURER
+        )
+        action = (
+            f"psql + filestore, odoo-bin -u all {' '.join(options + [nom])}"
+            if mise_a_jour
+            else f"odoo-bin db load {' '.join(options + [nom])}"
+        )
         print(
-            f"\n{t('Will execute:')} odoo-bin db load"
-            f" {' '.join(options + [nom])}"
+            f"\n{t('Will execute:')} {action}"
             f" {sonde['data_dir']}/{container_db.TRAVAIL}/{container_db.ZIP}"
         )
         if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
@@ -1415,14 +1431,11 @@ class ContainerMenuMixin:
                     container_db.executer(
                         fiche,
                         conteneur,
-                        container_db.RESTAURER,
+                        script,
                         [nom, *options],
                         interactif=True,
                     ),
-                    container_db.libelle(
-                        conteneur,
-                        f"odoo-bin db load {' '.join([*options, nom])}",
-                    ),
+                    container_db.libelle(conteneur, action),
                     secret=secret_restauration,
                 )
         finally:
@@ -1442,6 +1455,14 @@ class ContainerMenuMixin:
             )
             return
         print(f"❌ {t('The restore failed, code')} {code}.")
+        if not mise_a_jour:
+            # « column … does not exist » au chargement : la sauvegarde vient
+            # d'une version précédente du code.
+            for phrase in (
+                "A missing column means an earlier ERPLibre backup:",
+                "restore again with the module update (-u all).",
+            ):
+                print(f"  {t(phrase)}")
         restes = dict(self._container_lister_bases(fiche, conteneur) or [])
         if restes.get(nom):
             print(f"⚠ {t('The failed restore left an empty database:')} {nom}")

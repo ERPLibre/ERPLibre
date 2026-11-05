@@ -20595,6 +20595,26 @@ TRANSLATIONS = {
         "fr": "Neutraliser (serveurs de courriel, tâches planifiées) ? (O/N) : ",
         "en": "Neutralize (mail servers, crons)? (Y/N): ",
     },
+    "A backup from an earlier ERPLibre needs its modules": {
+        "fr": "Une sauvegarde d'une version précédente d'ERPLibre doit mettre à jour",
+        "en": "A backup from an earlier ERPLibre needs its modules",
+    },
+    "updated: without it, Odoo refuses to load the base.": {
+        "fr": "ses modules : sans cela, Odoo refuse de charger la base.",
+        "en": "updated: without it, Odoo refuses to load the base.",
+    },
+    "Update every module after the restore (-u all)? (y/N): ": {
+        "fr": "Mettre à jour tous les modules après la restauration (-u all) ? (o/N) : ",
+        "en": "Update every module after the restore (-u all)? (y/N): ",
+    },
+    "A missing column means an earlier ERPLibre backup:": {
+        "fr": "Une colonne absente signale une sauvegarde d'une version précédente :",
+        "en": "A missing column means an earlier ERPLibre backup:",
+    },
+    "restore again with the module update (-u all).": {
+        "fr": "relancer la restauration avec la mise à jour des modules (-u all).",
+        "en": "restore again with the module update (-u all).",
+    },
     "Odoo master password: ": {
         "fr": "Mot de passe maître d'Odoo : ",
         "en": "Odoo master password: ",
