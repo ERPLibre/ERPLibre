@@ -4663,12 +4663,12 @@ class TODO(
 
         Rend VRAI seulement si l'écriture a eu lieu. L'appelant qui tire
         une sauvegarde derrière en a besoin : sans distinction, un
-        renoncement produisait un zip de la base NON anonymisée, annoncé
+        renoncement produirait un zip de la base NON anonymisée, annoncé
         comme le résultat d'une anonymisation.
 
         Les codes de sortie de la marche à blanc sont un CONTRAT, et le
         travail s'annonce par un code À LUI — voir `anonymize.SORTIE_*`.
-        Lire « tout ce qui n'est ni 0 ni 2 » comme du travail faisait
+        Lire « tout ce qui n'est ni 0 ni 2 » comme du travail ferait
         demander la confirmation destructrice après une trace Python,
         laquelle sort en 1, puis « appliquer » un plan jamais calculé.
         """
@@ -5668,7 +5668,7 @@ class TODO(
 
     def generate_config_from_database(self):
         """La configuration des dépôts qu'emploie une base, choisie dans la
-        liste ; rien sur [0], sans base, ou quand la liste échoue."""
+        liste ; rien quand `select_database` ne rend pas de nom."""
         database_name = self.db_manager.select_database()
         if not database_name:
             return False
@@ -5861,8 +5861,8 @@ class TODO(
 
     def callback_execute_custom_database(self):
         """« Choose your database » de Run : ouvre la base que choisit
-        `select_database`, et rien quand il n'en rend pas (False sur [0],
-        sans base, ou quand PostgreSQL ne répond pas)."""
+        `select_database`, et rien quand il ne rend pas de nom (False,
+        dans chacun des cas que décrit son contrat)."""
         database_name = self.db_manager.select_database()
         if not database_name:
             return

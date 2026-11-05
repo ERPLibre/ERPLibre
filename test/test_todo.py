@@ -1319,9 +1319,10 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
 
     @patch("builtins.input")
     def test_no_database_chosen_makes_no_backup(self, mock_input):
-        # select_database rend False sur [0], sans base, ou quand
-        # PostgreSQL ne répond pas : ni nom de sauvegarde demandé, ni
-        # commande lancée, que le nom soit vide ou non.
+        # select_database rend False sur [0], une réponse vide, Ctrl+D,
+        # sans base, ou quand PostgreSQL ne répond pas : ni nom de
+        # sauvegarde demandé, ni commande lancée, que le nom soit vide ou
+        # non.
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager.select_database = MagicMock(return_value=False)
@@ -1681,7 +1682,7 @@ class TestLesQuestionsDuMonitoring(unittest.TestCase):
 
     def test_back_at_the_instance_runs_no_analysis(self):
         """[0] à « copie ou instance en service » : l'analyse ne part pas,
-        où toute réponse autre que 2 la lançait sur une copie."""
+        ni sur une copie ni sur l'instance."""
         from script.analyse import monitoring, monitoring_tui
 
         analyse = {"key": "forged", "kinds": [monitoring.KIND_DATABASE]}
@@ -1740,7 +1741,8 @@ class TestLesQuestionsDuMonitoring(unittest.TestCase):
 
     def test_a_typo_at_the_instance_is_said_and_asked_again(self):
         """« 3 » à « copie ou instance en service » est dit invalide et la
-        question revient, où toute réponse autre que 2 prenait une copie."""
+        question revient : aucune réponse hors de la liste ne prend une
+        copie en silence."""
         from script.analyse import monitoring
 
         self.repondre("3", "0")
@@ -1751,7 +1753,7 @@ class TestLesQuestionsDuMonitoring(unittest.TestCase):
 
     def test_a_typo_at_the_secret_kind_is_said_and_asked_again(self):
         """Une faute au genre du secret est dite invalide et la question
-        revient, où toute réponse autre que 1 demandait un mot de passe."""
+        revient : aucune faute ne demande un mot de passe en silence."""
         from script.analyse import monitoring
 
         self.repondre("https://forged.invalid", "forged", "forged", "x", "0")

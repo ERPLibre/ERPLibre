@@ -4147,8 +4147,8 @@ class TestRunMenu(unittest.TestCase):
         self.assertEqual(out.count("Command not found !"), 1)
 
     def test_choose_your_database_opens_only_a_chosen_database(self):
-        # select_database rend False sur [0], sans base, ou quand
-        # PostgreSQL ne répond pas.
+        # select_database rend False sur [0], une réponse vide, Ctrl+D,
+        # sans base, ou quand PostgreSQL ne répond pas.
         from script.todo.todo import TODO
 
         chosen = [False, "forged"]

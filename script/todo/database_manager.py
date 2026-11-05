@@ -262,8 +262,8 @@ class DatabaseManager:
         self, show_remote_list: bool = True
     ) -> None:
         """Sauvegarde en .zip la base que choisit `select_database`, et
-        rien quand il n'en rend pas (False sur [0], sans base, ou quand
-        PostgreSQL ne répond pas)."""
+        rien quand il ne rend pas de nom (False, dans chacun des cas que
+        décrit son contrat)."""
         database_name = self.select_database()
         if not database_name:
             return
