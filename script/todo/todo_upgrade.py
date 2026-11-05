@@ -179,10 +179,10 @@ NOM_BASE_MAX = 63 - SUFFIXE_MAX
 def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
     """Le nom de base que suggère le fichier de sauvegarde.
 
-    « test » ne disait rien de ce qu'on migrait : trois migrations de
-    suite portaient le même nom, et retrouver laquelle avait échoué
-    demandait de relire le journal. Le fichier, lui, porte déjà le nom du
-    client — c'est la seule information qu'on ait à ce moment-là.
+    Un nom fixe comme « test » ne dit rien de ce qu'on migre : des
+    migrations successives portent le même nom, et retrouver celle qui a
+    échoué oblige à relire le journal. Le fichier, lui, porte déjà le nom
+    du client — c'est la seule information qu'on ait à ce moment-là.
 
     Le nom est ASSAINI, car il finit dans un `createdb` et dans des noms
     de fichiers : minuscules, et tout ce qui n'est ni lettre ni chiffre
@@ -396,15 +396,15 @@ class TodoUpgrade:
         """Mettre le journal de côté avant qu'une nouvelle migration l'écrase.
 
         Le journal ne vit qu'à un seul endroit et la migration suivante écrit
-        par-dessus : recommencer effaçait donc tout ce qu'on savait de la
-        précédente — quels paliers étaient passés, quels modules manquaient,
-        combien de temps chacun avait pris. Autant d'éléments qu'on ne cherche
-        justement qu'APRÈS avoir dû recommencer.
+        par-dessus : sans archive, recommencer efface tout ce qu'on sait de la
+        précédente — les paliers passés, les modules manquants, la durée de
+        chacun. Autant d'éléments qu'on ne cherche justement qu'APRÈS avoir dû
+        recommencer.
 
         Le nom porte la base d'origine et l'horodatage de la copie, pour que
         deux tentatives sur la même base ne se recouvrent pas et qu'un fichier
         déplacé se décrive encore lui-même. Renvoie le chemin, ou None s'il n'y
-        avait rien qui vaille d'être gardé.
+        a rien qui vaille d'être gardé.
 
         L'archive vit sous `private/`, pas dans le venv : une réinstallation
         efface `.venv.erplibre/`, et avec elle l'historique qu'on vient de
@@ -799,8 +799,8 @@ class TodoUpgrade:
         rather than upgraded again.
 
         The answers given for a bump — STEP_4_PER_BUMP_KEY, indexed exactly
-        like the flags — are trimmed too. They were not, so replaying a bump
-        reused the modules chosen the previous time and asked nothing.
+        like the flags — are trimmed too. Kept, they would make the replayed
+        bump reuse the modules chosen the previous time and ask nothing.
         """
         dct_kept = dict(old_dct_progression)
         for key, value in old_dct_progression.items():
@@ -884,10 +884,10 @@ class TodoUpgrade:
         """Une invite d'attente, avec une porte de sortie vers l'arrière.
 
         Ces invites ne demandent qu'à continuer. Quand on s'aperçoit à ce
-        moment-là qu'une étape précédente méritait un autre choix, la seule
-        issue était Ctrl+C — qui laisse la progression telle quelle et oblige
-        à retrouver l'écran de reprise. « b » fait le travail proprement :
-        il rembobine l'état, l'écrit, et s'arrête en disant quoi relancer.
+        moment-là qu'une étape précédente méritait un autre choix, Ctrl+C
+        laisse la progression telle quelle et oblige à retrouver l'écran de
+        reprise. « b » fait le travail proprement : il rembobine l'état,
+        l'écrit, et s'arrête en disant quoi relancer.
         """
         while True:
             answer = self.ask(prompt, default=default)
@@ -938,7 +938,7 @@ class TodoUpgrade:
         """
         # Écrire seulement si l'on a quelque chose EN MÉMOIRE : l'écran
         # de statistiques est ouvert avant que la progression ne soit
-        # chargée, et `write_config` y échouait sur un attribut absent.
+        # chargée, et `write_config` y échouerait sur un attribut absent.
         # Sans rien en mémoire, le fichier sur disque est déjà la vérité.
         if getattr(self, "dct_progression", None):
             self.write_config()
@@ -975,11 +975,11 @@ class TodoUpgrade:
     def rewind_progression(old_dct_progression, step):
         """Drop everything `step` and the later steps own, not just their flags.
 
-        Rewinding used to keep every key that was not « state_* ». The chosen
-        step replayed, then the ones after it ran on the previous course's
+        Dropping the « state_* » keys alone is not enough. The chosen step
+        replays, then the ones after it run on the previous course's
         leftovers: the per-bump answers of step 4 — `config_state_4_*`, one
-        entry per version bump — were still there, so the questions were not
-        asked again and the work was taken for decided.
+        entry per version bump — are still there, so the questions are not
+        asked again and the work is taken for decided.
 
         So ownership is declared rather than guessed: GLOBAL_PROGRESSION_KEY
         survives everything, STEP_OWNED_KEY and the « state_<n>_ » prefixes
@@ -1442,9 +1442,9 @@ class TodoUpgrade:
         else:
             # Le défaut est le NUMÉRO de la version la plus haute, calculé
             # sur la liste réellement affichée : « 6 » n'est pas une
-            # constante, c'est le rang de 18.0 aujourd'hui. Une version de
-            # plus dans le catalogue le déplace, et l'écrire en dur ferait
-            # choisir 18.0 quand l'écran propose 19.0.
+            # constante, c'est le rang de 18.0 tant qu'elle est la plus
+            # haute. Une version de plus dans le catalogue le déplace, et
+            # l'écrire en dur ferait choisir 18.0 quand l'écran propose 19.0.
             #
             # La plus haute se COMPARE, elle ne se lit pas au bout de la
             # liste : l'ordre d'affichage n'est pas une garantie, et « 9.0 »
@@ -1741,8 +1741,8 @@ class TodoUpgrade:
                     self.dct_progression["state_1_update_all"] = True
                     # La mise à jour de tous les modules EST l'étape 2, même
                     # faite plus tôt. Ne l'enregistrer que sous state_1 la
-                    # laissait « non démarrée » à l'écran alors qu'elle venait
-                    # de tourner, et faisait la refaire entièrement à la
+                    # laisserait « non démarrée » à l'écran alors qu'elle vient
+                    # de tourner, et la ferait refaire entièrement à la
                     # reprise suivante — sur une grosse base, des heures.
                     self.dct_progression["state_2_update_all"] = True
                     self.dct_progression["state_2_done_early"] = True
@@ -1762,15 +1762,15 @@ class TodoUpgrade:
             # TODO exécuter next line si status != 0 et log contient
             # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
             # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
-            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d riplop_stage_prod_17_nov_2025
+            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d <base>
             # psycopg2.errors.ForeignKeyViolation: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
             # DÉTAIL : Key (channel_id)=(20) is not present in table "discuss_channel".
             # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
             # Puis faire un retry de la commande, sinon rien
 
-            # Only record the step when it actually succeeded. The previous
-            # unconditional assignment made the test below dead code: a failed
-            # neutralization was remembered as done and skipped on resume.
+            # Only record the step when it actually succeeded. Recorded
+            # unconditionally, a failed neutralization would be remembered as
+            # done and skipped on resume.
             if not status:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
@@ -1857,22 +1857,22 @@ class TodoUpgrade:
         # -- before hours of migration -- leaves time to arbitrate.
         # Only the next bump can be predicted: the modes in database describe
         # the current version.
-        # Sur le terminal, sans capturer : plus rien ne relit cette sortie —
-        # la décision se prend sur le code de retour — et la capture faisait
+        # Sur le terminal, sans capturer : rien ne relit cette sortie — la
+        # décision se prend sur le code de retour — et la capture ferait
         # annoncer « Command returned error code: 1 » sur un rapport qui va
         # bien. 1 veut dire « des copies casseront », pas « l'outil a raté ».
         status = self.run_captured(
             f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
             f" -d {database_name} -t odoo{start_version + 1}.0"
         )
-        # L'avertissement annonçait un problème, invitait à arbitrer, et
-        # aucune question ne suivait : dire « la question viendra au palier »
-        # ne remplace pas la possibilité de regarder maintenant. Les copies
+        # Un avertissement qui annonce un problème et invite à arbitrer
+        # appelle une question : dire « la question viendra au palier » ne
+        # remplace pas la possibilité de regarder maintenant. Les copies
         # sont visibles ici, et les neutraliser ici vaut pour tous les paliers
         # — chaque base de palier est un clone de celle-ci.
         # Le code de sortie, pas le texte : 1 = des copies casseront.
-        # Chercher une phrase anglaise dans la sortie rendait cette invite
-        # muette dès que l'outil parlait français.
+        # Chercher une phrase anglaise dans la sortie rendrait cette invite
+        # muette dès que l'outil parle français.
         if status == 1:
             self.prompt_cow_prediction(database_name, start_version + 1)
 
@@ -1894,8 +1894,7 @@ class TodoUpgrade:
 
         # La mesure de DÉPART. Sans elle, une page qui rendait déjà 500 avant
         # la migration se lit comme un dégât de la migration, et l'on cherche
-        # des heures du côté du palier. Mesuré : deux URL cassaient avant même
-        # de commencer.
+        # des heures du côté du palier.
         # Le nettoyage AVANT la mesure : interroger les pages sur une base
         # encombrée fait chercher des pannes dans des restes, et le nettoyage
         # en répare une partie de lui-même.
@@ -2068,7 +2067,7 @@ class TodoUpgrade:
                 # Same file convention as step 1, one file per version bump:
                 # uninstall_module_list_odoo130_to_odoo140.txt is read HERE,
                 # right before the 13 -> 14 data migration. Without this the
-                # per-bump files existed in name only and were never read.
+                # per-bump files would exist in name only and never be read.
                 lst_module_to_uninstall = self.uninstall_list_for(
                     next_version, database_name, lst_module_to_uninstall
                 )
@@ -2342,8 +2341,8 @@ class TodoUpgrade:
                         # Duplicate database
                         cmd_clone_database = f"./odoo_bin.sh db duplicate {last_database_name} {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
-                        # Le clone est NEUF : ce qu'on avait retiré du
-                        # précédent est revenu avec lui. La liste du palier
+                        # Le clone est NEUF : ce qu'on a retiré du précédent
+                        # revient avec lui. La liste du palier
                         # se rejoue donc ici, avec les modules choisis.
                         self.uninstall_from_database(
                             self.uninstall_list_for(
@@ -2698,7 +2697,7 @@ class TodoUpgrade:
                 )
 
                 # This is THE data migration. Recording it as done when it
-                # failed used to send the loop to the next version on top of a
+                # fails would send the loop to the next version on top of a
                 # half-migrated database. Stop here instead: the state stays
                 # unset, so a rerun replays this version.
                 if status:
@@ -2713,9 +2712,9 @@ class TodoUpgrade:
                     # Tout ce qui a été fait À ce clone meurt avec lui : la
                     # base reconstruite est une copie neuve de la version
                     # précédente et réclame la même préparation. Laisser ces
-                    # drapeaux debout sautait le SQL de pré-migration sur le
-                    # clone neuf, et OpenUpgrade retombait sur le problème
-                    # même que ce SQL existe pour écarter.
+                    # drapeaux debout sauterait le SQL de pré-migration sur
+                    # le clone neuf, et OpenUpgrade retomberait sur le
+                    # problème même que ce SQL existe pour écarter.
                     lst_fix_migration_odoo[index] = []
                     self.dct_progression["state_4_fix_migration_odoo_lst"] = (
                         lst_fix_migration_odoo
@@ -2824,9 +2823,8 @@ class TodoUpgrade:
                 self.todo_upgrade_execute(cmd_update_config)
 
                 # Une migration peut charger tous ses modules et servir
-                # quand même un 500 sur une page que personne n'ouvre. Mesuré
-                # ici : /blog/<blog>/post/<billet> et /contactus, alors que
-                # le journal de migration n'avait rien signalé.
+                # quand même un 500 sur une page que personne n'ouvre, sans
+                # que le journal de migration le signale.
                 self.prompt_database_cleanup(database_name_upgrade)
                 # APRÈS le nettoyage : il supprime des colonnes et des
                 # tables, donc leurs index avec. Avant lui, on travaillerait
@@ -2843,8 +2841,8 @@ class TodoUpgrade:
                 # masque intégralement. Les comptages disent « tout est
                 # là » — et c'est vrai. Les pages publiques répondent — et
                 # c'est vrai aussi. Pourtant plus personne n'atteint les
-                # données. Mesuré sur DMS au palier 13 : 69 fichiers et
-                # 23 Mo intacts, zéro visible, pour tous les utilisateurs.
+                # données : intactes, elles ne sont visibles d'aucun
+                # utilisateur.
                 self.run_tool(
                     "check_hidden_models",
                     f"{PYTHON_BIN}"
@@ -2933,9 +2931,9 @@ class TodoUpgrade:
     def _prompt_on_error(self, database_name, defaut, repare):
         """Le menu proposé quand une commande échoue. Rend (choix, réparé).
 
-        Extrait de `todo_upgrade_execute` : à cinq entrées la méthode
-        appelante passait le seuil de complexité, et une boucle d'invite
-        se relit mieux seule que noyée dans l'exécution d'une commande.
+        Hors de `todo_upgrade_execute` : à cinq entrées, la boucle d'invite
+        y ferait passer le seuil de complexité, et elle se relit mieux seule
+        que noyée dans l'exécution d'une commande.
         """
         # Une fois, avant la boucle : la détection lit un journal et
         # interroge la base, et la boucle peut tourner huit fois.
@@ -2970,8 +2968,8 @@ class TodoUpgrade:
                         f"[6] {t('Uninstall the theme(s) the error names')}"
                         f" : {', '.join(themes)}"
                     )
-            # `self.ask` : une migration automatique s'arrêtait ICI,
-            # sur une invite qui ne demande qu'à continuer, et restait
+            # `self.ask` : sans lui, une migration automatique s'arrête ICI,
+            # sur une invite qui ne demande qu'à continuer, et reste
             # bloquée sans que rien ne le signale.
             wait_status = (
                 self.ask(
@@ -3003,8 +3001,7 @@ class TodoUpgrade:
                     wait_status = "1"
                     break
                 # Rien à réinitialiser. Reproposer « 3 » ferait tourner
-                # en rond — mesuré : « Aucune copie COW n'a dérivé »,
-                # encore et encore, sans fin.
+                # en rond sur « Aucune copie COW n'a dérivé », sans fin.
                 defaut = ""
                 continue
             if wait_status == "6" and themes:
@@ -3060,8 +3057,8 @@ class TodoUpgrade:
         # `wait_at_error=False` est OBLIGATOIRE : pour cet outil, 1 veut
         # dire « des trouvailles », pas « échec ». Sans ce drapeau,
         # `todo_upgrade_execute` y lit une panne et rouvre SON menu
-        # d'erreur par-dessus le nôtre — mesuré : la question « Les
-        # corriger ? » n'était jamais posée et le menu tournait en rond.
+        # d'erreur par-dessus le nôtre : la question « Les corriger ? »
+        # n'est jamais posée et le menu tourne en rond.
         status, _cmd = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./{outil} -d {database}",
             wait_at_error=False,
@@ -3086,15 +3083,15 @@ class TodoUpgrade:
     def prompt_purge_dead_attachments(self, database):
         """Effacer les pièces jointes dont le champ n'existe plus.
 
-        ICI et pas entre les paliers. Mesuré : entre deux versions, deux
-        à onze champs disparaissent puis REVIENNENT — `hr.employee.phone`,
+        ICI et pas entre les paliers. Entre deux versions, des champs
+        disparaissent puis REVIENNENT — `hr.employee.phone`,
         `account.move.statement_id`. « Le champ n'existe plus » est donc
         un état transitoire tant que la migration court, et purger
         dessus, c'est trancher sur ce qui va se rétablir.
 
-        Le gain d'un nettoyage par palier serait nul de toute façon :
-        mesuré, 1881 lignes apparaissent au palier 13 et le compte ne
-        bouge plus ensuite. Une passe finale les prend toutes.
+        Une passe finale prend toutes les pièces jointes orphelines, celles
+        de chaque palier comprises : un nettoyage par palier n'y ajoute
+        rien.
 
         Après la sauvegarde ? Non, AVANT : celle qui suit capturera
         l'état nettoyé, et qui veut garder l'état d'avant n'a qu'à
@@ -3430,7 +3427,7 @@ class TodoUpgrade:
     def prompt_reset_stale_cow_views(self, database_name):
         """Choisir quoi réinitialiser dans une LISTE, pas de mémoire.
 
-        L'aide disait « --reset <key> --apply » et laissait retrouver la clé
+        Une aide qui dit « --reset <key> --apply » laisse retrouver la clé
         dans un diff de mille lignes. On la recopie, on se trompe d'un
         caractère, et la commande ne fait rien sans le dire — une clé qui ne
         correspond à rien n'est pas une erreur pour l'outil.
@@ -3547,7 +3544,7 @@ class TodoUpgrade:
         if answer != "y":
             return
         # DIRE ce qui sera parcouru, et le dire AVANT. « si la base a été
-        # neutralisée » laissait la question ouverte pendant tout le
+        # neutralisée » laisserait la question ouverte pendant tout le
         # parcours, et un saut annoncé en une ligne à la fin d'un long
         # rapport ne se voit pas : on croit alors le back-office testé.
         neutralise = "_neutralize" in database_name
@@ -3603,7 +3600,7 @@ class TodoUpgrade:
         en ne capturant rien du tout.
 
         Un pseudo-terminal lève le dilemme : l'enfant voit un vrai
-        terminal — mesuré, `isatty()` rend True des deux côtés — la
+        terminal — `isatty()` y rend True des deux côtés — la
         réponse tapée lui parvient, son code de sortie est intact, et la
         sortie passe tout de même entre nos mains avant d'aller à l'écran.
 
@@ -3679,11 +3676,11 @@ class TodoUpgrade:
 
         C'est devenu l'exception : `run_captured` garde la sortie sans que
         la commande s'en aperçoive, et presque tout passe par lui. Deux
-        appels restent ici, et pour une raison mesurée.
+        appels restent ici, pour une raison précise.
 
         `pty.spawn` crée son terminal en 0×0, et l'enfant lit sa taille
         AVANT que le premier octet ne nous parvienne — donc avant qu'on
-        puisse la corriger. Vérifié : un programme lancé ainsi voit
+        puisse la corriger : un programme lancé ainsi voit
         « columns=0, lines=0 ». Sans conséquence pour un outil qui écrit
         des lignes — aucun de ceux qu'on capture ne lit la largeur — mais
         une application Textual s'y disposerait sur rien.
@@ -3709,7 +3706,7 @@ class TodoUpgrade:
         La neutralisation officielle a lieu au palier, sur la base de palier.
         Mais celle-ci en est la source : ce qu'on neutralise ici vaut pour
         tous les paliers, et la lecture n'écrit rien de toute façon. Attendre
-        des dizaines de minutes pour seulement REGARDER n'avait pas de raison
+        des dizaines de minutes pour seulement REGARDER n'a pas de raison
         d'être.
         """
         neutralize = (
@@ -3771,7 +3768,7 @@ class TodoUpgrade:
             cmd, get_output=True, wait_at_error=False
         )
         # 0 = rien à neutraliser. Lire une phrase anglaise dans la sortie
-        # faisait poser la question dès que l'outil parlait français.
+        # ferait poser la question dès que l'outil parle français.
         if status == 0:
             return
 
@@ -3817,9 +3814,9 @@ class TodoUpgrade:
 
         Deux ruptures qu'aucune autre étape ne voit : un ancrage que la
         vue héritière de la CIBLE réclame et que la copie n'a jamais eu,
-        et un `t-call` vers un gabarit que la cible ne livre plus. Mesuré
-        sur une chaîne 12 → 18 : /contact rendait 500 depuis le palier
-        14 → 15, et rien ne l'a dit avant le test de fumée final.
+        et un `t-call` vers un gabarit que la cible ne livre plus. La page
+        rend 500 dès le palier où la rupture apparaît, et rien ne le dit
+        avant le test de fumée final.
 
         On ne neutralise pas : la copie porte une page écrite par
         quelqu'un. On répare, et le contenu reste.
@@ -3842,9 +3839,9 @@ class TodoUpgrade:
         `make_index_name` a changé de convention en 17 — `table_col_index`
         est devenu `table__col_index` — et rien ne retire le premier. Les
         deux restent, et PostgreSQL les entretient TOUS LES DEUX à chaque
-        écriture. Mesuré sur deux chaînes 12 → 18 indépendantes : 414 dans
-        l'une et 414 dans l'autre, à l'index près. Ce n'est pas un accident
-        d'exécution, c'est le chemin lui-même.
+        écriture. Le doublon vient du chemin de migration lui-même, et non
+        d'un accident d'exécution : une base qui passe 17 avec de tels index
+        le porte, quel que soit le déroulé.
 
         À partir de 17 seulement : avant, la convention n'a pas changé et
         l'outil ne trouverait rien — le lancer six fois pour rien ferait
@@ -3872,8 +3869,7 @@ class TodoUpgrade:
         `account.reconciliation_model_default_rule` seulement en 12 : ils
         naissent aujourd'hui d'un événement qu'une migration ne déclenche
         jamais. La base arrive donc en 18 sans liste de prix par défaut, et
-        cela ne se découvre qu'au premier devis. Mesuré sur deux chaînes
-        indépendantes : absent des deux.
+        cela ne se découvre qu'au premier devis.
 
         AU DERNIER PALIER seulement. L'outil charge le registre Odoo — une
         quarantaine de secondes — et seul l'état final compte : recréer la
@@ -3924,9 +3920,9 @@ class TodoUpgrade:
         from a command line works as-is. Blank lines and full-line comments are
         ignored.
 
-        The previous parser was « f.readline().split() »: it kept only the FIRST
-        line, so a multi-line list was silently truncated, and a comma-separated
-        list collapsed into one bogus module name.
+        Reading « f.readline().split() » would keep only the FIRST line: a
+        multi-line list would be silently truncated, and a comma-separated
+        list would collapse into one bogus module name.
         """
         lst_module = []
         with open(file_path, "r", encoding="utf-8") as f:
@@ -4039,12 +4035,11 @@ class TodoUpgrade:
 
         DEUX endroits bâtissent le clone intermédiaire : l'étape
         « Uninstall module », et « Choose delete missing module » qui le
-        jette et le refait depuis la version précédente. Le second ne
-        rejouait que les modules choisis là, donc la liste du palier était
-        perdue avec le clone : web_responsive revenait, et la 18 refusait
-        de charger sur l'exclusion de muk_web_theme — après que la première
-        désinstallation eut pourtant réussi. Une seule fonction, pour que
-        les deux ne puissent plus diverger.
+        jette et le refait depuis la version précédente. Le second, s'il ne
+        rejoue que les modules choisis là, perd la liste du palier avec le
+        clone : un module retiré par la première désinstallation revient,
+        et la version suivante refuse de charger. Une seule fonction, pour
+        que les deux ne puissent pas diverger.
 
         `dict.fromkeys` dédoublonne au passage : la liste choisie porte
         parfois deux fois le même nom.
@@ -4533,10 +4528,9 @@ class TodoUpgrade:
 
         Les deux premières étapes — inspecter l'archive, la restaurer —
         tournent avant qu'on ait choisi le nom de la base. Leurs journaux
-        atterrissaient donc sous « sans-nom », c'est-à-dire hors de la
-        migration à laquelle ils appartiennent : mesuré, deux fichiers
-        invisibles depuis l'écran d'état, et l'on cherchait des logs
-        manquants qui étaient simplement à côté.
+        atterrissent donc sous « sans-nom », c'est-à-dire hors de la
+        migration à laquelle ils appartiennent, et invisibles depuis
+        l'écran d'état tant qu'ils ne la rejoignent pas.
 
         En AJOUT si le fichier existe déjà : une reprise peut avoir écrit
         des deux côtés, et écraser perdrait le premier passage.
@@ -4607,7 +4601,7 @@ class TodoUpgrade:
         """Écrire une ligne dans le journal de l'étape en cours.
 
         Ce qui passe par `run_on_terminal` n'a PAS de sortie capturable —
-        un tube y ferait renoncer les pleins écrans, la leçon a été payée.
+        un tube y ferait renoncer les pleins écrans.
         On garde donc au moins la commande et son verdict.
         """
         handle = getattr(self, "step_log", None)
@@ -4646,9 +4640,9 @@ class TodoUpgrade:
         self.write_config()
         # ET sur disque, en AJOUT, hors du fichier de progression. Celui-ci
         # est archivé puis remis à zéro quand on recommence une migration :
-        # tout ce qu'on y avait mis disparaissait alors de l'écran d'état,
-        # au moment précis où l'on cherchait à comprendre pourquoi il avait
-        # fallu recommencer.
+        # tout ce qu'on y a mis disparaîtrait alors de l'écran d'état, au
+        # moment précis où l'on cherche à comprendre pourquoi il a fallu
+        # recommencer.
         self.append_event_file(lst[-1])
         self.note_step_log(f"[{kind}] {name} -> {status}")
 
@@ -4688,9 +4682,9 @@ class TodoUpgrade:
 
         Vingt en-têtes d'étape passent par ici contre sept par
         `print_step` : toute la boucle des paliers n'utilise que celle-ci.
-        Ne poser l'étape courante que dans l'autre laissait donc chaque
+        Ne poser l'étape courante que dans l'autre laisserait chaque
         verdict d'outil estampillé d'une étape périmée — et le résumé des
-        tests semblait global alors qu'il aurait dû suivre les paliers.
+        tests paraîtrait global au lieu de suivre les paliers.
 
         C'est le MÊME marqueur que `journal_by_step` découpe : une seule
         notion d'étape, posée à un seul endroit.
