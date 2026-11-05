@@ -1444,6 +1444,48 @@ def _claim_kept(store, queue_id: int, clock):
         fil.join()
 
 
+def _auto_closure(store, entree, regles, instant: int) -> str | None:
+    """Pourquoi une entrée automatique hors nouvel essai ne partira pas :
+    `expired` (échéance passée), `departed` (sa ligne est déjà `sent` ou
+    `partial`), `rule_disabled` (règle absente ou désactivée),
+    `rule_changed` (empreinte de la règle changée depuis la mise en
+    file) ; None si elle peut partir. Lecture seule ; `regles` : les
+    règles lisibles, par identifiant. Les contrôles de la vidange, dans
+    son ordre, communs au relâchement qui revendique avant d'envoyer."""
+    from script.todo.mail.store import RULE_LOG_DEPARTED
+
+    expire = entree.get("expires_at")
+    if expire and instant > expire:
+        return "expired"
+    rule_id = entree.get("rule_id")
+    source = entree.get("source_key")
+    etat = store.rule_log_state(rule_id, source) if rule_id else None
+    if etat and etat["outcome"] in RULE_LOG_DEPARTED:
+        return "departed"
+    regle = (regles or {}).get(rule_id) if rule_id else None
+    if regle is None or not regle.enabled:
+        return "rule_disabled"
+    if store.rule_log_fingerprint(rule_id, source) != regle.fingerprint():
+        return "rule_changed"
+    return None
+
+
+def _close_auto_entry(store, entree, closure: str, name: str) -> None:
+    """Retire de la file une entrée automatique hors nouvel essai qui ne
+    partira pas, comme la vidange : `departed` sans toucher au journal (le
+    message est déjà parti) ; sinon journal `expired/<closure>`."""
+    ident = entree["id"]
+    store.drop_queued(ident)
+    if closure == "departed":
+        return
+    rule_id = entree.get("rule_id")
+    if rule_id:
+        store.rule_log_set_outcome(
+            rule_id, entree.get("source_key"), "expired", closure
+        )
+    _logger.info("%s : file %s retirée, expired/%s", name, ident, closure)
+
+
 class FlushResult(tuple):
     """(partis, retenus, échoués) d'une vidange, plus en attributs :
     `partial` (départs refusés en partie), `refused` (destinataires
@@ -1601,7 +1643,7 @@ def flush_outbox(
     )
     from script.todo.mail.smtp_send import connect as smtp_connect
     from script.todo.mail.smtp_send import send as smtp_send_fn
-    from script.todo.mail.store import OUTBOX_AUTO_KINDS, RULE_LOG_DEPARTED
+    from script.todo.mail.store import OUTBOX_AUTO_KINDS
 
     if not session.online:
         return FlushResult()
@@ -1698,8 +1740,15 @@ def flush_outbox(
             if not lisibles:
                 store.outbox_release(ident)
                 continue
-            etat = store.rule_log_state(rule_id, source) if rule_id else None
-            if retry:
+            if not retry:
+                fermeture = _auto_closure(store, entree, regles, instant)
+                if fermeture is not None:
+                    _close_auto_entry(store, entree, fermeture, name)
+                    continue
+            else:
+                etat = (
+                    store.rule_log_state(rule_id, source) if rule_id else None
+                )
                 if not (
                     etat
                     and etat["outcome"] == "partial"
@@ -1714,18 +1763,15 @@ def flush_outbox(
                         ident,
                     )
                     continue
-            elif etat and etat["outcome"] in RULE_LOG_DEPARTED:
-                store.drop_queued(ident)
-                continue
-            regle = regles.get(rule_id) if rule_id else None
-            if regle is None or not regle.enabled:
-                clore("expired", "rule_disabled")
-                continue
-            if store.rule_log_fingerprint(rule_id, source) != (
-                regle.fingerprint()
-            ):
-                clore("expired", "rule_changed")
-                continue
+                regle = regles.get(rule_id) if rule_id else None
+                if regle is None or not regle.enabled:
+                    clore("expired", "rule_disabled")
+                    continue
+                if store.rule_log_fingerprint(rule_id, source) != (
+                    regle.fingerprint()
+                ):
+                    clore("expired", "rule_changed")
+                    continue
         if store.outbox_held(ident):
             store.outbox_release(ident)
             retenus += 1
@@ -2083,7 +2129,9 @@ def _released_gone_text(store, entree) -> str:
     `partial` porte une raison de clôture (autre que `rcpt_*`) a quitté
     la file sans partir : échéance, règle modifiée ou désactivée,
     enveloppe illisible. Un journal `expired` dit une échéance passée ou
-    une règle modifiée ou désactivée. Sans règle ni journal, rien ne
+    une règle modifiée ou désactivée ; `skipped/claimed_elsewhere`, une
+    entrée retirée parce que son message est revendiqué par une autre
+    machine. Sans règle ni journal, rien ne
     distingue un envoi d'un retrait : le texte dit seulement que l'entrée
     n'est plus en file.
     """
@@ -2100,6 +2148,8 @@ def _released_gone_text(store, entree) -> str:
             return f"{t('mail_sent_to')} {entree.get('to') or ''}".rstrip()
         if issue == "expired":
             return t("mail_outbox_release_dropped")
+        if issue == "skipped" and etat.get("reason") == "claimed_elsewhere":
+            return t("mail_outbox_release_claimed_elsewhere")
     return t("mail_outbox_release_gone")
 
 
@@ -2110,6 +2160,7 @@ def send_released(
     send_fn=None,
     connect_fn=None,
     entree=None,
+    now=None,
 ) -> str:
     """Envoie aussitôt l'entrée `queue_id` qu'on vient de relâcher. Rend
     le texte de statut, qui dit aussi une entrée retenue de nouveau avant
@@ -2130,7 +2181,8 @@ def send_released(
 
     Peut attendre `verrou` le temps d'une passe entière : fil de travail
     seulement, jamais celui de l'interface. Ne lève pas pour un échec
-    d'envoi, qui se lit dans le texte rendu.
+    d'envoi, qui se lit dans le texte rendu. `now` est l'horloge de la
+    vidange (`flush_outbox`).
     """
     store = session.store
 
@@ -2149,6 +2201,7 @@ def send_released(
         send_fn=send_fn,
         connect_fn=connect_fn,
         verrou=verrou,
+        now=now,
         only_ids=[queue_id],
     )
     partis, _, echoues = r
@@ -5325,6 +5378,15 @@ def run_tui(
         l'interface. L'en-tête et l'échéance s'affichent aussitôt, le texte
         à son arrivée ; un aperçu arrivé après un changement de focus est
         ignoré.
+
+        Relâcher un envoi automatique revendique d'abord son message sur le
+        serveur, dans un fil de travail (`release.release_held`) : déjà
+        revendiqué ailleurs, l'entrée est retirée ; revendication
+        incertaine, message introuvable ou boîte renumérotée, une question
+        dit le risque de double envoi et ne s'accepte qu'en tapant le mot
+        affiché ; hors ligne, le relâchement est refusé et l'entrée reste
+        retenue. Le bouton d'une entrée en cours de relâchement est
+        désactivé : un second appui ne lance pas un second relâchement.
         """
 
         BINDINGS = [
@@ -5348,6 +5410,9 @@ def run_tui(
             # Numéro du dernier aperçu demandé : un résultat plus ancien,
             # arrivé en retard, n'écrase pas le plus récent.
             self._generation = 0
+            # Entrées dont le relâchement est en cours (fil de travail ou
+            # question posée) : leur bouton reste désactivé.
+            self._en_cours: set[int] = set()
 
         def compose(self):
             with Vertical():
@@ -5507,6 +5572,7 @@ def run_tui(
             )
             ligne = Horizontal(classes="outbox_row")
             bouton = Button(libelle, id=f"hold_{entree['id']}")
+            bouton.disabled = entree["id"] in self._en_cours
             # `Text` et non du balisage : destinataire et sujet viennent du
             # message, donc de qui l'a écrit.
             texte = Text()
@@ -5538,41 +5604,86 @@ def run_tui(
             if not ident.startswith("hold_"):
                 return
             queue_id = int(ident.removeprefix("hold_"))
+            if queue_id in self._en_cours:
+                return
             entrees = {e["id"]: e for e in self.session.store.outbox()}
             entree = entrees.get(queue_id)
             if entree is None:
                 self.reload_outbox()
                 return
-            relachee = entree["held"]
-            self.session.store.set_held(queue_id, not relachee)
-            self.reload_outbox()
-            if relachee:
-                self._envoyer(queue_id, entree)
+            if not entree["held"]:
+                self.session.store.set_held(queue_id, True)
+                self.reload_outbox()
+                return
+            self._liberer(queue_id, entree, force=None)
 
-        def _envoyer(self, queue_id: int, entree=None) -> None:
-            """Envoie l'entrée relâchée dans un fil de travail de
-            l'application, puis rafraîchit la file et le statut.
+        def _liberer(self, queue_id: int, entree, force) -> None:
+            """Relâche l'entrée dans un fil de travail de l'application
+            (`release.release_held`), puis rend la main à l'interface.
 
             Le fil appartient à l'application et non à l'écran : fermer
-            l'écran pendant l'envoi ne l'interrompt pas, et le statut dit
-            quand même ce qu'il est advenu. Une retenue posée avant la
-            réservation de l'entrée l'empêche de partir.
+            l'écran pendant le relâchement ne l'interrompt pas, et le statut
+            dit quand même ce qu'il est advenu. `force` est le verdict que
+            l'utilisateur vient de confirmer.
             """
+            from script.todo.mail.rules import release
+
             app, session = self.app, self.session
             verrou = getattr(app, "_sync_lock", None)
+            self._en_cours.add(queue_id)
+            self._bouton_actif(queue_id, False)
             app.set_status(t("mail_outbox_sending"))
 
             def travail() -> None:
                 try:
-                    statut = send_released(
-                        session, queue_id, verrou=verrou, entree=entree
+                    res = release.release_held(
+                        session,
+                        queue_id,
+                        verrou=verrou,
+                        entree=entree,
+                        force=force,
                     )
                 except Exception as exc:
-                    _logger.exception("envoi de la file %s", queue_id)
-                    statut = f"{t('mail_outbox_release_failed')} {exc}"
-                app.call_from_thread(self._envoi_fini, statut)
+                    _logger.exception("relâchement de la file %s", queue_id)
+                    res = release.HeldRelease(
+                        "refused", f"{t('mail_outbox_release_failed')} {exc}"
+                    )
+                app.call_from_thread(
+                    self._liberation_finie, queue_id, entree, res
+                )
 
             app.run_worker(travail, thread=True, group="outbox_send")
+
+        def _bouton_actif(self, queue_id: int, actif: bool) -> None:
+            """Active ou désactive le bouton de l'entrée, s'il est affiché."""
+            try:
+                bouton = self.query_one(f"#hold_{queue_id}", Button)
+            except NoMatches:
+                return
+            bouton.disabled = not actif
+
+        def _liberation_finie(self, queue_id: int, entree, res) -> None:
+            """Fil de l'interface : pose la question d'un relâchement à
+            confirmer (mot à taper), sinon affiche le statut et relit la
+            file si l'écran est encore ouvert."""
+            if res.status == "confirm":
+
+                def suite(oui) -> None:
+                    if oui:
+                        self._liberer(queue_id, entree, force=res.verdict)
+                        return
+                    self._en_cours.discard(queue_id)
+                    self._envoi_fini(t("mail_outbox_release_declined"))
+
+                self.app.push_screen(
+                    TypedConfirmScreen(
+                        res.question, t("mail_confirm_risk_word")
+                    ),
+                    suite,
+                )
+                return
+            self._en_cours.discard(queue_id)
+            self._envoi_fini(res.text)
 
         def _envoi_fini(self, statut: str) -> None:
             """Fil de l'interface : le statut de l'envoi, puis la file
@@ -5780,14 +5891,18 @@ def run_tui(
         def action_accepte(self) -> None:
             self.dismiss(True)
 
-    class EmptyTrashScreen(ModalScreen):
-        """La confirmation d'un geste qui ne se répare pas.
+    class TypedConfirmScreen(ModalScreen):
+        """Une confirmation qui exige de TAPER un mot, toujours affiché
+        dans la question : la seule forme de confirmation qu'une frappe de
+        trop ne peut pas donner par accident. `Entrée` valide la saisie,
+        `Échap` renonce ; vrai seulement quand la saisie, blancs retirés,
+        égale `mot` sans tenir compte de la casse.
 
-        Elle exige de TAPER un mot, comme la suppression d'un dossier :
-        c'est la seule forme de confirmation qu'une frappe de trop ne peut
-        pas donner par accident. Elle nomme aussi ce qui va disparaître —
-        une confirmation qui ne dit pas sur quoi elle porte n'en est pas
-        une.
+        Sert aux gestes qu'on ne répare pas (vider la corbeille) et à ceux
+        qui risquent un double envoi (relâcher une réponse dont le message
+        ne se revendique pas, libérer à la main une revendication) : la
+        question arrive après un travail réseau, quand un `Entrée` tapé par
+        impatience ne doit rien accepter.
         """
 
         BINDINGS = [
@@ -5795,35 +5910,59 @@ def run_tui(
         ]
 
         CSS = """
-        #empty_hint { height: auto; padding: 1; }
+        .typed_hint { height: auto; padding: 1; }
         """
 
-        def __init__(self, corbeille: str, total: int):
+        ID_TEXTE = "typed_hint"
+        ID_SAISIE = "typed_input"
+
+        def __init__(self, question: str, mot: str):
             super().__init__()
-            self.corbeille = corbeille
-            self.total = total
+            self.question = question
+            self.mot = mot
+
+        def texte(self) -> str:
+            """La question, puis la demande de taper le mot, affiché."""
+            return (
+                f"{self.question}\n\n{t('mail_confirm_risk_ask')} {self.mot}"
+            )
 
         def compose(self):
             with Vertical():
                 yield Static(
-                    Text(
-                        f"« {self.corbeille} » — {self.total}"
-                        f" {t('mail_empty_trash_count')}\n\n"
-                        f"{t('mail_empty_trash_ask')} {MOT_SUPPRESSION}"
-                    ),
-                    id="empty_hint",
+                    Text(self.texte()), id=self.ID_TEXTE, classes="typed_hint"
                 )
-                yield Input(id="empty_input")
+                yield Input(id=self.ID_SAISIE)
 
         def on_mount(self) -> None:
-            self.query_one("#empty_input", Input).focus()
+            self.query_one(f"#{self.ID_SAISIE}", Input).focus()
 
         def action_cancel(self) -> None:
             self.dismiss(False)
 
         def on_input_submitted(self, event) -> None:
-            self.dismiss(
-                (event.value or "").strip().lower() == MOT_SUPPRESSION
+            saisie = (event.value or "").strip().lower()
+            self.dismiss(bool(saisie) and saisie == self.mot.strip().lower())
+
+    class EmptyTrashScreen(TypedConfirmScreen):
+        """La confirmation d'un geste qui ne se répare pas : vider la
+        corbeille. Elle nomme aussi ce qui va disparaître — une
+        confirmation qui ne dit pas sur quoi elle porte n'en est pas une.
+        """
+
+        ID_TEXTE = "empty_hint"
+        ID_SAISIE = "empty_input"
+
+        def __init__(self, corbeille: str, total: int):
+            super().__init__("", MOT_SUPPRESSION)
+            self.corbeille = corbeille
+            self.total = total
+
+        def texte(self) -> str:
+            return (
+                f"« {self.corbeille} » — {self.total}"
+                f" {t('mail_empty_trash_count')}\n\n"
+                f"{t('mail_empty_trash_ask')} {MOT_SUPPRESSION}"
             )
 
     class FolderScreen(ModalScreen):
@@ -7103,6 +7242,8 @@ def run_tui(
                 RuleLogScreen(
                     self.session.store,
                     {rule.id: rule.name or rule.id for rule in self.rules},
+                    account_name=self.account_name,
+                    base=self.base,
                 )
             )
 
@@ -7139,27 +7280,46 @@ def run_tui(
         nombre de destinataires refusés et leurs codes, jamais leurs
         adresses. Expéditeur et sujet viennent des messages, donc de qui
         les a écrits, et passent en `Text`.
+
+        Touche `r` : libère à la main le message de la ligne sous le
+        curseur quand sa revendication est incertaine ou en échec
+        (`release.release_claim`), après une question qui dit le risque de
+        double envoi et ne s'accepte qu'en tapant le mot affiché. Une
+        ligne que le geste refuserait dit pourquoi sans poser la question
+        (`release.release_claim_refusal`). Une indication annonce la
+        touche dès qu'une ligne est libérable, et la raison de chaque
+        ligne libérable la rappelle ; les lignes libérables plus anciennes
+        que les `LIGNES` dernières sont ajoutées en fin de table.
         """
 
         BINDINGS = [
             Binding("escape", "close_journal", t("mail_rules_close")),
+            Binding("r", "release_claim", t("mail_rules_log_release")),
         ]
 
         CSS = """
         #rules_log_table { height: 1fr; border: solid $panel; }
         #rules_log_status { height: auto; padding: 0 1; }
+        #rules_log_hint { height: auto; padding: 0 1; color: $text-muted; }
         """
 
         LIGNES = 200
+        LIBERABLES = 50
 
-        def __init__(self, store, names: dict):
+        def __init__(
+            self, store, names: dict, *, account_name: str = "", base=None
+        ):
             super().__init__()
             self.store = store
             self.names = names
+            self.account_name = account_name
+            self.base = base
+            self._lignes: dict = {}
 
         def compose(self):
             with Vertical():
                 yield Static(t("mail_rules_journal"))
+                yield Static("", id="rules_log_hint")
                 yield DataTable(id="rules_log_table", cursor_type="row")
                 yield Static("", id="rules_log_status")
 
@@ -7173,24 +7333,156 @@ def run_tui(
                 t("mail_rules_col_sender"),
                 t("mail_rules_col_subject"),
             )
+            self._charger()
+            table.focus()
+
+        def _inbox(self) -> dict:
+            """INBOX et son UIDVALIDITY en cache, pour retrouver l'origine
+            des lignes écrites avant que le journal ne la porte."""
+            inbox = rules_engine.find_inbox(self.store)
+            etat = self.store.folder_state(inbox) if inbox else None
+            if not etat or not etat.get("uidvalidity"):
+                return {}
+            return {
+                "inbox_folder_id": etat["id"],
+                "inbox_uidvalidity": etat["uidvalidity"],
+            }
+
+        def _charger(self) -> None:
+            """Remplit la table ; le curseur reste sur la même ligne, qui
+            garde sa place (une libération ne change pas son heure)."""
+            table = self.query_one("#rules_log_table", DataTable)
             status = self.query_one("#rules_log_status", Static)
+            hint = self.query_one("#rules_log_hint", Static)
+            visee = self._cle_du_curseur()
             try:
-                lignes = self.store.rule_log_entries(None, self.LIGNES)
+                inbox = self._inbox()
+                lignes = self.store.rule_log_entries(
+                    None, self.LIGNES, **inbox
+                )
+                vues = {ligne["id"] for ligne in lignes}
+                lignes += [
+                    ligne
+                    for ligne in self.store.rule_log_releasable(
+                        self.LIBERABLES, **inbox
+                    )
+                    if ligne["id"] not in vues
+                ]
             except Exception as exc:
                 status.update(Text(str(exc), style="bold red"))
                 return
+            table.clear()
+            self._lignes = {}
             for ligne in lignes:
+                cle = str(ligne["id"])
+                self._lignes[cle] = ligne
+                raison = rules_engine.log_reason_text(ligne)
+                if ligne.get("releasable"):
+                    raison = f"{raison} {t('mail_rules_log_release_key')}"
                 table.add_row(
                     format_epoch(ligne["at"]),
                     Text(self.names.get(ligne["rule_id"], ligne["rule_id"])),
                     Text(t(f"mail_rules_outcome_{ligne['outcome']}")),
-                    Text(rules_engine.log_reason_text(ligne)),
+                    Text(raison),
                     Text(ligne["sender"] or ""),
                     Text(ligne["subject"] or ""),
+                    key=cle,
                 )
             if not lignes:
                 status.update(t("mail_rules_log_empty"))
-            table.focus()
+            hint.update(
+                t("mail_rules_log_release_hint")
+                if any(ligne.get("releasable") for ligne in lignes)
+                else ""
+            )
+            if visee in self._lignes:
+                table.move_cursor(row=table.get_row_index(visee))
+
+        def _cle_du_curseur(self) -> str | None:
+            """La clé de la ligne sous le curseur, None sans ligne."""
+            table = self.query_one("#rules_log_table", DataTable)
+            if not table.row_count:
+                return None
+            try:
+                return table.coordinate_to_cell_key(
+                    table.cursor_coordinate
+                ).row_key.value
+            except Exception:
+                return None
+
+        def action_release_claim(self) -> None:
+            cle = self._cle_du_curseur()
+            ligne = self._lignes.get(cle) if cle else None
+            if ligne is None:
+                return
+            from script.todo.mail.rules import release
+
+            status = self.query_one("#rules_log_status", Static)
+            if self.base is None:
+                status.update(Text(t("mail_rules_release_not_releasable")))
+                return
+            try:
+                refus = release.release_claim_refusal(
+                    self.store, ligne["rule_id"], ligne["msg_key"]
+                )
+            except Exception as exc:
+                _logger.exception("libération à la main")
+                status.update(
+                    Text(
+                        f"{t('mail_rules_error')} {type(exc).__name__}",
+                        style="bold red",
+                    )
+                )
+                return
+            if refus is not None:
+                status.update(Text(refus))
+                return
+            raison = (
+                "uncertain"
+                if ligne["reason"] == "claim_uncertain"
+                else "failed"
+            )
+
+            def suite(oui) -> None:
+                if oui:
+                    self._liberer(ligne)
+                else:
+                    status.update(Text(t("mail_rules_release_declined")))
+
+            self.app.push_screen(
+                TypedConfirmScreen(
+                    t("mail_rules_release_confirm_" + raison),
+                    t("mail_confirm_risk_word"),
+                ),
+                suite,
+            )
+
+        def _liberer(self, ligne) -> None:
+            """Fil de l'interface : la libération est locale et brève, le
+            verrou du compte attendu au plus deux secondes. Une panne du
+            cache est dite au statut, l'écran reste ouvert."""
+            from script.todo.mail.rules import release
+
+            status = self.query_one("#rules_log_status", Static)
+            try:
+                ok, texte = release.release_claim(
+                    self.store,
+                    self.account_name,
+                    ligne["rule_id"],
+                    ligne["msg_key"],
+                    rules_base=self.base,
+                )
+            except Exception as exc:
+                _logger.exception("libération à la main")
+                status.update(
+                    Text(
+                        f"{t('mail_rules_error')} {type(exc).__name__}",
+                        style="bold red",
+                    )
+                )
+                return
+            status.update(Text(texte, style="" if ok else "bold red"))
+            self._charger()
 
         def action_close_journal(self) -> None:
             self.dismiss(None)
