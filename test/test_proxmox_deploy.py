@@ -198,8 +198,8 @@ class TestLeBruitDeSsh(unittest.TestCase):
         for bruit in (
             AVERTISSEMENT,
             "Pseudo-terminal will not be allocated because stdin is not a terminal.\n",
-            "Connection to 10.0.0.5 closed.\n",
-            "Shared connection to 10.0.0.5 closed.\n",
+            "Connection to 198.51.100.5 closed.\n",
+            "Shared connection to 198.51.100.5 closed.\n",
             "mesg: ttyname failed: Inappropriate ioctl for device\n",
         ):
             self.assertEqual(pve.strip_ssh_noise(bruit), "")
@@ -243,7 +243,7 @@ class TestLeNoyau(unittest.TestCase):
         # Et l'erreur d'IFUP n'est pas masquée : c'est elle qui explique.
         # Porté sur l'appel lui-même, et non sur toute la ligne : le repli qui
         # suit sonde légitimement (« ip link show », « iptables -C »), et
-        # interdire « 2>/dev/null » partout lui interdisait d'exister.
+        # interdire « 2>/dev/null » partout lui interdirait d'exister.
         ifup = montee[montee.index("ifup ") :].split("||")[0]
         self.assertNotIn("2>", ifup)
 
@@ -545,6 +545,80 @@ class TestChoixDeLHote(unittest.TestCase):
         todo._pve_remember_host = lambda h: None
         return todo
 
+    def test_a_host_is_picked_by_its_shown_number_or_its_name(self):
+        # « 2 » choisit la deuxième machine de la liste, affichée [2], et
+        # son nom exact aussi ; « 02 », « ٢ » (deux en écriture arabe) et
+        # « ² » ne sont pas un numéro affiché : chacun est dit invalide, la
+        # question revient, et « 0 » ou une réponse vide n'en choisit
+        # aucune.
+        import contextlib
+        import io
+
+        todo = self._todo()
+        ip = {"forged-a": "192.0.2.27", "forged-b": "198.51.100.5"}
+        todo._qemu_list_domains = lambda: ["forged-a", "forged-b"]
+        todo._qemu_vm_ip_now = ip.get
+        todo._qemu_domstate = lambda nom: "running"
+        todo._ssh_config_entries = lambda chemin: [
+            ("forged-a", {}),
+            ("forged-b", {}),
+        ]
+        for method, chosen in (
+            ("_pve_host_from_qemu", "root@198.51.100.5"),
+            ("_pve_host_from_ssh_config", "forged-b"),
+        ):
+            for answers, expected in (
+                (["2"], chosen),
+                (["forged-b"], chosen),
+                (["02", "٢", "²", "0"], None),
+                ([""], None),
+            ):
+                with (
+                    self.subTest(method=method, answers=answers),
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    host = getattr(todo, method)()
+                self.assertEqual(host and host["target"], expected)
+                for refused in answers[:-1]:
+                    self.assertIn(
+                        f"{t('Invalid choice: ')}{refused}", out.getvalue()
+                    )
+
+    def test_the_source_of_the_host_is_asked_again_on_a_wrong_answer(self):
+        # [4] Garder n'existe qu'avec un hôte retenu : sans lui, « 4 » est
+        # une faute comme « x », nommée, et la question revient ; « 0 » et
+        # une réponse vide n'ouvrent aucune des trois voies.
+        import contextlib
+        import io
+
+        todo = self._todo()
+        todo._pve_host_from_qemu = lambda: self.fail("VM locale ouverte")
+        todo._pve_host_manual = lambda: self.fail("saisie ouverte")
+        for answers in (["4", "x", "0"], [""]):
+            with (
+                self.subTest(answers=answers),
+                mock.patch(
+                    "script.todo.proxmox_menu.todo_prefs.get", return_value={}
+                ),
+                mock.patch("builtins.input", side_effect=answers),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+            ):
+                self.assertIsNone(todo._pve_pick_host())
+            for refused in answers[:-1]:
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{refused}", out.getvalue()
+                )
+        kept = {"target": "root@forged_a", "jump": ""}
+        with (
+            mock.patch(
+                "script.todo.proxmox_menu.todo_prefs.get", return_value=kept
+            ),
+            mock.patch("builtins.input", side_effect=["4"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(todo._pve_pick_host(), kept)
+
     def test_an_unknown_host_key_is_recognised(self):
         for texte in (
             "Host key verification failed.",
@@ -566,7 +640,7 @@ class TestChoixDeLHote(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 host = self._todo()._pve_confirm_host(
-                    {"target": "erplibre@10.0.0.5", "jump": ""}
+                    {"target": "erplibre@198.51.100.5", "jump": ""}
                 )
             return host, out.getvalue()
 
@@ -605,8 +679,8 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertNotIn("install_proxmox.sh", sortie)
 
     def test_the_ssh_key_warning_is_never_shown_as_the_error(self):
-        # Affichée comme preuve, elle envoyait chercher un problème de clé
-        # d'hôte qui n'existait pas — c'est ce qu'on voyait dans le rapport.
+        # Affichée comme preuve, elle enverrait chercher un problème de clé
+        # d'hôte qui n'existe pas.
         host, sortie = self._confirm(
             [(127, AVERTISSEMENT), (0, AVERTISSEMENT)]
         )
@@ -654,38 +728,307 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("root", sortie)
 
 
+class TestLeChoixDUneVm(unittest.TestCase):
+    """Une VM de l'hôte se choisit par son rang dans la liste ou par son
+    nom, jamais par son VMID à retaper : Show a VM IP address, Open the
+    console on a VM, Resize a VM disk, Delete VM(s), Test a VM et Changer
+    l'état passent par là. Une réponse invalide est dite, et la question
+    revient ; chaque liste de réponses finit par une réponse acceptée."""
+
+    VMS = [
+        {"vmid": "100", "name": "forged-a", "status": "running"},
+        {"vmid": "101", "name": "forged-b", "status": "stopped"},
+    ]
+
+    def _todo(self):
+        """Un TODO dont l'hôte porte VMS, et qui note chaque commande
+        envoyée à l'hôte dans `self.sent`, sans rien lancer."""
+        self.sent = []
+        todo = TODO.__new__(TODO)
+        todo._pve_vms = lambda: [dict(vm) for vm in self.VMS]
+        todo._pve_show = lambda cmd, **opts: self.sent.append(cmd) or (0, "")
+        return todo
+
+    def _pick(self, *answers, multiple=False):
+        """Les noms des VM que rend `_pve_pick_vm` quand on répond
+        `answers` à sa question, ou None ; ce qu'il imprime va dans
+        `self.shown`."""
+        import contextlib
+        import io
+
+        with (
+            mock.patch("builtins.input", side_effect=answers),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            picked = self._todo()._pve_pick_vm(multiple=multiple)
+        self.shown = out.getvalue()
+        if picked is None:
+            return None
+        if multiple:
+            return [vm["name"] for vm in picked]
+        return picked["name"]
+
+    def test_one_vm_is_picked_by_its_shown_number_or_its_name(self):
+        # « 2 » choisit la deuxième, affichée [2], comme son nom ; « 02 »,
+        # « ٢ » (deux en écriture arabe), « ² » et le VMID ne sont pas un
+        # numéro affiché : chacun est dit invalide, et « 0 » renonce.
+        self.assertEqual(self._pick("2"), "forged-b")
+        self.assertEqual(self._pick("forged-b"), "forged-b")
+        self.assertIsNone(self._pick("02", "٢", "²", "101", "0"))
+        for refused in ("02", "٢", "²", "101"):
+            self.assertIn(f"{t('Invalid choice: ')}{refused}", self.shown)
+        self.assertIsNone(self._pick(""))
+
+    def test_several_vms_are_picked_by_numbers_names_or_all(self):
+        # Delete VM(s) : chaque rang tel qu'affiché, chaque nom, une plage
+        # ou `tout` ; une réponse vide n'en prend aucune, et un seul
+        # morceau faux fait redemander la réponse entière.
+        for answers, names in (
+            (["1, 2"], ["forged-a", "forged-b"]),
+            (["tout"], ["forged-a", "forged-b"]),
+            (["forged-b 1"], ["forged-a", "forged-b"]),
+            (["01 2", "² 1", "2"], ["forged-b"]),
+            ([""], []),
+            (["0"], None),
+        ):
+            with self.subTest(answers=answers):
+                self.assertEqual(self._pick(*answers, multiple=True), names)
+
+    def test_only_a_chosen_vm_is_deleted_after_both_confirmations(self):
+        # --purge emporte disques et sauvegardes : une réponse vide, « 0 »
+        # ou une faute ne détruisent rien et ne posent pas la confirmation ;
+        # `tout` y mène, sa confirmation nomme les deux VM, et seules ses
+        # deux réponses oui détruisent.
+        import contextlib
+        import io
+
+        for answers in (
+            [""],
+            ["0"],
+            ["x", "0"],
+            ["tout", "n"],
+            ["tout", "o", "n"],
+        ):
+            todo = self._todo()
+            with (
+                self.subTest(answers=answers),
+                mock.patch("builtins.input", side_effect=answers) as asked,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                todo._pve_delete()
+            self.assertEqual(self.sent, [])
+            if answers[0] == "tout":
+                self.assertIn(
+                    "100 (forged-a), 101 (forged-b)",
+                    asked.call_args_list[1].args[0],
+                )
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=["forged-b", "o", "o"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._pve_delete()
+        self.assertEqual(self.sent, pve.destroy_cmds("101"))
+
+    def test_only_a_chosen_vm_changes_state_after_its_confirmation(self):
+        # `tout` mène à la confirmation, qui nomme les deux VM ; rien ne
+        # part avant son oui.
+        import contextlib
+        import io
+
+        for answers in (
+            [""],
+            ["0"],
+            ["x", "0"],
+            ["tout", "0"],
+            ["tout", "4", "0"],
+            ["tout", "1", "n"],
+        ):
+            todo = self._todo()
+            with (
+                self.subTest(answers=answers),
+                mock.patch("builtins.input", side_effect=answers),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+            ):
+                todo._pve_change_state()
+            self.assertEqual(self.sent, [])
+            if answers[-1] == "n":
+                self.assertIn(
+                    "start : forged-a (100), forged-b (101)", out.getvalue()
+                )
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=["1", "2", "o"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._pve_change_state()
+        self.assertEqual(self.sent, ["qm shutdown 100", "qm list"])
+
+    def test_nothing_selected_answers_only_an_empty_answer(self):
+        # Une réponse vide ne choisit aucune VM, et le dit ; [0] et Ctrl+D
+        # reviennent sans un mot, et un hôte sans VM le dit une fois.
+        import contextlib
+        import io
+
+        for vms, answers, said in (
+            (self.VMS, [""], True),
+            (self.VMS, ["0"], False),
+            (self.VMS, [EOFError], False),
+            ([], [], False),
+        ):
+            with self.subTest(vms=len(vms), answers=answers):
+                todo = self._todo()
+                todo._pve_vms = lambda vms=vms: [dict(vm) for vm in vms]
+                with (
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    todo._pve_change_state()
+                shown = out.getvalue()
+                self.assertEqual(self.sent, [])
+                self.assertEqual(t("Nothing selected.") in shown, said)
+                self.assertEqual(
+                    shown.count(t("No VM on this Proxmox host.")), int(not vms)
+                )
+
+    def test_only_one_in_the_list_opens_change_the_state(self):
+        # La suite de List VMs : une réponse vide, [0], Ctrl+D ou une faute
+        # suivie de « 0 » n'ouvrent pas Changer l'état, « 1 » l'ouvre sur
+        # les VM que la liste vient d'afficher.
+        import contextlib
+        import io
+
+        listed = [dict(vm, mem="2048", disk="16.00") for vm in self.VMS]
+        for answers, opened in (
+            ([""], []),
+            (["0"], []),
+            ([EOFError], []),
+            (["x", "0"], []),
+            (["1"], [listed]),
+        ):
+            with self.subTest(answers=answers):
+                todo = self._todo()
+                todo._pve_vms = lambda: [dict(vm) for vm in listed]
+                asked = []
+                todo._pve_change_state = asked.append
+                with (
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    todo._pve_list()
+                self.assertEqual((asked, self.sent), (opened, []))
+                if "x" in answers:
+                    self.assertIn(f"{t('Invalid choice: ')}x", out.getvalue())
+
+
+class TestLesReparationsProposees(unittest.TestCase):
+    """Réparer pmxcfs et poser un pont interne agissent en root sur l'hôte :
+    geler cloud-init, réécrire /etc/hosts, relancer les unités, écrire un
+    pont avec NAT. Une réponse vide, une faute suivie de « 0 » ou Ctrl+D
+    n'en lancent rien ; seul un choix explicite y mène."""
+
+    REFUSALS = ([""], ["0"], ["x", "0"], [EOFError])
+
+    def _todo(self):
+        """Un TODO dont chaque geste sur l'hôte se note dans `self.sent`,
+        sans rien lancer ; les lectures de l'hôte rendent des valeurs
+        inventées."""
+        self.sent = []
+        todo = TODO.__new__(TODO)
+        todo._pve_show = lambda cmd, **opts: self.sent.append(cmd) or (0, "")
+        todo._pve_ssh_ip = lambda host: self.sent.append("ssh_ip") or ""
+        todo._pve_restart_units = lambda remonte: (
+            self.sent.append("restart") or (False, [])
+        )
+        todo._pve_uplink = lambda: self.sent.append("uplink") or ""
+        todo._pve_host = lambda ask=True: {"target": "forged-host"}
+        todo._pve_internal_cidr = lambda host: pve.INTERNAL_CIDR
+        todo._pve_nat_ready = lambda host: (True, [])
+        return todo
+
+    def play(self, method, answers, *args):
+        """(ce que rend `method`, ce qu'elle imprime) quand `input` reçoit
+        `answers`."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=answers),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            got = getattr(todo, method)(*args)
+        return got, out.getvalue()
+
+    def test_the_pmxcfs_repair_runs_only_on_its_number(self):
+        # Les deux causes : l'adresse de /etc/hosts, ou les unités seules.
+        etat = {"monte": False}
+        for quoi, first in (("hosts", "ssh_ip"), ("unites", "restart")):
+            for answers in self.REFUSALS:
+                with self.subTest(quoi=quoi, answers=answers):
+                    got, out = self.play(
+                        "_pve_offer_cluster_fix", answers, {}, etat, quoi
+                    )
+                    self.assertEqual((got, self.sent), (False, []))
+                    if "x" in answers:
+                        self.assertIn(f"{t('Invalid choice: ')}x", out)
+            with self.subTest(quoi=quoi, answers=["1"]):
+                self.play("_pve_offer_cluster_fix", ["1"], {}, etat, quoi)
+                self.assertEqual(self.sent[:1], [first])
+
+    def test_the_internal_bridge_is_written_only_on_its_number(self):
+        # [2] montre les étapes à faire soi-même, sans rien envoyer.
+        for answers in (*self.REFUSALS, ["2"]):
+            with self.subTest(answers=answers):
+                got, out = self.play("_pve_offer_bridge", answers)
+                self.assertEqual((got, self.sent), ("", []))
+                if "x" in answers:
+                    self.assertIn(f"{t('Invalid choice: ')}x", out)
+                if answers == ["2"]:
+                    self.assertIn("bridge-ports <interface>", out)
+        self.play("_pve_offer_bridge", ["1"])
+        self.assertEqual(self.sent[0], "uplink")
+        self.assertEqual(
+            self.sent[1:-1], pve.bridge_setup_cmds(cidr=pve.INTERNAL_CIDR)
+        )
+
+
+def entrees_de_deploy():
+    """Les entrées de Deploy, déclaré au registre, par leur numéro : leur
+    place parmi les entrées, les sections n'en prenant pas."""
+    from script.todo.menus import deploy
+    from script.todo.ui.registry import Entry
+
+    entrees = [e for e in deploy.DEPLOY.entries if isinstance(e, Entry)]
+    return dict(enumerate(entrees, 1))
+
+
 class TestLeMenu(unittest.TestCase):
     def test_proxmox_sits_right_under_qemu_in_the_deploy_menu(self):
-        src = open("script/todo/todo.py", encoding="utf-8").read()
-        i_qemu = src.index('"QEMU/KVM - Deploy an Ubuntu VM (libvirt)"')
-        i_pve = src.index('"Proxmox VE - Deploy a VM on a remote host"')
-        i_ntfy = src.index('"Deploy - Install NTFY notification server"')
+        cles = [e.key for e in entrees_de_deploy().values()]
+        i_qemu = cles.index("QEMU/KVM - Deploy an Ubuntu VM (libvirt)")
+        i_pve = cles.index("Proxmox VE - Deploy a VM on a remote host")
+        i_ntfy = cles.index("Deploy - Install NTFY notification server")
         self.assertLess(i_qemu, i_pve)
         self.assertLess(i_pve, i_ntfy)
 
     def test_the_dispatch_follows_the_list(self):
-        src = open("script/todo/todo.py", encoding="utf-8").read()
-        self.assertIn(
-            'elif status == "7":\n                self.prompt_execute_proxmox()',
-            src,
-        )
-        self.assertIn(
-            'elif status == "8":\n                self._deploy_ntfy_server()',
-            src,
-        )
+        entrees = entrees_de_deploy()
+        self.assertEqual(entrees[7].action, "prompt_execute_proxmox")
+        self.assertEqual(entrees[8].action, "_deploy_ntfy_server")
 
     def test_every_qemu_entry_has_its_proxmox_counterpart(self):
         """L'équivalent des dix-sept commandes, plus le choix de l'hôte.
 
-        Le menu vit dans son propre fichier depuis le refactor : la cohérence
-        numéro/dispatch, elle, est vérifiée par le socle commun de
-        test_todo_menu.py, qui sert les deux menus.
+        Le menu est déclaré au registre (PROXMOX, `menus/proxmox.py`) : ses
+        dix-huit entrées fixes, avant celles de `proxmox_from_makefile` ; où
+        mène chacune, test_todo_menu.py le vérifie.
         """
-        src = open("script/todo/proxmox_menu.py", encoding="utf-8").read()
-        debut = src.index("    def prompt_execute_proxmox(self):")
-        bloc = src[debut : src.index("    def _pve_fetch_image(self):")]
-        for n in range(1, 19):
-            self.assertIn(f'elif status == "{n}":', bloc, f"entrée {n}")
+        from script.todo.menus import proxmox
+        from script.todo.ui.registry import Entry
+
+        entrees = [e for e in proxmox.PROXMOX.entries if isinstance(e, Entry)]
+        self.assertEqual(len(entrees), 18)
 
     def test_the_script_is_valid_python(self):
         res = subprocess.run(
@@ -809,7 +1152,7 @@ class TestLeReseauDuPontInterne(unittest.TestCase):
 
 
 class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
-    """« ifreload -a » en repli rechargeait TOUTES les interfaces.
+    """« ifreload -a » en repli rechargerait TOUTES les interfaces.
 
     Y compris celle qui porte la session ssh — et sur une image cloud
     l'interface principale est décrite ailleurs (interfaces.d, netplan), donc
@@ -966,7 +1309,7 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
 
     def test_cloud_init_stops_rewriting_etc_hosts(self):
         # Sans ce gel, tout ce que fait fix_hosts est ANNULÉ au prochain
-        # démarrage — celui que nous déclenchons nous-mêmes désormais.
+        # démarrage — celui que l'installation déclenche elle-même.
         self.assertIn("manage_etc_hosts: false", self.src)
         self.assertIn("/etc/cloud/cloud.cfg.d", self.src)
         self.assertIn("freeze_cloud_hosts", self.src)
@@ -1025,7 +1368,7 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
         """Juste après le premier ssh d'une image cloud, apt peut répondre :
 
             E: Could not get lock /var/lib/apt/lists/lock.
-               It is held by process 1026 (apt-get)
+               It is held by process … (apt-get)
 
         Ce n'est pas cloud-init — « status --wait » a déjà rendu la main.
         C'est apt-daily, qui se déclenche au démarrage. Et le verrou des
@@ -1100,16 +1443,15 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
 class TestReparerEtcHosts(unittest.TestCase):
     """La réécriture de /etc/hosts, EXÉCUTÉE sur de faux fichiers.
 
-    Trois hôtes de suite sont tombés sur la même panne, et le conseil
-    « rejouer install_proxmox.sh » ne pouvait pas la corriger : la VM clone le
-    dépôt distant, donc sa copie du script est celle qui ne corrige rien.
+    Rejouer install_proxmox.sh ne corrige pas cette panne : la VM clone le
+    dépôt distant, et sa copie du script peut ne pas porter la correction.
     L'outil répare donc lui-même — et une réécriture de /etc/hosts sur une
     machine qu'on ne joint que par ssh doit être ÉPROUVÉE, pas relue.
 
     Aucun bouchon de vérification ici : la commande relit elle-même ce qu'elle
-    a écrit. La première version s'en remettait à « getent hosts $short », qui
-    réussit via mDNS même quand rien n'a été écrit — et les tests bouchonnaient
-    getent à « return 0 », donc ils mesuraient le bouchon."""
+    a écrit. « getent hosts $short » réussit via mDNS même quand rien n'a été
+    écrit, et un getent bouchonné à « return 0 » ne ferait vérifier que le
+    bouchon."""
 
     def _joue(self, contenu, court="pve", passages=3, ecrivable=True):
         """Rejoue la commande RÉELLE `passages` fois sur un faux /etc/hosts."""
@@ -1183,10 +1525,10 @@ class TestReparerEtcHosts(unittest.TestCase):
         vers l'adresse d'une AUTRE machine. awk émet un saut de ligne par
         enregistrement, donc il normalise."""
         vu = self._joue(
-            "127.0.0.1 localhost\n127.0.1.1 pve\n192.168.1.9 autre-machine"
+            "127.0.0.1 localhost\n127.0.1.1 pve\n198.51.100.29 autre-machine"
         )
         self.assertEqual(vu["verdicts"], ["HOSTS-OK"] * 3)
-        self.assertIn("192.168.1.9 autre-machine", vu["lignes"])
+        self.assertIn("198.51.100.29 autre-machine", vu["lignes"])
         self.assertIn("10.10.10.150\tpve\t# erplibre-hosts", vu["lignes"])
         self.assertTrue(vu["brut"].endswith("\n"))
 
@@ -1225,8 +1567,8 @@ class TestReparerEtcHosts(unittest.TestCase):
     def test_tabs_everywhere_do_not_duplicate_the_short_name(self):
         """L'installeur Debian écrit /etc/hosts avec des TABULATIONS.
 
-        Le test du nom court cherchait des ESPACES : « pve.example.com\tpve »
-        ne contenait pas « pve » entouré d'espaces, et le rejeu écrivait
+        Un test du nom court qui chercherait des ESPACES ne trouverait pas
+        « pve » dans « pve.example.com\tpve », et le rejeu écrirait
         « pve.example.com pve pve »."""
         vu = self._joue(
             "127.0.0.1\tlocalhost\n127.0.1.1\tpve.example.com\tpve\n"
@@ -1423,8 +1765,8 @@ class TestRelancerLesUnites(unittest.TestCase):
         """« start » sur une unité ACTIVE est un no-op qui rend 0.
 
         pmxcfs tué par l'OOM killer laisse /etc/pve monté mais mort, l'unité
-        pouvant rester « active » : la réparation ne convergeait jamais et ne
-        nommait rien."""
+        pouvant rester « active » : un « start » ne convergerait jamais et ne
+        nommerait rien."""
         code, out = self._joue("pve-cluster", "active", False)
         self.assertEqual(code, 0)
         self.assertIn("STARTED restart", out)
@@ -1437,9 +1779,9 @@ class TestRelancerLesUnites(unittest.TestCase):
     def test_the_dependents_are_restarted_when_the_mount_was_absent(self):
         """Leur état actif ne prouve rien sur leur lien à pmxcfs.
 
-        pvestatd, pvedaemon et pveproxy tournaient pendant toute la panne, en
+        pvestatd, pvedaemon et pveproxy tournent pendant toute la panne, en
         échouant sur ipcc_send_rec. Les laisser après avoir remonté /etc/pve
-        donnait une GUI qui répond « communication failure » juste après le ✓
+        donne une GUI qui répond « communication failure » juste après le ✓
         de la réparation."""
         for unite in ("pvestatd", "pvedaemon", "pveproxy"):
             with self.subTest(unite=unite):

@@ -155,8 +155,8 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
     qu'on ne sait pas exécuter s'ouvre le jour où il casse.
 
     Et l'échec est un vrai échec : sans le noyau attendu, l'hyperviseur n'a ni
-    table NAT ni module bridge. Le dire ✅ serait le mensonge qui a coûté deux
-    jours à le comprendre."""
+    table NAT ni module bridge. Le dire ✅ cacherait la cause de chaque panne
+    qui suit."""
     msg_reboot = t("Rebooting to boot the new kernel")
     msg_wait = t("waiting for the machine to come back")
     msg_ok = t("kernel booted:")
@@ -283,9 +283,9 @@ def _launch_one(
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
-    # lancement devient donc morte en cours de route, et l'attente échouait
-    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
-    # pendant que la VM vivait en .248).
+    # lancement devient donc morte en cours de route, et une adresse figée
+    # ferait échouer l'attente 20 minutes durant sur une VM parfaitement saine,
+    # son bail périmé quand la VM vit à une autre adresse.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -293,8 +293,8 @@ def _launch_one(
     # sans que personne ne la voie. Sans réponse, on garde l'adresse courante.
     # L'agent ne suffit PAS comme source unique : son paquet s'installe hors de
     # cloud-init pour ne pas retarder le démarrage, donc il arrive tard — et
-    # pendant tout ce temps la ré-résolution ne renvoyait rien et gardait
-    # l'adresse morte. C'est le défaut qui a fait échouer le premier correctif.
+    # tant qu'il manque, une ré-résolution par l'agent seul ne rend rien et
+    # garde l'adresse morte.
     #
     # Repli sur les baux : dnsmasq les garde tous les deux sans dire lequel est
     # vivant, on tranche donc en TESTANT le port 22 — le seul critère qui compte
@@ -900,13 +900,13 @@ def read_status(log_path: str) -> tuple[str, int | None]:
 
 # Au-delà de ce silence, la colonne d'état le DIT. Ce n'est pas un verdict mais
 # un chiffre : plusieurs étapes sont légitimement muettes, leur sortie partant
-# ailleurs. Mesuré sur une installation réelle : le téléchargement d'Android
-# Studio tient ~5 min sans une ligne, et l'étape « APK debug » davantage — son
-# détail va dans le journal de la VM. Dix minutes passent donc au-dessus du
-# premier sans attendre le second, qui reste bruyant par nature.
+# ailleurs : le téléchargement d'Android Studio tient quelques minutes sans une
+# ligne, et l'étape « APK debug » davantage — son détail va dans le journal de
+# la VM. Dix minutes passent donc au-dessus du premier sans attendre le second,
+# qui reste bruyant par nature.
 #
-# À 48 minutes, le chiffre est accablant : une installation est morte ainsi,
-# session ssh emportée, et le sablier tournait toujours.
+# Passé trois quarts d'heure, le chiffre est accablant : une installation
+# morte, sa session ssh emportée, laisse le sablier tourner.
 IDLE_HINT_SECS = 600
 
 
@@ -1001,12 +1001,11 @@ _LST_IGNORE_ERROR = (
 
 
 # Signaux d'échec qui ne contiennent NI « error » NI « warning ». Sans eux, le
-# scan par sous-chaîne rate des installations franchement ratées : le journal de
-# la VM erplibre-ubuntu-2604-gnome, dont la compilation de l'APK a été tuée par
-# le noyau, ne portait AUCUNE ligne « error » — mesuré, 0 sur 8765 lignes —
-# pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build failed » et
-# « daemon disappeared unexpectedly » y étaient. Le détail des erreurs annonçait
-# donc « aucune erreur détectée » sur une installation en échec.
+# scan par sous-chaîne rate des installations franchement ratées : le journal
+# d'une VM dont le noyau tue la compilation de l'APK ne porte AUCUNE ligne
+# « error », pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build
+# failed » et « daemon disappeared unexpectedly » y sont. Le détail des erreurs
+# annoncerait donc « aucune erreur détectée » sur une installation en échec.
 #
 # Chaque motif est là parce qu'il est apparu dans un vrai journal, pas par
 # précaution : Gradle dit « FAILURE », Python « Traceback », git « fatal: », apt
@@ -1174,9 +1173,8 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         if EXIT_MARKER in line:
             continue
         # Un échec d'étape EST une erreur, même sans le mot « error » : sinon le
-        # tableau de bord affiche « 0 erreur » sur une installation ratée —
-        # mesuré sur erplibre-ubuntu-2604-gnome, 0 ligne « error » pour un APK
-        # tué par le noyau.
+        # tableau de bord affiche « 0 erreur » sur une installation ratée, un
+        # APK tué par le noyau n'écrivant aucune ligne « error ».
         if _is_hard_signal(line):
             nerr += 1
             continue
@@ -1522,10 +1520,10 @@ def cli_browser() -> str | None:
 # Navigateurs CLI installables via apt/dnf/pacman (nom de paquet = binaire).
 # browsh/carbonyl ne sont pas dans les dépôts standard -> non proposés ici.
 INSTALLABLE_BROWSERS = (
-    ("w3m", "w3m — léger, rend un peu de HTML"),
-    ("lynx", "lynx — navigateur texte"),
-    ("links", "links — texte / graphique"),
-    ("elinks", "elinks — texte, onglets"),
+    ("w3m", "w3m — light, renders some HTML"),
+    ("lynx", "lynx — text browser"),
+    ("links", "links — text / graphical"),
+    ("elinks", "elinks — text, tabs"),
 )
 
 
@@ -1541,6 +1539,89 @@ def browser_install_command(browser="w3m") -> list:
     from script.todo import todo_install
 
     return todo_install.install_steps([browser])
+
+
+def choose_cli_browser(install):
+    """Le navigateur CLI choisi parmi ceux du PATH (`ui.choose`), par son
+    numéro ou son nom, le premier, marqué, sur une réponse vide ; None pour
+    [0]. [i], ou aucun navigateur installé, rend ce que rend `install()`.
+    Le choix du menu QEMU et celui du dashboard, la TUI suspendue."""
+    from script.todo import ui
+
+    available = [b for b in CLI_BROWSERS if shutil.which(b)]
+    if not available:
+        return install()
+    sel = ui.choose(
+        t("Which browser to view the page?"),
+        available,
+        default=available[0],
+        letters={"i": t("Install another browser")},
+    )
+    return install() if sel == "i" else sel
+
+
+def pick_installable_browser():
+    """Le navigateur CLI à installer (`ui.choose`), par son numéro ou son
+    nom, w3m, marqué, sur une réponse vide ; None pour [0]."""
+    from script.todo import ui
+
+    names = [name for name, _desc in INSTALLABLE_BROWSERS]
+    return ui.choose(
+        t("Which browser to install?"),
+        names,
+        default=names[0],
+        labels=[t(desc) for _name, desc in INSTALLABLE_BROWSERS],
+        names={name: name for name in names},
+    )
+
+
+def install_cli_browser(pause=False, execute=None, is_yes=None):
+    """Le navigateur CLI à installer (`pick_installable_browser`), ses
+    étapes (`browser_install_command` : rafraîchissement des index d'abord)
+    montrées puis lancées après un oui (`todo_install.ask_and_install`) :
+    le binaire désormais dans le PATH, ou None.
+
+    `execute` lance chaque étape : celui du menu QEMU, dont
+    exec_command_live recopie la commande et sa sortie au journal de
+    session ; sans lui, os.system (le dashboard, la TUI suspendue).
+    `is_yes` lit la réponse, un oui tapé par défaut. Avec `pause`, le
+    dashboard attend Entrée avant de reprendre l'écran."""
+    from script.todo import todo_install
+
+    browser = pick_installable_browser()
+    if browser is None:
+        return None
+    etapes = browser_install_command(browser)
+    if not etapes:
+        print(t("Unknown package manager; install it manually."))
+        if pause:
+            input("Entrée… ")
+        return None
+    rc = todo_install.ask_and_install(
+        execute or _OsSystem(),
+        etapes,
+        t("Install now? (y/N): "),
+        is_yes or _oui_tape,
+        prefix="",
+    )
+    if pause and rc is not None:
+        print(f"\nInstallation terminée (code {rc}).")
+        input("Entrée pour continuer… ")
+    return browser if shutil.which(browser) else None
+
+
+def _oui_tape(reponse) -> bool:
+    """Un oui tapé, dans l'une ou l'autre langue."""
+    return reponse.strip().lower() in ("o", "oui", "y", "yes")
+
+
+class _OsSystem:
+    """Le lanceur de `todo_install.ask_and_install` hors du CLI : chaque
+    étape par os.system, dont le code revient tel quel."""
+
+    @staticmethod
+    def exec_command_live(cmd, **_options):
+        return os.system(cmd)
 
 
 def virsh_ip(name: str) -> str:
@@ -1814,8 +1895,8 @@ def vm_stats_line(name, rec, bps, now, ecrit=None) -> str:
 def read_domstats() -> str:
     """Sortie brute de « virsh domstats --balloon --block » (tout le parc).
 
-    UN appel pour toutes les VM — 0,03 s mesuré sur deux domaines. Le suivi
-    relève toutes les deux secondes : une commande par VM y coûterait N
+    UN appel pour toutes les VM, en quelques centièmes de seconde. Le suivi
+    lit l'état toutes les deux secondes : une commande par VM y coûterait N
     processus à chaque tour."""
     try:
         res = subprocess.run(
@@ -1836,16 +1917,17 @@ def read_domstats() -> str:
 # rapporte « disk: 0 » — il ne la calcule pas.
 #
 # « -sB1 » et NON « -sb » : le second rend la taille APPARENTE, et un disque
-# raw creux de 6 Go la donne entière. La colonne affichait donc « 6.0G/6.0G »,
-# un disque plein, quand l'invité n'avait écrit que 1,2 Go — rapporté.
+# raw creux de 6 Go la donne entière. La colonne afficherait donc un disque
+# plein quand l'invité n'en a écrit qu'une fraction.
 PVE_STATS_CMD = (
     "pvesh get /cluster/resources --type vm --output-format json;"
     " echo '---ERPLIBRE-DU---';"
     " du -sB1 /var/lib/vz/images/*/ 2>/dev/null || true"
 )
 # Une VM distante se relève moins souvent qu'une locale : chaque tour coûte
-# une poignée de main ssh (mesuré 1 s), quand « virsh domstats » coûte 0,03 s
-# pour tout le parc. Cinq secondes suffisent à voir une installation avancer.
+# une poignée de main ssh, de l'ordre de la seconde, quand « virsh domstats »
+# coûte quelques centièmes de seconde pour tout le parc. Cinq secondes
+# suffisent à voir une installation avancer.
 PVE_STATS_INTERVAL = 5.0
 
 # Une VM locale DÉJÀ verte est resondée à cette cadence, pas à chaque tour.
@@ -1992,8 +2074,8 @@ def parse_pvestats(text: str) -> dict:
 # Combien de relevés SUCCESSIFS sans la VM avant de la déclarer effacée. Un
 # seul silence ne prouve rien : l'hôte peut être occupé, la VM en train de
 # démarrer, le relevé en cache d'avant sa création. Or « effacée » est un état
-# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Vécu sur une VM Arch
-# déployée sur Proxmox : poubelle dès le premier tour.
+# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais : sur un seul silence,
+# une VM à peine déployée sur Proxmox irait à la poubelle dès le premier tour.
 PVE_ABSENCES_AVANT_EFFACEE = 3
 
 
@@ -2016,10 +2098,9 @@ def drop_local_twins(stats, vms) -> dict:
     """Retire des relevés LOCAUX ceux d'une VM qui vit ailleurs.
 
     « virsh domstats » indexe par NOM, et un nom se partage : une VM posée
-    sur un Proxmox distant héritait des chiffres du domaine local homonyme.
-    Vécu sur trois VM — « erplibre-ubuntu-2604 » affichait 1,5 Gio de RAM sur
-    12 et 58 Gio de disque sur 65, tout cela appartenant à la machine locale
-    du même nom, pendant que la vraie tournait avec 3 Gio et 25.
+    sur un Proxmox distant hériterait des chiffres du domaine local homonyme :
+    sa RAM et son disque seraient ceux de la machine locale du même nom,
+    pendant que la vraie tourne avec les siens.
 
     Retirés AVANT d'ajouter ceux de l'hôte : ainsi un hôte muet laisse la
     colonne VIDE — ce qui est vrai — au lieu de la remplir avec la mauvaise
@@ -2085,14 +2166,14 @@ def _read_pvestats(vms, now=None):
         )
         # Le code de sortie ne prouve RIEN, dans AUCUN sens. La commande
         # est une SUITE (pvesh ; echo ; du ; echo ; boucle) et son code est
-        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rendait
+        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rend
         # donc 0, « l'hôte a répondu, la VM n'y est plus », et trois tours
-        # plus tard la poubelle ; c'est ce qu'on avait corrigé. Mais
-        # l'exiger à 0 était l'erreur SYMÉTRIQUE : tant qu'Odoo n'écoute pas
-        # — c'est-à-dire pendant TOUTE l'installation, précisément quand on
-        # regarde — la boucle finit en échec et le relevé, parfait, était
-        # jeté. Mesuré sur trois VM : colonnes vides côté Proxmox, et les
-        # lignes qui avaient un homonyme LOCAL affichaient ses chiffres.
+        # plus tard la poubelle. L'exiger à 0 serait l'erreur SYMÉTRIQUE :
+        # tant qu'Odoo n'écoute pas — c'est-à-dire pendant TOUTE
+        # l'installation, précisément quand on regarde — la boucle finit en
+        # échec et le relevé, parfait, serait jeté : colonnes vides côté
+        # Proxmox, et les lignes qui ont un homonyme LOCAL afficheraient ses
+        # chiffres.
         #
         # Ce qui prouve une réponse, c'est une LISTE de ressources
         # analysable. Rien d'autre, et surtout pas le code.
@@ -2180,9 +2261,9 @@ def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
     Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
-    dernier rapport du pilote : mesuré sur une VM fraîche, 388 Mo annoncés
-    contre 1,1 Go réellement occupés, avec un horodatage vieux d'une
-    demi-heure. La période se perd quand le domaine redémarre — ce qu'une
+    dernier rapport du pilote : une VM fraîche en annonce bien moins que ce
+    qu'elle occupe réellement, avec l'horodatage de ce dernier rapport.
+    La période se perd quand le domaine redémarre — ce qu'une
     installation fait — donc on la réarme à intervalle lent.
     """
     for name in names or ():
@@ -2411,7 +2492,7 @@ def pve_identity_guard(vmid: int, name: str) -> str:
     """Shell qui S'ARRÊTE si le VMID ne porte plus ce nom.
 
     Un VMID libéré est RÉATTRIBUÉ, et le suivi se rouvre sur un manifeste qui
-    peut avoir des semaines : effacer « le 101 » d'un run de mars, c'est
+    peut avoir des semaines : effacer « le 101 » d'un run passé, c'est
     effacer ce qui porte le 101 aujourd'hui.
 
     Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
@@ -2485,7 +2566,7 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     disques à la demande.
 
     `uuid` arme un GARDE. Le suivi se rouvre sur un manifeste passé, et un nom
-    de domaine se réemploie : « erplibre-ubuntu-2604 » d'un run de mars n'est
+    de domaine se réemploie : « forged-vm-reused » d'un suivi passé n'est
     pas forcément celui d'aujourd'hui. L'UUID, lui, naît avec le domaine et
     meurt avec lui — c'est la seule chose qui distingue deux machines du même
     nom."""
@@ -3473,7 +3554,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
                 self._update_stats()
-                # Les chiffres de la VM sélectionnée viennent d'être relevés :
+                # Les chiffres de la VM sélectionnée viennent d'être lus :
                 # sa section les redit ici, détaillés.
                 self._refresh_vmstats()
             except Exception:
@@ -3589,8 +3670,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             except Exception:
                 return
             # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
-            # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
-            # ses colonnes vivantes. Son état vient de l'hôte.
+            # lue là, elle passerait pour EFFACÉE, ce qui éteindrait du même
+            # coup ses colonnes vivantes. Son état vient donc de l'hôte.
             distants, hote_ok = await asyncio.to_thread(
                 read_pvestats_detail, vms
             )
@@ -3599,9 +3680,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if vm.get("pve"):
                     if not hote_ok:
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
-                        # « effacée » ici gelait la ligne sur 🗑 dès le premier
-                        # tour, pour toujours — vécu sur une VM Arch à peine
-                        # déployée. Et on OUBLIE les absences déjà comptées :
+                        # « effacée » ici gèlerait la ligne sur 🗑 dès le
+                        # premier tour, pour toujours, une VM à peine déployée
+                        # comprise. Et on OUBLIE les absences déjà comptées :
                         # elles ne prouvent une disparition que si elles se
                         # SUIVENT, l'hôte répondant à chaque fois.
                         self._pve_absences[nom] = 0
@@ -3807,77 +3888,22 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     pass
 
         def _choose_browser(self):
-            """Offre la LISTE des navigateurs CLI installés et laisse choisir
-            lequel utiliser pour voir la page. Si aucun n'est installé, propose
-            d'en installer un. Renvoie le binaire choisi, ou None."""
-            available = [b for b in CLI_BROWSERS if shutil.which(b)]
-            if not available:
-                browser = self._install_cli_browser()
-                if not browser:
-                    self.notify(
-                        "Aucun navigateur CLI disponible.",
-                        title="Web",
-                        severity="warning",
-                    )
-                return browser
+            """Le navigateur CLI choisi pour voir la page, la TUI suspendue
+            (`choose_cli_browser`) : [i], ou aucun navigateur installé, en
+            installe un (`install_cli_browser`). None pour [0], ou sans
+            navigateur, ce qu'une notification dit quand il n'y en a
+            aucun."""
             with self.suspend():
-                print("Quel navigateur utiliser pour voir la page ?")
-                for i, b in enumerate(available, 1):
-                    print(f"  [{i}] {b}{' *' if i == 1 else ''}")
-                print("  [i] Installer un autre navigateur")
-                sel = (
-                    input(f"Choix (numéro, vide = {available[0]}) : ")
-                    .strip()
-                    .lower()
+                browser = choose_cli_browser(
+                    lambda: install_cli_browser(pause=True)
                 )
-                if sel == "i":
-                    return self._install_cli_browser()
-                if not sel:
-                    return available[0]
-                try:
-                    idx = int(sel) - 1
-                    if 0 <= idx < len(available):
-                        return available[idx]
-                except ValueError:
-                    pass
-                return available[0]
-
-        def _install_cli_browser(self):
-            """Demande QUEL navigateur CLI installer (w3m/lynx/links/elinks),
-            affiche la commande, l'exécute après validation. Renvoie le binaire
-            désormais disponible, ou None."""
-            with self.suspend():
-                print("Aucun navigateur CLI installé. Lequel installer ?")
-                for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
-                    print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
-                sel = input("Choix (numéro, vide = w3m) : ").strip()
-                browser = INSTALLABLE_BROWSERS[0][0]
-                try:
-                    idx = int(sel) - 1
-                    if 0 <= idx < len(INSTALLABLE_BROWSERS):
-                        browser = INSTALLABLE_BROWSERS[idx][0]
-                except ValueError:
-                    pass
-                etapes = browser_install_command(browser)
-                if not etapes:
-                    print(
-                        "Gestionnaire de paquets inconnu : installez "
-                        f"« {browser} » manuellement."
-                    )
-                    input("Entrée… ")
-                    return None
-                from script.todo import todo_install
-
-                def oui(reponse):
-                    return reponse.strip().lower() in ("o", "oui", "y", "yes")
-
-                todo_install.show_steps(etapes, prefix="")
-                if not oui(input("Installer maintenant ? (o/N) : ")):
-                    return None
-                rc = todo_install.run_steps(os.system, etapes, oui, prefix="")
-                print(f"\nInstallation terminée (code {rc}).")
-                input("Entrée pour continuer… ")
-            return cli_browser()
+            if browser is None and cli_browser() is None:
+                self.notify(
+                    t("No CLI browser available."),
+                    title="Web",
+                    severity="warning",
+                )
+            return browser
 
         def action_copy_log(self) -> None:
             """Copie le log complet de la VM sélectionnée dans le
@@ -3969,12 +3995,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def _apply_column_widths(self, table) -> None:
             """Fait PRENDRE les largeurs à l'écran.
 
-            « refresh(layout=True) » ne suffit pas, et c'est le piège :
-            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
-            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
-            rien ne bouge. « clear_cached_dimensions » et « refresh_column »
-            n'y changent rien non plus ; seul le recalcul des dimensions la
-            porte à 93.
+            « refresh(layout=True) » ne suffit pas, et c'est le piège : sous
+            Textual 8.2.8, la largeur de la colonne change bien, mais la
+            taille virtuelle du tableau garde l'ancienne — donc rien ne bouge.
+            « clear_cached_dimensions » et « refresh_column » n'y changent rien
+            non plus ; seul le recalcul des dimensions la met à jour.
 
             C'est une API privée, d'où le repli : une version future de
             Textual dégradera l'ajustement au lieu de casser le suivi."""

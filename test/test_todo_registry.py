@@ -1,0 +1,1440 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le registre des menus, son navigateur, l'arbre de télémétrie qui lit
+les menus déclarés, la TUI de télémétrie qui en lance les feuilles, et
+les fichiers de menus de TODO.
+
+Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
+action, état, suffixe ou garde note son appel ; les réponses viennent de
+`click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
+web. L'arbre se lit dans un répertoire temporaire, sans todo.py : une
+copie du module du registre et un fichier de menus écrit par le test ;
+rien n'y est importé. La TUI tourne sous `run_test`, sur l'arbre
+de TODO et un HOME temporaire : elle rend l'action choisie sans jamais
+l'appeler. Les fichiers de menus de TODO sont lus par AST, puis
+importés, et les méthodes qu'ils nomment ne sont jamais appelées : seule
+leur signature est liée.
+"""
+
+import ast
+import asyncio
+import importlib
+import inspect
+import io
+import os
+import shutil
+import sys
+import tempfile
+import threading
+import types
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest.mock import Mock, call, patch
+
+import click
+
+from script.todo import todo_i18n, todo_telemetry
+from script.todo.todo_i18n import t
+from script.todo.ui import legacy, navigator, port, registry
+from script.todo.ui.navigator import navigate
+from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+
+REPO = Path(__file__).resolve().parent.parent
+REGISTRY_PY = REPO / "script" / "todo" / "ui" / "registry.py"
+MENUS_DIR = REPO / "script" / "todo" / "menus"
+
+
+class FakeTodo:
+    """Double de TODO : toute méthode qu'un menu nomme note son appel dans
+    `calls` et rend « <nom> » ; `fill_help_info` numérote les entrées comme
+    celui de TODO et note ce qu'il reçoit dans `drawn` ;
+    `config_file.get_config` rend une copie de `config[clé]`, None pour
+    une clé absente, et compte ses lectures dans `reads`."""
+
+    def __init__(self, config=None):
+        self.calls, self.drawn, self.reads = [], [], 0
+        self.config = config or {}
+        self.config_file = types.SimpleNamespace(get_config=self.get_config)
+
+    def get_config(self, key):
+        self.reads += 1
+        if key not in self.config:
+            return None
+        return [dict(element) for element in self.config[key]]
+
+    def fill_help_info(self, choices, state=None, quits=False):
+        self.drawn.append((choices, state))
+        lines, number = [state] if state else [], 0
+        for choice in choices:
+            if choice.get("section"):
+                lines.append(f"── {choice['section']} ──")
+                continue
+            number += 1
+            key = choice.get("prompt_description_key")
+            label = t(key) if key else choice["prompt_description"]
+            lines.append(f"[{number}] {label}")
+        zero = "[0] 🚪 Quit" if quits else "[0] Back"
+        return "\n".join([*lines, zero, ""])
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+
+        def method(**kwargs):
+            self.calls.append((name, kwargs))
+            return f"<{name}>"
+
+        return method
+
+
+def _english(test):
+    saved = todo_i18n._current_lang
+    test.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+    todo_i18n.use_lang("en")
+
+
+class TestRegistry(unittest.TestCase):
+    def test_a_menu_is_drawn_each_turn_or_once(self):
+        self.assertEqual(Menu("forged_menu", "Forged", []).render, "each")
+        Menu("forged_menu", "Forged", [], render="once")
+        with self.assertRaises(ValueError):
+            Menu("forged_menu", "Forged", [], render="twice")
+
+    def test_a_hotkey_is_a_letter_of_a_menu_that_asks(self):
+        # Une touche répond à la place d'un numéro : seul un menu `asks`,
+        # qui pose sa propre question, en montre ; un chiffre y serait pris
+        # pour le numéro d'une autre entrée, une majuscule ou une lettre
+        # d'une autre écriture ne se répondrait pas, et deux entrées d'une
+        # même touche se confondraient.
+        entries = [Entry("First", "first", hotkey="q")]
+        Menu("forged_menu", "Forged", entries, asks="forged_ask")
+        for asks, hotkeys in (
+            (None, ["q"]),
+            ("forged_ask", ["1"]),
+            ("forged_ask", ["Q"]),
+            ("forged_ask", ["qq"]),
+            ("forged_ask", ["é"]),
+            ("forged_ask", ["ق"]),
+            ("forged_ask", ["q", "q"]),
+        ):
+            with self.subTest(asks=asks, hotkeys=hotkeys):
+                with self.assertRaises(ValueError):
+                    Menu(
+                        "forged_menu",
+                        "Forged",
+                        [Entry(key, "first", hotkey=key) for key in hotkeys],
+                        asks=asks,
+                    )
+
+    def test_a_menu_that_asks_takes_no_state_nor_abort(self):
+        # `asks` pose la question à la place du navigateur : la ligne
+        # d'état et l'abandon au clavier, que lit la question du
+        # navigateur, n'y serviraient pas.
+        for extra in ({"state": "forged_state"}, {"abort_closes": True}):
+            with self.subTest(extra=extra):
+                with self.assertRaises(ValueError):
+                    Menu(
+                        "forged_menu",
+                        "Forged",
+                        [],
+                        asks="forged_ask",
+                        **extra,
+                    )
+
+    def test_a_menu_that_quits_takes_no_abort_nor_asks(self):
+        # Un menu qui quitte TODO termine TODO sur Ctrl+C ou Ctrl+D à sa
+        # question : `abort_closes` le refermerait à la place, et un menu
+        # `asks` pose une question que le navigateur ne lit pas.
+        Menu("forged_menu", "Forged", [], quits=True)
+        for extra in ({"abort_closes": True}, {"asks": "forged_ask"}):
+            with self.subTest(extra=extra):
+                with self.assertRaises(ValueError):
+                    Menu("forged_menu", "Forged", [], quits=True, **extra)
+
+    def test_a_declaration_is_frozen(self):
+        entry = Entry("Forged", "forged_action")
+        with self.assertRaises(AttributeError):
+            entry.action = "other_action"
+
+
+class TestNavigator(unittest.TestCase):
+    def setUp(self):
+        _english(self)
+        self.out = self.enterContext(redirect_stdout(io.StringIO()))
+
+    def navigate(self, menu, answers, todo=None):
+        """Rend (ce que rend `navigate`, le double, les textes posés)."""
+        todo = todo or FakeTodo()
+        with patch("click.prompt", side_effect=answers) as prompt:
+            back = navigate(todo, menu)
+        return back, todo, [call.args[0] for call in prompt.call_args_list]
+
+    def test_a_number_runs_the_entry_at_its_place(self):
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                Section("Forged section"),
+                Entry("First", "first_action"),
+                Section("Other section"),
+                Entry("Second", "second_action", kwargs={"key": "b"}),
+            ],
+        )
+        back, todo, texts = self.navigate(menu, ["2", "1", "0"])
+        self.assertIs(back, False)
+        self.assertEqual(
+            todo.calls, [("second_action", {"key": "b"}), ("first_action", {})]
+        )
+        self.assertEqual(
+            texts[0],
+            "── Forged section ──\n[1] First\n── Other section ──\n"
+            "[2] Second\n[0] Back\n",
+        )
+
+    def test_zero_gives_back_what_the_menu_declares(self):
+        for back in (None, False):
+            menu = Menu("forged_menu", "Forged", [], back=back)
+            self.assertIs(self.navigate(menu, ["0"])[0], back)
+
+    def test_a_menu_opens_on_what_its_method_gives(self):
+        # Après l'intro, un dict ouvre le menu et s'ajoute aux kwargs de
+        # chaque action ; toute autre valeur, vraie ou fausse, est rendue,
+        # le menu jamais dessiné.
+        cases = (({"forged": 1}, 2), (None, 0), (False, 0), (True, 0))
+        for given, drawn in cases:
+            with self.subTest(given=given):
+                self.out.seek(0)
+                self.out.truncate()
+                todo = FakeTodo()
+                todo.forged_opens = lambda: print("opened") or given
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry("First", "first", kwargs={"key": "a"})],
+                    intro="Back",
+                    opens="forged_opens",
+                )
+                back, _, texts = self.navigate(menu, ["1", "0"][:drawn], todo)
+                self.assertEqual(len(texts), drawn)
+                self.assertEqual(
+                    self.out.getvalue().split("\n")[:2],
+                    ["🤖 🔙 Back", "opened"],
+                )
+                if drawn:
+                    self.assertIs(back, False)
+                    self.assertEqual(
+                        todo.calls, [("first", {"key": "a", "forged": 1})]
+                    )
+                else:
+                    self.assertIs(back, given)
+                    self.assertEqual((todo.calls, todo.drawn), ([], []))
+
+    def test_a_method_is_called_before_each_question(self):
+        # Avant la première question et après chaque réponse, le menu
+        # dessiné une fois.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            before="forged_before",
+            render="once",
+        )
+        _, todo, texts = self.navigate(menu, ["1", "9", "0"])
+        self.assertEqual(
+            [name for name, _ in todo.calls],
+            ["forged_before", "first", "forged_before", "forged_before"],
+        )
+        self.assertEqual((len(texts), len(todo.drawn)), (3, 1))
+
+    def test_a_closing_menu_gives_back_after_one_entry(self):
+        # Une réponse sans entrée ne le referme pas : la question revient.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first"), Entry("Second", "second")],
+            back=None,
+            closes=True,
+        )
+        back, todo, texts = self.navigate(menu, ["3", "2"])
+        self.assertIsNone(back)
+        self.assertEqual(todo.calls, [("second", {})])
+        self.assertEqual(len(texts), 2)
+        self.assertEqual(self.out.getvalue().count("Command not found !"), 1)
+
+    def test_a_menu_closes_on_what_an_entry_gives(self):
+        # Une action qui rend une valeur fausse laisse la question revenir ;
+        # une autre referme le menu, qui rend ce qu'elle a rendu.
+        todo = FakeTodo()
+        todo.nothing = lambda: False
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("Nothing", "nothing"), Entry("Some", "some")],
+            closes_on_result=True,
+        )
+        back, todo, texts = self.navigate(menu, ["1", "2"], todo)
+        self.assertEqual(back, "<some>")
+        self.assertEqual(len(texts), 2)
+
+    def test_closes_wins_over_closes_on_result(self):
+        # Un menu qui déclare les deux se referme après l'action et rend
+        # `back`, et non ce que l'action a rendu, vrai ou faux.
+        todo = FakeTodo()
+        todo.nothing = lambda: False
+        for key, action in (("Some", "some"), ("Nothing", "nothing")):
+            with self.subTest(action=action):
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry(key, action)],
+                    back=None,
+                    closes=True,
+                    closes_on_result=True,
+                )
+                back, _, texts = self.navigate(menu, ["1"], todo)
+                self.assertIsNone(back)
+                self.assertEqual(len(texts), 1)
+
+    def test_any_other_answer_is_not_found_and_asks_again(self):
+        menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
+        answers = ["2", "01", " 1", "-1", "x", "0"]
+        _, todo, texts = self.navigate(menu, answers)
+        self.assertEqual(todo.calls, [])
+        self.assertEqual(len(texts), 6)
+        self.assertEqual(self.out.getvalue().count("Command not found !"), 5)
+
+    def test_each_turn_redraws_and_rereads_the_configuration(self):
+        todo = FakeTodo({"forged_list": [{"prompt_description": "One"}]})
+
+        def grow(**kwargs):
+            todo.calls.append(("grow", kwargs))
+            todo.config["forged_list"].append({"prompt_description": "Two"})
+
+        todo.grow = grow
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                FromConfig("forged_list", "run_element", "element"),
+                Entry("Grow", "grow"),
+            ],
+            state="forged_state",
+        )
+        _, _, texts = self.navigate(menu, ["2", "3", "0"], todo)
+        self.assertEqual(
+            texts,
+            [
+                "<forged_state>\n[1] One\n[2] Grow\n[0] Back\n",
+                "<forged_state>\n[1] One\n[2] Two\n[3] Grow\n[0] Back\n",
+                "<forged_state>\n[1] One\n[2] Two\n[3] Two\n[4] Grow\n"
+                "[0] Back\n",
+            ],
+        )
+        self.assertEqual(todo.reads, 3)
+        self.assertEqual(
+            [name for name, _ in todo.calls].count("forged_state"), 3
+        )
+
+    def test_a_configured_element_is_given_to_its_action(self):
+        element = {"prompt_description_key": "Back", "makefile_cmd": "x"}
+        todo = FakeTodo({"forged_list": [element]})
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [FromConfig("forged_list", "run_element", "instance")],
+        )
+        _, _, texts = self.navigate(menu, ["1", "0"], todo)
+        self.assertEqual(todo.calls, [("run_element", {"instance": element})])
+        self.assertEqual(texts[0], "[1] 🔙 Back\n[0] Back\n")
+
+    def test_a_listed_element_is_given_to_its_action(self):
+        # La méthode d'un FromMethod rend sa liste à chaque dessin ; un
+        # élément prend un numéro, une section non, et y répondre appelle
+        # l'action avec l'élément, comme une liste configurée.
+        todo, lists = FakeTodo(), []
+
+        def forged_list():
+            lists.append(1)
+            return [
+                {"prompt_description": "One"},
+                {"section": "Forged section"},
+                {"prompt_description": "Two"},
+            ]
+
+        todo.forged_list = forged_list
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                registry.FromMethod("forged_list", "run_element", "element"),
+                Entry("Last", "last"),
+            ],
+        )
+        _, _, texts = self.navigate(menu, ["2", "3", "0"], todo)
+        self.assertEqual(
+            texts[0],
+            "[1] One\n── Forged section ──\n[2] Two\n[3] Last\n[0] Back\n",
+        )
+        self.assertEqual(
+            todo.calls,
+            [
+                ("run_element", {"element": {"prompt_description": "Two"}}),
+                ("last", {}),
+            ],
+        )
+        self.assertEqual(len(lists), 3)
+
+    def test_a_menu_asks_its_question_through_its_method(self):
+        # La méthode `asks` reçoit les entrées montrées, par leur touche ou
+        # leur numéro, et rend la réponse : rien n'est dessiné par
+        # `fill_help_info`, rien n'est demandé à `click.prompt`, et aucune
+        # ligne vide ne suit la réponse.
+        todo, asked = FakeTodo(), []
+        answers = iter(["x", "q", "2", "0"])
+        todo.forged_ask = lambda items: asked.append(items) or next(answers)
+        todo.forged_list = lambda: [
+            {"prompt_description": "One"},
+            {"prompt_description": "Two"},
+        ]
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                Entry("Quick", "quick", hotkey="q"),
+                registry.FromMethod("forged_list", "run_element", "element"),
+                Entry("Last", "last"),
+            ],
+            asks="forged_ask",
+        )
+        back, todo, texts = self.navigate(menu, [], todo)
+        self.assertIs(back, False)
+        self.assertEqual((texts, todo.drawn), ([], []))
+        self.assertEqual(
+            asked[0],
+            [
+                {"key": "q", "label": "Quick"},
+                {"key": "1", "label": "One"},
+                {"key": "2", "label": "Two"},
+                {"key": "3", "label": "Last"},
+            ],
+        )
+        self.assertEqual(len(asked), 4)
+        self.assertEqual(
+            todo.calls,
+            [
+                ("quick", {}),
+                ("run_element", {"element": {"prompt_description": "Two"}}),
+            ],
+        )
+        self.assertEqual(self.out.getvalue(), "Command not found !\n")
+
+    def test_once_draws_and_reads_once(self):
+        todo = FakeTodo({"forged_list": [{"prompt_description": "One"}]})
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [FromConfig("forged_list", "run_element", "element")],
+            render="once",
+        )
+        _, _, texts = self.navigate(menu, ["9", "1", "0"], todo)
+        self.assertEqual(len(set(texts)), 1)
+        self.assertEqual((len(texts), len(todo.drawn), todo.reads), (3, 1, 1))
+        self.assertEqual([name for name, _ in todo.calls], ["run_element"])
+
+    def test_the_intro_says_its_key_once_after_its_mark(self):
+        # Une marque qui n'est pas 🤖 se déclare ; « ⚠️ » en garde deux
+        # espaces, comme les lignes écrites à la main.
+        for mark, said in ((None, "🤖 🔙 Back"), ("⚠️ ", "⚠️  🔙 Back")):
+            with self.subTest(mark=mark):
+                self.out.seek(0)
+                self.out.truncate()
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry("First", "first")],
+                    intro="Back",
+                    **({"mark": mark} if mark else {}),
+                )
+                _, todo, _ = self.navigate(menu, ["1", "0"])
+                self.assertEqual(todo.calls, [("first", {})])
+                lines = self.out.getvalue().split("\n")
+                self.assertEqual(lines[0], said)
+                self.assertEqual(self.out.getvalue().count("🔙 Back"), 1)
+
+    def test_a_suffix_is_asked_with_the_entry_kwargs(self):
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("Pick", "pick", kwargs={"key": "k"}, suffix="pick_label")],
+        )
+        _, todo, texts = self.navigate(menu, ["1", "0"])
+        self.assertEqual(texts[0], "[1] Pick  (<pick_label>)\n[0] Back\n")
+        self.assertEqual(
+            todo.calls,
+            [
+                ("pick_label", {"key": "k"}),
+                ("pick", {"key": "k"}),
+                ("pick_label", {"key": "k"}),
+            ],
+        )
+
+    def test_a_guarded_entry_shows_only_while_its_method_says_so(self):
+        # Absente, l'entrée gardée ne prend pas de numéro : Last est [2],
+        # puis [3] une fois que Show a rendu la garde vraie.
+        todo = FakeTodo()
+        shown = []
+        todo.forged_when = lambda: bool(shown)
+        todo.show = lambda: shown.append(True)
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                Entry("Show", "show"),
+                Entry("Guarded", "guarded", when="forged_when"),
+                Entry("Last", "last"),
+            ],
+        )
+        _, _, texts = self.navigate(menu, ["2", "1", "2", "3", "0"], todo)
+        self.assertEqual(texts[:2], ["[1] Show\n[2] Last\n[0] Back\n"] * 2)
+        self.assertEqual(
+            texts[2], "[1] Show\n[2] Guarded\n[3] Last\n[0] Back\n"
+        )
+        self.assertEqual(
+            [name for name, _ in todo.calls], ["last", "guarded", "last"]
+        )
+
+    def test_a_section_of_a_configured_list_takes_no_number(self):
+        # Montrée sans numéro, comme par fill_help_info : « 2 » lance
+        # l'élément qui la suit, et « 3 » n'est pas affiché.
+        after = {"prompt_description": "After"}
+        todo = FakeTodo(
+            {
+                "forged_list": [
+                    {"prompt_description": "Before"},
+                    {"section": "Forged section"},
+                    after,
+                ]
+            }
+        )
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [FromConfig("forged_list", "run_element", "instance")],
+        )
+        _, _, texts = self.navigate(menu, ["2", "3", "0"], todo)
+        self.assertEqual(todo.calls, [("run_element", {"instance": after})])
+        self.assertEqual(
+            texts[0],
+            "[1] Before\n── Forged section ──\n[2] After\n[0] Back\n",
+        )
+        self.assertEqual(self.out.getvalue().count("Command not found !"), 1)
+
+    def test_a_list_absent_from_the_configuration_adds_no_entry(self):
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                FromConfig("absent_list", "run_element", "element"),
+                Entry("Last", "last"),
+            ],
+        )
+        _, todo, texts = self.navigate(menu, ["1", "0"])
+        self.assertEqual(texts[0], "[1] Last\n[0] Back\n")
+        self.assertEqual(todo.calls, [("last", {})])
+
+    def test_a_language_change_shows_at_the_next_turn(self):
+        todo = FakeTodo()
+        todo.speak_french = lambda: todo_i18n.use_lang("fr")
+        menu = Menu("forged_menu", "Forged", [Entry("Back", "speak_french")])
+        _, _, texts = self.navigate(menu, ["1", "0"], todo)
+        self.assertEqual(
+            texts, ["[1] 🔙 Back\n[0] Back\n", "[1] 🔙 Retour\n[0] Back\n"]
+        )
+
+    def test_an_abort_or_an_error_leaves_the_menu_as_before(self):
+        # Ctrl+C ou Ctrl+D à la question (Abort de click), une action qui
+        # lève : un menu sans `abort_closes` ne rattrape rien.
+        menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
+        with self.assertRaises(click.exceptions.Abort):
+            self.navigate(menu, [click.exceptions.Abort()])
+        todo = FakeTodo()
+        todo.first = lambda: 1 / 0
+        with self.assertRaises(ZeroDivisionError):
+            self.navigate(menu, ["1"], todo)
+
+    def test_a_menu_ends_the_breadcrumb_while_it_is_open(self):
+        # Le segment d'un menu termine le fil d'Ariane de son entrée à son
+        # retour ; un menu sans segment n'en ajoute pas, ni un menu du
+        # segment qui termine déjà le fil ; une entrée qui déclare le sien
+        # l'ajoute le temps de son action.
+        todo, seen = FakeTodo(), []
+        todo.look = lambda: seen.append(navigator.crumbs())
+        look = Entry("Look", "look")
+        menus = {
+            "inner": Menu(
+                "forged_inner", "Inner", [look, Entry("Same", "same")]
+            ),
+            "same": Menu("forged_same", "Inner", [look]),
+            "bare": Menu("forged_bare", None, [look]),
+        }
+        for name, menu in menus.items():
+            setattr(todo, name, lambda menu=menu: navigate(todo, menu))
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                look,
+                Entry("Inner", "inner"),
+                Entry("Bare", "bare"),
+                Entry("Screen", "look", crumb="Screen"),
+            ],
+        )
+        answers = ["1", "2", "1", "2", "1", "0", "0", "3", "1", "0", "4", "0"]
+        self.navigate(menu, answers, todo)
+        self.assertEqual(
+            seen,
+            [
+                ("Forged",),
+                ("Forged", "Inner"),
+                ("Forged", "Inner"),
+                ("Forged",),
+                ("Forged", "Screen"),
+            ],
+        )
+        self.assertEqual(navigator.crumbs(), ())
+
+    def test_the_breadcrumb_is_given_back_when_the_menu_is_left(self):
+        # Le fil d'Ariane redevient ce qu'il était quand le menu rend la
+        # main, qu'une action lève ou que Ctrl+C remonte de sa question.
+        todo = FakeTodo()
+
+        def fail():
+            raise ValueError("forged")
+
+        todo.fail = fail
+        menu = Menu(
+            "forged_menu", "Forged", [Entry("Fail", "fail", crumb="Screen")]
+        )
+        with navigator.crumbs_at(["Forged root"]):
+            for answers, error in (
+                (["1"], ValueError),
+                ([click.exceptions.Abort()], click.exceptions.Abort),
+            ):
+                with self.subTest(error=error.__name__):
+                    with self.assertRaises(error):
+                        self.navigate(menu, answers, todo)
+                    self.assertEqual(navigator.crumbs(), ("Forged root",))
+        self.assertEqual(navigator.crumbs(), ())
+
+    @unittest.skipIf(
+        sys.flags.thread_inherit_context, "threads inherit the context"
+    )
+    def test_a_thread_an_action_starts_has_no_breadcrumb(self):
+        # Le fil d'Ariane, une ContextVar, est propre au thread : un thread
+        # qu'une action lance part d'un fil vide.
+        todo, seen = FakeTodo(), []
+
+        def look():
+            thread = threading.Thread(
+                target=lambda: seen.append(navigator.crumbs())
+            )
+            thread.start()
+            thread.join()
+            seen.append(navigator.crumbs())
+
+        todo.look = look
+        menu = Menu("forged_menu", "Forged", [Entry("Look", "look")])
+        self.navigate(menu, ["1", "0"], todo)
+        self.assertEqual(seen, [(), ("Forged",)])
+
+    def test_an_abort_closes_a_menu_that_declares_it(self):
+        # Ctrl+C ou Ctrl+D à sa question : le menu rend `back` après une
+        # ligne vide, et l'entrée lancée avant reste la seule.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            back=None,
+            abort_closes=True,
+        )
+        for abort in (click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(abort=type(abort).__name__):
+                self.out.seek(0)
+                self.out.truncate()
+                back, todo, texts = self.navigate(menu, ["1", abort])
+                self.assertIsNone(back)
+                self.assertEqual(todo.calls, [("first", {})])
+                self.assertEqual(len(texts), 2)
+                self.assertEqual(self.out.getvalue(), "\n\n")
+        # Une action qui lève, elle, remonte : seule la question se
+        # rattrape.
+        todo = FakeTodo()
+
+        def first():
+            raise KeyboardInterrupt
+
+        todo.first = first
+        with self.assertRaises(KeyboardInterrupt):
+            self.navigate(menu, ["1"], todo)
+
+    def test_a_menu_that_quits_says_so_and_ends_todo_on_abort(self):
+        # [0] se lit « 🚪 Quit » et rend `back` ; Ctrl+C ou Ctrl+D à sa
+        # question terminent TODO par SystemExit 0, sans rien écrire. Ce
+        # qu'une action lève remonte, Abort compris.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            back=None,
+            quits=True,
+        )
+        back, _, texts = self.navigate(menu, ["0"])
+        self.assertIsNone(back)
+        self.assertEqual(texts, ["[1] First\n[0] 🚪 Quit\n"])
+        for abort in (click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(abort=type(abort).__name__):
+                self.out.seek(0)
+                self.out.truncate()
+                with self.assertRaises(SystemExit) as ended:
+                    self.navigate(menu, [abort])
+                self.assertEqual(ended.exception.code, 0)
+                self.assertEqual(self.out.getvalue(), "")
+        todo = FakeTodo()
+
+        def first():
+            raise click.exceptions.Abort
+
+        todo.first = first
+        with self.assertRaises(click.exceptions.Abort):
+            self.navigate(menu, ["1"], todo)
+
+    def test_the_menu_goes_through_the_port_of_a_session(self):
+        class Wrapped(FakeTodo):
+            pass
+
+        legacy.wrap_menus(Wrapped)
+        scripted = port.ScriptedPort(["", "1", "0"])
+        self.addCleanup(legacy.install(scripted))
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Section("Forged section"), Entry("First", "first_action")],
+            back=None,
+        )
+        todo = Wrapped()
+        self.assertIsNone(navigate(todo, menu))
+        self.assertEqual(todo.calls, [("first_action", {})])
+        menus = [e for e in scripted.events if e["t"] == "menu"]
+        self.assertEqual(len(menus), 3)
+        self.assertEqual(
+            [(i["key"], i["label"], i["section"]) for i in menus[0]["items"]],
+            [("1", "First", "Forged section"), ("0", "Back", None)],
+        )
+        self.assertEqual({m["source"] for m in menus}, {"fill_help_info"})
+
+
+def _assert_nothing_imported(test, before, todo_dir):
+    """Aucun module importé depuis `before`, un ensemble de noms de
+    sys.modules, ne vient de `todo_dir`, ni n'est todo.py ou un fichier
+    de menus de TODO."""
+    for name in set(sys.modules) - before:
+        path = str(getattr(sys.modules[name], "__file__", None) or "")
+        test.assertFalse(path.startswith(str(todo_dir)), name)
+        test.assertNotEqual(name, "script.todo.todo")
+        test.assertFalse(name.startswith("script.todo.menus"), name)
+
+
+# Les menus d'un TODO minimal : le menu principal ouvre Configuration et
+# Forged, que Configuration ouvre aussi.
+FAKE_MENUS = """\
+from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+
+MAIN = Menu(
+    "run",
+    "TODO",
+    [
+        Entry("Configuration", "prompt_configuration"),
+        Entry("Forged menu", "prompt_forged"),
+    ],
+    back=None,
+)
+
+FORGED = Menu("prompt_forged", "Forged", [Entry("Stay", "stay")])
+
+CONFIGURATION = Menu(
+    "prompt_configuration",
+    "Configuration",
+    [
+        Section("Interface"),
+        Entry("Language", "change_language", suffix="language_label"),
+        Entry("Pick", "pick", kwargs={"key": "forged_key"}),
+        Entry("Forged", "prompt_forged"),
+        Section("Maintenance"),
+        FromConfig("forged_list", "run_element", "instance"),
+    ],
+    back=None,
+)
+"""
+
+
+class TestDeclaredTree(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        (self.dir / "ui").mkdir()
+        shutil.copy(REGISTRY_PY, self.dir / "ui" / "registry.py")
+        (self.dir / "menus").mkdir()
+        self.menus_py = self.dir / "menus" / "forged.py"
+        self.menus_py.write_text(FAKE_MENUS)
+        (self.dir / "todo.json").write_text(
+            '{"forged_list": [{"prompt_description": "Forged element"}]}'
+        )
+
+    def tree(self):
+        """L'arbre de `self.dir`, lu sans rien importer : aucun module neuf
+        ne vient de `self.dir`, et ni todo.py ni les menus de TODO. Le
+        todo.py nommé n'existe pas : seul son répertoire se lit."""
+        before = set(sys.modules)
+        tree = todo_telemetry.build_code_tree(self.dir / "todo.py")
+        _assert_nothing_imported(self, before, self.dir)
+        return tree
+
+    def test_a_declared_menu_is_read_from_its_declaration(self):
+        [configuration, forged] = self.tree()["children"]
+        self.assertEqual(
+            (configuration["label"], configuration["entry"]),
+            ("Configuration", "Configuration"),
+        )
+        [language, pick, submenu, element] = configuration["children"]
+        self.assertEqual(
+            language,
+            {
+                "label": "Language",
+                "is_menu": False,
+                "children": [],
+                "method": "change_language",
+                "kwargs": {},
+                "section": "Interface",
+                "entry": "",
+            },
+        )
+        self.assertEqual(
+            (pick["method"], pick["kwargs"], "entry" in pick),
+            ("pick", {"key": "forged_key"}, False),
+        )
+        # Une entrée qui ouvre un menu : son nœud, et le libellé qui l'ouvre.
+        self.assertEqual(
+            (submenu["label"], submenu["is_menu"], submenu["entry"]),
+            ("Forged", True, "Forged"),
+        )
+        self.assertEqual(submenu["children"], forged["children"])
+        self.assertEqual(
+            element,
+            {
+                "label": "Forged element",
+                "is_menu": False,
+                "children": [],
+                "method": "run_element",
+                "kwargs": {
+                    "instance": {"prompt_description": "Forged element"}
+                },
+                "section": "Maintenance",
+            },
+        )
+
+    def test_a_dangerous_entry_is_marked_in_the_tree(self):
+        # Une feuille ou un sous-menu déclarés `danger=True` portent
+        # "danger" ; une autre entrée, `danger=False` comprise, non.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'kwargs={"key": "forged_key"}',
+                'kwargs={"key": "forged_key"}, danger=True',
+            )
+            .replace(
+                'Entry("Forged", "prompt_forged")',
+                'Entry("Forged", "prompt_forged", danger=True)',
+            )
+            .replace('"language_label"', '"language_label", danger=False')
+        )
+        [configuration, forged] = self.tree()["children"]
+        [language, pick, submenu, element] = configuration["children"]
+        self.assertEqual(
+            [node.get("danger") for node in configuration["children"]],
+            [None, True, True, None],
+        )
+        self.assertNotIn("danger", language)
+        self.assertNotIn("danger", forged)
+
+    def test_a_guarded_entry_is_in_the_tree_without_its_method(self):
+        # Une entrée gardée y est, quoi que rende sa garde, mais la TUI ne
+        # la lance pas : seul son menu lit la garde.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'kwargs={"key": "forged_key"}',
+                'kwargs={"key": "forged_key"}, when="forged_when"',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        pick = configuration["children"][1]
+        self.assertEqual(
+            (pick["label"], pick["method"], pick["kwargs"]),
+            ("Pick", None, {"key": "forged_key"}),
+        )
+
+    def test_an_entry_with_a_crumb_is_a_menu_without_leaves(self):
+        # Une entrée dont l'action dessine son propre écran sous un segment
+        # du fil d'Ariane : un menu sans feuille, sous ce segment, que ni
+        # la TUI ni la page web ne lancent ; son entrée est son libellé.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                '"pick", kwargs={"key": "forged_key"}',
+                '"pick", kwargs={"key": "forged_key"}, crumb="Forged screen"',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            configuration["children"][1],
+            {
+                "label": "Forged screen",
+                "is_menu": True,
+                "children": [],
+                "entry": "Pick",
+            },
+        )
+
+    def test_a_section_of_a_configured_list_is_no_leaf(self):
+        # Comme au menu : l'élément qui porte une section n'est pas une
+        # feuille, et nomme la section de ceux qui le suivent.
+        (self.dir / "todo.json").write_text(
+            '{"forged_list": [{"prompt_description": "Before"},'
+            ' {"section": "Forged section"},'
+            ' {"prompt_description": "After"}]}'
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [
+                (n["label"], n.get("section"))
+                for n in configuration["children"]
+            ],
+            [
+                ("Language", "Interface"),
+                ("Pick", "Interface"),
+                ("Forged", None),
+                ("Before", "Maintenance"),
+                ("After", "Forged section"),
+            ],
+        )
+
+    def test_a_method_listed_entry_is_no_leaf(self):
+        # L'arbre n'appelle rien : les entrées que rend la méthode d'un
+        # FromMethod ne s'y lisent pas, les autres entrées du menu si.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'FromConfig("forged_list", "run_element", "instance")',
+                'FromMethod("forged_list", "run_element", "instance")',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [n["label"] for n in configuration["children"]],
+            ["Language", "Pick", "Forged"],
+        )
+
+    def test_no_child_of_a_menu_that_asks_has_an_entry(self):
+        # La question d'un menu `asks` n'est pas un message `menu` : la
+        # page web, qui lance un nœud en répondant aux menus de son
+        # chemin, n'y trouverait pas son entrée, et n'offre pas ▶ à un
+        # nœud dont l'entrée est vide.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace("back=None", 'back=None, asks="forged_ask"')
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [n["label"] for n in configuration["children"]],
+            ["Language", "Pick", "Forged", "Forged element"],
+        )
+        self.assertEqual(
+            [n.get("entry") for n in configuration["children"]],
+            ["", "", "", ""],
+        )
+
+    def test_a_menu_opened_by_another_object_has_no_crumb(self):
+        # Un menu sans segment n'ajoute rien au fil d'Ariane : un menu
+        # qu'ouvre un autre objet que TODO s'affiche sous celui qui l'ouvre.
+        self.menus_py.write_text(
+            FAKE_MENUS
+            + 'OTHER = Menu("forged_other", None, [Entry("First", "first")])\n'
+        )
+        declared = todo_telemetry._declared_menus(self.dir)
+        self.assertEqual(
+            sorted(declared),
+            ["forged_other", "prompt_configuration", "prompt_forged", "run"],
+        )
+        self.assertIsNone(declared["forged_other"]["crumb"])
+
+    def test_a_mark_is_read_as_the_menu_declares_it(self):
+        # `mark` a sa valeur par défaut au registre : un menu qui ne le
+        # donne pas est lu sans lui, un menu qui le donne en chaîne avec.
+        self.assertNotIn(
+            "mark",
+            todo_telemetry._declared_menus(self.dir)["prompt_configuration"],
+        )
+        self.menus_py.write_text(
+            FAKE_MENUS.replace("back=None", 'back=None, mark="⚠️ "')
+        )
+        declared = todo_telemetry._declared_menus(self.dir)
+        self.assertEqual(declared["prompt_configuration"]["mark"], "⚠️ ")
+
+    def test_a_computed_value_declares_nothing(self):
+        # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
+        # fichier à moitié écrit, puis un littéral du mauvais type : un nom
+        # de menu, une action, des kwargs, une entrée, des kwargs que JSON
+        # n'écrit pas, un `danger` qui n'est pas un booléen, une garde, un
+        # `mark` None ; enfin un menu qui ne donne pas son `crumb`. Le
+        # fichier ne déclare alors aucun menu, `run` compris : il n'y a pas
+        # d'arbre.
+        for n, text in enumerate(
+            (
+                "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
+                FAKE_MENUS.replace('"Language"', 't("Language")'),
+                FAKE_MENUS.replace("back=None", "forged=None"),
+                FAKE_MENUS.replace('{"key": "forged_key"}', '{["key"]: 1}'),
+                FAKE_MENUS + "OTHER = Menu(",
+                FAKE_MENUS.replace(
+                    '"prompt_configuration",', '["prompt_configuration"],'
+                ),
+                FAKE_MENUS.replace('"pick", kwargs', '["pick"], kwargs'),
+                FAKE_MENUS.replace('{"key": "forged_key"}', "[1]"),
+                FAKE_MENUS.replace('Section("Maintenance")', '"Maintenance"'),
+                FAKE_MENUS.replace('"forged_key"', "{1}"),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", danger=1, kwargs'
+                ),
+                FAKE_MENUS.replace(
+                    'kwargs={"key": "forged_key"}',
+                    'kwargs={"key": "forged_key"}, when=1',
+                ),
+                FAKE_MENUS.replace("back=None", "back=None, mark=None"),
+                FAKE_MENUS + 'OTHER = Menu("forged_other", entries=[])\n',
+                FAKE_MENUS.replace("back=None", "back=None, opens=1"),
+                FAKE_MENUS.replace("back=None", "back=None, before=1"),
+                FAKE_MENUS.replace(
+                    'FromConfig("forged_list"', 'FromMethod(["forged_list"]'
+                ),
+                FAKE_MENUS.replace("back=None", "back=None, asks=1"),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", hotkey=1, kwargs'
+                ),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", crumb=1, kwargs'
+                ),
+            )
+        ):
+            with self.subTest(case=n):
+                self.assertNotEqual(text, FAKE_MENUS)
+                self.menus_py.write_text(text)
+                with self.assertLogs(
+                    todo_telemetry.__name__, "WARNING"
+                ) as logs:
+                    menus = todo_telemetry._declared_menus(self.dir)
+                    tree = self.tree()
+                self.assertEqual(menus, {})
+                self.assertIsNone(tree)
+                # Chaque lecture nomme le fichier.
+                self.assertEqual(len(logs.records), 2)
+                for record in logs.records:
+                    self.assertIn(str(self.menus_py), record.getMessage())
+
+    def test_a_menu_file_that_declares_nothing_is_logged(self):
+        with self.assertNoLogs(todo_telemetry.__name__, "WARNING"):
+            self.assertTrue(todo_telemetry._declared_menus(self.dir))
+        self.menus_py.write_text(
+            FAKE_MENUS.replace('"Language"', 't("Language")')
+        )
+        with self.assertLogs(todo_telemetry.__name__, "WARNING") as logs:
+            self.assertEqual(todo_telemetry._declared_menus(self.dir), {})
+        [record] = logs.records
+        self.assertEqual(
+            record.getMessage(),
+            f"{self.menus_py} declares no menu: "
+            "ValueError: not a registry call: t('Language')",
+        )
+
+    def test_a_menu_file_that_declares_nothing_leaves_no_tree(self):
+        # Forged dans un second fichier : lu, l'arbre est celui d'avant ;
+        # une valeur calculée, et il ne déclare rien. Les entrées qui
+        # ouvrent Forged seraient alors des feuilles, que la TUI lancerait :
+        # il n'y a pas d'arbre, comme sans `run`.
+        forged = (
+            'FORGED = Menu("prompt_forged", "Forged", [Entry("Stay", "stay")])'
+        )
+        before = self.tree()
+        self.assertEqual(before["children"][1]["label"], "Forged")
+        self.assertIn(forged, FAKE_MENUS)
+        self.menus_py.write_text(FAKE_MENUS.replace(forged, ""))
+        other = self.dir / "menus" / "other.py"
+        head = "from script.todo.ui.registry import Entry, Menu\n\n"
+        other.write_text(f"{head}{forged}\n")
+        self.assertEqual(self.tree(), before)
+        computed = forged.replace('"Stay"', 't("Stay")')
+        other.write_text(f"{head}{computed}\n")
+        with self.assertLogs(todo_telemetry.__name__, "WARNING") as logs:
+            self.assertIsNone(self.tree())
+        [record] = logs.records
+        self.assertIn(str(other), record.getMessage())
+
+    def test_the_fields_come_from_the_registry_module(self):
+        fields = todo_telemetry._registry_fields(REGISTRY_PY)
+        self.assertEqual(
+            fields["Menu"],
+            [
+                "name",
+                "crumb",
+                "entries",
+                "state",
+                "intro",
+                "mark",
+                "back",
+                "render",
+                "closes",
+                "abort_closes",
+                "opens",
+                "before",
+                "closes_on_result",
+                "asks",
+                "quits",
+            ],
+        )
+        self.assertEqual(
+            fields["FromConfig"],
+            ["config_key", "action", "kwarg", "only", "without"],
+        )
+        self.assertEqual(fields["FromMethod"], ["method", "action", "kwarg"])
+        self.assertEqual(fields["Section"], ["key"])
+        self.assertEqual(
+            fields["Entry"][:5], ["key", "action", "kwargs", "suffix", "when"]
+        )
+
+
+def _tree_nodes(node):
+    """`node`, un nœud d'un Tree de Textual, puis tous ses descendants."""
+    yield node
+    for child in node.children:
+        yield from _tree_nodes(child)
+
+
+class TestTelemetryTui(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # L'arbre de TODO réduit au menu Configuration, que déclare le
+        # registre : la Liste et le Kanban n'ont que ses cartes à monter.
+        tree = todo_telemetry.build_code_tree()
+        cls.tree = {
+            **tree,
+            "children": [
+                node
+                for node in tree["children"]
+                if node["label"] == "Configuration"
+            ],
+        }
+
+    def setUp(self):
+        # `load` lit les compteurs sous ~/.erplibre.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": tmp.name}),
+            patch.object(
+                todo_telemetry, "build_code_tree", return_value=self.tree
+            ),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        _english(self)
+
+    def select(self, mode, methods):
+        """[(action rendue, appels de `notify`), …] quand, dans la vue
+        `mode` de la TUI, Entrée est pressée sur la feuille qui lance
+        chaque méthode de `methods`, dans l'ordre : un relevé après
+        chacune."""
+        from textual.widgets import ListView, Tree
+
+        app = todo_telemetry.run_tui(run_app=False, state={"mode": mode})
+        app.notify = Mock()
+        seen = []
+
+        async def scenario():
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                for method in methods:
+                    if mode == "tree":
+                        tree = app.query_one("#nav", Tree)
+                        [node] = [
+                            node
+                            for node in _tree_nodes(tree.root)
+                            if (node.data or {}).get("method") == method
+                        ]
+                        tree.move_cursor(node)
+                        tree.focus()
+                    else:
+                        [(view, index)] = [
+                            (view, index)
+                            for view in app.query(ListView)
+                            for index, item in enumerate(view.children)
+                            if getattr(item, "cmd_method", None) == method
+                        ]
+                        view.index = index
+                        view.focus()
+                    await pilot.pause()
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    seen.append((app._action, list(app.notify.call_args_list)))
+
+        asyncio.run(scenario())
+        return seen
+
+    def test_a_dangerous_entry_shows_a_notice_and_launches_nothing(self):
+        # Reset, déclaré dangereux, laisse la TUI ouverte, sans action ;
+        # Fork, choisi ensuite, rend la sienne.
+        notice = call(
+            t("Dangerous command: run it from its menu."), severity="warning"
+        )
+        for mode in ("tree", "list", "kanban"):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    self.select(mode, ["_reset_preferences", "_fork_todo"]),
+                    [(None, [notice]), (("_fork_todo", {}), [notice])],
+                )
+
+
+def _rebuilt(value):
+    """L'objet du registre que décrit `value`, une valeur de `_declared` :
+    un dict qui porte "type" devient l'appel de son constructeur."""
+    if isinstance(value, list):
+        return [_rebuilt(item) for item in value]
+    if isinstance(value, dict) and "type" in value:
+        fields = {k: _rebuilt(v) for k, v in value.items() if k != "type"}
+        return getattr(registry, value["type"])(**fields)
+    return value
+
+
+def _imported_menus() -> dict:
+    """{méthode: Menu} des fichiers de menus de TODO, importés ; le paquet
+    lui-même, `__init__.py`, n'en déclare aucun."""
+    menus = {}
+    for path in sorted(MENUS_DIR.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        module = importlib.import_module(f"script.todo.menus.{path.stem}")
+        for value in vars(module).values():
+            if isinstance(value, Menu):
+                menus[value.name] = value
+    return menus
+
+
+class TestTodoMenuFiles(unittest.TestCase):
+    def test_a_menu_file_is_registry_calls_and_literals(self):
+        fields = todo_telemetry._registry_fields(REGISTRY_PY)
+        paths = sorted(MENUS_DIR.glob("*.py"))
+        self.assertEqual(
+            [p.name for p in paths],
+            [
+                "__init__.py",
+                "assistant.py",
+                "deploy.py",
+                "execute.py",
+                "git.py",
+                "main.py",
+                "proxmox.py",
+                "run.py",
+            ],
+        )
+        for path in paths:
+            for stmt in ast.parse(path.read_text(encoding="utf-8")).body:
+                with self.subTest(file=path.name, line=stmt.lineno):
+                    if isinstance(stmt, ast.ImportFrom):
+                        self.assertEqual(
+                            stmt.module, "script.todo.ui.registry"
+                        )
+                    elif isinstance(stmt, ast.Expr):
+                        self.assertIsInstance(stmt.value, ast.Constant)
+                    else:
+                        self.assertIsInstance(stmt, ast.Assign)
+                        todo_telemetry._declared(stmt.value, fields)
+
+    def test_the_tree_reads_what_python_imports(self):
+        declared = todo_telemetry._declared_menus(REPO / "script" / "todo")
+        imported = _imported_menus()
+        self.assertEqual(
+            sorted(imported),
+            [
+                "_cache_age",
+                "_cache_exceptions",
+                "_cache_journaux",
+                "_cache_miroir_git",
+                "_cache_nettoyage_auto",
+                "_cache_service",
+                "_cache_tests",
+                "_container_compose",
+                "_container_erplibre",
+                "_container_service",
+                "_llm_search",
+                "_llm_search_remote",
+                "_llm_servers",
+                "_prompt_claude_configs",
+                "_prompt_git_server_local",
+                "_prompt_git_server_production",
+                "debug_ide",
+                "drop_database",
+                "generate_config_from_preconfiguration",
+                "prompt_assistant",
+                "prompt_assistant_llm",
+                "prompt_claude_sessions",
+                "prompt_configuration",
+                "prompt_execute",
+                "prompt_execute_analyse",
+                "prompt_execute_claude_plugins",
+                "prompt_execute_code",
+                "prompt_execute_config",
+                "prompt_execute_container",
+                "prompt_execute_database",
+                "prompt_execute_deploy",
+                "prompt_execute_deploy_ssh",
+                "prompt_execute_doc",
+                "prompt_execute_function",
+                "prompt_execute_git",
+                "prompt_execute_git_local_server",
+                "prompt_execute_gpt_code",
+                "prompt_execute_image_db",
+                "prompt_execute_instance",
+                "prompt_execute_longtest",
+                "prompt_execute_mail",
+                "prompt_execute_network",
+                "prompt_execute_process",
+                "prompt_execute_proxmox",
+                "prompt_execute_qemu",
+                "prompt_execute_qemu_cache",
+                "prompt_execute_rtk",
+                "prompt_execute_security",
+                "prompt_execute_test",
+                "prompt_execute_transform",
+                "prompt_execute_uninstall",
+                "prompt_execute_update",
+                "prompt_execute_vpn",
+                "prompt_install",
+                "prompt_mail_accounts",
+                "prompt_mail_cache",
+                "prompt_telemetry",
+                "run",
+            ],
+        )
+        rebuilt = {name: _rebuilt(v) for name, v in declared.items()}
+        self.assertEqual(rebuilt, imported)
+
+    def test_only_the_root_menu_quits(self):
+        # Le [0] d'un menu `quits` rend `back` à la méthode qui l'ouvre :
+        # TODO ne sort que parce que `run` ouvre le menu racine. Ailleurs,
+        # « 🚪 Quit » ramènerait au menu parent.
+        self.assertEqual(
+            [name for name, menu in _imported_menus().items() if menu.quits],
+            ["run"],
+        )
+
+    def test_each_key_is_translated_in_both_languages(self):
+        # Les clés du registre ne sont pas des appels de `t()` : ce test
+        # tient pour elles la table de traduction.
+        keys = set()
+        for menu in _imported_menus().values():
+            keys |= {menu.intro} - {None}
+            keys |= {
+                item.key
+                for item in menu.entries
+                if isinstance(item, (Entry, Section))
+            }
+        self.assertGreater(len(keys), 10)
+        for key in sorted(keys):
+            with self.subTest(key=key):
+                languages = todo_i18n.TRANSLATIONS.get(key, {})
+                self.assertLessEqual({"fr", "en"}, set(languages))
+
+    def test_each_method_named_binds_its_arguments(self):
+        from script.todo.database_manager import DatabaseManager
+        from script.todo.mail import menu as mail_menu
+        from script.todo.todo import TODO
+
+        menus = _imported_menus()
+        self.assertEqual(len(menus), 58)
+        # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
+        # Les menus du courriel s'ouvrent par des fonctions de mail/menu.py
+        # sur MailMenus, qui porte leurs actions, dont certaines sont des
+        # fonctions sans argument (staticmethod).
+        owners = {"drop_database": DatabaseManager}
+        mail = ("prompt_execute_mail", "prompt_mail_accounts")
+        owners.update(dict.fromkeys((*mail, "prompt_mail_cache"), mail_menu))
+        for menu in menus.values():
+            owner = owners.get(menu.name, TODO)
+            with self.subTest(menu=menu.name, method=menu.name):
+                method = getattr(owner, menu.name)
+                inspect.signature(method).bind(None)
+            if owner is mail_menu:
+                owner = mail_menu.MailMenus
+            calls = [(menu.state, {}), (menu.opens, {})]
+            calls.append((menu.before, {}))
+            # `asks` reçoit les entrées montrées, en argument positionnel.
+            if menu.asks:
+                with self.subTest(menu=menu.name, method=menu.asks):
+                    method = getattr(owner, menu.asks)
+                    inspect.signature(method).bind(None, [])
+            for item in menu.entries:
+                if isinstance(item, Entry):
+                    kwargs = item.kwargs or {}
+                    calls += [(item.action, kwargs), (item.suffix, kwargs)]
+                    calls.append((item.when, {}))
+                elif isinstance(item, FromConfig):
+                    calls.append((item.action, {item.kwarg: {}}))
+                elif isinstance(item, registry.FromMethod):
+                    calls.append((item.method, {}))
+                    calls.append((item.action, {item.kwarg: {}}))
+            for name, kwargs in calls:
+                if name is None:
+                    continue
+                with self.subTest(menu=menu.name, method=name):
+                    method = getattr(owner, name)
+                    static = inspect.getattr_static(owner, name)
+                    self_ = [] if isinstance(static, staticmethod) else [None]
+                    inspect.signature(method).bind(*self_, **kwargs)
+
+    def test_each_entry_of_an_opened_menu_binds_its_context(self):
+        # Dans un menu à `opens`, navigate passe à l'action de chaque entrée
+        # ses kwargs ET le contexte que rend cette méthode ; l'arbre de
+        # télémétrie, ses kwargs seuls (test précédent). Les clés de ce
+        # contexte, par menu ; un menu absent n'en passe aucune.
+        from script.todo.todo import TODO
+
+        context_of = {
+            "_container_service": ("fiche", "par_compte"),
+            "_container_compose": ("compose",),
+            "_container_erplibre": ("prefixe",),
+        }
+        for menu in _imported_menus().values():
+            if not menu.opens:
+                continue
+            context = dict.fromkeys(context_of.get(menu.name, ()))
+            for item in menu.entries:
+                if isinstance(item, Entry):
+                    kwargs = item.kwargs or {}
+                elif isinstance(item, (FromConfig, registry.FromMethod)):
+                    kwargs = {item.kwarg: {}}
+                else:
+                    continue
+                with self.subTest(menu=menu.name, method=item.action):
+                    self.assertFalse(kwargs.keys() & context.keys())
+                    method = getattr(TODO, item.action)
+                    inspect.signature(method).bind(None, **kwargs, **context)
+
+
+if __name__ == "__main__":
+    unittest.main()

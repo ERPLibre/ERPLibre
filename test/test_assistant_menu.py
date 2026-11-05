@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ce que le câblage du menu assistant doit tenir.
 
-Six sites de `todo.py` participent à un sous-menu — l'import, les bases de la
-classe, l'étiquette du fil d'Ariane, les deux listes jumelles du menu parent,
+Cinq sites participent à un sous-menu — l'import, les bases de la classe,
+l'étiquette du fil d'Ariane, son entrée dans la déclaration du menu parent,
 et les clés de traduction. Aucun n'échoue bruyamment quand il manque : une
 entrée mal branchée appelle simplement autre chose, une étiquette absente
 retire une miette du fil, et `t()` rend une clé inconnue telle quelle, donc une
@@ -23,11 +23,15 @@ from __future__ import annotations
 
 import ast
 import collections
+import io
 import os
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
+
+import click
 
 from script.todo.todo_i18n import t
 
@@ -77,7 +81,7 @@ def cles_de_traduction(chemin):
 
 
 class Cablage(unittest.TestCase):
-    """Les six sites de `todo.py` que le sous-menu réclame."""
+    """Les cinq sites que le sous-menu réclame."""
 
     def test_todo_expose_le_sous_menu_llm(self):
         from script.todo.todo import TODO
@@ -85,16 +89,17 @@ class Cablage(unittest.TestCase):
         self.assertTrue(hasattr(TODO, "prompt_assistant_llm"))
 
     def test_l_etiquette_de_fil_d_ariane_existe(self):
-        """Le fil se dérive de la pile d'appels : une méthode absente de
-        `_MENU_LABELS` ne contribue AUCUNE miette, en silence. Le sous-menu
-        VPN a été livré ainsi et ne se situe donc nulle part."""
-        from script.todo.todo import TODO
+        """Le navigateur ajoute au fil le segment que déclare le menu : un
+        menu sans segment ne contribuerait AUCUNE miette, en silence, et se
+        situerait sous Assistant."""
+        from script.todo.menus import assistant as menus_assistant
 
-        self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
+        self.assertEqual(menus_assistant.LLM.crumb, "LLM")
 
     def test_un_dispatche_vers_le_sous_menu_llm_seulement(self):
-        """Les deux listes du menu parent sont tenues à la main et rien ne
-        les rapproche : `[1]` peut afficher une entrée et appeler l'autre."""
+        """`[1]` ouvre LLM, et rien d'autre : une entrée déclarée à une
+        autre place du menu parent afficherait un libellé et en ouvrirait
+        un autre."""
         from script.todo.todo import TODO
 
         todo = TODO()
@@ -223,10 +228,10 @@ class Balayage(unittest.TestCase):
     """Ce que le balayage doit atteindre, et ce qu'il ne doit pas taire.
 
     Un serveur vit souvent sur un réseau que la machine ne PORTE pas,
-    joignable par la passerelle. Les deux mécanismes qui semblaient couvrir ce
-    cas ne le couvrent pas : la saisie d'une adresse ne prend qu'un hôte, et
-    la table de voisinage est link-local, donc elle ne connaît jamais un hôte
-    routé. Sans réseau saisi à la main, un tel serveur est hors d'atteinte.
+    joignable par la passerelle. Ni la saisie d'une adresse, qui ne prend
+    qu'un hôte, ni la table de voisinage, link-local, qui ne connaît jamais
+    un hôte routé, ne couvrent ce cas. Sans réseau saisi à la main, un tel
+    serveur est hors d'atteinte.
     """
 
     def _todo(self):
@@ -438,7 +443,7 @@ def _source_de_la_decouverte():
 
 
 class SessionsClaudeCode(unittest.TestCase):
-    """Le câblage de la phase 4, sous « GPT code » et non sous le LLM.
+    """Les sessions de Claude Code, sous « GPT code » et non sous le LLM.
 
     Une session est un processus adressé par identifiant ; un serveur est un
     hôte adressé par port. Les mêler dans une liste numérotée ferait partager
@@ -452,15 +457,13 @@ class SessionsClaudeCode(unittest.TestCase):
         self.assertTrue(hasattr(TODO, "prompt_claude_sessions"))
 
     def test_l_etiquette_de_fil_d_ariane_existe(self):
-        from script.todo.todo import TODO
+        from script.todo.menus import git as menus_git
 
-        self.assertEqual(
-            TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
-        )
+        self.assertEqual(menus_git.CLAUDE_CODE.crumb, "Claude Code")
 
     def test_six_dispatche_vers_les_sessions_seulement(self):
-        """Les deux listes de `prompt_execute_gpt_code` sont tenues à la
-        main : l'entrée peut s'afficher et appeler autre chose."""
+        """[6] de GPT code ouvre les sessions de Claude Code, et rien
+        d'autre."""
         from script.todo.todo import TODO
 
         todo = TODO()
@@ -490,6 +493,61 @@ class SessionsClaudeCode(unittest.TestCase):
         ):
             todo.prompt_claude_sessions()
 
+    def test_une_flotte_se_compte_avec_ses_vivantes(self):
+        """[1] montre, entre parenthèses, le nombre de sessions et celui
+        des vivantes, que rend `_claude_sessions_count` au dessin."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        flotte = [
+            cs.Session(session_id="forged-one", live=True),
+            cs.Session(session_id="forged-two"),
+        ]
+        todo = TODO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=flotte,
+            ),
+            patch("click.prompt", side_effect=["0"]) as question,
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(io.StringIO()),
+        ):
+            compte = todo._claude_sessions_count()
+            todo.prompt_claude_sessions()
+        self.assertEqual(compte, f"2 · 1 {t('live')}")
+        # Le menu est le texte de la question.
+        self.assertIn(
+            f"[1] {t('List local sessions')}  ({compte})",
+            question.call_args.args[0],
+        )
+
+    def test_une_interruption_a_la_question_ramene_a_gpt_code(self):
+        """Ctrl+C ou Ctrl+D à la question des sessions (l'Abort de click)
+        rendent None après une ligne vide, au lieu de terminer TODO."""
+        import io
+        from contextlib import redirect_stdout
+
+        import click
+
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        sortie = io.StringIO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet", return_value=[]
+            ),
+            patch("click.prompt", side_effect=[click.exceptions.Abort()]),
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(sortie),
+        ):
+            self.assertIsNone(todo.prompt_claude_sessions())
+        self.assertTrue(sortie.getvalue().endswith("\n\n"))
+
     def test_un_claude_absent_est_un_message_pas_un_plantage(self):
         import io
         from contextlib import redirect_stdout
@@ -518,6 +576,630 @@ class SessionsClaudeCode(unittest.TestCase):
         ):
             todo._claude_reprendre([])
         self.assertIn(t("No session on this machine."), sortie.getvalue())
+
+    def test_une_entree_relit_la_flotte_quand_elle_repond(self):
+        """Une session ouverte dans un autre terminal pendant que le menu
+        attend sa réponse est listée par [1] : l'entrée relit la flotte
+        au lieu de reprendre celle que le menu a dessinée."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        sortie = io.StringIO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                side_effect=[[], [session], [session]],
+            ),
+            patch("click.prompt", side_effect=["1", "0"]),
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(sortie),
+        ):
+            todo.prompt_claude_sessions()
+        self.assertIn("[1] forged-s", sortie.getvalue())
+
+    def test_questionner_et_reprendre_sans_flotte_la_lisent_une_fois(self):
+        """Appelées sans flotte, comme la TUI de la télémétrie de
+        navigation les lance, « Ask a question » et « Resume a session »
+        lisent les sessions une fois, après le garde-fou de `which`, et les
+        listent ; sans claude sur le PATH, elles ne les lisent pas."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        for nom in ("_claude_questionner", "_claude_reprendre"):
+            for chemin, lectures in (("/usr/bin/claude", 1), (None, 0)):
+                sortie = io.StringIO()
+                with (
+                    self.subTest(entree=nom, claude=chemin),
+                    patch("shutil.which", return_value=chemin),
+                    patch(
+                        "script.todo.assistant.claude_sessions.fleet",
+                        return_value=[session],
+                    ) as flotte,
+                    patch("builtins.input", side_effect=["0"]),
+                    redirect_stdout(sortie),
+                ):
+                    getattr(todo, nom)()
+                    self.assertEqual(flotte.call_count, lectures)
+                    listee = "[1] forged-s" in sortie.getvalue()
+                    self.assertIs(listee, bool(lectures))
+
+    def test_un_rang_se_choisit_tel_que_la_liste_l_affiche(self):
+        """`_claude_choisir` ne rend une session que pour un rang que la
+        liste affiche, ses blancs ôtés, ou son identifiant réduit : « 2 »,
+        « 01 », « ١ » (le chiffre un en écriture arabe) et « ² », que
+        `isdigit` accepte et qu'`int` refuse, sont dits invalides et la
+        question revient ; « 0 » et une réponse vide n'en rendent aucune,
+        et le menu ne tombe pas."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        refus = ["2", "01", "١", "²", "x"]
+        for reponses, attendu in (
+            (["1"], session),
+            ([" 1 "], session),
+            (["forged-s"], session),
+            ([*refus, "0"], None),
+            ([""], None),
+        ):
+            sortie = io.StringIO()
+            with (
+                self.subTest(reponses=reponses),
+                patch("builtins.input", side_effect=reponses),
+                redirect_stdout(sortie),
+            ):
+                self.assertIs(todo._claude_choisir([session]), attendu)
+            for refusee in reponses[:-1]:
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{refusee}", sortie.getvalue()
+                )
+
+    def test_une_session_tenue_ne_s_ecrit_qu_au_pid_retape(self):
+        """Une session tenue par un autre terminal : [1] branche une copie,
+        [2] écrit dedans après le pid retapé ; « 0 », une réponse vide ou
+        une faute ne posent aucune question et n'envoient rien."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        envois = []
+
+        class FauxBackend:
+            def __init__(self, **options):
+                envois.append(options["fork"])
+
+            def send(self, messages):
+                return "forged answer", {}
+
+        for reponses, questions, attendu in (
+            ([""], [], []),
+            (["3", "tout", "0"], [], []),
+            (["1"], ["forged question"], [True]),
+            (["2"], ["4242", "forged question"], [False]),
+            (["2"], ["4243"], []),
+        ):
+            envois.clear()
+            with (
+                self.subTest(reponses=reponses, questions=questions),
+                patch("shutil.which", return_value="/usr/bin/claude"),
+                patch.object(cs, "held_by", return_value="4242"),
+                patch(
+                    "script.todo.assistant.backends.ClaudeCliBackend",
+                    FauxBackend,
+                ),
+                patch("builtins.input", side_effect=["1", *reponses]),
+                patch("click.prompt", side_effect=questions),
+                redirect_stdout(io.StringIO()),
+            ):
+                todo._claude_questionner([session])
+            self.assertEqual(envois, attendu)
+
+    def test_ce_qui_part_ne_part_qu_apres_c(self):
+        """La porte de ce qui va partir : seul [c] envoie ; « 0 », une
+        réponse vide, un numéro ou une faute n'envoient rien."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        for reponses, attendu in (
+            (["c"], True),
+            (["C"], True),
+            ([""], False),
+            (["0"], False),
+            (["1", "continue", "0"], False),
+        ):
+            sortie = io.StringIO()
+            with (
+                self.subTest(reponses=reponses),
+                patch("builtins.input", side_effect=reponses),
+                redirect_stdout(sortie),
+            ):
+                self.assertIs(
+                    todo._llm_montrer_contexte("forged\ntext", [], "x"),
+                    attendu,
+                )
+            if not attendu:
+                self.assertIn(t("Nothing has been sent."), sortie.getvalue())
+
+    def test_ctrl_c_a_un_choix_revient_au_menu(self):
+        """Ctrl+C à un choix de l'assistant rend la main au menu au lieu de
+        terminer TODO, et Ctrl+D revient comme [0] : aucune session n'est
+        rendue, rien ne part, aucun serveur n'est retiré."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant import servers as llm_servers
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        connus = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label="Forged one",
+                    host="192.0.2.27",
+                    port=11434,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+            ]
+        )
+        todo = TODO()
+        for arret in (KeyboardInterrupt(), EOFError()):
+            with (
+                self.subTest(arret=type(arret).__name__),
+                patch("builtins.input", side_effect=arret),
+                patch.object(llm_servers, "load", return_value=connus),
+                patch.object(llm_servers, "save") as save,
+                redirect_stdout(io.StringIO()),
+            ):
+                self.assertIsNone(todo._claude_choisir([session]))
+                self.assertFalse(todo._llm_montrer_contexte("forged", [], "x"))
+                todo._llm_delete_server()
+            save.assert_not_called()
+
+
+class MenusDuLLM(unittest.TestCase):
+    """Les menus du LLM ne prennent une entrée que par son numéro tel
+    qu'affiché. Deux serveurs sont connus ; aucune sonde ne part, chaque
+    réponse vient d'une liste, et ce qu'une entrée lancerait est un
+    double."""
+
+    def setUp(self):
+        from script.todo.assistant import servers as llm_servers
+        from script.todo.todo import TODO
+
+        connus = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label=label,
+                    host=host,
+                    port=port,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+                for label, host, port in (
+                    ("Forged one", "192.0.2.27", 11434),
+                    ("Forged two", "198.51.100.5", 8080),
+                )
+            ]
+        )
+        for patcher in (
+            patch.object(llm_servers, "load", return_value=connus),
+            patch("script.todo.todo_telemetry.record"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo._llm_session = {
+            "serveur": None,
+            "sonde": [],
+            "confirmes": set(),
+            "contextes": set(),
+            "gpt": None,
+            "gpts": None,
+        }
+
+    def answered(self, method, *answers, inputs=()):
+        """Ce qu'écrit `method` de TODO quand ses menus reçoivent `answers`
+        et ses choix, qui lisent par `input`, `inputs`."""
+        shown = io.StringIO()
+        with (
+            patch("click.prompt", side_effect=answers),
+            patch("builtins.input", side_effect=list(inputs)),
+            redirect_stdout(shown),
+        ):
+            getattr(self.todo, method)()
+        return shown.getvalue()
+
+    def test_servers_prend_un_serveur_par_son_numero_affiche(self):
+        # « 01 », « +1 », « 1 » précédé d'un blanc ou un chiffre d'une
+        # autre écriture ne désignent aucune entrée : aucun serveur n'est
+        # pris. « 2 » prend le second.
+        for answer in ("01", "+1", " 1", "١"):
+            with self.subTest(answer=answer):
+                shown = self.answered("_llm_servers", answer, "0")
+                self.assertIn(t("Command not found !"), shown)
+                self.assertIsNone(self.todo._llm_state()["serveur"])
+        self.answered("_llm_servers", "2", "0")
+        self.assertEqual(self.todo._llm_state()["serveur"].label, "Forged two")
+
+    def test_search_lance_une_entree_par_son_numero_affiche(self):
+        # « 01 », « +1 », « 1 » précédé d'un blanc ou un chiffre d'une
+        # autre écriture ne lancent pas la sonde de cette machine ; « 1 »,
+        # si.
+        from script.todo.assistant import discover as llm_disc
+
+        with (
+            patch.object(llm_disc, "local_networks", return_value=[]),
+            patch.object(type(self.todo), "_llm_probe_and_keep") as sonde,
+        ):
+            for answer in ("01", "+1", " 1", "١"):
+                with self.subTest(answer=answer):
+                    shown = self.answered("_llm_search", answer, "0")
+                    self.assertIn(t("Command not found !"), shown)
+            sonde.assert_not_called()
+            self.answered("_llm_search", "1", "0")
+        sonde.assert_called_once_with(["127.0.0.1"])
+
+    def over_ssh(self, *answers, reseaux=None):
+        """(ce qu'écrit Over SSH, ses questions comprises, quand elles
+        reçoivent `answers`, les réseaux balayés) ; l'hôte distant porte
+        `reseaux`, deux réseaux sans eux."""
+        from script.todo.assistant import discover as llm_disc
+
+        if reseaux is None:
+            reseaux = [
+                llm_disc.Interface("forged0", "192.0.2.0/24", False),
+                llm_disc.Interface("forged1", "198.51.100.0/24", True),
+            ]
+        with (
+            patch.object(llm_disc, "remote_networks", return_value=reseaux),
+            patch.object(type(self.todo), "_llm_sweep_cidr") as balayage,
+            patch("click.prompt", side_effect=answers) as question,
+            redirect_stdout(io.StringIO()) as shown,
+        ):
+            self.todo._llm_search_remote()
+        asked = "".join(f"{c.args[0]}\n" for c in question.call_args_list)
+        swept = [c.args[0] for c in balayage.call_args_list]
+        return shown.getvalue() + asked, swept
+
+    def test_over_ssh_balaie_un_reseau_par_son_numero_affiche(self):
+        # Les réseaux lus sur l'hôte distant : « 01 », « +1 », « 1 »
+        # précédé d'un blanc ou un chiffre d'une autre écriture n'en
+        # balaient aucun, et la liste revient ; « 2 » balaie le second,
+        # puis Over SSH se referme sans reposer sa question.
+        for answer in ("01", "+1", " 1", "١"):
+            with self.subTest(answer=answer):
+                shown, balayes = self.over_ssh("forged-remote", answer, "2")
+                self.assertIn(t("Command not found !"), shown)
+                self.assertEqual(balayes, ["198.51.100.0/24"])
+
+    def test_over_ssh_offre_les_reseaux_lus_sous_l_hote(self):
+        # Sous son fil, « Search › Over SSH », qui est aussi la clé de
+        # télémétrie de sa visite, la ligne d'état nomme l'hôte où les
+        # réseaux ont été lus ; chaque réseau porte son interface, un pont
+        # signalé. [0] revient sans rien balayer.
+        from script.todo import todo_telemetry
+        from script.todo.ui import navigator
+
+        with navigator.crumbs_at(("Assistant", "LLM", "Search")):
+            shown, balayes = self.over_ssh("forged-remote", "0")
+        todo_telemetry.record.assert_called_once_with(
+            "Assistant › LLM › Search › Over SSH"
+        )
+        self.assertIn(
+            t("read on %s, swept from here") % "forged-remote", shown
+        )
+        self.assertIn("[1] 192.0.2.0/24 · forged0\n", shown)
+        pont = t("libvirt bridge")
+        self.assertIn(f"[2] 198.51.100.0/24 · forged1 ({pont})\n", shown)
+        self.assertEqual(balayes, [])
+
+    def test_over_ssh_sans_hote_ou_sans_reseau_ne_se_dessine_pas(self):
+        # Un hôte blanc, Ctrl+D à sa question, ou un hôte sans réseau lu :
+        # Over SSH revient sans dessiner de liste ni rien balayer, et sans
+        # visite à compter.
+        from script.todo import todo_telemetry
+
+        for answers, reseaux in (
+            (("  ",), None),
+            ((click.exceptions.Abort(),), None),
+            (("forged-remote",), []),
+        ):
+            with self.subTest(answers=answers, reseaux=reseaux):
+                shown, balayes = self.over_ssh(*answers, reseaux=reseaux)
+                self.assertNotIn("[0]", shown)
+                self.assertEqual(balayes, [])
+        todo_telemetry.record.assert_not_called()
+
+    def test_over_ssh_revient_sur_ctrl_d_a_sa_liste(self):
+        shown, balayes = self.over_ssh(
+            "forged-remote", click.exceptions.Abort()
+        )
+        self.assertIn("[1] 192.0.2.0/24", shown)
+        self.assertEqual(balayes, [])
+
+    def test_over_ssh_se_dessine_sous_son_segment(self):
+        # Search › The networks of a machine over SSH dessine le choix d'un
+        # réseau sous « Over SSH », le segment que déclare le menu REMOTE,
+        # puis Search se redessine sous le sien.
+        from script.todo import todo_telemetry
+        from script.todo.assistant import discover as llm_disc
+
+        reseaux = [llm_disc.Interface("forged0", "192.0.2.0/24", False)]
+        with (
+            patch.object(llm_disc, "local_networks", return_value=[]),
+            patch.object(llm_disc, "remote_networks", return_value=reseaux),
+        ):
+            self.answered("_llm_search", "6", "forged-remote", "0", "0")
+        keys = [c.args[0] for c in todo_telemetry.record.call_args_list]
+        self.assertEqual(keys, ["Search", "Search › Over SSH", "Search"])
+
+    def test_servers_sans_serveur_connu_passe_a_la_recherche(self):
+        # Sans serveur connu, Servers le dit et ouvre Search, sans se
+        # dessiner ni poser sa question.
+        from script.todo.assistant import servers as llm_servers
+
+        with (
+            patch.object(llm_servers, "load", return_value=[]),
+            patch.object(type(self.todo), "_llm_search") as recherche,
+        ):
+            shown = self.answered("_llm_servers")
+        recherche.assert_called_once_with()
+        self.assertEqual(shown, f"{t('no server yet')}\n")
+
+    def test_search_offre_les_reseaux_que_la_machine_porte(self):
+        # Les réseaux suivent les hôtes SSH : sur deux réseaux, « 5 »
+        # balaie le second, et « 6 », l'entrée qui les suit, saisit une
+        # adresse.
+        from script.todo.assistant import discover as llm_disc
+
+        reseaux = [
+            llm_disc.Interface("forged0", "192.0.2.0/24", False),
+            llm_disc.Interface("virbr-forged", "198.51.100.0/24", True),
+        ]
+        with (
+            patch.object(llm_disc, "local_networks", return_value=reseaux),
+            patch.object(type(self.todo), "_llm_sweep_cidr") as balayage,
+            patch.object(type(self.todo), "_llm_add_server") as saisie,
+        ):
+            self.answered("_llm_search", "5", "6", "0")
+        balayage.assert_called_once_with("198.51.100.0/24")
+        saisie.assert_called_once_with()
+
+    def test_supprimer_un_serveur_ne_retire_que_celui_retape(self):
+        # Servers › Delete a server, [4] sous deux serveurs connus : le
+        # serveur choisi par son numéro ou son nom n'est retiré que son nom
+        # retapé en entier ; un nom incomplet ne retire rien. « 01 »,
+        # « 1 2 » et « tout » sont dits invalides, et « 0 » ou une réponse
+        # vide ne désignent aucun serveur, sans que le nom soit demandé :
+        # le « 0 » qui suit est la réponse de Servers.
+        from script.todo.assistant import servers as llm_servers
+
+        with patch.object(llm_servers, "save") as save:
+            self.answered("_llm_servers", "4", "Forged two", "0", inputs="2")
+            self.answered(
+                "_llm_servers", "4", "Forged", "0", inputs=["Forged two"]
+            )
+            shown = self.answered(
+                "_llm_servers", "4", "0", inputs=["01", "1 2", "tout", "0"]
+            )
+            self.answered("_llm_servers", "4", "0", inputs=[""])
+        self.assertEqual(save.call_count, 1)
+        [(restants,), _] = save.call_args_list[0]
+        self.assertEqual([s.label for s in restants], ["Forged one"])
+        for refusee in ("01", "1 2", "tout"):
+            self.assertIn(f"{t('Invalid choice: ')}{refusee}", shown)
+
+    def test_deux_serveurs_du_meme_nom_ne_partent_pas_ensemble(self):
+        # Deux serveurs d'un même hôte, sur deux ports, portent le même
+        # libellé : ce nom commun est dit invalide, et [2] suivi du nom
+        # retapé ne retire que le second, qui cesse d'être en usage.
+        from script.todo.assistant import servers as llm_servers
+
+        jumeaux = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label="forged-twin",
+                    host="192.0.2.27",
+                    port=port,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+                for port in (11434, 8080)
+            ]
+        )
+        self.todo._llm_state()["serveur"] = jumeaux[1]
+        with (
+            patch.object(llm_servers, "load", return_value=jumeaux),
+            patch.object(llm_servers, "save") as save,
+        ):
+            shown = self.answered(
+                "_llm_servers",
+                "4",
+                "forged-twin",
+                "0",
+                inputs=["forged-twin", "2"],
+            )
+        self.assertIn(f"{t('Invalid choice: ')}forged-twin", shown)
+        [((restants,), _)] = save.call_args_list
+        self.assertEqual([s.port for s in restants], [11434])
+        self.assertIsNone(self.todo._llm_state()["serveur"])
+
+    def test_deux_suppressions_de_suite_liberent_le_bon_serveur(self):
+        # Trois serveurs connus, B en usage : supprimer A ne touche pas
+        # l'usage, bien que le retrait décale le rang des deux qui restent
+        # (B passe de « server-2 » à « server-1 ») ; supprimer ensuite B, à
+        # son rang désormais décalé, vide l'usage au lieu de le garder sur
+        # la poignée qu'il portait avant le premier retrait.
+        from script.todo.assistant import servers as llm_servers
+
+        trio = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label=label,
+                    host=host,
+                    port=11434,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+                for label, host in (
+                    ("Forged a", "192.0.2.27"),
+                    ("Forged b", "192.0.2.28"),
+                    ("Forged c", "192.0.2.29"),
+                )
+            ]
+        )
+        stockes = list(trio)
+        self.todo._llm_state()["serveur"] = trio[1]
+
+        def charger(get_config=None):
+            return list(stockes)
+
+        def sauver(servers, set_config=None):
+            stockes[:] = servers
+
+        with (
+            patch.object(llm_servers, "load", side_effect=charger),
+            patch.object(llm_servers, "save", side_effect=sauver),
+        ):
+            self.answered("_llm_servers", "5", "Forged a", "0", inputs=["1"])
+            self.assertEqual(
+                [s.label for s in stockes], ["Forged b", "Forged c"]
+            )
+            self.assertEqual(
+                self.todo._llm_state()["serveur"].label, "Forged b"
+            )
+
+            self.answered("_llm_servers", "4", "Forged b", "0", inputs=["1"])
+        self.assertEqual([s.label for s in stockes], ["Forged c"])
+        self.assertIsNone(self.todo._llm_state()["serveur"])
+
+    def test_le_catalogue_gpt_prend_un_numero_ou_un_nom_affiche(self):
+        # Sur trois outils : un numéro tel qu'affiché ou le nom d'un outil
+        # le choisit ; une lettre, « ² », « 01 », « +1 », un chiffre d'une
+        # autre écriture ou « 4 » sont dits invalides ; un outil ⛔ dit sa
+        # raison et la question revient ; [d] n'existe qu'avec des fichiers
+        # illisibles, et les détaille.
+        import types
+
+        outils = [
+            types.SimpleNamespace(name=f"forged tool {n}", description="d")
+            for n in "abc"
+        ]
+        appariement = [
+            (outils[0], "ok", ""),
+            (outils[1], "no", "forged reason"),
+            (outils[2], "unknown", ""),
+        ]
+        illisible = types.SimpleNamespace(fatal=True)
+        cls = type(self.todo)
+        for inputs, problemes, attendu, details in (
+            (["1"], [], "forged tool a", 0),
+            (["forged tool c"], [], "forged tool c", 0),
+            (["a", "²", "01", "+1", "١", "4", "d", "0"], [], None, 0),
+            (["2", "0"], [], None, 0),
+            (["d", "3"], [illisible], "forged tool c", 1),
+        ):
+            self.todo._llm_state()["gpt"] = None
+            with (
+                self.subTest(inputs=inputs),
+                patch.object(
+                    cls, "_llm_gpts", return_value=(outils, problemes)
+                ),
+                patch.object(cls, "_llm_apparier", return_value=appariement),
+                patch.object(cls, "_llm_raison", return_value="forged"),
+                patch.object(cls, "_llm_dire_probleme") as dire,
+                patch.object(cls, "_llm_conversation") as conversation,
+            ):
+                shown = self.answered("_llm_gpt_catalogue", inputs=inputs)
+            gpt = self.todo._llm_state()["gpt"]
+            self.assertEqual(gpt and gpt.name, attendu)
+            self.assertEqual(conversation.call_count, int(bool(attendu)))
+            self.assertEqual(dire.call_count, details)
+            for refusee in inputs[:-1] if attendu is None else []:
+                if refusee != "2":
+                    self.assertIn(f"{t('Invalid choice: ')}{refusee}", shown)
+
+    def test_un_outil_nomme_comme_une_lettre_se_choisit_par_son_numero(self):
+        # Avec des fichiers illisibles, [d] lit « D » : le nom de l'outil ne
+        # se déclare pas, « D » détaille, et l'outil se choisit par « 1 ».
+        import types
+
+        outil = types.SimpleNamespace(name="D", description="d")
+        cls = type(self.todo)
+        self.todo._llm_state()["gpt"] = None
+        with (
+            patch.object(
+                cls,
+                "_llm_gpts",
+                return_value=([outil], [types.SimpleNamespace(fatal=True)]),
+            ),
+            patch.object(
+                cls, "_llm_apparier", return_value=[(outil, "ok", "")]
+            ),
+            patch.object(cls, "_llm_dire_probleme") as dire,
+            patch.object(cls, "_llm_conversation"),
+        ):
+            self.answered("_llm_gpt_catalogue", inputs=["D", "1"])
+        self.assertIs(self.todo._llm_state()["gpt"], outil)
+        self.assertEqual(dire.call_count, 1)
+
+    def test_un_nom_que_deux_outils_portent_n_en_choisit_aucun(self):
+        import types
+
+        outils = [
+            types.SimpleNamespace(name="forged tool", description="d")
+            for _ in range(2)
+        ]
+        cls = type(self.todo)
+        with (
+            patch.object(cls, "_llm_gpts", return_value=(outils, [])),
+            patch.object(
+                cls,
+                "_llm_apparier",
+                return_value=[(outil, "ok", "") for outil in outils],
+            ),
+            patch.object(cls, "_llm_conversation"),
+        ):
+            shown = self.answered(
+                "_llm_gpt_catalogue", inputs=["forged tool", "2"]
+            )
+        self.assertIn(f"{t('Invalid choice: ')}forged tool", shown)
+        self.assertIs(self.todo._llm_state()["gpt"], outils[1])
 
 
 class Frontiere(unittest.TestCase):

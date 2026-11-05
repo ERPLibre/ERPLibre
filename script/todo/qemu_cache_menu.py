@@ -33,9 +33,12 @@ from urllib.parse import urljoin, urlsplit
 
 import click
 
+from script.execute.execute import Execute
 from script.qemu import cache_offline
-from script.todo.todo_couleur import retour
+from script.todo import ui
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import get_lang, t
+from script.todo.ui.navigator import navigate
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
 # un test : le menu qui chercherait ailleurs annoncerait un cache absent.
@@ -374,53 +377,10 @@ class QemuCacheMenuMixin:
     # ------------------------------------------------------------------
 
     def prompt_execute_qemu_cache(self):
-        print(f"📦 {t('QEMU download cache for local VMs')}")
-        choices = [
-            {"prompt_description": t("Cache - Install or reinstall")},
-            {"prompt_description": t("Cache - Diagnose: does it serve?")},
-            {"prompt_description": t("Cache - Service state")},
-            {"prompt_description": t("Cache - VMs kept out of the cache")},
-            {"prompt_description": t("Cache - Git mirrors: fill them ahead")},
-            {"prompt_description": t("Cache - Age and cleanup")},
-            {"prompt_description": t("Cache - Guide: how it works")},
-            {"prompt_description": t("Cache - Tests and performance report")},
-            {"prompt_description": t("Cache - Fill what offline runs lacked")},
-            {"prompt_description": t("Cache - Logs")},
-            {"prompt_description": t("Cache - Copy it to another machine")},
-            {"prompt_description": t("Cache - Automatic cleanup")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_qemu_cache()
-            elif status == "2":
-                self._cache_diagnostic()
-            elif status == "3":
-                self._cache_service()
-            elif status == "4":
-                self._cache_exceptions()
-            elif status == "5":
-                self._cache_miroir_git()
-            elif status == "6":
-                self._cache_age()
-            elif status == "7":
-                self._cache_guide()
-            elif status == "8":
-                self._cache_tests()
-            elif status == "9":
-                self._cache_combler()
-            elif status == "10":
-                self._cache_journaux()
-            elif status == "11":
-                self._cache_transfert()
-            elif status == "12":
-                self._cache_nettoyage_auto()
-            else:
-                print(t("Command not found !"))
+        """Le cache de téléchargement des VM : l'installer, le constater, le
+        conduire, le comprendre, le mesurer (QEMU_CACHE, `menus/deploy.py`),
+        dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_deploy.QEMU_CACHE)
 
     # ------------------------------------------------------------------
     # [2] Diagnostic
@@ -617,38 +577,20 @@ class QemuCacheMenuMixin:
         )
 
     def _cache_service(self):
+        """Démarrer, arrêter, activer au démarrage le service du cache, et
+        lire son état et son journal (CACHE_SERVICE, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_SERVICE)
+
+    def _cache_service_ouvre(self):
+        """Ce qui ouvre le menu du service : son état en une ligne, et ce
+        que coûte l'arrêter. Rend {}."""
         print(f"\n⚙ {t('State of the cache service')}")
         print(f"  {self._cache_etat_court()}")
         print(
             f"  {t('Stopping it removes the rules: no VM is redirected.')}\n"
         )
-        choices = [
-            {"prompt_description": t("Service - Start (start)")},
-            {"prompt_description": t("Service - Start at boot (enable)")},
-            {
-                "prompt_description": t(
-                    "Service - Do not start at boot (disable)"
-                )
-            },
-            {"prompt_description": t("Service - Stop (stop)")},
-            {"prompt_description": t("Service - Detailed state (status)")},
-            {"prompt_description": t("Service - Logs (log)")},
-        ]
-        verbes = {"1": "start", "2": "enable", "3": "disable", "4": "stop"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in verbes:
-                self._cache_systemctl(verbes[status])
-            elif status == "5":
-                self._cache_systemctl("status --no-pager", montrer=False)
-            elif status == "6":
-                self._cache_journal_service()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_journal_service(self):
         """Deux journaux, et ils ne disent pas la même chose.
@@ -1062,7 +1004,8 @@ class QemuCacheMenuMixin:
         return p.stdout.split("\t")[0] if p.returncode == 0 else "?"
 
     def _cache_journaux(self):
-        """Les journaux en direct, pour regarder une installation passer.
+        """Les journaux en direct, pour regarder une installation passer
+        (CACHE_LOGS, `menus/deploy.py`). Rend False sur [0].
 
         Le journal d'ACCÈS porte une ligne par requête et dit, pour chacune,
         si elle est sortie vers l'internet : c'est lui qui prouve qu'une VM
@@ -1070,45 +1013,23 @@ class QemuCacheMenuMixin:
         coupure. Le journal du SERVICE porte ce que le service dit de
         lui-même — démarrages, erreurs, hôtes retenus en tunnel.
         """
+        return navigate(self, menus_deploy.CACHE_LOGS)
+
+    def _cache_journaux_ouvre(self):
+        """Ce qui ouvre le menu des journaux : le chemin du journal d'accès,
+        et comment finir un suivi en direct. Rend {}."""
         chemin = self._cache_journal()
         print(f"\n📜 {t('Logs of the download cache')}")
         print(f"  {t('Access log:')} {chemin or '—'}")
         print(f"  {t('Ctrl-C ends a live follow.')}\n")
-        choices = [
-            {"prompt_description": t("Logs - Requests, live")},
-            {
-                "prompt_description": t(
-                    "Logs - Only requests that went to the internet, live"
-                )
-            },
-            {"prompt_description": t("Logs - Last 40 requests")},
-            {"prompt_description": t("Logs - Service journal, live")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in ("1", "2", "3") and not (
-                chemin and os.path.exists(chemin)
-            ):
-                print(
-                    f"  ✗ {t('No access log yet:')} {chemin or CACHE_CONF}\n"
-                )
-                continue
-            if status == "1":
-                self._cache_suivre(chemin)
-            elif status == "2":
-                self._cache_suivre(chemin, amont=True)
-            elif status == "3":
-                self._cache_suivre(chemin, suivre=False)
-            elif status == "4":
-                cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
-                print(f"{t('Will execute:')} {cmd}")
-                self.execute.exec_command_live(cmd, source_erplibre=False)
-            else:
-                print(t("Command not found !"))
+        return {}
+
+    def _cache_journal_direct(self):
+        """Le journal du service, en direct, ses vingt dernières lignes
+        d'abord."""
+        cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _cache_suivre(self, chemin, amont=False, suivre=True):
         """Le journal d'accès, mis en forme par `cache_journal.py`.
@@ -1131,6 +1052,16 @@ class QemuCacheMenuMixin:
         )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_voir_acces(self, amont=False, suivre=True):
+        """Le journal d'accès par `_cache_suivre`, son chemin lu dans la
+        configuration du service au moment de l'entrée ; dit qu'il n'existe
+        pas encore plutôt que de lancer « tail » sur rien."""
+        chemin = self._cache_journal()
+        if not (chemin and os.path.exists(chemin)):
+            print(f"  ✗ {t('No access log yet:')} {chemin or CACHE_CONF}\n")
+            return
+        self._cache_suivre(chemin, amont=amont, suivre=suivre)
 
     # ------------------------------------------------------------------
     # [4] Exceptions : les VM soustraites au détournement
@@ -1188,16 +1119,46 @@ class QemuCacheMenuMixin:
         print(f"\n{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _cache_retirer_orphelines(self):
+        """Rend au cache chaque exception dont la VM n'existe plus, relues
+        maintenant. Rend True s'il y en avait ; sinon dit « Nothing is
+        stale. » et rend False."""
+        orphelines = dict(self._cache_bypass_orphelines())
+        if not orphelines:
+            print(t("Nothing is stale."))
+            return False
+        for mac in orphelines:
+            self._cache_bypass_retirer(mac)
+        return True
+
+    def _cache_retirer_par_mac(self):
+        """Demande une adresse MAC et rend son exception au cache ; une
+        réponse vide ne retire rien. Rend True dans les deux cas."""
+        mac = click.prompt(t("MAC to give back to the cache")).strip()
+        if mac:
+            self._cache_bypass_retirer(mac)
+        return True
+
     def _cache_exceptions(self):
+        """Les VM soustraites au cache, et le retrait de leurs exceptions
+        (CACHE_EXCEPTIONS, `menus/deploy.py`). Une entrée qui retire
+        referme le menu, qui rend True ; [0] rend False, et le menu ne
+        s'ouvre pas, rendant None, sans binaire du cache ni exception."""
+        return navigate(self, menus_deploy.CACHE_EXCEPTIONS)
+
+    def _cache_exceptions_ouvre(self):
+        """Ce qui ouvre le menu des exceptions : chaque exception posée, sa
+        VM, et celles dont la VM n'existe plus. Rend {}, ou None sans
+        binaire du cache ni exception."""
         print(f"\n🎫 {t('VMs kept out of the download cache')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         entrees = self._cache_bypass_lire()
         if not entrees:
             print(f"  {t('No exception: every VM goes through the cache.')}")
             print(f"  {t('Tick the box when deploying to add one.')}\n")
-            return
+            return None
 
         orphelines = dict(self._cache_bypass_orphelines(entrees))
         print(f"  {'MAC':<20}{t('VM')}")
@@ -1209,57 +1170,41 @@ class QemuCacheMenuMixin:
         if orphelines:
             print(f"  ⚠ {t('A freed MAC gets reused: such an entry would')}")
             print(f"    {t('quietly keep a NEW VM out of the cache.')}\n")
-
-        choices = [
-            {"prompt_description": t("Exceptions - Remove the stale ones")},
-            {"prompt_description": t("Exceptions - Remove one by its MAC")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                if not orphelines:
-                    print(t("Nothing is stale."))
-                    continue
-                for mac in orphelines:
-                    self._cache_bypass_retirer(mac)
-                return True
-            if status == "2":
-                mac = click.prompt(t("MAC to give back to the cache")).strip()
-                if mac:
-                    self._cache_bypass_retirer(mac)
-                return True
-            print(t("Command not found !"))
+        return {}
 
     # ------------------------------------------------------------------
     # [5] Miroirs git
     # ------------------------------------------------------------------
 
     def _cache_miroir_git(self):
-        """Prendre l'avance sur les clonages, plutôt que les subir.
+        """Prendre l'avance sur les clonages, plutôt que les subir
+        (CACHE_GIT_MIRRORS, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, sans binaire du cache ni dépôt dans les manifestes.
 
         À la demande, le miroir se remplit au fil des requêtes : la PREMIÈRE
         machine paie chaque clonage. Pour un dépôt qui en tire trois cents, ce
         n'est pas un coût qu'on supprime, c'est un coût qu'on déplace — sur la
         machine qui, justement, attend.
         """
+        return navigate(self, menus_deploy.CACHE_GIT_MIRRORS)
+
+    def _cache_miroir_git_ouvre(self):
+        """Ce qui ouvre le menu des miroirs : ce qui est déjà mirroré, et,
+        pour la base et l'extra de la version active et pour tous les
+        manifestes, les dépôts déclarés et ceux qui n'ont pas de miroir. Rend
+        {}, ou None sans binaire du cache ni dépôt déclaré."""
         print(f"\n🪞 {t('Git mirrors of the ERPLibre manifests')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         depots, octets = self._cache_miroir_occupation()
         print(f"  {t('Already mirrored:')} {depots}, {octets}")
 
-        racine = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        racine = RACINE_DEPOT
         tous = depots_des_manifestes(racine)
         if not tous:
             print(f"  ✗ {t('No repository found in manifest/')}\n")
-            return
+            return None
         # La version active décide de ce qu'un déploiement clone : sa base
         # d'office, son extra seulement sur demande. Chaque liste est montrée
         # avec ce qui lui manque, pour que le choix se fasse sur un compte et
@@ -1288,59 +1233,7 @@ class QemuCacheMenuMixin:
         print(f"\n  ⚠ {t('A mirror is complete: this can take tens of GiB')}")
         print(f"    {t('and hours on the first run. Nothing erases it.')}")
         print(f"    {t('Free space:')} {self._cache_place_libre()}\n")
-
-        choices = [
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill the base of the active Odoo version"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill the extra of the active Odoo version"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill every manifest, all versions"
-                )
-            },
-            {"prompt_description": t("Mirrors - List them, heaviest first")},
-            {"prompt_description": t("Mirrors - Remove one")},
-        ]
-        help_info = self.fill_help_info(choices)
-        sans_version = t("No .odoo-version: no active version to fill.")
-        rien = t("Nothing declared for this version.")
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                if not version:
-                    print(f"  {sans_version}\n")
-                elif not base:
-                    print(f"  {rien}\n")
-                else:
-                    self._cache_miroir_remplir(base)
-            elif status == "2":
-                if not version:
-                    print(f"  {sans_version}\n")
-                elif not extra:
-                    print(f"  {rien}\n")
-                else:
-                    print(
-                        f"  {t('Extra modules install only with --with_extra.')}"
-                    )
-                    self._cache_miroir_remplir(extra)
-            elif status == "3":
-                self._cache_miroir_remplir(tous)
-            elif status == "4":
-                self._cache_miroir_lister()
-            elif status == "5":
-                self._cache_miroir_retirer()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_miroir_remplir(self, liste):
         """Remplir les miroirs sous le compte du SERVICE, jamais sous root.
@@ -1366,6 +1259,36 @@ class QemuCacheMenuMixin:
         if not click.confirm(t("Fill the git mirrors now?")):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_miroir_remplir_version(self, extra=False):
+        """Remplit les miroirs de la base de la version d'Odoo active, ou de
+        son extra (`extra`), leur liste lue dans les manifestes au moment de
+        l'entrée. Dit pourquoi rien ne se remplit sans version active ou
+        sans dépôt déclaré."""
+        version = version_active(RACINE_DEPOT)
+        if not version:
+            print(f"  {t('No .odoo-version: no active version to fill.')}\n")
+            return
+        if extra:
+            fichiers = [manifeste_extra(version)]
+            liste = depots_des_manifestes(RACINE_DEPOT, fichiers=fichiers)
+        else:
+            liste = depots_des_manifestes(RACINE_DEPOT, version)
+        if not liste:
+            print(f"  {t('Nothing declared for this version.')}\n")
+            return
+        if extra:
+            print(f"  {t('Extra modules install only with --with_extra.')}")
+        self._cache_miroir_remplir(liste)
+
+    def _cache_miroir_remplir_tout(self):
+        """Remplit les miroirs de tous les manifestes, toutes versions, leur
+        liste lue au moment de l'entrée."""
+        tous = depots_des_manifestes(RACINE_DEPOT)
+        if not tous:
+            print(f"  ✗ {t('No repository found in manifest/')}\n")
+            return
+        self._cache_miroir_remplir(tous)
 
     def _cache_miroir_lister(self):
         """Du plus lourd au plus léger : c'est ce qu'on cherche quand on
@@ -1427,7 +1350,9 @@ class QemuCacheMenuMixin:
     # ------------------------------------------------------------------
 
     def _cache_age(self):
-        """Ce qui occupe, depuis quand, et de quoi en rendre.
+        """Ce qui occupe, depuis quand, et de quoi en rendre (CACHE_AGE,
+        `menus/deploy.py`). Rend False sur [0], et None, le menu fermé, sans
+        binaire du cache.
 
         L'âge retenu est celui du dernier USAGE : le service remet la date
         d'un objet chaque fois qu'il le sert. « Vieux » veut donc dire « n'a
@@ -1435,42 +1360,17 @@ class QemuCacheMenuMixin:
         tous les jours depuis un an n'est pas à jeter, l'effacer obligerait à
         le retélécharger le lendemain.
         """
+        return navigate(self, menus_deploy.CACHE_AGE)
+
+    def _cache_age_ouvre(self):
+        """Ce qui ouvre le menu de l'âge : la place libre. Rend {}, ou None
+        sans binaire du cache."""
         print(f"\n🧭 {t('Age of the cache, and cleanup')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         print(f"  {t('Free space:')} {self._cache_place_libre()}\n")
-        choices = [
-            {"prompt_description": t("Age - By day")},
-            {"prompt_description": t("Age - By week")},
-            {"prompt_description": t("Age - By month")},
-            {
-                "prompt_description": t(
-                    "Clean - What has not served for a while"
-                )
-            },
-            {"prompt_description": t("Clean - Everything")},
-            {"prompt_description": t("Clean - Forget one URL")},
-        ]
-        grains = {"1": "jour", "2": "semaine", "3": "mois"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in grains:
-                self._cache_lancer(
-                    f"--age-report --age-par {grains[status]}", sudo=False
-                )
-            elif status == "4":
-                self._cache_nettoyer_age()
-            elif status == "5":
-                self._cache_nettoyer_tout()
-            elif status == "6":
-                self._cache_oublier_url()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_lancer(self, options, sudo=True):
         """La commande du cache, annoncée puis lancée."""
@@ -1752,24 +1652,14 @@ class QemuCacheMenuMixin:
             prefixe, distro, module.DISTROS[distro][1], charge
         )
 
-    def _cache_choisir(self, titre, options):
-        """Une question numérotée, le premier choix par défaut.
-
-        Rend l'indice choisi, ou None si l'on renonce. Les trois questions de
-        l'assistant partagent cette forme : une seule façon de répondre, et
-        « 0 » ramène en arrière partout.
-        """
-        print(f"\n{titre}")
-        for i, libelle in enumerate(options, 1):
-            print(f"  [{i}] {libelle}")
-        print(f"  {retour(t('Back'))}")
-        while True:
-            reponse = click.prompt(t("Choice"), default="1").strip()
-            if reponse == "0":
-                return None
-            if reponse.isdigit() and 1 <= int(reponse) <= len(options):
-                return int(reponse) - 1
-            print(t("Command not found !"))
+    @staticmethod
+    def _cache_choisir(titre, options):
+        """L'indice choisi parmi les libellés `options`, chacun ouvert par
+        son icône : par son numéro ou par son libellé sans l'icône, le
+        premier sur une réponse vide, ou None pour [0] (`ui.choose`)."""
+        noms = {o.partition(" ")[2]: rang for rang, o in enumerate(options)}
+        rangs = range(len(options))
+        return ui.choose(titre, rangs, default=0, labels=options, names=noms)
 
     def _cache_assistant(self):
         """Trois questions, puis les essais choisis, l'un après l'autre.
@@ -1778,18 +1668,14 @@ class QemuCacheMenuMixin:
         porte sur le LOT, et la reposer trois fois la rendrait machinale
         — c'est ce qui fait qu'on cesse de la lire.
         """
-        essais = self._cache_choisir(
+        choisis = ui.choose(
             t("Which test?"),
-            [t(e[1]) for e in self._CACHE_ESSAIS]
-            + [t("All three, one after another")],
+            self._CACHE_ESSAIS,
+            multi=True,
+            labels=[t(e[1]) for e in self._CACHE_ESSAIS],
         )
-        if essais is None:
+        if not choisis:
             return
-        choisis = (
-            list(self._CACHE_ESSAIS)
-            if essais == len(self._CACHE_ESSAIS)
-            else [self._CACHE_ESSAIS[essais]]
-        )
 
         charge = self._cache_choisir(
             t("Which load?"), [t(c[1]) for c in self._CACHE_CHARGES]
@@ -1828,26 +1714,14 @@ class QemuCacheMenuMixin:
             )
 
     def _cache_tests(self):
+        """Les tests du cache, sur de vraies VM (CACHE_TESTS,
+        `menus/deploy.py`). Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_TESTS)
+
+    def _cache_tests_ouvre(self):
+        """Ce qui ouvre le menu des tests : ce qu'ils coûtent. Rend {}."""
         print(f"\n{t('Cache tests: real VMs, several minutes')}\n")
-        choices = [
-            {"prompt_description": t("Test - Choose and run")},
-            {"prompt_description": t("Test - The plan only (dry-run)")},
-            {"prompt_description": t("Test - Performance report")},
-            {"prompt_description": t("Test - Undo the machines created")},
-        ]
-        args = {"2": "--dry-run", "3": "--rapport", "4": "--detruire"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                self._cache_assistant()
-            elif status in args:
-                self._longtest_run("qemu_cache.py", args[status])
-            else:
-                print(t("Command not found !"))
+        return {}
 
     # ------------------------------------------------------------------
     # [9] Combler ce qui a manqué hors ligne
@@ -2116,40 +1990,11 @@ class QemuCacheMenuMixin:
 
     def _cache_nettoyage_auto(self):
         """Le nettoyage automatique : un minuteur quotidien, sans effet tant
-        que ses deux réglages sont vides. Le nettoyage reste donc manuel par
-        défaut, et le régler ici suffit à l'activer, sans réinstaller."""
-        print(f"\n🧹 {t('Automatic cleanup of the cache')}")
-        choices = [
-            {"prompt_description": t("Cleanup - Set the age limit")},
-            {"prompt_description": t("Cleanup - Set the size ceiling")},
-            {"prompt_description": t("Cleanup - Preview now (dry run)")},
-            {"prompt_description": t("Cleanup - Run now")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            self._cache_nettoyage_etat()
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._cache_nettoyage_regler(
-                    "EL_PURGE_AGE",
-                    t("Not served since (e.g. 90j), empty to disable"),
-                    reglage_age_valide,
-                )
-            elif status == "2":
-                self._cache_nettoyage_regler(
-                    "EL_MAX_SIZE",
-                    t("Size ceiling (e.g. 50G), empty to disable"),
-                    reglage_taille_valide,
-                )
-            elif status == "3":
-                self._cache_nettoyage_lancer(a_blanc=True)
-            elif status == "4":
-                self._cache_nettoyage_lancer(a_blanc=False)
-            else:
-                print(t("Command not found !"))
+        que ses deux réglages sont vides (CACHE_CLEANUP, `menus/deploy.py`),
+        leur état relu avant chaque question. Le nettoyage reste donc manuel
+        par défaut, et le régler ici suffit à l'activer, sans réinstaller.
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_CLEANUP)
 
     def _cache_nettoyage_etat(self):
         """Les deux réglages lus dans le fichier du service, et le minuteur."""
@@ -2168,9 +2013,20 @@ class QemuCacheMenuMixin:
             )
         print()
 
-    def _cache_nettoyage_regler(self, cle, invite, valide):
-        """Demande une valeur, la vérifie, montre la commande et l'écrit après
-        confirmation. Une valeur vide désactive le réglage."""
+    def _cache_nettoyage_regler(self, cle):
+        """Demande la valeur du réglage `cle`, EL_PURGE_AGE ou EL_MAX_SIZE,
+        la vérifie, montre la commande et l'écrit après confirmation. Une
+        valeur vide désactive le réglage."""
+        invite, valide = {
+            "EL_PURGE_AGE": (
+                t("Not served since (e.g. 90j), empty to disable"),
+                reglage_age_valide,
+            ),
+            "EL_MAX_SIZE": (
+                t("Size ceiling (e.g. 50G), empty to disable"),
+                reglage_taille_valide,
+            ),
+        }[cle]
         valeur = click.prompt(invite, default="", show_default=False).strip()
         if valeur and not valide(valeur):
             print(f"  ✗ {t('Unreadable value:')} {valeur}\n")
@@ -2210,6 +2066,8 @@ class QemuCacheMenuMixin:
             )
             print(f"{t('Will execute:')} {cmd}\n")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
 
 
 def reglage_age_valide(valeur):
@@ -2443,6 +2301,8 @@ def bypass_menage(execute):
         execute.exec_command_live(
             bypass_retrait_cmd(mac), source_erplibre=False
         )
+        if Execute.interrupted:
+            break
     return len(orphelines)
 
 

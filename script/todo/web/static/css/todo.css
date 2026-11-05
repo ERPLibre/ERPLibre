@@ -1,0 +1,556 @@
+/* Page de télémétrie de TODO, claire ou sombre selon le système. */
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1d2330;
+    --muted: #5f6b7a;
+    --line: #d8dde5;
+    --accent: #0b6bcb;
+    --error: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #14171c;
+        --fg: #e6e9ee;
+        --muted: #9aa4b1;
+        --line: #2b313a;
+        --accent: #6cb1ff;
+        --error: #ff8a80;
+    }
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, sans-serif;
+}
+
+#app {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.bar h1 {
+    margin: 0.5rem 0;
+    font-size: 1.25rem;
+}
+
+.root,
+.summary,
+.section {
+    color: var(--muted);
+}
+
+.root {
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.tree,
+.tree ul {
+    margin: 0;
+    padding-left: 1.5rem;
+    list-style: none;
+}
+
+.tree {
+    padding-left: 0;
+}
+
+.toggle {
+    width: 1.5rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
+.leaf::before {
+    content: "·";
+    display: inline-block;
+    width: 1.5rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.count {
+    margin-left: 0.5rem;
+    padding: 0 0.4rem;
+    border-radius: 0.6rem;
+    background: var(--line);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.section {
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.error {
+    color: var(--error);
+    font-weight: 600;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.toolbar button,
+.toolbar input,
+.toolbar select {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+}
+
+.toolbar button {
+    cursor: pointer;
+}
+
+.toolbar button[aria-pressed="true"],
+.toolbar button[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.search {
+    flex: 1 1 12rem;
+}
+
+.sort {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+}
+
+.list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+.list li {
+    padding: 0.15rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.empty {
+    color: var(--muted);
+}
+
+/* Le code de TODO a changé sous les sessions ouvertes. */
+.banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.5rem;
+}
+
+/* L'offre de source (AGPL §13), au pied de la page. */
+footer.source {
+    margin-top: 1.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+footer.source dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.2rem 0.75rem;
+}
+
+footer.source dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+footer.source dd + dd {
+    grid-column: 2;
+}
+
+.banner button {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.4rem;
+    background: var(--bg);
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
+/* Kanban : les colonnes côte à côte, qui défilent de côté. */
+.kanban {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
+.column {
+    flex: 0 0 16rem;
+    padding: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+}
+
+.column h2 {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+}
+
+.column ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.card {
+    padding: 0.25rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.system {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.4rem 1rem;
+}
+
+.system dt {
+    color: var(--muted);
+}
+
+.system dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.system meter {
+    width: 10rem;
+}
+
+.session-bar .state {
+    color: var(--muted);
+}
+
+.dropped,
+.halt {
+    color: var(--error);
+}
+
+.launch {
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.secret label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Lu par un lecteur d'écran, hors de la vue. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* Question du worker en widget natif, au-dessus du terminal. */
+.question {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+}
+
+.question:focus-visible {
+    outline: 2px solid var(--accent);
+}
+
+.question button,
+.question input {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+}
+
+.question button {
+    cursor: pointer;
+}
+
+.question button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.crumbs,
+.section-title {
+    margin: 0;
+    color: var(--muted);
+}
+
+.section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.entries {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.4rem;
+}
+
+/* Un libellé d'option de plusieurs lignes (un suivi et ses VM, une session,
+   un outil et sa description) garde ses lignes. */
+.question .entry {
+    display: flex;
+    gap: 0.4rem;
+    text-align: left;
+    white-space: pre-line;
+}
+
+.entry .key {
+    min-width: 2ch;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.question .danger {
+    border-color: var(--error);
+}
+
+.answer-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.other {
+    display: flex;
+    flex: 1 1 14rem;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+}
+
+.other input {
+    flex: 1;
+}
+
+.typed {
+    font-family: ui-monospace, monospace;
+}
+
+.prompt-text {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.question .default {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.question .field {
+    flex: 1 1 16rem;
+}
+
+.question label.entry {
+    align-items: center;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+}
+
+.countdown {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Sélecteur de chemins : le fil du chemin, puis une colonne d'entrées qui
+   défile seule. */
+.path-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+}
+
+.path-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 18rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.path-entries .entry {
+    justify-content: space-between;
+    width: 100%;
+}
+
+.path-entries .dir {
+    color: var(--accent);
+}
+
+.path-entries .size {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* La vue Sessions montrée tient dans la fenêtre : une colonne où le
+   terminal prend la hauteur que laissent l'en-tête, les barres et le
+   panneau de la question. Celui-ci défile seul, plafonné tant que le
+   terminal se montre : la ligne de l'invite reste à l'écran. */
+#app:has(> .sessions:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    height: 100dvh;
+}
+
+.sessions:not([hidden]) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.prompt-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.prompt-panel:has(~ .terminal:not([hidden])) {
+    max-height: 40vh;
+}
+
+.terminal {
+    flex: 1 1 0;
+    min-height: 12rem;
+    overflow: hidden;
+}
+
+/* Écran alternatif (éditeur, application plein écran) : la vue prend la
+   fenêtre et le terminal toute la hauteur que laissent ses barres. Une vue
+   cachée le reste : « display » l'emporterait sur l'attribut hidden. */
+.sessions.fullscreen:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 1rem 1rem;
+    background: var(--bg);
+}
+
+.tasks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.tasks th,
+.tasks td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+}
+
+.tasks .cmd,
+.log {
+    font-family: ui-monospace, monospace;
+    overflow-wrap: anywhere;
+}
+
+.link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.task-title {
+    font-size: 1rem;
+}
+
+.log {
+    margin: 0 0 0.5rem;
+    padding: 0;
+    list-style: none;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+}
+
+.log .n {
+    display: inline-block;
+    min-width: 3rem;
+    margin-right: 0.75rem;
+    color: var(--muted);
+    text-align: right;
+    user-select: none;
+}
+
+.log .event {
+    color: var(--muted);
+}

@@ -12,7 +12,8 @@ import shutil
 import subprocess
 import time
 
-from script.todo import ssh_config, todo_install, todo_journal
+from script.execute.execute import Execute
+from script.todo import ssh_config, todo_install, todo_journal, ui
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
@@ -22,7 +23,6 @@ from script.todo.qemu_privilege import (
     system_path,
     virsh_argv,
 )
-from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 # Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
@@ -217,7 +217,11 @@ class QemuManageMixin:
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
         distro = self._qemu_prompt_distro()
+        if distro is None:
+            return
         version = self._qemu_prompt_version(distro)
+        if version is None:
+            return
         ans = input(t("Verify SHA256 after download? (y/N): "))
         parts = [
             "sudo",
@@ -241,19 +245,22 @@ class QemuManageMixin:
         if not ask_advanced:
             return
         # Menu contextuel : infos avancées, ou changer l'état de VM.
-        print(f"\n{t('What do you want to do?')}")
-        print(f"  [1] {t('Advanced info (vCPU, RAM, disk)')}")
-        print(f"  [2] {t('Change the state of one or more VMs')}")
-        print(f"  [{t('Enter')}] {t('Nothing')}")
-        choice = input(t("Choice: ")).strip()
-        if choice == "1":
+        choice = ui.choose(
+            t("What do you want to do?"),
+            ["advanced", "state"],
+            labels=[
+                t("Advanced info (vCPU, RAM, disk)"),
+                t("Change the state of one or more VMs"),
+            ],
+        )
+        if choice == "advanced":
             self._qemu_list_vms_advanced()
-        elif choice == "2":
+        elif choice == "state":
             self._qemu_change_state()
 
     def _qemu_change_state(self):
-        """Démarre (« ouvrir ») ou éteint (« fermer ») une liste de VM saisie
-        séparée par des virgules, avec DOUBLE validation."""
+        """Démarre (« ouvrir ») ou éteint (« fermer ») des VM choisies sous
+        les règles d'un choix multiple, avec DOUBLE validation."""
         names = self._qemu_list_domains()
         if not names:
             print(f"\n{t('No VM found.')}")
@@ -261,48 +268,28 @@ class QemuManageMixin:
         # Liste NUMÉROTÉE, comme l'écran de suppression : les noms de VM sont
         # longs et se ressemblent, les retaper invite à la faute de frappe sur
         # une commande qui change l'état d'une machine.
-        print(f"\n{t('Available VMs:')}")
-        for i, n in enumerate(names, 1):
-            print(f"  [{i}] {n}")
-        print(f"  [all] {t('select all')}")
-        raw = input(t("Selection (numbers, or 'all'): ")).strip()
-        if not raw:
-            print(t("Nothing selected."))
-            return
-        if raw.lower() in ("all", "*"):
-            resolved = list(names)
-        else:
-            resolved = self._parse_index_selection(raw.lower(), names)
-            # Le parseur ignore en silence ce qu'il ne reconnaît pas. Sur une
-            # sélection qui va démarrer ou éteindre des VM, un numéro hors
-            # liste doit être dit, pas escamoté.
-            unknown = [
-                tok
-                for tok in re.split(r"[\s,]+", raw.strip())
-                if tok and tok not in names and not self._is_index(tok, names)
-            ]
-            if unknown:
-                print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
-                return
+        resolved = ui.choose(t("Available VMs:"), names, multi=True)
         if not resolved:
-            print(t("Nothing selected."))
+            if resolved == []:
+                print(t("Nothing selected."))
             return
         # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
-        print(f"\n{t('Target state:')}")
-        print(f"  [1] {t('Open (start)')}")
-        print(f"  [2] {t('Close (shut down)')}")
-        print(f"  [3] {t('Adjust hardware only (vCPU, RAM, 3D)')}")
-        st = input(t("Choice: ")).strip()
-        if st == "1":
-            action, verb = "start", t("start")
-        elif st == "2":
-            action, verb = "shutdown", t("shut down")
-        elif st == "3":
+        st = ui.choose(
+            t("Target state:"),
+            ["start", "shutdown", "hardware"],
+            labels=[
+                t("Open (start)"),
+                t("Close (shut down)"),
+                t("Adjust hardware only (vCPU, RAM, 3D)"),
+            ],
+        )
+        if st is None:
+            return
+        if st == "hardware":
             self._qemu_adjust_hardware(resolved)
             return
-        else:
-            print(t("Cancelled."))
-            return
+        action = st
+        verb = t("start") if st == "start" else t("shut down")
         # Le matériel d'une VM ne se règle QUE pendant qu'elle est éteinte :
         # démarrer est donc le dernier moment pour le faire, et le seul où la
         # question tombe juste.
@@ -326,6 +313,8 @@ class QemuManageMixin:
             print(f"\n{t('Will execute:')} {cmd}")
             if action != "start":
                 self.execute.exec_command_live(cmd, source_erplibre=False)
+                if Execute.interrupted:
+                    return
                 continue
             # Un démarrage est le seul moment où la 3D écrite dans la
             # définition se met à l'épreuve : QEMU refuse le domaine si EGL
@@ -334,6 +323,8 @@ class QemuManageMixin:
             code, lignes = self.execute.exec_command_live(
                 cmd, source_erplibre=False, return_status_and_output=True
             )
+            if Execute.interrupted:
+                return
             if code:
                 self._qemu_start_failed(real, cmd, "\n".join(lignes or []))
 
@@ -727,6 +718,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                break
         return True
 
     # Ce que libvirt autorise par défaut. La liste sert de BASE à la
@@ -938,6 +931,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                return
         print(f"\n{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1016,6 +1011,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                return
 
     def _qemu_hw_form(self, rows, node, nets=None):
         """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
@@ -1031,23 +1028,19 @@ class QemuManageMixin:
         except ImportError:
             return {}
 
-    def _qemu_pick(self, title, values, current, labels=None):
-        """Liste numérotée dont le DÉFAUT est la valeur actuelle.
-
-        Rendre la valeur actuelle sur une réponse vide, et sur une réponse
-        illisible : dans un formulaire de matériel, ne rien comprendre ne doit
-        rien changer.
-        """
-        labels = labels or values
-        print(f"{title} :")
-        for i, (val, lab) in enumerate(zip(values, labels), 1):
-            mark = " ←" if val == current else ""
-            print(f"      [{i}] {lab}{mark}")
-        ans = input("      " + t("Choice: ")).strip()
-        if not ans.isdigit():
-            return current
-        idx = int(ans)
-        return values[idx - 1] if 1 <= idx <= len(values) else current
+    @staticmethod
+    def _qemu_pick(title, values, current, labels=None):
+        """Liste numérotée dont le DÉFAUT, marqué, est la valeur actuelle
+        `current` quand elle est parmi `values` : la valeur choisie par son
+        numéro, ou sans `labels` par son nom, sous les règles de
+        `ui.choose` ; None pour [0], ou pour une réponse vide sans valeur
+        actuelle. Une réponse illisible est dite, et la question revient."""
+        return ui.choose(
+            title,
+            values,
+            default=current if current in values else None,
+            labels=labels,
+        )
 
     def _qemu_hw_prompts(self, rows, node, nets=None):
         """Même ajustement, en invites, quand Textual n'est pas disponible."""
@@ -1072,6 +1065,8 @@ class QemuManageMixin:
             auto = self._qemu_ask_bool(
                 f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
             )
+            # [0] rend None, que build_want lit comme la valeur actuelle :
+            # renoncer à un champ du formulaire n'y change rien.
             cpu = self._qemu_pick(f"    {t('CPU mode')}", cpus, r.get("cpu"))
             heads = ""
             if r.get("video"):
@@ -1170,14 +1165,14 @@ class QemuManageMixin:
         """(utilisée, totale) en KiO vues par l'INVITÉ, ou (0, 0).
 
         « available » est ce que l'invité voit, « usable » ce qu'il peut encore
-        rendre : leur différence est son « used », à quelques mégaoctets près —
-        calibré contre le « free » de deux VM (1186 contre 1216, 4831 contre
-        4838). « unused » ne convient pas : il ignore le cache, et donnait
-        10,8 Go d'« utilisé » sur une VM qui en occupait 1,2.
+        rendre : leur différence est son « used », à quelques mégaoctets près
+        de ce que « free » affiche dans l'invité. « unused » ne convient pas :
+        il ignore le cache, et compte pour « utilisé » toute la mémoire que
+        l'invité garde en cache, bien au-delà de ce que la VM occupe.
 
         La période de collecte est posée d'abord, et c'est indispensable : sans
-        elle le ballon ne rafraîchit rien, et une VM qui occupait 4,8 Go en
-        annonçait 490 Mo — vécu. « --live » ne touche pas le XML : le réglage
+        elle le ballon ne rafraîchit rien, et une VM annonce une fraction de la
+        mémoire qu'elle occupe. « --live » ne touche pas le XML : le réglage
         disparaît au prochain démarrage du domaine."""
         try:
             subprocess.run(
@@ -1272,22 +1267,14 @@ class QemuManageMixin:
             )
 
     def _qemu_show_ip(self):
-        # Affiche d'abord les VM (avec leur ID) pour que l'utilisateur sache
-        # quel nom/ID saisir, puis demande lequel (ou « all » pour toutes).
+        """L'adresse de chaque VM choisie, après la liste de virsh, sous
+        les règles d'un choix multiple (`tout` pour toutes)."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID (or 'all'): ")).strip()
-        if not name:
-            print(t("VM name is required!"))
-            return
-        if name.lower() in ("all", "tous", "*"):
-            targets = self._qemu_list_domains()
-            if not targets:
-                print(t("No VM found."))
-                return
-        else:
-            targets = [name]
-        for tgt in targets:
+        targets = self._qemu_pick_vm(multi=True)
+        if targets == []:
+            print(t("Nothing selected."))
+        for tgt in targets or []:
             cmd = (
                 f"{sudo_prefix()}virsh --connect {URI} "
                 f"domifaddr {shlex.quote(tgt)}"
@@ -1295,15 +1282,16 @@ class QemuManageMixin:
             )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
 
     def _qemu_console(self):
-        # Liste les VM, demande laquelle, rappelle comment quitter (Ctrl+])
-        # puis ouvre la console série interactive.
+        # Liste les VM, fait choisir laquelle, rappelle comment quitter
+        # (Ctrl+]) puis ouvre la console série interactive.
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
         print(f"\n💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
         print(
@@ -1320,13 +1308,8 @@ class QemuManageMixin:
         navigateur web EN LIGNE DE COMMANDE choisi par l'utilisateur."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
-        if not name:
-            print(t("VM name is required!"))
-            return
-        real = self._qemu_domname(name)
-        if not self._qemu_domain_exists(real):
-            print(f"{real}: {t('VM not found.')}")
+        real = self._qemu_pick_vm()
+        if not real:
             return
         print(f"\n{t('Resolving VM IP...')}")
         ip = self._qemu_vm_ip(real, timeout=120)
@@ -1359,28 +1342,18 @@ class QemuManageMixin:
         if not runs:
             print(t("No install run found in history."))
             return
-        print(f"\n{t('Install runs (most recent first):')}")
-        for i, r in enumerate(runs, 1):
-            names = ", ".join(v.get("name", "?") for v in r["vms"])
-            star = " *" if i == 1 else ""
-            print(
-                f"  [{i}] {r['label']} — {len(r['vms'])} VM{star}\n"
-                f"        {names}"
-            )
-        sel = input(t("Choice (number, blank = last): ")).strip()
-        run = runs[0]
-        if sel:
-            try:
-                idx = int(sel) - 1
-                if 0 <= idx < len(runs):
-                    run = runs[idx]
-                else:
-                    print(t("Invalid selection."))
-                    return
-            except ValueError:
-                print(t("Invalid selection."))
-                return
-        self._qemu_open_monitor(run["manifest"])
+        run = ui.choose(
+            t("Install runs (most recent first):"),
+            runs,
+            default=runs[0],
+            labels=[
+                f"{r['label']} — {len(r['vms'])} VM\n"
+                f"        {', '.join(v.get('name', '?') for v in r['vms'])}"
+                for r in runs
+            ],
+        )
+        if run is not None:
+            self._qemu_open_monitor(run["manifest"])
 
     def _qemu_open_monitor(self, manifest):
         """Ouvre le dashboard sur un manifeste, en installant Textual au
@@ -1426,73 +1399,37 @@ class QemuManageMixin:
             print(
                 f"     {t('Last activity:')} {mon._fmt_secs(int(run['idle']))}"
             )
-        print(f"\n  [1] {t('Reopen that monitoring')} *")
-        print(f"  [2] {t('Deploy anyway (new run)')}")
-        print(f"  {retour(t('Back'))}")
-        sel = input(t("Choice (number, blank = reopen): ")).strip()
-        if sel == "2":
+        sel = ui.choose(
+            t("What do you want to do?"),
+            ["reopen", "deploy"],
+            default="reopen",
+            labels=[t("Reopen that monitoring"), t("Deploy anyway (new run)")],
+        )
+        if sel == "deploy":
             return False
-        if sel != "0":
+        if sel == "reopen":
             self._qemu_open_monitor(run["manifest"])
         return True
 
     def _qemu_choose_cli_browser(self):
-        """Offre la LISTE des navigateurs CLI installés, plus une option pour
-        en INSTALLER un autre, et renvoie celui choisi, sinon None."""
-        from script.todo.qemu_install_monitor import CLI_BROWSERS
+        """Le navigateur CLI choisi pour voir la page
+        (`qemu_install_monitor.choose_cli_browser`) : [i], ou aucun
+        navigateur installé, en installe un (`_qemu_install_cli_browser`).
+        None pour [0]."""
+        from script.todo.qemu_install_monitor import choose_cli_browser
 
-        available = [b for b in CLI_BROWSERS if shutil.which(b)]
-        if not available:
-            return self._qemu_install_cli_browser()
-        print(f"\n{t('Which browser to view the page?')}")
-        for i, b in enumerate(available, 1):
-            print(f"  [{i}] {b}{' *' if i == 1 else ''}")
-        print(f"  [i] {t('Install another browser')}")
-        sel = input(t("Choice (number, blank = first): ")).strip().lower()
-        if sel == "i":
-            return self._qemu_install_cli_browser()
-        if not sel:
-            return available[0]
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(available):
-                return available[idx]
-        except ValueError:
-            pass
-        return available[0]
+        return choose_cli_browser(self._qemu_install_cli_browser)
 
     def _qemu_install_cli_browser(self):
-        """Demande QUEL navigateur CLI installer, affiche la commande adaptée
-        à l'OS, l'exécute après validation. Renvoie le binaire installé ou
-        None."""
-        from script.todo.qemu_install_monitor import (
-            INSTALLABLE_BROWSERS,
-            browser_install_command,
-        )
+        """Le navigateur CLI à installer, puis ses étapes (rafraîchissement
+        des index d'abord) lancées par exec_command_live après un oui, que
+        le journal de session suit (`install_cli_browser`) : le binaire
+        désormais dans le PATH, ou None."""
+        from script.todo import qemu_install_monitor
 
-        print(f"\n{t('Which browser to install?')}")
-        for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
-            print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = w3m): ")).strip()
-        browser = INSTALLABLE_BROWSERS[0][0]
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(INSTALLABLE_BROWSERS):
-                browser = INSTALLABLE_BROWSERS[idx][0]
-        except ValueError:
-            pass
-        etapes = browser_install_command(browser)
-        if not etapes:
-            print(t("Unknown package manager; install it manually."))
-            return None
-        todo_install.ask_and_install(
-            self.execute,
-            etapes,
-            t("Install now? (y/N): "),
-            self._is_yes,
-            prefix="",
+        return qemu_install_monitor.install_cli_browser(
+            execute=self.execute, is_yes=self._is_yes
         )
-        return browser if shutil.which(browser) else None
 
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM
@@ -1748,17 +1685,9 @@ class QemuManageMixin:
         puis propose d'étendre le système de fichiers invité."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name to resize: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
-        if not self._qemu_domain_exists(name):
-            print(f"{name}: {t('VM not found.')}")
-            return
-        # Résout tout de suite le NOM canonique (VM encore allumée -> l'ID est
-        # résoluble). Après extinction, un ID numérique disparaît : « virsh
-        # start 32 » échouerait. On travaille désormais avec le nom.
-        name = self._qemu_domname(name)
         disk = self._qemu_main_disk(name)
         if not disk:
             print(t("Main disk not found for this VM."))
@@ -2499,6 +2428,16 @@ class QemuManageMixin:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_pick_vm(self, multi=False):
+        """La VM, ou avec `multi` la liste des VM, choisie parmi celles que
+        libvirt définit (`ui.choose`), par son numéro ou son nom ; None pour
+        [0], ou sans VM, ce qui se dit."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(t("No VM found."))
+            return None
+        return ui.choose(t("Available VMs:"), names, multi=multi)
+
     def _qemu_list_domains(self):
         """Noms des VM libvirt définies (via virsh)."""
         try:
@@ -2520,20 +2459,10 @@ class QemuManageMixin:
         if not names:
             print(t("No VM found."))
             return
-        print(f"\n{t('Select VMs to delete:')}")
-        for i, n in enumerate(names, 1):
-            print(f"  [{i}] {n}")
-        print(f"  [all] {t('select all')}")
-        raw = input(t("Selection (numbers, or 'all'): ")).strip()
-        if not raw:
-            print(t("Nothing selected."))
-            return
-        if raw.lower() in ("all", "*"):
-            chosen = list(names)
-        else:
-            chosen = self._parse_index_selection(raw.lower(), names)
+        chosen = ui.choose(t("Select VMs to delete:"), names, multi=True)
         if not chosen:
-            print(t("Nothing selected."))
+            if chosen == []:
+                print(t("Nothing selected."))
             return
 
         del_disks = self._is_yes(
@@ -2572,6 +2501,8 @@ class QemuManageMixin:
                 print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
         # Une exception du cache survit à la VM qu'elle nommait, et une MAC
         # libérée se réattribue : l'exception soustrairait alors au cache une
         # machine neuve, sans que personne l'ait demandé et sans que rien ne le
@@ -2681,7 +2612,7 @@ class QemuManageMixin:
             orphans.append((size, path, t("disk backup (resize)")))
         # Le nom d'un fichier ne dit RIEN de son usage : c'est libvirt qui
         # sait. Une VM renommée garde le nom de fichier d'avant, et le
-        # nettoyage offrait alors son disque de 63 Go au « rm -f » — rapporté.
+        # nettoyage offrirait alors son disque au « rm -f ».
         orphans, proteges = self._qemu_split_orphans(orphans)
         if proteges:
             print(f"\n{t('Kept (still attached to a VM):')}")
@@ -2800,6 +2731,8 @@ class QemuManageMixin:
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
         print(f"✅ {t('Cleanup done.')}")
 
     def _ssh_entry_alive(self, content, nom, domains, adresses, distantes):
@@ -2982,19 +2915,6 @@ class QemuManageMixin:
         if arch and arch != cls._native_arch():
             base += f"-{arch}"
         return base
-
-    def _qemu_domain_exists(self, name):
-        """Vrai si une VM libvirt de ce nom est déjà définie."""
-        try:
-            res = subprocess.run(
-                virsh_argv("dominfo", name),
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            return res.returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
 
     @staticmethod
     def _qemu_host_addresses():
@@ -3517,35 +3437,18 @@ class QemuManageMixin:
         return branches
 
     def _qemu_pick_branch(self):
-        """Liste les branches distantes d'ERPLibre et en fait choisir une."""
+        """La branche d'ERPLibre, choisie parmi les branches distantes
+        (`ui.choose`) par son numéro ou son nom, master (sinon la
+        première) sur une réponse vide, None pour [0] ; tapée quand la
+        liste ne se lit pas, master sur une réponse vide, None pour
+        « 0 »."""
         print(f"\n{t('Fetching ERPLibre branch list...')}")
         branches = self._qemu_branch_list()
-        default = (
-            "master"
-            if "master" in branches
-            else (branches[0] if branches else "master")
-        )
         if not branches:
-            return (
-                input(f"{t('Branch (default:')} {default}): ").strip()
-                or default
-            )
-        print(f"{t('Branches:')}")
-        for i, b in enumerate(branches, 1):
-            star = " *" if b == default else ""
-            print(f"  [{i}] {b}{star}")
-        sel = input(f"{t('Choice (number or name, default:')} {default}): ")
-        sel = sel.strip()
-        if not sel:
-            return default
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(branches):
-                return branches[idx]
-        except ValueError:
-            if sel in branches:
-                return sel
-        return default
+            typed = input(f"{t('Branch (default:')} master): ").strip()
+            return None if typed == "0" else typed or "master"
+        default = "master" if "master" in branches else branches[0]
+        return ui.choose(t("Branches:"), branches, default=default)
 
     @staticmethod
     def _qemu_wait_ssh(ip, user="erplibre", timeout=1200):

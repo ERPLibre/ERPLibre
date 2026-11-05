@@ -9,9 +9,8 @@ import socket
 import subprocess
 import time
 
-from script.todo import todo_install
+from script.todo import todo_install, ui
 from script.todo.qemu_privilege import sudo_prefix
-from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 
@@ -74,29 +73,31 @@ class QemuAccessMixin:
 
         Trois provenances, parce que « la machine à configurer » n'est pas
         toujours une VM d'ici : elle peut être un hôte déjà connu de
-        ~/.ssh/config, ou une adresse qu'on vient d'obtenir."""
-        print(f"\n{t('Where should the machines come from?')}")
-        print(f"  [1] {t('Local QEMU VMs (virsh)')} *")
-        print(f"  [2] {t('Hosts from ~/.ssh/config')}")
-        print(f"  [3] {t('Type a host or an IP')}")
-        print(f"  {retour(t('Back'))}")
-        answer = input(t("Choice (0-3, default 1): ")).strip()
-        if answer == "0":
+        ~/.ssh/config, ou une adresse qu'on vient d'obtenir. Les VM locales
+        sont le défaut ; les hôtes se choisissent sous les règles d'un choix
+        multiple, où une réponse vide n'en prend aucun."""
+        answer = ui.choose(
+            t("Where should the machines come from?"),
+            ["virsh", "ssh_config", "typed"],
+            default="virsh",
+            labels=[
+                t("Local QEMU VMs (virsh)"),
+                t("Hosts from ~/.ssh/config"),
+                t("Type a host or an IP"),
+            ],
+        )
+        if answer is None:
             return []
 
-        if answer == "2":
+        if answer == "ssh_config":
             hosts = self._ssh_config_hosts()
             if not hosts:
                 print(f"  {t('~/.ssh/config holds no host.')}")
                 return []
-            for i, name in enumerate(hosts, 1):
-                print(f"  [{i}] {name}")
-            raw = input(
-                t("Which hosts? (numbers, comma-separated; blank = all): ")
-            ).strip()
-            chosen = (
-                hosts if not raw else self._parse_index_selection(raw, hosts)
-            )
+            chosen = ui.choose(t("Which hosts?"), hosts, multi=True)
+            if not chosen:
+                print(t("Nothing selected."))
+                return []
             # Déjà dans ~/.ssh/config : leur adresse y est, rien à réécrire.
             # Le `User` déclaré est repris tel quel : ces hôtes ne sont pas
             # forcément des VM ERPLibre, et leurs invitées suivent la même
@@ -107,10 +108,10 @@ class QemuAccessMixin:
                     "ip": None,
                     "user": self._ssh_config_user(name),
                 }
-                for name in chosen or hosts
+                for name in chosen
             ]
 
-        if answer == "3":
+        if answer == "typed":
             target = input(f"{t('Host or IP:')} ").strip()
             if not target:
                 return []
@@ -183,8 +184,8 @@ class QemuAccessMixin:
         La source des cibles est ~/.ssh/config, PAS le libvirt local. La VM
         graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
         VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
-        poste ne voit alors que l'orchestrateur, et proposer sa liste menait
-        droit a la mauvaise machine — vecu.
+        poste ne voit alors que l'orchestrateur, et proposer sa liste mene
+        droit a la mauvaise machine.
 
         ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
         seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
@@ -201,36 +202,37 @@ class QemuAccessMixin:
         if not targets:
             print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
             return
-        for i, (name, src) in enumerate(targets, 1):
-            mark = "" if src == "ssh_config" else f"  ({t('local VM')})"
-            print(f"  [{i}] {name}{mark}")
-        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
-        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
-            print(t("Cancelled."))
+        target = self._qemu_pick_target(targets)
+        if target is None:
             return
-        name, src = targets[int(answer) - 1]
+        name, src = target
 
         # Le port ne se devine pas pour un hote de ssh_config : on ne connait
         # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
-        print(f"\n  {t('Remote desktop kind:')}")
-        print(f"  [1] RDP 3389 (xrdp) *")
-        print(f"  [2] VNC 5901 (TigerVNC, Arch)")
-        print(
-            f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
+        kind_answer = ui.choose(
+            t("Remote desktop kind:"),
+            ["rdp", "vnc", "console", "android", "viewer"],
+            default="rdp",
+            labels=[
+                "RDP 3389 (xrdp)",
+                "VNC 5901 (TigerVNC, Arch)",
+                t("Hypervisor console (QEMU screen, no guest server)"),
+                t("Android emulator (adb 5555, then scrcpy)"),
+                t("Graphical console (virt-viewer, built-in tunnel)"),
+            ],
         )
-        print(f"  [4] {t('Android emulator (adb 5555, then scrcpy)')}")
-        print(f"  [5] {t('Graphical console (virt-viewer, built-in tunnel)')}")
-        kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
-        if kind_answer == "3":
+        if kind_answer is None:
+            return
+        if kind_answer == "console":
             self._qemu_console_tunnel(name, src)
             return
-        if kind_answer == "4":
+        if kind_answer == "android":
             self._qemu_scrcpy_tunnel(name, src)
             return
-        if kind_answer == "5":
+        if kind_answer == "viewer":
             self._qemu_virt_viewer(name, src)
             return
-        port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
+        port, kind = (5901, "VNC") if kind_answer == "vnc" else (3389, "RDP")
         local = port + 1
 
         print(f"\n  {t('Run this on YOUR workstation:')}")
@@ -258,14 +260,31 @@ class QemuAccessMixin:
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
     @staticmethod
+    def _qemu_pick_target(targets):
+        """La cible choisie parmi `targets`, des couples (nom, provenance),
+        par son numéro ou son nom, la première pour une réponse vide ; None
+        pour [0]. Une VM locale le dit à côté de son nom."""
+        labels = [
+            name if src == "ssh_config" else f"{name}  ({t('local VM')})"
+            for name, src in targets
+        ]
+        return ui.choose(
+            t("Which VM?"),
+            targets,
+            default=targets[0],
+            labels=labels,
+            names={name: (name, src) for name, src in targets},
+        )
+
+    @staticmethod
     def _qemu_ssh_opts(src):
         """Options ssh selon la provenance de la cible.
 
         Une VM libvirt locale est jointe par son IP, et son IP est recyclée d'un
-        déploiement à l'autre : sa clé d'hôte change sous le même adresse, et
-        ssh refuse alors de se connecter — « Host key verification failed »,
-        vécu. C'est la raison pour laquelle le suivi d'installation et l'attente
-        de sshd emploient déjà ces deux options.
+        déploiement à l'autre : sa clé d'hôte change sous la même adresse, et
+        ssh refuse alors de se connecter (« Host key verification failed »).
+        C'est la raison pour laquelle le suivi d'installation et l'attente de
+        sshd emploient déjà ces deux options.
 
         Un hôte de ~/.ssh/config, lui, est une machine que l'utilisateur a
         configurée : on ne touche PAS à sa politique de clés. Sa clé est un
@@ -301,8 +320,8 @@ class QemuAccessMixin:
 
     # Drapeaux passés à CHAQUE lancement, et non écrits dans le config.ini de
     # l'AVD : l'émulateur réécrit ce fichier depuis le profil du téléphone au
-    # premier démarrage, et les hw.lcd.* y étaient effacés — l'AVD repartait en
-    # 1080x2400 densité 420, quatre fois les pixels voulus. Mesuré.
+    # premier démarrage, et les hw.lcd.* y sont effacés : l'AVD repart en
+    # 1080x2400 densité 420, quatre fois les pixels voulus.
     #
     # La résolution et la DENSITÉ vont ensemble, et c'est contre-intuitif :
     # 540x1140 en densité 420 est PIRE que le plein écran — 81 ms de médiane
@@ -316,7 +335,7 @@ class QemuAccessMixin:
     # expired », un message qui ne dit pas quoi faire.
     # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
     # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
-    # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
+    # ce n'est pas un défaut à imposer à une machine où il n'a pas été essayé.
     # EL_EMULATOR_GPU permet de l'essayer sans toucher au code, une fois le
     # nœud de rendu présent dans l'invité (voir script/qemu/README).
     _QEMU_EMULATOR_GPU = os.environ.get("EL_EMULATOR_GPU") or "swangle"
@@ -392,14 +411,10 @@ class QemuAccessMixin:
         if not targets:
             print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
             return
-        for i, (nm, sr) in enumerate(targets, 1):
-            mark = "" if sr == "ssh_config" else f"  ({t('local VM')})"
-            print(f"  [{i}] {nm}{mark}")
-        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
-        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
-            print(t("Cancelled."))
+        chosen = self._qemu_pick_target(targets)
+        if chosen is None:
             return
-        name, src = targets[int(answer) - 1]
+        name, src = chosen
         target = self._qemu_ssh_target(name, src)
         if not target:
             print(f"  {t('No IP for this VM; is it running?')}")
@@ -427,20 +442,21 @@ class QemuAccessMixin:
             print(f"  {t('Tick the Android emulator tool when deploying.')}")
             return
 
-        print(f"\n  {t('Show a window?')}")
-        print(f"  [1] {t('No window - stream with scrcpy (smoother)')} *")
-        print(f"  [2] {t('Window over ssh -X (raw pixels, slower)')}")
-        kind = input(f"{t('Choice')} [1]: ").strip() or "1"
-        # Sans cette validation, TOUT ce qui n'est pas « 2 » démarrait
-        # l'émulateur : une frappe de travers (« n ») lançait le démarrage,
-        # observé. Un menu à deux crans n'a pas de troisième réponse.
-        if kind not in ("1", "2"):
-            print(t("Cancelled."))
+        kind = ui.choose(
+            t("Show a window?"),
+            ["headless", "window"],
+            default="headless",
+            labels=[
+                t("No window - stream with scrcpy (smoother)"),
+                t("Window over ssh -X (raw pixels, slower)"),
+            ],
+        )
+        if kind is None:
             return
         emu = self._QEMU_EMULATOR_BIN
         avd = self._QEMU_AVD_NAME
 
-        if kind == "2":
+        if kind == "window":
             # L'affichage appartient au POSTE : cette commande ne peut pas
             # partir d'ici, où il n'y a pas d'écran à lui donner.
             print(f"\n  {t('Run this on YOUR workstation:')}")
@@ -510,13 +526,13 @@ class QemuAccessMixin:
 
         Le port est celui de l'émulateur, pas celui du serveur adb. Un émulateur
         écoute sur 5554 (console) et 5555 (adb), tous deux sur le localhost de
-        la VM — vérifié par « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
+        la VM, ce que montre « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
         tunneler le serveur adb obligerait à tuer celui du poste, qui occupe le
         même port.
 
-        Vérifié de bout en bout à travers le tunnel : une poignée de main adb
-        (paquet CNXN) reçoit « device::ro.product.name=sdk_gphone64_x86 » de
-        l'émulateur lui-même — c'est exactement ce que fait « adb connect ».
+        À travers le tunnel, une poignée de main adb (paquet CNXN) reçoit
+        « device::ro.product.name=sdk_gphone64_x86 » de l'émulateur lui-même —
+        c'est exactement ce que fait « adb connect ».
         """
         port = 5555
         target = self._qemu_ssh_target(name, src)
@@ -724,8 +740,8 @@ class QemuAccessMixin:
         else:
             # L'écran VNC appartient à QEMU, donc à l'HYPERVISEUR — pas à
             # l'invité. Tunneler vers la VM elle-même ne trouve rien : le
-            # socket n'existe pas de ce côté. Vécu, et c'est aussi ce qui
-            # rendait le premier jet de ce menu inutile hors machine locale.
+            # socket n'existe pas de ce côté, et un tunnel vers l'invité
+            # rendrait ce menu inutile hors machine locale.
             #
             # L'hyperviseur est le ProxyJump déclaré dans ssh_config, lu par
             # « ssh -G » : c'est la seule lecture qui couvre toutes les formes
@@ -888,20 +904,20 @@ class QemuAccessMixin:
         self._qemu_ssh_walk(roots, max_depth)
 
     def _qemu_pick_domains(self):
-        """Fait choisir des VM parmi celles définies. Vide = toutes."""
+        """Fait choisir des VM parmi celles définies, sous les règles d'un
+        choix multiple : `tout` les prend toutes, une réponse vide ou [0]
+        n'en prend aucune. Rend [] et le dit quand aucune n'est choisie,
+        car chaque VM rendue reçoit une entrée ~/.ssh/config et une
+        connexion SSH."""
         names = self._qemu_list_domains()
         if not names:
             print(t("No VM found."))
             return []
-        for i, name in enumerate(names, 1):
-            print(f"  [{i}] {name}")
-        raw = input(
-            t("Which VMs? (numbers, comma-separated; blank = all): ")
-        ).strip()
-        if not raw:
-            return names
-        chosen = self._parse_index_selection(raw, names)
-        return chosen or names
+        chosen = ui.choose(t("Which VMs?"), names, multi=True)
+        if not chosen:
+            print(t("Nothing selected."))
+            return []
+        return chosen
 
     def _qemu_ssh_retry_with_key(self, alias, message):
         """ssh a refusé l'identité : proposer la clé, puis resonder une fois.

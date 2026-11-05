@@ -480,7 +480,7 @@
 
 The following components have tests for their pure functions, but functions requiring infrastructure (Odoo, PostgreSQL, network) are not unit tested:
 
-- `script/database/` — `process_zip` and CSV logic tested; `db_restore`, `image_db`, `list_remote` not tested (require Odoo/PostgreSQL)
+- `script/database/` — `process_zip`, CSV logic, and `list_remote` against a doubled XML-RPC server tested; `db_restore`, `image_db` not tested (require Odoo/PostgreSQL)
 - `script/code_generator/` — `extract_lambda`, `fill_search_field`, `search_and_replace`, `count_space_tab` tested; `generate_module`, `main` not tested (require Odoo)
 - `script/poetry/` — `iscompatible`, `parse_requirements`, `string_to_tuple` tested; `combine_requirements`, `poetry_update.main` not tested (require full filesystem)
 
@@ -507,7 +507,7 @@ The following components have tests for their pure functions, but functions requ
 
 Les composants suivants ont des tests pour leurs fonctions pures, mais les fonctions nécessitant une infrastructure (Odoo, PostgreSQL, réseau) ne sont pas testées unitairement :
 
-- `script/database/` — `process_zip` et logique CSV testés ; `db_restore`, `image_db`, `list_remote` non testés (requièrent Odoo/PostgreSQL)
+- `script/database/` — `process_zip`, logique CSV, et `list_remote` face à un serveur XML-RPC doublé testés ; `db_restore`, `image_db` non testés (requièrent Odoo/PostgreSQL)
 - `script/code_generator/` — `extract_lambda`, `fill_search_field`, `search_and_replace`, `count_space_tab` testés ; `generate_module`, `main` non testés (requièrent Odoo)
 - `script/poetry/` — `iscompatible`, `parse_requirements`, `string_to_tuple` testés ; `combine_requirements`, `poetry_update.main` non testés (requièrent le filesystem complet)
 

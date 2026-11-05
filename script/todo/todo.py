@@ -7,7 +7,6 @@ import configparser
 import datetime
 import difflib
 import importlib.util
-import inspect
 import json
 import logging
 import os
@@ -20,6 +19,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from urllib.parse import urlsplit
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -126,6 +126,7 @@ from script.todo import (
     todo_install,
     todo_journal,
     todo_prefs,
+    ui,
 )
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
@@ -133,6 +134,13 @@ from script.todo.database_manager import DatabaseManager
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.menus import assistant as menus_assistant
+from script.todo.menus import deploy as menus_deploy
+from script.todo.menus import execute as menus_execute
+from script.todo.menus import git as menus_git
+from script.todo.menus import main as menus_main
+from script.todo.menus import proxmox as menus_proxmox
+from script.todo.menus import run as menus_run
 from script.todo.module_menu import ModuleMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -146,8 +154,10 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
+from script.todo.ui.navigator import crumbs, crumbs_at, navigate
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
+from script.todo.web import desktop, launcher, paths
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 # Le générateur des images de image_db/, lancé avec le Python des outils.
@@ -229,232 +239,88 @@ class TODO(
         self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
 
     def _ask_language(self):
-        if not lang_is_configured():
-            print()
-            print("🌍 Choisir la langue / Choose language:")
-            print("[1] 🇫🇷 Français")
-            print("[2] 🇬🇧 English")
-            choice = ""
-            while choice not in ("1", "2"):
-                choice = input("Select / Choisir : ").strip()
-            if choice == "1":
-                set_lang("fr")
-            else:
-                set_lang("en")
+        """Au premier lancement, la langue de TODO, gardée par `set_lang`.
+        [0], une réponse vide ou Ctrl+D n'en gardent aucune : TODO parle sa
+        langue par défaut et redemande au lancement suivant."""
+        if lang_is_configured():
+            return
+        print()
+        langue = ui.choose(
+            "🌍 Choisir la langue / Choose language:",
+            ["fr", "en"],
+            labels=["🇫🇷 Français", "🇬🇧 English"],
+            names={"Français": "fr", "English": "en"},
+        )
+        if langue is not None:
+            set_lang(langue)
 
     def _change_language(self):
+        """Configuration › Language / Langue : le français ou l'anglais, par
+        son numéro ou son nom affiché, gardé par `set_lang`. Rend False sur
+        [0], une réponse vide ou Ctrl+D, sans rien garder."""
         print()
-        print("🌍 " + t("Choose language / Choisir la langue") + ":")
-        print(f"[1] 🇫🇷 {t('French')}")
-        print(f"[2] 🇬🇧 {t('English')}")
-        print(f"{retour(t('Back'))}")
-        choice = ""
-        while choice not in ("0", "1", "2"):
-            choice = input(t("Select: ")).strip()
-        if choice == "0":
+        langue = ui.choose(
+            "🌍 " + t("Choose language / Choisir la langue") + ":",
+            ["fr", "en"],
+            labels=[f"🇫🇷 {t('French')}", f"🇬🇧 {t('English')}"],
+            names={t("French"): "fr", t("English"): "en"},
+        )
+        if langue is None:
             return False
-        elif choice == "1":
-            set_lang("fr")
-        else:
-            set_lang("en")
+        set_lang(langue)
         print(t("Language changed to: English"))
 
     def run(self):
+        """Le logo, la langue demandée au premier lancement et « Opening
+        TODO ... », puis le menu principal (MAIN, `menus/main.py`),
+        dessiné une fois : [0] le referme et rend None, et TODO sort ;
+        Ctrl+C ou Ctrl+D à sa question terminent TODO (SystemExit 0)."""
         with open(self.config_file.get_logo_ascii_file_path()) as my_file:
             print(my_file.read())
         self._ask_language()
         print(t("Opening TODO ..."))
         todo_etat.afficher(self._claude_context_root())
-        print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
-        help_info = f"""{self._menu_header()}
-[1] {t("Execute")}
-[2] {t("Install")}
-[3] {t("Assistant")}
-[4] {t("Navigation telemetry (TUI)")}
-[5] {t("Configuration")}
-[6] {t("Healthcheck")}
-[0] 🚪 {t("Quit")}
-"""
-        while True:
-            try:
-                status = click.prompt(help_info)
-            except NameError:
-                print("Do")
-                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
-                sys.exit(1)
-            except ImportError:
-                print("Do")
-                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
-                sys.exit(1)
-            except click.exceptions.Abort:
-                sys.exit(0)
-            print()
-            if status == "0":
-                break
-            elif status == "1":
-                self.prompt_execute()
-            elif status == "2":
-                self.prompt_install()
-            elif status == "3":
-                self.prompt_assistant()
-            elif status == "4":
-                self._todo_telemetry_tui()
-            elif status == "5":
-                self.prompt_configuration()
-            elif status == "6":
-                self.prompt_healthcheck()
-            # elif status == "3" or status == "install":
-            #     print("install")
-            else:
-                print(t("Command not found !"))
-
-        print(status)
-        # manipuler()
+        return navigate(self, menus_main.MAIN)
 
     def prompt_assistant(self):
-        """Ce qui s'adresse à l'humain : une question, son courriel, ses SMS."""
+        """Ce qui s'adresse à l'humain : une question, son courriel, ses
+        SMS (ASSISTANT, `menus/assistant.py`). Rend None sur [0]."""
+        return navigate(self, menus_assistant.ASSISTANT)
+
+    def _assistant_mail(self):
+        """Ouvre le courriel par `prompt_execute_mail`, le seul point de
+        contact du paquet `mail` avec TODO, importé à l'ouverture."""
         from script.todo.mail.menu import prompt_execute_mail
-        from script.todo.modem.menu import prompt_execute_modem
+
+        return prompt_execute_mail(self)
+
+    def _assistant_sms(self):
+        """Ouvre la démonstration SMS du paquet `sms`, sur la passerelle
+        mobile, importée à l'ouverture."""
         from script.todo.sms.menu import prompt_execute_sms
 
-        while True:
-            help_info = f"""{self._menu_header()}
-[1] {t("AI question - Ask a model, local or remote")}
-[2] {t("mail_menu")}
-[3] {t("sms_menu")}
-[4] {t("modem_menu")}
-{retour(t('Back'))}"""
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            if status == "1":
-                self.prompt_assistant_llm()
-            elif status == "2":
-                prompt_execute_mail(self)
-            elif status == "3":
-                prompt_execute_sms(self, "mobile")
-            elif status == "4":
-                prompt_execute_modem(self)
-            else:
-                print(t("Command not found !"))
+        return prompt_execute_sms(self, "mobile")
+
+    def _assistant_modem(self):
+        """Ouvre la console du modem USB du paquet `modem`, importée à
+        l'ouverture."""
+        from script.todo.modem.menu import prompt_execute_modem
+
+        return prompt_execute_modem(self)
 
     def prompt_execute(self):
-        help_info = f"""{self._menu_header()}
+        """Les dix-neuf sous-menus d'Execute, en cinq sections (EXECUTE,
+        `menus/execute.py`), dessinés une fois, à l'entrée. Chaque
+        sous-menu rend False sur son [0], et Execute reprend. Rend None sur
+        [0]."""
+        return navigate(self, menus_execute.EXECUTE)
 
-── {t("Development")} ──
-[1] {t("Code - Developer tools")}
-[2] {t("Config - Configuration file management")}
-[3] {t("Run - Execute and install an instance")}
-[4] {t("Test - Test an Odoo module")}
-[5] {t("Process - Execution tools")}
-[6] {t("Uninstall - Remove an Odoo version")}
-[7] {t("Image Odoo - Database images for a quick installation")}
-[8] {t("Analyse module - Odoo modules of the checkout")}
-
-── {t("Data")} ──
-[9] {t("Database - Database tools")}
-[10] {t("Analyse - Odoo database analysis")}
-[11] {t("Transform data - Transform your data")}
-
-── {t("Sources & documentation")} ──
-[12] {t("Git - Git and shell tools")}
-[13] {t("Doc - Documentation search")}
-
-── {t("AI & automation")} ──
-[14] {t("GPT code - AI assistant tools")}
-[15] {t("Automation - Demonstration of developed features")}
-
-── {t("Deployment, network & security")} ──
-[16] {t("Deploy - Deploy ERPLibre locally")}
-[17] {t("Network - Network tools")}
-[18] {t("Security - Dependency security audit")}
-[19] {t("Docker / Podman - Container engines")}
-{retour(t('Back'))}
-"""
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                status = self.prompt_execute_code()
-                if status is not False:
-                    return
-            elif status == "2":
-                status = self.prompt_execute_config()
-                if status is not False:
-                    return
-            elif status == "3":
-                status = self.prompt_execute_instance()
-                if status is not False:
-                    return
-            elif status == "4":
-                status = self.prompt_execute_test()
-                if status is not False:
-                    return
-            elif status == "5":
-                status = self.prompt_execute_process()
-                if status is not False:
-                    return
-            elif status == "6":
-                status = self.prompt_execute_uninstall()
-                if status is not False:
-                    return
-            elif status == "7":
-                status = self.prompt_execute_image_db()
-                if status is not False:
-                    return
-            elif status == "8":
-                status = self.prompt_execute_module_analysis()
-                if status is not False:
-                    return
-            elif status == "9":
-                status = self.prompt_execute_database()
-                if status is not False:
-                    return
-            elif status == "10":
-                status = self.prompt_execute_analyse()
-                if status is not False:
-                    return
-            elif status == "11":
-                status = self.prompt_execute_transform()
-                if status is not False:
-                    return
-            elif status == "12":
-                status = self.prompt_execute_git()
-                if status is not False:
-                    return
-            elif status == "13":
-                status = self.prompt_execute_doc()
-                if status is not False:
-                    return
-            elif status == "14":
-                status = self.prompt_execute_gpt_code()
-                if status is not False:
-                    return
-            elif status == "15":
-                status = self.prompt_execute_function()
-                if status is not False:
-                    return
-            elif status == "16":
-                status = self.prompt_execute_deploy()
-                if status is not False:
-                    return
-            elif status == "17":
-                status = self.prompt_execute_network()
-                if status is not False:
-                    return
-            elif status == "18":
-                status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "19":
-                status = self.prompt_execute_container()
-                if status is not False:
-                    return
-            else:
-                print(t("Command not found !"))
+    def prompt_install(self):
+        """Installer ERPLibre (INSTALL, `menus/proxmox.py`) : ce qu'on
+        installe, par sa touche, ou une version d'Odoo, par son numéro,
+        puis l'étape système (`_install_system_step`), une fois le choix
+        entier. Se referme après une installation ; rend None."""
+        return navigate(self, menus_proxmox.INSTALL)
 
     def _install_system_step(self):
         """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
@@ -462,20 +328,17 @@ class TODO(
         une technologie qui installe ses propres paquets ne passe pas ici.
         Pour une version d'Odoo, elle vient après la dernière question qui
         offre « 0: Back » : un retour ne laisse rien d'installé."""
-        print("Detect first installation from code source.")
+        print(t("Detect first installation from code source."))
 
         first_installation_input = (
-            input(
-                "💬 First system installation? This will process system installation"
-                " before (Y/N): "
-            )
+            input(f"💬 {t('First system installation? (Y/N)')}")
             .strip()
             .lower()
         )
         if self._is_yes(first_installation_input):
             cmd = "./script/version/update_env_version.py --install"
             self.execute.exec_command_live(cmd, source_erplibre=True)
-            print("Wait after OS installation before continue.")
+            print(t("Wait after OS installation before continue."))
 
         # First detect pycharm, need to be open before installation and close to increase speed
         has_pycharm = False
@@ -500,7 +363,7 @@ class TODO(
             ".idea"
         ):
             pycharm_configuration_input = (
-                input("💬 Open Pycharm? (Y/N): ").strip().lower()
+                input(f"💬 {t('Open Pycharm? (Y/N): ')}").strip().lower()
             )
             if self._is_yes(pycharm_configuration_input):
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
@@ -547,135 +410,123 @@ class TODO(
                 return
             print("⚠️  Pycharm is still running: close it before continuing.")
 
-    def prompt_install(self):
-        # TODO detect last version supported
-        # cmd_intern = "./script/install/install_erplibre.sh"
-        key_i = 0
-        commands_begin = {
-            "q": (
-                "q",
-                "q: ERPLibre only without Odoo, with the required Python",
-                "./script/install/install_erplibre.sh",
-            ),
-            "w": (
-                "w",
-                "w: Install all Odoo version with ERPLibre",
-                "make install_odoo_all_version",
-            ),
-            "m": (
-                "m",
-                "m: ERPLibre with mobile home",
-                "./mobile/install_and_run.sh",
-            ),
-            "0": (
-                "0",
-                f"0: {t('Quit')}",
-            ),
-        }
-        commands_end = {}
+    def _install_versions(self):
+        """Les versions d'Odoo qu'Install propose, de la plus récente à la
+        plus ancienne : {"prompt_description", "odoo_version",
+        "erplibre_version"} chacune, le libellé disant si elle est
+        installée, active, par défaut ou dépréciée."""
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
-
-        version_par_cle = {}
+        listed = []
         for version_info in versions[::-1]:
-            key_i += 1
-            key_s = str(key_i)
-            version_par_cle[key_s] = version_info.get("odoo_version")
-            label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
+            label = f"Odoo {version_info.get('odoo_version')}"
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
             if odoo_version in installed_versions:
-                label += " - Installed"
+                label += t(" - Installed")
             if odoo_version == odoo_installed_version:
-                label += " - Actual"
+                label += t(" - Actual")
             if version_info.get("default"):
-                label += " - Default"
+                label += t(" - Default")
             if version_info.get("is_deprecated"):
-                label += " - Deprecated"
+                label += t(" - Deprecated")
             erplibre_version = version_info.get("erplibre_version")
-            commands_begin[key_s] = (
-                key_s,
-                label,
-                f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
+            listed.append(
+                {
+                    "prompt_description": label,
+                    "odoo_version": version_info.get("odoo_version"),
+                    "erplibre_version": erplibre_version,
+                }
             )
+        return listed
 
-        # Add final command
-        install_commands = {**commands_begin, **commands_end}
-
-        # Show command
+    def _install_ask(self, items):
+        """La question d'Install sur `items`, les entrées que montre le menu,
+        {"key", "label"} chacune : une ligne « touche: libellé » par
+        installation par touche, puis [0], puis une par version, par son
+        numéro. Redemande tant que la réponse, sans blancs ni majuscules,
+        n'en nomme aucune ; rend la touche répondue, "0" pour quitter."""
+        by_key = [i for i in items if not i["key"].isdigit()]
+        numbered = [i for i in items if i["key"].isdigit()]
+        lines = [f"{i['key']}: {i['label']}" for i in by_key]
+        lines.append(f"0: {t('Quit')}")
+        lines += [f"{i['key']}: {i['label']}" for i in numbered]
+        keys = {"0", *(item["key"] for item in items)}
         odoo_version_input = ""
-        while odoo_version_input not in install_commands:
+        while odoo_version_input not in keys:
             if odoo_version_input:
                 print(
                     f"{t('Error, cannot understand value')} '{odoo_version_input}'"
                 )
             str_input_dyn_odoo_version = (
                 f"💬 {t('Choose a version:')}\n\t"
-                + "\n\t".join([a[1] for a in install_commands.values()])
+                + "\n\t".join(lines)
                 + f"\n{t('Select: ')}"
             )
             odoo_version_input = (
                 input(str_input_dyn_odoo_version).strip().lower()
             )
+        return odoo_version_input
 
-        if odoo_version_input == "0":
+    def _install_version(self, version):
+        """Installe `version`, une version de `_install_versions` : demande
+        le développement ou la production (`_choisir_mode_installation`),
+        puis s'il faut ses modules extra ; rien sur un [0]."""
+        mode = self._choisir_mode_installation(version.get("odoo_version"))
+        if mode is None:
             return
-
-        cmd_intern = install_commands.get(odoo_version_input)[2]
-
-        # For numbered version selections, offer extra modules sub-menu
-        if odoo_version_input.isdigit():
-            mode = self._choisir_mode_installation(
-                version_par_cle[odoo_version_input]
+        erplibre_version = version.get("erplibre_version")
+        cmd_intern = (
+            f"{mode} ./script/version/update_env_version.py --erplibre_version"
+            f" {erplibre_version} --install_dev"
+        )
+        extra_choices = {
+            "1": (
+                "1",
+                f"1: {t('Standard install (without extra modules)')}",
+            ),
+            "2": (
+                "2",
+                "2: "
+                + t("Install with extra modules (CybroOdoo - large, slow)"),
+            ),
+            "0": ("0", f"0: {t('Back')}"),
+        }
+        extra_input = ""
+        while extra_input not in extra_choices:
+            if extra_input:
+                print(f"{t('Error, cannot understand value')} '{extra_input}'")
+            str_extra = (
+                f"💬 {t('Install type:')}\n\t"
+                + "\n\t".join([a[1] for a in extra_choices.values()])
+                + f"\n{t('Select: ')}"
             )
-            if mode is None:
-                return
-            cmd_intern = f"{mode} {cmd_intern}"
-            extra_choices = {
-                "1": (
-                    "1",
-                    f"1: {t('Standard install (without extra modules)')}",
-                ),
-                "2": (
-                    "2",
-                    f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
-                ),
-                "0": ("0", f"0: {t('Back')}"),
-            }
-            extra_input = ""
-            while extra_input not in extra_choices:
-                if extra_input:
-                    print(
-                        f"{t('Error, cannot understand value')} '{extra_input}'"
-                    )
-                str_extra = (
-                    f"💬 {t('Install type:')}\n\t"
-                    + "\n\t".join([a[1] for a in extra_choices.values()])
-                    + f"\n{t('Select: ')}"
-                )
-                extra_input = input(str_extra).strip()
-            if extra_input == "0":
-                return
-            if extra_input == "2":
-                cmd_intern = cmd_intern + " --with_extra"
+            extra_input = input(str_extra).strip()
+        if extra_input == "0":
+            return
+        if extra_input == "2":
+            cmd_intern = cmd_intern + " --with_extra"
+        self._install_run(cmd_intern)
 
-        # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+    def _install_run(self, cmd):
+        """Lance l'installation `cmd` par bash, après l'étape système : le
+        choix est entier, plus rien ne revient. Sur un échec, dit son code
+        de retour et relance TODO."""
         self._install_system_step()
-        print(f"{t('Will execute:')}\n{cmd_intern}")
+        print(f"{t('Will execute:')}\n{cmd}")
 
         # TODO use external script to detect terminal to use on system
         # TODO check script open_terminal_code_generator.sh
-        # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
         try:
             todo_journal.lancer_au_terminal(
-                cmd_intern, shell=True, executable="/bin/bash", check=True
+                cmd, shell=True, executable="/bin/bash", check=True
             )
         except subprocess.CalledProcessError as e:
             print(
                 f"{t('The Bash script failed with return code')} {e.returncode}."
             )
-            print("Wait after installation and open projects by terminal.")
+            print(t("Wait after installation and open projects by terminal."))
             print("make open_terminal")
             self.restart_script(str(e))
 
@@ -768,11 +619,17 @@ class TODO(
 
         if exec_run_db:
             db_name = instance.get("database")
-            self.prompt_execute_selenium_and_run_db(
-                db_name,
-                extra_cmd_web_login=extra_cmd_web_login,
-                web_login_env=web_login_env,
-            )
+            # Sans base nommée, run.sh recevrait « -d None ».
+            if db_name:
+                self.prompt_execute_selenium_and_run_db(
+                    db_name,
+                    extra_cmd_web_login=extra_cmd_web_login,
+                    web_login_env=web_login_env,
+                )
+            else:
+                print(
+                    t("This instance names no database: Odoo is not started.")
+                )
 
         bash_command = instance.get("bash_command")
         if bash_command:
@@ -792,102 +649,52 @@ class TODO(
                 web_login_env=web_login_env,
             )
 
-        callback = instance.get("callback")
-        if callback:
-            callback(instance)
-
-    # Étiquettes du fil d'Ariane par méthode de menu. Le fil est dérivé de la
-    # pile d'appels (aucune méthode de menu à modifier). Labels courts et
-    # stables, pensés pour être copiés afin de situer précisément un menu.
-    _MENU_LABELS = {
-        "run": "TODO",
-        "prompt_healthcheck": "Healthcheck",
-        "prompt_execute": "Execute",
-        "prompt_assistant": "Assistant",
-        "prompt_assistant_llm": "LLM",
-        "_llm_servers": "Servers",
-        "_llm_search": "Search",
-        "_llm_search_remote": "Over SSH",
-        "prompt_install": "Install",
-        "prompt_execute_function": "Automation",
-        "prompt_execute_code": "Code",
-        "prompt_execute_config": "Config",
-        "prompt_execute_database": "Database",
-        "prompt_execute_analyse": "Analyse",
-        "prompt_execute_transform": "Transform data",
-        "prompt_execute_doc": "Doc",
-        "prompt_execute_git": "Git",
-        "prompt_execute_git_repo": "Repo",
-        "prompt_execute_git_local_server": "Git local server",
-        "_prompt_git_server_actions": "Actions",
-        "prompt_execute_gpt_code": "GPT code",
-        "_prompt_claude_configs": "Claude configs",
-        "prompt_execute_claude_plugins": "Plugins",
-        "prompt_claude_sessions": "Claude Code",
-        "prompt_execute_process": "Process",
-        "prompt_execute_uninstall": "Uninstall",
-        "prompt_execute_image_db": "Image Odoo",
-        "prompt_execute_module_analysis": "Analyse module",
-        "prompt_execute_instance": "Run",
-        "prompt_execute_rtk": "RTK",
-        "prompt_execute_update": "Update",
-        "prompt_execute_deploy": "Deploy",
-        "prompt_execute_deploy_ssh": "SSH",
-        "prompt_execute_qemu_cache": "QEMU cache",
-        "_cache_service": "Service",
-        "_cache_tests": "Tests",
-        "_cache_age": "Age and cleanup",
-        "_cache_exceptions": "Exceptions",
-        "_cache_journaux": "Logs",
-        "_cache_miroir_git": "Git mirrors",
-        "_cache_nettoyage_auto": "Automatic cleanup",
-        "prompt_execute_qemu": "QEMU/KVM",
-        "prompt_execute_proxmox": "Proxmox VE",
-        "prompt_execute_vpn": "VPN",
-        "prompt_execute_network": "Network",
-        "prompt_execute_security": "Security",
-        "prompt_execute_container": "Docker / Podman",
-        "_container_service": "Service",
-        "_container_compose": "Compose",
-        "_container_erplibre": "ERPLibre container",
-        "prompt_execute_test": "Test",
-        "prompt_execute_longtest": "Long test",
-        "prompt_configuration": "Configuration",
-    }
-
-    def _menu_header(self):
-        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
-        la ligne « Commande : ». Le fil situe le menu courant et se copie pour
-        décrire sans ambiguïté où l'on se trouve."""
-        crumbs = []
-        # Les cadres remontés à la main, et non `inspect.stack()` : celui-ci
-        # relit la source de chaque niveau et parcourt tous les modules
-        # chargés pour la trouver, à chaque menu affiché — et réveille au
-        # passage les anciens noms de modules d'urwid, qui avertissent.
-        cadres = []
-        cadre = inspect.currentframe()
-        while cadre is not None:
-            cadres.append(cadre)
-            cadre = cadre.f_back
-        for cadre in reversed(cadres):
-            if cadre.f_locals.get("self") is not self:
-                continue
-            label = self._MENU_LABELS.get(cadre.f_code.co_name)
-            if label and (not crumbs or crumbs[-1] != label):
-                crumbs.append(label)
+    def _menu_header(self, state=None):
+        """En-tête de menu : le fil d'Ariane que tient le navigateur
+        (`crumbs`), puis `state`, une ligne d'état propre au menu, s'il est
+        donné, puis la ligne « Commande : ». Le fil situe le menu courant et
+        se copie pour décrire sans ambiguïté où l'on se trouve ; il est
+        aussi la clé de télémétrie du menu. Sous une commande que lance la
+        TUI de télémétrie, il part du menu de cette commande, et non de la
+        télémétrie qui l'a lancée (`_telemetry_tui_loop`)."""
+        path = " › ".join(crumbs())
         header = ""
-        if crumbs:
-            header = "📍 " + " › ".join(crumbs) + "\n"
+        if path:
+            header = "📍 " + path + "\n"
             # Télémétrie de navigation (best-effort, ne casse jamais le menu).
             try:
                 from script.todo import todo_telemetry
 
-                todo_telemetry.record(" › ".join(crumbs))
+                todo_telemetry.record(path)
             except Exception:
                 pass
+        if state:
+            header += state + "\n"
         return header + t("Command:")
 
+    def prompt_telemetry(self):
+        """Télémétrie de navigation : la TUI, la page web, l'arrêt de
+        l'interface web de ce checkout, ou la page dans la fenêtre
+        bureautique (TELEMETRY, `menus/main.py`). Sous le fil d'Ariane, une
+        ligne dit si le hub web tourne ; elle l'interroge à chaque
+        affichage, environ 0,3 s par opération. Rien de ce que lancent [1]
+        à [4] ne remonte : Ctrl+C, Ctrl+D ou une erreur ramènent à ce
+        menu. Rend False sur [0]."""
+        return navigate(self, menus_main.TELEMETRY)
+
     def _todo_telemetry_tui(self):
+        """Ouvre le TUI de télémétrie, `_telemetry_tui_loop`. Comme [2] et
+        [3], rien n'en remonte au menu : Ctrl+C, Ctrl+D ou une erreur, dans
+        la TUI, dans la commande qu'elle lance ou à la question du retour,
+        ramènent au sous-menu."""
+        try:
+            self._telemetry_tui_loop()
+        except (KeyboardInterrupt, EOFError, click.exceptions.Abort):
+            print()
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+
+    def _telemetry_tui_loop(self):
         """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
         exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
         et la position du curseur sont restaurés) ou de quitter."""
@@ -926,14 +733,279 @@ class TODO(
             if not callable(fn):
                 print(f"{t('Command not found !')} ({method})")
             else:
-                try:
-                    fn(**(kwargs or {}))
-                except Exception as exc:
-                    print(f"{t('Command failed: ')}{exc}")
+                # Les menus que la commande dessine partent de son menu dans
+                # l'arbre : le chemin de la feuille, sans elle.
+                segments = path.split(" › ")[:-1] if path else crumbs()
+                with crumbs_at(segments):
+                    try:
+                        fn(**(kwargs or {}))
+                    except Exception as exc:
+                        print(f"{t('Command failed: ')}{exc}")
             # Revenir (curseur restauré) ou quitter ?
             ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
                 return
+
+    def _web_status(self):
+        """État du hub web de ce checkout (`launcher.status`), ou None. Un
+        état qui ne se lit pas vaut None : le menu ne s'arrête pas dessus.
+        La racine est celle de ce fichier, jamais le répertoire courant."""
+        try:
+            return launcher.status(new_path)
+        except Exception:
+            return None
+
+    def _web_state(self):
+        """Ligne d'état du hub web de ce checkout, sous le fil d'Ariane de
+        prompt_telemetry. Un hub dont l'état ne se lit pas est dit arrêté."""
+        info = self._web_status()
+        if info is None:
+            return t("Web interface: stopped")
+        return t("Web interface: running on {url} (sessions: {n})").format(
+            url=f"http://127.0.0.1:{info.get('port')}/",
+            n=info.get("sessions", 0),
+        )
+
+    def _web_channel(self):
+        """Descripteur du canal de la session web qui fait tourner ce TODO,
+        ou None hors session. Le worker pose TODO_WEB_FD et TODO_WEB_PID ;
+        un TODO lancé depuis une commande de la session hérite des deux
+        variables, pas du descripteur : son pid l'écarte."""
+        fd = os.environ.get("TODO_WEB_FD", "")
+        if not fd.isdigit():
+            return None
+        if os.environ.get("TODO_WEB_PID") != str(os.getpid()):
+            return None
+        return int(fd)
+
+    def _todo_telemetry_web(self):
+        """Ouvre la télémétrie dans le navigateur, par le hub web de ce
+        checkout, démarré au besoin.
+
+        Dans une session web, la page qui montre ce TODO ouvre sa propre
+        vue de télémétrie, demandée par le canal du worker : rien ne
+        démarre. Ailleurs, le hub est détaché : la méthode rend la main dès
+        le lien émis, et Ctrl+C dans ce terminal ne l'atteint pas. Le lien
+        de connexion est toujours affiché, pour un navigateur confiné qui
+        ne lit pas le fichier de redirection ; sans affichage graphique, il
+        suit la commande du tunnel SSH à lancer depuis le poste de
+        l'utilisateur. Un échec s'affiche et rend la main, Ctrl+C pendant
+        le démarrage aussi : rien ne remonte au menu.
+        """
+        channel = self._web_channel()
+        if channel is not None:
+            line = json.dumps({"t": "open_view", "view": "telemetry"})
+            try:
+                os.write(channel, line.encode() + b"\n")
+            except OSError:
+                pass
+            else:
+                print(t("Telemetry opened in this page."))
+                return
+        try:
+            page = launcher.open_page(
+                new_path, view="telemetry", lang=get_lang()
+            )
+        except launcher.LaunchError as exc:
+            self._web_launch_failed(exc)
+            return
+        except KeyboardInterrupt:
+            # Le hub est détaché : interrompre l'attente ne l'arrête pas, et
+            # la ligne d'état du menu dit ensuite s'il a démarré.
+            print()
+            return
+        except Exception as exc:
+            error = launcher.LaunchError(f"{type(exc).__name__}: {exc}")
+            self._web_launch_failed(error)
+            return
+        print(f"{t('Web interface ready')} — {page.url}")
+        if page.headless:
+            port = urlsplit(page.url).port
+            host = socket.gethostname().split(".")[0]
+            notes = [
+                t("No display on this host. On your workstation, run:"),
+                f"ssh -L {port}:127.0.0.1:{port} {host}",
+                t("Then open this link within 2 minutes:"),
+            ]
+        else:
+            notes = [
+                t("If the page did not open, use this link within 2 minutes:")
+            ]
+            if page.opened:
+                notes.insert(
+                    0,
+                    t(
+                        "Opened in your browser. The link works once, for 2"
+                        " minutes."
+                    ),
+                )
+        for note in notes + [page.link]:
+            print(f"   {note}")
+
+    def _web_launch_failed(self, exc):
+        """Message d'un lancement du hub web qui échoue, selon `exc.kind`.
+        Sans journal, la ligne affichée ne prétend pas en citer un : le
+        message du lanceur en tient lieu, sous une phrase qui l'annonce
+        pour ce qu'il est."""
+        if exc.kind == "root":
+            print(t("The web interface refuses to run as root."))
+            return
+        if exc.kind == "missing":
+            print(
+                t("The web interface needs {pkg}. Install it with:").format(
+                    pkg=exc.pkg
+                )
+            )
+            # `kind == "missing"` ne vient aujourd'hui que d'un tornado
+            # absent : la commande affichée est toujours celle de son
+            # paquet, quel que soit `exc.pkg`.
+            pip = f"{VENV_ERPLIBRE}/bin/pip"
+            print(f"   {pip} install {shlex.quote(launcher.TORNADO)}")
+            return
+        if exc.log_tail:
+            print(t("The web interface did not start. Last lines of its log:"))
+            try:
+                print(f"   {paths.log_path(new_path)}")
+            except OSError:
+                pass
+            tail = exc.log_tail
+        else:
+            print(t("The web interface did not start."))
+            tail = exc.message
+        for line in tail.splitlines():
+            print(f"   {line}")
+
+    def _todo_web_stop(self):
+        """Arrête le hub web de ce checkout. Si des sessions web exécutent
+        une commande, demande d'abord : un refus n'arrête rien, Ctrl+C ou
+        Ctrl+D non plus. Un hub qui répond encore après l'attente du lanceur
+        n'est pas annoncé arrêté : la ligne d'état du menu, affichée
+        ensuite, dit qu'il tourne. Rien ne remonte au menu.
+
+        Dans une session web, ou dans un TODO lancé depuis l'une d'elles
+        (TODO_WEB_FD hérité), rien ne s'arrête : ce serait couper la page
+        qui montre ce terminal."""
+        if os.environ.get("TODO_WEB_FD"):
+            print(
+                t(
+                    "This TODO runs in the web interface: stop the interface"
+                    " from a terminal."
+                )
+            )
+            return
+        try:
+            info = self._web_status()
+        except KeyboardInterrupt:
+            # La sonde n'engage rien sur le hub : rien à annoncer sur son
+            # état réel, la ligne d'état du menu le redira au tour suivant.
+            print()
+            return
+        if info is None:
+            print(t("The web interface is not running."))
+            return
+        running = info.get("running", 0)
+        if running:
+            question = t(
+                "{n} web sessions are running a command. Stop them anyway?"
+            )
+            try:
+                sure = click.confirm(question.format(n=running), default=False)
+            except click.exceptions.Abort:
+                # Ctrl+C ou Ctrl+D à la question vaut « non ».
+                print()
+                return
+            if not sure:
+                return
+        try:
+            stopped = launcher.stop(new_path)
+        except KeyboardInterrupt:
+            # L'ordre d'arrêt a pu partir : la ligne d'état qui suit dit si
+            # le hub tourne encore.
+            print()
+            return
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+            return
+        if stopped:
+            print(t("Web interface stopped"))
+
+    def _todo_desktop_window(self):
+        """Ouvre la télémétrie dans la fenêtre bureautique, sur le hub web
+        de ce checkout, démarré au besoin.
+
+        La fenêtre vit dans un processus détaché (`desktop.spawn`) : ce
+        menu reste utilisable pendant qu'elle est ouverte, et la fermer
+        laisse le hub et ses sessions. Un processus sorti avant
+        `desktop.SPAWN_GRACE` s n'a pas ouvert de fenêtre : sorti à 0, il a
+        ouvert la page dans le navigateur à la place (le repli de
+        `desktop.main`) ; sorti en `desktop.NO_BROWSER`, aucun navigateur ne
+        l'a prise, et la page s'ouvre alors comme par [2], qui en donne le
+        lien ; sinon il a échoué. La fin de son journal s'affiche dans les
+        trois cas. Sans affichage graphique, la page s'ouvre comme
+        par [2], qui dit pourquoi ; sans pywebview ou sans moteur web
+        aussi, après les commandes d'installation, que rien ne lance. Dans
+        une session web, ou dans un TODO lancé depuis l'une d'elles, [4]
+        vaut [2] : une fenêtre paraîtrait sur l'affichage de l'hôte du hub,
+        pas devant la page. Un hub qui ne démarre pas se dit comme pour
+        [2]. Rien ne remonte au menu."""
+        if os.environ.get("TODO_WEB_FD") or not desktop.has_display():
+            self._todo_telemetry_web()
+            return
+        if not desktop.available():
+            print(
+                t(
+                    "The desktop window needs pywebview and a web engine."
+                    " Install them with:"
+                )
+            )
+            for line in desktop.install_hint(new_path):
+                print(f"   {line}")
+            print(t("Opening the page in the browser instead."))
+            self._todo_telemetry_web()
+            return
+        try:
+            launcher.ensure_running(new_path)
+            proc = desktop.spawn(new_path, view="telemetry", lang=get_lang())
+            code = proc.wait(desktop.SPAWN_GRACE)
+        except subprocess.TimeoutExpired:
+            print(t("Desktop window launched. If it does not show, its log:"))
+            print(f"   {desktop.log_path(new_path)}")
+            return
+        except launcher.LaunchError as exc:
+            self._web_launch_failed(exc)
+            return
+        except KeyboardInterrupt:
+            # Le hub et la fenêtre sont détachés : seule l'attente
+            # s'interrompt, et la ligne d'état du menu dit ensuite si le hub
+            # tourne.
+            print()
+            return
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+            return
+        if code == 0:
+            print(
+                t(
+                    "The desktop window did not open: its process opened the"
+                    " page in the browser instead. Last lines of its log:"
+                )
+            )
+        elif code == desktop.NO_BROWSER:
+            print(
+                t(
+                    "The desktop window did not open, and no browser took the"
+                    " page. Last lines of its log:"
+                )
+            )
+        else:
+            print(
+                t("The desktop window did not start. Last lines of its log:")
+            )
+        print(f"   {desktop.log_path(new_path)}")
+        for line in desktop.log_tail(new_path):
+            print(f"   {line}")
+        if code == desktop.NO_BROWSER:
+            self._todo_telemetry_web()
 
     # Préférences éditables depuis le menu Configuration : clé, libellé, et
     # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :
@@ -973,21 +1045,25 @@ class TODO(
         return str(value)
 
     def _pref_edit(self, key):
-        """Fait choisir une valeur parmi celles proposées pour `key`."""
+        """Fait choisir une valeur parmi celles proposées pour `key`, la
+        valeur courante en défaut, qu'une réponse vide garde. Seule une
+        autre valeur s'écrit : garder la valeur courante n'écrit rien, et
+        une préférence jamais réglée suit encore le défaut de TODO ; [0] et
+        Ctrl+D reviennent sans rien écrire."""
         title, options = self._PREF_CHOICES[key]
         current = todo_prefs.get(key)
-        print(f"\n{t(title)} :")
-        for i, (stored, label) in enumerate(options, 1):
-            star = " *" if stored == current else ""
-            print(f"  [{i}] {t(label)}{star}")
-        sel = input(f"{t('Choice (number, blank = keep):')} ").strip()
-        try:
-            idx = int(sel) - 1
-        except ValueError:
+        values = [stored for stored, _label in options]
+        print()
+        value = ui.choose(
+            f"{t(title)} :",
+            values,
+            default=current if current in values else None,
+            labels=[t(label) for _stored, label in options],
+        )
+        if value is None or value == current:
             return
-        if 0 <= idx < len(options):
-            todo_prefs.set(key, options[idx][0])
-            print(f"  ✅ {t(title)} : {self._pref_label(key)}")
+        todo_prefs.set(key, value)
+        print(f"  ✅ {t(title)} : {self._pref_label(key)}")
 
     def prompt_healthcheck(self):
         """Vérifications à sec du checkout et de son environnement.
@@ -1052,64 +1128,36 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_configuration(self):
-        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).
-        La langue vit à part, dans env_var.sh, et garde son propre mécanisme.
+        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json),
+        déclarés dans CONFIGURATION (`menus/main.py`). La langue vit à part,
+        dans env_var.sh, et garde son propre mécanisme. Rend None sur [0].
         """
-        while True:
-            lang = "français" if get_lang() == "fr" else "English"
-            choices = [
-                {"section": t("Interface")},
-                {"prompt_description": f"{t('Language / Langue')}  ({lang})"},
-                {
-                    "prompt_description": (
-                        f"{t('QEMU deployment interface')}  "
-                        f"({self._pref_label('qemu_deploy_ui')})"
-                    )
-                },
-                {
-                    "prompt_description": (
-                        f"{t('Display while deploying')}  "
-                        f"({self._pref_label('qemu_deploy_progress')})"
-                    )
-                },
-                {
-                    "prompt_description": (
-                        f"{t('Odoo migration interface')}  "
-                        f"({self._pref_label('migration_ui')})"
-                    )
-                },
-                {"prompt_description": t("Fork - Open TODO in a new tab")},
-                {"section": t("Maintenance")},
-                {"prompt_description": t("Reset all preferences")},
-            ]
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._change_language()
-            elif status == "2":
-                self._pref_edit("qemu_deploy_ui")
-            elif status == "3":
-                self._pref_edit("qemu_deploy_progress")
-            elif status == "4":
-                self._pref_edit("migration_ui")
-            elif status == "5":
-                self.execute.exec_command_live(
-                    "make todo", source_erplibre=True
-                )
-            elif status == "6":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_main.CONFIGURATION)
 
-    def fill_help_info(self, choices):
+    def _lang_label(self):
+        """Nom de la langue de TODO, écrit dans cette langue."""
+        return "français" if get_lang() == "fr" else "English"
+
+    def _fork_todo(self):
+        """Lance un autre TODO, `make todo`, dans ce terminal."""
+        self.execute.exec_command_live("make todo", source_erplibre=True)
+
+    def _reset_preferences(self):
+        """Remet chaque préférence à son défaut et dit combien il y en
+        avait."""
+        n = todo_prefs.reset()
+        print(f"✅ {t('Preferences reset')} ({n})")
+
+    def fill_help_info(self, choices, state=None, quits=False):
         # Une entrée {"section": "..."} affiche un titre de section SANS
         # consommer de numéro : la numérotation reste continue sur les vraies
         # commandes (compatible avec les elif codés en dur des menus).
-        help_info = self._menu_header() + "\n"
+        # `state` : une ligne d'état, sous le fil d'Ariane. `quits` : [0]
+        # quitte TODO, et se lit « 🚪 Quit » au lieu de « Back ».
+        help_info = self._menu_header(state) + "\n"
         help_end = f"{retour(t('Back'))}\n"
+        if quits:
+            help_end = f"[0] 🚪 {t('Quit')}\n"
         n = 0
         for instance in choices:
             section = instance.get("section")
@@ -1127,279 +1175,74 @@ class TODO(
         return help_info
 
     def prompt_execute_instance(self):
+        """Run (RUN, `menus/run.py`) : « Choose your database », les
+        instances de `instance` dans todo.json (`_run_instance`), puis
+        Mobile, quand son répertoire existe. Dessiné une fois, à l'entrée.
+        Rend False sur [0]."""
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        choices = self.config_file.get_config("instance")
-        init_len = len(choices)
+        return navigate(self, menus_run.RUN)
 
-        # Support mobile ERPLibre
-        if os.path.exists(MOBILE_HOME_PATH):
-            menu_entry = {
-                "prompt_description": t("Mobile - Compile and run software"),
-                "callback": self.callback_make_mobile_home,
-            }
-            choices.append(menu_entry)
+    def _run_instance(self, instance):
+        """Lance `instance`, une entrée de `instance` dans todo.json : sa
+        cible make ne tourne que si l'on veut une nouvelle instance, puis
+        sa base s'ouvre (`exec_run_db`)."""
+        new = click.confirm(t("Do you want a new instance?"))
+        self.execute_from_configuration(
+            instance, exec_run_db=True, ignore_makefile=not new
+        )
 
-        # Support custom database to execute
-        menu_entry = {
-            "prompt_description": t("Choose your database"),
-            "callback": self.callback_execute_custom_database,
-        }
-        choices.insert(0, menu_entry)
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 1 < int_cmd <= init_len:
-                        cmd_no_found = False
-                        status = click.confirm(
-                            t("Do you want a new instance?")
-                        )
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(
-                            instance,
-                            exec_run_db=True,
-                            ignore_makefile=not bool(status),
-                        )
-                    elif int_cmd <= len(choices) or 1 == int_cmd:
-                        cmd_no_found = False
-                        # Execute dynamic instance
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(
-                            instance,
-                        )
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+    def _mobile_exists(self):
+        """Vrai si le projet mobile est là : Run montre alors Mobile."""
+        return os.path.exists(MOBILE_HOME_PATH)
 
     def prompt_execute_function(self):
-        choices = self.config_file.get_config("function")
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+        """Démonstration des fonctions développées (AUTOMATION,
+        `menus/git.py`) : une entrée par élément de `function`, que lance
+        `execute_from_configuration`. Dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_git.AUTOMATION)
 
     def prompt_execute_update(self):
-        # self.execute.exec_command_live(f"make {makefile_cmd}")
-        print(f"🤖 {t('Development update')}")
+        """Mise à jour du développement (UPDATE, `menus/execute.py`) : les
+        entrées de `update_from_makefile`, puis la migration d'Odoo, la
+        mise à jour de Poetry et celle des dépôts git. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
         # TODO détecter les modules en modification pour faire la mise à jour en cours
         # TODO demander sur quel BD faire la mise à jour
         # TODO proposer les modules manuelles selon la configuration à mettre à jour
         # TODO proposer la mise à jour de l'IDE
-        # TODO proposer la mise à jour des git-repo
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        choices = self.config_file.get_config("update_from_makefile")
-        # « method » porte la destination dans l'entrée elle-même. Un rang
-        # calculé sur la taille de la liste désignait l'entrée voisine dès
-        # qu'une autre s'ajoutait à la fin, et la soustraction en double du
-        # repli générique rendait la PREMIÈRE entrée injoignable.
-        choices.append(
-            {
-                "prompt_description": t("Upgrade Odoo - Migration Database"),
-                "method": "_update_odoo_migration",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
-                "method": "upgrade_poetry",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("🔃 Update git repo"),
-                "method": "prompt_execute_git_repo",
-            }
-        )
-        help_info = self.fill_help_info(choices)
+        return navigate(self, menus_execute.UPDATE)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            cmd_no_found = True
-            try:
-                int_cmd = int(status)
-                if 0 < int_cmd <= len(choices):
-                    cmd_no_found = False
-                    instance = choices[int_cmd - 1]
-                    method = instance.get("method")
-                    if method:
-                        getattr(self, method)()
-                    else:
-                        self.execute_from_configuration(instance)
-            except ValueError:
-                pass
-            if cmd_no_found:
-                print(t("Command not found !"))
-
-    def _update_odoo_migration(self):
-        """La migration d'une base d'une version d'Odoo vers la suivante."""
+    def _upgrade_odoo(self):
+        """Migre une base Odoo (`TodoUpgrade.execute_odoo_upgrade`). Un
+        rembobinage a déjà écrit l'état : il ne reste qu'à relancer, et
+        l'écran de reprise repart de l'étape choisie. Rendre la main au
+        menu plutôt que de rappeler la migration évite de la reprendre au
+        milieu de son état local."""
         upgrade = todo_upgrade.TodoUpgrade(self)
         try:
             upgrade.execute_odoo_upgrade()
         except todo_upgrade.MigrationRewind:
-            # L'état est déjà rembobiné et écrit : il ne reste qu'à
-            # relancer, et l'écran de reprise repartira de l'étape
-            # choisie. Sortir d'ici plutôt que de rappeler la méthode
-            # évite de la reprendre au milieu de son état local.
             print(
                 f"\n⏪ {t('Rewound.')}"
                 f" {t('Relaunch the migration to resume from there.')}"
             )
 
     def prompt_execute_deploy(self):
-        print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
-        choices = [
-            {"section": t("Local")},
-            {"prompt_description": t("Clone ERPLibre locally (git clone)")},
-            {"prompt_description": t("Configure sshfs")},
-            {
-                "prompt_description": t(
-                    "SSH port forwarding (open Odoo in the browser)"
-                )
-            },
-            {"prompt_description": t("Configure a SOCKS proxy over SSH")},
-            {"section": t("Remote & services")},
-            {"prompt_description": t("SSH (remote host)...")},
-            {
-                "prompt_description": t(
-                    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Proxmox VE - Deploy a VM on a remote host"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy - Install NTFY notification server"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "QEMU cache - Download mirror for local VMs"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy - Install Asterisk VoIP server (hardened)"
-                )
-            },
-            {"section": t("VPN & tunnels")},
-            {
-                "prompt_description": t(
-                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_clone_erplibre()
-            elif status == "2":
-                self._configure_sshfs()
-            elif status == "3":
-                self._deploy_port_forward()
-            elif status == "4":
-                self._deploy_socks_proxy()
-            elif status == "5":
-                self.prompt_execute_deploy_ssh()
-            elif status == "6":
-                self.prompt_execute_qemu()
-            elif status == "7":
-                self.prompt_execute_proxmox()
-            elif status == "8":
-                self._deploy_ntfy_server()
-            elif status == "9":
-                self.prompt_execute_qemu_cache()
-            elif status == "10":
-                self._deploy_asterisk_server()
-            elif status == "11":
-                self.prompt_execute_vpn()
-            else:
-                print(t("Command not found !"))
+        """Déployer ERPLibre : en local, sur un hôte distant, en VM, et les
+        tunnels (DEPLOY, `menus/deploy.py`), dessiné une fois, à l'entrée.
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.DEPLOY)
 
     def prompt_execute_deploy_ssh(self):
-        """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
-        print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
-        choices = [
-            {"prompt_description": t("SSH - Check connection")},
-            {"prompt_description": t("SSH - Sync files (rsync)")},
-            {"prompt_description": t("SSH - Install ERPLibre")},
-            {"prompt_description": t("SSH - Start Odoo")},
-            {"prompt_description": t("SSH - Stop Odoo")},
-            {"prompt_description": t("SSH - Restart Odoo")},
-            {"prompt_description": t("SSH - Service status")},
-            {"prompt_description": t("SSH - View logs")},
-            {"prompt_description": t("SSH - Run make target")},
-            {"prompt_description": t("SSH - Install systemd service")},
-            {"prompt_description": t("SSH - Configure nginx + SSL")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_ssh_check()
-            elif status == "2":
-                self._deploy_ssh_push()
-            elif status == "3":
-                self._deploy_ssh_install()
-            elif status == "4":
-                self._deploy_ssh_run()
-            elif status == "5":
-                self._deploy_ssh_stop()
-            elif status == "6":
-                self._deploy_ssh_restart()
-            elif status == "7":
-                self._deploy_ssh_status()
-            elif status == "8":
-                self._deploy_ssh_logs()
-            elif status == "9":
-                self._deploy_ssh_make()
-            elif status == "10":
-                self._deploy_ssh_install_systemd()
-            elif status == "11":
-                self._deploy_ssh_install_nginx()
-            else:
-                print(t("Command not found !"))
+        """Sous-menu : opérations de déploiement sur un hôte distant via SSH
+        (SSH, `menus/deploy.py`). Rend False sur [0]."""
+        return navigate(self, menus_deploy.SSH)
 
     @staticmethod
     def _native_arch():
@@ -1970,31 +1813,6 @@ class TODO(
         return 0
 
     @staticmethod
-    def _is_index(token, options):
-        """Vrai si le jeton est un numéro valide dans la liste (1-based)."""
-        try:
-            return 1 <= int(token) <= len(options)
-        except ValueError:
-            return False
-
-    @staticmethod
-    def _parse_index_selection(raw, options):
-        """« 1 3 » ou « 1,3 » -> sous-liste d'options (indices 1-based)."""
-        chosen = []
-        for tok in re.split(r"[\s,]+", raw.strip()):
-            if not tok:
-                continue
-            try:
-                idx = int(tok) - 1
-            except ValueError:
-                if tok in options and tok not in chosen:
-                    chosen.append(tok)
-                continue
-            if 0 <= idx < len(options) and options[idx] not in chosen:
-                chosen.append(options[idx])
-        return chosen
-
-    @staticmethod
     def _fmt_dur(secs):
         """Durée lisible : « 45s » ou « 2m05s »."""
         secs = int(secs)
@@ -2470,18 +2288,36 @@ class TODO(
         Le port distant est vu DEPUIS la machine cible : « -L
         local:localhost:distant ». Un rebond éventuel n'a pas à être indiqué —
         le ProxyJump du bloc ~/.ssh/config s'applique tout seul, ce qui rend
-        joignable une VM imbriquée sans route directe."""
+        joignable une VM imbriquée sans route directe.
+
+        L'hôte vient de ~/.ssh/config, par son numéro ou son nom, ou se
+        tape après « Type an address », la dernière entrée, qui est la
+        seule question quand le fichier ne déclare aucun hôte. [0], une
+        réponse vide ou Ctrl+D reviennent sans rien sonder ni ouvrir. « 0 »
+        tapé comme adresse vaut une réponse vide : il suit une liste où [0]
+        veut dire Retour, et l'hôte « 0 » désigne la machine locale."""
         print(f"\n🔌 {t('SSH port forwarding')}")
         hosts = self._ssh_config_hosts()
+        host = ""
         if hosts:
-            for i, name in enumerate(hosts, 1):
-                print(f"  [{i}] {name}")
-        host = input(f"{t('Host (number or name):')} ").strip()
+            host = ui.choose(
+                t("Host:"),
+                [*hosts, ""],
+                labels=[*hosts, t("Type an address")],
+                names={name: name for name in hosts},
+            )
+            if host is None:
+                return
+        if not host:
+            try:
+                host = ui.ask(f"{t('Host or IP:')} ").strip()
+            except EOFError:
+                return
+            if host == "0":
+                host = ""
         if not host:
             print(t("Cancelled."))
             return
-        if host.isdigit() and 1 <= int(host) <= len(hosts):
-            host = hosts[int(host) - 1]
 
         raw = input(f"{t('Remote port (default:')} 8069): ").strip()
         remote = raw if raw.isdigit() else "8069"
@@ -2734,22 +2570,29 @@ class TODO(
         """Demande OÙ se connecter, à la main ou depuis ~/.ssh/config.
 
         Rend (cible, utilisateur, hôte, nom, depuis_config), ou None si l'on
-        renonce. La CIBLE est ce qu'on passe à ssh : l'alias quand il vient du
-        fichier de configuration, pour que son User et son ProxyJump
-        s'appliquent — un « user@hôte » écrit à la main les perdrait, et une VM
-        imbriquée sans route directe deviendrait injoignable.
+        renonce : [0] ou Ctrl+D à l'une des deux listes ; la saisie à la
+        main est le défaut d'une réponse vide. La CIBLE est ce qu'on passe à
+        ssh : l'alias quand il vient du fichier de configuration, pour que
+        son User et son ProxyJump s'appliquent — un « user@hôte » écrit à la
+        main les perdrait, et une VM imbriquée sans route directe deviendrait
+        injoignable.
 
         DEPUIS_CONFIG distingue les deux, que le nom seul ne sépare pas :
         l'appelant n'interroge ~/.ssh/config que pour une adresse qui en vient.
         """
         import getpass
 
-        print(f"\n{t('SSH address input method')}")
-        print(f"[1] {t('Manual entry')}")
-        print(f"[2] {t('From ~/.ssh/config')}")
-        choice = input(t("Your choice (1/2): ")).strip()
+        print()
+        methode = ui.choose(
+            t("SSH address input method"),
+            ["manual", "ssh_config"],
+            default="manual",
+            labels=[t("Manual entry"), t("From ~/.ssh/config")],
+        )
+        if methode is None:
+            return None
 
-        if choice == "2":
+        if methode == "ssh_config":
             ssh_config_path = os.path.expanduser("~/.ssh/config")
             hosts = self._ssh_config_entries(ssh_config_path)
 
@@ -2757,8 +2600,8 @@ class TODO(
                 print(t("No SSH hosts found in ~/.ssh/config"))
                 return None
 
-            print()
-            for i, (host, info) in enumerate(hosts, 1):
+            labels = []
+            for host, info in hosts:
                 hn = info.get("hostname", host)
                 u = info.get("user", "")
                 desc = host
@@ -2766,18 +2609,23 @@ class TODO(
                     desc += f" ({hn})"
                 if u:
                     desc += f" [{u}]"
-                print(f"[{i}] {desc}")
-            sel = input(t("Select SSH host number: ")).strip()
-            try:
-                idx = int(sel) - 1
-                if idx < 0 or idx >= len(hosts):
-                    print(t("Invalid selection!"))
-                    return None
-            except ValueError:
-                print(t("Invalid selection!"))
+                labels.append(desc)
+            aliases = [host for host, _info in hosts]
+            print()
+            entry = ui.choose(
+                t("Hosts from ~/.ssh/config"),
+                hosts,
+                labels=labels,
+                names={
+                    host: (host, info)
+                    for host, info in hosts
+                    if aliases.count(host) == 1
+                },
+            )
+            if entry is None:
                 return None
 
-            host_name, host_info = hosts[idx]
+            host_name, host_info = entry
             hostname = host_info.get("hostname", host_name)
             user = host_info.get("user", getpass.getuser())
             return host_name, user, hostname, host_name, True
@@ -3103,76 +2951,10 @@ class TODO(
         )
 
     def prompt_execute_code(self):
-        print(f"🤖 {t('What do you need for development?')}")
-        #         help_info = """Commande :
-        #         [1] Status Git local et distant
-        #         [2] Démarrer le générateur de code
-        #         [3] Format - Formatage automatique selon changement [ou manuelle]
-        #         [4] Qualité - Qualité logiciel, détecter les fichiers qui manquent les licences AGPLv3
-        #         [0] Retour
-        # """
-        #         help_info = """Commande :
-        #         [1] Status Git local et distant
-        #         [0] Retour
-        # """
-
-        choices = self.config_file.get_config("code_from_makefile")
-
-        # « method » porte la destination dans l'entrée elle-même. Le rang
-        # de ces quatre-là dépend du nombre d'entrées venues de todo.json :
-        # un rang calculé sur la taille de la liste tient tant que rien ne
-        # s'insère, et désigne le voisin le jour où quelque chose s'insère.
-        choices.append(
-            {
-                "prompt_description": t("Open SHELL"),
-                "method": "open_shell_on_database",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Upgrade Module"),
-                "method": "upgrade_module",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Debug"),
-                "method": "debug_ide",
-            }
-        )
-        # Déplacé depuis le menu Execute : mise à jour de tout le code source
-        # de dev en staging (sous-menu de mise à jour).
-        choices.append(
-            {
-                "prompt_description": t(
-                    "Update - Update all developed staging source code"
-                ),
-                "method": "prompt_execute_update",
-            }
-        )
-
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            cmd_no_found = True
-            try:
-                int_cmd = int(status)
-                if 0 < int_cmd <= len(choices):
-                    cmd_no_found = False
-                    instance = choices[int_cmd - 1]
-                    method = instance.get("method")
-                    if method:
-                        getattr(self, method)()
-                    else:
-                        self.execute_from_configuration(instance)
-            except ValueError:
-                pass
-            if cmd_no_found:
-                print(t("Command not found !"))
+        """Outils du développeur (CODE, `menus/execute.py`) : les entrées de
+        `code_from_makefile`, puis Open SHELL, Upgrade Module, Debug et
+        Update. Dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_execute.CODE)
 
     # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
     # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
@@ -3180,98 +2962,30 @@ class TODO(
     _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
 
     def prompt_execute_git(self):
-        print(f"🤖 {t('Git and shell management tools!')}")
-        choices = self._git_menu_choices(
-            self.config_file.get_config("git_from_makefile")
-        )
-        help_info = self.fill_help_info(choices)
-        # Les sections ne consomment pas de numéro : le numéro tapé indexe
-        # la liste des seules commandes, dans l'ordre de l'affichage.
-        commandes = [c for c in choices if not c.get("section")]
+        """Outils git et shell (GIT, `menus/git.py`) : la mise à jour des
+        dépôts, puis quatre sections, Settings, Tools, Server et
+        Installation ; les éléments de `git_from_makefile` vont dans
+        Settings ou Tools selon leur « menu_group ». Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.GIT)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            try:
-                numero = int(status)
-            except ValueError:
-                numero = 0
-            if not 0 < numero <= len(commandes):
-                print(t("Command not found !"))
-                continue
-            instance = commandes[numero - 1]
-            method = instance.get("method")
-            if method:
-                getattr(self, method)()
-            else:
-                self.execute_from_configuration(instance)
-
-    # Section où va une entrée de `git_from_makefile`, selon sa clé
-    # « menu_group ». Une entrée sans clé, ou à la clé inconnue, va dans les
-    # outils : c'est la forme qu'écrit « Ajouter une automatisation ».
-    _GIT_MENU_GROUPS = ("configuration", "tools")
-
-    def _git_menu_choices(self, config_entries):
-        """La liste du menu Git, sections comprises, dans l'ordre affiché.
-
-        Chaque entrée codée en dur porte sa destination dans « method » : les
-        entrées de todo.json s'insèrent au milieu des sections, donc aucun
-        rang n'est connu à la lecture du source.
-        """
-        groupes = {nom: [] for nom in self._GIT_MENU_GROUPS}
-        for entree in config_entries or []:
-            groupe = entree.get("menu_group")
-            if groupe not in groupes:
-                groupe = "tools"
-            groupes[groupe].append(entree)
-        return [
-            {
-                "prompt_description": t("🔃 Update git repo"),
-                "method": "prompt_execute_git_repo",
-            },
-            {"section": t("Settings")},
-            {
-                "prompt_description": t(
-                    "Install git hooks (commit-msg, pre-commit)"
-                ),
-                "method": "_git_install_hooks",
-            },
-            {
-                "prompt_description": t(
-                    "Set merge.conflictStyle to zdiff3 (global)"
-                ),
-                "method": "_git_set_conflict_style",
-            },
-            *groupes["configuration"],
-            {"section": t("Tools")},
-            {
-                "prompt_description": t("Add a remote to a local repository"),
-                "method": "_git_add_remote",
-            },
-            *groupes["tools"],
-            {"section": t("Server")},
-            {
-                "prompt_description": t("Local git server"),
-                "method": "prompt_execute_git_local_server",
-            },
-            {"section": t("Installation")},
-            {
-                "prompt_description": t("Install Starship on Shell"),
-                "method": "_shell_install_starship",
-            },
-            {
-                "prompt_description": t("Install Claude Code"),
-                "method": "_shell_install_claude_code",
-            },
-            {
-                "prompt_description": t("Install opencode"),
-                "method": "_shell_install_opencode",
-            },
-        ]
+    def _git_from_configuration(self, instance):
+        """Lance `instance`, un élément de `git_from_makefile` : la méthode
+        de TODO que nomme sa clé « method », sans argument, sinon
+        `execute_from_configuration`."""
+        method = instance.get("method")
+        if method:
+            getattr(self, method)()
+        else:
+            self.execute_from_configuration(instance)
 
     def _git_add_remote(self):
+        """Ajoute un remote au dépôt du répertoire courant : son nom,
+        « localhost » sans réponse, et son adresse arrivent à git tels que
+        tapés, chacun en un argument que le shell ne découpe pas, après
+        « -- », qui termine les options de git : un nom qui commence par
+        « - » est un nom. Le succès ne s'annonce que sur un code de sortie
+        nul."""
         remote_name = (
             input(t("Remote name (default: localhost): ")).strip()
             or "localhost"
@@ -3282,13 +2996,21 @@ class TODO(
         if not remote_url:
             print(t("Repository address is required!"))
             return
-        cmd = f"git remote add {remote_name} {remote_url}"
+        cmd = (
+            f"git remote add -- {shlex.quote(remote_name)}"
+            f" {shlex.quote(remote_url)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(t("Remote added successfully!"))
+            # Le code de sortie se RENVOIE : un échec de git ne lève rien.
+            status = self.execute.exec_command_live(cmd, source_erplibre=False)
         except Exception as e:
             print(f"{t('Error adding remote: ')}{e}")
+            return
+        if status:
+            print(f"{t('Error adding remote: ')}{status}")
+            return
+        print(t("Remote added successfully!"))
 
     def _git_install_hooks(self):
         """Pointer core.hooksPath sur les hooks du dépôt.
@@ -3395,11 +3117,13 @@ class TODO(
         ]
 
     def _shell_rc_target(self):
-        """Le shell à modifier. Ne demande que devant un vrai choix.
+        """Le shell à modifier, ou None quand on renonce. Ne demande que
+        devant un vrai choix.
 
         Aucun fichier de configuration présent : bash, sans question — l'appel
         le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux ou
-        trois : à l'opérateur de trancher, le sien proposé par défaut.
+        trois : à l'opérateur de trancher, par son numéro ou son nom, le sien
+        proposé par défaut ; [0] ou Ctrl+D rendent None.
         """
         presents = self._shell_rc_present()
         if not presents:
@@ -3407,24 +3131,14 @@ class TODO(
         if len(presents) == 1:
             return presents[0]
         courant = self._shell_name()
-        defaut = courant if courant in presents else presents[0]
-        print(f"\n{t('Which shell configuration?')}")
-        for i, nom in enumerate(presents, 1):
-            print(f"  [{i}] {nom:<5} {self._SHELL_RC[nom]}")
-        sel = input(
-            f"{t('Choice (number or name, default:')} {defaut}) : "
-        ).strip()
-        if not sel:
-            return defaut
-        if sel in presents:
-            return sel
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(presents):
-                return presents[idx]
-        except ValueError:
-            pass
-        return defaut
+        print()
+        return ui.choose(
+            t("Which shell configuration?"),
+            presents,
+            default=courant if courant in presents else presents[0],
+            labels=[f"{nom:<5} {self._SHELL_RC[nom]}" for nom in presents],
+            names={nom: nom for nom in presents},
+        )
 
     def _shell_rc_append(self, shell, ligne, marqueur):
         """Ajouter la ligne au fichier du shell si le marqueur n'y est pas.
@@ -3457,7 +3171,8 @@ class TODO(
         return f'export PATH="{repertoire}:$PATH"'
 
     def _shell_ensure_on_path(self, shell, repertoire):
-        """Garantir que le répertoire est dans le PATH du shell choisi.
+        """Garantir que le répertoire est dans le PATH du shell choisi ;
+        rend vrai quand la ligne vient d'être écrite.
 
         Ne fait rien si le répertoire y figure déjà, quelle que soit la
         graphie — les installateurs amont écrivent souvent la ligne eux-mêmes.
@@ -3466,9 +3181,10 @@ class TODO(
         chemin = self._shell_rc_append(shell, ligne, repertoire)
         if chemin is None:
             print(f"✅ {t('Already on the PATH: ')}{repertoire}")
-            return
+            return False
         print(f"✅ {t('PATH line added to: ')}{chemin}")
         print(f"   {ligne}")
+        return True
 
     def _shell_install_starship(self):
         """Poser starship, puis l'accrocher au shell de l'utilisateur.
@@ -3521,9 +3237,11 @@ class TODO(
         La ligne n'est écrite qu'une fois : « starship init » cherché dans le
         fichier couvre les trois shells, dont les lignes diffèrent. L'écriture
         ne demande pas de confirmation — le choix du fichier, quand il y en a
-        un à faire, l'a déjà donnée.
+        un à faire, l'a déjà donnée, et y renoncer n'écrit rien.
         """
         shell = self._shell_rc_target()
+        if shell is None:
+            return
         ligne = self._STARSHIP_LINE[shell]
         chemin = self._shell_rc_append(shell, ligne, "starship init")
         if chemin is None:
@@ -3547,7 +3265,10 @@ class TODO(
         le PATH d'un shell ne porte pas toujours : sans la ligne d'export, le
         binaire est là et la commande reste introuvable. Le PATH du processus
         courant, lui, est figé depuis son démarrage — le menu ne verra pas le
-        binaire avant d'être relancé.
+        binaire avant d'être relancé. Renoncer au choix du fichier n'en écrit
+        aucun : le binaire installé est dit quand même. Le renvoi à un
+        nouveau shell ne suit qu'une ligne de PATH qui vient d'être écrite :
+        c'est elle qu'un shell déjà ouvert ne porte pas.
         """
         commande, repertoire = self._UPSTREAM_TOOLS[binaire]
         status = self.execute.exec_command_live(
@@ -3557,94 +3278,32 @@ class TODO(
         if status:
             print(f"❌ {t('Installation failed, see the output above.')}")
             return
-        self._shell_ensure_on_path(self._shell_rc_target(), repertoire)
+        shell = self._shell_rc_target()
+        ecrite = shell is not None and self._shell_ensure_on_path(
+            shell, repertoire
+        )
         pose = os.path.join(os.path.expanduser(repertoire), binaire)
         if not os.path.exists(pose):
             print(f"⚠ {t('Binary not found at: ')}{pose}")
             return
         print(f"✅ {binaire} : {pose}")
-        print(f"   {t('Open a new shell to see it.')}")
+        if ecrite:
+            print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):
-        print(f"🤖 {t('Manage local git repository server!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Deploy a local git server (~/.git-server)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy a production git server (/srv/git, root required)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
+        """Le serveur git local (GIT_LOCAL_SERVER, `menus/git.py`) : ses
+        actions en mode local ou de production. Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_LOCAL_SERVER)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_git_server_actions(production_ready=False)
-            elif status == "2":
-                self._prompt_git_server_actions(production_ready=True)
-            else:
-                print(t("Command not found !"))
+    def _prompt_git_server_local(self):
+        """Actions du serveur git local, sous ~/.git-server
+        (GIT_SERVER_LOCAL, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_SERVER_LOCAL)
 
-    def _prompt_git_server_actions(self, production_ready=False):
-        mode = (
-            t("Production mode (/srv/git, root required)")
-            if production_ready
-            else t("Local mode (~/.git-server)")
-        )
-        print(f"🤖 {mode}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Run all (init + remote + push + serve)"
-                )
-            },
-            {"prompt_description": t("Init - Create bare repos")},
-            {"prompt_description": t("Remote - Add local remotes")},
-            {"prompt_description": t("Push - Push to local server")},
-            {"prompt_description": t("Serve - Start git daemon")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="all",
-                )
-            elif status == "2":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="init",
-                )
-            elif status == "3":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="remote",
-                )
-            elif status == "4":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="push",
-                )
-            elif status == "5":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="serve",
-                )
-            else:
-                print(t("Command not found !"))
+    def _prompt_git_server_production(self):
+        """Actions du serveur git de production, sous /srv/git
+        (GIT_SERVER_PRODUCTION, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_SERVER_PRODUCTION)
 
     def _deploy_git_server(self, production_ready=False, action="all"):
         print(t("Starting git server deployment..."))
@@ -3657,110 +3316,28 @@ class TODO(
         )
 
     def prompt_execute_gpt_code(self):
-        print(f"🤖 {t('AI assistant tools for development!')}")
-        choices = [
-            {"prompt_description": t("Configure Claude Code configurations")},
-            {
-                "prompt_description": t(
-                    "Add an automation with Claude in todo.py"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "RTK - CLI proxy to reduce LLM token consumption"
-                )
-            },
-            {"prompt_description": t("Show the context given to Claude")},
-            {
-                "prompt_description": t(
-                    "Claude Code plugins - marketplaces and ERPLibre list"
-                )
-            },
-            {"prompt_description": t("Claude Code - local sessions")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_claude_configs()
-            elif status == "2":
-                self._claude_add_automation()
-            elif status == "3":
-                self.prompt_execute_rtk()
-            elif status == "4":
-                self._show_claude_context()
-            elif status == "5":
-                self.prompt_execute_claude_plugins()
-            elif status == "6":
-                self.prompt_claude_sessions()
-            else:
-                print(t("Command not found !"))
+        """Outils d'assistant IA (GPT_CODE, `menus/git.py`) : Claude
+        configs, l'ajout d'une automatisation, RTK, le contexte donné à
+        Claude, Plugins et les sessions de Claude Code. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.GPT_CODE)
 
     def _prompt_claude_configs(self):
-        print(f"🤖 {t('Deploy Claude Code commands!')}")
-        choices = [
-            {"prompt_description": t("Commit - OCA/Odoo commit command")},
-            {
-                "prompt_description": t(
-                    "Git prepare merge - Git merge preparation command"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Todo Add Command + Plan Max - Plan and add a todo.py"
-                    " command"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Todo Generate Code - Code by the OCA rules at high effort"
-                )
-            },
-            {"prompt_description": t("Show installed custom commands")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Le déploiement des commandes `/…` de Claude Code
+        (CLAUDE_CONFIGS, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.CLAUDE_CONFIGS)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._setup_claude_command(
-                    "commit",
-                    "template_claude_commands_commit.md",
-                    personalize=True,
-                )
-            elif status == "2":
-                self._setup_claude_command(
-                    "git_prepare_merge",
-                    "template_claude_commands_git_prepare_merge.md",
-                )
-            elif status == "3":
-                # Les deux gabarits vont ensemble : /todo_plan_max produit la
-                # spécification que /todo_add_command implémente, et l'un sans
-                # l'autre laisse la moitié de la chaîne.
-                self._setup_claude_command(
-                    "todo_plan_max",
-                    "template_claude_commands_todo_plan_max.md",
-                )
-                self._setup_claude_command(
-                    "todo_add_command",
-                    "template_claude_commands_todo_add_command.md",
-                )
-            elif status == "4":
-                self._setup_claude_command(
-                    "todo_generate_code",
-                    "template_claude_commands_todo_generate_code.md",
-                )
-            elif status == "5":
-                self._list_claude_commands()
-            else:
-                print(t("Command not found !"))
+    def _setup_claude_todo_commands(self):
+        """Déploie /todo_plan_max, puis /todo_add_command. Les deux vont
+        ensemble : /todo_plan_max produit la spécification que
+        /todo_add_command implémente, et l'un sans l'autre laisse la moitié
+        de la chaîne."""
+        self._setup_claude_command(
+            "todo_plan_max", "template_claude_commands_todo_plan_max.md"
+        )
+        self._setup_claude_command(
+            "todo_add_command", "template_claude_commands_todo_add_command.md"
+        )
 
     # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
     # chacune est la copie. La liste et l'écran de contexte en dérivent l'état
@@ -4104,7 +3681,14 @@ class TODO(
         except Exception as e:
             print(f"{t('Error creating file: ')}{e}")
 
+    # Les sections dont un menu lit la liste `<section>_from_makefile` de
+    # todo.json : Git, Code, Update, QEMU/KVM et Proxmox VE.
+    _AUTOMATION_SECTIONS = ("git", "code", "update", "qemu", "proxmox")
+
     def _claude_add_automation(self):
+        """Ajoute une commande bash à la liste `<section>_from_makefile` du
+        todo.json voisin, pour une section de _AUTOMATION_SECTIONS, « git »
+        sans réponse ; une autre section est refusée, todo.json intact."""
         description = input(t("Description of the command to add: ")).strip()
         if not description:
             return
@@ -4112,11 +3696,12 @@ class TODO(
         if not command:
             return
         section = (
-            input(
-                t("Menu section (git/code/config/network/process): ")
-            ).strip()
+            input(t("Menu section (git/code/update/qemu/proxmox): ")).strip()
             or "git"
         )
+        if section not in self._AUTOMATION_SECTIONS:
+            print(f"{t('No menu reads this section: ')}{section}")
+            return
         section_key = f"{section}_from_makefile"
         config_path = os.path.join(os.path.dirname(__file__), "todo.json")
         try:
@@ -4152,56 +3737,10 @@ class TODO(
     _CLAUDE_MARKETPLACES_DIR = "~/.claude/plugins/marketplaces"
 
     def prompt_execute_claude_plugins(self):
-        print(f"🤖 {t('Manage Claude Code plugins and marketplaces!')}")
-        choices = [
-            {"section": t("Inventory")},
-            {"prompt_description": t("List installed plugins")},
-            {"prompt_description": t("List configured marketplaces")},
-            {"prompt_description": t("Search a plugin in the marketplaces")},
-            {
-                "prompt_description": t(
-                    "Show a plugin detail and its token cost"
-                )
-            },
-            {"section": t("Install plugins")},
-            {"prompt_description": t("Install the ERPLibre preferred list")},
-            {"prompt_description": t("Install a plugin by name")},
-            {"prompt_description": t("Add a marketplace")},
-            {"section": t("Maintenance")},
-            {
-                "prompt_description": t(
-                    "Update the marketplaces and the plugins"
-                )
-            },
-            {"prompt_description": t("Uninstall a plugin")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._claude_plugin_exec("list")
-            elif status == "2":
-                self._claude_plugin_exec("marketplace list")
-            elif status == "3":
-                self._claude_plugin_search()
-            elif status == "4":
-                self._claude_plugin_details()
-            elif status == "5":
-                self._claude_install_preferred_plugins()
-            elif status == "6":
-                self._claude_plugin_install_by_name()
-            elif status == "7":
-                self._claude_marketplace_add()
-            elif status == "8":
-                self._claude_plugin_update()
-            elif status == "9":
-                self._claude_plugin_uninstall()
-            else:
-                print(t("Command not found !"))
+        """Les plugins et les marketplaces de Claude Code (PLUGINS,
+        `menus/git.py`). Dessiné une fois, à l'entrée. Rend False sur
+        [0]."""
+        return navigate(self, menus_git.PLUGINS)
 
     def _claude_plugin_exec(self, args, quiet=False, capture=False):
         """Lance « claude plugin <args> », ou signale que claude est absent.
@@ -4363,161 +3902,88 @@ class TODO(
         print(f"{t('Total:')} {len(trouves)}")
 
     def prompt_execute_doc(self):
-        print(f"🤖 {t('Looking for documentation?')}")
-        choices = [
-            {"prompt_description": t("Migration module coverage")},
-            {"prompt_description": t("What change between version")},
-            {"prompt_description": t("OCA guidelines")},
-            {"prompt_description": t("OCA migration Odoo 19 milestone")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Doc (DOC, `menus/run.py`) : l'adresse de pages sur la migration
+        d'Odoo et les règles de l'OCA. Dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_run.DOC)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                str_version = input(
-                    "Select version to upgrade Odoo CE (5-17) : "
-                )
-                try:
-                    int_version = int(str_version)
-                    print(
-                        "https://oca.github.io/OpenUpgrade/coverage_analysis/modules"
-                        f"{int_version * 10}-{(int_version + 1) * 10}.html"
-                    )
-                except ValueError:
-                    print(
-                        "https://oca.github.io/OpenUpgrade/030_coverage_analysis.html"
-                    )
-            elif status == "2":
-                str_version = input(
-                    "Select version to show what change for Odoo CE version 8-18) : "
-                )
-                try:
-                    int_version = int(str_version)
-                    print(
-                        f"https://github.com/OCA/maintainer-tools/wiki/Migration-to-version-{int_version}.0"
-                    )
-                except ValueError:
-                    print("https://github.com/OCA/maintainer-tools/wiki")
-            elif status == "3":
-                print(
-                    "https://github.com/OCA/odoo-community.org/blob/master/website/Contribution/CONTRIBUTING.rst"
-                )
-            elif status == "4":
-                print("https://github.com/OCA/maintainer-tools/issues/658")
-            else:
-                print(t("Command not found !"))
+    def _doc_migration_coverage(self):
+        """L'analyse de couverture d'OpenUpgrade depuis la version tapée,
+        ou sa page d'ensemble pour une réponse qui n'est pas un nombre."""
+        str_version = input(t("Select version to upgrade Odoo CE (5-17) : "))
+        try:
+            int_version = int(str_version)
+            print(
+                "https://oca.github.io/OpenUpgrade/coverage_analysis/modules"
+                f"{int_version * 10}-{(int_version + 1) * 10}.html"
+            )
+        except ValueError:
+            print(
+                "https://oca.github.io/OpenUpgrade/030_coverage_analysis.html"
+            )
+
+    def _doc_version_changes(self):
+        """La page de l'OCA sur la migration vers la version tapée, ou
+        l'accueil de son wiki pour une réponse qui n'est pas un nombre."""
+        str_version = input(
+            t(
+                "Select version to show what change for Odoo CE"
+                " version (8-18) : "
+            )
+        )
+        try:
+            int_version = int(str_version)
+            print(
+                "https://github.com/OCA/maintainer-tools/wiki/"
+                f"Migration-to-version-{int_version}.0"
+            )
+        except ValueError:
+            print("https://github.com/OCA/maintainer-tools/wiki")
+
+    def _doc_link(self, url):
+        """Imprime `url`, l'adresse d'une page de documentation."""
+        print(url)
 
     def prompt_execute_database(self):
-        print(f"🤖 {t('Make changes to databases!')}")
-        choices = [
-            {"section": t("Backup")},
-            {"prompt_description": t("Create backup (.zip)")},
-            {
-                "prompt_description": t(
-                    "Download database to create backup (.zip)"
-                )
-            },
-            {"section": t("Restore")},
-            {"prompt_description": t("Restore from backup (.zip)")},
-            {"section": t("Duplicate")},
-            {"prompt_description": t("Duplicate a database")},
-            {"section": t("Danger zone")},
-            {"prompt_description": t("Erase a database")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Database (DATABASE, `menus/run.py`) : sauvegarder, télécharger,
+        restaurer, dupliquer ou effacer une base par `db_manager`. Dessiné
+        une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_run.DATABASE)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.db_manager.create_backup_from_database()
-            elif status == "2":
-                self.db_manager.download_database_backup_cli()
-            elif status == "3":
-                self.db_manager.restore_from_database()
-            elif status == "4":
-                self.db_manager.duplicate_database()
-            elif status == "5":
-                self.db_manager.drop_database()
-            else:
-                print(t("Command not found !"))
+    def create_backup_from_database(self):
+        self.db_manager.create_backup_from_database()
+
+    def download_database_backup_cli(self):
+        self.db_manager.download_database_backup_cli()
+
+    def restore_from_database(self):
+        self.db_manager.restore_from_database()
+
+    def duplicate_database(self):
+        self.db_manager.duplicate_database()
+
+    def drop_database(self):
+        self.db_manager.drop_database()
 
     def prompt_execute_analyse(self):
-        """Analyses d'une base Odoo, en lecture seule.
+        """Analyses d'une base Odoo, en lecture seule (ANALYSE,
+        `menus/run.py`). Dessiné une fois, à l'entrée. Rend False sur [0].
 
         Toute LECTURE passe par une connexion psql ouverte avec
         `default_transaction_read_only=on` : c'est le serveur qui refuse
         l'écriture, pas une promesse du code.
 
-        Une seule action écrit — installer les modules suggérés, à la fin
-        de l'analyse [5]. Elle ne part jamais seule : question explicite,
-        défaut à « non », liste à confirmer, et refus net si le checkout
-        n'est pas sur la version de la base.
+        Trois actions modifient la base analysée ou son filestore, et
+        aucune ne part seule : question explicite, défaut à « non ».
+        Installer les modules suggérés, à la fin de l'analyse [5], veut en
+        plus une liste confirmée et un checkout sur la version de la base ;
+        purger les pièces jointes dont le champ a disparu et ranger un
+        filestore imbriqué suivent l'analyse du filestore [7]. Ailleurs,
+        Monitoring [8] restaure une sauvegarde dans une base NEUVE, que sa
+        neutralisation (défaut « oui ») modifie en y installant des
+        modules, et « Export as JSON » écrit un rapport sous `private/`.
         """
-        print(f"🤖 {t('Analyse a database. Reading never writes.')}")
-        choices = [
-            {"section": t("Structure")},
-            {"prompt_description": t("Tables and database size")},
-            {"section": t("Customisation")},
-            {
-                "prompt_description": t(
-                    "Customised views, website copies included"
-                )
-            },
-            {"prompt_description": t("Studio and hand-made x_ fields")},
-            {"section": t("Migration")},
-            {"prompt_description": t("Quality of a migration, step by step")},
-            {"section": t("Modules")},
-            {
-                "prompt_description": t(
-                    "Modules missing from the default package"
-                )
-            },
-            {"prompt_description": t("Dependencies between modules")},
-            {"section": t("Files")},
-            {
-                "prompt_description": t(
-                    "Attachment files missing from the filestore"
-                )
-            },
-            {"section": t("Instance")},
-            {
-                "prompt_description": t(
-                    "Monitoring - a backup, a remote copy or a live instance"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_analyse_schema_size()
-            elif status == "2":
-                self.execute_analyse_view_custom()
-            elif status == "3":
-                self.execute_analyse_custom_field()
-            elif status == "4":
-                self.execute_analyse_migration_quality()
-            elif status == "5":
-                self.execute_analyse_module_package()
-            elif status == "6":
-                self.execute_analyse_module_dependency()
-            elif status == "7":
-                self.execute_analyse_filestore()
-            elif status == "8":
-                self.execute_analyse_monitoring()
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_run.ANALYSE)
 
     def execute_analyse_module_package(self):
         """Ce que la base n'a pas, alors que l'installation par défaut l'a.
@@ -4682,11 +4148,11 @@ class TODO(
     def _filestore_purge_dead(self, database, rapport):
         """Effacer les pièces jointes dont le champ a disparu.
 
-        La seule ÉCRITURE en base de tout le menu Analyse. Elle porte sur
-        des lignes que plus rien ne lit — `res.country.image` est devenu
-        `image_url`, calculé, en 13 — mais elle reste une suppression :
-        question explicite, défaut à « non », et le compte est relu avant
-        de partir.
+        La seule requête qui écrit en base de tout le menu Analyse :
+        installer des modules passe par Odoo. Elle porte sur des lignes
+        que plus rien ne lit — `res.country.image` est devenu `image_url`,
+        calculé, en 13 — mais elle reste une suppression : question
+        explicite, défaut à « non », et le compte est relu avant de partir.
         """
         from script.analyse import check_filestore as filestore
         from script.todo import auto_ask
@@ -4776,11 +4242,14 @@ class TODO(
         nécessaire : le rapport vient d'en annoncer onze, la liste n'en
         montre qu'un, et sans un mot on croirait à un bogue.
 
-        C'est la seule écriture de tout le menu Analyse, d'où trois
-        garde-fous : la version du checkout doit être celle de la base —
+        C'est la seule installation dans la base analysée elle-même (la
+        neutralisation de Monitoring installe dans une base qu'il vient de
+        restaurer), d'où trois garde-fous : la version du checkout doit être celle de la base —
         un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
         question par défaut est « non », et la liste choisie est
-        confirmée avant que rien ne parte.
+        confirmée avant que rien ne parte. La liste est un choix multiple :
+        des numéros, des noms ou `tout` ; [0], Ctrl+D et une réponse vide
+        n'installent rien.
         """
         from script.analyse import check_module_package as modules
         from script.odoo.migration import database_cleanup
@@ -4812,18 +4281,13 @@ class TODO(
             return
 
         print()
-        for rang, nom in enumerate(candidats, start=1):
-            print(f"   [{rang}] {nom}")
-        print(f"   [a] {t('every one of them')}")
-        print(f"   {t('Enter = cancel')}")
-        choisis, refuses = modules.parse_selection(
-            auto_ask.ask(f"💬 {t('Numbers, space separated:')} ", default=""),
-            candidats,
+        # Un morceau faux redemande la réponse entière : en demander cinq et
+        # en recevoir quatre sans un mot ferait croire l'installation faite.
+        choisis = ui.choose(
+            f"💬 {t('Modules to install:')}", candidats, multi=True
         )
-        # Un jeton refusé n'est JAMAIS avalé : en demander cinq et en
-        # recevoir quatre sans un mot ferait croire l'installation faite.
-        if refuses:
-            print(f"⚠ {t('Ignored, not in the list:')} {' '.join(refuses)}")
+        if choisis is None:
+            return
         if not choisis:
             print(f"ℹ️  {t('Nothing selected.')}")
             return
@@ -4882,15 +4346,15 @@ class TODO(
         de lire ce qu'elle contient.
         """
         print()
-        print(f"[1] {t('A database')}")
-        print(f"[2] {t('A backup .zip, without restoring it')}")
-        print(f"{retour(t('Back'))}")
-        answer = click.prompt(t("Command:"), prompt_suffix=" ")
-        print()
-        if answer == "1":
+        source = ui.choose(
+            t("Which source?"),
+            ["database", "backup"],
+            labels=[t("A database"), t("A backup .zip, without restoring it")],
+        )
+        if source == "database":
             database = self._analyse_select_database()
             return (False, database) if database else None
-        if answer == "2":
+        if source == "backup":
             path = self.db_manager.select_backup_path()
             return (True, path) if path else None
         return None
@@ -4920,28 +4384,22 @@ class TODO(
     def _analyse_follow_up(self, choices, handler):
         """Boucle « aller plus loin » après une analyse.
 
-        Le rapport suggérait « utilisez -v », « --exact », « ajoutez --diff ».
-        Dans un menu, c'est demander à l'utilisateur de sortir et de retaper
-        une commande pour obtenir ce que le menu pouvait lui offrir. Les
-        options sont donc devenues des entrées, et les conseils en ligne de
-        commande ne s'affichent plus que dans la vraie ligne de commande.
+        Chaque option qu'un rapport suggère en ligne de commande (« -v »,
+        « --exact », « --diff ») est une entrée : dans un menu, la
+        suggestion obligerait à sortir et à retaper une commande pour
+        obtenir ce que le menu offre. Ces conseils ne s'affichent que dans
+        la vraie ligne de commande.
+
+        Chaque réponse appelle `handler` avec le rang de l'entrée, à partir
+        de 1, puis la question revient ; [0], une réponse vide, Ctrl+D, ou
+        un `handler` qui rend False, la referment.
         """
-        help_info = self.fill_help_info(
-            [{"section": t("Go further")}] + choices
-        )
+        rangs = list(range(1, len(choices) + 1))
+        labels = [choice["prompt_description"] for choice in choices]
         while True:
-            status = click.prompt(help_info)
             print()
-            if status == "0":
-                return
-            try:
-                rank = int(status)
-            except ValueError:
-                rank = 0
-            if not 1 <= rank <= len(choices):
-                print(t("Command not found !"))
-                continue
-            if handler(rank) is False:
+            rank = ui.choose(t("Go further"), rangs, labels=labels)
+            if rank is None or handler(rank) is False:
                 return
 
     def execute_analyse_schema_size(self):
@@ -5539,24 +4997,9 @@ class TODO(
         return nom
 
     def prompt_execute_process(self):
-        print(f"🤖 {t('Manage execution processes!')}")
-        choices = [
-            {"prompt_description": t("Kill Odoo process from actual port")},
-            {"prompt_description": t("Kill git daemon server process")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.process_kill_from_port()
-            elif status == "2":
-                self.process_kill_git_daemon()
-            else:
-                print(t("Command not found !"))
+        """Processus d'exécution (PROCESS, `menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.PROCESS)
 
     def process_kill_git_daemon(self):
         self.execute.exec_command_live(
@@ -5566,24 +5009,10 @@ class TODO(
         print(t("Git daemon process killed."))
 
     def prompt_execute_uninstall(self):
-        print(f"🤖 {t('Remove what an Odoo version installed!')}")
-        choices = [
-            {"prompt_description": t("Remove an Odoo version")},
-            {"prompt_description": t("Remove every Odoo version")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.uninstall_odoo_version()
-            elif status == "2":
-                self.uninstall_odoo_version(tout=True)
-            else:
-                print(t("Command not found !"))
+        """Retirer une version d'Odoo, ou toutes (UNINSTALL,
+        `menus/execute.py`). Dessiné une fois, à l'entrée. Rend False sur
+        [0]."""
+        return navigate(self, menus_execute.UNINSTALL)
 
     def uninstall_odoo_version(self, tout=False):
         """Lance script/version/odoo_version_remove.py dans ce terminal : il
@@ -5602,16 +5031,12 @@ class TODO(
             if not choix:
                 print(t("No Odoo version to remove besides the active one."))
                 return
-            for i, version in enumerate(choix, 1):
-                print(f"[{i}] {version}")
-            print(f"{retour(t('Back'))}")
-            versions = odoo_version_remove.versions_choisies(
-                input(t("Versions to remove, numbers separated by spaces: ")),
-                choix,
+            # Un choix multiple : rien sur une réponse vide ou [0], et le
+            # script redit son plan avant de rien retirer.
+            versions = ui.choose(
+                t("Odoo versions to remove:"), choix, multi=True
             )
             if not versions:
-                if versions is None:
-                    print(t("Command not found !"))
                 return
             argv = [a for v in versions for a in ("--version", v)]
         todo_journal.lancer_au_terminal(
@@ -5623,31 +5048,10 @@ class TODO(
         )
 
     def prompt_execute_image_db(self):
-        print(f"🤖 {t('Database images for a quick installation!')}")
-        choices = [
-            {"prompt_description": t("List the images of an Odoo version")},
-            {
-                "prompt_description": t(
-                    "Regenerate every image of an Odoo version"
-                )
-            },
-            {"prompt_description": t("Regenerate one image")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.image_db_list()
-            elif status == "2":
-                self.image_db_regenerate(tout=True)
-            elif status == "3":
-                self.image_db_regenerate(tout=False)
-            else:
-                print(t("Command not found !"))
+        """Les images de base de données d'une version d'Odoo : les lister,
+        les regénérer toutes ou une seule (IMAGE_DB, `menus/execute.py`).
+        Dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_execute.IMAGE_DB)
 
     def _image_db_choose_version(self, generer):
         """La version d'Odoo choisie parmi celles qui ont des images, ou
@@ -5663,19 +5067,23 @@ class TODO(
         _entries, installees, active = get_odoo_version()
         installees = {v.removeprefix("odoo") for v in installees}
         active = (active or "").removeprefix("odoo")
-        for i, version in enumerate(versions, 1):
+        labels = []
+        for version in versions:
             marques = []
             if version in installees:
                 marques.append(t("Odoo version installed"))
             if version == active:
                 marques.append(t("Odoo version active"))
             suffixe = f" ({', '.join(marques)})" if marques else ""
-            print(f"[{i}] Odoo {version}{suffixe}")
-        print(f"{retour(t('Back'))}")
-        reponse = input(t("Odoo version of the images: ")).strip()
-        if not reponse.isdigit() or not 0 < int(reponse) <= len(versions):
+            labels.append(f"Odoo {version}{suffixe}")
+        version = ui.choose(
+            t("Odoo version of the images:"),
+            versions,
+            labels=labels,
+            names={version: version for version in versions},
+        )
+        if version is None:
             return None
-        version = versions[int(reponse) - 1]
         if not generer or version == active:
             return version
         if version not in installees:
@@ -5738,54 +5146,17 @@ class TODO(
             images = image_db.images_of_version(
                 image_db.load_image_config(), version
             )
-            for i, nom in enumerate(images, 1):
-                print(f"[{i}] {nom}")
-            print(f"{retour(t('Back'))}")
-            reponse = input(t("Image to regenerate: ")).strip()
-            if not reponse.isdigit() or not 0 < int(reponse) <= len(images):
+            image = ui.choose(t("Image to regenerate:"), images)
+            if image is None:
                 return
-            cmd = (
-                f"{IMAGE_DB_BIN} --odoo_version {version}"
-                f" --image {images[int(reponse) - 1]}"
-            )
+            cmd = f"{IMAGE_DB_BIN} --odoo_version {version} --image {image}"
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def prompt_execute_rtk(self):
-        print(
-            f"🤖 {t('Manage RTK (Rust Token Killer) for token optimization!')}"
-        )
-        choices = [
-            {"section": t("Setup")},
-            {"prompt_description": t("Install RTK")},
-            {"prompt_description": t("Initialize global auto-rewrite hook")},
-            {"section": t("Status")},
-            {"prompt_description": t("Check RTK version")},
-            {"prompt_description": t("Check RTK status")},
-            {"prompt_description": t("Show cumulative token savings")},
-            {"section": t("Optimize")},
-            {"prompt_description": t("Discover optimization opportunities")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.rtk_install()
-            elif status == "2":
-                self.rtk_init_global()
-            elif status == "3":
-                self.rtk_check_version()
-            elif status == "4":
-                self.rtk_check_status()
-            elif status == "5":
-                self.rtk_show_gain()
-            elif status == "6":
-                self.rtk_discover()
-            else:
-                print(t("Command not found !"))
+        """RTK, le proxy qui réduit les jetons d'un LLM (RTK,
+        `menus/git.py`) : installation, état, économies. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.RTK)
 
     def rtk_locate(self):
         """Localise l'exécutable rtk.
@@ -5865,35 +5236,33 @@ class TODO(
             self.rtk_report_path_warning()
 
     def rtk_install(self):
-        print(f"🤖 {t('Installation method:')}")
-        choices = [
-            {"prompt_description": t("curl - Automatic install script")},
-            {"prompt_description": t("brew - Homebrew (macOS/Linux)")},
-            {
-                "prompt_description": t(
-                    "cargo - Build from source (Rust required)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        elif status == "1":
-            command = (
+        """Installe RTK par la méthode choisie, curl, brew ou cargo, par son
+        numéro ou son nom ; [0], une réponse vide ou Ctrl+D ne lancent
+        rien."""
+        # Chaque méthode porte son libellé avec sa commande : un ordre
+        # changé ne peut pas prêter à l'une le libellé d'une autre.
+        methods = {
+            "curl": (
+                t("curl - Automatic install script"),
                 "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
-                "refs/heads/master/install.sh | sh"
-            )
-        elif status == "2":
-            command = "brew install rtk"
-        elif status == "3":
-            command = "cargo install --git https://github.com/rtk-ai/rtk"
-        else:
-            print(t("Command not found !"))
+                "refs/heads/master/install.sh | sh",
+            ),
+            "brew": (t("brew - Homebrew (macOS/Linux)"), "brew install rtk"),
+            "cargo": (
+                t("cargo - Build from source (Rust required)"),
+                "cargo install --git https://github.com/rtk-ai/rtk",
+            ),
+        }
+        method = ui.choose(
+            f"🤖 {t('Installation method:')}",
+            list(methods),
+            labels=[label for label, _command in methods.values()],
+            names={name: name for name in methods},
+        )
+        if method is None:
             return
         exit_code = self.execute.exec_command_live(
-            command,
+            methods[method][1],
             source_erplibre=False,
         )
         self.rtk_report_install(exit_code)
@@ -5930,80 +5299,15 @@ class TODO(
             print(t("Global auto-rewrite hook: inactive"))
 
     def prompt_execute_config(self):
-        print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
-        choices = [
-            {"section": t("Generate")},
-            {"prompt_description": t("Generate all configuration")},
-            {"prompt_description": t("Generate from pre-configuration")},
-            {"prompt_description": t("Generate from backup file")},
-            {"prompt_description": t("Generate from database")},
-            {"section": t("Advanced")},
-            {"prompt_description": t("Setup queue job for parallelism")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.generate_config()
-            elif status == "2":
-                self.generate_config_from_preconfiguration()
-            elif status == "3":
-                self.generate_config_from_backup()
-            elif status == "4":
-                self.generate_config_from_database()
-            elif status == "5":
-                self.generate_config_queue_job()
-            else:
-                print(t("Command not found !"))
+        """Configuration d'ERPLibre et d'Odoo (CONFIG, `menus/execute.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_execute.CONFIG)
 
     def prompt_execute_network(self):
-        print(f"🤖 {t('Network tools!')}")
-        choices = [
-            {"prompt_description": t("SSH port-forwarding")},
-            {
-                "prompt_description": t(
-                    "Network performance request per second"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Odoo reverse proxy (pages and websocket on one port)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Local TLS certificates for testing (HTTPS)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.generate_network_port_forwarding()
-            elif status == "2":
-                self.generate_network_performance_test()
-            elif status == "3":
-                self.prompt_execute_vpn()
-            elif status == "4":
-                self.network_reverse_proxy()
-            elif status == "5":
-                self.network_local_certificates()
-            else:
-                print(t("Command not found !"))
+        """Outils réseau : tunnels SSH, mesure de débit, VPN, mandataire
+        inverse d'Odoo et certificats locaux (NETWORK, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.NETWORK)
 
     def generate_network_port_forwarding(self, add_arg=None):
         # ssh -L local_port:localhost:remote_port SSH_connection
@@ -6035,27 +5339,38 @@ class TODO(
         """Lance script/reverse_proxy/main.py avec les ports de config_path.
 
         Demande l'écoute — la machine seule ou tout le réseau — et le
-        protocole. En HTTPS, le certificat local de cert_dir sert, émis au
-        premier usage. Signale ensuite les réglages d'Odoo sans lesquels le
-        mandataire ne sert à rien : proxy_mode (Odoo ignore sinon les
-        en-têtes X-Forwarded-*) et workers (à 0, aucun port de bus n'écoute
-        et /websocket échoue). Le mandataire tourne au premier plan ; Ctrl+C
-        le rend au menu.
+        protocole, la machine seule et HTTP en défaut ; [0] ou Ctrl+D à
+        l'une des deux revient sans rien émettre ni lancer. En HTTPS, le
+        certificat local de cert_dir sert, émis au premier usage. Signale
+        ensuite les réglages d'Odoo sans lesquels le mandataire ne sert à
+        rien : proxy_mode (Odoo ignore sinon les en-têtes X-Forwarded-*) et
+        workers (à 0, aucun port de bus n'écoute et /websocket échoue). Le
+        mandataire tourne au premier plan ; Ctrl+C le rend au menu.
         """
         from script.reverse_proxy import local_cert
         from script.reverse_proxy.main import read_odoo_config
 
         cert_dir = cert_dir or local_cert.DEFAULT_DIR
         odoo = read_odoo_config(config_path)
-        print(f"\n{t('Listen on:')}")
-        print(f"  [1] {t('Local only (127.0.0.1)')} *")
-        print(f"  [2] {t('Whole network (0.0.0.0)')}")
-        choice = input(t("Choice (1-2, default 1): ")).strip()
-        listen = "0.0.0.0" if choice == "2" else "127.0.0.1"
-        print(f"\n{t('Protocol:')}")
-        print("  [1] HTTP *")
-        print(f"  [2] HTTPS ({t('local certificate')})")
-        https = input(t("Choice (1-2, default 1): ")).strip() == "2"
+        print()
+        listen = ui.choose(
+            t("Listen on:"),
+            ["127.0.0.1", "0.0.0.0"],
+            default="127.0.0.1",
+            labels=[t("Local only (127.0.0.1)"), t("Whole network (0.0.0.0)")],
+        )
+        if listen is None:
+            return
+        print()
+        https = ui.choose(
+            t("Protocol:"),
+            [False, True],
+            default=False,
+            labels=["HTTP", f"HTTPS ({t('local certificate')})"],
+            names={"HTTP": False, "HTTPS": True},
+        )
+        if https is None:
+            return
         tls = ""
         if https:
             files = local_cert.paths(cert_dir)
@@ -6123,55 +5438,14 @@ class TODO(
         )
 
     def prompt_execute_security(self):
-        print(f"🤖 {t('Dependency security audit!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "pip-audit - Check vulnerabilities on Python environments"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_pip_audit()
-            else:
-                print(t("Command not found !"))
+        """Audit de sécurité des dépendances (SECURITY, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.SECURITY)
 
     def prompt_execute_test(self):
-        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
-        choices = [
-            {"prompt_description": t("Test a module")},
-            {"prompt_description": t("Test a module with code coverage")},
-            # TOUT test/test_*.py : les tests du courriel et de l'analyse en
-            # font partie, et le tableau du lanceur les montre un à un.
-            {"prompt_description": t("ERPLibre unit tests")},
-            # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
-            # de vraies machines et durent des heures.
-            {"prompt_description": t("Long tests - real VMs, hours")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_test_module(coverage=False)
-            elif status == "2":
-                self.execute_test_module(coverage=True)
-            elif status == "3":
-                self.execute_unit_tests()
-            elif status == "4":
-                self.prompt_execute_longtest()
-            else:
-                print(t("Command not found !"))
+        """Tests d'un module, de la suite unitaire, et tests longs (TEST,
+        `menus/execute.py`). Rend False sur [0]."""
+        return navigate(self, menus_execute.TEST)
 
     def execute_test_module(self, coverage=False):
         # Module name
@@ -6389,67 +5663,38 @@ class TODO(
         return status
 
     def generate_config_from_preconfiguration(self):
-        choices = [
-            {"prompt_description": t("base")},
-            {"prompt_description": t("base + code_generator")},
-            {"prompt_description": t("base + image_db")},
-            {"prompt_description": t("all")},
-            # {"prompt_description": "base + migration"},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                group = "base"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "2":
-                group = "base,code_generator"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "3":
-                group = "base,image_db"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "4":
-                self.generate_config()
-            # elif status == "5":
-            #     group = "base,migration"
-            #     str_group = f"--group {group}"
-            #     self.generate_config(add_arg=str_group)
-            else:
-                print(t("Command not found !"))
+        """La configuration d'un groupe de modules préréglé
+        (PRECONFIGURATION, `menus/execute.py`). Rend False sur [0]."""
+        return navigate(self, menus_execute.PRECONFIGURATION)
 
     def debug_ide(self):
-        choices = [
-            {"prompt_description": t("Debug todo.py")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Déboguer TODO dans l'IDE (DEBUG, `menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.DEBUG)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.open_pycharm_file(
-                    os.getcwd(),
-                    os.path.join(os.getcwd(), "script/todo/todo.py"),
-                )
-            else:
-                print(t("Command not found !"))
+    def _debug_todo_py(self):
+        """Ouvre script/todo/todo.py dans PyCharm, depuis le répertoire
+        courant."""
+        self.open_pycharm_file(
+            os.getcwd(),
+            os.path.join(os.getcwd(), "script/todo/todo.py"),
+        )
 
     def generate_config_from_backup(self):
+        """La configuration des dépôts que porte une sauvegarde d'image_db,
+        choisie au navigateur ; rien quand il est quitté sans fichier."""
         file_name = self.db_manager.open_file_image_db()
+        if not file_name:
+            return
         add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
         self.generate_config(add_arg=add_arg)
 
     def generate_config_from_database(self):
+        """La configuration des dépôts qu'emploie une base, choisie dans la
+        liste ; rien sur [0], sans base, ou quand la liste échoue."""
         database_name = self.db_manager.select_database()
+        if not database_name:
+            return False
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -6637,8 +5882,13 @@ class TODO(
                 % "EL_PHASE=poetry ./script/install/install_locally.sh"
             )
 
-    def callback_execute_custom_database(self, config):
+    def callback_execute_custom_database(self):
+        """« Choose your database » de Run : ouvre la base que choisit
+        `select_database`, et rien quand il n'en rend pas (False sur [0],
+        sans base, ou quand PostgreSQL ne répond pas)."""
         database_name = self.db_manager.select_database()
+        if not database_name:
+            return
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):
@@ -6661,30 +5911,37 @@ class TODO(
         )
 
     def restart_script(self, last_error):
+        """Relance TODO par le python du venv ERPLibre, argv tel quel.
+
+        `os.execve` reçoit la LISTE `[python, *sys.argv]`, jamais une ligne
+        de shell : un argument qui porte une espace, un « ; » ou un « $ »
+        arrive tel quel. L'environnement est celui que pose `activate` :
+        VIRTUAL_ENV, PATH préfixé du `bin` du venv, PYTHONHOME retiré.
+        `last_error` est d'abord écrite dans ERROR_LOG_PATH ; ce fichier déjà
+        là, ou le venv absent, rien n'est relancé : une erreur qui revient à
+        chaque démarrage ne relance pas TODO en boucle. La sortie standard
+        est vidée avant `os.execve`, qui jetterait ce qu'elle retient encore
+        quand elle va dans un tube. Un échec de la relance s'affiche, et la
+        méthode rend la main."""
         print(f"🤖 {t('Reboot TODO ...')}")
-        # os.execv(sys.executable, ['python'] + sys.argv)
-        # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
         if os.path.exists(VENV_ERPLIBRE) and not os.path.exists(
             ERROR_LOG_PATH
         ):
-            # TODO mettre check import suivant ne vont pas planter
             try:
                 with open(ERROR_LOG_PATH, "w") as f_file:
                     f_file.write(str(last_error))
-                    pass  # The file is created and closed here, no content is written
-                print(
-                    f"Try to reopen process with before :\nsource ./{VENV_ERPLIBRE}/bin/activate && exec python "
-                    + " ".join(sys.argv)
+                venv = os.path.abspath(VENV_ERPLIBRE)
+                python = os.path.join(venv, "bin", "python")
+                argv = [python, *sys.argv]
+                env = dict(os.environ, VIRTUAL_ENV=venv)
+                env.pop("PYTHONHOME", None)
+                path = os.environ.get("PATH")
+                env["PATH"] = os.path.join(venv, "bin") + (
+                    os.pathsep + path if path else ""
                 )
-                os.execv(
-                    "/bin/bash",
-                    [
-                        "/bin/bash",
-                        "-c",
-                        f"source ./{VENV_ERPLIBRE}/bin/activate && exec python "
-                        + " ".join(sys.argv),
-                    ],
-                )
+                print(f"Try to reopen process with:\n{shlex.join(argv)}")
+                sys.stdout.flush()
+                os.execve(python, argv, env)
             except Exception as e:
                 print("Error detect at first execution.")
                 print(e)
@@ -6693,7 +5950,7 @@ class TODO(
         self.dir_path = dir_path
         todo_file_browser.exit_program()
 
-    def callback_make_mobile_home(self, config):
+    def callback_make_mobile_home(self):
         # Read file
         default_project_name = "ERPLibre"
         default_package_name = "ca.erplibre.home"
@@ -6831,6 +6088,9 @@ if __name__ == "__main__":
     chemin_journal = todo_journal.ouvrir()
     if chemin_journal:
         print(f"📝 {t('Session log:')} {chemin_journal}")
+    # Au CLI, Ctrl+C pendant une commande n'arrête qu'elle. Le worker d'une
+    # session web importe ce fichier et ne passe jamais ici.
+    execute.Execute.ctrl_c_stops_command = True
     try:
         todo = TODO()
         if ENABLE_CRASH:

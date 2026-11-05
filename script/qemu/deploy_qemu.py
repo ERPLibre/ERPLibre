@@ -575,7 +575,7 @@ def image_candidates(
             ]
         # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
         # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
-        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
+        # y sont côte à côte.
         return [
             f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
             f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
@@ -790,7 +790,7 @@ def repertoire_a_root(chemin: Path) -> tuple | None:
 
 
 def sudo_facts(disk_dir: Path | None = None, image_dir: Path | None = None):
-    """Pourquoi root est nécessaire ici : des FAITS, constatés sur la machine.
+    """Pourquoi root est nécessaire ici : des FAITS, lus sur la machine.
 
     Rend une liste de couples (clé, valeurs) et non des phrases : ce script
     les dit en français, le menu TODO les traduit, et la vérification ne vit
@@ -868,7 +868,7 @@ class Runner:
 
         Avant et non après : sudo n'explique jamais ce qu'il sert à faire, et
         un mot de passe tapé sans savoir ce qu'il autorise est donné à
-        l'aveugle. Les raisons sont constatées sur la machine, pas affirmées —
+        l'aveugle. Les raisons se lisent sur la machine au lieu de s'affirmer —
         voir sudo_facts().
         """
         if self._sudo_dit:
@@ -1093,21 +1093,53 @@ def missing_tools() -> list[str]:
     return missing
 
 
+def read_tty_line(prompt: str) -> str | None:
+    """La ligne tapée sur le terminal de contrôle (/dev/tty) après
+    `prompt`, sans sa fin de ligne ; None seulement quand /dev/tty ne
+    s'ouvre pas, sans terminal de contrôle.
+
+    Le terminal s'ouvre en binaire, sans tampon : en texte, « r+ » exige un
+    fichier où l'on peut se déplacer, ce qu'un terminal n'est pas, et
+    l'ouverture lève toujours io.UnsupportedOperation. La sortie standard
+    est vidée d'abord : ce qu'elle retenait part avant la question.
+    `prompt` part en UTF-8, en entier même écrit par morceaux, la ligne
+    revient décodée, un octet invalide remplacé ; Ctrl+D sur une ligne vide
+    rend "". Le terminal ouvert, une OSError à l'écriture ou à la lecture
+    (EIO d'un terminal raccroché, ou d'une lecture en arrière-plan quand
+    SIGTTIN est ignoré) rend "" aussi, comme une fin de fichier : la
+    réponse ne se cherche jamais dans l'entrée standard redirigée."""
+    sys.stdout.flush()
+    try:
+        tty = open("/dev/tty", "r+b", buffering=0)
+    except OSError:
+        return None
+    with tty:
+        try:
+            data = prompt.encode("utf-8")
+            while data:
+                data = data[tty.write(data) :]
+            line = tty.readline()
+        except OSError:
+            return ""
+    return line.decode("utf-8", "replace").rstrip("\r\n")
+
+
 def prompt_yes_no(question: str, default: bool = True) -> bool:
-    """Question oui/non. Lit /dev/tty pour rester visible même si stdout est
-    redirigé (cas d'un lancement depuis le menu todo)."""
+    """Question oui/non. Entrée standard au clavier, par `input` : la
+    question part sur la sortie standard, après les lignes qui la
+    précèdent, même quand un tube les relaie, comme sous le menu TODO.
+    Entrée standard redirigée, elle se lit sur /dev/tty (`read_tty_line`),
+    où une fin de fichier ne prend pas le défaut sans rien demander ; sans
+    terminal de contrôle, par `input` encore."""
     suffix = " [O/n] " if default else " [o/N] "
     prompt = question + suffix
-    try:
-        with open("/dev/tty", "r+") as tty:
-            tty.write(prompt)
-            tty.flush()
-            ans = tty.readline().strip().lower()
-    except OSError:
+    ans = None if sys.stdin.isatty() else read_tty_line(prompt)
+    if ans is None:
         try:
-            ans = input(prompt).strip().lower()
+            ans = input(prompt)
         except EOFError:
             return default
+    ans = ans.strip().lower()
     if not ans:
         return default
     return ans in ("o", "oui", "y", "yes")
@@ -1407,10 +1439,10 @@ def ensure_tools(
     manque, puis vérifie la connexion à l'hyperviseur.
 
     `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
-    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
-    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
-    n'était jamais installé -> « Failed to start network default ». Les
-    gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
+    Un libvirt posé sans dnsmasq, par une installation qui ne le listait pas,
+    fait rendre False à daemon_missing(), et dnsmasq ne s'installe jamais :
+    « Failed to start network default ». Les gestionnaires de paquets
+    ignorent ce qui est déjà là : c'est bon marché.
     """
     missing = missing_tools()
     need_daemon = daemon_missing() or force_daemon
@@ -1960,7 +1992,7 @@ def verify_pinned_sha256(
 # Où chaque distribution publie la somme de ses images, et avec quel
 # algorithme.
 #
-# Relevé sur les dépôts eux-mêmes, pas déduit. Les FORMATS se ressemblent —
+# Chaque entrée suit son dépôt, sans rien déduire. Les FORMATS se ressemblent —
 # « <empreinte>  <nom> », l'astérisque d'Ubuntu en plus — mais ni le nom du
 # fichier ni l'algorithme ne se devinent : Debian publie du sha512 quand tout
 # le reste est en sha256, les familles RHEL nomment leur fichier « CHECKSUM »
@@ -2143,10 +2175,8 @@ def hash_password(plain: str) -> str:
 # Miroirs apt, du plus rapide au dernier recours. cloud-init prend le PREMIER
 # joignable de la liste « search » : l'ordre est donc la priorité.
 #
-# Mesuré depuis Montréal sur l'index main/s390x (1,6 Mo) :
-#   ports.ubuntu.com              1,61 s   1,0 Mo/s
-#   mirror.csclub.uwaterloo.ca    0,32 s   5,2 Mo/s
-#   mirror.us.leaseweb.net        0,88 s   1,9 Mo/s
+# ports.ubuntu.com, nettement plus lent que les miroirs, passe en dernier
+# recours.
 #
 # Le chemin diffère selon l'architecture : les arches « ports » (s390x, arm64,
 # ppc64el, riscv64) ne sont PAS sur archive.ubuntu.com, et amd64 n'est pas sur
@@ -2203,10 +2233,10 @@ def kvm_available() -> bool:
 
     « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
     VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
-    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
-    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
-    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
-    que rien ne le signale.
+    Sur un hôte lui-même invité KVM, une VM s390x sur hôte s390x sort en
+    « <domain type='qemu'> », soit de l'émulation intégrale : des minutes de
+    démarrage au lieu de quelques dizaines de secondes, sans que rien ne le
+    signale.
 
     /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
     que si on est root : libvirt, lui, tourne en root et se moque de notre
@@ -2271,16 +2301,16 @@ TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 # EFI, dont le chemin de repli est bien là. Ni l'entropie ni la machine q35 n'y
 # changent rien.
 #
-# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS. Mesuré sur un
-# Proxmox 9 : en SeaBIOS, une VM NixOS se déclare « running » et sa console
-# reste muette ; la même en OVMF démarre — systemd, cloud-init, réseau.
+# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS : en SeaBIOS, une VM
+# NixOS se déclare « running » et sa console reste muette ; la même en OVMF
+# démarre — systemd, cloud-init, réseau.
 #
 # Le symptôme est muet des deux côtés : aucune console, aucun bail DHCP, une
 # VM « en cours d'exécution » qui ne fait rien. D'où cette table plutôt qu'un
 # diagnostic à refaire.
 #
-# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13,
-# mesurée sur le même hôte, démarre en SeaBIOS sans rien devoir à l'UEFI.
+# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13
+# démarre en SeaBIOS sans rien devoir à l'UEFI.
 #
 # AVEUGLE À L'ARCHITECTURE : elle ne vaut que sur x86. Sur arm64 il n'y a pas
 # de SeaBIOS, et virt_install tranche par l'architecture avant d'arriver ici ;
@@ -2960,9 +2990,9 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
+# N'apparaît que sur une VM déployée AVEC un bureau. GNOME et gdm3 installés,
+# la cible graphique par défaut, la console reste en mode texte :
+# graphical.target est déjà atteinte quand le paquet arrive, et une cible
 # active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
 # rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
 # d'où le « --now », qui démarre.
@@ -3560,7 +3590,7 @@ OFFLINE_BOOTCMD = [
 # NixOS n'a pas d'ancre de confiance PAR FICHIER : /etc est généré depuis le
 # store et monté en lecture seule, donc la forme de CACHE_TRUST — un
 # répertoire où déposer, une commande qui relit — n'y existe pas. Le
-# téléchargeur n'est pas non plus le même : mesuré, une LECTURE passe par le
+# téléchargeur n'est pas non plus le même : une LECTURE passe par le
 # client et honore une variable de session, mais RÉALISER une dérivation
 # passe par nix-daemon, qui ne la voit pas. Seul un fragment systemd
 # l'atteint.
@@ -3597,10 +3627,10 @@ NIX_CA_VARS = (
 def nix_trust_commands() -> list[str]:
     """Ce qui fait approuver l'autorité du cache par nix, sans reconstruire.
 
-    Mesuré sur une VM interceptée : sans cela « nix-shell -p hello » échoue
-    sur « self-signed certificate in certificate chain » ; avec, la dérivation
-    est réalisée depuis cache.nixos.org à travers le cache, et le magasin
-    garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
+    Derrière un cache qui intercepte TLS, sans cela « nix-shell -p hello »
+    échoue sur « self-signed certificate in certificate chain » ; avec, la
+    dérivation se réalise depuis cache.nixos.org à travers le cache, et le
+    magasin garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
     """
     dossier = NIX_DROPIN.rsplit("/", 1)[0]
     return [
@@ -3640,8 +3670,8 @@ CACHE_CERT_NAME = "erplibre-cache.crt"
 # donc en être SOUSTRAITE, faute de quoi elle ne télécharge plus rien — et le
 # message qu'elle rendrait, « self-signed certificate in certificate chain »,
 # ne dit rien d'une famille sans magasin.
-# Plus aucune famille n'y figure. « nix » y était tant qu'on ne savait pas
-# lui donner l'autorité : il l'a désormais par un fragment systemd, mesuré.
+# Plus aucune famille n'y figure : « nix » reçoit l'autorité par un
+# fragment systemd.
 # La table reste, et le repli avec elle — une famille future sans magasin
 # retomberait dessus plutôt que d'être interceptée sans rien.
 CACHE_SANS_AUTORITE: frozenset = frozenset()
@@ -4430,11 +4460,11 @@ def _ip_taken(ip: str) -> bool:
     """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
 
     Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
-    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
-    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
-    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
-    journal ne le disait qu'à demi-mot : « git is already the newest
-    version », impossible sur un système que d-i vient de poser.
+    machine éteinte au moment du choix, ou dont sshd est filtré. Une VM neuve
+    reçoit alors l'adresse d'une machine du parc, et l'installation ERPLibre
+    se déroule SUR CETTE DERNIÈRE ; le journal ne le dit qu'à demi-mot :
+    « git is already the newest version », impossible sur un système que d-i
+    vient de poser.
 
     On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
     ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
@@ -4510,8 +4540,8 @@ def static_net_plan(
     # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
     # en partant du haut » donne la MÊME adresse à deux VM déployées en
     # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
-    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
-    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # donc aucune ne voit l'autre : les deux prennent la même adresse et se la
+    # disputent, et une seule la garde.
     # Le nom, lui, diffère toujours, et le tirage reste stable d'un
     # redéploiement à l'autre.
     start = zlib.crc32(name.encode()) % 50
@@ -4557,9 +4587,9 @@ def build_preseed(
         # Question propre à s390x, posée par le udeb « s390-netdevice » et
         # inexistante ailleurs : le matériel Z offre ctc, qeth, iucv ou
         # virtio, et d-i ne devine pas. Elle n'a AUCUNE valeur par défaut,
-        # donc « priority=critical » ne la saute pas — l'installation se
-        # figeait dessus, sur le premier choix de la liste (ctc), en
-        # n'affichant rien d'autre qu'un écran bleu. Mesuré.
+        # donc « priority=critical » ne la saute pas : l'installation se
+        # fige dessus, sur le premier choix de la liste (ctc), en
+        # n'affichant rien d'autre qu'un écran bleu.
         "d-i s390-netdevice/choose_networktype select virtio",
         # « auto » évite la question du choix d'interface : sous virtio-ccw
         # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
@@ -4704,9 +4734,9 @@ def build_preseed(
     early = [
         # LE correctif, pas un diagnostic : on ALLUME la carte.
         #
-        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
-        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
-        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
+        # Dans l'installateur, la carte reste « enc1: <BROADCAST,MULTICAST>
+        # … qdisc noop » — ni UP ni LOWER_UP — quand un udhcpc lancé à la
+        # main obtient un bail en quelques secondes. Le réseau n'est pas en
         # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
         # pas, saute le DHCP et demande une adresse statique.
         #
@@ -4781,7 +4811,7 @@ def build_installer_initrd(
         # historiquement limitée. Ce n'est pas une question à laquelle
         # répondre : le composant démarre sshd puis ATTEND une connexion de
         # l'utilisateur « installer », indéfiniment. Preseeder son mot de
-        # passe le fait avancer d'un écran, pas davantage — mesuré.
+        # passe le fait avancer d'un écran, pas davantage.
         #
         # Un composant dont « .isinstallable » sort en erreur est retiré du
         # menu. L'original le fait déjà quand sshd tourne ; on le remplace par

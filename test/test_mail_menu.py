@@ -139,10 +139,196 @@ class TestAddAccountRollsBack(unittest.TestCase):
             menu._add_account(MagicMock())  # ne doit pas lever
 
 
+class TestPickAccount(unittest.TestCase):
+    """Delete an account, Test an account, le mode de cache d'un compte et
+    Size and purge choisissent un compte par `_pick_account` : son numéro
+    tel que la liste l'écrit ou son nom exact le désignent, [0] et une
+    réponse vide n'en désignent aucun, toute autre réponse est dite
+    invalide et la question revient."""
+
+    ACCOUNTS = [
+        account_from_preset("forged_a", "a@forged.invalid", "generic"),
+        account_from_preset("forged_b", "b@forged.invalid", "generic"),
+    ]
+
+    def deleted(self, *answers):
+        """Ce que Delete an account enregistre, None s'il n'enregistre
+        rien, et les secrets qu'il retire, quand il reçoit `answers`, puis
+        « 0 » ; ce qu'il imprime va dans `self.shown`."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        shown = io.StringIO()
+        with (
+            patch.object(
+                menu.mail_accounts, "load", return_value=list(self.ACCOUNTS)
+            ),
+            patch.object(menu.mail_accounts, "save") as save,
+            patch.object(menu, "secret_store_for") as store,
+            patch("builtins.input", side_effect=[*answers, "0"]),
+            redirect_stdout(shown),
+        ):
+            menu._delete_account(MagicMock())
+        self.shown = shown.getvalue()
+        saved = save.call_args.args[0] if save.called else None
+        return saved, store.return_value.delete.call_args_list
+
+    def test_only_a_shown_number_or_a_name_picks_an_account(self):
+        # Delete an account efface sans autre question : « 0 » et une
+        # réponse vide reviennent, et « -1 », « 01 », « +1 », un chiffre
+        # d'une autre écriture, « tout » ou un nom mal écrit sont dits
+        # invalides, puis « 0 » revient.
+        for answer in ("0", ""):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.deleted(answer), (None, []))
+        for answer in ("-1", "01", "+1", "١", "3", "tout", "Forged_a"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.deleted(answer), (None, []))
+                self.assertIn(f"{t('Invalid choice: ')}{answer}\n", self.shown)
+        saved, secrets = self.deleted("2")
+        self.assertEqual([account.name for account in saved], ["forged_a"])
+        self.assertEqual(len(secrets), 1)
+        saved, secrets = self.deleted("forged_a")
+        self.assertEqual([account.name for account in saved], ["forged_b"])
+
+
+class TestAddAccountPreset(unittest.TestCase):
+    """Add an account demande son fournisseur dans une liste numérotée :
+    un numéro tel que la liste l'écrit ou le libellé affiché en choisit
+    un, une réponse vide prend le générique, marqué, qui demande les
+    serveurs, [0] renonce au compte, et toute autre réponse repose la
+    question."""
+
+    def preset(self, *answers):
+        """Le fournisseur que prend Add an account quand on lui répond
+        `answers`, ou None s'il n'en prend aucun ; le compte ne
+        s'enregistre pas. Ce qu'il imprime reste dans `self.shown`."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo.mail.accounts import AccountError
+
+        vault = MagicMock()
+        vault.available_backends.return_value = ["keyring"]
+        with (
+            patch.object(menu, "secret_store_for", return_value=vault),
+            patch.object(
+                menu.mail_accounts,
+                "account_from_preset",
+                side_effect=AccountError("forged stop"),
+            ) as built,
+            patch(
+                "builtins.input",
+                side_effect=["forged_a", "a@forged.invalid", "", *answers],
+            ),
+            redirect_stdout(io.StringIO()) as shown,
+        ):
+            menu._add_account(MagicMock())
+        self.shown = shown.getvalue()
+        return built.call_args.args[2] if built.called else None
+
+    def test_only_a_shown_number_picks_a_provider(self):
+        # « 01 », « +1 », un chiffre d'une autre écriture, « -1 », un
+        # numéro au-delà de la liste ou un nom qui n'est pas affiché ne
+        # choisissent aucun fournisseur : la question revient, et une
+        # réponse vide prend le générique.
+        from script.todo.mail.accounts import PRESETS
+
+        keys = list(PRESETS)
+        beyond = str(len(PRESETS) + 1)
+        for answer in ("01", "+1", "١", "-1", beyond, "gmail"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.preset(answer, ""), "generic")
+                refused = f"{t('Invalid choice: ')}{answer}\n"
+                self.assertEqual(self.shown.count(refused), 1)
+        self.assertEqual(self.preset(""), "generic")
+        self.assertEqual(self.preset("1"), keys[0])
+        self.assertEqual(self.preset(PRESETS[keys[1]]["label"]), keys[1])
+        self.assertIsNone(self.preset("0"))
+
+
+class TestMailLinesSpeakTheChosenLanguage(unittest.TestCase):
+    """List accounts et Cache size and purge écrivent leurs lignes dans la
+    langue choisie : un mot d'une autre langue au milieu d'un écran se
+    lirait comme une donnée du compte."""
+
+    def test_a_disabled_account_and_a_size_in_english(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        import script.todo.mail.menu as menu
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        account = account_from_preset(
+            "forged_a", "a@forged.invalid", "generic"
+        )
+        account.enabled = False
+        row = {"name": "forged_a", "mode": "clear", "size": 2048}
+        shown = io.StringIO()
+        with (
+            patch.object(menu.mail_accounts, "load", return_value=[account]),
+            patch.object(menu, "cache_summary", return_value=[row]),
+            patch.object(menu, "_pick_account", return_value=(None, [])),
+            redirect_stdout(shown),
+        ):
+            menu._list_accounts()
+            menu._cache_size_and_purge(None)
+        self.assertIn(
+            "  forged_a (disabled) — a@forged.invalid", shown.getvalue()
+        )
+        self.assertIn("  forged_a — clear — 2 KB\n", shown.getvalue())
+
+
+class TestMailCacheMenu(unittest.TestCase):
+    """Cache : [1] retient un mode par défaut, choisi par son numéro ou
+    son nom ; [2] le mode d'un compte, ou le mode par défaut, sa dernière
+    entrée ; une réponse invalide repose la question, et [0] ou une
+    réponse vide ne change rien. Les préférences et les comptes sont des
+    doubles."""
+
+    def test_each_entry_keeps_what_it_is_answered(self):
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset(
+            "forged_a", "a@forged.invalid", "generic"
+        )
+        modes = []
+        with (
+            patch("click.prompt", side_effect=["1", "1", "2", "2", "2", "0"]),
+            patch(
+                "builtins.input",
+                side_effect=["encrypted", "forged", "0", "1", "ephemeral"]
+                + ["forged_a", "4", "1", ""],
+            ),
+            patch.object(menu.todo_prefs, "get", return_value="clear"),
+            patch.object(menu.todo_prefs, "set") as kept,
+            patch.object(menu.mail_accounts, "load", return_value=[account]),
+            patch.object(
+                menu.mail_accounts,
+                "save",
+                side_effect=lambda saved: modes.append(saved[0].cache_mode),
+            ),
+            patch("builtins.print"),
+        ):
+            self.assertIsNone(menu.prompt_mail_cache(MagicMock()))
+        kept.assert_called_once_with("mail_cache_mode", "encrypted")
+        self.assertEqual(modes, ["ephemeral", None])
+
+
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
-    """Le TUI sait désormais créer un compte depuis son propre écran : le
-    refus historique de s'ouvrir sans compte (`mail_no_account`) défait
-    exactement la fonctionnalité que cette tâche ajoute."""
+    """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
+    sans compte (`mail_no_account`) rendrait cet écran inatteignable."""
 
     def test_opens_with_zero_accounts_instead_of_refusing(self):
         from unittest.mock import MagicMock, patch
@@ -392,11 +578,11 @@ class TestSyncNowEmptiesTheOutbox(unittest.TestCase):
 
 
 class TestMailLogFile(unittest.TestCase):
-    """Aucun gestionnaire n'existait nulle part dans `script/todo/mail/`
-    avant ce correctif : les modules journalisent (`_logger.exception(...)`),
-    mais brancher un gestionnaire est le travail de L'APPLICATION — ici,
-    `prompt_execute_mail`, le seul point d'entrée du paquet. Jamais vers la
-    console : Textual possède le terminal pendant tout le TUI.
+    """Les modules de `script/todo/mail/` journalisent
+    (`_logger.exception(...)`) sans poser de gestionnaire : le brancher est
+    le travail de L'APPLICATION — ici, `prompt_execute_mail`, le seul point
+    d'entrée du paquet. Jamais vers la console : Textual possède le
+    terminal pendant tout le TUI.
     """
 
     def setUp(self):
@@ -457,7 +643,7 @@ class TestMailLogFile(unittest.TestCase):
         self.assertEqual(non_file_stream_handlers, [])
 
     def test_never_leaks_to_the_console_via_root_propagation(self):
-        """`script/todo/todo.py:68` calls `logging.basicConfig()` at
+        """`script/todo/todo.py` calls `logging.basicConfig()` at
         import time, which installs a `StreamHandler` on the ROOT logger.
         `propagate` defaults to `True`: without disabling it explicitly,
         every `_logger.exception(...)` in the mail package would ALSO
@@ -465,13 +651,9 @@ class TestMailLogFile(unittest.TestCase):
         for the whole TUI. `test_never_installs_a_console_handler` above
         cannot catch this: it only inspects `script.todo.mail`'s OWN
         handlers, never what a PARENT logger does with a propagated
-        record.
-
-        Reproduced for real in the full suite: this exact leak showed up,
-        unprompted, in the middle of `unittest`'s dotted progress output
-        the first time the mail tests ran in a process where
-        `script.todo.todo` (and its `basicConfig`) had already been
-        imported by an earlier test file.
+        record. In a process where an earlier test file imports
+        `script.todo.todo`, the leak would land in the middle of
+        `unittest`'s dotted progress output.
         """
         import io
 
@@ -509,7 +691,7 @@ class TestMailLogFile(unittest.TestCase):
 
 class TestCacheSizeAndPurge(unittest.TestCase):
     """`_cache_size_and_purge` doit survivre à un coffre absent et à un
-    cache corrompu — les deux tuaient tout le CLI avant ce correctif.
+    cache corrompu : l'un ou l'autre terminerait sinon tout le CLI.
 
     `Store(account)` sans `base` retombe sur `~/.erplibre/mail` : on détourne
     `$HOME`, comme `ComposeScreenCase` (test_mail_compose.py), plutôt
@@ -549,6 +731,30 @@ class TestCacheSizeAndPurge(unittest.TestCase):
         ):
             menu._cache_size_and_purge(MagicMock())  # ne doit pas lever
 
+    def test_only_a_chosen_account_is_purged(self):
+        # Une réponse vide, « 0 », « tout » ou une faute, chacune suivie de
+        # « 0 » quand la question revient, ne choisissent aucun compte :
+        # rien n'est ouvert ni purgé, et la confirmation n'est pas posée.
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+        for answers in ([""], ["0"], ["tout", "0"], ["x", "0"]):
+            with (
+                self.subTest(answers=answers),
+                patch.object(menu, "_load_accounts", return_value=[account]),
+                patch.object(menu, "secret_store_for") as secrets,
+                patch.object(Store, "purge_all") as purge,
+                patch.object(menu.shutil, "rmtree") as removed,
+                patch("builtins.input", side_effect=answers) as typed,
+                patch("builtins.print"),
+            ):
+                menu._cache_size_and_purge(MagicMock())
+            self.assertEqual(typed.call_count, len(answers))
+            calls = secrets.call_count + purge.call_count + removed.call_count
+            self.assertEqual(calls, 0)
+
     def test_corrupted_cache_is_removed_from_disk_instead_of_crashing(self):
         from unittest.mock import MagicMock, patch
 
@@ -570,9 +776,8 @@ class TestCacheSizeAndPurge(unittest.TestCase):
 
 
 class TestEnsureKdbx(unittest.TestCase):
-    """`_ensure_kdbx` doit tenir la promesse de la conception (lignes
-    204-207 du design) : créer un nouveau kdbx ou en choisir un existant
-    quand aucun n'est configuré. Un vrai `ConfigFile`, pointé vers un
+    """`_ensure_kdbx` offre de créer un nouveau kdbx ou d'en choisir un
+    existant quand aucun n'est configuré. Un vrai `ConfigFile`, pointé vers un
     dossier temporaire, sert de `todo.config_file` : on veut vérifier que
     `set_config_value` est réellement câblé, pas seulement appelé sur un
     mock.
@@ -1076,7 +1281,7 @@ class TestRetryPassword(unittest.TestCase):
 
     def test_the_prompt_itself_asks_for_the_app_password(self):
         """La note se lit une fois ; l'invite se relit à CHAQUE tentative.
-        « Mot de passe : » invitait à saisir celui du compte, que ces
+        « Mot de passe : » inviterait à saisir celui du compte, que ces
         fournisseurs refusent."""
         self.assertIn("application", self._invite("gmail"))
 
@@ -1090,11 +1295,10 @@ class TestRetryPassword(unittest.TestCase):
         self.assertIn("https://myaccount.google.com/apppasswords", lignes)
 
     def test_googles_own_wording_is_recognised(self):
-        """Le cas qui a manqué : une fois la double authentification
-        active, Gmail répond « [ALERT] Application-specific password
-        required » — sans « invalid credentials » ni « authentication
-        failed ». Une liste de libellés attendus est toujours en retard sur
-        les serveurs réels."""
+        """Une fois la double authentification active, Gmail répond
+        « [ALERT] Application-specific password required » — sans
+        « invalid credentials » ni « authentication failed ». Une liste de
+        libellés attendus est toujours en retard sur les serveurs réels."""
         lignes = self._lignes_affichees(
             "gmail",
             cause=(

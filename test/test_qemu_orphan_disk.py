@@ -139,7 +139,7 @@ class LeFormulaireYPasseAussi(unittest.TestCase):
         """Le formulaire avertit mais ne peut pas effacer : sans cet appel,
         un F5 de plus mène droit à l'échec."""
         source = Path("script/todo/qemu_deploy.py").read_text(encoding="utf-8")
-        debut = source.index('if self._qemu_ask_ui() == "tui":')
+        debut = source.index('if interface == "tui":')
         fin = source.index("got = self._qemu_collect_vms_cli(mod)", debut)
         self.assertIn("_qemu_offer_orphan_removal", source[debut:fin])
 

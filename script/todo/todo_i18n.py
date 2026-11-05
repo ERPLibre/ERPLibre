@@ -9,6 +9,9 @@ ENV_VAR_FILE = "./env_var.sh"
 
 _current_lang = None
 
+# Langues que TRANSLATIONS porte pour chaque clé.
+LANGUAGES = ("fr", "en")
+
 TRANSLATIONS = {
     # Main menu
     "Importation success!": {
@@ -204,9 +207,9 @@ TRANSLATIONS = {
         "fr": "active",
         "en": "active",
     },
-    "Odoo version of the images: ": {
-        "fr": "Version d'Odoo des images : ",
-        "en": "Odoo version of the images: ",
+    "Odoo version of the images:": {
+        "fr": "Version d'Odoo des images :",
+        "en": "Odoo version of the images:",
     },
     "The Poetry update failed: the venv is left unchanged.": {
         "fr": "La mise à jour Poetry a échoué : le venv reste tel quel.",
@@ -232,13 +235,13 @@ TRANSLATIONS = {
         "fr": "GNU parallel manque : installez le paquet « parallel ».",
         "en": "GNU parallel is missing: install the « parallel » package.",
     },
-    "Image to regenerate: ": {
-        "fr": "Image à regénérer : ",
-        "en": "Image to regenerate: ",
+    "Image to regenerate:": {
+        "fr": "Image à regénérer :",
+        "en": "Image to regenerate:",
     },
-    "Versions to remove, numbers separated by spaces: ": {
-        "fr": "Versions à retirer, numéros séparés par des espaces : ",
-        "en": "Versions to remove, numbers separated by spaces: ",
+    "Odoo versions to remove:": {
+        "fr": "Versions d'Odoo à retirer :",
+        "en": "Odoo versions to remove:",
     },
     "Config - Configuration file management": {
         "fr": "🔧 Config - Traitement du fichier de configuration",
@@ -491,18 +494,11 @@ TRANSLATIONS = {
         "fr": "Depuis ~/.ssh/config",
         "en": "From ~/.ssh/config",
     },
-    "Your choice (1/2): ": {
-        "fr": "Votre choix (1/2) : ",
-        "en": "Your choice (1/2): ",
-    },
     "No SSH hosts found in ~/.ssh/config": {
         "fr": "Aucun hôte SSH trouvé dans ~/.ssh/config",
         "en": "No SSH hosts found in ~/.ssh/config",
     },
-    "Select SSH host number: ": {
-        "fr": "Numéro de l'hôte SSH à sélectionner : ",
-        "en": "Select SSH host number: ",
-    },
+    "Which SSH host?": {"fr": "Quel hôte SSH ?", "en": "Which SSH host?"},
     "Invalid selection!": {
         "fr": "Sélection invalide!",
         "en": "Invalid selection!",
@@ -620,6 +616,10 @@ TRANSLATIONS = {
         "fr": "Voulez-vous une nouvelle instance?",
         "en": "Do you want a new instance?",
     },
+    "This instance names no database: Odoo is not started.": {
+        "fr": "Cette instance ne nomme aucune base : Odoo n'est pas lancé.",
+        "en": "This instance names no database: Odoo is not started.",
+    },
     "SSH port-forwarding": {
         "fr": "🚇 SSH port-forwarding",
         "en": "🚇 SSH port-forwarding",
@@ -713,6 +713,32 @@ TRANSLATIONS = {
     "No database on this PostgreSQL server.": {
         "fr": "Aucune base sur ce serveur PostgreSQL.",
         "en": "No database on this PostgreSQL server.",
+    },
+    "Which image to restore?": {
+        "fr": "Quelle image restaurer ?",
+        "en": "Which image to restore?",
+    },
+    "By filename from image_db": {
+        "fr": "Par son nom de fichier dans image_db",
+        "en": "By filename from image_db",
+    },
+    "Browse image_db": {"fr": "Parcourir image_db", "en": "Browse image_db"},
+    "Which database?": {"fr": "Quelle base ?", "en": "Which database?"},
+    "File name in image_db (empty to go back): ": {
+        "fr": "Nom du fichier dans image_db (vide pour revenir) : ",
+        "en": "File name in image_db (empty to go back): ",
+    },
+    "Cannot read the list of remote databases.": {
+        "fr": "Impossible de lire la liste des bases distantes.",
+        "en": "Cannot read the list of remote databases.",
+    },
+    "Database name (empty to cancel): ": {
+        "fr": "Nom de la base (vide pour annuler) : ",
+        "en": "Database name (empty to cancel): ",
+    },
+    "Download cancelled.": {
+        "fr": "Téléchargement annulé.",
+        "en": "Download cancelled.",
     },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
@@ -822,6 +848,63 @@ TRANSLATIONS = {
         "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
         "en": "Install with extra modules (CybroOdoo - large, slow)",
     },
+    "Detect first installation from code source.": {
+        "fr": "Recherche d'une première installation depuis le code source.",
+        "en": "Detect first installation from code source.",
+    },
+    "First system installation? (Y/N)": {
+        "fr": (
+            "Première installation du système ? Le système s'installe"
+            " d'abord (O/N) : "
+        ),
+        "en": (
+            "First system installation? This will process system"
+            " installation before (Y/N): "
+        ),
+    },
+    "Wait after OS installation before continue.": {
+        "fr": (
+            "Attendre la fin de l'installation du système avant de continuer."
+        ),
+        "en": "Wait after OS installation before continue.",
+    },
+    "Open Pycharm? (Y/N): ": {
+        "fr": "Ouvrir Pycharm ? (O/N) : ",
+        "en": "Open Pycharm? (Y/N): ",
+    },
+    "Close Pycharm once it is done": {
+        "fr": (
+            "👹 ATTENDRE, puis fermer Pycharm une fois son traitement fini,"
+            " avant de continuer ce guide."
+        ),
+        "en": (
+            "👹 WAIT and Close Pycharm when processing is done before"
+            " continue this guide."
+        ),
+    },
+    "ERPLibre only without Odoo, with the required Python": {
+        "fr": "ERPLibre seul, sans Odoo, avec le Python requis",
+        "en": "ERPLibre only without Odoo, with the required Python",
+    },
+    "Install all Odoo version with ERPLibre": {
+        "fr": "Installer toutes les versions d'Odoo avec ERPLibre",
+        "en": "Install all Odoo version with ERPLibre",
+    },
+    "ERPLibre with mobile home": {
+        "fr": "ERPLibre avec l'application mobile",
+        "en": "ERPLibre with mobile home",
+    },
+    " - Installed": {"fr": " - Installée", "en": " - Installed"},
+    " - Actual": {"fr": " - Actuelle", "en": " - Actual"},
+    " - Default": {"fr": " - Par défaut", "en": " - Default"},
+    " - Deprecated": {"fr": " - Dépréciée", "en": " - Deprecated"},
+    "Wait after installation and open projects by terminal.": {
+        "fr": (
+            "Attendre la fin de l'installation, puis ouvrir les projets par"
+            " le terminal."
+        ),
+        "en": "Wait after installation and open projects by terminal.",
+    },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "🧪 Test - Instance de base minimale",
@@ -914,6 +997,16 @@ TRANSLATIONS = {
         "fr": "🎯 Migration OCA Odoo 19 - Jalons",
         "en": "🎯 OCA migration Odoo 19 milestone",
     },
+    "Select version to upgrade Odoo CE (5-17) : ": {
+        "fr": "Version d'Odoo CE à migrer (5-17) : ",
+        "en": "Select version to upgrade Odoo CE (5-17) : ",
+    },
+    "Select version to show what change for Odoo CE version (8-18) : ": {
+        "fr": "Version d'Odoo CE dont voir les changements (8-18) : ",
+        "en": (
+            "Select version to show what change for Odoo CE version (8-18) : "
+        ),
+    },
     "Download database to create backup (.zip)": {
         "fr": (
             "⬇  Télécharger une base de données pour créer une"
@@ -922,7 +1015,7 @@ TRANSLATIONS = {
         "en": "⬇  Download database to create backup (.zip)",
     },
     "Restore from backup (.zip)": {
-        "fr": "♻  Restaurer a partir d'une sauvegarde (.zip)",
+        "fr": "♻  Restaurer à partir d'une sauvegarde (.zip)",
         "en": "♻  Restore from backup (.zip)",
     },
     "Create backup (.zip)": {
@@ -946,15 +1039,15 @@ TRANSLATIONS = {
         "en": "🧱 Generate all configuration",
     },
     "Generate from pre-configuration": {
-        "fr": "📋 Générer a partir de la pre-configuration",
+        "fr": "📋 Générer à partir de la pré-configuration",
         "en": "📋 Generate from pre-configuration",
     },
     "Generate from backup file": {
-        "fr": "💾 Générer a partir d'un fichier de sauvegarde",
+        "fr": "💾 Générer à partir d'un fichier de sauvegarde",
         "en": "💾 Generate from backup file",
     },
     "Generate from database": {
-        "fr": "🗄  Générer a partir de la base de données",
+        "fr": "🗄  Générer à partir de la base de données",
         "en": "🗄  Generate from database",
     },
     "base": {
@@ -1630,9 +1723,13 @@ TRANSLATIONS = {
         "fr": "Commande bash à exécuter : ",
         "en": "Bash command to execute: ",
     },
-    "Menu section (git/code/config/network/process): ": {
-        "fr": "Section du menu (git/code/config/network/process) : ",
-        "en": "Menu section (git/code/config/network/process): ",
+    "Menu section (git/code/update/qemu/proxmox): ": {
+        "fr": "Section du menu (git/code/update/qemu/proxmox) : ",
+        "en": "Menu section (git/code/update/qemu/proxmox): ",
+    },
+    "No menu reads this section: ": {
+        "fr": "Aucun menu ne lit cette section : ",
+        "en": "No menu reads this section: ",
     },
     "Automation added successfully in todo.json!": {
         "fr": "Automatisation ajoutée avec succès dans todo.json!",
@@ -1759,6 +1856,15 @@ TRANSLATIONS = {
     "Keyboard interrupt": {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
+    },
+    "Command interrupted (Ctrl+C).": {
+        "fr": "Commande interrompue (Ctrl+C).",
+        "en": "Command interrupted (Ctrl+C).",
+    },
+    # Mode enregistrement (make todo_record).
+    "Events recorded in:": {
+        "fr": "Événements enregistrés dans :",
+        "en": "Events recorded in:",
     },
     # GPT code section
     "GPT code - AI assistant tools": {
@@ -1994,1198 +2100,1292 @@ TRANSLATIONS = {
     },
     # NTFY section
     # Services VoIP : erplibre_sip_go et Asterisk
-    'voip_announce_other': {
-        "fr": 'Un autre fichier...',
-        "en": 'Another file...',
+    "voip_announce_other": {
+        "fr": "Un autre fichier...",
+        "en": "Another file...",
     },
-    'voip_announce_none': {
-        "fr": 'Aucune annonce',
-        "en": 'No announcement',
+    "voip_announce_none": {
+        "fr": "Aucune annonce",
+        "en": "No announcement",
     },
-    'voip_handset_ask': {
-        "fr": 'Relier le micro et les haut-parleurs (vrai telephone) ?',
-        "en": 'Connect microphone and speakers (real phone)?',
+    "voip_handset_ask": {
+        "fr": "Relier le micro et les haut-parleurs (vrai telephone) ?",
+        "en": "Connect microphone and speakers (real phone)?",
     },
-    'voip_handset_echo': {
+    "voip_handset_echo": {
         "fr": "Aucun traitement d'echo : si les haut-parleurs sont ouverts pres du micro, le correspondant s'entendra revenir. Un casque regle le probleme.",
-        "en": 'No echo cancellation: with speakers open near the microphone, the other party will hear themselves come back. A headset solves it.',
+        "en": "No echo cancellation: with speakers open near the microphone, the other party will hear themselves come back. A headset solves it.",
     },
-    'voip_handset_hint': {
+    "voip_handset_hint": {
         "fr": "Pendant l'appel : [m] ouvre ou ferme le micro, [q] raccroche. Les deux barres montrent ce qui circule — la votre et la sienne.",
         "en": "During the call: [m] toggles the microphone, [q] hangs up. The two bars show what is flowing — yours and theirs.",
     },
-    'modem_audio_try': {
-        "fr": '🎤 Essayer le combine SANS appeler (micro, touches)',
-        "en": '🎤 Try the handset WITHOUT calling (mic, keys)',
+    "modem_audio_try": {
+        "fr": "🎤 Essayer le combine SANS appeler (micro, touches)",
+        "en": "🎤 Try the handset WITHOUT calling (mic, keys)",
     },
-    'modem_audio_try_intro': {
-        "fr": ("Aucun appel ne part. On verifie ce qui n en depend pas : que"
-               " le micro est capte, que les touches repondent, que la carte"
-               " accepte les deux sens. La barre « lui » reste a zero hors"
-               " appel, c est normal — le modem ne transporte rien."),
-        "en": ("No call is placed. This checks what does not depend on the"
-               " line: that the mic is picked up, that keys respond, that"
-               " the card accepts both directions. The \"them\" bar stays at"
-               " zero outside a call, which is expected."),
+    "modem_audio_try_intro": {
+        "fr": (
+            "Aucun appel ne part. On verifie ce qui n en depend pas : que"
+            " le micro est capte, que les touches repondent, que la carte"
+            " accepte les deux sens. La barre « lui » reste a zero hors"
+            " appel, c est normal — le modem ne transporte rien."
+        ),
+        "en": (
+            "No call is placed. This checks what does not depend on the"
+            " line: that the mic is picked up, that keys respond, that"
+            ' the card accepts both directions. The "them" bar stays at'
+            " zero outside a call, which is expected."
+        ),
     },
-    'voip_mic_ask': {
-        "fr": 'Ouvrir le micro des le decroche ? (sinon [m] pendant l appel)',
-        "en": 'Open the microphone on answer? (otherwise [m] during the call)',
+    "voip_mic_ask": {
+        "fr": "Ouvrir le micro des le decroche ? (sinon [m] pendant l appel)",
+        "en": "Open the microphone on answer? (otherwise [m] during the call)",
     },
-    'voip_not_installed': {
-        "fr": 'non installe',
-        "en": 'not installed',
+    "voip_not_installed": {
+        "fr": "non installe",
+        "en": "not installed",
     },
-    'voip_configured': {
-        "fr": 'configure',
-        "en": 'configured',
+    "voip_configured": {
+        "fr": "configure",
+        "en": "configured",
     },
-    'voip_no_trunk': {
-        "fr": 'installe, aucun trunk configure',
-        "en": 'installed, no trunk configured',
+    "voip_no_trunk": {
+        "fr": "installe, aucun trunk configure",
+        "en": "installed, no trunk configured",
     },
-    'voip_no_trunk_help': {
-        "fr": 'Aucun trunk configure. Renseignez le fichier :',
-        "en": 'No trunk configured. Fill in the file:',
+    "voip_no_trunk_help": {
+        "fr": "Aucun trunk configure. Renseignez le fichier :",
+        "en": "No trunk configured. Fill in the file:",
     },
-    'voip_install': {
-        "fr": '📦 Installer un service VoIP (au choix)',
-        "en": '📦 Install a VoIP service (choice)',
+    "voip_install": {
+        "fr": "📦 Installer un service VoIP (au choix)",
+        "en": "📦 Install a VoIP service (choice)",
     },
-    'voip_status': {
-        "fr": '🚦 Etat des services VoIP',
-        "en": '🚦 VoIP services status',
+    "voip_status": {
+        "fr": "🚦 Etat des services VoIP",
+        "en": "🚦 VoIP services status",
     },
-    'modem_probe_audio': {
-        "fr": '📈 Sonder le chemin audio (trouve le bon mode PCM)',
-        "en": '📈 Probe the audio path (finds the right PCM mode)',
+    "modem_probe_audio": {
+        "fr": "📈 Sonder le chemin audio (trouve le bon mode PCM)",
+        "en": "📈 Probe the audio path (finds the right PCM mode)",
     },
-    'modem_probe_intro': {
-        "fr": ("Un appel va partir, pour essayer UN mode PCM : le modem fige"
-               " son routage voix des que la voix s etablit, donc un mode par"
-               " appel. Decrochez, ecoutez si l annonce arrive, puis PARLEZ"
-               " pendant les 8 s d ecoute."),
-        "en": ("A call will be placed to try ONE PCM mode: the modem freezes"
-               " its voice routing once voice is up, so one mode per call."
-               " Answer, listen for the announcement, then SPEAK during the"
-               " 8 s listening window."),
+    "modem_probe_intro": {
+        "fr": (
+            "Un appel va partir, pour essayer UN mode PCM : le modem fige"
+            " son routage voix des que la voix s etablit, donc un mode par"
+            " appel. Decrochez, ecoutez si l annonce arrive, puis PARLEZ"
+            " pendant les 8 s d ecoute."
+        ),
+        "en": (
+            "A call will be placed to try ONE PCM mode: the modem freezes"
+            " its voice routing once voice is up, so one mode per call."
+            " Answer, listen for the announcement, then SPEAK during the"
+            " 8 s listening window."
+        ),
     },
-    'modem_probe_result': {
-        "fr": 'Mode retenu : %s. Il devient le defaut des prochains appels.',
-        "en": 'Selected mode: %s. It becomes the default for further calls.',
+    "modem_probe_result": {
+        "fr": "Mode retenu : %s. Il devient le defaut des prochains appels.",
+        "en": "Selected mode: %s. It becomes the default for further calls.",
     },
-    'modem_tui_tab_keys': {
-        "fr": '🔢 Clavier',
-        "en": '🔢 Keypad',
+    "modem_tui_tab_keys": {
+        "fr": "🔢 Clavier",
+        "en": "🔢 Keypad",
     },
-    'modem_tui_tab_audio': {
-        "fr": '🎛 Son',
-        "en": '🎛 Audio',
+    "modem_tui_tab_audio": {
+        "fr": "🎛 Son",
+        "en": "🎛 Audio",
     },
-    'Ajouter un appel': {
-        "fr": 'Ajouter',
-        "en": 'Add call',
+    "Ajouter un appel": {
+        "fr": "Ajouter",
+        "en": "Add call",
     },
-    'Repondre': {
-        "fr": '📞 Repondre',
-        "en": '📞 Answer',
+    "Repondre": {
+        "fr": "📞 Repondre",
+        "en": "📞 Answer",
     },
-    'Veille': {
-        "fr": '👂 Veille',
-        "en": '👂 Standby',
+    "Veille": {
+        "fr": "👂 Veille",
+        "en": "👂 Standby",
     },
-    'modem_tui_ringing': {
-        "fr": 'APPEL ENTRANT : %s',
-        "en": 'INCOMING CALL: %s',
+    "modem_tui_ringing": {
+        "fr": "APPEL ENTRANT : %s",
+        "en": "INCOMING CALL: %s",
     },
-    'modem_tui_standby_on': {
-        "fr": ("Veille : la ligne est tenue, on decroche sur commande. Rien"
-               " d autre ne pourra composer ni interroger le modem."),
-        "en": ("Standby: the line is held, answering on command. Nothing else"
-               " can dial or query the modem meanwhile."),
+    "modem_tui_standby_on": {
+        "fr": (
+            "Veille : la ligne est tenue, on decroche sur commande. Rien"
+            " d autre ne pourra composer ni interroger le modem."
+        ),
+        "en": (
+            "Standby: the line is held, answering on command. Nothing else"
+            " can dial or query the modem meanwhile."
+        ),
     },
-    'Fusionner': {
-        "fr": 'Fusionner',
-        "en": 'Merge',
+    "Fusionner": {
+        "fr": "Fusionner",
+        "en": "Merge",
     },
-    'modem_tui_merge_hint': {
-        "fr": ("La fusion se fait DANS LE RESEAU : elle echoue si l abonnement"
-               " ne porte pas la conference, et aucun reglage local n y change"
-               " rien."),
-        "en": ("Merging happens IN THE NETWORK: it fails if the subscription"
-               " does not carry conferencing, and no local setting changes"
-               " that."),
+    "modem_tui_merge_hint": {
+        "fr": (
+            "La fusion se fait DANS LE RESEAU : elle echoue si l abonnement"
+            " ne porte pas la conference, et aucun reglage local n y change"
+            " rien."
+        ),
+        "en": (
+            "Merging happens IN THE NETWORK: it fails if the subscription"
+            " does not carry conferencing, and no local setting changes"
+            " that."
+        ),
     },
-    'modem_tui_typing': {
-        "fr": ("Composez au clavier ou avec les touches. Entree appelle,"
-               " Retour arriere efface, F1/F2/F3 changent de vue."),
-        "en": ("Dial with the keyboard or the on-screen keys. Enter calls,"
-               " Backspace erases, F1/F2/F3 switch views."),
+    "modem_tui_typing": {
+        "fr": (
+            "Composez au clavier ou avec les touches. Entree appelle,"
+            " Retour arriere efface, F1/F2/F3 changent de vue."
+        ),
+        "en": (
+            "Dial with the keyboard or the on-screen keys. Enter calls,"
+            " Backspace erases, F1/F2/F3 switch views."
+        ),
     },
-    'modem_tui_tab_signal': {
-        "fr": '📶 Signal',
-        "en": '📶 Signal',
+    "modem_tui_tab_signal": {
+        "fr": "📶 Signal",
+        "en": "📶 Signal",
     },
     # Libelle d'onglet, distinct du nom complet : quatre onglets se
     # partagent la largeur, et « Answering machine » y serait tronque.
-    'modem_tui_tab_answering': {
-        "fr": '📼 Repondeur',
-        "en": '📼 Answering',
+    "modem_tui_tab_answering": {
+        "fr": "📼 Repondeur",
+        "en": "📼 Answering",
     },
-    'modem_tui_net': {
-        "fr": 'Reseau',
-        "en": 'Network',
+    "modem_tui_net": {
+        "fr": "Reseau",
+        "en": "Network",
     },
-    'modem_tui_refresh_done': {
-        "fr": 'Peripheriques relus : %d entrees, %d sorties.',
-        "en": 'Devices re-read: %d inputs, %d outputs.',
+    "modem_tui_refresh_done": {
+        "fr": "Peripheriques relus : %d entrees, %d sorties.",
+        "en": "Devices re-read: %d inputs, %d outputs.",
     },
-    'modem_tui_refresh_lost': {
-        "fr": ("Le peripherique choisi (%s) a disparu : retour a celui du"
-               " systeme."),
-        "en": ("The chosen device (%s) is gone: falling back to the system"
-               " one."),
+    "modem_tui_refresh_lost": {
+        "fr": (
+            "Le peripherique choisi (%s) a disparu : retour a celui du"
+            " systeme."
+        ),
+        "en": (
+            "The chosen device (%s) is gone: falling back to the system one."
+        ),
     },
-    'modem_tui_ring': {
-        "fr": 'Sonnerie',
-        "en": 'Ringer',
+    "modem_tui_ring": {
+        "fr": "Sonnerie",
+        "en": "Ringer",
     },
-    'modem_tui_clean': {
-        "fr": 'Nettoyage',
-        "en": 'Clean-up',
+    "modem_tui_clean": {
+        "fr": "Nettoyage",
+        "en": "Clean-up",
     },
-    'modem_tui_micgain': {
-        "fr": 'Gain mic',
-        "en": 'Mic gain',
+    "modem_tui_micgain": {
+        "fr": "Gain mic",
+        "en": "Mic gain",
     },
-    'modem_tui_ecogain': {
-        "fr": 'Gain eco',
-        "en": 'Rx gain',
+    "modem_tui_ecogain": {
+        "fr": "Gain eco",
+        "en": "Rx gain",
     },
-    'modem_tui_echo': {
-        "fr": 'Anti-echo',
-        "en": 'Anti-echo',
+    "modem_tui_echo": {
+        "fr": "Anti-echo",
+        "en": "Anti-echo",
     },
-    'modem_tui_clvl': {
-        "fr": 'Vol. modem',
-        "en": 'Modem vol.',
+    "modem_tui_clvl": {
+        "fr": "Vol. modem",
+        "en": "Modem vol.",
     },
-    'modem_tui_fns': {
-        "fr": 'Anti-bruit',
-        "en": 'Noise cut',
+    "modem_tui_fns": {
+        "fr": "Anti-bruit",
+        "en": "Noise cut",
     },
-    'modem_tui_quality_mic': {
-        "fr": 'Qual. micro',
-        "en": 'Mic qual.',
+    "modem_tui_quality_mic": {
+        "fr": "Qual. micro",
+        "en": "Mic qual.",
     },
-    'modem_tui_quality_hp': {
-        "fr": 'Qual. ecoute',
-        "en": 'Rx qual.',
+    "modem_tui_quality_hp": {
+        "fr": "Qual. ecoute",
+        "en": "Rx qual.",
     },
-    'modem_tui_mic': {
-        "fr": 'Micro',
-        "en": 'Mic',
+    "modem_tui_mic": {
+        "fr": "Micro",
+        "en": "Mic",
     },
-    'modem_tui_hp': {
-        "fr": 'Ecoute',
-        "en": 'Speaker',
+    "modem_tui_hp": {
+        "fr": "Ecoute",
+        "en": "Speaker",
     },
-    'modem_tui_in': {
-        "fr": 'Entree',
-        "en": 'Input',
+    "modem_tui_in": {
+        "fr": "Entree",
+        "en": "Input",
     },
-    'modem_tui_out': {
-        "fr": 'Sortie',
-        "en": 'Output',
+    "modem_tui_out": {
+        "fr": "Sortie",
+        "en": "Output",
     },
-    'Un appel est deja en cours': {
-        "fr": 'Un appel est deja en cours',
-        "en": 'A call is already in progress',
+    "Un appel est deja en cours": {
+        "fr": "Un appel est deja en cours",
+        "en": "A call is already in progress",
     },
-    'Appel terminé': {
-        "fr": 'Appel terminé',
-        "en": 'Call ended',
+    "Appel terminé": {
+        "fr": "Appel terminé",
+        "en": "Call ended",
     },
-    'modem_audio_rule': {
-        "fr": '🎧 Regle audio : laisser la carte du modem au modem',
-        "en": '🎧 Audio rule: leave the modem card to the modem',
+    "modem_audio_rule": {
+        "fr": "🎧 Regle audio : laisser la carte du modem au modem",
+        "en": "🎧 Audio rule: leave the modem card to the modem",
     },
-    'modem_call_interrupted': {
-        "fr": 'Interrompu : la ligne a ete raccrochee.',
-        "en": 'Interrupted: the line was hung up.',
+    "modem_call_interrupted": {
+        "fr": "Interrompu : la ligne a ete raccrochee.",
+        "en": "Interrupted: the line was hung up.",
     },
-    'modem_audio_state': {
-        "fr": 'Etat de la regle',
-        "en": 'Rule state',
+    "modem_audio_state": {
+        "fr": "Etat de la regle",
+        "en": "Rule state",
     },
-    'modem_audio_set': {
-        "fr": 'posee',
-        "en": 'installed',
+    "modem_audio_set": {
+        "fr": "posee",
+        "en": "installed",
     },
-    'modem_audio_unset': {
-        "fr": 'absente',
-        "en": 'absent',
+    "modem_audio_unset": {
+        "fr": "absente",
+        "en": "absent",
     },
-    'modem_audio_unchanged': {
-        "fr": 'Rien de change.',
-        "en": 'Nothing changed.',
+    "modem_audio_unchanged": {
+        "fr": "Rien de change.",
+        "en": "Nothing changed.",
     },
-    'modem_audio_rule_ask_off_warn': {
-        "fr": ("Retirer la regle rend la carte au serveur audio : il en"
-               " refera le micro par defaut et la tiendra ouverte. Les"
-               " appels perdront le son."),
-        "en": ("Removing the rule gives the card back to the audio server:"
-               " it will make it the default microphone again and hold it"
-               " open. Calls will lose their audio."),
+    "modem_audio_rule_ask_off_warn": {
+        "fr": (
+            "Retirer la regle rend la carte au serveur audio : il en"
+            " refera le micro par defaut et la tiendra ouverte. Les"
+            " appels perdront le son."
+        ),
+        "en": (
+            "Removing the rule gives the card back to the audio server:"
+            " it will make it the default microphone again and hold it"
+            " open. Calls will lose their audio."
+        ),
     },
-    'modem_audio_rule_on': {
-        "fr": 'Regle posee : le serveur audio ne prend plus la carte.',
-        "en": 'Rule installed: the audio server no longer grabs the card.',
+    "modem_audio_rule_on": {
+        "fr": "Regle posee : le serveur audio ne prend plus la carte.",
+        "en": "Rule installed: the audio server no longer grabs the card.",
     },
-    'modem_audio_rule_off': {
-        "fr": 'Regle retiree : le serveur audio peut reprendre la carte.',
-        "en": 'Rule removed: the audio server may grab the card again.',
+    "modem_audio_rule_off": {
+        "fr": "Regle retiree : le serveur audio peut reprendre la carte.",
+        "en": "Rule removed: the audio server may grab the card again.",
     },
-    'modem_audio_rule_ask_on': {
-        "fr": ("Poser la regle ? Le serveur audio cesse d adopter la carte du"
-               " modem comme micro, ce qui la libere pour les appels."),
-        "en": ("Install the rule? The audio server stops adopting the modem"
-               " card as a microphone, freeing it for calls."),
+    "modem_audio_rule_ask_on": {
+        "fr": (
+            "Poser la regle ? Le serveur audio cesse d adopter la carte du"
+            " modem comme micro, ce qui la libere pour les appels."
+        ),
+        "en": (
+            "Install the rule? The audio server stops adopting the modem"
+            " card as a microphone, freeing it for calls."
+        ),
     },
-    'modem_audio_rule_ask_off': {
-        "fr": 'Retirer la regle ?',
-        "en": 'Remove the rule?',
+    "modem_audio_rule_ask_off": {
+        "fr": "Retirer la regle ?",
+        "en": "Remove the rule?",
     },
-    'modem_audio_busy': {
-        "fr": 'carte prise par un autre programme (%s)',
-        "en": 'card held by another program (%s)',
+    "modem_audio_busy": {
+        "fr": "carte prise par un autre programme (%s)",
+        "en": "card held by another program (%s)",
     },
-    'modem_probe_mode': {
-        "fr": 'Mode PCM a essayer, 0 a 2 (vide = %s)',
-        "en": 'PCM mode to try, 0 to 2 (empty = %s)',
+    "modem_probe_mode": {
+        "fr": "Mode PCM a essayer, 0 a 2 (vide = %s)",
+        "en": "PCM mode to try, 0 to 2 (empty = %s)",
     },
-    'modem_probe_down': {
-        "fr": 'Descente (voix du correspondant)',
-        "en": 'Downlink (the other party voice)',
+    "modem_probe_down": {
+        "fr": "Descente (voix du correspondant)",
+        "en": "Downlink (the other party voice)",
     },
-    'modem_probe_heard': {
-        "fr": 'Le correspondant a-t-il entendu l annonce ?',
-        "en": 'Did the other party hear the announcement?',
+    "modem_probe_heard": {
+        "fr": "Le correspondant a-t-il entendu l annonce ?",
+        "en": "Did the other party hear the announcement?",
     },
-    'modem_probe_no_bridge': {
-        "fr": ("Le mode %s n a pas pu etre pose : la mesure ne dit donc rien"
-               " de ce mode. Essayez-en un autre."),
-        "en": ("Mode %s could not be set, so the measurement says nothing"
-               " about it. Try another one."),
+    "modem_probe_no_bridge": {
+        "fr": (
+            "Le mode %s n a pas pu etre pose : la mesure ne dit donc rien"
+            " de ce mode. Essayez-en un autre."
+        ),
+        "en": (
+            "Mode %s could not be set, so the measurement says nothing"
+            " about it. Try another one."
+        ),
     },
-    'modem_probe_none_mode': {
-        "fr": ("Rien n a circule en mode %s, ni dans un sens ni dans l autre."
-               " Essayez un autre mode ; si les trois echouent, cette carte"
-               " ne porte pas la voix de la ligne."),
-        "en": ("Nothing flowed in mode %s, in either direction. Try another"
-               " mode; if all three fail, this card does not carry the"
-               " line's voice."),
+    "modem_probe_none_mode": {
+        "fr": (
+            "Rien n a circule en mode %s, ni dans un sens ni dans l autre."
+            " Essayez un autre mode ; si les trois echouent, cette carte"
+            " ne porte pas la voix de la ligne."
+        ),
+        "en": (
+            "Nothing flowed in mode %s, in either direction. Try another"
+            " mode; if all three fail, this card does not carry the"
+            " line's voice."
+        ),
     },
-    'voip_call': {
-        "fr": '🎵 Appeler avec une annonce audio (musique, message)',
-        "en": '🎵 Call with an audio announcement (music, message)',
+    "voip_call": {
+        "fr": "🎵 Appeler avec une annonce audio (musique, message)",
+        "en": "🎵 Call with an audio announcement (music, message)",
     },
-    'voip_go_pitch': {
-        "fr": 'binaire Go statique, sans dependance C, ~500 lignes',
-        "en": 'static Go binary, no C dependency, ~500 lines',
+    "voip_go_pitch": {
+        "fr": "binaire Go statique, sans dependance C, ~500 lignes",
+        "en": "static Go binary, no C dependency, ~500 lines",
     },
-    'voip_ast_pitch': {
-        "fr": 'PBX complet, compile depuis les sources sur Debian 12+',
-        "en": 'full PBX, built from source on Debian 12+',
+    "voip_ast_pitch": {
+        "fr": "PBX complet, compile depuis les sources sur Debian 12+",
+        "en": "full PBX, built from source on Debian 12+",
     },
-    'voip_go_install_note': {
+    "voip_go_install_note": {
         "fr": "Compile et installe dans ~/.local/bin. Aucun droit d'administration requis.",
-        "en": 'Builds and installs into ~/.local/bin. No admin rights required.',
+        "en": "Builds and installs into ~/.local/bin. No admin rights required.",
     },
-    'voip_script_missing': {
+    "voip_script_missing": {
         "fr": "Script d'installation introuvable :",
-        "en": 'Install script not found:',
+        "en": "Install script not found:",
     },
-    'voip_binary': {
-        "fr": 'Binaire',
-        "en": 'Binary',
+    "voip_binary": {
+        "fr": "Binaire",
+        "en": "Binary",
     },
-    'voip_config': {
-        "fr": 'Configuration',
-        "en": 'Configuration',
+    "voip_config": {
+        "fr": "Configuration",
+        "en": "Configuration",
     },
-    'voip_trunk': {
-        "fr": 'Trunk',
-        "en": 'Trunk',
+    "voip_trunk": {
+        "fr": "Trunk",
+        "en": "Trunk",
     },
-    'voip_user': {
-        "fr": 'Utilisateur',
-        "en": 'Username',
+    "voip_user": {
+        "fr": "Utilisateur",
+        "en": "Username",
     },
-    'voip_secret': {
-        "fr": 'Secret pose',
-        "en": 'Secret in place',
+    "voip_secret": {
+        "fr": "Secret pose",
+        "en": "Secret in place",
     },
-    'voip_announce': {
+    "voip_announce": {
         "fr": "Fichier d'annonce WAV (vide pour aucun)",
-        "en": 'WAV announcement file (blank for none)',
+        "en": "WAV announcement file (blank for none)",
     },
-    'voip_announce_missing': {
+    "voip_announce_missing": {
         "fr": "Fichier d'annonce introuvable.",
-        "en": 'Announcement file not found.',
+        "en": "Announcement file not found.",
     },
-    'voip_call_ok': {
-        "fr": 'Appel termine.',
-        "en": 'Call completed.',
+    "voip_call_ok": {
+        "fr": "Appel termine.",
+        "en": "Call completed.",
     },
-    'voip_call_fail': {
+    "voip_call_fail": {
         "fr": "L'appel a echoue — voir le journal ci-dessus.",
-        "en": 'The call failed — see the log above.',
+        "en": "The call failed — see the log above.",
     },
     # Modem cellulaire USB
-    'modem_port_open': {
+    "modem_port_open": {
         "fr": "Port ouvrable",
         "en": "Port openable",
     },
-    'modem_udev': {
-        "fr": '🔌 Regle udev : reserver un port AT',
-        "en": '🔌 udev rule: reserve an AT port',
+    "modem_udev": {
+        "fr": "🔌 Regle udev : reserver un port AT",
+        "en": "🔌 udev rule: reserve an AT port",
     },
-    'modem_udev_file': {
-        "fr": 'Fichier',
-        "en": 'File',
+    "modem_udev_file": {
+        "fr": "Fichier",
+        "en": "File",
     },
-    'modem_udev_state': {
-        "fr": 'Etat',
-        "en": 'State',
+    "modem_udev_state": {
+        "fr": "Etat",
+        "en": "State",
     },
-    'modem_udev_absent': {
-        "fr": 'absente',
-        "en": 'absent',
+    "modem_udev_absent": {
+        "fr": "absente",
+        "en": "absent",
     },
-    'modem_udev_ok': {
-        "fr": 'posee et a jour',
-        "en": 'installed and up to date',
+    "modem_udev_ok": {
+        "fr": "posee et a jour",
+        "en": "installed and up to date",
     },
-    'modem_udev_stale': {
-        "fr": 'posee mais DIFFERENTE de celle du depot',
-        "en": 'installed but DIFFERENT from the repository copy',
+    "modem_udev_stale": {
+        "fr": "posee mais DIFFERENTE de celle du depot",
+        "en": "installed but DIFFERENT from the repository copy",
     },
-    'modem_udev_install': {
-        "fr": 'Poser / mettre a jour la regle',
-        "en": 'Install / update the rule',
+    "modem_udev_install": {
+        "fr": "Poser / mettre a jour la regle",
+        "en": "Install / update the rule",
     },
-    'modem_udev_remove': {
-        "fr": 'Retirer la regle',
-        "en": 'Remove the rule',
+    "modem_udev_remove": {
+        "fr": "Retirer la regle",
+        "en": "Remove the rule",
     },
-    'modem_udev_removed': {
-        "fr": 'Regle retiree.',
-        "en": 'Rule removed.',
+    "modem_udev_removed": {
+        "fr": "Regle retiree.",
+        "en": "Rule removed.",
     },
-    'modem_at_port': {
-        "fr": 'Port AT',
-        "en": 'AT port',
+    "modem_at_port": {
+        "fr": "Port AT",
+        "en": "AT port",
     },
-    'modem_port_cause': {
-        'fr': "Cause",
-        'en': "Cause",
+    "modem_port_cause": {
+        "fr": "Cause",
+        "en": "Cause",
     },
-    'modem_port_reserved': {
-        "fr": 'reserve →',
-        "en": 'reserved →',
+    "modem_port_reserved": {
+        "fr": "reserve →",
+        "en": "reserved →",
     },
-    'modem_port_shared': {
-        "fr": 'partage avec ModemManager',
-        "en": 'shared with ModemManager',
+    "modem_port_shared": {
+        "fr": "partage avec ModemManager",
+        "en": "shared with ModemManager",
     },
-    'modem_uac_toggle': {
-        "fr": '🔊 Activer / eteindre la carte son USB (UAC)',
-        "en": '🔊 Enable / disable the USB sound card (UAC)',
+    "modem_uac_toggle": {
+        "fr": "🔊 Activer / eteindre la carte son USB (UAC)",
+        "en": "🔊 Enable / disable the USB sound card (UAC)",
     },
-    'modem_uac_state': {
+    "modem_uac_state": {
         "fr": "Etat actuel de l'UAC",
-        "en": 'Current UAC state',
+        "en": "Current UAC state",
     },
-    'modem_uac_on': {
-        "fr": 'actif',
-        "en": 'on',
+    "modem_uac_on": {
+        "fr": "actif",
+        "en": "on",
     },
-    'modem_uac_off': {
-        "fr": 'eteint',
-        "en": 'off',
+    "modem_uac_off": {
+        "fr": "eteint",
+        "en": "off",
     },
-    'modem_uac_unreadable': {
+    "modem_uac_unreadable": {
         "fr": "usbcfg illisible : le modem n'a pas repondu.",
-        "en": 'usbcfg unreadable: the modem did not answer.',
+        "en": "usbcfg unreadable: the modem did not answer.",
     },
-    'modem_uac_absent': {
+    "modem_uac_absent": {
         "fr": "usbcfg n'a que %d parametres : ce micrologiciel ne connait pas l'UAC.",
-        "en": 'usbcfg has only %d parameters: this firmware does not know UAC.',
+        "en": "usbcfg has only %d parameters: this firmware does not know UAC.",
     },
-    'modem_uac_warn': {
+    "modem_uac_warn": {
         "fr": "Ecriture de configuration suivie d'un REDEMARRAGE du modem : il quitte le bus USB et y revient en une trentaine de secondes. La connexion de donnees sera coupee pendant ce temps.",
-        "en": 'Configuration write followed by a modem RESET: it leaves the USB bus and comes back in about thirty seconds. The data connection drops meanwhile.',
+        "en": "Configuration write followed by a modem RESET: it leaves the USB bus and comes back in about thirty seconds. The data connection drops meanwhile.",
     },
-    'modem_uac_enable': {
+    "modem_uac_enable": {
         "fr": "Activer l'UAC et redemarrer le modem ?",
-        "en": 'Enable UAC and reset the modem?',
+        "en": "Enable UAC and reset the modem?",
     },
-    'modem_uac_disable': {
+    "modem_uac_disable": {
         "fr": "Eteindre l'UAC et redemarrer le modem ?",
-        "en": 'Disable UAC and reset the modem?',
+        "en": "Disable UAC and reset the modem?",
     },
-    'modem_uac_next': {
-        "fr": 'Attendez le retour du modem, puis relancez [1] : la ligne Voix doit annoncer une carte son.',
-        "en": 'Wait for the modem to return, then run [1] again: the Voice line should report a sound card.',
+    "modem_uac_next": {
+        "fr": "Attendez le retour du modem, puis relancez [1] : la ligne Voix doit annoncer une carte son.",
+        "en": "Wait for the modem to return, then run [1] again: the Voice line should report a sound card.",
     },
-    'modem_menu': {
-        "fr": '📶 Modem - Ligne cellulaire USB, appels et Asterisk',
-        "en": '📶 Modem - USB cellular line, calls and Asterisk',
+    "modem_menu": {
+        "fr": "📶 Modem - Ligne cellulaire USB, appels et Asterisk",
+        "en": "📶 Modem - USB cellular line, calls and Asterisk",
     },
-    'modem_absent': {
+    "modem_absent": {
         "fr": "Aucun modem detecte. Verifiez qu'il est branche et que ModemManager tourne.",
-        "en": 'No modem detected. Check that it is plugged in and ModemManager is running.',
+        "en": "No modem detected. Check that it is plugged in and ModemManager is running.",
     },
-    'modem_line': {
-        "fr": 'Ligne',
-        "en": 'Line',
+    "modem_line": {
+        "fr": "Ligne",
+        "en": "Line",
     },
-    'modem_signal': {
-        "fr": 'Signal',
-        "en": 'Signal',
+    "modem_signal": {
+        "fr": "Signal",
+        "en": "Signal",
     },
-    'modem_voice': {
-        "fr": 'Voix',
-        "en": 'Voice',
+    "modem_voice": {
+        "fr": "Voix",
+        "en": "Voice",
     },
-    'modem_voice_ok': {
-        "fr": 'carte son detectee',
-        "en": 'sound card detected',
+    "modem_voice_ok": {
+        "fr": "carte son detectee",
+        "en": "sound card detected",
     },
-    'modem_voice_none': {
+    "modem_voice_none": {
         "fr": "AUCUNE carte son — un appel n'aura pas de son",
-        "en": 'NO sound card — a call will carry no audio',
+        "en": "NO sound card — a call will carry no audio",
     },
-    'modem_status': {
-        "fr": '📊 Etat detaille du modem',
-        "en": '📊 Detailed modem status',
+    "modem_status": {
+        "fr": "📊 Etat detaille du modem",
+        "en": "📊 Detailed modem status",
     },
-    'modem_diag': {
-        "fr": '🔬 Diagnostic AT (capacites voix)',
-        "en": '🔬 AT diagnostic (voice capabilities)',
+    "modem_diag": {
+        "fr": "🔬 Diagnostic AT (capacites voix)",
+        "en": "🔬 AT diagnostic (voice capabilities)",
     },
-    'modem_diag_warn': {
+    "modem_diag_warn": {
         "fr": "Ce diagnostic arrete ModemManager quelques secondes : la connexion de donnees du modem sera coupee le temps de l'interrogation.",
         "en": "This diagnostic stops ModemManager for a few seconds: the modem's data connection drops while it runs.",
     },
-    'modem_continue': {
-        "fr": 'Continuer ?',
-        "en": 'Continue?',
-    },
-    'modem_raw': {
-        "fr": 'Reponse brute du modem',
-        "en": 'Raw modem response',
-    },
-    'modem_dialer': {
-        "fr": '🔢 Clavier de composition (TUI)',
-        "en": '🔢 Dial pad (TUI)',
-    },
-    'modem_call': {
-        "fr": '📞 Appeler par commande AT (aucun son)',
-        "en": '📞 Call with a raw AT command (no audio)',
-    },
-    'modem_hangup': {
-        "fr": '⛔ Raccrocher',
-        "en": '⛔ Hang up',
-    },
-    'modem_calls_list': {
-        "fr": '📋 Appels en cours',
-        "en": '📋 Calls in progress',
-    },
-    'modem_sms_send': {
-        "fr": '📤 Envoyer un SMS',
-        "en": '📤 Send an SMS',
-    },
-    'modem_sms_list': {
-        "fr": '📥 Lire les SMS',
-        "en": '📥 Read SMS messages',
-    },
-    'modem_tui_dtmf': {
-        "fr": 'touche envoyee :',
-        "en": 'tone sent:',
-    },
-    'modem_ans_erplibre': {
-        "fr": '📼 Repondeur ERPLibre',
-        "en": '📼 ERPLibre answering machine',
-    },
-    'modem_ans_operator': {
-        "fr": '📞 Boite vocale de l\'operateur',
-        "en": '📞 Operator voicemail',
-    },
-    'modem_ans_count': {
-        "fr": '%s message(s)',
-        "en": '%s message(s)',
-    },
-    'modem_ans_operator_how': {
-        "fr": ('Le clavier s\'ouvre sur la messagerie (%s). Appuyez sur '
-               'Appeler ; une fois en ligne, les touches partent en tonalites '
-               'pour le mot de passe et les choix du menu.'),
-        "en": ('The dialer opens on the voicemail (%s). Press Call; once '
-               'connected, keys are sent as tones for the password and the '
-               'menu choices.'),
-    },
-    'modem_ans_pin': {
-        "fr": '🔑 Code de la boite vocale de l\'operateur',
-        "en": '🔑 Operator voicemail code',
-    },
-    'modem_ans_pin_set': {
-        "fr": 'defini dans le coffre',
-        "en": 'stored in the vault',
-    },
-    'modem_ans_pin_unset': {
-        "fr": 'non defini',
-        "en": 'not set',
-    },
-    'modem_ans_pin_locked': {
-        "fr": 'coffre ferme',
-        "en": 'vault locked',
-    },
-    'modem_ans_pin_why': {
-        "fr": ('Le code sert a recuperer automatiquement les messages de '
-               'l\'operateur. Il est range dans le coffre du CLI, comme les '
-               'mots de passe courriel, et n\'est jamais affiche.'),
-        "en": ('The code is used to fetch operator messages automatically. It '
-               'is kept in the CLI vault, like mail passwords, and is never '
-               'displayed.'),
-    },
-    'modem_ans_pin_enter': {
-        "fr": 'Saisir ou remplacer le code',
-        "en": 'Enter or replace the code',
-    },
-    'modem_ans_pin_delete': {
-        "fr": 'Effacer le code du coffre',
-        "en": 'Delete the code from the vault',
-    },
-    'modem_ans_pin_ask': {
-        "fr": 'Code de la boite vocale : ',
-        "en": 'Voicemail code: ',
-    },
-    'modem_ans_pin_confirm': {
-        "fr": 'Confirmez le code : ',
-        "en": 'Confirm the code: ',
-    },
-    'modem_ans_pin_mismatch': {
-        "fr": 'Les deux saisies different : rien n\'est enregistre.',
-        "en": 'The two entries differ: nothing saved.',
-    },
-    'modem_ans_pin_saved': {
-        "fr": 'Code enregistre dans le coffre (%s).',
-        "en": 'Code saved in the vault (%s).',
-    },
-    'modem_ans_pin_keyring': {
-        "fr": 'trousseau du systeme',
-        "en": 'system keyring',
-    },
-    'modem_ans_pin_deleted': {
-        "fr": 'Code efface du coffre.',
-        "en": 'Code deleted from the vault.',
-    },
-    'modem_ans_fetched': {
-        "fr": '💾 Messages recuperes de l\'operateur',
-        "en": '💾 Messages fetched from the operator',
-    },
-    'modem_ans_full_kept': {
-        "fr": 'L\'enregistrement complet de l\'appel est garde : %s',
-        "en": 'The full call recording is kept: %s',
-    },
-    'modem_ans_fetch': {
-        "fr": '📥 Recuperer les messages de l\'operateur',
-        "en": '📥 Fetch operator messages',
-    },
-    'modem_ans_fetch_reperage': {
-        "fr": ('Reperage : appel de la messagerie, code puis #, puis 1, et '
-               'ecoute de 90 s. Rien n\'est efface. Le service erplibre-sip-go '
-               'doit etre arrete.'),
-        "en": ('Survey: voicemail call, code then #, then 1, and 90 s of '
-               'listening. Nothing is deleted. The erplibre-sip-go service '
-               'must be stopped.'),
-    },
-    'modem_ans_fetch_silence_risk': {
-        "fr": ('Limite : le 7 part apres %s s de silence, pour attendre la fin du '
-               'menu. Si l\'appelant a laisse un silence de plus de %s s dans son '
-               'message, le 7 partira au milieu : le debut est enregistre, mais le '
-               'message est EFFACE chez l\'operateur et la suite est perdue. En cas '
-               'de doute, utilisez le reperage, qui n\'efface rien.'),
-        "en": ('Limit: key 7 is sent after %s s of silence, to wait for the end of '
-               'the menu. If the caller left a silence longer than %s s in the '
-               'message, 7 will be sent mid-message: the beginning is recorded, but '
-               'the message is DELETED at the operator and the rest is lost. When '
-               'in doubt, use the survey, which deletes nothing.'),
-    },
-    'modem_ans_fetch_one': {
-        "fr": 'Recuperer un message, puis l\'effacer chez l\'operateur',
-        "en": 'Fetch one message, then delete it at the operator',
-    },
-    'modem_ans_fetch_survey': {
-        "fr": 'Reperage : ecouter sans rien effacer',
-        "en": 'Survey: listen without deleting anything',
-    },
-    'modem_ans_fetch_no_flag': {
-        "fr": 'La SIM ne signale aucun message en attente.',
-        "en": 'The SIM reports no waiting message.',
-    },
-    'modem_ans_fetch_delete_warn': {
-        "fr": ('Le message sera enregistre, PUIS efface chez l\'operateur (touche '
-               '7). L\'effacement n\'a lieu que si l\'annonce, le message et le '
-               'menu ont ete entendus ; sinon l\'appel s\'arrete sans effacer.'),
-        "en": ('The message will be recorded, THEN deleted at the operator (key '
-               '7). Deletion only happens if the announcement, the message and '
-               'the menu were heard; otherwise the call stops without deleting.'),
-    },
-    'modem_ans_fetch_message': {
-        "fr": 'Message extrait : %s',
-        "en": 'Extracted message: %s',
-    },
-    'modem_ans_uploaded': {
-        "fr": 'Message televerse dans Odoo.',
-        "en": 'Message uploaded to Odoo.',
-    },
-    'modem_ans_not_uploaded': {
-        "fr": ('Non televerse dans Odoo (%s). Le fichier reste ici, et le '
-               'televersement se rejouera.'),
-        "en": ('Not uploaded to Odoo (%s). The file stays here, and the upload '
-               'will be replayed.'),
-    },
-    'modem_tui_ans_uploaded': {
-        "fr": 'Televerse dans Odoo.',
-        "en": 'Uploaded to Odoo.',
-    },
-    'modem_tui_ans_not_uploaded': {
-        "fr": 'Non televerse dans Odoo : %s',
-        "en": 'Not uploaded to Odoo: %s',
-    },
-    'modem_ans_fetch_empty': {
-        "fr": ('Aucun message dans la boite : rien n\'a ete efface. La garde a '
-               'arrete l\'appel avant la touche 7.'),
-        "en": ('No message in the box: nothing was deleted. The guard stopped '
-               'the call before key 7.'),
-    },
-    'modem_ans_fetch_no_cut': {
-        "fr": ('Decoupe non reconnue : l\'enregistrement complet ci-dessus est '
-               'la copie a garder.'),
-        "en": ('Cut not recognised: the full recording above is the copy to '
-               'keep.'),
-    },
-    'modem_ans_fetch_running': {
-        "fr": 'Appel en cours, jusqu\'a deux minutes et demie...',
-        "en": 'Call in progress, up to two and a half minutes...',
-    },
-    'modem_ans_fetch_file': {
-        "fr": 'Enregistrement : %s',
-        "en": 'Recording: %s',
-    },
-    'modem_ans_pin_hand': {
-        "fr": 'Remettre le NIP au service de voix (garde en memoire)',
-        "en": 'Hand the PIN to the voice service (kept in memory)',
-    },
-    'modem_ans_pin_in_memory': {
-        "fr": 'remis au service',
-        "en": 'handed to the service',
-    },
-    'modem_ans_pin_not_in_memory': {
-        "fr": 'pas remis — le service ne peut pas composer la messagerie',
-        "en": 'not handed over — the service cannot dial the voicemail',
-    },
-    'modem_ans_pin_service_down': {
-        "fr": 'service de voix arrete',
-        "en": 'voice service stopped',
-    },
-    'modem_ans_pin_handed': {
-        "fr": ('Remis. Le service le garde en memoire et le PERD a son arret :'
-               ' il faut le lui remettre a chaque demarrage. Il n\'est ecrit'
-               ' ni sur le disque, ni en base, ni dans le depot.'),
-        "en": ('Handed over. The service keeps it in memory and LOSES it when'
-               ' it stops: it must be handed over at every startup. It is'
-               ' written to no disk, no database and no repository.'),
-    },
-    'modem_ans_pin_not_handed': {
-        "fr": 'Non remis : %s',
-        "en": 'Not handed over: %s',
-    },
-    'modem_tui_ans_play_number': {
-        "fr": 'Ecouter le numero',
-        "en": 'Play the number',
-    },
-    'modem_tui_ans_no_number': {
-        "fr": 'aucun numero annonce dans cet enregistrement',
-        "en": 'no number announced in this recording',
-    },
-    'modem_ans_fetch_no_code': {
-        "fr": 'Aucun code de messagerie : saisissez-le d\'abord par [6].',
-        "en": 'No voicemail code: enter it first with [6].',
-    },
-    'modem_ans_fetch_no_port': {
-        "fr": 'Port AT reserve absent : posez la regle udev du modem.',
-        "en": 'Reserved AT port missing: install the modem udev rule.',
-    },
-    'modem_ans_fetch_no_binary': {
-        "fr": 'Service introuvable : %s',
-        "en": 'Service not found: %s',
-    },
-    'modem_tui_refresh': {
-        "fr": '⟳ Rafraichir',
-        "en": '⟳ Refresh',
-    },
-    'modem_tui_sms': {
-        "fr": '💬 SMS',
-        "en": '💬 SMS',
-    },
-    'modem_tui_sms_to': {
-        "fr": 'Numero',
-        "en": 'Number',
-    },
-    'modem_tui_sms_body': {
-        "fr": 'Message',
-        "en": 'Message',
-    },
-    'modem_tui_sms_send': {
-        "fr": '📤 Envoyer',
-        "en": '📤 Send',
-    },
-    'modem_tui_sms_sending': {
-        "fr": 'Envoi en cours...',
-        "en": 'Sending...',
-    },
-    'modem_tui_sms_sent': {
-        "fr": 'SMS envoye.',
-        "en": 'SMS sent.',
-    },
-    'modem_tui_sms_empty': {
-        "fr": 'Message vide : rien n\'est envoye.',
-        "en": 'Empty message: nothing is sent.',
-    },
-    'modem_tui_sms_list': {
-        "fr": 'SMS du modem',
-        "en": 'Modem SMS',
-    },
-    'modem_tui_sms_reading': {
-        "fr": 'Lecture des SMS...',
-        "en": 'Reading SMS...',
+    "modem_continue": {
+        "fr": "Continuer ?",
+        "en": "Continue?",
+    },
+    "modem_raw": {
+        "fr": "Reponse brute du modem",
+        "en": "Raw modem response",
+    },
+    "modem_dialer": {
+        "fr": "🔢 Clavier de composition (TUI)",
+        "en": "🔢 Dial pad (TUI)",
+    },
+    "modem_call": {
+        "fr": "📞 Appeler par commande AT (aucun son)",
+        "en": "📞 Call with a raw AT command (no audio)",
+    },
+    "modem_hangup": {
+        "fr": "⛔ Raccrocher",
+        "en": "⛔ Hang up",
+    },
+    "modem_calls_list": {
+        "fr": "📋 Appels en cours",
+        "en": "📋 Calls in progress",
+    },
+    "modem_sms_send": {
+        "fr": "📤 Envoyer un SMS",
+        "en": "📤 Send an SMS",
+    },
+    "modem_sms_list": {
+        "fr": "📥 Lire les SMS",
+        "en": "📥 Read SMS messages",
+    },
+    "modem_tui_dtmf": {
+        "fr": "touche envoyee :",
+        "en": "tone sent:",
+    },
+    "modem_ans_erplibre": {
+        "fr": "📼 Repondeur ERPLibre",
+        "en": "📼 ERPLibre answering machine",
+    },
+    "modem_ans_operator": {
+        "fr": "📞 Boite vocale de l'operateur",
+        "en": "📞 Operator voicemail",
+    },
+    "modem_ans_count": {
+        "fr": "%s message(s)",
+        "en": "%s message(s)",
+    },
+    "modem_ans_operator_how": {
+        "fr": (
+            "Le clavier s'ouvre sur la messagerie (%s). Appuyez sur "
+            "Appeler ; une fois en ligne, les touches partent en tonalites "
+            "pour le mot de passe et les choix du menu."
+        ),
+        "en": (
+            "The dialer opens on the voicemail (%s). Press Call; once "
+            "connected, keys are sent as tones for the password and the "
+            "menu choices."
+        ),
+    },
+    "modem_ans_pin": {
+        "fr": "🔑 Code de la boite vocale de l'operateur",
+        "en": "🔑 Operator voicemail code",
+    },
+    "modem_ans_pin_set": {
+        "fr": "defini dans le coffre",
+        "en": "stored in the vault",
+    },
+    "modem_ans_pin_unset": {
+        "fr": "non defini",
+        "en": "not set",
+    },
+    "modem_ans_pin_locked": {
+        "fr": "coffre ferme",
+        "en": "vault locked",
+    },
+    "modem_ans_pin_why": {
+        "fr": (
+            "Le code sert a recuperer automatiquement les messages de "
+            "l'operateur. Il est range dans le coffre du CLI, comme les "
+            "mots de passe courriel, et n'est jamais affiche."
+        ),
+        "en": (
+            "The code is used to fetch operator messages automatically. It "
+            "is kept in the CLI vault, like mail passwords, and is never "
+            "displayed."
+        ),
+    },
+    "modem_ans_pin_enter": {
+        "fr": "Saisir ou remplacer le code",
+        "en": "Enter or replace the code",
+    },
+    "modem_ans_pin_delete": {
+        "fr": "Effacer le code du coffre",
+        "en": "Delete the code from the vault",
+    },
+    "modem_ans_pin_ask": {
+        "fr": "Code de la boite vocale : ",
+        "en": "Voicemail code: ",
+    },
+    "modem_ans_pin_confirm": {
+        "fr": "Confirmez le code : ",
+        "en": "Confirm the code: ",
+    },
+    "modem_ans_pin_mismatch": {
+        "fr": "Les deux saisies different : rien n'est enregistre.",
+        "en": "The two entries differ: nothing saved.",
+    },
+    "modem_ans_pin_saved": {
+        "fr": "Code enregistre dans le coffre (%s).",
+        "en": "Code saved in the vault (%s).",
+    },
+    "modem_ans_pin_keyring": {
+        "fr": "trousseau du systeme",
+        "en": "system keyring",
+    },
+    "modem_ans_pin_deleted": {
+        "fr": "Code efface du coffre.",
+        "en": "Code deleted from the vault.",
+    },
+    "modem_ans_fetched": {
+        "fr": "💾 Messages recuperes de l'operateur",
+        "en": "💾 Messages fetched from the operator",
+    },
+    "modem_ans_full_kept": {
+        "fr": "L'enregistrement complet de l'appel est garde : %s",
+        "en": "The full call recording is kept: %s",
+    },
+    "modem_ans_fetch": {
+        "fr": "📥 Recuperer les messages de l'operateur",
+        "en": "📥 Fetch operator messages",
+    },
+    "modem_ans_fetch_reperage": {
+        "fr": (
+            "Reperage : appel de la messagerie, code puis #, puis 1, et "
+            "ecoute de 90 s. Rien n'est efface. Le service erplibre-sip-go "
+            "doit etre arrete."
+        ),
+        "en": (
+            "Survey: voicemail call, code then #, then 1, and 90 s of "
+            "listening. Nothing is deleted. The erplibre-sip-go service "
+            "must be stopped."
+        ),
+    },
+    "modem_ans_fetch_silence_risk": {
+        "fr": (
+            "Limite : le 7 part apres %s s de silence, pour attendre la fin du "
+            "menu. Si l'appelant a laisse un silence de plus de %s s dans son "
+            "message, le 7 partira au milieu : le debut est enregistre, mais le "
+            "message est EFFACE chez l'operateur et la suite est perdue. En cas "
+            "de doute, utilisez le reperage, qui n'efface rien."
+        ),
+        "en": (
+            "Limit: key 7 is sent after %s s of silence, to wait for the end of "
+            "the menu. If the caller left a silence longer than %s s in the "
+            "message, 7 will be sent mid-message: the beginning is recorded, but "
+            "the message is DELETED at the operator and the rest is lost. When "
+            "in doubt, use the survey, which deletes nothing."
+        ),
+    },
+    "modem_ans_fetch_one": {
+        "fr": "Recuperer un message, puis l'effacer chez l'operateur",
+        "en": "Fetch one message, then delete it at the operator",
+    },
+    "modem_ans_fetch_survey": {
+        "fr": "Reperage : ecouter sans rien effacer",
+        "en": "Survey: listen without deleting anything",
+    },
+    "modem_ans_fetch_no_flag": {
+        "fr": "La SIM ne signale aucun message en attente.",
+        "en": "The SIM reports no waiting message.",
+    },
+    "modem_ans_fetch_delete_warn": {
+        "fr": (
+            "Le message sera enregistre, PUIS efface chez l'operateur (touche "
+            "7). L'effacement n'a lieu que si l'annonce, le message et le "
+            "menu ont ete entendus ; sinon l'appel s'arrete sans effacer."
+        ),
+        "en": (
+            "The message will be recorded, THEN deleted at the operator (key "
+            "7). Deletion only happens if the announcement, the message and "
+            "the menu were heard; otherwise the call stops without deleting."
+        ),
+    },
+    "modem_ans_fetch_message": {
+        "fr": "Message extrait : %s",
+        "en": "Extracted message: %s",
+    },
+    "modem_ans_uploaded": {
+        "fr": "Message televerse dans Odoo.",
+        "en": "Message uploaded to Odoo.",
+    },
+    "modem_ans_not_uploaded": {
+        "fr": (
+            "Non televerse dans Odoo (%s). Le fichier reste ici, et le "
+            "televersement se rejouera."
+        ),
+        "en": (
+            "Not uploaded to Odoo (%s). The file stays here, and the upload "
+            "will be replayed."
+        ),
+    },
+    "modem_tui_ans_uploaded": {
+        "fr": "Televerse dans Odoo.",
+        "en": "Uploaded to Odoo.",
+    },
+    "modem_tui_ans_not_uploaded": {
+        "fr": "Non televerse dans Odoo : %s",
+        "en": "Not uploaded to Odoo: %s",
+    },
+    "modem_ans_fetch_empty": {
+        "fr": (
+            "Aucun message dans la boite : rien n'a ete efface. La garde a "
+            "arrete l'appel avant la touche 7."
+        ),
+        "en": (
+            "No message in the box: nothing was deleted. The guard stopped "
+            "the call before key 7."
+        ),
+    },
+    "modem_ans_fetch_no_cut": {
+        "fr": (
+            "Decoupe non reconnue : l'enregistrement complet ci-dessus est "
+            "la copie a garder."
+        ),
+        "en": (
+            "Cut not recognised: the full recording above is the copy to keep."
+        ),
+    },
+    "modem_ans_fetch_running": {
+        "fr": "Appel en cours, jusqu'a deux minutes et demie...",
+        "en": "Call in progress, up to two and a half minutes...",
+    },
+    "modem_ans_fetch_file": {
+        "fr": "Enregistrement : %s",
+        "en": "Recording: %s",
+    },
+    "modem_ans_pin_hand": {
+        "fr": "Remettre le NIP au service de voix (garde en memoire)",
+        "en": "Hand the PIN to the voice service (kept in memory)",
+    },
+    "modem_ans_pin_in_memory": {
+        "fr": "remis au service",
+        "en": "handed to the service",
+    },
+    "modem_ans_pin_not_in_memory": {
+        "fr": "pas remis — le service ne peut pas composer la messagerie",
+        "en": "not handed over — the service cannot dial the voicemail",
+    },
+    "modem_ans_pin_service_down": {
+        "fr": "service de voix arrete",
+        "en": "voice service stopped",
+    },
+    "modem_ans_pin_handed": {
+        "fr": (
+            "Remis. Le service le garde en memoire et le PERD a son arret :"
+            " il faut le lui remettre a chaque demarrage. Il n'est ecrit"
+            " ni sur le disque, ni en base, ni dans le depot."
+        ),
+        "en": (
+            "Handed over. The service keeps it in memory and LOSES it when"
+            " it stops: it must be handed over at every startup. It is"
+            " written to no disk, no database and no repository."
+        ),
+    },
+    "modem_ans_pin_not_handed": {
+        "fr": "Non remis : %s",
+        "en": "Not handed over: %s",
+    },
+    "modem_tui_ans_play_number": {
+        "fr": "Ecouter le numero",
+        "en": "Play the number",
+    },
+    "modem_tui_ans_no_number": {
+        "fr": "aucun numero annonce dans cet enregistrement",
+        "en": "no number announced in this recording",
+    },
+    "modem_ans_fetch_no_code": {
+        "fr": "Aucun code de messagerie : saisissez-le d'abord par [6].",
+        "en": "No voicemail code: enter it first with [6].",
+    },
+    "modem_ans_fetch_no_port": {
+        "fr": "Port AT reserve absent : posez la regle udev du modem.",
+        "en": "Reserved AT port missing: install the modem udev rule.",
+    },
+    "modem_ans_fetch_no_binary": {
+        "fr": "Service introuvable : %s",
+        "en": "Service not found: %s",
+    },
+    "modem_tui_refresh": {
+        "fr": "⟳ Rafraichir",
+        "en": "⟳ Refresh",
+    },
+    "modem_tui_sms": {
+        "fr": "💬 SMS",
+        "en": "💬 SMS",
+    },
+    "modem_tui_sms_to": {
+        "fr": "Numero",
+        "en": "Number",
+    },
+    "modem_tui_sms_body": {
+        "fr": "Message",
+        "en": "Message",
+    },
+    "modem_tui_sms_send": {
+        "fr": "📤 Envoyer",
+        "en": "📤 Send",
+    },
+    "modem_tui_sms_sending": {
+        "fr": "Envoi en cours...",
+        "en": "Sending...",
+    },
+    "modem_tui_sms_sent": {
+        "fr": "SMS envoye.",
+        "en": "SMS sent.",
+    },
+    "modem_tui_sms_empty": {
+        "fr": "Message vide : rien n'est envoye.",
+        "en": "Empty message: nothing is sent.",
+    },
+    "modem_tui_sms_list": {
+        "fr": "SMS du modem",
+        "en": "Modem SMS",
+    },
+    "modem_tui_sms_reading": {
+        "fr": "Lecture des SMS...",
+        "en": "Reading SMS...",
     },
     # Enregistreur d'annonce du clavier. Le libelle du bouton porte l'etat :
     # « Enregistrer » pendant qu'on enregistre ne dit pas ou l'on en est.
-    'modem_tui_ann_record': {
-        "fr": '⏺ Enregistrer l\'annonce',
-        "en": '⏺ Record the greeting',
+    "modem_tui_ann_record": {
+        "fr": "⏺ Enregistrer l'annonce",
+        "en": "⏺ Record the greeting",
     },
-    'modem_tui_ann_stop': {
-        "fr": '⏹ Arreter et garder',
-        "en": '⏹ Stop and keep',
+    "modem_tui_ann_stop": {
+        "fr": "⏹ Arreter et garder",
+        "en": "⏹ Stop and keep",
     },
-    'modem_tui_ann_play': {
-        "fr": '▶ Ecouter l\'annonce',
-        "en": '▶ Play the greeting',
+    "modem_tui_ann_play": {
+        "fr": "▶ Ecouter l'annonce",
+        "en": "▶ Play the greeting",
     },
-    'modem_tui_ann_started': {
-        "fr": 'Parlez : le compteur et le niveau suivent la voix.',
-        "en": 'Speak: the counter and the level follow your voice.',
+    "modem_tui_ann_started": {
+        "fr": "Parlez : le compteur et le niveau suivent la voix.",
+        "en": "Speak: the counter and the level follow your voice.",
     },
-    'modem_tui_ann_saved': {
-        "fr": 'Annonce gardee.',
-        "en": 'Greeting kept.',
+    "modem_tui_ann_saved": {
+        "fr": "Annonce gardee.",
+        "en": "Greeting kept.",
     },
     # L'absence d'annonce ne se voit qu'a l'appel, quand l'appelant entend le
     # silence : elle se dit donc ici.
-    'modem_tui_ann_none': {
-        "fr": 'Annonce : aucune',
-        "en": 'Greeting: none',
+    "modem_tui_ann_none": {
+        "fr": "Annonce : aucune",
+        "en": "Greeting: none",
     },
-    'modem_tui_ann_have': {
-        "fr": 'Annonce : %.1f s',
-        "en": 'Greeting: %.1f s',
+    "modem_tui_ann_have": {
+        "fr": "Annonce : %.1f s",
+        "en": "Greeting: %.1f s",
     },
-    'modem_tui_vault': {
-        "fr": '🔑 Coffre',
-        "en": '🔑 Vault',
+    "modem_tui_vault": {
+        "fr": "🔑 Coffre",
+        "en": "🔑 Vault",
     },
-    'modem_tui_vault_ask': {
-        "fr": 'Mot de passe du fichier KeePass :',
-        "en": 'KeePass file password:',
+    "modem_tui_vault_ask": {
+        "fr": "Mot de passe du fichier KeePass :",
+        "en": "KeePass file password:",
     },
-    'modem_tui_vault_ok': {
-        "fr": 'Code de la messagerie lu dans le coffre.',
-        "en": 'Voicemail code read from the vault.',
+    "modem_tui_vault_ok": {
+        "fr": "Code de la messagerie lu dans le coffre.",
+        "en": "Voicemail code read from the vault.",
     },
-    'modem_tui_answering': {
-        "fr": '📼 Repondeur',
-        "en": '📼 Answering machine',
+    "modem_tui_answering": {
+        "fr": "📼 Repondeur",
+        "en": "📼 Answering machine",
     },
-    'modem_tui_ans_erase_after': {
-        "fr": 'Effacer chez l\'operateur apres extraction',
-        "en": 'Delete at the operator after extraction',
+    "modem_tui_ans_erase_after": {
+        "fr": "Effacer chez l'operateur apres extraction",
+        "en": "Delete at the operator after extraction",
     },
-    'modem_tui_ans_fetch': {
-        "fr": '📥 Recuperer',
-        "en": '📥 Fetch',
+    "modem_tui_ans_fetch": {
+        "fr": "📥 Recuperer",
+        "en": "📥 Fetch",
     },
-    'modem_tui_ans_saved': {
-        "fr": 'Messages recuperes',
-        "en": 'Fetched messages',
+    "modem_tui_ans_saved": {
+        "fr": "Messages recuperes",
+        "en": "Fetched messages",
     },
-    'modem_tui_ans_play': {
-        "fr": '▶ Ecouter',
-        "en": '▶ Play',
+    "modem_tui_ans_play": {
+        "fr": "▶ Ecouter",
+        "en": "▶ Play",
     },
-    'modem_tui_ans_erase': {
-        "fr": '🗑 Effacer ici',
-        "en": '🗑 Delete here',
+    "modem_tui_ans_erase": {
+        "fr": "🗑 Effacer ici",
+        "en": "🗑 Delete here",
     },
-    'modem_tui_ans_no_code': {
-        "fr": ('Code de la messagerie indisponible : ouvrez le coffre depuis '
-               'le menu Repondeur avant d\'ouvrir le clavier.'),
-        "en": ('Voicemail code unavailable: open the vault from the Answering '
-               'menu before opening the dialer.'),
+    "modem_tui_ans_no_code": {
+        "fr": (
+            "Code de la messagerie indisponible : ouvrez le coffre depuis "
+            "le menu Repondeur avant d'ouvrir le clavier."
+        ),
+        "en": (
+            "Voicemail code unavailable: open the vault from the Answering "
+            "menu before opening the dialer."
+        ),
     },
-    'modem_tui_voicemail': {
-        "fr": '📮 Messagerie',
-        "en": '📮 Voicemail',
+    "modem_tui_voicemail": {
+        "fr": "📮 Messagerie",
+        "en": "📮 Voicemail",
     },
-    'modem_tui_voicemail_unknown': {
-        "fr": 'Aucun numero de messagerie inscrit sur la SIM.',
-        "en": 'No voicemail number stored on the SIM.',
+    "modem_tui_voicemail_unknown": {
+        "fr": "Aucun numero de messagerie inscrit sur la SIM.",
+        "en": "No voicemail number stored on the SIM.",
     },
-    'modem_tui_voicemail_hint': {
-        "fr": ('Une fois en ligne, les touches partent en tonalites : mot de '
-               'passe, puis choix du menu.'),
-        "en": ('Once connected, keys are sent as tones: password, then menu '
-               'choices.'),
+    "modem_tui_voicemail_hint": {
+        "fr": (
+            "Une fois en ligne, les touches partent en tonalites : mot de "
+            "passe, puis choix du menu."
+        ),
+        "en": (
+            "Once connected, keys are sent as tones: password, then menu "
+            "choices."
+        ),
     },
     # Sous-menus du menu Modem
-    'modem_menu_state': {
-        "fr": '📊 Etat et diagnostic',
-        "en": '📊 State and diagnosis',
+    "modem_menu_state": {
+        "fr": "📊 Etat et diagnostic",
+        "en": "📊 State and diagnosis",
     },
-    'modem_menu_calls': {
-        "fr": '📞 Appels',
-        "en": '📞 Calls',
+    "modem_menu_calls": {
+        "fr": "📞 Appels",
+        "en": "📞 Calls",
     },
-    'modem_menu_sms': {
-        "fr": '💬 SMS',
-        "en": '💬 SMS',
+    "modem_menu_sms": {
+        "fr": "💬 SMS",
+        "en": "💬 SMS",
     },
-    'modem_menu_audio': {
-        "fr": '🔊 Son et peripheriques',
-        "en": '🔊 Sound and devices',
+    "modem_menu_audio": {
+        "fr": "🔊 Son et peripheriques",
+        "en": "🔊 Sound and devices",
     },
     # Section Service : les unites systemd du modem.
-    'voip_softphone_odoo': {
-        "fr": 'Declarer le softphone dans Odoo (serveur et poste)',
-        "en": 'Declare the softphone in Odoo (server and endpoint)',
+    "voip_softphone_odoo": {
+        "fr": "Declarer le softphone dans Odoo (serveur et poste)",
+        "en": "Declare the softphone in Odoo (server and endpoint)",
     },
-    'voip_softphone_db': {
-        "fr": 'Base de donnees [%s] : ',
-        "en": 'Database [%s]: ',
+    "voip_softphone_db": {
+        "fr": "Base de donnees [%s] : ",
+        "en": "Database [%s]: ",
     },
-    'voip_softphone_running': {
-        "fr": 'Ecriture dans %s...',
-        "en": 'Writing into %s...',
+    "voip_softphone_running": {
+        "fr": "Ecriture dans %s...",
+        "en": "Writing into %s...",
     },
-    'modem_menu_service': {
-        "fr": '🛠 Service — unites systemd, demarrage automatique',
-        "en": '🛠 Service — systemd units, start at boot',
+    "modem_menu_service": {
+        "fr": "🛠 Service — unites systemd, demarrage automatique",
+        "en": "🛠 Service — systemd units, start at boot",
     },
-    'modem_service_state': {
-        "fr": '📊 Etat des services',
-        "en": '📊 Service state',
+    "modem_service_state": {
+        "fr": "📊 Etat des services",
+        "en": "📊 Service state",
     },
-    'modem_service_env': {
-        "fr": '🔑 Poser le fichier d\'environnement (demande sudo)',
-        "en": '🔑 Write the environment file (asks for sudo)',
+    "modem_service_env": {
+        "fr": "🔑 Poser le fichier d'environnement (demande sudo)",
+        "en": "🔑 Write the environment file (asks for sudo)",
     },
-    'modem_service_install': {
-        "fr": '⚙ Installer ou mettre a jour les unites (demande sudo)',
-        "en": '⚙ Install or update the units (asks for sudo)',
+    "modem_service_install": {
+        "fr": "⚙ Installer ou mettre a jour les unites (demande sudo)",
+        "en": "⚙ Install or update the units (asks for sudo)",
     },
-    'modem_service_start': {
-        "fr": '▶ Demarrer les services',
-        "en": '▶ Start the services',
+    "modem_service_start": {
+        "fr": "▶ Demarrer les services",
+        "en": "▶ Start the services",
     },
-    'modem_service_stop': {
-        "fr": '⏹ Arreter les services',
-        "en": '⏹ Stop the services',
+    "modem_service_stop": {
+        "fr": "⏹ Arreter les services",
+        "en": "⏹ Stop the services",
     },
-    'modem_service_enable': {
-        "fr": '⏻ Activer au demarrage (demande sudo)',
-        "en": '⏻ Enable at boot (asks for sudo)',
+    "modem_service_enable": {
+        "fr": "⏻ Activer au demarrage (demande sudo)",
+        "en": "⏻ Enable at boot (asks for sudo)",
     },
-    'modem_service_disable': {
-        "fr": '⏏ Desactiver au demarrage (demande sudo)',
-        "en": '⏏ Disable at boot (asks for sudo)',
+    "modem_service_disable": {
+        "fr": "⏏ Desactiver au demarrage (demande sudo)",
+        "en": "⏏ Disable at boot (asks for sudo)",
     },
-    'modem_service_log': {
-        "fr": '📜 Journal des services',
-        "en": '📜 Service log',
+    "modem_service_log": {
+        "fr": "📜 Journal des services",
+        "en": "📜 Service log",
     },
-    'modem_service_remove': {
-        "fr": '🗑 Retirer les unites (demande sudo)',
-        "en": '🗑 Remove the units (asks for sudo)',
+    "modem_service_remove": {
+        "fr": "🗑 Retirer les unites (demande sudo)",
+        "en": "🗑 Remove the units (asks for sudo)",
     },
-    'modem_service_env_label': {
-        "fr": 'Fichier d\'environnement',
-        "en": 'Environment file',
+    "modem_service_env_label": {
+        "fr": "Fichier d'environnement",
+        "en": "Environment file",
     },
-    'modem_service_present': {
-        "fr": 'pose',
-        "en": 'in place',
+    "modem_service_present": {
+        "fr": "pose",
+        "en": "in place",
     },
-    'modem_service_absent': {
-        "fr": 'absent',
-        "en": 'absent',
+    "modem_service_absent": {
+        "fr": "absent",
+        "en": "absent",
     },
-    'modem_service_running': {
-        "fr": 'actif',
-        "en": 'running',
+    "modem_service_running": {
+        "fr": "actif",
+        "en": "running",
     },
-    'modem_service_stopped': {
-        "fr": 'arrete',
-        "en": 'stopped',
+    "modem_service_stopped": {
+        "fr": "arrete",
+        "en": "stopped",
     },
     # Actif et « au demarrage » ne se confondent pas : un service lance a la
     # main est actif et disparait au prochain demarrage.
-    'modem_service_enabled': {
-        "fr": 'repart au demarrage',
-        "en": 'starts at boot',
+    "modem_service_enabled": {
+        "fr": "repart au demarrage",
+        "en": "starts at boot",
     },
-    'modem_service_not_enabled': {
-        "fr": 'NE repart PAS au demarrage',
-        "en": 'does NOT start at boot',
+    "modem_service_not_enabled": {
+        "fr": "NE repart PAS au demarrage",
+        "en": "does NOT start at boot",
     },
-    'modem_service_missing_vars': {
-        "fr": 'valeurs introuvables : %s',
-        "en": 'values not found: %s',
+    "modem_service_missing_vars": {
+        "fr": "valeurs introuvables : %s",
+        "en": "values not found: %s",
     },
-    'modem_service_env_first': {
-        "fr": ('Posez d\'abord le fichier d\'environnement : poser une unite '
-               'la demarre, et un service sans environnement echoue aussitot.'),
-        "en": ('Write the environment file first: installing a unit starts it, '
-               'and a service without its environment fails at once.'),
+    "modem_service_env_first": {
+        "fr": (
+            "Posez d'abord le fichier d'environnement : poser une unite "
+            "la demarre, et un service sans environnement echoue aussitot."
+        ),
+        "en": (
+            "Write the environment file first: installing a unit starts it, "
+            "and a service without its environment fails at once."
+        ),
     },
-    'modem_menu_voip': {
-        "fr": '🌐 Services VoIP',
-        "en": '🌐 VoIP services',
+    "modem_menu_voip": {
+        "fr": "🌐 Services VoIP",
+        "en": "🌐 VoIP services",
     },
-    'modem_answering_short': {
-        "fr": 'Repondeur',
-        "en": 'Answering machine',
+    "modem_answering_short": {
+        "fr": "Repondeur",
+        "en": "Answering machine",
     },
-    'modem_audio_rule_short': {
-        "fr": 'Regle audio',
-        "en": 'Audio rule',
+    "modem_audio_rule_short": {
+        "fr": "Regle audio",
+        "en": "Audio rule",
     },
     # Boite vocale de l'operateur
-    'modem_voicemail': {
-        "fr": 'Boite vocale',
-        "en": 'Voicemail',
+    "modem_voicemail": {
+        "fr": "Boite vocale",
+        "en": "Voicemail",
     },
-    'modem_voicemail_waiting': {
-        "fr": '📬 MESSAGE EN ATTENTE chez l\'operateur',
-        "en": '📬 MESSAGE WAITING at the operator',
+    "modem_voicemail_waiting": {
+        "fr": "📬 MESSAGE EN ATTENTE chez l'operateur",
+        "en": "📬 MESSAGE WAITING at the operator",
     },
-    'modem_voicemail_empty': {
-        "fr": '📭 aucun message',
-        "en": '📭 no message',
+    "modem_voicemail_empty": {
+        "fr": "📭 aucun message",
+        "en": "📭 no message",
     },
-    'modem_voicemail_unknown': {
-        "fr": '❔ etat inconnu',
-        "en": '❔ state unknown',
+    "modem_voicemail_unknown": {
+        "fr": "❔ etat inconnu",
+        "en": "❔ state unknown",
     },
-    'modem_voicemail_from_service': {
-        "fr": 'lu par le service il y a %s',
-        "en": 'read by the service %s ago',
+    "modem_voicemail_from_service": {
+        "fr": "lu par le service il y a %s",
+        "en": "read by the service %s ago",
     },
-    'modem_voicemail_stale': {
-        "fr": 'ANCIEN, le service ne lit peut-etre plus',
-        "en": 'STALE, the service may have stopped reading',
+    "modem_voicemail_stale": {
+        "fr": "ANCIEN, le service ne lit peut-etre plus",
+        "en": "STALE, the service may have stopped reading",
     },
     # Repondeur du modem
-    'modem_answering': {
-        "fr": '📼 Repondeur — messages, annonce, sonneries',
-        "en": '📼 Answering machine — messages, greeting, rings',
+    "modem_answering": {
+        "fr": "📼 Repondeur — messages, annonce, sonneries",
+        "en": "📼 Answering machine — messages, greeting, rings",
     },
-    'modem_ans_menu': {
-        "fr": 'Repondeur du modem',
-        "en": 'Modem answering machine',
+    "modem_ans_menu": {
+        "fr": "Repondeur du modem",
+        "en": "Modem answering machine",
     },
-    'modem_ans_list': {
-        "fr": '📋 Ecouter les messages',
-        "en": '📋 Listen to messages',
+    "modem_ans_list": {
+        "fr": "📋 Ecouter les messages",
+        "en": "📋 Listen to messages",
     },
-    'modem_ans_greeting': {
-        "fr": '🎙️  Enregistrer l\'annonce',
-        "en": '🎙️  Record the greeting',
+    "modem_ans_greeting": {
+        "fr": "🎙️  Enregistrer l'annonce",
+        "en": "🎙️  Record the greeting",
     },
-    'modem_ans_greeting_play': {
-        "fr": '🔊 Ecouter l\'annonce',
-        "en": '🔊 Play the greeting',
+    "modem_ans_greeting_play": {
+        "fr": "🔊 Ecouter l'annonce",
+        "en": "🔊 Play the greeting",
     },
-    'modem_ans_rings': {
-        "fr": '🔔 Nombre de sonneries avant de decrocher',
-        "en": '🔔 Rings before answering',
+    "modem_ans_rings": {
+        "fr": "🔔 Nombre de sonneries avant de decrocher",
+        "en": "🔔 Rings before answering",
     },
-    'modem_ans_toggle': {
-        "fr": '⏻ Activer ou desactiver le repondeur',
-        "en": '⏻ Turn the answering machine on or off',
+    "modem_ans_toggle": {
+        "fr": "⏻ Activer ou desactiver le repondeur",
+        "en": "⏻ Turn the answering machine on or off",
     },
-    'modem_ans_none': {
-        "fr": 'Aucun message.',
-        "en": 'No messages.',
+    "modem_ans_none": {
+        "fr": "Aucun message.",
+        "en": "No messages.",
     },
-    'modem_ans_play': {
-        "fr": 'Numero du message a ecouter (0 pour revenir)',
-        "en": 'Number of the message to play (0 to go back)',
+    "modem_ans_play": {
+        "fr": "Numero du message a ecouter (0 pour revenir)",
+        "en": "Number of the message to play (0 to go back)",
     },
-    'modem_ans_delete': {
-        "fr": 'Effacer ce message ? (o/N)',
-        "en": 'Delete this message? (y/N)',
+    "modem_ans_delete": {
+        "fr": "Effacer ce message ? (o/N)",
+        "en": "Delete this message? (y/N)",
     },
-    'modem_ans_deleted': {
-        "fr": 'Message efface.',
-        "en": 'Message deleted.',
+    "modem_ans_deleted": {
+        "fr": "Message efface.",
+        "en": "Message deleted.",
     },
-    'modem_ans_rings_ask': {
-        "fr": 'Sonneries avant de decrocher (1 a 5)',
-        "en": 'Rings before answering (1 to 5)',
+    "modem_ans_rings_ask": {
+        "fr": "Sonneries avant de decrocher (1 a 5)",
+        "en": "Rings before answering (1 to 5)",
     },
-    'modem_ans_rings_why': {
-        "fr": ('La boite vocale de l\'operateur prend l\'appel vers trente '
-               'secondes, et une sonnerie en dure six : au-dela de cinq, le '
-               'repondeur ne decrocherait jamais.'),
-        "en": ('The operator voicemail takes the call at about thirty seconds, '
-               'and one ring lasts six: past five, the answering machine would '
-               'never pick up.'),
+    "modem_ans_rings_why": {
+        "fr": (
+            "La boite vocale de l'operateur prend l'appel vers trente "
+            "secondes, et une sonnerie en dure six : au-dela de cinq, le "
+            "repondeur ne decrocherait jamais."
+        ),
+        "en": (
+            "The operator voicemail takes the call at about thirty seconds, "
+            "and one ring lasts six: past five, the answering machine would "
+            "never pick up."
+        ),
     },
-    'modem_ans_recording': {
-        "fr": 'Parlez apres le signal — %s secondes.',
-        "en": 'Speak after the tone — %s seconds.',
+    "modem_ans_recording": {
+        "fr": "Parlez apres le signal — %s secondes.",
+        "en": "Speak after the tone — %s seconds.",
     },
-    'modem_ans_recorded': {
-        "fr": 'Annonce enregistree : %s',
-        "en": 'Greeting recorded: %s',
+    "modem_ans_recorded": {
+        "fr": "Annonce enregistree : %s",
+        "en": "Greeting recorded: %s",
     },
-    'modem_ans_seconds': {
-        "fr": 'Duree de l\'annonce en secondes',
-        "en": 'Greeting length in seconds',
+    "modem_ans_seconds": {
+        "fr": "Duree de l'annonce en secondes",
+        "en": "Greeting length in seconds",
     },
-    'modem_ans_restart': {
-        "fr": ('Le service lit ses reglages au demarrage : relancez '
-               'erplibre-sip-go pour qu\'ils prennent effet.'),
-        "en": ('The service reads its settings at startup: restart '
-               'erplibre-sip-go for them to take effect.'),
+    "modem_ans_restart": {
+        "fr": (
+            "Le service lit ses reglages au demarrage : relancez "
+            "erplibre-sip-go pour qu'ils prennent effet."
+        ),
+        "en": (
+            "The service reads its settings at startup: restart "
+            "erplibre-sip-go for them to take effect."
+        ),
     },
-    'modem_gateway_agent': {
-        "fr": '🔗 Passerelle modem — demonstration de bout en bout',
-        "en": '🔗 Modem gateway — end-to-end demonstration',
+    "modem_gateway_agent": {
+        "fr": "🔗 Passerelle modem — demonstration de bout en bout",
+        "en": "🔗 Modem gateway — end-to-end demonstration",
     },
-    'modem_number': {
-        "fr": 'Numero',
-        "en": 'Number',
+    "modem_number": {
+        "fr": "Numero",
+        "en": "Number",
     },
-    'modem_number_invalid': {
-        "fr": 'Numero invalide (plan nord-americain attendu).',
-        "en": 'Invalid number (North American plan expected).',
+    "modem_number_invalid": {
+        "fr": "Numero invalide (plan nord-americain attendu).",
+        "en": "Invalid number (North American plan expected).",
     },
-    'modem_call_confirm': {
-        "fr": 'Composer reellement',
-        "en": 'Really dial',
+    "modem_call_confirm": {
+        "fr": "Composer reellement",
+        "en": "Really dial",
     },
-    'modem_sms_text': {
-        "fr": 'Texte du message',
-        "en": 'Message text',
+    "modem_sms_text": {
+        "fr": "Texte du message",
+        "en": "Message text",
     },
-    'modem_no_call': {
-        "fr": 'Aucun appel en cours.',
-        "en": 'No call in progress.',
+    "modem_no_call": {
+        "fr": "Aucun appel en cours.",
+        "en": "No call in progress.",
     },
-    'modem_no_sms': {
-        "fr": 'Aucun message.',
-        "en": 'No messages.',
+    "modem_no_sms": {
+        "fr": "Aucun message.",
+        "en": "No messages.",
     },
-    'modem_out': {
-        "fr": 'sortant',
-        "en": 'outgoing',
+    "modem_out": {
+        "fr": "sortant",
+        "en": "outgoing",
     },
-    'modem_in': {
-        "fr": 'entrant',
-        "en": 'incoming',
+    "modem_in": {
+        "fr": "entrant",
+        "en": "incoming",
     },
-    'modem_tui_missing': {
+    "modem_tui_missing": {
         "fr": "Textual n'est pas installe : utilisez [4] pour composer.",
-        "en": 'Textual is not installed: use [4] to dial.',
+        "en": "Textual is not installed: use [4] to dial.",
     },
-    'asterisk_absent': {
+    "asterisk_absent": {
         "fr": "Asterisk n'est pas installe.",
-        "en": 'Asterisk is not installed.',
+        "en": "Asterisk is not installed.",
     },
-    'asterisk_running': {
-        "fr": 'en service',
-        "en": 'running',
+    "asterisk_running": {
+        "fr": "en service",
+        "en": "running",
     },
-    'asterisk_stopped': {
-        "fr": 'arrete',
-        "en": 'stopped',
+    "asterisk_stopped": {
+        "fr": "arrete",
+        "en": "stopped",
     },
-    'asterisk_lines': {
-        "fr": 'Lignes',
-        "en": 'Lines',
+    "asterisk_lines": {
+        "fr": "Lignes",
+        "en": "Lines",
     },
-    'asterisk_install': {
-        "fr": 'Installer / reconfigurer Asterisk',
-        "en": 'Install / reconfigure Asterisk',
+    "asterisk_install": {
+        "fr": "Installer / reconfigurer Asterisk",
+        "en": "Install / reconfigure Asterisk",
     },
-    'asterisk_status': {
+    "asterisk_status": {
         "fr": "Etat d'Asterisk",
-        "en": 'Asterisk status',
+        "en": "Asterisk status",
     },
-    'asterisk_secrets': {
-        "fr": 'Secrets poses',
-        "en": 'Secrets in place',
+    "asterisk_secrets": {
+        "fr": "Secrets poses",
+        "en": "Secrets in place",
     },
-    'Appeler': {
-        "fr": 'Appeler',
-        "en": 'Call',
+    "Appeler": {
+        "fr": "Appeler",
+        "en": "Call",
     },
-    'Raccrocher': {
-        "fr": 'Raccrocher',
-        "en": 'Hang up',
+    "Raccrocher": {
+        "fr": "Raccrocher",
+        "en": "Hang up",
     },
-    'Clavier du modem': {
-        "fr": 'Clavier du modem',
-        "en": 'Modem dial pad',
+    "Clavier du modem": {
+        "fr": "Clavier du modem",
+        "en": "Modem dial pad",
     },
-    'Numéro valide': {
-        "fr": 'Numéro valide',
-        "en": 'Valid number',
+    "Numéro valide": {
+        "fr": "Numéro valide",
+        "en": "Valid number",
     },
-    'Numéro incomplet': {
-        "fr": 'Numéro incomplet',
-        "en": 'Incomplete number',
+    "Numéro incomplet": {
+        "fr": "Numéro incomplet",
+        "en": "Incomplete number",
     },
-    'Numéro invalide, appel refusé': {
-        "fr": 'Numéro invalide, appel refusé',
-        "en": 'Invalid number, call refused',
+    "Numéro invalide, appel refusé": {
+        "fr": "Numéro invalide, appel refusé",
+        "en": "Invalid number, call refused",
     },
-    'Appel de': {
-        "fr": 'Appel de',
-        "en": 'Calling',
+    "Appel de": {
+        "fr": "Appel de",
+        "en": "Calling",
     },
-    'Appel lancé': {
-        "fr": 'Appel lancé',
-        "en": 'Call placed',
+    "Appel lancé": {
+        "fr": "Appel lancé",
+        "en": "Call placed",
     },
-    'Raccroché': {
-        "fr": 'Raccroché',
-        "en": 'Hung up',
+    "Raccroché": {
+        "fr": "Raccroché",
+        "en": "Hung up",
     },
     # Serveur VoIP Asterisk
     "Deploy - Install Asterisk VoIP server (hardened)": {
@@ -3485,10 +3685,6 @@ TRANSLATIONS = {
     "The control: two VMs WITHOUT the cache": {
         "fr": "⚖ Le témoin : deux VM SANS le cache",
         "en": "⚖ The control: two VMs WITHOUT the cache",
-    },
-    "All three, one after another": {
-        "fr": "🔁 Les trois, l'un après l'autre",
-        "en": "🔁 All three, one after another",
     },
     "Which load?": {
         "fr": "Quelle charge ?",
@@ -4076,14 +4272,6 @@ TRANSLATIONS = {
         "fr": "Distribution :",
         "en": "Distribution:",
     },
-    "Choice (number or name, default: ubuntu): ": {
-        "fr": "Choix (numéro ou nom, défaut : ubuntu) : ",
-        "en": "Choice (number or name, default: ubuntu): ",
-    },
-    "Invalid selection, using ubuntu": {
-        "fr": "Sélection invalide, utilisation d'ubuntu",
-        "en": "Invalid selection, using ubuntu",
-    },
     "Version for": {
         "fr": "Version des",
         "en": "Version for",
@@ -4163,10 +4351,6 @@ TRANSLATIONS = {
         "fr": "Choix (1-4, défaut 1) :",
         "en": "Choice (1-4, default 1):",
     },
-    "Choice (1-5, default 1):": {
-        "fr": "Choix (1-5, défaut 1) :",
-        "en": "Choice (1-5, default 1):",
-    },
     "Custom - set vCPU, RAM and disk": {
         "fr": "Personnalisé — choisir vCPU, RAM et disque",
         "en": "Custom — set vCPU, RAM and disk",
@@ -4228,11 +4412,6 @@ TRANSLATIONS = {
         "fr": "VM (défaut = aucune modification) :",
         "en": "VMs (default = no change):",
     },
-    "Modify which VMs? (numbers, comma-separated; blank = none): ": {
-        "fr": "Modifier quelles VM ? (numéros séparés par des virgules ; "
-        "vide = aucune) : ",
-        "en": "Modify which VMs? (numbers, comma-separated; blank = none): ",
-    },
     "new name (blank = keep):": {
         "fr": "nouveau nom (vide = garder) :",
         "en": "new name (blank = keep):",
@@ -4261,9 +4440,132 @@ TRANSLATIONS = {
         "fr": "suivi d'installation",
         "en": "install monitoring",
     },
+    "Navigation telemetry": {
+        "fr": "📊 Télémétrie de navigation",
+        "en": "📊 Navigation telemetry",
+    },
     "Navigation telemetry (TUI)": {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
+    },
+    "Navigation telemetry (WEB)": {
+        "fr": "🌐 Télémétrie de navigation (WEB)",
+        "en": "🌐 Navigation telemetry (WEB)",
+    },
+    "Stop the web interface": {
+        "fr": "⏹️ Arrêter l'interface web",
+        "en": "⏹️ Stop the web interface",
+    },
+    "Web interface: running on {url} (sessions: {n})": {
+        "fr": "🌐 Interface web : active sur {url} (sessions : {n})",
+        "en": "🌐 Web interface: running on {url} (sessions: {n})",
+    },
+    "Web interface: stopped": {
+        "fr": "🌐 Interface web : arrêtée",
+        "en": "🌐 Web interface: stopped",
+    },
+    "Web interface ready": {
+        "fr": "✅ Interface web prête",
+        "en": "✅ Web interface ready",
+    },
+    "Opened in your browser. The link works once, for 2 minutes.": {
+        "fr": "Ouverte dans votre navigateur. Le lien ne sert qu'une fois,"
+        " pendant 2 minutes.",
+        "en": "Opened in your browser. The link works once, for 2 minutes.",
+    },
+    "If the page did not open, use this link within 2 minutes:": {
+        "fr": "Si la page ne s'est pas ouverte, utilisez ce lien dans les 2"
+        " minutes :",
+        "en": "If the page did not open, use this link within 2 minutes:",
+    },
+    "No display on this host. On your workstation, run:": {
+        "fr": "Aucun affichage sur cet hôte. Sur votre poste, lancez :",
+        "en": "No display on this host. On your workstation, run:",
+    },
+    "Then open this link within 2 minutes:": {
+        "fr": "Puis ouvrez ce lien dans les 2 minutes :",
+        "en": "Then open this link within 2 minutes:",
+    },
+    "The web interface did not start. Last lines of its log:": {
+        "fr": "❌ L'interface web n'a pas démarré. Dernières lignes de son"
+        " journal :",
+        "en": "❌ The web interface did not start. Last lines of its log:",
+    },
+    "The web interface did not start.": {
+        "fr": "❌ L'interface web n'a pas démarré.",
+        "en": "❌ The web interface did not start.",
+    },
+    "The web interface needs {pkg}. Install it with:": {
+        "fr": "❌ L'interface web a besoin de {pkg}. Installez-le avec :",
+        "en": "❌ The web interface needs {pkg}. Install it with:",
+    },
+    "The web interface refuses to run as root.": {
+        "fr": "❌ L'interface web refuse de tourner en root.",
+        "en": "❌ The web interface refuses to run as root.",
+    },
+    "Web interface stopped": {
+        "fr": "⏹️ Interface web arrêtée",
+        "en": "⏹️ Web interface stopped",
+    },
+    "The web interface is not running.": {
+        "fr": "ℹ️ L'interface web n'est pas lancée.",
+        "en": "ℹ️ The web interface is not running.",
+    },
+    "{n} web sessions are running a command. Stop them anyway?": {
+        "fr": "{n} sessions web exécutent une commande. Les arrêter quand"
+        " même ?",
+        "en": "{n} web sessions are running a command. Stop them anyway?",
+    },
+    "Telemetry opened in this page.": {
+        "fr": "Télémétrie ouverte dans cette page.",
+        "en": "Telemetry opened in this page.",
+    },
+    "This TODO runs in the web interface: stop the interface from a"
+    " terminal.": {
+        "fr": "Ce TODO tourne dans l'interface web : arrêtez-la depuis un"
+        " terminal.",
+        "en": "This TODO runs in the web interface: stop the interface from a"
+        " terminal.",
+    },
+    "Desktop window": {
+        "fr": "🖥️ Fenêtre bureautique",
+        "en": "🖥️ Desktop window",
+    },
+    "The desktop window needs pywebview and a web engine. Install them"
+    " with:": {
+        "fr": "❌ La fenêtre bureautique a besoin de pywebview et d'un moteur"
+        " web. Installez-les avec :",
+        "en": "❌ The desktop window needs pywebview and a web engine. Install"
+        " them with:",
+    },
+    "Opening the page in the browser instead.": {
+        "fr": "La page s'ouvre dans le navigateur à la place.",
+        "en": "Opening the page in the browser instead.",
+    },
+    "Desktop window launched. If it does not show, its log:": {
+        "fr": "🖥️ Fenêtre bureautique lancée. Si elle ne paraît pas, son"
+        " journal :",
+        "en": "🖥️ Desktop window launched. If it does not show, its log:",
+    },
+    "The desktop window did not start. Last lines of its log:": {
+        "fr": "❌ La fenêtre bureautique n'a pas démarré. Dernières lignes de"
+        " son journal :",
+        "en": "❌ The desktop window did not start. Last lines of its log:",
+    },
+    "The desktop window did not open: its process opened the page in the"
+    " browser instead. Last lines of its log:": {
+        "fr": "⚠️ La fenêtre bureautique ne s'est pas ouverte : son processus"
+        " a ouvert la page dans le navigateur à la place. Dernières lignes de"
+        " son journal :",
+        "en": "⚠️ The desktop window did not open: its process opened the page"
+        " in the browser instead. Last lines of its log:",
+    },
+    "The desktop window did not open, and no browser took the page. Last"
+    " lines of its log:": {
+        "fr": "⚠️ La fenêtre bureautique ne s'est pas ouverte, et aucun"
+        " navigateur n'a pris la page. Dernières lignes de son journal :",
+        "en": "⚠️ The desktop window did not open, and no browser took the"
+        " page. Last lines of its log:",
     },
     "Configuration": {
         "fr": "🔩 Configuration",
@@ -4305,10 +4607,6 @@ TRANSLATIONS = {
         "fr": "TUI, blocs repliables par VM",
         "en": "TUI, collapsible blocks per VM",
     },
-    "Choice (number, blank = keep):": {
-        "fr": "Choix (numéro, vide = garder) :",
-        "en": "Choice (number, blank = keep):",
-    },
     "SSH port forwarding (open Odoo in the browser)": {
         "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
         "en": "🔌 SSH port forwarding (open Odoo in the browser)",
@@ -4316,10 +4614,6 @@ TRANSLATIONS = {
     "SSH port forwarding": {
         "fr": "Redirection de port SSH",
         "en": "SSH port forwarding",
-    },
-    "Host (number or name):": {
-        "fr": "Hôte (numéro ou nom) :",
-        "en": "Host (number or name):",
     },
     "Remote port (default:": {
         "fr": "Port distant (défaut :",
@@ -4454,11 +4748,7 @@ TRANSLATIONS = {
         "fr": "~/.ssh/config ne contient aucun hôte.",
         "en": "~/.ssh/config holds no host.",
     },
-    "Which hosts? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quels hôtes ? (numéros séparés par des virgules ; "
-        "vide = tous) : ",
-        "en": "Which hosts? (numbers, comma-separated; blank = all): ",
-    },
+    "Which hosts?": {"fr": "Quels hôtes ?", "en": "Which hosts?"},
     "Host or IP:": {
         "fr": "Hôte ou IP :",
         "en": "Host or IP:",
@@ -4475,11 +4765,7 @@ TRANSLATIONS = {
         "fr": "Profondeur (1 = ces machines seulement, défaut :",
         "en": "Depth (1 = these machines only, default:",
     },
-    "Which VMs? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quelles VM ? (numéros séparés par des virgules ; "
-        "vide = toutes) : ",
-        "en": "Which VMs? (numbers, comma-separated; blank = all): ",
-    },
+    "Which VMs?": {"fr": "Quelles VM ?", "en": "Which VMs?"},
     "Depth (default:": {
         "fr": "Profondeur (défaut :",
         "en": "Depth (default:",
@@ -4945,10 +5231,6 @@ TRANSLATIONS = {
         "fr": "Déployer quand même (nouveau run)",
         "en": "Deploy anyway (new run)",
     },
-    "Choice (number, blank = reopen): ": {
-        "fr": "Choix (numéro, vide = rouvrir) : ",
-        "en": "Choice (number, blank = reopen): ",
-    },
     "Python interpreter:": {
         "fr": "Interpreteur Python :",
         "en": "Python interpreter:",
@@ -4960,10 +5242,6 @@ TRANSLATIONS = {
     "pyenv (compiles from source)": {
         "fr": "pyenv (compile depuis les sources)",
         "en": "pyenv (compiles from source)",
-    },
-    "Choice (number, blank = mise): ": {
-        "fr": "Choix (numero, vide = mise) : ",
-        "en": "Choice (number, blank = mise): ",
     },
     "mise has no binary for:": {
         "fr": "mise ne publie pas de binaire pour :",
@@ -5000,10 +5278,6 @@ TRANSLATIONS = {
     "Installing the desktop (long):": {
         "fr": "Installation du bureau (long) :",
         "en": "Installing the desktop (long):",
-    },
-    "Choice (number, blank = server): ": {
-        "fr": "Choix (numero, vide = serveur) : ",
-        "en": "Choice (number, blank = server): ",
     },
     "Installing the GNOME desktop (long)": {
         "fr": "Installation du bureau GNOME (long)",
@@ -5093,9 +5367,9 @@ TRANSLATIONS = {
         "fr": "deb uniquement (epiphany-browser)",
         "en": "deb only (epiphany-browser)",
     },
-    "Flatpak tooling, no Flathub": {
-        "fr": "outillage Flatpak, sans Flathub",
-        "en": "Flatpak tooling, no Flathub",
+    "flatpak (tooling, no Flathub)": {
+        "fr": "flatpak (outillage, sans Flathub)",
+        "en": "flatpak (tooling, no Flathub)",
     },
     "snap (Ubuntu default, Firefox)": {
         "fr": "snap (défaut Ubuntu, Firefox)",
@@ -5317,7 +5591,6 @@ TRANSLATIONS = {
         "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
         "en": "(the hypervisor only relays; -J puts the VM last)",
     },
-    "Choice": {"fr": "Choix", "en": "Choice"},
     "failed steps": {"fr": "étapes en échec", "en": "failed steps"},
     "Failed steps": {"fr": "Étapes en échec", "en": "Failed steps"},
     "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
@@ -5591,6 +5864,10 @@ TRANSLATIONS = {
         "fr": "Télémétrie réinitialisée.",
         "en": "Telemetry reset.",
     },
+    "Dangerous command: run it from its menu.": {
+        "fr": "Commande dangereuse : lancez-la depuis son menu.",
+        "en": "Dangerous command: run it from its menu.",
+    },
     "tree from code": {
         "fr": "arbre issu du code",
         "en": "tree from code",
@@ -5640,6 +5917,202 @@ TRANSLATIONS = {
     "Network": {"fr": "Réseau", "en": "Network"},
     "Battery": {"fr": "Batterie", "en": "Battery"},
     "Temperature": {"fr": "Température", "en": "Temperature"},
+    # Page web de télémétrie : vues, recherche, tri et relevé système.
+    "Tree": {"fr": "Arbre", "en": "Tree"},
+    "List": {"fr": "Liste", "en": "List"},
+    "Kanban": {"fr": "Kanban", "en": "Kanban"},
+    "System": {"fr": "Système", "en": "System"},
+    "Sort": {"fr": "Tri", "en": "Sort"},
+    "Code order": {"fr": "Ordre du code", "en": "Code order"},
+    "Most used": {"fr": "Les plus utilisés", "en": "Most used"},
+    "CPU": {"fr": "Processeur", "en": "CPU"},
+    "unavailable": {"fr": "indisponible", "en": "unavailable"},
+    # Page web : vue Sessions, le vrai TODO dans un terminal.
+    "Sessions": {"fr": "Sessions", "en": "Sessions"},
+    "Open a TODO session": {
+        "fr": "Ouvrir une session TODO",
+        "en": "Open a TODO session",
+    },
+    "Reconnect": {"fr": "Se reconnecter", "en": "Reconnect"},
+    "Connecting…": {"fr": "Connexion…", "en": "Connecting…"},
+    "Session ended": {"fr": "Session terminée", "en": "Session ended"},
+    "Output truncated": {"fr": "Sortie tronquée", "en": "Output truncated"},
+    "Too many sessions: close one first.": {
+        "fr": "Trop de sessions : fermez-en une d'abord.",
+        "en": "Too many sessions: close one first.",
+    },
+    "Too many sessions opened in a minute; try again in %s s.": {
+        "fr": "Trop de sessions ouvertes en une minute ; réessayer dans %s s.",
+        "en": "Too many sessions opened in a minute; try again in %s s.",
+    },
+    "Connection expired: reopen the interface from TODO › Navigation telemetry.": {
+        "fr": "Connexion expirée : rouvrir l'interface depuis TODO › Télémétrie de navigation.",
+        "en": "Connection expired: reopen the interface from TODO › Navigation telemetry.",
+    },
+    # Page web : l'offre de source de l'AGPL §13, au pied de la page.
+    "Source (AGPL-3.0)": {
+        "fr": "Source (AGPL-3.0)",
+        "en": "Source (AGPL-3.0)",
+    },
+    "License": {"fr": "Licence", "en": "License"},
+    "Repository": {"fr": "Dépôt", "en": "Repository"},
+    "Commit": {"fr": "Commit", "en": "Commit"},
+    "Branch": {"fr": "Branche", "en": "Branch"},
+    "Local changes": {"fr": "Modifications locales", "en": "Local changes"},
+    "unknown": {"fr": "inconnu", "en": "unknown"},
+    "none (masculine)": {"fr": "aucun", "en": "none"},
+    "Vendored libraries": {
+        "fr": "Bibliothèques vendorées",
+        "en": "Vendored libraries",
+    },
+    "Opened in another tab.": {
+        "fr": "Ouverte dans un autre onglet.",
+        "en": "Opened in another tab.",
+    },
+    "This session no longer exists.": {
+        "fr": "Cette session n'existe plus.",
+        "en": "This session no longer exists.",
+    },
+    "Connection lost.": {"fr": "Connexion perdue.", "en": "Connection lost."},
+    # Page web : état du terminal d'une session (TtyWatch).
+    "Raw mode": {"fr": "Mode brut", "en": "Raw mode"},
+    "Nothing reads the terminal: keystrokes ignored.": {
+        "fr": "Rien ne lit le terminal : frappes ignorées.",
+        "en": "Nothing reads the terminal: keystrokes ignored.",
+    },
+    "Hidden answer": {"fr": "Réponse masquée", "en": "Hidden answer"},
+    "Send": {"fr": "Envoyer", "en": "Send"},
+    "The prompt ended: the hidden answer was not sent.": {
+        "fr": "L'invite a pris fin : la réponse masquée n'est pas partie.",
+        "en": "The prompt ended: the hidden answer was not sent.",
+    },
+    "Quick answers": {"fr": "Réponses rapides", "en": "Quick answers"},
+    "A new prompt began: pending keystrokes were not sent.": {
+        "fr": "Une invite a commencé : les frappes en attente ne sont "
+        "pas parties.",
+        "en": "A new prompt began: pending keystrokes were not sent.",
+    },
+    "Stopped: pending keystrokes were thrown away.": {
+        "fr": "Arrêt : les frappes en attente ont été jetées.",
+        "en": "Stopped: pending keystrokes were thrown away.",
+    },
+    "Keystrokes pending while no tab was open were thrown away.": {
+        "fr": "Des frappes en attente sans onglet ouvert ont été jetées.",
+        "en": "Keystrokes pending while no tab was open were thrown away.",
+    },
+    # Page web : menus et questions de TODO en widgets natifs.
+    "Menu": {"fr": "Menu", "en": "Menu"},
+    "Filter entries": {"fr": "Filtrer les entrées", "en": "Filter entries"},
+    "No entry matches the filter.": {
+        "fr": "Aucune entrée ne correspond au filtre.",
+        "en": "No entry matches the filter.",
+    },
+    "Other answer": {"fr": "Autre réponse", "en": "Other answer"},
+    "TODO question": {"fr": "Question de TODO", "en": "TODO question"},
+    "Answer yes": {"fr": "Oui", "en": "Yes"},
+    "Answer no": {"fr": "Non", "en": "No"},
+    "Time left: %s s": {
+        "fr": "Temps restant : %s s",
+        "en": "Time left: %s s",
+    },
+    "Validate": {"fr": "Valider", "en": "Validate"},
+    "Terminal": {"fr": "Terminal", "en": "Terminal"},
+    "Hidden answer not sent: a control character, or too long.": {
+        "fr": "Réponse masquée non envoyée : un caractère de contrôle, ou "
+        "trop longue.",
+        "en": "Hidden answer not sent: a control character, or too long.",
+    },
+    "Full screen": {"fr": "Plein écran", "en": "Full screen"},
+    # Page web : lancer un nœud de la télémétrie dans une session.
+    "Launch": {"fr": "Lancer", "en": "Launch"},
+    "Path interrupted at: %s": {
+        "fr": "Chemin interrompu à : %s",
+        "en": "Path interrupted at: %s",
+    },
+    # Page web : le code de TODO a changé sous les sessions ouvertes.
+    "TODO's code changed: open sessions still run the old one. Reopen a "
+    "session to use it.": {
+        "fr": "Le code de TODO a changé : les sessions ouvertes tournent "
+        "encore l'ancien. Rouvrir une session pour l'utiliser.",
+        "en": "TODO's code changed: open sessions still run the old one. "
+        "Reopen a session to use it.",
+    },
+    "Reopen a session": {
+        "fr": "Rouvrir une session",
+        "en": "Reopen a session",
+    },
+    # Page web : le sélecteur de chemins d'une question de TODO.
+    "Path": {"fr": "Chemin", "en": "Path"},
+    "Open": {"fr": "Ouvrir", "en": "Open"},
+    "Choose this directory": {
+        "fr": "Choisir ce répertoire",
+        "en": "Choose this directory",
+    },
+    "Parent directory": {"fr": "Répertoire parent", "en": "Parent directory"},
+    "Cannot list this directory: %s": {
+        "fr": "Impossible de lister ce répertoire : %s",
+        "en": "Cannot list this directory: %s",
+    },
+    "Only the first %s entries are shown.": {
+        "fr": "Seules les %s premières entrées sont montrées.",
+        "en": "Only the first %s entries are shown.",
+    },
+    "Path not sent: a control character, or too long.": {
+        "fr": "Chemin non envoyé : un caractère de contrôle, ou trop long.",
+        "en": "Path not sent: a control character, or too long.",
+    },
+    # Page web : les erreurs fixes d'une liste du sélecteur de chemins.
+    "Too many reads at once, try again": {
+        "fr": "Trop de lectures à la fois, réessayez",
+        "en": "Too many reads at once, try again",
+    },
+    "The read took too long": {
+        "fr": "La lecture a pris trop de temps",
+        "en": "The read took too long",
+    },
+    "Not an absolute path": {
+        "fr": "Pas un chemin absolu",
+        "en": "Not an absolute path",
+    },
+    "Session refused, reload the page": {
+        "fr": "Session refusée, rechargez la page",
+        "en": "Session refused, reload the page",
+    },
+    "A character that cannot be sent": {
+        "fr": "Un caractère qui ne peut être envoyé",
+        "en": "A character that cannot be sent",
+    },
+    # Page web dans la fenêtre bureautique : le dialogue de fichiers.
+    "System dialog": {"fr": "Dialogue du système", "en": "System dialog"},
+    # Page web dans la fenêtre bureautique : notification de fin de commande.
+    "Command ended: exit code %s, %s s": {
+        "fr": "Commande terminée : code de sortie %s, %s s",
+        "en": "Command ended: exit code %s, %s s",
+    },
+    # Page web : vue Historique, les journaux des tâches des sessions ; la
+    # clé « History » est déclarée plus haut, avec le menu de TODO.
+    "Purge": {"fr": "Purger", "en": "Purge"},
+    "Purge the whole task history? A task still running is kept.": {
+        "fr": "Purger tout l'historique des tâches ? Une tâche en cours reste.",
+        "en": "Purge the whole task history? A task still running is kept.",
+    },
+    "Tasks removed:": {"fr": "Tâches retirées :", "en": "Tasks removed:"},
+    "No task recorded yet.": {
+        "fr": "Aucune tâche enregistrée pour l'instant.",
+        "en": "No task recorded yet.",
+    },
+    "More": {"fr": "Suite", "en": "More"},
+    "Date": {"fr": "Date", "en": "Date"},
+    "Task": {"fr": "Tâche", "en": "Task"},
+    "Commands": {"fr": "Commandes", "en": "Commands"},
+    "Exit code": {"fr": "Code de retour", "en": "Exit code"},
+    "Duration": {"fr": "Durée", "en": "Duration"},
+    "answered in the terminal": {
+        "fr": "répondu dans le terminal",
+        "en": "answered in the terminal",
+    },
+    "cancelled": {"fr": "annulée", "en": "cancelled"},
+    "bytes omitted": {"fr": "octets omis", "en": "bytes omitted"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",
@@ -5699,14 +6172,6 @@ TRANSLATIONS = {
     "Resize a VM disk": {
         "fr": "📐 Redimensionner le disque d'une VM",
         "en": "📐 Resize a VM disk",
-    },
-    "VM name to resize: ": {
-        "fr": "Nom de la VM à redimensionner : ",
-        "en": "VM name to resize: ",
-    },
-    "VM not found.": {
-        "fr": "VM introuvable.",
-        "en": "VM not found.",
     },
     "Main disk not found for this VM.": {
         "fr": "Disque principal introuvable pour cette VM.",
@@ -5931,14 +6396,6 @@ TRANSLATIONS = {
         "fr": "Runs d'installation (du plus récent) :",
         "en": "Install runs (most recent first):",
     },
-    "Choice (number, blank = last): ": {
-        "fr": "Choix (numéro, vide = le dernier) : ",
-        "en": "Choice (number, blank = last): ",
-    },
-    "Invalid selection.": {
-        "fr": "Sélection invalide.",
-        "en": "Invalid selection.",
-    },
     "Resolving VM IP...": {
         "fr": "Résolution de l'IP de la VM…",
         "en": "Resolving VM IP...",
@@ -5959,10 +6416,6 @@ TRANSLATIONS = {
         "fr": "Installer un autre navigateur",
         "en": "Install another browser",
     },
-    "Choice (number, blank = w3m): ": {
-        "fr": "Choix (numéro, vide = w3m) : ",
-        "en": "Choice (number, blank = w3m): ",
-    },
     "Unknown package manager; install it manually.": {
         "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
         "en": "Unknown package manager; install it manually.",
@@ -5971,13 +6424,29 @@ TRANSLATIONS = {
         "fr": "Installer maintenant ? (o/N) : ",
         "en": "Install now? (y/N): ",
     },
+    "w3m — light, renders some HTML": {
+        "fr": "w3m — léger, rend un peu de HTML",
+        "en": "w3m — light, renders some HTML",
+    },
+    "lynx — text browser": {
+        "fr": "lynx — navigateur texte",
+        "en": "lynx — text browser",
+    },
+    "links — text / graphical": {
+        "fr": "links — texte / graphique",
+        "en": "links — text / graphical",
+    },
+    "elinks — text, tabs": {
+        "fr": "elinks — texte, onglets",
+        "en": "elinks — text, tabs",
+    },
+    "No CLI browser available.": {
+        "fr": "Aucun navigateur CLI disponible.",
+        "en": "No CLI browser available.",
+    },
     "Which browser to view the page?": {
         "fr": "Quel navigateur pour voir la page ?",
         "en": "Which browser to view the page?",
-    },
-    "Choice (number, blank = first): ": {
-        "fr": "Choix (numéro, vide = le premier) : ",
-        "en": "Choice (number, blank = first): ",
     },
     "Page may not have loaded: Odoo not started on :8069, "
     "or network/firewall.": {
@@ -6109,14 +6578,6 @@ TRANSLATIONS = {
     "Enter": {
         "fr": "Entrée",
         "en": "Enter",
-    },
-    "Nothing": {
-        "fr": "Rien",
-        "en": "Nothing",
-    },
-    "Choice: ": {
-        "fr": "Choix : ",
-        "en": "Choice: ",
     },
     "Available VMs:": {
         "fr": "VM disponibles :",
@@ -6313,10 +6774,6 @@ TRANSLATIONS = {
         "fr": "VM de cet hôte :",
         "en": "VMs on this host:",
     },
-    "Selection (number): ": {
-        "fr": "Sélection (numéro) : ",
-        "en": "Selection (number): ",
-    },
     "Deploy a VM on the Proxmox host": {
         "fr": "🚀 Déployer une VM sur l'hôte Proxmox",
         "en": "🚀 Deploy a VM on the Proxmox host",
@@ -6396,10 +6853,6 @@ TRANSLATIONS = {
     "freeze cloud-init, fix /etc/hosts, restart pmxcfs": {
         "fr": "geler cloud-init, corriger /etc/hosts, relancer pmxcfs",
         "en": "freeze cloud-init, fix /etc/hosts, restart pmxcfs",
-    },
-    "leave it alone": {
-        "fr": "ne rien toucher",
-        "en": "leave it alone",
     },
     "Cannot tell which address reaches this host.": {
         "fr": "Impossible de savoir quelle adresse atteint cet hôte.",
@@ -6517,10 +6970,6 @@ TRANSLATIONS = {
     "Start from another existing host": {
         "fr": "Partir d'un autre hôte existant",
         "en": "Start from another existing host",
-    },
-    "Choice (1-3, default 1): ": {
-        "fr": "Choix (1-3, défaut 1) : ",
-        "en": "Choice (1-3, default 1): ",
     },
     "Address (user@host, blank = cancel): ": {
         "fr": "Adresse (utilisateur@hôte, vide = annuler) : ",
@@ -7017,10 +7466,6 @@ TRANSLATIONS = {
         "fr": "cette VM n'a pas d'écran virtuel",
         "en": "this VM has no virtual screen",
     },
-    "Unknown VM(s):": {
-        "fr": "VM inconnue(s) :",
-        "en": "Unknown VM(s):",
-    },
     "Target state:": {
         "fr": "État cible :",
         "en": "Target state:",
@@ -7036,10 +7481,6 @@ TRANSLATIONS = {
     "Production (/opt/erplibre, SELinux enforced)": {
         "fr": "Production (/opt/erplibre, SELinux confiné)",
         "en": "Production (/opt/erplibre, SELinux enforced)",
-    },
-    "Choice (1-2, default 1): ": {
-        "fr": "Choix (1-2, défaut 1) : ",
-        "en": "Choice (1-2, default 1): ",
     },
     "Open (start)": {
         "fr": "Ouvrir (démarrer)",
@@ -7160,28 +7601,13 @@ TRANSLATIONS = {
         "fr": "VM prête — installation ERPLibre en cours",
         "en": "VM ready - starting the ERPLibre install",
     },
-    "Choice (number or name, blank = native):": {
-        "fr": "Choix (numéro ou nom, vide = native) :",
-        "en": "Choice (number or name, blank = native):",
-    },
-    "Pick exact versions (comma-separated list)": {
-        "fr": "Choisir des versions précises (liste séparée par des virgules)",
-        "en": "Pick exact versions (comma-separated list)",
-    },
-    "Selection (numbers, 'all', 'principal' or 'granulaire',"
-    " default: all): ": {
-        "fr": "Sélection (numéros, « all », « principal » ou « granulaire »,"
-        " défaut : all) : ",
-        "en": "Selection (numbers, 'all', 'principal' or 'granulaire',"
-        " default: all): ",
+    "Pick exact versions (flat list)": {
+        "fr": "Choisir des versions précises (liste à plat)",
+        "en": "Pick exact versions (flat list)",
     },
     "All versions:": {
         "fr": "Toutes les versions :",
         "en": "All versions:",
-    },
-    "Selection (comma-separated numbers): ": {
-        "fr": "Sélection (numéros séparés par des virgules) : ",
-        "en": "Selection (comma-separated numbers): ",
     },
     "s390x images only exist for:": {
         "fr": "images s390x disponibles seulement pour :",
@@ -7209,18 +7635,6 @@ TRANSLATIONS = {
         "en": "s390x is emulated (TCG): boot and install are much "
         "slower than x86.",
     },
-    "Choice (number or version, blank = default):": {
-        "fr": "Choix (numéro ou version, vide = défaut) :",
-        "en": "Choice (number or version, blank = default):",
-    },
-    "Invalid selection, using": {
-        "fr": "Sélection invalide, utilisation de",
-        "en": "Invalid selection, using",
-    },
-    "select all": {
-        "fr": "tout sélectionner",
-        "en": "select all",
-    },
     "Delete VM(s)": {
         "fr": "🗑  Effacer une ou plusieurs VM",
         "en": "🗑  Delete VM(s)",
@@ -7232,10 +7646,6 @@ TRANSLATIONS = {
     "Select VMs to delete:": {
         "fr": "Sélectionner les VM à effacer :",
         "en": "Select VMs to delete:",
-    },
-    "Selection (numbers, or 'all'): ": {
-        "fr": "Sélection (numéros, ou « all ») : ",
-        "en": "Selection (numbers, or 'all'): ",
     },
     "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
         "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",
@@ -7347,10 +7757,6 @@ TRANSLATIONS = {
     "stop (pulls the plug)": {
         "fr": "arrêter (coupe le courant)",
         "en": "stop (pulls the plug)",
-    },
-    "Choice (blank = back): ": {
-        "fr": "Choix (vide = retour) : ",
-        "en": "Choice (blank = back): ",
     },
     "Confirm? (y/N): ": {
         "fr": "Confirmer ? (o/N) : ",
@@ -7475,14 +7881,6 @@ TRANSLATIONS = {
     "The main version of each distro (marked *)": {
         "fr": "La version principale de chaque distro (marquée *)",
         "en": "The main version of each distro (marked *)",
-    },
-    "Selection (numbers, 'all' or 'principal', default: all): ": {
-        "fr": "Sélection (numéros, « all » ou « principal », défaut : all) : ",
-        "en": "Selection (numbers, 'all' or 'principal', default: all): ",
-    },
-    "Selection (numbers, or 'all', default: all): ": {
-        "fr": "Sélection (numéros, ou « all », défaut : all) : ",
-        "en": "Selection (numbers, or 'all', default: all): ",
     },
     "Nothing selected.": {
         "fr": "Rien de sélectionné.",
@@ -7669,10 +8067,6 @@ TRANSLATIONS = {
     "What to install on the VM(s)?": {
         "fr": "Que veut-on installer sur la/les VM ?",
         "en": "What to install on the VM(s)?",
-    },
-    "Choice (number, blank = Odoo 18): ": {
-        "fr": "Choix (numéro, vide = Odoo 18) : ",
-        "en": "Choice (number, blank = Odoo 18): ",
     },
     "ERPLibre + all Odoo versions": {
         "fr": "ERPLibre + toutes les versions Odoo",
@@ -8419,10 +8813,6 @@ TRANSLATIONS = {
         "fr": "Branches :",
         "en": "Branches:",
     },
-    "Choice (number or name, default:": {
-        "fr": "Choix (numéro ou nom, défaut :",
-        "en": "Choice (number or name, default:",
-    },
     "no IP obtained, ERPLibre clone skipped.": {
         "fr": "aucune IP obtenue, clonage ERPLibre ignoré.",
         "en": "no IP obtained, ERPLibre clone skipped.",
@@ -8435,21 +8825,9 @@ TRANSLATIONS = {
         "fr": "Nom de la VM (requis) : ",
         "en": "VM name (required): ",
     },
-    "VM name is required!": {
-        "fr": "Le nom de la VM est requis !",
-        "en": "VM name is required!",
-    },
     "VM name: ": {
         "fr": "Nom de la VM : ",
         "en": "VM name: ",
-    },
-    "VM name or ID: ": {
-        "fr": "Nom ou ID de la VM : ",
-        "en": "VM name or ID: ",
-    },
-    "VM name or ID (or 'all'): ": {
-        "fr": "Nom ou ID de la VM (ou « all ») : ",
-        "en": "VM name or ID (or 'all'): ",
     },
     "RAM in MB (blank = version minimum): ": {
         "fr": "RAM en Mo (vide = minimum de la version) : ",
@@ -9529,29 +9907,17 @@ TRANSLATIONS = {
         "fr": "Installation impossible d'ici.",
         "en": "Cannot install from here.",
     },
-    "Enter = cancel": {
-        "fr": "Entrée = annuler",
-        "en": "Enter = cancel",
-    },
     "Go ahead?": {
         "fr": "On y va ?",
         "en": "Go ahead?",
-    },
-    "Ignored, not in the list:": {
-        "fr": "Ignorés, absents de la liste :",
-        "en": "Ignored, not in the list:",
     },
     "Install some of the": {
         "fr": "Installer une partie des",
         "en": "Install some of the",
     },
-    "Numbers, space separated:": {
-        "fr": "Numéros, séparés par des espaces :",
-        "en": "Numbers, space separated:",
-    },
-    "every one of them": {
-        "fr": "tous",
-        "en": "every one of them",
+    "Modules to install:": {
+        "fr": "Modules à installer :",
+        "en": "Modules to install:",
     },
     "need repair first": {
         "fr": "à réparer d'abord",
@@ -13288,6 +13654,7 @@ TRANSLATIONS = {
         "fr": "📜 Afficher tous les champs",
         "en": "📜 Show every field",
     },
+    "Which source?": {"fr": "Quelle source ?", "en": "Which source?"},
     "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
     "A backup .zip, without restoring it": {
         "fr": "🗜  Une sauvegarde .zip, sans la restaurer",
@@ -13298,6 +13665,29 @@ TRANSLATIONS = {
         "en": "Path to the backup .zip (empty to cancel): ",
     },
     "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    # Choix d'un chemin par le port (pick_path).
+    "No such directory: ": {
+        "fr": "Répertoire introuvable : ",
+        "en": "No such directory: ",
+    },
+    "Not a file: ": {"fr": "Pas un fichier : ", "en": "Not a file: "},
+    "Not a directory: ": {
+        "fr": "Pas un répertoire : ",
+        "en": "Not a directory: ",
+    },
+    "File path (empty to cancel): ": {
+        "fr": "Chemin du fichier (vide pour annuler) : ",
+        "en": "File path (empty to cancel): ",
+    },
+    "Directory path (empty to cancel): ": {
+        "fr": "Chemin du répertoire (vide pour annuler) : ",
+        "en": "Directory path (empty to cancel): ",
+    },
+    "Invalid choice: ": {"fr": "Choix invalide : ", "en": "Invalid choice: "},
+    "Several: 1 3, 2-5 or all; empty for none: ": {
+        "fr": "Plusieurs : 1 3, 2-5 ou tout ; vide pour aucun : ",
+        "en": "Several: 1 3, 2-5 or all; empty for none: ",
+    },
     "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
     "Odoo backup .zip to inspect, without restoring it": {
         "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
@@ -14189,7 +14579,7 @@ TRANSLATIONS = {
         ),
         "en": (
             "International format, country code included: +15145550142."
-            " Empty to keep, \"-\" to clear."
+            ' Empty to keep, "-" to clear.'
         ),
     },
     "sms_test_number_ask": {
@@ -14214,7 +14604,7 @@ TRANSLATIONS = {
     },
     "sms_call_no_number": {
         "fr": "Aucun numero d'essai defini : voir « Numero d'essai ».",
-        "en": "No test number set: see \"Test number\".",
+        "en": 'No test number set: see "Test number".',
     },
     "sms_call_warning": {
         "fr": (
@@ -14361,10 +14751,6 @@ TRANSLATIONS = {
     "mail_ask_imap_host": {"fr": "Serveur IMAP : ", "en": "IMAP server: "},
     "mail_ask_smtp_host": {"fr": "Serveur SMTP : ", "en": "SMTP server: "},
     "mail_ask_account": {"fr": "Quel compte ? ", "en": "Which account? "},
-    "mail_ask_mode": {
-        "fr": "Mode (clear / encrypted / ephemeral) : ",
-        "en": "Mode (clear / encrypted / ephemeral): ",
-    },
     "mail_app_password_note": {
         "fr": "Ce fournisseur exige un mot de passe d'application.",
         "en": "This provider requires an app password.",
@@ -14383,6 +14769,7 @@ TRANSLATIONS = {
         "fr": "Compte supprimé.",
         "en": "Account deleted.",
     },
+    "mail_size_kb": {"fr": "ko", "en": "KB"},
     "mail_connection_ok": {
         "fr": "Connexion réussie.",
         "en": "Connection succeeded.",
@@ -14588,8 +14975,6 @@ TRANSLATIONS = {
         "fr": "Choisir un fichier existant",
         "en": "Choose an existing file",
     },
-    "mail_kdbx_menu_cancel": {"fr": "Annuler", "en": "Cancel"},
-    "mail_kdbx_ask_choice": {"fr": "Votre choix : ", "en": "Your choice: "},
     "mail_kdbx_ask_path_new": {
         "fr": "Chemin du nouveau fichier kdbx",
         "en": "Path for the new kdbx file",
@@ -14929,8 +15314,7 @@ TRANSLATIONS = {
     },
     "mail_err_token_revoked": {
         "fr": (
-            "autorisation révoquée : le compte doit être autorisé de"
-            " nouveau —"
+            "autorisation révoquée : le compte doit être autorisé de nouveau —"
         ),
         "en": "authorisation revoked: the account must be authorised again —",
     },
@@ -14986,8 +15370,7 @@ TRANSLATIONS = {
             " rafraîchissement est demandé."
         ),
         "en": (
-            "This provider accepts OAuth only: a refresh token is asked"
-            " for."
+            "This provider accepts OAuth only: a refresh token is asked for."
         ),
     },
     "mail_account_token": {
@@ -15024,8 +15407,7 @@ TRANSLATIONS = {
             " refusée"
         ),
         "en": (
-            "the redirection does not match the request: authorisation"
-            " refused"
+            "the redirection does not match the request: authorisation refused"
         ),
     },
     "mail_err_authorization_refused": {
@@ -15086,8 +15468,7 @@ TRANSLATIONS = {
     },
     "mail_trash_source_kept": {
         "fr": (
-            "le serveur n'a pas pu vider la source : le message y reste"
-            " barré"
+            "le serveur n'a pas pu vider la source : le message y reste barré"
         ),
         "en": (
             "the server could not clear the source: the message stays"
@@ -15236,8 +15617,7 @@ TRANSLATIONS = {
     "mail_move_across_unconfirmed": {
         "fr": ("Dépôt non confirmé : le message reste ici. Cible visée :"),
         "en": (
-            "Deposit not confirmed: the message stays here. Intended"
-            " target:"
+            "Deposit not confirmed: the message stays here. Intended target:"
         ),
     },
     "mail_err_empty_failed": {
@@ -15523,10 +15903,6 @@ TRANSLATIONS = {
         "en": "Development tools:",
     },
     "Disk needed:": {"fr": "Disque nécessaire :", "en": "Disk needed:"},
-    "Numbers separated by spaces, [all], blank = none:": {
-        "fr": "Numéros séparés par des espaces, [tous], vide = aucun :",
-        "en": "Numbers separated by spaces, [all], blank = none:",
-    },
     "No graphical VM: these tools are not installed.": {
         "fr": "Aucune VM graphique : ces outils ne seront pas installés.",
         "en": "No graphical VM: these tools are not installed.",
@@ -16769,10 +17145,7 @@ TRANSLATIONS = {
         "fr": "Préréglage illisible : ",
         "en": "Unreadable preset: ",
     },
-    "Preset number (0 to go back)": {
-        "fr": "Numéro du préréglage (0 pour revenir)",
-        "en": "Preset number (0 to go back)",
-    },
+    "Which preset?": {"fr": "Quel préréglage ?", "en": "Which preset?"},
     "An empty answer keeps the preset value.": {
         "fr": "Une réponse vide garde la valeur du préréglage.",
         "en": "An empty answer keeps the preset value.",
@@ -16867,10 +17240,7 @@ TRANSLATIONS = {
         "fr": "Nom du profil (minuscules, chiffres, « - » ou « _ »)",
         "en": "Profile name (lowercase, digits, - or _)",
     },
-    "Profile number (0 to go back)": {
-        "fr": "Numéro du profil (0 pour revenir)",
-        "en": "Profile number (0 to go back)",
-    },
+    "Which profile?": {"fr": "Quel profil ?", "en": "Which profile?"},
     "Profile saved: ": {
         "fr": "Profil enregistré : ",
         "en": "Profile saved: ",
@@ -16902,10 +17272,6 @@ TRANSLATIONS = {
     "Unknown driver: ": {
         "fr": "Pilote inconnu : ",
         "en": "Unknown driver: ",
-    },
-    "Unknown choice.": {
-        "fr": "Choix inconnu.",
-        "en": "Unknown choice.",
     },
     "The installation requires sudo.": {
         "fr": "L'installation demande sudo.",
@@ -17062,10 +17428,6 @@ TRANSLATIONS = {
     "No secret to store: this one authenticates over SSH.": {
         "fr": "Aucun secret à déposer : celui-là s'authentifie par SSH.",
         "en": "No secret to store: this one authenticates over SSH.",
-    },
-    "Several technologies match: ": {
-        "fr": "Plusieurs technologies correspondent : ",
-        "en": "Several technologies match: ",
     },
     "Authentication through a web form (SAML / SSO)?": {
         "fr": "Authentification par formulaire web (SAML / SSO) ?",
@@ -17443,10 +17805,7 @@ TRANSLATIONS = {
         "fr": "Ce que le filtre contrôle : adresses, courriels, chemins de compte. Pas les noms.",
         "en": "What the filter checks",
     },
-    "cancel": {
-        "fr": "annuler",
-        "en": "cancel",
-    },
+    "Send it?": {"fr": "L'envoyer ?", "en": "Send it?"},
     "Nothing has been sent.": {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
@@ -17508,10 +17867,16 @@ TRANSLATIONS = {
         "fr": "🤖 Claude Code - sessions locales",
         "en": "🤖 Claude Code - local sessions",
     },
+    # La même phrase sans sa marque : l'intro de Claude Code, que 🤖 précède.
+    "Local Claude Code sessions": {
+        "fr": "Claude Code - sessions locales",
+        "en": "Claude Code - local sessions",
+    },
     "List local sessions": {
         "fr": "📋 Lister les sessions locales",
         "en": "📋 List local sessions",
     },
+    "Which session?": {"fr": "Quelle session ?", "en": "Which session?"},
     "Ask a question to a session": {
         "fr": "❓ Poser une question à une session",
         "en": "❓ Ask a question to a session",
@@ -18636,10 +19001,6 @@ TRANSLATIONS = {
         "fr": "Docker pose un démon que root possède.",
         "en": "Docker runs a daemon owned by root.",
     },
-    "Mode": {
-        "fr": "Mode",
-        "en": "Mode",
-    },
     "Use vendor packages? (Y/N): ": {
         "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
         "en": "Use vendor packages? (Y/N): ",
@@ -18659,10 +19020,6 @@ TRANSLATIONS = {
     "Odoo version:": {
         "fr": "Version d'Odoo :",
         "en": "Odoo version:",
-    },
-    "Number": {
-        "fr": "Numéro",
-        "en": "Number",
     },
     "Rebuild without cache? (Y/N): ": {
         "fr": "Reconstruire sans cache ? (O/N) : ",
@@ -18880,10 +19237,6 @@ TRANSLATIONS = {
         "fr": "L'unité a refusé. Son état, puis son journal :",
         "en": "The unit refused. Its state, then its journal:",
     },
-    "All versions": {
-        "fr": "Toutes les versions",
-        "en": "All versions",
-    },
     "Output:": {
         "fr": "Sortie :",
         "en": "Output:",
@@ -18936,9 +19289,9 @@ TRANSLATIONS = {
         "fr": "Toujours aucune émulation pour : %s",
         "en": "Still no emulation for: %s",
     },
-    "Every version: hours of work, tens of GB.": {
-        "fr": "Toutes les versions : des heures, et des dizaines de Go.",
-        "en": "Every version: hours of work, tens of GB.",
+    "Several versions: hours of work, tens of GB.": {
+        "fr": "Plusieurs versions : des heures, et des dizaines de Go.",
+        "en": "Several versions: hours of work, tens of GB.",
     },
     "Built:": {
         "fr": "Construites :",
@@ -18960,13 +19313,13 @@ TRANSLATIONS = {
         "fr": "🎯 Images à la pièce",
         "en": "Images one by one",
     },
-    "Numbers (1 3, 2-5, * for all, empty to cancel)": {
-        "fr": "Numéros (1 3, 2-5, * pour tout, vide pour annuler)",
-        "en": "Numbers (1 3, 2-5, * for all, empty to cancel)",
+    "Images to remove:": {
+        "fr": "Images à effacer :",
+        "en": "Images to remove:",
     },
-    "Invalid selection: nothing removed.": {
-        "fr": "Sélection invalide : rien n'est effacé.",
-        "en": "Invalid selection: nothing removed.",
+    "Workspaces to remove:": {
+        "fr": "Espaces de travail à effacer :",
+        "en": "Workspaces to remove:",
     },
     "No image.": {
         "fr": "Aucune image.",
@@ -20773,7 +21126,7 @@ def get_lang() -> str:
             )
             if match:
                 lang = match.group(1)
-                if lang in ("fr", "en"):
+                if lang in LANGUAGES:
                     _current_lang = lang
                     return _current_lang
         except OSError:
@@ -20781,7 +21134,7 @@ def get_lang() -> str:
 
     # 2. Check env var
     env_lang = os.environ.get("EL_LANG")
-    if env_lang in ("fr", "en"):
+    if env_lang in LANGUAGES:
         _current_lang = env_lang
         return _current_lang
 
@@ -20818,6 +21171,31 @@ def set_lang(lang: str) -> None:
             f.write(content)
 
 
+def use_lang(lang: str) -> None:
+    """Fixe la langue de CE processus sans rien écrire.
+
+    Pour un processus qui sert une session à part, comme un worker de
+    l'interface web : `set_lang` persiste le choix dans env_var.sh, fichier
+    versionné qui règle aussi le terminal de l'utilisateur.
+    """
+    if lang not in LANGUAGES:
+        raise ValueError(f"unknown language: {lang!r}")
+    global _current_lang
+    _current_lang = lang
+
+
+def translate(key: str, lang: str) -> str:
+    """Traduction de `key` dans `lang`, sans toucher à la langue du processus.
+
+    Clé inconnue : la clé elle-même. Langue absente de l'entrée : le
+    français, comme `t`.
+    """
+    entry = TRANSLATIONS.get(key)
+    if entry is None:
+        return key
+    return entry.get(lang, entry.get("fr", key))
+
+
 def lang_is_configured() -> bool:
     """Check if a language has been explicitly set."""
     if os.path.exists(ENV_VAR_FILE):
@@ -20831,8 +21209,4 @@ def lang_is_configured() -> bool:
 
 
 def t(key: str) -> str:
-    entry = TRANSLATIONS.get(key)
-    if entry is None:
-        return key
-    lang = get_lang()
-    return entry.get(lang, entry.get("fr", key))
+    return translate(key, get_lang())

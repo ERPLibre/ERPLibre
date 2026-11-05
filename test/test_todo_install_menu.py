@@ -30,8 +30,9 @@ sys.path.insert(0, str(RACINE))
 
 from script.todo import todo as todo_module  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
-QUESTION_SYSTEME = "First system installation?"
+QUESTION_SYSTEME = t("First system installation? (Y/N)")
 
 
 class ExecuteFactice:

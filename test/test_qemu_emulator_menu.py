@@ -38,8 +38,8 @@ class TestSshOptions(unittest.TestCase):
 
     def test_local_vm_tolerates_a_recycled_host_key(self):
         """Une IP libvirt est réattribuée d'un déploiement au suivant : la clé
-        change sous la même adresse et ssh refuse — « Host key verification
-        failed », vécu dans ce menu même."""
+        change sous la même adresse et ssh refuse : « Host key verification
+        failed »."""
         opts = TODO._qemu_ssh_opts("virsh")
         self.assertIn("StrictHostKeyChecking=no", opts)
         self.assertIn("UserKnownHostsFile=/dev/null", opts)
@@ -229,8 +229,8 @@ class TestEmulatorMenu(_MenuCase):
 
     def test_a_running_emulator_is_seen_and_refusing_stops_there(self):
         """Deux émulateurs sur un même AVD, et le second meurt sur « Running
-        multiple emulators with the same AVD » — vécu deux fois. On le dit
-        AVANT, et un refus ne démarre rien."""
+        multiple emulators with the same AVD ». On le dit AVANT, et un refus
+        ne démarre rien."""
         out, calls = self._play(["1", "n"], running=1)
         self.assertIn("pkill -f", out)
         # « [q]emu » : la classe empêche le pkill de se trouver lui-même.
@@ -257,7 +257,7 @@ class TestEmulatorMenu(_MenuCase):
         self.assertEqual(len(started), 1)
         cmd = started[0][-1]
         # Chemin absolu : « ssh hôte 'commande' » ne lit ni ~/.profile ni
-        # ~/.bashrc, et « emulator » seul rend « command not found » — vécu.
+        # ~/.bashrc, et « emulator » seul y rend « command not found ».
         self.assertIn("$HOME/android/emulator/emulator", cmd)
         self.assertIn("-no-window", cmd)
         # sg kvm : sans le groupe, l'émulateur n'a pas /dev/kvm et renonce.
@@ -305,8 +305,8 @@ class TestEmulatorMenu(_MenuCase):
 
     def test_a_vm_without_the_sdk_is_diagnosed_before_anything_else(self):
         """Une VM déployée sans cocher l'outil est le cas NORMAL. Le menu le
-        dit avant même de demander la fenêtre — mesuré sur une VM de migration,
-        où le démarrage détaché rendait 0 et le journal disait « not found ».
+        dit avant même de demander la fenêtre : le démarrage détaché y rend 0
+        pendant que le journal dit « not found ».
         """
         out, calls = self._play(["1"], probe="NO_SDK\n")
         self.assertIn("SDK", out)
@@ -321,13 +321,16 @@ class TestEmulatorMenu(_MenuCase):
         self.assertIn("AVD", out)
         self.assertEqual(self._started(calls), [])
 
-    def test_a_stray_answer_cancels_instead_of_starting(self):
-        """« n » à une question à deux crans partait démarrer l'émulateur :
-        tout ce qui n'était pas « 2 » valait « sans fenêtre ». Observé."""
+    def test_a_stray_answer_is_asked_again_and_zero_starts_nothing(self):
+        """Une réponse de travers à une question à deux crans (« n », « 3 »,
+        « oui ») ne démarre pas l'émulateur : elle est nommée, et la même
+        question revient, à laquelle [0] répond sans rien démarrer. Seuls
+        « 1 » et une réponse vide démarrent sans fenêtre."""
         for stray in ("n", "3", "oui"):
             self.calls = []
-            out, calls = self._play(["1", stray])
+            out, calls = self._play(["1", stray, "0"])
             self.assertEqual(self._started(calls), [], stray)
+            self.assertIn(f"{t('Invalid choice: ')}{stray}", out)
 
     def test_a_start_that_never_appears_reports_the_log_not_a_success(self):
         """Le code de retour d'un « setsid » détaché vaut 0 quoi qu'il arrive :
@@ -383,8 +386,8 @@ class TestScrcpyTunnel(unittest.TestCase):
 
     def test_a_local_vm_needs_the_vm_as_the_LAST_hop(self):
         """L'émulateur n'écoute que sur le 127.0.0.1 de la VM. Une redirection
-        vers IP_VM:5555 depuis l'hyperviseur est refusée (mesuré) : « localhost »
-        ne vaut que sur le dernier saut, d'où -J."""
+        vers IP_VM:5555 depuis l'hyperviseur est refusée : « localhost » ne
+        vaut que sur le dernier saut, d'où -J."""
         out, _ = self._play(src="virsh")
         self.assertIn("-L 5555:localhost:5555", out)
         self.assertIn("-J poste@10.0.0.2", out)
@@ -474,8 +477,8 @@ class TestEmulatorGpuOverride(unittest.TestCase):
 
     Les drapeaux sont figés à l'import de todo.py : la variable doit donc être
     lue AVANT, ce qu'un sous-processus est seul à démontrer. Le défaut reste
-    swangle — mesuré — car un contexte GL qui échoue laisse l'émulateur pendu
-    au lieu de retomber.
+    swangle, car un contexte GL qui échoue laisse l'émulateur pendu au lieu
+    de retomber.
     """
 
     def _flags(self, env=None):

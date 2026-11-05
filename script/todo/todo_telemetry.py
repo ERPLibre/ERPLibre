@@ -17,12 +17,16 @@ import ast
 import asyncio
 import glob
 import json
+import logging
 import os
-import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
+
+from script.todo import json_store
+
+log = logging.getLogger(__name__)
 
 try:
     from script.todo.todo_i18n import t
@@ -43,38 +47,52 @@ def _path() -> Path:
     return base / "todo_telemetry.json"
 
 
+def _empty() -> dict:
+    return {"paths": {}}
+
+
 def load() -> dict:
+    # _path() crée ~/.erplibre et peut lever OSError (répertoire parent en
+    # lecture seule) : la télémétrie rend alors un magasin vide.
     try:
-        return json.loads(_path().read_text())
-    except (OSError, ValueError):
-        return {"paths": {}}
+        data = json_store.read(_path(), _empty)
+    except OSError:
+        return _empty()
+    return data if isinstance(data, dict) else _empty()
 
 
 def _save(data: dict) -> None:
     try:
-        _path().write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        json_store.write(_path(), data)
     except OSError:
         pass
 
 
 def record(path: str) -> None:
     """Incrémente le compteur du menu `path`. Best-effort : ne lève jamais
-    (la télémétrie ne doit jamais casser la navigation)."""
+    (la télémétrie ne doit jamais casser la navigation). Lecture et écriture
+    se font sous un même verrou : deux processus TODO ne perdent aucun
+    incrément."""
     if not path or path == _LAST[0]:
         return
     _LAST[0] = path
-    try:
-        data = load()
+
+    def bump(data):
+        if not isinstance(data, dict):
+            data = _empty()
         paths = data.setdefault("paths", {})
         paths[path] = paths.get(path, 0) + 1
         data["updated"] = int(time.time())
-        _save(data)
+        return data
+
+    try:
+        json_store.update(_path(), bump, _empty)
     except Exception:
         pass
 
 
 def reset() -> None:
-    _save({"paths": {}})
+    _save(_empty())
 
 
 def _nested(paths: dict) -> dict:
@@ -93,124 +111,8 @@ def _nested(paths: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Métadonnées de navigation DÉRIVÉES DU CODE (structure réelle des menus)
+# L'arbre des menus, lu dans leurs déclarations (`menus/*.py`)
 # --------------------------------------------------------------------------- #
-def _str_of(node) -> str | None:
-    """Chaîne d'un nœud AST : littéral, t("…") ou f-string (parties Constant)."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "t"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-    ):
-        return node.args[0].value
-    if isinstance(node, ast.JoinedStr):
-        return "".join(
-            p.value
-            for p in node.values
-            if isinstance(p, ast.Constant) and isinstance(p.value, str)
-        )
-    return None
-
-
-def _choice_entries(func) -> list:
-    """Entrées NUMÉROTÉES d'un menu « choices = [...] », dans l'ordre : chaque
-    commande est {« label », « section »}, la section étant le dernier marqueur
-    {"section": …} rencontré (fill_help_info ne numérote pas les sections)."""
-    for node in ast.walk(func):
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(tg, ast.Name) and tg.id == "choices"
-                for tg in node.targets
-            )
-            and isinstance(node.value, ast.List)
-        ):
-            entries, section = [], None
-            for el in node.value.elts:
-                if not isinstance(el, ast.Dict):
-                    continue
-                d = {}
-                for k, v in zip(el.keys, el.values):
-                    if isinstance(k, ast.Constant):
-                        d[k.value] = _str_of(v)
-                if d.get("section"):
-                    section = d["section"]
-                    continue
-                lab = d.get("prompt_description") or d.get(
-                    "prompt_description_key"
-                )
-                if lab:
-                    entries.append({"label": lab, "section": section})
-            return entries
-    return []
-
-
-def _dispatch(func) -> dict:
-    """{numéro: (nom_de_méthode, kwargs)} depuis « status == "N": self.X(...) ».
-    Les kwargs LITTÉRAUX (ex. dry_run=True) sont capturés pour pouvoir rejouer
-    la commande à l'identique depuis la télémétrie."""
-    out = {}
-    for node in ast.walk(func):
-        if not isinstance(node, ast.If):
-            continue
-        test = node.test
-        if (
-            isinstance(test, ast.Compare)
-            and isinstance(test.left, ast.Name)
-            and test.left.id == "status"
-            and len(test.ops) == 1
-            and isinstance(test.ops[0], ast.Eq)
-            and isinstance(test.comparators[0], ast.Constant)
-        ):
-            try:
-                num = int(test.comparators[0].value)
-            except (TypeError, ValueError):
-                continue
-            for stmt in node.body:
-                found = None
-                for n in ast.walk(stmt):
-                    if (
-                        isinstance(n, ast.Call)
-                        and isinstance(n.func, ast.Attribute)
-                        and isinstance(n.func.value, ast.Name)
-                        and n.func.value.id == "self"
-                    ):
-                        kwargs = {
-                            kw.arg: kw.value.value
-                            for kw in n.keywords
-                            if kw.arg and isinstance(kw.value, ast.Constant)
-                        }
-                        found = (n.func.attr, kwargs)
-                        break
-                if found:
-                    out[num] = found
-                    break
-    return out
-
-
-def _menu_labels(cls) -> dict:
-    """{méthode: label} depuis l'attribut de classe _MENU_LABELS."""
-    for node in ast.walk(cls):
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(tg, ast.Name) and tg.id == "_MENU_LABELS"
-                for tg in node.targets
-            )
-            and isinstance(node.value, ast.Dict)
-        ):
-            return {
-                k.value: v.value
-                for k, v in zip(node.value.keys, node.value.values)
-                if isinstance(k, ast.Constant) and isinstance(v, ast.Constant)
-            }
-    return {}
-
-
 def _config_list(config_key, todo_dir):
     """Entrées d'une liste de config de todo.json (ex. « code_from_makefile »),
     cherchée à n'importe quel niveau. [] si absente."""
@@ -236,274 +138,260 @@ def _config_list(config_key, todo_dir):
     return found
 
 
-def _len_choices_offset(comp):
-    """K pour « str(len(choices)) » -> 0 et « str(len(choices) - N) » -> N ;
-    None si le nœud n'est pas de cette forme."""
-    if not (
-        isinstance(comp, ast.Call)
-        and isinstance(comp.func, ast.Name)
-        and comp.func.id == "str"
-        and comp.args
-    ):
-        return None
-    arg = comp.args[0]
-
-    def is_len_choices(x):
-        return (
-            isinstance(x, ast.Call)
-            and isinstance(x.func, ast.Name)
-            and x.func.id == "len"
-            and x.args
-            and isinstance(x.args[0], ast.Name)
-            and x.args[0].id == "choices"
-        )
-
-    if is_len_choices(arg):
-        return 0
-    if (
-        isinstance(arg, ast.BinOp)
-        and isinstance(arg.op, ast.Sub)
-        and is_len_choices(arg.left)
-        and isinstance(arg.right, ast.Constant)
-    ):
-        return int(arg.right.value)
-    return None
+def _registry_fields(registry_py) -> dict:
+    """{constructeur: [champ, …]} des classes de `registry_py`, le module du
+    registre, leurs champs annotés dans l'ordre : le nom de chaque argument
+    positionnel d'un fichier de menus. {} si le fichier ne se lit pas."""
+    try:
+        mod = ast.parse(Path(registry_py).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return {}
+    return {
+        cls.name: [
+            stmt.target.id
+            for stmt in cls.body
+            if isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+        ]
+        for cls in mod.body
+        if isinstance(cls, ast.ClassDef)
+    }
 
 
-def _dispatch_len(func) -> dict:
-    """{K: méthode} pour « status == str(len(choices) - K): self.M() »."""
-    out = {}
-    for node in ast.walk(func):
-        if not isinstance(node, ast.If):
-            continue
-        test = node.test
-        if not (
-            isinstance(test, ast.Compare)
-            and isinstance(test.left, ast.Name)
-            and test.left.id == "status"
-            and len(test.ops) == 1
-            and isinstance(test.ops[0], ast.Eq)
-        ):
-            continue
-        k = _len_choices_offset(test.comparators[0])
-        if k is None:
-            continue
-        method = None
-        for stmt in node.body:
-            for n in ast.walk(stmt):
-                if (
-                    isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute)
-                    and isinstance(n.func.value, ast.Name)
-                    and n.func.value.id == "self"
-                ):
-                    method = n.func.attr
-                    break
-            if method:
-                break
-        if method:
-            out[k] = method
-    return out
+def _declared(node, fields):
+    """Valeur de `node`, une expression d'un fichier de menus : l'appel
+    d'un constructeur de `fields`, rendu en dict {"type": constructeur,
+    champ: valeur, …}, une liste, ou un littéral. ValueError pour toute
+    autre expression : un fichier de menus ne calcule rien."""
+    if isinstance(node, ast.Call):
+        name = node.func.id if isinstance(node.func, ast.Name) else None
+        names = fields.get(name)
+        if names is None or len(node.args) > len(names):
+            raise ValueError(f"not a registry call: {ast.unparse(node)}")
+        out = {"type": name}
+        for field, arg in zip(names, node.args):
+            out[field] = _declared(arg, fields)
+        for keyword in node.keywords:
+            if keyword.arg not in names:
+                raise ValueError(f"no field {keyword.arg!r} in {name}")
+            out[keyword.arg] = _declared(keyword.value, fields)
+        return out
+    if isinstance(node, ast.List):
+        return [_declared(element, fields) for element in node.elts]
+    return ast.literal_eval(node)
 
 
-def _choices_children(func, todo_dir):
-    """Commandes d'un menu bâti par « choices » (config_file.get_config +
-    choices.append/extend) avec dispatch « str(len(choices)-N) ». Renvoie une
-    liste de (label, méthode, kwargs) dans l'ordre affiché, ou None si le motif
-    ne s'applique pas. Les entrées de CONFIG rejouent via
-    execute_from_configuration ; les entrées APPENDÉES via leur méthode."""
+# Champs texte que lisent l'arbre et le navigateur, par constructeur, en
+# trois groupes : ceux qu'un appel doit donner, faute de valeur par défaut
+# au registre ; ceux qui peuvent valoir None ; ceux qui ont une valeur
+# par défaut qui n'est pas None. Un champ donné est une chaîne, ou None
+# s'il est du deuxième groupe ; un champ non donné prend sa valeur par
+# défaut. Le `crumb` d'un `Menu`, sans valeur par défaut, se donne, et
+# peut valoir None.
+_TEXT_FIELDS = {
+    "Menu": (
+        ("name", "crumb"),
+        ("crumb", "state", "intro", "opens", "before", "asks"),
+        ("mark",),
+    ),
+    "Section": (("key",), (), ()),
+    "Entry": (("key", "action"), ("suffix", "when", "hotkey", "crumb"), ()),
+    "FromConfig": (("config_key", "action", "kwarg"), (), ()),
+    "FromMethod": (("method", "action", "kwarg"), (), ()),
+}
 
-    def _dict_label(dnode):
-        d = {}
-        for k, v in zip(dnode.keys, dnode.values):
-            if isinstance(k, ast.Constant):
-                d[k.value] = _str_of(v)
-        return d.get("prompt_description") or d.get("prompt_description_key")
 
-    # On collecte affectations et append AVEC leur n° de ligne pour rejouer
-    # dans l'ORDRE (les entrées « menu_entry = {…}; choices.append(menu_entry) »
-    # réutilisent la même variable -> il faut suivre la dernière valeur).
-    config_key = None
-    events = []  # (lineno, kind, payload)
-    for node in ast.walk(func):
-        if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-        ):
-            var = node.targets[0].id
-            val = node.value
-            if isinstance(val, ast.Dict):
-                events.append((node.lineno, "assign", (var, val)))
-            elif (
-                var == "choices"
-                and isinstance(val, ast.Call)
-                and isinstance(val.func, ast.Attribute)
-                and val.func.attr == "get_config"
-                and val.args
-                and isinstance(val.args[0], ast.Constant)
+def _check_menu(menu) -> None:
+    """ValueError si `menu`, le dict que `_declared` rend d'un appel de
+    `Menu`, n'a pas la forme que lisent l'arbre et le navigateur : chaque
+    champ de _TEXT_FIELDS donné s'il doit l'être, et une chaîne, ou None
+    là où _TEXT_FIELDS le permet ; `entries` une liste de Section, Entry,
+    FromConfig et FromMethod, les `kwargs` d'une Entry None ou un dict aux
+    clés de chaîne, son `danger` None ou un booléen. TypeError si ces
+    `kwargs` ne s'écrivent pas en JSON, comme l'arbre que sert le hub."""
+    entries = menu.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError(f"entries is not a list: {entries!r}")
+    for item in [menu, *entries]:
+        kind = item.get("type") if isinstance(item, dict) else None
+        kinds = ("Menu",)
+        if item is not menu:
+            kinds = ("Section", "Entry", "FromConfig", "FromMethod")
+        if kind not in kinds:
+            raise ValueError(f"not one of {kinds}: {item!r}")
+        required, nullable, defaulted = _TEXT_FIELDS[kind]
+        for field in required + nullable + defaulted:
+            if field not in item:
+                if field in required:
+                    raise ValueError(f"{kind}.{field} is missing")
+                continue
+            value = item[field]
+            if not (
+                isinstance(value, str) or (value is None and field in nullable)
             ):
-                config_key = val.args[0].value
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "append"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "choices"
-            and node.args
+                raise ValueError(f"{kind}.{field} is not a string: {value!r}")
+        kwargs = item.get("kwargs")
+        if kwargs is not None and not (
+            isinstance(kwargs, dict)
+            and all(isinstance(k, str) for k in kwargs)
         ):
-            events.append((node.lineno, "append", node.args[0]))
-    events.sort(key=lambda e: e[0])
-    var_dict, appended = {}, []
-    for _ln, kind, payload in events:
-        if kind == "assign":
-            var_dict[payload[0]] = payload[1]
-        else:  # append : arg = Dict littéral ou Name (variable)
-            arg = payload
-            dnode = (
-                arg
-                if isinstance(arg, ast.Dict)
-                else (
-                    var_dict.get(arg.id) if isinstance(arg, ast.Name) else None
-                )
+            raise ValueError(f"kwargs is not a dict of names: {kwargs!r}")
+        json.dumps(kwargs)
+        danger = item.get("danger")
+        if danger is not None and not isinstance(danger, bool):
+            raise ValueError(f"danger is not a boolean: {danger!r}")
+
+
+def _declared_menus(todo_dir, failed=None) -> dict:
+    """{méthode: menu} des menus que déclarent `<todo_dir>/menus/*.py`, un
+    menu étant le dict que `_declared` rend d'un appel de `Menu`. Lus par
+    AST, sans rien importer : le hub, qui garde ses modules, lit toujours
+    les fichiers tels qu'ils sont sur le disque. Un fichier qui ne se lit
+    pas, dont une valeur se calcule, ou dont un menu n'a pas la forme que
+    vérifie `_check_menu`, ne déclare rien : un avertissement du journal
+    nomme le fichier et l'erreur, la liste `failed`, quand elle est
+    donnée, reçoit son chemin, et rien ne lève."""
+    todo_dir = Path(todo_dir)
+    fields = _registry_fields(todo_dir / "ui" / "registry.py")
+    menus = {}
+    for path in sorted(todo_dir.glob("menus/*.py")):
+        found = {}
+        try:
+            mod = ast.parse(path.read_text(encoding="utf-8"))
+            for stmt in mod.body:
+                if not isinstance(stmt, ast.Assign):
+                    continue
+                value = _declared(stmt.value, fields)
+                if isinstance(value, dict) and value["type"] == "Menu":
+                    _check_menu(value)
+                    found[value["name"]] = value
+        except (OSError, SyntaxError, TypeError, ValueError) as error:
+            log.warning(
+                "%s declares no menu: %s: %s",
+                path,
+                type(error).__name__,
+                error,
             )
-            if dnode is not None:
-                lab = _dict_label(dnode)
-                if lab:
-                    appended.append(lab)
-    if config_key is None and not appended:
-        return None
-    children = []
-    for entry in _config_list(config_key, todo_dir) if config_key else []:
-        lab = (
-            entry.get("prompt_description_key")
-            or entry.get("prompt_description")
-            or "?"
-        )
-        children.append(
-            (lab, "execute_from_configuration", {"instance": entry})
-        )
-    len_disp = _dispatch_len(func)
-    n_config = len(children)  # figé : `children` grossit dans la boucle
-    n_total = n_config + len(appended)
-    for j, lab in enumerate(appended):
-        pos = n_config + j  # 0-based dans la liste globale (stable)
-        method = len_disp.get(n_total - 1 - pos)  # None si non mappé
-        children.append((lab, method, {}))
+            if failed is not None:
+                failed.append(path)
+            continue
+        menus.update(found)
+    return menus
+
+
+def _declared_children(menu, todo_dir, labels, build) -> list:
+    """Nœuds des entrées de `menu`, un menu déclaré : le nœud de `build`
+    pour une `Entry` qui ouvre un menu de `labels`, une feuille pour une
+    autre, une feuille par élément de la liste d'un `FromConfig`, sauf un
+    élément qui porte une section, qui nomme celle des suivants. Une
+    entrée dont le libellé finit par un `suffix` calculé à l'affichage
+    porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
+    Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
+    ni la TUI ni la page web ne le lancent. Une feuille gardée (`when`) y
+    est, quoi que rende sa garde, mais sans méthode : seul son menu lit
+    la garde, et la TUI, qui lance une feuille par sa méthode, ne la
+    lance pas. La garde ne protège qu'une feuille : une entrée gardée qui
+    ouvre un menu de `labels` porte le nœud de `build`, dont les feuilles
+    gardent leur méthode, et la TUI les lance quoi que rende la garde. Un
+    `FromMethod` n'y donne aucune feuille : sa liste ne se lit qu'en
+    appelant sa méthode. Chaque enfant d'un menu `asks` porte un `entry`
+    vide : sa question n'est pas un message `menu`, où la page web
+    chercherait l'entrée qu'elle répond. Une `Entry` qui n'ouvre pas un
+    menu de `labels` mais déclare un segment (`crumb`) donne un menu sans
+    feuille, sous ce segment, que ni la TUI ni la page web ne lancent."""
+    children, section = [], None
+    for item in menu.get("entries") or []:
+        kind = item.get("type") if isinstance(item, dict) else None
+        if kind == "Section":
+            section = item.get("key")
+        elif kind == "Entry" and (
+            item.get("action") in labels or item.get("crumb")
+        ):
+            if item.get("action") in labels:
+                child = build(item["action"])
+            else:
+                child = {
+                    "label": item["crumb"],
+                    "is_menu": True,
+                    "children": [],
+                }
+            child["entry"] = "" if item.get("suffix") else item.get("key")
+            if item.get("danger"):
+                child["danger"] = True
+            children.append(child)
+        elif kind == "Entry":
+            leaf = {
+                "label": item.get("key"),
+                "is_menu": False,
+                "children": [],
+                "method": None if item.get("when") else item.get("action"),
+                "kwargs": dict(item.get("kwargs") or {}),
+                "section": section,
+            }
+            if item.get("suffix"):
+                leaf["entry"] = ""
+            if item.get("danger"):
+                leaf["danger"] = True
+            children.append(leaf)
+        elif kind == "FromConfig":
+            for element in _config_list(item.get("config_key"), todo_dir):
+                # Le tri de `registry.kept`, que ce module ne charge pas.
+                group = element.get("menu_group")
+                only, without = item.get("only"), item.get("without")
+                if (only is not None and group not in only) or (
+                    without is not None and group in without
+                ):
+                    continue
+                if element.get("section"):
+                    section = element["section"]
+                    continue
+                children.append(
+                    {
+                        "label": element.get("prompt_description_key")
+                        or element.get("prompt_description")
+                        or "?",
+                        "is_menu": False,
+                        "children": [],
+                        "method": item.get("action"),
+                        "kwargs": {item.get("kwarg"): element},
+                        "section": section,
+                    }
+                )
+    if menu.get("asks"):
+        for child in children:
+            child["entry"] = ""
     return children
 
 
-def _mixin_files(todo_py: Path) -> list:
-    """Les fichiers des mixins que todo.py assemble sur la classe TODO.
-
-    Lus dans ses propres imports « from script.todo.X import YMixin » : la
-    liste suit le code au lieu d'être recopiée ici, et un mixin ajouté demain
-    apparaîtra sans qu'on y pense.
-    """
-    try:
-        source = todo_py.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    noms = re.findall(
-        r"^from script\.todo\.(\w+) import \w*Mixin", source, re.MULTILINE
-    )
-    fichiers = []
-    for nom in noms:
-        chemin = todo_py.parent / f"{nom}.py"
-        if chemin.exists():
-            fichiers.append(chemin)
-    return fichiers
-
-
 def build_code_tree(todo_path=None) -> dict | None:
-    """Construit l'arbre des menus/commandes EN LISANT le code de todo.py
-    (AST). Chaque menu (méthode de _MENU_LABELS) devient un nœud ; ses branches
-    « status == N » deviennent des sous-menus (si la cible est un menu) ou des
-    commandes (feuilles). None si l'analyse échoue."""
-    p = Path(todo_path) if todo_path else (Path(__file__).parent / "todo.py")
-    todo_dir = p.parent  # todo.json est à côté de todo.py
-    try:
-        mod = ast.parse(p.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        return None
-    cls = next((n for n in ast.walk(mod) if isinstance(n, ast.ClassDef)), None)
-    if cls is None:
-        return None
-    methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
-    # ET les mixins. Ce lecteur est STATIQUE : il ne voit pas la classe
-    # assemblée, seulement le fichier qu'on lui donne. Depuis que les menus
-    # QEMU/KVM et Proxmox vivent dans des mixins, leur colonne avait disparu
-    # de cet écran — la commande s'exécutait toujours, mais on ne pouvait plus
-    # la lancer d'ici ni la lire. Les fichiers sont ceux que todo.py importe,
-    # donc rien à tenir à jour à la main.
-    for voisin in _mixin_files(p):
-        try:
-            frere = ast.parse(voisin.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError):
-            continue
-        for autre in (n for n in frere.body if isinstance(n, ast.ClassDef)):
-            for membre in autre.body:
-                if isinstance(membre, ast.FunctionDef):
-                    methods.setdefault(membre.name, membre)
-    labels = _menu_labels(cls)
-    if "run" not in methods or not labels:
+    """L'arbre des menus de TODO, lu dans les menus que déclarent les
+    fichiers `menus/*.py` du répertoire de `todo_path` (todo.py, qui ne se
+    lit pas ; par défaut celui de ce paquet), avec le module du registre et
+    todo.json : rien n'est importé ni appelé. La racine est le menu que
+    `run` ouvre ; une `Entry` dont l'action est le `name` d'un menu déclaré
+    qui a un segment ouvre ce menu, et son nœud porte ce segment
+    (`_declared_children`). Un menu qui se contient lui-même n'est
+    développé qu'une fois par chemin. None sans menu déclaré de `run`, ou
+    dès qu'un fichier de menus ne déclare rien : l'entrée qui ouvre l'un
+    de ses menus y serait une feuille, que la TUI lancerait."""
+    todo_dir = Path(todo_path).parent if todo_path else Path(__file__).parent
+    failed = []
+    declared = _declared_menus(todo_dir, failed)
+    labels = {
+        name: menu["crumb"] for name, menu in declared.items() if menu["crumb"]
+    }
+    if failed or "run" not in labels:
         return None
     seen = set()
 
     def build(method):
-        node = {
-            "label": labels.get(method, method),
-            "is_menu": True,
-            "children": [],
-        }
-        if method in seen or method not in methods:
+        node = {"label": labels[method], "is_menu": True, "children": []}
+        if method in seen:
             return node
         seen.add(method)
-        func = methods[method]
-        disp = _dispatch(func)
-        centries = _choice_entries(func)
-        for num in sorted(disp):
-            target, kwargs = disp[num]
-            if target in labels:  # sous-menu
-                node["children"].append(build(target))
-            else:  # commande (feuille) exécutable
-                entry = (
-                    centries[num - 1] if 0 <= num - 1 < len(centries) else None
-                )
-                lab = (
-                    entry["label"]
-                    if entry
-                    else target.lstrip("_").replace("_", " ")
-                )
-                node["children"].append(
-                    {
-                        "label": lab,
-                        "is_menu": False,
-                        "children": [],
-                        "method": target,
-                        "kwargs": kwargs,
-                        "section": entry["section"] if entry else None,
-                    }
-                )
-        # Menus bâtis par « choices » (get_config + append) sans dispatch
-        # littéral « status == "N" » : Code, Update, Git, Database…
-        if not disp:
-            for lab, tmethod, tkwargs in (
-                _choices_children(func, todo_dir) or []
-            ):
-                if tmethod in labels:  # une entrée qui ouvre un sous-menu
-                    node["children"].append(build(tmethod))
-                else:
-                    node["children"].append(
-                        {
-                            "label": lab,
-                            "is_menu": False,
-                            "children": [],
-                            "method": tmethod,
-                            "kwargs": tkwargs,
-                            "section": None,
-                        }
-                    )
+        node["children"] = _declared_children(
+            declared[method], todo_dir, labels, build
+        )
         seen.discard(method)
         return node
 
@@ -580,7 +468,8 @@ def _is_yes(reponse) -> bool:
 
 def _first_int(path):
     try:
-        return int(open(path).read().strip())
+        with open(path) as f:
+            return int(f.read().strip())
     except (OSError, ValueError):
         return None
 
@@ -615,9 +504,10 @@ def _net_sample():
 def _mem():
     info = {}
     try:
-        for line in open("/proc/meminfo"):
-            k, _, v = line.partition(":")
-            info[k] = int(v.split()[0]) * 1024
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                info[k] = int(v.split()[0]) * 1024
     except (OSError, ValueError):
         return None
     total = info.get("MemTotal", 0)
@@ -629,7 +519,8 @@ def _battery():
     for base in glob.glob("/sys/class/power_supply/BAT*"):
         cap = _first_int(os.path.join(base, "capacity"))
         try:
-            status = open(os.path.join(base, "status")).read().strip()
+            with open(os.path.join(base, "status")) as f:
+                status = f.read().strip()
         except OSError:
             status = ""
         if cap is not None:
@@ -699,7 +590,8 @@ def system_snapshot(prev, full=True):
     m["battery"] = _battery()
     m["temp"] = read_temperature() if full else None
     try:
-        m["uptime"] = float(open("/proc/uptime").read().split()[0])
+        with open("/proc/uptime") as f:
+            m["uptime"] = float(f.read().split()[0])
     except (OSError, ValueError):
         m["uptime"] = None
     try:
@@ -784,8 +676,10 @@ def _group_by_section(cmds):
 def run_tui(run_app: bool = True, state: dict | None = None):
     """TUI de télémétrie : vue Arbre (issue du code) et vue Kanban (F3), la
     disposition du Kanban défilant par F4 (colonnes / swimlanes / grille).
-    Sélectionner une COMMANDE = l'exécuter. `state` restaure la vue + le
-    curseur au retour. Renvoie (action|None, state) ; run_app=False -> l'app.
+    Sélectionner une COMMANDE = l'exécuter, sauf une commande dont le nœud
+    porte "danger" : un avis le dit, et la TUI reste ouverte. `state`
+    restaure la vue + le curseur au retour. Renvoie (action|None, state) ;
+    run_app=False -> l'app.
     """
     from textual.app import App, ComposeResult
     from textual.containers import (
@@ -811,13 +705,15 @@ def run_tui(run_app: bool = True, state: dict | None = None):
     state = state or {}
 
     class CmdItem(ListItem):
-        """Carte : commande à exécuter + son chemin (pour restaurer le curseur)."""
+        """Carte : commande à exécuter, son chemin (pour restaurer le
+        curseur) et son drapeau `danger`."""
 
-        def __init__(self, label, method, kwargs, path):
+        def __init__(self, label, method, kwargs, path, danger=False):
             super().__init__(Label(label))
             self.cmd_method = method
             self.cmd_kwargs = kwargs or {}
             self.cmd_path = path
+            self.cmd_danger = bool(danger)
 
     class Telemetry(App):
         CSS = """
@@ -870,6 +766,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                                 c.get("method"),
                                 c.get("kwargs"),
                                 c.get("path"),
+                                c.get("danger"),
                             )
                             for c in group
                         ]
@@ -898,6 +795,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                                     c.get("method"),
                                     c.get("kwargs"),
                                     c.get("path"),
+                                    c.get("danger"),
                                 )
                                 for c in group
                             ]
@@ -1217,13 +1115,15 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                     )
                     self._add_code(child, c["children"], path)
                 else:
-                    # Feuille EXÉCUTABLE : méthode + chemin portés en data.
+                    # Feuille EXÉCUTABLE : méthode, chemin et drapeau
+                    # `danger` portés en data.
                     tnode.add_leaf(
                         f"· {c['label']}",
                         data={
                             "method": c.get("method"),
                             "kwargs": c.get("kwargs"),
                             "path": path,
+                            "danger": bool(c.get("danger")),
                         },
                     )
 
@@ -1235,8 +1135,16 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 self._add_visited(child, node["children"])
 
         # -- sélection / exécution ------------------------------------------- #
-        def _run(self, method, kwargs, path):
+        def _run(self, method, kwargs, path, danger=False):
+            # Une commande dangereuse se lance depuis son menu seulement :
+            # un avis, et ni action rendue ni sortie de la TUI.
             if not method:
+                return
+            if danger:
+                self.notify(
+                    t("Dangerous command: run it from its menu."),
+                    severity="warning",
+                )
                 return
             self._action = (method, kwargs or {})
             self._exit_state = {
@@ -1249,7 +1157,12 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         def on_tree_node_selected(self, event):
             d = getattr(event.node, "data", None)
             if isinstance(d, dict) and d.get("method"):
-                self._run(d["method"], d.get("kwargs"), d.get("path"))
+                self._run(
+                    d["method"],
+                    d.get("kwargs"),
+                    d.get("path"),
+                    d.get("danger"),
+                )
 
         def on_list_view_selected(self, event):
             if isinstance(event.item, CmdItem):
@@ -1257,6 +1170,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                     event.item.cmd_method,
                     event.item.cmd_kwargs,
                     event.item.cmd_path,
+                    event.item.cmd_danger,
                 )
 
         async def action_kanban_layout(self):

@@ -134,6 +134,74 @@ class TestLeTemoignage(unittest.TestCase):
         trouves = self._recits("Mesuré sur la base. Puis vécu sur la copie.")
         self.assertEqual(2, len({t[1].lower() for t in trouves}))
 
+    def test_l_aparte_seul_entre_deux_ponctuations(self):
+        """Détaché de la phrase — après un tiret, une parenthèse, une
+        virgule ou une fin de phrase, et avant une ponctuation —, le
+        participe date le fait qu'elle énonce. Pris dans la phrase, il
+        l'énonce : rien à signaler."""
+        for phrase in (
+            "La liste mène à la mauvaise machine — vécu.",
+            "Le menu montre la mauvaise machine — vecu.",
+            "La clé change sous la même adresse, vécu. Puis la suite.",
+            "Quatre fois les pixels voulus. Mesuré.",
+            "Le socket n'existe pas de ce côté. Vécu, et la suite.",
+            "Le tableau disparaît — rapporté, et la suite.",
+            "La redirection est refusée (mesuré) : la suite.",
+            "Le serveur répond — observée.",
+        ):
+            self.assertIn(
+                "aparté", {t[0] for t in self._recits(phrase)}, phrase
+            )
+        for phrase in (
+            "540x1140 en densité 420 est mesuré PIRE que le plein écran.",
+            "La commande que le journal a rapportée. Le menu la nomme.",
+            "Le délai mesuré décide du repli.",
+        ):
+            self.assertEqual([], self._recits(phrase), phrase)
+
+    def test_l_aparte_apres_deux_points_ou_point_virgule(self):
+        """Le deux-points et le point-virgule détachent l'aparté comme le
+        tiret ; constaté et signalé témoignent comme les autres."""
+        for phrase in (
+            "Le cache sert depuis l'amont : mesuré, puis la suite.",
+            "Le cache sert depuis l'amont :mesuré.",
+            "La copie reste en place ; mesuré.",
+            "La copie reste en place ;vécu, et la suite.",
+            "Le service tombe au démarrage — constaté.",
+            "La clé change sous la même adresse, signalée.",
+        ):
+            self.assertIn(
+                "aparté", {t[0] for t in self._recits(phrase)}, phrase
+            )
+        for phrase in (
+            "Le seuil : le délai mesuré décide du repli.",
+            "Le cas ; la valeur est mesurée PIRE que la limite.",
+        ):
+            self.assertEqual([], self._recits(phrase), phrase)
+
+    def test_l_aparte_qui_clot_une_ligne(self):
+        """Un aparté sans ponctuation finit avec sa ligne ; un participe
+        que la phrase continue à la ligne suivante n'en est pas un."""
+        self.assertEqual(
+            [("aparté", "vécu", 38)],
+            self._recits(
+                "La liste mène à la mauvaise machine — vécu\npuis la suite."
+            ),
+        )
+        for phrase in (
+            "Le délai est mesuré\npuis arrondi.",
+            "Le délai\nmesuré décide du repli.",
+        ):
+            self.assertEqual([], self._recits(phrase), phrase)
+
+    def test_un_marqueur_que_deux_motifs_relevent_compte_une_fois(self):
+        """« Mesuré : » est un témoignage, et aussi un aparté : une seule
+        trouvaille, celle du témoignage ; « — vécu. » en est une autre."""
+        self.assertEqual(
+            [("témoignage", "Mesuré :", 0), ("aparté", "vécu", 32)],
+            self._recits("Mesuré : trois secondes. Puis — vécu."),
+        )
+
 
 class TestLeGo(unittest.TestCase):
     """Go est entré dans le dépôt, et l'outil ne le lisait pas.
@@ -261,6 +329,29 @@ class TestCeQuiEstLu(unittest.TestCase):
         source = "# une raison\n# une autre\n# vécu sur la copie\nX = 1\n"
         trouvailles = hygiene.inspect("x.py", source=source, termes=[])
         self.assertEqual([3], [f["line"] for f in trouvailles])
+
+    def test_un_aparte_pointe_sa_ligne(self):
+        """L'aparté qui clôt la deuxième ligne d'un bloc la pointe."""
+        source = "# une raison\n# qui se dit — vécu.\nX = 1\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(
+            [(2, "aparté")], [(f["line"], f["pattern"]) for f in trouvailles]
+        )
+
+    def test_un_aparte_sans_ponctuation_finit_sa_ligne(self):
+        """Les lignes d'un bloc se recollent, mais l'aparté qui clôt la
+        première sans ponctuation se voit encore, et la pointe."""
+        source = "# une raison — vécu\n# puis la suite.\nX = 1\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(
+            [(1, "aparté")], [(f["line"], f["pattern"]) for f in trouvailles]
+        )
+
+    def test_un_extrait_a_cheval_sur_deux_lignes_tient_sur_une(self):
+        """Le rapport imprime un extrait par ligne."""
+        source = "# La valeur est stable. Mesuré\n# deux fois.\nX = 1\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["Mesuré deux"], [f["excerpt"] for f in trouvailles])
 
     def test_un_source_illisible_se_replie_sur_les_lignes(self):
         """Rendre un rapport vide dirait « propre » d'un fichier non lu."""

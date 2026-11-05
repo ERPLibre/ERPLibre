@@ -7,10 +7,10 @@ import os
 import shutil
 from datetime import datetime
 
-import click
-
-from script.todo.todo_couleur import retour
+from script.todo import ui
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 
 class QemuMenuMixin:
@@ -55,46 +55,27 @@ class QemuMenuMixin:
     }
 
     def _qemu_prompt_distro(self):
-        """Demande la distribution (défaut : ubuntu)."""
-        distros = list(self._QEMU_DISTROS)
-        print(f"\n{t('Distribution:')}")
-        for i, d in enumerate(distros, 1):
-            print(f"  [{i}] {d}")
-        sel = input(t("Choice (number or name, default: ubuntu): ")).strip()
-        if not sel:
-            return "ubuntu"
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(distros):
-                return distros[idx]
-        except ValueError:
-            if sel in distros:
-                return sel
-        print(t("Invalid selection, using ubuntu"))
-        return "ubuntu"
+        """La distribution choisie par son numéro ou son nom (`ui.choose`),
+        ubuntu sur une réponse vide ; None pour [0]."""
+        return ui.choose(
+            t("Distribution:"), list(self._QEMU_DISTROS), default="ubuntu"
+        )
 
     def _qemu_prompt_version(self, distro):
-        """Demande la version pour la distro (défaut = version par défaut)."""
-        versions, default = self._QEMU_DISTROS.get(distro, ([], ""))
-        print(f"\n{t('Version for')} {distro.capitalize()} :")
-        for i, v in enumerate(versions, 1):
-            suffix = " *" if v == default else ""
-            stat = self._qemu_stat_avg("version", v, distro)
-            print(f"  [{i}] {v}{suffix}{stat}")
-        sel = input(
-            f"{t('Choice (number or version, blank = default):')} "
-        ).strip()
-        if not sel:
-            return default
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(versions):
-                return versions[idx]
-        except ValueError:
-            if sel in versions:
-                return sel
-        print(f"{t('Invalid selection, using')} {default}")
-        return default
+        """La version de `distro` choisie par son numéro ou son nom
+        (`ui.choose`), sa version par défaut sur une réponse vide ; None
+        pour [0]."""
+        versions, default = self._QEMU_DISTROS.get(distro, ([], None))
+        return ui.choose(
+            f"{t('Version for')} {distro.capitalize()} :",
+            versions,
+            default=default,
+            labels=[
+                f"{v}{self._qemu_stat_avg('version', v, distro)}"
+                for v in versions
+            ],
+            names={v: v for v in versions},
+        )
 
     # Repli SEULEMENT : la table qui fait autorité est ARCH_DISTRO_SUPPORT de
     # deploy_qemu.py, lue par _qemu_arch_distros. Ces tuples ont longtemps été
@@ -180,44 +161,43 @@ class QemuMenuMixin:
         return ""
 
     def _qemu_ask_arch(self, opts, native, allow_all=False):
-        """Affiche les architectures `opts` (natif marqué d'un *) et renvoie le
-        choix. Si `allow_all`, propose aussi [all] = toutes les archis (renvoie
-        « all »). Toute arch non native est ÉMULÉE (TCG, lente)."""
-        print(f"\n{t('Architecture:')}")
-        for i, a in enumerate(opts, 1):
+        """L'architecture choisie parmi `opts` (`ui.choose`) par son numéro,
+        son nom ou son alias de distribution (x86_64, aarch64), la native,
+        marquée, sur une réponse vide ; avec `allow_all`, « all », la
+        dernière option, dont le libellé écrit le nom, prend toutes les
+        archis. None pour [0]. Toute arch non native est ÉMULÉE (TCG,
+        lente), ce que le choix rappelle."""
+        options, labels = list(opts), []
+        names = {a: a for a in opts}
+        for a in opts:
             alias = self._QEMU_ARCH_ALIAS.get(a)
             label = f"{a} ({alias})" if alias else a
+            if alias:
+                names[alias] = a
             if a == native:
-                label += f" — {t('native')} *"
+                label += f" — {t('native')}"
             elif a == "s390x":
                 label += f"  ({t('IBM Z — emulated, slow')})"
             elif a == "arm64":
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:
                 label += f"  ({t('emulated, slow')})"
-            print(f"  [{i}] {label}{self._qemu_stat_avg('arch', a)}")
+            labels.append(f"{label}{self._qemu_stat_avg('arch', a)}")
         if allow_all:
-            print(f"  [all] {t('All supported architectures')}")
-        sel = (
-            input(f"{t('Choice (number or name, blank = native):')} ")
-            .strip()
-            .lower()
+            options.append("all")
+            labels.append(f"all — {t('All supported architectures')}")
+            names["all"] = "all"
+        chosen = ui.choose(
+            t("Architecture:"),
+            options,
+            default=native,
+            labels=labels,
+            names=names,
         )
-        if not sel:
-            return native
-        if allow_all and sel in ("all", "*"):
+        if chosen == "all":
             note = t("(includes emulated architectures — some VMs are slow)")
             print(f"⚠  {note}")
-            return "all"
-        chosen = None
-        for i, a in enumerate(opts, 1):
-            if sel in (str(i), a, self._QEMU_ARCH_ALIAS.get(a)):
-                chosen = a
-                break
-        if chosen is None:
-            print(f"{t('Invalid selection, using')} {native}")
-            return native
-        if chosen != native:
+        elif chosen not in (None, native):
             warn = t(
                 "This architecture is emulated (TCG): boot and install are"
                 " much slower than the native one."
@@ -226,9 +206,10 @@ class QemuMenuMixin:
         return chosen
 
     def _qemu_prompt_infra_arch(self):
-        """Architecture du parc (défaut : native de l'hôte, marquée d'un *).
-        Toute arch non native est émulée ; le catalogue est ensuite restreint
-        aux distros publiant cette arch."""
+        """Architecture du parc (`_qemu_ask_arch`) : la native de l'hôte,
+        marquée, sur une réponse vide, « all », la dernière option, ou None
+        pour [0]. Toute arch non native est émulée ; le catalogue est ensuite
+        restreint aux distros publiant cette arch."""
         native = self._native_arch()
         opts = ["amd64", "arm64", "s390x"]
         if native not in opts:  # hôte exotique : garder le natif en tête
@@ -307,143 +288,26 @@ class QemuMenuMixin:
         return False
 
     def prompt_execute_qemu(self):
-        print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
+        """Déployer et gérer des VM QEMU/KVM par libvirt (QEMU,
+        `menus/deploy.py`), dessiné une fois, à l'entrée ; les entrées de
+        `qemu_from_makefile` suivent le catalogue. Rend False sur [0], et
+        sans le script de déploiement."""
+        return navigate(self, menus_deploy.QEMU)
+
+    def _qemu_ouvre(self):
+        """Ce qui ouvre QEMU/KVM : sans le script de déploiement, le dit et
+        rend False ; sinon propose d'installer les outils de libvirt quand
+        virsh manque, et rend {}."""
         script_path = self._qemu_script_path()
         if not os.path.isfile(script_path):
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
             return False
         self._qemu_ensure_tools()
-        choices = [
-            {"section": t("Deployment")},
-            {"prompt_description": t("Deploy VM(s) (one or many)")},
-            {
-                "prompt_description": t(
-                    "Preview a deployment (dry-run, no sudo)"
-                )
-            },
-            {"prompt_description": t("Download a cloud image only")},
-            {
-                "prompt_description": t(
-                    "Reopen install monitoring (last run / history)"
-                )
-            },
-            # Douze entrées sous un seul titre ne se lisent plus : on cherche
-            # à la ligne près. Quatre intentions les séparent — vivre avec ses
-            # VM, y entrer, régler le réseau qui les porte, réparer quand ça
-            # va mal.
-            {"section": t("Manage")},
-            {"prompt_description": t("List VMs (virsh list --all)")},
-            {"prompt_description": t("Show a VM IP address")},
-            {"prompt_description": t("Open the console on a VM")},
-            {"prompt_description": t("Resize a VM disk")},
-            {"prompt_description": t("Delete VM(s)")},
-            {"section": t("VM access")},
-            {
-                "prompt_description": t(
-                    "SSH configuration (~/.ssh/config, ProxyJump)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Remote desktop tunnel (VNC/RDP through SSH)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Android emulator (start, tunnel, scrcpy)"
-                )
-            },
-            {"section": t("VM network")},
-            {"prompt_description": t("Show the libvirt network state")},
-            {
-                "prompt_description": t(
-                    "Recreate the VM subnet (stop, redefine, restart)"
-                )
-            },
-            {"section": t("Troubleshoot")},
-            {"prompt_description": t("Clean up QEMU (orphan files)")},
-            {
-                "prompt_description": t(
-                    "Recover files from a VM disk (libguestfs)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {"prompt_description": t("Diagnostics (report to share)")},
-            {"prompt_description": t("Statistics (installs, durations, VMs)")},
-            {"section": t("Catalog")},
-            {"prompt_description": t("List available images and specs")},
-        ]
-        config_entries = self.config_file.get_config("qemu_from_makefile")
-        if config_entries:
-            choices.extend(config_entries)
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._qemu_deploy(dry_run=False)
-            elif status == "2":
-                self._qemu_deploy(dry_run=True)
-            elif status == "3":
-                self._qemu_download_image()
-            elif status == "4":
-                self._qemu_reopen_monitor()
-            elif status == "5":
-                self._qemu_list_vms(ask_advanced=True)
-            elif status == "6":
-                self._qemu_show_ip()
-            elif status == "7":
-                self._qemu_console()
-            elif status == "8":
-                self._qemu_resize_disk()
-            elif status == "9":
-                self._qemu_delete_vm()
-            elif status == "10":
-                self._qemu_ssh_config_menu()
-            elif status == "11":
-                self._qemu_tunnel_menu()
-            elif status == "12":
-                self._qemu_emulator_menu()
-            elif status == "13":
-                self._qemu_network_status()
-            elif status == "14":
-                self._qemu_network_recreate()
-            elif status == "15":
-                self._qemu_cleanup()
-            elif status == "16":
-                self._qemu_recover_files()
-            elif status == "17":
-                self._qemu_test_vm()
-            elif status == "18":
-                self._qemu_diagnostics()
-            elif status == "19":
-                self._qemu_stats()
-            elif status == "20":
-                self._qemu_list_images()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    # Ignore les entrées de section pour mapper le numéro
-                    # affiché sur la bonne commande (config incluse).
-                    real = [c for c in choices if not c.get("section")]
-                    if 0 < int_cmd <= len(real):
-                        cmd_no_found = False
-                        self.execute_from_configuration(real[int_cmd - 1])
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+        return {}
 
     def _qemu_stats(self):
-        """Statistiques d'utilisation de QEMU, et remise à zéro.
+        """Statistiques d'utilisation de QEMU, et remise à zéro par [r],
+        une action du choix qui les suit (`ui.choose`), après sa question.
 
         Tout vient de l'historique tenu par le moniteur d'installation
         (.venv.erplibre/qemu_install_stats.json) et de l'état libvirt courant.
@@ -512,28 +376,25 @@ class QemuMenuMixin:
                         print(f"   {key:<22} {count:>3} ×   {moy:<8}{fail}")
 
             self._qemu_stats_vms(mon)
-            print(f"\n   [r] {t('Reset the statistics')}")
-            print(f"   {retour(t('Back'))}")
-            answer = input(f"💬 {t('Your choice')} : ").strip().lower()
-            if answer in ("", "0"):
+            letters = {"r": t("Reset the statistics")}
+            if ui.choose(t("QEMU statistics"), [], letters=letters) != "r":
                 return
-            if answer == "r":
-                if not summary:
-                    print(f"   {t('Nothing to reset.')}")
-                    continue
-                confirm = input(
-                    f"   {t('Erase')} {summary['total']}"
-                    f" {t('recorded runs')}? (y/N): "
-                ).strip()
-                if self._is_yes(confirm):
-                    count = mon.reset_stats()
-                    print(f"   ✅ {count} {t('runs erased')}.")
-                else:
-                    print(f"   {t('Cancelled.')}")
+            if not summary:
+                print(f"   {t('Nothing to reset.')}")
+                continue
+            confirm = input(
+                f"   {t('Erase')} {summary['total']}"
+                f" {t('recorded runs')}? (y/N): "
+            ).strip()
+            if self._is_yes(confirm):
+                count = mon.reset_stats()
+                print(f"   ✅ {count} {t('runs erased')}.")
+            else:
+                print(f"   {t('Cancelled.')}")
 
     @staticmethod
     def _qemu_stamp(ts):
-        """Horodatage court « 2026-08-01 »."""
+        """Horodatage court, la date seule : « AAAA-MM-JJ »."""
         try:
             return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
         except (OSError, OverflowError, TypeError, ValueError):

@@ -32,9 +32,11 @@ import textwrap
 
 import click
 
-from script.todo import container_db, container_runtime, todo_journal
-from script.todo.todo_couleur import retour
+from script.execute.execute import Execute
+from script.todo import container_db, container_runtime, todo_journal, ui
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
 CATALOGUE = "conf/supported_version_erplibre.json"
@@ -80,103 +82,11 @@ class ContainerMenuMixin:
     """
 
     def prompt_execute_container(self):
-        print(f"🤖 {t('Container engines!')}")
-        choices = [
-            {"section": t("Engine")},
-            {
-                "prompt_description": t(
-                    "Diagnostic - engine, service, socket, access without sudo"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Service - start, stop, enable at boot, journal"
-                )
-            },
-            {"prompt_description": t("Install Docker")},
-            {"prompt_description": t("Install Podman")},
-            {"section": t("Inventory")},
-            {"prompt_description": t("Images")},
-            {"prompt_description": t("Containers")},
-            {"prompt_description": t("Networks")},
-            {"section": t("Cleanup")},
-            {
-                "prompt_description": t(
-                    "Remove unused images, containers and volumes"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "By workspace - a compose project and what it holds"
-                )
-            },
-            {"prompt_description": t("Images one by one")},
-            {"section": t("ERPLibre images")},
-            {"prompt_description": t("Build an image for an Odoo version")},
-            {
-                "prompt_description": t(
-                    "Compose - start, stop, logs, processes"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "ERPLibre container - shell, databases, tests, status"
-                )
-            },
-            {"section": t("ERPLibre databases")},
-            {
-                "prompt_description": t(
-                    "Disk space - engine, container, reclaimable"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Restore a .zip backup into the container"
-                )
-            },
-            {"prompt_description": t("Delete a database of the container")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._container_diagnostic()
-            elif status == "2":
-                self._container_service()
-            elif status == "3":
-                self._container_install("docker")
-            elif status == "4":
-                self._container_install("podman")
-            elif status == "5":
-                self._container_inventaire(["images"])
-            elif status == "6":
-                self._container_inventaire(["ps", "-a"])
-            elif status == "7":
-                self._container_reseaux()
-            elif status == "8":
-                self._container_nettoyage()
-            elif status == "9":
-                self._container_nettoyer_projets()
-            elif status == "10":
-                self._container_nettoyer_images()
-            elif status == "11":
-                self._container_build_odoo()
-            elif status == "12":
-                self._container_compose()
-            elif status == "13":
-                self._container_erplibre()
-            elif status == "14":
-                self._container_espace_disque()
-            elif status == "15":
-                self._container_restaurer_base()
-            elif status == "16":
-                self._container_supprimer_base()
-            else:
-                print(t("Command not found !"))
+        """Les moteurs de conteneurs : leur état et leur installation,
+        l'inventaire de ce qu'ils détiennent, et les images ERPLibre
+        (CONTAINER, `menus/deploy.py`), dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_deploy.CONTAINER)
 
     # ------------------------------------------------------------------
     # Le moteur
@@ -184,42 +94,12 @@ class ContainerMenuMixin:
     def _container_libelle_moteur(self, nom):
         """Le nom du moteur précédé de son icône, pour une liste.
 
-        Le libellé est d'AFFICHAGE : le choix rend un rang, et les appelants
-        gardent leur liste de noms nus pour retrouver la fiche. Décorer ce
-        qu'on affiche ne doit jamais décorer ce sur quoi on décide.
+        Le libellé est d'AFFICHAGE : le choix rend le nom nu, qui retrouve
+        la fiche et se tape sans l'icône. Décorer ce qu'on affiche ne doit
+        jamais décorer ce sur quoi on décide.
         """
         icone = ICONES_MOTEUR.get(nom)
         return f"{icone} {nom}" if icone else nom
-
-    def _container_choix_numerote(self, titre, options, defaut="1"):
-        """Le RANG choisi parmi des options numérotées, ou None.
-
-        Le numéro plutôt que le nom : taper « docker » ou « podman » en entier
-        pour deux entrées coûte plus qu'il ne rapporte, et une faute de frappe
-        retombait en silence sur la première.
-
-        Les rangs hors liste sont refusés explicitement : en Python
-        options[-1] existe, et un « 0 » saisi rendrait la DERNIÈRE entrée —
-        un choix que personne n'a fait, sur un écran qui en efface parfois.
-
-        « 0 » vaut retour, comme dans tout le reste de TODO, et sort sans se
-        plaindre : c'est un geste, pas une faute de frappe.
-        """
-        print(f"\n{titre}")
-        for rang, option in enumerate(options, 1):
-            print(f"  [{rang}] {option}")
-        print(f"  {retour(t('Back'))}")
-        reponse = click.prompt(t("Number"), default=defaut).strip()
-        try:
-            rang = int(reponse)
-        except ValueError:
-            rang = -1
-        if rang == 0:
-            return None
-        if not 1 <= rang <= len(options):
-            print(t("Command not found !"))
-            return None
-        return rang - 1
 
     def _container_fiches(self):
         """Les fiches des deux moteurs, relues maintenant."""
@@ -247,14 +127,18 @@ class ContainerMenuMixin:
         for fiche in prets:
             if fiche["moteur"] == choisi:
                 return fiche
-        rang = self._container_choix_numerote(
+        noms = [fiche["moteur"] for fiche in prets]
+        choisi = ui.choose(
             t("Available engines:"),
-            [self._container_libelle_moteur(f["moteur"]) for f in prets],
+            noms,
+            default=noms[0],
+            labels=[self._container_libelle_moteur(nom) for nom in noms],
+            names=dict(zip(noms, noms)),
         )
-        if rang is None:
+        if choisi is None:
             return None
-        self._container_choix = prets[rang]["moteur"]
-        return prets[rang]
+        self._container_choix = choisi
+        return prets[noms.index(choisi)]
 
     # Les libellés du diagnostic, dans l'ordre d'affichage. La largeur de la
     # colonne se CALCULE sur eux, traduits : un gabarit fixe est juste dans la
@@ -368,63 +252,79 @@ class ContainerMenuMixin:
             return None
         if len(poses) == 1:
             return fiches[poses[0]]
-        rang = self._container_choix_numerote(
+        choisi = ui.choose(
             t("Installed engines:"),
-            [self._container_libelle_moteur(nom) for nom in poses],
+            poses,
+            default=poses[0],
+            labels=[self._container_libelle_moteur(nom) for nom in poses],
+            names=dict(zip(poses, poses)),
         )
-        return fiches[poses[rang]] if rang is not None else None
+        return fiches.get(choisi)
 
     def _container_service(self):
         """Démarrer, arrêter ou activer le service d'un moteur, et LIRE son
-        journal.
+        journal (CONTAINER_SERVICE, `menus/deploy.py`). Rend False sur [0],
+        et None, le menu fermé, sans moteur installé ou choisi.
 
         Le journal est la moitié utile de cet écran : un démon qui refuse de
         naître ne dit rien à « docker info », qui ne rapporte que l'absence de
         socket. La cause — un module de noyau introuvable, une plage d'UID
         subordonnés manquante — n'est écrite que là.
         """
+        return navigate(self, menus_deploy.CONTAINER_SERVICE)
+
+    def _container_service_ouvre(self):
+        """Ce qui ouvre le menu du service : le moteur choisi, ses unités et
+        leur portée. Rend {"fiche", "par_compte"}, que reçoit chaque
+        entrée, ou None sans moteur installé ou choisi."""
         fiche = self._container_choisir_moteur()
         if not fiche:
-            return
+            return None
         moteur = fiche["moteur"]
         service, socket = UNITES[moteur]
         par_compte = self._container_par_compte(moteur, fiche)
         portee = t("account session") if par_compte else t("whole host")
         print(f"\n{moteur} — {service} / {socket} ({portee})")
+        return {"fiche": fiche, "par_compte": par_compte}
 
-        choices = [
-            {"prompt_description": t("Start")},
-            {"prompt_description": t("Stop")},
-            {"prompt_description": t("Restart")},
-            {"prompt_description": t("Enable at boot")},
-            {"prompt_description": t("Disable at boot")},
-            {"prompt_description": t("Status and journal")},
-        ]
-        help_info = self.fill_help_info(choices)
-        # L'activation porte sur la SOCKET, qui fait naître le démon à la
-        # première connexion ; le reste porte sur le démon.
-        actions = {
-            "1": ("start", service),
-            "2": ("stop", service),
-            "3": ("restart", service),
-            "4": ("enable", socket),
-            "5": ("disable", socket),
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in actions:
-                action, unite = actions[status]
-                self._container_systemctl(action, unite, par_compte)
-                if action == "enable" and par_compte:
-                    print(f"  {t('A per-account unit needs linger to start')}")
-                    print(f"  {t('without a login:')} loginctl enable-linger")
-            elif status == "6":
-                self._container_journal(service, par_compte)
-            else:
-                print(t("Command not found !"))
+    def _container_service_choisi(self, fiche=None, par_compte=None):
+        """(fiche, par_compte) du moteur dont une entrée pilote le service :
+        ceux que donne son menu, ou, sans fiche, comme depuis la TUI de
+        télémétrie, le moteur choisi maintenant parmi ceux qui sont
+        installés ; `par_compte` se déduit de la fiche quand il n'est pas
+        donné. None sans moteur installé ou choisi."""
+        if fiche is None:
+            fiche = self._container_choisir_moteur()
+            if not fiche:
+                return None
+        if par_compte is None:
+            par_compte = self._container_par_compte(fiche["moteur"], fiche)
+        return fiche, par_compte
+
+    def _container_geste(self, geste, fiche=None, par_compte=None):
+        """Le geste systemd `geste` sur le service du moteur (voir
+        `_container_service_choisi`) : l'activation, enable ou disable,
+        porte sur la SOCKET, qui fait naître le démon à la première
+        connexion ; start, stop et restart portent sur le démon."""
+        choisi = self._container_service_choisi(fiche, par_compte)
+        if not choisi:
+            return
+        fiche, par_compte = choisi
+        service, socket = UNITES[fiche["moteur"]]
+        unite = socket if geste in ("enable", "disable") else service
+        self._container_systemctl(geste, unite, par_compte)
+        if geste == "enable" and par_compte:
+            print(f"  {t('A per-account unit needs linger to start')}")
+            print(f"  {t('without a login:')} loginctl enable-linger")
+
+    def _container_etat_service(self, fiche=None, par_compte=None):
+        """L'état du service du moteur, puis son journal (voir
+        `_container_service_choisi`)."""
+        choisi = self._container_service_choisi(fiche, par_compte)
+        if not choisi:
+            return
+        fiche, par_compte = choisi
+        self._container_journal(UNITES[fiche["moteur"]][0], par_compte)
 
     def _container_systemctl(self, action, unite, par_compte):
         """Lance systemctl sur l'unité, dans la bonne portée.
@@ -464,27 +364,40 @@ class ContainerMenuMixin:
             self.execute.exec_command_live(
                 shlex.join(cmd), source_erplibre=False
             )
+            if Execute.interrupted:
+                return
 
     def _container_install(self, moteur):
         """Propose l'installation du moteur, après avoir montré la commande.
 
         Le groupe « docker » équivaut à root : le mode est demandé, jamais
-        choisi à la place de l'opérateur.
+        choisi à la place de l'opérateur ; une réponse vide prend le mode
+        sans privilège, et [0] n'installe rien.
         """
         cmd = ["sudo", "bash", "./script/install/install_container.sh", moteur]
         if moteur == "docker":
             print(f"\n{t('Docker runs a daemon owned by root.')}")
-            print(f"  {t('Two ways to reach it without typing sudo:')}")
-            print(
-                f"\n  1) {t('docker group - ONE shared daemon, still root')}"
+            modes = [
+                (
+                    t("docker group - ONE shared daemon, still root"),
+                    t("Being in the group opens its socket, which"),
+                    t("mounts any host path: it equals being root."),
+                ),
+                (
+                    t("rootless - ONE daemon per account, no group"),
+                    t("It runs inside your session, so nothing of it"),
+                    t("is root. Ports under 1024 stay closed to it."),
+                ),
+            ]
+            rang = ui.choose(
+                t("Two ways to reach it without typing sudo:"),
+                range(2),
+                default=1,
+                labels=["\n    ".join(mode) for mode in modes],
             )
-            print(f"     {t('Being in the group opens its socket, which')}")
-            print(f"     {t('mounts any host path: it equals being root.')}")
-            print(f"\n  2) {t('rootless - ONE daemon per account, no group')}")
-            print(f"     {t('It runs inside your session, so nothing of it')}")
-            print(f"     {t('is root. Ports under 1024 stay closed to it.')}")
-            mode = click.prompt(t("Mode"), default="2").strip()
-            if mode == "2":
+            if rang is None:
+                return
+            if rang == 1:
                 cmd.append("--rootless")
                 print(f"\n  {t('Where Docker Inc. packages, rootless mode')}")
                 print(f"  {t('needs ITS packages; elsewhere the installer')}")
@@ -507,12 +420,14 @@ class ContainerMenuMixin:
     # ------------------------------------------------------------------
     # L'inventaire
 
-    def _container_inventaire(self, args):
-        """Lance une sous-commande de listage sur le moteur retenu."""
+    def _container_inventaire(self, sous_commande):
+        """Lance sur le moteur retenu la sous-commande de listage
+        `sous_commande`, ses mots séparés par des blancs (« images »,
+        « ps -a »)."""
         fiche = self._container_fiche()
         if not fiche:
             return
-        cmd = container_runtime.commande(fiche, args)
+        cmd = container_runtime.commande(fiche, sous_commande.split())
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
 
     def _container_reseaux(self):
@@ -554,7 +469,7 @@ class ContainerMenuMixin:
         return sorted(versions, key=lambda v: float(v), reverse=True)
 
     def _container_build_odoo(self):
-        """Construit l'image d'une ou de TOUTES les versions d'Odoo, pour une
+        """Construit l'image d'une ou de plusieurs versions d'Odoo, pour une
         ou plusieurs architectures.
 
         Le balayage ne s'arrête pas au premier échec : une version qui casse
@@ -569,21 +484,17 @@ class ContainerMenuMixin:
         if not versions:
             print(f"⚠ {t('Unreadable version catalogue:')} {CATALOGUE}")
             return
-        rang = self._container_choix_numerote(
-            t("Odoo version:"), versions + [t("All versions")]
-        )
-        if rang is None:
+        cibles = ui.choose(t("Odoo version:"), versions, multi=True)
+        if not cibles:
             return
-        toutes = rang == len(versions)
-        if toutes:
-            # Une image de production pèse une dizaine de gigaoctets : le dire
-            # AVANT, pendant qu'un disque plein est encore évitable.
-            print(f"\n⚠ {t('Every version: hours of work, tens of GB.')}")
+        if len(cibles) > 1:
+            # Une image de production pèse une dizaine de gigaoctets : dès
+            # deux, le dire AVANT, pendant qu'un disque plein est encore
+            # évitable.
+            print(f"\n⚠ {t('Several versions: hours of work, tens of GB.')}")
             if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
                 print(t("Nothing to do."))
                 return
-        cibles = versions if toutes else [versions[rang]]
-
         hote = self._container_arch_hote(prefixe)
         plan = self._container_choix_architectures(prefixe, cibles, hote)
         if not plan:
@@ -595,45 +506,50 @@ class ContainerMenuMixin:
             prefixe, etrangeres
         ):
             return
-        sortie = self._container_choix_numerote(
+        sortie = ui.choose(
             t("Output:"),
-            [
+            ["local", "push"],
+            labels=[
                 t("A local tag per architecture"),
                 t(
                     "A multi-architecture manifest pushed to the registry"
                     " (docker login required)"
                 ),
             ],
+            default="local",
         )
         if sortie is None:
             return
-        pousser = sortie == 1
+        pousser = sortie == "push"
         # Le gel est la règle : l'image porte le code que nomme le manifeste.
         # Les branches donnent une image de développement, dont le code
         # change d'une construction à l'autre.
-        code = self._container_choix_numerote(
+        code = ui.choose(
             t("Code:"),
-            [
+            ["freeze", "branches"],
+            labels=[
                 t("The frozen commits of the manifest"),
                 t("The head of each branch (development image)"),
             ],
+            default="freeze",
         )
         if code is None:
             return
-        sur_branches = " --branches" if code == 1 else ""
+        sur_branches = " --branches" if code == "branches" else ""
         # Les modules extra par défaut, comme l'installation de production du
         # TODO qui les inclut ; l'installation standard s'en passe.
-        type_install = self._container_choix_numerote(
+        type_install = ui.choose(
             t("Install type:"),
-            [
+            ["standard", "extra"],
+            labels=[
                 t("Standard install (without extra modules)"),
                 t("Install with extra modules (CybroOdoo - large, slow)"),
             ],
-            defaut="2",
+            default="extra",
         )
         if type_install is None:
             return
-        sans_extra = " --without_extra" if type_install == 0 else ""
+        sans_extra = " --without_extra" if type_install == "standard" else ""
         sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             sans_cache = " --no-cache"
@@ -655,6 +571,8 @@ class ContainerMenuMixin:
             )
             if self.execute.exec_command_live(cmd, source_erplibre=False):
                 echecs.append(version)
+            if Execute.interrupted:
+                return
         if len(cibles) > 1:
             passees = [v for v in cibles if v not in echecs]
             print(f"\n{t('Built:')} {', '.join(passees) or '-'}")
@@ -761,14 +679,18 @@ class ContainerMenuMixin:
         """Vrai quand buildx émule chacune des architectures. Sinon, propose
         l'installation de buildx et de QEMU, commande montrée d'abord."""
         manquantes = [
-            a for a in archs if a not in self._container_plateformes_emulees(prefixe)
+            a
+            for a in archs
+            if a not in self._container_plateformes_emulees(prefixe)
         ]
         if not manquantes:
             return True
         commande = "sudo bash script/install/install_container.sh --multiarch"
         print(f"\n⚠ {t('No emulation for: %s') % ', '.join(manquantes)}")
         print(f"  {commande}")
-        if not self._is_yes(input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")):
+        if not self._is_yes(
+            input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")
+        ):
             return False
         self.execute.exec_command_live(commande, source_erplibre=False)
         emulees = self._container_plateformes_emulees(prefixe)
@@ -779,91 +701,78 @@ class ContainerMenuMixin:
         return True
 
     def _container_compose(self):
-        """Démarrer, arrêter, suivre ou lister la composition ERPLibre."""
+        """Démarrer, arrêter, suivre ou lister la composition ERPLibre
+        (CONTAINER_COMPOSE, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, sans moteur qui réponde."""
+        return navigate(self, menus_deploy.CONTAINER_COMPOSE)
+
+    def _container_compose_ouvre(self):
+        """Ce qui ouvre le menu de la composition : la commande compose du
+        moteur retenu. Rend {"compose"}, que reçoit chaque entrée, ou None
+        sans moteur qui réponde."""
         fiche = self._container_fiche()
         if not fiche:
-            return
-        compose = fiche["compose"] or [fiche["moteur"], "compose"]
-        choices = [
-            {"prompt_description": t("Start in the background")},
-            {"prompt_description": t("Stop")},
-            {"prompt_description": t("Follow the logs")},
-            {"prompt_description": t("Processes")},
-        ]
-        help_info = self.fill_help_info(choices)
-        args = {
-            "1": ["up", "-d"],
-            "2": ["down"],
-            "3": ["logs", "-f"],
-            "4": ["ps"],
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status not in args:
-                print(t("Command not found !"))
-                continue
-            self.execute.exec_command_live(
-                shlex.join(compose + args[status]), source_erplibre=False
-            )
+            return None
+        return {"compose": fiche["compose"] or [fiche["moteur"], "compose"]}
+
+    def _container_compose_geste(self, args, compose=None):
+        """Lance la commande compose `compose`, suivie de `args`. Sans elle,
+        comme lancée seule depuis la TUI de télémétrie, la commande est
+        celle du moteur retenu maintenant, et rien ne part sans moteur qui
+        réponde."""
+        if compose is None:
+            contexte = self._container_compose_ouvre()
+            if contexte is None:
+                return
+            compose = contexte["compose"]
+        self.execute.exec_command_live(
+            shlex.join(compose + args), source_erplibre=False
+        )
 
     def _container_erplibre(self):
-        """Les gestes qui visent le conteneur ERPLibre déjà démarré.
+        """Les gestes qui visent le conteneur ERPLibre déjà démarré
+        (CONTAINER_ERPLIBRE, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, quand rien ne peut servir les scripts.
 
         Tous passent par les scripts de script/docker/, qui retrouvent le
         conteneur d'après le nom du répertoire courant — les lancer depuis
         un autre répertoire ne trouve rien.
         """
+        return navigate(self, menus_deploy.CONTAINER_ERPLIBRE)
+
+    def _container_erplibre_ouvre(self):
+        """Ce qui ouvre le menu du conteneur ERPLibre : le préfixe de
+        `_container_exige_docker`. Rend {"prefixe"}, que reçoit chaque
+        entrée, ou None quand rien ne peut servir les scripts."""
         prefixe = self._container_exige_docker()
         if prefixe is None:
-            return
-        choices = [
-            {"prompt_description": t("Enter the ERPLibre container")},
-            {"prompt_description": t("Databases of the ERPLibre container")},
-            {"prompt_description": t("Regenerate odoo.conf (addons paths)")},
-            {"prompt_description": t("Run the tests")},
-            {"prompt_description": t("Status of the git repositories")},
-            {"prompt_description": t("Copy a file into the container")},
-            {
-                "prompt_description": t(
-                    "Delete the volumes: databases, filestore, configuration"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        scripts = {
-            "1": "./script/docker/docker_exec.sh",
-            "2": "./script/docker/docker_list_database.sh",
-            "3": "./script/docker/docker_gen_config.sh",
-            "4": "./script/docker/docker_make_test.sh",
-            "5": "./script/docker/docker_repo_show_status.sh",
-            # Le script liste les volumes et demande lui-même ses deux
-            # confirmations : un « y », puis le nom du projet retapé.
-            "7": "./script/docker/docker_volume_clean.sh",
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in scripts:
-                self.execute.exec_command_live(
-                    prefixe + scripts[status], source_erplibre=False
-                )
-            elif status == "6":
-                self._container_copier_fichier(prefixe)
-            else:
-                print(t("Command not found !"))
+            return None
+        return {"prefixe": prefixe}
 
-    def _container_copier_fichier(self, prefixe=""):
+    def _container_script(self, script, prefixe=None):
+        """Lance le script `script` de script/docker/, précédé de `prefixe`.
+        Sans lui, comme lancé seul depuis la TUI de télémétrie, le préfixe
+        se demande à `_container_exige_docker`, et rien ne part quand rien
+        ne peut servir le script."""
+        if prefixe is None:
+            prefixe = self._container_exige_docker()
+            if prefixe is None:
+                return
+        self.execute.exec_command_live(prefixe + script, source_erplibre=False)
+
+    def _container_copier_fichier(self, prefixe=None):
         """Copie un fichier de l'hôte vers le conteneur.
 
         Le script exige un fichier qui existe et refuse le reste : la source
         est donc vérifiée ici, où l'on peut redemander, plutôt qu'au retour
-        d'un code d'erreur.
+        d'un code d'erreur. `prefixe` est celui de `_container_exige_docker`,
+        que demande la copie lancée sans lui, seule, depuis la TUI de
+        télémétrie ; elle ne part pas quand rien ne peut la servir.
         """
+        if prefixe is None:
+            prefixe = self._container_exige_docker()
+            if prefixe is None:
+                return
         source = click.prompt(t("File to copy")).strip()
         if not source or not os.path.isfile(source):
             print(f"⚠ {t('No such file:')} {source}")
@@ -935,26 +844,6 @@ class ContainerMenuMixin:
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
 
-    def _container_lire_selection(self, total):
-        """Les rangs saisis, ou None.
-
-        Une saisie vide annule sans rien dire. Une saisie fautive le DIT, et
-        n'efface rien : lire_selection refuse la saisie entière dès qu'une
-        partie en est fausse.
-        """
-        texte = click.prompt(
-            t("Numbers (1 3, 2-5, * for all, empty to cancel)"),
-            default="",
-            show_default=False,
-        )
-        if not texte.strip():
-            print(t("Nothing to do."))
-            return None
-        rangs = container_runtime.lire_selection(texte, total)
-        if rangs is None:
-            print(f"⚠ {t('Invalid selection: nothing removed.')}")
-        return rangs
-
     def _container_bilan(self, total, echecs, raison):
         """Ce qui est parti et ce qui a été refusé, avec la raison probable.
 
@@ -967,7 +856,9 @@ class ContainerMenuMixin:
             print(f"  {raison}")
 
     def _container_nettoyer_images(self):
-        """Effacer des images choisies à la pièce, par leur rang.
+        """Effacer des images choisies à la pièce : par leur rang, par leur
+        référence telle que la liste l'écrit, ou toutes par « tout »,
+        « all » ou « * ».
 
         Une image qu'un conteneur tient — même arrêté — est refusée par
         « rmi ». Le conflit se décide AVANT d'effacer quoi que ce soit : le
@@ -989,22 +880,27 @@ class ContainerMenuMixin:
             print(t("No image."))
             return
         usages = container_runtime.conteneurs_par_image(fiche, images)
-        print()
-        for rang, image in enumerate(images, 1):
-            nom = container_runtime.reference_image(image)
-            ligne = f"  [{rang:>2}] {nom}  {image['taille']}  ({image['age']})"
+        refs = [container_runtime.reference_image(image) for image in images]
+        libelles = []
+        for ref, image in zip(refs, images):
+            ligne = f"{ref}  {image['taille']}  ({image['age']})"
             tenants = usages.get(image["id"])
             if tenants:
-                noms = ", ".join(c["nom"] for c in tenants)
-                ligne += f"  ⛓ {noms}"
-            print(ligne)
-        rangs = self._container_lire_selection(len(images))
-        if not rangs:
+                ligne += f"  ⛓ {', '.join(c['nom'] for c in tenants)}"
+            libelles.append(ligne)
+        choisies = ui.choose(
+            t("Images to remove:"),
+            refs,
+            multi=True,
+            labels=libelles,
+            names=dict(zip(refs, refs)),
+        )
+        if not choisies:
             return
 
         plan = []
-        for rang in rangs:
-            image = images[rang]
+        for ref in choisies:
+            image = images[refs.index(ref)]
             tenants = usages.get(image["id"], [])
             action = "effacer"
             if tenants:
@@ -1041,12 +937,16 @@ class ContainerMenuMixin:
                     self.execute.exec_command_live(
                         shlex.join(cmd), source_erplibre=False
                     )
+                    if Execute.interrupted:
+                        return
             args = ["rmi", "-f", ref] if action == "forcer" else ["rmi", ref]
             cmd = container_runtime.commande(fiche, args)
             if self.execute.exec_command_live(
                 shlex.join(cmd), source_erplibre=False
             ):
                 echecs.append(ref)
+            if Execute.interrupted:
+                return
         self._container_bilan(
             len(plan), echecs, t("A container still uses a refused image.")
         )
@@ -1078,8 +978,10 @@ class ContainerMenuMixin:
             print(f"  {t('A container runs: the engine refuses to force.')}")
         else:
             options.append(t("Force - removes the name only; the space stays"))
-        rang = self._container_choix_numerote(t("Decision:"), options)
-        return {1: "vider", 2: "forcer"}.get(rang, "garder")
+        rang = ui.choose(
+            t("Decision:"), range(len(options)), default=0, labels=options
+        )
+        return ("garder", "vider", "forcer")[rang or 0]
 
     def _container_nettoyer_projets(self):
         """Effacer un espace de travail : un projet compose et tout ce qu'il
@@ -1101,24 +1003,28 @@ class ContainerMenuMixin:
             print(t("No workspace (compose project) here."))
             return
         noms = sorted(projets)
-        print()
-        for rang, nom in enumerate(noms, 1):
+        libelles = []
+        for nom in noms:
             projet = projets[nom]
             etats = ", ".join(
                 sorted({c["etat"] for c in projet["conteneurs"]})
             )
-            print(f"  [{rang:>2}] {nom}  —  {projet['dossier'] or '?'}")
-            print(
-                f"       {len(projet['conteneurs'])} {t('containers')}"
-                f" ({etats})"
+            libelles.append(
+                f"{nom}  —  {projet['dossier'] or '?'}\n"
+                f"    {len(projet['conteneurs'])} {t('containers')} ({etats})"
             )
-        rangs = self._container_lire_selection(len(noms))
-        if not rangs:
+        choisis = ui.choose(
+            t("Workspaces to remove:"),
+            noms,
+            multi=True,
+            labels=libelles,
+            names=dict(zip(noms, noms)),
+        )
+        if not choisis:
             return
 
         plan = []
-        for rang in rangs:
-            nom = noms[rang]
+        for nom in choisis:
             ressources = container_runtime.ressources_projet(fiche, nom)
             plan.append((nom, projets[nom], ressources))
         print(f"\n⚠ {t('Will remove:')}")
@@ -1154,6 +1060,8 @@ class ContainerMenuMixin:
                 shlex.join(cmd), source_erplibre=False
             ):
                 echecs.append(" ".join(args))
+            if Execute.interrupted:
+                return
         self._container_bilan(
             len(etapes),
             echecs,
@@ -1223,9 +1131,13 @@ class ContainerMenuMixin:
             return ici
         if len(conteneurs) == 1:
             return conteneurs[0]
-        rang = self._container_choix_numerote(
+        rang = ui.choose(
             t("Running ERPLibre containers:"),
-            [f"{c['nom']}  —  {c['dossier'] or '?'}" for c in conteneurs],
+            range(len(conteneurs)),
+            default=0,
+            labels=[
+                f"{c['nom']}  —  {c['dossier'] or '?'}" for c in conteneurs
+            ],
         )
         return conteneurs[rang] if rang is not None else None
 
@@ -1380,7 +1292,9 @@ class ContainerMenuMixin:
         print(f"  {t('This database is a copy: it gets a new UUID.')}")
         print(f"  {t('This database was moved: it keeps its original UUID.')}")
         if not self._is_yes_default_yes(
-            input(f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}")
+            input(
+                f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}"
+            )
         ):
             options.append("--move")
         # Une sauvegarde d'une version précédente du code ne se charge pas
@@ -1499,9 +1413,14 @@ class ContainerMenuMixin:
         if not bases:
             print(t("No database in this container."))
             return
-        rang = self._container_choix_numerote(
+        # Sans défaut : une réponse vide revient, elle ne vise aucune base.
+        rang = ui.choose(
             t("Databases:"),
-            [f"{nom}  ({t('empty')})" if vide else nom for nom, vide in bases],
+            range(len(bases)),
+            labels=[
+                f"{nom}  ({t('empty')})" if vide else nom
+                for nom, vide in bases
+            ],
         )
         if rang is None:
             return

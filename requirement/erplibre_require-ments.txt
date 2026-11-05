@@ -36,6 +36,11 @@ textual>=8,<9
 # l'ANSI avec rich.text.Text.from_ansi. Compter sur une dépendance
 # transitive, c'est dépendre du jour où Textual changera la sienne.
 rich
+# Serveur du hub de l'interface web de TODO (script/todo/web/server.py).
+# Dépendance DIRECTE : sans cette ligne, il n'arrive que par mmg → nbconvert
+# → jupyter-client, et disparaît le jour où l'un d'eux s'en passe. Majeure
+# bornée : les gardes du hub reposent sur des réglages propres à tornado 6.
+tornado>=6.5.10,<7
 # Dépendance directe : les outils d'analyse comparent des arbres XML avec lxml.
 # Il n'arrivait que par pykeepass / openupgradelib / odoo-module-migrator, donc
 # un jour où l'un d'eux s'en passe, il disparaît sans que rien ne le réclame.
