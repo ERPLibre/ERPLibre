@@ -1492,13 +1492,17 @@ class TestOptionsDeLAnonymiseur(unittest.TestCase):
         self.addCleanup(setattr, sys, "stdout", vrai)
 
     def _repondre(self, mode, *reponses):
-        import script.todo.todo as module
+        """Le mode, puis les réponses aux questions qui le suivent ; une
+        réponse qui est une exception est levée (EOFError, Ctrl+D)."""
+        suite = iter((mode, *reponses))
 
-        suite = iter(reponses)
-        builtins.input = lambda invite="": next(suite)
-        vrai = module.click.prompt
-        module.click.prompt = lambda *a, **k: mode
-        self.addCleanup(setattr, module.click, "prompt", vrai)
+        def repondre(invite=""):
+            reponse = next(suite)
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
+
+        builtins.input = repondre
         return self.todo._monitoring_anonymize_options()
 
     def test_une_liste_blanche_sans_modele_est_REFUSEE(self):
@@ -1529,14 +1533,148 @@ class TestOptionsDeLAnonymiseur(unittest.TestCase):
             ["--mode", "blacklist", "--exclude", "res.users"],
         )
 
-    def test_un_mode_inconnu_renonce(self):
-        self.assertIsNone(self._repondre("9"))
+    def test_un_mode_inconnu_est_dit_et_redemande(self):
+        """« 9 » n'est pas un mode : il est nommé, la question revient, et
+        [0] renonce ensuite."""
+        self.assertIsNone(self._repondre("9", "0"))
+        self.assertIn(
+            f"{todo_i18n.t('Invalid choice: ')}9", self.sortie.getvalue()
+        )
+
+    def test_retour_vide_ou_ctrl_d_au_mode_renoncent(self):
+        """Sans défaut, une réponse vide revient comme [0] : aucune liste
+        de modèles n'est demandée."""
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.assertIsNone(self._repondre(reponse))
 
     def test_un_fichier_de_mots_introuvable_est_REFUSE(self):
         """Le lancer produirait une trace au lieu d'un message."""
         self.assertIsNone(
             self._repondre("1", "", "n", "n", "/nexistepas/mots.py")
         )
+
+
+class TestLesQuestionsDuMonitoring(unittest.TestCase):
+    """Ce qu'Analyse › Monitoring demande après la source : ce qu'est
+    l'instance, et la façon de s'y connecter. Rien ne se connecte ni ne
+    s'analyse ici : `live_connect`, l'écran des analyses et l'analyse
+    sont des doubles."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.enterContext(redirect_stdout(io.StringIO()))
+
+    def repondre(self, *reponses):
+        return self.enterContext(
+            patch("builtins.input", side_effect=list(reponses))
+        )
+
+    def test_the_instance_is_chosen_by_number_without_a_default(self):
+        from script.analyse import check_instance_state, monitoring
+
+        self.repondre("2")
+        self.assertEqual(
+            self.todo._monitoring_expect(monitoring.KIND_DATABASE),
+            check_instance_state.LIVE,
+        )
+        self.repondre("1")
+        self.assertEqual(
+            self.todo._monitoring_expect(monitoring.KIND_DATABASE),
+            check_instance_state.COPY,
+        )
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.repondre(reponse)
+                self.assertIsNone(
+                    self.todo._monitoring_expect(monitoring.KIND_DATABASE)
+                )
+
+    def test_back_at_the_instance_runs_no_analysis(self):
+        """[0] à « copie ou instance en service » : l'analyse ne part pas,
+        où toute réponse autre que 2 la lançait sur une copie."""
+        from script.analyse import monitoring, monitoring_tui
+
+        analyse = {"key": "forged", "kinds": [monitoring.KIND_DATABASE]}
+        analyse["asks_expect"] = True
+        self.todo._database_source = lambda live=False: (
+            monitoring.KIND_DATABASE,
+            "forged_db",
+            False,
+        )
+        self.repondre("0")
+        with (
+            patch.object(monitoring_tui, "run_tui", return_value="forged"),
+            patch.object(monitoring, "analysis_by_key", return_value=analyse),
+            patch.object(monitoring, "run_analysis") as lance,
+        ):
+            self.todo.execute_analyse_monitoring()
+        lance.assert_not_called()
+
+    def test_back_at_the_secret_kind_connects_to_nothing(self):
+        """L'adresse, la base et l'identifiant tapés, puis [0], une réponse
+        vide ou Ctrl+D au genre du secret : aucun secret demandé, aucune
+        connexion."""
+        from script.analyse import monitoring
+
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.repondre(
+                    "https://forged.invalid", "forged", "forged", reponse
+                )
+                with (
+                    patch("getpass.getpass") as secret,
+                    patch.object(monitoring, "live_connect") as connecte,
+                ):
+                    self.assertIsNone(self.todo._monitoring_live())
+                secret.assert_not_called()
+                connecte.assert_not_called()
+
+    def test_the_secret_kind_names_its_question(self):
+        from script.analyse import monitoring
+
+        for reponse, invite in (
+            ("1", todo_i18n.t("API key: ")),
+            ("2", todo_i18n.t("Password: ")),
+        ):
+            with self.subTest(reponse=reponse):
+                self.repondre(
+                    "https://forged.invalid", "forged", "forged", reponse
+                )
+                with (
+                    patch("getpass.getpass", return_value="") as secret,
+                    patch.object(monitoring, "live_connect") as connecte,
+                ):
+                    self.assertIsNone(self.todo._monitoring_live())
+                secret.assert_called_once_with(invite)
+                connecte.assert_not_called()
+
+    def test_a_typo_at_the_instance_is_said_and_asked_again(self):
+        """« 3 » à « copie ou instance en service » est dit invalide et la
+        question revient, où toute réponse autre que 2 prenait une copie."""
+        from script.analyse import monitoring
+
+        self.repondre("3", "0")
+        with redirect_stdout(io.StringIO()) as sortie:
+            rendu = self.todo._monitoring_expect(monitoring.KIND_DATABASE)
+        self.assertIsNone(rendu)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}3", sortie.getvalue())
+
+    def test_a_typo_at_the_secret_kind_is_said_and_asked_again(self):
+        """Une faute au genre du secret est dite invalide et la question
+        revient, où toute réponse autre que 1 demandait un mot de passe."""
+        from script.analyse import monitoring
+
+        self.repondre("https://forged.invalid", "forged", "forged", "x", "0")
+        with (
+            redirect_stdout(io.StringIO()) as sortie,
+            patch("getpass.getpass") as secret,
+            patch.object(monitoring, "live_connect") as connecte,
+        ):
+            self.assertIsNone(self.todo._monitoring_live())
+        secret.assert_not_called()
+        connecte.assert_not_called()
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}x", sortie.getvalue())
 
 
 class TestAttributsDeTODO(unittest.TestCase):

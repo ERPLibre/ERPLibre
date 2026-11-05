@@ -4640,7 +4640,10 @@ class TODO(
             return
         extra = None
         if analyse.get("asks_expect"):
-            extra = ["--expect", self._monitoring_expect(kind)]
+            attendu = self._monitoring_expect(kind)
+            if attendu is None:
+                return
+            extra = ["--expect", attendu]
         if analyse.get("writes"):
             self._monitoring_write_flow(analyse, target)
             return
@@ -4713,16 +4716,20 @@ class TODO(
         )
 
     def _monitoring_anonymize_options(self):
-        """Le mode et ses listes, ou None si l'on renonce."""
+        """Le mode et ses listes, ou None si l'on renonce : [0], une
+        réponse vide ou Ctrl+D au mode, une liste blanche sans modèle, un
+        fichier de mots introuvable."""
         print()
-        print(f"[1] {t('Hybrid: the default personal-data models, adjusted')}")
-        print(f"[2] {t('Whitelist: only the models I name')}")
-        print(f"[3] {t('Blacklist: every model except those I name')}")
-        print(f"{retour(t('Back'))}")
-        answer = click.prompt(t("Command:"), prompt_suffix=" ")
-        print()
-        mode = {"1": "hybrid", "2": "whitelist", "3": "blacklist"}.get(answer)
-        if not mode:
+        mode = ui.choose(
+            t("Anonymisation mode:"),
+            ["hybrid", "whitelist", "blacklist"],
+            labels=[
+                t("Hybrid: the default personal-data models, adjusted"),
+                t("Whitelist: only the models I name"),
+                t("Blacklist: every model except those I name"),
+            ],
+        )
+        if mode is None:
             return None
         extra = ["--mode", mode]
         invite = (
@@ -4759,7 +4766,8 @@ class TODO(
         return extra
 
     def _monitoring_expect(self, kind):
-        """Copie de développement, ou instance en service ?
+        """Copie de développement, ou instance en service ? None si l'on
+        renonce : [0], une réponse vide ou Ctrl+D, sans défaut.
 
         Zéro cron actif est le SUCCÈS attendu d'une copie et une panne
         totale sur une production ; zéro serveur de courriel rassure sur
@@ -4772,14 +4780,13 @@ class TODO(
         if kind == monitoring.KIND_LIVE:
             return check_instance_state.LIVE
         print()
-        print(f"[1] {t('A development copy (restored, neutralised)')}")
-        print(f"[2] {t('An instance in service')}")
-        answer = click.prompt(t("Command:"), prompt_suffix=" ")
-        print()
-        return (
-            check_instance_state.LIVE
-            if answer == "2"
-            else check_instance_state.COPY
+        return ui.choose(
+            t("What is this instance?"),
+            [check_instance_state.COPY, check_instance_state.LIVE],
+            labels=[
+                t("A development copy (restored, neutralised)"),
+                t("An instance in service"),
+            ],
         )
 
     def _database_source(self, live=False):
@@ -4856,12 +4863,14 @@ class TODO(
         if not login:
             return None
         print()
-        print(f"[1] {t('An API key')}")
-        print(f"[2] {t('A password')}")
-        genre = click.prompt(t("Command:"), prompt_suffix=" ")
-        secret = getpass.getpass(
-            t("API key: ") if genre == "1" else t("Password: ")
+        invite = ui.choose(
+            t("Log in with:"),
+            [t("API key: "), t("Password: ")],
+            labels=[t("An API key"), t("A password")],
         )
+        if invite is None:
+            return None
+        secret = getpass.getpass(invite)
         if not secret:
             return None
         try:

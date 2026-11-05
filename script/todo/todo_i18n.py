@@ -16326,6 +16326,7 @@ TRANSLATIONS = {
         "fr": "Un mot de passe",
         "en": "A password",
     },
+    "Log in with:": {"fr": "Se connecter avec :", "en": "Log in with:"},
     "API key: ": {
         "fr": "Clé d'API : ",
         "en": "API key: ",
@@ -16606,6 +16607,10 @@ TRANSLATIONS = {
         "fr": "Une instance en service",
         "en": "An instance in service",
     },
+    "What is this instance?": {
+        "fr": "De quelle instance s'agit-il ?",
+        "en": "What is this instance?",
+    },
     "Anonymise a copy": {
         "fr": "🎭 Anonymiser une copie",
         "en": "🎭 Anonymise a copy",
@@ -16649,6 +16654,10 @@ TRANSLATIONS = {
     "Blacklist: every model except those I name": {
         "fr": "Liste noire : tous les modèles sauf ceux que je nomme",
         "en": "Blacklist: every model except those I name",
+    },
+    "Anonymisation mode:": {
+        "fr": "Mode d'anonymisation :",
+        "en": "Anonymisation mode:",
     },
     "Models to ADD, comma separated (empty for none): ": {
         "fr": "Modèles à AJOUTER, séparés par des virgules (vide pour aucun) : ",
