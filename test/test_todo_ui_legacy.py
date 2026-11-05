@@ -134,9 +134,7 @@ RAW_CALLS = {
     "script/todo/kdbx_manager.py": 1,
     "script/todo/git_repo_menu.py": 15,
     "script/todo/longtest_menu.py": 5,
-    # Questions ajoutées par develop, à migrer : le jeton OAuth, la
-    # signature d'un compte (+4).
-    "script/todo/mail/menu.py": 16,
+    "script/todo/mail/menu.py": 14,
     "script/todo/modem/menu.py": 29,
     "script/todo/module_menu.py": 1,
     "script/todo/proxmox_menu.py": 13,
