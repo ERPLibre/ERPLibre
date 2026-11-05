@@ -40,11 +40,8 @@ import shlex
 import shutil
 import subprocess
 
-import click
-
 from script.todo import transform_setup
 from script.todo.menus import run as menus_run
-from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
 
@@ -1049,11 +1046,11 @@ class TransformMenuMixin:
         if analyse is None:  # pragma: no cover - la table est en dur
             print(f"❌ {t('Command not found !')}")
             return
-        choix = self._transform_anonymise_source()
+        choix = self._database_source()
         if choix is None:
             print(t("Nothing to do."))
             return
-        base, depuis_zip = choix
+        _genre, base, depuis_zip = choix
         print()
         print(monitoring.describe_source(monitoring.KIND_DATABASE, base))
         if not depuis_zip:
@@ -1074,37 +1071,6 @@ class TransformMenuMixin:
             return
         if depuis_zip:
             self._transform_export_zip(base)
-
-    def _transform_anonymise_source(self):
-        """(nom de base, venait d'un zip), ou None si l'on renonce.
-
-        Les trois mêmes provenances que « Monitoring », dans le même
-        ordre : deux ordres différents dans un même logiciel se paient en
-        hésitation à chaque usage.
-        """
-        print(f"[1] {t('A local database')}")
-        print(f"[2] {t('A local backup .zip')}")
-        print(f"[3] {t('A remote backup (https + master password)')}")
-        print(f"{retour(t('Back'))}")
-        reponse = click.prompt(t("Command:"), prompt_suffix=" ")
-        print()
-        if reponse == "1":
-            base = self.db_manager.select_database()
-            return (base, False) if base else None
-        if reponse == "2":
-            chemin = self.db_manager.select_backup_path()
-            base = self._monitoring_restore(chemin) if chemin else None
-            return (base, True) if base else None
-        if reponse == "3":
-            statut, chemin, _nom = (
-                self.db_manager.download_database_backup_cli()
-            )
-            if statut or not chemin or not os.path.isfile(chemin):
-                print(f"❌ {t('The download did not produce a usable file.')}")
-                return None
-            base = self._monitoring_restore(chemin)
-            return (base, True) if base else None
-        return None
 
     def _transform_export_zip(self, base):
         """Vider la base anonymisée dans un zip NEUF.

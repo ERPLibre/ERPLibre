@@ -72,15 +72,17 @@ class _Bases:
 def _menu(**kw):
     """Le mixin, monté sur les aides que `TODO` lui fournit.
 
-    Les aides d'oui/non sont PRISES sur la vraie classe : « o », « oui »,
-    « y » et la différence entre un défaut oui et un défaut non sont sa
-    règle, et une copie dériverait sans qu'un test le voie.
+    Les aides d'oui/non et la question de la provenance sont PRISES sur
+    la vraie classe : « o », « oui », « y », la différence entre un défaut
+    oui et un défaut non, et les provenances offertes sont sa règle, et
+    une copie dériverait sans qu'un test le voie.
     """
     from script.todo.todo import TODO
 
     class Bouchon(_tm().TransformMenuMixin):
         _is_yes = staticmethod(TODO._is_yes)
         _is_yes_default_yes = staticmethod(TODO._is_yes_default_yes)
+        _database_source = TODO._database_source
 
         def __init__(self):
             self.execute = kw.get("execute") or _Execute()
@@ -102,7 +104,8 @@ def _menu(**kw):
 
 
 class _Entrees:
-    """`input()` bouchonné. Une question sans réponse LÈVE."""
+    """`input()` bouchonné. Une question sans réponse LÈVE, et une réponse
+    qui est une exception est levée (EOFError, Ctrl+D)."""
 
     def __init__(self, *reponses):
         self.reponses = list(reponses)
@@ -115,7 +118,10 @@ class _Entrees:
                 "question sans réponse : %r après %d"
                 % (invite, len(self.demandes) - 1)
             )
-        return self.reponses.pop(0)
+        reponse = self.reponses.pop(0)
+        if isinstance(reponse, BaseException):
+            raise reponse
+        return reponse
 
 
 class BaseDialogue(unittest.TestCase):
@@ -141,23 +147,17 @@ class BaseDialogue(unittest.TestCase):
         builtins.input = entrees
         return entrees
 
-    def _prompt(self, *reponses):
-        """`click.prompt` bouchonné : le choix de la provenance."""
-        restes = list(reponses)
-        vrai = _tm().click.prompt
-        _tm().click.prompt = lambda *a, **k: restes.pop(0)
-        self.addCleanup(setattr, _tm().click, "prompt", vrai)
-
 
 class TestProvenance(BaseDialogue):
-    """Quelle provenance mène à quoi."""
+    """Quelle provenance mène à quoi : la question de la provenance,
+    partagée avec Monitoring, sans l'instance vivante."""
 
     def test_une_base_locale_ne_passe_PAS_par_une_restauration(self):
         """La base même est modifiée : rien à restaurer."""
         menu = _menu(db_manager=_Bases(base="prod_copie"))
-        self._prompt("1")
+        self._repondre("1")
         self.assertEqual(
-            menu._transform_anonymise_source(), ("prod_copie", False)
+            menu._database_source(), ("database", "prod_copie", False)
         )
         self.assertEqual(menu.restaurations, [])
 
@@ -166,10 +166,10 @@ class TestProvenance(BaseDialogue):
             db_manager=_Bases(zip_local="/tmp/sauvegarde.zip"),
             restaure="sauvegarde_neutralize",
         )
-        self._prompt("2")
+        self._repondre("2")
         self.assertEqual(
-            menu._transform_anonymise_source(),
-            ("sauvegarde_neutralize", True),
+            menu._database_source(),
+            ("database", "sauvegarde_neutralize", True),
         )
         self.assertEqual(menu.restaurations, ["/tmp/sauvegarde.zip"])
 
@@ -177,19 +177,42 @@ class TestProvenance(BaseDialogue):
         """Le refus vient AVANT la restauration : restaurer un fichier
         absent produirait une trace au lieu d'un message."""
         menu = _menu(db_manager=_Bases(distant=(0, "", "")))
-        self._prompt("3")
-        self.assertIsNone(menu._transform_anonymise_source())
+        self._repondre("3")
+        self.assertIsNone(menu._database_source())
         self.assertEqual(menu.restaurations, [])
 
-    def test_zero_renonce(self):
-        menu = _menu()
-        self._prompt("0")
-        self.assertIsNone(menu._transform_anonymise_source())
+    def test_zero_une_reponse_vide_ou_ctrl_d_renoncent(self):
+        """Sans défaut, une réponse vide revient comme [0] ; ni base
+        choisie, ni sauvegarde cherchée, ni téléchargement."""
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                bases = _Bases(base="prod_copie")
+                menu = _menu(db_manager=bases)
+                self._repondre(reponse)
+                self.assertIsNone(menu._database_source())
+                self.assertEqual(bases.appels, [])
+                self.assertEqual(menu.restaurations, [])
+
+    def test_une_faute_redemande_et_l_instance_vivante_n_est_pas_offerte(
+        self,
+    ):
+        """« 4 », l'instance vivante de Monitoring, n'est pas une
+        provenance d'Anonymiser : elle est une faute, dite, et la question
+        revient."""
+        menu = _menu(db_manager=_Bases(base="prod_copie"))
+        self._repondre("4", "x", "1")
+        self.assertEqual(
+            menu._database_source(), ("database", "prod_copie", False)
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}4", rendu)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}x", rendu)
+        self.assertNotIn(todo_i18n.t("A live remote instance"), rendu)
 
     def test_renoncer_au_choix_de_la_base_renonce_tout(self):
         menu = _menu(db_manager=_Bases(base=""))
-        self._prompt("1")
-        self.assertIsNone(menu._transform_anonymise_source())
+        self._repondre("1")
+        self.assertIsNone(menu._database_source())
 
 
 class TestOrdreDesGestes(BaseDialogue):
@@ -202,8 +225,7 @@ class TestOrdreDesGestes(BaseDialogue):
             db_manager=_Bases(zip_local="/tmp/s.zip"),
             restaure="s_neutralize",
         )
-        self._prompt("2")
-        self._repondre("")  # le nom de la sauvegarde : le défaut
+        self._repondre("2", "")  # la provenance, puis le nom : le défaut
         menu._transform_anonymise_base()
         self.assertEqual(menu.restaurations, ["/tmp/s.zip"])
         self.assertEqual(menu.flots, [("anonymize", "s_neutralize")])
@@ -215,14 +237,14 @@ class TestOrdreDesGestes(BaseDialogue):
         """La base même est le résultat : il n'y a pas de zip à écrire."""
         execute = _Execute()
         menu = _menu(execute=execute, db_manager=_Bases(base="prod_copie"))
-        self._prompt("1")
+        self._repondre("1")
         menu._transform_anonymise_base()
         self.assertEqual(menu.flots, [("anonymize", "prod_copie")])
         self.assertEqual(execute.commandes, [])
 
     def test_une_base_locale_est_AVERTIE_avant_le_travail(self):
         menu = _menu(db_manager=_Bases(base="prod_copie"))
-        self._prompt("1")
+        self._repondre("1")
         menu._transform_anonymise_base()
         self.assertIn(
             todo_i18n.t("The database ITSELF is modified; no copy."),
@@ -244,7 +266,7 @@ class TestOrdreDesGestes(BaseDialogue):
             restaure="s_neutralize",
             ecrit=False,
         )
-        self._prompt("2")
+        self._repondre("2")
         menu._transform_anonymise_base()
         self.assertEqual(menu.flots, [("anonymize", "s_neutralize")])
         self.assertEqual(execute.commandes, [])
@@ -262,7 +284,7 @@ class TestOrdreDesGestes(BaseDialogue):
             restaure="s_neutralize",
             ecrit=False,
         )
-        self._prompt("2")
+        self._repondre("2")
         menu._transform_anonymise_base()
         self.assertEqual(
             [b["base"] for b in menu._transform_bases_lues()],
@@ -272,7 +294,7 @@ class TestOrdreDesGestes(BaseDialogue):
     def test_renoncer_a_la_provenance_n_appelle_RIEN(self):
         execute = _Execute()
         menu = _menu(execute=execute)
-        self._prompt("0")
+        self._repondre("0")
         menu._transform_anonymise_base()
         self.assertEqual(menu.flots, [])
         self.assertEqual(execute.commandes, [])

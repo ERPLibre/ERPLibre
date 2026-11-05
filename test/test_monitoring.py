@@ -300,50 +300,95 @@ class TestTheScreenAnswersKeys(unittest.TestCase):
         self.assertIsNone(self._presser(monitoring.KIND_DATABASE, ["q"]))
 
 
-class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
-    """Les numéros affichés mènent-ils où ils le disent ?
+class TestTheSourceQuestion(unittest.TestCase):
+    """Monitoring et Anonymiser posent une même question de provenance.
 
-    `_monitoring_select_source` imprime « [2] Une sauvegarde .zip » d'un
-    côté et teste `answer == "2"` de l'autre. Rien ne relie les deux :
-    insérer « une base locale » en tête décale tout le reste à la main.
-    C'est le piège que le registre des menus écarte, le numéro d'une
-    entrée y étant sa place, et celui-ci n'entre pas dans son moule — il
-    s'imprime, il ne se déclare pas.
+    Le port numérote la liste, et chaque numéro mène à la branche qu'il
+    affiche : la base locale d'abord, comme la source d'une analyse du
+    même menu, l'instance vivante en dernier, pour Monitoring seulement.
+    Rien ne restaure, ne télécharge ni ne se connecte ici : le
+    gestionnaire de bases et la restauration sont des doubles.
     """
 
     def setUp(self):
-        import re
-        from pathlib import Path
+        from unittest import mock
 
-        todo = (
-            Path(__file__).resolve().parent.parent
-            / "script"
-            / "todo"
-            / "todo.py"
+        from script.todo import ui
+        from script.todo.todo import TODO
+        from script.todo.ui import port
+
+        self.todo = TODO.__new__(TODO)
+        self.todo.db_manager = mock.MagicMock()
+        self.todo.db_manager.select_database.return_value = "forged_db"
+        self.todo._monitoring_restore = mock.MagicMock()
+        self.todo._monitoring_live = mock.MagicMock(
+            return_value=(monitoring.KIND_LIVE, "forged", False)
         )
-        source = todo.read_text(encoding="utf-8")
-        debut = source.index("def _monitoring_select_source(self):")
-        fin = source.index("def _monitoring_live(self):", debut)
-        self.corps = source[debut:fin]
-        self.affiches = re.findall(r'print\(f"\[(\d+)\] \{t\(', self.corps)
-        self.branches = re.findall(r'if answer == "(\d+)":', self.corps)
+        self.port = port.ScriptedPort
+        self.ui = ui
+        sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
 
-    def test_the_menu_was_actually_parsed(self):
-        """Sur des listes vides, tout passe : mieux vaut tomber ici."""
-        self.assertGreaterEqual(len(self.affiches), 4)
+    def repondre(self, reponses, live):
+        scripted = self.port(reponses)
+        with self.ui.bind(scripted):
+            rendu = self.todo._database_source(live=live)
+        return rendu, scripted.events
 
-    def test_every_shown_entry_has_a_branch(self):
-        montres = [n for n in self.affiches if n != "0"]
-        self.assertEqual(sorted(montres), sorted(self.branches))
+    def test_monitoring_offers_the_live_instance_last(self):
+        _rendu, events = self.repondre(["0"], live=True)
+        from script.todo.todo_i18n import t
 
-    def test_the_numbering_is_contiguous_from_one(self):
-        montres = sorted(int(n) for n in self.affiches if n != "0")
-        self.assertEqual(montres, list(range(1, len(montres) + 1)))
+        libelles = [o["label"] for o in events[0]["options"]]
+        self.assertEqual(
+            libelles,
+            [
+                t("A local database"),
+                t("A local backup .zip"),
+                t("A remote backup (https + master password)"),
+                t("A live remote instance"),
+                t("Back"),
+            ],
+        )
 
-    def test_a_local_database_is_offered_first(self):
-        """La provenance la plus directe, et l'ordre du menu d'à côté."""
-        self.assertEqual(self.affiches[0], "1")
-        self.assertIn("A local database", self.corps.split("if answer")[0])
+    def test_anonymise_offers_no_live_instance(self):
+        _rendu, events = self.repondre(["0"], live=False)
+        cles = [o["key"] for o in events[0]["options"]]
+        self.assertEqual(cles, ["1", "2", "3", "0"])
+
+    def test_each_number_reaches_its_branch(self):
+        rendu, _events = self.repondre(["1"], live=True)
+        self.assertEqual(rendu, (monitoring.KIND_DATABASE, "forged_db", False))
+        rendu, _events = self.repondre(["4"], live=True)
+        self.assertEqual(rendu, (monitoring.KIND_LIVE, "forged", False))
+        self.todo._monitoring_live.assert_called_once_with()
+
+    def test_back_an_empty_answer_or_ctrl_d_restore_nothing(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                rendu, _events = self.repondre([reponse], live=True)
+                self.assertIsNone(rendu)
+        self.todo.db_manager.select_database.assert_not_called()
+        self.todo.db_manager.select_backup_path.assert_not_called()
+        self.todo.db_manager.download_database_backup_cli.assert_not_called()
+        self.todo._monitoring_restore.assert_not_called()
+        self.todo._monitoring_live.assert_not_called()
+
+    def test_monitoring_goes_back_before_any_analysis(self):
+        """[0] à la provenance : ni description, ni écran des analyses."""
+        from unittest import mock
+
+        scripted = self.port(["0"])
+        with (
+            self.ui.bind(scripted),
+            mock.patch.object(monitoring_tui, "run_tui") as ecran,
+            mock.patch.object(monitoring, "run_analysis") as analyse,
+        ):
+            self.assertIsNone(self.todo.execute_analyse_monitoring())
+        ecran.assert_not_called()
+        analyse.assert_not_called()
 
 
 class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
