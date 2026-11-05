@@ -525,6 +525,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code › Upgrade Module goes back when its directory browser is left without a directory, where TODO ended on an error
 - Execute › Git › Install Claude Code and Install opencode tell to open a new shell whenever the chosen shell file carries the tool's directory and the PATH TODO runs under does not, including a line the upstream installer wrote itself, which the advice skipped; a directory already on that PATH needs no new shell
 - Execute › Code › Upgrade Module asks again for an Odoo version typed wrong and goes back on one left empty, where TODO ended on an error
+- Execute › Code › Upgrade Module goes back on an empty module name before asking the Odoo versions, where the checkout switched to the start version once they were chosen
 
 ## Removed
 

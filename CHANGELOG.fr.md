@@ -529,6 +529,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Code › Mise à jour de module revient quand son navigateur de répertoires est quitté sans répertoire, là où TODO s'arrêtait sur une erreur
 - Exécution › Git › Installer Claude Code et Installer opencode disent d'ouvrir un nouveau shell chaque fois que le fichier de shell choisi porte le répertoire de l'outil et que le PATH sous lequel tourne TODO ne le porte pas, y compris pour une ligne que l'installateur amont a écrite lui-même, que le conseil taisait ; un répertoire déjà sur ce PATH ne demande aucun nouveau shell
 - Exécution › Code › Mise à jour de module redemande une version d'Odoo mal tapée et revient sur une version laissée vide, là où TODO s'arrêtait sur une erreur
+- Exécution › Code › Mise à jour de module revient sur un nom de module vide avant de demander les versions d'Odoo, là où le checkout passait à la version de départ une fois celles-ci choisies
 
 ## Retiré
 
