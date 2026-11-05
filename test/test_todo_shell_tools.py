@@ -427,9 +427,29 @@ class TestUpstreamTools(ShellFixture):
         ligne = f'export PATH="{self.repertoires["opencode"]}:$PATH"\n'
         self.cree("bash", contenu=ligne)
         self.pose_le_binaire("opencode")
-        sortie = self.installe("opencode")
+        self.installe("opencode")
         contenu = self.fichiers["bash"].read_text(encoding="utf-8")
         self.assertEqual(contenu.count(str(self.repertoires["opencode"])), 1)
+
+    def test_a_line_the_installer_wrote_asks_for_a_new_shell(self):
+        """La ligne vient de l'installateur amont, et le PATH du shell qui
+        a lancé TODO ne porte pas le répertoire : un nouveau shell le
+        portera."""
+        ligne = f'export PATH="{self.repertoires["opencode"]}:$PATH"\n'
+        self.cree("bash", contenu=ligne)
+        self.pose_le_binaire("opencode")
+        sortie = self.installe("opencode")
+        self.assertIn(t("Open a new shell to see it."), sortie)
+
+    def test_a_directory_on_the_running_path_needs_no_new_shell(self):
+        """TODO écrit la ligne, mais le PATH du shell qui l'a lancé porte
+        déjà le répertoire : aucun renvoi à un nouveau shell."""
+        self.cree("bash")
+        self.pose_le_binaire("claude")
+        chemin = os.pathsep.join([str(self.repertoires["claude"]), "/usr/bin"])
+        with patch.dict(os.environ, {"PATH": chemin}):
+            sortie = self.installe("claude")
+        self.assertIn(t("PATH line added to: "), sortie)
         self.assertNotIn(t("Open a new shell to see it."), sortie)
 
     def test_a_binary_that_did_not_land_is_said(self):

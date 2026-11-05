@@ -521,6 +521,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Test › Tests longs - vraies VM, des heures : renoncer à l'hôte d'où part un test — [0] à la liste des hôtes Proxmox, ou une adresse vide pour un autre hôte ou pour une machine NixOS qu'on possède déjà — dit « Annulé. » et ne lance rien, là où Profondeur Proxmox imbriqué, Profondeur QEMU imbriqué et ERPLibre sur NixOS continuaient et créaient une VM neuve, une fois confirmés
 - Configuration › Interface de déploiement QEMU, Affichage pendant le déploiement et Interface de la migration Odoo n'écrivent rien quand la valeur courante est choisie par son numéro, comme une réponse vide déjà : une préférence jamais réglée suit encore le défaut de TODO au lieu d'être stockée dans ~/.erplibre/todo_prefs.json
 - Exécution › Code › Mise à jour de module revient quand son navigateur de répertoires est quitté sans répertoire, là où TODO s'arrêtait sur une erreur
+- Exécution › Git › Installer Claude Code et Installer opencode disent d'ouvrir un nouveau shell chaque fois que le fichier de shell choisi porte le répertoire de l'outil et que le PATH sous lequel tourne TODO ne le porte pas, y compris pour une ligne que l'installateur amont a écrite lui-même, que le conseil taisait ; un répertoire déjà sur ce PATH ne demande aucun nouveau shell
 
 ## Retiré
 

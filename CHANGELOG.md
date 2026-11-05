@@ -517,6 +517,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Test › Long tests - real VMs, hours: giving up the host a test starts from — [0] at the Proxmox host list, or an empty address for another host or for a NixOS machine you already have — says « Cancelled. » and runs nothing, where Nested Proxmox depth, Nested QEMU depth and ERPLibre on NixOS went on to create a fresh VM once confirmed
 - Configuration › QEMU deployment interface, Display while deploying and Odoo migration interface write nothing when the current value is chosen by its number, as an empty answer already did: a preference never set keeps following TODO's default instead of being stored in ~/.erplibre/todo_prefs.json
 - Execute › Code › Upgrade Module goes back when its directory browser is left without a directory, where TODO ended on an error
+- Execute › Git › Install Claude Code and Install opencode tell to open a new shell whenever the chosen shell file carries the tool's directory and the PATH TODO runs under does not, including a line the upstream installer wrote itself, which the advice skipped; a directory already on that PATH needs no new shell
 
 ## Removed
 
