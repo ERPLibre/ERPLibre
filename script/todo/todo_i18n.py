@@ -14378,10 +14378,6 @@ TRANSLATIONS = {
         "fr": "VM jetable - installation propre, ~1 h et 20 Go, exige sudo",
         "en": "Disposable VM - clean install, ~1 h and 20 GB, needs sudo",
     },
-    "sms_mode_ask": {
-        "fr": "Choisis le mode [1-2] : ",
-        "en": "Choose the mode [1-2]: ",
-    },
     "sms_mode_current": {"fr": "Mode", "en": "Mode"},
     "sms_mode_changed": {
         "fr": "Mode change : les etapes deja faites sont oubliees.",
@@ -14489,10 +14485,6 @@ TRANSLATIONS = {
     "sms_phone_sent": {"fr": "Envoyes", "en": "Sent"},
     "sms_phone_inbox": {"fr": "Recus", "en": "Received"},
     "sms_phone_all": {"fr": "Tous", "en": "All"},
-    "sms_phone_ask": {
-        "fr": "Quelle boite ? [1] Envoyes [2] Recus [3] Tous [0] Retour : ",
-        "en": "Which box? [1] Sent [2] Received [3] All [0] Back: ",
-    },
     "sms_phone_empty": {
         "fr": "Aucun message dans cette boite.",
         "en": "No message in this box.",
@@ -14522,10 +14514,6 @@ TRANSLATIONS = {
             "Wi-Fi - stable and cable-free, but messages travel IN THE CLEAR"
             " on the local network"
         ),
-    },
-    "sms_transport_ask": {
-        "fr": "Choisis le transport [1-2] : ",
-        "en": "Choose the transport [1-2]: ",
     },
     "sms_transport_changed": {
         "fr": (

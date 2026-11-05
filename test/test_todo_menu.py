@@ -370,7 +370,9 @@ class TestLArbreDesMenus(unittest.TestCase):
         # sondent sans confirmation les VM de la machine ou les hôtes de
         # ~/.ssh/config, le retrait d'une version d'Odoo, la restauration
         # par-dessus et l'effacement d'une base ou des volumes du conteneur
-        # ERPLibre, et la remise à zéro des préférences. Les `kwargs`
+        # ERPLibre, ce qui, dans la démonstration de la passerelle, crée
+        # une VM, passe un vrai appel ou la détruit, et la remise à zéro
+        # des préférences. Les `kwargs`
         # distinguent les actions de production de celles du serveur local,
         # au même chemin.
         dangerous = []
@@ -556,6 +558,15 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "The hosts of ~/.ssh/config",
                     )
                 ],
+                *[
+                    (f"TODO › Assistant › Gateway › {label}", {})
+                    for label in (
+                        "sms_run_all",
+                        "sms_call_menu",
+                        "sms_reset_local",
+                        "sms_reset",
+                    )
+                ],
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -598,10 +609,12 @@ class TestLArbreDesMenus(unittest.TestCase):
         ]
         self.assertEqual((gpt["label"], gpt["entry"]), ("gpt tools", ""))
 
-    def test_assistant_opens_llm_and_mail(self):
+    def test_assistant_opens_llm_mail_gateway_and_modem(self):
         # Le courriel, dont les menus sans segment restent hors de
-        # l'arbre, y est une feuille : la TUI l'ouvre par la méthode de
-        # TODO qui passe la main à mail/menu.py.
+        # l'arbre, et le modem y sont des feuilles : la TUI les ouvre par
+        # la méthode de TODO qui passe la main à leur paquet. La
+        # démonstration de la passerelle est un menu déclaré, sous son
+        # segment.
         assistant = self._noeud("Assistant")
         self.assertEqual(
             [
@@ -611,7 +624,7 @@ class TestLArbreDesMenus(unittest.TestCase):
             [
                 ("LLM", True, None),
                 ("mail_menu", False, "_assistant_mail"),
-                ("sms_menu", False, "_assistant_sms"),
+                ("Gateway", True, None),
                 ("modem_menu", False, "_assistant_modem"),
             ],
         )
@@ -664,8 +677,9 @@ class TestLArbreDesMenus(unittest.TestCase):
         # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
         # attend un argument que l'arbre ne donne pas lève dans la TUI au
         # lieu de lancer sa commande. Chaque feuille de l'arbre, toutes
-        # familles, lie les siens ; seule Mobile, gardée (`when`), n'a pas
-        # de méthode, et la TUI ne la lance pas.
+        # familles, lie les siens ; seules les feuilles gardées (`when`),
+        # Mobile et celles de Gateway qui n'existent que pour un matériel
+        # ou un mode, n'ont pas de méthode, et la TUI ne les lance pas.
         import inspect
 
         from script.todo.todo import TODO
@@ -682,7 +696,14 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertGreater(len(bound), 250)
         self.assertEqual(
             [leaf["label"] for leaf in found if not leaf.get("method")],
-            ["Mobile - Compile and run software"],
+            [
+                "Mobile - Compile and run software",
+                "sms_phone_menu",
+                "modem_sms_list",
+                "sms_pair_menu",
+                "sms_reset_local",
+                "sms_reset",
+            ],
         )
         for leaf in bound:
             with self.subTest(leaf=leaf["label"]):
@@ -2227,17 +2248,53 @@ class TestMainMenuNumbering(RegistryCoherence, unittest.TestCase):
 
 class TestAssistantMenuNumbering(RegistryCoherence, unittest.TestCase):
     """L'entrée [3] du menu principal : une question à un modèle, le
-    courriel, les SMS et le modem, que TODO ouvre chacun par une méthode qui
-    passe la main à son paquet."""
+    courriel et le modem, que TODO ouvre chacun par une méthode qui passe
+    la main à son paquet, et la démonstration de la passerelle."""
 
     MENU = "prompt_assistant"
     BACK = None
     EXPECTED = {
         "AI question - Ask a model, local or remote": "prompt_assistant_llm",
         "mail_menu": "_assistant_mail",
-        "sms_menu": "_assistant_sms",
+        "sms_menu": "prompt_execute_sms",
         "modem_menu": "_assistant_modem",
     }
+
+
+class TestGatewayMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › Gateway : enchaîner, une entrée par étape (FromMethod),
+    puis ce qui suit les étapes ; une entrée propre à un matériel ou à un
+    mode est gardée (`when`), et passer à l'autre matériel referme le menu
+    sur son nom (`closes_on_result`)."""
+
+    MENU = "prompt_execute_sms"
+    BACK = None
+    EXPECTED = {
+        "sms_run_all": "_sms_run_all",
+        "sms_phone_menu": "_sms_read_phone",
+        "modem_sms_list": "_sms_list_modem",
+        "sms_call_menu": "_sms_test_call",
+        "sms_open_tui": "_sms_open_tui",
+        "sms_test_number_menu": "_sms_test_number",
+        "sms_mode_menu": "_sms_mode",
+        "sms_pair_menu": "_sms_pair",
+        "sms_switch_materiel": "_sms_switch",
+        "sms_reset_local": "_sms_reset",
+        "sms_reset": "_sms_reset",
+    }
+
+    def test_the_guards_and_the_switch(self):
+        self.assertTrue(self.menu.closes_on_result)
+        self.assertEqual(
+            [(e.key, e.when) for e in self.entries if e.when],
+            [
+                ("sms_phone_menu", "_sms_on_mobile"),
+                ("modem_sms_list", "_sms_on_modem"),
+                ("sms_pair_menu", "_sms_on_mobile"),
+                ("sms_reset_local", "_sms_local"),
+                ("sms_reset", "_sms_in_vm"),
+            ],
+        )
 
 
 class TestLlmMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -4544,6 +4601,7 @@ class TestMenuLabels(unittest.TestCase):
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
+        "prompt_execute_sms": "Gateway",
         "prompt_execute_mail": None,
         "prompt_mail_accounts": None,
         "prompt_mail_cache": None,

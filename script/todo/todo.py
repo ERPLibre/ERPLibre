@@ -151,6 +151,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.sms.menu import SmsMenuMixin
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
@@ -229,6 +230,7 @@ class TODO(
     ContainerMenuMixin,
     GitRepoMenuMixin,
     ModuleMenuMixin,
+    SmsMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -293,13 +295,6 @@ class TODO(
         from script.todo.mail.menu import prompt_execute_mail
 
         return prompt_execute_mail(self)
-
-    def _assistant_sms(self):
-        """Ouvre la démonstration SMS du paquet `sms`, sur la passerelle
-        mobile, importée à l'ouverture."""
-        from script.todo.sms.menu import prompt_execute_sms
-
-        return prompt_execute_sms(self, "mobile")
 
     def _assistant_modem(self):
         """Ouvre la console du modem USB du paquet `modem`, importée à

@@ -23,6 +23,28 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def ouvrir_la_passerelle(test, materiel, reponses):
+    """Ouvre Gateway, la demonstration de `materiel`, sur un objet qui
+    n'est pas TODO, et repond `reponses` a ses questions ; rend les
+    libelles de chaque dessin du menu, dans l'ordre. Ce qu'il affiche est
+    jete, et `test` verifie que l'ouverture rend None."""
+    from unittest.mock import patch
+
+    from script.todo.sms import menu
+
+    dessins = []
+
+    class Faux(menu.SmsMenuMixin):
+        def fill_help_info(self, choices, state=None):
+            dessins.append([c["prompt_description"] for c in choices])
+            return "menu"
+
+    with patch("click.prompt", side_effect=reponses), \
+            patch("builtins.print"):
+        test.assertIsNone(menu.prompt_execute_sms(Faux(), materiel))
+    return dessins
+
+
 class SmsDemoBase(unittest.TestCase):
     """Chaque test travaille dans son propre répertoire.
 
@@ -883,25 +905,161 @@ class TestAppairageUsb(SmsDemoBase):
 
     def test_lentree_nexiste_que_pour_le_telephone(self):
         """Un modem n'a pas d'application : l'entree n'aurait rien a poser."""
-        from unittest.mock import Mock
-
-        from script.todo.sms import menu
-
-        faux = Mock()
-        libelles = {
-            materiel: [
-                libelle
-                for libelle, _a in menu._entrees_de_queue(
-                    faux, self.spec_mod.load(materiel), materiel
-                )
-            ]
-            for materiel in ("mobile", "modem")
-        }
         from script.todo.todo_i18n import t
 
+        libelles = {
+            materiel: ouvrir_la_passerelle(self, materiel, ["0"])[0]
+            for materiel in ("mobile", "modem")
+        }
         cle = t("sms_pair_menu")
         self.assertIn(cle, libelles["mobile"])
         self.assertNotIn(cle, libelles["modem"])
+
+
+class TestLeMenuGateway(SmsDemoBase):
+    """Gateway, la demonstration declaree dans `menus/modem.py` : ses
+    numeros, le passage a l'autre materiel, et les choix numerotes qui
+    reviennent avant d'agir sur [0], une reponse vide ou Ctrl+D."""
+
+    def _cles(self, *cles):
+        from script.todo.todo_i18n import t
+
+        return [t(cle) for cle in cles]
+
+    def test_les_numeros_suivent_les_etapes_et_le_materiel(self):
+        # [1] enchaine, [2] a [7] sont les etapes, et [8] lit l'appareil
+        # qu'on demontre ; une entree propre a un materiel ou a un mode ne
+        # decale pas celles qui la suivent.
+        from script.todo.todo_i18n import t
+
+        etapes = [
+            step.label_for(self.spec_mod.load(materiel).spec)
+            for materiel in ("mobile", "modem")
+            for step in self.steps.STEPS
+        ]
+        mobile, modem = (
+            ouvrir_la_passerelle(self, materiel, ["0"])[0]
+            for materiel in ("mobile", "modem")
+        )
+        def suffixe(cle, valeur):
+            return f"{t(cle)}  ({valeur})"
+
+        numero = suffixe("sms_test_number_menu", t("sms_test_number_none"))
+        self.assertEqual(
+            mobile,
+            [
+                *self._cles("sms_run_all"),
+                *etapes[:6],
+                *self._cles("sms_phone_menu", "sms_call_menu", "sms_open_tui"),
+                numero,
+                suffixe("sms_mode_menu", "local / cable"),
+                *self._cles("sms_pair_menu"),
+                suffixe("sms_switch_materiel", t("sms_materiel_modem")),
+                *self._cles("sms_reset_local"),
+            ],
+        )
+        self.assertEqual(
+            modem,
+            [
+                *self._cles("sms_run_all"),
+                *etapes[6:],
+                *self._cles("modem_sms_list", "sms_call_menu", "sms_open_tui"),
+                numero,
+                suffixe("sms_mode_menu", "local"),
+                suffixe("sms_switch_materiel", t("sms_materiel_mobile")),
+                *self._cles("sms_reset_local"),
+            ],
+        )
+
+    def test_une_etape_se_joue_sur_le_materiel_ouvert(self):
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        with patch.object(menu, "_run_one") as jouer:
+            ouvrir_la_passerelle(self, "modem", ["5", "0"])
+        [(todo, etat, step)] = [appel.args for appel in jouer.call_args_list]
+        self.assertEqual(etat.spec.materiel, "modem")
+        self.assertEqual(step.id, self.steps.STEPS[3].id)
+
+    def test_passer_a_l_autre_materiel_rouvre_le_menu_sur_lui(self):
+        # [14] sur le telephone, puis [0] : le menu du modem s'est ouvert,
+        # et son [0] ramene a l'Assistant, pas au telephone.
+        from script.todo.todo_i18n import t
+
+        dessins = ouvrir_la_passerelle(self, "mobile", ["14", "0"])
+        self.assertEqual(len(dessins), 2)
+        self.assertIn(t("sms_phone_menu"), dessins[0])
+        self.assertIn(t("modem_sms_list"), dessins[1])
+
+    def test_hors_du_menu_l_autre_materiel_s_ouvre(self):
+        # La TUI de telemetrie lance une feuille hors du menu : passer a
+        # l'autre materiel y ouvre sa demonstration.
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        ouvrir = patch.object(menu, "prompt_execute_sms", return_value=None)
+        with ouvrir as ouvre:
+            self.assertIsNone(menu.SmsMenuMixin._sms_switch(None))
+        ouvre.assert_called_once_with(None, "modem")
+
+    def _choisir(self, fonction, reponses, *args):
+        """`fonction(*args)`, `input` repondant `reponses`, sans affichage."""
+        from unittest.mock import patch
+
+        with patch("builtins.input", side_effect=reponses), \
+                patch("builtins.print"):
+            return fonction(*args)
+
+    def test_le_transport_et_le_mode_reviennent_sans_rien_ecrire(self):
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        for fonction in (menu._choose_transport, menu._choose_mode):
+            for reponses in (["0"], [""], [EOFError()]):
+                nom = fonction.__name__
+                with self.subTest(fonction=nom, reponses=reponses), \
+                        patch.object(menu.spec_mod, "save") as sauve:
+                    etat = self.spec_mod.load()
+                    self._choisir(fonction, reponses, etat)
+                sauve.assert_not_called()
+                self.assertEqual(
+                    (etat.spec.transport, etat.spec.mode), ("cable", "local")
+                )
+
+    def test_le_transport_et_le_mode_choisis_sont_retenus(self):
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        etat.mark_done("vm")
+        etat.mark_done("mobile")
+        self.spec_mod.save(etat)
+        self._choisir(menu._choose_transport, ["2"], self.spec_mod.load())
+        repris = self.spec_mod.load()
+        self.assertEqual(repris.spec.transport, "wifi")
+        self.assertEqual(repris.done, ["vm"])
+        self._choisir(menu._choose_mode, ["2"], self.spec_mod.load())
+        repris = self.spec_mod.load()
+        self.assertEqual(repris.spec.mode, "vm")
+        self.assertEqual(repris.done, [])
+
+    def test_la_boite_du_telephone(self):
+        from unittest.mock import patch
+
+        from script.todo.sms import menu, phone
+
+        for reponses in (["0"], [""], [EOFError()]):
+            with self.subTest(reponses=reponses), \
+                    patch.object(phone, "read_sms") as lire:
+                self._choisir(menu._read_phone, reponses)
+            lire.assert_not_called()
+        with patch.object(phone, "read_sms", return_value=[]) as lire:
+            self._choisir(menu._read_phone, ["2", "3", "0"])
+        self.assertEqual(
+            [appel.args[0] for appel in lire.call_args_list], ["inbox", "all"]
+        )
 
 
 class TestSpecificationVm(SmsDemoBase):
@@ -1844,11 +2002,10 @@ class TestMateriel(SmsDemoBase):
 
         from script.todo.sms import menu
 
-        with patch.object(menu.click, "prompt", side_effect=["12", "0"]), \
-                patch.object(menu, "_choose_mode"), \
-                patch.object(menu, "_choose_transport") as transport, \
-                patch("builtins.print"):
-            menu.prompt_execute_sms(self._todo(), "modem")
+        with patch.object(menu, "_choose_mode") as mode, \
+                patch.object(menu, "_choose_transport") as transport:
+            ouvrir_la_passerelle(self, "modem", ["12", "0"])
+        self.assertTrue(mode.called)
         self.assertFalse(transport.called)
 
     def test_lire_les_sms_lit_lappareil_quon_demontre(self):
@@ -1857,20 +2014,11 @@ class TestMateriel(SmsDemoBase):
 
         from script.todo.sms import menu
 
-        with patch.object(menu.click, "prompt", side_effect=["8", "0"]), \
-                patch.object(menu, "_read_phone") as telephone, \
-                patch("script.todo.modem.menu._lister_sms") as modem, \
-                patch("builtins.print"):
-            menu.prompt_execute_sms(self._todo(), "modem")
+        with patch.object(menu, "_read_phone") as telephone, \
+                patch("script.todo.modem.menu._lister_sms") as modem:
+            ouvrir_la_passerelle(self, "modem", ["8", "0"])
         self.assertFalse(telephone.called)
         self.assertTrue(modem.called)
-
-    def _todo(self):
-        from unittest.mock import Mock
-
-        faux = Mock()
-        faux._menu_header.return_value = ""
-        return faux
 
     def test_le_menu_modem_ouvre_la_demonstration_du_modem(self):
         """Arriver par la ne doit jamais montrer la passerelle du telephone."""

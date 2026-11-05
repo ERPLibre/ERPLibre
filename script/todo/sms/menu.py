@@ -1,72 +1,62 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le menu SMS du CLI TODO.
+"""Les actions de Gateway, la démonstration de la passerelle SMS,
+déclarée dans `menus/modem.py`.
 
-Branche les étapes de `steps` sur les exécutions de `runner`, et affiche
-l'état à chaque tour de boucle. L'état est relu du disque à chaque passage :
-une étape lancée ailleurs — un tableau de bord ouvert dans un autre terminal,
-une installation détachée qui s'est terminée — apparaît sans qu'on ait à
-quitter le menu.
+Branche les étapes de `steps` sur les exécutions de `runner`. L'état se relit
+du disque à chaque dessin du menu et à chaque action : une étape lancée
+ailleurs — un tableau de bord ouvert dans un autre terminal, une
+installation détachée qui s'est terminée — apparaît sans qu'on ait à quitter
+le menu. `SmsMenuMixin` porte les actions sur TODO, préfixées `_sms_`.
 """
 from __future__ import annotations
 
-import click
+import contextvars
 
+from script.todo import ui
+from script.todo.menus import modem as menus_modem
 from script.todo.sms import local as local_backend
 from script.todo.sms import runner
 from script.todo.sms import spec as spec_mod
 from script.todo.sms import steps as steps_mod
 from script.todo.sms.steps import STEPS
+from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
-try:
-    from script.todo.todo_couleur import retour
-    from script.todo.todo_i18n import t
-except Exception:  # pragma: no cover - repli si i18n indisponible
-
-    def t(key: str) -> str:
-        return key
-
-    def retour(libelle: str) -> str:
-        return f"[0] {libelle}"
+# Le matériel de la démonstration ouverte, "mobile" ou "modem" : celui que
+# `prompt_execute_sms` a reçu, le temps du menu ; None hors du menu.
+_MATERIEL = contextvars.ContextVar("sms_materiel", default=None)
 
 
 def prompt_execute_sms(todo, materiel: str = "mobile") -> None:
-    """La démonstration de la passerelle de CE matériel.
+    """La démonstration de la passerelle de CE matériel (GATEWAY).
 
     Le matériel vient de la porte d'entrée et ne se choisit pas ici : chacun
     a son état, sa base, son port et sa fiche, et les deux démonstrations
     tiennent côte à côte sur le même poste. Le proposer en réglage ferait
-    qu'arriver par une section afficherait le travail de l'autre.
+    qu'arriver par une section afficherait le travail de l'autre. Passer à
+    l'autre matériel referme le menu sur son nom, et il se rouvre sur lui ;
+    [0] rend None.
     """
-    while True:
-        state = spec_mod.load(materiel)
-        queue = _entrees_de_queue(todo, state, materiel)
-        help_info = f"""{todo._menu_header()}
-  {t("sms_materiel_current")} : {t("sms_materiel_" + materiel)}
-{steps_mod.render(state)}
+    while materiel:
+        jeton = _MATERIEL.set(materiel)
+        try:
+            materiel = navigate(todo, menus_modem.GATEWAY)
+        finally:
+            _MATERIEL.reset(jeton)
 
-[1] {t("sms_run_all")}
-{_lignes_etapes(state.spec)}
-{_lignes_de_queue(queue)}
-{retour(t('Back'))}"""
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            enchainer(todo, state)
-        elif status in ("2", "3", "4", "5", "6", "7"):
-            _run_one(todo, state, STEPS[int(status) - 2])
-        elif status.isdigit() and 8 <= int(status) < 8 + len(queue):
-            suite = queue[int(status) - 8][1]()
-            # Une entree qui rend un materiel demande de changer de
-            # demonstration : elle ne peut pas le faire elle-meme, la boucle
-            # tient cette variable.
-            if suite in spec_mod.MATERIELS:
-                materiel = suite
-        else:
-            print(t("Command not found !"))
+
+def _materiel() -> str:
+    """Le matériel de la démonstration ouverte (`_MATERIEL`). Une action que
+    la TUI de télémétrie lance hors du menu lit le téléphone, comme l'entrée
+    d'Assistant qui ouvre la démonstration."""
+    return _MATERIEL.get() or "mobile"
+
+
+def _etat_courant():
+    """L'état de la démonstration ouverte, relu du disque."""
+    return spec_mod.load(_materiel())
 
 
 # ----------------------------------------------------------------------
@@ -84,80 +74,6 @@ def _reglage_courant(spec) -> str:
 def _autre_materiel(materiel: str) -> str:
     """Le matériel qui n'est pas celui-ci."""
     return "modem" if materiel == "mobile" else "mobile"
-
-
-def _lignes_etapes(spec) -> str:
-    """Les étapes, numérotées à la suite de « tout enchaîner ».
-
-    Générées plutôt qu'écrites à la main : ajouter une étape ne doit pas
-    obliger à renuméroter le menu, ni risquer un décalage entre ce qui est
-    affiché et ce qui est exécuté.
-    """
-    return "\n".join(
-        f"[{index + 2}] {step.label_for(spec)}"
-        for index, step in enumerate(STEPS)
-    )
-
-
-def _entrees_de_queue(todo, state, materiel: str) -> list:
-    """Les entrées qui suivent les étapes : (libellé, action).
-
-    Générées, et non écrites avec leur numéro : une entrée qui n'existe que
-    pour un matériel décalerait toutes les suivantes, et un décalage de menu
-    ne se voit pas — il déclenche l'action d'à côté.
-
-    Une action qui rend le nom d'un matériel demande d'aller à l'autre
-    démonstration ; les autres rendent None.
-    """
-    entrees = []
-    if materiel == "mobile":
-        entrees.append((t("sms_phone_menu"), _read_phone))
-    else:
-        # Lire les messages de l'appareil QU'ON DEMONTRE : sur le modem, le
-        # telephone n'est pas branche, et `adb` ne repondrait rien.
-        entrees.append((t("modem_sms_list"), _lister_sms_du_modem))
-    entrees.append(
-        (t("sms_call_menu"), lambda: _place_test_call(todo, state))
-    )
-    entrees.append((t("sms_open_tui"), lambda: _open_tui(todo, materiel)))
-    numero = state.spec.test_number or t("sms_test_number_none")
-    entrees.append(
-        (
-            f"{t('sms_test_number_menu')} : {numero}",
-            lambda: _choose_test_number(state),
-        )
-    )
-    entrees.append(
-        (
-            f"{t('sms_mode_menu')} ({_reglage_courant(state.spec)})",
-            lambda: _choisir_mode_et_transport(materiel),
-        )
-    )
-    if materiel == "mobile":
-        entrees.append(
-            (t("sms_pair_menu"), lambda: _appairer_par_usb(state))
-        )
-    autre = _autre_materiel(materiel)
-    entrees.append(
-        (
-            f"{t('sms_switch_materiel')} : {t('sms_materiel_' + autre)}",
-            lambda: autre,
-        )
-    )
-    # L'entree qui detruit se lit en DERNIER, ou l'on ne tombe pas dessus en
-    # visant sa voisine.
-    efface = (
-        t("sms_reset_local") if state.spec.mode == "local" else t("sms_reset")
-    )
-    entrees.append((efface, lambda: _reset(todo, state)))
-    return entrees
-
-
-def _lignes_de_queue(entrees) -> str:
-    """Les entrées de queue, numérotées à la suite des étapes."""
-    return "\n".join(
-        f"[{index + 8}] {libelle}" for index, (libelle, _a) in enumerate(entrees)
-    )
 
 
 def _lister_sms_du_modem() -> None:
@@ -275,14 +191,16 @@ def _verifier_wifi(state) -> None:
 
 
 def _choose_transport(state) -> None:
-    """Cable ou Wi-Fi. Change l'URL, donc invalide le lien deja fait."""
+    """Cable ou Wi-Fi, l'actuel par defaut. Change l'URL, donc invalide le
+    lien deja fait ; [0] ou Ctrl+D ne changent rien."""
     from dataclasses import replace
 
-    print(f"  {t('sms_transport_current')} : {state.spec.transport}")
-    print(f"  [1] {t('sms_transport_cable')}")
-    print(f"  [2] {t('sms_transport_wifi')}")
-    choix = input(f"  {t('sms_transport_ask')}").strip()
-    nouveau = {"1": "cable", "2": "wifi"}.get(choix)
+    nouveau = ui.choose(
+        f"{t('sms_transport_current')} : {state.spec.transport}",
+        ["cable", "wifi"],
+        labels=[t("sms_transport_cable"), t("sms_transport_wifi")],
+        default=state.spec.transport,
+    )
     if nouveau is None or nouveau == state.spec.transport:
         return
     state.spec = replace(state.spec, transport=nouveau)
@@ -442,19 +360,20 @@ def _read_phone() -> None:
     C'est le seul endroit qui dit ce que la pile téléphonique a réellement
     enregistré. Odoo rapporte ce qu'il a demandé, le journal de la passerelle
     ce que l'application a fait — mais entre les deux, un message peut encore
-    être refusé par l'opérateur.
+    être refusé par l'opérateur. La boîte se redemande après chaque
+    lecture ; [0], une réponse vide ou Ctrl+D reviennent.
     """
     from script.todo.sms import phone
 
-    boites = {"1": "sent", "2": "inbox", "3": "all"}
+    boites = ["sent", "inbox", "all"]
     while True:
-        choix = input(f"  {t('sms_phone_ask')}").strip()
-        if choix == "0" or not choix:
-            return
-        boite = boites.get(choix)
+        boite = ui.choose(
+            t("sms_phone_menu"),
+            boites,
+            labels=[t(f"sms_phone_{boite}") for boite in boites],
+        )
         if boite is None:
-            print(f"  {t('Command not found !')}")
-            continue
+            return
         try:
             messages = phone.read_sms(boite, limit=15)
         except phone.PhoneError as exc:
@@ -538,7 +457,8 @@ def _dispatch(todo, state, step):
 
 
 def _choose_mode(state) -> None:
-    """Demande le mode, et oublie les étapes faites s'il change.
+    """Demande le mode, l'actuel par défaut, et oublie les étapes faites
+    s'il change ; [0] ou Ctrl+D ne changent rien.
 
     Changer de mode invalide tout : une base installée dans une VM n'existe
     pas sur le poste, et l'inverse est vrai aussi. Garder les coches vertes
@@ -546,11 +466,12 @@ def _choose_mode(state) -> None:
     """
     from dataclasses import replace
 
-    print(f"  {t('sms_mode_current')} : {state.spec.mode}")
-    print(f"  [1] {t('sms_mode_local')}")
-    print(f"  [2] {t('sms_mode_vm')}")
-    choix = input(f"  {t('sms_mode_ask')}").strip()
-    nouveau = {"1": "local", "2": "vm"}.get(choix)
+    nouveau = ui.choose(
+        f"{t('sms_mode_current')} : {state.spec.mode}",
+        ["local", "vm"],
+        labels=[t("sms_mode_local"), t("sms_mode_vm")],
+        default=state.spec.mode,
+    )
     if nouveau is None or nouveau == state.spec.mode:
         return
     state.spec = replace(state.spec, mode=nouveau)
@@ -873,3 +794,92 @@ def _reset(todo, state) -> None:
     spec_mod.save(state)
     spec_mod.forget_secret(state.spec.materiel)
     print(f"  ✅ {t('sms_reset_done')}")
+
+
+class SmsMenuMixin:
+    """Gateway (`menus/modem.py`) sur TODO : chaque action, garde, état ou
+    suffixe qu'il nomme est une méthode préfixée `_sms_`, qui appelle la
+    fonction de ce module à l'appel, et relit l'état du matériel de la
+    démonstration ouverte. Une action rend None, sauf `_sms_switch`, dont
+    le matériel referme le menu."""
+
+    def prompt_execute_sms(self, materiel="mobile"):
+        """La démonstration de `materiel` : `prompt_execute_sms`."""
+        return prompt_execute_sms(self, materiel)
+
+    def _sms_state(self):
+        """Le matériel de la démonstration, puis l'état de ses étapes."""
+        materiel = t("sms_materiel_" + _materiel())
+        return (
+            f"  {t('sms_materiel_current')} : {materiel}\n"
+            f"{steps_mod.render(_etat_courant())}"
+        )
+
+    def _sms_steps(self):
+        """Une entrée par étape, sous son nom pour ce matériel."""
+        spec = _etat_courant().spec
+        return [
+            {"prompt_description": step.label_for(spec), "step": step.id}
+            for step in STEPS
+        ]
+
+    def _sms_run_step(self, step):
+        """Joue l'étape de `step`, un élément de `_sms_steps`."""
+        _run_one(self, _etat_courant(), steps_mod.BY_ID[step["step"]])
+
+    def _sms_run_all(self):
+        enchainer(self, _etat_courant())
+
+    def _sms_on_mobile(self):
+        return _materiel() == "mobile"
+
+    def _sms_on_modem(self):
+        return _materiel() == "modem"
+
+    def _sms_local(self):
+        return _etat_courant().spec.mode == "local"
+
+    def _sms_in_vm(self):
+        return _etat_courant().spec.mode != "local"
+
+    def _sms_read_phone(self):
+        _read_phone()
+
+    def _sms_list_modem(self):
+        _lister_sms_du_modem()
+
+    def _sms_test_call(self):
+        _place_test_call(self, _etat_courant())
+
+    def _sms_open_tui(self):
+        _open_tui(self, _materiel())
+
+    def _sms_test_number(self):
+        _choose_test_number(_etat_courant())
+
+    def _sms_test_number_shown(self):
+        numero = _etat_courant().spec.test_number
+        return numero or t("sms_test_number_none")
+
+    def _sms_mode(self):
+        _choisir_mode_et_transport(_materiel())
+
+    def _sms_mode_shown(self):
+        return _reglage_courant(_etat_courant().spec)
+
+    def _sms_pair(self):
+        _appairer_par_usb(_etat_courant())
+
+    def _sms_switch(self):
+        """L'autre matériel, qui referme le menu (`closes_on_result`) pour
+        qu'il se rouvre sur lui ; hors du menu, sa démonstration s'ouvre."""
+        autre = _autre_materiel(_materiel())
+        if _MATERIEL.get() is None:
+            return prompt_execute_sms(self, autre)
+        return autre
+
+    def _sms_other_shown(self):
+        return t("sms_materiel_" + _autre_materiel(_materiel()))
+
+    def _sms_reset(self):
+        _reset(self, _etat_courant())
