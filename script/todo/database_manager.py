@@ -15,12 +15,9 @@ from script.todo.todo_i18n import t
 _logger = logging.getLogger(__name__)
 
 try:
-    import click
-
     from script.todo import todo_file_browser
     from script.todo.ui.navigator import navigate
 except Exception:
-    click = None
     todo_file_browser = None
     navigate = None
 
@@ -36,15 +33,17 @@ class DatabaseManager:
         self._dir_path = path
 
     def select_database(self) -> str | bool:
-        """Faire choisir une base parmi celles que PostgreSQL expose ; rend
-        son nom, ou False sur [0], sans base, ou quand la liste échoue.
+        """Faire choisir une base parmi celles que PostgreSQL expose, par son
+        numéro ou son nom exact ; rend son nom, ou False sur [0], une
+        réponse vide ou Ctrl+D, sans base, ou quand la liste échoue.
 
-        Le code de retour de « db list » est vérifié AVANT de construire le
-        menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
-        pas d'une base absente : la sortie et l'erreur sont fusionnées dans le
-        même flux (`stderr=STDOUT`, execute.py), donc les lignes de la trace
-        d'appel deviendraient les entrées du menu, et « Traceback (most recent
-        call last): » un nom de base rendu à l'appelant.
+        Le code de retour de « db list » est vérifié AVANT de poser la
+        question. Sans cette vérification, un PostgreSQL injoignable ne se
+        distingue pas d'une base absente : la sortie et l'erreur sont
+        fusionnées dans le même flux (`stderr=STDOUT`, execute.py), donc les
+        lignes de la trace d'appel deviendraient les options de la liste, et
+        « Traceback (most recent call last): » un nom de base rendu à
+        l'appelant.
         """
         cmd_server = "./odoo_bin.sh db list"
         status, output = self._execute.exec_command_live(
@@ -66,21 +65,10 @@ class DatabaseManager:
             print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
             return False
 
-        choices = [{"prompt_description": a} for a in databases]
-        help_info = self.fill_help_info(choices)
-        valid_choices = [str(a + 1) for a in range(len(databases))]
-
-        while True:
-            answer = click.prompt(help_info)
-            print()
-            if answer == "0":
-                return False
-            elif answer in valid_choices:
-                database_name = databases[int(answer) - 1]
-                print(database_name)
-                return database_name
-            else:
-                print(t("Command not found !"))
+        print()
+        return (
+            ui.choose(f"\U0001f4ac {t('Which database?')}", databases) or False
+        )
 
     def _confirm_drop(self, message: str) -> bool:
         """Ask for an explicit 'oui'/'yes' confirmation, default is no."""

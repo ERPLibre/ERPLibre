@@ -1065,29 +1065,110 @@ class TestClaudePlugins(unittest.TestCase):
 
 
 class TestSelectDatabase(unittest.TestCase):
-    @patch("script.todo.database_manager.click")
-    def test_select_database_returns_name(self, mock_click):
+    """La liste des bases, par `ui.choose` : un numéro tel que la liste
+    l'écrit ou le nom exact d'une base ; False sur [0], une réponse vide
+    ou Ctrl+D ; une faute est dite et la question revient."""
+
+    def select(self, *answers):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             ["db_test", "db_prod"],
         )
-        mock_click.prompt.return_value = "1"
-        result = todo.db_manager.select_database()
-        self.assertEqual(result, "db_test")
+        self.printed = io.StringIO()
+        with (
+            patch("builtins.input", side_effect=list(answers)),
+            redirect_stdout(self.printed),
+        ):
+            return todo.db_manager.select_database()
 
-    @patch("script.todo.database_manager.click")
-    def test_select_database_returns_false_on_zero(self, mock_click):
-        todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            ["db_test"],
+    def test_select_database_returns_name(self):
+        self.assertEqual(self.select("1"), "db_test")
+
+    def test_a_database_is_chosen_by_its_exact_name(self):
+        self.assertEqual(self.select("db_prod"), "db_prod")
+
+    def test_select_database_returns_false_on_zero(self):
+        self.assertIs(self.select("0"), False)
+
+    def test_an_empty_answer_or_ctrl_d_returns_false(self):
+        for answer in ("", EOFError()):
+            with self.subTest(answer=answer):
+                self.assertIs(self.select(answer), False)
+
+    def test_a_typo_is_said_and_asked_again(self):
+        self.assertEqual(self.select("01", "DB_PROD", "2"), "db_prod")
+        printed = self.printed.getvalue()
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}01", printed)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}DB_PROD", printed)
+
+
+class TestTheDatabaseListGoesBack(unittest.TestCase):
+    """[0], une réponse vide ou Ctrl+D à la liste des bases : chaque
+    appelant qui efface, copie, sauvegarde, écrit la configuration,
+    anonymise, ouvre un shell ou lance Odoo revient sans rien lancer après
+    « db list ». La vraie liste répond, sa commande doublée."""
+
+    def setUp(self):
+        self.todo = TODO()
+        self.commands = []
+
+        def run(cmd, *args, **kwargs):
+            self.commands.append(cmd)
+            return (0, ["forged_db_a", "forged_db_b"])
+
+        double = MagicMock()
+        double.exec_command_live.side_effect = run
+        self.todo.execute = self.todo.db_manager._execute = double
+        self.enterContext(redirect_stdout(io.StringIO()))
+
+    def assert_nothing_after_the_list(self, call, *before):
+        for answer in ("0", "", EOFError()):
+            with self.subTest(answer=answer):
+                self.commands.clear()
+                with patch(
+                    "builtins.input", side_effect=[*before, answer]
+                ) as asked:
+                    call()
+                self.assertEqual(self.commands, ["./odoo_bin.sh db list"])
+                self.assertEqual(asked.call_count, len(before) + 1)
+
+    def test_erasing_one_database_drops_nothing(self):
+        self.assert_nothing_after_the_list(
+            self.todo.db_manager._drop_single_database
         )
-        mock_click.prompt.return_value = "0"
-        result = todo.db_manager.select_database()
-        self.assertFalse(result)
+
+    def test_duplicating_copies_nothing(self):
+        self.assert_nothing_after_the_list(
+            self.todo.db_manager.duplicate_database
+        )
+
+    def test_a_backup_writes_no_zip(self):
+        self.assert_nothing_after_the_list(
+            self.todo.db_manager.create_backup_from_database
+        )
+
+    def test_generating_the_configuration_writes_nothing(self):
+        self.assert_nothing_after_the_list(
+            self.todo.generate_config_from_database
+        )
+
+    def test_opening_a_shell_or_running_odoo_starts_nothing(self):
+        for call in (
+            self.todo.open_shell_on_database,
+            self.todo.callback_execute_custom_database,
+        ):
+            with self.subTest(call=call.__name__):
+                self.assert_nothing_after_the_list(call)
+
+    def test_anonymising_a_local_database_writes_nothing(self):
+        # La provenance, une base locale, puis la liste des bases.
+        with patch.object(self.todo, "_monitoring_write_flow") as flow:
+            self.assert_nothing_after_the_list(
+                self.todo._transform_anonymise_base, "1"
+            )
+        flow.assert_not_called()
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
@@ -1209,19 +1290,18 @@ class TestGenerateConfigFromASource(unittest.TestCase):
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
-    @patch("script.todo.database_manager.click")
     @patch("builtins.input")
-    def test_creates_backup_command(self, mock_input, mock_click):
+    def test_creates_backup_command(self, mock_input):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             ["test_db"],
         )
-        mock_click.prompt.return_value = "1"
-        # backup name input
-        mock_input.return_value = "backup.zip"
-        todo.db_manager.create_backup_from_database()
+        # La base, par son numéro, puis le nom de la sauvegarde.
+        mock_input.side_effect = ["1", "backup.zip"]
+        with redirect_stdout(io.StringIO()):
+            todo.db_manager.create_backup_from_database()
         cmd = todo.db_manager._execute.exec_command_live.call_args_list[-1][0][
             0
         ]

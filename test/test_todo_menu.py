@@ -4630,16 +4630,14 @@ class TestMenuLabels(unittest.TestCase):
     que nomme `MENUS_SANS_SEGMENT`, l'action d'une entrée qui déclare son
     segment, ou l'une des exceptions.
 
-    Deux méthodes sont exemptées, qui s'affichent sous le fil du menu
-    qui les ouvre : une ACTION qui pose une question — une montée de
-    version d'Odoo — et non un écran où l'on navigue, et
-    `select_database`, celle de DatabaseManager, qui choisit une base.
-    Leur donner un segment mettrait une miette sur une invite passagère.
+    Une méthode est exemptée, qui s'affiche sous le fil du menu qui
+    l'ouvre : une ACTION qui pose une question — une montée de version
+    d'Odoo — et non un écran où l'on navigue. Lui donner un segment
+    mettrait une miette sur une invite passagère.
     """
 
     ECRANS_EXEMPTES = {
         "execute_odoo_upgrade",
-        "select_database",
     }
     # Les menus écrits à la main qui tiennent leur segment de l'entrée qui
     # les ouvre (`Entry.crumb`), le temps de leur action : il n'en reste
@@ -4860,19 +4858,6 @@ class TestMenuLabels(unittest.TestCase):
                 if len(valeurs & segments) >= 3:
                     copies.append(f"{chemin.name}:{noeud.lineno}")
         self.assertEqual(copies, [])
-
-    def test_the_database_manager_exemption_holds_in_its_file_only(self):
-        """`select_database` n'est exemptée que dans database_manager.py :
-        une méthode de même nom qui dessinerait un écran ailleurs resterait
-        sans segment sans que rien ne le dise."""
-        self.assertEqual(
-            {
-                f
-                for f, n in self._menus_par_fichier()
-                if n == "select_database"
-            },
-            {"database_manager.py"},
-        )
 
     def test_no_stale_exemption(self):
         """Une exemption qui ne nomme plus un écran est à retirer."""
