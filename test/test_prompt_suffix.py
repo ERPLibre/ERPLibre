@@ -97,9 +97,12 @@ class TestLesInvitesFurentTrouvees(unittest.TestCase):
     def test_the_search_finds_prompts(self):
         self.assertGreater(len(_invites()), 20)
 
-    def test_the_main_menu_prompt_is_among_them(self):
+    def test_a_known_prompt_is_among_them(self):
+        # Une invite que `click.prompt` pose encore, celle du réseau à
+        # balayer de l'assistant ; le menu principal pose la sienne par
+        # `fill_help_info`, hors de cette recherche.
         cles = {cle for _, cle, _ in _invites()}
-        self.assertIn("Command:", cles)
+        self.assertIn("Network in CIDR form", cles)
 
 
 class TestAucunDeuxPointsDouble(unittest.TestCase):
