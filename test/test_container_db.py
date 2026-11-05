@@ -280,6 +280,50 @@ class TestScripts(unittest.TestCase):
             "piece",
         )
 
+    def test_les_refus_de_restrict_attendus_sont_tus(self):
+        """Le dump de pg_dump 17.6+ porte ses propres \\restrict et
+        \\unrestrict, que psql refuse sous le jeton d'Odoo : deux lignes
+        sans conséquence. Toute autre erreur doit rester visible."""
+        journal, env = self.preparer_mise_a_jour()
+        psql = self.p.racine / "outils" / "psql"
+        psql.write_text(
+            "#!/usr/bin/env bash\n"
+            "echo 'psql:dump.sql:5: error: backslash commands are restricted;"
+            " only \\unrestrict is allowed' >&2\n"
+            "echo 'psql:dump.sql:9: error: \\unrestrict: wrong key' >&2\n"
+            "echo 'psql:dump.sql:7: ERROR:  erreur-inventee-78' >&2\n"
+        )
+        fin = bash(container_db.RESTAURER_MAJ, ["essai_base"], env=env)
+        self.assertEqual(fin.returncode, 0, fin.stderr)
+        erreurs = fin.stderr.decode()
+        self.assertIn("erreur-inventee-78", erreurs)
+        self.assertNotIn("backslash commands are restricted", erreurs)
+        self.assertNotIn("wrong key", erreurs)
+
+    def test_un_refus_de_plus_reste_visible(self):
+        """Une méta-commande glissée dans le dump est bloquée par le même
+        refus : seul le premier, celui du \\restrict du dump, est tu."""
+        journal, env = self.preparer_mise_a_jour()
+        psql = self.p.racine / "outils" / "psql"
+        refus = (
+            "error: backslash commands are restricted;"
+            " only \\unrestrict is allowed"
+        )
+        psql.write_text(
+            "#!/usr/bin/env bash\n"
+            f"echo 'psql:dump.sql:5: {refus}' >&2\n"
+            f"echo 'psql:dump.sql:6: {refus}' >&2\n"
+            "echo 'psql:dump.sql:9: error: \\unrestrict: wrong key' >&2\n"
+            "echo 'psql:dump.sql:10: error: \\unrestrict: wrong key' >&2\n"
+        )
+        fin = bash(container_db.RESTAURER_MAJ, ["essai_base"], env=env)
+        self.assertEqual(fin.returncode, 0, fin.stderr)
+        erreurs = fin.stderr.decode()
+        self.assertNotIn("dump.sql:5:", erreurs)
+        self.assertIn("dump.sql:6:", erreurs)
+        self.assertNotIn("dump.sql:9:", erreurs)
+        self.assertIn("dump.sql:10:", erreurs)
+
     def test_une_base_deplacee_garde_son_uuid_a_la_mise_a_jour(self):
         journal, env = self.preparer_mise_a_jour()
         bash(

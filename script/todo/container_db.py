@@ -216,7 +216,19 @@ fi
 # collation C ; « \restrict » empêche le dump de passer des méta-commandes.
 createdb -T template0 -E unicode --lc-collate=C "$base"
 jeton=$("$py" -c "import secrets; print(secrets.token_hex())")
-psql -q -d "$base" -c "\restrict $jeton" -f "$travail/tmp/dump.sql" >/dev/null
+# Le dump de pg_dump 17.6+ s'encadre lui-même de « \restrict » et
+# « \unrestrict » ; sous le jeton déjà posé, psql refuse ces deux lignes et
+# l'écrit, sans rien perdre du SQL. Odoo l'envoie à /dev/null ; ici seule la
+# PREMIÈRE occurrence de chacun de ces deux refus est retirée. Une méta-commande
+# glissée ailleurs dans le dump, bloquée elle aussi, produit un refus de plus
+# qui reste visible, comme toute autre erreur.
+psql -q -d "$base" -c "\restrict $jeton" -f "$travail/tmp/dump.sql" \
+  >/dev/null 2>"$travail/psql.err"
+awk '
+  index($0, "backslash commands are restricted") && !restreint++ { next }
+  index($0, "unrestrict: wrong key") && !cle++ { next }
+  { print }
+' "$travail/psql.err" >&2
 # Neutralisée AVANT de charger les modules, comme le fait restore_db : la
 # copie d'une production n'envoie rien pendant la mise à jour.
 if [ "$neutraliser" = 1 ]; then
