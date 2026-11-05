@@ -2112,6 +2112,10 @@ TRANSLATIONS = {
         "fr": "Aucune annonce",
         "en": "No announcement",
     },
+    "voip_announce_choose": {
+        "fr": "🎵 Annonce jouee au correspondant",
+        "en": "🎵 Announcement played to the callee",
+    },
     "voip_handset_ask": {
         "fr": "Relier le micro et les haut-parleurs (vrai telephone) ?",
         "en": "Connect microphone and speakers (real phone)?",
@@ -3237,9 +3241,9 @@ TRANSLATIONS = {
         "fr": "Aucun message.",
         "en": "No messages.",
     },
-    "modem_ans_play": {
-        "fr": "Numero du message a ecouter (0 pour revenir)",
-        "en": "Number of the message to play (0 to go back)",
+    "modem_ans_play_which": {
+        "fr": "▶ Message a ecouter",
+        "en": "▶ Message to play",
     },
     "modem_ans_delete": {
         "fr": "Effacer ce message ? (o/N)",

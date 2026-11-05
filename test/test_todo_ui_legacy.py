@@ -139,8 +139,7 @@ RAW_CALLS = {
     # Questions ajoutées par develop, à migrer : le jeton OAuth, la
     # signature d'un compte (+4).
     "script/todo/mail/menu.py": 16,
-    # Menus ajoutés par develop, à migrer : le modem.
-    "script/todo/modem/menu.py": 40,
+    "script/todo/modem/menu.py": 29,
     "script/todo/module_menu.py": 1,
     "script/todo/proxmox_menu.py": 13,
     "script/todo/qemu_access.py": 7,
@@ -178,17 +177,6 @@ NUMBERED_LOOPS = {
     ("script/todo/todo_upgrade.py", "_prompt_on_error"): (
         "une réponse par défaut, et [6] garde son numéro quand [2] à [5]"
         " manquent"
-    ),
-}
-# Les menus numérotés écrits à la main que develop a ajoutés, à migrer au
-# registre : la liste ne fait que rétrécir, un menu migré en sort, et son
-# test refuse un nom de plus.
-DEVELOP_LOOPS = {
-    ("script/todo/modem/menu.py", "_repondeur"): (
-        "menu ajouté par develop, à migrer"
-    ),
-    ("script/todo/modem/menu.py", "prompt_execute_modem"): (
-        "menu ajouté par develop, à migrer"
     ),
 }
 # Une entrée fixe d'un menu : « [k] », k un chiffre ou une lettre.
@@ -968,7 +956,7 @@ class TestGuards(unittest.TestCase):
                 continue
             names = numbered_loops(path.read_text(encoding="utf-8"))
             found |= {(rel, name) for name in names}
-        listed = set(NUMBERED_LOOPS) | set(DEVELOP_LOOPS)
+        listed = set(NUMBERED_LOOPS)
         self.assertEqual(
             sorted(found - listed),
             [],
@@ -977,7 +965,7 @@ class TestGuards(unittest.TestCase):
         self.assertEqual(
             sorted(listed - found),
             [],
-            "remove these from NUMBERED_LOOPS or DEVELOP_LOOPS",
+            "remove these from NUMBERED_LOOPS",
         )
         # Le plafond : des boucles de cet ensemble, qui ne gagne aucun nom ;
         # une boucle neuve ne prend pas la place d'une boucle déclarée.
@@ -986,14 +974,6 @@ class TestGuards(unittest.TestCase):
             {
                 ("script/todo/todo_upgrade.py", "show_stats"),
                 ("script/todo/todo_upgrade.py", "_prompt_on_error"),
-            },
-            "declare the menu in script/todo/menus/, never list it here",
-        )
-        self.assertLessEqual(
-            set(DEVELOP_LOOPS),
-            {
-                ("script/todo/modem/menu.py", "_repondeur"),
-                ("script/todo/modem/menu.py", "prompt_execute_modem"),
             },
             "declare the menu in script/todo/menus/, never list it here",
         )

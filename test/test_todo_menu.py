@@ -370,9 +370,10 @@ class TestLArbreDesMenus(unittest.TestCase):
         # sondent sans confirmation les VM de la machine ou les hôtes de
         # ~/.ssh/config, le retrait d'une version d'Odoo, la restauration
         # par-dessus et l'effacement d'une base ou des volumes du conteneur
-        # ERPLibre, ce qui, dans la démonstration de la passerelle, crée
-        # une VM, passe un vrai appel ou la détruit, et la remise à zéro
-        # des préférences. Les `kwargs`
+        # ERPLibre, ce qui, dans la démonstration de la passerelle et le
+        # modem, installe, agit en root, écrit une règle ou un service
+        # système, envoie un SMS ou passe un vrai appel, et la remise à
+        # zéro des préférences. Les `kwargs`
         # distinguent les actions de production de celles du serveur local,
         # au même chemin.
         dangerous = []
@@ -392,6 +393,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         cache = f"{deploy} › QEMU cache"
         network = "TODO › Execute › Network"
         docker = "TODO › Execute › Docker / Podman"
+        modem = "TODO › Assistant › Modem"
         self.assertEqual(
             dangerous,
             [
@@ -567,6 +569,35 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "sms_reset",
                     )
                 ],
+                *[
+                    (f"{modem} › {label}", {})
+                    for label in (
+                        "State › modem_diag",
+                        "Calls › modem_call",
+                        "Calls › modem_hangup",
+                        "Calls › modem_calls_list",
+                        "Calls › voip_call",
+                        "SMS › modem_sms_send",
+                        "Answering machine › modem_ans_fetch",
+                        "Sound › modem_probe_audio",
+                        "Sound › modem_uac_toggle",
+                        "Sound › modem_audio_rule",
+                        "Sound › modem_udev",
+                        "VoIP › voip_install",
+                        "Service › modem_service_env",
+                        "Service › modem_service_install",
+                    )
+                ],
+                *[
+                    (f"{modem} › Service › {label}", {"action": action})
+                    for label, action in (
+                        ("modem_service_start", "start"),
+                        ("modem_service_stop", "stop"),
+                        ("modem_service_enable", "enable"),
+                        ("modem_service_disable", "disable"),
+                    )
+                ],
+                (f"{modem} › Service › modem_service_remove", {}),
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -611,10 +642,9 @@ class TestLArbreDesMenus(unittest.TestCase):
 
     def test_assistant_opens_llm_mail_gateway_and_modem(self):
         # Le courriel, dont les menus sans segment restent hors de
-        # l'arbre, et le modem y sont des feuilles : la TUI les ouvre par
-        # la méthode de TODO qui passe la main à leur paquet. La
-        # démonstration de la passerelle est un menu déclaré, sous son
-        # segment.
+        # l'arbre, y est une feuille : la TUI l'ouvre par la méthode de
+        # TODO qui passe la main à mail/menu.py. La démonstration de la
+        # passerelle et le modem sont des menus déclarés, sous leur segment.
         assistant = self._noeud("Assistant")
         self.assertEqual(
             [
@@ -625,7 +655,25 @@ class TestLArbreDesMenus(unittest.TestCase):
                 ("LLM", True, None),
                 ("mail_menu", False, "_assistant_mail"),
                 ("Gateway", True, None),
-                ("modem_menu", False, "_assistant_modem"),
+                ("Modem", True, None),
+            ],
+        )
+
+    def test_the_modem_opens_the_gateway_of_the_modem_as_a_leaf(self):
+        # La démonstration du modem est celle de la passerelle, sur un autre
+        # matériel : une feuille du modem, que la TUI lance par la méthode
+        # qui l'ouvre sur le modem, et non le nœud Gateway, dont les
+        # feuilles se lancent sur le téléphone.
+        modem = self._noeud("Modem")
+        self.assertEqual(
+            [
+                (node["label"], node.get("method"))
+                for node in modem["children"]
+                if not node["is_menu"]
+            ],
+            [
+                ("modem_dialer", "_modem_dialer"),
+                ("modem_gateway_agent", "_modem_gateway"),
             ],
         )
 
@@ -2248,8 +2296,8 @@ class TestMainMenuNumbering(RegistryCoherence, unittest.TestCase):
 
 class TestAssistantMenuNumbering(RegistryCoherence, unittest.TestCase):
     """L'entrée [3] du menu principal : une question à un modèle, le
-    courriel et le modem, que TODO ouvre chacun par une méthode qui passe
-    la main à son paquet, et la démonstration de la passerelle."""
+    courriel, que TODO ouvre par une méthode qui passe la main à son
+    paquet, la démonstration de la passerelle et le modem."""
 
     MENU = "prompt_assistant"
     BACK = None
@@ -2257,8 +2305,64 @@ class TestAssistantMenuNumbering(RegistryCoherence, unittest.TestCase):
         "AI question - Ask a model, local or remote": "prompt_assistant_llm",
         "mail_menu": "_assistant_mail",
         "sms_menu": "prompt_execute_sms",
-        "modem_menu": "_assistant_modem",
+        "modem_menu": "prompt_execute_modem",
     }
+
+
+class TestModemMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › Modem : le clavier, les sept sous-menus, puis la
+    démonstration de la passerelle du modem, sous la ligne d'état du
+    modem et des services VoIP."""
+
+    MENU = "prompt_execute_modem"
+    BACK = None
+    EXPECTED = {
+        "modem_dialer": "_modem_dialer",
+        "modem_menu_state": "_modem_state_menu",
+        "modem_menu_calls": "_modem_calls_menu",
+        "modem_menu_sms": "_modem_sms_menu",
+        "modem_answering": "_modem_answering_menu",
+        "modem_menu_audio": "_modem_audio_menu",
+        "modem_menu_voip": "_modem_voip_menu",
+        "modem_menu_service": "_modem_service_menu",
+        "modem_gateway_agent": "_modem_gateway",
+    }
+
+    def test_its_state_is_the_banner(self):
+        self.assertEqual(self.menu.state, "_modem_banner")
+
+
+class TestModemAnsweringMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › Modem › Answering machine : écouter, l'annonce, les
+    sonneries, l'interrupteur, le code de la messagerie et sa remise au
+    service, chacun avec son état entre parenthèses, puis la récupération
+    chez l'opérateur, qui appelle et peut effacer."""
+
+    MENU = "_modem_answering_menu"
+    BACK = None
+    EXPECTED = {
+        "modem_ans_list": "_modem_answering_messages",
+        "modem_ans_greeting_play": "_modem_greeting_play",
+        "modem_ans_greeting": "_modem_greeting_record",
+        "modem_ans_rings": "_modem_rings",
+        "modem_ans_toggle": "_modem_answering_toggle",
+        "modem_ans_pin_hand": "_modem_pin_hand",
+        "modem_ans_pin": "_modem_pin",
+        "modem_ans_fetch": "_modem_fetch",
+    }
+
+    def test_its_state_and_suffixes(self):
+        self.assertEqual(self.menu.state, "_modem_answering_state")
+        self.assertEqual(
+            [(e.key, e.suffix) for e in self.entries if e.suffix],
+            [
+                ("modem_ans_pin", "_modem_pin_state"),
+                ("modem_ans_pin_hand", "_modem_pin_service_state"),
+            ],
+        )
+        self.assertEqual(
+            [e.key for e in self.entries if e.danger], ["modem_ans_fetch"]
+        )
 
 
 class TestGatewayMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -4602,6 +4706,14 @@ class TestMenuLabels(unittest.TestCase):
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
         "prompt_execute_sms": "Gateway",
+        "prompt_execute_modem": "Modem",
+        "_modem_state_menu": "State",
+        "_modem_calls_menu": "Calls",
+        "_modem_sms_menu": "SMS",
+        "_modem_answering_menu": "Answering machine",
+        "_modem_audio_menu": "Sound",
+        "_modem_voip_menu": "VoIP",
+        "_modem_service_menu": "Service",
         "prompt_execute_mail": None,
         "prompt_mail_accounts": None,
         "prompt_mail_cache": None,
