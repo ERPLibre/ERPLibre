@@ -1873,24 +1873,10 @@ class QemuDeployMixin:
         arch = self._qemu_prompt_infra_arch()  # amd64/arm64/s390x/all
         if arch is None:
             return None
-        if arch != "all":
-            allowed = self._qemu_arch_distros(arch)
-            if allowed is not None:
-                keep = [d for d in distros if d in allowed]
-                dropped = [d for d in distros if d not in keep]
-                if dropped:
-                    print(
-                        f"  ⚠ {t('images for this arch only exist for:')} "
-                        f"{', '.join(allowed)} "
-                        f"({t('ignored:')} {', '.join(dropped)})"
-                    )
-                distros = keep
-                if not distros:
-                    print(t("Nothing selected."))
-                    return None
-
-        def arches_for(distro):
-            return self._qemu_arches_for(distro, arch)
+        distros = self._qemu_distros_for_arch(distros, arch)
+        if not distros:
+            print(t("Nothing selected."))
+            return None
 
         # 1) Distributions, sous les règles d'un choix multiple, ou l'une de
         # trois actions : [c] le catalogue complet, [p] la version par défaut
@@ -1920,8 +1906,66 @@ class QemuDeployMixin:
             if raw == []:
                 print(t("Nothing selected."))
             return None
-        catalog_all = raw == "c"
+        selected = self._qemu_pick_versions(mod, distros, arch, raw)
+        if selected is None:
+            return None
+        if not selected:
+            print(t("Nothing selected."))
+            return None
 
+        # 2b) Ressources par VM : multiplicateur x1..x4 ou « Personnalisé ».
+        # Le profil est CUIT dans `selected`, qui porte dès lors les valeurs
+        # finales — RAM, disque et vCPU — pour chaque VM.
+        host_cpu = os.cpu_count() or 2
+        free_ram = self._host_free_ram_mb()
+        got = self._qemu_prompt_resources(selected, host_cpu, free_ram)
+        if got is None:
+            return None
+        res_label, selected = got
+
+        # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
+        got = self._qemu_customize_vms(selected, host_cpu)
+        if got is None:
+            return None
+        names, selected = got
+
+        vms = [
+            self._qemu_make_vm(d, v, a, ram, disk, vcpus, names[i])
+            for i, (d, v, ram, disk, a, vcpus) in enumerate(selected)
+        ]
+        self._qemu_print_plan(vms, res_label, host_cpu, free_ram)
+        return res_label, vms
+
+    def _qemu_distros_for_arch(self, distros, arch):
+        """Les distributions de `distros` qui publient une image pour
+        `arch` ; toutes pour « all », où chacune reçoit ensuite les seules
+        archis qu'elle publie. Les distributions écartées sont dites."""
+        if arch == "all":
+            return distros
+        allowed = self._qemu_arch_distros(arch)
+        if allowed is None:
+            return distros
+        keep = [d for d in distros if d in allowed]
+        dropped = [d for d in distros if d not in keep]
+        if dropped:
+            print(
+                f"  ⚠ {t('images for this arch only exist for:')} "
+                f"{', '.join(allowed)} "
+                f"({t('ignored:')} {', '.join(dropped)})"
+            )
+        return keep
+
+    def _qemu_pick_versions(self, mod, distros, arch, raw):
+        """Les VM que désigne `raw`, la réponse aux distributions : une
+        liste de distributions, dont chacune demande ses versions, ou
+        l'action [c], [p] ou [g]. Rend des (distro, version, ram_mb,
+        disque, arch), une par archi de chaque version retenue, ou None
+        quand une question de version reçoit [0] ou Ctrl+D."""
+
+        def arches_for(distro):
+            return self._qemu_arches_for(distro, arch)
+
+        catalog_all = raw == "c"
         selected = []  # (distro, version, ram_mb, disk_str, arch)
         # RAM par défaut selon l'architecture : celle du catalogue partagé.
         ram_for = getattr(mod, "default_ram", lambda _a, r: r)
@@ -1978,32 +2022,7 @@ class QemuDeployMixin:
                     _c, _o, ram, disk = versions_map[v]
                     for a in arches_for(d):
                         selected.append((d, v, ram_for(a, ram), disk, a))
-        if not selected:
-            print(t("Nothing selected."))
-            return None
-
-        # 2b) Ressources par VM : multiplicateur x1..x4 ou « Personnalisé ».
-        # Le profil est CUIT dans `selected`, qui porte dès lors les valeurs
-        # finales — RAM, disque et vCPU — pour chaque VM.
-        host_cpu = os.cpu_count() or 2
-        free_ram = self._host_free_ram_mb()
-        got = self._qemu_prompt_resources(selected, host_cpu, free_ram)
-        if got is None:
-            return None
-        res_label, selected = got
-
-        # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
-        got = self._qemu_customize_vms(selected, host_cpu)
-        if got is None:
-            return None
-        names, selected = got
-
-        vms = [
-            self._qemu_make_vm(d, v, a, ram, disk, vcpus, names[i])
-            for i, (d, v, ram, disk, a, vcpus) in enumerate(selected)
-        ]
-        self._qemu_print_plan(vms, res_label, host_cpu, free_ram)
-        return res_label, vms
+        return selected
 
     def _qemu_print_plan(self, vms, res_label, host_cpu, free_ram):
         """Plan + estimation des ressources de l'hôte."""
