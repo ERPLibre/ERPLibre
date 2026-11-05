@@ -19261,10 +19261,6 @@ TRANSLATIONS = {
         "fr": "Architectures :",
         "en": "Architectures:",
     },
-    "Numbers separated by spaces, Enter for %s: ": {
-        "fr": "Numéros séparés par des espaces, Entrée pour %s : ",
-        "en": "Numbers separated by spaces, Enter for %s: ",
-    },
     "Unreadable platforms for Odoo %s.": {
         "fr": "Plateformes illisibles pour Odoo %s.",
         "en": "Unreadable platforms for Odoo %s.",

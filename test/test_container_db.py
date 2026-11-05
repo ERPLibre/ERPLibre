@@ -435,7 +435,7 @@ class FauxGestionnaire:
         return self.chemin
 
 
-class TestMenuRestauration(unittest.TestCase):
+class BancMenu(unittest.TestCase):
     """Le parcours du menu, moteur et conteneur remplacés."""
 
     CONTENEUR = {
@@ -466,11 +466,26 @@ class TestMenuRestauration(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def lancer(self, entrees, prompts=("essai_base",), bases=(), codes=None):
+    def lancer(
+        self,
+        entrees,
+        prompts=("essai_base",),
+        bases=(),
+        codes=None,
+        conteneurs=None,
+        geste="_container_restaurer_base",
+    ):
+        """Joue `geste` : `entrees` répondent à input(), qui répond aussi aux
+        choix (ui.choose) ; une réponse qui est une exception est levée
+        (EOFError, Ctrl+D), et input() rend "" une fois ses réponses
+        épuisées. `conteneurs` remplace la liste des conteneurs ERPLibre en
+        marche, CONTENEUR seul par défaut. Rend (scripts lancés, sortie) ;
+        les questions posées sont dans `self.questions`."""
         self.libelles = []
         self.secrets = []
+        self.questions = []
         todo = TODO.__new__(TODO)
-        todo.db_manager = FauxGestionnaire(self.zip)
+        todo.db_manager = self.gestionnaire = FauxGestionnaire(self.zip)
         todo._container_fiche = lambda: {"moteur": "docker", "sans_sudo": True}
         todo._container_sonder = lambda f, c: dict(self.SONDE)
         todo._container_lister_bases = lambda f, c: list(bases)
@@ -495,17 +510,25 @@ class TestMenuRestauration(unittest.TestCase):
 
         todo._container_dans = dans
         suite = iter(entrees)
+
+        def repondre(question=""):
+            self.questions.append(question)
+            reponse = next(suite, "")
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
+
         sortie = io.StringIO()
         with (
             mock.patch.object(
                 container_db,
                 "conteneurs_erplibre",
-                return_value=[self.CONTENEUR],
+                return_value=conteneurs or [self.CONTENEUR],
             ),
             mock.patch.object(
                 container_menu.click, "prompt", side_effect=list(prompts)
             ),
-            mock.patch("builtins.input", lambda *a: next(suite, "")),
+            mock.patch("builtins.input", repondre),
             mock.patch.object(
                 container_menu.getpass,
                 "getpass",
@@ -513,9 +536,11 @@ class TestMenuRestauration(unittest.TestCase):
             ),
             contextlib.redirect_stdout(sortie),
         ):
-            todo._container_restaurer_base()
+            getattr(todo, geste)()
         return lances, sortie.getvalue()
 
+
+class TestMenuRestauration(BancMenu):
     def test_l_ordre_reception_restauration_nettoyage(self):
         lances, _ = self.lancer(["n", "", "", "o"])
         self.assertEqual(
@@ -637,6 +662,86 @@ class TestMenuRestauration(unittest.TestCase):
             ["RECEVOIR", "RESTAURER", "NETTOYER", "SUPPRIMER"],
         )
         self.assertIn(("SUPPRIMER", "maitre-invente-75", True), self.secrets)
+
+
+class TestChoixAvantDeDetruire(BancMenu):
+    """Restaurer et supprimer visent un conteneur, puis, pour supprimer,
+    une base : [0], une réponse vide, Ctrl+D ou une faute suivie d'une
+    réponse vide à l'un de ces choix ne lancent rien, ne demandent ni
+    sauvegarde ni mot de passe maître, et la confirmation qui suit un
+    choix reste la seule porte de la destruction."""
+
+    DEUX = [
+        dict(BancMenu.CONTENEUR, nom="essai-ERPLibre-1"),
+        dict(BancMenu.CONTENEUR, nom="essai-ERPLibre-2"),
+    ]
+    BASES = [("essai_base", False), ("autre_base", True)]
+    RETOURS = {
+        "[0]": ["0"],
+        "vide": [""],
+        "Ctrl+D": [EOFError()],
+        "faute": ["9", ""],
+    }
+    CONFIRMER = "Type its name to confirm: "
+
+    def test_le_conteneur_d_une_restauration(self):
+        for nom, retour in self.RETOURS.items():
+            with self.subTest(retour=nom):
+                self.maitre = []
+                lances, sortie = self.lancer(
+                    [*retour, "o", "o", "", "o"], conteneurs=self.DEUX
+                )
+                self.assertEqual(lances, [])
+                self.assertIsNone(self.gestionnaire.depart)
+                faute = container_menu.t("Invalid choice: ") + "9"
+                self.assertEqual(nom == "faute", faute in sortie)
+
+    def test_le_conteneur_d_une_suppression(self):
+        for nom, retour in self.RETOURS.items():
+            with self.subTest(retour=nom):
+                self.maitre = []
+                lances, _ = self.lancer(
+                    [*retour, "1", "essai_base"],
+                    bases=self.BASES,
+                    conteneurs=self.DEUX,
+                    geste="_container_supprimer_base",
+                )
+                self.assertEqual(lances, [])
+
+    def test_la_base_d_une_suppression(self):
+        for nom, retour in self.RETOURS.items():
+            with self.subTest(retour=nom):
+                self.maitre = []
+                lances, _ = self.lancer(
+                    [*retour, "1", "essai_base"],
+                    bases=self.BASES,
+                    geste="_container_supprimer_base",
+                )
+                self.assertEqual(lances, [])
+                self.assertNotIn(
+                    container_menu.t(self.CONFIRMER), "".join(self.questions)
+                )
+
+    def test_la_confirmation_reste_la_derniere_porte(self):
+        """Le conteneur et la base choisis par leur numéro, puis le nom
+        retapé : seule l'égalité supprime, avec le mot de passe maître."""
+        self.maitre = []
+        lances, _ = self.lancer(
+            ["2", "1", "essai"],
+            bases=self.BASES,
+            conteneurs=self.DEUX,
+            geste="_container_supprimer_base",
+        )
+        self.assertEqual(lances, [])
+        self.maitre = ["maitre-invente-78"]
+        lances, _ = self.lancer(
+            ["2", "2", "autre_base"],
+            bases=self.BASES,
+            conteneurs=self.DEUX,
+            geste="_container_supprimer_base",
+        )
+        self.assertEqual(lances, [("SUPPRIMER", ["autre_base"])])
+        self.assertIn(("SUPPRIMER", "maitre-invente-78", True), self.secrets)
 
 
 if __name__ == "__main__":

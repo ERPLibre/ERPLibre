@@ -629,10 +629,12 @@ class ContainerMenuMixin:
     def _container_choix_architectures(self, prefixe, cibles, hote):
         """{version: [architectures]} à construire, ou {} pour revenir.
 
-        Une seule question, même pour toutes les versions : chacune ne garde
-        que ce que sa base publie, et ce qu'elle perd est nommé. L'entrée
-        vide garde l'architecture de l'hôte, la seule qui se construise sans
-        émulation.
+        Une seule question, même pour toutes les versions : un choix
+        multiple (`ui.choose`) des architectures offertes, par numéro, plage,
+        nom ou tout, all ou *, celle de l'hôte marquée comme la seule qui se
+        construise sans émulation. Une réponse vide, [0] ou Ctrl+D n'en
+        choisissent aucune. Chaque version ne garde que ce que sa base
+        publie, et ce qu'elle perd est nommé.
         """
         publiees = {}
         for version in cibles:
@@ -644,24 +646,19 @@ class ContainerMenuMixin:
         offertes = []
         for archs in publiees.values():
             offertes += [a for a in archs if a not in offertes]
-        print(f"\n{t('Architectures:')}")
-        for rang, arch in enumerate(offertes, 1):
-            marque = f" ({t('this machine')})" if arch == hote else ""
-            print(f"  [{rang}] {arch}{marque}")
-        reponse = input(
-            f"💬 {t('Numbers separated by spaces, Enter for %s: ') % hote}"
-        ).strip()
-        if not reponse:
-            choisies = [hote]
-        else:
-            choisies = []
-            for mot in reponse.split():
-                if not mot.isdigit() or not 1 <= int(mot) <= len(offertes):
-                    print(t("Command not found !"))
-                    return {}
-                arch = offertes[int(mot) - 1]
-                if arch not in choisies:
-                    choisies.append(arch)
+        print()
+        choisies = ui.choose(
+            t("Architectures:"),
+            offertes,
+            multi=True,
+            labels=[
+                f"{arch} ({t('this machine')})" if arch == hote else arch
+                for arch in offertes
+            ],
+            names=dict(zip(offertes, offertes)),
+        )
+        if not choisies:
+            return {}
         plan = {}
         for version in cibles:
             gardees = [a for a in choisies if a in publiees[version]]
@@ -1119,7 +1116,9 @@ class ContainerMenuMixin:
 
         Celui de la composition du répertoire courant d'abord, comme les
         scripts de script/docker/ ; le seul en marche ensuite ; sinon la
-        question.
+        question (`ui.choose`), sans défaut : la restauration et la
+        suppression qui le visent nomment leur conteneur, et une réponse
+        vide, [0] ou Ctrl+D rendent None.
         """
         conteneurs = container_db.conteneurs_erplibre(fiche)
         if not conteneurs:
@@ -1134,7 +1133,6 @@ class ContainerMenuMixin:
         rang = ui.choose(
             t("Running ERPLibre containers:"),
             range(len(conteneurs)),
-            default=0,
             labels=[
                 f"{c['nom']}  —  {c['dossier'] or '?'}" for c in conteneurs
             ],

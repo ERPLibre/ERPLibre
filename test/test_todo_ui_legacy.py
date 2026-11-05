@@ -129,9 +129,7 @@ RAW_CALLS = {
     "script/qemu/network_qemu.py": 1,
     "script/todo/assistant_menu.py": 14,
     "script/todo/auto_ask.py": 2,
-    # Menus et questions ajoutés par develop, à migrer : les bases du
-    # conteneur ERPLibre, les architectures d'une image (+12).
-    "script/todo/container_menu.py": 22,
+    "script/todo/container_menu.py": 21,
     "script/todo/database_manager.py": 12,
     "script/todo/kdbx_manager.py": 1,
     "script/todo/git_repo_menu.py": 15,
