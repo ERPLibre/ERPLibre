@@ -201,9 +201,10 @@ ANSWERS_OF = {
     "prompt_execute_longtest": ("", "11", "0"),
 }
 # Install pose ses questions par `input` : au choix de la version, une
-# réponse vide, une touche qu'il ne montre pas, et 0 ; la question de la
-# première installation du système ne vient qu'après un choix.
-INPUTS = {"prompt_install": ("", "x", "0")}
+# touche qu'il ne montre pas, dite invalide, puis une réponse vide, qui
+# revient ; la question de la première installation du système ne vient
+# qu'après un choix.
+INPUTS = {"prompt_install": ("x", "")}
 # Largeur au-delà de laquelle le fichier de référence ouvre une liste ou
 # un dict, un élément par ligne.
 WIDTH = 200

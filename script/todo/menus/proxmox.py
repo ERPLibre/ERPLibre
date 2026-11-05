@@ -179,12 +179,12 @@ LONGTEST = Menu(
     render="once",
 )
 
-# Install pose sa propre question (`asks`) : une touche par installation,
-# [0], puis un numéro par version d'Odoo. Une entrée ne fait que choisir
-# (`_install_choisir`) : le menu se referme sur ce choix
-# (`closes_on_result`), et `prompt_install` pose ensuite l'environnement,
-# le type, l'étape système et la suite, puis lance l'installation. Chaque
-# installation pose des paquets : `danger`.
+# Install pose sa propre question (`asks`), un choix de `ui.choose` : un
+# numéro par version d'Odoo, une touche par installation, puis [0]. Une
+# entrée ne fait que choisir (`_install_choisir`) : le menu se referme sur
+# ce choix (`closes_on_result`), et `prompt_install` pose ensuite
+# l'environnement, le type, l'étape système et la suite, puis lance
+# l'installation. Chaque installation pose des paquets : `danger`.
 INSTALL = Menu(
     "prompt_install",
     "Install",

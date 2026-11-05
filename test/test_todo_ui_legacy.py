@@ -148,11 +148,7 @@ RAW_CALLS = {
     "script/todo/qemu_recover.py": 6,
     "script/todo/sms/menu.py": 6,
     "script/todo/sms/tui.py": 1,
-    # Ajoutés par develop, à migrer : l'étape système d'Install après le
-    # choix, l'attente de PyCharm, le développement ou la production, la
-    # bascule de version d'Image Odoo (+9).
-    "script/todo/todo.py": 98,
-    # Ajouté par develop, à migrer (+1).
+    "script/todo/todo.py": 94,
     "script/todo/todo_install.py": 2,
     "script/todo/todo_telemetry.py": 1,
     "script/todo/todo_upgrade.py": 14,

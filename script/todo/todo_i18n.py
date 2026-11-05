@@ -1864,10 +1864,6 @@ TRANSLATIONS = {
         "fr": "Ouvrir PyCharm ? (o/N) : ",
         "en": "Open PyCharm? (y/N): ",
     },
-    "Wait until PyCharm has loaded the project, close it, then press Enter (c to continue anyway): ": {
-        "fr": "Attendez que PyCharm ait chargé le projet, fermez-le, puis appuyez sur Entrée (c pour continuer quand même) : ",
-        "en": "Wait until PyCharm has loaded the project, close it, then press Enter (c to continue anyway): ",
-    },
     "PyCharm is still running: close it before continuing.": {
         "fr": "PyCharm tourne encore : fermez-le avant de continuer.",
         "en": "PyCharm is still running: close it before continuing.",
@@ -1955,6 +1951,18 @@ TRANSLATIONS = {
     "Git identity not saved:": {
         "fr": "Identité git non enregistrée :",
         "en": "Git identity not saved:",
+    },
+    "WAIT until PyCharm has finished loading the project, then close it.": {
+        "fr": "ATTENDRE que PyCharm ait fini de charger le projet, puis le fermer.",
+        "en": "WAIT until PyCharm has finished loading the project, then close it.",
+    },
+    "PyCharm is closed: check, then install": {
+        "fr": "PyCharm est fermé : vérifier, puis installer",
+        "en": "PyCharm is closed: check, then install",
+    },
+    "Continue anyway, PyCharm open": {
+        "fr": "Continuer quand même, PyCharm ouvert",
+        "en": "Continue anyway, PyCharm open",
     },
     "Choose a version:": {
         "fr": "Choisir une version :",

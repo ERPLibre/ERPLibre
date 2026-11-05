@@ -5123,9 +5123,9 @@ class TestInstallMenu(unittest.TestCase):
         for text in (
             "First system installation?",
             "Rest of the installation:",
-            "q: ERPLibre only, without Odoo",
-            "w: All Odoo versions",
-            "m: ERPLibre with the mobile home",
+            "[q] ERPLibre only, without Odoo",
+            "[w] All Odoo versions",
+            "[m] ERPLibre with the mobile home",
             "Odoo 18.0 - Installed - Current - Default",
             "Odoo 16.0 - Deprecated",
         ):
