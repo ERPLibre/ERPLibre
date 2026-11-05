@@ -1794,8 +1794,24 @@ class TestModeInstallation(unittest.TestCase):
         )
 
     def test_retour_et_saisie_invalide(self):
+        # Une faute est nommée et la question revient ; [0], une réponse
+        # vide et Ctrl+D reviennent, sans défaut.
         self.assertIsNone(self.choisir((5, 9), "x", "0"))
-        self.assertIn("'x'", self.sortie.getvalue())
+        self.assertIn(
+            f"{todo_i18n.t('Invalid choice: ')}x", self.sortie.getvalue()
+        )
+        self.assertIsNone(self.choisir((5, 9), ""))
+
+        def ctrl_d(_):
+            raise EOFError
+
+        import script.todo.todo as module
+
+        with (
+            patch.object(module, "gel_des_sources", return_value=(5, 9)),
+            patch("builtins.input", ctrl_d),
+        ):
+            self.assertIsNone(self.todo._choisir_mode_installation("X.0"))
 
     def test_le_compte_des_gels_est_affiche(self):
         import script.todo.todo as module
@@ -1810,7 +1826,12 @@ class TestModeInstallation(unittest.TestCase):
             module, "gel_des_sources", return_value=(5, 9)
         ), patch("builtins.input", saisir):
             self.todo._choisir_mode_installation("X.0")
-        self.assertIn(f"5/9 {todo_i18n.t('projects frozen')}", invites[0])
+        self.assertEqual(len(invites), 1)
+        self.assertIn(
+            f"[2] {todo_i18n.t('Production: frozen commits (freeze-revision)')}"
+            f" — 5/9 {todo_i18n.t('projects frozen')}",
+            self.sortie.getvalue(),
+        )
 
 
 if __name__ == "__main__":

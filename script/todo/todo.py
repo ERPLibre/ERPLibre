@@ -314,10 +314,13 @@ class TODO(
 
     def _install_system_step(self):
         """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
-        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
-        une technologie qui installe ses propres paquets ne passe pas ici.
-        Pour une version d'Odoo, elle vient après la dernière question qui
-        offre « 0: Back » : un retour ne laisse rien d'installé."""
+        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install,
+        par `_install_run` : une technologie qui installe ses propres
+        paquets ne passe pas ici. Pour une version d'Odoo, elle vient après
+        les choix de l'environnement et du type, qui offrent [0] Retour : un
+        retour ne laisse rien d'installé. Rend False quand l'attente de
+        PyCharm est abandonnée, et l'installation ne part pas ; True
+        sinon."""
         print(t("Detect first installation from code source."))
 
         first_installation_input = (
@@ -365,7 +368,8 @@ class TODO(
                     single_source_erplibre=False,
                     new_window=True,
                 )
-                self._wait_pycharm_closed()
+                return self._wait_pycharm_closed()
+        return True
 
     def _wait_pycharm_closed(self):
         """Attend que PyCharm, ouvert pour indexer le projet, soit refermé.
@@ -374,22 +378,28 @@ class TODO(
         il analyse le projet pendant que l'installation y ajoute des
         fichiers : il annule et reprend son analyse à chaque fois, et prend
         le processeur dont l'installation a besoin. L'installation part
-        donc seulement une fois qu'aucun processus PyCharm ne tourne plus,
-        ce que « pgrep » vérifie après chaque Entrée. « c » passe outre :
-        un PyCharm sans lien avec ce projet peut tourner à côté.
+        donc seulement une fois qu'aucun processus PyCharm ne tourne plus.
+        La question est un choix (`ui.choose`) : « PyCharm est fermé », le
+        défaut marqué d'une réponse vide, que « pgrep » vérifie ; « c »
+        passe outre, un PyCharm sans lien avec ce projet pouvant tourner à
+        côté. Rend True pour installer, False sur [0] ou Ctrl+D, qui
+        renoncent à l'installation.
         """
+        attente = t(
+            "WAIT until PyCharm has finished loading the project, then close it."
+        )
         while True:
-            reponse = (
-                input(
-                    "👹 WAIT until Pycharm has finished loading the project,"
-                    " close it, then press Enter to continue"
-                    " (c to continue anyway): "
-                )
-                .strip()
-                .lower()
+            geste = ui.choose(
+                f"👹 {attente}",
+                ["ferme"],
+                default="ferme",
+                labels=[t("PyCharm is closed: check, then install")],
+                letters={"c": t("Continue anyway, PyCharm open")},
             )
-            if reponse == "c":
-                return
+            if geste is None:
+                return False
+            if geste == "c":
+                return True
             encore = subprocess.run(
                 ["pgrep", "-f", "-i", "pycharm"],
                 stdout=subprocess.PIPE,
@@ -397,7 +407,7 @@ class TODO(
                 text=True,
             )
             if encore.returncode != 0:
-                return
+                return True
             print("⚠️  Pycharm is still running: close it before continuing.")
 
     def _install_versions(self):
@@ -433,36 +443,26 @@ class TODO(
 
     def _install_ask(self, items):
         """La question d'Install sur `items`, les entrées que montre le menu,
-        {"key", "label"} chacune : une ligne « touche: libellé » par
-        installation par touche, puis [0], puis une par version, par son
-        numéro. Redemande tant que la réponse, sans blancs ni majuscules,
-        n'en nomme aucune ; rend la touche répondue, "0" pour quitter."""
-        by_key = [i for i in items if not i["key"].isdigit()]
+        {"key", "label"} chacune, posée par `ui.choose` : une version par
+        son numéro, une installation par sa touche, et [0] Retour. Rend la
+        touche ou le numéro répondu, "0" pour [0], une réponse vide ou
+        Ctrl+D ; une réponse invalide est dite, et la question revient."""
         numbered = [i for i in items if i["key"].isdigit()]
-        lines = [f"{i['key']}: {i['label']}" for i in by_key]
-        lines.append(f"0: {t('Quit')}")
-        lines += [f"{i['key']}: {i['label']}" for i in numbered]
-        keys = {"0", *(item["key"] for item in items)}
-        odoo_version_input = ""
-        while odoo_version_input not in keys:
-            if odoo_version_input:
-                print(
-                    f"{t('Error, cannot understand value')} '{odoo_version_input}'"
-                )
-            str_input_dyn_odoo_version = (
-                f"💬 {t('Choose a version:')}\n\t"
-                + "\n\t".join(lines)
-                + f"\n{t('Select: ')}"
-            )
-            odoo_version_input = (
-                input(str_input_dyn_odoo_version).strip().lower()
-            )
-        return odoo_version_input
+        choisi = ui.choose(
+            f"💬 {t('Choose a version:')}",
+            [i["key"] for i in numbered],
+            labels=[i["label"] for i in numbered],
+            letters={
+                i["key"]: i["label"] for i in items if not i["key"].isdigit()
+            },
+        )
+        return "0" if choisi is None else choisi
 
     def _install_version(self, version):
         """Installe `version`, une version de `_install_versions` : demande
         le développement ou la production (`_choisir_mode_installation`),
-        puis s'il faut ses modules extra ; rien sur un [0]."""
+        puis s'il faut ses modules extra (`ui.choose`, sans défaut) ; rien
+        sur [0], une réponse vide ou Ctrl+D à l'un ou à l'autre."""
         mode = self._choisir_mode_installation(version.get("odoo_version"))
         if mode is None:
             return
@@ -471,39 +471,27 @@ class TODO(
             f"{mode} ./script/version/update_env_version.py --erplibre_version"
             f" {erplibre_version} --install_dev"
         )
-        extra_choices = {
-            "1": (
-                "1",
-                f"1: {t('Standard install (without extra modules)')}",
-            ),
-            "2": (
-                "2",
-                "2: "
-                + t("Install with extra modules (CybroOdoo - large, slow)"),
-            ),
-            "0": ("0", f"0: {t('Back')}"),
-        }
-        extra_input = ""
-        while extra_input not in extra_choices:
-            if extra_input:
-                print(f"{t('Error, cannot understand value')} '{extra_input}'")
-            str_extra = (
-                f"💬 {t('Install type:')}\n\t"
-                + "\n\t".join([a[1] for a in extra_choices.values()])
-                + f"\n{t('Select: ')}"
-            )
-            extra_input = input(str_extra).strip()
-        if extra_input == "0":
+        type_install = ui.choose(
+            f"💬 {t('Install type:')}",
+            ["standard", "extra"],
+            labels=[
+                t("Standard install (without extra modules)"),
+                t("Install with extra modules (CybroOdoo - large, slow)"),
+            ],
+        )
+        if type_install is None:
             return
-        if extra_input == "2":
+        if type_install == "extra":
             cmd_intern = cmd_intern + " --with_extra"
         self._install_run(cmd_intern)
 
     def _install_run(self, cmd):
-        """Lance l'installation `cmd` par bash, après l'étape système : le
-        choix est entier, plus rien ne revient. Sur un échec, dit son code
-        de retour et relance TODO."""
-        self._install_system_step()
+        """Lance l'installation `cmd` par bash, après l'étape système, ou
+        rien quand celle-ci est abandonnée. Sur un échec, dit son code de
+        retour et relance TODO."""
+        if not self._install_system_step():
+            print(t("Nothing to do."))
+            return
         print(f"{t('Will execute:')}\n{cmd}")
 
         # TODO use external script to detect terminal to use on system
@@ -521,13 +509,15 @@ class TODO(
             self.restart_script(str(e))
 
     def _choisir_mode_installation(self, odoo_version):
-        """Développement ou production pour `odoo_version` (« 18.0 »).
+        """Développement ou production pour `odoo_version` (« 18.0 »),
+        choisi par `ui.choose`, sans défaut.
 
         Rend le préfixe de la commande d'installation, « EL_FREEZE=0 » ou
-        « EL_FREEZE=1 », ou None pour revenir. Le développement suit les
-        branches, la « revision » des manifestes. La production pose chaque
-        dépôt sur son « freeze-revision » ; quand aucun manifeste de cette
-        version n'en porte, elle se rabat sur le développement et le dit.
+        « EL_FREEZE=1 », ou None pour revenir : [0], une réponse vide ou
+        Ctrl+D. Le développement suit les branches, la « revision » des
+        manifestes. La production pose chaque dépôt sur son
+        « freeze-revision » ; quand aucun manifeste de cette version n'en
+        porte, elle se rabat sur le développement et le dit.
         EL_FREEZE atteint le script de manifeste par l'environnement, à
         travers update_env_version.py et install_locally_dev.sh. Il est posé
         dans les deux cas : une valeur exportée par le shell ne décide pas à
@@ -539,31 +529,23 @@ class TODO(
             detail = f"{geles}/{etat[1]} {t('projects frozen')}"
         else:
             detail = t("no freeze, falls back to development")
-        choix = {
-            "1": f"1: {t('Development: follows the branches (revision)')}",
-            "2": (
-                f"2: {t('Production: frozen commits (freeze-revision)')}"
-                f" — {detail}"
-            ),
-            "0": f"0: {t('Back')}",
-        }
-        saisie = ""
-        while saisie not in choix:
-            if saisie:
-                print(f"{t('Error, cannot understand value')} '{saisie}'")
-            saisie = input(
-                f"💬 {t('Environment:')}\n\t"
-                + "\n\t".join(choix.values())
-                + f"\n{t('Select: ')}"
-            ).strip()
-        if saisie == "0":
+        saisie = ui.choose(
+            f"💬 {t('Environment:')}",
+            ["developpement", "production"],
+            labels=[
+                t("Development: follows the branches (revision)"),
+                f"{t('Production: frozen commits (freeze-revision)')}"
+                f" — {detail}",
+            ],
+        )
+        if saisie is None:
             return None
-        if saisie == "2" and geles:
+        if saisie == "production" and geles:
             print(
                 f"🧊 {t('Production: each repository on its frozen commit.')}"
             )
             return "EL_FREEZE=1"
-        if saisie == "2":
+        if saisie == "production":
             print(
                 f"⚠  {t('No frozen commit for this Odoo version: installing the development, on the branches.')}"
             )

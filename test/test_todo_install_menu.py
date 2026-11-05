@@ -8,7 +8,7 @@ installe la pile de l'OS pour Odoo (update_env_version.py --install) ; posée
 en premier, elle l'installait aussi pour qui ne voulait qu'une autre
 technologie. Elle vient donc après le choix, pour les choix qui en ont
 besoin — et pour une version d'Odoo, après les menus de l'environnement et
-du type d'installation, qui offrent « 0: Back » : un retour ne doit rien
+du type d'installation, qui offrent [0] Retour : un retour ne doit rien
 laisser d'installé.
 
 Rien n'est installé ici : input() répond d'après une liste écrite d'avance,
@@ -33,6 +33,9 @@ from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 QUESTION_SYSTEME = t("First system installation? (Y/N)")
+ATTENTE = t(
+    "WAIT until PyCharm has finished loading the project, then close it."
+)
 
 
 class ExecuteFactice:
@@ -49,7 +52,9 @@ class Banc(unittest.TestCase):
         """Lance prompt_install ; rend (questions posées, commandes lancées).
 
         Une question de plus que de réponses fait échouer le test en le
-        disant, au lieu d'un StopIteration anonyme.
+        disant, au lieu d'un StopIteration anonyme ; une réponse qui est une
+        exception est levée (EOFError, Ctrl+D). L'écran imprimé est dans
+        `self.ecran`.
         """
         todo = TODO.__new__(TODO)
         todo.execute = ExecuteFactice()
@@ -59,11 +64,14 @@ class Banc(unittest.TestCase):
         def repondre(prompt=""):
             questions.append(prompt)
             try:
-                return next(suite)
+                reponse = next(suite)
             except StopIteration:
                 raise AssertionError(
                     f"question sans réponse prévue : {prompt!r}"
                 ) from None
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
 
         lances = []
 
@@ -73,12 +81,14 @@ class Banc(unittest.TestCase):
             code = 1 if isinstance(cmd, list) and cmd[:1] == ["which"] else 0
             return subprocess.CompletedProcess(cmd, code, "", "")
 
+        ecran = io.StringIO()
         with (
             mock.patch.object(builtins, "input", repondre),
             mock.patch.object(todo_module.subprocess, "run", run),
-            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stdout(ecran),
         ):
             todo.prompt_install()
+        self.ecran = ecran.getvalue()
         commandes = todo.execute.commandes + [
             c for c in lances if isinstance(c, str)
         ]
@@ -108,7 +118,7 @@ class TestOrdreDesQuestions(Banc):
         )
 
     def test_back_from_the_environment_menu_installs_nothing(self):
-        """La version, puis « 0: Back » au choix de l'environnement."""
+        """La version, puis [0] Retour au choix de l'environnement."""
         questions, commandes = self.jouer(["1", "0"])
         self.assertEqual(len(questions), 2)
         for question in questions:
@@ -116,12 +126,35 @@ class TestOrdreDesQuestions(Banc):
         self.assertEqual(commandes, [])
 
     def test_back_from_the_install_type_menu_installs_nothing(self):
-        """La version, le développement, puis « 0: Back » au type."""
+        """La version, le développement, puis [0] Retour au type."""
         questions, commandes = self.jouer(["1", "1", "0"])
         self.assertEqual(len(questions), 3)
         for question in questions:
             self.assertNotIn(QUESTION_SYSTEME, question)
         self.assertEqual(commandes, [])
+
+    def test_back_at_each_choice_installs_nothing(self):
+        """[0], une réponse vide ou Ctrl+D à la version, à l'environnement
+        ou au type : ni question système, ni commande, ni question de
+        plus."""
+        for avant in ([], ["1"], ["1", "1"]):
+            for retour in ("0", "", EOFError()):
+                with self.subTest(avant=avant, retour=retour):
+                    questions, commandes = self.jouer([*avant, retour])
+                    self.assertEqual(len(questions), len(avant) + 1)
+                    self.assertEqual(commandes, [])
+
+    def test_the_choices_follow_the_rules_of_a_choice(self):
+        """Une version par son numéro, une installation par sa touche, sans
+        casse ; une faute est dite et la question revient ; [0] se lit
+        Retour, après les touches."""
+        questions, commandes = self.jouer(["x", "Q", "n"])
+        self.assertIn(f"{t('Invalid choice: ')}x", self.ecran)
+        self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
+        self.assertIn(QUESTION_SYSTEME, questions[2])
+        liste = self.ecran.split(t("Invalid choice: "))[0]
+        self.assertLess(liste.index("[q] "), liste.index(f"[0] {t('Back')}"))
+        self.assertLess(liste.index("[1] Odoo"), liste.index("[q] "))
 
     def test_erplibre_only_keeps_the_system_question(self):
         questions, commandes = self.jouer(["q", "n"])
@@ -138,14 +171,19 @@ class TestPycharmFerme(unittest.TestCase):
         """Lance _wait_pycharm_closed ; rend (questions, appels pgrep, sortie).
 
         `pgrep` donne le code de chaque appel à pgrep, dans l'ordre : 0, un
-        PyCharm tourne encore ; 1, plus aucun."""
+        PyCharm tourne encore ; 1, plus aucun. Une réponse qui est une
+        exception est levée (EOFError, Ctrl+D) ; ce que rend l'attente est
+        dans `self.rendu`."""
         todo = TODO.__new__(TODO)
         questions, appels = [], []
         suite, codes = iter(reponses), iter(pgrep)
 
         def repondre(prompt=""):
             questions.append(prompt)
-            return next(suite)
+            reponse = next(suite)
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
 
         def run(cmd, *args, **kwargs):
             appels.append(cmd)
@@ -157,7 +195,7 @@ class TestPycharmFerme(unittest.TestCase):
             mock.patch.object(todo_module.subprocess, "run", run),
             contextlib.redirect_stdout(sortie),
         ):
-            todo._wait_pycharm_closed()
+            self.rendu = todo._wait_pycharm_closed()
         return questions, appels, sortie.getvalue()
 
     def test_continues_once_pycharm_is_closed(self):
@@ -175,10 +213,24 @@ class TestPycharmFerme(unittest.TestCase):
         questions, appels, _ = self._attendre(["c"], [])
         self.assertEqual(len(questions), 1)
         self.assertEqual(appels, [])
+        self.assertIs(self.rendu, True)
 
-    def test_the_install_waits_for_pycharm_closed(self):
-        """Le parcours entier : PyCharm ouvert, puis l'attente, puis
-        seulement la commande d'installation."""
+    def test_back_or_ctrl_d_gives_up_the_install(self):
+        """[0] ou Ctrl+D : l'attente renonce, sans vérifier PyCharm ; une
+        faute est dite et la question revient."""
+        for reponses in (["0"], [EOFError()], ["x", "0"]):
+            with self.subTest(reponses=reponses):
+                questions, appels, sortie = self._attendre(reponses, [])
+                self.assertIs(self.rendu, False)
+                self.assertEqual(appels, [])
+                self.assertEqual(len(questions), len(reponses))
+        self.assertIn(f"{t('Invalid choice: ')}x", sortie)
+
+    def _parcours(self, attente):
+        """Le parcours entier, PyCharm présent et sans `.idea` : version,
+        environnement, type, système non, PyCharm oui, puis `attente` à
+        l'attente. Rend les événements dans l'ordre : ("lance", commande),
+        ("question", invite) et ("ecran", texte imprimé)."""
         todo = TODO.__new__(TODO)
         evenements = []
 
@@ -188,12 +240,14 @@ class TestPycharmFerme(unittest.TestCase):
                 return 0
 
         todo.execute = Execute()
-        # Version, environnement, type, système non, PyCharm oui, Entrée.
-        suite = iter(["1", "1", "1", "n", "y", ""])
+        suite = iter(["1", "1", "1", "n", "y", attente])
 
         def repondre(prompt=""):
             evenements.append(("question", prompt))
-            return next(suite)
+            reponse = next(suite)
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
 
         def run(cmd, *args, **kwargs):
             if isinstance(cmd, str):
@@ -204,6 +258,11 @@ class TestPycharmFerme(unittest.TestCase):
                 return subprocess.CompletedProcess(cmd, 0, "", "")
             return subprocess.CompletedProcess(cmd, 1, "", "")  # pgrep
 
+        class Ecran(io.StringIO):
+            def write(self, texte):
+                evenements.append(("ecran", texte))
+                return len(texte)
+
         exists = os.path.exists
         with (
             mock.patch.object(builtins, "input", repondre),
@@ -213,9 +272,15 @@ class TestPycharmFerme(unittest.TestCase):
                 "exists",
                 lambda p: False if p == ".idea" else exists(p),
             ),
-            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stdout(Ecran()),
         ):
             todo.prompt_install()
+        return evenements
+
+    def test_the_install_waits_for_pycharm_closed(self):
+        """PyCharm ouvert, puis l'attente, puis seulement la commande
+        d'installation."""
+        evenements = self._parcours("")
         rangs = {
             "pycharm": next(
                 i
@@ -225,7 +290,7 @@ class TestPycharmFerme(unittest.TestCase):
             "attente": next(
                 i
                 for i, (k, v) in enumerate(evenements)
-                if k == "question" and "close it" in v
+                if k == "ecran" and ATTENTE in v
             ),
             "installation": next(
                 i
@@ -235,6 +300,15 @@ class TestPycharmFerme(unittest.TestCase):
         }
         self.assertLess(rangs["pycharm"], rangs["attente"])
         self.assertLess(rangs["attente"], rangs["installation"])
+
+    def test_giving_up_the_wait_installs_nothing(self):
+        for attente in ("0", EOFError()):
+            with self.subTest(attente=attente):
+                evenements = self._parcours(attente)
+                lances = [v for k, v in evenements if k == "lance"]
+                self.assertFalse(
+                    any("--install_dev" in v for v in lances), lances
+                )
 
 
 if __name__ == "__main__":

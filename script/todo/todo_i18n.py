@@ -804,6 +804,18 @@ TRANSLATIONS = {
         "fr": "Va exécuter :",
         "en": "Will execute:",
     },
+    "WAIT until PyCharm has finished loading the project, then close it.": {
+        "fr": "ATTENDRE que PyCharm ait fini de charger le projet, puis le fermer.",
+        "en": "WAIT until PyCharm has finished loading the project, then close it.",
+    },
+    "PyCharm is closed: check, then install": {
+        "fr": "PyCharm est fermé : vérifier, puis installer",
+        "en": "PyCharm is closed: check, then install",
+    },
+    "Continue anyway, PyCharm open": {
+        "fr": "Continuer quand même, PyCharm ouvert",
+        "en": "Continue anyway, PyCharm open",
+    },
     "Choose a version:": {
         "fr": "Choisir une version :",
         "en": "Choose a version:",
