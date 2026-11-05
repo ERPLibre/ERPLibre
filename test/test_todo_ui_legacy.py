@@ -139,7 +139,7 @@ RAW_CALLS = {
     # Questions ajoutées par develop, à migrer : le jeton OAuth, la
     # signature d'un compte (+4).
     "script/todo/mail/menu.py": 16,
-    # Menus ajoutés par develop, à migrer : le modem, les SMS.
+    # Menus ajoutés par develop, à migrer : le modem.
     "script/todo/modem/menu.py": 40,
     "script/todo/module_menu.py": 1,
     "script/todo/proxmox_menu.py": 13,
@@ -151,7 +151,7 @@ RAW_CALLS = {
     "script/todo/qemu_menu.py": 2,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 6,
-    "script/todo/sms/menu.py": 10,
+    "script/todo/sms/menu.py": 6,
     "script/todo/sms/tui.py": 1,
     # Ajoutés par develop, à migrer : l'étape système d'Install après le
     # choix, l'attente de PyCharm, le développement ou la production, la

@@ -14,9 +14,10 @@ ni la page web ne la lancent, son menu seul.
 
 from script.todo.ui.registry import Entry, FromMethod, Menu, Section
 
-# L'entrée [3] du menu principal. Le courriel, les SMS et le modem s'ouvrent
-# chacun par une méthode de TODO qui passe la main à son paquet
-# (`script/todo/mail/menu.py`, `sms/menu.py`, `modem/menu.py`).
+# L'entrée [3] du menu principal. Le courriel et le modem s'ouvrent chacun
+# par une méthode de TODO qui passe la main à son paquet
+# (`script/todo/mail/menu.py`, `modem/menu.py`) ; la démonstration de la
+# passerelle est un menu déclaré dans `modem.py`, sur le téléphone.
 ASSISTANT = Menu(
     "prompt_assistant",
     "Assistant",
@@ -26,7 +27,7 @@ ASSISTANT = Menu(
             "prompt_assistant_llm",
         ),
         Entry("mail_menu", "_assistant_mail"),
-        Entry("sms_menu", "_assistant_sms"),
+        Entry("sms_menu", "prompt_execute_sms"),
         Entry("modem_menu", "_assistant_modem"),
     ],
     back=None,
