@@ -4003,6 +4003,10 @@ TRANSLATIONS = {
         "fr": "Une seule vérification",
         "en": "One check",
     },
+    "🔎 One check": {
+        "fr": "🔎 Une seule vérification",
+        "en": "🔎 One check",
+    },
     "Odoo HTTP port": {
         "fr": "Port HTTP d'Odoo",
         "en": "Odoo HTTP port",

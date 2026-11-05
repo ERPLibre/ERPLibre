@@ -1719,6 +1719,63 @@ class TestConfigurationMenuNumbering(RegistryCoherence, unittest.TestCase):
                 self.assertEqual(title, entry.key)
 
 
+class TestHealthcheckMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """L'entrée [4] du menu principal : tout vérifier, la liste des
+    vérifications, les deux portées, puis une résolution par élément que
+    rend `_healthcheck_resolutions`."""
+
+    MENU = "prompt_healthcheck"
+    BACK = None
+    EXPECTED = {
+        "Run every check": "_healthcheck_run",
+        "🔎 One check": "_healthcheck_one_check",
+        "Files": "_healthcheck_scope",
+        "Repositories": "_healthcheck_scope",
+    }
+
+    def test_each_scope_entry_cycles_its_own_axis(self):
+        from script.todo.todo import TODO
+
+        axes = [e.kwargs["axe"] for e in self.entries if e.kwargs]
+        self.assertEqual(axes, list(TODO._HEALTHCHECK_AXES))
+
+    def test_resolutions_follow_the_scopes(self):
+        from script.todo.ui.registry import FromMethod
+
+        [offertes] = [
+            e for e in self.menu.entries if isinstance(e, FromMethod)
+        ]
+        self.assertEqual(
+            (offertes.method, offertes.action, offertes.kwarg),
+            ("_healthcheck_resolutions", "_healthcheck_resolve", "resolution"),
+        )
+        self.assertIs(self.menu.entries[-1], offertes)
+        self.assertEqual(self.menu.opens, "_healthcheck_open")
+
+
+class TestHealthcheckOneCheckMenuNumbering(
+    RegistryCoherence, unittest.TestCase
+):
+    """La liste qu'ouvre « One check » de Healthcheck : une vérification
+    par élément que rend `_healthcheck_checks`, lancée par la même action
+    que « Run every check » ; la liste se referme après elle."""
+
+    MENU = "_healthcheck_one_check"
+    BACK = None
+    EXPECTED = {}
+
+    def test_one_check_runs_through_the_same_action(self):
+        from script.todo.ui.registry import FromMethod
+
+        [checks] = self.menu.entries
+        self.assertIsInstance(checks, FromMethod)
+        self.assertEqual(
+            (checks.method, checks.action, checks.kwarg),
+            ("_healthcheck_checks", "_healthcheck_run", "check"),
+        )
+        self.assertTrue(self.menu.closes)
+
+
 class TestUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Update : les mises à jour de todo.json, puis la migration d'Odoo et
     celle de Poetry, toujours les deux dernières ; celle des dépôts git vit
@@ -4769,7 +4826,7 @@ class TestMenuLabels(unittest.TestCase):
     plusieurs bases. Leur donner un segment mettrait une miette sur une
     invite passagère. D'autres, écrites à la main et ouvertes par un
     écran lui-même écrit à la main, prennent leur segment de
-    `crumbs_at` (One check, Update d'Install) ou n'en ont pas encore
+    `crumbs_at` (Update d'Install) ou n'en ont pas encore
     (Containers de System) : elles sortent de la liste en devenant des
     menus déclarés.
     """
@@ -4778,7 +4835,6 @@ class TestMenuLabels(unittest.TestCase):
         "execute_odoo_upgrade",
         "select_database",
         "select_databases",
-        "_healthcheck_une_verification",
         "prompt_install_update",
         "_system_conteneurs",
     }
@@ -4789,7 +4845,6 @@ class TestMenuLabels(unittest.TestCase):
     ECRANS_A_MIGRER = {
         "prompt_execute_git_repo": "Repo",
         "prompt_execute_module_analysis": "Analyse module",
-        "prompt_healthcheck": "Healthcheck",
         "prompt_execute_python": "Python",
         "prompt_execute_system": "System",
         "prompt_execute_seal": "PAdES seal",
@@ -4811,6 +4866,8 @@ class TestMenuLabels(unittest.TestCase):
     SEGMENTS = {
         "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
+        "prompt_healthcheck": "Healthcheck",
+        "_healthcheck_one_check": "One check",
         "prompt_execute": "Execute",
         "prompt_execute_code": "Code",
         "debug_ide": "Debug",

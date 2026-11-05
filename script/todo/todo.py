@@ -1596,157 +1596,146 @@ class TODO(
         todo_prefs.set(key, value)
         print(f"  ✅ {t(title)} : {self._pref_label(key)}")
 
+    # Les axes de portée de Healthcheck : (portées, de la plus étroite à
+    # la plus large, {portée: clé de son libellé}) de chacun.
+    _HEALTHCHECK_AXES = {
+        "fichiers": (
+            healthcheck.PORTEES_FICHIERS,
+            healthcheck.LIBELLES_FICHIERS,
+        ),
+        "depots": (healthcheck.PORTEES_DEPOTS, healthcheck.LIBELLES_DEPOTS),
+    }
+    # {axe: rang de sa portée en cours} ; jamais modifié en place, chaque
+    # changement en pose un neuf sur l'instance. Le rang 0, le plus étroit,
+    # vaut pour une entrée lancée hors du menu.
+    _healthcheck_rangs = dict.fromkeys(_HEALTHCHECK_AXES, 0)
+
+    # {titre de vérification: [Resolution actionnables]} que la dernière
+    # passe de chaque vérification propose ; remplacé comme
+    # `_healthcheck_rangs`, jamais modifié en place.
+    _healthcheck_offertes = {}
+
     def prompt_healthcheck(self):
-        """Vérifications à sec du checkout et de son environnement.
+        """Vérifications à sec du checkout et de son environnement, menu
+        déclaré dans HEALTHCHECK (`menus/main.py`). Rend None sur [0].
 
-        Les deux portées partent de la plus étroite — fichiers non commités,
-        ERPLibre seul — et chaque entrée de portée passe à la suivante. Elles
-        valent pour la durée du menu.
-
-        « Une seule vérification » ouvre la liste des vérifications ; celle
-        qu'on choisit tourne seule, puis le menu revient. Les résolutions
-        qu'une vérification propose deviennent des entrées de la section
-        « Résolution », juste après. Chaque vérification garde les siennes
-        jusqu'à sa prochaine passe ; une résolution lancée repasse sa
-        vérification.
-
-        À l'ouverture, les vérifications immédiates du bilan
-        (`healthcheck.VERIFICATIONS_IMMEDIATES`) passent sans rien afficher :
-        un écart qu'elles trouvent, comme les hooks git que le bilan
-        d'ouverture du TODO dit manquants, est offert en résolution sans
-        lancer de passe.
+        « One check » ouvre la liste des vérifications ; celle qu'on
+        choisit tourne seule, puis le menu revient. Les résolutions qu'une
+        vérification propose deviennent des entrées de la section
+        « Resolution ». Chaque vérification garde les siennes jusqu'à sa
+        prochaine passe ; une résolution lancée repasse sa vérification.
         """
-        portee_fichiers = 0
-        portee_depots = 0
-        # {titre de vérification: [Resolution actionnables]}
-        resolutions = {}
+        return navigate(self, menus_main.HEALTHCHECK)
 
-        def contexte(fichiers, depots):
-            return healthcheck.Contexte(
-                self._claude_context_root(),
-                fichiers=fichiers,
-                depots=depots,
-                etat_commande_claude=self._claude_command_state,
-                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
-            )
+    def _healthcheck_open(self):
+        """Remet chaque axe à sa portée la plus étroite — fichiers non
+        commités, ERPLibre seul — qui vaut jusqu'au [0] du menu, et oublie
+        les résolutions d'une ouverture précédente. Les vérifications
+        immédiates du bilan (`healthcheck.VERIFICATIONS_IMMEDIATES`)
+        passent alors sans rien afficher : un écart qu'elles trouvent,
+        comme les hooks git que le bilan d'ouverture du TODO dit manquants,
+        est offert en résolution sans lancer de passe."""
+        self._healthcheck_rangs = dict.fromkeys(self._HEALTHCHECK_AXES, 0)
+        self._healthcheck_offertes = {}
+        self._healthcheck_retenir(
+            healthcheck.verifier_en_silence(self._healthcheck_contexte())
+        )
+        return {}
 
-        def retenir(resultats):
-            for resultat in resultats or []:
-                resolutions[resultat.titre] = [
+    def _healthcheck_portee(self, axe):
+        """La portée en cours de l'axe `axe`."""
+        portees, _libelles = self._HEALTHCHECK_AXES[axe]
+        return portees[self._healthcheck_rangs[axe]]
+
+    def _healthcheck_scope(self, axe):
+        """Passe l'axe `axe` à la portée suivante, plus large, et revient à
+        la plus étroite après la dernière."""
+        portees, _libelles = self._HEALTHCHECK_AXES[axe]
+        rang = (self._healthcheck_rangs[axe] + 1) % len(portees)
+        self._healthcheck_rangs = {**self._healthcheck_rangs, axe: rang}
+
+    def _healthcheck_scope_label(self, axe):
+        """Le libellé traduit de la portée en cours de l'axe `axe`."""
+        _portees, libelles = self._HEALTHCHECK_AXES[axe]
+        return t(libelles[self._healthcheck_portee(axe)])
+
+    def _healthcheck_contexte(self):
+        """Un healthcheck.Contexte neuf, aux portées en cours."""
+        return healthcheck.Contexte(
+            self._claude_context_root(),
+            fichiers=self._healthcheck_portee("fichiers"),
+            depots=self._healthcheck_portee("depots"),
+            etat_commande_claude=self._claude_command_state,
+            commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+        )
+
+    def _healthcheck_retenir(self, resultats):
+        """Retient les résolutions actionnables de chaque Resultat de
+        `resultats`, None valant aucun : elles remplacent celles de la
+        passe précédente de sa vérification."""
+        self._healthcheck_offertes = {
+            **self._healthcheck_offertes,
+            **{
+                resultat.titre: [
                     r for r in resultat.resolutions if r.actionnable
                 ]
+                for resultat in resultats or []
+            },
+        }
 
-        retenir(
-            healthcheck.verifier_en_silence(
-                contexte(
-                    healthcheck.PORTEES_FICHIERS[portee_fichiers],
-                    healthcheck.PORTEES_DEPOTS[portee_depots],
-                )
+    def _healthcheck_one_check(self):
+        """La liste des vérifications, menu déclaré dans
+        HEALTHCHECK_ONE_CHECK (`menus/main.py`) : celle qu'on choisit
+        tourne seule, puis la liste se referme. Rend None."""
+        return navigate(self, menus_main.HEALTHCHECK_ONE_CHECK)
+
+    def _healthcheck_checks(self):
+        """Les vérifications, dans l'ordre de healthcheck.VERIFICATIONS :
+        {"prompt_description", "check"} chacune, « check » étant son
+        couple (section, vérification)."""
+        return [
+            {"prompt_description": healthcheck.titre(paire[1]), "check": paire}
+            for paire in healthcheck.VERIFICATIONS
+        ]
+
+    def _healthcheck_run(self, check=None):
+        """Lance, aux portées en cours, la vérification de `check`, un
+        élément de `_healthcheck_checks` ou de `_healthcheck_resolutions`,
+        ou toutes sans lui, et retient les résolutions qu'elles
+        proposent."""
+        self._healthcheck_retenir(
+            healthcheck.lancer(
+                self._healthcheck_contexte(),
+                [check["check"]] if check else None,
             )
         )
-        while True:
-            ctx = contexte(
-                healthcheck.PORTEES_FICHIERS[portee_fichiers],
-                healthcheck.PORTEES_DEPOTS[portee_depots],
-            )
-            choices = [
-                {"prompt_description": t("Run every check")},
-                {"prompt_description": f"🔎 {t('One check')}"},
-                {"section": t("Scope")},
-                {
-                    "prompt_description": (
-                        f"{t('Files:')} "
-                        f"{t(healthcheck.LIBELLES_FICHIERS[ctx.portee_fichiers])}"
-                    )
-                },
-                {
-                    "prompt_description": (
-                        f"{t('Repositories:')} "
-                        f"{t(healthcheck.LIBELLES_DEPOTS[ctx.portee_depots])}"
-                    )
-                },
-            ]
-            seules = list(healthcheck.VERIFICATIONS)
-            premiere_resolution = 5
-            # Dans l'ordre des vérifications qui les ont proposées.
-            offertes = [
-                (verification, r)
-                for _section, verification in seules
-                for r in resolutions.get(healthcheck.titre(verification), [])
-            ]
-            if offertes:
-                choices.append({"section": t("Resolution")})
-                for _verification, resolution in offertes:
-                    choices.append({"prompt_description": resolution.libelle})
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            try:
-                numero = int(status)
-            except ValueError:
-                numero = -1
-            if numero == 0:
-                return
-            elif numero == 1:
-                retenir(healthcheck.lancer(ctx))
-            elif numero == 2:
-                with crumbs_at((*crumbs(), "One check")):
-                    choisie = self._healthcheck_une_verification(seules)
-                if choisie:
-                    retenir(healthcheck.lancer(ctx, [choisie]))
-            elif numero == 3:
-                portee_fichiers = (portee_fichiers + 1) % len(
-                    healthcheck.PORTEES_FICHIERS
-                )
-            elif numero == 4:
-                portee_depots = (portee_depots + 1) % len(
-                    healthcheck.PORTEES_DEPOTS
-                )
-            elif (
-                premiere_resolution
-                <= numero
-                < premiere_resolution + len(offertes)
-            ):
-                verification, resolution = offertes[
-                    numero - premiere_resolution
-                ]
-                healthcheck.executer_resolution(
-                    ctx,
-                    resolution,
-                    mettre_a_jour_venv=self.mettre_a_jour_venv,
-                    deployer_commande_claude=self.deployer_commande_claude,
-                )
-                print()
-                # La vérification repasse : ses résolutions suivent l'état.
-                section = next(s for s, v in seules if v is verification)
-                retenir(
-                    healthcheck.lancer(
-                        contexte(ctx.portee_fichiers, ctx.portee_depots),
-                        [(section, verification)],
-                    )
-                )
-            else:
-                print(t("Command not found !"))
 
-    def _healthcheck_une_verification(self, verifications):
-        """Le sous-menu des vérifications du bilan. Rend le couple (section,
-        vérification) choisi, ou None pour revenir sans rien lancer."""
-        print(f"🔎 {t('One check')}")
-        choices = [
-            {"prompt_description": healthcheck.titre(verification)}
-            for _section, verification in verifications
+    def _healthcheck_resolutions(self):
+        """La section « Resolution », puis une entrée par résolution
+        retenue, dans l'ordre des vérifications qui les proposent :
+        {"prompt_description", "check", "resolution"} chacune, « check »
+        étant le couple (section, vérification) qui la propose. Une liste
+        vide sans résolution, qui ne montre pas la section."""
+        offertes = [
+            {"prompt_description": r.libelle, "check": paire, "resolution": r}
+            for paire in healthcheck.VERIFICATIONS
+            for r in self._healthcheck_offertes.get(
+                healthcheck.titre(paire[1]), []
+            )
         ]
-        while True:
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            try:
-                numero = int(status)
-            except ValueError:
-                numero = -1
-            if numero == 0:
-                return None
-            if 1 <= numero <= len(verifications):
-                return verifications[numero - 1]
-            print(t("Command not found !"))
+        return [{"section": t("Resolution")}, *offertes] if offertes else []
+
+    def _healthcheck_resolve(self, resolution):
+        """Exécute `resolution`, un élément de `_healthcheck_resolutions`,
+        puis repasse sa vérification : ses résolutions suivent l'état."""
+        healthcheck.executer_resolution(
+            self._healthcheck_contexte(),
+            resolution["resolution"],
+            mettre_a_jour_venv=self.mettre_a_jour_venv,
+            deployer_commande_claude=self.deployer_commande_claude,
+        )
+        print()
+        self._healthcheck_run(resolution)
 
     def prompt_configuration(self):
         """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json),

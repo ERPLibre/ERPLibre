@@ -1725,6 +1725,40 @@ class TestMenu(unittest.TestCase):
 
         cls.TODO = TODO
 
+    def jouer(self, obj, *reponses):
+        """(appels de `lancer`, libellés de chaque dessin) du menu ouvert
+        sur `obj`, qui reçoit `reponses` : (portée des fichiers, portée des
+        dépôts, vérifications) par appel, et les libellés numérotés, dans
+        l'ordre, par dessin."""
+        appels, dessins = [], []
+
+        def dessiner(_todo, choices, **_kwargs):
+            dessins.append(
+                [
+                    c["prompt_description"]
+                    for c in choices
+                    if "section" not in c
+                ]
+            )
+            return ""
+
+        with (
+            mock.patch.object(self.TODO, "fill_help_info", dessiner),
+            mock.patch(
+                "script.todo.todo.click.prompt", side_effect=list(reponses)
+            ),
+            mock.patch.object(
+                h,
+                "lancer",
+                side_effect=lambda ctx, v=None: appels.append(
+                    (ctx.portee_fichiers, ctx.portee_depots, v)
+                ),
+            ),
+            mock.patch.object(h, "verifier_en_silence", return_value=[]),
+        ):
+            self.assertIsNone(obj.prompt_healthcheck())
+        return appels, dessins
+
     def test_a_resolution_becomes_a_menu_entry_and_reruns_its_check(self):
         obj = self.TODO.__new__(self.TODO)
         obj._claude_context_root = lambda: tempfile.gettempdir()
@@ -1745,7 +1779,7 @@ class TestMenu(unittest.TestCase):
                 )
             ]
 
-        # Juste après l'entrée « Une seule vérification ».
+        # Juste après l'entrée « Repositories », la dernière des portées.
         entree = "5"
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
@@ -1757,7 +1791,7 @@ class TestMenu(unittest.TestCase):
             mock.patch.object(h, "verifier_en_silence", return_value=[]),
             mock.patch.object(h, "executer_resolution") as executer,
         ):
-            obj.prompt_healthcheck()
+            self.assertIsNone(obj.prompt_healthcheck())
         executer.assert_called_once()
         self.assertIs(executer.call_args.args[1], res)
         # La vérification repasse ; sans résolution, l'entrée disparaît.
@@ -1794,8 +1828,10 @@ class TestMenu(unittest.TestCase):
             mock.patch.object(
                 h,
                 "lancer",
-                side_effect=lambda ctx, v=None: appels.append(v)
-                or [h.Resultat(h.titre(h.verifier_hooks), h.OK, "")],
+                side_effect=lambda ctx, v=None: (
+                    appels.append(v)
+                    or [h.Resultat(h.titre(h.verifier_hooks), h.OK, "")]
+                ),
             ),
             mock.patch.object(h, "executer_resolution") as executer,
             mock.patch("builtins.print"),
@@ -1808,58 +1844,57 @@ class TestMenu(unittest.TestCase):
 
     def test_one_check_lists_every_check_in_its_own_menu(self):
         obj = self.TODO.__new__(self.TODO)
-        menus = []
-        with (
-            mock.patch.object(
-                self.TODO,
-                "fill_help_info",
-                side_effect=lambda choix: menus.append(choix) or "",
-            ),
-            mock.patch("script.todo.todo.click.prompt", side_effect=["0"]),
-            mock.patch("builtins.print"),
-        ):
-            self.assertIsNone(
-                obj._healthcheck_une_verification(list(h.VERIFICATIONS))
-            )
+        appels, dessins = self.jouer(obj, "2", "0", "0")
+        # Le menu, la liste qu'ouvre [2], puis le menu à son retour.
+        self.assertEqual(dessins[1], [h.titre(v) for _s, v in h.VERIFICATIONS])
+        self.assertEqual(appels, [])
+
+    def test_each_scope_entry_shows_its_scope(self):
+        obj = self.TODO.__new__(self.TODO)
+        _appels, dessins = self.jouer(obj, "3", "4", "0")
+        portees = [dessin[2:4] for dessin in dessins]
+        fichiers, depots = t("Files"), t("Repositories")
         self.assertEqual(
-            [c["prompt_description"] for c in menus[0]],
-            [h.titre(v) for _s, v in h.VERIFICATIONS],
+            portees,
+            [
+                [
+                    f"{fichiers}  ({t('uncommitted')})",
+                    f"{depots}  ({t('ERPLibre only')})",
+                ],
+                [
+                    f"{fichiers}  ({t('changed since master')})",
+                    f"{depots}  ({t('ERPLibre only')})",
+                ],
+                [
+                    f"{fichiers}  ({t('changed since master')})",
+                    f"{depots}  ({t('ERPLibre and addons')})",
+                ],
+            ],
+        )
+        # Sans résolution retenue, rien ne suit les deux portées.
+        self.assertEqual(
+            dessins[0][:2], [t("Run every check"), t("🔎 One check")]
+        )
+        self.assertEqual(len(dessins[0]), 4)
+
+    def test_scopes_start_narrow_at_each_opening(self):
+        # Les portées valent pour la durée du menu : rouvert, il repart de
+        # la plus étroite de chaque axe.
+        obj = self.TODO.__new__(self.TODO)
+        self.jouer(obj, "3", "4", "0")
+        appels, _dessins = self.jouer(obj, "1", "0")
+        self.assertEqual(
+            appels, [(h.FICHIERS_NON_COMMITES, h.DEPOTS_ERPLIBRE, None)]
         )
 
     def test_scopes_cycle_and_one_check_runs_alone(self):
         obj = self.TODO.__new__(self.TODO)
-        appels = []
-        with (
-            mock.patch.object(self.TODO, "fill_help_info", return_value=""),
-            mock.patch(
-                "script.todo.todo.click.prompt",
-                # 3 et 4 font tourner les portées ; 2 ouvre la liste des
-                # vérifications, 1 y choisit la première, 0 revient sans
-                # rien lancer.
-                side_effect=[
-                    "3",
-                    "4",
-                    "1",
-                    "2",
-                    "1",
-                    "2",
-                    "0",
-                    "3",
-                    "3",
-                    "1",
-                    "0",
-                ],
-            ),
-            mock.patch.object(
-                h,
-                "lancer",
-                side_effect=lambda ctx, v=None: appels.append(
-                    (ctx.portee_fichiers, ctx.portee_depots, v)
-                ),
-            ),
-            mock.patch.object(h, "verifier_en_silence", return_value=[]),
-        ):
-            obj.prompt_healthcheck()
+        # 3 et 4 font tourner les portées ; 2 ouvre la liste des
+        # vérifications, 1 y choisit la première, 0 revient sans rien
+        # lancer.
+        appels, _dessins = self.jouer(
+            obj, "3", "4", "1", "2", "1", "2", "0", "3", "3", "1", "0"
+        )
         self.assertEqual(
             appels,
             [
