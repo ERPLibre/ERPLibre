@@ -768,14 +768,6 @@ TRANSLATIONS = {
         "fr": "Choisir un environnement pour l'audit :",
         "en": "Choose an environment for the audit:",
     },
-    "Select: ": {
-        "fr": "Sélection : ",
-        "en": "Select: ",
-    },
-    "Error, cannot understand value": {
-        "fr": "Erreur, impossible de comprendre la valeur",
-        "en": "Error, cannot understand value",
-    },
     "Dependencies file not found: ": {
         "fr": "Fichier de dépendances introuvable : ",
         "en": "Dependencies file not found: ",

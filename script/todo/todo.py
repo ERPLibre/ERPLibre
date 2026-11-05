@@ -5553,36 +5553,27 @@ class TODO(
             )
 
     def execute_pip_audit(self):
+        """Security › pip-audit : l'audit des dépendances d'un environnement
+        installé, du plus récent au plus ancien, choisi par son numéro ou
+        par son nom ; une réponse vide prend celui que le catalogue marque
+        par défaut, et revient sans lui ; [0] ou Ctrl+D ne lancent rien."""
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
 
-        # Build list of installed environments
-        environments = {}
-        key_i = 0
+        environments, labels, default = [], [], None
         for version_info in versions[::-1]:
             erplibre_version = version_info.get("erplibre_version")
-            venv_path = f".venv.{erplibre_version}"
-            req_path = f"requirement/requirements.{erplibre_version}.txt"
-            odoo_version = f"odoo{version_info.get('odoo_version')}"
-
-            if not os.path.isdir(venv_path):
+            if not os.path.isdir(f".venv.{erplibre_version}"):
                 continue
-
-            key_i += 1
-            key_s = str(key_i)
-            label = f"{key_s}: {erplibre_version}"
+            label = erplibre_version
+            odoo_version = f"odoo{version_info.get('odoo_version')}"
             if odoo_version == odoo_installed_version:
                 label += f" - {t('Current')}"
             if version_info.get("default"):
-                label += f" - {t('Default')}"
-
-            environments[key_s] = {
-                "label": label,
-                "venv_path": venv_path,
-                "req_path": req_path,
-                "erplibre_version": erplibre_version,
-            }
+                default = erplibre_version
+            environments.append(erplibre_version)
+            labels.append(label)
 
         if not environments:
             print(
@@ -5592,25 +5583,16 @@ class TODO(
             )
             return
 
-        # Show selection menu
-        str_input = (
-            f"💬 {t('Choose an environment for the audit:')}\n\t"
-            + "\n\t".join([v["label"] for v in environments.values()])
-            + f"\n\t0: {t('Back')}"
-            + f"\n{t('Select: ')}"
+        erplibre_version = ui.choose(
+            f"💬 {t('Choose an environment for the audit:')}",
+            environments,
+            default=default,
+            labels=labels,
+            names={name: name for name in environments},
         )
-        env_input = ""
-        while env_input not in environments and env_input != "0":
-            if env_input:
-                print(f"{t('Error, cannot understand value')} '{env_input}'")
-            env_input = input(str_input).strip()
-
-        if env_input == "0":
+        if erplibre_version is None:
             return
-
-        selected = environments[env_input]
-        venv_path = selected["venv_path"]
-        req_path = selected["req_path"]
+        req_path = f"requirement/requirements.{erplibre_version}.txt"
 
         if not os.path.isfile(req_path):
             print(f"{t('Dependencies file not found: ')}{req_path}")

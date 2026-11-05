@@ -445,5 +445,89 @@ class TestLAnalyse(unittest.TestCase):
         self.assertEqual(rangs, [1])
 
 
+class TestLAuditDesDependances(unittest.TestCase):
+    """Security › pip-audit : l'environnement à auditer, parmi ceux qui
+    sont installés, du plus récent au plus ancien. Le catalogue des
+    versions est un double, comme les répertoires des environnements et
+    la commande, que rien ne lance."""
+
+    VERSIONS = [
+        {"erplibre_version": "forged_env_a", "odoo_version": "16.0"},
+        {
+            "erplibre_version": "forged_env_b",
+            "odoo_version": "17.0",
+            "default": True,
+        },
+        {"erplibre_version": "forged_env_c", "odoo_version": "18.0"},
+    ]
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.todo.execute = Execute()
+        installes = {".venv.forged_env_a", ".venv.forged_env_b"}
+        catalogue = (self.VERSIONS, [], "odoo16.0")
+        self.enterContext(
+            patch.object(todo_module, "get_odoo_version", lambda: catalogue)
+        )
+        self.enterContext(
+            patch.object(
+                todo_module.os.path, "isdir", lambda p: p in installes
+            )
+        )
+        self.enterContext(
+            patch.object(todo_module.os.path, "isfile", lambda p: True)
+        )
+
+    def audit(self, *reponses):
+        _, sortie = joue(self.todo.execute_pip_audit, *reponses)
+        return self.todo.execute.commandes, sortie
+
+    def test_an_installed_environment_by_number_or_name(self):
+        for reponse, env in (
+            ("1", "forged_env_b"),
+            ("forged_env_a", "forged_env_a"),
+        ):
+            with self.subTest(reponse=reponse):
+                self.todo.execute.commandes = []
+                commandes, _ = self.audit(reponse)
+                self.assertEqual(
+                    commandes,
+                    [
+                        f"pip-audit -r requirement/requirements.{env}.txt -l;bash"
+                    ],
+                )
+
+    def test_the_list_marks_the_current_and_the_default(self):
+        _, sortie = self.audit("0")
+        self.assertIn(f"[1] forged_env_b {t('(default)')}\n", sortie)
+        self.assertIn(f"[2] forged_env_a - {t('Current')}\n", sortie)
+        self.assertNotIn("forged_env_c", sortie)
+
+    def test_an_empty_answer_audits_the_default(self):
+        commandes, _ = self.audit("")
+        self.assertEqual(
+            commandes,
+            ["pip-audit -r requirement/requirements.forged_env_b.txt -l;bash"],
+        )
+
+    def test_without_a_default_an_empty_answer_audits_nothing(self):
+        sans_defaut = [dict(v, default=False) for v in self.VERSIONS]
+        catalogue = (sans_defaut, [], "odoo16.0")
+        with patch.object(todo_module, "get_odoo_version", lambda: catalogue):
+            commandes, _ = self.audit("")
+        self.assertEqual(commandes, [])
+
+    def test_back_or_ctrl_d_audit_nothing(self):
+        for reponse in ("0", EOFError()):
+            with self.subTest(reponse=reponse):
+                commandes, _ = self.audit(reponse)
+                self.assertEqual(commandes, [])
+
+    def test_a_typo_is_said_and_asked_again(self):
+        commandes, sortie = self.audit("3", "x", "0")
+        self.assertEqual(commandes, [])
+        self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
