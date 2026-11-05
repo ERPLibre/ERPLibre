@@ -2,8 +2,9 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Execute : Execute, qu'ouvre le menu principal, ses
-sous-menus Code, Config, Process, Test, Uninstall et Image Odoo, Update et
-Debug, qu'ouvre Code, et Generate from pre-configuration, qu'ouvre Config.
+sous-menus Code, Config, Process, Test, Uninstall, Image Odoo et Analyse
+module, Update et Debug, qu'ouvre Code, et Generate from pre-configuration,
+qu'ouvre Config.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -33,12 +34,9 @@ EXECUTE = Menu(
             "Image Odoo - Database images for a quick installation",
             "prompt_execute_image_db",
         ),
-        # Analyse module dessine son menu lui-même (`module_menu.py`) : son
-        # segment de fil d'Ariane est celui de l'entrée.
         Entry(
             "Analyse module - Odoo modules of the checkout",
             "prompt_execute_module_analysis",
-            crumb="Analyse module",
         ),
         # Python dessine son menu lui-même (`python_menu.py`).
         Entry(
@@ -221,6 +219,55 @@ IMAGE_DB = Menu(
         ),
     ],
     intro="Database images for a quick installation!",
+    render="once",
+)
+
+# Les modules Odoo du checkout : ceux qu'une mise à jour doit passer à
+# `-u` (`mode`, une valeur de git_module_diff, MODE_BRANCHE ou MODE_GEL),
+# leur évolution par année, et l'auto_install des dépôts du manifeste.
+# Les entrées 5 et 6 lisent les données que 3 et 4 écrivent : leurs
+# libellés les nomment par leur numéro.
+MODULE_ANALYSIS = Menu(
+    "prompt_execute_module_analysis",
+    "Analyse module",
+    [
+        Section("Update"),
+        Entry(
+            "🔀 Modules that differ from the version branch",
+            "_module_analysis_diff",
+            kwargs={"mode": "branch"},
+        ),
+        Entry(
+            "🔁 Modules a freeze comparison changed (old → new)",
+            "_module_analysis_diff",
+            kwargs={"mode": "freeze"},
+        ),
+        Section("Statistic"),
+        Entry(
+            "📈 Module evolution per year, every repository",
+            "_module_statistique",
+        ),
+        Entry(
+            "📈 Module evolution per year, OCA repositories",
+            "_module_statistique",
+            kwargs={"filtre": "/OCA/"},
+        ),
+        Entry(
+            "📊 Chart of the module evolution (TUI, from entries 3 and 4)",
+            "_module_graphique",
+        ),
+        Entry(
+            "📄 Export the module statistics to CSV (from entries 3 and 4)",
+            "_module_export_csv",
+        ),
+        Section("Modification"),
+        Entry(
+            "🚫 Disable auto_install in repositories of the manifest",
+            "_module_auto_install",
+        ),
+    ],
+    intro="Analyse the Odoo modules of the checkout",
+    mark="🧩",
     render="once",
 )
 

@@ -2087,6 +2087,46 @@ class TestRunMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestModuleAnalysisMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › Analyse module : les modules qui diffèrent de la branche
+    de la version, puis ceux qu'une comparaison de gels a changés ; la
+    statistique de leur évolution, son graphique et son export ; enfin
+    l'auto_install des dépôts du manifeste."""
+
+    MENU = "prompt_execute_module_analysis"
+    EXPECTED = {
+        "🔀 Modules that differ from the version branch": (
+            "_module_analysis_diff"
+        ),
+        "🔁 Modules a freeze comparison changed": "_module_analysis_diff",
+        "📈 Module evolution per year, every repository": (
+            "_module_statistique"
+        ),
+        "📈 Module evolution per year, OCA repositories": (
+            "_module_statistique"
+        ),
+        "📊 Chart of the module evolution": "_module_graphique",
+        "📄 Export the module statistics to CSV": "_module_export_csv",
+        "🚫 Disable auto_install": "_module_auto_install",
+    }
+
+    def test_each_entry_compares_by_its_mode(self):
+        from script.git import git_module_diff as gmd
+
+        self.assertEqual(
+            [e.kwargs for e in self.entries[:2]],
+            [{"mode": gmd.MODE_BRANCHE}, {"mode": gmd.MODE_GEL}],
+        )
+
+    def test_the_statistic_filters_oca_on_entry_4_only(self):
+        """3 compte tous les dépôts, 4 ceux de l'OCA : 5 et 6, qui lisent
+        leurs données, les nomment par ces numéros."""
+        self.assertEqual(
+            [e.kwargs for e in self.entries[2:4]],
+            [None, {"filtre": "/OCA/"}],
+        )
+
+
 class TestDatabaseMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 
@@ -4844,7 +4884,6 @@ class TestMenuLabels(unittest.TestCase):
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
         "prompt_execute_git_repo": "Repo",
-        "prompt_execute_module_analysis": "Analyse module",
         "prompt_execute_python": "Python",
         "prompt_execute_system": "System",
         "prompt_execute_seal": "PAdES seal",
@@ -4877,6 +4916,7 @@ class TestMenuLabels(unittest.TestCase):
         ),
         "prompt_execute_process": "Process",
         "prompt_execute_test": "Test",
+        "prompt_execute_module_analysis": "Analyse module",
         "prompt_execute_update": "Update",
         "prompt_execute_instance": "Run",
         "prompt_execute_database": "Database",
