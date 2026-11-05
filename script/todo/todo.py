@@ -170,6 +170,7 @@ from script.todo.menus import git as menus_git
 from script.todo.menus import main as menus_main
 from script.todo.menus import proxmox as menus_proxmox
 from script.todo.menus import run as menus_run
+from script.todo.modem.menu import ModemMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.python_menu import PythonMenuMixin
@@ -278,6 +279,7 @@ class TODO(
     GitForkMenuMixin,
     InstallUpdateMenuMixin,
     ModuleMenuMixin,
+    ModemMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
     SystemMenuMixin,
@@ -346,13 +348,6 @@ class TODO(
         from script.todo.mail.menu import prompt_execute_mail
 
         return prompt_execute_mail(self)
-
-    def _assistant_modem(self):
-        """Ouvre la console du modem USB du paquet `modem`, importée à
-        l'ouverture."""
-        from script.todo.modem.menu import prompt_execute_modem
-
-        return prompt_execute_modem(self)
 
     def prompt_execute(self):
         """Les vingt-deux sous-menus d'Execute, en six sections (EXECUTE,

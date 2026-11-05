@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le menu Modem du CLI TODO.
+"""Les actions des menus du modem, déclarés dans `menus/modem.py`.
 
 Rassemble ce qui touche au modem USB cellulaire : son état, ses SMS, ses
-appels, et la mise en place d'Asterisk qui s'en sert comme ligne.
+appels, et la mise en place d'Asterisk qui s'en sert comme ligne. Chaque
+fonction est une action, que `ModemMenuMixin` porte sur TODO sous un nom
+préfixé `_modem_`.
 
-L'état est relu à chaque tour de boucle plutôt que mis en cache : une SIM
-retirée, un modem débranché ou un service arrêté ailleurs apparaissent sans
-qu'on ait à quitter le menu.
+L'état se relit à chaque dessin d'un menu plutôt que d'être mis en cache :
+une SIM retirée, un modem débranché ou un service arrêté ailleurs
+apparaissent sans qu'on ait à quitter le menu.
 """
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ import sys
 
 import click
 
+from script.todo import ui
+from script.todo.menus import modem as menus_modem
 from script.todo.modem import asterisk as ast_mod
 from script.todo.modem import audio as audio_mod
 from script.todo.modem import calls as calls_mod
@@ -31,17 +35,8 @@ from script.todo.modem import messagerie_vocale as mv_mod
 from script.todo.modem import repondeur as rep_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
-
-try:
-    from script.todo.todo_couleur import retour
-    from script.todo.todo_i18n import t
-except Exception:  # pragma: no cover - repli si i18n indisponible
-
-    def t(key: str) -> str:
-        return key
-
-    def retour(libelle: str) -> str:
-        return f"[0] {libelle}"
+from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 
 def _bandeau():
@@ -129,129 +124,6 @@ def _bandeau_voip():
     return f"  Asterisk         : {ast}\n" f"  erplibre_sip_go  : {sip}"
 
 
-def prompt_execute_modem(todo) -> None:
-    """Le menu Modem : ce qu'on ouvre souvent devant, le reste range.
-
-    Le clavier reste seul au premier ecran : c'est le seul outil qu'on ouvre
-    pour SE SERVIR du modem plutot que pour le regler. Les reglages systeme,
-    qui se posent une fois a l'installation, tiennent dans un sous-menu.
-    """
-    while True:
-        help_info = f"""{todo._menu_header()}
-{_bandeau()}
-{_bandeau_voip()}
-
-[1] {t("modem_dialer")}
-[2] {t("modem_menu_state")}
-[3] {t("modem_menu_calls")}
-[4] {t("modem_menu_sms")}
-[5] {t("modem_answering")}
-[6] {t("modem_menu_audio")}
-[7] {t("modem_menu_voip")}
-[8] {t("modem_menu_service")}
-[9] {t("modem_gateway_agent")}
-{retour(t('Back'))}"""
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        elif status == "1":
-            _clavier(todo)
-        elif status == "2":
-            _sous_menu_etat()
-        elif status == "3":
-            _sous_menu_appels(todo)
-        elif status == "4":
-            _sous_menu_sms(todo)
-        elif status == "5":
-            _repondeur(todo)
-        elif status == "6":
-            _sous_menu_audio()
-        elif status == "7":
-            _sous_menu_voip(todo)
-        elif status == "8":
-            _sous_menu_service()
-        elif status == "9":
-            _passerelle(todo)
-        else:
-            print(t("Command not found !"))
-
-
-def _sous_menu(titre, entrees):
-    """Affiche un sous-menu et appelle ce qui est choisi.
-
-    `entrees` est une suite de (libelle, action). La numerotation se deduit de
-    l'ordre : une entree ajoutee au milieu ne peut pas se retrouver branchee
-    sur l'action d'une autre, ce qu'une chaine de conditions ecrite a la main
-    finit toujours par produire.
-    """
-    while True:
-        lignes = [f"  {titre}", ""]
-        for numero, (libelle, _action) in enumerate(entrees, start=1):
-            lignes.append(f"[{numero}] {libelle}")
-        lignes.append(f"{retour(t('Back'))}")
-        choix = click.prompt("\n".join(lignes))
-        print()
-        if choix == "0":
-            return
-        if choix.isdigit() and 1 <= int(choix) <= len(entrees):
-            entrees[int(choix) - 1][1]()
-        else:
-            print(t("Command not found !"))
-
-
-def _sous_menu_etat():
-    _sous_menu(t("modem_menu_state"), (
-        (t("modem_status"), _etat_detaille),
-        (t("modem_diag"), _diagnostic),
-    ))
-
-
-def _sous_menu_appels(todo):
-    _sous_menu(t("modem_menu_calls"), (
-        (t("modem_call"), _appeler),
-        (t("modem_hangup"), _raccrocher),
-        (t("modem_calls_list"), _lister_appels),
-        (t("voip_call"), lambda: _appel_voip(todo)),
-    ))
-
-
-def _sous_menu_sms(todo):
-    _sous_menu(t("modem_menu_sms"), (
-        (t("modem_sms_send"), _envoyer_sms),
-        (t("modem_sms_list"), _lister_sms),
-    ))
-
-
-def _sous_menu_audio():
-    """Les essais a cote des reglages qu'ils eprouvent.
-
-    Sonder le chemin audio et essayer le combine servent a regler le son :
-    ils sont plus utiles ici qu'entre une regle udev et une passerelle SMS.
-    """
-    _sous_menu(t("modem_menu_audio"), (
-        (t("modem_probe_audio"), _sonder_audio),
-        (t("modem_audio_try"), _essai_combine),
-        (t("modem_uac_toggle"), _basculer_uac),
-        (t("modem_audio_rule") + " — " + _etat_regle_audio(), _regle_audio),
-        (t("modem_udev"), _regle_udev),
-    ))
-
-
-def _sous_menu_service():
-    _sous_menu(t("modem_menu_service"), (
-        (t("modem_service_state"), _service_etat),
-        (t("modem_service_env"), _service_environnement),
-        (t("modem_service_install"), _service_poser),
-        (t("modem_service_start"), lambda: _service_commander("start")),
-        (t("modem_service_stop"), lambda: _service_commander("stop")),
-        (t("modem_service_enable"), lambda: _service_commander("enable")),
-        (t("modem_service_disable"), lambda: _service_commander("disable")),
-        (t("modem_service_log"), _service_journal),
-        (t("modem_service_remove"), _service_retirer),
-    ))
-
-
 def _service_etat():
     """Ce qui tourne, et surtout ce qui repartira apres un redemarrage.
 
@@ -325,14 +197,6 @@ def _service_retirer():
         ok, detail = svc_mod.retirer(unite)
         print("  " + ("✅ " if ok else "❌ ") + unite
               + ("" if ok else " — " + detail.strip()[:200]))
-
-
-def _sous_menu_voip(todo):
-    _sous_menu(t("modem_menu_voip"), (
-        (t("voip_install"), lambda: _installer_voip(todo)),
-        (t("voip_status"), _etat_voip),
-        (t("voip_softphone_odoo"), _declarer_softphone),
-    ))
 
 
 def _declarer_softphone():
@@ -503,44 +367,14 @@ def _etat_repondeur() -> str:
     return etat
 
 
-def _repondeur(todo=None):
-    while True:
-        reglages = rep_mod.lire()
-        annonce = reglages.get("annonce") or "aucune"
-        help_info = f"""  {t("modem_ans_menu")} — {_etat_repondeur()}
-  annonce : {annonce}
-
-[1] {t("modem_ans_list")}
-[2] {t("modem_ans_greeting")}
-[3] {t("modem_ans_greeting_play")}
-[4] {t("modem_ans_rings")}
-[5] {t("modem_ans_toggle")}
-[6] {t("modem_ans_pin")} — {_etat_code_messagerie(todo)}
-[7] {t("modem_ans_pin_hand")} — {_etat_nip_du_service()}
-[8] {t("modem_ans_fetch")}
-{retour(t('Back'))}"""
-        choix = click.prompt(help_info)
-        print()
-        if choix == "0":
-            return
-        elif choix == "1":
-            _repondeur_messages()
-        elif choix == "2":
-            _repondeur_enregistrer_annonce()
-        elif choix == "3":
-            _repondeur_jouer_annonce()
-        elif choix == "4":
-            _repondeur_sonneries()
-        elif choix == "5":
-            _repondeur_basculer()
-        elif choix == "6":
-            _repondeur_code(todo)
-        elif choix == "7":
-            _repondeur_remettre_code(todo)
-        elif choix == "8":
-            _repondeur_recuperer(todo)
-        else:
-            print(t("Command not found !"))
+def _etat_du_repondeur() -> str:
+    """La ligne d'état du menu du répondeur : allumé ou non, les messages
+    qui attendent, puis l'annonce enregistrée."""
+    annonce = rep_mod.lire().get("annonce") or "aucune"
+    return (
+        f"  {t('modem_ans_menu')} — {_etat_repondeur()}\n"
+        f"  annonce : {annonce}"
+    )
 
 
 def _etat_nip_du_service() -> str:
@@ -604,7 +438,8 @@ def _etat_code_messagerie(todo) -> str:
 
 
 def _repondeur_code(todo):
-    """Saisir, remplacer ou effacer le code de la boite vocale.
+    """Saisir, remplacer ou effacer le code de la boite vocale ; [0], une
+    reponse vide ou Ctrl+D reviennent sans ouvrir le coffre.
 
     Saisi deux fois, sans echo : une faute de frappe ne se voit pas a l'ecran,
     et un code faux ferait echouer chaque recuperation sans dire pourquoi.
@@ -615,12 +450,19 @@ def _repondeur_code(todo):
     from script.todo.modem import code_messagerie as code_mod
 
     print("  " + t("modem_ans_pin_why"))
-    print(f"  [1] {t('modem_ans_pin_enter')}")
-    print(f"  [2] {t('modem_ans_pin_delete')}")
-    print(f"  {retour(t('Back'))}")
-    choix = input("  > ").strip()
+    choix = ui.choose(
+        t("modem_ans_pin"),
+        ["saisir", "effacer"],
+        labels=[t("modem_ans_pin_enter"), t("modem_ans_pin_delete")],
+    )
+    if choix is None:
+        return
     try:
-        if choix == "1" and todo is not None and not code_mod.kdbx_configure(todo):
+        if (
+            choix == "saisir"
+            and todo is not None
+            and not code_mod.kdbx_configure(todo)
+        ):
             # Meme parcours que le courriel : proposer de creer ou de choisir
             # un fichier KeePass. Refuse, le trousseau systeme prend le relais
             # s'il chiffre — sinon rien n'est enregistre.
@@ -628,7 +470,7 @@ def _repondeur_code(todo):
 
             _ensure_kdbx(todo)
         store = code_mod.coffre(todo)
-        if choix == "1":
+        if choix == "saisir":
             code = getpass.getpass("  " + t("modem_ans_pin_ask"))
             if not code:
                 return
@@ -638,7 +480,7 @@ def _repondeur_code(todo):
             ref = code_mod.enregistrer(store, code)
             print("  " + t("modem_ans_pin_saved") % (
                 "KeePass" if ref.startswith("kdbx:") else t("modem_ans_pin_keyring")))
-        elif choix == "2":
+        else:
             code_mod.effacer(store)
             print("  " + t("modem_ans_pin_deleted"))
     except code_mod.CodeInvalide as exc:
@@ -648,12 +490,12 @@ def _repondeur_code(todo):
 
 
 def _repondeur_recuperer(todo):
-    """Appeler la messagerie de l'operateur et jouer une recette.
-
-    Pour l'instant, le seul mode est le REPERAGE : code, `1`, puis ecoute sans
-    rien effacer. Il mesure ou finit un message et combien dure le silence du
-    menu qui suit, ce qu'il faut connaitre avant de confier le `7` — qui
-    efface pour de bon — a une machine.
+    """Appeler la messagerie de l'operateur et jouer une recette, au choix :
+    recuperer un message, puis l'effacer chez l'operateur, ou le REPERAGE,
+    code, `1`, puis ecoute sans rien effacer. Le reperage mesure ou finit un
+    message et combien dure le silence du menu qui suit, ce qu'il faut
+    connaitre avant de confier le `7` — qui efface pour de bon — a une
+    machine. [0], une reponse vide ou Ctrl+D reviennent sans rien appeler.
     """
     import os
 
@@ -690,14 +532,15 @@ def _repondeur_recuperer(todo):
         print("  ⚠ " + t("modem_ans_fetch_silence_risk") % (
             str(silence).replace(".", ","), str(silence).replace(".", ",")))
     print()
-    print(f"  [1] {t('modem_ans_fetch_one')}")
-    print(f"  [2] {t('modem_ans_fetch_survey')}")
-    print(f"  {retour(t('Back'))}")
-    choix = input("  > ").strip()
-    if choix not in ("1", "2"):
+    recette = ui.choose(
+        t("modem_ans_fetch"),
+        ["recuperer_un_message", "reperage_code_ecoute"],
+        labels=[t("modem_ans_fetch_one"), t("modem_ans_fetch_survey")],
+    )
+    if recette is None:
         return
-    recette = "recuperer_un_message" if choix == "1" else "reperage_code_ecoute"
-    if choix == "1":
+    un_message = recette == "recuperer_un_message"
+    if un_message:
         if mv_mod.lire()["etat"] != mv_mod.ATTENTE:
             print("  " + t("modem_ans_fetch_no_flag"))
             if not click.confirm("  " + t("modem_continue"), default=False):
@@ -728,7 +571,7 @@ def _repondeur_recuperer(todo):
         print("  " + ligne)
     if wav and os.path.exists(wav):
         print("  " + t("modem_ans_fetch_file") % wav)
-    if choix == "1" and wav:
+    if un_message and wav:
         message = rec_mod.extraire_message(
             wav, bilan, os.path.join(rec_mod.racine(), rec_mod.DOSSIER_RELATIF, "messages"))
         if message:
@@ -756,28 +599,33 @@ def _repondeur_messages():
     boite de l'operateur ne garde rien ici : elle s'ecoute en l'appelant. Les
     montrer cote a cote, chacun avec son etat, dit ou regarder avant d'ouvrir.
     """
-    nombre = len(rep_mod.lister())
-    print(f"  [1] {t('modem_ans_erplibre')} — "
-          + (t("modem_ans_count") % nombre if nombre else t("modem_ans_none")))
-    print(f"  [2] {t('modem_ans_operator')} — {_etat_messagerie()}")
     from script.todo.modem import recuperation as rec_mod
 
+    def compte(nombre):
+        return t("modem_ans_count") % nombre if nombre else t("modem_ans_none")
+
     recuperes = rec_mod.lister_messages()
-    print(f"  [3] {t('modem_ans_fetched')} — "
-          + (t("modem_ans_count") % len(recuperes) if recuperes
-             else t("modem_ans_none")))
-    print(f"  {retour(t('Back'))}")
-    choix = input("  > ").strip()
-    if choix == "1":
+    choix = ui.choose(
+        t("modem_ans_list"),
+        ["erplibre", "operateur", "recuperes"],
+        labels=[
+            f"{t('modem_ans_erplibre')} — {compte(len(rep_mod.lister()))}",
+            f"{t('modem_ans_operator')} — {_etat_messagerie()}",
+            f"{t('modem_ans_fetched')} — {compte(len(recuperes))}",
+        ],
+    )
+    if choix == "erplibre":
         _repondeur_messages_erplibre()
-    elif choix == "2":
+    elif choix == "operateur":
         _repondeur_messagerie_operateur()
-    elif choix == "3":
+    elif choix == "recuperes":
         _repondeur_messages_recuperes(recuperes)
 
 
 def _repondeur_messages_recuperes(messages):
-    """Ecouter les messages deja recuperes, puis proposer de les effacer.
+    """Ecouter un message deja recupere, choisi parmi `messages`, puis
+    proposer de l'effacer ; [0], une reponse vide ou Ctrl+D reviennent sans
+    rien jouer.
 
     Ceux-ci sont DEJA effaces chez l'operateur : le fichier local en est la
     seule copie, avec l'enregistrement complet de l'appel qui le contient.
@@ -789,16 +637,20 @@ def _repondeur_messages_recuperes(messages):
     if not messages:
         print("  " + t("modem_ans_none"))
         return
-    for index, message in enumerate(messages, start=1):
-        print("  [%d] %s  %s s" % (
-            index,
-            (message.get("recupere_le") or "")[:19].replace("T", " "),
-            message.get("duree_secondes") or "?"))
-    print()
-    choix = input("  " + t("modem_ans_play") + " > ").strip()
-    if not choix.isdigit() or not 1 <= int(choix) <= len(messages):
+    message = ui.choose(
+        t("modem_ans_play_which"),
+        messages,
+        labels=[
+            "%s  %s s"
+            % (
+                (m.get("recupere_le") or "")[:19].replace("T", " "),
+                m.get("duree_secondes") or "?",
+            )
+            for m in messages
+        ],
+    )
+    if message is None:
         return
-    message = messages[int(choix) - 1]
     succes, plainte = rep_mod.jouer(message.get("fichier") or "")
     if not succes:
         print("  " + plainte)
@@ -831,7 +683,8 @@ def _repondeur_messagerie_operateur():
 
 
 def _repondeur_messages_erplibre():
-    """Liste, ecoute, puis propose d'effacer ce qu'on vient d'entendre.
+    """Liste, ecoute le message choisi, puis propose d'effacer ce qu'on vient
+    d'entendre ; [0], une reponse vide ou Ctrl+D reviennent sans rien jouer.
 
     L'effacement est propose APRES l'ecoute et non a cote : c'est le moment ou
     l'on sait si le message servait, et le seul ou le choix est eclaire.
@@ -840,21 +693,21 @@ def _repondeur_messages_erplibre():
     if not messages:
         print("  " + t("modem_ans_none"))
         return
-    for index, message in enumerate(messages, start=1):
-        print(
-            "  [%d] %s  %s  %ss"
+    message = ui.choose(
+        t("modem_ans_play_which"),
+        messages,
+        labels=[
+            "%s  %s  %ss"
             % (
-                index,
-                (message.get("debut") or "")[:19],
-                (message.get("numero") or "inconnu"),
-                message.get("duree_secondes") or 0,
+                (m.get("debut") or "")[:19],
+                (m.get("numero") or "inconnu"),
+                m.get("duree_secondes") or 0,
             )
-        )
-    print()
-    choix = input("  " + t("modem_ans_play") + " > ").strip()
-    if not choix.isdigit() or not 1 <= int(choix) <= len(messages):
+            for m in messages
+        ],
+    )
+    if message is None:
         return
-    message = messages[int(choix) - 1]
     succes, plainte = rep_mod.jouer(message.get("fichier") or "")
     if not succes:
         print("  " + plainte)
@@ -909,23 +762,29 @@ def _repondeur_basculer():
 
 
 def _choisir_technologie():
-    """Demande laquelle des deux voies utiliser.
+    """Demande laquelle des deux voies utiliser : « sipgo » ou
+    « asterisk », ou None pour [0], une reponse vide ou Ctrl+D.
 
     On pose la question plutôt que de choisir : les deux ont des coûts
     opposés, et c'est une décision d'exploitation, pas un détail technique.
     """
     print()
-    print("  [1] erplibre_sip_go — " + t("voip_go_pitch"))
-    print("  [2] Asterisk        — " + t("voip_ast_pitch"))
-    print("  " + retour(t("Back")))
-    return input("  > ").strip()
+    return ui.choose(
+        t("voip_install"),
+        ["sipgo", "asterisk"],
+        labels=[
+            "erplibre_sip_go — " + t("voip_go_pitch"),
+            "Asterisk        — " + t("voip_ast_pitch"),
+        ],
+    )
 
 
 def _installer_voip(todo):
+    """Installe la voie VoIP choisie ; rien sans choix."""
     choix = _choisir_technologie()
-    if choix == "1":
+    if choix == "sipgo":
         _installer_sipgo(todo)
-    elif choix == "2":
+    elif choix == "asterisk":
         todo._deploy_asterisk_server()
 
 
@@ -1075,24 +934,36 @@ def _abattre(proc):
         pass
 
 
+#: Les choix de `_choisir_annonce` qui ne sont pas une annonce livrée.
+AUTRE_ANNONCE, SANS_ANNONCE = "autre", "aucune"
+
+
 def _choisir_annonce():
-    """Propose les annonces livrées, ou un chemin, ou aucune."""
+    """L'annonce d'un appel : le chemin d'une annonce livrée, ou d'un autre
+    fichier tapé ensuite ; "" pour aucune, le défaut d'une réponse vide, ou
+    pour un fichier tapé vide ou introuvable ; None pour [0] ou Ctrl+D,
+    où l'appelant revient sans appeler."""
     sons = sipgo_mod.sons_fournis()
     print()
-    for i, chemin in enumerate(sons, 1):
-        print(f"  [{i}] {os.path.basename(chemin)}")
-    print(f"  [{len(sons) + 1}] " + t("voip_announce_other"))
-    print("  [0] " + t("voip_announce_none"))
-    choix = input("  > ").strip()
-    if choix == "0" or not choix:
-        return None
-    if choix.isdigit() and 1 <= int(choix) <= len(sons):
-        return sons[int(choix) - 1]
+    choix = ui.choose(
+        t("voip_announce_choose"),
+        [*sons, AUTRE_ANNONCE, SANS_ANNONCE],
+        labels=[
+            *(os.path.basename(chemin) for chemin in sons),
+            t("voip_announce_other"),
+            t("voip_announce_none"),
+        ],
+        default=SANS_ANNONCE,
+    )
+    if choix in (None, SANS_ANNONCE):
+        return None if choix is None else ""
+    if choix != AUTRE_ANNONCE:
+        return choix
     chemin = input("  " + t("voip_announce") + " : ").strip()
     if chemin and not os.path.isfile(chemin):
         print("  " + t("voip_announce_missing"))
-        return None
-    return chemin or None
+        return ""
+    return chemin
 
 
 def _appel_voip(todo):
@@ -1114,6 +985,9 @@ def _appel_voip(todo):
         return
 
     annonce = _choisir_annonce()
+    if annonce is None:
+        return
+    annonce = annonce or None
     combine = click.confirm("  " + t("voip_handset_ask"), default=False)
     micro = False
     if combine:
@@ -1233,6 +1107,9 @@ def _sonder_audio():
     saisi = input("  " + t("modem_probe_mode") % courant + " : ").strip()
     mode = int(saisi) if saisi.isdigit() and 0 <= int(saisi) <= 2 else courant
     annonce = _choisir_annonce()
+    if annonce is None:
+        return
+    annonce = annonce or None
 
     args = sipgo_mod.commande_sonde(norm, mode, annonce)
     print()
@@ -1320,7 +1197,8 @@ def _basculer_uac():
 
 
 def _regle_udev():
-    """Pose ou retire la règle qui réserve un port AT.
+    """Pose ou retire la règle qui réserve un port AT, au choix ; [0], une
+    réponse vide ou Ctrl+D n'y touchent pas.
 
     Sans elle, chaque commande AT exige d'arrêter ModemManager — ce qui coupe
     la connexion de données et demande sudo à chaque fois. Tenable pour un
@@ -1358,17 +1236,165 @@ def _regle_udev():
         + (("✔ " if libre else "✖ ") + motif)
     )
     print()
-    print("  [1] " + t("modem_udev_install"))
-    print("  [2] " + t("modem_udev_remove"))
-    print("  " + retour(t("Back")))
-    choix = input("  > ").strip()
-    if choix == "1":
+    choix = ui.choose(
+        t("modem_udev"),
+        ["poser", "retirer"],
+        labels=[t("modem_udev_install"), t("modem_udev_remove")],
+    )
+    if choix == "poser":
         ok, message = udev_mod.poser()
         print("  " + ("✔ " if ok else "✖ ") + message.strip()[:300])
-    elif choix == "2":
+    elif choix == "retirer":
         ok, message = udev_mod.retirer()
         print(
             "  "
             + ("✔ " if ok else "✖ ")
             + (message.strip()[:200] or t("modem_udev_removed"))
         )
+
+
+class ModemMenuMixin:
+    """Les menus du modem (`menus/modem.py`) sur TODO : chaque action, état
+    ou suffixe qu'ils nomment est une méthode préfixée `_modem_`, qui appelle
+    la fonction de ce module à l'appel, et non à la définition de la
+    classe ; une fonction qui prend `todo` reçoit TODO. La TUI de
+    télémétrie lance ainsi une feuille par sa méthode de TODO. Chaque menu
+    rend None sur [0]."""
+
+    def prompt_execute_modem(self):
+        """Modem (MODEM) : le clavier, puis les sous-menus, sous la ligne
+        d'état du modem et des services VoIP."""
+        return navigate(self, menus_modem.MODEM)
+
+    def _modem_banner(self):
+        return _bandeau() + "\n" + _bandeau_voip()
+
+    def _modem_state_menu(self):
+        return navigate(self, menus_modem.MODEM_STATE)
+
+    def _modem_calls_menu(self):
+        return navigate(self, menus_modem.MODEM_CALLS)
+
+    def _modem_sms_menu(self):
+        return navigate(self, menus_modem.MODEM_SMS)
+
+    def _modem_answering_menu(self):
+        return navigate(self, menus_modem.MODEM_ANSWERING)
+
+    def _modem_audio_menu(self):
+        return navigate(self, menus_modem.MODEM_AUDIO)
+
+    def _modem_voip_menu(self):
+        return navigate(self, menus_modem.MODEM_VOIP)
+
+    def _modem_service_menu(self):
+        return navigate(self, menus_modem.MODEM_SERVICE)
+
+    def _modem_dialer(self):
+        _clavier(self)
+
+    def _modem_gateway(self):
+        _passerelle(self)
+
+    def _modem_status(self):
+        _etat_detaille()
+
+    def _modem_diagnostic(self):
+        _diagnostic()
+
+    def _modem_call(self):
+        _appeler()
+
+    def _modem_hangup(self):
+        _raccrocher()
+
+    def _modem_calls_list(self):
+        _lister_appels()
+
+    def _modem_voip_call(self):
+        _appel_voip(self)
+
+    def _modem_sms_send(self):
+        _envoyer_sms()
+
+    def _modem_sms_list(self):
+        _lister_sms()
+
+    def _modem_answering_state(self):
+        return _etat_du_repondeur()
+
+    def _modem_answering_messages(self):
+        _repondeur_messages()
+
+    def _modem_greeting_record(self):
+        _repondeur_enregistrer_annonce()
+
+    def _modem_greeting_play(self):
+        _repondeur_jouer_annonce()
+
+    def _modem_rings(self):
+        _repondeur_sonneries()
+
+    def _modem_answering_toggle(self):
+        _repondeur_basculer()
+
+    def _modem_pin(self):
+        _repondeur_code(self)
+
+    def _modem_pin_state(self):
+        return _etat_code_messagerie(self)
+
+    def _modem_pin_hand(self):
+        _repondeur_remettre_code(self)
+
+    def _modem_pin_service_state(self):
+        return _etat_nip_du_service()
+
+    def _modem_fetch(self):
+        _repondeur_recuperer(self)
+
+    def _modem_probe_audio(self):
+        _sonder_audio()
+
+    def _modem_try_handset(self):
+        _essai_combine()
+
+    def _modem_uac_toggle(self):
+        _basculer_uac()
+
+    def _modem_audio_rule(self):
+        _regle_audio()
+
+    def _modem_audio_rule_state(self):
+        return _etat_regle_audio()
+
+    def _modem_udev_rule(self):
+        _regle_udev()
+
+    def _modem_voip_install(self):
+        _installer_voip(self)
+
+    def _modem_voip_status(self):
+        _etat_voip()
+
+    def _modem_softphone(self):
+        _declarer_softphone()
+
+    def _modem_service_status(self):
+        _service_etat()
+
+    def _modem_service_env(self):
+        _service_environnement()
+
+    def _modem_service_install(self):
+        _service_poser()
+
+    def _modem_service_command(self, action):
+        """`action` : start, stop, enable ou disable, sur chaque unité."""
+        _service_commander(action)
+
+    def _modem_service_log(self):
+        _service_journal()
+
+    def _modem_service_remove(self):
+        _service_retirer()
