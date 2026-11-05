@@ -377,18 +377,22 @@ class TestTheSourceQuestion(unittest.TestCase):
         self.todo._monitoring_live.assert_not_called()
 
     def test_monitoring_goes_back_before_any_analysis(self):
-        """[0] à la provenance : ni description, ni écran des analyses."""
+        """[0], une réponse vide ou Ctrl+D à la provenance : ni
+        description, ni écran des analyses."""
         from unittest import mock
 
-        scripted = self.port(["0"])
-        with (
-            self.ui.bind(scripted),
-            mock.patch.object(monitoring_tui, "run_tui") as ecran,
-            mock.patch.object(monitoring, "run_analysis") as analyse,
-        ):
-            self.assertIsNone(self.todo.execute_analyse_monitoring())
-        ecran.assert_not_called()
-        analyse.assert_not_called()
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                scripted = self.port([reponse])
+                with (
+                    self.ui.bind(scripted),
+                    mock.patch.object(monitoring_tui, "run_tui") as ecran,
+                    mock.patch.object(monitoring, "run_analysis") as analyse,
+                ):
+                    rendu = self.todo.execute_analyse_monitoring()
+                self.assertIsNone(rendu)
+                ecran.assert_not_called()
+                analyse.assert_not_called()
 
 
 class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):

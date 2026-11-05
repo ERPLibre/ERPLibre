@@ -517,6 +517,19 @@ class TestLAuditDesDependances(unittest.TestCase):
             commandes, _ = self.audit("")
         self.assertEqual(commandes, [])
 
+    def test_a_default_not_installed_marks_and_audits_nothing(self):
+        """Le défaut du catalogue n'est pas installé : la liste ne marque
+        aucun défaut, et une réponse vide revient sans rien auditer."""
+        defaut_absent = [
+            dict(v, default=v["erplibre_version"] == "forged_env_c")
+            for v in self.VERSIONS
+        ]
+        catalogue = (defaut_absent, [], "odoo16.0")
+        with patch.object(todo_module, "get_odoo_version", lambda: catalogue):
+            commandes, sortie = self.audit("")
+        self.assertEqual(commandes, [])
+        self.assertNotIn(t("(default)"), sortie)
+
     def test_back_or_ctrl_d_audit_nothing(self):
         for reponse in ("0", EOFError()):
             with self.subTest(reponse=reponse):

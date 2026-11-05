@@ -1124,15 +1124,24 @@ class TestTheDatabaseListGoesBack(unittest.TestCase):
         self.enterContext(redirect_stdout(io.StringIO()))
 
     def assert_nothing_after_the_list(self, call, *before):
-        for answer in ("0", "", EOFError()):
-            with self.subTest(answer=answer):
+        """[0], une réponse vide, Ctrl+D, puis une faute ou « tout »
+        suivis de [0] : seule la liste est lancée, et chaque réponse est
+        lue."""
+        for answers in (
+            ("0",),
+            ("",),
+            (EOFError(),),
+            ("x", "0"),
+            ("tout", "0"),
+        ):
+            with self.subTest(answers=answers):
                 self.commands.clear()
                 with patch(
-                    "builtins.input", side_effect=[*before, answer]
+                    "builtins.input", side_effect=[*before, *answers]
                 ) as asked:
                     call()
                 self.assertEqual(self.commands, ["./odoo_bin.sh db list"])
-                self.assertEqual(asked.call_count, len(before) + 1)
+                self.assertEqual(asked.call_count, len(before) + len(answers))
 
     def test_erasing_one_database_drops_nothing(self):
         self.assert_nothing_after_the_list(

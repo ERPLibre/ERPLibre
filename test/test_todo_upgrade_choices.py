@@ -57,9 +57,11 @@ class Banc(unittest.TestCase):
         """Lance execute_module_upgrade ; rend les gestes notés, dans
         l'ordre. Une réponse qui est une exception est levée (EOFError,
         Ctrl+D) ; une question de plus que de réponses fait échouer le
-        test en le disant. Le premier `switch_odoo` arrête la migration
-        après l'avoir noté (`Arret`), et `check_addons_exist` trouve le
-        module demandé. L'écran imprimé est dans `self.ecran`."""
+        test en le disant, une réponse restée non lue aussi : un retour
+        qui vient avant la question visée ne passe pas pour elle. Le
+        premier `switch_odoo` arrête la migration après l'avoir noté
+        (`Arret`), et `check_addons_exist` trouve le module demandé.
+        L'écran imprimé est dans `self.ecran`."""
         upgrade = TodoUpgrade(todo=None)
         gestes = []
 
@@ -109,6 +111,7 @@ class Banc(unittest.TestCase):
             except Arret:
                 pass
         self.ecran = ecran.getvalue()
+        self.assertEqual(next(suite, None), None, "réponse non lue")
         return gestes
 
 
@@ -141,6 +144,8 @@ class TestLesChoix(Banc):
             ["1", "2", "forged_module", "1"],
             ["2", self.depot],
             ["2", self.depot, "1"],
+            ["1", "1", self.depot],
+            ["1", "1", self.depot, "1"],
         )
         for avant in avants:
             vides = ("",) if len(avant) > 1 else ()
@@ -194,17 +199,20 @@ class TestLesInstantanesCOW(unittest.TestCase):
     ]
 
     def comparer(self, *reponses, snaps=None):
-        """Les paires comparées, et l'écran imprimé dans `self.ecran`."""
+        """Les paires comparées, et l'écran imprimé dans `self.ecran` ;
+        une réponse restée non lue fait échouer le test."""
         upgrade = TodoUpgrade(todo=None)
         paires = []
         upgrade.diff_cow_views = lambda base, a, b: paires.append((a, b))
+        suite = iter(reponses)
         ecran = io.StringIO()
         with (
-            mock.patch.object(builtins, "input", side_effect=reponses),
+            mock.patch.object(builtins, "input", side_effect=suite),
             contextlib.redirect_stdout(ecran),
         ):
             upgrade.stats_cow({"cow": snaps or self.SNAPS}, "forged_db")
         self.ecran = ecran.getvalue()
+        self.assertEqual(next(suite, None), None, "réponse non lue")
         return paires
 
     def test_two_snapshots_by_number_or_name(self):
