@@ -5,15 +5,18 @@
 """Les modules qui diffèrent entre HEAD et `<distant>/<V>`, sur de vrais
 dépôts git jetables."""
 
+import io
 import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 from script.git import git_freeze_diff
 from script.git import git_module_diff as gmd
 from script.todo import module_menu
+from script.todo.todo_i18n import t
 
 ENV = dict(
     os.environ,
@@ -305,6 +308,63 @@ class TestRendre(unittest.TestCase):
         for mode in (gmd.MODE_BRANCHE, gmd.MODE_GEL):
             lignes = module_menu.rendre(resultat_vide(), 0, "18.0", mode)
             self.assertNotIn("", lignes)
+
+
+class TestChoisirLaComparaison(unittest.TestCase):
+    """Analyse module › les dépôts : une comparaison de gels choisie
+    selon les règles des sélecteurs. Chaque réponse vient d'un double
+    d'`input` ; l'avant-dernier gel est un double."""
+
+    def choisir(self, *reponses, precedent=("ancien", "nouveau")):
+        """(ce que rend le choix, ce qu'il imprime) pour `reponses`."""
+        with (
+            mock.patch("builtins.input", side_effect=reponses),
+            mock.patch.object(
+                git_freeze_diff, "previous_freeze", return_value=precedent
+            ),
+            redirect_stdout(io.StringIO()) as sortie,
+        ):
+            rendu = module_menu.ModuleMenuMixin()._module_analysis_choisir()
+        return rendu, sortie.getvalue()
+
+    def test_un_numero_tel_qu_affiche(self):
+        for numero, attendu in gmd.COMPARAISONS.items():
+            with self.subTest(numero=numero):
+                self.assertEqual(self.choisir(numero)[0], attendu)
+        self.assertEqual(self.choisir("4")[0], ("ancien", "nouveau"))
+
+    def test_une_faute_est_dite_puis_redemandee(self):
+        rendu, sortie = self.choisir("9", "01", "+1", "2")
+        self.assertEqual(rendu, gmd.COMPARAISONS["2"])
+        self.assertEqual(sortie.count(t("Invalid choice: ")), 3)
+
+    def test_retour_vide_ou_ctrl_d_ne_choisit_rien(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                rendu, sortie = self.choisir(reponse)
+                self.assertIsNone(rendu)
+                self.assertIn(f"[0] {t('Back')}", sortie)
+
+    def test_sans_deux_gels_rien_n_est_choisi(self):
+        rendu, sortie = self.choisir("4", precedent=None)
+        self.assertIsNone(rendu)
+        self.assertIn(t("Fewer than two commits changed a freeze."), sortie)
+
+    def test_rien_n_est_compare_sans_choix(self):
+        menu = module_menu.ModuleMenuMixin()
+        with (
+            mock.patch.object(
+                module_menu.repo_upgrade, "version_active", return_value="18.0"
+            ),
+            mock.patch.object(
+                menu, "_module_analysis_choisir", return_value=None
+            ),
+            mock.patch.object(gmd, "depots_du_choix") as depots,
+            mock.patch.object(gmd, "analyser") as analyser,
+        ):
+            self.assertEqual(menu._module_analysis_diff(gmd.MODE_BRANCHE), 0)
+        depots.assert_not_called()
+        analyser.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -140,10 +140,9 @@ RAW_CALLS = {
     # Questions ajoutées par develop, à migrer : le jeton OAuth, la
     # signature d'un compte (+4).
     "script/todo/mail/menu.py": 16,
-    # Menus ajoutés par develop, à migrer : le modem, Analyse module, les
-    # SMS.
+    # Menus ajoutés par develop, à migrer : le modem, les SMS.
     "script/todo/modem/menu.py": 40,
-    "script/todo/module_menu.py": 3,
+    "script/todo/module_menu.py": 1,
     "script/todo/proxmox_menu.py": 13,
     "script/todo/qemu_access.py": 7,
     "script/todo/qemu_cache_menu.py": 17,
@@ -193,9 +192,6 @@ DEVELOP_LOOPS = {
         "menu ajouté par develop, à migrer"
     ),
     ("script/todo/modem/menu.py", "prompt_execute_modem"): (
-        "menu ajouté par develop, à migrer"
-    ),
-    ("script/todo/module_menu.py", "prompt_execute_module_analysis"): (
         "menu ajouté par develop, à migrer"
     ),
 }
@@ -1003,10 +999,6 @@ class TestGuards(unittest.TestCase):
                 ("script/todo/git_repo_menu.py", "_git_repo_resoudre"),
                 ("script/todo/modem/menu.py", "_repondeur"),
                 ("script/todo/modem/menu.py", "prompt_execute_modem"),
-                (
-                    "script/todo/module_menu.py",
-                    "prompt_execute_module_analysis",
-                ),
             },
             "declare the menu in script/todo/menus/, never list it here",
         )

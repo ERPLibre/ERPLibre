@@ -1312,6 +1312,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_instance",
                 "prompt_execute_longtest",
                 "prompt_execute_mail",
+                "prompt_execute_module_analysis",
                 "prompt_execute_network",
                 "prompt_execute_process",
                 "prompt_execute_proxmox",
@@ -1367,7 +1368,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 59)
+        self.assertEqual(len(menus), 60)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         # Les menus du courriel s'ouvrent par des fonctions de mail/menu.py
         # sur MailMenus, qui porte leurs actions, dont certaines sont des

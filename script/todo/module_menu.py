@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Le menu « Analyse module » : les modules Odoo du checkout.
+"""Les actions du menu « Analyse module », déclaré dans
+`menus/execute.py` : les modules Odoo du checkout.
 
 Ici on DEMANDE (quels dépôts, faut-il `addons/addons`) et on affiche ; la
 comparaison elle-même vit dans `script/git/git_module_diff.py`, qui se lance
@@ -24,65 +25,48 @@ from script.git import (  # noqa: E402
     git_module_diff,
     repo_upgrade,
 )
-from script.todo.todo_couleur import retour  # noqa: E402
+from script.todo import ui  # noqa: E402
+from script.todo.menus import execute as menus_execute  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
+from script.todo.ui.navigator import navigate  # noqa: E402
 
 RACINE = new_path
 
 
+# Le choix des dépôts qui compare l'avant-dernier gel au dernier, à côté
+# des clés de git_module_diff.COMPARAISONS : ses deux commits ne se
+# cherchent qu'une fois choisi.
+GEL_PRECEDENT = "previous"
+
+
 class ModuleMenuMixin:
     def prompt_execute_module_analysis(self):
-        print(f"🧩 {t('Analyse the Odoo modules of the checkout')}")
-        choices = [
-            {"section": t("Update")},
-            {
-                "prompt_description": t(
-                    "🔀 Modules that differ from the version branch"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "🔁 Modules a freeze comparison changed (old → new)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._module_analysis_diff(git_module_diff.MODE_BRANCHE)
-            elif status == "2":
-                self._module_analysis_diff(git_module_diff.MODE_GEL)
-            else:
-                print(t("Command not found !"))
+        """Analyse module, déclaré dans MODULE_ANALYSIS (`menus/execute.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_execute.MODULE_ANALYSIS)
 
     def _module_analysis_choisir(self):
         """(gauche, droite) de la comparaison de gels qui désigne les
-        dépôts, ou None pour revenir."""
-        print(
-            f"🔀 {t('Repositories: those this freeze comparison sees changed')}"
+        dépôts, ou None pour revenir : [0], une réponse vide, Ctrl+D, ou
+        l'avant-dernier gel choisi quand moins de deux commits ont changé
+        un gel."""
+        libelles = {
+            "1": f"💻 {t('Committed freeze → clones (real state)')}",
+            "2": f"📝 {t('Written freeze (manifest/) → clones')}",
+            "3": f"🚧 {t('Committed freeze → written freeze, not committed')}",
+            GEL_PRECEDENT: f"⏪ {t('Previous freeze → last freeze')}",
+        }
+        cle = ui.choose(
+            f"🔀 {t('Repositories: those this freeze comparison sees changed')}",
+            list(libelles),
+            labels=list(libelles.values()),
         )
-        print(f"  [1] 💻 {t('Committed freeze → clones (real state)')}")
-        print(f"  [2] 📝 {t('Written freeze (manifest/) → clones')}")
-        print(
-            f"  [3] 🚧 {t('Committed freeze → written freeze, not committed')}"
-        )
-        print(f"  [4] ⏪ {t('Previous freeze → last freeze')}")
-        print(f"  {retour(t('Back'))}")
-        choix = input("  : ").strip()
-        if choix in git_module_diff.COMPARAISONS:
-            return git_module_diff.COMPARAISONS[choix]
-        if choix == "4":
-            paire = git_freeze_diff.previous_freeze(RACINE)
-            if not paire:
-                print(f"⚠  {t('Fewer than two commits changed a freeze.')}")
-            return paire
-        if choix not in ("", "0"):
-            print(t("Command not found !"))
-        return None
+        if cle != GEL_PRECEDENT:
+            return git_module_diff.COMPARAISONS.get(cle)
+        paire = git_freeze_diff.previous_freeze(RACINE)
+        if not paire:
+            print(f"⚠  {t('Fewer than two commits changed a freeze.')}")
+        return paire
 
     def _module_analysis_diff(self, mode):
         """Les modules qui diffèrent dans chaque dépôt retenu, selon `mode`

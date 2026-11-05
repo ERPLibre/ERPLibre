@@ -1834,6 +1834,27 @@ class TestRunMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestModuleAnalysisMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › Analyse module : les modules qui diffèrent de la branche
+    de la version, puis ceux qu'une comparaison de gels a changés."""
+
+    MENU = "prompt_execute_module_analysis"
+    EXPECTED = {
+        "🔀 Modules that differ from the version branch": (
+            "_module_analysis_diff"
+        ),
+        "🔁 Modules a freeze comparison changed": "_module_analysis_diff",
+    }
+
+    def test_each_entry_compares_by_its_mode(self):
+        from script.git import git_module_diff as gmd
+
+        self.assertEqual(
+            [e.kwargs for e in self.entries],
+            [{"mode": gmd.MODE_BRANCHE}, {"mode": gmd.MODE_GEL}],
+        )
+
+
 class TestDatabaseMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 
@@ -4365,7 +4386,6 @@ class TestMenuLabels(unittest.TestCase):
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
         "prompt_execute_git_repo": "Repo",
-        "prompt_execute_module_analysis": "Analyse module",
     }
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
     # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
@@ -4393,6 +4413,7 @@ class TestMenuLabels(unittest.TestCase):
         ),
         "prompt_execute_process": "Process",
         "prompt_execute_test": "Test",
+        "prompt_execute_module_analysis": "Analyse module",
         "prompt_execute_update": "Update",
         "prompt_execute_instance": "Run",
         "prompt_execute_database": "Database",
