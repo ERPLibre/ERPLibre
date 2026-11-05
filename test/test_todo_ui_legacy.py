@@ -130,7 +130,7 @@ RAW_CALLS = {
     "script/todo/assistant_menu.py": 14,
     "script/todo/auto_ask.py": 2,
     "script/todo/container_menu.py": 21,
-    "script/todo/database_manager.py": 12,
+    "script/todo/database_manager.py": 11,
     "script/todo/kdbx_manager.py": 1,
     "script/todo/git_repo_menu.py": 15,
     "script/todo/longtest_menu.py": 5,

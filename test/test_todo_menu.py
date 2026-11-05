@@ -5257,19 +5257,17 @@ class TestMenuLabels(unittest.TestCase):
 
     Des méthodes sont exemptées, qui s'affichent sous le fil du menu qui
     les ouvre : une ACTION qui pose une question — une montée de version
-    d'Odoo — et non un écran où l'on navigue, et `select_database` et
-    `select_databases`, celles de DatabaseManager, qui choisissent une ou
-    plusieurs bases. Leur donner un segment mettrait une miette sur une
-    invite passagère. D'autres, écrites à la main et ouvertes par un
-    écran lui-même écrit à la main, prennent leur segment de
-    `crumbs_at` (Update d'Install) ou n'en ont pas encore
-    (Containers de System) : elles sortent de la liste en devenant des
-    menus déclarés.
+    d'Odoo — et non un écran où l'on navigue, et `select_databases`,
+    celle de DatabaseManager, qui choisit une ou plusieurs bases. Leur
+    donner un segment mettrait une miette sur une invite passagère.
+    D'autres, écrites à la main et ouvertes par un écran lui-même écrit à
+    la main, prennent leur segment de `crumbs_at` (Update d'Install) ou
+    n'en ont pas encore (Containers de System) : elles sortent de la liste
+    en devenant des menus déclarés.
     """
 
     ECRANS_EXEMPTES = {
         "execute_odoo_upgrade",
-        "select_database",
         "select_databases",
         "prompt_install_update",
         "_system_conteneurs",
@@ -5502,14 +5500,14 @@ class TestMenuLabels(unittest.TestCase):
         self.assertEqual(copies, [])
 
     def test_the_database_manager_exemption_holds_in_its_file_only(self):
-        """`select_database` n'est exemptée que dans database_manager.py :
+        """`select_databases` n'est exemptée que dans database_manager.py :
         une méthode de même nom qui dessinerait un écran ailleurs resterait
         sans segment sans que rien ne le dise."""
         self.assertEqual(
             {
                 f
                 for f, n in self._menus_par_fichier()
-                if n == "select_database"
+                if n == "select_databases"
             },
             {"database_manager.py"},
         )
