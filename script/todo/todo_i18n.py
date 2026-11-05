@@ -5089,9 +5089,13 @@ TRANSLATIONS = {
         "fr": "Il faut deux instantanés pour comparer.",
         "en": "Need two snapshots to diff.",
     },
-    "Diff which two? (e.g. 1,2 — blank to skip)": {
-        "fr": "Comparer lesquels ? (ex. 1,2 — vide pour passer)",
-        "en": "Diff which two? (e.g. 1,2 — blank to skip)",
+    "Diff from which snapshot?": {
+        "fr": "Comparer depuis quel instantané ?",
+        "en": "Diff from which snapshot?",
+    },
+    "To which snapshot?": {
+        "fr": "Vers quel instantané ?",
+        "en": "To which snapshot?",
     },
     "No migration in progress to resume.": {
         "fr": "Aucune migration en cours à reprendre.",

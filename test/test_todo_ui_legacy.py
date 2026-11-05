@@ -151,7 +151,7 @@ RAW_CALLS = {
     "script/todo/todo.py": 89,
     "script/todo/todo_install.py": 2,
     "script/todo/todo_telemetry.py": 1,
-    "script/todo/todo_upgrade.py": 8,
+    "script/todo/todo_upgrade.py": 7,
     "script/todo/transform_menu.py": 5,
     "script/todo/ui/navigator.py": 1,
     "script/todo/vpn_menu.py": 13,
