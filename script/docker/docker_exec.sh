@@ -13,19 +13,7 @@
 
 set -euo pipefail
 
-CURRENT=$(pwd)
-BASENAME=$(basename "${CURRENT}")
-# Docker remove dot
-BASENAME="${BASENAME//./}"
-# Lowercase
-BASENAME="${BASENAME,,}"
-
-# docker compose v2 sépare les parties du nom par « - », la v1 par « _ ». Le
-# nom se choisit avant l'exec : un shell quitté sur un code non nul ne relance
-# pas un second shell vers l'autre nom.
-conteneur="${BASENAME}-ERPLibre-1"
-if ! docker inspect "${conteneur}" >/dev/null 2>&1; then
-  conteneur="${BASENAME}_ERPLibre_1"
-fi
+source "$(dirname "$0")/lib_conteneur.sh"
+conteneur=$(conteneur_erplibre)
 
 exec docker exec --privileged -u root -ti "${conteneur}" bash

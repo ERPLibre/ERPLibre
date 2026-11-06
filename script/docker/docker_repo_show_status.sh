@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Affiche l'état git des dépôts du conteneur ERPLibre.
 
-CURRENT=$(pwd)
-BASENAME=$(basename "${CURRENT}")
-# Docker remove dot
-BASENAME="${BASENAME//./}"
-# Lowercase
-BASENAME="${BASENAME,,}"
+set -euo pipefail
 
-docker exec -u root -ti ${BASENAME}-ERPLibre-1 /bin/bash -c "\
+source "$(dirname "$0")/lib_conteneur.sh"
+conteneur=$(conteneur_erplibre)
+
+exec docker exec -u root -ti "${conteneur}" /bin/bash -c "\
 cd /ERPLibre; \
 .venv.erplibre/bin/repo forall -pc 'git status -s'; \
 echo ''; \
 git status -s; \
 "
-
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  docker exec -u root -ti ${BASENAME}_ERPLibre_1 /bin/bash -c "\
-  cd /ERPLibre; \
-  .venv.erplibre/bin/repo forall -pc 'git status -s'; \
-  echo ''; \
-  git status -s; \
-  "
-fi
