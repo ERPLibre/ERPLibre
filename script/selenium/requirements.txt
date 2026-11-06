@@ -1,5 +1,8 @@
-# Selenium video
-PyGObject==3.58.1
-# python-vlc
+# Paquets des scripts Selenium en plus du venv des outils (.venv.erplibre),
+# qui porte déjà selenium et pykeepass. Aucun ne se compile : la liste
+# s'installe aussi dans un conteneur sans compilateur, par
+# PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "-r /ERPLibre/script/selenium/requirements.txt".
+# L'enregistrement vidéo est dans requirements-video.txt.
 python-randomword-fr
+# Le pilote Chrome local ; Firefox et les nœuds distants s'en passent.
 webdriver_manager

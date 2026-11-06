@@ -173,8 +173,9 @@ if [[ $retVal -ne 0 ]]; then
   echo "apt-get selenium dependencies installation error."
   exit 1
 fi
-# PyGObject 3.50 et plus, dont le 3.58.1 de script/selenium/requirements.txt,
-# se compile contre girepository-2.0 et exige GLib 2.80. Ce paquet vient avec
+# PyGObject 3.50 et plus, dont le 3.58.1 de
+# script/selenium/requirements-video.txt, se compile contre girepository-2.0
+# et exige GLib 2.80. Ce paquet vient avec
 # GLib 2.80 : Debian 13 et Ubuntu 24.04 l'ont, Debian 12 (GLib 2.74) ne l'a
 # ni dans ses dépôts ni dans ses backports. Seul l'enregistrement vidéo de
 # selenium en dépend : son absence est signalée, jamais fatale.
