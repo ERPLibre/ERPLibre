@@ -38,11 +38,13 @@ retrying
 click
 
 # Les scripts Selenium de script/selenium/ et de private/, lancés dans le
-# conteneur avec le venv des outils : selenium_lib importe ces trois paquets
-# en tête. webdriver_manager ne sert qu'au pilote Chrome local, et PyGObject à
-# l'enregistrement vidéo, qui se compile contre des bibliothèques système ;
-# ils restent dans script/selenium/requirements.txt. Le navigateur n'est pas
-# fourni : un Firefox dans l'image, ou un nœud Selenium distant.
+# conteneur avec le venv des outils : selenium_lib importe selenium et
+# randomwordfr en tête, pykeepass à l'ouverture du coffre. webdriver_manager
+# ne sert qu'au pilote Chrome local, et reste dans
+# script/selenium/requirements.txt ; PyGObject, pour la vidéo, se compile
+# contre des bibliothèques système et reste dans requirements-video.txt. Le
+# navigateur n'est pas fourni : un Firefox dans l'image, ou un nœud Selenium
+# distant.
 selenium
 pykeepass
 python-randomword-fr

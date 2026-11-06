@@ -1,0 +1,5 @@
+# Enregistrement vidéo des scripts Selenium (selenium_video.py, GStreamer).
+# PyGObject se compile contre les bibliothèques système qu'installe
+# script/install/install_debian_dependency.sh ; voir install.base.md.
+PyGObject==3.58.1
+# python-vlc
