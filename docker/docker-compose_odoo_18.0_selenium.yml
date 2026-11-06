@@ -1,6 +1,6 @@
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_18.0_eae4054
+    image: technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad
     ports:
       - 8069:8069
       - 8071:8071
@@ -14,6 +14,14 @@ services:
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
       INIT_CMD: ""
+      # The Selenium scripts drive the grid's browsers with
+      # --use_network http://selenium-hub:4444: the ERPLibre image has no
+      # browser. The nodes send the downloads back to the script (managed
+      # downloads, on by default in their images).
+      # A script run with no terminal opens the KeePass vault with the
+      # password held by this file, readable by odoo; outside Swarm, a
+      # compose secret is mounted with the same owner and mode, no safer.
+      #KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
     depends_on:
       - db
       - selenium-hub
