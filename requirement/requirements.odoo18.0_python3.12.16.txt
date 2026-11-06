@@ -112,7 +112,7 @@ zeep==4.3.3
 # oauthlib 3.3.1 : CVE-2026-49264, CVE-2026-49265, CVE-2026-49272,
 # CVE-2026-118669, corrigées en 4.0.0. tweepy, qui exige oauthlib<4, est
 # écarté par ignore_requirements.
-oauthlib==4.0.0
+oauthlib==4.0.1
 # paramiko 3.5.1 : CVE-2026-44405 (signatures RSA en SHA-1), corrigée après
 # 4.0.0. paramiko 4 retire les clés DSA (DSSKey) et 5 l'échange de clés et
 # les signatures en SHA-1 : un serveur SSH antérieur à OpenSSH 7.2 n'est plus
