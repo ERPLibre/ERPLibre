@@ -1140,6 +1140,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             row = re.match(r"c(\d+)_(vcpus|ram|disk)$", wid)
             if row and not self._is_current(event.input):
                 return
+            # Un champ de la génération courante peut avoir QUITTÉ le DOM : à
+            # la fermeture, l'écran retire ses widgets pendant que les Changed
+            # de leur montage attendent encore. Cherché par son id, il n'est
+            # plus trouvé ; sa valeur ne compte plus.
+            if row and not event.input.is_attached:
+                return
             if row:
                 index, field = int(row.group(1)), row.group(2)
                 valeur = self._read_row_free(index, field)
