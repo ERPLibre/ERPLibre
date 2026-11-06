@@ -45,6 +45,12 @@ class Depot(unittest.TestCase):
         "test/test_script.py": 'SCRIPT = "outils/lancer.sh"\n',
         "test/test_menu.py": "from pkg import menu\n",
         "test/test_chargeur.py": "from pkg.chargeur import CHEMIN\n",
+        "script/lib/proj/proj/__init__.py": "",
+        "script/lib/proj/proj/sous/__init__.py": "",
+        "script/lib/proj/proj/sous/feuille.py": "W = 5\n",
+        "test/test_lib_a.py": "from proj.sous import feuille\n",
+        "test/test_lib_b.py": "import proj.sous.feuille\n",
+        "test/test_lib_c.py": "import script.lib.proj.proj.sous.feuille\n",
     }
 
     def setUp(self):
@@ -117,6 +123,15 @@ class TestLeGraphe(Depot):
         self.assertEqual(
             self.choisis("outils/charge_par_chemin.py"),
             ["test/test_chargeur.py"],
+        )
+
+    def test_un_module_de_lib_retient_ses_importeurs(self):
+        """script/lib/proj/ est une racine d'import : « proj.sous.feuille »
+        y désigne script/lib/proj/proj/sous/feuille.py, et le chemin
+        « script.lib.proj.proj.sous.feuille » ne désigne rien."""
+        self.assertEqual(
+            self.choisis("script/lib/proj/proj/sous/feuille.py"),
+            ["test/test_lib_a.py", "test/test_lib_b.py"],
         )
 
     def test_rien_de_modifie_rien_de_choisi(self):

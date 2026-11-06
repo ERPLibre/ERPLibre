@@ -92,6 +92,12 @@ class Graphe:
                 module = chemin[:-3].replace("/", ".")
                 if module.endswith(".__init__"):
                     module = module[: -len(".__init__")]
+                # Chaque `script/lib/<projet>/` est une racine d'import : son
+                # code s'importe par le nom de son paquet, jamais par le
+                # chemin `script.lib.<projet>.…`.
+                morceaux = module.split(".")
+                if len(morceaux) > 3 and morceaux[:2] == ["script", "lib"]:
+                    module = ".".join(morceaux[3:])
                 self.par_module[module] = chemin
                 court = module.rsplit(".", 1)[-1]
                 self.par_nom_module.setdefault(court, set()).add(chemin)
