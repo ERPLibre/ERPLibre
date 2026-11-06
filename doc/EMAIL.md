@@ -114,6 +114,100 @@ accounts into the KDBX vault.
 `secret_ref` such as `kdbx:ERPLibre/Mail/perso` — a pointer, never the
 secret. It is safe to read, edit by hand, or check into a private backup.
 
+## Connection security
+
+**Verified by default.** IMAP and SMTP, over SSL as over STARTTLS, check
+the server's certificate chain AND its name against the system's
+certificate authorities — in the client, in the menu (connection test,
+sync, rule trial) and in the headless service alike. No option turns this
+off. The `none` security stays what it is: a connection in the clear, for
+a server on the machine itself.
+
+- **Trusted authorities**: the system's, or the ones `SSL_CERT_FILE` and
+  `SSL_CERT_DIR` name when they are set. The client's shell and the
+  service (systemd unit) do not necessarily share that environment: one
+  may then accept what the other refuses.
+- **Strict conformance**: with the client's Python (3.13 and later), a
+  certificate that breaks a rule of form (authority key identifier
+  missing, basic constraints not critical…) is refused even when a
+  recognised authority issued it, reason "not conforming". The Odoo
+  module, under Python 3.12, does not apply these rules and may accept the
+  same server. The lasting fix is to get the certificate corrected;
+  pinning works around it, for that certificate only. A chain where a
+  certificate that is not an authority signed the next one is never "not
+  conforming": under either Python it is refused as an unknown authority,
+  since that is how an interception forges a chain.
+
+**A refusal** names the protocol, the `host:port`, the reason — self-signed
+or unknown authority; another name, with the names the certificate does
+carry; expired or not yet valid; not conforming; different from the pin —
+and the SHA-256 fingerprint of the certificate the server presents, read
+by a second connection that sends no credential at all. Nothing of the
+password leaves: a TLS refusal never asks for the password again. A
+server behind a load balancer serving several certificates may give
+intermittent "different from the pinned one" refusals: a pin covers one
+certificate per endpoint, and such a server is better served by a
+certificate from a recognised authority.
+
+Compare the fingerprint with the one the server's administrator gives you,
+by another channel than this connection — or, on the server itself:
+
+```bash
+openssl x509 -in <certificate> -noout -fingerprint -sha256
+```
+
+From a distance (same caveat as any connection: an interceptor would show
+you the same thing), add `-starttls imap` or `-starttls smtp` for a
+STARTTLS port:
+
+```bash
+openssl s_client -connect host:993 </dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+**Pinning.** In the client, `T` shows the oldest refused certificate; in
+the menu, `Mail > [2] Accounts > [5] Test an account connection` (IMAP,
+then SMTP) offers the same. Type the word shown — `TRUST` (`CONFIANCE` in
+French): neither `y` nor Enter will do. The pin holds for one account and
+one `host:port`. From then on ONLY that certificate is accepted there, and
+neither its name nor its dates are checked: it stays accepted even
+expired. A renewal changes the fingerprint and is refused again, showing
+the pinned and the presented fingerprint; replace it by the same gesture,
+or remove it with `Mail > [2] Accounts > [8] Pinned certificates` to go
+back to normal verification — the way back for a server that moved to a
+certificate a recognised authority issued.
+
+While writing a message, an SMTP refusal offers pinning at once, over the
+draft, which stays open and untouched; send again with `ctrl+s`. The
+client's notice of a refusal goes away at the next connection to that
+server that passes the certificate check.
+
+**The service never pins.** It fails with exit code 9 and a line that
+names, first, the protocol, the `host:port`, the reason as a fixed word
+(`untrusted`, `hostname`, `validity`, `nonconforming`, `changed`) and the
+fingerprints in compact hexadecimal (`sha256=…`, plus `pinned=…` for a
+changed certificate). A refusal met while replying automatically gives
+code 9 in the same pass; the reply waits in the outbox. Pin from the menu
+or the client.
+
+**Where pins live**: in `accounts.json`, field `tls_pins` of the account
+(`"host:port": "sha256:<hex>"`) — not a secret. The file keeps version 3.
+An unreadable pin (file edited by hand) is set aside with a line in
+`mail.log`, and that endpoint goes back to normal verification. An open
+client picks up a pin added or removed elsewhere at its next connection;
+an account it holds offline for a refused IMAP certificate retries at the
+next refresh (`r`, `R` or automatic) once its pins in the file have
+changed — not before, since the same refusal would come back. A refusal
+met in the middle of a session (link reopened while reading a message,
+moving one, filing a sent copy) takes the account offline and reaches `T`
+the same way. When `accounts.json` is a symbolic link, writes go through
+it to its target.
+
+**After the update**: a client opened BEFORE it checks no certificate at
+all, neither IMAP nor SMTP, until it is restarted; if it adds an account
+before being restarted, it rewrites `accounts.json` without the pins
+(verification comes back: the self-signed server is refused again and
+has to be pinned again). Restart it.
+
 ## The three cache modes
 
 Every account keeps a local cache — a small SQLite database plus one file
@@ -488,6 +582,11 @@ The account's `cache.db` is corrupt. `Mail > [4] Cache > [3] Cache size and
 purge` may itself fail to open the same broken file; if so, delete the
 account's cache directory by hand and resync:
 
+**"TLS certificate refused for …".** The server presents a certificate
+this machine does not recognise, or no longer the pinned one: see
+"Connection security" above. A TLS refusal never asks for the password
+again — the password did not leave.
+
 ```bash
 rm -rf ~/.erplibre/mail/<account>/
 ```
@@ -526,8 +625,11 @@ What it does **not** cover, and will not pretend to:
 - **No provider quirk** — Gmail's label-as-folder model, Microsoft's OAuth,
   Apple app passwords: none of it is exercised. The sandbox is a plain
   RFC 3501 server, not a stand-in for a specific provider.
-- **No TLS** — the sandbox talks in the clear on `127.0.0.1`. `starttls` and
-  `ssl` code paths are not exercised here.
+- **TLS through test certificates only** — IMAP goes through a TLS front
+  on the loopback (`TlsFront`, in front of the Twisted server), SMTP
+  through `aiosmtpd`'s own TLS, with certificates generated for the test
+  and an authority that only the tests make acceptable
+  (`test/mail_tls.py`). No real certificate is involved.
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
@@ -552,7 +654,9 @@ a held message is skipped. An account's network state is settled when the
 client opens it, and nothing reopens it afterwards — so an account that was
 offline at launch, the very case that fills the queue, empties it at the
 next launch of the client, or through the CLI menu, which connects afresh
-each time it runs.
+each time it runs. The one exception is an account refused for its TLS
+certificate: it reopens once that certificate is pinned (see "Connection
+security").
 
 `o` opens the queue: a header line counts what is waiting, then one line
 per message, oldest first — subject, recipients, and, once a send has
@@ -1483,9 +1587,10 @@ encrypted password, use `[3]` (start a pass now), then
 | 6 | already running: another pass, the client or the menu holds the account, or the cache is busy, or the cache is being converted |
 | 7 | authentication refused: the server refuses the password or the token |
 | 8 | `accounts.json` or a cache unreadable, or a cache opened in another mode than the one it records |
+| 9 | TLS certificate refused, IMAP or SMTP (verification or pin): the service never pins, see "Connection security" |
 
 With several accounts, the code returned is the first present in the order
-1, 8, 3, 7, 5, 4, 6, 0: what needs a person comes before what heals by
+1, 8, 3, 9, 7, 5, 4, 6, 0: what needs a person comes before what heals by
 itself. `6` is the normal state while the client is open, so the unit
 counts it as a success; every other non-zero code marks it failed
 (`systemctl --user --failed`), and the timer starts it again all the same.
@@ -1728,6 +1833,13 @@ under a time limit.
   by `ls -d .venv.odoo*`. An
   editable install ties the venv to one checkout, and a resynchronization
   of the venv's dependencies can remove it: install it again afterwards.
+- `erplibre_mail_core.tls` holds the certificate checks the client uses
+  and an Odoo module can reuse: the verifying context
+  (`verified_context`), the pinning context and its comparison
+  (`check_pin`), fingerprints and pin keys, the probe that reads a refused
+  certificate without authenticating (`peer_certificate`), and
+  `TlsCertificateError`. `smtp.connect` verifies through it; no production
+  call passes `cafile`, which only the tests use for their authority.
 - Its tests are `test/test_mail_core_*.py`. Except
   `test_mail_core_bridge.py`, which checks how the client plugs into the
   core, they import nothing from `script/` and also run under Odoo's

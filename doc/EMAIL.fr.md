@@ -124,6 +124,103 @@ qu'une `secret_ref` du genre `kdbx:ERPLibre/Mail/perso` — une référence,
 jamais le secret. Il est sans danger à lire, à éditer à la main, ou à
 mettre dans une sauvegarde privée.
 
+## Sécurité des connexions
+
+**Vérifiée par défaut.** IMAP et SMTP, en SSL comme en STARTTLS,
+vérifient la chaîne du certificat du serveur ET son nom contre les
+autorités de certification du système — dans le client, dans le menu
+(test de connexion, synchronisation, essai d'une règle) et dans le service
+sans interface. Aucune option ne la désactive. La sécurité `none` reste ce
+qu'elle est : une connexion en clair, pour un serveur de la machine
+elle-même.
+
+- **Autorités de confiance** : celles du système, ou celles que désignent
+  `SSL_CERT_FILE` et `SSL_CERT_DIR` quand elles sont posées. Le shell du
+  client et le service (unité systemd) n'ont pas forcément le même
+  environnement : l'un peut alors accepter ce que l'autre refuse.
+- **Conformité stricte** : avec le Python du client (3.13 et plus), un
+  certificat qui enfreint une règle de forme (identifiant d'autorité
+  absent, contraintes de base non critiques…) est refusé même quand une
+  autorité reconnue l'a émis, raison « non conforme ». Le module Odoo,
+  sous Python 3.12, n'applique pas ces règles et peut accepter le même
+  serveur. Le remède durable est de faire corriger le certificat ;
+  l'épinglage dépanne, pour ce certificat seulement. Une chaîne où un
+  certificat qui n'est pas une autorité a signé le suivant n'est jamais
+  « non conforme » : sous l'un et l'autre Python, elle est refusée comme
+  d'une autorité inconnue, puisque c'est ainsi qu'une interception forge
+  une chaîne.
+
+**Un refus** nomme le protocole, `hôte:port`, la raison — auto-signé ou
+autorité inconnue ; autre nom, avec les noms que porte le certificat ;
+expiré ou pas encore valide ; non conforme ; différent de l'épingle — et
+l'empreinte SHA-256 du certificat que présente le serveur, lue par une
+seconde connexion qui n'envoie aucun identifiant. Rien du mot de passe ne
+part : un refus TLS ne redemande jamais le mot de passe. Un serveur
+derrière un répartiteur de charge qui sert plusieurs certificats peut
+produire des refus « différent de l'épingle » intermittents : une épingle
+couvre un certificat par point d'accès, et un tel serveur gagne à porter
+un certificat d'une autorité reconnue.
+
+Comparez l'empreinte avec celle que donne l'administrateur du serveur, par
+un autre canal que cette connexion — ou, sur le serveur lui-même :
+
+```bash
+openssl x509 -in <certificat> -noout -fingerprint -sha256
+```
+
+À distance (même réserve que pour toute connexion : un intermédiaire vous
+montrerait la même chose), ajoutez `-starttls imap` ou `-starttls smtp`
+pour un port STARTTLS :
+
+```bash
+openssl s_client -connect hôte:993 </dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+**Épingler.** Dans le client, `T` montre le plus ancien certificat
+refusé ; dans le menu, `Courriel > [2] Comptes > [5] Tester la connexion
+d'un compte` (IMAP, puis SMTP) propose la même chose. Tapez le mot affiché
+— `CONFIANCE` (`TRUST` en anglais) : ni `o` ni Entrée ne suffisent.
+L'épingle vaut pour un compte et un `hôte:port`. Dès lors SEUL ce
+certificat y est accepté, et ni son nom ni ses dates ne sont vérifiés : il
+reste accepté même expiré. Un renouvellement change l'empreinte et est
+refusé de nouveau, avec l'empreinte épinglée et l'empreinte présentée ;
+remplacez-la par le même geste, ou retirez-la par `Courriel > [2] Comptes
+> [8] Certificats épinglés` pour revenir à la vérification normale — le
+retour d'un serveur passé à un certificat qu'une autorité reconnue a émis.
+
+Pendant l'écriture d'un message, un refus SMTP propose aussitôt
+l'épinglage, par-dessus le brouillon, qui reste ouvert et intact ;
+renvoyez par `ctrl+s`. L'annonce d'un refus dans le client disparaît à la
+connexion suivante à ce serveur qui passe la vérification du certificat.
+
+**Le service n'épingle jamais.** Il échoue avec le code de sortie 9 et une
+ligne qui nomme, en tête, le protocole, `hôte:port`, la raison en mot fixe
+(`untrusted`, `hostname`, `validity`, `nonconforming`, `changed`) et les
+empreintes en hexadécimal compact (`sha256=…`, plus `pinned=…` pour un
+certificat changé). Un refus vu en répondant automatiquement donne le
+code 9 dès la même passe ; la réponse attend dans la file. Épinglez depuis
+le menu ou le client.
+
+**Où vivent les épingles** : dans `accounts.json`, champ `tls_pins` du
+compte (`"hôte:port": "sha256:<hex>"`) — pas un secret. Le fichier garde
+la version 3. Une épingle illisible (fichier édité à la main) est écartée
+avec une ligne dans `mail.log`, et ce point d'accès revient à la
+vérification normale. Un client ouvert prend en compte une épingle posée
+ou retirée ailleurs dès sa connexion suivante ; un compte qu'il tient hors
+ligne pour un certificat IMAP refusé est retenté au rafraîchissement
+suivant (`r`, `R` ou automatique) dès que ses épingles ont changé dans le
+fichier — pas avant, le même refus reviendrait. Un refus rencontré en
+cours de session (lien rouvert en lisant un message, en le rangeant, en
+classant une copie envoyée) met le compte hors ligne et arrive à `T` de
+la même façon. Quand `accounts.json` est un lien symbolique, les écritures
+le traversent jusqu'à sa cible.
+
+**Après la mise à jour** : un client ouvert AVANT elle ne vérifie aucun
+certificat, ni IMAP ni SMTP, tant qu'il n'est pas redémarré ; s'il ajoute
+un compte avant d'être redémarré, il réécrit `accounts.json` sans les
+épingles (la vérification revient : le serveur auto-signé est de nouveau
+refusé, à épingler encore). Redémarrez-le.
+
 ## Les trois modes de cache
 
 Chaque compte garde un cache local — une petite base SQLite plus un fichier
@@ -528,6 +625,11 @@ resynchronisez :
 rm -rf ~/.erplibre/mail/<compte>/
 ```
 
+**« certificat TLS refusé pour … ».** Le serveur présente un certificat
+que ce poste ne reconnaît pas, ou qui n'est plus celui qui est épinglé :
+voir « Sécurité des connexions » plus haut. Un refus TLS ne redemande
+jamais le mot de passe — le mot de passe n'est pas parti.
+
 ## Tester contre un vrai serveur
 
 Presque tous les tests courriel passent par un double en mémoire. Un double ne
@@ -565,8 +667,11 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   OAuth chez Microsoft, les mots de passe d'application d'Apple : rien de tout
   cela n'est exercé. Le bac à sable est un serveur RFC 3501 ordinaire, pas la
   doublure d'un fournisseur précis.
-- **Pas de TLS** — le bac à sable parle en clair sur `127.0.0.1`. Les chemins
-  `starttls` et `ssl` ne sont pas exercés ici.
+- **TLS par des certificats de test seulement** — IMAP passe par un frontal
+  TLS de la boucle locale (`TlsFront`, devant le serveur Twisted), SMTP par
+  le TLS d'`aiosmtpd`, avec des certificats générés pour le test et une
+  autorité que seuls les tests font accepter (`test/mail_tls.py`). Aucun
+  certificat réel n'entre en jeu.
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
@@ -592,6 +697,8 @@ rien, et un message retenu est sauté. L'état réseau d'un compte est fixé à
 l'ouverture du client et rien ne le rouvre ensuite — un compte hors ligne au
 lancement, le cas même qui remplit la file, ne la vide qu'au lancement
 suivant du client, ou par le menu CLI, qui se reconnecte à chaque appel.
+Seule exception, un compte refusé pour son certificat TLS : il se rouvre
+une fois ce certificat épinglé (voir « Sécurité des connexions »).
 
 `o` ouvre la file : une ligne d'en-tête compte ce qui attend, puis une
 ligne par message, du plus ancien au plus récent — objet, destinataires et,
@@ -1592,9 +1699,10 @@ le mot de passe chiffré : `[3]` (lancer une passe maintenant), puis
 | 6 | déjà en cours : une autre passe, le client ou le menu tient le compte, ou le cache est occupé, ou le cache est en conversion |
 | 7 | authentification refusée : le serveur refuse le mot de passe ou le jeton |
 | 8 | `accounts.json` ou un cache illisible, ou un cache ouvert dans un autre mode que celui qu'il inscrit |
+| 9 | certificat TLS refusé, IMAP ou SMTP (vérification ou épingle) : le service n'épingle jamais, voir « Sécurité des connexions » |
 
 Avec plusieurs comptes, le code rendu est le premier présent dans l'ordre
-1, 8, 3, 7, 5, 4, 6, 0 : ce qui demande une personne passe devant ce qui se
+1, 8, 3, 9, 7, 5, 4, 6, 0 : ce qui demande une personne passe devant ce qui se
 répare seul. `6` est l'état normal quand le client est ouvert : l'unité le
 compte comme un succès ; tout autre code non nul la marque en échec
 (`systemctl --user --failed`), et la minuterie la relance quand même. La
@@ -1858,6 +1966,14 @@ expressions régulières des règles dans un délai borné.
   Une installation éditable lie le venv à un seul checkout, et une
   resynchronisation des dépendances du venv peut la retirer : la refaire
   ensuite.
+- `erplibre_mail_core.tls` porte les contrôles de certificat que le client
+  utilise et qu'un module Odoo peut reprendre : le contexte vérifiant
+  (`verified_context`), le contexte d'épinglage et sa comparaison
+  (`check_pin`), empreintes et clés d'épingle, la sonde qui lit un
+  certificat refusé sans s'authentifier (`peer_certificate`), et
+  `TlsCertificateError`. `smtp.connect` vérifie par lui ; aucun appel de
+  production ne passe `cafile`, que seuls les tests utilisent pour leur
+  autorité.
 - Ses tests sont les `test/test_mail_core_*.py`. Sauf
   `test_mail_core_bridge.py`, qui vérifie le branchement du client sur le
   noyau, ils n'importent rien de `script/` et tournent aussi sous le
