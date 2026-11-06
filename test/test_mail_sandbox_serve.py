@@ -29,6 +29,9 @@ except ImportError as exc:  # pragma: no cover - dépend de l'installation
     SANDBOX_MISSING = str(exc)
 
 SCRIPT = Path(__file__).resolve().parent / "mail_sandbox_serve.py"
+FRED = "fred.transfert@example.net"
+TEMP = "temp.refus@example.org"
+DEF = "def.refus@example.org"
 RAW = (
     b"From: carole.regle@example.org\r\n"
     b"To: boite.regles@example.org\r\n"
@@ -163,7 +166,61 @@ class TestServe(unittest.TestCase):
         client.uid("FETCH", str(uid), "(BODY[])")
         parts = child.call("fetches")["result"]["parts"]
         self.assertEqual(
-            parts, [{"uid": uid, "peek": True}, {"uid": uid, "peek": False}]
+            [(p["uid"], p["peek"]) for p in parts],
+            [(uid, True), (uid, False)],
+        )
+
+    def test_rcpt_refuse_refuses_then_accepts(self):
+        """`rcpt_refuse` fait refuser une adresse au RCPT TO avec la
+        réponse donnée, 4xx ou 5xx, les autres étant servies ; sans
+        réponse, le refus est levé."""
+        child = self.child()
+        child.call("rcpt_refuse", address=TEMP, reply="450 4.2.1 Mailbox busy")
+        child.call("rcpt_refuse", address=DEF, reply="550 5.1.1 No such user")
+        port = child.ports["smtp_port"]
+        with smtplib.SMTP("127.0.0.1", port, timeout=10) as smtp:
+            refus = smtp.sendmail(
+                "boite.regles@example.org", [FRED, TEMP, DEF], RAW
+            )
+        self.assertEqual(sorted(refus), sorted([TEMP, DEF]))
+        self.assertEqual(refus[TEMP][0], 450)
+        self.assertEqual(refus[DEF][0], 550)
+        messages = child.call("sent")["result"]["messages"]
+        self.assertEqual([m["rcpt_tos"] for m in messages], [[FRED]])
+        child.call("rcpt_refuse", address=TEMP)
+        with smtplib.SMTP("127.0.0.1", port, timeout=10) as smtp:
+            self.assertEqual(
+                smtp.sendmail("boite.regles@example.org", [TEMP], RAW), {}
+            )
+        messages = child.call("sent")["result"]["messages"]
+        self.assertEqual(messages[-1]["rcpt_tos"], [TEMP])
+
+    def test_rcpt_attempts_list_every_address(self):
+        """`rcpt_attempts` rend chaque adresse proposée au RCPT TO, dans
+        l'ordre, refusées comprises."""
+        child = self.child()
+        child.call("rcpt_refuse", address=TEMP, reply="450 4.2.1 Mailbox busy")
+        child.call("rcpt_refuse", address=DEF, reply="550 5.1.1 No such user")
+        with smtplib.SMTP("127.0.0.1", child.ports["smtp_port"]) as smtp:
+            smtp.sendmail("boite.regles@example.org", [FRED, TEMP, DEF], RAW)
+        self.assertEqual(
+            child.call("rcpt_attempts")["result"]["addresses"],
+            [FRED, TEMP, DEF],
+        )
+
+    def test_fetches_name_the_section(self):
+        """Le relevé nomme la section servie : `header` pour des champs
+        d'en-tête, `full` pour le message entier, `PEEK` noté pour les
+        deux."""
+        child = self.child()
+        uid = self.deliver(child)
+        client = self.imap(child)
+        client.uid("FETCH", str(uid), "(BODY.PEEK[HEADER.FIELDS (Subject)])")
+        client.uid("FETCH", str(uid), "(BODY.PEEK[])")
+        parts = child.call("fetches")["result"]["parts"]
+        self.assertEqual(
+            [(p["uid"], p["peek"], p["section"]) for p in parts],
+            [(uid, True, "header"), (uid, True, "full")],
         )
 
     def test_a_bad_request_keeps_the_server(self):

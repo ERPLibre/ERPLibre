@@ -22,15 +22,18 @@ laisse pas de serveur orphelin.
 
 Twisted ne pose pas `\\Seen` sur un `FETCH BODY[]` sans `.PEEK` : un
 client qui oublie `PEEK` ne se voit donc pas aux drapeaux. Le script note,
-dans SON processus seulement, chaque section `BODY…` servie et si elle
-était demandée en `PEEK` (opération `fetches`) ; `mail_sandbox.py` reste
-tel quel pour les tests qui l'importent.
+dans SON processus seulement, chaque section `BODY…` servie, laquelle, et
+si elle était demandée en `PEEK` (opération `fetches`) ; `mail_sandbox.py`
+reste tel quel pour les tests qui l'importent.
 
-Trois refus que `mail_sandbox.py` ne sait pas produire s'ajoutent de même,
-dans ce processus seulement : NO à tout `UID FETCH` dont l'ensemble contient
-un UID donné (`fetch_refuse`), réponse imposée aux prochains `MAIL FROM`,
-suivie au besoin de la fermeture de la connexion (`mail_refuse`), et réponse
-imposée après les données de `DATA`, le message n'étant alors pas gardé
+Les refus au `RCPT TO` de `mail_sandbox.py` se posent par `rcpt_refuse`
+(réponse complète, 4xx ou 5xx, par adresse), et `rcpt_attempts` rend chaque
+adresse proposée au `RCPT TO`, acceptée ou refusée, dans l'ordre. Trois
+refus que `mail_sandbox.py` ne sait pas produire s'ajoutent, dans ce
+processus seulement : NO à tout `UID FETCH` dont l'ensemble contient un UID
+donné (`fetch_refuse`), réponse imposée aux prochains `MAIL FROM`, suivie au
+besoin de la fermeture de la connexion (`mail_refuse`), et réponse imposée
+après les données de `DATA`, le message n'étant alors pas gardé
 (`data_refuse`).
 """
 
@@ -130,16 +133,33 @@ class Served:
         self._installe_refus_smtp()
 
     def _installe_releve(self) -> None:
-        """Enveloppe `spew_body` du serveur pour noter `(uid, peek)` de
-        chaque section servie, puis la servir comme avant."""
+        """Enveloppe `spew_body` du serveur pour noter `(uid, peek,
+        section)` de chaque section servie, puis la servir comme avant.
+
+        `section` vaut `header` (`HEADER`, `HEADER.FIELDS`…), `text`,
+        `mime`, `full` (le message entier, `BODY[]`) ou `structure` (une
+        partie numérotée) : Twisted passe ici pour toute section, en-têtes
+        compris, et seul `full` dit qu'un message complet est parti."""
         servi = self.fetched
         origine = sandbox.SandboxIMAP4Server.spew_body
+
+        def section(part) -> str:
+            if getattr(part, "header", None):
+                return "header"
+            if getattr(part, "text", None):
+                return "text"
+            if getattr(part, "mime", None):
+                return "mime"
+            if getattr(part, "empty", False):
+                return "full"
+            return "structure"
 
         def spew_body(server, part, id, msg, _w=None, _f=None):
             servi.append(
                 {
                     "uid": int(msg.getUID()),
                     "peek": bool(getattr(part, "peek", False)),
+                    "section": section(part),
                 }
             )
             return origine(server, part, id, msg, _w, _f)
@@ -323,6 +343,9 @@ class Served:
         else:
             self.smtp.rcpt_refusals.pop(cle, None)
         return {}
+
+    def op_rcpt_attempts(self) -> dict:
+        return {"addresses": list(self.smtp.rcpt_attempts)}
 
     def op_fetch_refuse(self, uid, refuse=True) -> dict:
         def poser():
