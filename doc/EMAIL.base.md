@@ -2688,6 +2688,16 @@ below, opens it to portal users.
   "Partly sent" with the refused codes; recipients refused temporarily
   (4xx) get a retry in a new outbox entry, within the same 24-hour
   window, and those refused for good (5xx) are dropped.
+- For a portal user, every forward destination must be confirmed by its
+  recipient before anything is forwarded to it: the request leaves
+  through Odoo's mail queue, its link is valid 7 days by default
+  (`erplibre_mail_rule.forward_confirm_days`), at most 3 requests per
+  address, one per 24 hours. The worker removes any unconfirmed
+  destination when it decides and again at departure, and the journal
+  says so; messages received before the confirmation are not forwarded
+  afterwards. The confirmation protects the recipient, not the account:
+  whoever uses a stolen session can add and confirm their own address,
+  and the owner then receives a notice. Employees are not concerned.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -2700,8 +2710,14 @@ through the worker), their rules (AND/OR filter editor, trial without
 sending) and their journal (approve, discard, release by hand). Portal
 users may forward, inline or as an attachment only, to at most 3
 distinct destinations per account and 10 forwards per hour per account,
-approved or not (system parameters); mailing lists and robots are never
-forwarded for them, and their first forwards wait for their own
+approved or not (system parameters). Each new destination receives a
+request to confirm, from `/mail-rule/confirm/…` or to refuse, from
+`/mail-rule/refuse/…` (the Refuse link of every request stays valid); a
+refusal blocks any new request from the same user to that address and to
+its `+tag` variants, resends included, and the rule page shows the state
+of each destination with a button to send the request again. A request
+that the service's mail server did not accept shows as not delivered and
+does not count toward the 3 requests of the address. Mailing lists and robots are never forwarded for them, and their first forwards wait for their own
 approval, which does not protect against a stolen session. Every
 route checks the owner; accounts and rules per user are limited (5 and 50
 by default, system parameters). Details: the module's `README.md`.
@@ -3960,6 +3976,17 @@ ci-dessous, l'ouvre aux utilisateurs du portail.
   destinataires refusés temporairement (4xx) ont un nouvel essai dans
   une nouvelle entrée de la file, dans la même fenêtre de 24 heures, et
   ceux refusés pour de bon (5xx) sont abandonnés.
+- Pour un utilisateur du portail, chaque destination de transfert doit
+  être confirmée par son destinataire avant que rien ne lui soit
+  transféré : la demande part par la file de courriels d'Odoo, son lien
+  vaut 7 jours par défaut (`erplibre_mail_rule.forward_confirm_days`), au
+  plus 3 demandes par adresse, une par 24 heures. Le worker retire toute
+  destination non confirmée à la décision puis au départ, et le journal
+  le dit ; les messages reçus avant la confirmation ne sont pas
+  transférés ensuite. La confirmation protège le destinataire, pas le
+  compte : qui utilise une session volée peut ajouter et confirmer sa
+  propre adresse, et le propriétaire reçoit alors un avis. Les employés
+  ne sont pas concernés.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ### Le portail courriel erplibre_mail_rule_portal
@@ -3973,8 +4000,16 @@ worker), leurs règles (éditeur de filtre ET/OU, essai sans envoi) et leur
 journal (approuver, écarter, libérer à la main). Un utilisateur du portail
 peut transférer, dans le corps du message ou en pièce jointe seulement,
 vers au plus 3 destinations distinctes par compte et 10 transferts par
-heure et par compte, approuvés ou non (paramètres système) ; les listes
-de diffusion et les robots ne sont jamais transférés pour lui, et ses
+heure et par compte, approuvés ou non (paramètres système). Chaque
+nouvelle destination reçoit une demande à confirmer, par
+`/mail-rule/confirm/…`, ou à refuser, par `/mail-rule/refuse/…` (le lien
+Refuser de chaque demande reste valable) ; un refus bloque toute nouvelle
+demande du même utilisateur vers cette adresse et ses variantes
+`+étiquette`, renvois compris, et la page de la règle montre l'état de
+chaque destination avec un bouton pour renvoyer la demande. Une demande
+que le serveur d'envoi du service n'a pas acceptée s'affiche non remise
+et ne compte pas dans les 3 demandes de l'adresse. Les listes de diffusion et les robots ne sont jamais transférés
+pour lui, et ses
 premiers transferts attendent sa propre approbation, qui ne protège pas
 d'une session volée. Chaque route vérifie le
 propriétaire ; comptes et règles par utilisateur sont limités (5 et 50 par

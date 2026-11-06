@@ -1888,6 +1888,16 @@ below, opens it to portal users.
   "Partly sent" with the refused codes; recipients refused temporarily
   (4xx) get a retry in a new outbox entry, within the same 24-hour
   window, and those refused for good (5xx) are dropped.
+- For a portal user, every forward destination must be confirmed by its
+  recipient before anything is forwarded to it: the request leaves
+  through Odoo's mail queue, its link is valid 7 days by default
+  (`erplibre_mail_rule.forward_confirm_days`), at most 3 requests per
+  address, one per 24 hours. The worker removes any unconfirmed
+  destination when it decides and again at departure, and the journal
+  says so; messages received before the confirmation are not forwarded
+  afterwards. The confirmation protects the recipient, not the account:
+  whoever uses a stolen session can add and confirm their own address,
+  and the owner then receives a notice. Employees are not concerned.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -1900,8 +1910,14 @@ through the worker), their rules (AND/OR filter editor, trial without
 sending) and their journal (approve, discard, release by hand). Portal
 users may forward, inline or as an attachment only, to at most 3
 distinct destinations per account and 10 forwards per hour per account,
-approved or not (system parameters); mailing lists and robots are never
-forwarded for them, and their first forwards wait for their own
+approved or not (system parameters). Each new destination receives a
+request to confirm, from `/mail-rule/confirm/…` or to refuse, from
+`/mail-rule/refuse/…` (the Refuse link of every request stays valid); a
+refusal blocks any new request from the same user to that address and to
+its `+tag` variants, resends included, and the rule page shows the state
+of each destination with a button to send the request again. A request
+that the service's mail server did not accept shows as not delivered and
+does not count toward the 3 requests of the address. Mailing lists and robots are never forwarded for them, and their first forwards wait for their own
 approval, which does not protect against a stolen session. Every
 route checks the owner; accounts and rules per user are limited (5 and 50
 by default, system parameters). Details: the module's `README.md`.

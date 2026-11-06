@@ -2024,6 +2024,17 @@ ci-dessous, l'ouvre aux utilisateurs du portail.
   destinataires refusés temporairement (4xx) ont un nouvel essai dans
   une nouvelle entrée de la file, dans la même fenêtre de 24 heures, et
   ceux refusés pour de bon (5xx) sont abandonnés.
+- Pour un utilisateur du portail, chaque destination de transfert doit
+  être confirmée par son destinataire avant que rien ne lui soit
+  transféré : la demande part par la file de courriels d'Odoo, son lien
+  vaut 7 jours par défaut (`erplibre_mail_rule.forward_confirm_days`), au
+  plus 3 demandes par adresse, une par 24 heures. Le worker retire toute
+  destination non confirmée à la décision puis au départ, et le journal
+  le dit ; les messages reçus avant la confirmation ne sont pas
+  transférés ensuite. La confirmation protège le destinataire, pas le
+  compte : qui utilise une session volée peut ajouter et confirmer sa
+  propre adresse, et le propriétaire reçoit alors un avis. Les employés
+  ne sont pas concernés.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ### Le portail courriel erplibre_mail_rule_portal
@@ -2037,8 +2048,16 @@ worker), leurs règles (éditeur de filtre ET/OU, essai sans envoi) et leur
 journal (approuver, écarter, libérer à la main). Un utilisateur du portail
 peut transférer, dans le corps du message ou en pièce jointe seulement,
 vers au plus 3 destinations distinctes par compte et 10 transferts par
-heure et par compte, approuvés ou non (paramètres système) ; les listes
-de diffusion et les robots ne sont jamais transférés pour lui, et ses
+heure et par compte, approuvés ou non (paramètres système). Chaque
+nouvelle destination reçoit une demande à confirmer, par
+`/mail-rule/confirm/…`, ou à refuser, par `/mail-rule/refuse/…` (le lien
+Refuser de chaque demande reste valable) ; un refus bloque toute nouvelle
+demande du même utilisateur vers cette adresse et ses variantes
+`+étiquette`, renvois compris, et la page de la règle montre l'état de
+chaque destination avec un bouton pour renvoyer la demande. Une demande
+que le serveur d'envoi du service n'a pas acceptée s'affiche non remise
+et ne compte pas dans les 3 demandes de l'adresse. Les listes de diffusion et les robots ne sont jamais transférés
+pour lui, et ses
 premiers transferts attendent sa propre approbation, qui ne protège pas
 d'une session volée. Chaque route vérifie le
 propriétaire ; comptes et règles par utilisateur sont limités (5 et 50 par
