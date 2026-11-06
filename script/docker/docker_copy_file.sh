@@ -25,29 +25,8 @@ SRC_BASENAME="$(basename "$SRC_FILE")"
 # Determine container name
 # -----------------------------
 
-CURRENT=$(pwd)
-BASENAME=$(basename "${CURRENT}")
-
-# Remove dots and convert to lowercase (same logic as original)
-BASENAME="${BASENAME//./}"
-BASENAME="${BASENAME,,}"
-
-CANDIDATE1="${BASENAME}-ERPLibre-1"
-CANDIDATE2="${BASENAME}_ERPLibre_1"
-
-CONTAINER=""
-
-# Find which container exists
-if docker ps --format '{{.Names}}' | grep -qx "${CANDIDATE1}"; then
-  CONTAINER="${CANDIDATE1}"
-elif docker ps --format '{{.Names}}' | grep -qx "${CANDIDATE2}"; then
-  CONTAINER="${CANDIDATE2}"
-else
-  echo "Error: No matching container found:"
-  echo "  - ${CANDIDATE1}"
-  echo "  - ${CANDIDATE2}"
-  exit 1
-fi
+source "$(dirname "$0")/lib_conteneur.sh"
+CONTAINER=$(conteneur_erplibre)
 
 echo "Detected container: ${CONTAINER}"
 
