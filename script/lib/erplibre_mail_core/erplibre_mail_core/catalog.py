@@ -33,6 +33,46 @@ CATALOG: dict[str, dict[str, str]] = {
         "fr": "refusée :",
         "en": "refused:",
     },
+    "mail_tls_refused": {
+        "fr": "certificat TLS refusé pour",
+        "en": "TLS certificate refused for",
+    },
+    "mail_tls_changed": {
+        "fr": "certificat TLS changé pour",
+        "en": "TLS certificate changed for",
+    },
+    "mail_tls_presented": {
+        "fr": "empreinte SHA-256 présentée :",
+        "en": "presented SHA-256 fingerprint:",
+    },
+    "mail_tls_pinned": {
+        "fr": "empreinte SHA-256 épinglée :",
+        "en": "pinned SHA-256 fingerprint:",
+    },
+    "mail_tls_fingerprint_unreadable": {
+        "fr": "illisible",
+        "en": "unreadable",
+    },
+    "mail_tls_reason_untrusted": {
+        "fr": "certificat auto-signé ou émis par une autorité inconnue",
+        "en": "self-signed certificate or issued by an unknown authority",
+    },
+    "mail_tls_reason_hostname": {
+        "fr": "le certificat ne porte pas ce nom de serveur",
+        "en": "the certificate does not carry this server name",
+    },
+    "mail_tls_reason_validity": {
+        "fr": "certificat expiré ou pas encore valide",
+        "en": "certificate expired or not yet valid",
+    },
+    "mail_tls_reason_changed": {
+        "fr": "certificat différent de celui qui est épinglé",
+        "en": "certificate different from the pinned one",
+    },
+    "mail_tls_reason_nonconforming": {
+        "fr": "certificat non conforme aux règles X.509 strictes de ce poste",
+        "en": "certificate not conforming to this machine's strict X.509 rules",
+    },
     "mail_err_reply_envelope_mismatch": {
         "fr": "réponse non construite : l'adresse cible ne se relit pas telle quelle dans l'en-tête To.",
         "en": "reply not built: the target address does not read back unchanged in the To header.",

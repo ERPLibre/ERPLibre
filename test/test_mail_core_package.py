@@ -38,6 +38,7 @@ EXPECTED_MODULES = {
     "erplibre_mail_core.mailtext",
     "erplibre_mail_core.stats",
     "erplibre_mail_core.smtp",
+    "erplibre_mail_core.tls",
     "erplibre_mail_core.imap",
     "erplibre_mail_core.rules",
     "erplibre_mail_core.rules.model",

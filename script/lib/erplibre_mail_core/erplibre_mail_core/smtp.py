@@ -21,6 +21,7 @@ import html
 import logging
 import mimetypes
 import re
+import ssl
 import unicodedata
 from dataclasses import dataclass
 from email.message import EmailMessage, MIMEPart
@@ -29,6 +30,7 @@ from email.utils import formatdate, getaddresses, make_msgid
 from pathlib import Path
 from typing import Protocol
 
+from erplibre_mail_core import tls
 from erplibre_mail_core.charset import decode_bytes
 from erplibre_mail_core.i18n import t
 from erplibre_mail_core.imap import decode_header_value, xoauth2_chain
@@ -485,6 +487,14 @@ def _abandon(client, exc: BaseException) -> None:
 def connect(account, secret: str) -> SmtplibTransport:
     """`secret` est un mot de passe ou un jeton, selon `account.auth`.
 
+    En `ssl` comme en `starttls`, le certificat du serveur est vérifié
+    (chaîne et nom, `tls.verified_context`), sauf si le compte épingle une
+    empreinte pour ce point d'accès (`tls_pins`, lu par `getattr` : un
+    compte qui ne porte pas le champ est vérifié) ; l'empreinte présentée
+    est alors comparée à l'épingle avant toute authentification. Un refus
+    sort en `tls.TlsCertificateError`, empreinte comprise, jamais en
+    `SmtpError`.
+
     Tout échec après l'ouverture ferme la connexion (`_abandon`) avant que
     l'erreur ne sorte, sans la remplacer ; une ouverture qui échoue ferme
     elle-même ce qu'elle a ouvert (`SMTP.__init__`).
@@ -492,14 +502,33 @@ def connect(account, secret: str) -> SmtplibTransport:
     import smtplib
 
     conf = account.smtp
+    tls_actif = conf.security in tls.SECURITIES
+    pin = (
+        tls.account_pin(
+            getattr(account, "tls_pins", None), conf.host, conf.port
+        )
+        if tls_actif
+        else None
+    )
+    contexte = tls.context_for(pin) if tls_actif else None
     try:
         if conf.security == "ssl":
-            client = smtplib.SMTP_SSL(conf.host, conf.port, timeout=30)
+            client = smtplib.SMTP_SSL(
+                conf.host, conf.port, timeout=30, context=contexte
+            )
         else:
             client = smtplib.SMTP(conf.host, conf.port, timeout=30)
         try:
             if conf.security == "starttls":
-                client.starttls()
+                client.starttls(context=contexte)
+            if pin:
+                tls.check_pin(
+                    client.sock,
+                    pin,
+                    protocol="smtp",
+                    host=conf.host,
+                    port=conf.port,
+                )
             if getattr(account, "auth", "login") == "oauth":
                 import base64
 
@@ -521,8 +550,19 @@ def connect(account, secret: str) -> SmtplibTransport:
         except BaseException as exc:
             _abandon(client, exc)
             raise
-    except SmtpAuthError:
+    except (SmtpAuthError, tls.TlsCertificateError):
         raise
+    except ssl.SSLCertVerificationError as exc:
+        # La vérification a refusé le certificat : la sonde lit celui que
+        # présente le serveur, pour que l'erreur porte son empreinte.
+        raise tls.certificate_error(
+            exc,
+            protocol="smtp",
+            host=conf.host,
+            port=conf.port,
+            security=conf.security,
+            timeout=30,
+        ) from exc
     except Exception as exc:
         # Toute panne réseau ou d'authentification devient une seule erreur
         # de haut niveau, pour un message utile à l'utilisateur.

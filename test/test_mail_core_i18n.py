@@ -58,8 +58,8 @@ def constantes_de_cles(chemin: Path) -> set[str]:
 
 
 class TestCatalog(unittest.TestCase):
-    def test_catalog_has_the_155_keys_in_both_languages(self):
-        self.assertEqual(len(CATALOG), 155)
+    def test_catalog_has_the_165_keys_in_both_languages(self):
+        self.assertEqual(len(CATALOG), 165)
         for cle, entree in CATALOG.items():
             with self.subTest(cle=cle):
                 self.assertTrue(entree.get("fr"))
