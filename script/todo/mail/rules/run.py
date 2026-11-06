@@ -20,7 +20,9 @@ jamais créé.
 La sortie standard est le journal du service : une ligne par compte, sans
 adresse, sujet, secret ni texte d'erreur de serveur ou de règle — ces
 textes vont dans `~/.erplibre/mail.log`. Le code de sortie dit la famille
-de la panne la plus grave (`EXIT_PRIORITY`).
+de la panne la plus grave (`EXIT_PRIORITY`) ; 9 dit un certificat TLS
+refusé, que le service n'épingle jamais : seul un geste humain, dans le
+client ou le menu, le peut.
 """
 
 from __future__ import annotations
@@ -60,12 +62,14 @@ _logger = logging.getLogger("script.todo.mail.rules.run")
 EXIT_OK, EXIT_FAILURE, EXIT_USAGE = 0, 1, 2
 EXIT_VAULT, EXIT_NETWORK, EXIT_RULE = 3, 4, 5
 EXIT_BUSY, EXIT_AUTH, EXIT_CONFIG = 6, 7, 8
+EXIT_TLS = 9
 # Plusieurs comptes : le premier code présent dans cet ordre est rendu. Ce
 # qui demande une intervention humaine passe devant ce qui se répare seul.
-EXIT_PRIORITY = (1, 8, 3, 7, 5, 4, 6, 0)
+EXIT_PRIORITY = (1, 8, 3, 9, 7, 5, 4, 6, 0)
 EXIT_BY_KIND = {
     "vault": EXIT_VAULT,
     "auth": EXIT_AUTH,
+    "tls": EXIT_TLS,
     "network": EXIT_NETWORK,
     "busy": EXIT_BUSY,
     "cache": EXIT_CONFIG,
@@ -531,6 +535,10 @@ def _process(
         durables = []
         code = EXIT_OK
         fail, kind_fail = "", ""
+        # Le premier certificat refusé de la passe : vidange, lien IMAP
+        # supplémentaire, envoi automatique du moteur. Lu par `getattr` :
+        # un rapport d'un module plus ancien n'en porte pas.
+        refus_tls = None
 
         try:
             r = flush_outbox(session, now=deps.now)
@@ -550,6 +558,7 @@ def _process(
             )
             elements.append(t("mail_service_outbox_error"))
         else:
+            refus_tls = refus_tls or getattr(r, "tls_error", None)
             if partis:
                 elements.append(f"{t('mail_outbox_flushed')} {partis}")
             elements.extend(outbox_partial_items(r))
@@ -560,6 +569,7 @@ def _process(
             report = session.sync(only=service_folder_for(account))
         except Exception as exc:
             return panne(errors.classify(exc), exc, str(exc))
+        refus_tls = refus_tls or getattr(report, "tls_error", None)
         if report.errors:
             element = f"{t('mail_service_folder_errors')} {len(report.errors)}"
             elements.append(element)
@@ -575,6 +585,15 @@ def _process(
             now=deps.now,
             lock_wait=deps.lock_wait,
         )
+        refus_tls = refus_tls or getattr(bilan, "tls_error", None)
+        if (
+            refus_tls is None
+            and not session.online
+            and getattr(session, "error_kind", "") == "tls"
+        ):
+            # Un échange du moteur a rouvert le lien IMAP et rencontré un
+            # refus de certificat : la session est passée hors ligne.
+            refus_tls = getattr(session, "exc", None)
         if bilan.status == "locked":
             element = t("mail_service_busy")
             elements.append(element)
@@ -644,10 +663,24 @@ def _process(
             durables.append(element)
         held_change = retenus != precedent.get("held", 0)
         entree["held"] = retenus
+        tete = []
+        if refus_tls is not None:
+            # En TÊTE de la ligne : `redact` coupe la fin d'une ligne trop
+            # longue, et les empreintes doivent rester entières. Jamais
+            # durable : une passe `--quiet` l'écrit à chaque fois, comme un
+            # refus d'authentification.
+            code = worst_exit([code, EXIT_TLS])
+            fail, kind_fail = f"tls:{EXIT_TLS}", "tls"
+            tete.append(
+                f"{t('mail_service_kind_tls')}"
+                f" {errors.journal_detail(refus_tls)}"
+            )
         entree["fail"] = fail
 
         ligne = f"{nom} : " + " · ".join(
-            [f"{report.new_messages} {t('mail_new_messages')}"] + elements
+            tete
+            + [f"{report.new_messages} {t('mail_new_messages')}"]
+            + elements
         )
         if not quiet:
             return ligne, code

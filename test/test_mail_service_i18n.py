@@ -142,7 +142,7 @@ class TestServiceKeys(unittest.TestCase):
 
     def test_every_exit_code_has_a_label(self):
         self.assertEqual(
-            service.EXIT_LABELS, (0, 1, 2, 3, 4, 5, 6, 7, 8, 200, 203, 243)
+            service.EXIT_LABELS, (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 200, 203, 243)
         )
         self.assert_translated(
             f"mail_service_exit_{code}" for code in service.EXIT_LABELS

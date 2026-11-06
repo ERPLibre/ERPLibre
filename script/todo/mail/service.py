@@ -50,7 +50,7 @@ SYSTEMCTL_TIMEOUT_S = 15
 STATUS_TIMEOUT_S = 3
 # Codes de sortie qui ont un libellé : ceux de la commande, puis ceux que
 # systemd rend avant elle (dossier de travail, exécutable, credential).
-EXIT_LABELS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 200, 203, 243)
+EXIT_LABELS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 200, 203, 243)
 VENV_CONF = Path("conf") / "python-erplibre-venv"
 VENV_DEFAULT = ".venv.erplibre"
 # Longueur gardée d'une sortie de systemctl dans un message.

@@ -314,12 +314,13 @@ def _ask_text_yes(question: str) -> bool:
     )
 
 
-def _ask_typed_word(question: str) -> bool:
-    """Confirmation d'un risque de double envoi : imprime `question`, puis
-    demande de taper le mot affiché ; vrai seulement si la saisie, blancs
-    retirés, l'égale sans tenir compte de la casse. Ni `o` ni une
-    réponse vide ne suffisent."""
-    mot = t("mail_confirm_risk_word")
+def _ask_typed_word(question: str, mot: str | None = None) -> bool:
+    """Confirmation d'un risque : imprime `question`, puis demande de
+    taper le mot affiché ; vrai seulement si la saisie, blancs retirés,
+    l'égale sans tenir compte de la casse. Ni `o` ni une réponse vide ne
+    suffisent. Sans `mot`, celui d'un risque de double envoi."""
+    if mot is None:
+        mot = t("mail_confirm_risk_word")
     print(question)
     saisie = input(f"{t('mail_confirm_risk_ask')} {mot} : ").strip().lower()
     return bool(saisie) and saisie == mot.strip().lower()
@@ -1179,6 +1180,8 @@ def _trial(todo, account, rules_base, base=None) -> None:
             statut = engine.send_trial(session, rule, sim)
         except Exception as exc:
             print(exc)
+            if _is_tls_refusal(exc):
+                print(f"  {t('mail_tls_menu_hint')}")
             return
         print(f"{t('mail_rules_trial_sent')} {_printable(statut)}")
     finally:
@@ -1300,7 +1303,10 @@ def _sync_now(todo) -> None:
         jamais : un compte qui échoue ne doit pas emporter ceux qui avancent
         avec lui."""
         if not session.online:
-            return f"{session.account.name} : {session.error}", None
+            texte = f"{session.account.name} : {session.error}"
+            if getattr(session, "error_kind", "") == "tls":
+                texte += f"\n  {t('mail_tls_menu_hint')}"
+            return texte, None
         lignes = []
         # La file part AVANT la relecture, comme dans le TUI : une commande
         # qui promet de synchroniser doit envoyer ce qui attend, sinon un
@@ -1315,18 +1321,28 @@ def _sync_now(todo) -> None:
                 lignes.append(
                     f"{session.account.name} : {outbox_status_text(r)}"
                 )
+            refus = getattr(r, "tls_error", None)
+            if refus is not None:
+                lignes.append(f"{session.account.name} : {refus}")
+                lignes.append(f"  {t('mail_tls_menu_hint')}")
         except Exception as exc:
             lignes.append(f"{session.account.name} : {exc}")
         try:
             report = session.sync()
         except Exception as exc:
             lignes.append(f"{session.account.name} : {exc}")
+            if _is_tls_refusal(exc):
+                lignes.append(f"  {t('mail_tls_menu_hint')}")
             return "\n".join(lignes), None
         lignes.append(
             f"{session.account.name} : {report.new_messages}"
             f" {t('mail_new_messages')}"
         )
         lignes += [f"  {e}" for e in report.errors]
+        refus = getattr(report, "tls_error", None)
+        if refus is not None:
+            lignes.append(f"{session.account.name} : {refus}")
+            lignes.append(f"  {t('mail_tls_menu_hint')}")
         if report.purged:
             lignes.append(
                 f"  {t('mail_folders_resynced')} {', '.join(report.purged)}"
@@ -1404,6 +1420,7 @@ def prompt_mail_accounts(todo) -> None:
 [5] {t("mail_account_test")}
 [6] {t("mail_account_token")}
 [7] {t("mail_account_signature")}
+[8] {t("mail_account_tls_pins")}
 {retour(t('Back'))}"""
         status = click.prompt(help_info)
         print()
@@ -1423,6 +1440,8 @@ def prompt_mail_accounts(todo) -> None:
             _set_oauth_token(todo)
         elif status == "7":
             _set_signature()
+        elif status == "8":
+            _tls_pins_menu()
         else:
             print(t("Command not found !"))
 
@@ -1810,8 +1829,13 @@ def retry_password(
         except Exception as exc:
             # `connect_fn` peut lever `ImapError` ou n'importe quelle erreur
             # réseau brute (`OSError`, ...) : les deux méritent la même
-            # invite à ressaisir, pas un plantage du menu.
+            # invite à ressaisir, pas un plantage du menu. Un certificat
+            # refusé arrête tout : le mot de passe n'est pas parti, le
+            # serveur n'en a rien refusé.
             print(f"{t('mail_connection_failed')} {exc}")
+            if _is_tls_refusal(exc):
+                print(f"  {t('mail_tls_menu_hint')}")
+                return False
             continue
         transport.logout()
         store.set(account.secret_ref, password)
@@ -1820,8 +1844,73 @@ def retry_password(
     return False
 
 
-def _test_account(todo) -> None:
-    from script.todo.mail.imap_transport import connect
+def _is_tls_refusal(exc) -> bool:
+    """Vrai si `exc` est un certificat refusé (`TlsCertificateError`)."""
+    from script.todo.mail.tui import is_tls_refusal
+
+    return is_tls_refusal(exc)
+
+
+def _offer_pin(account, exc, *, path=None) -> bool:
+    """Propose d'épingler l'empreinte d'un certificat refusé, par un mot à
+    taper ; vrai si l'épingle est écrite."""
+    from script.todo.mail import tls_trust
+
+    if not exc.pinnable:
+        print(t("mail_tls_pin_unavailable").format(endpoint=exc.endpoint))
+        return False
+    print()
+    if not _ask_typed_word(
+        tls_trust.question(account.name, exc),
+        mot=t("mail_tls_trust_word"),
+    ):
+        print(t("mail_tls_pin_declined").format(endpoint=exc.endpoint))
+        return False
+    try:
+        tls_trust.pin(account, exc, path)
+    except (AccountError, OSError, ValueError) as err:
+        print(f"{t('mail_tls_pin_failed')} {err}")
+        return False
+    print(
+        t("mail_tls_pinned_done").format(
+            account=account.name, endpoint=exc.endpoint
+        )
+    )
+    return True
+
+
+def _with_pin_offer(account, essai, *, path=None):
+    """`essai()`, et sur un certificat refusé : le message, l'offre
+    d'épinglage et, épinglé, un second essai, sans nouvelle offre. Toute
+    autre exception traverse ; un refus TLS final rend None."""
+    try:
+        return essai()
+    except Exception as exc:
+        if not _is_tls_refusal(exc):
+            raise
+        print(f"{t('mail_connection_failed')} {exc}")
+        if not _offer_pin(account, exc, path=path):
+            return None
+    try:
+        return essai()
+    except Exception as exc:
+        if not _is_tls_refusal(exc):
+            raise
+        print(f"{t('mail_connection_failed')} {exc}")
+        return None
+
+
+def _test_account(
+    todo, *, imap_connect=None, smtp_connect=None, accounts_path=None
+) -> None:
+    """Teste la connexion IMAP d'un compte (connexion, LIST, sortie), puis,
+    si elle aboutit, sa connexion SMTP. Un certificat refusé affiche son
+    empreinte et propose de l'épingler ; il ne redemande jamais le mot de
+    passe."""
+    if imap_connect is None:
+        from script.todo.mail.imap_transport import connect as imap_connect
+    if smtp_connect is None:
+        from script.todo.mail.smtp_send import connect as smtp_connect
 
     account, _ = _pick_account()
     if account is None:
@@ -1838,18 +1927,84 @@ def _test_account(todo) -> None:
     if not password:
         print(t("mail_no_password_stored"))
         return
+
+    def essai_imap():
+        transport = imap_connect(account, password)
+        try:
+            return transport.list_folders()
+        finally:
+            transport.logout()
+
     try:
-        transport = connect(account, password)
-        folders = transport.list_folders()
-        transport.logout()
+        folders = _with_pin_offer(account, essai_imap, path=accounts_path)
     except Exception as exc:
         # Connexion refusée, mot de passe expiré, ou LIST qui échoue : dans
         # tous les cas, offrir de resaisir le mot de passe plutôt que de
         # faire tomber le menu.
         print(f"{t('mail_connection_failed')} {exc}")
-        retry_password(todo, account, cause=exc)
+        if not retry_password(
+            todo, account, cause=exc, connect_fn=imap_connect
+        ):
+            return
+        try:
+            password = secret_store_for(todo).get(account.secret_ref)
+        except SecretError:
+            return
+        folders = ()
+    else:
+        if folders is None:
+            return
+        print(f"{t('mail_connection_ok')} {len(folders)}")
+
+    def essai_smtp():
+        smtp_connect(account, password).quit()
+        return True
+
+    try:
+        fait = _with_pin_offer(account, essai_smtp, path=accounts_path)
+    except Exception as exc:
+        print(f"{t('mail_connection_smtp_failed')} {exc}")
         return
-    print(f"{t('mail_connection_ok')} {len(folders)}")
+    if fait:
+        print(t("mail_connection_smtp_ok"))
+
+
+def _tls_pins_menu(path=None) -> None:
+    """Liste les empreintes épinglées de tous les comptes et en retire
+    une après confirmation : retirer rend la vérification normale au point
+    d'accès, ce qui ne fait que resserrer la politique."""
+    from script.todo.mail import tls_trust
+    from script.todo.mail.smtp_send import tls
+
+    try:
+        lignes = mail_accounts.pinned_certificates(mail_accounts.load(path))
+    except AccountError as exc:
+        print(exc)
+        return
+    if not lignes:
+        print(t("mail_tls_pins_none"))
+        return
+    for rang, (nom, cle, empreinte) in enumerate(lignes, start=1):
+        print(
+            f"  [{rang}] {_printable(nom)} — {cle} — SHA-256"
+            f" {tls.format_fingerprint(empreinte)}"
+        )
+    choix = input(t("mail_tls_ask_unpin")).strip()
+    if not choix.isdigit() or not 1 <= int(choix) <= len(lignes):
+        return
+    nom, cle, _ = lignes[int(choix) - 1]
+    if not _ask_text_yes(
+        t("mail_tls_unpin_question").format(
+            account=_printable(nom), endpoint=cle
+        )
+    ):
+        return
+    try:
+        tls_trust.unpin(nom, cle, path)
+    except (AccountError, OSError) as exc:
+        print(f"{t('mail_tls_pin_failed')} {exc}")
+        return
+    print(t("mail_tls_unpinned").format(endpoint=cle))
 
 
 def prompt_mail_cache(todo, *, base=None) -> None:
