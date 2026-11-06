@@ -21,6 +21,10 @@ services:
       PIP_EXTRA_REQUIREMENTS_ODOO: ""
       # ERPLibre tools' venv (.venv.erplibre), the one of script/
       PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Shell command run at each start, once PostgreSQL answers and before
+      # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
+      # packages go in the PIP_EXTRA_REQUIREMENTS_* lists above.
+      INIT_CMD: ""
     # The venvs belong to root: the container starts as root to install the
     # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
     user: root
@@ -49,6 +53,13 @@ services:
       - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
       - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
+      # The checkout's entrypoint.sh instead of the image's copy, made at its
+      # build: INIT_CMD without rebuilding an image that predates it. The
+      # three lines go together: this entrypoint.sh calls odoo_rc_db.py and
+      # the --config of wait-for-psql.py, absent from older images.
+      #- ./docker/entrypoint.sh:/entrypoint.sh:ro
+      #- ./docker/odoo_rc_db.py:/ERPLibre/docker/odoo_rc_db.py:ro
+      #- ./docker/wait-for-psql.py:/ERPLibre/docker/wait-for-psql.py:ro
     restart: always
 
   db:

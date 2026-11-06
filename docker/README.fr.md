@@ -123,6 +123,21 @@ Odoo ne peut plus le modifier. Passez le compte :
 docker compose exec -u odoo ERPLibre bash
 ```
 
+### Une commande à chaque démarrage
+
+`INIT_CMD` porte une commande shell que `docker/entrypoint.sh` lance dans un
+bash de connexion à chaque démarrage, une fois que PostgreSQL répond et avant
+Odoo, dans `/ERPLibre`, sous le compte qui fait tourner Odoo. Une commande qui
+échoue arrête le conteneur avant Odoo, avec son erreur dans `docker compose
+logs` ; le journal nomme l'étape, jamais la commande. Un paquet Python va
+plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*` : lancé sous `odoo`, un pip
+ne peut pas écrire dans un venv que la construction a laissé à root.
+
+```yaml
+    environment:
+      INIT_CMD: "./script/my_startup.sh"
+```
+
 ### Tirer le code depuis Odoo
 
 `erplibre_info_git_fetch` fait le fetch et le tirage des clones git depuis
