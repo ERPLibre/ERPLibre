@@ -123,6 +123,34 @@ Odoo ne peut plus le modifier. Passez le compte :
 docker compose exec -u odoo ERPLibre bash
 ```
 
+### Paquets système supplémentaires
+
+Un paquet pip peut charger une bibliothèque système que l'image n'a pas —
+`python-magic` charge `libmagic`. `APT_EXTRA_PACKAGES` liste des paquets
+Debian, un nom par mot, que `docker/entrypoint_pip_extra.sh` installe avec
+apt, en root, à chaque démarrage, avant les listes pip et avant de passer la
+main à `odoo`. Root ne reçoit que des noms, vérifiés selon les règles de
+nommage de Debian, jamais une commande ni un fichier du code, qu'Odoo peut
+réécrire. Un paquet déjà installé, ou fourni par un paquet installé
+(`libmagic1` l'est par `libmagic1t64` sous trixie), est sauté sans réseau : un
+redémarrage reste hors ligne, et un conteneur recréé l'installe de nouveau.
+
+apt demande quatre capacités de plus que celles du compose par défaut ; sans
+elles, il installerait mal sans erreur — un binaire setgid perd son bit sans
+`FSETID`. Le script les vérifie avant apt et arrête le conteneur s'il en
+manque une. Elles ne servent qu'à root : `setpriv` les retire en passant la
+main à `odoo`, et `no-new-privileges` empêche Odoo de les regagner.
+
+```yaml
+    environment:
+      APT_EXTRA_PACKAGES: "libmagic1"
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
+```
+
+Un gros paquet, un navigateur pour Selenium par exemple, gagne à être
+construit dans une image dérivée de celle d'ERPLibre : installé au démarrage,
+il se télécharge de nouveau à chaque recréation.
+
 ### Une commande à chaque démarrage
 
 `INIT_CMD` porte une commande shell que `docker/entrypoint.sh` lance dans un
@@ -130,8 +158,9 @@ bash de connexion à chaque démarrage, une fois que PostgreSQL répond et avant
 Odoo, dans `/ERPLibre`, sous le compte qui fait tourner Odoo. Une commande qui
 échoue arrête le conteneur avant Odoo, avec son erreur dans `docker compose
 logs` ; le journal nomme l'étape, jamais la commande. Un paquet Python va
-plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*` : lancé sous `odoo`, un pip
-ne peut pas écrire dans un venv que la construction a laissé à root.
+plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*`, et un paquet Debian dans
+`APT_EXTRA_PACKAGES` : lancés sous `odoo`, ni pip ni apt ne pourraient écrire
+là où ils installent.
 
 ```yaml
     environment:

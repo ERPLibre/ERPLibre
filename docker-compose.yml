@@ -21,9 +21,13 @@ services:
       PIP_EXTRA_REQUIREMENTS_ODOO: ""
       # ERPLibre tools' venv (.venv.erplibre), the one of script/
       PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Debian packages, one name per word, installed as root at each start
+      # before the pip lists, e.g. "libmagic1" for python-magic. Needs the
+      # longer cap_add below; an installed package is skipped, offline.
+      APT_EXTRA_PACKAGES: ""
       # Shell command run at each start, once PostgreSQL answers and before
       # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
-      # packages go in the PIP_EXTRA_REQUIREMENTS_* lists above.
+      # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
     # The venvs belong to root: the container starts as root to install the
     # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
@@ -33,6 +37,9 @@ services:
     # with no capability and can never regain one.
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID]
+    # With APT_EXTRA_PACKAGES, apt needs four more, which root drops when
+    # it hands over to odoo; replace the line above with:
+    #cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
     security_opt:
       - no-new-privileges:true
     depends_on:

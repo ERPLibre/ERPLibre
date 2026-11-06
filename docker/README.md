@@ -123,6 +123,34 @@ it. Pass the account:
 docker compose exec -u odoo ERPLibre bash
 ```
 
+### Extra system packages
+
+A pip package can load a system library the image does not carry —
+`python-magic` loads `libmagic`. `APT_EXTRA_PACKAGES` lists Debian packages,
+one name per word, that `docker/entrypoint_pip_extra.sh` installs with apt, as
+root, at each start, before the pip lists and before handing over to `odoo`.
+Root receives names only, checked against Debian's naming rules, never a
+command nor a file of the code, which Odoo can rewrite. A package already
+installed, or provided by an installed one (`libmagic1` is provided by
+`libmagic1t64` on trixie), is skipped without network, so a restart stays
+offline; a recreated container installs it again.
+
+apt needs four more capabilities than the compose grants by default; without
+them it would install wrongly with no error — a setgid binary loses its bit
+without `FSETID`. The script checks them before apt and stops the container
+when one is missing. They serve root only: `setpriv` drops them when it hands
+over to `odoo`, and `no-new-privileges` keeps Odoo from regaining them.
+
+```yaml
+    environment:
+      APT_EXTRA_PACKAGES: "libmagic1"
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
+```
+
+A large package, a browser for Selenium for instance, is better built into an
+image derived from ERPLibre's: as a start-time install it is downloaded again
+at each recreation.
+
 ### A command at each start
 
 `INIT_CMD` holds a shell command that `docker/entrypoint.sh` runs in a bash
@@ -130,8 +158,9 @@ login shell at each start, once PostgreSQL answers and before Odoo, in
 `/ERPLibre`, as the account that runs Odoo. A command that fails stops the
 container before Odoo, with its error in `docker compose logs`; the log names
 the step, never the command. A Python package belongs in the
-`PIP_EXTRA_REQUIREMENTS_*` lists instead: run as `odoo`, a pip cannot write in
-a venv the build left to root.
+`PIP_EXTRA_REQUIREMENTS_*` lists instead, and a Debian package in
+`APT_EXTRA_PACKAGES`: run as `odoo`, neither pip nor apt could write where
+they install.
 
 ```yaml
     environment:
