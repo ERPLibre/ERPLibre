@@ -53,6 +53,13 @@ services:
       - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
       - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
+      # The checkout's entrypoint.sh instead of the image's copy, made at its
+      # build: INIT_CMD without rebuilding an image that predates it. The
+      # three lines go together: this entrypoint.sh calls odoo_rc_db.py and
+      # the --config of wait-for-psql.py, absent from older images.
+      #- ./docker/entrypoint.sh:/entrypoint.sh:ro
+      #- ./docker/odoo_rc_db.py:/ERPLibre/docker/odoo_rc_db.py:ro
+      #- ./docker/wait-for-psql.py:/ERPLibre/docker/wait-for-psql.py:ro
     restart: always
 
   db:
