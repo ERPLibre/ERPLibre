@@ -12,6 +12,10 @@ sur un cas limite ou l'autre.
 `BODY.PEEK` et non `BODY` : lire un message dans le TUI ne doit pas le marquer
 lu sur le serveur à l'insu de l'utilisateur.
 
+En SSL comme en STARTTLS, le certificat du serveur est vérifié (chaîne et
+nom), sauf si le compte en épingle l'empreinte pour ce point d'accès : seule
+cette empreinte est alors acceptée (`erplibre_mail_core.tls`).
+
 Les lecteurs de réponses, les en-têtes des garde-fous, les classes de données
 et la revendication viennent du noyau (`erplibre_mail_core.imap`) et restent
 importables ici sous leur nom ; ce module garde l'ouverture de la connexion
@@ -21,10 +25,12 @@ et le reste du transport.
 from __future__ import annotations
 
 import imaplib
+import ssl
 
 from script.todo.mail import _core_path  # noqa: F401
 
 # isort: split
+from erplibre_mail_core import tls
 from erplibre_mail_core.imap import (  # noqa: F401
     EXTRA_HEADERS,
     HEADER_FIELDS,
@@ -444,19 +450,46 @@ def connect(account, secret: str) -> ImaplibTransport:
     (`_abandon`) avant que l'erreur ne sorte, sans la remplacer ; une
     ouverture qui échoue ferme elle-même ce qu'elle a ouvert
     (`IMAP4.__init__`).
+
+    En `ssl` comme en `starttls`, le certificat est vérifié (chaîne et
+    nom), sauf si le compte épingle une empreinte pour ce point d'accès
+    (`tls_pins`, lu par `getattr` : un compte qui ne porte pas le champ
+    est vérifié) ; l'empreinte présentée est alors comparée à l'épingle
+    avant toute authentification. Un refus sort en
+    `tls.TlsCertificateError`, empreinte comprise, jamais en `ImapError`,
+    et la socket se ferme sans LOGOUT.
     """
     import imaplib
 
     conf = account.imap
     delai = _delai_lecture()
+    tls_actif = conf.security in tls.SECURITIES
+    pin = (
+        tls.account_pin(
+            getattr(account, "tls_pins", None), conf.host, conf.port
+        )
+        if tls_actif
+        else None
+    )
+    contexte = tls.context_for(pin) if tls_actif else None
     try:
         if conf.security == "ssl":
-            client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=delai)
+            client = imaplib.IMAP4_SSL(
+                conf.host, conf.port, ssl_context=contexte, timeout=delai
+            )
         else:
             client = imaplib.IMAP4(conf.host, conf.port, timeout=delai)
         try:
             if conf.security == "starttls":
-                client.starttls()
+                client.starttls(ssl_context=contexte)
+            if pin:
+                tls.check_pin(
+                    client.sock,
+                    pin,
+                    protocol="imap",
+                    host=conf.host,
+                    port=conf.port,
+                )
             if getattr(account, "auth", "login") == "oauth":
                 chaine = xoauth2_chain(conf.user, secret)
                 try:
@@ -480,11 +513,22 @@ def connect(account, secret: str) -> ImaplibTransport:
         # n'a rien refusé, et l'ancien message « ordinal not in range(128) »
         # accusait le serveur d'un refus qu'il n'a jamais prononcé.
         raise ImapError(t("mail_err_password_not_ascii")) from exc
-    except ImapAuthError:
+    except (ImapAuthError, tls.TlsCertificateError):
         # Déjà qualifié : le rattrapage général en ferait une panne de
         # connexion, et l'appelant cesserait de savoir qu'il peut
-        # rafraîchir son jeton.
+        # rafraîchir son jeton, ou épingler un certificat.
         raise
+    except ssl.SSLCertVerificationError as exc:
+        # La vérification a refusé le certificat : la sonde lit celui que
+        # présente le serveur, pour que l'erreur porte son empreinte.
+        raise tls.certificate_error(
+            exc,
+            protocol="imap",
+            host=conf.host,
+            port=conf.port,
+            security=conf.security,
+            timeout=delai,
+        ) from exc
     except Exception as exc:
         # Toute panne réseau ou d'authentification devient une seule erreur
         # de haut niveau, pour un message utile à l'utilisateur.

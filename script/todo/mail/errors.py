@@ -21,6 +21,7 @@ import re
 KINDS = (
     "vault",
     "auth",
+    "tls",
     "network",
     "busy",
     "cache",
@@ -64,13 +65,19 @@ def _busy_text(exc: BaseException) -> bool:
 def classify(exc: BaseException) -> str:
     """La famille d'une panne d'ouverture ou de synchronisation.
 
-    Rend l'un de `KINDS`. Le premier test qui répond gagne : coffre (clé
-    du cache absente comprise), refus du secret, jeton OAuth, réponse IMAP,
+    Rend l'un de `KINDS`. Le premier test qui répond gagne : certificat
+    TLS refusé (l'erreur ou l'une de ses causes), coffre (clé du cache
+    absente comprise), refus du secret, jeton OAuth, réponse IMAP,
     socket, mode du cache refusé, cache en conversion, base occupée, cache,
     configuration, puis `other`.
     """
     import imaplib
     import sqlite3
+
+    from script.todo.mail import _core_path  # noqa: F401
+
+    # isort: split
+    from erplibre_mail_core.tls import TlsCertificateError
 
     from script.todo.mail import imap_transport, oauth, smtp_send
     from script.todo.mail.accounts import AccountError
@@ -92,6 +99,8 @@ def classify(exc: BaseException) -> str:
         vault_types += (busy_vault,)
 
     lien_mort = (OSError, imaplib.IMAP4.abort)
+    if any(isinstance(m, TlsCertificateError) for m in _chain(exc)):
+        return "tls"
     if isinstance(exc, vault_types):
         return "vault"
     if isinstance(
@@ -135,9 +144,29 @@ def journal_detail(exc: BaseException) -> str:
 
     Le code est le premier `[MOT]` trouvé dans le texte de l'exception ou
     de ses causes (`[AUTHENTICATIONFAILED]`, `[UNAVAILABLE]`).
+
+    Un refus de certificat dit son protocole, son point d'accès, sa raison
+    en mot fixe et les empreintes en jeu, données publiques, en
+    hexadécimal compact pour tenir sous la longueur de ligne du journal :
+    `IMAP hôte:port raison sha256=<hex>`, suivi de ` pinned=<hex>` pour un
+    certificat différent de l'épingle.
     """
     if exc is None:
         return ""
+    from script.todo.mail import _core_path  # noqa: F401
+
+    # isort: split
+    from erplibre_mail_core.tls import TlsCertificateError
+
+    for maillon in _chain(exc):
+        if isinstance(maillon, TlsCertificateError):
+            texte = (
+                f"{maillon.protocol.upper()} {maillon.endpoint}"
+                f" {maillon.reason} sha256={maillon.fingerprint or '-'}"
+            )
+            if maillon.reason == "changed":
+                texte += f" pinned={maillon.pinned or '-'}"
+            return texte
     detail = type(exc).__name__
     for maillon in _chain(exc):
         trouve = _RESPONSE_CODE_RE.search(str(maillon))

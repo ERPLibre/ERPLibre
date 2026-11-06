@@ -8,6 +8,13 @@ dans le coffre (voir `secrets.py`) et le fichier n'en garde qu'une référence.
 Le fichier reste donc lisible, éditable à la main et réparable, sans devenir
 un endroit d'où une fuite ferait mal.
 
+Le fichier porte aussi, par compte, les empreintes de certificats TLS
+épinglées (`tls_pins`) : des données publiques, que seul un geste humain
+pose ou retire (`pin_certificate`, `unpin_certificate`). Une écriture
+remplace le fichier d'un coup, sous un verrou de fichier, et garde les
+épingles du disque : une liste lue avant une saisie ne perd ni ne
+ressuscite une épingle posée ou retirée entre-temps.
+
 Les préréglages `gmail`, `outlook` et `icloud` supposent un MOT DE PASSE
 D'APPLICATION : l'authentification simple ne passe plus autrement chez ces
 fournisseurs. C'est la limite assumée de la phase 1 ; la phase 2 apporte OAuth.
@@ -15,12 +22,23 @@ fournisseurs. C'est la limite assumée de la phase 1 ; la phase 2 apporte OAuth.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import os
+import tempfile
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from script.todo.mail import _core_path  # noqa: F401
+
+# isort: split
+from erplibre_mail_core import tls
+
 from script.todo.todo_i18n import t
+
+_logger = logging.getLogger(__name__)
 
 # La v2 ajoute `auth` à chaque compte, la v3 `signature`. Un fichier plus
 # ancien se relit sans rien perdre : le champ manquant prend son défaut, qui
@@ -34,6 +52,10 @@ SECURITIES = ("ssl", "starttls", "none")
 # grossier contre un secret qui s'y glisserait, et une valeur portant ce mot
 # le désarmerait pour de bon.
 AUTHS = ("login", "oauth")
+# Le verrou des écritures d'`accounts.json`, à côté du fichier, et l'attente
+# au plus d'un geste qui écrit pendant qu'un autre processus écrit.
+ACCOUNTS_LOCK_NAME = "accounts.lock"
+ACCOUNTS_LOCK_WAIT_S = 5.0
 
 # Les deux préréglages Microsoft passent par le même point de service : le
 # point « common » sert les comptes personnels comme les locataires, et un
@@ -181,8 +203,12 @@ class Account:
     # Texte ajouté au bas d'un message écrit ou d'une réponse, séparé par le
     # délimiteur « -- ». Rien de secret : il vit donc ici et non au coffre.
     signature: str = ""
+    # Empreintes de certificats TLS acceptées pour ce compte, par point
+    # d'accès « hôte:port » ; aucune n'est un secret.
+    tls_pins: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        self.tls_pins = _checked_pins(self.name, self.tls_pins)
         if not self.name:
             raise AccountError(t("mail_err_account_needs_name"))
         if (
@@ -225,7 +251,12 @@ class Account:
         )
 
     def to_dict(self) -> dict:
+        """Le compte tel qu'il s'écrit ; `tls_pins` n'y figure que non
+        vide, si bien qu'un compte sans épingle s'écrit comme avant que le
+        champ n'existe."""
         data = asdict(self)
+        if not data.get("tls_pins"):
+            data.pop("tls_pins", None)
         return data
 
     @classmethod
@@ -244,6 +275,9 @@ class Account:
                 enabled=d.get("enabled", True),
                 auth=d.get("auth", "login"),
                 signature=d.get("signature", ""),
+                # Sans `or {}` : une valeur qui n'est pas un objet JSON est
+                # signalée au journal, pas confondue avec « aucune ».
+                tls_pins=d.get("tls_pins"),
             )
         except (KeyError, TypeError) as exc:
             raise AccountError(
@@ -251,8 +285,61 @@ class Account:
             ) from exc
 
 
+def _checked_pins(name: str, pins) -> dict[str, str]:
+    """Les épingles lisibles de `pins`, clés et valeurs normalisées.
+
+    None ou absent : aucune, sans bruit. Une valeur qui n'est pas un
+    dictionnaire, ou une entrée dont la clé ou l'empreinte ne se lit pas,
+    est écartée avec une ligne `WARNING` (la valeur n'y est pas recopiée) ;
+    jamais d'`AccountError` : une entrée corrompue ne rend pas le fichier
+    illisible, et son point d'accès revient à la vérification normale.
+    """
+    if pins is None:
+        return {}
+    if not isinstance(pins, dict):
+        _logger.warning(
+            "épingle TLS illisible écartée : compte %s, champ tls_pins de"
+            " type %s",
+            name,
+            type(pins).__name__,
+        )
+        return {}
+    propres: dict[str, str] = {}
+    for cle, valeur in pins.items():
+        point = tls.split_pin_key(cle)
+        empreinte = tls.parse_pin(valeur)
+        if point is None or empreinte is None:
+            _logger.warning(
+                "épingle TLS illisible écartée : compte %s, clé %r", name, cle
+            )
+            continue
+        propres[tls.pin_key(*point)] = tls.FINGERPRINT_PREFIX + empreinte
+    return propres
+
+
 def accounts_path() -> Path:
     return Path(os.path.expanduser("~/.erplibre/mail/accounts.json"))
+
+
+# L'attribut qui rattache un compte au fichier d'où `load` l'a lu, ou où
+# `save` l'a écrit. Hors des champs du dataclass : il ne s'écrit jamais,
+# n'entre pas dans l'égalité, et une copie par `from_dict` ne le porte pas.
+_SOURCE_ATTR = "_accounts_file"
+
+
+def _tie(account, path: Path) -> None:
+    """Rattache `account` au fichier `path` ; un objet qui refuse
+    l'attribut reste sans fichier."""
+    try:
+        setattr(account, _SOURCE_ATTR, Path(path))
+    except Exception:
+        pass
+
+
+def source_of(account) -> Path | None:
+    """Le fichier d'où vient `account` (lu par `load`, écrit par `save`),
+    ou None pour un compte construit en mémoire."""
+    return getattr(account, _SOURCE_ATTR, None)
 
 
 def _prepare_parent(path: Path) -> None:
@@ -261,18 +348,54 @@ def _prepare_parent(path: Path) -> None:
 
 
 def _write_private(path: Path, text: str) -> None:
-    """Écrit `text` dans un fichier créé en 0600 dès sa création.
+    """Remplace `path` par `text`, dans un fichier en 0600 dès sa création.
 
     Écrire puis `chmod` laisserait le fichier — mot de passe absent, mais
     `secret_ref` et adresses y sont — lisible à l'umask du process le temps
-    entre les deux appels. `os.open` avec le mode dès l'ouverture ferme cette
-    fenêtre ; le `chmod` qui suit corrige aussi un fichier déjà là écrit par
-    un umask permissif.
+    entre les deux appels. Le fichier temporaire est créé en 0600
+    (`mkstemp`) dans le même dossier, écrit, synchronisé, puis substitué
+    d'un coup (`os.replace`) : un lecteur voit l'ancien fichier ou le
+    nouveau, jamais un fichier vide ou tronqué, et une panne au milieu
+    laisse l'ancien intact. Le temporaire est retiré sur toute exception.
+
+    Un `path` qui est un lien symbolique est suivi : le temporaire naît à
+    côté de la cible, qui reçoit le contenu, et le lien reste un lien.
+    Remplacer le lien lui-même couperait sans un mot un fichier tenu
+    ailleurs (dossier de configuration versionné ou synchronisé).
     """
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write(text)
+    path = Path(os.path.realpath(path))
+    fd, tmp = tempfile.mkstemp(
+        dir=path.parent, prefix=".accounts.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     os.chmod(path, 0o600)
+
+
+@contextlib.contextmanager
+def _accounts_lock(path: Path) -> Iterator[None]:
+    """Le verrou des écritures d'`accounts.json`, à côté du fichier ; non
+    obtenu à temps : `AccountError`. Le dossier est créé (0700) au
+    besoin."""
+    from script.todo.mail.rules.lock import file_lock
+
+    _prepare_parent(path)
+    with file_lock(
+        path.parent / ACCOUNTS_LOCK_NAME, wait=ACCOUNTS_LOCK_WAIT_S
+    ) as tenu:
+        if not tenu:
+            raise AccountError(t("mail_err_accounts_busy"))
+        yield
 
 
 def account_from_preset(
@@ -331,10 +454,35 @@ def load(path: Path | None = None) -> list[Account]:
             f"{path} {t('mail_err_accounts_from_the_future')}"
             f" {version} > {SCHEMA_VERSION}"
         )
-    return [Account.from_dict(d) for d in data.get("accounts", [])]
+    comptes = [Account.from_dict(d) for d in data.get("accounts", [])]
+    for compte in comptes:
+        _tie(compte, path)
+    return comptes
+
+
+def _write_accounts(accounts: list[Account], path: Path) -> None:
+    """Écrit `accounts` tels quels, épingles comprises ; l'appelant tient
+    le verrou."""
+    names = [a.name for a in accounts]
+    payload = {
+        "version": SCHEMA_VERSION,
+        "default_account": names[0] if names else None,
+        "accounts": [a.to_dict() for a in accounts],
+    }
+    _write_private(path, json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def save(accounts: list[Account], path: Path | None = None) -> None:
+    """Écrit `accounts`, sous le verrou d'`accounts.json`.
+
+    Les épingles appartiennent au disque : pour chaque compte dont le nom
+    existe déjà dans le fichier relu sous le verrou, ce sont SES épingles
+    qui s'écrivent, pas celles de la liste en mémoire ; un compte neuf
+    s'écrit avec les siennes, et un fichier absent ou illisible laisse la
+    liste telle quelle. Seuls `pin_certificate` et `unpin_certificate`
+    changent les épingles d'un compte existant. Les autres champs suivent
+    la liste : la dernière écriture l'emporte.
+    """
     path = Path(path) if path else accounts_path()
     names = [a.name for a in accounts]
     duplicates = {n for n in names if names.count(n) > 1}
@@ -342,13 +490,138 @@ def save(accounts: list[Account], path: Path | None = None) -> None:
         raise AccountError(
             f"{t('mail_err_duplicate_account_names')} {sorted(duplicates)}"
         )
-    _prepare_parent(path)
-    payload = {
-        "version": SCHEMA_VERSION,
-        "default_account": names[0] if names else None,
-        "accounts": [a.to_dict() for a in accounts],
-    }
-    _write_private(path, json.dumps(payload, ensure_ascii=False, indent=2))
+    with _accounts_lock(path):
+        try:
+            sur_disque = {a.name: a.tls_pins for a in load(path)}
+        except AccountError:
+            sur_disque = {}
+        a_ecrire = []
+        for account in accounts:
+            if account.name in sur_disque:
+                copie = Account.from_dict(account.to_dict())
+                copie.tls_pins = dict(sur_disque[account.name])
+                a_ecrire.append(copie)
+            else:
+                a_ecrire.append(account)
+        _write_accounts(a_ecrire, path)
+    for account in accounts:
+        _tie(account, path)
+
+
+def _change_pins(name: str, path: Path | None, change) -> Account:
+    """Relit le fichier sous le verrou, applique `change(pins)` aux
+    épingles du compte `name`, écrit s'il y a lieu et rend le compte relu.
+    `change` rend vrai s'il a modifié les épingles."""
+    path = Path(path) if path else accounts_path()
+    with _accounts_lock(path):
+        comptes = load(path)
+        compte = find(comptes, name)
+        if compte is None:
+            raise AccountError(f"{t('mail_err_account_not_found')} {name!r}")
+        if change(compte.tls_pins):
+            _write_accounts(comptes, path)
+        return compte
+
+
+def pin_certificate(
+    name: str,
+    host: str,
+    port: int,
+    fingerprint: str,
+    path: Path | None = None,
+) -> Account:
+    """Épingle `fingerprint` pour le compte `name` et le point d'accès
+    `host:port`, en remplaçant l'épingle précédente de ce point d'accès.
+
+    Le fichier est relu et écrit sous le verrou ; les autres comptes et
+    champs restent tels qu'ils sont relus. Une empreinte invalide lève
+    `AccountError` sans rien écrire. Rend le compte relu.
+    """
+    try:
+        valeur = tls.pin_value(fingerprint)
+    except ValueError as exc:
+        raise AccountError(
+            f"{t('mail_err_invalid_tls_pin')} {name!r}"
+        ) from exc
+    cle = tls.pin_key(host, port)
+
+    def poser(pins):
+        pins[cle] = valeur
+        return True
+
+    compte = _change_pins(name, path, poser)
+    _logger.info(
+        "empreinte TLS épinglée : compte %s, %s, sha256=%s",
+        name,
+        cle,
+        tls.parse_pin(valeur),
+    )
+    return compte
+
+
+def unpin_certificate(
+    name: str, key: str, path: Path | None = None
+) -> Account:
+    """Retire l'épingle `key` du compte `name` ; une clé absente n'écrit
+    rien. Rend le compte relu."""
+    point = tls.split_pin_key(key)
+    cle = tls.pin_key(*point) if point else key
+
+    def retirer(pins):
+        if cle not in pins:
+            return False
+        del pins[cle]
+        return True
+
+    compte = _change_pins(name, path, retirer)
+    _logger.info("empreinte TLS retirée : compte %s, %s", name, cle)
+    return compte
+
+
+def pinned_certificates(accounts) -> list[tuple[str, str, str]]:
+    """`(compte, clé, empreinte en 64 hex)` de chaque épingle, dans
+    l'ordre des comptes puis des clés."""
+    lignes = []
+    for account in accounts:
+        pins = getattr(account, "tls_pins", None) or {}
+        for cle in sorted(pins):
+            empreinte = tls.parse_pin(pins[cle])
+            if empreinte:
+                lignes.append((account.name, cle, empreinte))
+    return lignes
+
+
+def refresh_tls_pins(account, path: Path | None = None) -> None:
+    """Pose sur `account` les épingles que le fichier porte pour son nom.
+
+    Sert avant chaque connexion d'un processus qui dure : une épingle
+    posée ou retirée ailleurs vaut dès la connexion suivante. Le fichier
+    relu est `path`, sinon celui d'où vient le compte (`source_of`) ; un
+    compte construit en mémoire, sans fichier, garde ses épingles et
+    aucun fichier n'est ouvert. Lecture seule, sans verrou ; fichier
+    absent ou illisible, ou compte absent : les épingles en mémoire
+    restent, ligne `INFO`. Ne lève jamais.
+    """
+    nom = getattr(account, "name", None)
+    path = path or source_of(account)
+    if path is None:
+        return
+    try:
+        relu = find(load(path), nom)
+    except Exception as exc:
+        _logger.info(
+            "épingles TLS non relues pour %s : %s", nom, type(exc).__name__
+        )
+        return
+    if relu is None:
+        _logger.info("épingles TLS non relues : compte %s absent", nom)
+        return
+    try:
+        setattr(account, "tls_pins", dict(relu.tls_pins))
+    except Exception as exc:
+        _logger.info(
+            "épingles TLS non posées pour %s : %s", nom, type(exc).__name__
+        )
 
 
 def find(accounts: list[Account], name: str) -> Account | None:

@@ -139,5 +139,61 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(errors.journal_detail(a), "ValueError")
 
 
+FP_A = "ab" * 32
+FP_B = "cd" * 32
+
+
+def refus_tls(reason="untrusted", fingerprint=FP_B, pinned=None):
+    from script.todo.mail.smtp_send import tls
+
+    return tls.TlsCertificateError(
+        protocol="imap",
+        host="serveur.example.org",
+        port=993,
+        reason=reason,
+        fingerprint=fingerprint,
+        pinned=pinned,
+    )
+
+
+class TestTlsKind(unittest.TestCase):
+    def test_tls_is_a_kind(self):
+        self.assertIn("tls", errors.KINDS)
+
+    def test_a_certificate_refusal_is_its_own_kind(self):
+        import ssl
+
+        verif = ssl.SSLCertVerificationError(1, "refus")
+        self.assertEqual(errors.classify(verif), "network")
+        self.assertEqual(errors.classify(enchaine(refus_tls(), verif)), "tls")
+        self.assertEqual(errors.classify(refus_tls("changed")), "tls")
+
+    def test_a_wrapped_certificate_refusal_is_still_tls(self):
+        enveloppe = enchaine(ImapError("reprise"), refus_tls())
+        self.assertEqual(errors.classify(enveloppe), "tls")
+        self.assertEqual(
+            errors.classify(enchaine(RuntimeError("x"), refus_tls())), "tls"
+        )
+
+    def test_journal_detail_of_a_certificate_refusal_names_endpoint_and_fingerprint(
+        self,
+    ):
+        self.assertEqual(
+            errors.journal_detail(refus_tls()),
+            f"IMAP serveur.example.org:993 untrusted sha256={FP_B}",
+        )
+        self.assertEqual(
+            errors.journal_detail(refus_tls(fingerprint="")),
+            "IMAP serveur.example.org:993 untrusted sha256=-",
+        )
+
+    def test_journal_detail_of_a_change_names_both_fingerprints(self):
+        self.assertEqual(
+            errors.journal_detail(refus_tls("changed", FP_B, FP_A)),
+            "IMAP serveur.example.org:993 changed"
+            f" sha256={FP_B} pinned={FP_A}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,10 @@ class SyncReport:
     inbox: list = field(default_factory=list)
     # Vrai quand des UID nouveaux d'INBOX ont été écartés par le plafond.
     inbox_truncated: bool = False
+    # Le premier refus de certificat d'un lien supplémentaire pendant la
+    # passe (`TlsCertificateError`), None sinon ; le lien principal a fini
+    # la passe.
+    tls_error: object = None
 
 
 def is_inbox(folder: FolderInfo) -> bool:
@@ -330,14 +334,34 @@ class Syncer:
 
         Le cache, lui, n'a pas besoin d'être protégé ici : ses méthodes
         prennent déjà son verrou.
+
+        Un certificat refusé à l'ouverture d'un lien supplémentaire est
+        gardé dans `tls_error` du rapport, et aucun autre lien n'est tenté
+        pendant la passe : chaque essai coûterait une poignée de main
+        refusée, une sonde et une ligne de journal. Les lots restants
+        reviennent au lien principal.
         """
         from concurrent.futures import ThreadPoolExecutor
 
+        from script.todo.mail import _core_path  # noqa: F401
+
+        # isort: split
+        from erplibre_mail_core.tls import TlsCertificateError
+
         travaux = [(self, list(lots[0]))]
         auxiliaires = []
+        refus_tls = None
         for lot in lots[1:]:
+            if refus_tls is not None:
+                travaux[0][1].extend(lot)
+                continue
             try:
                 transport = self.open_transport()
+            except TlsCertificateError as exc:
+                # Déjà journalisé par le noyau, empreinte comprise.
+                refus_tls = exc
+                travaux[0][1].extend(lot)
+                continue
             except Exception as exc:
                 # Le fournisseur refuse un lien de plus, ou le secret a
                 # expiré : le lot revient au lien déjà ouvert plutôt que
@@ -363,7 +387,10 @@ class Syncer:
                     # processus ; échouer ici ferait perdre une passe qui a
                     # réussi.
                     _logger.exception("fermeture d'un lien supplémentaire")
-        return self._fusion(rapports)
+        total = self._fusion(rapports)
+        if total.tls_error is None:
+            total.tls_error = refus_tls
+        return total
 
     @staticmethod
     def _fusion(rapports: list) -> SyncReport:
@@ -383,6 +410,8 @@ class Syncer:
             total.inbox_truncated = (
                 total.inbox_truncated or rapport.inbox_truncated
             )
+            if total.tls_error is None:
+                total.tls_error = getattr(rapport, "tls_error", None)
         return total
 
     def sync_one(self, folder_name: str) -> SyncReport:

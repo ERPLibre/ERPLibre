@@ -457,19 +457,86 @@ class TestConnect(unittest.TestCase):
         return account
 
     def test_ssl_branch(self):
+        """Le contexte passé vérifie la chaîne et le nom du serveur."""
+        import ssl
+
         client = MagicMock()
         with patch("imaplib.IMAP4_SSL", return_value=client) as ctor:
             transport = connect(self._account("ssl"), "hunter2")
-        ctor.assert_called_once_with("imap.x.ca", 993, timeout=30)
+        ctor.assert_called_once()
+        self.assertEqual(ctor.call_args.args, ("imap.x.ca", 993))
+        self.assertEqual(ctor.call_args.kwargs["timeout"], 30)
+        contexte = ctor.call_args.kwargs["ssl_context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(contexte.check_hostname)
         client.login.assert_called_once_with("moi@x.ca", "hunter2")
         self.assertIsInstance(transport, ImaplibTransport)
 
     def test_starttls_branch_upgrades(self):
+        import ssl
+
         client = MagicMock()
         with patch("imaplib.IMAP4", return_value=client) as ctor:
             connect(self._account("starttls"), "hunter2")
         client.starttls.assert_called_once()
+        contexte = client.starttls.call_args.kwargs["ssl_context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(contexte.check_hostname)
         ctor.assert_called_once_with("imap.x.ca", 993, timeout=30)
+
+    def test_a_pin_compares_before_login(self):
+        from script.todo.mail.imap_transport import tls
+
+        account = self._account("ssl")
+        # Posée après la construction : le test ne dépend pas du champ.
+        account.tls_pins = {"imap.x.ca:993": "sha256:" + "ab" * 32}
+        client = MagicMock()
+        client.sock.getpeercert.return_value = b"un autre certificat"
+        with patch("imaplib.IMAP4_SSL", return_value=client) as ctor:
+            with self.assertRaises(tls.TlsCertificateError) as ctx:
+                connect(account, "hunter2")
+        self.assertEqual(ctx.exception.reason, "changed")
+        self.assertFalse(ctor.call_args.kwargs["ssl_context"].check_hostname)
+        client.login.assert_not_called()
+
+    def test_a_verification_error_is_a_certificate_error_not_an_imap_error(
+        self,
+    ):
+        import hashlib
+        import ssl
+
+        from script.todo.mail.imap_transport import tls
+
+        refus = ssl.SSLCertVerificationError(1, "refus")
+        refus.verify_code = 64
+        refus.verify_message = "IP address mismatch"
+        with (
+            patch("imaplib.IMAP4_SSL", side_effect=refus),
+            patch.object(
+                tls, "peer_certificate", return_value=(b"der", ("x",))
+            ),
+        ):
+            with self.assertRaises(tls.TlsCertificateError) as ctx:
+                connect(self._account("ssl"), "hunter2")
+        self.assertNotIsInstance(ctx.exception, ImapError)
+        self.assertEqual(ctx.exception.reason, "hostname")
+        self.assertEqual(
+            ctx.exception.fingerprint, hashlib.sha256(b"der").hexdigest()
+        )
+        self.assertEqual(ctx.exception.names, ("x",))
+
+    def test_a_certificate_error_closes_without_logout(self):
+        from script.todo.mail.imap_transport import tls
+
+        account = self._account("starttls")
+        account.tls_pins = {"imap.x.ca:993": "sha256:" + "ab" * 32}
+        client = MagicMock()
+        client.sock.getpeercert.return_value = b"un autre certificat"
+        with patch("imaplib.IMAP4", return_value=client):
+            with self.assertRaises(tls.TlsCertificateError):
+                connect(account, "hunter2")
+        client.shutdown.assert_called_once_with()
+        client.logout.assert_not_called()
 
     def test_plain_branch_does_not_upgrade(self):
         client = MagicMock()

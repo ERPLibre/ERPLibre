@@ -39,6 +39,11 @@ problème ; il ne sait en revanche pas se lier au port 0 tel quel, voir
 Rien ici ne sort de la machine : on se lie à 127.0.0.1 sur le port 0 (l'OS
 choisit), jamais sur un port fixe qui entrerait en collision avec ce qui
 écoute déjà. Aucun trousseau, aucun `~/.erplibre`, aucun identifiant réel.
+
+TLS passe, pour IMAP, par un frontal de la boucle locale (`TlsFront`) placé
+devant le serveur Twisted, qui ne parle qu'en clair ; pour SMTP, par le TLS
+d'`aiosmtpd`. Les certificats sont générés pour le test (`mail_tls`) et
+leur autorité n'est acceptée que par les tests.
 """
 
 from __future__ import annotations
@@ -48,6 +53,7 @@ import email
 import logging
 import re
 import socket
+import ssl
 import threading
 import unittest
 import warnings
@@ -1329,6 +1335,228 @@ class ImapSandbox:
 
 
 # --------------------------------------------------------------------------
+# Le frontal TLS du serveur IMAP
+# --------------------------------------------------------------------------
+
+# Période à laquelle le fil d'écoute du frontal relit son état : `accept`
+# bloqué ne se réveille pas quand un autre fil ferme la socket.
+FRONT_ACCEPT_POLL = 0.05
+FRONT_TIMEOUT = 10
+_CAPABILITY_LINE_RE = re.compile(rb"^\* CAPABILITY ", re.IGNORECASE)
+_CAPABILITY_CODE_RE = re.compile(rb"\[CAPABILITY ([^\]]*)\]", re.IGNORECASE)
+
+
+class _Holder:
+    """La socket côté client d'une connexion du frontal, remplacée par sa
+    version TLS après `STARTTLS` ; `lock` suspend l'écriture vers le
+    client pendant la bascule."""
+
+    def __init__(self, sock):
+        self.sock = sock
+        self.lock = threading.Lock()
+        self.tls = False
+
+
+class TlsFront:
+    """Termine TLS devant `ImapSandbox`, qui ne parle qu'en clair.
+
+    En `ssl`, TLS s'établit à l'acceptation. En `starttls`, le frontal
+    relaie en clair, ajoute `STARTTLS` aux capacités qu'annonce le serveur,
+    intercepte la commande `STARTTLS`, y répond lui-même, établit TLS, puis
+    relaie. `commands` porte le verbe, en majuscules, de chaque ligne
+    cliente, avant et après TLS ; `handshake_failures` compte les poignées
+    de main refusées par le client, qui ferment la connexion sans lever.
+    """
+
+    def __init__(self, backend_port: int, leaf, *, starttls: bool = False):
+        from mail_tls import server_context
+
+        self.backend_port = backend_port
+        self.starttls = starttls
+        self._context = server_context(leaf)
+        self.port = 0
+        self.commands: list[bytes] = []
+        self.handshake_failures = 0
+        self._listen = None
+        self._running = False
+        self._threads: list[threading.Thread] = []
+        self._sockets: list = []
+        self._lock = threading.Lock()
+
+    def use(self, leaf) -> None:
+        """Les connexions SUIVANTES présentent `leaf`."""
+        from mail_tls import server_context
+
+        self._context = server_context(leaf)
+
+    def start(self) -> "TlsFront":
+        ecoute = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ecoute.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ecoute.bind(("127.0.0.1", 0))
+        ecoute.listen(8)
+        ecoute.settimeout(FRONT_ACCEPT_POLL)
+        self._listen = ecoute
+        self.port = ecoute.getsockname()[1]
+        self._running = True
+        LIVE_SERVERS.add(self)
+        self._spawn(self._accept)
+        return self
+
+    def stop(self) -> None:
+        """Idempotent : ferme l'écoute et chaque paire de sockets, joint
+        les fils."""
+        self._running = False
+        LIVE_SERVERS.discard(self)
+        with self._lock:
+            sockets = list(self._sockets)
+        for sock in sockets:
+            self._close(sock)
+        for fil in list(self._threads):
+            fil.join(timeout=FRONT_TIMEOUT)
+        if self._listen is not None:
+            self._close(self._listen)
+            self._listen = None
+
+    @staticmethod
+    def _close(sock) -> None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except (OSError, ValueError):
+            pass
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+    def _spawn(self, cible, *args) -> None:
+        fil = threading.Thread(target=cible, args=args, daemon=True)
+        with self._lock:
+            self._threads.append(fil)
+        fil.start()
+
+    def _keep(self, sock) -> None:
+        with self._lock:
+            self._sockets.append(sock)
+
+    def _accept(self) -> None:
+        ecoute = self._listen
+        while self._running:
+            try:
+                client, _ = ecoute.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            if not self._running:
+                self._close(client)
+                return
+            client.settimeout(FRONT_TIMEOUT)
+            self._keep(client)
+            self._spawn(self._serve, client, self._context)
+
+    def _handshake(self, sock, contexte):
+        """La socket TLS côté serveur, ou None si le client refuse."""
+        try:
+            tls_sock = contexte.wrap_socket(sock, server_side=True)
+        except (ssl.SSLError, OSError):
+            with self._lock:
+                self.handshake_failures += 1
+            return None
+        self._keep(tls_sock)
+        return tls_sock
+
+    def _serve(self, client, contexte) -> None:
+        try:
+            serveur = socket.create_connection(
+                ("127.0.0.1", self.backend_port), timeout=FRONT_TIMEOUT
+            )
+        except OSError:
+            self._close(client)
+            return
+        self._keep(serveur)
+        if not self.starttls:
+            client = self._handshake(client, contexte)
+            if client is None:
+                self._close(serveur)
+                return
+        tenue = _Holder(client)
+        tenue.tls = not self.starttls
+        self._spawn(self._from_server, serveur, tenue)
+        self._from_client(tenue, serveur, contexte)
+
+    def _from_client(self, tenue: _Holder, serveur, contexte) -> None:
+        tampon = b""
+        try:
+            while True:
+                while b"\n" not in tampon:
+                    morceau = tenue.sock.recv(65536)
+                    if not morceau:
+                        return
+                    tampon += morceau
+                ligne, _, tampon = tampon.partition(b"\n")
+                ligne += b"\n"
+                morceaux = ligne.strip().split(b" ", 2)
+                verbe = morceaux[1].upper() if len(morceaux) > 1 else b""
+                self.commands.append(verbe)
+                if verbe == b"STARTTLS" and not tenue.tls:
+                    with tenue.lock:
+                        tenue.sock.sendall(
+                            morceaux[0] + b" OK Begin TLS negotiation now\r\n"
+                        )
+                        tls_sock = self._handshake(tenue.sock, contexte)
+                        if tls_sock is None:
+                            return
+                        tenue.sock = tls_sock
+                        tenue.tls = True
+                    tampon = b""
+                    continue
+                serveur.sendall(ligne)
+        except (OSError, ValueError):
+            return
+        finally:
+            self._close(serveur)
+            self._close(tenue.sock)
+
+    def _from_server(self, serveur, tenue: _Holder) -> None:
+        tampon = b""
+        try:
+            while True:
+                morceau = serveur.recv(65536)
+                if not morceau:
+                    return
+                tampon += morceau
+                if b"\n" not in tampon:
+                    continue
+                complet, _, tampon = tampon.rpartition(b"\n")
+                sortie = []
+                for ligne in (complet + b"\n").split(b"\n")[:-1]:
+                    if self.starttls and not tenue.tls:
+                        ligne = self._announce_starttls(ligne)
+                    sortie.append(ligne + b"\n")
+                with tenue.lock:
+                    tenue.sock.sendall(b"".join(sortie))
+        except (OSError, ValueError):
+            return
+        finally:
+            self._close(tenue.sock)
+
+    @staticmethod
+    def _announce_starttls(ligne: bytes) -> bytes:
+        """Ajoute `STARTTLS` aux capacités d'une ligne du serveur, avant
+        TLS seulement."""
+        fin = b"\r" if ligne.endswith(b"\r") else b""
+        corps = ligne[: len(ligne) - len(fin)]
+        if _CAPABILITY_LINE_RE.match(corps):
+            return corps + b" STARTTLS" + fin
+        return (
+            _CAPABILITY_CODE_RE.sub(
+                lambda m: b"[CAPABILITY " + m.group(1) + b" STARTTLS]", corps
+            )
+            + fin
+        )
+
+
+# --------------------------------------------------------------------------
 # Le serveur SMTP
 # --------------------------------------------------------------------------
 
@@ -1354,6 +1582,8 @@ class _CaptureHandler:
         self.rcpt_refusals = rcpt_refusals if rcpt_refusals is not None else {}
         # Chaque adresse proposée au RCPT TO, acceptée ou non, dans l'ordre.
         self.rcpt_attempts: list[str] = []
+        # Le mécanisme de chaque AUTH reçu, réussi ou non.
+        self.auth_attempts: list[str] = []
 
     async def handle_RCPT(self, server, session, envelope, address, options):
         """Refuse les adresses de `rcpt_refusals`, accepte les autres.
@@ -1382,6 +1612,7 @@ class _CaptureHandler:
 
         from aiosmtpd.smtp import AuthResult
 
+        self.auth_attempts.append("XOAUTH2")
         if len(args) < 2:
             reponse = await server.challenge_auth("")
             if not isinstance(reponse, (bytes, bytearray)):
@@ -1426,11 +1657,23 @@ class SmtpSandbox:
     seul point à corriger.
     """
 
-    def __init__(self, *, require_auth: bool = False, rcpt_refusals=None):
+    def __init__(
+        self,
+        *,
+        require_auth: bool = False,
+        rcpt_refusals=None,
+        tls: str | None = None,
+        leaf=None,
+    ):
         """`rcpt_refusals` : {adresse en minuscules: réponse SMTP complète}
         des destinataires refusés au RCPT TO. Le même dict est gardé par le
         gestionnaire : le muter (`clear`, `pop`, affectation de clé), jamais
-        le réaffecter, change les refus entre deux envois."""
+        le réaffecter, change les refus entre deux envois.
+
+        `tls` : None (en clair), `"ssl"` (TLS dès la connexion) ou
+        `"starttls"`, avec le certificat `leaf` (`mail_tls.Leaf`).
+        `use_certificate` change le certificat des connexions suivantes
+        sans changer de port."""
         from aiosmtpd.controller import Controller
         from aiosmtpd.smtp import AuthResult, LoginPassword
 
@@ -1449,6 +1692,7 @@ class SmtpSandbox:
         )
 
         def authenticate(server, session, envelope, mechanism, auth_data):
+            self.auth_attempts.append(str(mechanism))
             ok = isinstance(auth_data, LoginPassword) and (
                 auth_data.login == USER.encode()
                 and auth_data.password == PASSWORD.encode()
@@ -1472,6 +1716,22 @@ class SmtpSandbox:
             rcpt_refusals if rcpt_refusals is not None else {}
         )
         self.handler = _CaptureHandler(rcpt_refusals=self.rcpt_refusals)
+        # Partagée avec l'authentificateur, qui la lit à chaque AUTH.
+        self.auth_attempts = self.handler.auth_attempts
+        options = {}
+        self._tls_context = None
+        if tls is not None:
+            from mail_tls import server_context
+
+            if tls not in ("ssl", "starttls") or leaf is None:
+                raise ValueError(tls)
+            self._tls_context = server_context(leaf)
+            # Une poignée de main que le client refuse est le cas même
+            # qu'éprouvent ces tests : `aiosmtpd` l'écrirait en ERROR avec
+            # sa pile complète.
+            logging.getLogger("mail.log").setLevel(logging.CRITICAL)
+            cle = "ssl_context" if tls == "ssl" else "tls_context"
+            options[cle] = self._tls_context
         self.controller = _Port0Controller(
             self.handler,
             hostname="127.0.0.1",
@@ -1479,9 +1739,17 @@ class SmtpSandbox:
             authenticator=authenticate,
             auth_required=require_auth,
             auth_require_tls=False,
+            **options,
         )
         self.port = 0
         self._running = False
+
+    def use_certificate(self, leaf) -> None:
+        """Les connexions SUIVANTES présentent `leaf` : le même contexte,
+        donc le même port."""
+        if self._tls_context is None:
+            raise ValueError("bac à sable SMTP sans TLS")
+        self._tls_context.load_cert_chain(leaf.cert_path, leaf.key_path)
 
     @property
     def messages(self) -> list[SentMessage]:
@@ -1525,27 +1793,41 @@ def sandbox_account(
     address: str = "moi@example.ca",
     display_name: str = "",
     sent_folder: str = "INBOX.Sent",
+    imap_security: str = "none",
+    smtp_security: str = "none",
+    tls_pins: dict | None = None,
 ) -> Account:
     """Un `Account` réel pointé sur les serveurs jetables.
 
-    `security="none"` : on parle en clair sur la boucle locale, à un serveur
-    qu'on vient de démarrer soi-même. Rien de tout cela ne quitte la machine.
+    `security="none"` par défaut : on parle en clair sur la boucle locale, à
+    un serveur qu'on vient de démarrer soi-même. Rien de tout cela ne
+    quitte la machine. `tls_pins` ({clé: `sha256:<hex>`}, déjà normalisé)
+    se pose sur le compte après sa construction.
     """
-    return Account(
+    account = Account(
         name=name,
         email=address,
         display_name=display_name,
         preset="generic",
         imap=ServerConf(
-            host="127.0.0.1", port=imap_port, security="none", user=USER
+            host="127.0.0.1",
+            port=imap_port,
+            security=imap_security,
+            user=USER,
         ),
         smtp=ServerConf(
-            host="127.0.0.1", port=smtp_port, security="none", user=USER
+            host="127.0.0.1",
+            port=smtp_port,
+            security=smtp_security,
+            user=USER,
         ),
         secret_ref="kdbx:ERPLibre/Mail/bac-a-sable",
         cache_mode="clear",
         sent_folder=sent_folder,
     )
+    if tls_pins:
+        account.tls_pins = dict(tls_pins)
+    return account
 
 
 def close_imap_client(transport) -> None:
@@ -1585,6 +1867,14 @@ class MailSandboxCase(unittest.TestCase):
         sandbox = ImapSandbox(**kwargs)
         self.addCleanup(sandbox.stop)
         return sandbox.start()
+
+    def imap_tls(
+        self, sandbox: ImapSandbox, leaf, *, starttls: bool = False
+    ) -> TlsFront:
+        """Un frontal TLS devant `sandbox`, qui présente `leaf`."""
+        front = TlsFront(sandbox.port, leaf, starttls=starttls)
+        self.addCleanup(front.stop)
+        return front.start()
 
     def smtp_server(self, **kwargs) -> SmtpSandbox:
         sandbox = SmtpSandbox(**kwargs)

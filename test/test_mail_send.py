@@ -478,17 +478,96 @@ class TestConnect(unittest.TestCase):
         return acc
 
     def test_ssl_branch(self):
+        """Le contexte passé vérifie la chaîne et le nom du serveur."""
+        import ssl
+
         client = MagicMock()
         with patch("smtplib.SMTP_SSL", return_value=client) as ctor:
             connect(self._account("ssl"), "hunter2")
-        ctor.assert_called_once_with("smtp.x.ca", 465, timeout=30)
+        ctor.assert_called_once()
+        self.assertEqual(ctor.call_args.args, ("smtp.x.ca", 465))
+        self.assertEqual(ctor.call_args.kwargs["timeout"], 30)
+        contexte = ctor.call_args.kwargs["context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(contexte.check_hostname)
         client.login.assert_called_once_with("moi@x.ca", "hunter2")
 
     def test_starttls_branch_upgrades(self):
+        import ssl
+
         client = MagicMock()
         with patch("smtplib.SMTP", return_value=client):
             connect(self._account("starttls"), "hunter2")
         client.starttls.assert_called_once()
+        contexte = client.starttls.call_args.kwargs["context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(contexte.check_hostname)
+
+    def _pinned(self, security="ssl"):
+        acc = self._account(security)
+        # Posée après la construction : le test ne dépend pas du champ.
+        acc.tls_pins = {"smtp.x.ca:465": "sha256:" + "ab" * 32}
+        return acc
+
+    def test_a_pin_compares_before_login(self):
+        from script.todo.mail.smtp_send import tls
+
+        client = MagicMock()
+        client.sock.getpeercert.return_value = b"un autre certificat"
+        with patch("smtplib.SMTP_SSL", return_value=client):
+            with self.assertRaises(tls.TlsCertificateError) as ctx:
+                connect(self._pinned(), "hunter2")
+        self.assertEqual(ctx.exception.reason, "changed")
+        client.login.assert_not_called()
+        client.quit.assert_not_called()
+        client.close.assert_called_once_with()
+
+    def test_a_pin_selects_the_pinning_context(self):
+        import hashlib
+        import ssl
+
+        der = b"le certificat epingle"
+        acc = self._account("ssl")
+        acc.tls_pins = {
+            "smtp.x.ca:465": "sha256:" + hashlib.sha256(der).hexdigest()
+        }
+        client = MagicMock()
+        client.sock.getpeercert.return_value = der
+        with patch("smtplib.SMTP_SSL", return_value=client) as ctor:
+            connect(acc, "hunter2")
+        contexte = ctor.call_args.kwargs["context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_NONE)
+        self.assertFalse(contexte.check_hostname)
+        client.login.assert_called_once_with(acc.smtp.user, "hunter2")
+
+    def test_a_verification_error_is_a_certificate_error_not_an_smtp_error(
+        self,
+    ):
+        import ssl
+
+        from script.todo.mail.smtp_send import tls
+
+        refus = ssl.SSLCertVerificationError(1, "refus")
+        refus.verify_code = 18
+        refus.verify_message = "self-signed certificate"
+        with (
+            patch("smtplib.SMTP_SSL", side_effect=refus),
+            patch.object(
+                tls, "peer_certificate", return_value=(b"der", ())
+            ) as sonde,
+        ):
+            with self.assertRaises(tls.TlsCertificateError) as ctx:
+                connect(self._account("ssl"), "hunter2")
+        self.assertNotIsInstance(ctx.exception, SmtpError)
+        self.assertEqual(ctx.exception.reason, "untrusted")
+        self.assertEqual(ctx.exception.port, 465)
+        import hashlib
+
+        self.assertEqual(
+            ctx.exception.fingerprint, hashlib.sha256(b"der").hexdigest()
+        )
+        self.assertIs(ctx.exception.__cause__, refus)
+        sonde.assert_called()
 
     def test_plain_branch_does_not_upgrade(self):
         client = MagicMock()

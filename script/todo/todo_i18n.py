@@ -17273,6 +17273,252 @@ TRANSLATIONS = {
         "fr": "ENVOYER",
         "en": "SEND",
     },
+    "mail_tls_trust_word": {
+        "fr": "CONFIANCE",
+        "en": "TRUST",
+    },
+    "mail_tls_question_refused": {
+        "fr": (
+            "Le serveur {endpoint} ({protocol}) du compte « {account} »"
+            " présente un certificat que ce poste ne reconnaît pas :"
+            " {reason}.\n\nEmpreinte SHA-256 du certificat que présente"
+            " le serveur (lue par une seconde connexion) :\n  {fp}\n\nNe"
+            " lui faites confiance que si cette empreinte est celle que"
+            " donne l'administrateur du serveur, vérifiée par un autre"
+            " moyen que cette connexion. Une fois épinglée, elle est la"
+            " seule acceptée pour {endpoint} sur ce compte, et le nom du"
+            " serveur n'est plus vérifié."
+        ),
+        "en": (
+            "The server {endpoint} ({protocol}) of account “{account}”"
+            " presents a certificate this machine does not recognise:"
+            " {reason}.\n\nSHA-256 fingerprint of the certificate the"
+            " server presents (read by a second connection):\n  {fp}\n\n"
+            "Trust it only if this fingerprint is the one the server's"
+            " administrator gives, checked by another means than this"
+            " connection. Once pinned, it is the only one accepted for"
+            " {endpoint} on this account, and the server name is no"
+            " longer checked."
+        ),
+    },
+    "mail_tls_question_changed": {
+        "fr": (
+            "Le certificat du serveur {endpoint} ({protocol}) du compte «"
+            " {account} » n'est plus celui qui est épinglé.\n\nEmpreinte"
+            " épinglée :\n  {pinned}\nEmpreinte présentée :\n  {fp}\n\nUn"
+            " certificat renouvelé change d'empreinte ; une interception"
+            " aussi. Ne remplacez l'empreinte épinglée qu'après avoir"
+            " vérifié la nouvelle auprès de l'administrateur du serveur,"
+            " par un autre moyen que cette connexion."
+        ),
+        "en": (
+            "The certificate of server {endpoint} ({protocol}) of account"
+            " “{account}” is no longer the pinned one.\n\nPinned"
+            " fingerprint:\n  {pinned}\nPresented fingerprint:\n  {fp}\n"
+            "\nA renewed certificate changes fingerprint; so does an"
+            " interception. Replace the pinned fingerprint only after"
+            " checking the new one with the server's administrator, by"
+            " another means than this connection."
+        ),
+    },
+    "mail_tls_question_names": {
+        "fr": (
+            "Ce certificat est émis pour : {names}. Si le serveur répond"
+            " sous l'un de ces noms, corrigez plutôt le champ hôte du"
+            " compte : la vérification normale passera, sans épingle. Un"
+            " certificat valide émis pour un tout autre nom est le signe"
+            " d'une interception : n'épinglez pas."
+        ),
+        "en": (
+            "This certificate is issued for: {names}. If the server"
+            " answers under one of these names, fix the account's host"
+            " field instead: normal verification will pass, with no pin."
+            " A valid certificate issued for an unrelated name is the"
+            " sign of an interception: do not pin."
+        ),
+    },
+    "mail_tls_question_names_unknown": {
+        "fr": "Les noms que porte ce certificat n'ont pas pu être lus.",
+        "en": "The names this certificate carries could not be read.",
+    },
+    "mail_tls_question_validity": {
+        "fr": (
+            "Une fois épinglé, ce certificat restera accepté même expiré"
+            " : ses dates ne seront plus vérifiées."
+        ),
+        "en": (
+            "Once pinned, this certificate stays accepted even when"
+            " expired: its dates are no longer checked."
+        ),
+    },
+    "mail_tls_question_nonconforming": {
+        "fr": (
+            "Une épingle ne vaut que pour ce certificat : son"
+            " renouvellement sera refusé de nouveau. Si une autorité"
+            " reconnue l'a émis, mieux vaut que l'administrateur du"
+            " serveur le fasse corriger."
+        ),
+        "en": (
+            "A pin only covers this certificate: its renewal will be"
+            " refused again. If a recognised authority issued it, the"
+            " server's administrator had better get it fixed."
+        ),
+    },
+    "mail_tls_compose_resend": {
+        "fr": "Empreinte épinglée : renvoyez le message par ctrl+s.",
+        "en": "Fingerprint pinned: send the message again with ctrl+s.",
+    },
+    "mail_tls_compose_kept": {
+        "fr": (
+            "Le brouillon reste ouvert. Pour épingler plus tard : touche"
+            " T de la fenêtre principale, ou Courriel › Comptes › [5]."
+        ),
+        "en": (
+            "The draft stays open. To pin later: key T in the main"
+            " window, or Mail › Accounts › [5]."
+        ),
+    },
+    "mail_err_accounts_busy": {
+        "fr": (
+            "accounts.json est en cours d'écriture par un autre processus"
+            " ; réessayez."
+        ),
+        "en": "accounts.json is being written by another process; try again.",
+    },
+    "mail_tls_status": {
+        "fr": "⚠ {account} : certificat TLS refusé pour {endpoint} (T)",
+        "en": "⚠ {account}: TLS certificate refused for {endpoint} (T)",
+    },
+    "mail_tls_review_binding": {
+        "fr": "Certificat refusé",
+        "en": "Refused certificate",
+    },
+    "mail_tls_review_none": {
+        "fr": "Aucun certificat refusé à examiner.",
+        "en": "No refused certificate to review.",
+    },
+    "mail_tls_pin_unavailable": {
+        "fr": (
+            "L'empreinte du certificat de {endpoint} n'a pas pu être lue"
+            " : rien à épingler. Réessayez plus tard."
+        ),
+        "en": (
+            "The certificate fingerprint of {endpoint} could not be read:"
+            " nothing to pin. Try again later."
+        ),
+    },
+    "mail_tls_pin_declined": {
+        "fr": (
+            "Rien n'a été épinglé : la connexion à {endpoint} reste"
+            " refusée."
+        ),
+        "en": (
+            "Nothing was pinned: the connection to {endpoint} stays"
+            " refused."
+        ),
+    },
+    "mail_tls_pin_failed": {
+        "fr": "Empreinte non enregistrée :",
+        "en": "Fingerprint not saved:",
+    },
+    "mail_tls_pinned_done": {
+        "fr": "Empreinte épinglée pour {endpoint} (compte « {account} »).",
+        "en": "Fingerprint pinned for {endpoint} (account “{account}”).",
+    },
+    "mail_tls_pinned_smtp_hint": {
+        "fr": (
+            "Les envois en attente repartent à la prochaine"
+            " synchronisation (r)."
+        ),
+        "en": "Waiting sends leave at the next sync (r).",
+    },
+    "mail_tls_reconnected": {
+        "fr": "{account} : connecté.",
+        "en": "{account}: connected.",
+    },
+    "mail_tls_menu_hint": {
+        "fr": (
+            "Pour l'examiner : Courriel › Comptes › [5] Tester la"
+            " connexion d'un compte."
+        ),
+        "en": (
+            "To review it: Mail › Accounts › [5] Test an account"
+            " connection."
+        ),
+    },
+    "mail_help_tls": {
+        "fr": (
+            "Certificats : un serveur dont le certificat n'est pas"
+            " reconnu (auto-signé, autre nom, expiré) est refusé ; la"
+            " vérification ne se désactive pas. T montre son empreinte"
+            " SHA-256, et taper le mot demandé l'épingle pour ce compte"
+            " et ce serveur : seul ce certificat-là est ensuite accepté."
+            " Courriel › Comptes › [8] retire une empreinte."
+        ),
+        "en": (
+            "Certificates: a server whose certificate is not recognised"
+            " (self-signed, another name, expired) is refused;"
+            " verification cannot be turned off. T shows its SHA-256"
+            " fingerprint, and typing the requested word pins it for this"
+            " account and this server: only that certificate is accepted"
+            " afterwards. Mail › Accounts › [8] removes a fingerprint."
+        ),
+    },
+    "mail_connection_smtp_ok": {
+        "fr": "Connexion SMTP réussie.",
+        "en": "SMTP connection succeeded.",
+    },
+    "mail_connection_smtp_failed": {
+        "fr": "Connexion SMTP échouée :",
+        "en": "SMTP connection failed:",
+    },
+    "mail_account_tls_pins": {
+        "fr": "Certificats épinglés",
+        "en": "Pinned certificates",
+    },
+    "mail_tls_pins_none": {
+        "fr": "Aucun certificat épinglé.",
+        "en": "No pinned certificate.",
+    },
+    "mail_tls_ask_unpin": {
+        "fr": "Numéro de l'empreinte à retirer (Entrée pour revenir) : ",
+        "en": "Number of the fingerprint to remove (Enter to go back): ",
+    },
+    "mail_tls_unpin_question": {
+        "fr": (
+            "Retirer l'empreinte épinglée de {endpoint} (compte «"
+            " {account} ») ? La connexion exigera de nouveau un"
+            " certificat que ce poste reconnaît."
+        ),
+        "en": (
+            "Remove the pinned fingerprint of {endpoint} (account"
+            " “{account}”)? The connection will again require a"
+            " certificate this machine recognises."
+        ),
+    },
+    "mail_tls_unpinned": {
+        "fr": (
+            "Empreinte retirée : {endpoint} est de nouveau vérifié"
+            " normalement."
+        ),
+        "en": "Fingerprint removed: {endpoint} is checked normally again.",
+    },
+    "mail_err_invalid_tls_pin": {
+        "fr": "empreinte TLS invalide pour le compte",
+        "en": "invalid TLS fingerprint for account",
+    },
+    "mail_err_account_not_found": {
+        "fr": "compte introuvable dans accounts.json :",
+        "en": "account not found in accounts.json:",
+    },
+    "mail_service_kind_tls": {
+        "fr": "certificat TLS :",
+        "en": "TLS certificate:",
+    },
+    "mail_service_exit_9": {
+        "fr": "certificat TLS refusé (Courriel › Comptes › [5])",
+        "en": "TLS certificate refused (Mail › Accounts › [5])",
+    },
     "mail_confirm_yes": {"fr": "Confirmer", "en": "Confirm"},
     "mail_confirm_no": {"fr": "Renoncer", "en": "Give up"},
     "mail_flagged_binding": {
