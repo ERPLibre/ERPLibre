@@ -285,6 +285,16 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # TODO this link can break, the symbolic link is maybe not created
     ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
 
+    # Le noyau des règles de courriel, que le module erplibre_mail_rule
+    # importe : installé depuis ce dépôt, jamais depuis PyPI. Il exige
+    # Python 3.12 ; un venv plus ancien ne le reçoit pas.
+    if "${VENV_ODOO_PATH}/bin/python" -c \
+        'import sys; sys.exit(sys.version_info < (3, 12))'; then
+        "${VENV_ODOO_PATH}/bin/python" -m pip install -q --no-deps \
+            --no-build-isolation -e ./script/lib/erplibre_mail_core \
+            || echo "erplibre-mail-core non installe : le module erplibre_mail_rule ne s'installera pas."
+    fi
+
     # Force to return to erplibre source
     source ./${VENV_ERPLIBRE_PATH}/bin/activate
 
