@@ -40,6 +40,47 @@ from script.todo.mail.store import Store, sweep_orphan_ephemeral
 # un autre.
 LIEN_MORT = (OSError, imaplib.IMAP4.abort)
 
+
+def _tls_refusal_type():
+    """La classe d'un certificat refusé (`TlsCertificateError`), importée
+    à l'usage : le module ne tire pas le noyau à son import."""
+    from script.todo.mail import _core_path  # noqa: F401
+
+    # isort: split
+    from erplibre_mail_core.tls import TlsCertificateError
+
+    return TlsCertificateError
+
+
+def is_tls_refusal(exc) -> bool:
+    """Vrai si `exc` est un refus de certificat."""
+    return isinstance(exc, _tls_refusal_type())
+
+
+def _refresh_pins(account) -> None:
+    """Relit les épingles TLS du compte dans le fichier d'où il vient
+    (`accounts.source_of`) avant une connexion : une épingle posée ou
+    retirée ailleurs vaut aussitôt. Un compte construit en mémoire n'a pas
+    de fichier et garde les siennes. Ne lève jamais."""
+    from script.todo.mail import accounts
+
+    accounts.refresh_tls_pins(account)
+
+
+def _signal_tls(session, protocol: str, exc) -> None:
+    """Prévient `session.on_tls(protocol, exc)` s'il est posé : `exc` est
+    le refus de certificat qui vient de mettre la session hors ligne, ou
+    None après une connexion qui a passé le TLS. Une session sans
+    écouteur (service, menu, doublure) n'en a pas. Ne lève jamais."""
+    rappel = getattr(session, "on_tls", None)
+    if rappel is None:
+        return
+    try:
+        rappel(protocol, exc)
+    except Exception:
+        _logger.exception("écouteur TLS de la session")
+
+
 SYNC_PARALLELE = 4
 # Liens simultanés vers UN MÊME compte, pour que ses dossiers se
 # synchronisent ensemble. Un `imaplib` n'a qu'un dossier sélectionné à la
@@ -318,6 +359,10 @@ class Session:
         self.secrets = secrets
         self.config_get = config_get
         self.connect_fn = connect_fn
+        # L'écouteur des issues TLS (`_signal_tls`), posé par l'interface :
+        # un refus qui met la session hors ligne doit arriver au registre
+        # des refus quel que soit le geste qui l'a rencontré.
+        self.on_tls = None
 
     def current_secret(self) -> str:
         """Le secret à présenter MAINTENANT, rafraîchi s'il a vieilli.
@@ -350,6 +395,19 @@ class Session:
     def online(self) -> bool:
         return self.syncer is not None
 
+    def _sans_lien(self):
+        """Ce que rend un échange demandé à une session HORS LIGNE : None,
+        ou la levée du refus de certificat qui l'a mise hors ligne.
+
+        Le refus se lève de nouveau plutôt que de rendre None : un geste
+        qui a vérifié `online` avant d'attendre le verrou des passes ne
+        doit pas lire « rien à faire » ni « fait » quand une passe vient
+        de couper le lien ; un rangement effacerait alors du cache ce que
+        le serveur n'a jamais déplacé."""
+        if self.exc is not None and is_tls_refusal(self.exc):
+            raise self.exc.with_traceback(None)
+        return None
+
     def avec_lien(self, action, progress=None):
         """Exécute `action(transport)`, avec UNE reprise si le lien est mort.
 
@@ -373,9 +431,13 @@ class Session:
         L'appelant garde la charge du verrou : `imaplib` n'est pas sûr entre
         fils, et c'est lui qui sait quelle suite d'échanges doit rester
         indivisible.
+
+        Hors ligne, rien n'est tenté : voir `_sans_lien`. Un refus de
+        certificat à la reprise met la session hors ligne, prévient
+        l'écouteur (`on_tls`) et se lève.
         """
         if self.syncer is None:
-            return None
+            return self._sans_lien()
         from script.todo.mail.imap_transport import ImapAuthError
 
         try:
@@ -406,10 +468,58 @@ class Session:
         # Le transport est remplacé, le `Syncer` reste : il ne porte que le
         # cache et le lien, et le reconstruire obligerait cette méthode à
         # savoir comment on en fabrique un.
-        self.syncer.transport = self.connect_fn(
-            self.account, self.current_secret()
-        )
+        _refresh_pins(self.account)
+        try:
+            self.syncer.transport = self.connect_fn(
+                self.account, self.current_secret()
+            )
+        except Exception as exc:
+            if is_tls_refusal(exc):
+                # L'ancien lien est déjà fermé : `imaplib` y est à l'état
+                # LOGOUT et refuserait toute commande, que rien ne
+                # rouvrirait. La session passe hors ligne, d'où
+                # `reconnect` la sortira une fois le certificat épinglé.
+                self.syncer = None
+                self.error = str(exc)
+                self.error_kind = "tls"
+                self.exc = exc
+                _signal_tls(self, exc.protocol, exc)
+            raise
         return action(self.syncer.transport)
+
+    def reconnect(self, verrou=None) -> None:
+        """Rouvre le lien d'une session HORS LIGNE qui a son cache.
+
+        Tout le corps tient `verrou` s'il est donné (celui des passes de
+        synchronisation) : la reconnexion ne croise jamais une passe, et
+        le test « hors ligne » puis l'affectation du lien sont indivisibles.
+        Une session déjà en ligne reste telle quelle. Sans cache ni
+        fabrique de lien : `RuntimeError`. Les épingles TLS du compte sont
+        relues avant la connexion, et le secret est celui du moment
+        (`current_secret`), un jeton lu au démarrage ayant pu expirer.
+        Toute exception de la connexion traverse sans rien changer ; un
+        succès efface la panne d'ouverture.
+        """
+        garde = verrou if verrou is not None else contextlib.nullcontext()
+        with garde:
+            if self.syncer is not None:
+                return
+            if self.store is None or self.connect_fn is None:
+                raise RuntimeError(self.account.name)
+            _refresh_pins(self.account)
+            transport = self.connect_fn(self.account, self.current_secret())
+            syncer = Syncer(
+                self.store, transport, parallele=SYNC_DOSSIERS_PARALLELE
+            )
+            connect_fn, account = self.connect_fn, self.account
+
+            def lien_de_plus():
+                _refresh_pins(account)
+                return connect_fn(account, self.password)
+
+            syncer.open_transport = lien_de_plus
+            self.syncer = syncer
+            self.error, self.error_kind, self.exc = "", "", None
 
     def sync(self, progress=None, only=None):
         """Une passe, avec la même reprise que tout le reste.
@@ -417,10 +527,10 @@ class Session:
         `only` restreint la passe aux dossiers qu'il retient (voir
         `Syncer.sync`) ; il n'est transmis que s'il est donné, pour qu'un
         synchroniseur réduit sans ce paramètre serve encore à une passe
-        complète.
+        complète. Hors ligne : voir `_sans_lien`.
         """
         if self.syncer is None:
-            return None
+            return self._sans_lien()
         options = {"progress": progress}
         if only is not None:
             options["only"] = only
@@ -515,7 +625,11 @@ def open_session(
         # corrompraient. Un jeton périmé fait échouer l'ouverture du lien
         # supplémentaire, son lot revient au lien principal, et c'est lui
         # qui déclenche l'unique reprise de `Session.sync`.
-        syncer.open_transport = lambda: connect_fn(account, session.password)
+        def lien_de_plus():
+            _refresh_pins(account)
+            return connect_fn(account, session.password)
+
+        syncer.open_transport = lien_de_plus
     return session
 
 
@@ -1490,8 +1604,10 @@ class FlushResult(tuple):
     """(partis, retenus, échoués) d'une vidange, plus en attributs :
     `partial` (départs refusés en partie), `refused` (destinataires
     refusés par ces départs), `retried` (entrées de nouvel essai créées),
-    `served` (adresses servies, pour l'écran seulement). Égal au
-    triplet : un appelant qui le déballe le lit comme avant."""
+    `served` (adresses servies, pour l'écran seulement), `tls_error` (le
+    premier certificat refusé à la connexion SMTP de la vidange, None
+    sinon). Égal au triplet : un appelant qui le déballe le lit comme
+    avant."""
 
     def __new__(
         cls,
@@ -1503,12 +1619,14 @@ class FlushResult(tuple):
         refused=0,
         retried=0,
         served=(),
+        tls_error=None,
     ):
         resultat = super().__new__(cls, (sent, held, failed))
         resultat.partial = partial
         resultat.refused = refused
         resultat.retried = retried
         resultat.served = tuple(served)
+        resultat.tls_error = tls_error
         return resultat
 
 
@@ -1667,6 +1785,8 @@ def flush_outbox(
     servis_tous = []
     auto_partis = 0
     injoignable = False
+    refus_tls = None
+    epingles_relues = False
     for instantane in entrees:
         ident = instantane["id"]
         instant = int(clock())
@@ -1818,12 +1938,18 @@ def flush_outbox(
                 )
                 attendue = tuple(recipients(message))
             connecte = False
+            if not epingles_relues:
+                _refresh_pins(session.account)
+                epingles_relues = True
             transport = connect_fn(session.account, session.current_secret())
             connecte = True
+            _signal_tls(session, "smtp", None)
             with _claim_kept(store, ident, clock):
                 servis = send_fn(session.account, message, transport)
         except Exception as exc:
             injoignable = injoignable or connecte is False
+            if connecte is False and refus_tls is None and is_tls_refusal(exc):
+                refus_tls = exc
             # La réservation tient jusqu'à ce que la suite du refus soit
             # écrite : une vidange concurrente ne reprend jamais l'entrée
             # avec l'enveloppe d'avant sa réduction.
@@ -1987,6 +2113,7 @@ def flush_outbox(
         refused=refuses,
         retried=essais,
         served=servis_tous,
+        tls_error=refus_tls,
     )
 
 
@@ -2346,7 +2473,9 @@ def deliver(
     transport = None
     if send_fn is smtp_send_fn:
         connect_fn = connect_fn or smtp_connect
+        _refresh_pins(session.account)
         transport = connect_fn(session.account, session.current_secret())
+        _signal_tls(session, "smtp", None)
     try:
         served = send_fn(session.account, msg, transport)
     finally:
@@ -2826,6 +2955,7 @@ def run_tui(
             Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
             Binding("F", "manage_folders", t("mail_folder_binding")),
             Binding("o", "show_outbox", t("mail_outbox_binding")),
+            Binding("T", "review_certificate", t("mail_tls_review_binding")),
             Binding("e", "show_rules", t("mail_rules_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
@@ -2882,6 +3012,14 @@ def run_tui(
             # Dernière annonce des envois retenus mise en tête du statut :
             # la suivante la remplace au lieu de s'y ajouter.
             self._annonce_retenues = ""
+            # Le dernier certificat refusé par (compte, protocole, point
+            # d'accès), dans l'ordre où les refus arrivent ; `T` propose
+            # d'épingler le plus ancien. Le verrou ne couvre que le
+            # registre : aucun appel à l'interface ne se fait en le tenant.
+            self.tls_refus: dict[tuple[str, str, str], object] = {}
+            self._tls_verrou = threading.Lock()
+            # Dernière annonce des refus TLS mise en tête du statut.
+            self._annonce_tls = ""
             # État d'un glissement de barre de partage EN COURS (souris,
             # tâche 25) ; `None` hors glissement. Vit sur l'App — pas sur la
             # barre elle-même (`_PaneSplitter`) — puisque c'est ici que
@@ -2950,6 +3088,11 @@ def run_tui(
                 " ", t("mail_from"), t("mail_subject"), t("mail_date")
             )
             self.reload_folders()
+            for session in self.sessions:
+                self._ecouter_tls(session)
+                origine = getattr(session, "exc", None)
+                if is_tls_refusal(origine):
+                    self.noter_tls(session.account.name, origine)
             self._annoncer_retenues()
             self.run_worker(self.sync_all_worker, thread=True)
             interval = todo_prefs.get("mail_refresh_sec", 300)
@@ -4722,10 +4865,13 @@ def run_tui(
             # dans un message d'erreur suffit. Le statut disparaîtrait au
             # moment PRÉCIS où il sert. On tente donc le balisage —
             # `deliver` s'en sert pour son ⚠ en gras rouge — et on retombe
-            # sur du littéral dès qu'il ne tient pas.
+            # sur du littéral dès qu'il ne tient pas. Les codes d'émoji
+            # restent du texte : une empreinte « AB:CD:… » en contient
+            # (« :CD: » deviendrait un disque), et elle doit se lire telle
+            # quelle pour se comparer à celle de l'administrateur.
             if isinstance(text, str):
                 try:
-                    text = Text.from_markup(text)
+                    text = Text.from_markup(text, emoji=False)
                 except Exception:
                     text = Text(text)
             (
@@ -4753,6 +4899,7 @@ def run_tui(
             # socket imaplib d'un même compte, qui n'est pas sûr à
             # plusieurs fils. Deux comptes DIFFÉRENTS ont chacun leur socket
             # et leur cache verrouillé : ceux-là peuvent avancer ensemble.
+            self._rouvrir_epinglees(sessions)
             paires = []
             with self._sync_lock:
                 vivantes = [s for s in sessions if s is not None and s.online]
@@ -4788,46 +4935,279 @@ def run_tui(
             # un fil du pool, attendrait le fil parent qui tient le verrou en
             # attendant le pool. Ici, un seul fil, compte après compte.
             self._run_rules([(s, r) for s, r in paires if r is not None])
-            self._annoncer_retenues()
+            self._annoncer_tetes()
+
+        def _rouvrir_epinglees(self, sessions) -> None:
+            """Rouvre chaque session hors ligne pour un refus de certificat
+            dont les épingles ont changé dans `accounts.json` depuis sa
+            dernière tentative : une épingle posée ou retirée ailleurs
+            (menu, autre client) vaut dès la passe suivante. Une session
+            aux épingles inchangées n'est pas retentée, son refus se
+            répéterait à l'identique. Réussie, la réouverture retire les
+            refus IMAP du compte ; un nouveau refus va au registre. Fil de
+            travail ; ne lève jamais."""
+            for session in sessions:
+                try:
+                    if (
+                        session is None
+                        or session.online
+                        or getattr(session, "error_kind", "") != "tls"
+                        or session.store is None
+                        or session.connect_fn is None
+                    ):
+                        continue
+                    compte = session.account
+                    avant = dict(getattr(compte, "tls_pins", None) or {})
+                    _refresh_pins(compte)
+                    if dict(getattr(compte, "tls_pins", None) or {}) == avant:
+                        continue
+                    nom = session.account.name
+                    try:
+                        session.reconnect(verrou=self._sync_lock)
+                    except Exception as exc:
+                        if is_tls_refusal(exc):
+                            self.noter_tls(nom, exc)
+                        else:
+                            self.set_status(f"{nom} : {exc}")
+                        continue
+                    self.oublier_tls(nom, "imap")
+                    self.set_status(
+                        t("mail_tls_reconnected").format(account=nom)
+                    )
+                except Exception:
+                    _logger.exception("réouverture d'une session refusée")
 
         def _annoncer_retenues(self) -> None:
             """Met en tête du statut les envois automatiques retenus qui
-            attendent qu'on les relâche (touche `o`). Ne lève jamais.
+            attendent qu'on les relâche (touche `o`), derrière les refus de
+            certificat : voir `_annoncer_tetes`. Ne lève jamais."""
+            self._annoncer_tetes()
+
+        def _annonce_retenues_texte(self) -> str:
+            comptes = held_auto_counts(self.sessions)
+            if not comptes:
+                return ""
+            return (
+                " · ".join(
+                    f"{nom} : {held_auto_text(nombre)}"
+                    for nom, nombre in comptes
+                )
+                + " (o)"
+            )
+
+        def _annonce_tls_texte(self) -> str:
+            """Les refus de certificat du registre, une annonce par refus ;
+            « » sans refus."""
+            with self._tls_verrou:
+                refus = [(cle[0], exc) for cle, exc in self.tls_refus.items()]
+            if not refus:
+                return ""
+            from script.todo.mail import tls_trust
+
+            return " · ".join(
+                tls_trust.status_text(nom, exc) for nom, exc in refus
+            )
+
+        def _annoncer_tetes(self) -> None:
+            """Compose l'en-tête du statut : refus de certificat (touche
+            `T`), puis envois automatiques retenus (touche `o`), puis le
+            reste. Ne lève jamais.
 
             En TÊTE et après le bilan des règles : la ligne de statut n'a
-            qu'une ligne de haut, et sa fin est ce qui se perd. Rappelée
-            après chaque passe, l'annonce revient tant qu'une entrée reste
-            retenue ; celle d'un appel précédent, encore en tête du statut,
-            est remplacée et non redoublée. Quand plus rien n'est retenu,
-            cette annonce est retirée de la tête du statut.
+            qu'une ligne de haut, et sa fin est ce qui se perd. Les deux
+            annonces posées la fois précédente sont d'abord retirées de la
+            tête, dans leur ordre, chacune avec son « — » : un appel répété
+            remplace l'en-tête au lieu de l'empiler. Une annonce vide est
+            omise avec son séparateur. Aucun verrou n'est tenu pendant la
+            lecture ni l'écriture du statut.
             """
             try:
-                comptes = held_auto_counts(self.sessions)
-                ancienne = self._annonce_retenues
-                if not comptes and not ancienne:
+                tls_txt = self._annonce_tls_texte()
+                ret_txt = self._annonce_retenues_texte()
+                anciennes = (self._annonce_tls, self._annonce_retenues)
+                if not (tls_txt or ret_txt or any(anciennes)):
                     return
-                precedent = self._status_text()
-                en_tete = bool(ancienne) and precedent.startswith(ancienne)
-                if en_tete:
-                    precedent = precedent[len(ancienne) :].removeprefix(" — ")
-                if not comptes:
-                    self._annonce_retenues = ""
-                    if en_tete:
-                        self.set_status(precedent)
+                reste = self._status_text()
+                retire = False
+                for ancienne in anciennes:
+                    if ancienne and reste.startswith(ancienne):
+                        reste = reste[len(ancienne) :].removeprefix(" — ")
+                        retire = True
+                self._annonce_tls, self._annonce_retenues = tls_txt, ret_txt
+                if not (tls_txt or ret_txt or retire):
                     return
-                annonce = (
-                    " · ".join(
-                        f"{nom} : {held_auto_text(nombre)}"
-                        for nom, nombre in comptes
-                    )
-                    + " (o)"
-                )
-                self._annonce_retenues = annonce
                 self.set_status(
-                    f"{annonce} — {precedent}" if precedent else annonce
+                    " — ".join(x for x in (tls_txt, ret_txt, reste) if x)
                 )
             except Exception:
-                _logger.exception("annonce des envois retenus en échec")
+                _logger.exception("annonce de l'en-tête du statut en échec")
+
+        def noter_tls(self, account_name: str, exc) -> None:
+            """Inscrit un refus de certificat au registre (le dernier par
+            compte, protocole et point d'accès), puis met l'annonce en tête
+            du statut. Toute autre exception est ignorée. Appelable du fil
+            de l'interface comme d'un fil de travail ; ne lève jamais."""
+            try:
+                if not is_tls_refusal(exc):
+                    return
+                cle = (account_name, exc.protocol, exc.endpoint)
+                with self._tls_verrou:
+                    self.tls_refus.pop(cle, None)
+                    self.tls_refus[cle] = exc
+                _logger.info(
+                    "certificat refusé noté : %s %s %s",
+                    account_name,
+                    exc.protocol,
+                    exc.endpoint,
+                )
+                self._annoncer_tetes()
+            except Exception:
+                _logger.exception("registre des refus TLS")
+
+        def _ecouter_tls(self, session) -> None:
+            """Branche le registre des refus sur la session (`on_tls`) : un
+            refus qui la met hors ligne y est inscrit, quel que soit le
+            geste qui l'a rencontré (corps, rangement, dépôt dans Envoyés),
+            et une connexion qui passe le TLS retire les refus de son
+            protocole. Un objet qui refuse l'attribut reste sans écouteur."""
+            nom = session.account.name
+
+            def rappel(protocol, exc) -> None:
+                if exc is None:
+                    self.oublier_tls(nom, protocol)
+                else:
+                    self.noter_tls(nom, exc)
+
+            try:
+                session.on_tls = rappel
+            except Exception:
+                _logger.info("écouteur TLS non posé pour %s", nom)
+
+        def oublier_tls(self, account_name: str, protocol: str) -> None:
+            """Retire du registre les refus de ce compte et de ce
+            protocole ; ne lève jamais."""
+            try:
+                with self._tls_verrou:
+                    cles = [
+                        cle
+                        for cle in self.tls_refus
+                        if cle[0] == account_name and cle[1] == protocol
+                    ]
+                    for cle in cles:
+                        del self.tls_refus[cle]
+                if cles:
+                    self._annoncer_tetes()
+            except Exception:
+                _logger.exception("registre des refus TLS")
+
+        def action_review_certificate(self) -> None:
+            """Touche `T` : propose d'épingler le plus ancien certificat
+            refusé dont l'empreinte a pu être lue, par un mot à taper."""
+            with self._tls_verrou:
+                refus = list(self.tls_refus.items())
+            if not refus:
+                self.set_status(t("mail_tls_review_none"))
+                return
+            epinglable = next(
+                ((cle, exc) for cle, exc in refus if exc.pinnable), None
+            )
+            if epinglable is None:
+                self.set_status(
+                    t("mail_tls_pin_unavailable").format(
+                        endpoint=refus[0][1].endpoint
+                    )
+                )
+                return
+            (nom, _, _), exc = epinglable
+            from script.todo.mail import tls_trust
+
+            def suite(oui) -> None:
+                if not oui:
+                    self.set_status(
+                        t("mail_tls_pin_declined").format(
+                            endpoint=exc.endpoint
+                        )
+                    )
+                    return
+                if not self._epingler(nom, exc):
+                    return
+                self._apres_epinglage(nom, exc)
+
+            self.push_screen(
+                TypedConfirmScreen(
+                    tls_trust.question(nom, exc), t("mail_tls_trust_word")
+                ),
+                suite,
+            )
+
+        def _epingler(self, nom: str, exc) -> bool:
+            """Fil de l'interface : écrit l'épingle du refus `exc` pour le
+            compte `nom` (fichier et compte de la session), retire le refus
+            du registre. Rend vrai si l'épingle est écrite."""
+            from script.todo.mail import accounts as mail_accounts
+            from script.todo.mail import tls_trust
+
+            session = self.session_for(nom)
+            try:
+                if session is not None:
+                    compte = session.account
+                else:
+                    compte = mail_accounts.find(mail_accounts.load(), nom)
+                    if compte is None:
+                        raise mail_accounts.AccountError(
+                            f"{t('mail_err_account_not_found')} {nom!r}"
+                        )
+                tls_trust.pin(compte, exc)
+            except (mail_accounts.AccountError, OSError, ValueError) as err:
+                self.set_status(f"{t('mail_tls_pin_failed')} {err}")
+                return False
+            with self._tls_verrou:
+                self.tls_refus.pop((nom, exc.protocol, exc.endpoint), None)
+            self.set_status(
+                t("mail_tls_pinned_done").format(
+                    account=nom, endpoint=exc.endpoint
+                )
+            )
+            self._annoncer_tetes()
+            return True
+
+        def _apres_epinglage(self, nom: str, exc) -> None:
+            """Fil de l'interface : rouvre ou resynchronise ce que le refus
+            bloquait. IMAP hors ligne : reconnexion ; session en ligne :
+            une passe (lien supplémentaire, ou vidange SMTP) ; SMTP hors
+            ligne : l'indication de la prochaine synchronisation."""
+            session = self.session_for(nom)
+            if session is None:
+                return
+            if session.online:
+                self.run_worker(lambda: self._sync([session]), thread=True)
+            elif exc.protocol == "imap" and session.store is not None:
+                self.run_worker(
+                    lambda: self._reconnecter(session), thread=True
+                )
+            else:
+                self.set_status(
+                    f"{self._status_text()} {t('mail_tls_pinned_smtp_hint')}"
+                )
+
+        def _reconnecter(self, session) -> None:
+            """Fil de travail : rouvre le lien d'une session hors ligne
+            sous le verrou des passes, puis la synchronise."""
+            nom = session.account.name
+            try:
+                session.reconnect(verrou=self._sync_lock)
+            except Exception as exc:
+                if is_tls_refusal(exc):
+                    self.noter_tls(nom, exc)
+                else:
+                    self.set_status(f"{nom} : {exc}")
+                return
+            self.set_status(t("mail_tls_reconnected").format(account=nom))
+            if self._thread_id_differs():
+                self.call_from_thread(self.reload_folders)
+            else:
+                self.reload_folders()
+            self._sync([session])
 
         def _run_rules(self, paires) -> None:
             """Une passe des règles par compte synchronisé, puis UNE ligne
@@ -4851,6 +5231,9 @@ def run_tui(
                     for session, rapport in paires
                 ]
                 for rapport in rapports:
+                    refus = getattr(rapport, "tls_error", None)
+                    if refus is not None:
+                        self.noter_tls(rapport.account, refus)
                     if not rapport.errors:
                         continue
                     if rapport.active_rules:
@@ -4927,11 +5310,18 @@ def run_tui(
                 partis, _, echoues = r
                 if partis or echoues:
                     self.set_status(outbox_status_text(r))
+                refus = getattr(r, "tls_error", None)
+                if refus is not None:
+                    self.noter_tls(session.account.name, refus)
+                elif partis:
+                    self.oublier_tls(session.account.name, "smtp")
             except Exception:
                 _logger.exception("vidange de la file a échoué")
             try:
                 report = session.sync()
             except Exception as exc:
+                if is_tls_refusal(exc):
+                    self.noter_tls(session.account.name, exc)
                 _logger.exception("sync de %s a échoué", session.account.name)
                 self.set_status(f"{session.account.name} : {exc}")
                 # Le statut est ÉPHÉMÈRE : `LogScreen` (touche `l`) existe
@@ -4944,6 +5334,11 @@ def run_tui(
             # remet à synchroniser proprement ne doit pas garder affichée
             # une erreur qui ne décrit plus l'état courant.
             self.session_errors[session.account.name] = list(report.errors)
+            refus = getattr(report, "tls_error", None)
+            if refus is not None:
+                self.noter_tls(session.account.name, refus)
+            else:
+                self.oublier_tls(session.account.name, "imap")
             message = (
                 f"{session.account.name} : {report.new_messages}"
                 f" {t('mail_new_messages')}"
@@ -5282,6 +5677,9 @@ def run_tui(
                 connect_fn=self.connect_fn,
             )
             self.sessions.append(session)
+            self._ecouter_tls(session)
+            if is_tls_refusal(getattr(session, "exc", None)):
+                self.noter_tls(account.name, session.exc)
             if session.store is not None and session.store.mode == (
                 "ephemeral"
             ):
@@ -7657,6 +8055,10 @@ def run_tui(
                     )
                 except Exception as exc:
                     erreur = str(exc) or type(exc).__name__
+                    if is_tls_refusal(exc):
+                        noter = getattr(self.app, "noter_tls", None)
+                        if noter is not None:
+                            noter(session.account.name, exc)
                 self.app.call_from_thread(self._envoye, statut, erreur)
 
             self.run_worker(travail, thread=True)
@@ -9186,6 +9588,7 @@ def run_tui(
                     "mail_help_mouse",
                     "mail_help_layouts",
                     "mail_help_sync",
+                    "mail_help_tls",
                     "mail_help_files",
                     "mail_rules_help",
                 )
@@ -9370,15 +9773,52 @@ def run_tui(
                 pass
 
         def _echec_envoi(self, exc) -> None:
-            """Fil de l'interface : l'erreur du serveur, écran gardé."""
+            """Fil de l'interface : l'erreur du serveur, écran gardé.
+
+            Un certificat refusé s'inscrit au registre du client et, si son
+            empreinte a pu être lue, la confirmation d'épinglage s'empile
+            aussitôt par-dessus le brouillon, qui n'est jamais touché ; une
+            fois épinglé, `ctrl+s` renvoie le message.
+            """
             self._envoi_en_cours = False
             self._bouton_envoi(True)
-            try:
-                self.query_one("#compose_status", Static).update(
-                    f"[b red]{exc}[/]"
+            self._statut_envoi(f"[b red]{exc}[/]")
+            if not is_tls_refusal(exc):
+                return
+            nom = self.session.account.name
+            noter = getattr(self.app, "noter_tls", None)
+            if noter is not None:
+                noter(nom, exc)
+            if not exc.pinnable:
+                self._statut_envoi(
+                    t("mail_tls_pin_unavailable").format(endpoint=exc.endpoint)
+                    + " "
+                    + t("mail_tls_compose_kept")
                 )
+                return
+            from script.todo.mail import tls_trust
+
+            def retour(oui) -> None:
+                epingler = getattr(self.app, "_epingler", None)
+                if oui and epingler is not None and epingler(nom, exc):
+                    self._statut_envoi(t("mail_tls_compose_resend"))
+                    return
+                self._statut_envoi(
+                    f"[b red]{exc}[/] {t('mail_tls_compose_kept')}"
+                )
+
+            self.app.push_screen(
+                TypedConfirmScreen(
+                    tls_trust.question(nom, exc), t("mail_tls_trust_word")
+                ),
+                retour,
+            )
+
+        def _statut_envoi(self, texte: str) -> None:
+            try:
+                self.query_one("#compose_status", Static).update(texte)
             except Exception:
-                self.app.set_status(f"[b red]{exc}[/]")
+                self.app.set_status(texte)
 
         def _apres_envoi(self, statut, answer_of) -> None:
             """Fil de l'interface : `\\Answered` sur l'original, puis

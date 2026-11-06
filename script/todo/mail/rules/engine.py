@@ -201,6 +201,9 @@ class EngineReport:
     `claim_mode` est le mode de revendication du serveur connu à la fin
     de la passe (`claim.CLAIM_MODES`) : celui de `state.json` au départ,
     celui de la dernière revendication ensuite, « » s'il est inconnu.
+    `tls_error` est le premier certificat refusé (`TlsCertificateError`)
+    par un envoi automatique de la passe, None sinon : l'appelant le
+    signale, le moteur met la réponse en file comme un échec transitoire.
     """
 
     account: str
@@ -216,11 +219,22 @@ class EngineReport:
     warnings: list = field(default_factory=list)
     errors: list = field(default_factory=list)
     claim_mode: str = ""
+    tls_error: object = None
 
     def warn(self, text: str) -> None:
         """Ajoute un avertissement, une seule fois par texte."""
         if text not in self.warnings:
             self.warnings.append(text)
+
+
+def _is_tls_refusal(exc) -> bool:
+    """Vrai si `exc` est un certificat refusé (`TlsCertificateError`)."""
+    from script.todo.mail import _core_path  # noqa: F401
+
+    # isort: split
+    from erplibre_mail_core.tls import TlsCertificateError
+
+    return isinstance(exc, TlsCertificateError)
 
 
 def claim_mode_text(mode: str) -> str:
@@ -1745,6 +1759,8 @@ class _Pass:
             return
         except Exception as exc:
             code = getattr(exc, "code", None)
+            if self.result.tls_error is None and _is_tls_refusal(exc):
+                self.result.tls_error = exc
             if smtp_failure_is_permanent(exc):
                 store.rule_log_set_outcome(
                     rule.id, msg_key, "failed", "smtp_permanent"
