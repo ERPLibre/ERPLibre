@@ -1855,8 +1855,10 @@ same rules from Odoo: a worker fetches an IMAP inbox by UID, without ever
 marking a message read, evaluates the core rules and sends the automatic
 reply. A mailbox can be shared with a client workstation: both claim each
 message on the server before replying (see "Several machines on one
-mailbox"), so only one replies. This version sends replies only: no
-forwarding, no statistics. The portal module erplibre_mail_rule_portal,
+mailbox"), so only one replies. It replies and forwards: inline, as an
+attachment, or as a true redirect, to 1 to 10 destinations, with the
+forwarding safeguards of the client (see "Forwarding"); it does not
+compute statistics yet. The portal module erplibre_mail_rule_portal,
 below, opens it to portal users.
 
 - The module imports the core, installed in Odoo's virtual environment in
@@ -1878,6 +1880,14 @@ below, opens it to portal users.
   from the journal: the word SEND is typed, and the worker evaluates it
   again at its next pass, for the rule of that line only, without the age
   limit.
+- A forward reads the whole message with `BODY.PEEK[]`, once for all
+  rules, never marking it read; a message larger than the
+  `erplibre_mail_rule.forward_max_mib` system parameter (10 MiB by
+  default, at most 25) is not forwarded, and the journal says so.
+- When the server accepts only some recipients, the journal line reads
+  "Partly sent" with the refused codes; recipients refused temporarily
+  (4xx) get a retry in a new outbox entry, within the same 24-hour
+  window, and those refused for good (5xx) are dropped.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -1887,7 +1897,12 @@ rules to portal users at `/my/mail`, without access to the backend. A mail
 rules manager grants them the service (menu "Portal access"). They manage
 their own accounts (the password is write-only, the connection test goes
 through the worker), their rules (AND/OR filter editor, trial without
-sending) and their journal (approve, discard, release by hand). Every
+sending) and their journal (approve, discard, release by hand). Portal
+users may forward, inline or as an attachment only, to at most 3
+distinct destinations per account and 10 forwards per hour per account,
+approved or not (system parameters); mailing lists and robots are never
+forwarded for them, and their first forwards wait for their own
+approval, which does not protect against a stolen session. Every
 route checks the owner; accounts and rules per user are limited (5 and 50
 by default, system parameters). Details: the module's `README.md`.
 

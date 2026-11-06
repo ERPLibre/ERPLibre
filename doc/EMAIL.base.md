@@ -2655,8 +2655,10 @@ same rules from Odoo: a worker fetches an IMAP inbox by UID, without ever
 marking a message read, evaluates the core rules and sends the automatic
 reply. A mailbox can be shared with a client workstation: both claim each
 message on the server before replying (see "Several machines on one
-mailbox"), so only one replies. This version sends replies only: no
-forwarding, no statistics. The portal module erplibre_mail_rule_portal,
+mailbox"), so only one replies. It replies and forwards: inline, as an
+attachment, or as a true redirect, to 1 to 10 destinations, with the
+forwarding safeguards of the client (see "Forwarding"); it does not
+compute statistics yet. The portal module erplibre_mail_rule_portal,
 below, opens it to portal users.
 
 - The module imports the core, installed in Odoo's virtual environment in
@@ -2678,6 +2680,14 @@ below, opens it to portal users.
   from the journal: the word SEND is typed, and the worker evaluates it
   again at its next pass, for the rule of that line only, without the age
   limit.
+- A forward reads the whole message with `BODY.PEEK[]`, once for all
+  rules, never marking it read; a message larger than the
+  `erplibre_mail_rule.forward_max_mib` system parameter (10 MiB by
+  default, at most 25) is not forwarded, and the journal says so.
+- When the server accepts only some recipients, the journal line reads
+  "Partly sent" with the refused codes; recipients refused temporarily
+  (4xx) get a retry in a new outbox entry, within the same 24-hour
+  window, and those refused for good (5xx) are dropped.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -2687,7 +2697,12 @@ rules to portal users at `/my/mail`, without access to the backend. A mail
 rules manager grants them the service (menu "Portal access"). They manage
 their own accounts (the password is write-only, the connection test goes
 through the worker), their rules (AND/OR filter editor, trial without
-sending) and their journal (approve, discard, release by hand). Every
+sending) and their journal (approve, discard, release by hand). Portal
+users may forward, inline or as an attachment only, to at most 3
+distinct destinations per account and 10 forwards per hour per account,
+approved or not (system parameters); mailing lists and robots are never
+forwarded for them, and their first forwards wait for their own
+approval, which does not protect against a stolen session. Every
 route checks the owner; accounts and rules per user are limited (5 and 50
 by default, system parameters). Details: the module's `README.md`.
 
@@ -3910,10 +3925,12 @@ les mêmes règles depuis Odoo : un worker relève une boîte de réception IMAP
 par UID, sans jamais marquer un message lu, évalue les règles du noyau et
 envoie la réponse automatique. Une boîte peut être partagée avec un poste
 du client : chacun revendique le message sur le serveur avant de répondre
-(voir « Plusieurs postes sur une même boîte »), et un seul répond. Cette
-version n'envoie que des réponses : ni redirection, ni statistiques. Le
-module de portail erplibre_mail_rule_portal, ci-dessous, l'ouvre aux
-utilisateurs du portail.
+(voir « Plusieurs postes sur une même boîte »), et un seul répond. Il
+répond et transfère : dans le corps du message, en pièce jointe ou en
+vraie redirection, vers 1 à 10 destinations, avec les garde-fous de
+redirection du client (voir « La redirection ») ; il ne calcule pas
+encore de statistiques. Le module de portail erplibre_mail_rule_portal,
+ci-dessous, l'ouvre aux utilisateurs du portail.
 
 - Le module importe le noyau, installé dans l'environnement virtuel d'Odoo
   en mode éditable : `script/install/install_locally.sh` le fait pour
@@ -3934,6 +3951,15 @@ utilisateurs du portail.
   la main depuis le journal : le mot ENVOYER se tape, et le worker le
   réévalue à sa passe suivante, pour la seule règle de cette ligne, sans
   limite d'âge.
+- Un transfert lit le message entier en `BODY.PEEK[]`, une fois pour
+  toutes les règles, sans jamais le marquer lu ; un message plus gros que
+  le paramètre système `erplibre_mail_rule.forward_max_mib` (10 Mio par
+  défaut, 25 au plus) n'est pas transféré, et le journal le dit.
+- Quand le serveur n'accepte qu'une partie des destinataires, la ligne
+  du journal se lit « Envoyé en partie » avec les codes refusés ; les
+  destinataires refusés temporairement (4xx) ont un nouvel essai dans
+  une nouvelle entrée de la file, dans la même fenêtre de 24 heures, et
+  ceux refusés pour de bon (5xx) sont abandonnés.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ### Le portail courriel erplibre_mail_rule_portal
@@ -3944,7 +3970,13 @@ back-office. Un gestionnaire des règles de courriel leur accorde le
 service (menu « Accès au portail »). Ils gèrent leurs propres comptes (le
 mot de passe en écriture seule, le test de connexion passant par le
 worker), leurs règles (éditeur de filtre ET/OU, essai sans envoi) et leur
-journal (approuver, écarter, libérer à la main). Chaque route vérifie le
+journal (approuver, écarter, libérer à la main). Un utilisateur du portail
+peut transférer, dans le corps du message ou en pièce jointe seulement,
+vers au plus 3 destinations distinctes par compte et 10 transferts par
+heure et par compte, approuvés ou non (paramètres système) ; les listes
+de diffusion et les robots ne sont jamais transférés pour lui, et ses
+premiers transferts attendent sa propre approbation, qui ne protège pas
+d'une session volée. Chaque route vérifie le
 propriétaire ; comptes et règles par utilisateur sont limités (5 et 50 par
 défaut, paramètres système). Détails : le `README.md` du module.
 
