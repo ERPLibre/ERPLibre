@@ -134,5 +134,59 @@ class TestRecoveryAndSuccess(KdbxCase):
         self.assertIn("KeePass", "\n".join(vues))
 
 
+class TestNoPathWithoutDisplay(unittest.TestCase):
+    """Sans kdbx.path, le sélecteur Tk ne s'ouvre pas sans affichage : le
+    gestionnaire le dit et rend None, sans trace TclError."""
+
+    def _sans_chemin(self):
+        config = MagicMock()
+        config.get_config_value.return_value = None
+        return KdbxManager(config)
+
+    def test_no_display_gives_none_and_names_the_config_key(self):
+        import tkinter
+
+        from script.todo import kdbx_manager
+
+        with (
+            patch.object(
+                kdbx_manager.tk,
+                "Tk",
+                side_effect=tkinter.TclError("no $DISPLAY"),
+            ),
+            self.assertLogs(kdbx_manager._logger, "ERROR") as journal,
+        ):
+            resultat = self._sans_chemin().get_kdbx()
+        self.assertIsNone(resultat)
+        texte = "\n".join(journal.output)
+        self.assertIn("No display", texte)
+        self.assertIn("kdbx.path", texte)
+        self.assertIn("todo_override_private.json", texte)
+
+    def test_without_tkinter_gives_none(self):
+        from script.todo import kdbx_manager
+
+        with (
+            patch.object(kdbx_manager, "tk", None),
+            self.assertLogs(kdbx_manager._logger, "ERROR"),
+        ):
+            self.assertIsNone(self._sans_chemin().get_kdbx())
+
+    def test_selenium_lib_uses_the_same_picker(self):
+        """selenium_lib n'a plus son propre appel à Tk : il passe par
+        choisir_fichier_kdbx, qui tient l'absence d'affichage."""
+        texte = open(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "script",
+                "selenium",
+                "selenium_lib.py",
+            ),
+            encoding="utf-8",
+        ).read()
+        self.assertIn("choisir_fichier_kdbx()", texte)
+        self.assertNotIn("tk.Tk(", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
