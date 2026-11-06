@@ -2656,7 +2656,8 @@ marking a message read, evaluates the core rules and sends the automatic
 reply. A mailbox can be shared with a client workstation: both claim each
 message on the server before replying (see "Several machines on one
 mailbox"), so only one replies. This version sends replies only: no
-forwarding, no statistics, no portal yet.
+forwarding, no statistics. The portal module erplibre_mail_rule_portal,
+below, opens it to portal users.
 
 - The module imports the core, installed in Odoo's virtual environment in
   editable mode: `script/install/install_locally.sh` does it for Odoo 18
@@ -2673,7 +2674,22 @@ forwarding, no statistics, no portal yet.
   `test/mail_sandbox.py`, served in a child process by
   `test/mail_sandbox_serve.py` under `.venv.erplibre`, which has Twisted
   and aiosmtpd.
+- A message whose claim is uncertain or failed can be released by hand
+  from the journal: the word SEND is typed, and the worker evaluates it
+  again at its next pass, for the rule of that line only, without the age
+  limit.
 - Deployment, keys, systemd units and security: the module's `README.md`.
+
+### The mail portal erplibre_mail_rule_portal
+
+The Odoo 18 module `erplibre_mail_rule_portal`, next to it, opens the mail
+rules to portal users at `/my/mail`, without access to the backend. A mail
+rules manager grants them the service (menu "Portal access"). They manage
+their own accounts (the password is write-only, the connection test goes
+through the worker), their rules (AND/OR filter editor, trial without
+sending) and their journal (approve, discard, release by hand). Every
+route checks the owner; accounts and rules per user are limited (5 and 50
+by default, system parameters). Details: the module's `README.md`.
 
 <!-- [fr] -->
 ## Règles du courrier entrant
@@ -3895,8 +3911,9 @@ par UID, sans jamais marquer un message lu, évalue les règles du noyau et
 envoie la réponse automatique. Une boîte peut être partagée avec un poste
 du client : chacun revendique le message sur le serveur avant de répondre
 (voir « Plusieurs postes sur une même boîte »), et un seul répond. Cette
-version n'envoie que des réponses : ni redirection, ni statistiques, ni
-portail pour l'instant.
+version n'envoie que des réponses : ni redirection, ni statistiques. Le
+module de portail erplibre_mail_rule_portal, ci-dessous, l'ouvre aux
+utilisateurs du portail.
 
 - Le module importe le noyau, installé dans l'environnement virtuel d'Odoo
   en mode éditable : `script/install/install_locally.sh` le fait pour
@@ -3913,7 +3930,23 @@ portail pour l'instant.
   `test/mail_sandbox.py`, servi dans un processus fils par
   `test/mail_sandbox_serve.py` sous `.venv.erplibre`, qui a Twisted et
   aiosmtpd.
+- Un message dont la revendication est incertaine ou en échec se libère à
+  la main depuis le journal : le mot ENVOYER se tape, et le worker le
+  réévalue à sa passe suivante, pour la seule règle de cette ligne, sans
+  limite d'âge.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
+
+### Le portail courriel erplibre_mail_rule_portal
+
+Le module Odoo 18 `erplibre_mail_rule_portal`, à côté, ouvre les règles de
+courriel aux utilisateurs du portail sur `/my/mail`, sans accès au
+back-office. Un gestionnaire des règles de courriel leur accorde le
+service (menu « Accès au portail »). Ils gèrent leurs propres comptes (le
+mot de passe en écriture seule, le test de connexion passant par le
+worker), leurs règles (éditeur de filtre ET/OU, essai sans envoi) et leur
+journal (approuver, écarter, libérer à la main). Chaque route vérifie le
+propriétaire ; comptes et règles par utilisateur sont limités (5 et 50 par
+défaut, paramètres système). Détails : le `README.md` du module.
 
 <!-- [en] -->
 ## Managing folders
