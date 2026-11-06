@@ -3,6 +3,7 @@
 """Règles du courrier entrant, sans stockage : `model` décrit une règle et
 la (dé)sérialise, `filter` évalue l'arbre de conditions, `regex_worker`
 borne une expression régulière dans le temps, `guards` décide si un envoi
-automatique part, `markup` rend le corps de la réponse, `report` calcule et
-rend le rapport de statistiques.
+automatique part, `markup` rend le corps de la réponse, `forward` construit
+le message d'un transfert, `report` calcule et rend le rapport de
+statistiques.
 """

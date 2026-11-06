@@ -102,6 +102,17 @@ class TestAliases(unittest.TestCase):
             with self.subTest(nom=nom):
                 self.assertIs(getattr(imap_sync, nom), getattr(imap, nom))
 
+    def test_the_client_uses_the_core_forward_functions(self):
+        """Le moteur du client transfère avec les fonctions du noyau, sous
+        ses anciens noms : aucune copie locale."""
+        from erplibre_mail_core.rules import forward
+
+        from script.todo.mail.rules import engine
+
+        self.assertIs(engine.forward_message, forward.forward_message)
+        self.assertIs(engine.forward_reply_to, forward.forward_reply_to)
+        self.assertIs(engine._first_msgid, forward.first_msgid)
+
     def test_an_alias_bootstraps_itself(self):
         """Un client ouvert avant la mise à jour garde l'ancien
         `__init__.py`, sans amorce, et l'ancien `todo_i18n`, sans

@@ -71,6 +71,11 @@ from typing import Any, Protocol
 from script.todo.mail import _core_path  # noqa: F401
 
 # isort: split
+from erplibre_mail_core.rules.forward import first_msgid as _first_msgid
+from erplibre_mail_core.rules.forward import (
+    forward_message,
+    forward_reply_to,
+)
 from erplibre_mail_core.zone import local_zone
 
 from script.todo.mail.claim import has_claim
@@ -100,7 +105,6 @@ from script.todo.mail.smtp_send import (
     SmtpError,
     outgoing_bytes,
     recipients,
-    smtp_address,
     split_refusals,
 )
 from script.todo.mail.store import StoreError
@@ -525,91 +529,6 @@ def make_raw_loader(
         return raw
 
     return load
-
-
-def forward_message(
-    account,
-    opts,
-    raw: bytes,
-    targets,
-    *,
-    intro: str = "",
-    reply_to: str = "",
-    subject_prefix: str = "",
-    date: str | None = None,
-    msgid: str | None = None,
-):
-    """Le message d'une règle `forward` selon `opts.mode` (une
-    `model.ForwardOptions`).
-
-    `redirect` rend un `smtp_send.RawOutgoing` (octets d'origine sous un
-    bloc `Resent-*`, enveloppe = `targets`) ; `intro`, `reply_to` et
-    `subject_prefix` y sont ignorés. `attachment` et `inline` rendent un
-    `EmailMessage` adressé à `targets` en Cci interne. Lève `SmtpError`
-    sur une destination refusée ou des octets illisibles.
-    """
-    from script.todo.mail import smtp_send
-
-    if opts.mode == "redirect":
-        return smtp_send.build_redirect(
-            account, raw, targets, date=date, msgid=msgid
-        )
-    build = (
-        smtp_send.build_forward_attached
-        if opts.mode == "attachment"
-        else smtp_send.build_forward_inline
-    )
-    return build(
-        account,
-        raw,
-        targets,
-        intro=intro,
-        reply_to=reply_to,
-        subject_prefix=subject_prefix,
-        date=date,
-        msgid=msgid,
-    )
-
-
-def forward_reply_to(view, own, others) -> str:
-    """Le `Reply-To` d'un transfert, en forme d'envoi.
-
-    Les adresses de la PREMIÈRE occurrence de `Reply-To` de l'original,
-    chacune passée par `smtp_address` (refusée : ignorée), moins celles de
-    `own` et de `others` (adresses normalisées), sans doublon, jointes par
-    « , ». S'il n'en reste aucune, l'adresse de From ; « » si elle n'est
-    pas admise non plus. Une notification `noreply` dont le `Reply-To`
-    désigne le demandeur reste ainsi joignable par la destination qui
-    répond.
-    """
-    from email.utils import getaddresses
-
-    first = (view.extra.get("reply-to") or "").split("\n", 1)[0]
-    kept: list[str] = []
-    for _name, address in getaddresses([first]):
-        try:
-            form = smtp_address(address.strip())
-        except SmtpError:
-            continue
-        norm = normalize_address(form)
-        if norm in own or norm in others:
-            continue
-        if all(normalize_address(k) != norm for k in kept):
-            kept.append(form)
-    if kept:
-        return ", ".join(kept)
-    try:
-        return smtp_address(rules_filter.sender_address(view, raw=True))
-    except SmtpError:
-        return ""
-
-
-def _first_msgid(value: str) -> str:
-    """Le premier identifiant d'un en-tête d'enfilage, ou « »."""
-    from script.todo.mail.smtp_send import _msgid_tokens
-
-    tokens = _msgid_tokens(value)
-    return tokens[0] if tokens else ""
 
 
 def _own_send_check(store, view, forward_ids) -> Callable[[], bool]:
