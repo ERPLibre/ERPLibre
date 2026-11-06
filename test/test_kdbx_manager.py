@@ -3,13 +3,14 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ouverture du coffre KeePass depuis le CLI.
 
-Signalé à l'usage : une mauvaise saisie affichait une trace `construct` de
-quarante lignes, puis `pykeepass.exceptions.CredentialsError`, et tuait le
-CLI — `make: *** Error 1`. L'invite disait par ailleurs `enter_password`,
-la clé i18n brute, sans nommer ce qu'elle demandait.
+Un mot de passe refusé est le cas NORMAL de cette fonction : elle le dit,
+laisse recommencer, et laisse partir. Sans ce rattrapage, pykeepass lève
+`CredentialsError` sous une trace de quarante lignes et le CLI s'arrête.
+L'invite nomme le coffre qu'elle ouvre, plusieurs pouvant exister.
 
-Un mot de passe refusé est le cas NORMAL de cette fonction : elle doit le
-dire, laisser recommencer, et laisser partir.
+Sans terminal, le mot de passe vient du fichier que nomme
+KDBX_PASSWORD_FILE, ou de kdbx.password ; sans affichage, aucun sélecteur
+Tk.
 """
 
 import os
@@ -134,6 +135,74 @@ class TestRecoveryAndSuccess(KdbxCase):
         self.assertIn("KeePass", "\n".join(vues))
 
 
+class TestPasswordFile(KdbxCase):
+    """KDBX_PASSWORD_FILE : le mot de passe vient d'un fichier, un secret
+    docker par exemple, sans terminal et avant kdbx.password."""
+
+    def _ouvrir(self, contenu=None, configure=None):
+        """get_kdbx avec KDBX_PASSWORD_FILE vers un fichier qui porte
+        ``contenu`` (None : fichier absent). Rend (résultat, affiché,
+        nombre de getpass)."""
+        secret = os.path.join(self.tmp.name, "secret")
+        if contenu is not None:
+            with open(secret, "w", encoding="utf-8") as fh:
+                fh.write(contenu)
+        vues = []
+        with (
+            patch.dict(os.environ, {"KDBX_PASSWORD_FILE": secret}),
+            patch("getpass.getpass") as saisie,
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+            ),
+        ):
+            resultat = self._manager(configure).get_kdbx()
+        return resultat, "\n".join(vues), saisie.call_count
+
+    def test_the_file_opens_the_vault_without_a_prompt(self):
+        resultat, _, saisies = self._ouvrir("bon\n")
+        self.assertIsNotNone(resultat)
+        self.assertEqual(0, saisies)
+
+    def test_the_file_wins_over_the_configuration(self):
+        resultat, _, _ = self._ouvrir("bon", configure="mauvais")
+        self.assertIsNotNone(resultat)
+
+    def test_a_wrong_password_in_the_file_is_reported(self):
+        resultat, vu, saisies = self._ouvrir("faux")
+        self.assertIsNone(resultat)
+        self.assertIn("KeePass", vu)
+        self.assertEqual(0, saisies)
+
+    def test_a_missing_file_is_named_and_never_prompts(self):
+        resultat, vu, saisies = self._ouvrir(None, configure="bon")
+        self.assertIsNone(resultat)
+        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertEqual(0, saisies)
+
+    def test_an_empty_file_is_refused(self):
+        resultat, vu, saisies = self._ouvrir("\n")
+        self.assertIsNone(resultat)
+        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertEqual(0, saisies)
+
+    def test_no_terminal_names_the_two_ways_out(self):
+        vues = []
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch("getpass.getpass", side_effect=EOFError),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+            ),
+        ):
+            os.environ.pop("KDBX_PASSWORD_FILE", None)
+            self.assertIsNone(self._manager().get_kdbx())
+        vu = "\n".join(vues)
+        self.assertIn("KDBX_PASSWORD_FILE", vu)
+        self.assertIn("kdbx.password", vu)
+
+
 class TestNoPathWithoutDisplay(unittest.TestCase):
     """Sans kdbx.path, le sélecteur Tk ne s'ouvre pas sans affichage : le
     gestionnaire le dit et rend None, sans trace TclError."""
@@ -173,8 +242,8 @@ class TestNoPathWithoutDisplay(unittest.TestCase):
             self.assertIsNone(self._sans_chemin().get_kdbx())
 
     def test_selenium_lib_uses_the_same_picker(self):
-        """selenium_lib n'a plus son propre appel à Tk : il passe par
-        choisir_fichier_kdbx, qui tient l'absence d'affichage."""
+        """selenium_lib n'a pas son propre appel à Tk : il ouvre le coffre
+        par KdbxManager, qui tient l'absence d'affichage."""
         texte = open(
             os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -184,7 +253,7 @@ class TestNoPathWithoutDisplay(unittest.TestCase):
             ),
             encoding="utf-8",
         ).read()
-        self.assertIn("choisir_fichier_kdbx()", texte)
+        self.assertIn("KdbxManager(self.config_file).get_kdbx()", texte)
         self.assertNotIn("tk.Tk(", texte)
 
 

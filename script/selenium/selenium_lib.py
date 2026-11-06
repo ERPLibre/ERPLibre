@@ -4,12 +4,12 @@
 
 import base64
 import datetime
-import getpass
 import json
 import logging
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,7 +17,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
 from selenium import webdriver
 from selenium.common.exceptions import (
@@ -42,9 +41,45 @@ sys.path.append(new_path)
 
 from script.config import config_file
 
-# Le sélecteur de fichier du coffre, quand aucun chemin n'est configuré, est
-# celui du CLI : il tient tkinter absent et l'absence d'affichage.
-from script.todo.kdbx_manager import choisir_fichier_kdbx
+# Le coffre s'ouvre comme dans le CLI : même chemin, même mot de passe, même
+# sélecteur de fichier sans affichage. pykeepass n'est chargé qu'à
+# l'ouverture.
+from script.todo.kdbx_manager import ENV_PASSWORD_FILE, KdbxManager
+
+
+class KdbxIndisponible(RuntimeError):
+    """Le coffre KeePass ne s'est pas ouvert ; la cause est déjà affichée."""
+
+
+class FirefoxIntrouvable(RuntimeError):
+    """Aucun binaire Firefox local, et aucun nœud Selenium demandé."""
+
+
+# Le Firefox snap d'Ubuntu, dont le lanceur /snap/bin/firefox n'est pas le
+# binaire que geckodriver doit piloter.
+FIREFOX_SNAP = "/snap/firefox/current/usr/lib/firefox/firefox"
+# Les noms du binaire dans le PATH, dans l'ordre : Debian ne livre que
+# « firefox-esr », sans lien « firefox ».
+FIREFOX_NOMS = ("firefox", "firefox-esr")
+
+
+def trouver_firefox() -> str:
+    """Le chemin du Firefox local à piloter : le snap d'Ubuntu, sinon le
+    premier de FIREFOX_NOMS trouvé dans le PATH. Lève FirefoxIntrouvable,
+    qui dit quoi faire, quand il n'y en a aucun — un conteneur ERPLibre
+    n'en porte pas."""
+    if Path(FIREFOX_SNAP).exists():
+        return FIREFOX_SNAP
+    for nom in FIREFOX_NOMS:
+        chemin = shutil.which(nom)
+        if chemin:
+            return chemin
+    raise FirefoxIntrouvable(
+        f"No Firefox here ({', '.join(FIREFOX_NOMS)} not in PATH): install"
+        " one (firefox-esr on Debian), pass --firefox_binary_path, or drive a"
+        " Selenium node with --use_network URL."
+    )
+
 
 logging.basicConfig(
     format=(
@@ -502,18 +537,7 @@ class SeleniumLib(object):
                         self.config.firefox_binary_path
                     )
                 elif not self.config.use_network:
-                    # test snap firefox for Ubuntu first
-                    snap_firefox_path = (
-                        "/snap/firefox/current/usr/lib/firefox/firefox"
-                    )
-                    firefox_path_exist = Path(snap_firefox_path).exists()
-                    if firefox_path_exist:
-                        firefox_options.binary_location = snap_firefox_path
-                    else:
-                        status_location = subprocess.check_output(
-                            ["which", "firefox"], text=True
-                        ).strip()
-                        firefox_options.binary_location = status_location
+                    firefox_options.binary_location = trouver_firefox()
 
                 firefox_profile = webdriver.FirefoxProfile()
                 firefox_profile.set_preference(
@@ -643,34 +667,25 @@ class SeleniumLib(object):
                 self.driver.switch_to.window(self.driver.window_handles[0])
 
     def get_kdbx(self):
+        """Le coffre KeePass ouvert, par KdbxManager : chemin kdbx.path,
+        mot de passe de KDBX_PASSWORD_FILE, de kdbx.password ou saisi.
+
+        Lève KdbxIndisponible quand il ne s'ouvre pas, la cause déjà
+        affichée : un scénario qui se connecte avec le coffre ne peut pas
+        continuer sans lui, et un None rendu ici casserait plus loin, sur un
+        AttributeError qui ne dit plus rien du coffre.
+        """
         if self.kdbx:
             return self.kdbx
         print("Open KDBX")
-        # Open file
-        chemin_fichier_kdbx = self.config_file.get_config_value(
-            ["kdbx", "path"]
-        )
-        if not chemin_fichier_kdbx:
-            chemin_fichier_kdbx = choisir_fichier_kdbx()
-        if not chemin_fichier_kdbx:
-            _logger.error(
-                "KDBX is not configured, please fill kdbx.path in %s",
-                config_file.CONFIG_OVERRIDE_PRIVATE_FILE,
+        kp = KdbxManager(self.config_file).get_kdbx()
+        if kp is None:
+            raise KdbxIndisponible(
+                "KeePass vault not opened, cause above: kdbx.path in"
+                f" {config_file.CONFIG_OVERRIDE_PRIVATE_FILE}, password in"
+                f" {ENV_PASSWORD_FILE} or kdbx.password, or typed."
             )
-            return
-
-        mot_de_passe_kdbx = self.config_file.get_config_value(
-            ["kdbx", "password"]
-        )
-        if not mot_de_passe_kdbx:
-            mot_de_passe_kdbx = getpass.getpass(
-                prompt="Entrez votre mot de passe : "
-            )
-
-        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
-
-        if kp:
-            self.kdbx = kp
+        self.kdbx = kp
         return kp
 
     @staticmethod

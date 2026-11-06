@@ -4,6 +4,7 @@
 
 import getpass
 import logging
+import os
 
 from script.todo.todo_i18n import t
 
@@ -24,6 +25,34 @@ except ModuleNotFoundError:
     filedialog = None
 
 from script.config.config_file import CONFIG_OVERRIDE_PRIVATE_FILE
+
+# Le mot de passe du coffre, pour un script lancé sans terminal (conteneur,
+# tâche planifiée) : le CHEMIN d'un fichier qui le porte, un secret docker
+# monté sous /run/secrets par exemple. La valeur elle-même ne passe ni par
+# l'environnement, que « docker inspect » et /proc/<pid>/environ montrent, ni
+# par la configuration JSON. Prioritaire sur kdbx.password.
+ENV_PASSWORD_FILE = "KDBX_PASSWORD_FILE"
+
+
+def lire_mot_de_passe_fichier(chemin: str) -> str:
+    """Le mot de passe que porte le fichier ``chemin``, fin de ligne finale
+    retirée, ou une chaîne vide, avec la raison affichée, si le fichier ne se
+    lit pas ou ne porte rien."""
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            mot_de_passe = fh.read().rstrip("\r\n")
+    except OSError as e:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} : {e.strerror}"
+        )
+        return ""
+    if not mot_de_passe:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} : {t('kdbx_password_file_empty')}"
+        )
+    return mot_de_passe
 
 
 def choisir_fichier_kdbx() -> str:
@@ -78,9 +107,15 @@ class KdbxManager:
             _logger.error("pykeepass is not installed")
             return None
 
-        kdbx_password = self._config_file.get_config_value(
-            ["kdbx", "password"]
-        )
+        chemin_secret = os.environ.get(ENV_PASSWORD_FILE)
+        if chemin_secret:
+            kdbx_password = lire_mot_de_passe_fichier(chemin_secret)
+            if not kdbx_password:
+                return None
+        else:
+            kdbx_password = self._config_file.get_config_value(
+                ["kdbx", "password"]
+            )
         if kdbx_password:
             # Mot de passe pris dans la configuration : personne à qui
             # redemander, mais il peut être faux — le dire au lieu de
@@ -112,6 +147,7 @@ class KdbxManager:
                 password = getpass.getpass(prompt=t("kdbx_ask_password"))
             except (EOFError, OSError):
                 print(t("kdbx_no_terminal"))
+                print(t("kdbx_no_terminal_hint"))
                 return None
             if not password:
                 print(t("kdbx_give_up"))
