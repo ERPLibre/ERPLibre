@@ -23,6 +23,34 @@ except ModuleNotFoundError:
     tk = None
     filedialog = None
 
+from script.config.config_file import CONFIG_OVERRIDE_PRIVATE_FILE
+
+
+def choisir_fichier_kdbx() -> str:
+    """Le chemin du coffre choisi dans un sélecteur de fichier Tk, ou une
+    chaîne vide : choix annulé, tkinter absent, ou aucun affichage.
+
+    Sans affichage — un serveur, un conteneur, une session ssh sans
+    redirection X — Tk ne s'ouvre pas et lève TclError ; le chemin vient
+    alors de kdbx.path dans la configuration, que l'appelant réclame.
+    """
+    if tk is None:
+        _logger.error("tkinter is not available: no file picker")
+        return ""
+    try:
+        root = tk.Tk()
+    except tk.TclError as e:
+        _logger.error("No display for the file picker: %s", e)
+        return ""
+    try:
+        root.withdraw()
+        return filedialog.askopenfilename(
+            title="Select a File",
+            filetypes=(("KeepassX files", "*.kdbx"),),
+        )
+    finally:
+        root.destroy()
+
 
 class KdbxManager:
     def __init__(self, config_file) -> None:
@@ -35,19 +63,11 @@ class KdbxManager:
 
         kdbx_file_path = self._config_file.get_config_value(["kdbx", "path"])
         if not kdbx_file_path:
-            if tk is None:
-                _logger.error("tkinter is not available")
-                return None
-            root = tk.Tk()
-            root.withdraw()
-            kdbx_file_path = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
+            kdbx_file_path = choisir_fichier_kdbx()
         if not kdbx_file_path:
             _logger.error(
-                "KDBX is not configured, please fill"
-                f" {self._config_file.CONFIG_FILE}"
+                "KDBX is not configured, please fill kdbx.path in %s",
+                CONFIG_OVERRIDE_PRIVATE_FILE,
             )
             return None
 

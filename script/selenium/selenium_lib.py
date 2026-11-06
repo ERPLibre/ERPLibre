@@ -42,17 +42,9 @@ sys.path.append(new_path)
 
 from script.config import config_file
 
-# tkinter ne sert QU'au sélecteur de fichier du coffre, quand aucun chemin
-# n'est configuré. Importé en tête, il rendait le module entier inimportable
-# sur toute machine dont le Python est bâti sans lui — c'est-à-dire sur tout
-# serveur sans paquet d'interface graphique — alors que pas une ligne du
-# pilotage de navigateur n'en dépend.
-try:
-    import tkinter as tk
-    from tkinter import filedialog
-except ModuleNotFoundError:
-    tk = None
-    filedialog = None
+# Le sélecteur de fichier du coffre, quand aucun chemin n'est configuré, est
+# celui du CLI : il tient tkinter absent et l'absence d'affichage.
+from script.todo.kdbx_manager import choisir_fichier_kdbx
 
 logging.basicConfig(
     format=(
@@ -659,20 +651,12 @@ class SeleniumLib(object):
             ["kdbx", "path"]
         )
         if not chemin_fichier_kdbx:
-            if tk is None:
-                _logger.error(
-                    "tkinter is not available, please fill"
-                    f" {config_file.CONFIG_FILE}"
-                )
-                return
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            chemin_fichier_kdbx = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
+            chemin_fichier_kdbx = choisir_fichier_kdbx()
         if not chemin_fichier_kdbx:
-            # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
+            _logger.error(
+                "KDBX is not configured, please fill kdbx.path in %s",
+                config_file.CONFIG_OVERRIDE_PRIVATE_FILE,
+            )
             return
 
         mot_de_passe_kdbx = self.config_file.get_config_value(
