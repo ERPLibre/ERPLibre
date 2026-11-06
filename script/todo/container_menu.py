@@ -831,6 +831,7 @@ class ContainerMenuMixin:
                     "Delete the volumes: databases, filestore, configuration"
                 )
             },
+            {"prompt_description": t("Show odoo.conf from its volume")},
         ]
         help_info = self.fill_help_info(choices)
         scripts = {
@@ -842,6 +843,8 @@ class ContainerMenuMixin:
             # Le script liste les volumes et demande lui-même ses deux
             # confirmations : un « y », puis le nom du projet retapé.
             "7": "./script/docker/docker_volume_clean.sh",
+            # Lit le volume, pas le conteneur : sert aussi projet arrêté.
+            "8": "./script/docker/docker_show_odoo_conf.sh",
         }
         while True:
             status = click.prompt(help_info)

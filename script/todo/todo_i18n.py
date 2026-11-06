@@ -18724,6 +18724,10 @@ TRANSLATIONS = {
         "fr": "🗑 Effacer les volumes : bases, filestore, configuration",
         "en": "🗑 Delete the volumes: databases, filestore, configuration",
     },
+    "Show odoo.conf from its volume": {
+        "fr": "📄 Afficher odoo.conf depuis son volume",
+        "en": "📄 Show odoo.conf from its volume",
+    },
     "File to copy": {
         "fr": "Fichier à copier",
         "en": "File to copy",

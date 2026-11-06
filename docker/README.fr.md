@@ -221,6 +221,16 @@ docker exec -ti DOCKER_NAME bash
 docker exec -u root -ti DOCKER_NAME bash
 ```
 
+Afficher le `/etc/odoo/odoo.conf` du conteneur, lu dans le volume
+`erplibre_conf` du projet : le projet n'a pas à tourner, ni son conteneur à
+exister. Un conteneur jetable de l'image ERPLibre, déjà sur l'hôte, lit le
+volume en lecture seule, sans réseau ; le fichier ne va qu'à l'écran, car il
+porte les mots de passe. Un compte hors du groupe `docker` passe par `sudo`.
+
+```bash
+make docker_show_odoo_conf
+```
+
 Commandes pour le débogage
 
 ```bash
