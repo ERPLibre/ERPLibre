@@ -1809,6 +1809,61 @@ d'envoi, un domaine accentué en ASCII —, le mode (`inline`, `attachment` ou
 }
 ```
 
+### Le noyau partagé des règles (développeurs)
+
+La partie pure des règles — modèle d'une règle, filtres, garde-fous, rendu
+de la réponse, rapport de statistiques, construction des messages SMTP,
+lecture des réponses IMAP et revendication `$ErpLibreRule` — forme un
+paquet à part, `script/lib/erplibre_mail_core`,
+pour qu'un module Odoo applique
+les mêmes règles que le client. Il n'importe que la bibliothèque standard
+(`markdown-it-py` est facultatif, pour les réponses en Markdown) et ne lit
+aucune configuration du client : ni `env_var.sh`, ni rien sous
+`~/.erplibre`. Hors des données de fuseau (`/etc/localtime`, le fichier
+que nomme un chemin dans `TZ`, la base des fuseaux du système), les seuls
+fichiers qu'il lit sont les chemins de pièces jointes que son appelant
+passe à `smtp.build_message` : ils viennent d'un appelant de confiance ;
+un serveur passe des octets (`attachment_parts`). Il lance un processus
+fils, son propre interpréteur (`sys.executable`), pour évaluer les
+expressions régulières des règles dans un délai borné.
+
+- Le client le charge depuis son propre checkout : importer
+  `script.todo.mail` met `script/lib/erplibre_mail_core` en tête de
+  `sys.path` : le noyau s'importe par ce répertoire, sous le nom
+  `erplibre_mail_core`, jamais comme `script.lib.…`, qui en chargerait une
+  seconde copie.
+  Les anciens modules (`smtp_send.py`, `rules/model.py`, …) sont des alias
+  des modules du noyau — le même objet : un `mock.patch` posé sur l'un vaut
+  pour l'autre. `imap_transport.py` et `imap_sync.py` gardent la connexion
+  et la synchronisation, et prennent au noyau leurs lecteurs et leurs
+  classes de données. Après une mise à jour, relancer un client resté
+  ouvert.
+- La langue est un paramètre : `t(clé, lang)`, ou `with using_lang("fr"):`
+  autour d'un bloc ; sinon la langue par défaut posée par
+  `configure(default_lang=…)`, que le client règle sur la sienne ; seul, le
+  noyau parle français, comme pour un code de langue vide ou inconnu. Ses chaînes vivent dans
+  `erplibre_mail_core/catalog.py`, que le client ajoute à son catalogue à
+  l'import : c'est là qu'on les modifie, jamais dans
+  `script/todo/todo_i18n.py` — le client les trouverait, Odoo enverrait
+  la clé brute.
+- Le rapport de statistiques prend un fuseau explicite (`tz=`, un
+  `zoneinfo.ZoneInfo`) ; sans fuseau, celui du processus, comme le client.
+  Odoo force `TZ=UTC` sur son serveur : un appelant Odoo passe toujours le
+  fuseau.
+- L'installer dans l'environnement virtuel d'Odoo ne sert qu'avec un
+  module Odoo qui l'importe ; le client n'en a pas besoin. La méthode
+  prévue est `<venv Odoo>/bin/pip install --no-build-isolation -e
+  script/lib/erplibre_mail_core`, le venv se trouvant par `ls -d .venv.odoo*`.
+  Une installation éditable lie le venv à un seul checkout, et une
+  resynchronisation des dépendances du venv peut la retirer : la refaire
+  ensuite.
+- Ses tests sont les `test/test_mail_core_*.py`. Sauf
+  `test_mail_core_bridge.py`, qui vérifie le branchement du client sur le
+  noyau, ils n'importent rien de `script/` et tournent aussi sous le
+  Python d'Odoo, sans écrire de
+  bytecode : `PYTHONDONTWRITEBYTECODE=1 <venv Odoo>/bin/python -B
+  test/test_mail_core_i18n.py`.
+
 ## Gérer les dossiers
 
 `F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime,

@@ -52,6 +52,9 @@ Le CLI interactif `script/todo/todo.py` supporte le français et l'anglais.
 
 ### Ajouter une traduction
 1. Ajouter la clé dans `TRANSLATIONS` de `todo_i18n.py` avec les valeurs `"fr"` et `"en"`
+   Exception : une chaîne lue par le noyau des règles de courriel
+   (`script/lib/erplibre_mail_core`) va dans son `catalog.py`, jamais dans
+   `todo_i18n.py` : le client la trouverait, Odoo enverrait la clé brute.
 2. Remplacer la chaîne en dur par `t("ma_clé")` dans `todo.py`
 3. Pour les entrées JSON : ajouter `"prompt_description_key": "ma_clé"` dans `todo.json`
 
