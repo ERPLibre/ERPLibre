@@ -1851,9 +1851,10 @@ expressions régulières des règles dans un délai borné.
   Odoo force `TZ=UTC` sur son serveur : un appelant Odoo passe toujours le
   fuseau.
 - L'installer dans l'environnement virtuel d'Odoo ne sert qu'avec un
-  module Odoo qui l'importe ; le client n'en a pas besoin. La méthode
-  prévue est `<venv Odoo>/bin/pip install --no-build-isolation -e
-  script/lib/erplibre_mail_core`, le venv se trouvant par `ls -d .venv.odoo*`.
+  module Odoo qui l'importe (`erplibre_mail_rule`, ci-dessous) ; le
+  client n'en a pas besoin. La méthode est `<venv Odoo>/bin/pip install
+  --no-deps --no-build-isolation -e script/lib/erplibre_mail_core`, le venv
+  se trouvant par `ls -d .venv.odoo*`.
   Une installation éditable lie le venv à un seul checkout, et une
   resynchronisation des dépendances du venv peut la retirer : la refaire
   ensuite.
@@ -1863,6 +1864,35 @@ expressions régulières des règles dans un délai borné.
   Python d'Odoo, sans écrire de
   bytecode : `PYTHONDONTWRITEBYTECODE=1 <venv Odoo>/bin/python -B
   test/test_mail_core_i18n.py`.
+
+### Le module Odoo erplibre_mail_rule
+
+Le module Odoo 18 `erplibre_mail_rule`
+(`odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mail_rule`) exécute
+les mêmes règles depuis Odoo : un worker relève une boîte de réception IMAP
+par UID, sans jamais marquer un message lu, évalue les règles du noyau et
+envoie la réponse automatique. Une boîte peut être partagée avec un poste
+du client : chacun revendique le message sur le serveur avant de répondre
+(voir « Plusieurs postes sur une même boîte »), et un seul répond. Cette
+version n'envoie que des réponses : ni redirection, ni statistiques, ni
+portail pour l'instant.
+
+- Le module importe le noyau, installé dans l'environnement virtuel d'Odoo
+  en mode éditable : `script/install/install_locally.sh` le fait pour
+  Odoo 18 (Python 3.12 ou plus) ; après une resynchronisation du venv, le
+  réinstaller à la main par la commande ci-dessus. Il ne vient jamais de
+  PyPI : `erplibre-mail-core` figure dans
+  `requirement/ignore_requirements.odoo18.0_python3.12.10.txt`.
+- Le mot de passe du compte est chiffré par une clé publique dès son
+  enregistrement, et n'est plus jamais affiché. Seul le worker détient la
+  clé privée, hors de la base (un fichier, une variable d'environnement ou
+  un credential systemd), dans un processus qui ne sert pas HTTP : la
+  commande `odoo-bin erplibre_mail_rule_worker`.
+- Ses tests (`--test-tags /erplibre_mail_rule`) parlent au bac à sable de
+  `test/mail_sandbox.py`, servi dans un processus fils par
+  `test/mail_sandbox_serve.py` sous `.venv.erplibre`, qui a Twisted et
+  aiosmtpd.
+- Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ## Gérer les dossiers
 

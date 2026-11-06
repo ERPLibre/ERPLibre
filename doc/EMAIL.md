@@ -1722,9 +1722,10 @@ under a time limit.
   does. Odoo forces `TZ=UTC` on its server: an Odoo caller always passes
   the zone.
 - Installing it in Odoo's virtual environment is useful only with an
-  Odoo module that imports it; the client does not need it. The planned
-  method is `<Odoo venv>/bin/pip install --no-build-isolation -e
-  script/lib/erplibre_mail_core`, the venv found by `ls -d .venv.odoo*`. An
+  Odoo module that imports it (`erplibre_mail_rule`, below); the client
+  does not need it. The method is `<Odoo venv>/bin/pip install --no-deps
+  --no-build-isolation -e script/lib/erplibre_mail_core`, the venv found
+  by `ls -d .venv.odoo*`. An
   editable install ties the venv to one checkout, and a resynchronization
   of the venv's dependencies can remove it: install it again afterwards.
 - Its tests are `test/test_mail_core_*.py`. Except
@@ -1733,6 +1734,34 @@ under a time limit.
   Python, without writing bytecode:
   `PYTHONDONTWRITEBYTECODE=1 <Odoo venv>/bin/python -B
   test/test_mail_core_i18n.py`.
+
+### The Odoo module erplibre_mail_rule
+
+The Odoo 18 module `erplibre_mail_rule`
+(`odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mail_rule`) runs the
+same rules from Odoo: a worker fetches an IMAP inbox by UID, without ever
+marking a message read, evaluates the core rules and sends the automatic
+reply. A mailbox can be shared with a client workstation: both claim each
+message on the server before replying (see "Several machines on one
+mailbox"), so only one replies. This version sends replies only: no
+forwarding, no statistics, no portal yet.
+
+- The module imports the core, installed in Odoo's virtual environment in
+  editable mode: `script/install/install_locally.sh` does it for Odoo 18
+  (Python 3.12 or later); after a resynchronization of the venv, install it
+  again by hand with the command above. It never comes from PyPI:
+  `erplibre-mail-core` is listed in
+  `requirement/ignore_requirements.odoo18.0_python3.12.10.txt`.
+- The account password is encrypted with a public key as soon as it is
+  saved, and never shown again. Only the worker holds the private key,
+  outside the database (a file, an environment variable or a systemd
+  credential), in a process that serves no HTTP: the command
+  `odoo-bin erplibre_mail_rule_worker`.
+- Its tests (`--test-tags /erplibre_mail_rule`) talk to the sandbox of
+  `test/mail_sandbox.py`, served in a child process by
+  `test/mail_sandbox_serve.py` under `.venv.erplibre`, which has Twisted
+  and aiosmtpd.
+- Deployment, keys, systemd units and security: the module's `README.md`.
 
 ## Managing folders
 
