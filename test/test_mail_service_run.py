@@ -95,10 +95,12 @@ class ServiceCase(unittest.TestCase):
             filet = mock.patch(cible, side_effect=AssertionError(message))
             filet.start()
             self.addCleanup(filet.stop)
-        # Les journaux du paquet restent hors de la sortie des tests.
-        paquet = logging.getLogger("script.todo.mail")
-        self.addCleanup(setattr, paquet, "propagate", paquet.propagate)
-        paquet.propagate = False
+        # Les journaux du paquet et du noyau restent hors de la sortie des
+        # tests.
+        for nom in menu.MAIL_LOGGERS:
+            paquet = logging.getLogger(nom)
+            self.addCleanup(setattr, paquet, "propagate", paquet.propagate)
+            paquet.propagate = False
         self.base = self.home / ".erplibre" / "mail"
         self.kdbx = self.home / "coffre.kdbx"
         self.creds = self.home / "creds"
@@ -690,28 +692,35 @@ class TestPass(ServiceCase):
 @contextlib.contextmanager
 def journalisation():
     """Laisse `main` brancher `mail.log` dans le `HOME` temporaire, puis
-    retire le gestionnaire et rend au logger du paquet son état."""
-    paquet = logging.getLogger("script.todo.mail")
+    retire le gestionnaire et rend à chaque logger de `menu.MAIL_LOGGERS`
+    son état."""
     racine = logging.getLogger()
-    etat = (
-        list(paquet.handlers),
-        paquet.level,
-        paquet.propagate,
-        racine.level,
-        menu._LOG_CONFIGURED,
-    )
+    etats = {
+        nom: (
+            list(logging.getLogger(nom).handlers),
+            logging.getLogger(nom).level,
+            logging.getLogger(nom).propagate,
+        )
+        for nom in menu.MAIL_LOGGERS
+    }
+    etat_racine = (racine.level, menu._LOG_CONFIGURED)
     menu._LOG_CONFIGURED = False
+    fermes = set()
     try:
         yield
     finally:
-        for handler in paquet.handlers:
-            if handler not in etat[0]:
-                paquet.removeHandler(handler)
-                handler.close()
-        paquet.setLevel(etat[1])
-        paquet.propagate = etat[2]
-        racine.setLevel(etat[3])
-        menu._LOG_CONFIGURED = etat[4]
+        for nom, (avant, niveau, propage) in etats.items():
+            paquet = logging.getLogger(nom)
+            for handler in list(paquet.handlers):
+                if handler not in avant:
+                    paquet.removeHandler(handler)
+                    if id(handler) not in fermes:
+                        fermes.add(id(handler))
+                        handler.close()
+            paquet.setLevel(niveau)
+            paquet.propagate = propage
+        racine.setLevel(etat_racine[0])
+        menu._LOG_CONFIGURED = etat_racine[1]
 
 
 class TestCacheMode(ServiceCase):

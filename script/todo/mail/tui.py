@@ -2513,6 +2513,8 @@ def run_tui(
         print(t("mail_install_textual"))
         return
 
+    from erplibre_mail_core.zone import local_zone
+
     from script.todo import todo_prefs
     from script.todo.mail import account_setup, stats, tui_text
     from script.todo.mail import accounts as mail_accounts
@@ -6329,7 +6331,7 @@ def run_tui(
                     reglages = rules_storage.ReportSettings()
             try:
                 boite = rules_report.collect_mailbox(
-                    self.store, reglages, now=int(time.time())
+                    self.store, reglages, now=int(time.time()), tz=local_zone()
                 )
             except Exception as exc:
                 return f"{t('mail_stats_error')} {exc}"
@@ -6754,6 +6756,7 @@ def run_tui(
                         reglages,
                         now=int(time.time()),
                         sender=demandeur or None,
+                        tz=local_zone(),
                     )
                     texte, erreur = (
                         rules_report.values(donnees)["rapport"][0],
@@ -8540,6 +8543,7 @@ def run_tui(
                     reglages,
                     now=int(time.time()),
                     sender=None,
+                    tz=local_zone(),
                 )
             except Exception as exc:
                 self.app.call_from_thread(

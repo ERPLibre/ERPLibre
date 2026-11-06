@@ -23,6 +23,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from script.todo.mail import _core_path  # noqa: F401
+
+# isort: split
+from erplibre_mail_core.imap import (  # noqa: F401
+    FolderInfo,
+    HeaderInfo,
+    SelectInfo,
+)
+
 from script.todo.mail.charset import decode_bytes
 from script.todo.mail.smtp_send import X_LOOP_MARKER
 from script.todo.mail.store import MessageMeta
@@ -40,65 +49,6 @@ SNIPPET_LEN = 200
 VUES_REDONDANTES = ("\\Flagged", "\\Important")
 
 _logger = logging.getLogger(__name__)
-
-
-@dataclass
-class FolderInfo:
-    name: str
-    display: str = ""
-    role: str | None = None
-    # `\Noselect` / `\NonExistent` : un NIVEAU de la hiérarchie, pas une
-    # boîte. Un fournisseur qui préfixe ses dossiers expose ce préfixe ainsi,
-    # simple parent des dossiers qu'il porte. Le SELECTionner répond NO —
-    # c'est normal, et le serveur le dit d'avance dans les drapeaux de LIST.
-    selectable: bool = True
-    # Les drapeaux de la ligne LIST, tels quels. `role` n'en retient que le
-    # rôle standard ; un serveur en annonce d'autres, et c'est ce qui permet
-    # de reconnaître un dossier qui n'est qu'une VUE sur d'autres.
-    attributes: tuple[str, ...] = ()
-
-
-@dataclass
-class SelectInfo:
-    uidvalidity: int
-    uidnext: int
-    exists: int
-
-
-@dataclass
-class HeaderInfo:
-    uid: int
-    date: int
-    size: int
-    flags: str
-    msgid: str
-    frm: str
-    to: str
-    subject: str
-    # Fils de discussion (v2). Bruts : le hachage appartient au cache, seul
-    # détenteur du sel.
-    in_reply_to: str = ""
-    references: str = ""
-    # v6 — tous avec défaut : un double de test qui ne les connaît pas
-    # construit encore un `HeaderInfo` valide.
-    cc: str = ""
-    # L'INTERNALDATE du serveur, en secondes UTC ; 0 si inconnue. C'est la
-    # date de RÉCEPTION, que l'expéditeur ne choisit pas, contrairement à
-    # l'en-tête `Date`.
-    internaldate: int = 0
-    # Les en-têtes de `imap_transport.EXTRA_HEADERS` présents, clés en
-    # minuscules. Plusieurs occurrences sont jointes par "\n" dans l'ordre
-    # du message — la première est la plus haute, celle que le dernier MTA
-    # a ajoutée — et chacune est dépliée : "\n" n'y sert que de
-    # séparateur. Gardés en mémoire seulement, jamais dans le cache.
-    extra: dict = field(default_factory=dict)
-    # From, To et Cc tels que reçus, dépliés, AVANT tout décodage RFC 2047 :
-    # les adresses s'analysent sur eux, un libellé encodé y restant un
-    # libellé (`rules.model.MessageView`). None : la source n'a que la
-    # forme décodée. Jamais dans le cache.
-    frm_raw: str | None = None
-    to_raw: str | None = None
-    cc_raw: str | None = None
 
 
 # Le plafond des en-têtes d'INBOX qu'un rapport transporte. Une première

@@ -407,11 +407,12 @@ class TestMailLogFile(unittest.TestCase):
     def tearDown(self):
         import script.todo.mail.menu as menu
 
-        logger = logging.getLogger("script.todo.mail")
-        for handler in list(logger.handlers):
-            logger.removeHandler(handler)
-            handler.close()
-        logger.propagate = True
+        for nom in menu.MAIL_LOGGERS:
+            logger = logging.getLogger(nom)
+            for handler in list(logger.handlers):
+                logger.removeHandler(handler)
+                handler.close()
+            logger.propagate = True
         menu._LOG_CONFIGURED = False
 
         if self._old_home is None:

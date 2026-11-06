@@ -508,7 +508,7 @@ class TestForwardInline(ForwardCase):
             b"SIGNATURE\r\n"
             b"--sig--\r\n",
         )
-        with self.assertLogs("script.todo.mail.smtp_send", "INFO"):
+        with self.assertLogs("erplibre_mail_core.smtp", "INFO"):
             msg = self.inline(raw)
         self.assert_attached(msg)
         self.assertNotIn(TEMOIN.encode(), msg.as_bytes())

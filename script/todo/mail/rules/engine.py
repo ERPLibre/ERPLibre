@@ -68,6 +68,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from script.todo.mail import _core_path  # noqa: F401
+
+# isort: split
+from erplibre_mail_core.zone import local_zone
+
 from script.todo.mail.claim import has_claim
 from script.todo.mail.imap_transport import ImapError
 from script.todo.mail.rules import filter as rules_filter
@@ -828,6 +833,10 @@ class _Pass:
         self.report = storage.ReportSettings()
         self._mailbox = None
         self._requesters = None
+        # Le fuseau du rapport, résolu une fois par passe (`_zone`) : la clé
+        # de l'instantané, les tranches et la date du rapport en voient un
+        # seul.
+        self._tz = None
         # Le verdict de revendication de chaque UID d'INBOX déjà établi par
         # la passe : une seconde règle sur le même message ne refait aucun
         # échange, et un échec n'est compté qu'une fois par message.
@@ -1426,23 +1435,33 @@ class _Pass:
             raise cached
         return cached
 
+    def _zone(self):
+        """Le fuseau du processus, résolu au premier appel de la passe."""
+        if self._tz is None:
+            self._tz = local_zone()
+        return self._tz
+
     def _daily_mailbox(self, now: int):
         """La partie boîte du rapport du jour : relue de l'instantané s'il
-        correspond au jour local et aux réglages, sinon calculée puis
-        écrite. Toutes les demandes d'un même jour voient ainsi les mêmes
-        chiffres.
+        correspond au jour local, aux réglages et aux bornes des tranches,
+        sinon calculée puis écrite. Toutes les demandes d'un même jour
+        voient ainsi les mêmes chiffres ; un instantané de l'ancien format,
+        sans bornes, est relu le jour même.
 
         L'écriture de l'instantané est facultative : un échec (disque
         plein, dossier en lecture seule) laisse un avertissement à la
         passe et rend quand même les chiffres calculés.
         """
-        key = rules_report.snapshot_key(self.report, now)
+        tz = self._zone()
+        key = rules_report.snapshot_key(self.report, now, tz)
         mailbox = rules_report.mailbox_from_dict(
-            storage.load_report_snapshot(self.name, self.base), key
+            storage.load_report_snapshot(self.name, self.base),
+            key,
+            legacy=True,
         )
         if mailbox is None:
             mailbox = rules_report.collect_mailbox(
-                self.store, self.report, now=now
+                self.store, self.report, now=now, tz=tz
             )
             try:
                 storage.save_report_snapshot(
@@ -1483,6 +1502,7 @@ class _Pass:
                 index=self._requesters,
             ),
             self.report.lang,
+            tz=self._zone(),
         )
 
     def _render(self, rule, view, msg_key, d, now: int):
@@ -2354,12 +2374,19 @@ def _simulate(
         }
         if is_stats:
             # L'instantané du jour s'il existe, sinon un calcul non écrit.
+            tz = local_zone()
             mailbox = rules_report.mailbox_from_dict(
                 storage.load_report_snapshot(name, base),
-                rules_report.snapshot_key(settings, instant),
+                rules_report.snapshot_key(settings, instant, tz),
+                legacy=True,
             )
             data = rules_report.build_data(
-                store, settings, now=instant, sender=sender, mailbox=mailbox
+                store,
+                settings,
+                now=instant,
+                sender=sender,
+                mailbox=mailbox,
+                tz=tz,
             )
             subject = rules_report.render_subject(
                 view.subject, rule.action.subject, data

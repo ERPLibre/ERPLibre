@@ -65,6 +65,10 @@ _DEFAULT_KDBX_PATH = account_setup.DEFAULT_KDBX_PATH
 # fois dans le même processus `todo`.
 _LOG_CONFIGURED = False
 
+# Les loggers racines du client courriel : le paquet `script.todo.mail`
+# et le noyau qu'il importe.
+MAIL_LOGGERS = ("script.todo.mail", "erplibre_mail_core")
+
 
 def _printable(text) -> str:
     """`text` sans caractère de contrôle ni de format, ESC compris.
@@ -110,22 +114,24 @@ def _configure_mail_logging() -> None:
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
     )
-    # Sur le logger PARENT de tout le paquet (`script.todo.mail`, préfixe
-    # commun de `script.todo.mail.tui`, `script.todo.mail.imap_sync`, ...) :
+    # Sur les deux loggers RACINES de `MAIL_LOGGERS` (`script.todo.mail`,
+    # préfixe commun de `script.todo.mail.tui`, `script.todo.mail.imap_sync`,
+    # ... ; `erplibre_mail_core`, celui de `erplibre_mail_core.smtp`, ...) :
     # un seul gestionnaire couvre tous les modules, sans qu'aucun d'eux
     # n'ait à en connaître l'existence.
-    logger = logging.getLogger("script.todo.mail")
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    # `todo.py` appelle `logging.basicConfig()` à l'IMPORT (ligne 68), ce qui
-    # pose un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
-    # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
-    # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
-    # terminal que Textual possède pendant tout le TUI, silencieusement. La
-    # fuite se voit aussi hors du TUI : sous `unittest`, les lignes du paquet
-    # se mêlent à la sortie pointillée dès qu'un test importe `todo` avant
-    # les tests courriel dans le même processus.
-    logger.propagate = False
+    for nom in MAIL_LOGGERS:
+        logger = logging.getLogger(nom)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        # `todo.py` appelle `logging.basicConfig()` à l'IMPORT, ce qui pose
+        # un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
+        # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
+        # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
+        # terminal que Textual possède pendant tout le TUI, silencieusement.
+        # La fuite se voit aussi hors du TUI : sous `unittest`, les lignes
+        # du paquet se mêlent à la sortie pointillée dès qu'un test importe
+        # `todo` avant les tests courriel dans le même processus.
+        logger.propagate = False
     _LOG_CONFIGURED = True
 
 
@@ -1005,6 +1011,8 @@ def _report_settings(todo, account, rules_base, base=None) -> None:
     import dataclasses
     import time
 
+    from erplibre_mail_core.zone import local_zone
+
     from script.todo.mail.rules import report, storage
     from script.todo.mail.rules.model import FORMATS, RuleError
 
@@ -1059,7 +1067,11 @@ def _report_settings(todo, account, rules_base, base=None) -> None:
         return
     try:
         donnees = report.build_data(
-            magasin, reglages, now=int(time.time()), sender=None
+            magasin,
+            reglages,
+            now=int(time.time()),
+            sender=None,
+            tz=local_zone(),
         )
         texte = report.values(donnees)["rapport"][0]
     except Exception as exc:

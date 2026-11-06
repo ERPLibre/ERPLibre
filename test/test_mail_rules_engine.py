@@ -22,6 +22,7 @@ from unittest import mock
 from test_mail_sync import FakeImapTransport
 
 from script.todo.mail import accounts as mail_accounts
+from script.todo.mail import menu
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.imap_sync import HeaderInfo, Syncer
 from script.todo.mail.imap_transport import ImapError
@@ -501,10 +502,13 @@ class TestOutputs(EngineCase):
         flux = io.StringIO()
         handler = logging.StreamHandler(flux)
         handler.setFormatter(logging.Formatter("%(message)s"))
-        logger = logging.getLogger("script.todo.mail")
-        ancien = logger.level
-        logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
+        # Les deux racines : une adresse journalisée par un module du noyau
+        # n'échappe pas au test.
+        loggers = [logging.getLogger(nom) for nom in menu.MAIL_LOGGERS]
+        anciens = [logger.level for logger in loggers]
+        for logger in loggers:
+            logger.addHandler(handler)
+            logger.setLevel(logging.DEBUG)
         try:
 
             def refuse(session, msg, verrou=None, **_kw):
@@ -512,8 +516,9 @@ class TestOutputs(EngineCase):
 
             self.passe(deliver_fn=refuse)
         finally:
-            logger.removeHandler(handler)
-            logger.setLevel(ancien)
+            for logger, ancien in zip(loggers, anciens, strict=True):
+                logger.removeHandler(handler)
+                logger.setLevel(ancien)
         texte = flux.getvalue()
         self.assertIn("smtp_permanent", texte)
         self.assertNotIn("@", texte)

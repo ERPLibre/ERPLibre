@@ -12,4 +12,11 @@ entrant (filtre, garde-fous, réponse automatique) après chaque
 synchronisation ; `tui` (touche `e`) et `menu` (entrée [6]) les éditent.
 Aucun de ces modules n'importe `todo.py` ; c'est `todo.py` qui importe
 `menu`.
+
+Le noyau des règles — modèle, filtres, garde-fous, rendu, rapport,
+constructeurs SMTP, lecteurs IMAP, revendication — vit dans
+`script/lib/erplibre_mail_core`, partagé avec un module Odoo ; les anciens
+modules de ce paquet en sont des alias. `_core_path` le rend importable.
 """
+
+from script.todo.mail import _core_path  # noqa: F401
