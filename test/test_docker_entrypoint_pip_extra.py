@@ -111,5 +111,171 @@ class TestEntrypointPipExtra(unittest.TestCase):
                 self.assertIsNone(self._lines(self.suite_log))
 
 
+# CapEff avec CHOWN, DAC_OVERRIDE, FOWNER, FSETID, SETGID et SETUID ; puis
+# avec SETGID et SETUID seuls, ce que donne le compose par défaut.
+CAPS_APT = format(
+    (1 << 0) | (1 << 1) | (1 << 3) | (1 << 4) | (1 << 6) | (1 << 7), "016x"
+)
+CAPS_SETPRIV = format((1 << 6) | (1 << 7), "016x")
+
+
+class TestAptExtra(unittest.TestCase):
+    """APT_EXTRA_PACKAGES : id, dpkg-query, apt-get, apt-config et setpriv
+    sont des faux placés en tête du PATH, qui notent leurs arguments dans un
+    même journal, dans l'ordre des appels ; les capacités viennent d'un faux
+    fichier d'état de processus."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        d = self.tmp.name
+        self.journal = os.path.join(d, "appels.log")
+        self.listes = os.path.join(d, "lists")
+        os.makedirs(os.path.join(self.listes, "partial"))
+        open(os.path.join(self.listes, "deb_InRelease"), "w").close()
+        with open(os.path.join(d, ".erplibre-version"), "w") as fh:
+            fh.write(VERSION + "\n")
+        bindir = os.path.join(d, ".venv.erplibre", "bin")
+        os.makedirs(bindir)
+        stub = TestEntrypointPipExtra._stub
+        stub(
+            os.path.join(bindir, "python"),
+            f'echo "pip $*" >> {self.journal}\n',
+        )
+        faux = os.path.join(d, "faux")
+        os.makedirs(faux)
+        self.path = faux + os.pathsep + os.environ["PATH"]
+        stub(os.path.join(faux, "id"), 'echo "${FAKE_UID:-1000}"\n')
+        stub(
+            os.path.join(faux, "dpkg-query"),
+            'printf "%b" "${FAKE_INSTALLED:-}"\n',
+        )
+        stub(
+            os.path.join(faux, "apt-get"),
+            f'echo "apt-get $*" >> {self.journal}\n'
+            'if [[ "$1" == install ]]; then exit "${FAKE_APT_RC:-0}"; fi\n',
+        )
+        stub(
+            os.path.join(faux, "apt-config"),
+            f"echo \"listes='{self.listes}/'\"\n",
+        )
+        stub(
+            os.path.join(faux, "setpriv"),
+            'while [[ "$1" != env ]]; do shift; done; shift\n'
+            'while [[ "$1" == *=* ]]; do shift; done\nexec "$@"\n',
+        )
+        self.etat = os.path.join(d, "status")
+        self.suite = os.path.join(d, "entrypoint.sh")
+        stub(self.suite, f'echo "odoo $*" >> {self.journal}\n')
+
+    def _run(
+        self, paquets, uid="0", caps=CAPS_APT, installes="", rc="0", pip=""
+    ):
+        with open(self.etat, "w") as fh:
+            fh.write(f"Name:\tbash\nCapEff:\t{caps}\n")
+        env = dict(
+            os.environ,
+            PATH=self.path,
+            ODOO_PREFIX=self.tmp.name,
+            ERPLIBRE_ENTRYPOINT=self.suite,
+            ERPLIBRE_RUN_AS="root",
+            ERPLIBRE_PROC_STATUS=self.etat,
+            APT_EXTRA_PACKAGES=paquets,
+            PIP_EXTRA_REQUIREMENTS_ERPLIBRE=pip,
+            PIP_EXTRA_REQUIREMENTS_ODOO="",
+            FAKE_UID=uid,
+            FAKE_INSTALLED=installes,
+            FAKE_APT_RC=rc,
+        )
+        return subprocess.run(
+            ["bash", SCRIPT, "odoo"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def _appels(self):
+        if not os.path.exists(self.journal):
+            return []
+        with open(self.journal) as fh:
+            return fh.read().splitlines()
+
+    def test_vide_n_appelle_pas_apt(self):
+        res = self._run("", uid="1000", caps="0" * 16)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(self._appels(), ["odoo odoo"])
+
+    def test_installe_avant_pip_puis_vide_les_listes(self):
+        res = self._run("libmagic1  firefox-esr", pip="python-magic")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        appels = self._appels()
+        self.assertEqual(appels[0], "apt-get update -q")
+        self.assertEqual(
+            appels[1],
+            "apt-get install -y -q --no-install-recommends libmagic1 firefox-esr",
+        )
+        self.assertEqual(appels[2], "apt-get clean")
+        self.assertTrue(appels[3].startswith("pip "), appels)
+        self.assertEqual(appels[-1], "odoo odoo")
+        self.assertEqual(os.listdir(self.listes), [])
+
+    def test_deja_installe_ou_fourni_ne_demande_rien(self):
+        """Ni apt, ni root, ni capacité : un redémarrage reste hors réseau."""
+        installes = (
+            "ii  libmagic1t64 libmagic1 (= 1:5.46-5)\\n"
+            "ii  firefox-esr \\n"
+            "rc  cron \\n"
+        )
+        res = self._run(
+            "libmagic1 firefox-esr",
+            uid="1000",
+            caps="0" * 16,
+            installes=installes,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(self._appels(), ["odoo odoo"])
+        self.assertIn("déjà installés", res.stdout)
+
+    def test_paquet_retire_n_est_pas_installe(self):
+        """« rc » : retiré, sa configuration restée ; il est réinstallé."""
+        res = self._run("cron", installes="rc  cron \\n")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn(
+            "apt-get install -y -q --no-install-recommends cron",
+            self._appels(),
+        )
+
+    def test_un_nom_invalide_est_refuse(self):
+        for mot in ("-o", "Firefox", "pkg=1.0", "../x", "a"):
+            with self.subTest(mot=mot):
+                res = self._run(f"libmagic1 {mot}")
+                self.assertEqual(res.returncode, 1)
+                self.assertIn("nom de paquet Debian", res.stderr)
+                self.assertEqual(self._appels(), [])
+
+    def test_sans_root_refuse(self):
+        res = self._run("libmagic1", uid="1000")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("root", res.stderr)
+        self.assertEqual(self._appels(), [])
+
+    def test_sans_les_capacites_d_apt_refuse_avant_apt(self):
+        """Il installerait mal sans erreur : un setgid perdu sans FSETID."""
+        sans_fsetid = format(int(CAPS_APT, 16) & ~(1 << 4), "016x")
+        for caps in (CAPS_SETPRIV, sans_fsetid):
+            with self.subTest(caps=caps):
+                res = self._run("libmagic1", caps=caps)
+                self.assertEqual(res.returncode, 1)
+                self.assertIn("FSETID", res.stderr)
+                self.assertEqual(self._appels(), [])
+
+    def test_un_refus_d_apt_arrete_avant_odoo(self):
+        res = self._run("libmagic1", rc="100")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("APT_EXTRA_PACKAGES", res.stderr)
+        self.assertNotIn("odoo odoo", self._appels())
+
+
 if __name__ == "__main__":
     unittest.main()
