@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "erplibre-mail-core"
+dynamic = ["version"]
+description = "Rule core of the ERPLibre mail client: rule model, filters, safeguards, rendering, statistics report, SMTP builders, IMAP readers and claim."
+requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "TechnoLibre" }]
+dependencies = []
+
+[project.optional-dependencies]
+markdown = ["markdown-it-py"]
+
+[tool.setuptools.dynamic]
+version = { attr = "erplibre_mail_core.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["erplibre_mail_core", "erplibre_mail_core.*"]

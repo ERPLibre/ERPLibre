@@ -37,6 +37,7 @@ docker-compose.override.yml
 manifest/default.dev.xml
 poetry.lock
 pyproject.toml
+!/script/lib/erplibre_mail_core/pyproject.toml
 .erplibre-semver-version
 # State of what this checkout has installed.
 .erplibre-state.json
@@ -56,6 +57,8 @@ private/todo/todo_override_private.json
 /private/sceau/
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+/script/lib/erplibre_mail_core/build/
+/script/lib/erplibre_mail_core/*.egg-info/
 
 # Investigation notes, dated measurements and execution traces.
 # UNVERSIONED ON PURPOSE: it holds what neither the code nor the commits
