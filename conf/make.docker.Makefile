@@ -30,6 +30,11 @@ docker_restart_daemon:
 docker_show_databases:
 	./script/docker/docker_list_database.sh
 
+# Affiche l'odoo.conf du volume erplibre_conf, sans démarrer le projet.
+.PHONY: docker_show_odoo_conf
+docker_show_odoo_conf:
+	./script/docker/docker_show_odoo_conf.sh
+
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
 	docker compose logs -f
