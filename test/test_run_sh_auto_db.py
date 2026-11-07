@@ -236,7 +236,8 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
         res = self.banc.lancer(env={"ODOO_MODE_DEV": "true"})
         self.assertEqual(
             "ARGS:[-c][./config.conf][--limit-time-real][99999]"
-            "[--limit-time-cpu][99999][--limit-memory-hard=0]",
+            "[--limit-time-cpu][99999][--limit-memory-hard=0]"
+            "[--limit-memory-soft=0]",
             res.stdout.strip(),
             res.stderr,
         )
@@ -267,6 +268,9 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
     def test_the_test_mode_branch_behaves_the_same(self):
         res = self.banc.lancer(env={"ODOO_MODE_TEST": "true"})
         self.assertIn("[--test-enable]", res.stdout, res.stderr)
+        self.assertIn(
+            "[--limit-memory-hard=0][--limit-memory-soft=0]", res.stdout
+        )
         self.assertNotIn("[-d]", res.stdout)
         self.assertFalse(self.banc.sonde_appelee())
 
