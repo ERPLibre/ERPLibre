@@ -852,6 +852,153 @@ class TestSelectDatabase(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestDropSeveralDatabases(unittest.TestCase):
+    """Effacer une ou plusieurs bases, choisies par leurs numéros séparés
+    par des espaces, après une seule confirmation qui les nomme toutes."""
+
+    BASES = ["alpha", "beta", "gamma"]
+
+    def manager(self, saisies, drops=None):
+        """Un gestionnaire dont « db list » rend BASES, dont click.prompt
+        répond `saisies` dans l'ordre, et dont chaque « db drop » rend le
+        statut suivant de `drops` (0 par défaut)."""
+        todo = TODO()
+        manager = todo.db_manager
+        statuts = iter(drops or [])
+
+        def executer(commande, **_kwargs):
+            if commande.endswith("db list"):
+                return (0, list(self.BASES))
+            return (next(statuts, 0), [])
+
+        manager._execute = MagicMock()
+        manager._execute.exec_command_live.side_effect = executer
+        invite = patch(
+            "script.todo.database_manager.click.prompt",
+            side_effect=list(saisies),
+        )
+        self.invite = invite.start()
+        self.addCleanup(invite.stop)
+        return manager
+
+    def drops(self, manager):
+        return [
+            appel[0][0]
+            for appel in manager._execute.exec_command_live.call_args_list
+            if " db drop " in appel[0][0]
+        ]
+
+    def test_plusieurs_numeros_separes_par_des_espaces(self):
+        self.assertEqual(
+            ["alpha", "gamma"], self.manager(["1 3"]).select_databases()
+        )
+
+    def test_l_ordre_tape_sans_doublon(self):
+        self.assertEqual(
+            ["gamma", "alpha"], self.manager(["3 1 3"]).select_databases()
+        )
+
+    def test_une_virgule_est_toleree(self):
+        self.assertEqual(
+            ["alpha", "beta"], self.manager(["1,2"]).select_databases()
+        )
+
+    def test_zero_renonce(self):
+        self.assertEqual([], self.manager(["0"]).select_databases())
+
+    def test_un_seul_numero_invalide_refuse_toute_la_saisie(self):
+        # « 1 9 » n'efface pas « alpha » en silence : tout est redemandé.
+        for fautive in ("1 9", "1 0", "deux", "  "):
+            with self.subTest(fautive=fautive):
+                sortie = io.StringIO()
+                with patch("sys.stdout", sortie):
+                    choix = self.manager([fautive, "2"]).select_databases()
+                self.assertEqual(["beta"], choix)
+                self.assertIn(
+                    todo_i18n.t("Invalid choice:"), sortie.getvalue()
+                )
+
+    def test_la_consigne_est_affichee(self):
+        manager = self.manager(["0"])
+        manager.select_databases()
+        invite = self.invite.call_args[0][0]
+        self.assertIn(
+            todo_i18n.t("Numbers separated by spaces, e.g. 1 3 4"), invite
+        )
+
+    def test_seules_les_bases_choisies_sont_effacees(self):
+        manager = self.manager(["1 3"])
+        with patch("builtins.input", return_value="oui"):
+            manager._drop_selected_databases()
+        self.assertEqual(
+            [
+                "./odoo_bin.sh db drop alpha",
+                "./odoo_bin.sh db drop gamma",
+            ],
+            self.drops(manager),
+        )
+
+    def test_la_confirmation_nomme_chaque_base_avant_la_question(self):
+        manager = self.manager(["1 3"])
+        sortie = io.StringIO()
+        with (
+            patch("builtins.input", return_value="") as question,
+            patch("sys.stdout", sortie),
+        ):
+            manager._drop_selected_databases()
+        texte = sortie.getvalue()
+        self.assertIn("- alpha", texte)
+        self.assertIn("- gamma", texte)
+        self.assertNotIn("- beta", texte)
+        question.assert_called_once()
+        # Le défaut est non : rien n'est effacé.
+        self.assertEqual([], self.drops(manager))
+
+    def test_une_seule_base_garde_le_message_au_singulier(self):
+        manager = self.manager(["2"])
+        sortie = io.StringIO()
+        with (
+            patch("builtins.input", return_value="non"),
+            patch("sys.stdout", sortie),
+        ):
+            manager._drop_selected_databases()
+        self.assertIn("beta", sortie.getvalue())
+        self.assertNotIn("- beta", sortie.getvalue())
+
+    def test_un_echec_n_arrete_pas_les_suivantes(self):
+        manager = self.manager(["1 2 3"], drops=[0, 1, 0])
+        sortie = io.StringIO()
+        with (
+            patch("builtins.input", return_value="yes"),
+            patch("sys.stdout", sortie),
+        ):
+            manager._drop_selected_databases()
+        self.assertEqual(3, len(self.drops(manager)))
+        texte = sortie.getvalue()
+        self.assertIn(f"{todo_i18n.t('Erased:')} alpha, gamma", texte)
+        self.assertIn(f"{todo_i18n.t('Not erased:')} beta", texte)
+
+    def test_le_menu_mene_a_la_selection_multiple(self):
+        manager = self.manager(["2", "0"])
+        with patch("builtins.input", return_value=""):
+            manager.drop_database()
+        # « 2 » ouvre la sélection, « 0 » y renonce : aucun effacement.
+        self.assertEqual([], self.drops(manager))
+        invites = [appel[0][0] for appel in self.invite.call_args_list]
+        self.assertIn(todo_i18n.t("Erase one or more databases"), invites[0])
+        # La seconde invite est bien la liste à numéros multiples, et le
+        # chemin « tout effacer » n'a jamais été pris.
+        self.assertEqual(2, len(invites), invites)
+        self.assertIn(
+            todo_i18n.t("Numbers separated by spaces, e.g. 1 3 4"), invites[1]
+        )
+        commandes = [
+            appel[0][0]
+            for appel in manager._execute.exec_command_live.call_args_list
+        ]
+        self.assertNotIn("make db_drop_all", commandes)
+
+
 class TestRestoreFromDatabase(unittest.TestCase):
     """Réponses, dans l'ordre : source, fichier, nom, cache, neutraliser,
     puis la mise à jour — avant ET après la neutralisation, ou une seule

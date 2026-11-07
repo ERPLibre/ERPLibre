@@ -873,21 +873,47 @@ TRANSLATIONS = {
         "en": "Make changes to databases!",
     },
     # Database drop / erase
-    "Erase a database": {
-        "fr": "🗑  Effacer une base de données",
-        "en": "🗑  Erase a database",
+    "Erase databases": {
+        "fr": "🗑  Effacer des bases de données",
+        "en": "🗑  Erase databases",
     },
-    "Erase a database — irreversible operation!": {
-        "fr": "Effacer une base de données — opération irréversible !",
-        "en": "Erase a database — irreversible operation!",
+    "Erase databases — irreversible operation!": {
+        "fr": "Effacer des bases de données — opération irréversible !",
+        "en": "Erase databases — irreversible operation!",
     },
     "Erase ALL databases (make db_drop_all)": {
         "fr": "Effacer TOUTES les bases de données (make db_drop_all)",
         "en": "Erase ALL databases (make db_drop_all)",
     },
-    "Erase a single database": {
-        "fr": "Effacer une seule base de données",
-        "en": "Erase a single database",
+    "Erase one or more databases": {
+        "fr": "Effacer une ou plusieurs bases de données",
+        "en": "Erase one or more databases",
+    },
+    "Numbers separated by spaces, e.g. 1 3 4": {
+        "fr": "Numéros séparés par des espaces, ex. : 1 3 4",
+        "en": "Numbers separated by spaces, e.g. 1 3 4",
+    },
+    "Invalid choice:": {
+        "fr": "Choix invalide :",
+        "en": "Invalid choice:",
+    },
+    "You are about to erase {count} databases. This cannot be undone:": {
+        "fr": (
+            "Tu es sur le point d'effacer {count} bases de données."
+            " C'est irréversible :"
+        ),
+        "en": (
+            "You are about to erase {count} databases."
+            " This cannot be undone:"
+        ),
+    },
+    "Erased:": {
+        "fr": "Effacées :",
+        "en": "Erased:",
+    },
+    "Not erased:": {
+        "fr": "Non effacées :",
+        "en": "Not erased:",
     },
     "You are about to erase ALL databases. This cannot be undone.": {
         "fr": (
