@@ -33,7 +33,14 @@ il préfère mise, qui pose un CPython précompilé, et retombe sur pyenv, qui l
 compile.
 
 Un seul fichier décide : `script/install/lib_python_provider.sh`. mise n'est
-jamais installé automatiquement — `make install_mise` porte cette décision.
+jamais installé sans accord : devant un terminal, l'installation le propose
+juste avant que pyenv ne compile (non par défaut), puis propose d'écrire son
+activation dans `~/.bashrc` (ou `~/.zshrc`) ; `make install_mise` le pose sur
+demande. Sans terminal — VM, Docker, CI — rien n'est demandé. Devant un
+terminal, chaque question applique son défaut au bout de `EL_QUESTION_DELAI`
+secondes (60) : chaque venv s'installe dans son propre processus, un « non »
+n'est pas retenu d'un venv à l'autre, et une installation laissée seule doit
+continuer.
 Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
 ## Le Python de l'outillage

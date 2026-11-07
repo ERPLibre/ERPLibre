@@ -36,13 +36,211 @@ el_pyenv_exec_path() {
   echo "$(el_pyenv_root)/versions/$1/bin/python"
 }
 
+# Chemin du binaire mise, même hors du PATH, ou échec.
+#
+# L'installateur de mise.run le dépose dans ~/.local/bin (MISE_INSTALL_PATH
+# le déplace), répertoire qu'un script ne trouve pas toujours dans son PATH,
+# ni la session qui vient de le poser. Le chercher là aussi permet à
+# l'installation de continuer avec mise sans que personne ait à toucher au
+# PATH, et au venv suivant de le retrouver dans un autre processus.
+el_mise_cmd() {
+  local exe
+  if exe="$(command -v mise 2> /dev/null)"; then
+    echo "${exe}"
+    return 0
+  fi
+  exe="${MISE_INSTALL_PATH:-${HOME}/.local/bin/mise}"
+  [ -x "${exe}" ] || return 1
+  echo "${exe}"
+}
+
 # Interpréteur déjà posé par mise, sans le moindre accès réseau.
 el_mise_exec_path() {
-  command -v mise > /dev/null 2>&1 || return 1
-  local out
-  out="$(mise where "python@$1" 2> /dev/null)" || return 1
+  local mise out
+  mise="$(el_mise_cmd)" || return 1
+  out="$("${mise}" where "python@$1" 2> /dev/null)" || return 1
   [ -n "${out}" ] && [ -x "${out}/bin/python" ] || return 1
   echo "${out}/bin/python"
+}
+
+# Peut-on poser une question ? Il faut stdin pour lire la réponse et stderr
+# pour la montrer. PAS stdout : el_python_exec est lu par substitution de
+# commande, où stdout est un tube même devant un terminal. Un déploiement de
+# VM, un build Docker ou une CI n'ont pas de terminal, et n'attendent donc
+# jamais une réponse que personne ne donnera.
+#
+# Fonction isolée pour qu'un test puisse la remplacer sans pseudo-terminal.
+el_peut_demander() {
+  [ -t 0 ] && [ -t 2 ]
+}
+
+# Vrai pour un oui explicite, en français ou en anglais. Les casses sont
+# écrites à la main : « ${1,,} » exige bash 4, et macOS livre bash 3.2.
+el_repond_oui() {
+  case "$1" in
+    o | O | oui | Oui | OUI | y | Y | yes | Yes | YES) return 0 ;;
+  esac
+  return 1
+}
+
+# Pose une question oui/non sur stderr, lit la réponse sur stdin, et rend 0
+# pour un oui explicite. Le défaut est non, et il s'applique aussi au bout de
+# EL_QUESTION_DELAI secondes (60 par défaut) : chaque venv s'installe dans
+# son propre processus, la question revient donc au suivant, et une
+# installation laissée sans surveillance après un premier « non » ne doit
+# pas attendre une réponse que personne ne donnera.
+el_demander() {
+  local question="$1" delai="${EL_QUESTION_DELAI:-60}" reponse=""
+  printf '%s (o/N, defaut : N dans %s s) ? ' "${question}" "${delai}" >&2
+  if ! read -r -t "${delai}" reponse; then
+    # Fin de l'entrée ou délai écoulé : finir la ligne de l'invite.
+    echo >&2
+    reponse=""
+  fi
+  el_repond_oui "${reponse}"
+}
+
+# Pose l'OUTIL mise. 0 s'il est utilisable ensuite, 2 sur une plateforme
+# sans binaire publié, 1 pour tout autre échec. Tout part sur stderr :
+# l'appelant peut être lu par substitution de commande.
+#
+# Téléchargé dans un fichier, PUIS exécuté, comme pyenv plus bas : quand
+# curl alimente sh par un tube, le statut est celui de sh, qui rend 0 sur une
+# entrée vide et masque un téléchargement raté.
+el_mise_poser() {
+  local mise installateur
+  if mise="$(el_mise_cmd)"; then
+    echo "mise deja present : $("${mise}" --version 2> /dev/null)" >&2
+    return 0
+  fi
+  if command -v pacman > /dev/null 2>&1; then
+    sudo pacman -S --needed --noconfirm mise >&2 || return 1
+  elif [ "$(uname -m)" = "s390x" ]; then
+    echo "mise ne publie pas de binaire s390x : on reste sur pyenv." >&2
+    return 2
+  else
+    echo "Installation de mise depuis https://mise.run" >&2
+    installateur="$(mktemp)" || return 1
+    if ! curl -fsSL -o "${installateur}" https://mise.run; then
+      rm -f "${installateur}"
+      echo "Telechargement de l'installateur mise impossible" \
+        "(reseau ou cache) : mise n'est pas pose." >&2
+      return 1
+    fi
+    if ! sh "${installateur}" >&2; then
+      rm -f "${installateur}"
+      echo "L'installateur de mise a echoue (voir ci-dessus)." >&2
+      return 1
+    fi
+    rm -f "${installateur}"
+  fi
+  if ! mise="$(el_mise_cmd)"; then
+    echo "mise est pose, mais introuvable dans le PATH ni dans" \
+      "${MISE_INSTALL_PATH:-${HOME}/.local/bin/mise}." >&2
+    return 1
+  fi
+  echo "mise pose : ${mise}" >&2
+}
+
+# Le fichier de démarrage du shell de l'utilisateur, et le nom de ce shell
+# pour « mise activate ». Rien pour un autre shell (fish, ksh…) : il ne lit
+# ni l'un ni l'autre, et une ligne bash dans ~/.bashrc ne l'activerait pas.
+# Un SHELL vide, ou sh, vaut bash : c'est le shell que l'installation lance.
+el_mise_rc() {
+  case "${SHELL##*/}" in
+    zsh) echo "${ZDOTDIR:-${HOME}}/.zshrc zsh" ;;
+    bash | sh | "") echo "${HOME}/.bashrc bash" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Écrit l'activation de mise dans le fichier de démarrage du shell, une seule
+# fois : un fichier qui l'active déjà n'est pas touché. Le chemin absolu de
+# mise y figure, comme le suggère son installateur : la ligne fonctionne même
+# quand ~/.local/bin n'est pas dans le PATH.
+el_mise_rendre_permanent() {
+  local mise rc shell active
+  mise="$(el_mise_cmd)" || return 1
+  read -r rc shell <<< "$(el_mise_rc)" || return 1
+  [ -n "${rc}" ] || return 1
+  # Une activation en commentaire ne compte pas : seule une ligne qui
+  # s'exécute active mise.
+  active='^[[:space:]]*[^#[:space:]][^#]*mise[^#]* activate'
+  if [ -f "${rc}" ] && grep -Eq "${active}" "${rc}"; then
+    echo "mise est deja active dans ${rc}." >&2
+    return 0
+  fi
+  if ! printf '\n# mise, pose par ERPLibre\neval "$(%s activate %s)"\n' \
+    "${mise}" "${shell}" >> "${rc}"; then
+    echo "Ecriture impossible dans ${rc}." >&2
+    return 1
+  fi
+  echo "mise active dans ${rc} : les nouveaux terminaux le trouvent." >&2
+  echo "  Pour un terminal deja ouvert sous ce compte : source ${rc}" >&2
+}
+
+# Propose de rendre mise permanent, devant un terminal seulement ; sinon dit
+# comment le faire. L'installation en cours n'en a pas besoin : el_mise_cmd
+# retrouve mise sans le PATH.
+el_mise_proposer_permanent() {
+  local rc shell
+  if ! read -r rc shell <<< "$(el_mise_rc)" || [ -z "${rc}" ]; then
+    echo "Le shell ${SHELL##*/} n'est ni bash ni zsh : activez mise selon" >&2
+    echo "  sa documentation (« $(el_mise_cmd) activate --help »)." >&2
+    return 0
+  fi
+  if ! el_peut_demander; then
+    echo "Pour activer mise dans vos terminaux : ajoutez a ${rc}" >&2
+    echo "  eval \"\$($(el_mise_cmd) activate ${shell})\"" >&2
+    return 0
+  fi
+  if el_demander "Activer mise de facon permanente dans ${rc}"; then
+    el_mise_rendre_permanent
+  else
+    echo "${rc} n'est pas modifie." >&2
+  fi
+}
+
+# Propose de poser mise juste avant que pyenv ne compile CPython. Rend 0 si
+# mise vient d'être posé, 2 si la question a été posée et que la suite est
+# pyenv — l'utilisateur sait déjà pourquoi —, 1 si rien n'a été demandé.
+#
+# Rien n'est demandé quand mise est déjà là, sur s390x (aucun binaire), sans
+# terminal, ni quand pyenv porte déjà la version : rien ne serait compilé.
+# La réponse par défaut est non : exécuter l'installateur d'un tiers engage,
+# et c'est à l'utilisateur de le décider, pas au script.
+el_mise_proposer() {
+  local version="$1" provider="${EL_PYTHON_PROVIDER:-auto}" suite
+  el_mise_cmd > /dev/null && return 1
+  [ "$(uname -m 2> /dev/null)" = "s390x" ] && return 1
+  if [ "${provider}" != "mise" ] \
+    && [ -d "$(el_pyenv_root)/versions/${version}" ]; then
+    return 1
+  fi
+  el_peut_demander || return 1
+  # Ce qui suit un refus, dit tel quel : avec EL_PYTHON_PROVIDER=mise, il
+  # n'y a pas de repli sur pyenv, et l'installation s'arrête.
+  if [ "${provider}" = "mise" ]; then
+    suite="l'installation s'arrete, EL_PYTHON_PROVIDER=mise exclut pyenv."
+    echo "mise est absent, et EL_PYTHON_PROVIDER=mise n'autorise que lui" >&2
+    echo "  pour fournir Python ${version}." >&2
+  else
+    suite="pyenv va compiler CPython ${version}."
+    echo "mise est absent : sans lui, pyenv va COMPILER CPython ${version}" >&2
+    echo "  -- quelques minutes, bien plus sous emulation, et une douzaine" >&2
+    echo "  de -dev (openssl, zlib, readline, sqlite, bzip2, xz, tk). mise" >&2
+    echo "  pose un CPython precompile en quelques secondes." >&2
+  fi
+  if ! el_demander "Installer mise maintenant"; then
+    echo "mise n'est pas pose : ${suite}" >&2
+    return 2
+  fi
+  if ! el_mise_poser; then
+    echo "mise n'a pas pu etre pose : ${suite}" >&2
+    return 2
+  fi
+  el_mise_proposer_permanent
+  return 0
 }
 
 # Vrai si l'exécutable rend EXACTEMENT la version demandée. Un interpréteur
@@ -111,10 +309,10 @@ el_distro_python_exec() {
 
 # Installe la version via mise. Renvoie le chemin, ou échoue.
 el_mise_install() {
-  local version="$1" exe
-  command -v mise > /dev/null 2>&1 || return 1
+  local version="$1" exe mise
+  mise="$(el_mise_cmd)" || return 1
   echo "---- Python ${version} via mise (precompile) ----" >&2
-  mise install "python@${version}" >&2 || return 1
+  "${mise}" install "python@${version}" >&2 || return 1
   exe="$(el_mise_exec_path "${version}")" || return 1
   el_python_is_version "${exe}" "${version}" || return 1
   echo "${exe}"
@@ -231,10 +429,10 @@ el_pyenv_install() {
 el_warn_pyenv_fallback() {
   local version="$1"
   [ -d "$(el_pyenv_root)/versions/${version}" ] && return 0
-  if command -v mise > /dev/null 2>&1; then
+  if el_mise_cmd > /dev/null; then
     echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv," >&2
     echo "  qui COMPILE CPython. Pour lire ce que mise reproche :" >&2
-    echo "    mise install python@${version}   (reseau requis)" >&2
+    echo "    $(el_mise_cmd) install python@${version}   (reseau requis)" >&2
   elif [ "$(uname -m)" = "s390x" ]; then
     # mise ne publie aucun binaire s390x : « make install_mise » n'y fait rien.
     echo "pyenv va COMPILER CPython ${version} : aucun Python precompile" >&2
@@ -288,14 +486,24 @@ el_python_exec() {
   fi
 
   # 3) Rien de posé : il faut provisionner. mise d'abord quand il est là,
-  #    parce qu'il télécharge au lieu de compiler.
+  #    parce qu'il télécharge au lieu de compiler ; absent, il est proposé
+  #    devant un terminal, avant que pyenv ne compile.
   if [ "${provider}" != "pyenv" ]; then
     if exe="$(el_mise_install "${version}")"; then
       echo "${exe}"
       return 0
     fi
+    local propose
+    el_mise_proposer "${version}"
+    propose=$?
+    if [ "${propose}" -eq 0 ] && exe="$(el_mise_install "${version}")"; then
+      echo "${exe}"
+      return 0
+    fi
     [ "${provider}" = "mise" ] && return 1
-    el_warn_pyenv_fallback "${version}"
+    # Une réponse négative a déjà dit que pyenv compile ; ne pas répéter le
+    # conseil d'interrompre pour poser mise.
+    [ "${propose}" -ne 2 ] && el_warn_pyenv_fallback "${version}"
   fi
   el_pyenv_install "${version}"
 }
