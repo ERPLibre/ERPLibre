@@ -2626,6 +2626,9 @@ under a time limit.
   `zoneinfo.ZoneInfo`); without one it uses the process zone, as the client
   does. Odoo forces `TZ=UTC` on its server: an Odoo caller always passes
   the zone.
+- `erplibre_mail_core.stats` also holds `is_automatic` and `reply_parent`,
+  which the synchronization of the client and the collection of Odoo
+  share: is a message automatic, and which message does it answer.
 - Installing it in Odoo's virtual environment is useful only with an
   Odoo module that imports it (`erplibre_mail_rule`, below); the client
   does not need it. The method is `<Odoo venv>/bin/pip install --no-deps
@@ -2657,8 +2660,8 @@ reply. A mailbox can be shared with a client workstation: both claim each
 message on the server before replying (see "Several machines on one
 mailbox"), so only one replies. It replies and forwards: inline, as an
 attachment, or as a true redirect, to 1 to 10 destinations, with the
-forwarding safeguards of the client (see "Forwarding"); it does not
-compute statistics yet. The portal module erplibre_mail_rule_portal,
+forwarding safeguards of the client (see "Forwarding"), and computes the
+statistics of the mailbox. The portal module erplibre_mail_rule_portal,
 below, opens it to portal users.
 
 - The module imports the core, installed in Odoo's virtual environment in
@@ -2698,6 +2701,21 @@ below, opens it to portal users.
   afterwards. The confirmation protects the recipient, not the account:
   whoever uses a stolen session can add and confirm their own address,
   and the owner then receives a notice. Employees are not concerned.
+- Statistics: once enabled on an account (they are off by default), the
+  worker reads, after the rules, the headers of the inbox and of the Sent
+  folder in read-only mode (`EXAMINE`, `BODY.PEEK` of the headers, never
+  `\Seen`). It keeps one line per message without address nor subject:
+  dates, flags and keyed fingerprints (HMAC); only a daily count of each
+  sender keeps addresses, readable by the owner alone. Everything follows
+  the journal retention. A reply is linked to its original by
+  `In-Reply-To`, else by the last identifier of `References` (the client
+  reads `In-Reply-To` only). Turning the statistics off deletes them.
+- A statistics report rule answers its allowed senders only, once
+  authenticated (see "The statistics report"), with the report of the core,
+  in the language and time zone of the rule, frozen for the day, at most
+  20 per rule per day; no report leaves while the history is being
+  collected. The backend has graph and pivot views of the activity and the
+  median reply delay of each account.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -2720,7 +2738,13 @@ that the service's mail server did not accept shows as not delivered and
 does not count toward the 3 requests of the address. Mailing lists and robots are never forwarded for them, and their first forwards wait for their own
 approval, which does not protect against a stolen session. Every
 route checks the owner; accounts and rules per user are limited (5 and 50
-by default, system parameters). Details: the module's `README.md`.
+by default, system parameters). `/my/mail/stats` gives an overview of
+the accounts; the page of each account (`/my/mail/account/<id>/stats`)
+has the figures, server-drawn bars and daily and ISO weekly tables, in the
+user's time zone, without script. Portal users may create
+statistics report rules; their allowed senders confirm their address
+through the same consent as forward destinations, one per address for
+both uses. Details: the module's `README.md`.
 
 <!-- [fr] -->
 ## Règles du courrier entrant
@@ -3910,6 +3934,9 @@ expressions régulières des règles dans un délai borné.
   `zoneinfo.ZoneInfo`) ; sans fuseau, celui du processus, comme le client.
   Odoo force `TZ=UTC` sur son serveur : un appelant Odoo passe toujours le
   fuseau.
+- `erplibre_mail_core.stats` porte aussi `is_automatic` et `reply_parent`,
+  que la synchronisation du client et la collecte d'Odoo partagent : un
+  message est-il automatique, et à quel message répond-il.
 - L'installer dans l'environnement virtuel d'Odoo ne sert qu'avec un
   module Odoo qui l'importe (`erplibre_mail_rule`, ci-dessous) ; le
   client n'en a pas besoin. La méthode est `<venv Odoo>/bin/pip install
@@ -3944,8 +3971,8 @@ du client : chacun revendique le message sur le serveur avant de répondre
 (voir « Plusieurs postes sur une même boîte »), et un seul répond. Il
 répond et transfère : dans le corps du message, en pièce jointe ou en
 vraie redirection, vers 1 à 10 destinations, avec les garde-fous de
-redirection du client (voir « La redirection ») ; il ne calcule pas
-encore de statistiques. Le module de portail erplibre_mail_rule_portal,
+redirection du client (voir « La redirection »), et calcule les
+statistiques de la boîte. Le module de portail erplibre_mail_rule_portal,
 ci-dessous, l'ouvre aux utilisateurs du portail.
 
 - Le module importe le noyau, installé dans l'environnement virtuel d'Odoo
@@ -3987,6 +4014,23 @@ ci-dessous, l'ouvre aux utilisateurs du portail.
   compte : qui utilise une session volée peut ajouter et confirmer sa
   propre adresse, et le propriétaire reçoit alors un avis. Les employés
   ne sont pas concernés.
+- Statistiques : une fois activées sur un compte (elles sont coupées par
+  défaut), le worker lit, après les règles, les en-têtes de la boîte de
+  réception et du dossier Envoyés en lecture seule (`EXAMINE`, `BODY.PEEK`
+  des en-têtes, jamais `\Seen`). Il garde une ligne par message sans
+  adresse ni sujet : dates, drapeaux et empreintes à clé (HMAC) ; seul un
+  compte quotidien de chaque expéditeur garde des adresses, lisible par le
+  seul propriétaire. Le tout suit la rétention du journal. Une réponse se
+  rattache à son original par `In-Reply-To`, sinon par le dernier
+  identifiant de `References` (le client ne lit que `In-Reply-To`). Couper
+  les statistiques les supprime.
+- Une règle de rapport de statistiques ne répond qu'à ses expéditeurs
+  autorisés, une fois authentifiés (voir « Le rapport de statistiques »),
+  par le rapport du noyau, dans la langue et le fuseau de la règle, figé
+  pour la journée, au plus 20 par règle et par jour ; aucun rapport ne part
+  tant que l'historique se collecte. Le back-office a des vues graphique et
+  tableau croisé de l'activité et le délai médian de réponse de chaque
+  compte.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ### Le portail courriel erplibre_mail_rule_portal
@@ -4013,7 +4057,14 @@ pour lui, et ses
 premiers transferts attendent sa propre approbation, qui ne protège pas
 d'une session volée. Chaque route vérifie le
 propriétaire ; comptes et règles par utilisateur sont limités (5 et 50 par
-défaut, paramètres système). Détails : le `README.md` du module.
+défaut, paramètres système). `/my/mail/stats` donne une vue d'ensemble
+des comptes ; la page de chaque compte (`/my/mail/account/<id>/stats`)
+porte les chiffres, les barres dessinées par le serveur et les tableaux
+par jour et par semaine ISO, dans le fuseau de l'utilisateur, sans script.
+Un utilisateur du portail peut créer des règles de rapport de
+statistiques ; ses expéditeurs autorisés confirment leur adresse par le
+même consentement que les destinations de transfert, un par adresse pour
+les deux usages. Détails : le `README.md` du module.
 
 <!-- [en] -->
 ## Managing folders
