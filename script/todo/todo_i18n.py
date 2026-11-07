@@ -248,6 +248,131 @@ TRANSLATIONS = {
         "fr": "📡 Réseau - Outil réseautique",
         "en": "📡 Network - Network tools",
     },
+    # Menu Python : Poetry et écarts du venv avec poetry.lock
+    "Python - Poetry and Python tools": {
+        "fr": "🐍 Python - Outils Poetry et Python",
+        "en": "🐍 Python - Poetry and Python tools",
+    },
+    "Python and Poetry tools!": {
+        "fr": "Outils Python et Poetry !",
+        "en": "Python and Poetry tools!",
+    },
+    "Lock drift - Compare the venv with poetry.lock": {
+        "fr": "Écarts du lock - Comparer le venv à poetry.lock",
+        "en": "Lock drift - Compare the venv with poetry.lock",
+    },
+    "Install mise - Precompiled Python": {
+        "fr": "Installer mise - Python précompilé",
+        "en": "Install mise - Precompiled Python",
+    },
+    "Install uv - Faster pip": {
+        "fr": "Installer uv - pip plus rapide",
+        "en": "Install uv - Faster pip",
+    },
+    "No .erplibre-version: no active Odoo version.": {
+        "fr": "Aucun .erplibre-version : aucune version d'Odoo active.",
+        "en": "No .erplibre-version: no active Odoo version.",
+    },
+    "Poetry is missing from the venv:": {
+        "fr": "Poetry est absent du venv :",
+        "en": "Poetry is missing from the venv:",
+    },
+    "Missing file read by Poetry:": {
+        "fr": "Fichier lu par Poetry introuvable :",
+        "en": "Missing file read by Poetry:",
+    },
+    "Reinstall this Odoo version to recreate it.": {
+        "fr": "Réinstallez cette version d'Odoo pour le recréer.",
+        "en": "Reinstall this Odoo version to recreate it.",
+    },
+    "Poetry refuses to compare:": {
+        "fr": "Poetry refuse de comparer :",
+        "en": "Poetry refuses to compare:",
+    },
+    "The venv matches the lock.": {
+        "fr": "Le venv correspond au lock.",
+        "en": "The venv matches the lock.",
+    },
+    "Differences with the lock:": {
+        "fr": "Écarts avec le lock :",
+        "en": "Differences with the lock:",
+    },
+    "Missing from the venv": {
+        "fr": "Absent du venv",
+        "en": "Missing from the venv",
+    },
+    "Older than the lock": {
+        "fr": "Plus ancien que le lock",
+        "en": "Older than the lock",
+    },
+    "Newer than the lock": {
+        "fr": "Plus récent que le lock",
+        "en": "Newer than the lock",
+    },
+    "Outside the lock, left untouched by the update:": {
+        "fr": "Hors du lock, laissés tels quels par la mise à jour :",
+        "en": "Outside the lock, left untouched by the update:",
+    },
+    "Update the venv to match the lock (y/N, default: N)? ": {
+        "fr": "Mettre le venv à jour selon le lock (o/N, défaut : N) ? ",
+        "en": "Update the venv to match the lock (y/N, default: N)? ",
+    },
+    "To update it later: %s": {
+        "fr": "Pour le mettre à jour plus tard : %s",
+        "en": "To update it later: %s",
+    },
+    "Update report:": {
+        "fr": "Rapport de mise à jour :",
+        "en": "Update report:",
+    },
+    "Poetry update report": {
+        "fr": "Rapport de mise à jour Poetry",
+        "en": "Poetry update report",
+    },
+    "Lock:": {
+        "fr": "Lock :",
+        "en": "Lock:",
+    },
+    "Installation:": {
+        "fr": "Installation :",
+        "en": "Installation:",
+    },
+    "success": {
+        "fr": "réussie",
+        "en": "success",
+    },
+    "failure, code": {
+        "fr": "échec, code",
+        "en": "failure, code",
+    },
+    "The venv interpreter did not answer: no list.": {
+        "fr": "L'interpréteur du venv n'a pas répondu : aucune liste.",
+        "en": "The venv interpreter did not answer: no list.",
+    },
+    "Changed versions": {
+        "fr": "Versions changées",
+        "en": "Changed versions",
+    },
+    "Removed": {
+        "fr": "Retirés",
+        "en": "Removed",
+    },
+    "No package changed.": {
+        "fr": "Aucun paquet n'a changé.",
+        "en": "No package changed.",
+    },
+    "Remaining differences with the lock": {
+        "fr": "Écarts restants avec le lock",
+        "en": "Remaining differences with the lock",
+    },
+    "None: the venv matches the lock.": {
+        "fr": "Aucun : le venv correspond au lock.",
+        "en": "None: the venv matches the lock.",
+    },
+    "Differences before the update:": {
+        "fr": "Écarts avant la mise à jour :",
+        "en": "Differences before the update:",
+    },
     "Security - Dependency security audit": {
         "fr": "🔒 Sécurité - Audit de sécurité des dépendances",
         "en": "🔒 Security - Dependency security audit",
