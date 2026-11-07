@@ -5451,7 +5451,9 @@ class TODO(
         database = database or defaut
 
         neutralise = (
-            input(f"💬 {t('Neutralize the database (Y/n)? ')}").strip().lower()
+            input(f"💬 {t('Neutralize the database (Y/n, default: Y)? ')}")
+            .strip()
+            .lower()
         )
         more_arg = ""
         if neutralise != "n":

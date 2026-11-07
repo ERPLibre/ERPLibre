@@ -15990,9 +15990,47 @@ TRANSLATIONS = {
         "fr": "Nom de la base (défaut=",
         "en": "Database name (default=",
     },
-    "Neutralize the database (Y/n)? ": {
-        "fr": "Neutraliser la base (O/n) ? ",
-        "en": "Neutralize the database (Y/n)? ",
+    "Neutralize the database (Y/n, default: Y)? ": {
+        "fr": "Neutraliser la base (O/n, défaut : O) ? ",
+        "en": "Neutralize the database (Y/n, default: Y)? ",
+    },
+    "Keep a _cache_ copy, not neutralized, to speed up the next restore"
+    " of this image (y/N, default: N)? ": {
+        "fr": "Garder une copie _cache_, non neutralisée, pour accélérer la"
+        " prochaine restauration de cette image (o/N, défaut : N) ? ",
+        "en": "Keep a _cache_ copy, not neutralized, to speed up the next"
+        " restore of this image (y/N, default: N)? ",
+    },
+    "Update all addons before neutralizing (y/N, default: N)? ": {
+        "fr": "Mettre à jour tous les modules avant la neutralisation"
+        " (o/N, défaut : N) ? ",
+        "en": "Update all addons before neutralizing (y/N, default: N)? ",
+    },
+    "Update all addons after neutralizing (y/N, default: N)? ": {
+        "fr": "Mettre à jour tous les modules après la neutralisation"
+        " (o/N, défaut : N) ? ",
+        "en": "Update all addons after neutralizing (y/N, default: N)? ",
+    },
+    "Update all addons (y/N, default: N)? ": {
+        "fr": "Mettre à jour tous les modules (o/N, défaut : N) ? ",
+        "en": "Update all addons (y/N, default: N)? ",
+    },
+    "Step failed, the next ones are skipped:": {
+        "fr": "Étape en échec, les suivantes sont sautées :",
+        "en": "Step failed, the next ones are skipped:",
+    },
+    "Backup file name in image_db (empty to cancel): ": {
+        "fr": "Nom du fichier de sauvegarde dans image_db (vide pour"
+        " annuler) : ",
+        "en": "Backup file name in image_db (empty to cancel): ",
+    },
+    "No such file in image_db:": {
+        "fr": "Aucun fichier de ce nom dans image_db :",
+        "en": "No such file in image_db:",
+    },
+    "No backup selected, nothing restored.": {
+        "fr": "Aucune sauvegarde choisie, rien n'est restauré.",
+        "en": "No backup selected, nothing restored.",
     },
     "The restore failed.": {
         "fr": "La restauration a échoué.",

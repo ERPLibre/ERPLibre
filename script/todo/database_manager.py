@@ -12,6 +12,20 @@ from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
 
+
+def _oui(reponse):
+    """« Défaut non » : seule une réponse explicite accepte, FR ou EN."""
+    return reponse.strip().lower() in ("y", "yes", "o", "oui")
+
+
+def _non(reponse):
+    """« Défaut oui » : seule une réponse explicite refuse, FR ou EN.
+
+    « non » compte : comparer à « n » seul ferait de « non » un oui.
+    """
+    return reponse.strip().lower() in ("n", "no", "non")
+
+
 try:
     import click
 
@@ -146,9 +160,12 @@ class DatabaseManager:
         print(f"[] Browser image_db {path_image_db}")
         status = input("\U0001f4ac Select : ")
         if status == "1":
-            file_name = status
+            file_name = self._ask_image_db_file_name(path_image_db)
         else:
             file_name = self.open_file_image_db()
+        if not file_name:
+            print(t("No backup selected, nothing restored."))
+            return
 
         default_database_name = file_name.replace(" ", "_")
         if default_database_name.endswith(".zip"):
@@ -160,43 +177,118 @@ class DatabaseManager:
         if not database_name:
             database_name = default_database_name
 
-        status = (
-            input("\U0001f4ac Would you like to neutralize database (n/N)? ")
-            .strip()
-            .lower()
+        for commande in self._restore_commands(file_name, database_name):
+            status, _output_lines = self._execute.exec_command_live(
+                commande,
+                return_status_and_output=True,
+                single_source_erplibre=True,
+                source_erplibre=False,
+            )
+            if status:
+                # Chaque étape suppose la précédente faite : mettre à jour
+                # ou neutraliser une base mal restaurée ne fait qu'empiler
+                # une seconde erreur sur la première.
+                print(f"❌ {t('Step failed, the next ones are skipped:')}")
+                print(f"   {commande}")
+                return
+
+    @staticmethod
+    def _ask_image_db_file_name(path_image_db):
+        """Une sauvegarde de `path_image_db` par son nom ; "" pour renoncer.
+
+        db_restore.py lit « --image » dans image_db/, avec ou sans « .zip » :
+        le nom rendu est celui du fichier, tel que le dossier le porte. Un
+        nom absent est redemandé, avant toute question sur la base.
+        """
+        while True:
+            nom = input(
+                "\U0001f4ac "
+                + t("Backup file name in image_db (empty to cancel): ")
+            ).strip()
+            if not nom:
+                return ""
+            for candidat in (nom, f"{nom}.zip"):
+                if os.path.isfile(os.path.join(path_image_db, candidat)):
+                    return candidat
+            print(f"❌ {t('No such file in image_db:')} {nom}")
+
+    def _restore_commands(self, file_name, database_name):
+        """Poser toutes les questions, puis rendre les commandes, dans l'ordre.
+
+        Les questions viennent AVANT la première commande : la restauration
+        et les mises à jour durent, et l'on peut s'éloigner une fois la
+        dernière réponse donnée.
+
+        La neutralisation a deux temps, comme dans todo_upgrade.py. Odoo
+        neutralise pendant le chargement (« --neutralize » de db_restore) ;
+        update_prod_to_dev.sh installe ensuite les modules de
+        développement (compte test/test, courriel et sauvegardes coupés).
+        La mise à jour « avant » se place entre les deux : ces modules
+        s'installent alors sur des modules déjà au niveau du code.
+        """
+        cache = _oui(
+            input(
+                "\U0001f4ac "
+                + t(
+                    "Keep a _cache_ copy, not neutralized, to speed up the"
+                    " next restore of this image (y/N, default: N)? "
+                )
+            )
         )
-        is_neutralize = False
-        more_arg = ""
-        if status != "n":
-            more_arg = "--neutralize "
-            is_neutralize = True
+        neutraliser = not _non(
+            input(
+                "\U0001f4ac "
+                + t("Neutralize the database (Y/n, default: Y)? ")
+            )
+        )
+        if neutraliser:
+            avant = _oui(
+                input(
+                    "\U0001f4ac "
+                    + t(
+                        "Update all addons before neutralizing"
+                        " (y/N, default: N)? "
+                    )
+                )
+            )
+            apres = _oui(
+                input(
+                    "\U0001f4ac "
+                    + t(
+                        "Update all addons after neutralizing"
+                        " (y/N, default: N)? "
+                    )
+                )
+            )
             database_name += "_neutralize"
-        status, output_lines = self._execute.exec_command_live(
+        else:
+            avant = False
+            apres = _oui(
+                input(
+                    "\U0001f4ac " + t("Update all addons (y/N, default: N)? ")
+                )
+            )
+
+        restore = (
             f"python3 ./script/database/db_restore.py -d {database_name} "
-            f"{more_arg}--ignore_cache --image {file_name}",
-            return_status_and_output=True,
-            single_source_erplibre=True,
-            source_erplibre=False,
         )
-        if is_neutralize:
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
+        if neutraliser:
+            restore += "--neutralize "
+        if not cache:
+            restore += "--ignore_cache "
+        restore += f"--image {file_name}"
+        update_all = f"./script/addons/update_addons_all.sh {database_name}"
+
+        commandes = [restore]
+        if avant:
+            commandes.append(update_all)
+        if neutraliser:
+            commandes.append(
+                f"./script/addons/update_prod_to_dev.sh {database_name}"
             )
-        status = (
-            input("\U0001f4ac Would you like to update all addons (y/Y)? ")
-            .strip()
-            .lower()
-        )
-        if status == "y":
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_addons_all.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
+        if apres:
+            commandes.append(update_all)
+        return commandes
 
     def duplicate_database(self) -> None:
         """Copier une base, et proposer de la neutraliser.
