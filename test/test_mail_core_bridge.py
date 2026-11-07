@@ -48,6 +48,7 @@ ALIAS = {
     "script.todo.mail.rules.guards": "erplibre_mail_core.rules.guards",
     "script.todo.mail.rules.markup": "erplibre_mail_core.rules.markup",
     "script.todo.mail.rules.report": "erplibre_mail_core.rules.report",
+    "script.todo.mail.rules.svg": "erplibre_mail_core.rules.svg",
 }
 
 
