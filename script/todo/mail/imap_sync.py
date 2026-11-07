@@ -31,9 +31,9 @@ from erplibre_mail_core.imap import (  # noqa: F401
     HeaderInfo,
     SelectInfo,
 )
+from erplibre_mail_core.stats import is_automatic  # noqa: F401
 
 from script.todo.mail.charset import decode_bytes
-from script.todo.mail.smtp_send import X_LOOP_MARKER
 from script.todo.mail.store import MessageMeta
 
 SNIPPET_LEN = 200
@@ -97,22 +97,6 @@ def _garder_les_plus_hauts(report: SyncReport) -> None:
     if len(report.inbox) > INBOX_REPORT_MAX:
         del report.inbox[: len(report.inbox) - INBOX_REPORT_MAX]
         report.inbox_truncated = True
-
-
-def is_automatic(extra: dict) -> bool:
-    """Vrai si les en-têtes supplémentaires d'un message le disent
-    automatique : une occurrence d'Auto-Submitted dont le premier jeton
-    n'est pas « no », ou un X-Loop qui porte la marque des règles.
-
-    `extra` a la forme de `HeaderInfo.extra` : clés en minuscules,
-    occurrences jointes par « \\n ».
-    """
-    extra = extra or {}
-    for line in (extra.get("auto-submitted") or "").split("\n"):
-        if line.strip() and line.split(";", 1)[0].strip().lower() != "no":
-            return True
-    loop = extra.get("x-loop") or ""
-    return X_LOOP_MARKER.lower() in loop.lower()
 
 
 def _mark_automatic(store, headers: list) -> None:

@@ -113,6 +113,14 @@ class TestAliases(unittest.TestCase):
         self.assertIs(engine.forward_reply_to, forward.forward_reply_to)
         self.assertIs(engine._first_msgid, forward.first_msgid)
 
+    def test_the_client_uses_the_core_function(self):
+        """La synchronisation du client reconnaît un message automatique
+        par la fonction du noyau, sous son ancien nom : aucune copie
+        locale."""
+        from erplibre_mail_core import stats
+
+        self.assertIs(imap_sync.is_automatic, stats.is_automatic)
+
     def test_an_alias_bootstraps_itself(self):
         """Un client ouvert avant la mise à jour garde l'ancien
         `__init__.py`, sans amorce, et l'ancien `todo_i18n`, sans
