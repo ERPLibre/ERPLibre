@@ -258,16 +258,16 @@ TRANSLATIONS = {
         "en": "Python and Poetry tools!",
     },
     "Lock drift - Compare the venv with poetry.lock": {
-        "fr": "Écarts du lock - Comparer le venv à poetry.lock",
-        "en": "Lock drift - Compare the venv with poetry.lock",
+        "fr": "🔍 Écarts du lock - Comparer le venv à poetry.lock",
+        "en": "🔍 Lock drift - Compare the venv with poetry.lock",
     },
     "Install mise - Precompiled Python": {
-        "fr": "Installer mise - Python précompilé",
-        "en": "Install mise - Precompiled Python",
+        "fr": "🧰 Installer mise - Python précompilé",
+        "en": "🧰 Install mise - Precompiled Python",
     },
     "Install uv - Faster pip": {
-        "fr": "Installer uv - pip plus rapide",
-        "en": "Install uv - Faster pip",
+        "fr": "⚡ Installer uv - pip plus rapide",
+        "en": "⚡ Install uv - Faster pip",
     },
     "No .erplibre-version: no active Odoo version.": {
         "fr": "Aucun .erplibre-version : aucune version d'Odoo active.",
@@ -896,8 +896,8 @@ TRANSLATIONS = {
         "en": "Reboot TODO ...",
     },
     "pip-audit - Check vulnerabilities on Python environments": {
-        "fr": "pip-audit - Verifier les vulnérabilités sur les environnements Python",
-        "en": "pip-audit - Check vulnerabilities on Python environments",
+        "fr": "🛡️ pip-audit - Vérifier les vulnérabilités des environnements Python",
+        "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
     },
     "Will execute:": {
         "fr": "Va exécuter :",
