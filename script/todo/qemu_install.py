@@ -49,9 +49,7 @@ class QemuInstallMixin:
         from script.todo.version_manager import get_odoo_version
 
         versions, _installees, _active = get_odoo_version()
-        defaut = [
-            v["odoo_version"] for v in versions if v.get("default")
-        ]
+        defaut = [v["odoo_version"] for v in versions if v.get("default")]
         autres = sorted(
             (v["odoo_version"] for v in versions if not v.get("default")),
             key=float,

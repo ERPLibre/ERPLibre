@@ -107,7 +107,11 @@ class TestEnveloppePoetry(unittest.TestCase):
         libldap.write_text("")
         bin_dir = self.racine / "faux_bin"
         bin_dir.mkdir(exist_ok=True)
-        ldap_r = str(self.racine / "libldap_r.so") if ldap_r_present else "libldap_r.so"
+        ldap_r = (
+            str(self.racine / "libldap_r.so")
+            if ldap_r_present
+            else "libldap_r.so"
+        )
         (bin_dir / "gcc").write_text(
             "#!/usr/bin/env bash\n"
             'case "$1" in\n'
@@ -164,7 +168,7 @@ class TestLdapRCheminAbsolu(unittest.TestCase):
             (bin_dir / "gcc").write_text(
                 "#!/usr/bin/env bash\n"
                 'case "$1" in\n'
-                '  -print-file-name=libldap_r.so) echo libldap_r.so ;;\n'
+                "  -print-file-name=libldap_r.so) echo libldap_r.so ;;\n"
                 f'  -print-file-name=libldap.so) echo "{libldap}" ;;\n'
                 "esac\n"
             )

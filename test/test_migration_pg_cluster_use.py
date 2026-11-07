@@ -43,17 +43,17 @@ class Base(unittest.TestCase):
                 os.environ[cle] = valeur
 
     def brancher(self, pref="16", dump=16, bindir="/b", demarre=0):
-        with mock.patch.object(
-            todo_upgrade.todo_prefs, "get", return_value=pref
-        ), mock.patch.object(
-            MC, "version_du_dump", return_value=dump
-        ), mock.patch.object(
-            MC, "trouver_bindir", return_value=bindir
-        ), mock.patch.object(
-            MC, "demarrer", return_value=demarre
-        ) as demarrer, redirect_stdout(
-            io.StringIO()
-        ) as sortie:
+        with (
+            mock.patch.object(
+                todo_upgrade.todo_prefs, "get", return_value=pref
+            ),
+            mock.patch.object(MC, "version_du_dump", return_value=dump),
+            mock.patch.object(MC, "trouver_bindir", return_value=bindir),
+            mock.patch.object(
+                MC, "demarrer", return_value=demarre
+            ) as demarrer,
+            redirect_stdout(io.StringIO()) as sortie,
+        ):
             rendu = self.upgrade.use_migration_cluster()
         return rendu, demarrer, sortie.getvalue()
 
