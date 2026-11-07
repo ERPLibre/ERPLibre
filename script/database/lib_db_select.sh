@@ -21,9 +21,39 @@
 : "${Red:=\033[0;31m}"
 : "${Yellow:=\033[0;33m}"
 : "${Color_Off:=\033[0m}"
+# Orange clair, en 256 couleurs : l'entrée « Tous » se détache des bases.
+: "${Light_Orange:=\033[38;5;215m}"
 
 _el_db_say() {
   echo -e "$*" >&2
+}
+
+_el_db_lang() {
+  # « fr » ou « en », dans l'ordre de get_lang() de todo_i18n.py : le
+  # EL_LANG de ./env_var.sh, puis la variable d'environnement, puis « fr ».
+  # run.sh résout tout depuis le cwd, la racine du dépôt.
+  local langue=""
+  if [ -f ./env_var.sh ]; then
+    langue="$(sed -nE "s/^EL_LANG=[\"']?([a-z]+)[\"']?.*/\1/p" \
+      ./env_var.sh | head -n 1)"
+  fi
+  case "${langue}" in
+    fr | en) ;;
+    *) langue="${EL_LANG:-}" ;;
+  esac
+  case "${langue}" in
+    en) echo en ;;
+    *) echo fr ;;
+  esac
+}
+
+_el_db_t() {
+  # _el_db_t FRANÇAIS ANGLAIS : rend le texte de la langue courante.
+  if [ "$(_el_db_lang)" = "en" ]; then
+    printf '%s' "$2"
+  else
+    printf '%s' "$1"
+  fi
 }
 
 _el_db_tty() {
@@ -102,20 +132,27 @@ el_db_list() {
 el_db_choose() {
   # Le menu, entièrement sur stderr ; le nom retenu sur stdout.
   #
-  # Numérotation à partir de 1 et « [0] » pour annuler : le vocabulaire
-  # des menus Python du projet, pour qu'on reconnaisse le même produit.
+  # Rend 0 avec un nom sur stdout pour une base ; 0 SANS RIEN sur stdout
+  # pour « [0] Tous », que run.sh lit comme « pas de -d » : Odoo sert
+  # alors toutes les bases, et /web/database/manager les liste. Rend 130
+  # pour « [q] » et pour Ctrl-D, qui renoncent à démarrer.
   local -a bases=("$@")
   local rang nom choix
   while true; do
     _el_db_say ""
-    _el_db_say "🗄  ${#bases[@]} bases de données. Laquelle démarrer ?"
+    _el_db_say "🗄  ${#bases[@]} $(_el_db_t \
+      "bases de données. Laquelle démarrer ?" \
+      "databases. Which one to start?")"
+    _el_db_say "  ${Light_Orange}[0] $(_el_db_t \
+      "Tous - sert à afficher la liste des bases de données via /web/database/manager" \
+      "All - shows the list of databases through /web/database/manager")${Color_Off}"
     rang=1
     for nom in "${bases[@]}"; do
       _el_db_say "  [${rang}] ${nom}"
       rang=$((rang + 1))
     done
-    _el_db_say "  [0] Annuler"
-    printf 'Choix : ' >&2
+    _el_db_say "  [q] $(_el_db_t "Annuler" "Cancel")"
+    printf '%s' "$(_el_db_t "Choix : " "Choice: ")" >&2
     # shellcheck disable=SC2162
     if ! read -r choix; then
       # Ctrl-D : finir la ligne avant de partir, sinon l'invite reste
@@ -124,17 +161,29 @@ el_db_choose() {
       return 130
     fi
     case "${choix}" in
-      0) return 130 ;;
+      q | Q) return 130 ;;
       "" | *[!0-9]*) ;;
       *)
-        if [ "${choix}" -ge 1 ] && [ "${choix}" -le "${#bases[@]}" ]; then
+        # Zéros de tête retirés en CHAÎNE, sans arithmétique : $(( )) lit
+        # « 08 » en octal et déborde sans erreur au-delà de 19 chiffres,
+        # ce qui ferait d'un nombre trop long un rang négatif valide.
+        # « 0 » et « 00 » deviennent vides ; neuf chiffres bornent [ -le ].
+        choix="${choix#"${choix%%[!0]*}"}"
+        if [ -z "${choix}" ]; then
+          _el_db_say "🗄  $(_el_db_t \
+            "Aucune base présélectionnée : /web/database/manager" \
+            "No database preselected: /web/database/manager")"
+          return 0
+        fi
+        if [ "${#choix}" -le 9 ] && [ "${choix}" -le "${#bases[@]}" ]; then
           printf '%s\n' "${bases[$((choix - 1))]}"
           return 0
         fi
         ;;
     esac
-    _el_db_say "${Red}Choix invalide${Color_Off} :" \
-      "un nombre entre 0 et ${#bases[@]}."
+    _el_db_say "$(_el_db_t \
+      "${Red}Choix invalide${Color_Off} : un nombre entre 0 et ${#bases[@]}, ou q." \
+      "${Red}Invalid choice${Color_Off}: a number between 0 and ${#bases[@]}, or q.")"
   done
 }
 

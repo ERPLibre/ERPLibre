@@ -43,6 +43,11 @@ one it starts on it, with several it shows a numbered menu. It only asks
 when a real terminal is there — a service started by systemd behaves
 exactly as before.
 
+In that menu, `[0] All` starts Odoo without `-d`: every database stays
+served, and `/web/database/manager` lists them. `[q]` cancels without
+starting anything. The menu follows `EL_LANG`, French or English, like the
+TODO CLI.
+
 Two options steer that, and neither reaches Odoo:
 
 | option | effect |
@@ -58,6 +63,11 @@ Sans aucun argument, ERPLibre choisit la base pour vous : s'il n'y en a
 qu'une il démarre dessus, s'il y en a plusieurs il affiche un menu
 numéroté. Il ne pose la question que devant un vrai terminal — un service
 lancé par systemd se comporte exactement comme avant.
+
+Dans ce menu, `[0] Tous` démarre Odoo sans `-d` : toutes les bases restent
+servies, et `/web/database/manager` les liste. `[q]` annule sans rien
+démarrer. Le menu suit `EL_LANG`, en français ou en anglais, comme le CLI
+TODO.
 
 Deux options le pilotent, et aucune n'arrive jusqu'à Odoo :
 
