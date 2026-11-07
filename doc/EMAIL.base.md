@@ -2602,9 +2602,10 @@ nor anything under `~/.erplibre`. Apart from the time zone data
 (`/etc/localtime`, the file a `TZ` path names, the system zone database),
 the only files it reads are the attachment paths its caller hands to
 `smtp.build_message`: they must come from a trusted caller; a server
-passes bytes (`attachment_parts`). It starts one child process, its own
+passes bytes (`attachment_parts`). It starts child processes, its own
 interpreter (`sys.executable`), to run the rules' regular expressions
-under a time limit.
+under a time limit and, when asked, an SVG converter under resource
+limits.
 
 - The client loads it from its own checkout: importing `script.todo.mail`
   puts `script/lib/erplibre_mail_core` first on `sys.path`: the core is
@@ -2643,6 +2644,19 @@ under a time limit.
   certificate without authenticating (`peer_certificate`), and
   `TlsCertificateError`. `smtp.connect` verifies through it; no production
   call passes `cafile`, which only the tests use for their authority.
+- `erplibre_mail_core.rules.svg` checks an SVG and converts it to PNG,
+  with a byte API (`check_svg`, `convert_checked`, `svg_bytes_to_png`)
+  besides the client's path API (`read_svg`, `svg_to_png`); its `strict`
+  mode, for an untrusted source, also refuses scripts, event attributes,
+  animations, embedded documents, any DTD declaration, any DOCTYPE but
+  the W3C ones, any encoding but UTF-8 (the XML declaration is read up
+  to its `?>`, and refused beyond 1 KiB), any `data:` value and a ratio
+  that would blow up the height, and checks the size of the PNG produced;
+  `safe_converters()` offers cairosvg then rsvg-convert, never Inkscape
+  nor ImageMagick. The client imports it under its former path
+  (`script.todo.mail.rules.svg`) and keeps its own mode and converters.
+  `erplibre_mail_core.rules.media` reads the real type and the dimensions
+  of a PNG, JPEG, GIF or WebP image from its bytes.
 - Its tests are `test/test_mail_core_*.py`. Except
   `test_mail_core_bridge.py`, which checks how the client plugs into the
   core, they import nothing from `script/` and also run under Odoo's
@@ -2716,6 +2730,21 @@ below, opens it to portal users.
   20 per rule per day; no report leaves while the history is being
   collected. The backend has graph and pivot views of the activity and the
   median reply delay of each account.
+- Images: a reply or report rule carries PNG, JPEG or GIF images, inline
+  when its text names them and attached otherwise, as in the client. The
+  type is read from the bytes (a lying extension is refused, WebP too);
+  an SVG is converted to PNG when added, in the strict mode of the core,
+  by cairosvg or rsvg-convert in a bounded child process, and never kept.
+  Size per image, total and count are system parameters
+  (`erplibre_mail_rule.image_max_kib`, `image_total_kib`,
+  `image_max_count`, and their `share_` twins for portal users, lower by
+  default). The images are part of the rule fingerprint: changing one
+  asks for approval again. Each build checks every image again; a refused
+  image leaves `image_refused` in the journal, and that message gets no
+  reply. A stored name has at most 100 characters, extension included,
+  and never ends its root with a dot; a refusal that leaves a request
+  (RPC, the add wizard's save) names "This file", never the file, since
+  Odoo writes it to the server log.
 - Deployment, keys, systemd units and security: the module's `README.md`.
 
 ### The mail portal erplibre_mail_rule_portal
@@ -2744,7 +2773,12 @@ has the figures, server-drawn bars and daily and ISO weekly tables, in the
 user's time zone, without script. Portal users may create
 statistics report rules; their allowed senders confirm their address
 through the same consent as forward destinations, one per address for
-both uses. Details: the module's `README.md`.
+both uses. They add and remove the images of a reply or report rule
+under lower limits (3 images, 512 KiB each, 1 MiB in all by default),
+at most 30 additions per hour, and see each one through a preview route
+that serves only a checked PNG, JPEG or GIF. Adding or removing an image
+first saves the changes typed in the rule form. Details: the module's
+`README.md`.
 
 <!-- [fr] -->
 ## Règles du courrier entrant
@@ -3907,9 +3941,10 @@ aucune configuration du client : ni `env_var.sh`, ni rien sous
 que nomme un chemin dans `TZ`, la base des fuseaux du système), les seuls
 fichiers qu'il lit sont les chemins de pièces jointes que son appelant
 passe à `smtp.build_message` : ils viennent d'un appelant de confiance ;
-un serveur passe des octets (`attachment_parts`). Il lance un processus
+un serveur passe des octets (`attachment_parts`). Il lance des processus
 fils, son propre interpréteur (`sys.executable`), pour évaluer les
-expressions régulières des règles dans un délai borné.
+expressions régulières des règles dans un délai borné et, sur demande, un
+convertisseur SVG sous des plafonds de ressources.
 
 - Le client le charge depuis son propre checkout : importer
   `script.todo.mail` met `script/lib/erplibre_mail_core` en tête de
@@ -3953,6 +3988,20 @@ expressions régulières des règles dans un délai borné.
   `TlsCertificateError`. `smtp.connect` vérifie par lui ; aucun appel de
   production ne passe `cafile`, que seuls les tests utilisent pour leur
   autorité.
+- `erplibre_mail_core.rules.svg` contrôle un SVG et le convertit en PNG,
+  par une API en octets (`check_svg`, `convert_checked`,
+  `svg_bytes_to_png`) à côté de l'API par chemin du client (`read_svg`,
+  `svg_to_png`) ; son mode `strict`, pour une source non fiable, refuse en
+  plus les scripts, attributs d'événement, animations, documents
+  imbriqués, toute déclaration de DTD, tout DOCTYPE autre que ceux du
+  W3C, tout codage autre qu'UTF-8 (la déclaration XML se lit jusqu'à son
+  `?>`, et se refuse au-delà de 1 Kio), toute valeur `data:` et des
+  proportions qui feraient exploser la hauteur, et contrôle la taille du
+  PNG produit ; `safe_converters()` propose cairosvg puis rsvg-convert,
+  jamais Inkscape ni ImageMagick. Le client l'importe sous son ancien
+  chemin (`script.todo.mail.rules.svg`) et garde son mode et ses
+  convertisseurs. `erplibre_mail_core.rules.media` lit le type réel et les
+  dimensions d'une image PNG, JPEG, GIF ou WebP dans ses octets.
 - Ses tests sont les `test/test_mail_core_*.py`. Sauf
   `test_mail_core_bridge.py`, qui vérifie le branchement du client sur le
   noyau, ils n'importent rien de `script/` et tournent aussi sous le
@@ -4031,6 +4080,22 @@ ci-dessous, l'ouvre aux utilisateurs du portail.
   tant que l'historique se collecte. Le back-office a des vues graphique et
   tableau croisé de l'activité et le délai médian de réponse de chaque
   compte.
+- Images : une règle de réponse ou de rapport porte des images PNG, JPEG
+  ou GIF, en ligne quand son texte les nomme et jointes sinon, comme dans
+  le client. Le type se lit dans les octets (une extension qui ment est
+  refusée, WebP aussi) ; un SVG est converti en PNG à l'ajout, dans le
+  mode strict du noyau, par cairosvg ou rsvg-convert dans un processus
+  fils borné, et n'est jamais gardé. Taille par image, total et nombre
+  sont des paramètres système (`erplibre_mail_rule.image_max_kib`,
+  `image_total_kib`, `image_max_count`, et leurs jumeaux `share_` pour les
+  utilisateurs du portail, plus bas par défaut). Les images entrent dans
+  l'empreinte de la règle : en changer une redemande l'approbation.
+  Chaque construction revérifie chaque image ; une image refusée laisse
+  `image_refused` au journal, et ce message ne reçoit pas de réponse. Un
+  nom stocké a au plus 100 caractères, extension comprise, et sa racine
+  ne finit jamais par un point ; un refus qui sort d'une requête (RPC,
+  enregistrement de l'assistant d'ajout) dit « Ce fichier », jamais le
+  nom du fichier, puisqu'Odoo l'écrit au journal du serveur.
 - Déploiement, clés, unités systemd et sécurité : le `README.md` du module.
 
 ### Le portail courriel erplibre_mail_rule_portal
@@ -4064,7 +4129,13 @@ par jour et par semaine ISO, dans le fuseau de l'utilisateur, sans script.
 Un utilisateur du portail peut créer des règles de rapport de
 statistiques ; ses expéditeurs autorisés confirment leur adresse par le
 même consentement que les destinations de transfert, un par adresse pour
-les deux usages. Détails : le `README.md` du module.
+les deux usages. Il ajoute et retire les images d'une règle de réponse ou
+de rapport sous des limites plus basses (3 images, 512 Kio chacune, 1 Mio
+en tout par défaut), au plus 30 ajouts par heure, et voit chacune par une
+route d'aperçu qui ne sert qu'un PNG, un JPEG ou un GIF contrôlé.
+Ajouter ou retirer une image enregistre d'abord les changements saisis
+dans le formulaire de la règle.
+Détails : le `README.md` du module.
 
 <!-- [en] -->
 ## Managing folders
