@@ -559,8 +559,8 @@ git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 make
 > 2   Install (make also installs ERPLibre locally and on the system)
-> y   Install the system dependencies first (n if already done)
 > w   Install every Odoo version, from 8 to 20
+> y   Install the system dependencies first (n if already done)
 > 1   Execute
 > 1   Code
 > 7   Update
@@ -594,8 +594,8 @@ git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 make
 > 2   Installer (make installe aussi ERPLibre en local et sur le système)
-> y   Installer d'abord les dépendances système (n si c'est déjà fait)
 > w   Installer toutes les versions d'Odoo, de 8 à 20
+> y   Installer d'abord les dépendances système (n si c'est déjà fait)
 > 1   Exécuter
 > 1   Code
 > 7   Mise à jour
