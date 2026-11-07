@@ -4434,7 +4434,7 @@ class TODO(
             {"section": t("Duplicate")},
             {"prompt_description": t("Duplicate a database")},
             {"section": t("Danger zone")},
-            {"prompt_description": t("Erase a database")},
+            {"prompt_description": t("Erase databases")},
         ]
         help_info = self.fill_help_info(choices)
 

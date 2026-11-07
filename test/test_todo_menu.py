@@ -568,7 +568,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
         "Download database": "download_database_backup_cli",
         "Restore from backup": "restore_from_database",
         "Duplicate a database": "duplicate_database",
-        "Erase a database": "drop_database",
+        "Erase databases": "drop_database",
     }
 
 

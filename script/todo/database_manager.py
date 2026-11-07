@@ -44,8 +44,8 @@ class DatabaseManager:
     def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
 
-    def select_database(self) -> str | bool:
-        """Faire choisir une base parmi celles que PostgreSQL expose.
+    def _list_databases(self) -> list | None:
+        """Les bases que PostgreSQL expose, ou None quand il n'y en a pas.
 
         Le code de retour de « db list » est vérifié AVANT de construire le
         menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
@@ -67,11 +67,18 @@ class DatabaseManager:
             print(f"   {t('Is PostgreSQL running?')}")
             for line in output[-5:]:
                 print(f"   {line}")
-            return False
+            return None
 
         databases = [a.strip() for a in output if a.strip()]
         if not databases:
             print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
+            return None
+        return databases
+
+    def select_database(self) -> str | bool:
+        """Faire choisir UNE base parmi celles que PostgreSQL expose."""
+        databases = self._list_databases()
+        if not databases:
             return False
 
         choices = [{"prompt_description": a} for a in databases]
@@ -90,6 +97,46 @@ class DatabaseManager:
             else:
                 print(t("Command not found !"))
 
+    def select_databases(self) -> list:
+        """Faire choisir UNE OU PLUSIEURS bases, par leurs numéros.
+
+        Les numéros se séparent par des espaces (une virgule est tolérée).
+        Rend les noms dans l'ordre tapé, sans doublon, ou une liste vide pour
+        « 0 ». Une réponse qui contient un seul numéro invalide est refusée
+        en entier et redemandée : effacer « ce qui était valide » d'une
+        saisie fautive détruirait une base que l'on n'a peut-être pas visée.
+        """
+        databases = self._list_databases()
+        if not databases:
+            return []
+
+        choices = [{"prompt_description": a} for a in databases]
+        help_info = (
+            self._fill_help_info(choices)
+            + t("Numbers separated by spaces, e.g. 1 3 4")
+            + "\n"
+        )
+        valid_choices = {str(a + 1) for a in range(len(databases))}
+
+        while True:
+            answer = click.prompt(help_info)
+            print()
+            numbers = answer.replace(",", " ").split()
+            if numbers == ["0"]:
+                return []
+            invalid = [n for n in numbers if n not in valid_choices]
+            if not numbers or invalid:
+                print(
+                    f"{t('Invalid choice:')} {' '.join(invalid or [answer])}"
+                )
+                continue
+            selected = []
+            for number in numbers:
+                name = databases[int(number) - 1]
+                if name not in selected:
+                    selected.append(name)
+            return selected
+
     def _confirm_drop(self, message: str) -> bool:
         """Ask for an explicit 'oui'/'yes' confirmation, default is no."""
         print(f"⚠️  {message}")
@@ -99,14 +146,14 @@ class DatabaseManager:
         return answer in ("oui", "yes")
 
     def drop_database(self) -> None:
-        print(f"⚠️  {t('Erase a database — irreversible operation!')}")
+        print(f"⚠️  {t('Erase databases — irreversible operation!')}")
         choices = [
             {
                 "prompt_description": t(
                     "Erase ALL databases (make db_drop_all)"
                 )
             },
-            {"prompt_description": t("Erase a single database")},
+            {"prompt_description": t("Erase one or more databases")},
         ]
         help_info = self._fill_help_info(choices)
 
@@ -119,7 +166,7 @@ class DatabaseManager:
                 self._drop_all_databases()
                 return
             elif status == "2":
-                self._drop_single_database()
+                self._drop_selected_databases()
                 return
             else:
                 print(t("Command not found !"))
@@ -136,23 +183,46 @@ class DatabaseManager:
             single_source_erplibre=True,
         )
 
-    def _drop_single_database(self) -> None:
-        database_name = self.select_database()
-        if not database_name:
+    def _drop_selected_databases(self) -> None:
+        """Effacer les bases choisies, après UNE confirmation qui les nomme.
+
+        Toutes sont nommées avant la question : on confirme ce qu'on lit.
+        Un échec n'arrête pas les suivantes — chaque base est indépendante —
+        et le bilan dit lesquelles restent.
+        """
+        names = self.select_databases()
+        if not names:
             print(t("No database selected."))
             return
-        message = t(
-            "You are about to erase the database '{database}'."
-            " This cannot be undone."
-        ).format(database=database_name)
+        if len(names) == 1:
+            message = t(
+                "You are about to erase the database '{database}'."
+                " This cannot be undone."
+            ).format(database=names[0])
+        else:
+            message = t(
+                "You are about to erase {count} databases."
+                " This cannot be undone:"
+            ).format(count=len(names))
+            message += "".join(f"\n   - {name}" for name in names)
         if not self._confirm_drop(message):
             print(t("Database deletion cancelled."))
             return
-        self._execute.exec_command_live(
-            f"./odoo_bin.sh db drop {database_name}",
-            source_erplibre=False,
-            single_source_erplibre=True,
-        )
+        failed = []
+        for name in names:
+            status, _output = self._execute.exec_command_live(
+                f"./odoo_bin.sh db drop {name}",
+                return_status_and_output=True,
+                source_erplibre=False,
+                single_source_erplibre=True,
+            )
+            if status:
+                failed.append(name)
+        erased = [name for name in names if name not in failed]
+        if erased:
+            print(f"✅ {t('Erased:')} {', '.join(erased)}")
+        if failed:
+            print(f"❌ {t('Not erased:')} {', '.join(failed)}")
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
         path_image_db = os.path.join(os.getcwd(), "image_db")
