@@ -101,6 +101,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Uninstall": "prompt_execute_uninstall",
         "Image Odoo": "prompt_execute_image_db",
         "Analyse module": "prompt_execute_module_analysis",
+        "Python": "prompt_execute_python",
         "Database": "prompt_execute_database",
         "Analyse": "prompt_execute_analyse",
         "Transform data": "prompt_execute_transform",
@@ -504,6 +505,39 @@ class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
         "Attachment files missing": "execute_analyse_filestore",
         "Monitoring - a backup": "execute_analyse_monitoring",
     }
+
+
+class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Python regroupe des outils qui vivent AUSSI ailleurs.
+
+    « Upgrade Poetry » est dans Code › Update et pip-audit dans Security :
+    les deux chemins doivent mener à la MÊME méthode. Une copie ici
+    divergerait en silence de l'original au premier correctif.
+    """
+
+    SOURCE = TODO_DIR / "python_menu.py"
+    ENTRY = "def prompt_execute_python(self):"
+    END = "def _python_versions_etat(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Lock drift": "execute_poetry_drift",
+        "Python versions": "execute_python_versions",
+        "Upgrade Poetry": "upgrade_poetry",
+        "pip-audit": "execute_pip_audit",
+        "Install mise": "execute_install_mise",
+        "Install uv": "execute_install_uv",
+    }
+
+    def test_les_deux_chemins_menent_a_la_meme_methode(self):
+        todo_py = (TODO_DIR / "todo.py").read_text(encoding="utf-8")
+        debut = todo_py.index("def prompt_execute_update(self):")
+        update = todo_py[debut : todo_py.index("help_info =", debut)]
+        self.assertIn('"method": "upgrade_poetry"', update)
+        debut = todo_py.index("def prompt_execute_security(self):")
+        fin = todo_py.index("def prompt_execute_test", debut)
+        securite = todo_py[debut:fin]
+        self.assertIn("self.execute_pip_audit()", securite)
 
 
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):

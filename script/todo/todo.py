@@ -147,6 +147,7 @@ from script.todo.todo_couleur import quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
+from script.todo.python_menu import PythonMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -215,6 +216,7 @@ class TODO(
     LongTestMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
+    PythonMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
     GitRepoMenuMixin,
@@ -351,25 +353,26 @@ class TODO(
 [6] {t("Uninstall - Remove an Odoo version")}
 [7] {t("Image Odoo - Database images for a quick installation")}
 [8] {t("Analyse module - Odoo modules of the checkout")}
+[9] {t("Python - Poetry and Python tools")}
 
 ── {t("Data")} ──
-[9] {t("Database - Database tools")}
-[10] {t("Analyse - Odoo database analysis")}
-[11] {t("Transform data - Transform your data")}
+[10] {t("Database - Database tools")}
+[11] {t("Analyse - Odoo database analysis")}
+[12] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[12] {t("Git - Git and shell tools")}
-[13] {t("Doc - Documentation search")}
+[13] {t("Git - Git and shell tools")}
+[14] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[14] {t("GPT code - AI assistant tools")}
-[15] {t("Automation - Demonstration of developed features")}
+[15] {t("GPT code - AI assistant tools")}
+[16] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[16] {t("Deploy - Deploy ERPLibre locally")}
-[17] {t("Network - Network tools")}
-[18] {t("Security - Dependency security audit")}
-[19] {t("Docker / Podman - Container engines")}
+[17] {t("Deploy - Deploy ERPLibre locally")}
+[18] {t("Network - Network tools")}
+[19] {t("Security - Dependency security audit")}
+[20] {t("Docker / Podman - Container engines")}
 {retour(t('Back'))}
 """
         while True:
@@ -410,46 +413,50 @@ class TODO(
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_python()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_analyse()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_transform()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "16":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "17":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "18":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "19":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "20":
                 status = self.prompt_execute_container()
                 if status is not False:
                     return
@@ -846,6 +853,7 @@ class TODO(
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
+        "prompt_execute_python": "Python",
         "prompt_execute_container": "Docker / Podman",
         "_container_service": "Service",
         "_container_compose": "Compose",
@@ -6323,6 +6331,9 @@ class TODO(
                     "No installed environment found. Install an Odoo version first."
                 )
             )
+            # Les venvs cherchés sont ceux du json : un checkout resté sur un
+            # Python qui n'y figure plus a un venv que cette liste ignore.
+            self._afficher_versions_supportees()
             return
 
         # Show selection menu

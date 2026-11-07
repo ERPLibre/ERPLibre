@@ -43,3 +43,96 @@ def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
     versions = sorted(version_entries, key=lambda k: k.get("erplibre_version"))
 
     return versions, installed_versions, odoo_installed_version
+
+
+def diagnostiquer_version(version_active, versions):
+    """Situe la version active (.erplibre-version) parmi les supportées.
+
+    `versions` est la liste que rend get_odoo_version(). Rend
+    {"active", "supportee", "remplacante"} : « remplacante » est l'entrée
+    supportée de la MÊME version d'Odoo quand l'active ne l'est pas — un
+    Python d'un autre patch, typiquement, dont aucun lock ni venv n'est
+    fourni —, et None sinon.
+    """
+    supportee = any(v["erplibre_version"] == version_active for v in versions)
+    remplacante = None
+    if version_active and not supportee:
+        odoo = version_active.split("_python", 1)[0].removeprefix("odoo")
+        for version in versions:
+            if version.get("odoo_version") == odoo:
+                remplacante = version
+    return {
+        "active": version_active,
+        "supportee": supportee,
+        "remplacante": remplacante,
+    }
+
+
+# Ce que la mise à jour Python peut faire pour une version supportée.
+A_JOUR = "a_jour"  # son venv est complet et actif ou sans rival
+MISE_A_JOUR = "mise_a_jour"  # un venv de la même Odoo, autre Python, sert
+REPRISE = "reprise"  # son venv existe mais est incomplet
+INSTALLATION = "installation"  # aucun venv, mais les sources d'Odoo sont là
+SOURCES_ABSENTES = "sources_absentes"  # il faut l'installation complète
+
+
+def planifier_venvs(versions, venvs, sources, complets=None, active=None):
+    """Pour chaque version supportée, ce que la mise à jour Python ferait.
+
+    `versions` est la liste de get_odoo_version() ; `venvs` l'ensemble des
+    versions d'ERPLibre qui ont un dossier de venv ; `complets` celles dont
+    le venv porte son interpréteur ET son Poetry — par défaut toutes ;
+    `sources` les versions d'Odoo dont les sources sont présentes ;
+    `active` la version de .erplibre-version.
+
+    Un venv incomplet — une mise à jour interrompue — est proposé à la
+    reprise plutôt que donné pour à jour : sans quoi plus rien ne le
+    proposerait, et la seule sortie serait l'installation complète. De même,
+    un venv supporté complet alors que la version active est encore un
+    autre Python de la même Odoo est proposé à l'activation. Sans sources,
+    seule l'installation complète, qui synchronise les dépôts git, aide.
+
+    Rend une entrée par version, de la plus récente à la plus ancienne :
+    {"cible", "odoo", "python", "poetry", "action", "depuis"}. « depuis »
+    est le venv de la même Odoo qu'une mise à jour remplace.
+    """
+    complets = set(venvs) if complets is None else set(complets)
+    plan = []
+    for version in sorted(
+        versions, key=lambda v: v["erplibre_version"], reverse=True
+    ):
+        cible = version["erplibre_version"]
+        odoo = version.get("odoo_version")
+        prefixe = f"odoo{odoo}_python"
+        autres = sorted(
+            v for v in venvs if v.startswith(prefixe) and v != cible
+        )
+        active_rivale = (
+            active
+            if active and active.startswith(prefixe) and active != cible
+            else None
+        )
+        depuis = None
+        if odoo not in sources:
+            action = A_JOUR if cible in complets else SOURCES_ABSENTES
+        elif cible in venvs and cible not in complets:
+            action = REPRISE
+        elif cible in complets and active_rivale:
+            action, depuis = MISE_A_JOUR, active_rivale
+        elif cible in complets:
+            action = A_JOUR
+        elif autres:
+            action, depuis = MISE_A_JOUR, active_rivale or autres[-1]
+        else:
+            action = INSTALLATION
+        plan.append(
+            {
+                "cible": cible,
+                "odoo": odoo,
+                "python": version.get("python_version"),
+                "poetry": version.get("poetry_version"),
+                "action": action,
+                "depuis": depuis,
+            }
+        )
+    return plan

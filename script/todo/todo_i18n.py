@@ -248,6 +248,226 @@ TRANSLATIONS = {
         "fr": "📡 Réseau - Outil réseautique",
         "en": "📡 Network - Network tools",
     },
+    # Menu Python : Poetry et écarts du venv avec poetry.lock
+    "Python - Poetry and Python tools": {
+        "fr": "🐍 Python - Outils Poetry et Python",
+        "en": "🐍 Python - Poetry and Python tools",
+    },
+    "Python and Poetry tools!": {
+        "fr": "Outils Python et Poetry !",
+        "en": "Python and Poetry tools!",
+    },
+    "Lock drift - Compare the venv with poetry.lock": {
+        "fr": "🔍 Écarts du lock - Comparer le venv à poetry.lock",
+        "en": "🔍 Lock drift - Compare the venv with poetry.lock",
+    },
+    "Install mise - Precompiled Python": {
+        "fr": "🧰 Installer mise - Python précompilé",
+        "en": "🧰 Install mise - Precompiled Python",
+    },
+    "Install uv - Faster pip": {
+        "fr": "⚡ Installer uv - pip plus rapide",
+        "en": "⚡ Install uv - Faster pip",
+    },
+    "No .erplibre-version: no active Odoo version.": {
+        "fr": "Aucun .erplibre-version : aucune version d'Odoo active.",
+        "en": "No .erplibre-version: no active Odoo version.",
+    },
+    "Poetry is missing from the venv:": {
+        "fr": "Poetry est absent du venv :",
+        "en": "Poetry is missing from the venv:",
+    },
+    "Missing file read by Poetry:": {
+        "fr": "Fichier lu par Poetry introuvable :",
+        "en": "Missing file read by Poetry:",
+    },
+    "Active version:": {
+        "fr": "Version active :",
+        "en": "Active version:",
+    },
+    "venv present": {
+        "fr": "venv présent",
+        "en": "venv present",
+    },
+    "venv missing": {
+        "fr": "venv absent",
+        "en": "venv missing",
+    },
+    "This version is not in conf/supported_version_erplibre.json: no lock nor venv is provided for it.": {
+        "fr": (
+            "Cette version n'est pas dans"
+            " conf/supported_version_erplibre.json : aucun lock ni venv"
+            " n'est fourni pour elle."
+        ),
+        "en": (
+            "This version is not in conf/supported_version_erplibre.json:"
+            " no lock nor venv is provided for it."
+        ),
+    },
+    "Supported for Odoo": {
+        "fr": "Supportée pour Odoo",
+        "en": "Supported for Odoo",
+    },
+    "To switch to it:": {
+        "fr": "Pour y passer :",
+        "en": "To switch to it:",
+    },
+    "To install it:": {
+        "fr": "Pour l'installer :",
+        "en": "To install it:",
+    },
+    "Supported versions (conf/supported_version_erplibre.json):": {
+        "fr": "Versions supportées (conf/supported_version_erplibre.json) :",
+        "en": "Supported versions (conf/supported_version_erplibre.json):",
+    },
+    "Poetry refuses to compare:": {
+        "fr": "Poetry refuse de comparer :",
+        "en": "Poetry refuses to compare:",
+    },
+    "The venv matches the lock.": {
+        "fr": "Le venv correspond au lock.",
+        "en": "The venv matches the lock.",
+    },
+    "Differences with the lock:": {
+        "fr": "Écarts avec le lock :",
+        "en": "Differences with the lock:",
+    },
+    "Missing from the venv": {
+        "fr": "Absent du venv",
+        "en": "Missing from the venv",
+    },
+    "Older than the lock": {
+        "fr": "Plus ancien que le lock",
+        "en": "Older than the lock",
+    },
+    "Newer than the lock": {
+        "fr": "Plus récent que le lock",
+        "en": "Newer than the lock",
+    },
+    "Outside the lock, left untouched by the update:": {
+        "fr": "Hors du lock, laissés tels quels par la mise à jour :",
+        "en": "Outside the lock, left untouched by the update:",
+    },
+    "Update the venv to match the lock (y/N, default: N)? ": {
+        "fr": "Mettre le venv à jour selon le lock (o/N, défaut : N) ? ",
+        "en": "Update the venv to match the lock (y/N, default: N)? ",
+    },
+    "To update it later: %s": {
+        "fr": "Pour le mettre à jour plus tard : %s",
+        "en": "To update it later: %s",
+    },
+    "Update report:": {
+        "fr": "Rapport de mise à jour :",
+        "en": "Update report:",
+    },
+    "Poetry update report": {
+        "fr": "Rapport de mise à jour Poetry",
+        "en": "Poetry update report",
+    },
+    "Lock:": {
+        "fr": "Lock :",
+        "en": "Lock:",
+    },
+    "Installation:": {
+        "fr": "Installation :",
+        "en": "Installation:",
+    },
+    "success": {
+        "fr": "réussie",
+        "en": "success",
+    },
+    "failure, code": {
+        "fr": "échec, code",
+        "en": "failure, code",
+    },
+    "The venv interpreter did not answer: no list.": {
+        "fr": "L'interpréteur du venv n'a pas répondu : aucune liste.",
+        "en": "The venv interpreter did not answer: no list.",
+    },
+    "Changed versions": {
+        "fr": "Versions changées",
+        "en": "Changed versions",
+    },
+    "Removed": {
+        "fr": "Retirés",
+        "en": "Removed",
+    },
+    "No package changed.": {
+        "fr": "Aucun paquet n'a changé.",
+        "en": "No package changed.",
+    },
+    "Remaining differences with the lock": {
+        "fr": "Écarts restants avec le lock",
+        "en": "Remaining differences with the lock",
+    },
+    "None: the venv matches the lock.": {
+        "fr": "Aucun : le venv correspond au lock.",
+        "en": "None: the venv matches the lock.",
+    },
+    "Differences before the update:": {
+        "fr": "Écarts avant la mise à jour :",
+        "en": "Differences before the update:",
+    },
+    "Python versions - Install or update the venvs, without the git repos": {
+        "fr": "🔄 Versions Python - Installer ou mettre à jour les venvs, sans les dépôts git",
+        "en": "🔄 Python versions - Install or update the venvs, without the git repos",
+    },
+    "Odoo venvs, from conf/supported_version_erplibre.json:": {
+        "fr": "Venvs d'Odoo, d'après conf/supported_version_erplibre.json :",
+        "en": "Odoo venvs, from conf/supported_version_erplibre.json:",
+    },
+    "update from": {
+        "fr": "mise à jour depuis",
+        "en": "update from",
+    },
+    "venv missing, Odoo sources present: install": {
+        "fr": "venv absent, sources d'Odoo présentes : installation",
+        "en": "venv missing, Odoo sources present: install",
+    },
+    "Odoo sources missing: full install": {
+        "fr": "sources d'Odoo absentes : installation complète",
+        "en": "Odoo sources missing: full install",
+    },
+    "Venvs no longer supported, kept:": {
+        "fr": "Venvs plus supportés, conservés :",
+        "en": "Venvs no longer supported, kept:",
+    },
+    "No Python version to install or update.": {
+        "fr": "Aucune version de Python à installer ou mettre à jour.",
+        "en": "No Python version to install or update.",
+    },
+    "For the dependencies of the lock, see [1].": {
+        "fr": "Pour les dépendances du lock, voir [1].",
+        "en": "For the dependencies of the lock, see [1].",
+    },
+    "Run them now (y/N, default: N)? ": {
+        "fr": "Les lancer maintenant (o/N, défaut : N) ? ",
+        "en": "Run them now (y/N, default: N)? ",
+    },
+    "Numbers separated by spaces, 0 to go back: ": {
+        "fr": "Numéros séparés par des espaces, 0 pour revenir : ",
+        "en": "Numbers separated by spaces, 0 to go back: ",
+    },
+    "incomplete venv: resume": {
+        "fr": "venv incomplet : reprendre",
+        "en": "incomplete venv: resume",
+    },
+    "activate instead of": {
+        "fr": "activer à la place de",
+        "en": "activate instead of",
+    },
+    "back to the starting Odoo, if its venv exists": {
+        "fr": "retour à l'Odoo de départ, si son venv existe",
+        "en": "back to the starting Odoo, if its venv exists",
+    },
+    "The run ends on another Odoo than the starting one: config.conf still points at the starting Odoo.": {
+        "fr": "La mise à jour finit sur une autre Odoo que celle de départ : config.conf pointe encore sur celle de départ.",
+        "en": "The run ends on another Odoo than the starting one: config.conf still points at the starting Odoo.",
+    },
+    "to regenerate config.conf:": {
+        "fr": "pour régénérer config.conf :",
+        "en": "to regenerate config.conf:",
+    },
     "Security - Dependency security audit": {
         "fr": "🔒 Sécurité - Audit de sécurité des dépendances",
         "en": "🔒 Security - Dependency security audit",
@@ -735,7 +955,7 @@ TRANSLATIONS = {
         "en": "The Bash script failed with return code",
     },
     "No installed environment found. Install an Odoo version first.": {
-        "fr": "Aucun environnement installe trouve. Installez d'abord une version d'Odoo.",
+        "fr": "Aucun environnement installé trouvé. Installez d'abord une version d'Odoo.",
         "en": "No installed environment found. Install an Odoo version first.",
     },
     "Choose an environment for the audit:": {
@@ -771,8 +991,8 @@ TRANSLATIONS = {
         "en": "Reboot TODO ...",
     },
     "pip-audit - Check vulnerabilities on Python environments": {
-        "fr": "pip-audit - Verifier les vulnérabilités sur les environnements Python",
-        "en": "pip-audit - Check vulnerabilities on Python environments",
+        "fr": "🛡️ pip-audit - Vérifier les vulnérabilités des environnements Python",
+        "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
     },
     "Will execute:": {
         "fr": "Va exécuter :",
