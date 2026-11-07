@@ -177,6 +177,48 @@ CATALOG: dict[str, dict[str, str]] = {
         "fr": "image introuvable :",
         "en": "image not found:",
     },
+    "mail_rules_err_image_pixels": {
+        "fr": "image aux dimensions trop grandes :",
+        "en": "image dimensions too large:",
+    },
+    "mail_rules_err_svg_no_converter": {
+        "fr": (
+            "image SVG : aucun convertisseur en PNG (rsvg-convert, cairosvg,"
+            " inkscape ou ImageMagick) ; pour en installer un :"
+        ),
+        "en": (
+            "SVG image: no PNG converter (rsvg-convert, cairosvg, inkscape"
+            " or ImageMagick); to install one:"
+        ),
+    },
+    "mail_rules_err_svg_invalid": {
+        "fr": "fichier qui n'est pas une image SVG :",
+        "en": "file is not an SVG image:",
+    },
+    "mail_rules_err_svg_external": {
+        "fr": "image SVG qui renvoie à un fichier ou une ressource externe :",
+        "en": "SVG image refers to an external file or resource:",
+    },
+    "mail_rules_err_svg_failed": {
+        "fr": "conversion du SVG en PNG échouée :",
+        "en": "SVG to PNG conversion failed:",
+    },
+    "mail_rules_err_svg_unsafe": {
+        "fr": (
+            "image SVG qui porte un script, un gestionnaire d'événement, une"
+            " animation, un document imbriqué, une déclaration de DTD ou un"
+            " codage autre qu'UTF-8 :"
+        ),
+        "en": (
+            "SVG image carries a script, an event handler, an animation, an"
+            " embedded document, a DTD declaration or an encoding other than"
+            " UTF-8:"
+        ),
+    },
+    "mail_rules_err_svg_embedded": {
+        "fr": "image SVG qui intègre une autre image ou un document (data:) :",
+        "en": "SVG image embeds another image or a document (data:):",
+    },
     "mail_rules_fwd_separator": {
         "fr": "---------- Message transféré ----------",
         "en": "---------- Forwarded message ----------",

@@ -48,6 +48,8 @@ EXPECTED_MODULES = {
     "erplibre_mail_core.rules.markup",
     "erplibre_mail_core.rules.report",
     "erplibre_mail_core.rules.forward",
+    "erplibre_mail_core.rules.svg",
+    "erplibre_mail_core.rules.media",
 }
 # Les modules que l'import du noyau ne doit jamais charger : le client,
 # son interface, son stockage, ses dépendances, et `markdown_it`, chargé à

@@ -9,7 +9,8 @@ Le paquet n'a ni interface, ni stockage, ni fichier de configuration : il
 n'importe que la bibliothèque standard (`markdown_it`, facultatif, à
 l'usage). La langue et le fuseau sont des paramètres de l'appelant
 (`i18n`, `zone`). Les sous-modules s'importent un à un ; ce fichier n'en
-charge aucun.
+charge aucun. `rules.svg` lance, à l'appel seulement, un convertisseur dans
+un processus fils borné ; son import ne lance rien.
 """
 
 __version__ = "0.1.0"

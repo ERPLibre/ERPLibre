@@ -17813,28 +17813,6 @@ TRANSLATIONS = {
         "fr": "image modifiée depuis son ajout :",
         "en": "image changed since it was added:",
     },
-    "mail_rules_err_svg_no_converter": {
-        "fr": (
-            "image SVG : aucun convertisseur en PNG (rsvg-convert, cairosvg,"
-            " inkscape ou ImageMagick) ; pour en installer un :"
-        ),
-        "en": (
-            "SVG image: no PNG converter (rsvg-convert, cairosvg, inkscape"
-            " or ImageMagick); to install one:"
-        ),
-    },
-    "mail_rules_err_svg_invalid": {
-        "fr": "fichier qui n'est pas une image SVG :",
-        "en": "file is not an SVG image:",
-    },
-    "mail_rules_err_svg_external": {
-        "fr": "image SVG qui renvoie à un fichier ou une ressource externe :",
-        "en": "SVG image refers to an external file or resource:",
-    },
-    "mail_rules_err_svg_failed": {
-        "fr": "conversion du SVG en PNG échouée :",
-        "en": "SVG to PNG conversion failed:",
-    },
     # -- Règles : redirection, garde-fous et destinations ----------------
     # Raisons propres à la redirection (journal, essai), erreurs de ses
     # options, et raisons du retrait d'une destination pour un message.
