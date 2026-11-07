@@ -12,13 +12,49 @@ La séparation n'est pas décorative : un histogramme calculé dans un widget
 Textual ne se vérifie qu'en montant une application, ce qui coûte des
 minutes de suite et masque les erreurs de calcul derrière des erreurs
 d'affichage.
+
+Il porte aussi les deux prédicats de la collecte d'un serveur : message
+automatique, message auquel répond un message.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from erplibre_mail_core.smtp import X_LOOP_MARKER, _msgid_tokens
+
 BARRE = "█"
+
+
+def is_automatic(extra: dict) -> bool:
+    """Vrai si les en-têtes supplémentaires d'un message le disent
+    automatique : une occurrence d'Auto-Submitted dont le premier jeton
+    n'est pas « no », ou un X-Loop qui porte la marque des règles.
+
+    `extra` a la forme de `HeaderInfo.extra` : clés en minuscules,
+    occurrences jointes par « \\n ».
+    """
+    extra = extra or {}
+    for line in (extra.get("auto-submitted") or "").split("\n"):
+        if line.strip() and line.split(";", 1)[0].strip().lower() != "no":
+            return True
+    loop = extra.get("x-loop") or ""
+    return X_LOOP_MARKER.lower() in loop.lower()
+
+
+def reply_parent(in_reply_to: str, references: str) -> str:
+    """Le message auquel répond un message, au sens de RFC 5322 §3.6.4.
+
+    Le premier identifiant d'`In-Reply-To`, sinon le DERNIER de
+    `References` (le parent direct y vient en dernier), sinon « ». Un
+    jeton non ASCII ou trop long est ignoré, comme partout ailleurs dans le
+    noyau.
+    """
+    jetons = _msgid_tokens(in_reply_to)
+    if jetons:
+        return jetons[0]
+    jetons = _msgid_tokens(references)
+    return jetons[-1] if jetons else ""
 
 
 def median(valeurs) -> float:
