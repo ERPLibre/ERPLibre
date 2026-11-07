@@ -324,7 +324,10 @@ class Update:
                 # Tri naturel : « odoo8.0 » avant « odoo10.0 ».
                 lst_version_installed = sorted(
                     txt.read().splitlines(),
-                    key=lambda v: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", v)],
+                    key=lambda v: [
+                        int(p) if p.isdigit() else p
+                        for p in re.split(r"(\d+)", v)
+                    ],
                 )
                 str_installed_version = "Installed version: " + ", ".join(
                     lst_version_installed
@@ -453,15 +456,6 @@ class Update:
 
     def validate_environment(self):
         status = True
-        # Une installation interrompue — poetry install en échec — laisse le
-        # venv et odooX.0/addons en place, et ce qui suit les jugeait
-        # suffisants : la relance répondait « Nothing to do », rendait 0, et
-        # la version restait à moitié installée. Seule l'inscription finale
-        # d'install_locally.sh dit qu'elle est allée au bout.
-        if self.config.install_dev and not odoo_installee(
-            self.new_version_odoo
-        ):
-            status = False
         venv_exist = os.path.exists(self.expected_venv_name)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
@@ -485,9 +479,14 @@ class Update:
         # Les sources d'Odoo viennent du repo sync, pas de Poetry : un sync
         # interrompu laisse un venv complet et odoo<ver>/addons partiel, mais
         # aucun odoo-bin. L'environnement est alors à réinstaller, sans quoi
-        # le script répond « Nothing to do » et ./run.sh échoue.
+        # le script répond « Nothing to do » et ./run.sh échoue. Odoo 8 et 9
+        # n'ont pas d'odoo-bin : leur lanceur est openerp-server.
         odoo_bin = os.path.join(self.expected_odoo_name, "odoo", "odoo-bin")
-        if not os.path.isfile(odoo_bin):
+        lanceurs = (
+            odoo_bin,
+            os.path.join(self.expected_odoo_name, "odoo", "openerp-server"),
+        )
+        if not any(os.path.isfile(lanceur) for lanceur in lanceurs):
             _logger.info(f"Missing '{odoo_bin}', the repo sync is required.")
             status = False
         # Ni le venv ni les sources ne prouvent une installation FINIE : un
@@ -911,17 +910,6 @@ def remove_dot_path(path):
     if path.startswith("./"):
         return path[2:]
     return path
-
-
-def odoo_installee(version_odoo, fichier=None):
-    """Vrai si « odoo<version> » figure dans le fichier des versions
-    installées, qu'install_locally.sh complète à la fin d'une installation
-    réussie, et seulement là."""
-    try:
-        with open(fichier or INSTALLED_ODOO_VERSION_FILE) as txt:
-            return f"odoo{version_odoo}" in txt.read().splitlines()
-    except OSError:
-        return False
 
 
 def main():
