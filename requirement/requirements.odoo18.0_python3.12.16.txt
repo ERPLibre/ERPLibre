@@ -46,7 +46,9 @@ python-ldap==3.4.8
 certifi==2026.10.23
 # pypdf : seize failles de 2026, corrigées au plus tard en 6.21.4. PyPDF2 2.x,
 # qu'Odoo 18 importe avant pypdf, garde CVE-2023-36464 : aucune version de
-# PyPDF2 ne la corrige.
+# PyPDF2 ne la corrige. Son alias PYSEC-2026-1835 annonce « corrigée en
+# 3.9.0 », une version de pypdf : PyPDF2 s'arrête à 3.0.1, que l'avis touche
+# aussi, et dont l'API retirée casse les modules OCA qui l'importent.
 pypdf==6.21.4
 
 # Dépendances transitives touchées par des CVE connues (base OSV) : la
@@ -109,10 +111,11 @@ virtualenv==21.14.13
 webob==1.8.11
 # zeep 4.2.1 : CVE-2026-58501, corrigées en 4.3.3.
 zeep==4.3.3
-# oauthlib 3.3.1 : CVE-2026-49264, CVE-2026-49265, CVE-2026-49272,
-# CVE-2026-118669, corrigées en 4.0.0. tweepy, qui exige oauthlib<4, est
-# écarté par ignore_requirements.
-oauthlib==4.0.0
+# oauthlib 3.3.1 : CVE-2026-49264, CVE-2026-49265, CVE-2026-118669,
+# corrigées en 4.0.0 ; CVE-2026-49272 (jeton Bearer du flux « device »
+# obtenu avec un simple client ID) touche aussi 4.0.0, corrigée en 4.0.1.
+# tweepy, qui exige oauthlib<4, est écarté par ignore_requirements.
+oauthlib==4.0.1
 # paramiko 3.5.1 : CVE-2026-44405 (signatures RSA en SHA-1), corrigée après
 # 4.0.0. paramiko 4 retire les clés DSA (DSSKey) et 5 l'échange de clés et
 # les signatures en SHA-1 : un serveur SSH antérieur à OpenSSH 7.2 n'est plus
@@ -133,7 +136,9 @@ paramiko==5.1.0
 
 # Module extra unknown name
 filetype
-PyPDF2
+# La version qu'Odoo 18 épingle : sans elle, pip-audit résout la dernière,
+# 3.0.1, et rapporte une version que personne n'installe.
+PyPDF2==2.12.1
 img2pdf
 
 # For logical test and quality
