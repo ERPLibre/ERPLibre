@@ -298,6 +298,97 @@ class TestServe(unittest.TestCase):
             )
         self.assertEqual(len(child.call("sent")["result"]["messages"]), 1)
 
+    def test_a_folder_with_a_role_is_listed(self):
+        """Un dossier créé par `folder` est annoncé au LIST sous son nom
+        brut en UTF-7 modifié, avec ses attributs."""
+        child = self.child()
+        reponse = child.call(
+            "folder", name="Envoy&AOk-s", attributes=["\\Sent"]
+        )
+        self.assertTrue(reponse["ok"], reponse)
+        client = self.imap(child)
+        typ, lignes = client.list('""', "*")
+        self.assertEqual(typ, "OK")
+        envoyes = [ligne for ligne in lignes if b"Envoy&AOk-s" in ligne]
+        self.assertEqual(len(envoyes), 1, lignes)
+        self.assertIn(b"\\Sent", envoyes[0])
+        child.call("folder", name="INBOX", attributes=["\\Archive"])
+        typ, lignes = client.list('""', "*")
+        boite = [ligne for ligne in lignes if b"INBOX" in ligne]
+        self.assertIn(b"\\Archive", boite[0])
+
+    def test_deliver_flags_and_mark_in_a_folder(self):
+        """`deliver`, `flags` et `mark` visent le dossier nommé, chacun
+        avec ses propres UID ; INBOX reste le défaut."""
+        child = self.child()
+        child.call("folder", name="Sent", uidvalidity=7, first_uid=30)
+        raw = base64.b64encode(RAW).decode("ascii")
+        uid = child.call("deliver", raw=raw, folder="Sent")["result"]["uid"]
+        self.assertEqual(uid, 30)
+        self.assertEqual(self.deliver(child), 1)
+        child.call("mark", uid=uid, flags=["\\Seen"], folder="Sent")
+        self.assertEqual(
+            child.call("flags", uid=uid, folder="Sent")["result"]["flags"],
+            ["\\Seen"],
+        )
+        self.assertEqual(child.call("flags", uid=1)["result"]["flags"], [])
+        self.assertFalse(child.call("flags", uid=1, folder="Absent")["ok"])
+        client = self.imap(child)
+        typ, data = client.select('"Sent"', readonly=True)
+        self.assertEqual(typ, "OK")
+        self.assertEqual(client.response("UIDVALIDITY")[1], [b"7"])
+        child.call("renumber", uidvalidity=8, folder="Sent")
+        client.select('"Sent"', readonly=True)
+        self.assertEqual(client.response("UIDVALIDITY")[1], [b"8"])
+
+    def test_selects_note_select_and_examine(self):
+        """`selects` note chaque SELECT et EXAMINE, dans l'ordre, avec le
+        dossier et vrai pour une sélection en écriture."""
+        child = self.child()
+        child.call("folder", name="Sent")
+        client = self.imap(child)
+        client.select('"Sent"', readonly=True)
+        client.select("INBOX", readonly=True)
+        self.assertEqual(
+            child.call("selects")["result"]["selects"],
+            [
+                {"folder": "INBOX", "rw": True},
+                {"folder": "Sent", "rw": False},
+                {"folder": "INBOX", "rw": False},
+            ],
+        )
+
+    def test_fail_times_strikes_only_that_often(self):
+        """`fail` avec `times` refuse ce nombre de commandes, après les
+        `after` premières, puis laisse passer les suivantes."""
+        child = self.child()
+        child.call("folder", name="Sent")
+        child.call("fail", kind="refuse", command="EXAMINE", after=1, times=1)
+        client = self.imap(child)
+        resultats = [
+            client.select(nom, readonly=True)[0]
+            for nom in ("INBOX", '"Sent"', '"Sent"')
+        ]
+        self.assertEqual(resultats, ["OK", "NO", "OK"])
+
+    def test_fetches_name_the_folder(self):
+        """Chaque section servie nomme le dossier sélectionné de la
+        connexion qui l'a servie."""
+        child = self.child()
+        child.call("folder", name="Sent")
+        raw = base64.b64encode(RAW).decode("ascii")
+        envoye = child.call("deliver", raw=raw, folder="Sent")["result"]
+        recu = self.deliver(child)
+        client = self.imap(child)
+        client.uid("FETCH", str(recu), "(BODY.PEEK[HEADER])")
+        client.select('"Sent"', readonly=True)
+        client.uid("FETCH", str(envoye["uid"]), "(BODY.PEEK[HEADER])")
+        parts = child.call("fetches")["result"]["parts"]
+        self.assertEqual(
+            [(p["uid"], p["folder"]) for p in parts],
+            [(recu, "INBOX"), (envoye["uid"], "Sent")],
+        )
+
     def test_end_of_stdin_stops_the_server(self):
         """La fin de l'entrée standard arrête les deux serveurs et le
         script sort avec le code 0."""

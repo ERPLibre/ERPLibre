@@ -35,6 +35,17 @@ donné (`fetch_refuse`), réponse imposée aux prochains `MAIL FROM`, suivie au
 besoin de la fermeture de la connexion (`mail_refuse`), et réponse imposée
 après les données de `DATA`, le message n'étant alors pas gardé
 (`data_refuse`).
+
+D'autres dossiers qu'`INBOX` se créent par `folder` (nom IMAP brut, en
+UTF-7 modifié, attributs annoncés au LIST comme `\\Sent`, UIDVALIDITY et
+premier UID ; pour un dossier qui existe déjà, des attributs donnés
+remplacent les siens) ; `deliver`, `flags`, `mark` et `renumber` prennent
+alors `folder`.
+`fail` prend `times` : la panne ne frappe que ce nombre de fois. `selects`
+rend chaque `SELECT` et `EXAMINE` reçu, dans l'ordre, avec le
+dossier et vrai pour une sélection en écriture ; chaque partie de `fetches`
+nomme le dossier sélectionné de la connexion qui l'a servie (« » sans
+dossier).
 """
 
 from __future__ import annotations
@@ -125,10 +136,12 @@ class Served:
         self.inbox.keywords = keywords
         self.smtp = sandbox.SmtpSandbox(require_auth=smtp_auth)
         self.fetched: list[dict] = []
+        self.selected: list[dict] = []
         self.fetch_refusals: set[int] = set()
         self.mail_refusal = {"reply": "", "close": False, "times": 0}
         self.data_reply = ""
         self._installe_releve()
+        self._installe_selections()
         self._installe_refus_fetch()
         self._installe_refus_smtp()
 
@@ -155,16 +168,32 @@ class Served:
             return "structure"
 
         def spew_body(server, part, id, msg, _w=None, _f=None):
+            boite = getattr(server, "mbox", None)
             servi.append(
                 {
                     "uid": int(msg.getUID()),
                     "peek": bool(getattr(part, "peek", False)),
                     "section": section(part),
+                    "folder": getattr(boite, "name", "") or "",
                 }
             )
             return origine(server, part, id, msg, _w, _f)
 
         sandbox.SandboxIMAP4Server.spew_body = spew_body
+
+    def _installe_selections(self) -> None:
+        """Enveloppe `select` du compte IMAP de CETTE instance pour noter
+        chaque `SELECT` (`rw` vrai) et `EXAMINE` (`rw` faux) : Twisted y
+        passe pour les deux, avec le nom déjà décodé."""
+        compte = self.imap.account
+        notes = self.selected
+        origine = compte.select
+
+        def select(path, rw=True):
+            notes.append({"folder": str(path), "rw": bool(rw)})
+            return origine(path, rw)
+
+        compte.select = select
 
     def _installe_refus_fetch(self) -> None:
         """Enveloppe `dispatchCommand` du serveur : un `UID FETCH` dont
@@ -251,31 +280,69 @@ class Served:
             sandbox.reactor_in_thread(), fonction, *args, **kwargs
         )
 
-    def _message(self, uid: int):
-        message = self.inbox.by_uid(int(uid))
+    @staticmethod
+    def _decoded(name: str) -> str:
+        """Le nom décodé d'un nom IMAP brut en UTF-7 modifié : celui sous
+        lequel le compte range le dossier, et que LIST réencode."""
+        return str(name).encode("ascii").decode("imap4-utf-7")
+
+    def _box(self, folder: str = INBOX):
+        """Le dossier de nom IMAP brut `folder` ; `KeyError` s'il
+        n'existe pas."""
+        compte = self.imap.account
+        boite = compte.boxes.get(compte._key(self._decoded(folder)))
+        if boite is None:
+            raise KeyError(f"folder {folder}")
+        return boite
+
+    def _message(self, uid: int, folder: str = INBOX):
+        message = self._box(folder).by_uid(int(uid))
         if message is None:
             raise KeyError(f"uid {uid}")
         return message
 
     # -- opérations -----------------------------------------------------
 
-    def op_deliver(self, raw, flags=(), internal_date=None) -> dict:
+    def op_folder(
+        self, name, attributes=(), uidvalidity=UIDVALIDITY, first_uid=1
+    ) -> dict:
+        nom = self._decoded(name)
+
+        def creer():
+            boite = self.imap.folder(
+                nom, int(uidvalidity), tuple(attributes), int(first_uid)
+            )
+            if attributes:
+                boite.attributs = tuple(attributes)
+
+        self._reactor(creer)
+        return {}
+
+    def op_deliver(self, raw, flags=(), internal_date=None, folder=INBOX):
         octets = base64.b64decode(raw)
         date = (internal_date or internal_date_now()).encode("ascii")
+        boite = self._box(folder)
         message = self._reactor(
-            self.inbox.deliver, octets, list(flags), internal_date=date
+            boite.deliver, octets, list(flags), internal_date=date
         )
         return {"uid": int(message.uid)}
 
-    def op_flags(self, uid) -> dict:
-        return {"flags": self._reactor(lambda: list(self._message(uid).flags))}
+    def op_flags(self, uid, folder=INBOX) -> dict:
+        return {
+            "flags": self._reactor(
+                lambda: list(self._message(uid, folder).flags)
+            )
+        }
 
-    def op_mark(self, uid, flags) -> dict:
+    def op_mark(self, uid, flags, folder=INBOX) -> dict:
         def marquer():
-            message = self.inbox.marquer_ailleurs(int(uid), *flags)
+            message = self._box(folder).marquer_ailleurs(int(uid), *flags)
             return list(message.flags)
 
         return {"flags": self._reactor(marquer)}
+
+    def op_selects(self) -> dict:
+        return {"selects": self._reactor(lambda: list(self.selected))}
 
     def op_interfere(
         self, command, uid, flags=(), after=0, action="mark"
@@ -298,7 +365,7 @@ class Served:
         self._reactor(self.imap.fail, faute)
         return {}
 
-    def op_fail(self, kind, command, after=0) -> dict:
+    def op_fail(self, kind, command, after=0, times=0) -> dict:
         classes = {
             "drop": sandbox.DropConnection,
             "refuse": sandbox.RefuseCommand,
@@ -306,6 +373,16 @@ class Served:
         if kind not in classes:
             raise ValueError(f"kind {kind!r}")
         faute = classes[kind](str(command).encode("ascii"), after=int(after))
+        if int(times) > 0:
+            # La panne ne frappe que `times` fois, puis laisse passer.
+            origine = faute.matches
+
+            def matches(cmd, _origine=origine, _faute=faute):
+                return _origine(cmd) and _faute.fired <= _faute.after + int(
+                    times
+                )
+
+            faute.matches = matches
         self._reactor(self.imap.fail, faute)
         return {}
 
@@ -313,9 +390,9 @@ class Served:
         self._reactor(self.imap.faults.clear)
         return {}
 
-    def op_renumber(self, uidvalidity) -> dict:
+    def op_renumber(self, uidvalidity, folder=INBOX) -> dict:
         def renumeroter():
-            self.inbox.uidvalidity = int(uidvalidity)
+            self._box(folder).uidvalidity = int(uidvalidity)
 
         self._reactor(renumeroter)
         return {}
