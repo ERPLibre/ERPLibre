@@ -103,7 +103,7 @@ fi
 if [ "$ODOO_MODE_TEST" = "true" ]; then
   ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --log-level=test --test-enable --no-http --stop-after-init "${EL_DB[@]}" "${EL_ARGS[@]}"
 else
-  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 "${EL_DB[@]}" "${EL_ARGS[@]}"
+  ./odoo_bin.sh -c "${CONFIG_PATH}" "${EL_DB[@]}" "${EL_ARGS[@]}"
 fi
 # When need more memory RAM for instance by force
 #python3 ./odoo/odoo-bin -c ${CONFIG_PATH} --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-soft=8589934592 --limit-memory-hard=10737418240 $@

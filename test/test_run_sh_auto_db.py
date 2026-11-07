@@ -218,13 +218,13 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
         self.assertIn("ARGS:", res.stdout)
         self.assertNotIn("[-d]", res.stdout)
 
-    def test_the_forwarded_line_is_byte_for_byte_what_it_always_was(self):
+    def test_production_forces_nothing_over_config_conf(self):
+        # run.sh est le lanceur de production : les limites de temps et de
+        # mémoire viennent de config.conf, et aucune option de la ligne de
+        # commande ne vient les écraser.
         res = self.banc.lancer()
         self.assertEqual(
-            "ARGS:[-c][./config.conf][--limit-time-real][99999]"
-            "[--limit-time-cpu][99999][--limit-memory-hard=0]",
-            res.stdout.strip(),
-            res.stderr,
+            "ARGS:[-c][./config.conf]", res.stdout.strip(), res.stderr
         )
 
     def test_an_empty_argument_and_one_with_spaces_survive(self):
