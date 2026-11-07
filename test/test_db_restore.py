@@ -107,5 +107,102 @@ class TestEspaceUtilisable(_DansUnDossier):
             self.assertEqual(db_restore.espace_utilisable(self.dossier), 7)
 
 
+@unittest.skipIf(os.geteuid() == 0, "root lit tout : aucun refus à simuler")
+class TestAccesImage(_DansUnDossier):
+    """Une archive que le compte courant ne peut pas lire doit être dite
+    comme telle : sans quoi elle passe pour absente, puis Odoo répond « Not
+    a zipped dump file », qui accuse l'archive et non le droit qui manque.
+    """
+
+    def setUp(self):
+        super().setUp()
+        os.mkdir("image_db")
+        with open("image_db/base.zip", "wb") as fichier:
+            fichier.write(b"PK\x05\x06" + b"\x00" * 18)
+        # Rendre les droits avant le nettoyage du dossier jetable. Les
+        # nettoyages tournent du dernier au premier : le dossier redevient
+        # traversable AVANT qu'on touche au fichier qu'il contient.
+        self.addCleanup(os.chmod, "image_db/base.zip", 0o644)
+        self.addCleanup(os.chmod, "image_db", 0o755)
+
+    def test_une_archive_lisible_passe(self):
+        self.assertIsNone(db_restore.acces_image("base"))
+        self.assertIsNone(db_restore.acces_image("base.zip"))
+
+    def test_une_archive_absente_n_est_pas_un_refus(self):
+        # La restauration signale l'absence avec son propre message.
+        self.assertIsNone(db_restore.acces_image("autre"))
+        os.symlink("/inexistant/base.zip", "image_db/lien.zip")
+        self.assertIsNone(db_restore.acces_image("lien"))
+
+    def test_un_fichier_illisible_nomme_compte_proprietaire_et_mode(self):
+        os.chmod("image_db/base.zip", 0o000)
+        message = db_restore.acces_image("base")
+        compte = db_restore._compte(os.geteuid())
+        self.assertIn("n'est pas lisible par le compte " + compte, message)
+        self.assertIn("mode 0000", message)
+        # L'archive est au compte courant : un chmod suffit, sans sudo.
+        self.assertIn("chmod u+r image_db/base.zip", message)
+        self.assertNotIn("sudo", message)
+        self.assertNotIn("introuvable", message)
+
+    def test_un_dossier_non_traversable_est_nomme(self):
+        # Le cas où « os.path.exists » rend faux : sans droit d'exécution
+        # sur image_db, l'archive n'est même pas visible.
+        os.chmod("image_db", 0o600)
+        self.assertFalse(os.path.exists("image_db/base.zip"))
+        message = db_restore.acces_image("base")
+        self.assertIn("refuse le passage", message)
+        self.assertIn("chmod u+x", message)
+        self.assertIn(os.path.join(self.dossier, "image_db"), message)
+        self.assertNotIn("introuvable", message)
+
+    def test_l_archive_d_un_autre_compte_propose_chown(self):
+        # Le cas réel : déposée sous un compte, lue sous celui d'Odoo.
+        os.chmod("image_db/base.zip", 0o000)
+        with mock.patch.object(db_restore, "_a_moi", return_value=False):
+            message = db_restore.acces_image("base")
+        compte = db_restore._compte(os.geteuid())
+        self.assertIn(f"sudo chown {compte}: image_db/base.zip", message)
+
+    def test_restaurer_s_arrete_avant_odoo(self):
+        os.chmod("image_db/base.zip", 0o000)
+        with (
+            mock.patch.object(db_restore, "bases_existantes") as bases,
+            mock.patch.object(db_restore, "charger") as charger,
+        ):
+            with self.assertRaises(SystemExit) as fin:
+                db_restore.restaurer("./odoo_bin.sh db", "base", "cible")
+        self.assertIn("n'est pas lisible", str(fin.exception.code))
+        charger.assert_not_called()
+        bases.assert_not_called()
+
+    def test_sans_cache_l_arret_precede_le_mot_de_passe(self):
+        os.chmod("image_db/base.zip", 0o000)
+        argv = ["db_restore.py", "-d", "cible", "--ignore_cache"]
+        argv += ["--image", "base"]
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(db_restore, "ask_master_password") as mot,
+            mock.patch("sys.stdout"),
+        ):
+            with self.assertRaises(SystemExit) as fin:
+                db_restore.main()
+        self.assertEqual(1, fin.exception.code)
+        mot.assert_not_called()
+
+    def test_avec_cache_l_archive_peut_manquer(self):
+        # Le cache se clone sans le zip : main ne bloque pas d'avance.
+        os.chmod("image_db/base.zip", 0o000)
+        argv = ["db_restore.py", "-d", "cible", "--image", "base"]
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(db_restore, "chemin_config", return_value=None),
+            mock.patch.object(db_restore, "restaurer_cible") as restaurer,
+        ):
+            db_restore.main()
+        restaurer.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
