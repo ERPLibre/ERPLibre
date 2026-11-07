@@ -950,6 +950,25 @@ class TestRestoreFromDatabase(unittest.TestCase):
                         question, r"(défaut : [ON]|default: [YN])", question
                     )
 
+    def test_the_whole_flow_speaks_one_language(self):
+        # Tout ce que la restauration montre — menu de la source, questions,
+        # messages — passe par t() : rien ne reste dans l'autre langue.
+        reponses = ["1", "absent", "backup", "mydb", "", "", "", ""]
+        for langue, etranger in (
+            ("fr", ("By file", "Browse", "Select", "Database name", "Update")),
+            ("en", ("Par nom", "Parcourir", "Sélection", "Nom de la base")),
+        ):
+            with self.subTest(langue=langue):
+                sortie = io.StringIO()
+                with (
+                    patch.object(todo_i18n, "_current_lang", langue),
+                    patch("sys.stdout", sortie),
+                ):
+                    questions = self.questions_posees(reponses)
+                texte = sortie.getvalue() + "\n".join(questions)
+                for mot in etranger:
+                    self.assertNotIn(mot, texte, texte)
+
     def test_the_defaults_shown_are_the_defaults_applied(self):
         # Tout à Entrée : pas de cache, neutralisation, aucune mise à jour.
         cmds = self.restaurer(["1", "backup", "mydb", "", "", "", ""])

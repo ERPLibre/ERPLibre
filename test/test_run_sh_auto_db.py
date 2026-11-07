@@ -380,8 +380,8 @@ class TestWhatTheProbeReturns(unittest.TestCase):
         self.assertNotIn("[-d]", res.stdout)
         self.assertNotIn("Traceback", res.stdout)
         self.assertNotIn("OperationalError", res.stdout)
-        # …et le message doit dire « je n'ai pas pu lire », pas « il n'y
-        # en a pas ». Les deux mènent au même démarrage, mais pas au même
+        # …et le message doit dire que la lecture a échoué, pas qu'il n'y a
+        # aucune base. Les deux mènent au même démarrage, mais pas au même
         # endroit où chercher : PostgreSQL à terre n'est pas une machine
         # neuve. Le CLI d'Odoo confond déjà les deux en rendant 0 sur une
         # liste vide ; au moins ne pas ajouter notre propre confusion là
@@ -394,6 +394,29 @@ class TestWhatTheProbeReturns(unittest.TestCase):
         res = banc.lancer("--auto-erplibre")
         self.assertIn("Aucune base", res.stderr, res.stderr)
         self.assertNotIn("lister", res.stderr, res.stderr)
+
+    def test_the_warnings_speak_english_when_asked(self):
+        # Chaque message hors menu, en anglais : le banc n'a pas
+        # d'env_var.sh, EL_LANG décide seul.
+        en = {"EL_LANG": "en"}
+        cas = (
+            (SONDE_CASSEE, (), "Cannot list the databases"),
+            (AUCUNE_BASE, (), "No database; Odoo starts on its web manager"),
+            (UNE_BASE, (), "A single database: demo"),
+            (
+                TROIS_BASES,
+                ("--no-cli-erplibre",),
+                "databases and --no-cli-erplibre: none is preselected",
+            ),
+            (TROIS_BASES, (), "but no terminal to choose from"),
+        )
+        for bouchon, options, attendu in cas:
+            with self.subTest(attendu=attendu):
+                banc = self.banc(bouchon)
+                res = banc.lancer("--auto-erplibre", *options, env=en)
+                self.assertIn(attendu, res.stderr, res.stderr)
+                self.assertNotIn("présélectionnée", res.stderr)
+                self.assertNotIn("Une seule base", res.stderr)
 
     def test_a_configuration_that_names_its_database_is_left_alone(self):
         # L'option de ligne de commande l'emporte sur le fichier : injecter

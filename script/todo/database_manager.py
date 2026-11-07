@@ -156,9 +156,9 @@ class DatabaseManager:
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
         path_image_db = os.path.join(os.getcwd(), "image_db")
-        print("[1] By filename from image_db")
-        print(f"[] Browser image_db {path_image_db}")
-        status = input("\U0001f4ac Select : ")
+        print(f"[1] {t('By file name, from image_db')}")
+        print(f"[] {t('Browse image_db')} {path_image_db}")
+        status = input(f"\U0001f4ac {t('Select: ')}")
         if status == "1":
             file_name = self._ask_image_db_file_name(path_image_db)
         else:
@@ -172,7 +172,8 @@ class DatabaseManager:
             default_database_name = default_database_name[:-4]
 
         database_name = input(
-            f"\U0001f4ac Database name (default={default_database_name}) : "
+            f"\U0001f4ac {t('Database name (default=')}"
+            f"{default_database_name}) : "
         )
         if not database_name:
             database_name = default_database_name

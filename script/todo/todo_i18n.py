@@ -16019,6 +16019,14 @@ TRANSLATIONS = {
         "fr": "Étape en échec, les suivantes sont sautées :",
         "en": "Step failed, the next ones are skipped:",
     },
+    "By file name, from image_db": {
+        "fr": "Par nom de fichier, depuis image_db",
+        "en": "By file name, from image_db",
+    },
+    "Browse image_db": {
+        "fr": "Parcourir image_db",
+        "en": "Browse image_db",
+    },
     "Backup file name in image_db (empty to cancel): ": {
         "fr": "Nom du fichier de sauvegarde dans image_db (vide pour"
         " annuler) : ",

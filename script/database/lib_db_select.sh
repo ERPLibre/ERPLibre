@@ -228,8 +228,9 @@ el_db_select() {
 
   local liste
   if ! liste="$(el_db_list)"; then
-    _el_db_say "${Yellow}⚠${Color_Off} Impossible de lister les bases ;" \
-      "Odoo démarre sans base présélectionnée."
+    _el_db_say "${Yellow}⚠${Color_Off} $(_el_db_t \
+      "Impossible de lister les bases ; Odoo démarre sans base présélectionnée." \
+      "Cannot list the databases; Odoo starts with no database preselected.")"
     return 0
   fi
 
@@ -239,25 +240,28 @@ el_db_select() {
   done <<< "${liste}"
 
   if [ "${#bases[@]}" -eq 0 ]; then
-    _el_db_say "${Yellow}⚠${Color_Off} Aucune base de données ;" \
-      "Odoo démarre sur son gestionnaire web."
+    _el_db_say "${Yellow}⚠${Color_Off} $(_el_db_t \
+      "Aucune base de données ; Odoo démarre sur son gestionnaire web." \
+      "No database; Odoo starts on its web manager.")"
     return 0
   fi
 
   if [ "${#bases[@]}" -eq 1 ]; then
-    _el_db_say "🗄  Une seule base : ${bases[0]}"
+    _el_db_say "🗄  $(_el_db_t "Une seule base : " "A single database: ")${bases[0]}"
     printf '%s\n' "${bases[0]}"
     return 0
   fi
 
   if [ "${sans_cli}" = "1" ]; then
-    _el_db_say "${Yellow}⚠${Color_Off} ${#bases[@]} bases et" \
-      "--no-cli-erplibre : aucune n'est présélectionnée."
+    _el_db_say "${Yellow}⚠${Color_Off} ${#bases[@]} $(_el_db_t \
+      "bases et --no-cli-erplibre : aucune n'est présélectionnée." \
+      "databases and --no-cli-erplibre: none is preselected.")"
     return 0
   fi
   if ! _el_db_tty; then
-    _el_db_say "${Yellow}⚠${Color_Off} ${#bases[@]} bases, mais pas de" \
-      "terminal pour choisir : aucune n'est présélectionnée."
+    _el_db_say "${Yellow}⚠${Color_Off} ${#bases[@]} $(_el_db_t \
+      "bases, mais pas de terminal pour choisir : aucune n'est présélectionnée." \
+      "databases, but no terminal to choose from: none is preselected.")"
     return 0
   fi
 
