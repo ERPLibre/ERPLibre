@@ -262,14 +262,20 @@ class TestLesVuesDOdoo8Et9(unittest.TestCase):
                     "name": "exceptions.AttributeError",
                     "message": "'x' object has no attribute '%s'" % method,
                 }
-            return {"arch": '<tree><field name="%s"/></tree>' % kwargs["view_type"]}, None
+            return {
+                "arch": '<tree><field name="%s"/></tree>' % kwargs["view_type"]
+            }, None
 
         session = ui.Session.__new__(ui.Session)
         session._views_method = None
         session.call_kw = call_kw
-        vues, erreur = session.views_of("res.partner", [[False, "tree"], [7, "form"]])
+        vues, erreur = session.views_of(
+            "res.partner", [[False, "tree"], [7, "form"]]
+        )
         self.assertIsNone(erreur)
-        self.assertEqual(["tree", "form"], sorted(vues["fields_views"], reverse=True))
+        self.assertEqual(
+            ["tree", "form"], sorted(vues["fields_views"], reverse=True)
+        )
         self.assertEqual(["tree", "form"], ui.arch_fields(vues))
         self.assertEqual("fields_view_get", session._views_method)
 
@@ -297,7 +303,8 @@ class TestUneActionFormulaireNeLitAucunePage(unittest.TestCase):
     def test_un_formulaire_d_abord_ne_lit_rien(self):
         session, lectures = self.session("form")
         entree = ui.check_entry(
-            session, {"name": "Reporting"},
+            session,
+            {"name": "Reporting"},
             {"name": "My Dashboard", "action": "ir.actions.act_window,7"},
         )
         self.assertEqual([], lectures)
@@ -306,7 +313,8 @@ class TestUneActionFormulaireNeLitAucunePage(unittest.TestCase):
     def test_une_liste_d_abord_lit_sa_premiere_page(self):
         session, lectures = self.session("tree,form")
         ui.check_entry(
-            session, {"name": "Sales"},
+            session,
+            {"name": "Sales"},
             {"name": "Customers", "action": "ir.actions.act_window,8"},
         )
         self.assertEqual(1, len(lectures))

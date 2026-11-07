@@ -44,7 +44,10 @@ def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
     # Tri naturel : un tri de texte rangeait « odoo8.0 » après « odoo20.0 ».
     versions = sorted(
         version_entries,
-        key=lambda k: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", k.get("erplibre_version"))],
+        key=lambda k: [
+            int(p) if p.isdigit() else p
+            for p in re.split(r"(\d+)", k.get("erplibre_version"))
+        ],
     )
 
     return versions, installed_versions, odoo_installed_version

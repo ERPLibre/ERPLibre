@@ -323,8 +323,9 @@ class TestTheMigrationUsesThatName(unittest.TestCase):
 
         source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
         fenetre = source[
-            source.index("database_name_from_file(")
-            - 400 : source.index("database_name_from_file(")
+            source.index("database_name_from_file(") - 400 : source.index(
+                "database_name_from_file("
+            )
         ]
         self.assertIn('default_database_name == "test"', fenetre)
 

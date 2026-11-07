@@ -161,7 +161,10 @@ def print_state() -> None:
             # Tri naturel : « 8.0 » avant « 10.0 ».
             for v, d in sorted(
                 versions.items(),
-                key=lambda e: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", e[0])],
+                key=lambda e: [
+                    int(p) if p.isdigit() else p
+                    for p in re.split(r"(\d+)", e[0])
+                ],
             )
             if d.get("installed")
         ]

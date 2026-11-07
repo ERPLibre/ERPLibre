@@ -69,7 +69,9 @@ class TestLessParVersionDOdoo(unittest.TestCase):
             )
         )
         versions = {v["odoo_version"] for v in catalogue.values()}
-        self.assertTrue({"8.0", "9.0", "10.0", "11.0", "18.0"} <= versions, versions)
+        self.assertTrue(
+            {"8.0", "9.0", "10.0", "11.0", "18.0"} <= versions, versions
+        )
         for version in sorted(versions):
             attendu = (
                 "less@3.13.1"

@@ -42,7 +42,9 @@ def _version_par_defaut():
     with CATALOGUE.open(encoding="utf-8") as fh:
         catalogue = json.load(fh)
     return next(
-        valeur["odoo_version"] for valeur in catalogue.values() if valeur.get("default")
+        valeur["odoo_version"]
+        for valeur in catalogue.values()
+        if valeur.get("default")
     )
 
 
@@ -152,7 +154,9 @@ class TestCommitPublie(unittest.TestCase):
         """« ENV cle valeur » et « ENV cle=valeur » désignent la même chose ;
         passer de l'une à l'autre ne doit pas vider la variable."""
         extraction = TEXTE[
-            TEXTE.index("EL_DEPOT=$(") : TEXTE.index("verifier_commit_publie()")
+            TEXTE.index("EL_DEPOT=$(") : TEXTE.index(
+                "verifier_commit_publie()"
+            )
         ]
         self.assertIn("[[:space:]=]", extraction)
 
@@ -193,7 +197,12 @@ class TestArgumentsDeConstruction(unittest.TestCase):
         cette version d'ERPLibre, et non celle d'une version passée."""
         odoo = _version_par_defaut()
         sortie = subprocess.run(
-            ["python3", "./script/version/get_version.py", "--odoo_version", odoo],
+            [
+                "python3",
+                "./script/version/get_version.py",
+                "--odoo_version",
+                odoo,
+            ],
             cwd=RACINE,
             capture_output=True,
             text=True,

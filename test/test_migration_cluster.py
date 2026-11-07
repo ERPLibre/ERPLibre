@@ -28,7 +28,7 @@ def faux_bindir(dossier, version):
         chemin = os.path.join(dossier, nom)
         with open(chemin, "w") as handle:
             handle.write(
-                "#!/bin/sh\n" f'echo "postgres (PostgreSQL) {version}.4"\n'
+                f'#!/bin/sh\necho "postgres (PostgreSQL) {version}.4"\n'
             )
         os.chmod(chemin, 0o755)
     return dossier
