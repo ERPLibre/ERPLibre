@@ -45,6 +45,18 @@ Avec des arguments
 ./run.sh -h
 ```
 
+Trois lanceurs, qui passent les mêmes arguments à Odoo :
+
+| lanceur | pour | HTTP | workers | limites de temps et de mémoire |
+|---|---|---|---|---|
+| `./run.sh` | production | oui | de `config.conf` | de `config.conf` |
+| `./dev.sh` | développement | oui | de `config.conf` | levées, pour qu'un point d'arrêt ne fasse pas tuer sa requête |
+| `./test.sh` | tests de modules, puis arrêt | non | forcés à 0 | levées |
+
+```bash
+./dev.sh -d ma_base
+```
+
 ### Méthode 2
 
 Exécutez votre propre script Python :

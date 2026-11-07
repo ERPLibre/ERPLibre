@@ -74,6 +74,9 @@ make open_test_coverage      # Ouvrir le rapport HTML de couverture
 ```
 
 > `test.sh` est un alias de `run.sh` avec `ODOO_MODE_TEST=true --workers 0`.
+> `dev.sh` lance `run.sh` avec `ODOO_MODE_DEV=true` : HTTP et workers de
+> `config.conf`, limites de temps et de mémoire levées. `run.sh` seul, la
+> production, ne force rien par-dessus `config.conf`.
 
 
 ## Formatage du code

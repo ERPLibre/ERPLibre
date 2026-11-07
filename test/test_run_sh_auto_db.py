@@ -28,6 +28,7 @@ import unittest
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "run.sh"
+DEV = RACINE / "dev.sh"
 LIB = RACINE / "script" / "database" / "lib_db_select.sh"
 
 DELAI = 30
@@ -73,6 +74,7 @@ class Banc:
         chemin = pathlib.Path(self.dossier)
         (chemin / "script" / "database").mkdir(parents=True)
         shutil.copy(SCRIPT, chemin / "run.sh")
+        shutil.copy(DEV, chemin / "dev.sh")
         shutil.copy(LIB, chemin / "script" / "database" / "lib_db_select.sh")
         (chemin / "config.conf").write_text(config, encoding="utf-8")
         stub = chemin / "odoo_bin.sh"
@@ -86,6 +88,7 @@ class Banc:
         # des messages dépendrait de l'environnement de qui lance la suite.
         milieu = dict(os.environ)
         milieu.pop("ODOO_MODE_TEST", None)
+        milieu.pop("ODOO_MODE_DEV", None)
         milieu.pop("ODOO_MODE_COVERAGE", None)
         milieu["EL_LANG"] = "fr"
         if env:
@@ -226,6 +229,34 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
         self.assertEqual(
             "ARGS:[-c][./config.conf]", res.stdout.strip(), res.stderr
         )
+
+    def test_dev_mode_lifts_the_limits_and_keeps_http(self):
+        # dev.sh : HTTP actif et workers de config.conf, contrairement à
+        # test.sh ; seules les limites de temps et de mémoire sont levées.
+        res = self.banc.lancer(env={"ODOO_MODE_DEV": "true"})
+        self.assertEqual(
+            "ARGS:[-c][./config.conf][--limit-time-real][99999]"
+            "[--limit-time-cpu][99999][--limit-memory-hard=0]",
+            res.stdout.strip(),
+            res.stderr,
+        )
+        for absent in ("--no-http", "--stop-after-init", "--test-enable"):
+            self.assertNotIn(absent, res.stdout)
+        self.assertNotIn("--workers", res.stdout)
+
+    def test_dev_sh_passes_its_arguments_in_dev_mode(self):
+        res = subprocess.run(
+            ["./dev.sh", "-d", "demo"],
+            cwd=self.banc.dossier,
+            capture_output=True,
+            text=True,
+            timeout=DELAI,
+            input="",
+            env=self.banc.milieu(),
+        )
+        self.assertIn("[--limit-time-real][99999]", res.stdout, res.stderr)
+        self.assertIn("[-d][demo]", res.stdout, res.stderr)
+        self.assertNotIn("--no-http", res.stdout)
 
     def test_an_empty_argument_and_one_with_spaces_survive(self):
         # « ./run.sh -d $(bd) » de make.robotlibre produit un -d vide dès

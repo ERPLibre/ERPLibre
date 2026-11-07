@@ -100,8 +100,14 @@ if [ "${EL_WARMUP}" = "1" ] && [ "$ODOO_MODE_TEST" != "true" ] \
   trap '[ -n "${EL_WARMUP_PID}" ] && kill "${EL_WARMUP_PID}" 2>/dev/null' EXIT
 fi
 
+# Trois modes. Production (par défaut) : rien par-dessus config.conf. Test
+# (test.sh) : tests puis arrêt, sans HTTP. Développement (dev.sh) : HTTP et
+# workers de config.conf, limites de temps et de mémoire levées pour
+# qu'un point d'arrêt ne fasse pas tuer la requête qu'il suspend.
 if [ "$ODOO_MODE_TEST" = "true" ]; then
   ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --log-level=test --test-enable --no-http --stop-after-init "${EL_DB[@]}" "${EL_ARGS[@]}"
+elif [ "${ODOO_MODE_DEV:-}" = "true" ]; then
+  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 "${EL_DB[@]}" "${EL_ARGS[@]}"
 else
   ./odoo_bin.sh -c "${CONFIG_PATH}" "${EL_DB[@]}" "${EL_ARGS[@]}"
 fi
