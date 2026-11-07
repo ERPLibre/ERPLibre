@@ -517,11 +517,12 @@ class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
 
     SOURCE = TODO_DIR / "python_menu.py"
     ENTRY = "def prompt_execute_python(self):"
-    END = "def execute_install_mise(self):"
-    MINIMUM = 4
+    END = "def _python_versions_etat(self):"
+    MINIMUM = 5
 
     EXPECTED = {
         "Lock drift": "execute_poetry_drift",
+        "Python versions": "execute_python_versions",
         "Upgrade Poetry": "upgrade_poetry",
         "pip-audit": "execute_pip_audit",
         "Install mise": "execute_install_mise",

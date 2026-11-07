@@ -6331,6 +6331,9 @@ class TODO(
                     "No installed environment found. Install an Odoo version first."
                 )
             )
+            # Les venvs cherchés sont ceux du json : un checkout resté sur un
+            # Python qui n'y figure plus a un venv que cette liste ignore.
+            self._afficher_versions_supportees()
             return
 
         # Show selection menu

@@ -11,6 +11,7 @@ dépôt jetable. Rien n'est installé, aucun réseau.
 """
 
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -28,8 +29,28 @@ sys.argv = ["todo.py"]
 from script.poetry import poetry_venv_drift as drift  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.version_manager import (  # noqa: E402
+    diagnostiquer_version,
+    get_odoo_version,
+)
+from script.todo import version_manager as vm  # noqa: E402
 
 VERSION = "odoo18.0_python3.12.16"
+# Un checkout resté sur un patch de Python que le json ne connaît plus.
+NON_SUPPORTEE = "odoo18.0_python3.12.10"
+SUPPORTEES = {
+    "odoo17.0_python3.10.18": {
+        "odoo_version": "17.0",
+        "python_version": "3.10.18",
+        "poetry_version": "1.8.3",
+    },
+    VERSION: {
+        "default": True,
+        "odoo_version": "18.0",
+        "python_version": "3.12.16",
+        "poetry_version": "2.5.1",
+    },
+}
 
 # Une vraie sortie de Poetry 2.1, abrégée.
 SORTIE = """Installing dependencies from lock file
@@ -252,6 +273,10 @@ class BancMenu(unittest.TestCase):
             Path("requirement", nom).write_text("")
         os.symlink(f"requirement/poetry.{VERSION}.lock", "poetry.lock")
         os.symlink(f"requirement/pyproject.{VERSION}.toml", "pyproject.toml")
+        Path("conf").mkdir()
+        Path("conf", "supported_version_erplibre.json").write_text(
+            json.dumps(SUPPORTEES), encoding="utf-8"
+        )
         self.cache = tempfile.mkdtemp(prefix="el_drift_rapports_")
         self.addCleanup(shutil.rmtree, self.cache, True)
         environ = patch.dict(os.environ, {"XDG_CACHE_HOME": self.cache})
@@ -423,6 +448,347 @@ class TestLesPrerequis(BancMenu):
             todo_i18n.t("No .erplibre-version: no active Odoo version."),
             texte,
         )
+
+
+class TestDiagnostiquerVersion(unittest.TestCase):
+    def versions(self):
+        tmp = tempfile.mkdtemp(prefix="el_drift_json_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        Path(tmp, "conf").mkdir()
+        Path(tmp, "conf", "supported_version_erplibre.json").write_text(
+            json.dumps(SUPPORTEES), encoding="utf-8"
+        )
+        ancien = os.getcwd()
+        os.chdir(tmp)
+        try:
+            return get_odoo_version()[0]
+        finally:
+            os.chdir(ancien)
+
+    def test_une_version_supportee(self):
+        diag = diagnostiquer_version(VERSION, self.versions())
+        self.assertTrue(diag["supportee"])
+        self.assertIsNone(diag["remplacante"])
+
+    def test_un_autre_patch_trouve_sa_remplacante(self):
+        diag = diagnostiquer_version(NON_SUPPORTEE, self.versions())
+        self.assertFalse(diag["supportee"])
+        self.assertEqual(VERSION, diag["remplacante"]["erplibre_version"])
+
+    def test_une_version_d_odoo_inconnue_n_a_pas_de_remplacante(self):
+        diag = diagnostiquer_version("odoo99.0_python3.99.1", self.versions())
+        self.assertFalse(diag["supportee"])
+        self.assertIsNone(diag["remplacante"])
+
+
+class TestLeDiagnosticDeVersion(BancMenu):
+    """Le cas réel : .erplibre-version sur un Python que le json ne
+    supporte plus. Son lock n'existe pas, et pip-audit, qui ne cherche que
+    les venvs du json, ne trouve rien."""
+
+    def passer_sur_non_supportee(self):
+        Path(".erplibre-version").write_text(NON_SUPPORTEE + "\n")
+        Path(f".venv.{NON_SUPPORTEE}/bin").mkdir(parents=True)
+        Path(f".venv.{NON_SUPPORTEE}/bin/poetry").write_text("")
+        shutil.rmtree(f".venv.{VERSION}")
+        os.remove("poetry.lock")
+        os.symlink(f"requirement/poetry.{NON_SUPPORTEE}.lock", "poetry.lock")
+
+    def test_les_ecarts_disent_pourquoi_le_lock_manque(self):
+        self.passer_sur_non_supportee()
+        texte, _ = self.lancer([self.simulation(ALIGNE)])
+        self.simuler.assert_not_called()
+        self.assertIn(
+            f"{todo_i18n.t('Active version:')} {NON_SUPPORTEE}", texte
+        )
+        self.assertIn(
+            f"{todo_i18n.t('Supported for Odoo')} 18.0 : {VERSION}", texte
+        )
+        self.assertIn("make install_odoo_18", texte)
+        self.assertIn(
+            todo_i18n.t(
+                "Supported versions (conf/supported_version_erplibre.json):"
+            ),
+            texte,
+        )
+        self.assertIn(f"{VERSION} — Odoo 18.0, Python 3.12.16", texte)
+
+    def test_pip_audit_dit_pourquoi_aucun_environnement(self):
+        self.passer_sur_non_supportee()
+        sortie = io.StringIO()
+        with patch("sys.stdout", sortie):
+            self.todo.execute_pip_audit()
+        texte = sortie.getvalue()
+        self.assertIn(
+            todo_i18n.t(
+                "No installed environment found."
+                " Install an Odoo version first."
+            ),
+            texte,
+        )
+        self.assertIn("make install_odoo_18", texte)
+
+    def test_une_version_supportee_sans_venv_dit_comment_l_installer(self):
+        shutil.rmtree(f".venv.{VERSION}")
+        sortie = io.StringIO()
+        with patch("sys.stdout", sortie):
+            self.todo._afficher_versions_supportees()
+        texte = sortie.getvalue()
+        self.assertIn(
+            f"{todo_i18n.t('To install it:')} make install_odoo_18", texte
+        )
+        self.assertNotIn(todo_i18n.t("Supported for Odoo"), texte)
+        self.assertIn(" ◀", texte)
+
+
+class TestPlanifierVenvs(unittest.TestCase):
+    VERSIONS = [
+        {
+            "erplibre_version": VERSION,
+            "odoo_version": "18.0",
+            "python_version": "3.12.16",
+            "poetry_version": "2.5.1",
+        },
+        {
+            "erplibre_version": "odoo17.0_python3.10.18",
+            "odoo_version": "17.0",
+            "python_version": "3.10.18",
+            "poetry_version": "1.8.3",
+        },
+    ]
+
+    def plan(self, venvs, sources):
+        return {
+            e["cible"]: e
+            for e in vm.planifier_venvs(self.VERSIONS, set(venvs), sources)
+        }
+
+    def test_un_venv_d_un_autre_patch_donne_une_mise_a_jour(self):
+        plan = self.plan({NON_SUPPORTEE}, {"18.0"})
+        self.assertEqual(vm.MISE_A_JOUR, plan[VERSION]["action"])
+        self.assertEqual(NON_SUPPORTEE, plan[VERSION]["depuis"])
+
+    def test_le_venv_supporte_present_est_a_jour(self):
+        plan = self.plan({VERSION, NON_SUPPORTEE}, {"18.0"})
+        self.assertEqual(vm.A_JOUR, plan[VERSION]["action"])
+        self.assertIsNone(plan[VERSION]["depuis"])
+
+    def test_des_sources_sans_venv_donnent_une_installation(self):
+        plan = self.plan(set(), {"17.0"})
+        self.assertEqual(
+            vm.INSTALLATION, plan["odoo17.0_python3.10.18"]["action"]
+        )
+        self.assertEqual(vm.SOURCES_ABSENTES, plan[VERSION]["action"])
+
+    def test_un_venv_incomplet_se_reprend(self):
+        plan = {
+            e["cible"]: e
+            for e in vm.planifier_venvs(
+                self.VERSIONS, {VERSION}, {"18.0"}, complets=set()
+            )
+        }
+        self.assertEqual(vm.REPRISE, plan[VERSION]["action"])
+
+    def test_un_venv_supporte_inactif_s_active(self):
+        plan = {
+            e["cible"]: e
+            for e in vm.planifier_venvs(
+                self.VERSIONS,
+                {VERSION, NON_SUPPORTEE},
+                {"18.0"},
+                active=NON_SUPPORTEE,
+            )
+        }
+        self.assertEqual(vm.MISE_A_JOUR, plan[VERSION]["action"])
+        self.assertEqual(NON_SUPPORTEE, plan[VERSION]["depuis"])
+
+    def test_sans_sources_pas_de_mise_a_jour(self):
+        plan = self.plan({NON_SUPPORTEE}, set())
+        self.assertEqual(vm.SOURCES_ABSENTES, plan[VERSION]["action"])
+
+    def test_la_plus_recente_d_abord(self):
+        cibles = [
+            e["cible"] for e in vm.planifier_venvs(self.VERSIONS, set(), set())
+        ]
+        self.assertEqual([VERSION, "odoo17.0_python3.10.18"], cibles)
+
+
+class TestVersionsPython(BancMenu):
+    """Installer ou mettre à jour les venvs sans la phase git."""
+
+    def preparer(self, venvs, sources=("18.0",), active=None, incomplets=()):
+        """Des venvs complets — interpréteur et Poetry — sauf ceux de
+        `incomplets`, qui n'ont qu'un dossier bin vide."""
+        shutil.rmtree(f".venv.{VERSION}")
+        for venv in list(venvs) + list(incomplets):
+            Path(f".venv.{venv}/bin").mkdir(parents=True)
+        for venv in venvs:
+            for outil in ("python", "poetry"):
+                Path(f".venv.{venv}/bin/{outil}").write_text("")
+        for odoo in sources:
+            Path(f"odoo{odoo}/odoo").mkdir(parents=True)
+            Path(f"odoo{odoo}/odoo/odoo-bin").write_text("")
+        Path(".erplibre-version").write_text((active or venvs[0]) + "\n")
+
+    def jouer(self, reponses, statuts=None):
+        sortie = io.StringIO()
+        statuts = iter(statuts or [])
+        self.todo.execute.exec_command_live.side_effect = lambda *a, **k: next(
+            statuts, 0
+        )
+        with (
+            patch("builtins.input", side_effect=list(reponses)) as question,
+            patch("sys.stdout", sortie),
+        ):
+            self.todo.execute_python_versions()
+        return sortie.getvalue(), question
+
+    def test_mise_a_jour_d_un_patch_ancien_sans_les_depots(self):
+        self.preparer([NON_SUPPORTEE])
+        texte, _ = self.jouer(["1", "o"])
+        self.assertIn(f"[1] {VERSION}", texte)
+        self.assertEqual(
+            [
+                f'./script/install/install_venv.sh "Odoo" .venv.{VERSION}'
+                " 3.12.16",
+                f"./script/version/update_env_version.py --erplibre_version"
+                f" {VERSION} --switch",
+                "EL_PHASE=poetry ./script/install/install_locally.sh",
+            ],
+            self.installe(),
+        )
+        for commande in self.installe():
+            self.assertNotIn("repo", commande)
+            self.assertNotIn("install_dev", commande)
+
+    def test_le_defaut_est_non(self):
+        self.preparer([NON_SUPPORTEE])
+        self.jouer(["1", ""])
+        self.assertEqual([], self.installe())
+
+    def test_un_venv_rate_n_active_rien(self):
+        # install_venv.sh échoue : ni --switch ni poetry, la version active
+        # ne bouge pas.
+        self.preparer([NON_SUPPORTEE])
+        texte, _ = self.jouer(["1", "o"], statuts=[1])
+        self.assertEqual(1, len(self.installe()), self.installe())
+        self.assertIn("❌", texte)
+
+    def test_une_autre_odoo_rend_la_main_a_celle_de_depart(self):
+        # Odoo 18 actif et à jour ; on installe le venv d'Odoo 17. La
+        # dernière cible laisse 17 active : on revient sur 18.
+        self.preparer([VERSION], sources=("18.0", "17.0"), active=VERSION)
+        self.jouer(["1", "o"])
+        commandes = self.installe()
+        self.assertIn(
+            "./script/version/update_env_version.py --erplibre_version"
+            " odoo17.0_python3.10.18 --switch",
+            commandes,
+        )
+        self.assertEqual(
+            "./script/version/update_env_version.py --erplibre_version"
+            f" {VERSION} --switch",
+            commandes[-1],
+        )
+
+    def test_rien_a_faire_ne_pose_aucune_question(self):
+        self.preparer([VERSION], active=VERSION)
+        texte, question = self.jouer([])
+        self.assertIn(
+            todo_i18n.t("No Python version to install or update."), texte
+        )
+        question.assert_not_called()
+
+    def test_l_ancien_venv_est_signale_et_garde(self):
+        self.preparer([VERSION, NON_SUPPORTEE], active=VERSION)
+        texte, _ = self.jouer([])
+        self.assertIn(f".venv.{NON_SUPPORTEE}", texte)
+        self.assertTrue(Path(f".venv.{NON_SUPPORTEE}").is_dir())
+
+    def test_un_venv_incomplet_est_propose_a_la_reprise(self):
+        # Une mise à jour coupée laisse le dossier du venv sans Poetry : il
+        # n'est pas « à jour », il se reprend.
+        self.preparer([NON_SUPPORTEE], incomplets=[VERSION])
+        texte, _ = self.jouer(["1", "o"])
+        self.assertIn(todo_i18n.t("incomplete venv: resume"), texte)
+        self.assertEqual(3, len(self.installe()))
+
+    def test_un_venv_supporte_inactif_est_propose_a_l_activation(self):
+        # Le venv 3.12.16 existe, mais .erplibre-version est encore 3.12.10.
+        self.preparer([VERSION, NON_SUPPORTEE], active=NON_SUPPORTEE)
+        texte, _ = self.jouer(["1", "o"])
+        self.assertIn(
+            f"{todo_i18n.t('activate instead of')} {NON_SUPPORTEE}", texte
+        )
+        self.assertIn(
+            "./script/version/update_env_version.py --erplibre_version"
+            f" {VERSION} --switch",
+            self.installe(),
+        )
+
+    def test_sans_sources_aucune_mise_a_jour_n_est_proposee(self):
+        self.preparer([NON_SUPPORTEE], sources=())
+        texte, question = self.jouer([])
+        self.assertIn(todo_i18n.t("Odoo sources missing: full install"), texte)
+        question.assert_not_called()
+
+    def test_le_retour_prevu_est_montre_avant_la_confirmation(self):
+        self.preparer([VERSION], sources=("18.0", "17.0"), active=VERSION)
+        texte, _ = self.jouer(["1", ""])
+        confirmation = texte[texte.index(todo_i18n.t("Will execute:")) :]
+        self.assertIn(
+            "./script/version/update_env_version.py --erplibre_version"
+            f" {VERSION} --switch",
+            confirmation,
+        )
+
+    def test_finir_sur_une_autre_odoo_avertit_pour_config_conf(self):
+        # Départ sur un patch non supporté, sans venv supporté pour lui : le
+        # retour est impossible, et la fin sur Odoo 17 doit être dite.
+        self.preparer([NON_SUPPORTEE], sources=("17.0",), active=NON_SUPPORTEE)
+
+        def executer(commande, **_kwargs):
+            if "--switch" in commande:
+                cible = commande.split("--erplibre_version ")[1].split()[0]
+                Path(".erplibre-version").write_text(cible + "\n")
+            return 0
+
+        self.todo.execute.exec_command_live.side_effect = executer
+        sortie = io.StringIO()
+        with (
+            patch("builtins.input", side_effect=["1", "o"]),
+            patch("sys.stdout", sortie),
+        ):
+            self.todo.execute_python_versions()
+        texte = sortie.getvalue()
+        self.assertIn("./script/generate_config.sh", texte)
+        self.assertIn("odoo17.0_python3.10.18", texte)
+
+    def test_une_cible_reussie_est_inscrite_dans_l_etat(self):
+        self.preparer([NON_SUPPORTEE])
+        self.jouer(["1", "o"])
+        etat = json.loads(Path(".erplibre-state.json").read_text())
+        entree = etat["odoo_versions"]["18.0"]
+        self.assertEqual("3.12.16", entree["python"])
+        self.assertEqual("2.5.1", entree["poetry"])
+        self.assertTrue(entree["installed"])
+
+    def test_une_cible_ratee_n_est_pas_inscrite(self):
+        self.preparer([NON_SUPPORTEE])
+        self.jouer(["1", "o"], statuts=[0, 0, 1])
+        etat_fichier = Path(".erplibre-state.json")
+        if etat_fichier.exists():
+            etat = json.loads(etat_fichier.read_text())
+            self.assertNotEqual(
+                "3.12.16",
+                etat["odoo_versions"].get("18.0", {}).get("python"),
+            )
+
+    def test_un_numero_invalide_redemande(self):
+        self.preparer([NON_SUPPORTEE])
+        texte, _ = self.jouer(["9", "1", ""])
+        self.assertIn(todo_i18n.t("Error, cannot understand value"), texte)
+        self.assertEqual([], self.installe())
 
 
 class TestLeMenu(unittest.TestCase):
