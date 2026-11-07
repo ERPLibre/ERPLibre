@@ -69,6 +69,12 @@ if [ "${EL_AUTO}" = "1" ] && [ -f "${EL_LIB}" ]; then
   if [ ${retSelect} -eq 130 ]; then
     exit 130
   fi
+  # « [0] Tous » : aucune base choisie, donc aucune à réveiller. Sans -d,
+  # chaque requête de la sonde tomberait sur le sélecteur de bases et
+  # remplirait le journal d'erreurs.
+  if [ ${retSelect} -eq "${EL_DB_TOUS:-10}" ]; then
+    EL_WARMUP=0
+  fi
   if [ -n "${EL_DB_NAME}" ]; then
     EL_DB=(-d "${EL_DB_NAME}")
   fi
@@ -94,10 +100,16 @@ if [ "${EL_WARMUP}" = "1" ] && [ "$ODOO_MODE_TEST" != "true" ] \
   trap '[ -n "${EL_WARMUP_PID}" ] && kill "${EL_WARMUP_PID}" 2>/dev/null' EXIT
 fi
 
+# Trois modes. Production (par défaut) : rien par-dessus config.conf. Test
+# (test.sh) : tests puis arrêt, sans HTTP. Développement (dev.sh) : HTTP et
+# workers de config.conf, limites de temps et de mémoire levées pour
+# qu'un point d'arrêt ne fasse pas tuer la requête qu'il suspend.
 if [ "$ODOO_MODE_TEST" = "true" ]; then
-  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --log-level=test --test-enable --no-http --stop-after-init "${EL_DB[@]}" "${EL_ARGS[@]}"
+  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --limit-memory-soft=0 --log-level=test --test-enable --no-http --stop-after-init "${EL_DB[@]}" "${EL_ARGS[@]}"
+elif [ "${ODOO_MODE_DEV:-}" = "true" ]; then
+  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --limit-memory-soft=0 "${EL_DB[@]}" "${EL_ARGS[@]}"
 else
-  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 "${EL_DB[@]}" "${EL_ARGS[@]}"
+  ./odoo_bin.sh -c "${CONFIG_PATH}" "${EL_DB[@]}" "${EL_ARGS[@]}"
 fi
 # When need more memory RAM for instance by force
 #python3 ./odoo/odoo-bin -c ${CONFIG_PATH} --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-soft=8589934592 --limit-memory-hard=10737418240 $@

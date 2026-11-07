@@ -23,7 +23,9 @@ when a real terminal is there — a service started by systemd behaves
 exactly as before.
 
 In that menu, `[0] All` starts Odoo without `-d`: every database stays
-served, and `/web/database/manager` lists them. `[q]` cancels without
+served, and `/web/database/manager` lists them. No warmup probe is sent:
+there is no database to wake, and its requests would land on the database
+selector. `[q]` cancels without
 starting anything. The menu follows `EL_LANG`, French or English, like the
 TODO CLI.
 
@@ -41,6 +43,18 @@ With arguments
 
 ```bash
 ./run.sh -h
+```
+
+Three launchers, which pass the same arguments to Odoo:
+
+| launcher | for | HTTP | workers | time and memory limits |
+|---|---|---|---|---|
+| `./run.sh` | production | yes | from `config.conf` | from `config.conf` |
+| `./dev.sh` | development | yes | from `config.conf` | lifted, so a breakpoint does not get its request killed |
+| `./test.sh` | module tests, then stop | no | forced to 0 | lifted |
+
+```bash
+./dev.sh -d ma_base
 ```
 
 ### Method 2

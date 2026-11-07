@@ -28,6 +28,7 @@ import unittest
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "run.sh"
+DEV = RACINE / "dev.sh"
 LIB = RACINE / "script" / "database" / "lib_db_select.sh"
 
 DELAI = 30
@@ -73,6 +74,7 @@ class Banc:
         chemin = pathlib.Path(self.dossier)
         (chemin / "script" / "database").mkdir(parents=True)
         shutil.copy(SCRIPT, chemin / "run.sh")
+        shutil.copy(DEV, chemin / "dev.sh")
         shutil.copy(LIB, chemin / "script" / "database" / "lib_db_select.sh")
         (chemin / "config.conf").write_text(config, encoding="utf-8")
         stub = chemin / "odoo_bin.sh"
@@ -86,6 +88,7 @@ class Banc:
         # des messages dépendrait de l'environnement de qui lance la suite.
         milieu = dict(os.environ)
         milieu.pop("ODOO_MODE_TEST", None)
+        milieu.pop("ODOO_MODE_DEV", None)
         milieu.pop("ODOO_MODE_COVERAGE", None)
         milieu["EL_LANG"] = "fr"
         if env:
@@ -218,14 +221,43 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
         self.assertIn("ARGS:", res.stdout)
         self.assertNotIn("[-d]", res.stdout)
 
-    def test_the_forwarded_line_is_byte_for_byte_what_it_always_was(self):
+    def test_production_forces_nothing_over_config_conf(self):
+        # run.sh est le lanceur de production : les limites de temps et de
+        # mémoire viennent de config.conf, et aucune option de la ligne de
+        # commande ne vient les écraser.
         res = self.banc.lancer()
         self.assertEqual(
+            "ARGS:[-c][./config.conf]", res.stdout.strip(), res.stderr
+        )
+
+    def test_dev_mode_lifts_the_limits_and_keeps_http(self):
+        # dev.sh : HTTP actif et workers de config.conf, contrairement à
+        # test.sh ; seules les limites de temps et de mémoire sont levées.
+        res = self.banc.lancer(env={"ODOO_MODE_DEV": "true"})
+        self.assertEqual(
             "ARGS:[-c][./config.conf][--limit-time-real][99999]"
-            "[--limit-time-cpu][99999][--limit-memory-hard=0]",
+            "[--limit-time-cpu][99999][--limit-memory-hard=0]"
+            "[--limit-memory-soft=0]",
             res.stdout.strip(),
             res.stderr,
         )
+        for absent in ("--no-http", "--stop-after-init", "--test-enable"):
+            self.assertNotIn(absent, res.stdout)
+        self.assertNotIn("--workers", res.stdout)
+
+    def test_dev_sh_passes_its_arguments_in_dev_mode(self):
+        res = subprocess.run(
+            ["./dev.sh", "-d", "demo"],
+            cwd=self.banc.dossier,
+            capture_output=True,
+            text=True,
+            timeout=DELAI,
+            input="",
+            env=self.banc.milieu(),
+        )
+        self.assertIn("[--limit-time-real][99999]", res.stdout, res.stderr)
+        self.assertIn("[-d][demo]", res.stdout, res.stderr)
+        self.assertNotIn("--no-http", res.stdout)
 
     def test_an_empty_argument_and_one_with_spaces_survive(self):
         # « ./run.sh -d $(bd) » de make.robotlibre produit un -d vide dès
@@ -236,6 +268,9 @@ class TestNothingHappensWhereNobodyAsked(BancTest):
     def test_the_test_mode_branch_behaves_the_same(self):
         res = self.banc.lancer(env={"ODOO_MODE_TEST": "true"})
         self.assertIn("[--test-enable]", res.stdout, res.stderr)
+        self.assertIn(
+            "[--limit-memory-hard=0][--limit-memory-soft=0]", res.stdout
+        )
         self.assertNotIn("[-d]", res.stdout)
         self.assertFalse(self.banc.sonde_appelee())
 
@@ -524,6 +559,44 @@ class TestTheMenuBehindARealTerminal(unittest.TestCase):
                 )
                 self.assertIn(f"{debut}[q] Annuler\033[0m", texte, texte)
 
+    def avec_sonde(self):
+        """Un banc dont la sonde de réveil laisse une trace, et dont le faux
+        Odoo dure une seconde : le temps qu'elle démarre, lancée en
+        parallèle, avant que run.sh ne la tue en sortant."""
+        bouchon = (
+            "#!/usr/bin/env bash\n"
+            'case "$1" in\n'
+            "  db) printf '%s\\n' demo prod ;;\n"
+            "  *) printf 'ARGS:'; printf '[%s]' \"$@\"; printf '\\n';"
+            " sleep 1 ;;\n"
+            "esac\n"
+        )
+        banc = Banc(bouchon)
+        self.addCleanup(banc.nettoyer)
+        sonde = banc.chemin / "script" / "odoo"
+        sonde.mkdir(parents=True)
+        (sonde / "warmup_http.py").write_text(
+            "import pathlib\npathlib.Path('SONDE_REVEIL').touch()\n",
+            encoding="utf-8",
+        )
+        return banc
+
+    def test_all_launches_no_warmup(self):
+        # Sans base choisie, chaque requête de la sonde tomberait sur le
+        # sélecteur de bases et remplirait le journal d'erreurs.
+        banc = self.avec_sonde()
+        code, texte = banc.conduire(frappe="0\n")
+        self.assertEqual(0, code, texte)
+        self.assertIn("ARGS:", texte, texte)
+        self.assertFalse((banc.chemin / "SONDE_REVEIL").exists(), texte)
+
+    def test_a_chosen_database_still_gets_its_warmup(self):
+        banc = self.avec_sonde()
+        code, texte = banc.conduire(frappe="1\n")
+        self.assertEqual(0, code, texte)
+        self.assertIn("[-d][demo]", texte, texte)
+        self.assertTrue((banc.chemin / "SONDE_REVEIL").exists(), texte)
+
     def test_the_menu_speaks_english_when_asked(self):
         code, texte = self.banc().conduire(frappe="0\n", env={"EL_LANG": "en"})
         self.assertEqual(0, code, texte)
@@ -583,12 +656,13 @@ class TestTheLibraryOnItsOwn(unittest.TestCase):
 
     def test_all_writes_nothing_at_all_to_stdout(self):
         # run.sh n'ajoute « -d » que si stdout porte un nom : « Tous » doit
-        # le laisser vide, et rendre 0 pour ne pas être lu comme un refus.
+        # le laisser vide, et rendre son propre code — ni 0, qui lancerait
+        # la sonde de réveil, ni 130, qui renoncerait.
         res = self.bash(
             "el_db_choose alpha zebre; echo rc=$? >&2", entree="0\n"
         )
         self.assertEqual("", res.stdout, res.stdout)
-        self.assertIn("rc=0", res.stderr)
+        self.assertIn("rc=10", res.stderr)
 
     def test_a_leading_zero_is_decimal_not_octal(self):
         # En arithmétique bash, « 08 » est un octal invalide : le choix
@@ -619,7 +693,7 @@ class TestTheLibraryOnItsOwn(unittest.TestCase):
     def test_zeros_alone_mean_all(self):
         res = self.bash("el_db_choose a b; echo rc=$? >&2", entree="00\n")
         self.assertEqual("", res.stdout, res.stdout)
-        self.assertIn("rc=0", res.stderr)
+        self.assertIn("rc=10", res.stderr)
         self.assertIn("Aucune base", res.stderr)
 
     def test_env_var_sh_wins_over_the_environment(self):
