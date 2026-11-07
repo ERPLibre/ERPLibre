@@ -557,7 +557,9 @@ class TestPython27SeCompileAvecDesSondesJustes(unittest.TestCase):
         for nom, corps in (
             ("pyenv", f'echo "$1 [$PYTHON_CFLAGS]" >> "{self.trace}"\n'),
             ("git", ""),
-            ("gcc", ""),
+            # Le préprocesseur trouve chaque en-tête : la vérification des
+            # en-têtes de CPython passe, et pyenv est appelé.
+            ("gcc", "exit 0\n"),
         ):
             chemin = self.faux / nom
             chemin.write_text("#!/bin/bash\n" + corps + "exit 1\n")
