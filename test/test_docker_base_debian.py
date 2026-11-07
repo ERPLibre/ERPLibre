@@ -143,7 +143,9 @@ class TestWkhtmltopdf(unittest.TestCase):
         empreintes = dict(
             re.findall(r"([\w*]+:\w+)\)[^;]*?wk_sha1=([0-9a-f]{40})", table)
         )
-        self.assertEqual({"buster:amd64", "*:amd64", "*:arm64"}, set(empreintes))
+        self.assertEqual(
+            {"buster:amd64", "*:amd64", "*:arm64"}, set(empreintes)
+        )
         self.assertIn('buster:*) wk_sha1="" ;;', table)
         self.assertIn('*) wk_sha1="" ;;', table)
 
@@ -151,10 +153,13 @@ class TestWkhtmltopdf(unittest.TestCase):
         """trixie n'a pas de build : seul buster change de série et de
         Debian, 0.12.6.1 n'en ayant aucun pour lui."""
         self.assertIn(
-            'wk_version="${WKHTMLTOX_VERSION}" && wk_debian=bookworm', DOCKERFILE
+            'wk_version="${WKHTMLTOX_VERSION}" && wk_debian=bookworm',
+            DOCKERFILE,
         )
         self.assertIn("wk_version=0.12.6-1 && wk_debian=buster", self._table())
-        self.assertIn("wkhtmltox_${wk_version}.${wk_debian}_${arch}.deb", DOCKERFILE)
+        self.assertIn(
+            "wkhtmltox_${wk_version}.${wk_debian}_${arch}.deb", DOCKERFILE
+        )
 
     def test_sans_build_l_image_le_dit(self):
         self.assertIn("aucun build pour ${arch}", DOCKERFILE)
@@ -171,7 +176,9 @@ class TestWkhtmltopdf(unittest.TestCase):
     def test_l_architecture_ne_depend_pas_de_buildkit(self):
         """Sans BuildKit, TARGETARCH est vide : amd64 perdrait wkhtmltopdf
         sans un mot."""
-        self.assertIn('arch="${TARGETARCH:-$(dpkg --print-architecture)}"', DOCKERFILE)
+        self.assertIn(
+            'arch="${TARGETARCH:-$(dpkg --print-architecture)}"', DOCKERFILE
+        )
 
     def test_le_script_ne_choisit_plus_le_deb(self):
         self.assertNotIn("URL_WKHTMLTOX", TEXTE)
@@ -185,7 +192,9 @@ class TestPostgresql(unittest.TestCase):
 
     def test_pgdg_seulement_la_ou_il_publie(self):
         self.assertIn("amd64|arm64)", self.bloc)
-        self.assertIn("client=postgresql-client-${PG_CLIENT_VERSION}", self.bloc)
+        self.assertIn(
+            "client=postgresql-client-${PG_CLIENT_VERSION}", self.bloc
+        )
         self.assertIn("ARG PG_CLIENT_VERSION=18", DOCKERFILE)
         self.assertIn("*) client=postgresql-client ;;", self.bloc)
 
@@ -206,7 +215,9 @@ class TestPostgresql(unittest.TestCase):
         self.assertIn("${DEBIAN_NAME}-pgdg main", self.bloc)
         redeclare = DOCKERFILE.index("\nARG DEBIAN_NAME\n")
         self.assertLess(DOCKERFILE.index("FROM "), redeclare)
-        self.assertLess(redeclare, DOCKERFILE.index("# Le client PostgreSQL 18"))
+        self.assertLess(
+            redeclare, DOCKERFILE.index("# Le client PostgreSQL 18")
+        )
 
 
 class TestCompilationSansWheel(unittest.TestCase):

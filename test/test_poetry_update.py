@@ -47,20 +47,26 @@ class TestResolveMarker(unittest.TestCase):
 
     def test_python_version_marker_of_the_target_is_kept_bare(self):
         self.assertEqual(
-            P.resolve_marker("paquet==2.0.0 ; python_version >= '3.12'", "3.12.16"),
+            P.resolve_marker(
+                "paquet==2.0.0 ; python_version >= '3.12'", "3.12.16"
+            ),
             ("paquet==2.0.0", "paquet", ""),
         )
 
     def test_python_version_marker_of_another_python_is_dropped(self):
         self.assertIsNone(
-            P.resolve_marker("paquet==1.0.0; python_version < '3.12'", "3.12.16")
+            P.resolve_marker(
+                "paquet==1.0.0; python_version < '3.12'", "3.12.16"
+            )
         )
 
     def test_target_python_wins_over_the_running_one(self):
         # Le Python qui lance le script n'a pas d'importance : la cible 3.8
         # retient la branche « < 3.12 », quel que soit l'interpréteur courant.
         self.assertEqual(
-            P.resolve_marker("paquet==1.0.0; python_version < '3.12'", "3.8.20"),
+            P.resolve_marker(
+                "paquet==1.0.0; python_version < '3.12'", "3.8.20"
+            ),
             ("paquet==1.0.0", "paquet", ""),
         )
 
@@ -87,7 +93,9 @@ class TestVersionClauses(unittest.TestCase):
         )
 
     def test_single_clause_and_wildcard(self):
-        self.assertEqual(P.version_clauses("paquet==2.0.*"), [("==", P.Version("2.0"))])
+        self.assertEqual(
+            P.version_clauses("paquet==2.0.*"), [("==", P.Version("2.0"))]
+        )
         self.assertEqual(
             P.version_clauses("paquet==3.0.0b7"),
             [("==", P.Version("3.0.0b7"))],
@@ -122,7 +130,9 @@ class TestManifestExternalDependencies(unittest.TestCase):
     def test_marker_lines_join_the_bare_name(self):
         dct = defaultdict(set)
         dct["paquet"].add("paquet==3.0.0")
-        result = P.get_manifest_external_dependencies(self.config, dct, LST_SIGN)
+        result = P.get_manifest_external_dependencies(
+            self.config, dct, LST_SIGN
+        )
         # La branche de la cible rejoint la clé « paquet », où l'arbitrage
         # des versions la confronte à l'épingle déjà présente ; l'autre part.
         self.assertEqual(result["paquet"], {"paquet==3.0.0", "paquet==2.0.0"})
@@ -221,12 +231,14 @@ class TestPoetryAddFailure(unittest.TestCase):
                 set_version_python="3.12.16",
                 set_version_erplibre="odoo18.0_python3.12.16",
             )
-            with patch.object(P, "get_config", return_value=config), patch.object(
-                P, "combine_requirements"
-            ), patch.object(
-                P,
-                "call_poetry_add_build_dependency",
-                return_value=False,
+            with (
+                patch.object(P, "get_config", return_value=config),
+                patch.object(P, "combine_requirements"),
+                patch.object(
+                    P,
+                    "call_poetry_add_build_dependency",
+                    return_value=False,
+                ),
             ):
                 with self.assertRaises(SystemExit) as fin:
                     P.main()
