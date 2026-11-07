@@ -103,10 +103,11 @@ pyenv_update:
 	~/.pyenv/bin/pyenv update
 
 # mise pose un CPython PRECOMPILE la ou pyenv le compile : quelques secondes
-# contre une a trois minutes, et aucun paquet -dev requis. Volontairement
-# EXPLICITE : « curl | sh » engage, et ce n'est pas a un script d'installation
-# de le decider a la place de l'utilisateur. Une fois mise present,
-# EL_PYTHON_PROVIDER=auto s'en sert tout seul.
+# contre une a trois minutes, et aucun paquet -dev requis. Jamais pose sans
+# accord : « curl | sh » engage. L'installation le propose devant un
+# terminal, juste avant que pyenv ne compile, avec non par defaut ; cette
+# cible le pose sur demande. Une fois mise present, EL_PYTHON_PROVIDER=auto
+# s'en sert tout seul.
 #
 # Pas de binaire s390x publie a ce jour : sur cette architecture, la cible
 # le dit et n'installe rien.
@@ -129,33 +130,15 @@ install_uv:
 		echo "Ajoutez ce repertoire au PATH, ou installez uv globalement."; \
 	fi
 
-# Telecharge puis execute : dans « curl | sh », le statut est celui de sh,
-# qui rend 0 sur une entree vide et masque un telechargement rate.
+# La pose elle-meme vit dans lib_python_provider.sh, que l'installation
+# appelle aussi quand elle propose mise avant de compiler : une seule facon
+# de poser mise. 2 = aucun binaire pour cette plateforme (s390x), ce qui
+# n'est pas une erreur : on reste sur pyenv.
 .PHONY: install_mise
 install_mise:
-	@if command -v mise >/dev/null 2>&1; then \
-		echo "mise deja present : $$(mise --version)"; \
-	elif command -v pacman >/dev/null 2>&1; then \
-		sudo pacman -S --needed --noconfirm mise; \
-	elif [ "$$(uname -m)" = "s390x" ]; then \
-		echo "mise ne publie pas de binaire s390x : on reste sur pyenv."; \
-	else \
-		echo "Installation de mise depuis https://mise.run"; \
-		installateur="$$(mktemp)" || exit 1; \
-		if ! curl -fsSL -o "$$installateur" https://mise.run; then \
-			rm -f "$$installateur"; \
-			echo "Telechargement de l installateur mise impossible" \
-				"(reseau ou cache) : mise n est pas pose." >&2; \
-			exit 1; \
-		fi; \
-		if ! sh "$$installateur"; then \
-			rm -f "$$installateur"; \
-			echo "L installateur de mise a echoue (voir ci-dessus)." >&2; \
-			exit 1; \
-		fi; \
-		rm -f "$$installateur"; \
-		echo "Ajoutez ~/.local/bin a votre PATH, puis relancez l installation."; \
-	fi
+	@bash -c '. ./script/install/lib_python_provider.sh; el_mise_poser; rc=$$?; \
+		if [ $$rc -eq 0 ]; then el_mise_proposer_permanent; \
+		elif [ $$rc -ne 2 ]; then exit 1; fi'
 
 .PHONY: db_create_db_test
 db_create_db_test:

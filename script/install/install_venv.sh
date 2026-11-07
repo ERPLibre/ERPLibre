@@ -112,8 +112,9 @@ PYTHON_EXEC="$(el_python_exec "${PYTHON_VERSION}" "${EXIGENCE}")"
 if [[ -z "${PYTHON_EXEC}" ]] || [[ ! -x "${PYTHON_EXEC}" ]]; then
   echo "Aucun interpreteur Python ${PYTHON_VERSION} n'a pu etre obtenu."
   echo "  Fournisseur demande : ${EL_PYTHON_PROVIDER:-auto}"
-  if command -v mise > /dev/null 2>&1; then
-    echo "  Voir : mise install python@${PYTHON_VERSION}   (reseau requis)"
+  if el_mise_cmd > /dev/null; then
+    echo "  Voir : $(el_mise_cmd) install python@${PYTHON_VERSION}" \
+      "  (reseau requis)"
   else
     echo "  Voir 'make install_mise', ou installez pyenv."
   fi
