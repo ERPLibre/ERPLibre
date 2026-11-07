@@ -489,6 +489,18 @@ class TestTheMenuBehindARealTerminal(unittest.TestCase):
         self.assertLess(menu.index("[0] Tous"), menu.index("[1] demo"), menu)
         self.assertLess(menu.index("[2] prod"), menu.index("[q] Annuler"))
 
+    def test_cancel_is_powder_blue_like_the_todo_back_entry(self):
+        # Les mêmes séquences que script/todo/todo_couleur.py.
+        for colorterm, debut in (
+            ("", "\033[38;5;152m"),
+            ("truecolor", "\033[38;2;176;224;230m"),
+        ):
+            with self.subTest(colorterm=colorterm):
+                code, texte = self.banc().conduire(
+                    frappe="q\n", env={"COLORTERM": colorterm}
+                )
+                self.assertIn(f"{debut}[q] Annuler\033[0m", texte, texte)
+
     def test_the_menu_speaks_english_when_asked(self):
         code, texte = self.banc().conduire(frappe="0\n", env={"EL_LANG": "en"})
         self.assertEqual(0, code, texte)

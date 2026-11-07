@@ -23,6 +23,18 @@
 : "${Color_Off:=\033[0m}"
 # Orange clair, en 256 couleurs : l'entrée « Tous » se détache des bases.
 : "${Light_Orange:=\033[38;5;215m}"
+# Bleu poudre (#B0E0E6), celui de « [0] Retour » et « [0] Quitter » du
+# TODO (script/todo/todo_couleur.py) : en couleur vraie quand COLORTERM
+# l'annonce, sinon le plus proche des 256 couleurs (152, #AFD7D7).
+if [ -z "${Powder_Blue:-}" ]; then
+  # Les deux casses à la main : « ${COLORTERM,,} » exige bash 4, et
+  # macOS livre encore bash 3.2.
+  case "${COLORTERM:-}" in
+    truecolor | TRUECOLOR | 24bit | 24BIT)
+      Powder_Blue='\033[38;2;176;224;230m' ;;
+    *) Powder_Blue='\033[38;5;152m' ;;
+  esac
+fi
 
 _el_db_say() {
   echo -e "$*" >&2
@@ -151,7 +163,7 @@ el_db_choose() {
       _el_db_say "  [${rang}] ${nom}"
       rang=$((rang + 1))
     done
-    _el_db_say "  [q] $(_el_db_t "Annuler" "Cancel")"
+    _el_db_say "  ${Powder_Blue}[q] $(_el_db_t "Annuler" "Cancel")${Color_Off}"
     printf '%s' "$(_el_db_t "Choix : " "Choice: ")" >&2
     # shellcheck disable=SC2162
     if ! read -r choix; then

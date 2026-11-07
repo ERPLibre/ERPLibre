@@ -143,7 +143,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.todo_couleur import retour
+from script.todo.todo_couleur import quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -273,7 +273,7 @@ class TODO(
 [4] {t("Navigation telemetry (TUI)")}
 [5] {t("Configuration")}
 [6] {t("Healthcheck")}
-[0] 🚪 {t("Quit")}
+{quitter()}
 """
         while True:
             try:
