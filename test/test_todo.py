@@ -7,6 +7,7 @@ import builtins
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -852,37 +853,214 @@ class TestSelectDatabase(unittest.TestCase):
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
-    @patch("builtins.input")
-    def test_restore_by_filename(self, mock_input):
-        todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
-        )
-        # status="1" (by filename), db name default, no neutralize
-        mock_input.side_effect = ["1", "", "n", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
-        self.assertIn("db_restore.py", cmd)
+    """Réponses, dans l'ordre : source, fichier, nom, cache, neutraliser,
+    puis la mise à jour — avant ET après la neutralisation, ou une seule
+    sans. Le dossier courant est un dépôt jetable dont image_db/ porte
+    « backup.zip »."""
 
-    @patch("builtins.input")
-    def test_restore_with_neutralize(self, mock_input):
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="el_restore_")
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+        os.makedirs(os.path.join(self.dossier, "image_db"))
+        open(os.path.join(self.dossier, "image_db", "backup.zip"), "w").close()
+        cwd = patch(
+            "script.todo.database_manager.os.getcwd", return_value=self.dossier
+        )
+        cwd.start()
+        self.addCleanup(cwd.stop)
+
+    def restaurer(self, reponses, statuts=None):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
-        )
-        mock_input.side_effect = ["1", "mydb", "y", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
+        if statuts is None:
+            todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        else:
+            todo.db_manager._execute.exec_command_live.side_effect = [
+                (statut, []) for statut in statuts
+            ]
+        with patch("builtins.input", side_effect=reponses):
+            todo.db_manager.restore_from_database()
+        return [
+            appel[0][0]
+            for appel in (
+                todo.db_manager._execute.exec_command_live.call_args_list
+            )
         ]
-        self.assertIn("--neutralize", cmd)
-        self.assertIn("mydb_neutralize", cmd)
+
+    def test_restore_by_filename(self):
+        # source « 1 », nom par défaut, cache non, pas de neutralisation,
+        # pas de mise à jour
+        cmds = self.restaurer(["1", "backup", "", "", "n", ""])
+        self.assertEqual(1, len(cmds), cmds)
+        self.assertIn("db_restore.py", cmds[0])
+        self.assertNotIn("--neutralize", cmds[0])
+
+    def test_restore_with_neutralize(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "y", "", ""])
+        self.assertIn("--neutralize", cmds[0])
+        self.assertIn("mydb_neutralize", cmds[0])
+        self.assertIn("update_prod_to_dev.sh mydb_neutralize", cmds[1])
+        self.assertEqual(2, len(cmds), cmds)
+
+    def test_neutralize_is_the_default(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "", "", ""])
+        self.assertIn("--neutralize", cmds[0])
+
+    def test_non_in_french_refuses_neutralization(self):
+        # Comparer à « n » seul faisait de « non » un oui.
+        cmds = self.restaurer(["1", "backup", "mydb", "", "non", ""])
+        self.assertNotIn("--neutralize", cmds[0])
+        self.assertNotIn("_neutralize", cmds[0])
+
+    def test_cache_is_off_by_default(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "n", ""])
+        self.assertIn("--ignore_cache", cmds[0])
+
+    def questions_posees(self, reponses):
+        questions = []
+        suite = iter(reponses)
+
+        def repondre(question):
+            questions.append(question)
+            return next(suite)
+
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        with patch("builtins.input", side_effect=repondre):
+            todo.db_manager.restore_from_database()
+        return questions
+
+    def test_every_yes_no_question_shows_its_default(self):
+        # Avec et sans neutralisation : les quatre questions oui/non
+        # possibles, chacune avec son défaut en toutes lettres.
+        for reponses, attendu in (
+            (["1", "backup", "mydb", "", "", "", ""], 4),
+            (["1", "backup", "mydb", "", "n", ""], 3),
+        ):
+            with self.subTest(reponses=reponses):
+                oui_non = [
+                    q
+                    for q in self.questions_posees(reponses)
+                    if re.search(r"\((o|O|y|Y)/(n|N)", q)
+                ]
+                self.assertEqual(attendu, len(oui_non), oui_non)
+                for question in oui_non:
+                    self.assertRegex(
+                        question, r"(défaut : [ON]|default: [YN])", question
+                    )
+
+    def test_the_whole_flow_speaks_one_language(self):
+        # Tout ce que la restauration montre — menu de la source, questions,
+        # messages — passe par t() : rien ne reste dans l'autre langue.
+        reponses = ["1", "absent", "backup", "mydb", "", "", "", ""]
+        for langue, etranger in (
+            ("fr", ("By file", "Browse", "Select", "Database name", "Update")),
+            ("en", ("Par nom", "Parcourir", "Sélection", "Nom de la base")),
+        ):
+            with self.subTest(langue=langue):
+                sortie = io.StringIO()
+                with (
+                    patch.object(todo_i18n, "_current_lang", langue),
+                    patch("sys.stdout", sortie),
+                ):
+                    questions = self.questions_posees(reponses)
+                texte = sortie.getvalue() + "\n".join(questions)
+                for mot in etranger:
+                    self.assertNotIn(mot, texte, texte)
+
+    def test_the_defaults_shown_are_the_defaults_applied(self):
+        # Tout à Entrée : pas de cache, neutralisation, aucune mise à jour.
+        cmds = self.restaurer(["1", "backup", "mydb", "", "", "", ""])
+        self.assertEqual(2, len(cmds), cmds)
+        self.assertIn("--ignore_cache", cmds[0])
+        self.assertIn("--neutralize", cmds[0])
+        self.assertIn("update_prod_to_dev.sh", cmds[1])
+
+    def test_cache_on_request_drops_ignore_cache(self):
+        for oui in ("y", "o", "oui"):
+            with self.subTest(oui=oui):
+                cmds = self.restaurer(["1", "backup", "mydb", oui, "n", ""])
+                self.assertNotIn("--ignore_cache", cmds[0])
+
+    def test_update_before_and_after_neutralizing(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "y", "o", "o"])
+        self.assertEqual(4, len(cmds), cmds)
+        self.assertIn("db_restore.py", cmds[0])
+        self.assertIn("update_addons_all.sh mydb_neutralize", cmds[1])
+        self.assertIn("update_prod_to_dev.sh mydb_neutralize", cmds[2])
+        self.assertIn("update_addons_all.sh mydb_neutralize", cmds[3])
+
+    def test_update_only_before(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "y", "o", ""])
+        self.assertEqual(3, len(cmds), cmds)
+        self.assertIn("update_addons_all.sh", cmds[1])
+        self.assertIn("update_prod_to_dev.sh", cmds[2])
+
+    def test_update_without_neutralizing(self):
+        cmds = self.restaurer(["1", "backup", "mydb", "", "n", "y"])
+        self.assertEqual(2, len(cmds), cmds)
+        self.assertIn("update_addons_all.sh mydb", cmds[1])
+        self.assertNotIn("_neutralize", cmds[1])
+
+    def test_every_question_comes_before_the_first_command(self):
+        # Une question posée APRÈS la restauration lèverait StopIteration
+        # ici : le side_effect est épuisé, et rien ne l'attend.
+        todo = TODO()
+        ordre = []
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.side_effect = (
+            lambda *a, **k: ordre.append("cmd") or (0, [])
+        )
+
+        reponses = iter(["1", "backup", "mydb", "", "y", "o", "o"])
+
+        def repondre(_question):
+            ordre.append("question")
+            return next(reponses)
+
+        with patch("builtins.input", side_effect=repondre):
+            todo.db_manager.restore_from_database()
+        self.assertEqual(["question"] * 7 + ["cmd"] * 4, ordre)
+
+    def test_a_failed_step_stops_the_chain(self):
+        cmds = self.restaurer(
+            ["1", "backup", "mydb", "", "y", "o", "o"], statuts=[0, 1, 0, 0]
+        )
+        self.assertEqual(2, len(cmds), cmds)
+        self.assertIn("update_addons_all.sh", cmds[1])
+
+    def test_a_failed_restore_runs_nothing_else(self):
+        cmds = self.restaurer(
+            ["1", "backup", "mydb", "", "y", "", ""], statuts=[1]
+        )
+        self.assertEqual(1, len(cmds), cmds)
+
+    def test_a_name_without_zip_finds_the_archive(self):
+        cmds = self.restaurer(["1", "backup", "", "", "n", ""])
+        self.assertIn("--image backup.zip", cmds[0])
+        self.assertIn("-d backup ", cmds[0])
+
+    def test_a_missing_file_is_asked_again(self):
+        cmds = self.restaurer(["1", "absent", "backup.zip", "", "", "n", ""])
+        self.assertEqual(1, len(cmds), cmds)
+        self.assertIn("--image backup.zip", cmds[0])
+
+    def test_an_empty_name_restores_nothing(self):
+        cmds = self.restaurer(["1", ""])
+        self.assertEqual([], cmds)
+
+    def test_leaving_the_browser_restores_nothing(self):
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        with (
+            patch.object(
+                todo.db_manager, "open_file_image_db", return_value=""
+            ),
+            patch("builtins.input", side_effect=[""]),
+        ):
+            todo.db_manager.restore_from_database()
+        todo.db_manager._execute.exec_command_live.assert_not_called()
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):

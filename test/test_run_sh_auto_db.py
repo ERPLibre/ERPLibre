@@ -80,15 +80,23 @@ class Banc:
         stub.chmod(0o755)
         self.chemin = chemin
 
+    @staticmethod
+    def milieu(env=None):
+        # Le banc n'a pas d'env_var.sh : sans EL_LANG fixé ici, la langue
+        # des messages dépendrait de l'environnement de qui lance la suite.
+        milieu = dict(os.environ)
+        milieu.pop("ODOO_MODE_TEST", None)
+        milieu.pop("ODOO_MODE_COVERAGE", None)
+        milieu["EL_LANG"] = "fr"
+        if env:
+            milieu.update(env)
+        return milieu
+
     def sonde_appelee(self):
         return (self.chemin / "SONDE_APPELEE").exists()
 
     def lancer(self, *argv, env=None, entree=None):
-        milieu = dict(os.environ)
-        milieu.pop("ODOO_MODE_TEST", None)
-        milieu.pop("ODOO_MODE_COVERAGE", None)
-        if env:
-            milieu.update(env)
+        milieu = self.milieu(env)
         return subprocess.run(
             ["./run.sh", *argv],
             cwd=self.dossier,
@@ -99,7 +107,7 @@ class Banc:
             env=milieu,
         )
 
-    def conduire(self, *argv, frappe=""):
+    def conduire(self, *argv, frappe="", env=None):
         """Derrière un vrai pseudo-terminal — le seul `-t 0` et `-t 2` vrais."""
         maitre, esclave = pty.openpty()
         proc = subprocess.Popen(
@@ -109,6 +117,7 @@ class Banc:
             stdout=esclave,
             stderr=esclave,
             close_fds=True,
+            env=self.milieu(env),
         )
         os.close(esclave)
         if frappe:
@@ -371,8 +380,8 @@ class TestWhatTheProbeReturns(unittest.TestCase):
         self.assertNotIn("[-d]", res.stdout)
         self.assertNotIn("Traceback", res.stdout)
         self.assertNotIn("OperationalError", res.stdout)
-        # …et le message doit dire « je n'ai pas pu lire », pas « il n'y
-        # en a pas ». Les deux mènent au même démarrage, mais pas au même
+        # …et le message doit dire que la lecture a échoué, pas qu'il n'y a
+        # aucune base. Les deux mènent au même démarrage, mais pas au même
         # endroit où chercher : PostgreSQL à terre n'est pas une machine
         # neuve. Le CLI d'Odoo confond déjà les deux en rendant 0 sur une
         # liste vide ; au moins ne pas ajouter notre propre confusion là
@@ -385,6 +394,29 @@ class TestWhatTheProbeReturns(unittest.TestCase):
         res = banc.lancer("--auto-erplibre")
         self.assertIn("Aucune base", res.stderr, res.stderr)
         self.assertNotIn("lister", res.stderr, res.stderr)
+
+    def test_the_warnings_speak_english_when_asked(self):
+        # Chaque message hors menu, en anglais : le banc n'a pas
+        # d'env_var.sh, EL_LANG décide seul.
+        en = {"EL_LANG": "en"}
+        cas = (
+            (SONDE_CASSEE, (), "Cannot list the databases"),
+            (AUCUNE_BASE, (), "No database; Odoo starts on its web manager"),
+            (UNE_BASE, (), "A single database: demo"),
+            (
+                TROIS_BASES,
+                ("--no-cli-erplibre",),
+                "databases and --no-cli-erplibre: none is preselected",
+            ),
+            (TROIS_BASES, (), "but no terminal to choose from"),
+        )
+        for bouchon, options, attendu in cas:
+            with self.subTest(attendu=attendu):
+                banc = self.banc(bouchon)
+                res = banc.lancer("--auto-erplibre", *options, env=en)
+                self.assertIn(attendu, res.stderr, res.stderr)
+                self.assertNotIn("présélectionnée", res.stderr)
+                self.assertNotIn("Une seule base", res.stderr)
 
     def test_a_configuration_that_names_its_database_is_left_alone(self):
         # L'option de ligne de commande l'emporte sur le fichier : injecter
@@ -458,9 +490,47 @@ class TestTheMenuBehindARealTerminal(unittest.TestCase):
 
     def test_cancelling_starts_nothing_and_returns_130(self):
         # 130, pas 1 : run.sh réserve déjà 1 à « Odoo a échoué ».
+        for frappe in ("q\n", "Q\n"):
+            with self.subTest(frappe=frappe):
+                code, texte = self.banc().conduire(frappe=frappe)
+                self.assertEqual(130, code, texte)
+                self.assertNotIn("ARGS:", texte, texte)
+
+    def test_all_starts_odoo_without_any_database(self):
+        # « [0] Tous » : Odoo démarre, mais sans -d — toutes les bases
+        # restent servies et /web/database/manager les liste.
         code, texte = self.banc().conduire(frappe="0\n")
-        self.assertEqual(130, code, texte)
-        self.assertNotIn("ARGS:", texte, texte)
+        self.assertEqual(0, code, texte)
+        self.assertIn("ARGS:", texte, texte)
+        self.assertNotIn("[-d]", texte, texte)
+        self.assertIn("/web/database/manager", texte, texte)
+
+    def test_all_comes_first_in_light_orange(self):
+        code, texte = self.banc().conduire(frappe="0\n")
+        menu = texte[texte.index("Laquelle") :]
+        self.assertIn("\033[38;5;215m[0] Tous", menu, menu)
+        self.assertLess(menu.index("[0] Tous"), menu.index("[1] demo"), menu)
+        self.assertLess(menu.index("[2] prod"), menu.index("[q] Annuler"))
+
+    def test_cancel_is_powder_blue_like_the_todo_back_entry(self):
+        # Les mêmes séquences que script/todo/todo_couleur.py.
+        for colorterm, debut in (
+            ("", "\033[38;5;152m"),
+            ("truecolor", "\033[38;2;176;224;230m"),
+        ):
+            with self.subTest(colorterm=colorterm):
+                code, texte = self.banc().conduire(
+                    frappe="q\n", env={"COLORTERM": colorterm}
+                )
+                self.assertIn(f"{debut}[q] Annuler\033[0m", texte, texte)
+
+    def test_the_menu_speaks_english_when_asked(self):
+        code, texte = self.banc().conduire(frappe="0\n", env={"EL_LANG": "en"})
+        self.assertEqual(0, code, texte)
+        self.assertIn("databases. Which one to start?", texte, texte)
+        self.assertIn("[0] All - shows the list of databases", texte)
+        self.assertIn("[q] Cancel", texte)
+        self.assertNotIn("[-d]", texte)
 
     def test_end_of_input_is_a_refusal_not_a_hang(self):
         code, texte = self.banc().conduire(frappe="\x04")
@@ -510,6 +580,64 @@ class TestTheLibraryOnItsOwn(unittest.TestCase):
         res = self.bash("el_db_choose alpha zebre", entree="2\n")
         self.assertEqual("zebre", res.stdout.strip(), res.stdout)
         self.assertIn("[1] alpha", res.stderr)
+
+    def test_all_writes_nothing_at_all_to_stdout(self):
+        # run.sh n'ajoute « -d » que si stdout porte un nom : « Tous » doit
+        # le laisser vide, et rendre 0 pour ne pas être lu comme un refus.
+        res = self.bash(
+            "el_db_choose alpha zebre; echo rc=$? >&2", entree="0\n"
+        )
+        self.assertEqual("", res.stdout, res.stdout)
+        self.assertIn("rc=0", res.stderr)
+
+    def test_a_leading_zero_is_decimal_not_octal(self):
+        # En arithmétique bash, « 08 » est un octal invalide : le choix
+        # se lit en base 10, donc la huitième base.
+        bases = " ".join(f"b{i}" for i in range(1, 10))
+        res = self.bash(f"el_db_choose {bases}", entree="08\n")
+        self.assertEqual("b8", res.stdout.strip(), res.stderr)
+
+    def test_an_overflowing_number_asks_again(self):
+        # L'arithmétique bash déborde sans erreur : ces nombres y valent
+        # -1, INT64_MIN, 0 et 1. Chacun doit redemander, et la fin de
+        # l'entrée qui suit rendre 130, sans aucun nom sur stdout.
+        for nombre in (
+            "18446744073709551615",
+            "9223372036854775808",
+            "18446744073709551616",
+            "18446744073709551617",
+        ):
+            with self.subTest(nombre=nombre):
+                res = self.bash(
+                    "el_db_choose a b c; echo rc=$? >&2", entree=f"{nombre}\n"
+                )
+                self.assertEqual("", res.stdout, res.stdout)
+                self.assertIn("Choix invalide", res.stderr)
+                self.assertIn("rc=130", res.stderr)
+                self.assertNotIn("Aucune base", res.stderr)
+
+    def test_zeros_alone_mean_all(self):
+        res = self.bash("el_db_choose a b; echo rc=$? >&2", entree="00\n")
+        self.assertEqual("", res.stdout, res.stdout)
+        self.assertIn("rc=0", res.stderr)
+        self.assertIn("Aucune base", res.stderr)
+
+    def test_env_var_sh_wins_over_the_environment(self):
+        # Même ordre que get_lang() de todo_i18n.py.
+        dossier = tempfile.mkdtemp(prefix="el_lang_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        pathlib.Path(dossier, "env_var.sh").write_text(
+            'EL_LANG="en"\n', encoding="utf-8"
+        )
+        res = subprocess.run(
+            ["bash", "-c", f". {LIB}\n_el_db_lang"],
+            capture_output=True,
+            text=True,
+            timeout=DELAI,
+            cwd=dossier,
+            env=dict(os.environ, EL_LANG="fr"),
+        )
+        self.assertEqual("en", res.stdout.strip(), res.stderr)
 
     def test_the_guard_tests_stdin_and_stderr_not_stdout(self):
         # Dans `$( … )`, stdout est TOUJOURS un tube : tester -t 1 fermerait

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Les couleurs du TODO, et l'entrée « [0] Retour » de ses menus.
+"""Les couleurs du TODO, et les entrées « [0] Retour » et « [0] Quitter ».
 
 La couleur ne s'écrit que vers un terminal qui la montre : pas quand
 NO_COLOR est défini (https://no-color.org), ni sous TERM=dumb, ni quand la
@@ -51,4 +51,14 @@ def retour(libelle=None, flux=None, environ=None):
     de traduction, ou un test qui remplace ce `t`, le voit respecté.
     """
     texte = f"[0] {t('Back') if libelle is None else libelle}"
+    return bleu_poudre(texte, flux, environ)
+
+
+def quitter(libelle=None, flux=None, environ=None):
+    """L'entrée « [0] 🚪 Quitter » du menu principal, en bleu poudre.
+
+    Même couleur que « [0] 🔙 Retour » : les deux sortent du menu courant,
+    et la même touche se reconnaît à la même teinte.
+    """
+    texte = f"[0] 🚪 {t('Quit') if libelle is None else libelle}"
     return bleu_poudre(texte, flux, environ)

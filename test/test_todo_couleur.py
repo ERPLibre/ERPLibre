@@ -45,6 +45,26 @@ class TestRetour(unittest.TestCase):
         self.assertFalse(todo_couleur.couleurs_actives(object(), {}))
 
 
+class TestQuitter(unittest.TestCase):
+    def test_meme_bleu_poudre_que_retour(self):
+        environ = {"COLORTERM": "truecolor"}
+        self.assertEqual(
+            todo_couleur.quitter(None, Terminal(), environ),
+            f"\x1b[38;2;176;224;230m[0] 🚪 {t('Quit')}\x1b[0m",
+        )
+        self.assertTrue(
+            todo_couleur.retour(None, Terminal(), environ).startswith(
+                "\x1b[38;2;176;224;230m"
+            )
+        )
+
+    def test_pas_de_couleur_hors_terminal(self):
+        self.assertEqual(
+            todo_couleur.quitter(None, io.StringIO(), {}),
+            f"[0] 🚪 {t('Quit')}",
+        )
+
+
 class TestMenus(unittest.TestCase):
     def test_le_menu_type_porte_l_entree_retour(self):
         """fill_help_info, par où passe la plupart des menus."""
@@ -55,13 +75,14 @@ class TestMenus(unittest.TestCase):
         self.assertIn(todo_couleur.retour(), texte)
 
     def test_plus_aucun_retour_ecrit_a_la_main(self):
-        """Une entrée « [0] Retour » écrite sans retour() échapperait à la
-        couleur : aucune ne doit rester dans le TODO."""
+        """Une entrée « [0] Retour » écrite sans retour(), ou « [0] Quitter »
+        sans quitter(), échapperait à la couleur : aucune ne doit rester."""
         import glob
         import re
 
         motif = re.compile(
             r"""\[0\] \{t\(["']Back["']\)\}|"\s*\[0\] " \+ t\("Back"\)"""
+            r"""|\[0\] 🚪 \{t\(["']Quit["']\)\}"""
         )
         restes = []
         for chemin in glob.glob("script/todo/**/*.py", recursive=True):
