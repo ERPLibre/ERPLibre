@@ -23,7 +23,9 @@ numéroté. Il ne pose la question que devant un vrai terminal — un service
 lancé par systemd se comporte exactement comme avant.
 
 Dans ce menu, `[0] Tous` démarre Odoo sans `-d` : toutes les bases restent
-servies, et `/web/database/manager` les liste. `[q]` annule sans rien
+servies, et `/web/database/manager` les liste. Aucune sonde de réveil n'est
+envoyée : il n'y a aucune base à réveiller, et ses requêtes tomberaient sur
+le sélecteur de bases. `[q]` annule sans rien
 démarrer. Le menu suit `EL_LANG`, en français ou en anglais, comme le CLI
 TODO.
 

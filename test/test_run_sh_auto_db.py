@@ -524,6 +524,44 @@ class TestTheMenuBehindARealTerminal(unittest.TestCase):
                 )
                 self.assertIn(f"{debut}[q] Annuler\033[0m", texte, texte)
 
+    def avec_sonde(self):
+        """Un banc dont la sonde de réveil laisse une trace, et dont le faux
+        Odoo dure une seconde : le temps qu'elle démarre, lancée en
+        parallèle, avant que run.sh ne la tue en sortant."""
+        bouchon = (
+            "#!/usr/bin/env bash\n"
+            'case "$1" in\n'
+            "  db) printf '%s\\n' demo prod ;;\n"
+            "  *) printf 'ARGS:'; printf '[%s]' \"$@\"; printf '\\n';"
+            " sleep 1 ;;\n"
+            "esac\n"
+        )
+        banc = Banc(bouchon)
+        self.addCleanup(banc.nettoyer)
+        sonde = banc.chemin / "script" / "odoo"
+        sonde.mkdir(parents=True)
+        (sonde / "warmup_http.py").write_text(
+            "import pathlib\npathlib.Path('SONDE_REVEIL').touch()\n",
+            encoding="utf-8",
+        )
+        return banc
+
+    def test_all_launches_no_warmup(self):
+        # Sans base choisie, chaque requête de la sonde tomberait sur le
+        # sélecteur de bases et remplirait le journal d'erreurs.
+        banc = self.avec_sonde()
+        code, texte = banc.conduire(frappe="0\n")
+        self.assertEqual(0, code, texte)
+        self.assertIn("ARGS:", texte, texte)
+        self.assertFalse((banc.chemin / "SONDE_REVEIL").exists(), texte)
+
+    def test_a_chosen_database_still_gets_its_warmup(self):
+        banc = self.avec_sonde()
+        code, texte = banc.conduire(frappe="1\n")
+        self.assertEqual(0, code, texte)
+        self.assertIn("[-d][demo]", texte, texte)
+        self.assertTrue((banc.chemin / "SONDE_REVEIL").exists(), texte)
+
     def test_the_menu_speaks_english_when_asked(self):
         code, texte = self.banc().conduire(frappe="0\n", env={"EL_LANG": "en"})
         self.assertEqual(0, code, texte)
@@ -583,12 +621,13 @@ class TestTheLibraryOnItsOwn(unittest.TestCase):
 
     def test_all_writes_nothing_at_all_to_stdout(self):
         # run.sh n'ajoute « -d » que si stdout porte un nom : « Tous » doit
-        # le laisser vide, et rendre 0 pour ne pas être lu comme un refus.
+        # le laisser vide, et rendre son propre code — ni 0, qui lancerait
+        # la sonde de réveil, ni 130, qui renoncerait.
         res = self.bash(
             "el_db_choose alpha zebre; echo rc=$? >&2", entree="0\n"
         )
         self.assertEqual("", res.stdout, res.stdout)
-        self.assertIn("rc=0", res.stderr)
+        self.assertIn("rc=10", res.stderr)
 
     def test_a_leading_zero_is_decimal_not_octal(self):
         # En arithmétique bash, « 08 » est un octal invalide : le choix
@@ -619,7 +658,7 @@ class TestTheLibraryOnItsOwn(unittest.TestCase):
     def test_zeros_alone_mean_all(self):
         res = self.bash("el_db_choose a b; echo rc=$? >&2", entree="00\n")
         self.assertEqual("", res.stdout, res.stdout)
-        self.assertIn("rc=0", res.stderr)
+        self.assertIn("rc=10", res.stderr)
         self.assertIn("Aucune base", res.stderr)
 
     def test_env_var_sh_wins_over_the_environment(self):

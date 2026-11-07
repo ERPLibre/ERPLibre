@@ -23,7 +23,9 @@ when a real terminal is there — a service started by systemd behaves
 exactly as before.
 
 In that menu, `[0] All` starts Odoo without `-d`: every database stays
-served, and `/web/database/manager` lists them. `[q]` cancels without
+served, and `/web/database/manager` lists them. No warmup probe is sent:
+there is no database to wake, and its requests would land on the database
+selector. `[q]` cancels without
 starting anything. The menu follows `EL_LANG`, French or English, like the
 TODO CLI.
 

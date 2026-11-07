@@ -21,6 +21,8 @@
 : "${Red:=\033[0;31m}"
 : "${Yellow:=\033[0;33m}"
 : "${Color_Off:=\033[0m}"
+# Code de retour de « [0] Tous » : ni un nom (0) ni un renoncement (130).
+EL_DB_TOUS=10
 # Orange clair, en 256 couleurs : l'entrée « Tous » se détache des bases.
 : "${Light_Orange:=\033[38;5;215m}"
 # Bleu poudre (#B0E0E6), celui de « [0] Retour » et « [0] Quitter » du
@@ -144,10 +146,13 @@ el_db_list() {
 el_db_choose() {
   # Le menu, entièrement sur stderr ; le nom retenu sur stdout.
   #
-  # Rend 0 avec un nom sur stdout pour une base ; 0 SANS RIEN sur stdout
-  # pour « [0] Tous », que run.sh lit comme « pas de -d » : Odoo sert
-  # alors toutes les bases, et /web/database/manager les liste. Rend 130
-  # pour « [q] » et pour Ctrl-D, qui renoncent à démarrer.
+  # Rend 0 avec un nom sur stdout pour une base ; EL_DB_TOUS, SANS RIEN sur
+  # stdout, pour « [0] Tous », que run.sh lit comme « pas de -d » : Odoo
+  # sert alors toutes les bases, et /web/database/manager les liste. Un
+  # code à part, et non 0 : run.sh ne lance pas la sonde de réveil, qui
+  # n'a aucune base à réveiller et dont chaque requête tomberait sur le
+  # sélecteur de bases. Rend 130 pour « [q] » et pour Ctrl-D, qui
+  # renoncent à démarrer.
   local -a bases=("$@")
   local rang nom choix
   while true; do
@@ -185,7 +190,7 @@ el_db_choose() {
           _el_db_say "🗄  $(_el_db_t \
             "Aucune base présélectionnée : /web/database/manager" \
             "No database preselected: /web/database/manager")"
-          return 0
+          return "${EL_DB_TOUS}"
         fi
         if [ "${#choix}" -le 9 ] && [ "${choix}" -le "${#bases[@]}" ]; then
           printf '%s\n' "${bases[$((choix - 1))]}"

@@ -69,6 +69,12 @@ if [ "${EL_AUTO}" = "1" ] && [ -f "${EL_LIB}" ]; then
   if [ ${retSelect} -eq 130 ]; then
     exit 130
   fi
+  # « [0] Tous » : aucune base choisie, donc aucune à réveiller. Sans -d,
+  # chaque requête de la sonde tomberait sur le sélecteur de bases et
+  # remplirait le journal d'erreurs.
+  if [ ${retSelect} -eq "${EL_DB_TOUS:-10}" ]; then
+    EL_WARMUP=0
+  fi
   if [ -n "${EL_DB_NAME}" ]; then
     EL_DB=(-d "${EL_DB_NAME}")
   fi
