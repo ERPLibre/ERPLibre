@@ -23,17 +23,27 @@ odoo_cli_has_module() {
   [ -f "odoo${1}/addons/ERPLibre_erplibre_addons/erplibre_odoo_cli_base/__manifest__.py" ]
 }
 
+# Vrai quand le checkout porte l'addon erplibre_db, qui donne les anciens
+# drapeaux de « db » à un Odoo amont : 8 à 11 n'ont pas de commande « db »,
+# 19 et 20 ont celle d'OCB, sans le module, qu'aucun dépôt ne publie pour eux.
+odoo_cli_has_erplibre_db() {
+  [ -d "script/odoo/cli_addons/erplibre_db" ]
+}
+
 # Les appelants écrivent la syntaxe d'Odoo 18 (« db list », « module
 # uninstall », « theme apply »). Sur un ancien cœur, le traducteur la
-# convertit ; sur un cœur d'OCB, le module la porte, et sans lui ces
-# commandes n'existent pas : sortie 2, avant qu'Odoo ne refuse la syntaxe
-# moins clairement. ERPLIBRE_ODOO_CLI_LEGACY marque les appels du
-# traducteur, qui vont tout droit à l'ancienne commande.
+# convertit ; sur un cœur d'OCB, le module la porte. Sans lui, erplibre_db
+# prend le relais par le traducteur ; sans l'un ni l'autre, ces commandes
+# n'existent pas : sortie 2, avant qu'Odoo ne refuse la syntaxe moins
+# clairement. ERPLIBRE_ODOO_CLI_LEGACY marque les appels du traducteur, qui
+# vont tout droit à l'ancienne commande.
 case "${1:-}" in
   db | module | theme)
     if [ -z "${ERPLIBRE_ODOO_CLI_LEGACY:-}" ]; then
       ODOO_CLI_VERSION="$(< .odoo-version)"
-      if odoo_cli_is_legacy "${ODOO_CLI_VERSION}"; then
+      if odoo_cli_is_legacy "${ODOO_CLI_VERSION}" \
+        || { ! odoo_cli_has_module "${ODOO_CLI_VERSION}" \
+          && odoo_cli_has_erplibre_db; }; then
         exec python3 ./script/database/odoo_db_legacy.py "$@"
       elif ! odoo_cli_has_module "${ODOO_CLI_VERSION}"; then
         echo "odoo_bin.sh ${1}: erplibre_odoo_cli_base missing for" \
@@ -73,12 +83,13 @@ el_option_connue() {
   grep -qE "[\"']${1}[\"']" "${EL_CONFIG_PY}" 2> /dev/null
 }
 
-# « db » est la commande du fork ERPLibre d'Odoo, que reconnaît son option
-# --restore_image. Un Odoo amont n'en a pas (8 à 11) ou en a une d'une autre
-# interface (19, 20) : l'appel va alors à erplibre_db, qui prend les mêmes
-# options, dans script/odoo/cli_addons. Le lanceur ne découvre la commande
-# d'un addon que si --addons-path la précède.
-if [[ "${1:-}" == "db" ]] \
+# Les anciens drapeaux de « db », qu'écrit le traducteur, sont ceux du fork
+# ERPLibre d'Odoo, que reconnaît son option --restore_image. Un Odoo amont
+# n'en a pas (8 à 11) ou a celle d'OCB (19, 20) : l'appel va alors à
+# erplibre_db, qui prend les mêmes options, dans script/odoo/cli_addons. Le
+# lanceur ne découvre la commande d'un addon que si --addons-path la précède.
+if [[ "${1:-}" == "db" && -n "${ERPLIBRE_ODOO_CLI_LEGACY:-}" ]] \
+  && odoo_cli_has_erplibre_db \
   && ! grep -q "restore_image" "${EL_PKG}/cli/db.py" 2> /dev/null; then
   shift
   set -- "${EL_CLI_ADDONS}" erplibre_db "$@"
@@ -86,7 +97,8 @@ fi
 
 # « shell » n'existe que depuis Odoo 9 : en 8, erplibre_shell exécute l'entrée
 # standard avec « env », comme le shell d'Odoo quand elle n'est pas un terminal.
-if [[ "${1:-}" == "shell" && ! -f "${EL_PKG}/cli/shell.py" ]]; then
+if [[ "${1:-}" == "shell" && "${EL_PKG}" == */openerp ]] \
+  && [ ! -f "${EL_PKG}/cli/shell.py" ]; then
   shift
   set -- "${EL_CLI_ADDONS}" erplibre_shell "$@"
 fi
@@ -94,8 +106,9 @@ fi
 # Les options « --http-* », « -p » et « --no-http » n'existent que depuis
 # Odoo 11 ; Odoo 8 à 10 les nomment « --xmlrpc-* » et « --no-xmlrpc », que 11
 # garde en alias cachés. Les scripts écrivent la forme récente, traduite ici
-# pour l'Odoo qui ne la connaît pas.
-if ! el_option_connue "--no-http"; then
+# pour l'Odoo qui ne la connaît pas. Sans config.py lisible, rien n'est
+# traduit : l'absence d'une option ne se déduit pas d'un fichier absent.
+if [ -f "${EL_CONFIG_PY}" ] && ! el_option_connue "--no-http"; then
   EL_ARGS=()
   for arg in "$@"; do
     case "${arg}" in
@@ -114,8 +127,8 @@ fi
 # « --dev », sans valeur ; Odoo 8 n'a pas l'option du tout. Le mode y passe
 # alors par ERPLIBRE_DEV_MODE, que lisent les modules de neutralisation du
 # dépôt development pour refuser une installation hors développement.
-if ! el_option_connue "--dev" \
-  || grep -qE "[\"']--dev[\"'].*store_true" "${EL_CONFIG_PY}" 2> /dev/null; then
+if [ -f "${EL_CONFIG_PY}" ] && { ! el_option_connue "--dev" \
+  || grep -qE "[\"']--dev[\"'].*store_true" "${EL_CONFIG_PY}"; }; then
   EL_ARGS=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -141,7 +154,7 @@ fi
 # « --uninstall » est une option du fork ERPLibre d'Odoo. Pour un Odoo amont,
 # l'appel va à erplibre_uninstall, qui prend les mêmes arguments.
 if [[ " $* " == *" --uninstall "* || " $* " == *" --uninstall="* ]] \
-  && ! el_option_connue "--uninstall"; then
+  && [ -f "${EL_CONFIG_PY}" ] && ! el_option_connue "--uninstall"; then
   set -- "${EL_CLI_ADDONS}" erplibre_uninstall "$@"
 fi
 
