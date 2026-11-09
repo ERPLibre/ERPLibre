@@ -109,6 +109,43 @@ class TestSetupOdooConfigConfDevops(unittest.TestCase):
             "root:2,root.ms_graph:3,root.mail:1",
         )
 
+    def test_short_name_is_same_channel(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n\n"
+            "[queue_job]\nchannels = root:2,ms_graph:1:sequential\n",
+            "--channel",
+            "root.ms_graph:3",
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels"),
+            "root:2,ms_graph:1:sequential",
+        )
+
+    def test_spaces_around_name_are_ignored(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n\n"
+            "[queue_job]\nchannels = root:2, root.ms_graph : 3\n",
+            "--channel",
+            "root.ms_graph:1",
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels"), "root:2, root.ms_graph : 3"
+        )
+
+    def test_one_channel_per_line(self):
+        parser = self._run(
+            "[options]\nworkers = 0\n\n"
+            "[queue_job]\nchannels =\n    root:2\n    root.ms_graph:3\n",
+            "--channel",
+            "root.ms_graph:1",
+            "--channel",
+            "root.mail:1",
+        )
+        self.assertEqual(
+            parser.get("queue_job", "channels").split(),
+            ["root:2", "root.ms_graph:3", "root.mail:1"],
+        )
+
     def test_invalid_channel_refused(self):
         with self.assertRaises(SystemExit):
             self._run("[options]\nworkers = 0\n", "--channel", "root.ms_graph")

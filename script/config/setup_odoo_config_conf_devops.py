@@ -49,17 +49,43 @@ SUGGESTION
     return args
 
 
+def channel_name(item):
+    """Return the full name queue_job gives the channel declared by
+    ``item`` (``name[:capacity[:option...]]``): spaces around the name
+    stripped and ``root.`` prefixed to a short name, since queue_job reads
+    ``sub`` as ``root.sub``."""
+    name = item.partition(":")[0].strip()
+    if name != "root" and not name.startswith("root."):
+        name = f"root.{name}"
+    return name
+
+
 def add_channels(channels, wanted):
-    """Return ``channels`` (queue_job syntax ``name:capacity,...``) with
-    each ``wanted`` channel appended unless a channel of that name is
-    already declared."""
-    declared = [item.strip() for item in channels.split(",") if item.strip()]
-    names = {item.partition(":")[0] for item in declared}
+    """Return ``channels`` (queue_job syntax, entries separated by commas
+    or line breaks) with each ``wanted`` channel appended unless queue_job
+    would read it as a channel already declared. A duplicate is never
+    written: queue_job applies the last declaration of a channel, which
+    would override the capacity and options of the first.
+
+    The existing text is kept as is; new entries follow it on their own
+    line when the value is written one channel per line, else after a
+    comma."""
+    names = {
+        channel_name(item)
+        for item in channels.replace("\n", ",").split(",")
+        if item.strip()
+    }
+    added = []
     for channel in wanted:
-        if channel.partition(":")[0] not in names:
-            declared.append(channel)
-            names.add(channel.partition(":")[0])
-    return ",".join(declared)
+        name = channel_name(channel)
+        if name not in names:
+            added.append(channel)
+            names.add(name)
+    if not added:
+        return channels
+    existing = channels.rstrip().rstrip(",")
+    separator = "\n" if "\n" in existing.strip() else ","
+    return separator.join(([existing] if existing.strip() else []) + added)
 
 
 def main():
