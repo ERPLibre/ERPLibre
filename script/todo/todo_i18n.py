@@ -16983,6 +16983,14 @@ TRANSLATIONS = {
         "fr": "fichier vide",
         "en": "empty file",
     },
+    "kdbx_password_file_not_utf8": {
+        "fr": "le fichier n'est pas encodé en UTF-8",
+        "en": "the file is not UTF-8 encoded",
+    },
+    "kdbx_vault_unreadable": {
+        "fr": "Coffre KeePass illisible :",
+        "en": "KeePass vault unreadable:",
+    },
     "Some gateways demand an embedded browser (SAML): openconnect stops on"
     " \u00ab No SSO handler \u00bb and a helper is needed for the web step. It is"
     " optional, and its upstream is no longer maintained.": {

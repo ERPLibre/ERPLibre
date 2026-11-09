@@ -11,8 +11,8 @@ from script.todo.todo_i18n import t
 _logger = logging.getLogger(__name__)
 
 # pykeepass s'importe dans `get_kdbx`, au moment d'ouvrir le coffre : le
-# charger ici coûtait un cinquième de l'import de TODO, qui crée ce
-# gestionnaire au démarrage sans ouvrir le coffre pour autant.
+# charger ici alourdirait l'import de TODO, qui crée ce gestionnaire au
+# démarrage sans ouvrir le coffre pour autant.
 #
 # tkinter reste à part : il ne sert QU'au sélecteur de fichier quand aucun
 # chemin n'est configuré, et son absence ne doit pas empêcher d'ouvrir le
@@ -37,10 +37,24 @@ ENV_PASSWORD_FILE = "KDBX_PASSWORD_FILE"
 def lire_mot_de_passe_fichier(chemin: str) -> str:
     """Le mot de passe que porte le fichier ``chemin``, fin de ligne finale
     retirée, ou une chaîne vide, avec la raison affichée, si le fichier ne se
-    lit pas ou ne porte rien."""
+    lit pas ou ne porte rien.
+
+    Le fichier se lit en UTF-8, marque d'ordre d'octets (BOM) en tête
+    retirée : un éditeur Windows l'ajoute, et elle ferait partie du mot de
+    passe. Un fichier qui n'est pas de l'UTF-8 est refusé sous une raison
+    générique : le texte de UnicodeDecodeError cite l'octet fautif et sa
+    position, donc un morceau du secret.
+    """
     try:
-        with open(chemin, encoding="utf-8") as fh:
+        with open(chemin, encoding="utf-8-sig") as fh:
             mot_de_passe = fh.read().rstrip("\r\n")
+    except UnicodeDecodeError:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} :"
+            f" {t('kdbx_password_file_not_utf8')}"
+        )
+        return ""
     except OSError as e:
         print(
             f"{t('kdbx_password_file_unreadable')}"
@@ -53,6 +67,15 @@ def lire_mot_de_passe_fichier(chemin: str) -> str:
             f" {ENV_PASSWORD_FILE}={chemin} : {t('kdbx_password_file_empty')}"
         )
     return mot_de_passe
+
+
+def _afficher_coffre_illisible(chemin: str, erreur: OSError) -> None:
+    """Affiche le chemin du coffre et la raison système pour laquelle il ne
+    s'ouvre pas — absent, illisible, répertoire —, au lieu de laisser
+    remonter la trace de FileNotFoundError ou de PermissionError."""
+    print(
+        f"{t('kdbx_vault_unreadable')} {chemin} : {erreur.strerror or erreur}"
+    )
 
 
 def choisir_fichier_kdbx() -> str:
@@ -90,7 +113,12 @@ class KdbxManager:
         if self._kdbx:
             return self._kdbx
 
-        kdbx_file_path = self._config_file.get_config_value(["kdbx", "path"])
+        # « ~ » se développe comme dans vault.py et code_messagerie.py, qui
+        # lisent la même clé : un chemin noté « ~/coffre.kdbx » désigne le
+        # même fichier pour les trois.
+        kdbx_file_path = os.path.expanduser(
+            self._config_file.get_config_value(["kdbx", "path"]) or ""
+        )
         if not kdbx_file_path:
             kdbx_file_path = choisir_fichier_kdbx()
         if not kdbx_file_path:
@@ -125,16 +153,19 @@ class KdbxManager:
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 return None
+            except OSError as e:
+                _afficher_coffre_illisible(kdbx_file_path, e)
+                return None
             return self._kdbx
 
         # Saisie interactive. Un mot de passe refusé est le cas NORMAL ici,
-        # pas une panne : la bibliothèque lève `CredentialsError` et, sans
-        # ce rattrapage, la trace remontait jusqu'à tuer le CLI. On nomme
-        # aussi le coffre — l'invite ne disait pas DE QUOI elle parlait.
-        # `flush` : l'invite de getpass part vers le terminal, ce `print`
-        # vers la sortie standard — qui est un TUBE quand le menu nous lance.
-        # Sans vidage, on lisait « Mot de passe du coffre : Coffre KeePass :
-        # /chemin » — la question avant ce dont elle parle.
+        # pas une panne : `CredentialsError` se rattrape, le message le dit
+        # et la saisie recommence, sans trace qui arrête le CLI. Le chemin
+        # du coffre s'affiche avant l'invite, plusieurs coffres pouvant
+        # exister. `flush` : l'invite de getpass part vers le terminal, ce
+        # `print` vers la sortie standard — un TUBE quand le menu lance ce
+        # code ; sans vidage, la question s'afficherait avant le chemin du
+        # coffre dont elle parle.
         print(f"{t('kdbx_vault_is')} {kdbx_file_path}", flush=True)
         for _ in range(attempts):
             # Sans terminal, `getpass` lève — `termios.error` quand il ne
@@ -157,6 +188,11 @@ class KdbxManager:
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 continue
+            except OSError as e:
+                # Un autre mot de passe n'y changerait rien : pas de
+                # nouvelle saisie.
+                _afficher_coffre_illisible(kdbx_file_path, e)
+                return None
             return self._kdbx
         print(t("kdbx_give_up"))
         return None

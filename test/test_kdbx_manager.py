@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from pykeepass import create_database
@@ -28,8 +29,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from argon2_rapide import setUpModule  # noqa: E402,F401
 
 
+def isoler_environnement(test):
+    """Retire KDBX_PASSWORD_FILE de l'environnement pour la durée du test
+    ``test``, et le rend à la fin : la variable, posée chez le développeur
+    ou dans un conteneur, prend le pas sur kdbx.password et sur la saisie
+    que ces tests simulent."""
+    environnement = patch.dict(os.environ)
+    environnement.start()
+    test.addCleanup(environnement.stop)
+    os.environ.pop("KDBX_PASSWORD_FILE", None)
+
+
 class KdbxCase(unittest.TestCase):
     def setUp(self):
+        isoler_environnement(self)
         self.tmp = tempfile.TemporaryDirectory()
         self.chemin = os.path.join(self.tmp.name, "coffre.kdbx")
         create_database(self.chemin, password="bon")
@@ -51,10 +64,9 @@ class KdbxCase(unittest.TestCase):
             patch("getpass.getpass", side_effect=list(reponses)),
             patch(
                 "builtins.print",
-                # `**k` : un bouchon de `print` doit accepter la signature de
-                # `print`. Sans lui, ajouter un `flush=True` dans le code
-                # testé faisait échouer six tests sur une différence qui n'a
-                # rien à voir avec ce qu'ils vérifient.
+                # `**k` : un bouchon de `print` accepte la signature de
+                # `print`, `flush=True` compris, pour que ces tests ne
+                # dépendent pas des arguments nommés du code testé.
                 side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
             ),
         ):
@@ -78,9 +90,8 @@ class TestWrongPasswordIsToldNotRaised(KdbxCase):
         self.assertNotIn("Traceback", vu)
 
     def test_the_prompt_says_which_vault_it_wants_to_open(self):
-        """L'invite affichait `enter_password`, une clé i18n absente de la
-        table. Elle doit nommer le fichier : plusieurs coffres peuvent
-        exister, et rien ne disait lequel était demandé."""
+        """L'invite nomme le fichier, plusieurs coffres pouvant exister, et
+        n'affiche jamais une clé i18n brute comme `enter_password`."""
         _, vu = self._saisies("faux", "")
         self.assertIn(self.chemin, vu)
         self.assertNotIn("enter_password", vu)
@@ -88,8 +99,8 @@ class TestWrongPasswordIsToldNotRaised(KdbxCase):
 
 class TestGivingUpIsPossible(KdbxCase):
     def test_an_empty_entry_gives_up_immediately(self):
-        """Sans porte de sortie, la seule façon de quitter était de tuer le
-        programme — ce que la trace faisait, mais par accident."""
+        """Une saisie vide est la porte de sortie : sans elle, seul l'arrêt
+        du programme mettrait fin aux demandes."""
         resultat, vu = self._saisies("")
         self.assertIsNone(resultat)
         self.assertIn("abandonne", vu)
@@ -124,10 +135,7 @@ class TestRecoveryAndSuccess(KdbxCase):
         vues = []
         with patch(
             "builtins.print",
-            # `**k` : un bouchon de `print` doit accepter la signature de
-            # `print`. Sans lui, ajouter un `flush=True` dans le code
-            # testé faisait échouer six tests sur une différence qui n'a
-            # rien à voir avec ce qu'ils vérifient.
+            # `**k` : voir KdbxCase._saisies.
             side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
         ):
             resultat = self._manager("mauvais").get_kdbx()
@@ -141,12 +149,14 @@ class TestPasswordFile(KdbxCase):
 
     def _ouvrir(self, contenu=None, configure=None):
         """get_kdbx avec KDBX_PASSWORD_FILE vers un fichier qui porte
-        ``contenu`` (None : fichier absent). Rend (résultat, affiché,
-        nombre de getpass)."""
+        ``contenu`` : du texte écrit en UTF-8, des octets écrits tels quels,
+        ou None pour un fichier absent. Rend (résultat, affiché, nombre de
+        getpass)."""
         secret = os.path.join(self.tmp.name, "secret")
-        if contenu is not None:
-            with open(secret, "w", encoding="utf-8") as fh:
-                fh.write(contenu)
+        if isinstance(contenu, bytes):
+            Path(secret).write_bytes(contenu)
+        elif contenu is not None:
+            Path(secret).write_text(contenu, encoding="utf-8")
         vues = []
         with (
             patch.dict(os.environ, {"KDBX_PASSWORD_FILE": secret}),
@@ -186,26 +196,88 @@ class TestPasswordFile(KdbxCase):
         self.assertIn("KDBX_PASSWORD_FILE=", vu)
         self.assertEqual(0, saisies)
 
+    def test_a_byte_order_mark_is_not_part_of_the_password(self):
+        resultat, _, _ = self._ouvrir("\ufeffbon\n")
+        self.assertIsNotNone(resultat)
+
+    def test_a_non_utf8_file_is_refused_without_quoting_it(self):
+        """Le texte de UnicodeDecodeError cite l'octet fautif et sa
+        position : seule une raison générique s'affiche."""
+        resultat, vu, saisies = self._ouvrir(b"bo\xe9n\xff\n", configure="bon")
+        self.assertIsNone(resultat)
+        self.assertEqual(0, saisies)
+        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertIn("UTF-8", vu)
+        for fuite in ("0xe9", "0xff", "\\x", "position", "codec"):
+            self.assertNotIn(fuite, vu)
+
     def test_no_terminal_names_the_two_ways_out(self):
         vues = []
         with (
-            patch.dict(os.environ, {}, clear=False),
             patch("getpass.getpass", side_effect=EOFError),
             patch(
                 "builtins.print",
                 side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
             ),
         ):
-            os.environ.pop("KDBX_PASSWORD_FILE", None)
             self.assertIsNone(self._manager().get_kdbx())
         vu = "\n".join(vues)
         self.assertIn("KDBX_PASSWORD_FILE", vu)
         self.assertIn("kdbx.password", vu)
 
 
+class TestVaultPath(KdbxCase):
+    """kdbx.path : « ~ » s'y développe, et un coffre qui ne s'ouvre pas
+    pour une raison système rend None, le chemin et la raison affichés,
+    sans trace FileNotFoundError."""
+
+    def _ouvrir(self, *saisies, configure=None):
+        """Rend (résultat, affiché, nombre de getpass)."""
+        vues = []
+        with (
+            patch("getpass.getpass", side_effect=list(saisies)) as saisie,
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+            ),
+        ):
+            resultat = self._manager(configure).get_kdbx()
+        return resultat, "\n".join(vues), saisie.call_count
+
+    def test_a_missing_vault_with_a_configured_password(self):
+        self.chemin = os.path.join(self.tmp.name, "absent.kdbx")
+        resultat, vu, _ = self._ouvrir(configure="bon")
+        self.assertIsNone(resultat)
+        self.assertIn(self.chemin, vu)
+        self.assertIn(os.strerror(2), vu)
+        self.assertNotIn("Traceback", vu)
+
+    def test_a_missing_vault_asks_the_password_only_once(self):
+        self.chemin = os.path.join(self.tmp.name, "absent.kdbx")
+        resultat, vu, saisies = self._ouvrir("bon", "bon", "bon")
+        self.assertIsNone(resultat)
+        self.assertEqual(1, saisies)
+        self.assertIn(self.chemin, vu)
+
+    def test_a_directory_in_place_of_the_vault(self):
+        self.chemin = self.tmp.name
+        resultat, vu, _ = self._ouvrir(configure="bon")
+        self.assertIsNone(resultat)
+        self.assertIn(self.chemin, vu)
+
+    def test_a_tilde_path_is_expanded(self):
+        self.chemin = os.path.join("~", os.path.basename(self.chemin))
+        with patch.dict(os.environ, {"HOME": self.tmp.name}):
+            resultat, _, _ = self._ouvrir(configure="bon")
+        self.assertIsNotNone(resultat)
+
+
 class TestNoPathWithoutDisplay(unittest.TestCase):
     """Sans kdbx.path, le sélecteur Tk ne s'ouvre pas sans affichage : le
     gestionnaire le dit et rend None, sans trace TclError."""
+
+    def setUp(self):
+        isoler_environnement(self)
 
     def _sans_chemin(self):
         config = MagicMock()
@@ -244,15 +316,12 @@ class TestNoPathWithoutDisplay(unittest.TestCase):
     def test_selenium_lib_uses_the_same_picker(self):
         """selenium_lib n'a pas son propre appel à Tk : il ouvre le coffre
         par KdbxManager, qui tient l'absence d'affichage."""
-        texte = open(
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "script",
-                "selenium",
-                "selenium_lib.py",
-            ),
-            encoding="utf-8",
-        ).read()
+        texte = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "selenium"
+            / "selenium_lib.py"
+        ).read_text(encoding="utf-8")
         self.assertIn("KdbxManager(self.config_file).get_kdbx()", texte)
         self.assertNotIn("tk.Tk(", texte)
 

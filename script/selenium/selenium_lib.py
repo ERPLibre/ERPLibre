@@ -608,24 +608,14 @@ class SeleniumLib(object):
                         keep_alive=True,
                     )
 
-        except Exception as e:
-            print(
-                "Cannot open Firefox profile, so will force firefox snap for"
-                " Ubuntu users."
-            )
-            # TODO au lieu, faire une recherche de geckodriver avant de démarrer
-            # firefox_services = Service(
-            #     executable_path=getoutput(
-            #         "find /snap/firefox -name geckodriver"
-            #     ).split("\n")[-1], log_path='/tmp/geckodriver.log'
-            # )
-            # firefox_options.binary_location = getoutput(
-            #     "find /snap/firefox -name firefox"
-            # ).split("\n")[-1]
-            # self.driver = webdriver.Firefox(
-            #     options=firefox_options, service=firefox_services
-            # )
-            raise e
+        except FirefoxIntrouvable:
+            # Son message dit déjà quoi faire : rien à y ajouter.
+            raise
+        except Exception:
+            # Aucun repli : l'exception remonte telle quelle, sa trace porte
+            # la cause.
+            print("Cannot start the web driver, cause below.")
+            raise
         print("The driver is launched!")
 
         # Ajout de l'enregistrement

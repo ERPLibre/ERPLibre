@@ -68,6 +68,10 @@ class VpnVaultRoundTrip(unittest.TestCase):
             )
         self.private = os.path.join(self.tmp.name, "private.json")
         self.patches = [
+            # KDBX_PASSWORD_FILE, posée chez le développeur ou dans un
+            # conteneur, prendrait le pas sur kdbx.password : retirée le
+            # temps du test, rendue ensuite.
+            patch.dict(os.environ),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",
@@ -80,6 +84,7 @@ class VpnVaultRoundTrip(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        os.environ.pop("KDBX_PASSWORD_FILE", None)
         config = ConfigFile()
         self.vault = VpnVault(config, KdbxManager(config))
 
@@ -175,6 +180,10 @@ class VpnVaultBootstrap(unittest.TestCase):
             json.dump({"kdbx": {"path": "", "password": ""}}, fh)
         self.private = os.path.join(self.tmp.name, "private.json")
         self.patches = [
+            # KDBX_PASSWORD_FILE, posée chez le développeur ou dans un
+            # conteneur, prendrait le pas sur kdbx.password : retirée le
+            # temps du test, rendue ensuite.
+            patch.dict(os.environ),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",
@@ -187,6 +196,7 @@ class VpnVaultBootstrap(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        os.environ.pop("KDBX_PASSWORD_FILE", None)
         config = ConfigFile()
         self.vault = VpnVault(config, KdbxManager(config))
         self.target = os.path.join(self.tmp.name, "nouveau.kdbx")
@@ -301,6 +311,10 @@ class VaultToTunnel(unittest.TestCase):
                 fh,
             )
         self.patches = [
+            # KDBX_PASSWORD_FILE, posée chez le développeur ou dans un
+            # conteneur, prendrait le pas sur kdbx.password : retirée le
+            # temps du test, rendue ensuite.
+            patch.dict(os.environ),
             patch("script.config.config_file.CONFIG_FILE", self.base),
             patch(
                 "script.config.config_file.CONFIG_OVERRIDE_FILE",
@@ -313,6 +327,7 @@ class VaultToTunnel(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        os.environ.pop("KDBX_PASSWORD_FILE", None)
 
     def tearDown(self):
         for item in self.patches:
