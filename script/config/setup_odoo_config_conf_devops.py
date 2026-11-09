@@ -4,11 +4,8 @@
 
 import argparse
 import configparser
-import getpass
 import logging
 import os
-import sys
-from subprocess import check_output
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -26,22 +23,75 @@ def get_config():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
 DESCRIPTION
-    Force config.conf file to has workers 0 and support queue
+    Force config.conf file to has workers 0 and support queue; --channel
+    declares extra queue_job channels.
 
 SUGGESTION
     ./script/config/setup_odoo_config_conf_devops.py
+    ./script/config/setup_odoo_config_conf_devops.py --channel root.ms_graph:1
 """,
         epilog="""\
 """,
     )
+    parser.add_argument(
+        "--channel",
+        action="append",
+        default=[],
+        metavar="NAME:CAPACITY",
+        help="queue_job channel to declare, e.g. root.ms_graph:1; "
+        "repeatable. A channel already declared keeps its capacity.",
+    )
     args = parser.parse_args()
+    for channel in args.channel:
+        name, _sep, capacity = channel.partition(":")
+        if not name or not capacity.isdigit():
+            parser.error(f"--channel expects NAME:CAPACITY, got {channel!r}")
     return args
+
+
+def channel_name(item):
+    """Return the full name queue_job gives the channel declared by
+    ``item`` (``name[:capacity[:option...]]``): spaces around the name
+    stripped and ``root.`` prefixed to a short name, since queue_job reads
+    ``sub`` as ``root.sub``."""
+    name = item.partition(":")[0].strip()
+    if name != "root" and not name.startswith("root."):
+        name = f"root.{name}"
+    return name
+
+
+def add_channels(channels, wanted):
+    """Return ``channels`` (queue_job syntax, entries separated by commas
+    or line breaks) with each ``wanted`` channel appended unless queue_job
+    would read it as a channel already declared. A duplicate is never
+    written: queue_job applies the last declaration of a channel, which
+    would override the capacity and options of the first.
+
+    The existing text is kept as is; new entries follow it on their own
+    line when the value is written one channel per line, else after a
+    comma."""
+    names = {
+        channel_name(item)
+        for item in channels.replace("\n", ",").split(",")
+        if item.strip()
+    }
+    added = []
+    for channel in wanted:
+        name = channel_name(channel)
+        if name not in names:
+            added.append(channel)
+            names.add(name)
+    if not added:
+        return channels
+    existing = channels.rstrip().rstrip(",")
+    separator = "\n" if "\n" in existing.strip() else ","
+    return separator.join(([existing] if existing.strip() else []) + added)
 
 
 def main():
     config = get_config()
 
-    # check if it needs master password from config file
+    # Edit ./config.conf, else /etc/odoo/odoo.conf, else nothing
     has_config_file = True
     config_path = "./config.conf"
     if not os.path.isfile(config_path):
@@ -79,15 +129,18 @@ def main():
         # Support queue_job size channels
         queue_job_channels = ""
         if config_parser.has_section("queue_job"):
-            if config_parser.has_option("options", "queue_job"):
+            if config_parser.has_option("queue_job", "channels"):
                 queue_job_channels = config_parser.get("queue_job", "channels")
         else:
             config_parser.add_section("queue_job")
 
         if not queue_job_channels:
-            config_parser.set(
-                "queue_job", "channels", f"root:{os.cpu_count()}"
-            )
+            queue_job_channels = f"root:{os.cpu_count()}"
+        config_parser.set(
+            "queue_job",
+            "channels",
+            add_channels(queue_job_channels, config.channel),
+        )
 
         with open(config_path, "w") as configfile:
             config_parser.write(configfile)
