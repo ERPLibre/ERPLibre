@@ -16967,12 +16967,16 @@ TRANSLATIONS = {
     },
     "kdbx_no_terminal_hint": {
         "fr": (
-            "Sans terminal, donnez le chemin d'un fichier qui porte le mot de"
-            " passe dans KDBX_PASSWORD_FILE, ou renseignez kdbx.password."
+            "Sans terminal, donnez dans KDBX_PASSWORD_FILE le chemin d'un"
+            " fichier qui porte le mot de passe, hors du checkout et en mode"
+            " 600. kdbx.password convient aussi, mais le garde en clair dans"
+            " la configuration."
         ),
         "en": (
             "With no terminal, set KDBX_PASSWORD_FILE to the path of a file"
-            " holding the password, or fill kdbx.password."
+            " holding the password, outside the checkout, mode 600."
+            " kdbx.password works too, but keeps it in plain text in the"
+            " configuration."
         ),
     },
     "kdbx_password_file_unreadable": {

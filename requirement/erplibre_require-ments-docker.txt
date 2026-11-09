@@ -37,8 +37,11 @@ giturlparse
 retrying
 click
 
-# Les scripts Selenium de script/selenium/ et de private/, lancés dans le
-# conteneur avec le venv des outils : selenium_lib importe selenium et
+# Les scripts Selenium de script/selenium/ et de private/ tournent depuis le
+# checkout de l'hôte, contre la grille de
+# docker/docker-compose_odoo_18.0_selenium.yml : le compte qui fait tourner
+# Odoo ne lit pas le coffre KeePass. L'image garde leurs paquets pour qu'un
+# outil de son venv d'outillage importe selenium_lib : il importe selenium et
 # randomwordfr en tête, pykeepass à l'ouverture du coffre. webdriver_manager
 # ne sert qu'au pilote Chrome local, et reste dans
 # script/selenium/requirements.txt ; PyGObject, pour la vidéo, se compile

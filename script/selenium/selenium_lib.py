@@ -81,6 +81,74 @@ def trouver_firefox() -> str:
     )
 
 
+# Les identifiants du routeur de la grille quand l'URL de --use_network n'en
+# porte pas : les noms du fichier --env-file du compose Selenium.
+ENV_ROUTEUR_UTILISATEUR = "SELENIUM_ROUTER_USERNAME"
+ENV_ROUTEUR_MOT_DE_PASSE = "SELENIUM_ROUTER_PASSWORD"
+
+
+def client_grille(use_network: str) -> tuple:
+    """L'adresse de pilotage d'une grille Selenium et la ClientConfig qui
+    porte ses identifiants, pour webdriver.Remote.
+
+    L'adresse est use_network suivi de « /wd/hub », sans identifiants. Un
+    « utilisateur:mot_de_passe@ » de l'URL en est retiré et décodé (« %40 »
+    rend « @ ») ; sans lui, les identifiants viennent de
+    ENV_ROUTEUR_UTILISATEUR et ENV_ROUTEUR_MOT_DE_PASSE, ce qui les garde
+    hors de la ligne de commande, que tout compte de l'hôte lit. Selenium les
+    envoie en authentification Basic à chaque requête ; l'adresse, qu'il
+    écrit dans ses journaux de débogage, ne les porte jamais. Sans
+    identifiants complets, la ClientConfig n'envoie aucune authentification.
+    """
+    from urllib.parse import unquote, urlsplit, urlunsplit
+
+    from selenium.webdriver.remote.client_config import ClientConfig
+
+    url = urlsplit(use_network)
+    if url.username is not None:
+        hote = url.netloc.rpartition("@")[2]
+        use_network = urlunsplit((url.scheme, hote, url.path, "", ""))
+        utilisateur = unquote(url.username)
+        mot_de_passe = unquote(url.password or "")
+    else:
+        utilisateur = os.environ.get(ENV_ROUTEUR_UTILISATEUR, "")
+        mot_de_passe = os.environ.get(ENV_ROUTEUR_MOT_DE_PASSE, "")
+    adresse = f"{use_network}/wd/hub"
+    return adresse, ClientConfig(
+        remote_server_addr=adresse,
+        username=utilisateur or None,
+        password=mot_de_passe or None,
+    )
+
+
+# Le message du routeur d'une grille Selenium quand aucun nœud n'ouvre la
+# session demandée ; il arrive dans une réponse HTTP 500.
+GRILLE_SESSION_REFUSEE = "Could not start a new session"
+
+
+def indice_grille_sans_ecran(erreur, config) -> Optional[str]:
+    """La ligne d'aide à afficher quand une grille refuse la session d'un
+    navigateur demandé sans --headless, None sinon.
+
+    Les nœuds de la grille documentée tournent sans écran : un navigateur
+    qui en cherche un ne démarre pas, et le routeur ne rend que
+    GRILLE_SESSION_REFUSEE. La ligne ne vaut que pour une WebDriverException
+    d'une session distante (--use_network) qui porte ce message, sans
+    --headless ; elle ne change rien au reste, l'exception remonte."""
+    if (
+        not config.use_network
+        or config.headless
+        or not isinstance(erreur, WebDriverException)
+        or GRILLE_SESSION_REFUSEE not in str(erreur)
+    ):
+        return None
+    return (
+        "Hint: the nodes of the documented Selenium grid"
+        " (docker/docker-compose_odoo_18.0_selenium.yml) have no display;"
+        " pass --headless."
+    )
+
+
 logging.basicConfig(
     format=(
         "%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d]"
@@ -462,7 +530,8 @@ class SeleniumLib(object):
         except Exception as e:
             print(f"ERROR when check user: {e}")
 
-        driver_url = f"{self.config.use_network}/wd/hub"
+        if self.config.use_network:
+            driver_url, grille = client_grille(self.config.use_network)
 
         try:
             if self.config.use_chrome_driver:
@@ -493,6 +562,7 @@ class SeleniumLib(object):
                     self.driver = webdriver.Remote(
                         options=chrome_options,
                         command_executor=driver_url,
+                        client_config=grille,
                     )
                 else:
                     # webdriver_manager s'il est installé ; sinon Selenium
@@ -596,6 +666,7 @@ class SeleniumLib(object):
                     self.driver = webdriver.Remote(
                         options=firefox_options,
                         command_executor=driver_url,
+                        client_config=grille,
                     )
                 else:
                     # NE PAS passer « -remote-allow-system-access » : les
@@ -613,10 +684,13 @@ class SeleniumLib(object):
         except FirefoxIntrouvable:
             # Son message dit déjà quoi faire : rien à y ajouter.
             raise
-        except Exception:
+        except Exception as erreur:
             # Aucun repli : l'exception remonte telle quelle, sa trace porte
             # la cause.
             print("Cannot start the web driver, cause below.")
+            indice = indice_grille_sans_ecran(erreur, self.config)
+            if indice:
+                print(indice)
             raise
         print("The driver is launched!")
 
@@ -2560,7 +2634,10 @@ def fill_parser(parser):
     )
     group_browser.add_argument(
         "--use_network",
-        help="Specify the address, example: http://localhost:4444",
+        help="Specify the address, example: http://localhost:4444. A router"
+        " with basic authentication takes http://USER:PASSWORD@HOST:PORT, or"
+        f" {ENV_ROUTEUR_UTILISATEUR} and {ENV_ROUTEUR_MOT_DE_PASSE} in the"
+        " environment, which keep the password off the command line.",
     )
     group_browser.add_argument(
         "--use_download_path_default",

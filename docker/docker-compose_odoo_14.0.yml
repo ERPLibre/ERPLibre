@@ -2,10 +2,16 @@ version: "3.3"
 services:
   ERPLibre:
     image: technolibre/erplibre:1.6.0_odoo_14.0_1890768
+    # Published on the host's loopback only: Odoo answers the host, never
+    # the network. To serve the network, put a reverse proxy on the host in
+    # front of 127.0.0.1:8069 and 8072, or change the bind address, e.g.
+    # "0.0.0.0:8069:8069", once admin_passwd and list_db = False are set
+    # (docker/README.md, Exposure). A port published by a rootful Docker
+    # daemon bypasses the host firewall: Docker inserts its own iptables
+    # rules ahead of those of ufw or firewalld.
     ports:
-      - 8069:8069
-      - 8071:8071
-      - 8072:8072
+      - "127.0.0.1:8069:8069"
+      - "127.0.0.1:8072:8072"
     environment:
       HOST: db
       PASSWORD: mysecretpassword

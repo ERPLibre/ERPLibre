@@ -182,6 +182,100 @@ docker compose -f docker-compose.yml up -d
 ```
 
 <!-- [en] -->
+### Exposure
+
+The compose files publish Odoo on the host's loopback only, `127.0.0.1:8069`
+and `127.0.0.1:8072`: a browser on the host reaches it, the network does not.
+That holds with rootless Docker, and with a Docker daemon run by root from
+release 28.0 on. An older daemon run by root lets a host of the same local
+network route its packets straight to the container and reach Odoo despite
+the loopback binding: upgrade it, or drop that forwarding in the
+`DOCKER-USER` chain of iptables. Port 8071 is not published, as no Odoo from
+12.0 on serves XML-RPC over TLS.
+The Selenium compose publishes its grid's router on `127.0.0.1:8075` only,
+behind a user and a password, and keeps the grid on a network ERPLibre is not
+on, see `script/selenium/install.md`.
+
+To serve the network, put a reverse proxy on the host in front of
+`127.0.0.1:8069` and `8072`, with Odoo in `--proxy-mode`, or change the bind
+address in `ports`. With a Docker daemon run by root, a published port
+bypasses the host firewall: Docker inserts its own iptables rules ahead of
+those of ufw or firewalld, so a port bound on `0.0.0.0` is open to the whole
+network whatever the firewall says.
+
+Before any exposure, set two options of `/etc/odoo/odoo.conf`:
+
+- `admin_passwd`, a long random value. Unset, Odoo takes `admin` as its master
+  password, and whoever knows it can back up, restore, duplicate or drop
+  every database from `/web/database/manager`;
+- `list_db = False`, which turns off that manager and the listing of the
+  databases, master password or not.
+
+<!-- [fr] -->
+### Exposition
+
+Les fichiers compose ne publient Odoo que sur la boucle locale de l'hôte,
+`127.0.0.1:8069` et `127.0.0.1:8072` : un navigateur sur l'hôte l'atteint, le
+réseau non. C'est vrai avec Docker sans root, et avec un démon Docker lancé
+par root à partir de la version 28.0. Un démon plus ancien lancé par root
+laisse un hôte du même réseau local router ses paquets directement vers le
+conteneur et atteindre Odoo malgré la liaison sur la boucle locale :
+mettez-le à jour, ou rejetez ce transfert dans la chaîne `DOCKER-USER`
+d'iptables. Le port 8071 n'est pas publié, aucun Odoo depuis la 12.0 ne servant
+XML-RPC sur TLS. Le compose Selenium ne publie le routeur de sa grille que sur
+`127.0.0.1:8075`, derrière un utilisateur et un mot de passe, et tient la
+grille sur un réseau où ERPLibre n'est pas, voir
+`script/selenium/install.fr.md`.
+
+Pour servir le réseau, placez un proxy inverse sur l'hôte devant
+`127.0.0.1:8069` et `8072`, avec Odoo en `--proxy-mode`, ou changez l'adresse
+d'écoute dans `ports`. Avec un démon Docker lancé par root, un port publié
+contourne le pare-feu de l'hôte : Docker insère ses propres règles iptables
+avant celles d'ufw ou de firewalld, si bien qu'un port lié sur `0.0.0.0` est
+ouvert à tout le réseau quoi qu'en dise le pare-feu.
+
+Avant toute exposition, réglez deux options de `/etc/odoo/odoo.conf` :
+
+- `admin_passwd`, une longue valeur aléatoire. Sans elle, Odoo prend `admin`
+  pour mot de passe maître, et qui le connaît peut sauvegarder, restaurer,
+  dupliquer ou supprimer toutes les bases depuis `/web/database/manager` ;
+- `list_db = False`, qui coupe ce gestionnaire et la liste des bases, mot de
+  passe maître ou non.
+
+<!-- [en] -->
+The file lives in the project's `erplibre_conf` volume, belongs to `odoo` and
+outlives a recreated container. The image carries no text editor: the
+commands below set both options as `odoo`, print the new master password once,
+then restart Odoo; like them, `make docker_exec_erplibre_gen_config`
+rewrites the file without its comments, and changes `addons_path` only.
+`make docker_show_odoo_conf` shows the result.
+
+<!-- [fr] -->
+Le fichier vit dans le volume `erplibre_conf` du projet, appartient à `odoo`
+et survit à un conteneur recréé. L'image n'a pas d'éditeur de texte : les
+commandes ci-dessous règlent les deux options sous `odoo`, affichent une fois
+le nouveau mot de passe maître, puis redémarrent Odoo ; comme elles,
+`make docker_exec_erplibre_gen_config` réécrit le fichier sans ses
+commentaires, et ne change que `addons_path`.
+`make docker_show_odoo_conf` montre le résultat.
+
+<!-- [common] -->
+```bash
+docker compose exec -T -u odoo ERPLibre python3 - <<'EOF'
+import configparser, secrets
+path = "/etc/odoo/odoo.conf"
+conf = configparser.ConfigParser(interpolation=None)
+conf.read(path)
+conf["options"]["admin_passwd"] = secrets.token_urlsafe(32)
+conf["options"]["list_db"] = "False"
+with open(path, "w") as f:
+    conf.write(f)
+print("admin_passwd =", conf["options"]["admin_passwd"])
+EOF
+docker compose restart ERPLibre
+```
+
+<!-- [en] -->
 ### Extra Python packages for the addons
 
 An addon, or an ERPLibre script, can need a Python package the image does not
@@ -211,18 +305,30 @@ celui qu'importent les addons, et `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` pour
 <!-- [en] -->
 At each start, `docker/entrypoint_pip_extra.sh` installs each list with the
 pip of its venv, then runs Odoo as `odoo`: the container starts as root so
-that each pip runs as the owner of its venv, the `ERPLIBRE_CODE_OWNER` of the
-build. A satisfied requirement downloads nothing. A
-requirement pip cannot install stops the container before Odoo, with pip's
-error in `docker compose logs`.
+that each pip runs as the owner of its venv, `odoo`. A satisfied requirement
+downloads nothing. A requirement pip cannot install stops the container before
+Odoo, with pip's error in `docker compose logs`.
+
+In an image built with `ERPLIBRE_CODE_OWNER=root`, the venvs belong to root
+but `/ERPLibre`, which holds them, stays `odoo`'s: Odoo could swap a venv for
+one of its own before root runs its pip. The entrypoint therefore refuses any
+`PIP_EXTRA_REQUIREMENTS_*` list there and stops the container before Odoo;
+such an image takes its packages at build time, in an image derived from it.
 
 <!-- [fr] -->
 À chaque démarrage, `docker/entrypoint_pip_extra.sh` installe chaque liste
 avec le pip de son venv, puis lance Odoo sous `odoo` : le conteneur démarre en
-root pour que chaque pip tourne sous le propriétaire de son venv,
-l'`ERPLIBRE_CODE_OWNER` de la construction. Une exigence déjà satisfaite ne
-télécharge rien. Une exigence que pip ne peut pas installer arrête le conteneur
-avant Odoo, avec l'erreur de pip dans `docker compose logs`.
+root pour que chaque pip tourne sous le propriétaire de son venv, `odoo`. Une
+exigence déjà satisfaite ne télécharge rien. Une exigence que pip ne peut pas
+installer arrête le conteneur avant Odoo, avec l'erreur de pip dans
+`docker compose logs`.
+
+Dans une image construite avec `ERPLIBRE_CODE_OWNER=root`, les venvs
+appartiennent à root, mais `/ERPLibre`, qui les contient, reste à `odoo` :
+Odoo pourrait substituer un venv à lui avant que root n'y lance pip.
+L'entrypoint y refuse donc toute liste `PIP_EXTRA_REQUIREMENTS_*` et arrête le
+conteneur avant Odoo ; une telle image reçoit ses paquets à la construction,
+dans une image qui en dérive.
 
 <!-- [en] -->
 Root keeps only the two capabilities setpriv needs (`cap_drop`, `cap_add`), and
@@ -245,21 +351,26 @@ docker compose exec -u odoo ERPLibre bash
 
 <!-- [en] -->
 `make docker_exec_erplibre`, that is `script/docker/docker_exec.sh`, and the
-TODO menu entry "Enter the ERPLibre container" open instead a root shell with
-`docker exec --privileged`: every capability, for that shell and what it
-starts only, so that apt can install a package there; Odoo keeps the
-compose's restrictions, and the container's seccomp filter and
-`no-new-privileges` still apply to the shell. It is a maintenance shell: close
-it once done, never leave it open.
+TODO menu entry "Enter the ERPLibre container" open a plain root shell: it
+keeps only the `SETUID` and `SETGID` capabilities, whatever `cap_add` the
+compose grants for apt, under `no-new-privileges`, so root there neither
+reads nor writes what the file permissions refuse it, and apt installs
+nothing. It starts in `/`, with a system-only `PATH` and no profile
+nor bashrc, reading nothing that `odoo` can rewrite. A Debian package goes in
+`APT_EXTRA_PACKAGES`, below; work in `/ERPLibre`, which `odoo` owns, goes
+through the `docker compose exec -u odoo` above.
 
 <!-- [fr] -->
 `make docker_exec_erplibre`, soit `script/docker/docker_exec.sh`, et l'entrée
-« Entrer dans le conteneur ERPLibre » du menu TODO ouvrent au contraire un
-shell root par `docker exec --privileged` : toutes les capacités, pour ce
-shell et ce qu'il lance seulement, afin qu'apt puisse y installer un paquet ;
-Odoo garde les restrictions du compose, et le filtre seccomp du conteneur
-comme `no-new-privileges` s'appliquent encore au shell. C'est un shell de
-maintenance : fermez-le une fois le travail fait, ne le laissez jamais ouvert.
+« Entrer dans le conteneur ERPLibre » du menu TODO ouvrent un simple shell
+root : il ne garde que les capacités `SETUID` et `SETGID`, quel que soit le
+`cap_add` que le compose accorde pour apt, sous `no-new-privileges`, si bien
+que root n'y lit ni n'écrit ce que les permissions des fichiers lui refusent,
+et qu'apt n'y installe rien. Il démarre dans `/`, avec un `PATH` réduit aux
+répertoires système et sans profil ni bashrc, et ne lit rien que `odoo` puisse
+réécrire. Un paquet Debian va dans `APT_EXTRA_PACKAGES`, ci-dessous ; le
+travail dans `/ERPLibre`, qui appartient à `odoo`, passe par le
+`docker compose exec -u odoo` ci-dessus.
 
 <!-- [en] -->
 ### Extra system packages
@@ -328,10 +439,10 @@ login shell at each start, once PostgreSQL answers and before Odoo, in
 `/ERPLibre`, as the account that runs Odoo. A command that fails stops the
 container before Odoo, with its error in `docker compose logs`; the log names
 the step, never the command. A Python package belongs in the
-`PIP_EXTRA_REQUIREMENTS_*` lists instead, whose pip runs as the owner of its
-venv, `odoo` or root depending on the build, and a Debian package in
-`APT_EXTRA_PACKAGES`, which apt installs as root: `INIT_CMD` runs as `odoo`,
-which cannot run apt, nor pip in a venv the build gave to root.
+`PIP_EXTRA_REQUIREMENTS_*` lists instead, whose pip runs as `odoo`, the owner
+of the venvs (an image whose venvs belong to root refuses these lists), and a
+Debian package in `APT_EXTRA_PACKAGES`, which apt installs as root: `INIT_CMD`
+runs as `odoo`, which cannot run apt, nor pip in a venv the build gave to root.
 
 <!-- [fr] -->
 ### Une commande à chaque démarrage
@@ -342,10 +453,10 @@ Odoo, dans `/ERPLibre`, sous le compte qui fait tourner Odoo. Une commande qui
 échoue arrête le conteneur avant Odoo, avec son erreur dans `docker compose
 logs` ; le journal nomme l'étape, jamais la commande. Un paquet Python va
 plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*`, dont le pip tourne sous le
-propriétaire de son venv, `odoo` ou root selon la construction, et un paquet
-Debian dans `APT_EXTRA_PACKAGES`, qu'apt installe en root : `INIT_CMD` tourne
-sous `odoo`, qui ne peut lancer ni apt, ni pip dans un venv que la
-construction a donné à root.
+propriétaire des venvs, `odoo` (une image dont les venvs appartiennent à root
+refuse ces listes), et un paquet Debian dans `APT_EXTRA_PACKAGES`, qu'apt
+installe en root : `INIT_CMD` tourne sous `odoo`, qui ne peut lancer ni apt,
+ni pip dans un venv que la construction a donné à root.
 
 <!-- [common] -->
 ```yaml
@@ -406,10 +517,14 @@ asks two things of the container:
 - the code and its git repositories belong to the account that runs Odoo. The
   image is built with `ERPLIBRE_CODE_OWNER=odoo`, the default; `root` builds an
   image Odoo cannot rewrite, and `script/git/repo_pull.py` refuses its clones,
-  naming their owner. The images of ERPLibre 1.6.0 and earlier leave the code
-  to root: `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh`
-  readies such a container for the snapshots of `erplibre_info_git` only, and
-  its last message names the condition that is missing;
+  naming their owner. The images of ERPLibre 1.6.0 and earlier leave the clone
+  to root. `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh`
+  updates the ERPLibre root of a running container and readies it for the
+  snapshots of `erplibre_info_git`; it runs git as the owner of `/ERPLibre`,
+  never as root, so on such an image it stops before git, at step 2 at the
+  latest, and names the first path that owner cannot write. It supports an
+  image whose code belongs to its owner, an account other than root, and its
+  last message names what the pull still lacks;
 - Odoo runs with a value of `--dev`:
 
 <!-- [fr] -->
@@ -422,10 +537,15 @@ Odoo, ce qui demande deux choses au conteneur :
   L'image se construit avec `ERPLIBRE_CODE_OWNER=odoo`, la valeur par défaut ;
   `root` construit une image qu'Odoo ne peut pas réécrire, et
   `script/git/repo_pull.py` refuse ses clones en nommant leur propriétaire. Les
-  images d'ERPLibre 1.6.0 et antérieures laissent le code à root :
-  `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh` ne prépare un
-  tel conteneur que pour les instantanés d'`erplibre_info_git`, et son dernier
-  message nomme la condition qui manque ;
+  images d'ERPLibre 1.6.0 et antérieures laissent le clone à root.
+  `script/update/docker_fix_erplibre_info_docker_erplibre_160.sh` met à jour
+  la racine ERPLibre d'un conteneur en marche et la prépare pour les
+  instantanés d'`erplibre_info_git` ; il lance git sous le propriétaire de
+  `/ERPLibre`, jamais sous root, si bien que sur une telle image il s'arrête
+  avant git, à l'étape 2 au plus tard, et nomme le premier chemin que ce
+  propriétaire ne peut pas écrire. Il prend en charge une image dont le code
+  appartient à son propriétaire, un compte autre que root, et son dernier
+  message nomme ce qui manque encore au tirage ;
 - Odoo tourne avec une valeur de `--dev` :
 
 <!-- [common] -->
@@ -487,15 +607,18 @@ docker inspect DOCKER_NAME
 ```
 
 <!-- [en] -->
-Connect to a running docker
+Connect to a running docker: a shell as `odoo`, for work in `/ERPLibre`,
+then the reduced root shell, see "Extra Python packages for the addons"
 
 <!-- [fr] -->
-Se connecter à un docker en cours d'exécution
+Se connecter à un docker en cours d'exécution : un shell sous `odoo`, pour
+travailler dans `/ERPLibre`, puis le shell root réduit, voir « Paquets Python
+supplémentaires pour les addons »
 
 <!-- [common] -->
 ```bash
-docker exec -ti DOCKER_NAME bash
-docker exec -u root -ti DOCKER_NAME bash
+docker compose exec -u odoo ERPLibre bash
+make docker_exec_erplibre
 ```
 
 <!-- [en] -->
@@ -526,9 +649,9 @@ Commandes pour le débogage
 
 <!-- [common] -->
 ```bash
-docker run -p 8069:8069 --entrypoint bash -ti DOCKER_NAME
-docker exec -ti DOCKER_NAME bash
-docker exec -u root -ti DOCKER_NAME bash
+docker run -p 127.0.0.1:8069:8069 --entrypoint bash -ti DOCKER_NAME
+docker compose exec -u odoo ERPLibre bash
+make docker_exec_erplibre
 docker run --name some-postgres -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRES_USER=odoo -e POSTGRES_DB=postgres postgre
 
 export
