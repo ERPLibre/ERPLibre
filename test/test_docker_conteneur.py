@@ -18,7 +18,10 @@ Ce que ces tests gardent, pour chaque script :
 - le projet est celui que nomme « docker compose config », dérivé du
   répertoire quand compose ne répond pas ;
 - une commande qui échoue — un test rouge pour docker_make_test.sh — n'est
-  pas relancée vers l'autre nom, et son code de sortie est celui du script.
+  pas relancée vers l'autre nom, et son code de sortie est celui du script ;
+- les scripts qui exécutent le code de /ERPLibre le font sous l'uid de son
+  propriétaire, jamais root, et une réponse qui n'est pas un uid les arrête
+  avant docker exec.
 """
 
 import os
@@ -43,8 +46,11 @@ SCRIPTS = {
 # « version » échoue avec le message FAUX_MOTEUR quand il est posé ;
 # « compose » écrit FAUX_CONFIG ; « inspect » d'un conteneur, le dernier
 # argument, écrit « true » pour les noms de FAUX_EXISTANTS, « false » pour
-# ceux de FAUX_ARRETES, et échoue sinon, comme pour tout autre type ; « exec »
-# et « cp » sortent avec FAUX_RC.
+# ceux de FAUX_ARRETES, et échoue sinon, comme pour tout autre type. « exec »
+# du stat de /ERPLibre écrit FAUX_PROPRIETAIRE, le propriétaire du code ;
+# celui du parcours de docker_copy_file.sh, reconnu à son realpath, rend un
+# ancêtre qui appartient à ce propriétaire ; tout autre « exec », et « cp »,
+# sortent avec FAUX_RC.
 FAUX_DOCKER = """#!/usr/bin/env bash
 echo "$*" >> "${FAUX_DOCKER_JOURNAL}"
 case "$1" in
@@ -59,7 +65,16 @@ case "$1" in
     for n in ${FAUX_ARRETES:-}; do [[ "$nom" == "$n" ]] && echo false && exit 0; done
     echo "Error response from daemon: No such container: $nom" >&2
     exit 1 ;;
-  exec | cp) exit "${FAUX_RC:-0}" ;;
+  exec)
+    if [[ "${@: -3}" == "-c %u /ERPLibre" ]]; then
+      echo "${FAUX_PROPRIETAIRE:-101}"; exit 0
+    fi
+    if [[ "$*" == *realpath* ]]; then
+      printf 'ok\n%s\n755\n0\n/tmp\n/tmp/x\n' "${FAUX_PROPRIETAIRE:-101}"
+      exit 0
+    fi
+    exit "${FAUX_RC:-0}" ;;
+  cp) exit "${FAUX_RC:-0}" ;;
 esac
 """
 
@@ -73,7 +88,8 @@ def lancer(
 ):
     """Lance ``script`` depuis un répertoire « Projet.Essai », dont compose
     tire le projet « projetessai ». ``variables`` pose les autres variables du
-    faux docker. Rend la sortie et les commandes exec et cp reçues."""
+    faux docker. Rend la sortie et les commandes exec et cp reçues, hors la
+    lecture du propriétaire de /ERPLibre (voir ``proprietaire``)."""
     with tempfile.TemporaryDirectory() as dossier:
         faux = Path(dossier) / "bin"
         faux.mkdir()
@@ -102,7 +118,18 @@ def lancer(
             timeout=30,
         )
         appels = journal.read_text(encoding="utf-8").splitlines()
-        return sortie, [a for a in appels if a.split()[0] in ("exec", "cp")]
+        return sortie, [
+            a
+            for a in appels
+            if a.split()[0] in ("exec", "cp") and not est_proprietaire(a)
+        ]
+
+
+def est_proprietaire(appel):
+    """Vrai pour la lecture du propriétaire de /ERPLibre, sous l'uid 65534."""
+    return appel.startswith("exec -u 65534:65534 ") and appel.endswith(
+        " stat -c %u /ERPLibre"
+    )
 
 
 def conteneurs(appels):
@@ -215,6 +242,39 @@ class TestConteneurErplibre(unittest.TestCase):
     def test_gen_config_prend_la_version_du_checkout(self):
         _, appels = lancer("docker_gen_config.sh")
         self.assertIn("/ERPLibre/odoo18.0/addons", appels[0])
+
+    def test_le_code_tourne_sous_son_proprietaire(self):
+        """Makefile, repo et le générateur de odoo.conf sont réécrits par le
+        propriétaire de /ERPLibre : ils tournent sous son uid, jamais root."""
+        for script in (
+            "docker_gen_config.sh",
+            "docker_list_database.sh",
+            "docker_make_test.sh",
+            "docker_repo_show_status.sh",
+        ):
+            with self.subTest(script=script):
+                sortie, appels = lancer(script, FAUX_PROPRIETAIRE=4321)
+                self.assertEqual(sortie.returncode, 0, sortie.stderr)
+                self.assertEqual(1, len(appels), appels)
+                self.assertTrue(
+                    appels[0].startswith("exec -u 4321 -ti "), appels[0]
+                )
+                self.assertNotIn("root", appels[0].split()[:4])
+
+    def test_un_proprietaire_illisible_arrete_avant_exec(self):
+        """Une réponse qui n'est pas un uid n'atteint jamais docker exec -u."""
+        for script in (
+            "docker_gen_config.sh",
+            "docker_list_database.sh",
+            "docker_make_test.sh",
+            "docker_repo_show_status.sh",
+            "docker_copy_file.sh",
+        ):
+            with self.subTest(script=script):
+                sortie, appels = lancer(script, FAUX_PROPRIETAIRE="root")
+                self.assertEqual(sortie.returncode, 1)
+                self.assertEqual([], appels)
+                self.assertIn("owner of /ERPLibre", sortie.stderr)
 
 
 if __name__ == "__main__":

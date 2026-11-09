@@ -4,13 +4,18 @@
 #
 # Lance « make test » dans le conteneur ERPLibre ; son code de sortie est
 # celui des tests.
+#
+# La commande tourne sous le propriétaire de /ERPLibre (proprietaire_code
+# de lib_conteneur.sh), jamais sous root : elle exécute du code que ce compte
+# peut réécrire.
 
 set -euo pipefail
 
 source "$(dirname "$0")/lib_conteneur.sh"
 conteneur=$(conteneur_erplibre)
+proprietaire=$(proprietaire_code "${conteneur}")
 
-exec docker exec -u root -ti "${conteneur}" /bin/bash -c "\
+exec docker exec -u "${proprietaire}" -ti "${conteneur}" /bin/bash -c "\
 cd /ERPLibre; \
 time make test; \
 "

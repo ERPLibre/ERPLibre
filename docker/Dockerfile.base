@@ -48,6 +48,10 @@ ARG WKHTMLTOX_VERSION=0.12.6.1-3
 # toutes les architectures, et un correctif de sécurité publié avant le
 # binaire d'une architecture rend son installation impossible là, ce qui
 # arrête toute la construction.
+#
+# libcap2-bin fournit capsh, par lequel script/docker/docker_exec.sh ouvre un
+# shell root réduit à SETUID et SETGID. Il est nommé, et non laissé à
+# iproute2 : --no-install-recommends ne garantit pas qu'un paquet le tire.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     build-essential \
@@ -64,6 +68,7 @@ RUN apt-get update \
     iproute2 \
     libbz2-dev \
     libcairo2-dev \
+    libcap2-bin \
     libcups2-dev \
     libffi-dev \
     libgdbm-compat-dev \

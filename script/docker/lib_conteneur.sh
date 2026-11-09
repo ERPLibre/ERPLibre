@@ -67,3 +67,21 @@ conteneur_erplibre() {
     "once docker compose up -d has started the project." >&2
   return 1
 }
+
+# proprietaire_code CONTENEUR : écrit l'uid du propriétaire de /ERPLibre dans
+# CONTENEUR et rend 0 ; sinon, explique pourquoi sur la sortie d'erreur et
+# rend 1. C'est le compte qui peut réécrire le code, le Makefile et les venvs :
+# une commande qui en exécute s'y lance sous ce compte, jamais sous root,
+# faute de quoi un Odoo compromis obtient root par elle. stat tourne sous
+# l'uid 65534 : la recherche dans « / » suffit à lire le propriétaire de
+# /ERPLibre, sans rien exécuter en root. La sortie n'est retenue que si elle
+# est un entier.
+proprietaire_code() {
+  local uid
+  uid=$(docker exec -u 65534:65534 "$1" stat -c %u /ERPLibre) || uid=""
+  if [[ ! "${uid}" =~ ^[0-9]+$ ]]; then
+    echo "Cannot read the owner of /ERPLibre in the container $1." >&2
+    return 1
+  fi
+  echo "${uid}"
+}
