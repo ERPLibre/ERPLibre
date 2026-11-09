@@ -5,27 +5,65 @@
 # Fonctions communes aux scripts de script/docker/, à sourcer :
 #   source "$(dirname "$0")/lib_conteneur.sh"
 
-# conteneur_erplibre : écrit le nom du conteneur ERPLibre du projet docker
-# compose du répertoire courant, celui qui existe des deux noms possibles ;
-# sinon, les nomme sur la sortie d'erreur et rend 1.
+# projet_compose : écrit le nom du projet docker compose du répertoire
+# courant. Le nom vient de « docker compose config », qui applique
+# COMPOSE_PROJECT_NAME, le .env et la clé name: du fichier ; la commande lit
+# les fichiers sans joindre le moteur. Quand compose ne répond pas, le nom se
+# dérive du répertoire comme compose le fait : en minuscules, réduit aux
+# caractères [a-z0-9_-], sans « _ » ni « - » en tête.
+projet_compose() {
+  local projet
+  projet=$(docker compose config --format json 2>/dev/null |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])' \
+      2>/dev/null) || projet=""
+  if [ -z "${projet}" ]; then
+    projet=$(basename "$(pwd)")
+    projet="${projet,,}"
+    projet="${projet//[^a-z0-9_-]/}"
+    while [[ "${projet}" == [_-]* ]]; do
+      projet="${projet:1}"
+    done
+  fi
+  echo "${projet}"
+}
+
+# conteneur_erplibre : écrit le nom du conteneur ERPLibre EN MARCHE du projet
+# docker compose du répertoire courant et rend 0 ; sinon, explique pourquoi
+# sur la sortie d'erreur et rend 1, sans rien écrire sur la sortie standard.
 #
-# Le projet porte le nom du répertoire, sans point et en minuscules, comme
-# le dérive compose. compose v2 en sépare les parties par « - », la v1 par
-# « _ ». Le nom se choisit avant toute commande : un appelant qui lançait la
-# commande vers l'un puis, sur un code non nul, vers l'autre la relançait
-# aussi quand c'était ELLE qui échouait, un test rouge par exemple.
+# Deux noms sont possibles, compose v2 séparant les parties par « - » et la
+# v1 par « _ » ; le premier en marche est retenu. Seul un objet de type
+# conteneur compte, et seulement s'il tourne : un conteneur arrêté se signale
+# comme tel, avec la commande qui le démarre.
+#
+# Le moteur est interrogé d'abord, et son erreur passe telle quelle : un
+# démon arrêté ou un DOCKER_HOST faux ne se confond pas avec un conteneur
+# absent. Le nom se choisit avant toute commande dans le conteneur, de sorte
+# qu'une commande en échec n'est jamais relancée vers l'autre nom.
 conteneur_erplibre() {
-  local base candidat
-  base=$(basename "$(pwd)")
-  base="${base//./}"
-  base="${base,,}"
-  for candidat in "${base}-ERPLibre-1" "${base}_ERPLibre_1"; do
-    if docker inspect "${candidat}" >/dev/null 2>&1; then
+  local erreur projet candidat etat
+  local arretes=()
+  if ! erreur=$(docker version --format '{{.Server.Version}}' 2>&1 >/dev/null); then
+    echo "The docker engine does not answer: ${erreur:-no error message}" >&2
+    return 1
+  fi
+  projet=$(projet_compose)
+  for candidat in "${projet}-ERPLibre-1" "${projet}_ERPLibre_1"; do
+    etat=$(docker inspect --type container -f '{{.State.Running}}' \
+      "${candidat}" 2>/dev/null) || continue
+    if [ "${etat}" = "true" ]; then
       echo "${candidat}"
       return 0
     fi
+    arretes+=("${candidat}")
   done
-  echo "No ERPLibre container: neither ${base}-ERPLibre-1 nor" \
-    "${base}_ERPLibre_1. Run this from the docker compose directory." >&2
+  if [ ${#arretes[@]} -gt 0 ]; then
+    echo "The ERPLibre container ${arretes[0]} is stopped: start it with" \
+      "docker compose up -d from the docker compose directory." >&2
+    return 1
+  fi
+  echo "No ERPLibre container: neither ${projet}-ERPLibre-1 nor" \
+    "${projet}_ERPLibre_1. Run this from the docker compose directory," \
+    "once docker compose up -d has started the project." >&2
   return 1
 }

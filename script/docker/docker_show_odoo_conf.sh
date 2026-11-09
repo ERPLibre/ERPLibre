@@ -12,19 +12,36 @@
 # doit déjà être sur l'hôte : rien ne se télécharge.
 #
 # Le fichier porte admin_passwd et le mot de passe PostgreSQL : il passe sur
-# la sortie standard et n'est écrit nulle part.
+# la sortie standard et n'est écrit nulle part. Le conteneur n'a aucun pilote
+# de journal (--log-driver none) : sans cela, le pilote du moteur, journald
+# par exemple, garderait le fichier après le --rm.
 #
-# Un compte sans accès à la socket docker, hors du groupe docker, passe par
-# sudo, qui demande son mot de passe.
+# Un compte à qui la socket docker refuse l'accès, hors du groupe docker,
+# passe par sudo, qui demande son mot de passe ; un DOCKER_HOST posé le suit.
+# Toute autre erreur du moteur s'affiche telle quelle et arrête le script.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
+source script/docker/lib_conteneur.sh
 
 docker=(docker)
-if ! docker info >/dev/null 2>&1 && command -v sudo >/dev/null; then
-  echo "The docker socket refuses this account: going through sudo." >&2
-  docker=(sudo docker)
+if ! erreur=$(docker version --format '{{.Server.Version}}' 2>&1 >/dev/null); then
+  if [[ "${erreur,,}" == *"permission denied"* ]] && command -v sudo >/dev/null; then
+    echo "The docker socket refuses this account: going through sudo." >&2
+    docker=(sudo)
+    if [ -n "${DOCKER_HOST:-}" ]; then
+      docker+=(--preserve-env=DOCKER_HOST)
+    fi
+    docker+=(docker)
+    if ! erreur=$("${docker[@]}" version --format '{{.Server.Version}}' 2>&1 >/dev/null); then
+      echo "The docker engine does not answer through sudo either: ${erreur:-no error message}" >&2
+      exit 1
+    fi
+  else
+    echo "The docker engine does not answer: ${erreur:-no error message}" >&2
+    exit 1
+  fi
 fi
 
 # Le nom du projet et l'image du service ERPLibre, selon docker compose ;
@@ -44,9 +61,7 @@ print(c.get("services", {}).get("ERPLibre", {}).get("image", ""))
 ' <<<"${config}") || true
 fi
 if [ -z "${projet}" ]; then
-  projet=$(basename "$(pwd)")
-  projet="${projet//./}"
-  projet="${projet,,}"
+  projet=$(projet_compose)
 fi
 if [ -z "${image}" ]; then
   image=$("${docker[@]}" images --format '{{.Repository}}:{{.Tag}}' |
@@ -69,7 +84,7 @@ if [ -z "${image}" ] || ! "${docker[@]}" image inspect "${image}" >/dev/null 2>&
   exit 1
 fi
 
-exec "${docker[@]}" run --rm --pull never --network none \
+exec "${docker[@]}" run --rm --pull never --network none --log-driver none \
   -u root --cap-drop ALL --cap-add DAC_READ_SEARCH \
   --security-opt no-new-privileges:true \
   -v "${volume}:/conf:ro" --entrypoint cat "${image}" /conf/odoo.conf

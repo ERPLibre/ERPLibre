@@ -8,9 +8,15 @@ conteneur ERPLibre, par conteneur_erplibre de lib_conteneur.sh. Un faux
 Ce que ces tests gardent, pour chaque script :
 
 - le nom de compose v2 (« - ») est préféré, celui de la v1 (« _ ») sert
-  quand le premier n'existe pas ;
+  quand le premier n'est pas en marche ;
+- seul un conteneur EN MARCHE est retenu, interrogé avec --type container ;
+  un conteneur arrêté se signale comme tel, avant docker exec ;
 - sans aucun des deux, le script nomme les deux et s'arrête avant docker
   exec ;
+- un moteur qui ne répond pas arrête avant docker exec, et son erreur passe
+  telle quelle ;
+- le projet est celui que nomme « docker compose config », dérivé du
+  répertoire quand compose ne répond pas ;
 - une commande qui échoue — un test rouge pour docker_make_test.sh — n'est
   pas relancée vers l'autre nom, et son code de sortie est celui du script.
 """
@@ -34,29 +40,46 @@ SCRIPTS = {
     "docker_copy_file.sh": ["fichier.txt"],
 }
 
-# « inspect » réussit seulement pour les noms de FAUX_EXISTANTS ; « exec »
+# « version » échoue avec le message FAUX_MOTEUR quand il est posé ;
+# « compose » écrit FAUX_CONFIG ; « inspect » d'un conteneur, le dernier
+# argument, écrit « true » pour les noms de FAUX_EXISTANTS, « false » pour
+# ceux de FAUX_ARRETES, et échoue sinon, comme pour tout autre type ; « exec »
 # et « cp » sortent avec FAUX_RC.
 FAUX_DOCKER = """#!/usr/bin/env bash
 echo "$*" >> "${FAUX_DOCKER_JOURNAL}"
 case "$1" in
+  version)
+    if [[ -n "${FAUX_MOTEUR:-}" ]]; then echo "${FAUX_MOTEUR}" >&2; exit 1; fi
+    echo "29.0" ;;
+  compose) echo "${FAUX_CONFIG:-}" ;;
   inspect)
-    for n in ${FAUX_EXISTANTS}; do [[ "$2" == "$n" ]] && exit 0; done
+    [[ "$2 $3" == "--type container" ]] || exit 1
+    nom="${@: -1}"
+    for n in ${FAUX_EXISTANTS}; do [[ "$nom" == "$n" ]] && echo true && exit 0; done
+    for n in ${FAUX_ARRETES:-}; do [[ "$nom" == "$n" ]] && echo false && exit 0; done
+    echo "Error response from daemon: No such container: $nom" >&2
     exit 1 ;;
   exec | cp) exit "${FAUX_RC:-0}" ;;
 esac
 """
 
 
-def lancer(script, existants="projetessai-ERPLibre-1", rc=0):
+def lancer(
+    script,
+    existants="projetessai-ERPLibre-1",
+    rc=0,
+    repertoire="Projet.Essai",
+    **variables,
+):
     """Lance ``script`` depuis un répertoire « Projet.Essai », dont compose
-    tire le projet « projetessai ». Rend la sortie et les commandes exec et
-    cp reçues."""
+    tire le projet « projetessai ». ``variables`` pose les autres variables du
+    faux docker. Rend la sortie et les commandes exec et cp reçues."""
     with tempfile.TemporaryDirectory() as dossier:
         faux = Path(dossier) / "bin"
         faux.mkdir()
         (faux / "docker").write_text(FAUX_DOCKER, encoding="utf-8")
         (faux / "docker").chmod(0o755)
-        projet = Path(dossier) / "Projet.Essai"
+        projet = Path(dossier) / repertoire
         projet.mkdir()
         (projet / ".odoo-version").write_text("18.0\n", encoding="utf-8")
         (projet / "fichier.txt").write_text("x", encoding="utf-8")
@@ -69,6 +92,7 @@ def lancer(script, existants="projetessai-ERPLibre-1", rc=0):
             FAUX_EXISTANTS=existants,
             FAUX_RC=str(rc),
         )
+        env.update({k: str(v) for k, v in variables.items()})
         sortie = subprocess.run(
             [str(DOSSIER / script), *SCRIPTS[script]],
             cwd=projet,
@@ -125,6 +149,59 @@ class TestConteneurErplibre(unittest.TestCase):
                 self.assertEqual([], appels)
                 self.assertIn("projetessai-ERPLibre-1", sortie.stderr)
                 self.assertIn("projetessai_ERPLibre_1", sortie.stderr)
+
+    def test_un_conteneur_arrete_est_signale_avant_exec(self):
+        for script in SCRIPTS:
+            with self.subTest(script=script):
+                sortie, appels = lancer(
+                    script, existants="", FAUX_ARRETES="projetessai-ERPLibre-1"
+                )
+                self.assertEqual(sortie.returncode, 1)
+                self.assertEqual([], appels)
+                self.assertIn(
+                    "projetessai-ERPLibre-1 is stopped", sortie.stderr
+                )
+                self.assertIn("docker compose up -d", sortie.stderr)
+
+    def test_le_conteneur_en_marche_passe_avant_l_arrete(self):
+        sortie, appels = lancer(
+            "docker_exec.sh",
+            existants="projetessai_ERPLibre_1",
+            FAUX_ARRETES="projetessai-ERPLibre-1",
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertEqual(["projetessai_ERPLibre_1"], conteneurs(appels))
+
+    def test_un_moteur_muet_montre_son_erreur(self):
+        erreur = "failed to connect to the docker API at unix:///nulle/part"
+        for script in SCRIPTS:
+            with self.subTest(script=script):
+                sortie, appels = lancer(script, FAUX_MOTEUR=erreur)
+                self.assertEqual(sortie.returncode, 1)
+                self.assertEqual([], appels)
+                self.assertIn(erreur, sortie.stderr)
+                self.assertNotIn("docker compose directory", sortie.stderr)
+
+    def test_le_projet_vient_de_compose(self):
+        """COMPOSE_PROJECT_NAME, .env ou name: : compose en décide."""
+        sortie, appels = lancer(
+            "docker_exec.sh",
+            existants="autre-ERPLibre-1",
+            FAUX_CONFIG='{"name": "autre", "services": {}}',
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertIn("autre-ERPLibre-1", appels[0].split())
+
+    def test_sans_compose_le_nom_se_derive_comme_compose(self):
+        """Minuscules, caractères [a-z0-9_-] seulement, rien de « _ » ni de
+        « - » en tête."""
+        sortie, appels = lancer(
+            "docker_exec.sh",
+            existants="mon_projet-2-ERPLibre-1",
+            repertoire="_-Mon_Projet+-2 é",
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertIn("mon_projet-2-ERPLibre-1", appels[0].split())
 
     def test_une_commande_en_echec_n_est_pas_relancee(self):
         for script in SCRIPTS:

@@ -22,13 +22,16 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 SCRIPT = RACINE / "script" / "docker" / "docker_exec.sh"
 
-# « inspect » réussit seulement pour les noms de FAUX_EXISTANTS ; « exec »
-# sort avec FAUX_EXEC_RC, le code du shell que l'utilisateur quitte.
+# « inspect » d'un conteneur, le dernier argument, le dit en marche pour les
+# noms de FAUX_EXISTANTS et échoue sinon ; « compose config » ne rend rien,
+# et le projet se dérive du répertoire ; « exec » sort avec FAUX_EXEC_RC, le
+# code du shell que l'utilisateur quitte.
 FAUX_DOCKER = """#!/usr/bin/env bash
 echo "$*" >> "${FAUX_DOCKER_JOURNAL}"
 case "$1" in
   inspect)
-    for n in ${FAUX_EXISTANTS}; do [[ "$2" == "$n" ]] && exit 0; done
+    [[ "$2 $3" == "--type container" ]] || exit 1
+    for n in ${FAUX_EXISTANTS}; do [[ "${@: -1}" == "$n" ]] && echo true && exit 0; done
     exit 1 ;;
   exec) exit "${FAUX_EXEC_RC:-0}" ;;
 esac

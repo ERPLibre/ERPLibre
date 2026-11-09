@@ -810,11 +810,15 @@ class ContainerMenuMixin:
             )
 
     def _container_erplibre(self):
-        """Les gestes qui visent le conteneur ERPLibre déjà démarré.
+        """Les gestes sur le projet docker compose ERPLibre de ce dépôt.
 
         Tous passent par les scripts de script/docker/, qui retrouvent le
-        conteneur d'après le nom du répertoire courant — les lancer depuis
-        un autre répertoire ne trouve rien.
+        projet par « docker compose config » du répertoire courant — les
+        lancer depuis un autre répertoire ne trouve rien. Les entrées 1 à 6
+        entrent dans le conteneur ERPLibre et exigent qu'il tourne ; un
+        conteneur arrêté se signale comme tel. L'entrée 7 efface les volumes
+        et retire les conteneurs du projet (docker compose down -v) ;
+        l'entrée 8 lit odoo.conf dans son volume, projet arrêté ou non.
         """
         prefixe = self._container_exige_docker()
         if prefixe is None:
