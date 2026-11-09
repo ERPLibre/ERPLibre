@@ -1021,6 +1021,62 @@ TRANSLATIONS = {
         "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
     },
     # Security › sceau PAdES (script/todo/seal_menu.py)
+    "Commands run, the password read from %s:": {
+        "fr": "Commandes exécutées, le mot de passe lu dans %s :",
+        "en": "Commands run, the password read from %s:",
+    },
+    "What the options do:": {
+        "fr": "Ce que font les options :",
+        "en": "What the options do:",
+    },
+    "a self-signed certificate, without a CA": {
+        "fr": "un certificat auto-signé, sans autorité",
+        "en": "a self-signed certificate, without a CA",
+    },
+    "accented names kept as typed": {
+        "fr": "noms accentués gardés tels que saisis",
+        "en": "accented names kept as typed",
+    },
+    "no progress bar during the RSA generation": {
+        "fr": "sans barre de progression pendant la génération RSA",
+        "en": "no progress bar during the RSA generation",
+    },
+    "a new RSA key of %s bits": {
+        "fr": "une nouvelle clé RSA de %s bits",
+        "en": "a new RSA key of %s bits",
+    },
+    "validity in days": {
+        "fr": "validité en jours",
+        "en": "validity in days",
+    },
+    "the key file, the certificate file": {
+        "fr": "le fichier de la clé, le fichier du certificat",
+        "en": "the key file, the certificate file",
+    },
+    "the subject: CN, the name; O, the organisation": {
+        "fr": "le sujet : CN, le nom ; O, l'organisation",
+        "en": "the subject: CN, the name; O, the organisation",
+    },
+    "digital signature and non repudiation, which pyHanko requires; critical, so readers enforce it": {
+        "fr": "signature numérique et non-répudiation, qu'exige pyHanko ; critique, pour que les lecteurs l'appliquent",
+        "en": "digital signature and non repudiation, which pyHanko requires; critical, so readers enforce it",
+    },
+    "the password read from the environment: the key is encrypted, and the password never shows in the command": {
+        "fr": "le mot de passe lu dans l'environnement : la clé est chiffrée, et le mot de passe n'apparaît jamais dans la commande",
+        "en": "the password read from the environment: the key is encrypted, and the password never shows in the command",
+    },
+    "joins key and certificate in the .p12 Odoo reads": {
+        "fr": "réunit la clé et le certificat dans le .p12 que lit Odoo",
+        "en": "joins key and certificate in the .p12 Odoo reads",
+    },
+    "the label shown when the .p12 is opened": {
+        "fr": "le libellé affiché à l'ouverture du .p12",
+        "en": "the label shown when the .p12 is opened",
+    },
+    "Then sceau.crt and sceau.p12 move to %s, readable by their owner only, and the work folder, with the encrypted key, is deleted.": {
+        "fr": "Puis sceau.crt et sceau.p12 vont dans %s, lisibles par leur seul propriétaire, et le dossier de travail, avec la clé chiffrée, est effacé.",
+        "en": "Then sceau.crt and sceau.p12 move to %s, readable by their owner only, and the work folder, with the encrypted key, is deleted.",
+    },
     "Test keys the upstream repositories (Odoo, OCA) commit are not listed.": {
         "fr": "Les clés d'essai que commitent les dépôts amont (Odoo, OCA) ne sont pas listées.",
         "en": "Test keys the upstream repositories (Odoo, OCA) commit are not listed.",

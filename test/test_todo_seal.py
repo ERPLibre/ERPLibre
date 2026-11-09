@@ -14,6 +14,7 @@ import datetime
 import hashlib
 import io
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -142,6 +143,18 @@ class TestCommandes(unittest.TestCase):
         self.assertNotIn("-noenc", req)
         self.assertIn(seal_menu.USAGE_CLE, req)
         self.assertIn("nonRepudiation", seal_menu.USAGE_CLE)
+
+
+class TestFormatCommande(unittest.TestCase):
+    def test_la_commande_affichee_redonne_la_commande_executee(self):
+        """Copiée dans un shell, la forme affichée lance exactement les
+        mêmes arguments, accents et espaces compris."""
+        for commande in commandes_openssl(
+            "/d/.sceau-x", "Sceau inventé", 30, "Org inventée"
+        ):
+            texte = seal_menu.format_commande(commande)
+            self.assertEqual(shlex.split(texte.replace("\\\n", " ")), commande)
+            self.assertNotIn(MOT_DE_PASSE, texte)
 
 
 @unittest.skipUnless(OPENSSL, "openssl absent")
@@ -277,6 +290,21 @@ class TestLeMenu(_Isole):
         # L'empreinte à transmettre avec sceau.crt est affichée.
         self.assertIn(seal_menu.infos_certificat(crt)["empreinte"], sortie)
         self.assertEqual(seal_menu.lire_registre(), [dossier])
+
+    def test_les_commandes_sont_affichees_et_expliquees_sans_mot_de_passe(
+        self,
+    ):
+        dossier = os.path.join(self.tmp, "sceau")
+        sortie = self._lance([dossier, "", "", ""])
+        self.assertIn("$ openssl req", sortie)
+        self.assertIn("$ openssl pkcs12", sortie)
+        self.assertIn(seal_menu.USAGE_CLE, sortie)
+        self.assertIn(f"env:{VAR_MDP}", sortie)
+        self.assertNotIn(MOT_DE_PASSE, sortie)
+        # La légende suit les commandes, option par option.
+        legende = sortie.split("$ openssl pkcs12")[1]
+        for option in ("-subj", "-addext", "-passout", "pkcs12 -export"):
+            self.assertIn(option, legende)
 
     def test_l_organisation_entre_dans_le_sujet(self):
         dossier = os.path.join(self.tmp, "sceau")

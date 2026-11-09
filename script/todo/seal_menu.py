@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -192,7 +193,32 @@ def commandes_openssl(dossier, nom_commun, jours, organisation=""):
     ]  # fmt: skip
 
 
-def generer_sceau(dossier, nom_commun, jours, mot_de_passe, organisation=""):
+def format_commande(commande):
+    """``commande`` en ligne de shell lisible : le programme et ses
+    sous-commandes, puis une option par ligne avec sa valeur, chaque jeton
+    cité comme le shell l'attend."""
+    jetons = [shlex.quote(j) for j in commande]
+    lignes, courante = [], []
+    for i, jeton in enumerate(commande):
+        option = jeton.startswith("-")
+        suit_une_option = (
+            i > 0 and commande[i - 1].startswith("-") and not option
+        )
+        if option and courante:
+            lignes.append(" ".join(courante))
+            courante = []
+        courante.append(jetons[i])
+        if suit_une_option:
+            lignes.append(" ".join(courante))
+            courante = []
+    if courante:
+        lignes.append(" ".join(courante))
+    return " \\\n    ".join(lignes)
+
+
+def generer_sceau(
+    dossier, nom_commun, jours, mot_de_passe, organisation="", annonce=None
+):
     """Écrit ``sceau.crt`` et ``sceau.p12`` dans ``dossier`` et rend les
     deux chemins.
 
@@ -202,7 +228,11 @@ def generer_sceau(dossier, nom_commun, jours, mot_de_passe, organisation=""):
     tout, et les fichiers arrivent en 0600 même quand l'ancien était plus
     ouvert. Le sous-dossier, et la clé chiffrée qu'il contient, sont effacés
     dans tous les cas. Lève ``subprocess.CalledProcessError`` quand openssl
-    échoue."""
+    échoue.
+
+    ``annonce``, quand il est donné, reçoit chaque commande avant qu'elle
+    s'exécute : le mot de passe n'y figure pas, seule la variable qui le
+    porte (``env:VAR_MDP``)."""
     os.makedirs(dossier, mode=0o700, exist_ok=True)
     env = dict(os.environ, **{VAR_MDP: mot_de_passe})
     travail = tempfile.mkdtemp(prefix=PREFIXE_TRAVAIL, dir=dossier)
@@ -210,6 +240,8 @@ def generer_sceau(dossier, nom_commun, jours, mot_de_passe, organisation=""):
     try:
         commandes = commandes_openssl(travail, nom_commun, jours, organisation)
         for commande in commandes:
+            if annonce:
+                annonce(commande)
             subprocess.run(commande, env=env, check=True, capture_output=True)
         rendus = []
         for nom in (NOM_CRT, NOM_P12):
@@ -835,6 +867,51 @@ class SealMenuMixin:
             return None
         return mot_de_passe
 
+    def _seal_explain_commands(self, dossier):
+        """La légende des deux commandes que la génération vient
+        d'afficher, puis ce qui suit openssl."""
+        print(f"\n{t('What the options do:')}")
+        for option, sens in (
+            ("req -x509", t("a self-signed certificate, without a CA")),
+            ("-utf8", t("accented names kept as typed")),
+            ("-quiet", t("no progress bar during the RSA generation")),
+            (
+                f"-newkey rsa:{TAILLE_CLE}",
+                t("a new RSA key of %s bits") % TAILLE_CLE,
+            ),
+            ("-days", t("validity in days")),
+            ("-keyout / -out", t("the key file, the certificate file")),
+            ("-subj", t("the subject: CN, the name; O, the organisation")),
+            (
+                "-addext keyUsage=…",
+                t(
+                    "digital signature and non repudiation, which pyHanko"
+                    " requires; critical, so readers enforce it"
+                ),
+            ),
+            (
+                "-passout / -passin env:…",
+                t(
+                    "the password read from the environment: the key is"
+                    " encrypted, and the password never shows in the command"
+                ),
+            ),
+            (
+                "pkcs12 -export",
+                t("joins key and certificate in the .p12 Odoo reads"),
+            ),
+            ("-name", t("the label shown when the .p12 is opened")),
+        ):
+            print(f"\t{option:<26} {sens}")
+        print(
+            t(
+                "Then sceau.crt and sceau.p12 move to %s, readable by their"
+                " owner only, and the work folder, with the encrypted key,"
+                " is deleted."
+            )
+            % dossier
+        )
+
     def execute_generate_seal(self):
         print(t("Generate an internal PAdES seal (self-signed)"))
         print(
@@ -857,9 +934,15 @@ class SealMenuMixin:
         mot_de_passe = self._seal_ask_password()
         if mot_de_passe is None:
             return
+        print(f"\n{t('Commands run, the password read from %s:') % VAR_MDP}")
         try:
             crt, p12 = generer_sceau(
-                dossier, nom_commun, jours, mot_de_passe, organisation
+                dossier,
+                nom_commun,
+                jours,
+                mot_de_passe,
+                organisation,
+                annonce=lambda c: print(f"$ {format_commande(c)}"),
             )
         except subprocess.CalledProcessError as erreur:
             print(f"❌ {t('openssl failed:')} {erreur}")
@@ -869,6 +952,7 @@ class SealMenuMixin:
         except OSError as erreur:
             print(f"❌ {t('Cannot write the seal:')} {erreur}")
             return
+        self._seal_explain_commands(dossier)
         try:
             inscrire_sceau(dossier)
         except (OSError, ValueError) as erreur:
