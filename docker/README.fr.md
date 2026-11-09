@@ -179,6 +179,27 @@ construction a donné à root.
       INIT_CMD: "./script/my_startup.sh"
 ```
 
+### L'entrypoint du checkout
+
+`docker-compose.yml` et les fichiers compose 18.0 de `docker/` montent le
+`docker/` du checkout en lecture seule sur `/opt/erplibre/docker` et y
+lancent `entrypoint_pip_extra.sh`. Un
+répertoire plutôt que le fichier seul : le conteneur voit le fichier que git
+remplace lors d'un tirage, là où un montage de fichier seul sert encore la
+copie remplacée jusqu'au redémarrage du conteneur. Deux lignes commentées de
+`docker-compose.yml` et de `docker/docker-compose_odoo_18.0.yml` lancent
+l'`entrypoint.sh` du checkout, et donc `INIT_CMD`, sur une image construite
+avant lui : `ERPLIBRE_ENTRYPOINT`, et un second montage en lecture seule de
+`docker/` par-dessus le `/ERPLibre/docker` de l'image, une copie de ce
+répertoire où `entrypoint.sh` trouve `odoo_rc_db.py` et `wait-for-psql.py`.
+
+Avec Docker sans root, `docker cp` échoue sur `remount-ro ... operation not
+permitted` dès que le conteneur a un montage lié en lecture seule dont la
+source se trouve sur un système de fichiers monté `nosuid`, `nodev` ou
+`noexec`, comme un `/tmp` en tmpfs ; un répertoire échoue comme un fichier.
+`script/docker/docker_copy_file.sh` passe plutôt par `docker exec`, tout comme
+`docker compose exec -T -u odoo ERPLibre sh -c 'cat > DEST' < FILE`.
+
 ### Tirer le code depuis Odoo
 
 `erplibre_info_git_fetch` fait le fetch et le tirage des clones git depuis

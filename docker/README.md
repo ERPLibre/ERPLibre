@@ -178,6 +178,27 @@ which cannot run apt, nor pip in a venv the build gave to root.
       INIT_CMD: "./script/my_startup.sh"
 ```
 
+### The checkout's entrypoint
+
+`docker-compose.yml` and the 18.0 compose files of `docker/` mount the
+checkout's `docker/` read-only at `/opt/erplibre/docker` and start
+`entrypoint_pip_extra.sh` from there. A directory rather than the single
+file: the container sees the file that git replaces on a pull, where a
+single-file mount keeps serving the replaced copy until the container
+restarts. Two commented lines of `docker-compose.yml` and of
+`docker/docker-compose_odoo_18.0.yml` run the checkout's `entrypoint.sh`, and
+so `INIT_CMD`, on an image built before it: `ERPLIBRE_ENTRYPOINT`, and a
+second read-only mount of `docker/` over the image's `/ERPLibre/docker`, a
+copy of that directory where `entrypoint.sh` finds `odoo_rc_db.py` and
+`wait-for-psql.py`.
+
+With rootless Docker, `docker cp` fails with `remount-ro ... operation not
+permitted` as soon as the container has a read-only bind mount whose source
+lies on a filesystem mounted `nosuid`, `nodev` or `noexec`, such as a tmpfs
+`/tmp`; a directory and a file fail alike. `script/docker/docker_copy_file.sh`
+goes through `docker exec` instead, and so does `docker compose exec -T -u
+odoo ERPLibre sh -c 'cat > DEST' < FILE`.
+
 ### Pulling the code from Odoo
 
 `erplibre_info_git_fetch` fetches and pulls the git clones from Odoo, which

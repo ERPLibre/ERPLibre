@@ -10,7 +10,7 @@ services:
       - 8071:8071
       - 8072:8072
     environment:
-      HOST: db,selenium-hub
+      HOST: db
       PASSWORD: mysecretpassword
       USER: odoo
       POSTGRES_DB: postgres
@@ -25,8 +25,9 @@ services:
       PIP_EXTRA_REQUIREMENTS_ODOO: ""
       # ERPLibre tools' venv (.venv.erplibre), the one of script/. An image
       # built from this checkout carries the Selenium scripts' packages; the
-      # 1.8.0 image lacks them, add them by name, its scripts stay its own
-      # older copies: "selenium pykeepass python-randomword-fr"
+      # 1.8.0 image lacks them, add them pinned, selenium on the grid's 4.34
+      # below; its scripts stay its own older copies:
+      #   "selenium==4.34.2 pykeepass==4.2.0 python-randomword-fr==1.0.0"
       PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
       # Debian packages, one name per word, installed as root at each start
       # before the pip lists, e.g. "libmagic1" for python-magic. Needs the
@@ -43,16 +44,21 @@ services:
       # The nodes send the downloads back to the script (managed downloads,
       # on by default in their images).
       # Once set, KDBX_PASSWORD_FILE opens the KeePass vault with the password
-      # held by this file, mounted below, before kdbx.password and the prompt;
-      # an image built before it ignores it. Only odoo reads the file: run the
-      # scripts with exec -u odoo, as exec defaults to root here. Outside Swarm, a compose secret is
-      # mounted with the same owner and mode, no safer.
+      # held by this file, before kdbx.password and the prompt; an image
+      # built before it ignores it. The file reaches the container through
+      # the private/ mount below. It belongs to uid 101, the image's odoo
+      # account, mode 400; with rootful Docker:
+      #   sudo chown 101:101 private/kdbx_password && sudo chmod 400 private/kdbx_password
+      # Rootless Docker maps uid 101 elsewhere: see script/selenium/install.md.
+      # Only odoo reads the file: run the scripts with exec -u odoo, as exec
+      # defaults to root here. Outside Swarm, a compose secret is mounted
+      # with the same owner and mode, no safer.
       #KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
     # The container starts as root: apt installs as root, each pip as the
     # owner of its venv (odoo, or root in an image built with
     # ERPLIBRE_CODE_OWNER=root), then the entrypoint runs Odoo as odoo.
     user: root
-    entrypoint: ["/entrypoint_pip_extra.sh"]
+    entrypoint: ["/opt/erplibre/docker/entrypoint_pip_extra.sh"]
     # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
     # with no capability and can never regain one.
     cap_drop: [ALL]
@@ -80,14 +86,10 @@ services:
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
       - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
-      - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
-      # The KDBX_PASSWORD_FILE file, read-only over the private/ mount. It
-      # must belong to uid 101, the image's odoo account, mode 400; with
-      # rootful Docker:
-      #   sudo chown 101:101 private/kdbx_password && sudo chmod 400 private/kdbx_password
-      # Rootless Docker maps uid 101 elsewhere: see script/selenium/install.md.
-      # Uncomment it with KDBX_PASSWORD_FILE once the file exists.
-      #- ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
+      # The checkout's docker/, read-only, for the entrypoint above. A
+      # directory follows the files git replaces on a pull, where a
+      # single-file bind keeps serving the replaced copy until a restart.
+      - ./docker:/opt/erplibre/docker:ro
     restart: always
 
   db:
@@ -133,9 +135,11 @@ services:
   # in python
   # from odoo.tools import config
   # config.get("selenium_network_url")
+  # No container_name: the service name selenium-hub resolves on each
+  # project's network, for the nodes and the scripts alike. The host ports
+  # below and the ERPLibre ones still allow one such project per host.
   selenium-hub:
     image: selenium/hub:4.34.0-20250707
-    container_name: selenium-hub
     ports:
       - "8073:4442"
       - "8074:4443"

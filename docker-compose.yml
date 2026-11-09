@@ -29,11 +29,14 @@ services:
       # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
       # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
+      # The checkout's entrypoint.sh instead of the image's /entrypoint.sh;
+      # uncomment with the ./docker:/ERPLibre/docker mount below.
+      #ERPLIBRE_ENTRYPOINT: /ERPLibre/docker/entrypoint.sh
     # The container starts as root: apt installs as root, each pip as the
     # owner of its venv (odoo, or root in an image built with
     # ERPLIBRE_CODE_OWNER=root), then the entrypoint runs Odoo as odoo.
     user: root
-    entrypoint: ["/entrypoint_pip_extra.sh"]
+    entrypoint: ["/opt/erplibre/docker/entrypoint_pip_extra.sh"]
     # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
     # with no capability and can never regain one.
     cap_drop: [ALL]
@@ -59,14 +62,17 @@ services:
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
       - erplibre_conf:/etc/odoo
-      - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
-      # The checkout's entrypoint.sh instead of the image's copy, made at its
-      # build: INIT_CMD without rebuilding an image that predates it. The
-      # three lines go together: this entrypoint.sh calls odoo_rc_db.py and
-      # the --config of wait-for-psql.py, absent from older images.
-      #- ./docker/entrypoint.sh:/entrypoint.sh:ro
-      #- ./docker/odoo_rc_db.py:/ERPLibre/docker/odoo_rc_db.py:ro
-      #- ./docker/wait-for-psql.py:/ERPLibre/docker/wait-for-psql.py:ro
+      # The checkout's docker/, read-only, for the entrypoint above. A
+      # directory follows the files git replaces on a pull, where a
+      # single-file bind keeps serving the replaced copy until a restart.
+      - ./docker:/opt/erplibre/docker:ro
+      # The checkout's entrypoint.sh and its helpers instead of the image's
+      # copies, made at its build: INIT_CMD without rebuilding an image that
+      # predates it. entrypoint.sh calls /ERPLibre/docker/odoo_rc_db.py and
+      # the --config of wait-for-psql.py, absent from older images: the
+      # mount replaces the image's /ERPLibre/docker, a copy of docker/.
+      # Uncomment with ERPLIBRE_ENTRYPOINT above.
+      #- ./docker:/ERPLibre/docker:ro
     restart: always
 
   db:

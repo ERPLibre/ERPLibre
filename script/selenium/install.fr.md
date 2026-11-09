@@ -49,9 +49,11 @@ Une image ERPLibre construite depuis cette version porte dans
 `requirement/erplibre_require-ments-docker.txt`. L'image 1.8.0 ne les a pas
 et précède `KDBX_PASSWORD_FILE` : le compose peut ajouter les paquets à chaque
 démarrage, mais les scripts restent les copies plus anciennes de l'image.
+Épinglez-les, `selenium` sur la 4.34 de la grille pour que le client et la
+grille tournent la même version : un nom seul installe la dernière.
 
 ```yaml
-      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium pykeepass python-randomword-fr"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium==4.34.2 pykeepass==4.2.0 python-randomword-fr==1.0.0"
 ```
 
 Un script qui se connecte avec le coffre KeePass le trouve à `kdbx.path` dans
@@ -60,13 +62,12 @@ fichier qui porte le mot de passe ; la valeur elle-même reste hors de
 l'environnement et du JSON. Une fois posée, la variable l'emporte sur
 `kdbx.password` et sur l'invite, terminal ou non, ce qui permet à un script de
 tourner sans surveillance ; un fichier illisible, comme un coffre qui ne s'ouvre
-pas, arrête le script avec sa cause. Deux lignes commentées du compose posent
-la variable et montent `private/kdbx_password` en lecture seule à ce chemin :
+pas, arrête le script avec sa cause. Une ligne commentée du compose pose la
+variable ; le fichier arrive dans le conteneur par le montage `./private` du
+compose, sans montage propre :
 
 ```yaml
       KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
-    volumes:
-      - ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
 ```
 
 Le fichier appartient à l'uid 101, le compte `odoo` de l'image, en mode 400.

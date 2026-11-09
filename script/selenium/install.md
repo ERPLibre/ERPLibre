@@ -46,10 +46,12 @@ An ERPLibre image built from this version carries in `.venv.erplibre` the
 packages the scripts import, listed in
 `requirement/erplibre_require-ments-docker.txt`. The 1.8.0 image lacks them
 and predates `KDBX_PASSWORD_FILE`: the compose can add the packages at each
-start, but the scripts stay the image's older copies.
+start, but the scripts stay the image's older copies. Pin them, `selenium` on
+the grid's 4.34 so that client and grid run the same release: a bare name
+installs the latest one.
 
 ```yaml
-      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium pykeepass python-randomword-fr"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium==4.34.2 pykeepass==4.2.0 python-randomword-fr==1.0.0"
 ```
 
 A script that logs in with the KeePass vault finds it at `kdbx.path` in
@@ -57,14 +59,12 @@ A script that logs in with the KeePass vault finds it at `kdbx.path` in
 that holds the password; the value itself stays out of the environment and of
 the JSON. Once set, the variable wins over `kdbx.password` and over the
 prompt, terminal or not, which lets a script run unattended; an unreadable
-file, like a vault that does not open, stops the script with its cause. Two
-commented lines of the compose set the variable and mount
-`private/kdbx_password` read-only at that path:
+file, like a vault that does not open, stops the script with its cause. A
+commented line of the compose sets the variable; the file reaches the
+container through the compose's `./private` mount, with no mount of its own:
 
 ```yaml
       KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
-    volumes:
-      - ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
 ```
 
 The file belongs to uid 101, the image's `odoo` account, with mode 400. With a

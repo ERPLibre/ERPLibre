@@ -91,7 +91,9 @@ An ERPLibre image built from this version carries in `.venv.erplibre` the
 packages the scripts import, listed in
 `requirement/erplibre_require-ments-docker.txt`. The 1.8.0 image lacks them
 and predates `KDBX_PASSWORD_FILE`: the compose can add the packages at each
-start, but the scripts stay the image's older copies.
+start, but the scripts stay the image's older copies. Pin them, `selenium` on
+the grid's 4.34 so that client and grid run the same release: a bare name
+installs the latest one.
 
 <!-- [fr] -->
 Une image ERPLibre construite depuis cette version porte dans
@@ -99,10 +101,12 @@ Une image ERPLibre construite depuis cette version porte dans
 `requirement/erplibre_require-ments-docker.txt`. L'image 1.8.0 ne les a pas
 et précède `KDBX_PASSWORD_FILE` : le compose peut ajouter les paquets à chaque
 démarrage, mais les scripts restent les copies plus anciennes de l'image.
+Épinglez-les, `selenium` sur la 4.34 de la grille pour que le client et la
+grille tournent la même version : un nom seul installe la dernière.
 
 <!-- [common] -->
 ```yaml
-      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium pykeepass python-randomword-fr"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium==4.34.2 pykeepass==4.2.0 python-randomword-fr==1.0.0"
 ```
 
 <!-- [en] -->
@@ -111,9 +115,9 @@ A script that logs in with the KeePass vault finds it at `kdbx.path` in
 that holds the password; the value itself stays out of the environment and of
 the JSON. Once set, the variable wins over `kdbx.password` and over the
 prompt, terminal or not, which lets a script run unattended; an unreadable
-file, like a vault that does not open, stops the script with its cause. Two
-commented lines of the compose set the variable and mount
-`private/kdbx_password` read-only at that path:
+file, like a vault that does not open, stops the script with its cause. A
+commented line of the compose sets the variable; the file reaches the
+container through the compose's `./private` mount, with no mount of its own:
 
 <!-- [fr] -->
 Un script qui se connecte avec le coffre KeePass le trouve à `kdbx.path` dans
@@ -122,14 +126,13 @@ fichier qui porte le mot de passe ; la valeur elle-même reste hors de
 l'environnement et du JSON. Une fois posée, la variable l'emporte sur
 `kdbx.password` et sur l'invite, terminal ou non, ce qui permet à un script de
 tourner sans surveillance ; un fichier illisible, comme un coffre qui ne s'ouvre
-pas, arrête le script avec sa cause. Deux lignes commentées du compose posent
-la variable et montent `private/kdbx_password` en lecture seule à ce chemin :
+pas, arrête le script avec sa cause. Une ligne commentée du compose pose la
+variable ; le fichier arrive dans le conteneur par le montage `./private` du
+compose, sans montage propre :
 
 <!-- [common] -->
 ```yaml
       KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
-    volumes:
-      - ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
 ```
 
 <!-- [en] -->

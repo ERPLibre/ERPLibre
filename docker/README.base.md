@@ -354,6 +354,50 @@ construction a donné à root.
 ```
 
 <!-- [en] -->
+### The checkout's entrypoint
+
+`docker-compose.yml` and the 18.0 compose files of `docker/` mount the
+checkout's `docker/` read-only at `/opt/erplibre/docker` and start
+`entrypoint_pip_extra.sh` from there. A directory rather than the single
+file: the container sees the file that git replaces on a pull, where a
+single-file mount keeps serving the replaced copy until the container
+restarts. Two commented lines of `docker-compose.yml` and of
+`docker/docker-compose_odoo_18.0.yml` run the checkout's `entrypoint.sh`, and
+so `INIT_CMD`, on an image built before it: `ERPLIBRE_ENTRYPOINT`, and a
+second read-only mount of `docker/` over the image's `/ERPLibre/docker`, a
+copy of that directory where `entrypoint.sh` finds `odoo_rc_db.py` and
+`wait-for-psql.py`.
+
+With rootless Docker, `docker cp` fails with `remount-ro ... operation not
+permitted` as soon as the container has a read-only bind mount whose source
+lies on a filesystem mounted `nosuid`, `nodev` or `noexec`, such as a tmpfs
+`/tmp`; a directory and a file fail alike. `script/docker/docker_copy_file.sh`
+goes through `docker exec` instead, and so does `docker compose exec -T -u
+odoo ERPLibre sh -c 'cat > DEST' < FILE`.
+
+<!-- [fr] -->
+### L'entrypoint du checkout
+
+`docker-compose.yml` et les fichiers compose 18.0 de `docker/` montent le
+`docker/` du checkout en lecture seule sur `/opt/erplibre/docker` et y
+lancent `entrypoint_pip_extra.sh`. Un
+répertoire plutôt que le fichier seul : le conteneur voit le fichier que git
+remplace lors d'un tirage, là où un montage de fichier seul sert encore la
+copie remplacée jusqu'au redémarrage du conteneur. Deux lignes commentées de
+`docker-compose.yml` et de `docker/docker-compose_odoo_18.0.yml` lancent
+l'`entrypoint.sh` du checkout, et donc `INIT_CMD`, sur une image construite
+avant lui : `ERPLIBRE_ENTRYPOINT`, et un second montage en lecture seule de
+`docker/` par-dessus le `/ERPLibre/docker` de l'image, une copie de ce
+répertoire où `entrypoint.sh` trouve `odoo_rc_db.py` et `wait-for-psql.py`.
+
+Avec Docker sans root, `docker cp` échoue sur `remount-ro ... operation not
+permitted` dès que le conteneur a un montage lié en lecture seule dont la
+source se trouve sur un système de fichiers monté `nosuid`, `nodev` ou
+`noexec`, comme un `/tmp` en tmpfs ; un répertoire échoue comme un fichier.
+`script/docker/docker_copy_file.sh` passe plutôt par `docker exec`, tout comme
+`docker compose exec -T -u odoo ERPLibre sh -c 'cat > DEST' < FILE`.
+
+<!-- [en] -->
 ### Pulling the code from Odoo
 
 `erplibre_info_git_fetch` fetches and pulls the git clones from Odoo, which
