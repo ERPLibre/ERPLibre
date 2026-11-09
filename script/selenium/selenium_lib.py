@@ -505,9 +505,11 @@ class SeleniumLib(object):
                     except ImportError:
                         ChromeDriverManager = None
                     service = Service(
-                        ChromeDriverManager().install()
-                        if ChromeDriverManager
-                        else None,
+                        (
+                            ChromeDriverManager().install()
+                            if ChromeDriverManager
+                            else None
+                        ),
                         log_path="/tmp/chromedriver.log",
                     )
                     chrome_options.enable_downloads = True

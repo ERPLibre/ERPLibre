@@ -761,14 +761,18 @@ class ContainerMenuMixin:
         """Vrai quand buildx émule chacune des architectures. Sinon, propose
         l'installation de buildx et de QEMU, commande montrée d'abord."""
         manquantes = [
-            a for a in archs if a not in self._container_plateformes_emulees(prefixe)
+            a
+            for a in archs
+            if a not in self._container_plateformes_emulees(prefixe)
         ]
         if not manquantes:
             return True
         commande = "sudo bash script/install/install_container.sh --multiarch"
         print(f"\n⚠ {t('No emulation for: %s') % ', '.join(manquantes)}")
         print(f"  {commande}")
-        if not self._is_yes(input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")):
+        if not self._is_yes(
+            input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")
+        ):
             return False
         self.execute.exec_command_live(commande, source_erplibre=False)
         emulees = self._container_plateformes_emulees(prefixe)
@@ -1387,7 +1391,9 @@ class ContainerMenuMixin:
         print(f"  {t('This database is a copy: it gets a new UUID.')}")
         print(f"  {t('This database was moved: it keeps its original UUID.')}")
         if not self._is_yes_default_yes(
-            input(f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}")
+            input(
+                f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}"
+            )
         ):
             options.append("--move")
         # Une sauvegarde d'une version précédente du code ne se charge pas
