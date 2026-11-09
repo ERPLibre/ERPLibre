@@ -245,6 +245,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TODO › Execute** entries from Database on move down by one to make room for Python: Database becomes `[10]` and Docker / Podman `[20]`
 - **TODO › Execute › Database › Erase databases** erases one or more databases chosen by their numbers, separated by spaces, where it offered all of them or a single one. One confirmation names every database (default no), each is dropped in turn and a summary says which remain; an entry holding a single invalid number is refused whole, so a typo never erases the valid part of what was typed
 - `./run.sh`, the production launcher, no longer forces `--limit-time-real 99999`, `--limit-time-cpu 99999` and `--limit-memory-hard=0`: the time and memory limits of `config.conf` now apply, so a runaway request is killed and a worker's memory bounded. A setup that relied on unlimited requests sets them in `config.conf`, or uses `./dev.sh`. `./test.sh` also lifts `limit_memory_soft`, so a heavy test run keeps its worker
+- The Odoo 18 lock is refreshed: 63 packages move within the pyproject bounds, four across a major version — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — and oauthlib reaches 4.0.1, which fixes CVE-2026-49272 (see Security). markdown-it-py, which `erplibre_assistant_core` imports, is declared in the pyproject instead of arriving through rich; deprecated leaves the lock. An existing venv follows with `poetry install --no-root`
 
 ## Fixed
 
@@ -398,6 +399,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `script/database/download_remote.sh` no longer puts the Odoo master password on curl's command line, where any account on the host read it with `ps` for the whole download: curl reads it from its standard input
 - Secrets that carry no `password` in an option or upper-case variable name are redacted too, on screen and in the session log: `odoo-bin -w`, `sshpass -p`, `mysql -p<value>`, `curl -u user:pass`, configuration lines such as `admin_passwd = …`, credentials in a URL, GitHub and GitLab tokens, JSON keys, lower-case variables and private keys, the key or user kept readable. Short options are masked only in their own tool, so `grep -w` or `docker exec -u` stay intact. Logger messages and a crash traceback go through the same masking before they reach the log, where they went unfiltered
 - `script/database/db_restore.py` passes Odoo's `db_sslmode` to psql, so a server that demands `verify-full` is not joined without checking its certificate
+- Odoo 18 installs oauthlib 4.0.1, which fixes CVE-2026-49272: in the device authorization flow, 4.0.0 handed a Bearer token to anyone knowing a valid client ID. PyPDF2 is pinned at 2.12.1, the version Odoo 18 installs, so `pip-audit` on the requirements audits that version instead of 3.0.1; its PYSEC-2026-1835 (CVE-2023-36464) stays, the advertised fix 3.9.0 being a pypdf version and no PyPDF2 release fixing it
 
 
 ## [1.8.0] - 2026-09-04

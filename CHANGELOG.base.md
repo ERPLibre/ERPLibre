@@ -439,6 +439,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TODO › Execute** entries from Database on move down by one to make room for Python: Database becomes `[10]` and Docker / Podman `[20]`
 - **TODO › Execute › Database › Erase databases** erases one or more databases chosen by their numbers, separated by spaces, where it offered all of them or a single one. One confirmation names every database (default no), each is dropped in turn and a summary says which remain; an entry holding a single invalid number is refused whole, so a typo never erases the valid part of what was typed
 - `./run.sh`, the production launcher, no longer forces `--limit-time-real 99999`, `--limit-time-cpu 99999` and `--limit-memory-hard=0`: the time and memory limits of `config.conf` now apply, so a runaway request is killed and a worker's memory bounded. A setup that relied on unlimited requests sets them in `config.conf`, or uses `./dev.sh`. `./test.sh` also lifts `limit_memory_soft`, so a heavy test run keeps its worker
+- The Odoo 18 lock is refreshed: 63 packages move within the pyproject bounds, four across a major version — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — and oauthlib reaches 4.0.1, which fixes CVE-2026-49272 (see Security). markdown-it-py, which `erplibre_assistant_core` imports, is declared in the pyproject instead of arriving through rich; deprecated leaves the lock. An existing venv follows with `poetry install --no-root`
 
 <!-- [fr] -->
 
@@ -510,6 +511,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les entrées de **TODO › Exécution** à partir de Base descendent d'un rang pour faire place à Python : Base devient `[10]` et Docker / Podman `[20]`
 - **TODO › Exécution › Base › Effacer des bases de données** efface une ou plusieurs bases choisies par leurs numéros, séparés par des espaces, là où il offrait toutes les bases ou une seule. Une seule confirmation nomme chaque base (défaut non), chacune est effacée à son tour et un bilan dit celles qui restent ; une saisie qui porte un seul numéro invalide est refusée en entier, si bien qu'une faute de frappe n'efface jamais la partie valide de ce qui a été tapé
 - `./run.sh`, le lanceur de production, n'impose plus `--limit-time-real 99999`, `--limit-time-cpu 99999` ni `--limit-memory-hard=0` : les limites de temps et de mémoire de `config.conf` s'appliquent désormais, si bien qu'une requête emballée est tuée et la mémoire d'un worker bornée. Une installation qui comptait sur des requêtes sans limite les pose dans `config.conf`, ou passe par `./dev.sh`. `./test.sh` lève aussi `limit_memory_soft`, pour qu'une suite de tests gourmande garde son worker
+- Le lock d'Odoo 18 est rafraîchi : 63 paquets bougent dans les bornes du pyproject, dont quatre changent de version majeure — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — et oauthlib passe à 4.0.1, qui corrige CVE-2026-49272 (voir Sécurité). markdown-it-py, qu'importe `erplibre_assistant_core`, est déclaré dans le pyproject au lieu d'arriver par rich ; deprecated quitte le lock. Un venv existant suit par `poetry install --no-root`
 
 <!-- [en] -->
 ## Fixed
@@ -805,6 +807,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `script/database/download_remote.sh` no longer puts the Odoo master password on curl's command line, where any account on the host read it with `ps` for the whole download: curl reads it from its standard input
 - Secrets that carry no `password` in an option or upper-case variable name are redacted too, on screen and in the session log: `odoo-bin -w`, `sshpass -p`, `mysql -p<value>`, `curl -u user:pass`, configuration lines such as `admin_passwd = …`, credentials in a URL, GitHub and GitLab tokens, JSON keys, lower-case variables and private keys, the key or user kept readable. Short options are masked only in their own tool, so `grep -w` or `docker exec -u` stay intact. Logger messages and a crash traceback go through the same masking before they reach the log, where they went unfiltered
 - `script/database/db_restore.py` passes Odoo's `db_sslmode` to psql, so a server that demands `verify-full` is not joined without checking its certificate
+- Odoo 18 installs oauthlib 4.0.1, which fixes CVE-2026-49272: in the device authorization flow, 4.0.0 handed a Bearer token to anyone knowing a valid client ID. PyPDF2 is pinned at 2.12.1, the version Odoo 18 installs, so `pip-audit` on the requirements audits that version instead of 3.0.1; its PYSEC-2026-1835 (CVE-2023-36464) stays, the advertised fix 3.9.0 being a pypdf version and no PyPDF2 release fixing it
 
 <!-- [fr] -->
 
@@ -828,6 +831,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `script/database/download_remote.sh` ne met plus le mot de passe maître d'Odoo sur la ligne de commande de curl, où tout compte de l'hôte le lisait par `ps` pendant tout le téléchargement : curl le lit sur son entrée standard
 - Les secrets qui ne portent pas `password` dans un nom d'option ou de variable en majuscules sont caviardés eux aussi, à l'écran et au journal de session : `odoo-bin -w`, `sshpass -p`, `mysql -p<valeur>`, `curl -u user:pass`, les lignes de configuration comme `admin_passwd = …`, les identifiants dans une URL, les jetons GitHub et GitLab, les clés JSON, les variables en minuscules et les clés privées, la clé ou l'utilisateur restant lisible. Les options courtes ne sont masquées que dans leur outil : `grep -w` ou `docker exec -u` restent intacts. Les messages des loggers et le traceback d'un plantage passent par le même caviardage avant d'atteindre le journal, où ils arrivaient sans filtre
 - `script/database/db_restore.py` transmet le `db_sslmode` d'Odoo à psql : un serveur qui exige `verify-full` n'est pas joint sans vérifier son certificat
+- Odoo 18 installe oauthlib 4.0.1, qui corrige CVE-2026-49272 : dans le flux d'autorisation « device », 4.0.0 remettait un jeton Bearer à qui connaissait un client ID valide. PyPDF2 est épinglé à 2.12.1, la version qu'Odoo 18 installe, si bien que `pip-audit` sur les requirements audite cette version plutôt que 3.0.1 ; son PYSEC-2026-1835 (CVE-2023-36464) demeure, le correctif annoncé 3.9.0 étant une version de pypdf et aucune version de PyPDF2 ne le corrigeant
 
 <!-- [common] -->
 
