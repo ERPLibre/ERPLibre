@@ -6,10 +6,12 @@ import argparse
 import configparser
 import fcntl
 import getpass
+import grp
 import logging
 import mmap
 import os
 import posixpath
+import pwd
 import re
 import shlex
 import shutil
@@ -366,6 +368,102 @@ def chemin_image(image):
     if "/" in nom:
         return nom
     return os.path.join("image_db", nom)
+
+
+def _compte(uid):
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+def _groupe(gid):
+    try:
+        return grp.getgrgid(gid).gr_name
+    except KeyError:
+        return str(gid)
+
+
+def _proprietaire(chemin):
+    """« compte:groupe, mode 0640 » de `chemin`, ou « ? » sans stat."""
+    try:
+        etat = os.stat(chemin)
+    except OSError:
+        return "?"
+    return (
+        f"{_compte(etat.st_uid)}:{_groupe(etat.st_gid)},"
+        f" mode {oct(etat.st_mode & 0o7777)[2:].zfill(4)}"
+    )
+
+
+def _a_moi(chemin):
+    """Vrai si `chemin` appartient au compte courant : un chmod suffit
+    alors, sans sudo."""
+    try:
+        return os.stat(chemin).st_uid == os.geteuid()
+    except OSError:
+        return False
+
+
+def _dossier_bloquant(chemin):
+    """Le premier dossier de `chemin` que ce compte ne peut pas traverser,
+    de la racine vers la feuille, ou None."""
+    courant = os.sep
+    for partie in os.path.abspath(chemin).split(os.sep)[1:]:
+        if not os.access(courant, os.X_OK):
+            return courant
+        courant = os.path.join(courant, partie)
+    if os.path.isdir(courant) and not os.access(courant, os.X_OK):
+        return courant
+    return None
+
+
+def acces_image(image):
+    """None quand rien n'empêche de lire l'archive de `image` ; sinon le
+    refus de permission, expliqué.
+
+    Un refus ne se présente pas comme tel. Sur un dossier que ce compte ne
+    peut pas traverser, « os.path.exists » rend faux et l'archive passe
+    pour absente ; sur un fichier lisible par son seul propriétaire, Odoo
+    avale l'erreur de lecture dans zipfile.is_zipfile et répond « Not a
+    zipped dump file ». Le cas ordinaire est une archive déposée sous un
+    compte et restaurée sous celui d'Odoo. Le message nomme donc le compte
+    qui lit, le propriétaire et le mode, et la commande qui corrige.
+
+    Une archive vraiment absente n'est pas un refus : None, et la
+    restauration la signale avec son propre message, comme avant.
+    """
+    chemin = chemin_image(image)
+    compte = _compte(os.geteuid())
+    try:
+        os.stat(chemin)
+    except FileNotFoundError:
+        return None
+    except PermissionError:
+        bloquant = _dossier_bloquant(os.path.dirname(chemin) or ".")
+        if bloquant:
+            correctif = (
+                f"chmod u+x {bloquant}"
+                if _a_moi(bloquant)
+                else f"sudo chmod o+x {bloquant}"
+            )
+            return (
+                f"❌ Le dossier {bloquant} refuse le passage au compte"
+                f" {compte} ({_proprietaire(bloquant)}) : {chemin} ne peut"
+                f" être ni vu ni lu. Par exemple : {correctif}"
+            )
+        return f"❌ {chemin} est inaccessible au compte {compte}."
+    if not os.access(chemin, os.R_OK):
+        correctif = (
+            f"chmod u+r {chemin}"
+            if _a_moi(chemin)
+            else f"sudo chown {compte}: {chemin}"
+        )
+        return (
+            f"❌ {chemin} n'est pas lisible par le compte {compte}"
+            f" ({_proprietaire(chemin)}). Par exemple : {correctif}"
+        )
+    return None
 
 
 def nom_cache(image):
@@ -1095,6 +1193,12 @@ def restaurer(arg_base, image, database, neutralize=False):
     rien : Odoo a rendu zéro, la base est peut-être bonne, et rien ne
     prouve le contraire — un avertissement le dit.
     """
+    # Avant toute chose : une archive illisible ferait répondre à Odoo
+    # « Not a zipped dump file », qui accuse l'archive au lieu du droit
+    # qui manque. Rien n'est encore créé : il n'y a rien à nettoyer.
+    probleme = acces_image(image)
+    if probleme:
+        raise SystemExit(probleme)
     existait = database in bases_existantes(arg_base)
     # Ce chemin EXTRAIT, donc lui seul a besoin d'un temporaire qui tienne.
     # Le clone ne décompresse rien : lui passer cet environnement ferait
@@ -1289,6 +1393,16 @@ def main():
         with open(".odoo-version", "r") as f:
             odoo_version = f.readline()
             config.image = f"odoo{odoo_version}_base"
+
+    # Sans cache, ou pour un chemin, l'archive servira forcément : la
+    # vérifier avant le mot de passe maître évite de le taper pour rien.
+    # Avec un cache, elle peut manquer sans dommage — le cache se clone —,
+    # et restaurer() la vérifie au seul moment où elle sert.
+    if config.database and (config.ignore_cache or "/" in config.image):
+        probleme = acces_image(config.image)
+        if probleme:
+            print(probleme)
+            sys.exit(1)
 
     # check if it needs master password from config file
     config_path = chemin_config()
