@@ -94,7 +94,7 @@ docker compose -f docker-compose.yml up -d
 ### Extra Python packages for the addons
 
 An addon, or an ERPLibre script, can need a Python package the image does not
-carry. List them on one line, separated by spaces, with a version when it
+carry. List them separated by spaces or newlines, with a version when it
 matters; a constraint holds neither a space nor a quote. Each venv of the image
 has its own list: `PIP_EXTRA_REQUIREMENTS_ODOO` for Odoo's venv, the one the
 addons import, and `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` for `.venv.erplibre`, the
@@ -123,6 +123,14 @@ it. Pass the account:
 docker compose exec -u odoo ERPLibre bash
 ```
 
+`make docker_exec_erplibre`, that is `script/docker/docker_exec.sh`, and the
+TODO menu entry "Enter the ERPLibre container" open instead a root shell with
+`docker exec --privileged`: every capability, for that shell and what it
+starts only, so that apt can install a package there; Odoo keeps the
+compose's restrictions, and the container's seccomp filter and
+`no-new-privileges` still apply to the shell. It is a maintenance shell: close
+it once done, never leave it open.
+
 ### Extra system packages
 
 A pip package can load a system library the image does not carry —
@@ -135,11 +143,13 @@ installed, or provided by an installed one (`libmagic1` is provided by
 `libmagic1t64` on trixie), is skipped without network, so a restart stays
 offline; a recreated container installs it again.
 
-apt needs four more capabilities than the compose grants by default; without
-them it would install wrongly with no error — a setgid binary loses its bit
-without `FSETID`. The script checks them before apt and stops the container
-when one is missing. They serve root only: `setpriv` drops them when it hands
-over to `odoo`, and `no-new-privileges` keeps Odoo from regaining them.
+apt needs four more capabilities than the compose grants by default. Without
+`CHOWN`, `DAC_OVERRIDE` or `FOWNER`, apt fails, the last as soon as a package
+ships a file another account owns; without `FSETID`, it succeeds, and a
+setgid binary loses its bit with no error. The script checks the four before
+apt and stops the container when one is missing. They serve root only:
+`setpriv` drops them when it hands over to `odoo`, and `no-new-privileges`
+keeps Odoo from regaining them.
 
 ```yaml
     environment:
@@ -158,9 +168,10 @@ login shell at each start, once PostgreSQL answers and before Odoo, in
 `/ERPLibre`, as the account that runs Odoo. A command that fails stops the
 container before Odoo, with its error in `docker compose logs`; the log names
 the step, never the command. A Python package belongs in the
-`PIP_EXTRA_REQUIREMENTS_*` lists instead, and a Debian package in
-`APT_EXTRA_PACKAGES`: run as `odoo`, neither pip nor apt could write where
-they install.
+`PIP_EXTRA_REQUIREMENTS_*` lists instead, whose pip runs as the owner of its
+venv, `odoo` or root depending on the build, and a Debian package in
+`APT_EXTRA_PACKAGES`, which apt installs as root: `INIT_CMD` runs as `odoo`,
+which cannot run apt, nor pip in a venv the build gave to root.
 
 ```yaml
     environment:

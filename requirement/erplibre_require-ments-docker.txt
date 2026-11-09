@@ -42,9 +42,9 @@ click
 # randomwordfr en tête, pykeepass à l'ouverture du coffre. webdriver_manager
 # ne sert qu'au pilote Chrome local, et reste dans
 # script/selenium/requirements.txt ; PyGObject, pour la vidéo, se compile
-# contre des bibliothèques système et reste dans requirements-video.txt. Le
-# navigateur n'est pas fourni : un Firefox dans l'image, ou un nœud Selenium
-# distant.
+# contre les en-têtes de girepository-2.0, absents de l'image, et reste dans
+# requirements-video.txt. Le navigateur n'est pas fourni : un Firefox dans
+# l'image, ou un nœud Selenium distant.
 selenium
 pykeepass
 python-randomword-fr

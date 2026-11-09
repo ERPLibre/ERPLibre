@@ -94,8 +94,8 @@ docker compose -f docker-compose.yml up -d
 ### Paquets Python supplémentaires pour les addons
 
 Un addon, ou un script d'ERPLibre, peut demander un paquet Python que l'image
-n'a pas. Listez-les sur une ligne, séparés par des espaces, avec une version
-quand elle compte ; une contrainte ne contient ni espace ni guillemet. Chaque
+n'a pas. Listez-les séparés par des espaces ou des sauts de ligne, avec une
+version quand elle compte ; une contrainte ne contient ni espace ni guillemet. Chaque
 venv de l'image a sa liste : `PIP_EXTRA_REQUIREMENTS_ODOO` pour le venv d'Odoo,
 celui qu'importent les addons, et `PIP_EXTRA_REQUIREMENTS_ERPLIBRE` pour
 `.venv.erplibre`, celui des outils de `script/` :
@@ -123,6 +123,14 @@ Odoo ne peut plus le modifier. Passez le compte :
 docker compose exec -u odoo ERPLibre bash
 ```
 
+`make docker_exec_erplibre`, soit `script/docker/docker_exec.sh`, et l'entrée
+« Entrer dans le conteneur ERPLibre » du menu TODO ouvrent au contraire un
+shell root par `docker exec --privileged` : toutes les capacités, pour ce
+shell et ce qu'il lance seulement, afin qu'apt puisse y installer un paquet ;
+Odoo garde les restrictions du compose, et le filtre seccomp du conteneur
+comme `no-new-privileges` s'appliquent encore au shell. C'est un shell de
+maintenance : fermez-le une fois le travail fait, ne le laissez jamais ouvert.
+
 ### Paquets système supplémentaires
 
 Un paquet pip peut charger une bibliothèque système que l'image n'a pas —
@@ -135,11 +143,13 @@ réécrire. Un paquet déjà installé, ou fourni par un paquet installé
 (`libmagic1` l'est par `libmagic1t64` sous trixie), est sauté sans réseau : un
 redémarrage reste hors ligne, et un conteneur recréé l'installe de nouveau.
 
-apt demande quatre capacités de plus que celles du compose par défaut ; sans
-elles, il installerait mal sans erreur — un binaire setgid perd son bit sans
-`FSETID`. Le script les vérifie avant apt et arrête le conteneur s'il en
-manque une. Elles ne servent qu'à root : `setpriv` les retire en passant la
-main à `odoo`, et `no-new-privileges` empêche Odoo de les regagner.
+apt demande quatre capacités de plus que celles du compose par défaut. Sans
+`CHOWN`, `DAC_OVERRIDE` ou `FOWNER`, apt échoue, la dernière dès qu'un paquet
+livre un fichier qui appartient à un autre compte ; sans `FSETID`, il réussit,
+et un binaire setgid perd son bit sans erreur. Le script vérifie les quatre
+avant apt et arrête le conteneur s'il en manque une. Elles ne servent qu'à
+root : `setpriv` les retire en passant la main à `odoo`, et
+`no-new-privileges` empêche Odoo de les regagner.
 
 ```yaml
     environment:
@@ -158,9 +168,11 @@ bash de connexion à chaque démarrage, une fois que PostgreSQL répond et avant
 Odoo, dans `/ERPLibre`, sous le compte qui fait tourner Odoo. Une commande qui
 échoue arrête le conteneur avant Odoo, avec son erreur dans `docker compose
 logs` ; le journal nomme l'étape, jamais la commande. Un paquet Python va
-plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*`, et un paquet Debian dans
-`APT_EXTRA_PACKAGES` : lancés sous `odoo`, ni pip ni apt ne pourraient écrire
-là où ils installent.
+plutôt dans les listes `PIP_EXTRA_REQUIREMENTS_*`, dont le pip tourne sous le
+propriétaire de son venv, `odoo` ou root selon la construction, et un paquet
+Debian dans `APT_EXTRA_PACKAGES`, qu'apt installe en root : `INIT_CMD` tourne
+sous `odoo`, qui ne peut lancer ni apt, ni pip dans un venv que la
+construction a donné à root.
 
 ```yaml
     environment:

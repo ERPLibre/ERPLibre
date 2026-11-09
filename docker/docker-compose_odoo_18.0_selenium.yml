@@ -1,3 +1,7 @@
+# Relative paths resolve from the checkout root, as in docker-compose.yml:
+#   docker compose --project-directory . -f docker/docker-compose_odoo_18.0_selenium.yml up -d
+# Naming services, e.g. "up -d ERPLibre firefox", skips the other browsers'
+# nodes and their images.
 services:
   ERPLibre:
     image: technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad
@@ -13,15 +17,51 @@ services:
       STOP_BEFORE_INIT: "False"
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
+      # Python packages the image lacks, separated by spaces or newlines (a
+      # YAML | block works), pinned when needed. Installed at each start, before Odoo; nothing is
+      # downloaded once satisfied.
+      # Example: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
+      # Odoo's venv, the one the addons import
+      PIP_EXTRA_REQUIREMENTS_ODOO: ""
+      # ERPLibre tools' venv (.venv.erplibre), the one of script/. An image
+      # built from this checkout carries the Selenium scripts' packages; the
+      # 1.8.0 image lacks them, add them by name, its scripts stay its own
+      # older copies: "selenium pykeepass python-randomword-fr"
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Debian packages, one name per word, installed as root at each start
+      # before the pip lists, e.g. "libmagic1" for python-magic. Needs the
+      # longer cap_add below; an installed package is skipped, offline.
+      APT_EXTRA_PACKAGES: ""
+      # Shell command run at each start, once PostgreSQL answers and before
+      # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
+      # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
-      # The Selenium scripts drive the grid's browsers with
-      # --use_network http://selenium-hub:4444: the ERPLibre image has no
-      # browser. The nodes send the downloads back to the script (managed
-      # downloads, on by default in their images).
-      # A script run with no terminal opens the KeePass vault with the
-      # password held by this file, readable by odoo; outside Swarm, a
-      # compose secret is mounted with the same owner and mode, no safer.
+      # The Selenium scripts drive the grid's browsers, the ERPLibre image
+      # has none, and reach Odoo by its service name, as the default URL
+      # 127.0.0.1 names the browser's node:
+      #   --use_network http://selenium-hub:4444 --url http://ERPLibre:8069
+      # The nodes send the downloads back to the script (managed downloads,
+      # on by default in their images).
+      # Once set, KDBX_PASSWORD_FILE opens the KeePass vault with the password
+      # held by this file, mounted below, before kdbx.password and the prompt;
+      # an image built before it ignores it. Only odoo reads the file: run the
+      # scripts with exec -u odoo, as exec defaults to root here. Outside Swarm, a compose secret is
+      # mounted with the same owner and mode, no safer.
       #KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
+    # The container starts as root: apt installs as root, each pip as the
+    # owner of its venv (odoo, or root in an image built with
+    # ERPLIBRE_CODE_OWNER=root), then the entrypoint runs Odoo as odoo.
+    user: root
+    entrypoint: ["/entrypoint_pip_extra.sh"]
+    # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
+    # with no capability and can never regain one.
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    # With APT_EXTRA_PACKAGES, apt needs four more, which root drops when
+    # it hands over to odoo; replace the line above with:
+    #cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - db
       - selenium-hub
@@ -40,6 +80,14 @@ services:
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
       - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
+      - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
+      # The KDBX_PASSWORD_FILE file, read-only over the private/ mount. It
+      # must belong to uid 101, the image's odoo account, mode 400; with
+      # rootful Docker:
+      #   sudo chown 101:101 private/kdbx_password && sudo chmod 400 private/kdbx_password
+      # Rootless Docker maps uid 101 elsewhere: see script/selenium/install.md.
+      # Uncomment it with KDBX_PASSWORD_FILE once the file exists.
+      #- ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
     restart: always
 
   db:

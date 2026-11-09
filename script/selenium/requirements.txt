@@ -1,8 +1,9 @@
 # Paquets des scripts Selenium en plus du venv des outils (.venv.erplibre),
-# qui porte déjà selenium et pykeepass. Aucun ne se compile : la liste
-# s'installe aussi dans un conteneur sans compilateur, par
-# PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "-r /ERPLibre/script/selenium/requirements.txt".
-# L'enregistrement vidéo est dans requirements-video.txt.
+# qui porte déjà selenium et pykeepass. Aucun ne dépend d'une bibliothèque
+# système de développement. Le venv des outils de l'image Docker reçoit ce
+# qu'importent les scripts de requirement/erplibre_require-ments-docker.txt.
+# L'enregistrement vidéo, PyGObject, est dans requirements-video.txt : il se
+# compile contre les en-têtes de girepository-2.0, que l'image n'a pas.
 python-randomword-fr
 # Le pilote Chrome local ; Firefox et les nœuds distants s'en passent.
 webdriver_manager

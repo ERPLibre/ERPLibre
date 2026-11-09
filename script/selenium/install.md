@@ -3,7 +3,7 @@
 
 The scripts run in the tooling venv, `.venv.erplibre`, which already holds
 `selenium` and `pykeepass`. `requirements.txt` adds the rest, none of which
-builds from source; `requirements-video.txt` adds the video recorder,
+needs a system library; `requirements-video.txt` adds the video recorder,
 PyGObject, built against the system libraries below.
 `script/install/install_debian_dependency.sh` installs them on Debian and
 Ubuntu.
@@ -28,19 +28,57 @@ Video recorder: https://github.com/szemate/pyselenium-video-recorder
 
 ## In the ERPLibre container
 
-The image has no browser and no display. The scripts drive a Selenium node
-with `--use_network http://selenium-hub:4444`, as
-`docker/docker-compose_odoo_18.0_selenium.yml` sets it up; the node sends the
-downloads back to the script. `requirements.txt` installs at each start
-through the compose:
+The image has no browser and no display. The scripts drive a node of the
+Selenium grid that `docker/docker-compose_odoo_18.0_selenium.yml` starts; the
+node sends the downloads back to the script. Give `--url` too: the default,
+`http://127.0.0.1:8069`, is read by the browser, on its node, where no Odoo
+answers. The scripts run as `odoo`: the compose starts the container as root,
+so `exec` opens root by default, and that root cannot read the password file
+below.
+
+```bash
+docker compose --project-directory . -f docker/docker-compose_odoo_18.0_selenium.yml \
+  exec -u odoo ERPLibre .venv.erplibre/bin/python script/selenium/SCRIPT.py \
+  --use_network http://selenium-hub:4444 --url http://ERPLibre:8069
+```
+
+An ERPLibre image built from this version carries in `.venv.erplibre` the
+packages the scripts import, listed in
+`requirement/erplibre_require-ments-docker.txt`. The 1.8.0 image lacks them
+and predates `KDBX_PASSWORD_FILE`: the compose can add the packages at each
+start, but the scripts stay the image's older copies.
 
 ```yaml
-      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "-r /ERPLibre/script/selenium/requirements.txt"
-      KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: "selenium pykeepass python-randomword-fr"
 ```
 
 A script that logs in with the KeePass vault finds it at `kdbx.path` in
-`private/todo/todo_override_private.json`. With no terminal to type the
-password in, `KDBX_PASSWORD_FILE` names a file that holds it, readable by
-`odoo` only; the value itself stays out of the environment and of the JSON.
-A vault that does not open stops the script with its cause.
+`private/todo/todo_override_private.json`. `KDBX_PASSWORD_FILE` names a file
+that holds the password; the value itself stays out of the environment and of
+the JSON. Once set, the variable wins over `kdbx.password` and over the
+prompt, terminal or not, which lets a script run unattended; an unreadable
+file, like a vault that does not open, stops the script with its cause. Two
+commented lines of the compose set the variable and mount
+`private/kdbx_password` read-only at that path:
+
+```yaml
+      KDBX_PASSWORD_FILE: /ERPLibre/private/kdbx_password
+    volumes:
+      - ./private/kdbx_password:/ERPLibre/private/kdbx_password:ro
+```
+
+The file belongs to uid 101, the image's `odoo` account, with mode 400. With a
+Docker daemon run by root:
+
+```bash
+sudo chown 101:101 private/kdbx_password && sudo chmod 400 private/kdbx_password
+```
+
+Rootless Docker maps the container's uid 101 to a host uid of its own: the
+owner changes from a container of the compose's image, `IMAGE` below, as its
+root.
+
+```bash
+chmod 400 private/kdbx_password
+docker run --rm -u root -v "$PWD/private:/p" --entrypoint chown IMAGE 101:101 /p/kdbx_password
+```

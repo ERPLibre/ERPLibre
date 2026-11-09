@@ -13,8 +13,8 @@ services:
       STOP_BEFORE_INIT: "False"
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
-      # Python packages the image lacks, on one line, separated by spaces,
-      # pinned when needed. Installed at each start, before Odoo; nothing is
+      # Python packages the image lacks, separated by spaces or newlines (a
+      # YAML | block works), pinned when needed. Installed at each start, before Odoo; nothing is
       # downloaded once satisfied.
       # Example: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
       # Odoo's venv, the one the addons import
@@ -29,8 +29,9 @@ services:
       # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
       # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
-    # The venvs belong to root: the container starts as root to install the
-    # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
+    # The container starts as root: apt installs as root, each pip as the
+    # owner of its venv (odoo, or root in an image built with
+    # ERPLIBRE_CODE_OWNER=root), then the entrypoint runs Odoo as odoo.
     user: root
     entrypoint: ["/entrypoint_pip_extra.sh"]
     # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
