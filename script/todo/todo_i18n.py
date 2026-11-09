@@ -1021,13 +1021,249 @@ TRANSLATIONS = {
         "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
     },
     # Security › sceau PAdES (script/todo/seal_menu.py)
-    "Generate a PAdES signature seal": {
-        "fr": "🔏 Générer un sceau de signature PAdES (auto-signé, pour essai)",
-        "en": "🔏 Generate a PAdES signature seal (self-signed, for testing)",
+    "Test keys the upstream repositories (Odoo, OCA) commit are not listed.": {
+        "fr": "Les clés d'essai que commitent les dépôts amont (Odoo, OCA) ne sont pas listées.",
+        "en": "Test keys the upstream repositories (Odoo, OCA) commit are not listed.",
     },
-    "A self-signed certificate seals the documents of a test database: the seals are intact and valid, but PDF readers report the signer as untrusted. In production, use a certificate issued by a recognised authority.": {
-        "fr": "Un certificat auto-signé scelle les documents d'une base d'essai : les sceaux sont intacts et valides, mais les lecteurs PDF déclarent le signataire non approuvé. En production, utiliser un certificat émis par une autorité reconnue.",
-        "en": "A self-signed certificate seals the documents of a test database: the seals are intact and valid, but PDF readers report the signer as untrusted. In production, use a certificate issued by a recognised authority.",
+    "In Adobe: Preferences › Signatures › Identities & Trusted Certificates › More › Trusted Certificates › Import, then Edit Trust › tick « Use this certificate as a trusted root ». On a managed fleet, deploy it by group policy or Adobe's customization tool.": {
+        "fr": "Dans Adobe : Préférences › Signatures › Identités et certificats approuvés › Plus › Certificats approuvés › Importer, puis Modifier l'approbation › cocher « Utiliser ce certificat comme racine approuvée ». Sur un parc géré, le déployer par stratégie de groupe ou par l'outil de personnalisation d'Adobe.",
+        "en": "In Adobe: Preferences › Signatures › Identities & Trusted Certificates › More › Trusted Certificates › Import, then Edit Trust › tick « Use this certificate as a trusted root ». On a managed fleet, deploy it by group policy or Adobe's customization tool.",
+    },
+    "For a server that seals on its own, take a hosted HSM with an API, for instance Notarius CertifiO for organisations (in Canada), SSL.com eSigner, or the HSM offers of DigiCert and GlobalSign. Offers on a USB token only sign by hand.": {
+        "fr": "Pour un serveur qui scelle seul, prendre un HSM hébergé avec une API, par exemple Notarius CertifiO pour organisations (au Canada), SSL.com eSigner, ou les offres HSM de DigiCert et de GlobalSign. Les offres sur clé USB ne servent qu'à signer à la main.",
+        "en": "For a server that seals on its own, take a hosted HSM with an API, for instance Notarius CertifiO for organisations (in Canada), SSL.com eSigner, or the HSM offers of DigiCert and GlobalSign. Offers on a USB token only sign by hand.",
+    },
+    "in the history: the key is exposed": {
+        "fr": "dans l'historique : la clé est exposée",
+        "en": "in the history: the key is exposed",
+    },
+    "staged: it leaves with the next commit": {
+        "fr": "indexé : il part avec le prochain commit",
+        "en": "staged: it leaves with the next commit",
+    },
+    "Key files git can see in the repositories of the checkout:": {
+        "fr": "Fichiers de clé que git voit dans les dépôts du checkout :",
+        "en": "Key files git can see in the repositories of the checkout:",
+    },
+    "A committed key is exposed, even once deleted: generate a new seal (entry « %s »), replace it in Odoo and on the workstations, then untrack the file (git rm --cached) and purge it from the history if it was pushed.": {
+        "fr": "Une clé commitée est exposée, même une fois supprimée : générer un nouveau sceau (entrée « %s »), le remplacer dans Odoo et sur les postes, puis retirer le fichier du suivi (git rm --cached) et le purger de l'historique s'il a été poussé.",
+        "en": "A committed key is exposed, even once deleted: generate a new seal (entry « %s »), replace it in Odoo and on the workstations, then untrack the file (git rm --cached) and purge it from the history if it was pushed.",
+    },
+    "A staged key: git rm --cached <file> in its repository, then delete it or move it into %s.": {
+        "fr": "Une clé indexée : git rm --cached <fichier> dans son dépôt, puis la supprimer ou la déplacer dans %s.",
+        "en": "A staged key: git rm --cached <file> in its repository, then delete it or move it into %s.",
+    },
+    "No seal here anymore.": {
+        "fr": "Il n'y a plus de sceau ici.",
+        "en": "No seal here anymore.",
+    },
+    "expires today": {
+        "fr": "échoit aujourd'hui",
+        "en": "expires today",
+    },
+    "Git cannot be queried in %s: its key files are not checked.": {
+        "fr": "Git ne répond pas dans %s : ses fichiers de clé ne sont pas vérifiés.",
+        "en": "Git cannot be queried in %s: its key files are not checked.",
+    },
+    "Remove the %s folders without a seal from the registry? (y/N): ": {
+        "fr": "Retirer du registre les %s dossiers sans sceau ? (o/N) : ",
+        "en": "Remove the %s folders without a seal from the registry? (y/N): ",
+    },
+    "Cannot update the registry:": {
+        "fr": "Impossible de mettre à jour le registre :",
+        "en": "Cannot update the registry:",
+    },
+    "No key file": {
+        "fr": "Aucun fichier de clé",
+        "en": "No key file",
+    },
+    "PAdES signature seal": {
+        "fr": "Sceau pour signature PAdES",
+        "en": "PAdES signature seal",
+    },
+    "Document seal": {
+        "fr": "Sceau des documents",
+        "en": "Document seal",
+    },
+    "Status of the generated seals": {
+        "fr": "📋 État des sceaux générés",
+        "en": "📋 Status of the generated seals",
+    },
+    "The Odoo database is not read here: the seal it uses shows in Sign › Settings › General settings, Document Sealing (PAdES) section.": {
+        "fr": "La base Odoo n'est pas lue ici : le sceau qu'elle utilise se voit dans Signature › Configuration › Paramètres généraux, section Scellement des documents (PAdES).",
+        "en": "The Odoo database is not read here: the seal it uses shows in Sign › Settings › General settings, Document Sealing (PAdES) section.",
+    },
+    "Internal or external key?": {
+        "fr": "📖 Clé interne ou externe ?",
+        "en": "📖 Internal or external key?",
+    },
+    "Integrity: the document has not changed since the seal. Every certificate proves it, a self-signed one included.": {
+        "fr": "Intégrité : le document n'a pas changé depuis le sceau. Tout certificat le prouve, auto-signé compris.",
+        "en": "Integrity: the document has not changed since the seal. Every certificate proves it, a self-signed one included.",
+    },
+    "Identity: the seal comes from your organisation. A PDF reader asserts it only when the certificate chains to a root it trusts: Adobe's AATL list, the eIDAS list in Europe, or a certificate imported on the workstation.": {
+        "fr": "Identité : le sceau vient bien de votre organisation. Un lecteur PDF l'affirme seulement si le certificat remonte à une racine qu'il approuve : la liste AATL d'Adobe, la liste eIDAS en Europe, ou un certificat importé sur le poste.",
+        "en": "Identity: the seal comes from your organisation. A PDF reader asserts it only when the certificate chains to a root it trusts: Adobe's AATL list, the eIDAS list in Europe, or a certificate imported on the workstation.",
+    },
+    "The timestamp is separate: a recognised timestamping server is trusted by Adobe even with an internal seal.": {
+        "fr": "L'horodatage est à part : un serveur d'horodatage reconnu est approuvé par Adobe, même avec un sceau interne.",
+        "en": "The timestamp is separate: a recognised timestamping server is trusted by Adobe even with an internal seal.",
+    },
+    "A seal generated here is the official seal of your organisation. Odoo trusts it as is; the workstations of the organisation trust it once its certificate is imported.": {
+        "fr": "Un sceau généré ici est le sceau officiel de votre organisation. Odoo l'approuve d'office ; les postes de l'organisation l'approuvent une fois son certificat importé.",
+        "en": "A seal generated here is the official seal of your organisation. Odoo trusts it as is; the workstations of the organisation trust it once its certificate is imported.",
+    },
+    "Distribute sceau.crt, never the .p12, to the workstations that read the PDFs.": {
+        "fr": "Distribuer sceau.crt, jamais le .p12, aux postes qui lisent les PDF.",
+        "en": "Distribute sceau.crt, never the .p12, to the workstations that read the PDFs.",
+    },
+    "A reader outside the organisation shows « signer untrusted »: the document stays intact and verifiable, only its identity is not recognised. For those readers, answer yes to the question: external key.": {
+        "fr": "Un lecteur hors de l'organisation affiche « signataire non approuvé » : le document reste intact et vérifiable, seule son identité n'est pas reconnue. Pour ces lecteurs, répondre oui à la question : clé externe.",
+        "en": "A reader outside the organisation shows « signer untrusted »: the document stays intact and verifiable, only its identity is not recognised. For those readers, answer yes to the question: external key.",
+    },
+    "An authority on Adobe's AATL list checks the identity of the organisation; Adobe then trusts the seal for every recipient, with nothing to configure.": {
+        "fr": "Une autorité de la liste AATL d'Adobe vérifie l'identité de l'organisation ; Adobe approuve alors le sceau chez tout destinataire, sans rien configurer.",
+        "en": "An authority on Adobe's AATL list checks the identity of the organisation; Adobe then trusts the seal for every recipient, with nothing to configure.",
+    },
+    "Its rules require the key to stay in certified hardware (FIPS 140-2 level 2 or higher): USB token, HSM or remote signing service. The key is never exportable: there is no .p12.": {
+        "fr": "Ses règles imposent que la clé reste dans du matériel certifié (FIPS 140-2 niveau 2 ou plus) : clé USB, HSM ou service de signature à distance. La clé n'est jamais exportable : il n'y a pas de .p12.",
+        "en": "Its rules require the key to stay in certified hardware (FIPS 140-2 level 2 or higher): USB token, HSM or remote signing service. The key is never exportable: there is no .p12.",
+    },
+    "sign_oca_pades reads only a .p12 today: an external key needs the module adapted (pyHanko signs through PKCS#11 or a remote service).": {
+        "fr": "sign_oca_pades ne lit aujourd'hui qu'un .p12 : une clé externe demande d'adapter le module (pyHanko signe par PKCS#11 ou par un service distant).",
+        "en": "sign_oca_pades reads only a .p12 today: an external key needs the module adapted (pyHanko signs through PKCS#11 or a remote service).",
+    },
+    "Until then, an internal seal already works: only the display for outside readers differs.": {
+        "fr": "D'ici là, un sceau interne fonctionne déjà : seul l'affichage chez les lecteurs externes diffère.",
+        "en": "Until then, an internal seal already works: only the display for outside readers differs.",
+    },
+    "Generate an internal PAdES seal (self-signed)": {
+        "fr": "🔏 Générer un sceau interne (auto-signé)",
+        "en": "🔏 Generate an internal PAdES seal (self-signed)",
+    },
+    "Delete these files, or move them out of the repository or into %s.": {
+        "fr": "Supprimer ces fichiers, ou les déplacer hors du dépôt ou dans %s.",
+        "en": "Delete these files, or move them out of the repository or into %s.",
+    },
+    "Generate the seal (entry « %s ») and upload the .p12 to Odoo, with its password.": {
+        "fr": "Générer le sceau (entrée « %s ») et téléverser le .p12 dans Odoo, avec son mot de passe.",
+        "en": "Generate the seal (entry « %s ») and upload the .p12 to Odoo, with its password.",
+    },
+    "Send its SHA-256 fingerprint (entry « %s ») through another channel, so everyone checks they import the right certificate.": {
+        "fr": "Transmettre son empreinte SHA-256 (entrée « %s ») par un autre canal, pour que chacun vérifie qu'il importe le bon certificat.",
+        "en": "Send its SHA-256 fingerprint (entry « %s ») through another channel, so everyone checks they import the right certificate.",
+    },
+    "Before it expires (entry « %s »), generate a new seal and distribute its certificate again. An internal authority (openssl, step-ca, XCA, EJBCA) avoids that: only its root is imported, once.": {
+        "fr": "Avant l'échéance (entrée « %s »), générer un nouveau sceau et redistribuer son certificat. Une autorité interne (openssl, step-ca, XCA, EJBCA) l'évite : seule sa racine est importée, une fois.",
+        "en": "Before it expires (entry « %s »), generate a new seal and distribute its certificate again. An internal authority (openssl, step-ca, XCA, EJBCA) avoids that: only its root is imported, once.",
+    },
+    "A self-signed seal is the internal seal of your organisation: its seals prove the document has not changed, Odoo trusts it as is, and the workstations that import its certificate show it as trusted. A reader outside the organisation shows the signer as untrusted: see entry « %s ».": {
+        "fr": "Un sceau auto-signé est le sceau interne de votre organisation : ses sceaux prouvent que le document n'a pas changé, Odoo l'approuve d'office, et les postes qui importent son certificat l'affichent approuvé. Un lecteur hors de l'organisation affiche le signataire non approuvé : voir l'entrée « %s ».",
+        "en": "A self-signed seal is the internal seal of your organisation: its seals prove the document has not changed, Odoo trusts it as is, and the workstations that import its certificate show it as trusted. A reader outside the organisation shows the signer as untrusted: see entry « %s ».",
+    },
+    "SHA-256 fingerprint, to send through another channel with sceau.crt:": {
+        "fr": "Empreinte SHA-256, à transmettre par un autre canal avec sceau.crt :",
+        "en": "SHA-256 fingerprint, to send through another channel with sceau.crt:",
+    },
+    "Then import sceau.crt as trusted on the workstations of the organisation: see entry « %s ».": {
+        "fr": "Puis importer sceau.crt comme approuvé sur les postes de l'organisation : voir l'entrée « %s ».",
+        "en": "Then import sceau.crt as trusted on the workstations of the organisation: see entry « %s ».",
+    },
+    "No seal generated yet: use entry « %s ».": {
+        "fr": "Aucun sceau généré : utiliser l'entrée « %s ».",
+        "en": "No seal generated yet: use entry « %s ».",
+    },
+    "What a seal proves": {
+        "fr": "Ce que prouve un sceau",
+        "en": "What a seal proves",
+    },
+    "Internal key: the official seal of the organisation": {
+        "fr": "Clé interne : le sceau officiel de l'organisation",
+        "en": "Internal key: the official seal of the organisation",
+    },
+    "External key: trusted everywhere": {
+        "fr": "Clé externe : approuvée partout",
+        "en": "External key: trusted everywhere",
+    },
+    "AATL members:": {
+        "fr": "Membres de l'AATL :",
+        "en": "AATL members:",
+    },
+    "No readable certificate:": {
+        "fr": "Aucun certificat lisible :",
+        "en": "No readable certificate:",
+    },
+    "Subject:": {
+        "fr": "Sujet :",
+        "en": "Subject:",
+    },
+    "SHA-256 fingerprint:": {
+        "fr": "Empreinte SHA-256 :",
+        "en": "SHA-256 fingerprint:",
+    },
+    "No .p12 file:": {
+        "fr": "Aucun fichier .p12 :",
+        "en": "No .p12 file:",
+    },
+    "Git could commit this seal.": {
+        "fr": "Git pourrait commiter ce sceau.",
+        "en": "Git could commit this seal.",
+    },
+    "Out of reach of git": {
+        "fr": "Hors de portée de git",
+        "en": "Out of reach of git",
+    },
+    "Validity dates unreadable": {
+        "fr": "Dates de validité illisibles",
+        "en": "Validity dates unreadable",
+    },
+    "Validity:": {
+        "fr": "Validité :",
+        "en": "Validity:",
+    },
+    "Are the sealed PDFs opened outside the organisation, in a reader nobody configures? (y/N): ": {
+        "fr": "Les PDF scellés sont-ils ouverts hors de l'organisation, dans un lecteur que personne ne configure ? (o/N) : ",
+        "en": "Are the sealed PDFs opened outside the organisation, in a reader nobody configures? (y/N): ",
+    },
+    "Non repudiation key usage": {
+        "fr": "Usage de clé non-répudiation",
+        "en": "Non repudiation key usage",
+    },
+    "No non repudiation key usage: pyHanko reports the seals as untrusted.": {
+        "fr": "Pas d'usage de clé non-répudiation : pyHanko déclare les sceaux non approuvés.",
+        "en": "No non repudiation key usage: pyHanko reports the seals as untrusted.",
+    },
+    ".p12 file present, readable by its owner only": {
+        "fr": "Fichier .p12 présent, lisible par son seul propriétaire",
+        "en": ".p12 file present, readable by its owner only",
+    },
+    "expired %s days ago": {
+        "fr": "échu depuis %s jours",
+        "en": "expired %s days ago",
+    },
+    "not ignored, one git add away": {
+        "fr": "non ignoré, à un git add du dépôt",
+        "en": "not ignored, one git add away",
+    },
+    "Organisation name (optional): ": {
+        "fr": "Nom de l'organisation (facultatif) : ",
+        "en": "Organisation name (optional): ",
+    },
+    "The seal is written, but not its registration:": {
+        "fr": "Le sceau est écrit, mais pas son inscription au registre :",
+        "en": "The seal is written, but not its registration:",
+    },
+    "The .p12 file is readable by other accounts (%s): chmod 600.": {
+        "fr": "Le fichier .p12 est lisible par d'autres comptes (%s) : chmod 600.",
+        "en": "The .p12 file is readable by other accounts (%s): chmod 600.",
+    },
+    "expires in %s days": {
+        "fr": "échoit dans %s jours",
+        "en": "expires in %s days",
+    },
+    "%s days left": {
+        "fr": "%s jours restants",
+        "en": "%s days left",
     },
     "Folder for the seal (default: %s): ": {
         "fr": "Dossier du sceau (défaut : %s) : ",
@@ -1048,10 +1284,6 @@ TRANSLATIONS = {
     "Replace it? (y/N): ": {
         "fr": "Le remplacer ? (o/N) : ",
         "en": "Replace it? (y/N): ",
-    },
-    "Document seal (test)": {
-        "fr": "Sceau des documents (essai)",
-        "en": "Document seal (test)",
     },
     "Certificate name (default: %s): ": {
         "fr": "Nom du certificat (défaut : %s) : ",

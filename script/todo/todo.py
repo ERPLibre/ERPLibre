@@ -6208,12 +6208,21 @@ class TODO(
     def prompt_execute_security(self):
         print(f"🤖 {t('Dependency audit and signature seals!')}")
         choices = [
+            {"section": t("Dependencies")},
             {
                 "prompt_description": t(
                     "pip-audit - Check vulnerabilities on Python environments"
                 )
             },
-            {"prompt_description": t("Generate a PAdES signature seal")},
+            # Les textes de seal_menu.py citent ces numéros (ENTREE_*).
+            {"section": t("PAdES signature seal")},
+            {"prompt_description": t("Status of the generated seals")},
+            {"prompt_description": t("Internal or external key?")},
+            {
+                "prompt_description": t(
+                    "Generate an internal PAdES seal (self-signed)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6225,6 +6234,10 @@ class TODO(
             elif status == "1":
                 self.execute_pip_audit()
             elif status == "2":
+                self.execute_seal_status()
+            elif status == "3":
+                self.execute_seal_guide()
+            elif status == "4":
                 self.execute_generate_seal()
             else:
                 print(t("Command not found !"))

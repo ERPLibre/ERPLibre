@@ -541,18 +541,37 @@ class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestSecurityMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Security : l'audit des dépendances, puis le sceau PAdES, dont
-    la génération vit dans script/todo/seal_menu.py."""
+    """Le menu Security : l'audit des dépendances, puis la section du sceau
+    PAdES, dont les outils vivent dans script/todo/seal_menu.py."""
 
     SOURCE = TODO_PY
     ENTRY = "def prompt_execute_security(self):"
     END = "def prompt_execute_test(self):"
-    MINIMUM = 1
+    MINIMUM = 3
 
     EXPECTED = {
         "pip-audit": "execute_pip_audit",
-        "Generate a PAdES signature seal": "execute_generate_seal",
+        "Status of the generated seals": "execute_seal_status",
+        "Internal or external key?": "execute_seal_guide",
+        "Generate an internal PAdES seal": "execute_generate_seal",
     }
+
+    def test_the_texts_cite_the_entries_they_name(self):
+        """seal_menu.py renvoie à « l'entrée 2 » : ses ENTREE_* doivent
+        suivre la numérotation du menu."""
+        from script.todo import seal_menu
+
+        rangs = {label: str(num) for num, label in self.shown}
+        self.assertEqual(
+            seal_menu.ENTREE_ETAT, rangs["Status of the generated seals"]
+        )
+        self.assertEqual(
+            seal_menu.ENTREE_GUIDE, rangs["Internal or external key?"]
+        )
+        self.assertEqual(
+            seal_menu.ENTREE_GENERER,
+            rangs["Generate an internal PAdES seal (self-signed)"],
+        )
 
 
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
