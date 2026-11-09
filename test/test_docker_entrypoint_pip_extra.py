@@ -73,7 +73,9 @@ class TestEntrypointPipExtra(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIsNone(self._lines(self.odoo_log))
         self.assertIsNone(self._lines(self.erplibre_log))
-        self.assertEqual(self._lines(self.suite_log), ["odoo", "--workers", "2"])
+        self.assertEqual(
+            self._lines(self.suite_log), ["odoo", "--workers", "2"]
+        )
 
     def test_each_word_is_one_requirement(self):
         res = self._run(odoo="humanize  pyotp==2.9.0 phonenumbers>=8.13,<9")
@@ -84,14 +86,31 @@ class TestEntrypointPipExtra(unittest.TestCase):
         self.assertEqual(
             pip[-3:], ["humanize", "pyotp==2.9.0", "phonenumbers>=8.13,<9"]
         )
-        self.assertEqual(self._lines(self.suite_log), ["odoo", "--workers", "2"])
+        self.assertEqual(
+            self._lines(self.suite_log), ["odoo", "--workers", "2"]
+        )
+
+    def test_a_yaml_block_spreads_over_lines(self):
+        """Un bloc YAML « | » livre une exigence par ligne : toutes passent."""
+        res = self._run(
+            odoo="humanize\npyotp==2.9.0\n", erplibre="rich\n  pyyaml"
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(
+            self._lines(self.odoo_log)[-2:], ["humanize", "pyotp==2.9.0"]
+        )
+        self.assertEqual(
+            self._lines(self.erplibre_log)[-2:], ["rich", "pyyaml"]
+        )
 
     def test_each_list_goes_to_its_venv(self):
         res = self._run(odoo="humanize", erplibre="rich==13.7.1")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(self._lines(self.odoo_log)[-1], "humanize")
         self.assertEqual(self._lines(self.erplibre_log)[-1], "rich==13.7.1")
-        self.assertEqual(self._lines(self.suite_log), ["odoo", "--workers", "2"])
+        self.assertEqual(
+            self._lines(self.suite_log), ["odoo", "--workers", "2"]
+        )
 
     def test_erplibre_list_alone_needs_no_odoo_venv(self):
         os.remove(os.path.join(self.tmp.name, ".erplibre-version"))
@@ -120,10 +139,13 @@ CAPS_SETPRIV = format((1 << 6) | (1 << 7), "016x")
 
 
 class TestAptExtra(unittest.TestCase):
-    """APT_EXTRA_PACKAGES : id, dpkg-query, apt-get, apt-config et setpriv
-    sont des faux placés en tête du PATH, qui notent leurs arguments dans un
-    même journal, dans l'ordre des appels ; les capacités viennent d'un faux
-    fichier d'état de processus."""
+    """APT_EXTRA_PACKAGES : id, dpkg-query, apt-get, apt-cache, apt-config et
+    setpriv sont des faux placés en tête du PATH, qui notent leurs arguments
+    dans un même journal, dans l'ordre des appels ; les capacités viennent
+    d'un faux fichier d'état de processus. Le faux apt-get install marque
+    installés les noms qu'il reçoit, sauf sous FAKE_APT_INSTALLE_AUTRE, où il
+    réussit sans les installer, comme apt sur une expression régulière ; le
+    faux apt-cache connaît les noms de FAKE_CONNUS."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -146,14 +168,28 @@ class TestAptExtra(unittest.TestCase):
         os.makedirs(faux)
         self.path = faux + os.pathsep + os.environ["PATH"]
         stub(os.path.join(faux, "id"), 'echo "${FAKE_UID:-1000}"\n')
+        self.dpkg = os.path.join(d, "dpkg.status")
         stub(
             os.path.join(faux, "dpkg-query"),
-            'printf "%b" "${FAKE_INSTALLED:-}"\n',
+            'printf "%b" "${FAKE_INSTALLED:-}"\n'
+            f"if [[ -f {self.dpkg} ]]; then cat {self.dpkg}; fi\n",
         )
         stub(
             os.path.join(faux, "apt-get"),
             f'echo "apt-get $*" >> {self.journal}\n'
-            'if [[ "$1" == install ]]; then exit "${FAKE_APT_RC:-0}"; fi\n',
+            'if [[ "$1" == clean ]]; then exit "${FAKE_CLEAN_RC:-0}"; fi\n'
+            'if [[ "$1" != install ]]; then exit 0; fi\n'
+            'if [[ "${FAKE_APT_RC:-0}" != 0 || -n "${FAKE_APT_INSTALLE_AUTRE:-}" ]]; then\n'
+            '  exit "${FAKE_APT_RC:-0}"\n'
+            "fi\n"
+            'for a in "$@"; do\n'
+            f'  if [[ "$a" != -* && "$a" != install ]]; then echo "ii  $a " >> {self.dpkg}; fi\n'
+            "done\n",
+        )
+        stub(
+            os.path.join(faux, "apt-cache"),
+            f'echo "apt-cache $*" >> {self.journal}\n'
+            'printf "%b" "${FAKE_CONNUS-}"\n',
         )
         stub(
             os.path.join(faux, "apt-config"),
@@ -169,7 +205,15 @@ class TestAptExtra(unittest.TestCase):
         stub(self.suite, f'echo "odoo $*" >> {self.journal}\n')
 
     def _run(
-        self, paquets, uid="0", caps=CAPS_APT, installes="", rc="0", pip=""
+        self,
+        paquets,
+        uid="0",
+        caps=CAPS_APT,
+        installes="",
+        rc="0",
+        pip="",
+        connus="libmagic1\\nfirefox-esr\\ncron\\nsl\\ng++\\n",
+        **faux,
     ):
         with open(self.etat, "w") as fh:
             fh.write(f"Name:\tbash\nCapEff:\t{caps}\n")
@@ -186,6 +230,8 @@ class TestAptExtra(unittest.TestCase):
             FAKE_UID=uid,
             FAKE_INSTALLED=installes,
             FAKE_APT_RC=rc,
+            FAKE_CONNUS=connus,
+            **faux,
         )
         return subprocess.run(
             ["bash", SCRIPT, "odoo"],
@@ -209,7 +255,7 @@ class TestAptExtra(unittest.TestCase):
     def test_installe_avant_pip_puis_vide_les_listes(self):
         res = self._run("libmagic1  firefox-esr", pip="python-magic")
         self.assertEqual(res.returncode, 0, res.stderr)
-        appels = self._appels()
+        appels = [a for a in self._appels() if not a.startswith("apt-cache ")]
         self.assertEqual(appels[0], "apt-get update -q")
         self.assertEqual(
             appels[1],
@@ -219,6 +265,62 @@ class TestAptExtra(unittest.TestCase):
         self.assertTrue(appels[3].startswith("pip "), appels)
         self.assertEqual(appels[-1], "odoo odoo")
         self.assertEqual(os.listdir(self.listes), [])
+
+    def test_un_bloc_yaml_sur_plusieurs_lignes_installe_tout(self):
+        res = self._run("libmagic1\nsl\n  firefox-esr\n")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn(
+            "apt-get install -y -q --no-install-recommends"
+            " libmagic1 sl firefox-esr",
+            self._appels(),
+        )
+
+    def test_le_nom_exact_est_cherche_dans_l_index_apres_update(self):
+        res = self._run("g++")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        appels = self._appels()
+        self.assertEqual(appels[0], "apt-get update -q")
+        self.assertEqual(appels[1], "apt-cache --all-names pkgnames g++")
+        self.assertTrue(appels[2].startswith("apt-get install "), appels)
+
+    def test_un_suffixe_d_action_d_apt_est_refuse_avant_apt(self):
+        """« curl- » retirerait curl, « foo+ » est une action d'apt."""
+        for mot in ("curl-", "foo+", "libmagic1.", "g+++-"):
+            with self.subTest(mot=mot):
+                res = self._run(mot)
+                self.assertEqual(res.returncode, 1)
+                self.assertIn("nom de paquet Debian", res.stderr)
+                self.assertIn("Odoo ne démarre pas", res.stderr)
+                self.assertEqual(self._appels(), [])
+
+    def test_un_nom_inconnu_d_apt_est_refuse_avant_l_installation(self):
+        """« libmagic1.64 » serait lu en expression régulière."""
+        res = self._run("libmagic1 libmagic1.64")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("« libmagic1.64 »", res.stderr)
+        self.assertIn("Odoo ne démarre pas", res.stderr)
+        appels = self._appels()
+        self.assertEqual(appels[0], "apt-get update -q")
+        self.assertFalse(
+            [a for a in appels if a.startswith("apt-get install")], appels
+        )
+        self.assertNotIn("odoo odoo", appels)
+        self.assertIn("apt-get clean", appels)
+
+    def test_un_nom_absent_apres_apt_arrete_avant_odoo(self):
+        """apt réussit sans installer le nom : refusé, sinon chaque
+        démarrage relancerait apt."""
+        res = self._run("libmagic1", FAKE_APT_INSTALLE_AUTRE="1")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("sans installer « libmagic1 »", res.stderr)
+        self.assertIn("Odoo ne démarre pas", res.stderr)
+        self.assertNotIn("odoo odoo", self._appels())
+
+    def test_un_echec_du_menage_d_apt_avertit_sans_arreter(self):
+        res = self._run("libmagic1", FAKE_CLEAN_RC="1")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("Avertissement", res.stderr)
+        self.assertEqual(self._appels()[-1], "odoo odoo")
 
     def test_deja_installe_ou_fourni_ne_demande_rien(self):
         """Ni apt, ni root, ni capacité : un redémarrage reste hors réseau."""
@@ -261,7 +363,7 @@ class TestAptExtra(unittest.TestCase):
         self.assertEqual(self._appels(), [])
 
     def test_sans_les_capacites_d_apt_refuse_avant_apt(self):
-        """Il installerait mal sans erreur : un setgid perdu sans FSETID."""
+        """Sans FSETID, apt réussit mais perd un bit setgid, sans erreur."""
         sans_fsetid = format(int(CAPS_APT, 16) & ~(1 << 4), "016x")
         for caps in (CAPS_SETPRIV, sans_fsetid):
             with self.subTest(caps=caps):

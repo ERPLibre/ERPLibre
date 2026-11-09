@@ -10,9 +10,10 @@
 #                                    celui qu'importent les addons
 #   PIP_EXTRA_REQUIREMENTS_ERPLIBRE  venv des outils ERPLibre (.venv.erplibre),
 #                                    celui des scripts de script/
-# Chacune porte une exigence pip par mot, sur une ligne : « humanize
-# pyotp==2.9.0 phonenumbers>=8.13,<9 ». Une contrainte de version ne contient
-# ni espace ni guillemet : la ligne se coupe aux espaces, rien d'autre ne
+# Chacune porte une exigence pip par mot : « humanize pyotp==2.9.0
+# phonenumbers>=8.13,<9 ». Une contrainte de version ne contient ni espace ni
+# guillemet : la valeur se coupe aux espaces et aux retours à la ligne, ceux
+# d'un bloc YAML sur plusieurs lignes compris, et rien d'autre ne
 # l'interprète. Vide ou absente, rien ne s'installe dans ce venv.
 #
 # Chaque pip résout sa liste contre ce que son venv porte déjà, et une
@@ -33,19 +34,32 @@
 # L'installation vit dans la couche du conteneur : un redémarrage la garde,
 # une recréation la refait au démarrage suivant.
 #
-# APT_EXTRA_PACKAGES porte des paquets Debian, un nom par mot : les
-# bibliothèques système qu'un paquet pip charge (« libmagic1 » pour
-# python-magic), ou un navigateur pour Selenium. apt les installe en root,
-# avant les listes pip, et avant que le script ne cède la main à odoo :
-# root ne reçoit que des noms, validés, jamais une commande ni un fichier du
-# code, qu'Odoo peut réécrire. Un nom déjà installé, ou fourni par un paquet
-# installé (Provides), ne déclenche rien, ni réseau ni apt-get update.
+# APT_EXTRA_PACKAGES porte des paquets Debian, un nom par mot, coupé comme
+# les listes pip : les bibliothèques système qu'un paquet pip charge
+# (« libmagic1 » pour python-magic), ou un navigateur pour Selenium. apt les
+# installe en root, avant les listes pip, et avant que le script ne cède la
+# main à odoo : root ne reçoit que des noms, validés, jamais une commande ni
+# un fichier du code, qu'Odoo peut réécrire. Un nom déjà installé, ou fourni
+# par un paquet installé (Provides), ne déclenche rien, ni réseau ni apt-get
+# update.
+#
+# apt-get install lit un mot autrement que comme un nom dans trois cas : un
+# « - » final retire le paquet, un « + » final est une action, et un nom
+# qu'aucun paquet ne porte devient une expression régulière (« . » y est un
+# joker). Il installe alors autre chose que le nom demandé, ou rien, et le
+# nom reste absent de dpkg : chaque démarrage relance apt, et sans réseau,
+# avec « restart: always », le conteneur redémarre en boucle. Le script
+# refuse donc, avant apt-get install, un nom qui finit par « - » ou par un
+# seul « + » (« g++ » passe), puis, après apt-get update, un nom que l'index
+# d'apt ne connaît pas tel quel ; après l'installation, il vérifie que
+# chaque nom est installé ou fourni.
 #
 # apt demande à root CHOWN, DAC_OVERRIDE, FOWNER et FSETID en plus de
-# SETUID et SETGID. Sans elles, apt « réussit » en installant mal : sans
-# FSETID, un binaire setgid perd son bit sans erreur. Le script les vérifie
-# donc avant apt, et s'arrête si l'une manque. setpriv les retire au passage
-# à odoo, et no-new-privileges empêche Odoo de les regagner.
+# SETUID et SETGID. Sans CHOWN, DAC_OVERRIDE ou FOWNER, apt échoue ; sans
+# FSETID, il réussit, mais un binaire setgid perd son bit, sans erreur. Le
+# script les vérifie donc toutes avant apt, et s'arrête si l'une manque.
+# setpriv les retire au passage à odoo, et no-new-privileges empêche Odoo
+# de les regagner.
 
 set -euo pipefail
 
@@ -70,16 +84,42 @@ deja_installe() {
       END { exit !t }'
 }
 
+# connu_d_apt PAQUET : vrai si l'index d'apt porte le nom PAQUET tel quel,
+# paquet réel ou virtuel. « pkgnames » compare un préfixe, sans expression
+# régulière ; awk lit toute la sortie, donc aucun SIGPIPE ne fait échouer
+# apt-cache sous pipefail. Un nom virtuel sans fournisseur passe : apt-get
+# install le refuse ensuite avec une erreur.
+connu_d_apt() {
+  apt-cache --all-names pkgnames "$1" |
+    awk -v p="$1" '$0 == p { t = 1 } END { exit !t }'
+}
+
+# vider_cache_apt : retire de la couche du conteneur les .deb téléchargés et
+# les listes d'apt-get update. C'est du ménage : un échec avertit, et Odoo
+# démarre quand même.
+vider_cache_apt() {
+  local sortie listes=""
+  if ! { apt-get clean &&
+    sortie=$(apt-config shell listes Dir::State::lists/d) &&
+    eval "${sortie}" &&
+    if [[ -n "${listes}" && -d "${listes}" ]]; then
+      find "${listes}" -mindepth 1 -delete
+    fi; }; then
+    echo "Avertissement : le cache d'apt reste dans la couche du conteneur." >&2
+  fi
+}
+
 # installer_apt : installe APT_EXTRA_PACKAGES en root ; sort en 1, Odoo non
-# lancé, sur un nom invalide, sans root ou sans les capacités d'apt, ou si
-# apt refuse.
+# lancé, sur un nom invalide ou inconnu d'apt, sans root ou sans les
+# capacités d'apt, si apt refuse, ou si un nom reste absent après apt.
 installer_apt() {
-  local paquets manquants=() p capeff listes
-  read -ra paquets <<<"${APT_EXTRA_PACKAGES:-}"
+  local paquets=() manquants=() p capeff
+  read -r -d '' -a paquets <<<"${APT_EXTRA_PACKAGES:-}" || true
   ((${#paquets[@]})) || return 0
   for p in "${paquets[@]}"; do
-    # Un nom Debian : ni option (« -o … »), ni version, ni chemin.
-    if [[ ! "${p}" =~ ^[a-z0-9][a-z0-9+.-]+$ ]]; then
+    # Un nom Debian : ni option (« -o … »), ni version, ni chemin, ni
+    # suffixe d'action d'apt — « - » final, ou « + » final seul.
+    if [[ ! "${p}" =~ ^[a-z0-9][a-z0-9+.-]*([a-z0-9]|\+\+)$ ]]; then
       echo "Erreur : « ${p} » n'est pas un nom de paquet Debian (APT_EXTRA_PACKAGES) ; Odoo ne démarre pas." >&2
       exit 1
     fi
@@ -99,18 +139,29 @@ installer_apt() {
     exit 1
   fi
   echo "apt extra : ${manquants[*]}"
-  if ! { apt-get update -q &&
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
-      --no-install-recommends "${manquants[@]}"; }; then
+  if ! apt-get update -q; then
     echo "Erreur : apt n'a pas installé APT_EXTRA_PACKAGES ; Odoo ne démarre pas." >&2
     exit 1
   fi
-  # Les listes et les .deb restent sinon dans la couche du conteneur.
-  apt-get clean
-  eval "$(apt-config shell listes Dir::State::lists/d)"
-  if [[ -n "${listes:-}" && -d "${listes}" ]]; then
-    find "${listes}" -mindepth 1 -delete
+  for p in "${manquants[@]}"; do
+    if ! connu_d_apt "${p}"; then
+      vider_cache_apt
+      echo "Erreur : apt ne connaît aucun paquet « ${p} » (APT_EXTRA_PACKAGES) ; Odoo ne démarre pas." >&2
+      exit 1
+    fi
+  done
+  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
+    --no-install-recommends "${manquants[@]}"; then
+    echo "Erreur : apt n'a pas installé APT_EXTRA_PACKAGES ; Odoo ne démarre pas." >&2
+    exit 1
   fi
+  vider_cache_apt
+  for p in "${manquants[@]}"; do
+    if ! deja_installe "${p}"; then
+      echo "Erreur : apt a fini sans installer « ${p} » (APT_EXTRA_PACKAGES) ; Odoo ne démarre pas." >&2
+      exit 1
+    fi
+  done
 }
 
 # installer VARIABLE PYTHON : pip installe la liste de VARIABLE avec PYTHON,
@@ -118,7 +169,7 @@ installer_apt() {
 # Odoo non lancé, si pip refuse.
 installer() {
   local variable="$1" python="$2" exigences venv sous=()
-  read -ra exigences <<<"${!variable:-}"
+  read -r -d '' -a exigences <<<"${!variable:-}" || true
   ((${#exigences[@]})) || return 0
   venv="$(dirname "$(dirname "${python}")")"
   if [[ "$(id -u)" == 0 && "$(stat -c %u "${venv}")" != 0 ]]; then
