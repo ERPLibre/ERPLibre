@@ -31,6 +31,24 @@
 # il installe s'il le peut et garde ce compte. USER reste intact :
 # l'entrypoint de l'image y lit l'utilisateur PostgreSQL.
 #
+# Le venv d'Odoo se nomme d'après .erplibre-version, un fichier du code
+# qu'Odoo peut réécrire. Le script n'en accepte qu'un nom de la forme
+# « odoo18.0_python3.12.16 », et chaque venv doit se résoudre, liens suivis,
+# en « .venv.<nom> » même, enfant direct du préfixe résolu : ni « .. » ni
+# lien ne mène pip hors du préfixe. Python exécute à son lancement ce que
+# porte son venv (pyvenv.cfg, les .pth de site-packages, l'interpréteur
+# lui-même), puis la bibliothèque standard de l'interpréteur de base que
+# nomme sa clé « home » (os.py, site.py, sitecustomize.py) : root ne lance
+# donc pip dans un venv de root que si le venv, tout son contenu, la cible
+# résolue de chacun de ses liens, ce dossier « home », le « lib » de son
+# préfixe avec chaque lib/python*, et chaque dossier parent jusqu'à /
+# appartiennent à root sans écriture pour le groupe ni pour les autres.
+# Sinon, un autre compte pourrait substituer ce que root exécute, et le
+# script s'arrête avant Odoo ; un préfixe qu'un autre compte possède ou
+# peut écrire refuse ainsi tout pip en root.
+# « python -I » retire du chemin d'import le dossier courant et les
+# variables PYTHON*.
+#
 # L'installation vit dans la couche du conteneur : un redémarrage la garde,
 # une recréation la refait au démarrage suivant.
 #
@@ -95,8 +113,11 @@ connu_d_apt() {
 }
 
 # vider_cache_apt : retire de la couche du conteneur les .deb téléchargés et
-# les listes d'apt-get update. C'est du ménage : un échec avertit, et Odoo
-# démarre quand même.
+# les listes d'apt-get update, après une installation réussie. C'est du
+# ménage : un échec avertit, et Odoo démarre quand même. Un refus avant
+# l'installation garde les listes : sous « restart: always », chaque
+# redémarrage ne refait alors qu'un apt-get update conditionnel, sans
+# retélécharger l'index.
 vider_cache_apt() {
   local sortie listes=""
   if ! { apt-get clean &&
@@ -145,7 +166,6 @@ installer_apt() {
   fi
   for p in "${manquants[@]}"; do
     if ! connu_d_apt "${p}"; then
-      vider_cache_apt
       echo "Erreur : apt ne connaît aucun paquet « ${p} » (APT_EXTRA_PACKAGES) ; Odoo ne démarre pas." >&2
       exit 1
     fi
@@ -164,21 +184,151 @@ installer_apt() {
   done
 }
 
-# installer VARIABLE PYTHON : pip installe la liste de VARIABLE avec PYTHON,
-# sous le propriétaire du venv quand le script tourne en root ; sort en 1,
-# Odoo non lancé, si pip refuse.
+# chemin_sur CHEMIN : vrai si CHEMIN, déjà résolu, et chacun de ses parents
+# jusqu'à / appartiennent à root sans écriture pour le groupe ni pour les
+# autres : aucun autre compte ne peut y remplacer une entrée.
+chemin_sur() {
+  local c="$1" s
+  while :; do
+    s=$(stat -c '%u %a' -- "${c}") || return 1
+    [[ "${s% *}" == 0 ]] && (((8#${s#* } & 8#022) == 0)) || return 1
+    [[ "${c}" == / ]] && return 0
+    c=$(dirname -- "${c}")
+  done
+}
+
+# arbre_sur RACINE [OPTION_FIND…] : vrai si RACINE, déjà résolue, et tout ce
+# qu'elle contient appartiennent à root sans écriture pour le groupe ni pour
+# les autres, et si la cible résolue de chacun de ses liens passe chemin_sur.
+# find ne suit pas les liens : un lien vers un dossier hors de RACINE est
+# refusé, son contenu n'étant pas parcouru (« lib64 -> lib » d'un venv
+# reste dedans). Un lien qui ne se résout pas compte comme une prise : sa
+# cible peut encore être créée. Les options, « -maxdepth 1 » par exemple,
+# bornent les deux parcours. Les parents de RACINE ne sont pas vérifiés.
+arbre_sur() {
+  local racine="$1" trouve lien cible
+  shift
+  trouve=$(find "${racine}" "$@" ! -type l \( ! -user 0 -o -perm /022 \) \
+    -print -quit) || return 1
+  [[ -z "${trouve}" ]] || return 1
+  while IFS= read -r -d '' lien; do
+    cible=$(realpath -e -- "${lien}") && chemin_sur "${cible}" || return 1
+    if [[ -d "${cible}" && "${cible}" != "${racine}" &&
+      "${cible}" != "${racine%/}/"* ]]; then
+      return 1
+    fi
+  done < <(find "${racine}" "$@" -type l -print0)
+}
+
+# base_sure_pour_root VENV : vrai si l'interpréteur de base que nomme la clé
+# « home » de pyvenv.cfg ne charge rien qu'un autre compte puisse réécrire.
+# Python lit bin/pyvenv.cfg, sinon pyvenv.cfg, prend la première clé
+# « home » et cherche sa bibliothèque standard en remontant de ce dossier :
+# le premier parent qui porte lib/pythonX.Y/os.py devient le préfixe, d'où
+# il charge os.py, site.py et sitecustomize.py, même sous -I. Le script
+# n'accepte qu'un « home » déjà résolu, dont il vérifie le chemin jusqu'à /,
+# et exige que le premier « lib » rencontré en remontant soit celui de
+# Python, avec os.py et lib-dynload ; il vérifie ensuite ce « lib », ses
+# entrées directes (libpython, pythonXY.zip) et l'arbre entier de chaque
+# lib/python*. pyvenv.cfg appartient déjà à root, vérifié par
+# venv_sur_pour_root.
+base_sure_pour_root() {
+  local venv="$1" cfg home d lib
+  cfg="${venv}/bin/pyvenv.cfg"
+  [[ -e "${cfg}" || -L "${cfg}" ]] || cfg="${venv}/pyvenv.cfg"
+  home=$(awk '
+    {
+      i = index($0, "="); if (!i) next
+      k = substr($0, 1, i - 1); gsub(/^[ \t\r\f\v]+|[ \t\r\f\v]+$/, "", k)
+      if (tolower(k) != "home") next
+      v = substr($0, i + 1); gsub(/^[ \t\r\f\v]+|[ \t\r\f\v]+$/, "", v)
+      print v; exit
+    }' "${cfg}") || return 1
+  [[ -n "${home}" && "$(realpath -e -- "${home}")" == "${home}" ]] || return 1
+  chemin_sur "${home}" || return 1
+  d="${home}"
+  until [[ -e "${d%/}/lib" || -L "${d%/}/lib" ]]; do
+    [[ "${d}" != / ]] || return 1
+    d=$(dirname -- "${d}")
+  done
+  lib=$(realpath -e -- "${d%/}/lib") && chemin_sur "${lib}" || return 1
+  compgen -G "${lib}/python*/os.py" >/dev/null ||
+    compgen -G "${lib}/python*/os.pyc" >/dev/null || return 1
+  compgen -G "${lib}/python*/lib-dynload" >/dev/null || return 1
+  arbre_sur "${lib}" -maxdepth 1 || return 1
+  for d in "${lib}"/python*; do
+    d=$(realpath -e -- "${d}") && chemin_sur "${d}" && arbre_sur "${d}" ||
+      return 1
+  done
+}
+
+# venv_sur_pour_root VENV : vrai si root peut lancer le python de VENV, déjà
+# résolu, sans exécuter rien qu'un autre compte puisse réécrire : ni dans le
+# venv, ni dans l'interpréteur de base qu'il désigne.
+venv_sur_pour_root() {
+  chemin_sur "$1" && arbre_sur "$1" && base_sure_pour_root "$1"
+}
+
+# lire_version VARIABLE : écrit dans « version » le nom du venv d'Odoo que
+# porte .erplibre-version ; sort en 1, Odoo non lancé, si le fichier n'est
+# pas un fichier ordinaire ou ne porte pas un tel nom. Le fichier est lu une
+# seule fois, sous un délai de 5 secondes : un tube nommé substitué après le
+# test « -f » bloquerait sinon root à l'ouverture, sans fin ni redémarrage.
+# Le contenu refusé n'est pas cité : root lit le fichier, qui peut être un
+# lien vers un fichier qu'Odoo ne lit pas.
+lire_version() {
+  local fichier="${prefixe}/.erplibre-version"
+  version=""
+  if [[ -f "${fichier}" ]]; then
+    version=$(timeout 5 head -c 256 -- "${fichier}" 2>/dev/null |
+      tr -d '[:space:]') || version=""
+  fi
+  if [[ ! "${version}" =~ ^odoo[0-9]+\.[0-9]+_python[0-9]+(\.[0-9]+)*$ ]]; then
+    echo "Erreur : ${fichier} ne porte pas un nom de venv d'Odoo comme « odoo18.0_python3.12.16 » ($1) ; Odoo ne démarre pas." >&2
+    exit 1
+  fi
+}
+
+# resoudre_venv NOM VARIABLE : écrit dans « venv » le chemin résolu de
+# « ${prefixe}/.venv.NOM » ; sort en 1, Odoo non lancé, s'il manque ou si un
+# lien le mène ailleurs que sur ce nom même, enfant direct du préfixe résolu.
+resoudre_venv() {
+  local base
+  base=$(realpath -e -- "${prefixe}") || base=""
+  venv=$(realpath -e -- "${prefixe}/.venv.$1") || venv=""
+  if [[ -z "${base}" || "${venv}" != "${base%/}/.venv.$1" ]]; then
+    echo "Erreur : ${prefixe}/.venv.$1 n'est pas un venv du préfixe ${prefixe} ($2) ; Odoo ne démarre pas." >&2
+    exit 1
+  fi
+}
+
+# installer VARIABLE NOM : pip installe la liste de VARIABLE avec le python
+# du venv « .venv.NOM » du préfixe. En root, pip tourne sous le propriétaire
+# du venv, ou en root dans un venv que venv_sur_pour_root accepte ; sort en
+# 1, Odoo non lancé, sur un venv de root qu'elle refuse, ou si pip refuse.
+# L'uid et le gid viennent d'un seul stat : le compte du préfixe peut
+# renommer un autre venv sur ce chemin, et deux lectures pourraient alors
+# associer l'uid de l'un au gid de l'autre.
 installer() {
-  local variable="$1" python="$2" exigences venv sous=()
+  local variable="$1" nom="$2" exigences venv python ids proprio groupe sous=()
   read -r -d '' -a exigences <<<"${!variable:-}" || true
   ((${#exigences[@]})) || return 0
-  venv="$(dirname "$(dirname "${python}")")"
-  if [[ "$(id -u)" == 0 && "$(stat -c %u "${venv}")" != 0 ]]; then
-    sous=(setpriv --reuid="$(stat -c %u "${venv}")"
-      --regid="$(stat -c %g "${venv}")" --clear-groups
-      env HOME="$(getent passwd "$(stat -c %u "${venv}")" | cut -d: -f6)")
+  resoudre_venv "${nom}" "${variable}"
+  python="${venv}/bin/python"
+  if [[ "$(id -u)" == 0 ]]; then
+    ids=$(stat -c '%u %g' -- "${venv}")
+    proprio=${ids% *}
+    groupe=${ids#* }
+    if [[ "${proprio}" != 0 ]]; then
+      sous=(setpriv --reuid="${proprio}" --regid="${groupe}"
+        --clear-groups env HOME="$(getent passwd "${proprio}" | cut -d: -f6)")
+    elif ! venv_sur_pour_root "${venv}"; then
+      echo "Erreur : ${venv} appartient à root, mais un autre compte peut substituer ce que root exécuterait, dans le venv ou dans son interpréteur de base (${variable}) ; Odoo ne démarre pas." >&2
+      exit 1
+    fi
   fi
   echo "pip extra (${python}) : ${exigences[*]}"
-  if ! "${sous[@]}" "${python}" -m pip install --disable-pip-version-check \
+  if ! "${sous[@]}" "${python}" -I -m pip install --disable-pip-version-check \
     --no-input --no-cache-dir "${exigences[@]}"; then
     echo "Erreur : pip n'a pas installé ${variable} ; Odoo ne démarre pas." >&2
     exit 1
@@ -186,10 +336,10 @@ installer() {
 }
 
 installer_apt
-installer PIP_EXTRA_REQUIREMENTS_ERPLIBRE "${prefixe}/.venv.erplibre/bin/python"
+installer PIP_EXTRA_REQUIREMENTS_ERPLIBRE erplibre
 if [[ -n "${PIP_EXTRA_REQUIREMENTS_ODOO:-}" ]]; then
-  version=$(tr -d '[:space:]' <"${prefixe}/.erplibre-version")
-  installer PIP_EXTRA_REQUIREMENTS_ODOO "${prefixe}/.venv.${version}/bin/python"
+  lire_version PIP_EXTRA_REQUIREMENTS_ODOO
+  installer PIP_EXTRA_REQUIREMENTS_ODOO "${version}"
 fi
 
 if [[ "$(id -u)" == 0 && "${compte}" != root ]]; then
