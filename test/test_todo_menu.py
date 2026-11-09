@@ -540,6 +540,21 @@ class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
         self.assertIn("self.execute_pip_audit()", securite)
 
 
+class TestSecurityMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Security : l'audit des dépendances, puis le sceau PAdES, dont
+    la génération vit dans script/todo/seal_menu.py."""
+
+    SOURCE = TODO_PY
+    ENTRY = "def prompt_execute_security(self):"
+    END = "def prompt_execute_test(self):"
+    MINIMUM = 1
+
+    EXPECTED = {
+        "pip-audit": "execute_pip_audit",
+        "Generate a PAdES signature seal": "execute_generate_seal",
+    }
+
+
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 

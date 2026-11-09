@@ -468,9 +468,9 @@ TRANSLATIONS = {
         "fr": "pour régénérer config.conf :",
         "en": "to regenerate config.conf:",
     },
-    "Security - Dependency security audit": {
-        "fr": "🔒 Sécurité - Audit de sécurité des dépendances",
-        "en": "🔒 Security - Dependency security audit",
+    "Security - Dependency audit and signature seals": {
+        "fr": "🔒 Sécurité - Audit des dépendances et sceaux de signature",
+        "en": "🔒 Security - Dependency audit and signature seals",
     },
     "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
@@ -972,9 +972,9 @@ TRANSLATIONS = {
         "fr": "Outil réseautique!",
         "en": "Network tools!",
     },
-    "Dependency security audit!": {
-        "fr": "Audit de securite des dépendances!",
-        "en": "Dependency security audit!",
+    "Dependency audit and signature seals!": {
+        "fr": "Audit des dépendances et sceaux de signature!",
+        "en": "Dependency audit and signature seals!",
     },
     "The Bash script failed with return code": {
         "fr": "Le script Bash a échoué avec le code de retour",
@@ -1019,6 +1019,91 @@ TRANSLATIONS = {
     "pip-audit - Check vulnerabilities on Python environments": {
         "fr": "🛡️ pip-audit - Vérifier les vulnérabilités des environnements Python",
         "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
+    },
+    # Security › sceau PAdES (script/todo/seal_menu.py)
+    "Generate a PAdES signature seal": {
+        "fr": "🔏 Générer un sceau de signature PAdES (auto-signé, pour essai)",
+        "en": "🔏 Generate a PAdES signature seal (self-signed, for testing)",
+    },
+    "A self-signed certificate seals the documents of a test database: the seals are intact and valid, but PDF readers report the signer as untrusted. In production, use a certificate issued by a recognised authority.": {
+        "fr": "Un certificat auto-signé scelle les documents d'une base d'essai : les sceaux sont intacts et valides, mais les lecteurs PDF déclarent le signataire non approuvé. En production, utiliser un certificat émis par une autorité reconnue.",
+        "en": "A self-signed certificate seals the documents of a test database: the seals are intact and valid, but PDF readers report the signer as untrusted. In production, use a certificate issued by a recognised authority.",
+    },
+    "Folder for the seal (default: %s): ": {
+        "fr": "Dossier du sceau (défaut : %s) : ",
+        "en": "Folder for the seal (default: %s): ",
+    },
+    "Git could commit this file, which holds a private key:": {
+        "fr": "Git pourrait commiter ce fichier, qui porte une clé privée :",
+        "en": "Git could commit this file, which holds a private key:",
+    },
+    "Choose a folder that git ignores, such as %s, or a folder outside every repository.": {
+        "fr": "Choisir un dossier que git ignore, comme %s, ou un dossier hors de tout dépôt.",
+        "en": "Choose a folder that git ignores, such as %s, or a folder outside every repository.",
+    },
+    "A seal already exists here:": {
+        "fr": "Un sceau existe déjà ici :",
+        "en": "A seal already exists here:",
+    },
+    "Replace it? (y/N): ": {
+        "fr": "Le remplacer ? (o/N) : ",
+        "en": "Replace it? (y/N): ",
+    },
+    "Document seal (test)": {
+        "fr": "Sceau des documents (essai)",
+        "en": "Document seal (test)",
+    },
+    "Certificate name (default: %s): ": {
+        "fr": "Nom du certificat (défaut : %s) : ",
+        "en": "Certificate name (default: %s): ",
+    },
+    "The name cannot contain any of these characters: %s": {
+        "fr": "Le nom ne peut contenir aucun de ces caractères : %s",
+        "en": "The name cannot contain any of these characters: %s",
+    },
+    "The name is limited to %s characters.": {
+        "fr": "Le nom est limité à %s caractères.",
+        "en": "The name is limited to %s characters.",
+    },
+    "Cannot write the seal:": {
+        "fr": "Impossible d'écrire le sceau :",
+        "en": "Cannot write the seal:",
+    },
+    "Validity in days (default: %s): ": {
+        "fr": "Validité en jours (défaut : %s) : ",
+        "en": "Validity in days (default: %s): ",
+    },
+    "Password of the .p12 file: ": {
+        "fr": "Mot de passe du fichier .p12 : ",
+        "en": "Password of the .p12 file: ",
+    },
+    "Password again: ": {
+        "fr": "Mot de passe, à nouveau : ",
+        "en": "Password again: ",
+    },
+    "The password cannot be empty.": {
+        "fr": "Le mot de passe ne peut pas être vide.",
+        "en": "The password cannot be empty.",
+    },
+    "The two passwords differ.": {
+        "fr": "Les deux mots de passe diffèrent.",
+        "en": "The two passwords differ.",
+    },
+    "openssl failed:": {
+        "fr": "openssl a échoué :",
+        "en": "openssl failed:",
+    },
+    "The certificate lacks the non repudiation key usage: pyHanko will report its seals as untrusted.": {
+        "fr": "Le certificat n'a pas l'usage de clé non-répudiation : pyHanko déclarera ses sceaux non approuvés.",
+        "en": "The certificate lacks the non repudiation key usage: pyHanko will report its seals as untrusted.",
+    },
+    "Seal written:": {
+        "fr": "Sceau écrit :",
+        "en": "Seal written:",
+    },
+    "Next: Sign › Settings › General settings, Document Sealing (PAdES) section, upload the .p12 with its password. Or, in odoo.conf [options]: sign_oca_pades_pkcs12_path and sign_oca_pades_pkcs12_password, then restart Odoo.": {
+        "fr": "Ensuite : Signature › Configuration › Paramètres généraux, section Scellement des documents (PAdES), téléverser le .p12 avec son mot de passe. Ou, dans odoo.conf [options] : sign_oca_pades_pkcs12_path et sign_oca_pades_pkcs12_password, puis redémarrer Odoo.",
+        "en": "Next: Sign › Settings › General settings, Document Sealing (PAdES) section, upload the .p12 with its password. Or, in odoo.conf [options]: sign_oca_pades_pkcs12_path and sign_oca_pades_pkcs12_password, then restart Odoo.",
     },
     "Will execute:": {
         "fr": "Va exécuter :",
