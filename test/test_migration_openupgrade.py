@@ -21,9 +21,10 @@ sys.path.insert(0, str(RACINE))
 from script.todo.todo_upgrade import (  # noqa: E402
     TodoUpgrade,
     http_off_option,
-    split_removable,
     odoo_tree_layout,
     openupgrade_declared,
+    openupgrade_run_command,
+    split_removable,
 )
 
 AVEC = """<manifest>
@@ -139,6 +140,34 @@ class TestLArbreDOpenUpgrade(unittest.TestCase):
             ["--no-xmlrpc", "--no-xmlrpc", "--no-http", "--no-http"],
             [http_off_option(v) for v in (9, 10, 11, 13)],
         )
+
+
+class TestLaMigrationLeveLesLimites(unittest.TestCase):
+    """run.sh en production applique les limites de config.conf, ou les
+    2560 Mio d'Odoo : la mise à jour de toute une base passe outre."""
+
+    def test_chaque_saut_par_run_sh_leve_les_limites(self):
+        for version in range(14, 21):
+            commande = openupgrade_run_command(version, "base_upgrade")
+            self.assertTrue(commande.startswith("./run.sh "), commande)
+            for option in (
+                "--limit-memory-hard=0",
+                "--limit-memory-soft=0",
+                "--limit-time-real 99999",
+                "--limit-time-cpu 99999",
+            ):
+                self.assertIn(option, commande)
+
+    def test_la_commande_vise_la_version_et_la_base(self):
+        commande = openupgrade_run_command(19, "base_upgrade")
+        self.assertIn(
+            "--upgrade-path=./odoo19.0/OCA_OpenUpgrade/"
+            "openupgrade_scripts/scripts",
+            commande,
+        )
+        self.assertIn("--update all", commande)
+        self.assertIn("--no-http", commande)
+        self.assertTrue(commande.endswith(" -d base_upgrade"), commande)
 
 
 class TestLesModulesFusionnesSelonOpenUpgrade(unittest.TestCase):
