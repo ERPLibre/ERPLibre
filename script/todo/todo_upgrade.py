@@ -356,41 +356,55 @@ class TodoUpgrade:
         }
 
     @staticmethod
-    def print_resume(ctx):
-        """Render the resume screen on the terminal."""
-        print()
-        print(f"📍 {t('Migration in progress')}")
+    def resume_text(ctx):
+        """La question de la reprise : où en est la migration de `ctx`, ce
+        qu'efface rejouer une étape ou un palier, puis « Votre choix »."""
         # Pad in code, not in the translations: the labels differ in length
         # between languages and a hardcoded padding misaligns the colons.
-        print(f"   {t('File'):<9}: {ctx['file']}")
-        print(
+        lines = [
+            f"📍 {t('Migration in progress')}",
+            f"   {t('File'):<9}: {ctx['file']}",
             f"   {t('Database'):<9}: {ctx['database']}"
-            f"   ·   {t('Target')} : {ctx['target']}"
-        )
-        print(f"   {t('Started'):<9}: {ctx['started']}")
-        print()
-        print(f"   {t('Steps')} :")
+            f"   ·   {t('Target')} : {ctx['target']}",
+            f"   {t('Started'):<9}: {ctx['started']}",
+            f"   {t('Step')} N : {t('Replay from that step')}"
+            f" ({t('erases the progression of that step and the next ones')})",
+        ]
+        if ctx["versions"]:
+            lines.append(
+                f"   {t('Step')} 4.N :"
+                f" {t('Replay the upgrade from version N')}"
+                f" — {t('rebuilds the intermediate database')}"
+            )
+        lines.append(f"💬 {t('Your choice')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def step_choices(ctx, bumps=False):
+        """Les étapes de `ctx` en options d'un choix : (options, libellés,
+        noms). Une étape est la chaîne de son numéro, « 0 » à « 4 », sous
+        le libellé « Étape N · icône libellé détail » et le nom « Étape
+        N » ; avec `bumps`, chaque palier de l'étape 4 suit, « 4.V », nommé
+        « Étape 4.V ». La liste affiche l'étape N sous [N+1], [0] restant
+        le Retour du port : une étape se choisit par ce numéro ou par son
+        nom."""
+        step = t("Step")
+        options, labels = [], []
         for item in ctx["steps"]:
-            print(
-                f"     [{item['step']}] {item['icon']} "
+            options.append(str(item["step"]))
+            labels.append(
+                f"{step} {item['step']} · {item['icon']} "
                 f"{item['label']:<44} {item['detail']}"
             )
-        print()
-        print(f"   [c] {t('Continue where it stopped')}")
-        print(
-            f"   [0-4] {t('Replay from that step')}"
-            f" ({t('erases the progression of that step and the next ones')})"
-        )
-        if ctx["versions"]:
-            versions = "/".join(str(v["version"]) for v in ctx["versions"])
-            print(
-                f"   [4.N] {t('Replay the upgrade from version N')}"
-                f" ({versions}) —"
-                f" {t('rebuilds the intermediate database')}"
+        rebuilds = t("rebuilds the intermediate database")
+        for item in ctx["versions"] if bumps else ():
+            version = item["version"]
+            options.append(f"4.{version}")
+            mark = "✓" if item["done"] else " "
+            labels.append(
+                f"{step} 4.{version} · {mark} Odoo {version}.0 — {rebuilds}"
             )
-        print(f"   [n] {t('New migration, erase everything')}")
-        print(f"   [r] {t('Keep the zip only, ask every question again')}")
-        print(f"   [q] {t('Quit without doing anything')}")
+        return options, labels, {f"{step} {key}": key for key in options}
 
     @staticmethod
     def archive_progression(old_dct_progression, reason):
@@ -457,18 +471,21 @@ class TodoUpgrade:
         return path
 
     def apply_resume_answer(self, old_dct_progression, answer, ctx):
-        """Turn the answer into (progression, changed), or None to quit.
+        """(progression, changée) pour `answer`, l'une des chaînes que
+        rendent les deux écrans de la reprise : « c » continue, « n » et
+        « r » repartent de zéro, « r » en gardant le zip, après avoir
+        archivé le journal (`archive_progression`) ; « 0 » à « 4 »
+        rembobinent jusqu'à cette étape, « 4.V » jusqu'au palier vers la
+        version V de `ctx`. None pour toute autre réponse, dont « q » de
+        l'écran Textual : rien ne change.
 
-        THE decision point, shared by both interfaces: the TUI returns the
-        same answer strings as the prompt, so this logic is written once.
+        LE point de décision, partagé par les deux écrans : l'écran Textual
+        rend les chaînes du choix du port, plus « q », et cette logique ne
+        s'écrit qu'une fois.
         """
         answer = (answer or "").strip().lower()
-        lst_version = [v["version"] for v in ctx["versions"]]
-
-        if answer in ("", "c"):
+        if answer == "c":
             return old_dct_progression, False
-        if answer == "q":
-            return None
         # « n » et « r » repartent de zéro : dans les deux cas la progression
         # enregistrée disparaît, donc dans les deux cas on la garde d'abord.
         if answer == "n":
@@ -482,42 +499,83 @@ class TodoUpgrade:
                 "migration_file": old_dct_progression.get("migration_file"),
                 "date_create": old_dct_progression.get("date_create"),
             }, True
-        if answer.startswith("4.") and lst_version:
-            target = answer.split(".", 1)[1].strip()
-            if target.isdigit() and int(target) in lst_version:
-                return (
-                    self.rewind_version_bump(
-                        old_dct_progression, lst_version.index(int(target))
-                    ),
-                    True,
-                )
-            print(f"⚠️ {t('Unknown version')} : {target}")
-            return old_dct_progression, False
-        if answer.isdigit() and 0 <= int(answer) <= MIGRATION_STEP[-1][0]:
+        bumps = [f"4.{item['version']}" for item in ctx["versions"]]
+        if answer in bumps:
+            return (
+                self.rewind_version_bump(
+                    old_dct_progression, bumps.index(answer)
+                ),
+                True,
+            )
+        if answer in [str(step) for step, _label in MIGRATION_STEP]:
             return (
                 self.rewind_progression(old_dct_progression, int(answer)),
                 True,
             )
-
-        print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
-        return old_dct_progression, False
+        return None
 
     def prompt_resume(self, old_dct_progression, use_tui=False):
-        """Show where the migration stands and ask what to do next.
-
-        Returns (progression, changed), or None if the user quits. The old
-        menu exposed internal key names (« Reuse database without state_4 »),
-        which said nothing about what would happen; this shows the real state
-        of every step and lets the user replay from any of them.
+        """Où en est la migration, et par où elle reprend : l'écran Textual
+        avec `use_tui`, sinon, ou sans Textual, le choix du port
+        (`resume_choice`). Rend (progression, changée), ou None pour
+        quitter sans rien changer : [0], Ctrl+D ou « q » de l'écran
+        Textual.
         """
         ctx = self.resume_context(old_dct_progression)
-        answer = None
-        if use_tui:
-            answer = self.resume_tui(ctx)
+        answer = self.resume_tui(ctx) if use_tui else None
         if answer is None:
-            self.print_resume(ctx)
-            answer = input(f"💬 {t('Your choice')} : ")
+            answer = self.resume_choice(ctx)
+        if answer is None:
+            return None
         return self.apply_resume_answer(old_dct_progression, answer, ctx)
+
+    def resume_choice(self, ctx):
+        """La réponse du port à la reprise de `ctx`, ou None sur [0] et
+        Ctrl+D. [c] continue, le défaut marqué : une réponse vide le prend,
+        sans autre question. [1] à [5] sont les étapes 0 à 4, puis viennent
+        les paliers de l'étape 4, chacun aussi par son nom
+        (`step_choices`) ; [n] et [r] sont des actions à lettre. Une étape,
+        un palier, « n » ou « r » ne sont rendus que confirmés
+        (`confirm_rewind`) : sinon, comme après une faute, la question
+        revient."""
+        options, labels, names = self.step_choices(ctx, bumps=True)
+        letters = {
+            "c": t("Continue where it stopped"),
+            "n": t("New migration, erase everything"),
+            "r": t("Keep the zip only, ask every question again"),
+        }
+        while True:
+            print()
+            answer = ui.choose(
+                self.resume_text(ctx),
+                options,
+                default="c",
+                labels=labels,
+                letters=letters,
+                names=names,
+            )
+            if answer in (None, "c") or self.confirm_rewind(answer):
+                return answer
+
+    def confirm_rewind(self, answer):
+        """Vrai si l'utilisateur confirme `answer`, ce qui efface la
+        progression : une étape, « 0 » à « 4 », ou un palier, « 4.V », que
+        la question nomme en disant que la progression reprend depuis là ;
+        « n » ou « r », sous leur libellé. Le défaut est non : une réponse
+        vide, toute autre que oui, Ctrl+D ou la fin du compte à rebours ne
+        confirment rien."""
+        what = {
+            "n": t("New migration, erase everything"),
+            "r": t("Keep the zip only, ask every question again"),
+        }.get(answer) or (
+            f"{t('Step')} {answer} : {t('Replay from that step')}"
+            f" ({t('erases the progression of that step and the next ones')})"
+        )
+        try:
+            reponse = self.ask(f"💬 {what}. {t('Confirm? (y/N): ')}", "n")
+        except EOFError:
+            return False
+        return reponse.strip().lower() in ("y", "yes", "o", "oui")
 
     @staticmethod
     def ask_ui():
@@ -764,8 +822,10 @@ class TodoUpgrade:
 
     @staticmethod
     def resume_tui(ctx):
-        """Resume screen as a TUI. Returns the SAME answer strings as the
-        prompt, or None when textual is missing (fall back to the prompt)."""
+        """L'écran de reprise en TUI : « c », « n », « r », « q », « 0 » à
+        « 4 » ou « 4.V », les chaînes du choix du port plus « q », sans
+        confirmation ; None quand Textual manque, et le choix du port
+        prend le relais."""
         from script.todo import textual_setup
 
         if not textual_setup.ensure():
@@ -963,24 +1023,26 @@ class TodoUpgrade:
         )
 
     def rewind_to_chosen_step(self):
-        """Demander l'étape et rembobiner jusqu'à elle. Écrit la progression."""
+        """L'étape à rejouer, choisie par le numéro que la liste affiche,
+        [1] à [5], ou par son nom (« Étape 0 »…, `step_choices`), puis
+        confirmée (`confirm_rewind`) : la progression est rembobinée
+        jusqu'à elle et écrite, et rend vrai. Faux sans rien écrire sur [0],
+        une réponse vide ou Ctrl+D, à la liste ou à la confirmation ; une
+        faute à la liste est dite et la question revient."""
         ctx = self.resume_context(self.dct_progression)
+        options, labels, names = self.step_choices(ctx)
         print()
-        print(f"📍 {t('Migration in progress')}")
-        for item in ctx["steps"]:
-            print(
-                f"  [{item['step']}] {item['icon']}  {item['label']:<44}"
-                f" {item['detail']}"
-            )
-        answer = input(
-            f"💬 {t('Replay from which step? (empty to cancel)')} : "
+        step = ui.choose(
+            f"📍 {t('Migration in progress')}\n"
+            f"💬 {t('Replay from which step? (empty to cancel)')}",
+            options,
+            labels=labels,
+            names=names,
         )
-        answer = (answer or "").strip()
-        if not answer.isdigit() or int(answer) > MIGRATION_STEP[-1][0]:
-            print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+        if step is None or not self.confirm_rewind(step):
             return False
         self.dct_progression = self.rewind_progression(
-            self.dct_progression, int(answer)
+            self.dct_progression, int(step)
         )
         self.write_config()
         return True

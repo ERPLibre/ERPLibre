@@ -9899,7 +9899,6 @@ TRANSLATIONS = {
         "fr": "recrée la base intermédiaire",
         "en": "rebuilds the intermediate database",
     },
-    "Unknown version": {"fr": "Version inconnue", "en": "Unknown version"},
     "The progression file is invalid, ignoring it": {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",

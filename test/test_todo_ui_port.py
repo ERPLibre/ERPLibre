@@ -662,6 +662,16 @@ class TestChoose(unittest.TestCase):
                 )
                 self.assertEqual(chosen, "i")
 
+    def test_a_letter_can_be_the_default(self):
+        # Une action à lettre suit les règles d'une option : défaut, elle
+        # est marquée, et une réponse vide la rend.
+        rules = {"default": "c", "letters": {"c": "Continue"}}
+        chosen, [asked] = self.chosen([""], "?", ["a"], **rules)
+        self.assertEqual(chosen, "c")
+        self.assertEqual(
+            asked["text"], "?\n[1] a\n[c] Continue (default)\n[0] 🔙 Back\n: "
+        )
+
     def test_a_letter_in_a_multiple_choice_answers_alone(self):
         # Une action à lettre suit aussi les numéros d'un choix multiple :
         # tapée seule, elle rend sa lettre ; mêlée à un numéro, à une autre
