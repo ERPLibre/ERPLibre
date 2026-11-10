@@ -668,6 +668,9 @@ class TODO(
                 cmd_intern = cmd_intern + " --with_extra"
 
         # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+        # « q » n'installe qu'ERPLibre et ne lance pas repo init.
+        if odoo_version_input != "q":
+            self._proposer_identite_git()
         self._install_system_step()
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
@@ -685,6 +688,74 @@ class TODO(
             print("Wait after installation and open projects by terminal.")
             print("make open_terminal")
             self.restart_script(str(e))
+
+    def _proposer_identite_git(self):
+        """Propose de saisir l'identité git que repo init demanderait.
+
+        Ne demande rien quand repo_identity_ready, de
+        script/manifest/repo_init.sh, la trouve déjà : c'est le même test
+        que celui de repo. Sinon, sur un oui, demande le nom et le courriel,
+        les fait confirmer, et les écrit par repo_identity_set. Un « non »
+        à la confirmation reprend la saisie, les valeurs précédentes
+        proposées par défaut. Sur un non à la première question, rien
+        n'est écrit : repo_init lance alors repo init sans terminal sur
+        l'entrée, et il ne demande pas d'identité.
+        """
+        if self._fragment_repo_init("repo_identity_ready").returncode == 0:
+            return
+        print(
+            f"⚠  {t('No git identity (user.name, user.email): repo init would ask for it.')}"
+        )
+        if not self._is_yes(input(f"💬 {t('Configure it now? (y/N): ')}")):
+            print(t("Skipped: the installation will not ask for it."))
+            return
+        nom = courriel = ""
+        while True:
+            nom = self._saisir_defaut(t("Your name"), nom)
+            courriel = self._saisir_defaut(t("Your email"), courriel)
+            while not re.fullmatch(r"[^@\s]+@[^@\s]+", courriel):
+                print(f"{t('Invalid email:')} '{courriel}'")
+                courriel = self._saisir_defaut(t("Your email"), "")
+            print(f"{t('Your identity is:')} {nom} <{courriel}>")
+            if self._is_yes(input(f"💬 {t('Is this correct? (y/N): ')}")):
+                break
+        fait = self._fragment_repo_init("repo_identity_set", nom, courriel)
+        if fait.returncode == 0:
+            print(f"✅ {t('Git identity saved.')}")
+        else:
+            print(f"❌ {t('Git identity not saved:')} {fait.stderr.strip()}")
+
+    @staticmethod
+    def _saisir_defaut(libelle, defaut):
+        """Rend la saisie non vide pour `libelle` ; Entrée seule rend
+        `defaut` s'il n'est pas vide, sinon redemande."""
+        while True:
+            invite = f"{libelle} [{defaut}] : " if defaut else f"{libelle} : "
+            valeur = input(invite).strip()
+            if valeur or defaut:
+                return valeur or defaut
+
+    @staticmethod
+    def _fragment_repo_init(fonction, *args):
+        """Lance `fonction` de script/manifest/repo_init.sh avec `args`,
+        passés en paramètres positionnels et jamais interpolés dans le
+        code bash. Le fragment lit .repo/ relativement au dossier courant :
+        il tourne à la racine d'ERPLibre. Rend le CompletedProcess."""
+        return subprocess.run(
+            [
+                "bash",
+                "-c",
+                '. ./script/manifest/repo_init.sh && "$@"',
+                "repo_init",
+                fonction,
+                *args,
+            ],
+            cwd=os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            capture_output=True,
+            text=True,
+        )
 
     def _choisir_mode_installation(self, odoo_version):
         """Développement ou production pour `odoo_version` (« 18.0 »).

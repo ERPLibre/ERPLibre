@@ -1024,6 +1024,46 @@ TRANSLATIONS = {
         "fr": "Va exécuter :",
         "en": "Will execute:",
     },
+    "No git identity (user.name, user.email): repo init would ask for it.": {
+        "fr": "Aucune identité git (user.name, user.email) : repo init la demanderait.",
+        "en": "No git identity (user.name, user.email): repo init would ask for it.",
+    },
+    "Configure it now? (y/N): ": {
+        "fr": "La configurer maintenant ? (o/N) : ",
+        "en": "Configure it now? (y/N): ",
+    },
+    "Skipped: the installation will not ask for it.": {
+        "fr": "Ignoré : l'installation ne la demandera pas.",
+        "en": "Skipped: the installation will not ask for it.",
+    },
+    "Your name": {
+        "fr": "Votre nom",
+        "en": "Your name",
+    },
+    "Your email": {
+        "fr": "Votre courriel",
+        "en": "Your email",
+    },
+    "Invalid email:": {
+        "fr": "Courriel invalide :",
+        "en": "Invalid email:",
+    },
+    "Your identity is:": {
+        "fr": "Votre identité :",
+        "en": "Your identity is:",
+    },
+    "Is this correct? (y/N): ": {
+        "fr": "Est-ce correct ? (o/N) : ",
+        "en": "Is this correct? (y/N): ",
+    },
+    "Git identity saved.": {
+        "fr": "Identité git enregistrée.",
+        "en": "Git identity saved.",
+    },
+    "Git identity not saved:": {
+        "fr": "Identité git non enregistrée :",
+        "en": "Git identity not saved:",
+    },
     "Choose a version:": {
         "fr": "Choisir une version :",
         "en": "Choose a version:",
