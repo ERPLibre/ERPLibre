@@ -610,7 +610,7 @@
         fork-upstream-freeze-revision="ea190cc5029d18458c8296a0e583dc6427cd9091"
         clone-depth="10"
         revision="ERPLibre/18.0"
-        freeze-revision="abbc2026adb79a8932019020d62fb9316dac5817"
+        freeze-revision="498ac8c454c1d142ab6df1fa8ae5b39ae3cf9e87"
         groups="odoo,odoo18.0"
     />
     <project
