@@ -273,6 +273,24 @@ class TestSansInterpreteur(BancInstallVenv):
         self.assertEqual(1, fin.returncode)
         self.assertTrue((venv / "TEMOIN").exists())
 
+    def test_mise_n_est_pas_conseille_sans_python_precompile(self):
+        """Pour 2.7.18, « mise install » compilerait CPython sans les
+        drapeaux de pyenv : le conseil nomme pyenv, pas mise."""
+        mise = self.bin / "mise"
+        mise.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        mise.chmod(0o755)
+        env = dict(self.env(), EL_PYTHON_PROVIDER="mise")
+        fin = subprocess.run(
+            [str(SCRIPT), "Odoo", str(self.coin / "neuf"), "2.7.18"],
+            cwd=RACINE,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(1, fin.returncode)
+        self.assertNotIn("install python@2.7.18", fin.stdout)
+        self.assertIn("seul pyenv le fournit", fin.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

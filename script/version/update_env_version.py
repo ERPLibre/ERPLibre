@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -320,7 +321,14 @@ class Update:
 
         if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
             with open(INSTALLED_ODOO_VERSION_FILE) as txt:
-                lst_version_installed = sorted(txt.read().splitlines())
+                # Tri naturel : « odoo8.0 » avant « odoo10.0 ».
+                lst_version_installed = sorted(
+                    txt.read().splitlines(),
+                    key=lambda v: [
+                        int(p) if p.isdigit() else p
+                        for p in re.split(r"(\d+)", v)
+                    ],
+                )
                 str_installed_version = "Installed version: " + ", ".join(
                     lst_version_installed
                 )
@@ -471,9 +479,14 @@ class Update:
         # Les sources d'Odoo viennent du repo sync, pas de Poetry : un sync
         # interrompu laisse un venv complet et odoo<ver>/addons partiel, mais
         # aucun odoo-bin. L'environnement est alors à réinstaller, sans quoi
-        # le script répond « Nothing to do » et ./run.sh échoue.
+        # le script répond « Nothing to do » et ./run.sh échoue. Odoo 8 et 9
+        # n'ont pas d'odoo-bin : leur lanceur est openerp-server.
         odoo_bin = os.path.join(self.expected_odoo_name, "odoo", "odoo-bin")
-        if not os.path.isfile(odoo_bin):
+        lanceurs = (
+            odoo_bin,
+            os.path.join(self.expected_odoo_name, "odoo", "openerp-server"),
+        )
+        if not any(os.path.isfile(lanceur) for lanceur in lanceurs):
             _logger.info(f"Missing '{odoo_bin}', the repo sync is required.")
             status = False
         # Ni le venv ni les sources ne prouvent une installation FINIE : un

@@ -143,15 +143,31 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # Un venv bâti avant un changement de .poetry-version garde son Poetry :
     # la version installée doit être celle que le checkout demande, sinon
     # « poetry install » tourne avec l'ancien et réécrit le lock à sa façon.
-    poetry_installe=""
-    if [[ -x "${POETRY_ODOO_PATH}" ]]; then
-        poetry_installe="$("${VENV_ODOO_PATH}/bin/python" -m pip show poetry \
-            2> /dev/null | awk '/^Version:/ {print $2}')"
-    fi
-    if [[ "${poetry_installe}" != "${EL_POETRY_VERSION}" ]]; then
-        echo -e "Install Poetry ${EL_POETRY_VERSION} ${POETRY_ODOO_PATH}${poetry_installe:+ (was ${poetry_installe})}"
-        el_pip_install "${VENV_ODOO_PATH}" \
-          ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
+    #
+    # En Python 2, Poetry vit dans .venv.poetry<version> et bin/poetry est
+    # l'enveloppe d'install_venv_python2.sh : pip n'en voit aucun dans le
+    # venv 2.7, et l'y installer remplacerait l'enveloppe par un script pip,
+    # sans VIRTUAL_ENV épinglé, ni cache absolu, ni -fpermissive. Le script
+    # dédié, idempotent, pose le Poetry demandé et réécrit l'enveloppe. Le
+    # venv 2.7 existe à cette phase : l'interpréteur passé ne sert qu'à le
+    # créer, ce qui n'a pas lieu.
+    if [[ "${EL_PYTHON_ODOO_VERSION}" == 2.* ]]; then
+        if ! ./script/install/install_venv_python2.sh "${VENV_ODOO_PATH}" \
+            "${VENV_ODOO_PATH}/bin/python" "${EL_POETRY_VERSION}"; then
+            echo "Poetry ${EL_POETRY_VERSION} pour ${VENV_ODOO_PATH} en echec, arret."
+            exit 1
+        fi
+    else
+        poetry_installe=""
+        if [[ -x "${POETRY_ODOO_PATH}" ]]; then
+            poetry_installe="$("${VENV_ODOO_PATH}/bin/python" -m pip show poetry \
+                2> /dev/null | awk '/^Version:/ {print $2}')"
+        fi
+        if [[ "${poetry_installe}" != "${EL_POETRY_VERSION}" ]]; then
+            echo -e "Install Poetry ${EL_POETRY_VERSION} ${POETRY_ODOO_PATH}${poetry_installe:+ (was ${poetry_installe})}"
+            el_pip_install "${VENV_ODOO_PATH}" \
+              ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
+        fi
     fi
     # Chemin EXPLICITE, jamais le « poetry » du PATH. Le script active pourtant
     # le bon venv juste avant, mais poetry.toml porte « virtualenvs.create =
@@ -198,13 +214,22 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # guillemets (setuptools, shlex, le shell d'un Makefile). Un chemin qui
     # porte une espace est donc entouré de guillemets simples ; sans espace,
     # il reste nu, pour l'outil qui ne retirerait pas les guillemets.
-    swig_compat="${PWD}/script/install/swig_compat.h"
-    case "${swig_compat}" in
-        *[[:space:]]*) swig_compat="'${swig_compat}'" ;;
-    esac
-    export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
+    #
+    # Jamais en Python 2 : PyInt_FromLong y est une vraie fonction, et l'alias
+    # la remplacerait par PyLong_FromLong — des entiers rendus en « long »
+    # par toute extension C compilée ici.
+    if [[ "${EL_PYTHON_ODOO_VERSION}" != 2.* ]]; then
+        swig_compat="${PWD}/script/install/swig_compat.h"
+        case "${swig_compat}" in
+            *[[:space:]]*) swig_compat="'${swig_compat}'" ;;
+        esac
+        export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
+    fi
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2 n'a plus « export ».
+    # pyldap 2.4, épinglé par Odoo 10 à 12 : voir lib_ldap_compat.sh.
+    . ./script/install/lib_ldap_compat.sh
+    el_ldap_r_compat "${VENV_ODOO_PATH}/lib/ldap_r_compat"
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
         # Les dépendances que Poetry a amenées dans ce venv, alignées sur le
         # verrou AVANT l'installation : sans quoi Poetry les remplace pendant
@@ -271,7 +296,10 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # Link for dev tools into Odoo
     echo -e "\n---- Add link dependency in site-packages of Python ----"
     # TODO this link can break, the symbolic link is maybe not created
-    ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
+    # Le paquet s'appelle openerp en Odoo 8 et 9, odoo depuis 10.
+    EL_ODOO_PACKAGE="${EL_HOME_ODOO}/odoo"
+    [[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_ODOO_PACKAGE="${EL_HOME_ODOO}/openerp"
+    ln -fs "${EL_ODOO_PACKAGE}" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
 
     # Force to return to erplibre source
     source ./${VENV_ERPLIBRE_PATH}/bin/activate

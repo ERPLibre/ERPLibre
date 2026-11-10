@@ -17,6 +17,7 @@ from script.todo import (
     auto_ask,
     migration_status,
     todo_file_browser,
+    todo_prefs,
 )
 from script.todo.version_manager import get_odoo_version
 
@@ -37,9 +38,11 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.database import migration_cluster
 from script.execute import execute
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import manifest_branch
+from script.todo.version_manager import odoo_tree_layout  # noqa: F401
 
 _logger = logging.getLogger(__name__)
 
@@ -104,6 +107,9 @@ GLOBAL_PROGRESSION_KEY = frozenset(
         "date_update",
         "migration_file",
         "target_odoo_version",
+        # Le cluster PostgreSQL de la migration, fixé à son début : une
+        # reprise, même rembobinée, se rebranche sur le même.
+        "config_pg_cluster",
     }
 )
 
@@ -174,6 +180,101 @@ class MigrationRewind(Exception):
 # nom, et le second écraserait le premier sans rien dire.
 SUFFIXE_MAX = len("_neutralize_upgrade_18")
 NOM_BASE_MAX = 63 - SUFFIXE_MAX
+
+
+
+
+def http_off_option(version):
+    """L'option qui éteint le serveur HTTP : --no-xmlrpc jusqu'à Odoo 10,
+    --no-http depuis 11, qui garde l'ancienne forme en alias caché."""
+    return "--no-xmlrpc" if version <= 10 else "--no-http"
+
+
+# Correctifs d'openupgradelib chargés par --load pendant OpenUpgrade 14 et
+# plus : voir script/odoo/openupgrade_addons/erplibre_openupgrade_compat.
+OPENUPGRADE_COMPAT_MODULE = "erplibre_openupgrade_compat"
+
+# run.sh, en production, laisse les limites à config.conf, sinon à celles
+# d'Odoo : 2560 Mio d'espace d'adresses, posés même avec --stop-after-init
+# depuis Odoo 12. Une mise à jour de toute une base peut les dépasser ; les
+# appels de la migration à run.sh les lèvent donc, comme dev.sh. Ils visent
+# tous Odoo 14 et plus, où « 0 » vaut « sans limite ».
+RUN_SH_NO_LIMIT = (
+    "--limit-memory-hard=0 --limit-memory-soft=0"
+    " --limit-time-real 99999 --limit-time-cpu 99999"
+)
+
+
+def openupgrade_run_command(version, database):
+    """La migration des données vers version, depuis 14 : run.sh avec les
+    scripts d'OpenUpgrade de cette version et le module de compatibilité."""
+    return (
+        f"./run.sh --upgrade-path=./odoo{version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts"
+        f" --update all -c config.conf --stop-after-init --no-http {RUN_SH_NO_LIMIT}"
+        f" --load=base,web,openupgrade_framework,{OPENUPGRADE_COMPAT_MODULE} -d {database}"
+    )
+
+
+def openupgrade_addons(path_openupgrade, version, racine="."):
+    """Les chemins d'addons à ajouter pour la montée vers version.
+
+    Jusqu'à 13, OpenUpgrade est un Odoo complet : ses addons et son cœur.
+    Depuis 14, ses scripts, plus le dossier du module de compatibilité.
+    """
+    if version <= 13:
+        return (
+            f"{path_openupgrade},{path_openupgrade}/addons,"
+            f"{odoo_tree_layout(path_openupgrade)[1]}"
+        )
+    compat = os.path.abspath(
+        os.path.join(racine, "script", "odoo", "openupgrade_addons")
+    )
+    return f"{path_openupgrade},{compat}"
+
+
+def split_removable(lst_missing, dct_dependents):
+    """Départager les modules manquants dans la version suivante.
+
+    dct_dependents donne, pour chacun, ses dépendants installés. Désinstaller
+    un module emporte ses dépendants : si l'un d'eux existe encore dans la
+    version suivante — il n'est pas lui-même manquant —, le module est
+    GARDÉ, et OpenUpgrade le rend non installable sans rien détruire. Des
+    dépendants inconnus (None : la base n'a pas répondu) gardent aussi le
+    module : dans le doute, ne rien détruire.
+    Rend (proposables, {gardé: [dépendants qui survivent], ou None}).
+    """
+    manquants = set(lst_missing)
+    proposables, gardes = [], {}
+    for module in lst_missing:
+        dependants = dct_dependents.get(module)
+        if dependants is None:
+            gardes[module] = None
+            continue
+        survivants = sorted(d for d in dependants if d not in manquants)
+        if survivants:
+            gardes[module] = survivants
+        else:
+            proposables.append(module)
+    return proposables, gardes
+
+
+def openupgrade_declared(version, racine="."):
+    """Vrai si le manifeste de développement d'Odoo <version>.0 déclare
+    OpenUpgrade.
+
+    La migration vers <version> exécute OpenUpgrade de cette même branche,
+    cloné en odoo<version>.0/OCA_OpenUpgrade par ce manifeste. Une version
+    qu'OCA n'a pas encore couverte n'y a pas d'entrée : l'étape n'aurait rien
+    à lancer.
+    """
+    chemin = os.path.join(
+        racine, "manifest", f"git_manifest_odoo{version}.0_dev.xml"
+    )
+    try:
+        with open(chemin, encoding="utf-8") as fichier:
+            return f"odoo{version}.0/OCA_OpenUpgrade" in fichier.read()
+    except OSError:
+        return False
 
 
 def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
@@ -1317,7 +1418,7 @@ class TodoUpgrade:
                 module_name = dct_module.get("module_name")
                 cmd_migration = (
                     f"echo 'views_migration_17 {module_name}' && "
-                    f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init"
+                    f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init {RUN_SH_NO_LIMIT}"
                 )
                 cmd_parallel += f' "{cmd_migration}"'
                 cmd_serial += f"{cmd_migration};"
@@ -1501,6 +1602,17 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
+        lst_sans_openupgrade = [
+            v
+            for v in range(start_version + 1, end_version + 1)
+            if not openupgrade_declared(v)
+        ]
+        if lst_sans_openupgrade:
+            print(
+                f"⚠️ {t('OpenUpgrade is not declared for')}"
+                f" {', '.join(f'{v}.0' for v in lst_sans_openupgrade)} :"
+                f" {t('the migration will stop before that step.')}"
+            )
         lst_module = sorted(
             list(set(json_manifest_file_1.get("modules").keys()))
         )
@@ -1519,6 +1631,9 @@ class TodoUpgrade:
                 f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version * 10}-{(next_version + 1) * 10}.html"
             )
 
+        if not self.use_migration_cluster():
+            return
+
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
         self.print_step(msg)
@@ -1533,12 +1648,12 @@ class TodoUpgrade:
         if not is_state_4_reach_open_upgrade and not self.dct_progression.get(
             "state_0_install_odoo"
         ):
+            # La cible comprise : la dernière étape bascule sur elle par
+            # « make switch_odoo_<cible> », qui suppose son installation.
             lst_diff_version = sorted(
-                list(
-                    set([f"odoo{a}.0" for a in range_version]).difference(
-                        set(lst_version_installed)
-                    )
-                )
+                set(
+                    f"odoo{a}.0" for a in range(start_version, end_version + 1)
+                ).difference(set(lst_version_installed))
             )
             for odoo_version_to_install in lst_diff_version:
                 iter_range_version = odoo_version_to_install.replace(
@@ -1643,13 +1758,26 @@ class TodoUpgrade:
 
         database_name = self.dct_progression.get("config_database_name")
         if not database_name:
-            database_name = (
-                self.ask(
-                    f"💬 {t('Which database name do you want to work with?')}"
-                    f" {t('Default')} ({default_database_name}) : "
-                ).strip()
-                or default_database_name
-            )
+            for _essai in range(3):
+                database_name = (
+                    self.ask(
+                        f"💬 {t('Which database name do you want to work with?')}"
+                        f" {t('Default')} ({default_database_name}) : "
+                    ).strip()
+                    or default_database_name
+                )
+                lst_pris = self.names_on_system_server(database_name)
+                if not lst_pris:
+                    break
+                print(
+                    f"⚠️ {t('The system server already holds')}"
+                    f" {', '.join(lst_pris)} :"
+                    f" {t('both servers share the filestore by database name,')}"
+                    f" {t('and restoring here would delete its files.')}"
+                    f" {t('Choose another name.')}"
+                )
+            else:
+                return
             self.dct_progression["config_database_name"] = database_name
             self.write_config()
 
@@ -1890,8 +2018,7 @@ class TodoUpgrade:
 
         # La mesure de DÉPART. Sans elle, une page qui rendait déjà 500 avant
         # la migration se lit comme un dégât de la migration, et l'on cherche
-        # des heures du côté du palier. Mesuré : deux URL cassaient avant même
-        # de commencer.
+        # des heures du côté du palier.
         # Le nettoyage AVANT la mesure : interroger les pages sur une base
         # encombrée fait chercher des pannes dans des restes, et le nettoyage
         # en répare une partie de lui-même.
@@ -1990,7 +2117,8 @@ class TodoUpgrade:
             database_name_upgrade = lst_database_name_upgrade[index]
             lst_module_to_uninstall = []
             lst_module_to_install = []
-            lst_module_to_analyse = self.get_rename_module(
+            lst_module_to_analyse = self.modules_for_bump(
+                last_database_name,
                 self.dct_module_per_version[next_version - 1],
                 next_version,
             )
@@ -2134,21 +2262,7 @@ class TodoUpgrade:
             msg = f"4.{index}.{chr(option_comment + 65)} - Switch Odoo"
             self.add_comment_progression(msg)
 
-            if not lst_switch_odoo[index]:
-                self.switch_odoo(next_version)
-                lst_switch_odoo[index] = True
-                self.dct_progression["state_4_switch_odoo_lst"] = (
-                    lst_switch_odoo
-                )
-                self.write_config()
-                print(
-                    f"✅ -> {t('Switch done with update for Odoo')}"
-                    f"{next_version}"
-                )
-            else:
-                print(
-                    f"✅ -> {t('Switch already done for Odoo')}{next_version}"
-                )
+            self.switch_odoo_for_bump(lst_switch_odoo, index, next_version)
 
             lst_state_4_module_migrate_code = self.dct_progression.get(
                 "config_state_4_module_to_migrate_code",
@@ -2194,6 +2308,9 @@ class TodoUpgrade:
                 lst_module_missing_next_version = sorted(
                     list(set(lst_module_missing_next_version))
                 )
+                lst_module_missing_next_version = self.missing_still_in_base(
+                    last_database_name, lst_module_missing_next_version
+                )
 
                 self.dct_progression["state_4_len_lst_module_missing"] = len(
                     lst_module_missing_next_version
@@ -2220,6 +2337,35 @@ class TodoUpgrade:
                         f"💬 {t('Duplicate module error detected, handle it')}"
                         f" {t('manually then press enter to continue.')}"
                     )
+                # Désinstaller un module manquant emporte ses dépendants.
+                # Un module dont un dépendant existe encore dans la version
+                # suivante — en Odoo 8, account dépend d'edi, retiré en 9 —
+                # n'est pas proposé : sa désinstallation détruirait des
+                # données qu'OpenUpgrade sait migrer.
+                if lst_module_missing_next_version:
+                    dct_dependents = {
+                        module: self.installed_dependents(
+                            last_database_name, module
+                        )
+                        for module in lst_module_missing_next_version
+                    }
+                    lst_module_missing_next_version, dct_gardes = (
+                        split_removable(
+                            lst_module_missing_next_version, dct_dependents
+                        )
+                    )
+                    for module, survivants in dct_gardes.items():
+                        if survivants is None:
+                            print(
+                                f"🛡 {module} : {t('kept, its dependents could not be read.')}"
+                            )
+                            continue
+                        print(
+                            f"🛡 {module} : {t('kept, uninstalling it would remove')}"
+                            f" {', '.join(survivants)},"
+                            f" {t('still present in Odoo')}{next_version}."
+                            f" {t('OpenUpgrade makes it uninstallable without deleting data.')}"
+                        )
                 # if lst_module_missing_next_version and not lst_module_to_migrate:
                 if lst_module_missing_next_version:
                     # TODO support when lst_module_to_migrate is fill
@@ -2354,6 +2500,9 @@ class TodoUpgrade:
                             lst_module_to_install,
                             database_name_upgrade,
                             next_version - 1,
+                        )
+                        self.forget_modules(
+                            database_name_upgrade, lst_module_to_delete
                         )
 
                     if not is_delete_all:
@@ -2561,9 +2710,11 @@ class TodoUpgrade:
                     )
                 elif os.path.exists(f"{stem}.py"):
                     file_path_fix_migration = f"{stem}.py"
+                    # odoo_bin.sh : le lanceur de la version, son shell, et
+                    # le config.conf du dépôt.
                     cmd_fix_migration = (
                         f"cat ./{file_path_fix_migration} |"
-                        f" ./odoo{next_version}.0/odoo/odoo-bin shell"
+                        f" ./odoo_bin.sh shell"
                         f" -d {database_name_upgrade}"
                     )
                 if file_path_fix_migration:
@@ -2615,19 +2766,28 @@ class TodoUpgrade:
                 path_addons_openupgrade = os.path.join(
                     os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
                 )
+                # Sans OpenUpgrade de cette branche, les commandes ci-dessous
+                # lanceraient un chemin inexistant. L'étape n'est pas
+                # consignée : relancer après l'ajout reprend ici.
+                if not os.path.isdir(path_addons_openupgrade):
+                    print(
+                        f"❌ {t('OpenUpgrade is missing for Odoo')}"
+                        f" {next_version}.0 : '{path_addons_openupgrade}'."
+                    )
+                    print(
+                        f"ℹ {t('Declare its branch in')}"
+                        f" manifest/git_manifest_odoo{next_version}.0_dev.xml"
+                        f" {t('once OCA publishes it, sync, then rerun')}."
+                    )
+                    return
 
                 # Update config with OCA_OpenUpgrade
                 ignore_path = (
                     "--ignore-odoo-path " if next_version <= 13 else ""
                 )
-                extra_addons_path_extra = (
-                    f",{path_addons_openupgrade}/addons,{path_addons_openupgrade}/odoo/addons"
-                    if next_version <= 13
-                    else ""
-                )
                 cmd_update_config = (
-                    f"./script/git/git_repo_update_group.py {ignore_path}"
-                    f"--extra-addons-path {path_addons_openupgrade}{extra_addons_path_extra} "
+                    f"./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py {ignore_path}"
+                    f"--extra-addons-path {openupgrade_addons(path_addons_openupgrade, next_version)} "
                     f"&& ./script/generate_config.sh"
                 )
                 self.todo_upgrade_execute(cmd_update_config)
@@ -2653,9 +2813,14 @@ class TodoUpgrade:
                     erplibre_version = self.install_OCA_openupgrade(
                         next_version
                     )
-                    cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
+                    lanceur = odoo_tree_layout(
+                        f"./odoo{next_version}.0/OCA_OpenUpgrade"
+                    )[0]
+                    cmd_upgrade = f".venv.{erplibre_version}/bin/python {lanceur} -c ./config.conf --update all {http_off_option(next_version)} --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
+                    cmd_upgrade = openupgrade_run_command(
+                        next_version, database_name_upgrade
+                    )
                 # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`
                 # EST la liste de `dct_progression` — `.get` rend l'objet,
                 # pas une copie — donc la muter maintenant la fait persister
@@ -2770,6 +2935,13 @@ class TodoUpgrade:
                     f" -d {database_name_upgrade} -t odoo{next_version}.0"
                 )
 
+                # La configuration SANS OpenUpgrade avant tout lancement de
+                # l'Odoo ordinaire : jusqu'à la 13, OpenUpgrade est un Odoo
+                # complet, et son « base » dans l'addons_path ferait échouer
+                # la mise à jour des modules sur « odoo.openupgrade ».
+                cmd_update_config = f"./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py && ./script/generate_config.sh"
+                self.todo_upgrade_execute(cmd_update_config)
+
                 str_wait_next_version = (
                     " (or wait next version 🤖)"
                     if next_version != lst_next_version[-1]
@@ -2815,10 +2987,6 @@ class TodoUpgrade:
                     f"{next_version}"
                 )
 
-                # Update config without OCA_OpenUpgrade
-                cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
-                self.todo_upgrade_execute(cmd_update_config)
-
                 # Une migration peut charger tous ses modules et servir
                 # quand même un 500 sur une page que personne n'ouvre. Mesuré
                 # ici : /blog/<blog>/post/<billet> et /contactus, alors que
@@ -2839,8 +3007,8 @@ class TodoUpgrade:
                 # masque intégralement. Les comptages disent « tout est
                 # là » — et c'est vrai. Les pages publiques répondent — et
                 # c'est vrai aussi. Pourtant plus personne n'atteint les
-                # données. Mesuré sur DMS au palier 13 : 69 fichiers et
-                # 23 Mo intacts, zéro visible, pour tous les utilisateurs.
+                # données : au palier 13, la règle globale d'OCA DMS exige
+                # un groupe d'accès que la conversion depuis MuK ne crée pas.
                 self.run_tool(
                     "check_hidden_models",
                     f"{PYTHON_BIN}"
@@ -2999,8 +3167,7 @@ class TodoUpgrade:
                     wait_status = "1"
                     break
                 # Rien à réinitialiser. Reproposer « 3 » ferait tourner
-                # en rond — mesuré : « Aucune copie COW n'a dérivé »,
-                # encore et encore, sans fin.
+                # en rond sur « Aucune copie COW n'a dérivé ».
                 defaut = ""
                 continue
             if wait_status == "6" and themes:
@@ -3056,8 +3223,8 @@ class TodoUpgrade:
         # `wait_at_error=False` est OBLIGATOIRE : pour cet outil, 1 veut
         # dire « des trouvailles », pas « échec ». Sans ce drapeau,
         # `todo_upgrade_execute` y lit une panne et rouvre SON menu
-        # d'erreur par-dessus le nôtre — mesuré : la question « Les
-        # corriger ? » n'était jamais posée et le menu tournait en rond.
+        # d'erreur par-dessus le nôtre : la question « Les corriger ? »
+        # n'est jamais posée et le menu tourne en rond.
         status, _cmd = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./{outil} -d {database}",
             wait_at_error=False,
@@ -3082,8 +3249,8 @@ class TodoUpgrade:
     def prompt_purge_dead_attachments(self, database):
         """Effacer les pièces jointes dont le champ n'existe plus.
 
-        ICI et pas entre les paliers. Mesuré : entre deux versions, deux
-        à onze champs disparaissent puis REVIENNENT — `hr.employee.phone`,
+        ICI et pas entre les paliers. Entre deux versions, des champs
+        disparaissent puis REVIENNENT — `hr.employee.phone`,
         `account.move.statement_id`. « Le champ n'existe plus » est donc
         un état transitoire tant que la migration court, et purger
         dessus, c'est trancher sur ce qui va se rétablir.
@@ -3160,8 +3327,10 @@ class TodoUpgrade:
 
         data_vars = {}
         exec(file_content, data_vars)
-        renamed_modules = data_vars.get("renamed_modules", {})
-        merged_modules = data_vars.get("merged_modules", {})
+        renamed_modules = dict(data_vars.get("renamed_modules", {}))
+        # Jusqu'à OpenUpgrade 10.0, merged_modules est une liste de couples
+        # (ancien, nouveau) ; un dictionnaire depuis 11.0. dict() lit les deux.
+        merged_modules = dict(data_vars.get("merged_modules", {}))
         deleted_modules = data_vars.get("deleted_modules", [])
 
         lst_index_to_delete = []
@@ -3295,6 +3464,75 @@ class TodoUpgrade:
             f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
             f" ir_module_module WHERE name IN ({noms})"
             " AND state <> 'uninstalled' ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def modules_for_bump(self, database_name, lst_previous, next_version):
+        """Les modules à porter vers next_version, renommages compris.
+
+        La liste part de la base qu'on s'apprête à monter, et non de celle
+        du palier précédent : un module auto_install qu'une version a
+        installé d'office n'y figurerait pas, et arriverait sans code au
+        palier suivant. Sans réponse de la base, lst_previous sert.
+        """
+        lst_base = self.modules_of_database(database_name)
+        if lst_base is None:
+            lst_base = lst_previous
+        return self.get_rename_module(lst_base, next_version)
+
+    def modules_of_database(self, database_name):
+        """Les modules que porte la base : installés ou en cours de l'être.
+
+        Rend None quand la base ne répond pas.
+        """
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
+            " ir_module_module WHERE state IN"
+            " ('installed', 'to upgrade', 'to install') ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def missing_still_in_base(self, database_name, lst_missing):
+        """Parmi les modules sans code au palier suivant, ceux que la base porte.
+
+        La liste d'un palier vient de celle du précédent, renommages compris,
+        et non de la base : un module qu'un palier a retiré — edi, purgé
+        après le saut vers 9 — y reste, et serait proposé à la
+        désinstallation sans être là. Rend la liste entière quand la base
+        ne répond pas : mieux vaut une question de trop qu'un module oublié.
+        """
+        lst_present = self.still_installed(database_name, lst_missing)
+        if lst_present is None:
+            return list(lst_missing)
+        return [module for module in lst_missing if module in lst_present]
+
+    def installed_dependents(self, database_name, module):
+        """Les modules installés qui dépendent, directement ou non, de module.
+
+        Rend None quand la base ne répond pas, ou pour un nom qui n'est pas
+        un identifiant de module : il entre tel quel dans la requête.
+        """
+        if not re.fullmatch(r"[A-Za-z0-9_]+", module or ""):
+            return None
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "WITH RECURSIVE dep(name) AS ('
+            " SELECT m.name FROM ir_module_module m JOIN"
+            " ir_module_module_dependency d ON d.module_id = m.id"
+            f" WHERE d.name = '{module}' AND m.state = 'installed'"
+            " UNION SELECT m.name FROM ir_module_module m JOIN"
+            " ir_module_module_dependency d ON d.module_id = m.id"
+            " JOIN dep ON d.name = dep.name WHERE m.state = 'installed')"
+            ' SELECT name FROM dep ORDER BY name;"',
             get_output=True,
             wait_at_error=False,
             quiet=True,
@@ -3813,9 +4051,9 @@ class TodoUpgrade:
 
         Deux ruptures qu'aucune autre étape ne voit : un ancrage que la
         vue héritière de la CIBLE réclame et que la copie n'a jamais eu,
-        et un `t-call` vers un gabarit que la cible ne livre plus. Mesuré
-        sur une chaîne 12 → 18 : /contact rendait 500 depuis le palier
-        14 → 15, et rien ne l'a dit avant le test de fumée final.
+        et un `t-call` vers un gabarit que la cible ne livre plus. Une
+        page qui rend 500 depuis un palier intermédiaire n'est sinon
+        signalée que par le test de fumée final.
 
         On ne neutralise pas : la copie porte une page écrite par
         quelqu'un. On répare, et le contenu reste.
@@ -3838,9 +4076,9 @@ class TodoUpgrade:
         `make_index_name` a changé de convention en 17 — `table_col_index`
         est devenu `table__col_index` — et rien ne retire le premier. Les
         deux restent, et PostgreSQL les entretient TOUS LES DEUX à chaque
-        écriture. Mesuré sur deux chaînes 12 → 18 indépendantes : 414 dans
-        l'une et 414 dans l'autre, à l'index près. Ce n'est pas un accident
-        d'exécution, c'est le chemin lui-même.
+        écriture. Deux chaînes 12 → 18 indépendantes en laissent le même
+        nombre, à l'index près : c'est le chemin qui les produit, non un
+        accident d'exécution.
 
         À partir de 17 seulement : avant, la convention n'a pas changé et
         l'outil ne trouverait rien — le lancer six fois pour rien ferait
@@ -3868,8 +4106,7 @@ class TodoUpgrade:
         `account.reconciliation_model_default_rule` seulement en 12 : ils
         naissent aujourd'hui d'un événement qu'une migration ne déclenche
         jamais. La base arrive donc en 18 sans liste de prix par défaut, et
-        cela ne se découvre qu'au premier devis. Mesuré sur deux chaînes
-        indépendantes : absent des deux.
+        cela ne se découvre qu'au premier devis.
 
         AU DERNIER PALIER seulement. L'outil charge le registre Odoo — une
         quarantaine de secondes — et seul l'état final compte : recréer la
@@ -4021,9 +4258,16 @@ class TodoUpgrade:
             )
         print(f"    [2] {t('Try the whole list anyway (it will fail)')}")
         print(f"    [3] {t('Uninstall nothing, continue')}")
-        answer = self.ask(
-            f"💬 {t('Your choice')} ({t('Enter = 1')}) : ", default="1"
-        ).strip()
+        if lst_present:
+            answer = self.ask(
+                f"💬 {t('Your choice')} ({t('Enter = 1')}) : ", default="1"
+            )
+        else:
+            # [1] n'est pas offert : Entrée ne désinstalle rien.
+            answer = self.ask(
+                f"💬 {t('Your choice')} ({t('Enter = 3')}) : ", default="3"
+            )
+        answer = answer.strip()
         if answer == "2":
             return lst_present + lst_missing
         if answer == "3" or not lst_present:
@@ -4054,6 +4298,65 @@ class TodoUpgrade:
             )
             self.print_uninstall_reason(lst_detail)
         return list(dict.fromkeys(list(extra) + lst_file))
+
+    FORGET_SCRIPT = """
+import json
+rapport = {{"forgotten": []}}
+try:
+    modules = env["ir.module.module"].search(
+        [("name", "in", {noms!r}), ("state", "=", "uninstalled")]
+    )
+    rapport["forgotten"] = sorted(modules.mapped("name"))
+    modules.unlink()
+    env.cr.commit()
+except Exception as exc:
+    rapport["error"] = "%s: %s" % (type(exc).__name__, exc)
+print({debut!r})
+print(json.dumps(rapport))
+print({fin!r})
+"""
+
+    def forget_modules(self, database_name, lst_module):
+        """Retire de la base la fiche des modules désinstallés de lst_module.
+
+        La fiche d'un module désinstallé garde son drapeau auto_install :
+        dans la version suivante, qui n'a pas son code, installer un module
+        dont il dépend le remet d'office « to install », et il ne se charge
+        jamais. Sans fiche, rien ne le ramène ; update_list la recrée si le
+        code revient. Passe par l'ORM, qui retire aussi leurs xmlid. Rend
+        les noms retirés, ou None quand le shell n'a pas répondu.
+        """
+        noms = sorted(
+            {m for m in lst_module if re.fullmatch(r"[A-Za-z0-9_]+", m or "")}
+        )
+        if not noms:
+            return []
+        from script.odoo.migration import database_cleanup
+
+        script = self.FORGET_SCRIPT.format(
+            noms=noms,
+            debut=database_cleanup.START,
+            fin=database_cleanup.END,
+        )
+        try:
+            rapport = database_cleanup.run_shell(
+                database_name, "config.conf", script
+            )
+        except RuntimeError as exc:
+            print(f"⚠️  {t('Could not forget the removed modules:')} {exc}")
+            return None
+        if rapport.get("error"):
+            print(
+                f"⚠️  {t('Could not forget the removed modules:')}"
+                f" {rapport['error']}"
+            )
+            return None
+        if rapport.get("forgotten"):
+            print(
+                f"🧹 {t('Forgotten, so nothing installs them again:')}"
+                f" {', '.join(rapport['forgotten'])}"
+            )
+        return rapport.get("forgotten", [])
 
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
@@ -4190,6 +4493,125 @@ class TodoUpgrade:
 
         return lst_module_missing, lst_module_duplicate
 
+    def use_migration_cluster(self):
+        """Branche la migration sur le cluster PostgreSQL 16, si demandé.
+
+        Le choix se fixe au début d'une migration, d'après la préférence
+        migration_postgresql, et se garde dans config_pg_cluster : une
+        reprise se rebranche sur le même cluster. Une sauvegarde produite
+        par un PostgreSQL plus récent que 16 ne s'y restaure pas ; la
+        migration reste alors sur le serveur du système, et le dit.
+
+        Exporte PGHOST et PGPORT, que suivent Odoo, psql et pg_dump tant
+        que config.conf laisse db_host et db_port à False. Rend False quand
+        la migration doit s'arrêter : binaires absents, cluster qui ne
+        démarre pas.
+        """
+        dct = self.dct_progression.get("config_pg_cluster")
+        if dct is None:
+            dct = {}
+            if todo_prefs.get("migration_postgresql", "system") == "16":
+                origine = migration_cluster.version_du_dump(self.file_path)
+                if origine is None or origine > migration_cluster.VERSION:
+                    print(
+                        f"⚠️ {t('This backup comes from PostgreSQL')}"
+                        f" {origine or '?'} :"
+                        f" {t('it does not restore into PostgreSQL 16;')}"
+                        f" {t('the migration stays on the system server.')}"
+                    )
+                else:
+                    dct = {
+                        "root": migration_cluster.RACINE,
+                        "port": migration_cluster.PORT,
+                    }
+            self.dct_progression["config_pg_cluster"] = dct
+            self.write_config()
+        if not dct:
+            return True
+        bindir = migration_cluster.trouver_bindir()
+        if not bindir:
+            print(f"❌ {t('PostgreSQL 16 server binaries not found.')}")
+            print(
+                f"   {t('Install them with')}"
+                " ./script/install/install_postgresql_migration.sh"
+            )
+            return False
+        if migration_cluster.demarrer(bindir, dct["root"], dct["port"]):
+            print(
+                f"❌ {t('The migration PostgreSQL cluster does not start.')}"
+                f" {migration_cluster.chemins(dct['root'])[2]}"
+            )
+            return False
+        os.environ.update(
+            migration_cluster.environnement(dct["root"], dct["port"])
+        )
+        print(
+            f"✅ {t('Migration on the PostgreSQL 16 cluster')}"
+            f" ({os.environ['PGHOST']}, {t('port')} {os.environ['PGPORT']})"
+        )
+        return True
+
+    def names_on_system_server(self, database_name):
+        """Les bases du serveur du système nommées database_name ou
+        database_name_…, quand la migration tourne sur son cluster.
+
+        Odoo range le filestore par nom de base sous un data_dir commun aux
+        deux serveurs : restaurer ou supprimer une base du cluster efface les
+        fichiers de sa jumelle du système. Rend [] hors cluster, pour un nom
+        qui n'est pas un identifiant, ou quand le serveur ne répond pas.
+        """
+        if not self.dct_progression.get("config_pg_cluster"):
+            return []
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", database_name or ""):
+            return []
+        motif = database_name.replace("_", "\\_")
+        environ = {
+            cle: valeur
+            for cle, valeur in os.environ.items()
+            if cle not in ("PGHOST", "PGPORT")
+        }
+        try:
+            done = subprocess.run(
+                [
+                    "psql",
+                    "-X",
+                    "-w",
+                    "-d",
+                    "postgres",
+                    "-tAc",
+                    "SELECT datname FROM pg_database WHERE datname ="
+                    f" '{database_name}' OR datname LIKE '{motif}\\_%'"
+                    " ORDER BY datname",
+                ],
+                env=environ,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if done.returncode:
+            return []
+        return [ligne for ligne in done.stdout.split() if ligne]
+
+    def switch_odoo_for_bump(self, lst_switch_odoo, index, next_version):
+        """Rend actif Odoo next_version pour la montée de rang index.
+
+        La bascule se refait même quand lst_switch_odoo la note faite : une
+        reprise rejoue la recherche des modules de l'étape 0, qui rebascule
+        sur la version de la sauvegarde, et OpenUpgrade tournerait alors
+        dans l'Odoo de départ. switch_odoo ne fait rien quand la version
+        active est déjà la bonne.
+        """
+        self.switch_odoo(next_version)
+        if lst_switch_odoo[index]:
+            print(f"✅ -> {t('Switch already done for Odoo')}{next_version}")
+            return
+        lst_switch_odoo[index] = True
+        self.dct_progression["state_4_switch_odoo_lst"] = lst_switch_odoo
+        self.write_config()
+        print(f"✅ -> {t('Switch done with update for Odoo')}{next_version}")
+
     def switch_odoo(self, odoo_version):
         int_odoo_version = int(float(odoo_version))
 
@@ -4207,7 +4629,7 @@ class TodoUpgrade:
     def install_OCA_odoo_module_migrator(self):
         if not os.path.exists(PATH_VENV_MODULE_MIGRATOR):
             self.todo_upgrade_execute(
-                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt"
+                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python3 -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt"
             )
 
     def install_OCA_openupgrade(self, next_version):
@@ -4524,10 +4946,8 @@ class TodoUpgrade:
 
         Les deux premières étapes — inspecter l'archive, la restaurer —
         tournent avant qu'on ait choisi le nom de la base. Leurs journaux
-        atterrissaient donc sous « sans-nom », c'est-à-dire hors de la
-        migration à laquelle ils appartiennent : mesuré, deux fichiers
-        invisibles depuis l'écran d'état, et l'on cherchait des logs
-        manquants qui étaient simplement à côté.
+        atterrissent donc sous « sans-nom », hors de la migration à laquelle
+        ils appartiennent et invisibles depuis son écran d'état.
 
         En AJOUT si le fichier existe déjà : une reprise peut avoir écrit
         des deux côtés, et écraser perdrait le premier passage.

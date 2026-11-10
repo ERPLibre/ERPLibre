@@ -3,7 +3,7 @@
 # Check if all 3 parameters are present
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
   echo "Error: One or more parameters are missing."
-  echo "Usage: $0 <Context> <Venv_Path> <Python_Version>"
+  echo "Usage: $0 <Context> <Venv_Path> <Python_Version> [Poetry_Version]"
   exit 1
 fi
 
@@ -12,6 +12,11 @@ CONTEXT="$1"
 # Sans « / » final : « rm -rf lien/ » viderait la cible d'un lien.
 VENV_PATH="${2%"${2##*[!/]}"}"
 PYTHON_VERSION="$3"
+# Le Poetry d'un venv Python 2, bâti par install_venv_python2.sh ; celui de
+# .poetry-version quand il est omis. Un appelant qui prépare un venv AVANT de
+# changer de version active passe celui de la cible, que le fichier ne porte
+# pas encore.
+POETRY_VERSION="$4"
 if [ -z "${VENV_PATH}" ]; then
   echo "Error: Venv_Path '$2' designates the root."
   exit 1
@@ -112,7 +117,12 @@ PYTHON_EXEC="$(el_python_exec "${PYTHON_VERSION}" "${EXIGENCE}")"
 if [[ -z "${PYTHON_EXEC}" ]] || [[ ! -x "${PYTHON_EXEC}" ]]; then
   echo "Aucun interpreteur Python ${PYTHON_VERSION} n'a pu etre obtenu."
   echo "  Fournisseur demande : ${EL_PYTHON_PROVIDER:-auto}"
-  if el_mise_cmd > /dev/null; then
+  # Sans CPython précompilé, « mise install » compilerait lui-même, sans les
+  # drapeaux qu'el_pyenv_install pose : il n'est pas conseillé.
+  if ! el_mise_a_precompile "${PYTHON_VERSION}"; then
+    echo "  Aucun CPython precompile pour ${PYTHON_VERSION} : seul pyenv le" \
+      "fournit, en le compilant."
+  elif el_mise_cmd > /dev/null; then
     echo "  Voir : $(el_mise_cmd) install python@${PYTHON_VERSION}" \
       "  (reseau requis)"
   else
@@ -158,7 +168,14 @@ if [[ -d ${VENV_PATH} ]]; then
   fi
 fi
 
-if [[ ! -d ${VENV_PATH} ]]; then
+if [[ "${PYTHON_VERSION}" == 2.* ]]; then
+  # Python 2 n'a pas de module venv, et son Poetry vit ailleurs : le script
+  # dédié pose les deux, et l'enveloppe bin/poetry qu'attend install_locally.
+  if ! ./script/install/install_venv_python2.sh "${VENV_PATH}" \
+    "${PYTHON_EXEC}" "${POETRY_VERSION:-$(xargs < .poetry-version)}"; then
+    exit 1
+  fi
+elif [[ ! -d ${VENV_PATH} ]]; then
   echo -e "\n---- Create Virtual environment Python ----"
   if ! "${PYTHON_EXEC}" -m venv "${VENV_PATH}"; then
     echo "Virtual environment, error when creating ${VENV_PATH}"

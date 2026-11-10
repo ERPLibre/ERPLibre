@@ -35,6 +35,19 @@ PROD = (RACINE / "docker/Dockerfile.prod.pkg").read_text(encoding="utf-8")
 CATALOGUE = RACINE / "conf/supported_version_erplibre.json"
 
 
+def _version_par_defaut():
+    """La version d'Odoo que le catalogue marque « default »."""
+    import json
+
+    with CATALOGUE.open(encoding="utf-8") as fh:
+        catalogue = json.load(fh)
+    return next(
+        valeur["odoo_version"]
+        for valeur in catalogue.values()
+        if valeur.get("default")
+    )
+
+
 def _versions_odoo():
     """Les versions d'Odoo du catalogue, « 18.0 » puis « 17.0 »…"""
     import json
@@ -182,9 +195,14 @@ class TestArgumentsDeConstruction(unittest.TestCase):
     def test_les_defauts_de_la_prod_suivent_odoo_par_defaut(self):
         """Une construction sans docker_build.sh prend la base publiée de
         cette version d'ERPLibre, et non celle d'une version passée."""
-        odoo = max(_versions_odoo(), key=float)
+        odoo = _version_par_defaut()
         sortie = subprocess.run(
-            ["python3", "./script/version/get_version.py", "--odoo_version", odoo],
+            [
+                "python3",
+                "./script/version/get_version.py",
+                "--odoo_version",
+                odoo,
+            ],
             cwd=RACINE,
             capture_output=True,
             text=True,

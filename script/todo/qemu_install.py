@@ -40,6 +40,23 @@ class QemuInstallMixin:
         sel = input(t("Choice (1-2, default 1): ")).strip()
         return sel == "2"
 
+    @staticmethod
+    def _qemu_odoo_versions():
+        """Versions majeures du catalogue, la version par défaut en tête —
+        elle est le profil proposé par défaut —, puis de la plus récente à
+        la plus ancienne. Une version ajoutée au catalogue devient
+        installable dans une VM sans toucher à cette liste."""
+        from script.todo.version_manager import get_odoo_version
+
+        versions, _installees, _active = get_odoo_version()
+        defaut = [v["odoo_version"] for v in versions if v.get("default")]
+        autres = sorted(
+            (v["odoo_version"] for v in versions if not v.get("default")),
+            key=float,
+            reverse=True,
+        )
+        return [v.split(".")[0] for v in defaut + autres]
+
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
         défaut. Partagé par l'invite en ligne et le formulaire TUI."""
@@ -48,7 +65,7 @@ class QemuInstallMixin:
                 f"ERPLibre + Odoo {v}",
                 f"make install_os && make install_odoo_{v}",
             )
-            for v in ("18", "17", "16", "15", "14", "13", "12")
+            for v in self._qemu_odoo_versions()
         ]
         profiles += [
             (
@@ -136,14 +153,18 @@ class QemuInstallMixin:
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
+        sel = input(
+            t("Choice (number, blank = {label}): ").format(
+                label=profiles[0][0]
+            )
+        ).strip()
         try:
             idx = int(sel) - 1
             if 0 <= idx < len(profiles):
                 return profiles[idx]
         except ValueError:
             pass
-        return profiles[0]  # défaut : ERPLibre + Odoo 18
+        return profiles[0]  # réponse vide ou hors liste : le premier profil
 
     @staticmethod
     def _qemu_install_dir(prod):
@@ -253,7 +274,12 @@ class QemuInstallMixin:
             "WantedBy=multi-user.target\n"
             "UNIT\n"
             "sudo systemctl daemon-reload; "
-            "sudo systemctl enable --now erplibre.service; "
+            # restart et non « enable --now » : ce dernier ne touche pas un
+            # service qui tourne déjà, et une machine où l'on installe une
+            # autre version d'Odoo continuait de servir l'ancienne — la
+            # nouvelle n'était lancée qu'au prochain démarrage.
+            "sudo systemctl enable erplibre.service; "
+            "sudo systemctl restart erplibre.service; "
             "fi; " + self._qemu_odoo_health_cmd()
         )
 

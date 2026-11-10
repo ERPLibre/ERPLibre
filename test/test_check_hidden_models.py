@@ -135,6 +135,25 @@ class TestTheReport(unittest.TestCase):
             todo_i18n.t("Every one of them is visible to someone."), texte
         )
 
+    def test_a_model_no_witness_may_read_blames_the_access_groups(self):
+        rapport = {
+            "models": [
+                {"model": "account.move", "rows": 12, "no_read_right": True}
+            ],
+            "checked": 30,
+            "users": ["a"],
+        }
+        texte = "\n".join(check.render(rapport))
+        self.assertIn("account.move", texte)
+        self.assertIn("🔒", texte)
+        self.assertIn(
+            todo_i18n.t("its access groups hide it, not a rule."), texte
+        )
+        self.assertNotIn(
+            todo_i18n.t("The data is there; a global rule hides all of it."),
+            texte,
+        )
+
     def test_every_translation_key_exists(self):
         with io.open(check.__file__, encoding="utf-8") as handle:
             src = handle.read()
@@ -240,11 +259,11 @@ class TestTheWiring(unittest.TestCase):
 class TestItDeclaresWhatItCouldNotProve(unittest.TestCase):
     """Un vert qui prouve moins qu'il n'en a l'air est pire qu'un rouge.
 
-    Mesuré sur une base réelle : l'outil éprouvait 45 modèles sur 125
-    portant une règle globale, contre 4 utilisateurs internes — et les
-    QUATRE étaient administrateurs. Un modèle que seuls les
-    administrateurs peuvent lire passait donc au vert. C'est exactement
-    la forme du bug DMS qui a motivé l'outil, vue d'un autre angle.
+    L'outil n'éprouve qu'une partie des modèles qui portent une règle
+    globale, et il arrive que TOUS les utilisateurs internes soient
+    administrateurs : un modèle que seuls les administrateurs peuvent lire
+    passe alors au vert. C'est la forme du masquage DMS, vue d'un autre
+    angle.
 
     L'outil ne peut pas créer un témoin ordinaire — ce serait une
     écriture. Il peut dire qu'il n'en avait pas.
@@ -252,8 +271,8 @@ class TestItDeclaresWhatItCouldNotProve(unittest.TestCase):
 
     def rapport(self, **extra):
         base = {
-            "checked": 45,
-            "with_rule": 125,
+            "checked": 37,
+            "with_rule": 91,
             "users": ["a", "b", "c", "d"],
             "ordinary": ["b"],
             "models": [],
@@ -265,19 +284,19 @@ class TestItDeclaresWhatItCouldNotProve(unittest.TestCase):
         return "\n".join(check.render(self.rapport(**extra)))
 
     def test_it_says_how_many_it_could_not_check(self):
-        # « 45 éprouvés » sans dire « sur 125 » laisse croire à un examen
+        # « 37 éprouvés » sans dire « sur 91 » laisse croire à un examen
         # complet.
         texte = self.tete()
-        self.assertIn("45", texte)
-        self.assertIn("125", texte)
+        self.assertIn("37", texte)
+        self.assertIn("91", texte)
 
     def test_without_the_coverage_it_says_only_what_it_checked(self):
         # Un rapport d'une version antérieure n'a pas le renseignement.
         # Inventer « sur 0 » serait pire que se taire — et « sur None »
         # pire encore : c'est ce que produit un f-string sans garde.
         texte = self.tete(with_rule=None)
-        self.assertIn("45", texte)
-        self.assertNotIn("125", texte)
+        self.assertIn("37", texte)
+        self.assertNotIn("91", texte)
         self.assertNotIn("None", texte)
         self.assertNotIn(check.t("out of"), texte.split("\n")[0])
 
@@ -329,6 +348,31 @@ class TestTheScriptCollectsWhatTheReportNeeds(unittest.TestCase):
 
     def test_the_script_is_valid_python(self):
         compile(self.corps(), "script", "exec")
+
+    def test_odoo_11_and_12_switch_user_with_sudo(self):
+        """with_user() arrived in 13. Without the fallback its AttributeError
+        read as an access refusal, and every model of an 11 or 12 database
+        looked hidden."""
+        corps = self.corps()
+        self.assertIn('hasattr(modele, "with_user")', corps)
+        self.assertIn("modele.sudo(membre)", corps)
+
+    def test_odoo_8_and_9_look_a_model_up_without_get(self):
+        """The Environment of Odoo 8 and 9 is not a Mapping and their
+        models have no _abstract: either AttributeError left the whole
+        check unreported."""
+        corps = self.corps()
+        self.assertNotIn("env.get(", corps)
+        self.assertIn("except KeyError", corps)
+        self.assertNotIn("modele._abstract", corps)
+
+    def test_a_witness_without_the_read_right_proves_nothing(self):
+        """An access refusal comes before any rule: without this, a model
+        only accountants may read was blamed on a global rule."""
+        corps = self.corps()
+        self.assertIn('has_access("read")', corps)
+        self.assertIn("check_access_rights(", corps)
+        self.assertIn('"no_read_right": not droit', corps)
 
 
 if __name__ == "__main__":

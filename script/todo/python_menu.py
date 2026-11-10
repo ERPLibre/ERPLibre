@@ -24,6 +24,7 @@ from script.todo.todo_i18n import t
 from script.todo.version_manager import (
     diagnostiquer_version,
     get_odoo_version,
+    odoo_tree_layout,
 )
 
 
@@ -97,10 +98,14 @@ class PythonMenuMixin:
             for chemin in glob.glob(".venv.odoo*")
             if os.path.isdir(chemin)
         }
+        # Le lanceur dit la présence des sources : odoo-bin depuis Odoo 10,
+        # openerp-server en 8 et 9.
         sources = {
             dossier[len("odoo") :]
             for dossier in glob.glob("odoo*")
-            if os.path.isfile(os.path.join(dossier, "odoo", "odoo-bin"))
+            if os.path.isfile(
+                odoo_tree_layout(os.path.join(dossier, "odoo"))[0]
+            )
         }
         # Complet : l'interpréteur ET Poetry, que la phase poetry pose en
         # premier. Un venv sans l'un d'eux vient d'une mise à jour coupée.
@@ -215,11 +220,16 @@ class PythonMenuMixin:
 
     @staticmethod
     def _python_versions_commandes(entree):
-        """Les trois commandes d'une cible, dans l'ordre où elles tournent."""
+        """Les trois commandes d'une cible, dans l'ordre où elles tournent.
+
+        install_venv.sh reçoit le Poetry de la CIBLE : il tourne avant le
+        --switch, quand .poetry-version porte encore celui du départ, et un
+        venv Python 2 bâtit son Poetry à cette version.
+        """
         cible = entree["cible"]
         return [
             f'./script/install/install_venv.sh "Odoo" .venv.{cible}'
-            f" {entree['python']}",
+            f" {entree['python']} {entree['poetry']}",
             f"./script/version/update_env_version.py --erplibre_version"
             f" {cible} --switch",
             "EL_PHASE=poetry ./script/install/install_locally.sh",

@@ -5,15 +5,17 @@
 
 La base est « python:<version>-slim-<nom de version Debian> » : le Python vient
 de l'image officielle, jamais de Debian. Le nom de version ne change que les
-paquets du système : trixie pour Odoo 16 à 18, bookworm pour 12 à 15, faute
-d'image Python 3.7 ou 3.8 sur trixie.
+paquets du système : trixie pour Odoo 16 et plus, bookworm pour les versions
+en Python 3.7 ou 3.8, faute de leur image sur trixie, et buster pour Python 2,
+la seule Debian qui porte une image Python 2.7.
 
 Ce que ces tests gardent :
 
 - chaque version d'Odoo interroge l'image Python de SA Debian. Le script est
   lancé pour de vrai, devant un faux « docker » qui note ce qu'on lui demande ;
 - wkhtmltopdf au Qt patché sur amd64 et arm64, rien ailleurs. Debian trixie a
-  retiré le paquet, et le build bookworm sert sur les deux bases ;
+  retiré le paquet, et le build bookworm sert sur trixie comme sur bookworm ;
+  buster a le sien, la série 0.12.6-1, en amd64 seulement ;
 - l'empreinte d'un .deb est vérifiée avant qu'apt ne l'installe ;
 - le client PostgreSQL de pgdg n'est demandé que là où pgdg publie, et sa
   clé ne vaut que pour son dépôt ;
@@ -111,10 +113,20 @@ class TestDebianParVersion(unittest.TestCase):
         self.assertEqual("amd64 arm64 s390x", sortie.stdout.strip())
 
     def test_aucune_version_debian_anterieure(self):
-        for ancienne in ("bullseye", "buster", "stretch"):
+        for ancienne in ("bullseye", "stretch"):
             with self.subTest(version=ancienne):
                 self.assertNotIn(f"DEBIAN_NAME={ancienne}", TEXTE)
                 self.assertNotIn(f"DEBIAN_NAME={ancienne}", DOCKERFILE)
+
+    def test_buster_est_reserve_a_python_2(self):
+        """C'est la version de PYTHON qui aiguille vers buster, avant celle
+        d'Odoo : un Odoo récent ne doit pas y tomber."""
+        condition = TEXTE.index('if [[ "${PYTHON_VERSION}" == 2.* ]]; then')
+        buster = TEXTE.index("DEBIAN_NAME=buster")
+        trixie = TEXTE.index("DEBIAN_NAME=trixie")
+        self.assertLess(condition, buster)
+        self.assertLess(buster, trixie)
+        self.assertEqual(1, TEXTE.count("DEBIAN_NAME=buster"))
 
     def test_le_defaut_du_dockerfile_est_celui_d_odoo_18(self):
         """Une construction lancée sans argument prend la base d'Odoo 18."""
@@ -122,19 +134,31 @@ class TestDebianParVersion(unittest.TestCase):
 
 
 class TestWkhtmltopdf(unittest.TestCase):
+    def _table(self):
+        debut = DOCKERFILE.index('case "${DEBIAN_NAME}:${arch}" in')
+        return DOCKERFILE[debut : DOCKERFILE.index("esac", debut)]
+
     def test_un_build_patche_pour_amd64_et_arm64_seulement(self):
-        table = DOCKERFILE[
-            DOCKERFILE.index('case "${arch}" in') : DOCKERFILE.index("esac")
-        ]
-        empreintes = dict(re.findall(r"(\w+)\) wk_sha1=([0-9a-f]{40})", table))
-        self.assertEqual({"amd64", "arm64"}, set(empreintes))
+        table = self._table()
+        empreintes = dict(
+            re.findall(r"([\w*]+:\w+)\)[^;]*?wk_sha1=([0-9a-f]{40})", table)
+        )
+        self.assertEqual(
+            {"buster:amd64", "*:amd64", "*:arm64"}, set(empreintes)
+        )
+        self.assertIn('buster:*) wk_sha1="" ;;', table)
         self.assertIn('*) wk_sha1="" ;;', table)
 
-    def test_le_build_bookworm_sert_sur_les_deux_bases(self):
-        """Ni trixie ni s390x n'ont de build : le nom du .deb ne suit pas
-        DEBIAN_NAME."""
+    def test_le_build_bookworm_sert_sur_trixie_et_bookworm(self):
+        """trixie n'a pas de build : seul buster change de série et de
+        Debian, 0.12.6.1 n'en ayant aucun pour lui."""
         self.assertIn(
-            "wkhtmltox_${WKHTMLTOX_VERSION}.bookworm_${arch}.deb", DOCKERFILE
+            'wk_version="${WKHTMLTOX_VERSION}" && wk_debian=bookworm',
+            DOCKERFILE,
+        )
+        self.assertIn("wk_version=0.12.6-1 && wk_debian=buster", self._table())
+        self.assertIn(
+            "wkhtmltox_${wk_version}.${wk_debian}_${arch}.deb", DOCKERFILE
         )
 
     def test_sans_build_l_image_le_dit(self):
@@ -168,8 +192,18 @@ class TestPostgresql(unittest.TestCase):
 
     def test_pgdg_seulement_la_ou_il_publie(self):
         self.assertIn("amd64|arm64)", self.bloc)
-        self.assertIn("client=postgresql-client-18", self.bloc)
+        self.assertIn(
+            "client=postgresql-client-${PG_CLIENT_VERSION}", self.bloc
+        )
+        self.assertIn("ARG PG_CLIENT_VERSION=18", DOCKERFILE)
         self.assertIn("*) client=postgresql-client ;;", self.bloc)
+
+    def test_buster_prend_le_16_d_apt_archive(self):
+        """pgdg ne sert plus buster : son dernier client est le 16, sur
+        apt-archive."""
+        self.assertIn("${PGDG_URL} ${DEBIAN_NAME}-pgdg main", self.bloc)
+        self.assertIn("apt-archive.postgresql.org", TEXTE)
+        self.assertIn("PG_CLIENT_VERSION=16", TEXTE)
 
     def test_la_cle_ne_vaut_que_pour_son_depot(self):
         self.assertIn("[signed-by=/usr/share/keyrings/pgdg.asc]", self.bloc)
@@ -181,7 +215,9 @@ class TestPostgresql(unittest.TestCase):
         self.assertIn("${DEBIAN_NAME}-pgdg main", self.bloc)
         redeclare = DOCKERFILE.index("\nARG DEBIAN_NAME\n")
         self.assertLess(DOCKERFILE.index("FROM "), redeclare)
-        self.assertLess(redeclare, DOCKERFILE.index("# Le client PostgreSQL 18"))
+        self.assertLess(
+            redeclare, DOCKERFILE.index("# Le client PostgreSQL 18")
+        )
 
 
 class TestCompilationSansWheel(unittest.TestCase):

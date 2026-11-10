@@ -7916,9 +7916,13 @@ TRANSLATIONS = {
         "fr": "Que veut-on installer sur la/les VM ?",
         "en": "What to install on the VM(s)?",
     },
-    "Choice (number, blank = Odoo 18): ": {
-        "fr": "Choix (numéro, vide = Odoo 18) : ",
-        "en": "Choice (number, blank = Odoo 18): ",
+    "Choice (number, blank = {label}): ": {
+        "fr": "Choix (numéro, vide = {label}) : ",
+        "en": "Choice (number, blank = {label}): ",
+    },
+    "image_db has no image for Odoo {ver}: create the database from Odoo instead": {
+        "fr": "image_db n'a aucune image pour Odoo {ver} : créer plutôt la base depuis Odoo",
+        "en": "image_db has no image for Odoo {ver}: create the database from Odoo instead",
     },
     "ERPLibre + all Odoo versions": {
         "fr": "ERPLibre + toutes les versions Odoo",
@@ -10569,6 +10573,22 @@ TRANSLATIONS = {
         "fr": "Ajouter un module personnalisé",
         "en": "Add an extra custom one",
     },
+    "kept, uninstalling it would remove": {
+        "fr": "gardé, sa désinstallation emporterait",
+        "en": "kept, uninstalling it would remove",
+    },
+    "kept, its dependents could not be read.": {
+        "fr": "gardé, ses dépendants n'ont pas pu être lus.",
+        "en": "kept, its dependents could not be read.",
+    },
+    "still present in Odoo": {
+        "fr": "encore présents en Odoo",
+        "en": "still present in Odoo",
+    },
+    "OpenUpgrade makes it uninstallable without deleting data.": {
+        "fr": "OpenUpgrade le rend non installable sans rien supprimer.",
+        "en": "OpenUpgrade makes it uninstallable without deleting data.",
+    },
     "List the missing modules to delete,": {
         "fr": "Énumérer les modules manquants à supprimer,",
         "en": "List the missing modules to delete,",
@@ -11228,6 +11248,78 @@ TRANSLATIONS = {
     "Enter = 1": {
         "fr": "Entrée = 1",
         "en": "Enter = 1",
+    },
+    "This backup comes from PostgreSQL": {
+        "fr": "Cette sauvegarde vient de PostgreSQL",
+        "en": "This backup comes from PostgreSQL",
+    },
+    "it does not restore into PostgreSQL 16;": {
+        "fr": "elle ne se restaure pas dans PostgreSQL 16 ;",
+        "en": "it does not restore into PostgreSQL 16;",
+    },
+    "the migration stays on the system server.": {
+        "fr": "la migration reste sur le serveur du système.",
+        "en": "the migration stays on the system server.",
+    },
+    "PostgreSQL 16 server binaries not found.": {
+        "fr": "Binaires du serveur PostgreSQL 16 introuvables.",
+        "en": "PostgreSQL 16 server binaries not found.",
+    },
+    "Install them with": {
+        "fr": "Les installer par",
+        "en": "Install them with",
+    },
+    "The migration PostgreSQL cluster does not start.": {
+        "fr": "Le cluster PostgreSQL de la migration ne démarre pas.",
+        "en": "The migration PostgreSQL cluster does not start.",
+    },
+    "Migration on the PostgreSQL 16 cluster": {
+        "fr": "Migration sur le cluster PostgreSQL 16",
+        "en": "Migration on the PostgreSQL 16 cluster",
+    },
+    "No PostgreSQL version in this backup.": {
+        "fr": "Aucune version de PostgreSQL dans cette sauvegarde.",
+        "en": "No PostgreSQL version in this backup.",
+    },
+    "PostgreSQL of the migration": {
+        "fr": "PostgreSQL de la migration",
+        "en": "PostgreSQL of the migration",
+    },
+    "The system server": {
+        "fr": "Le serveur du système",
+        "en": "The system server",
+    },
+    "PostgreSQL 16 cluster of the migration": {
+        "fr": "Cluster PostgreSQL 16 de la migration",
+        "en": "PostgreSQL 16 cluster of the migration",
+    },
+    "The system server already holds": {
+        "fr": "Le serveur du système porte déjà",
+        "en": "The system server already holds",
+    },
+    "both servers share the filestore by database name,": {
+        "fr": "les deux serveurs partagent le filestore par nom de base,",
+        "en": "both servers share the filestore by database name,",
+    },
+    "and restoring here would delete its files.": {
+        "fr": "et restaurer ici effacerait ses fichiers.",
+        "en": "and restoring here would delete its files.",
+    },
+    "Choose another name.": {
+        "fr": "Choisissez un autre nom.",
+        "en": "Choose another name.",
+    },
+    "Could not forget the removed modules:": {
+        "fr": "Impossible d'oublier les modules retirés :",
+        "en": "Could not forget the removed modules:",
+    },
+    "Forgotten, so nothing installs them again:": {
+        "fr": "Oubliés, pour que rien ne les réinstalle :",
+        "en": "Forgotten, so nothing installs them again:",
+    },
+    "Enter = 3": {
+        "fr": "Entrée = 3",
+        "en": "Enter = 3",
     },
     "Enter = all, n = none": {
         "fr": "Entrée = tous, n = aucun",
@@ -12845,6 +12937,14 @@ TRANSLATIONS = {
         "fr": "Les données sont là ; une règle globale les masque entièrement.",
         "en": "The data is there; a global rule hides all of it.",
     },
+    "No witness has the read access right on the model:": {
+        "fr": "Aucun témoin n'a le droit de lecture sur le modèle :",
+        "en": "No witness has the read access right on the model:",
+    },
+    "its access groups hide it, not a rule.": {
+        "fr": "ses groupes d'accès le masquent, pas une règle.",
+        "en": "its access groups hide it, not a rule.",
+    },
     "checked against": {
         "fr": "éprouvés avec",
         "en": "checked against",
@@ -13333,6 +13433,26 @@ TRANSLATIONS = {
         "fr": "au moment du palier lui-même, en montrant ce que chacune"
         " contient.",
         "en": "at the version bump itself, showing what each one holds.",
+    },
+    "OpenUpgrade is not declared for": {
+        "fr": "OpenUpgrade n'est pas déclaré pour",
+        "en": "OpenUpgrade is not declared for",
+    },
+    "the migration will stop before that step.": {
+        "fr": "la migration s'arrêtera avant cette étape.",
+        "en": "the migration will stop before that step.",
+    },
+    "OpenUpgrade is missing for Odoo": {
+        "fr": "OpenUpgrade est absent pour Odoo",
+        "en": "OpenUpgrade is missing for Odoo",
+    },
+    "Declare its branch in": {
+        "fr": "Déclarez sa branche dans",
+        "en": "Declare its branch in",
+    },
+    "once OCA publishes it, sync, then rerun": {
+        "fr": "dès qu'OCA la publie, synchronisez, puis relancez",
+        "en": "once OCA publishes it, sync, then rerun",
     },
     "Press to continue": {
         "fr": "Appuyez pour continuer",

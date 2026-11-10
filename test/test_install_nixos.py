@@ -673,6 +673,17 @@ class LeMenuNEcritPasDansEtcSurNixos(unittest.TestCase):
         self.assertIn("systemctl restart erplibre.service", nix)
         self.assertNotIn("systemctl enable", nix)
 
+    def test_the_written_unit_is_restarted_not_only_enabled(self):
+        """« enable --now » ne touche pas un service qui tourne déjà : une
+        machine où l'on installe une autre version d'Odoo continuait de
+        servir l'ancienne. Hors NixOS, l'unité réécrite est relancée."""
+        for prod in (False, True):
+            with self.subTest(prod=prod):
+                cmd = self._cmd(prod)
+                ecrite = cmd[cmd.index("tee /etc/systemd/system") :]
+                self.assertIn("systemctl restart erplibre.service", ecrite)
+                self.assertNotIn("enable --now", ecrite)
+
     def test_a_missing_unit_is_named_and_fails(self):
         """Sans le module, « restart » rendrait une erreur de systemd sans
         dire ce qui manque ni où le prendre."""
@@ -766,11 +777,12 @@ class LeServiceAttendQuOdooSoitLa(unittest.TestCase):
         self.src = MODULE.read_text(encoding="utf-8")
 
     def test_the_unit_waits_for_what_run_sh_executes(self):
-        self.assertIn(
-            'unitConfig.ConditionPathExistsGlob = "@EL_DIR@/odoo*/odoo/'
-            'odoo-bin";',
-            self.src,
-        )
+        """odoo-bin depuis Odoo 10, openerp-server en 8 et 9 : le « | » de
+        systemd fait de deux conditions un « ou »."""
+        self.assertIn("unitConfig.ConditionPathExistsGlob = [", self.src)
+        for lanceur in ("odoo-bin", "openerp-server"):
+            with self.subTest(lanceur=lanceur):
+                self.assertIn('"|@EL_DIR@/odoo*/odoo/%s"' % lanceur, self.src)
 
     def test_the_odoo_version_is_not_frozen_in_the_module(self):
         """Une version écrite ici vieillirait en silence : l'unité cesserait

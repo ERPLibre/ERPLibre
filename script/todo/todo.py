@@ -970,6 +970,13 @@ class TODO(
                 ("cli", "Classic questions (line by line)"),
             ),
         ),
+        "migration_postgresql": (
+            "PostgreSQL of the migration",
+            (
+                ("system", "The system server"),
+                ("16", "PostgreSQL 16 cluster of the migration"),
+            ),
+        ),
     }
 
     def _pref_label(self, key):
@@ -1086,6 +1093,12 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('PostgreSQL of the migration')}  "
+                        f"({self._pref_label('migration_postgresql')})"
+                    )
+                },
                 {"prompt_description": t("Fork - Open TODO in a new tab")},
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
@@ -1103,10 +1116,12 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self._pref_edit("migration_postgresql")
+            elif status == "6":
                 self.execute.exec_command_live(
                     "make todo", source_erplibre=True
                 )
-            elif status == "6":
+            elif status == "7":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:
@@ -1271,6 +1286,9 @@ class TODO(
     def _update_odoo_migration(self):
         """La migration d'une base d'une version d'Odoo vers la suivante."""
         upgrade = todo_upgrade.TodoUpgrade(self)
+        # La migration peut brancher ce processus sur son cluster
+        # PostgreSQL : le reste du menu retrouve le serveur d'avant.
+        pg_avant = {cle: os.environ.get(cle) for cle in ("PGHOST", "PGPORT")}
         try:
             upgrade.execute_odoo_upgrade()
         except todo_upgrade.MigrationRewind:
@@ -1282,6 +1300,12 @@ class TODO(
                 f"\n⏪ {t('Rewound.')}"
                 f" {t('Relaunch the migration to resume from there.')}"
             )
+        finally:
+            for cle, valeur in pg_avant.items():
+                if valeur is None:
+                    os.environ.pop(cle, None)
+                else:
+                    os.environ[cle] = valeur
 
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
@@ -5448,6 +5472,7 @@ class TODO(
         — on relit donc la base.
         """
         from script.analyse import monitoring
+        from script.database import db_duplicate
 
         image = self._monitoring_image_name(zip_path)
         if not image:
@@ -5463,9 +5488,13 @@ class TODO(
             .strip()
             .lower()
         )
+        neutraliser = neutralise != "n"
         more_arg = ""
-        if neutralise != "n":
-            more_arg = "--neutralize "
+        if neutraliser:
+            # Avant Odoo 16, odoo_db_legacy.py refuse « --neutralize » :
+            # update_prod_to_dev.sh neutralise alors seul, plus bas.
+            if db_duplicate.supporte_neutralisation():
+                more_arg = "--neutralize "
             database += "_neutralize"
         else:
             # Refuser est un choix légitime — reproduire un bug de cron
@@ -5486,7 +5515,7 @@ class TODO(
         if status:
             print(f"❌ {t('The restore failed.')}")
             return None
-        if more_arg:
+        if neutraliser:
             status, _ = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database}",
                 return_status_and_output=True,

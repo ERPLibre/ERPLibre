@@ -59,6 +59,22 @@ docker_exec_erplibre_repo_show_status:
 	./script/docker/docker_repo_show_status.sh
 
 # build docker
+.PHONY: docker_build_odoo_20
+docker_build_odoo_20:
+	./script/docker/docker_build.sh --odoo_20
+
+.PHONY: docker_build_odoo_20_clean
+docker_build_odoo_20_clean:
+	./script/docker/docker_build.sh --odoo_20 --no-cache
+
+.PHONY: docker_build_odoo_19
+docker_build_odoo_19:
+	./script/docker/docker_build.sh --odoo_19
+
+.PHONY: docker_build_odoo_19_clean
+docker_build_odoo_19_clean:
+	./script/docker/docker_build.sh --odoo_19 --no-cache
+
 .PHONY: docker_build_odoo_18
 docker_build_odoo_18:
 	./script/docker/docker_build.sh --odoo_18
@@ -102,6 +118,38 @@ docker_build_odoo_12:
 .PHONY: docker_build_odoo_12_clean
 docker_build_odoo_12_clean:
 	./script/docker/docker_build.sh --odoo_12 --no-cache
+
+.PHONY: docker_build_odoo_11
+docker_build_odoo_11:
+	./script/docker/docker_build.sh --odoo_11
+
+.PHONY: docker_build_odoo_11_clean
+docker_build_odoo_11_clean:
+	./script/docker/docker_build.sh --odoo_11 --no-cache
+
+.PHONY: docker_build_odoo_10
+docker_build_odoo_10:
+	./script/docker/docker_build.sh --odoo_10
+
+.PHONY: docker_build_odoo_9
+docker_build_odoo_9:
+	./script/docker/docker_build.sh --odoo_9
+
+.PHONY: docker_build_odoo_8
+docker_build_odoo_8:
+	./script/docker/docker_build.sh --odoo_8
+
+.PHONY: docker_build_odoo_10_clean
+docker_build_odoo_10_clean:
+	./script/docker/docker_build.sh --odoo_10 --no-cache
+
+.PHONY: docker_build_odoo_9_clean
+docker_build_odoo_9_clean:
+	./script/docker/docker_build.sh --odoo_9 --no-cache
+
+.PHONY: docker_build_odoo_8_clean
+docker_build_odoo_8_clean:
+	./script/docker/docker_build.sh --odoo_8 --no-cache
 
 # build docker release
 .PHONY: docker_build_release

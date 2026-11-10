@@ -21,10 +21,31 @@ printf "db_host = False\n" >> "${EL_CONFIG_FILE}"
 printf "db_port = False\n" >> "${EL_CONFIG_FILE}"
 printf "db_user = ${EL_USER}\n" >> "${EL_CONFIG_FILE}"
 printf "db_password = False\n" >> "${EL_CONFIG_FILE}"
-printf "xmlrpc_port = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
-printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
+# Les noms de port que connaît CET Odoo : http_port depuis 11, xmlrpc_port
+# avant ; gevent_port depuis 16, longpolling_port avant. Odoo 19 ne lit plus
+# les anciens noms et les signale à chaque démarrage.
+EL_CONFIG_PY="${EL_HOME_ODOO}/odoo/tools/config.py"
+[[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_CONFIG_PY="${EL_HOME_ODOO}/openerp/tools/config.py"
+EL_KEY_PORT="xmlrpc_port"
+grep -qE "[\"']--http-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_PORT="http_port"
+EL_KEY_LONGPOLLING="longpolling_port"
+grep -qE "[\"']--gevent-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_LONGPOLLING="gevent_port"
+# L'interface d'écoute derrière nginx : xmlrpc_interface tant que cet Odoo
+# connaît l'ancien nom, http_interface depuis 19, qui l'ignore et écouterait
+# alors sur toutes les interfaces, port 8069 joignable sans passer par nginx.
+EL_KEY_INTERFACE="xmlrpc_interface"
+if [[ -f "${EL_CONFIG_PY}" ]] && ! grep -qE "xmlrpc[-_]interface" "${EL_CONFIG_PY}"; then
+    EL_KEY_INTERFACE="http_interface"
+fi
+printf "${EL_KEY_PORT} = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
+printf "${EL_KEY_LONGPOLLING} = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
-printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
+# Les modules du cœur : odoo/addons depuis Odoo 10, openerp/addons en 8 et 9,
+# qui refusent un répertoire d'addons inexistant.
+EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/odoo/addons"
+[[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/openerp/addons"
+
+printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_ODOO_CORE_ADDONS},${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
@@ -163,14 +184,22 @@ printf "max_cron_threads = 2\n" >> "${EL_CONFIG_FILE}"
 # TODO support queue_job
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "workers = 2\n" >> "${EL_CONFIG_FILE}"
-    printf "xmlrpc_interface = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
+    printf "${EL_KEY_INTERFACE} = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
     printf "proxy_mode = True\n" >> "${EL_CONFIG_FILE}"
 else
     printf "workers = 0\n" >> "${EL_CONFIG_FILE}"
+    # Sans nginx devant, Odoo sert lui-même les autres machines. Jusqu'à 19,
+    # un http_interface vide écoute sur toutes les interfaces ; l'Odoo dont
+    # --http-interface vaut 127.0.0.1 par défaut (20) n'écoute que la machine
+    # locale. La valeur est alors écrite, comme dans docker/odoo.conf.
+    if grep -qE "[\"']--http-interface[\"'].*my_default=[\"']127\.0\.0\.1[\"']" "${EL_CONFIG_PY}" 2> /dev/null; then
+        printf "http_interface = 0.0.0.0\n" >> "${EL_CONFIG_FILE}"
+    fi
 fi
 
 # Update and fix the config.conf
 # Fix only the configuration if installation is done
-if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
+if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] \
+  && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" -o -f "./odoo$(< .odoo-version)/odoo/openerp-server" ]; then
     make config_update
 fi
