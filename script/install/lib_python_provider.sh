@@ -13,7 +13,8 @@
 #          machine récente, bien plus sous émulation, et il lui faut une
 #          douzaine de -dev (openssl, zlib, readline, sqlite, bzip2, xz, tk…).
 #   mise   pose un CPython PRÉCOMPILÉ (astral python-build-standalone) :
-#          quelques secondes, aucun compilateur requis.
+#          quelques secondes, aucun compilateur requis. Seulement à partir
+#          de 3.8 : en deçà, pyenv est le seul fournisseur.
 #
 # EL_PYTHON_PROVIDER choisit : auto (défaut), mise, ou pyenv.
 #
@@ -61,6 +62,19 @@ el_mise_exec_path() {
   out="$("${mise}" where "python@$1" 2> /dev/null)" || return 1
   [ -n "${out}" ] && [ -x "${out}/bin/python" ] || return 1
   echo "${out}/bin/python"
+}
+
+# Vrai si mise peut POSER cette version sans la compiler. Ses CPython
+# précompilés viennent de python-build-standalone, qui commence à la série
+# 3.8 : pour 2.x et 3.0 à 3.7, MISE_PYTHON_COMPILE=false le fait échouer, et
+# seul pyenv fournit la version. Lancé à la main, sans cette variable, mise la
+# compilerait lui-même, sans les drapeaux qu'el_pyenv_install ajoute pour 2.7 :
+# rien ne doit donc proposer, appeler ni conseiller mise pour ces versions.
+el_mise_a_precompile() {
+  case "$1" in
+    [0-2] | [0-2].* | 3.[0-7] | 3.[0-7].*) return 1 ;;
+  esac
+  return 0
 }
 
 # Peut-on poser une question ? Il faut stdin pour lire la réponse et stderr
@@ -207,10 +221,13 @@ el_mise_proposer_permanent() {
 #
 # Rien n'est demandé quand mise est déjà là, sur s390x (aucun binaire), sans
 # terminal, ni quand pyenv porte déjà la version : rien ne serait compilé.
+# Rien non plus pour une version sans CPython précompilé : mise n'y gagnerait
+# rien, et pyenv la compilerait quand même.
 # La réponse par défaut est non : exécuter l'installateur d'un tiers engage,
 # et c'est à l'utilisateur de le décider, pas au script.
 el_mise_proposer() {
   local version="$1" provider="${EL_PYTHON_PROVIDER:-auto}" suite
+  el_mise_a_precompile "${version}" || return 1
   el_mise_cmd > /dev/null && return 1
   [ "$(uname -m 2> /dev/null)" = "s390x" ] && return 1
   if [ "${provider}" != "mise" ] \
@@ -308,8 +325,19 @@ el_distro_python_exec() {
 }
 
 # Installe la version via mise. Renvoie le chemin, ou échoue.
+#
+# Une version sans CPython précompilé échoue sans appeler mise. En mode
+# « auto », el_warn_pyenv_fallback annonce ensuite pyenv ; avec
+# EL_PYTHON_PROVIDER=mise, rien ne suit, d'où la raison dite ici.
 el_mise_install() {
   local version="$1" exe mise
+  if ! el_mise_a_precompile "${version}"; then
+    if [ "${EL_PYTHON_PROVIDER:-auto}" = "mise" ]; then
+      echo "mise ne publie aucun CPython precompile pour ${version} :" \
+        "seul pyenv le fournit, et EL_PYTHON_PROVIDER=mise l'exclut." >&2
+    fi
+    return 1
+  fi
   mise="$(el_mise_cmd)" || return 1
   echo "---- Python ${version} via mise (precompile) ----" >&2
   "${mise}" install "python@${version}" >&2 || return 1
@@ -435,11 +463,15 @@ el_pyenv_install() {
 
 # Annonce la compilation pyenv AVANT de la subir, et le geste qui l'évite :
 # poser mise, ou lire ce que mise reproche quand il est déjà là. Muet si pyenv
-# porte déjà la version, puisque rien ne sera compilé.
+# porte déjà la version, puisque rien ne sera compilé. Sans CPython
+# précompilé pour la version, aucun geste ne l'évite : seule la durée est dite.
 el_warn_pyenv_fallback() {
   local version="$1"
   [ -d "$(el_pyenv_root)/versions/${version}" ] && return 0
-  if el_mise_cmd > /dev/null; then
+  if ! el_mise_a_precompile "${version}"; then
+    echo "pyenv va COMPILER CPython ${version} : aucun Python precompile" >&2
+    echo "  n'existe pour cette version. Quelques minutes." >&2
+  elif el_mise_cmd > /dev/null; then
     echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv," >&2
     echo "  qui COMPILE CPython. Pour lire ce que mise reproche :" >&2
     echo "    $(el_mise_cmd) install python@${version}   (reseau requis)" >&2

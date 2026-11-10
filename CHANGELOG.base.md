@@ -465,6 +465,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Odoo 18 lock is refreshed: 63 packages move within the pyproject bounds, four across a major version — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — and oauthlib reaches 4.0.1, which fixes CVE-2026-49272 (see Security). markdown-it-py, which `erplibre_assistant_core` imports, is declared in the pyproject instead of arriving through rich; deprecated leaves the lock. An existing venv follows with `poetry install --no-root`
 - A locally installed Odoo 20 listens on 127.0.0.1 only, Odoo's own default from 20 on, where 12 to 19 listen on every interface: set `http_interface` in `config.conf` to reach it from another machine. The Docker image sets `http_interface = 0.0.0.0` for every version
 - The « ERPLibre + Odoo N » install profiles of a QEMU VM come from `conf/supported_version_erplibre.json`, the default version first, so every supported version is offered
+- Python 2.7 and 3.7 (Odoo 8 to 13) no longer go through mise. mise has no precompiled CPython for these versions, so the install no longer offers to install mise for them, no longer calls it, and no longer suggests "mise install". Run by hand, that command compiled CPython 2.7 without the -fpermissive flag that pyenv adds. The error from the Python 2 Poetry helper now gives mise's absolute path, or "make install_mise" when mise is missing
 
 <!-- [fr] -->
 
@@ -542,6 +543,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le lock d'Odoo 18 est rafraîchi : 63 paquets bougent dans les bornes du pyproject, dont quatre changent de version majeure — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — et oauthlib passe à 4.0.1, qui corrige CVE-2026-49272 (voir Sécurité). markdown-it-py, qu'importe `erplibre_assistant_core`, est déclaré dans le pyproject au lieu d'arriver par rich ; deprecated quitte le lock. Un venv existant suit par `poetry install --no-root`
 - Un Odoo 20 installé localement n'écoute que sur 127.0.0.1, le défaut d'Odoo lui-même dès la 20, là où 12 à 19 écoutent sur toutes les interfaces : poser `http_interface` dans `config.conf` pour l'atteindre d'une autre machine. L'image Docker pose `http_interface = 0.0.0.0` pour toutes les versions
 - Les profils d'installation « ERPLibre + Odoo N » d'une VM QEMU viennent de `conf/supported_version_erplibre.json`, la version par défaut en tête : chaque version prise en charge est proposée
+- Python 2.7 et 3.7 (Odoo 8 à 13) ne passent plus par mise. mise n'a aucun CPython précompilé pour ces versions : l'installation ne propose plus de le poser pour elles, ne l'appelle plus et ne conseille plus « mise install ». Lancée à la main, cette commande compilait CPython 2.7 sans le drapeau -fpermissive qu'ajoute pyenv. L'erreur du Poetry auxiliaire de Python 2 donne maintenant le chemin absolu de mise, ou « make install_mise » quand mise est absent
 
 <!-- [en] -->
 ## Fixed

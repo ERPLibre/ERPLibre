@@ -40,15 +40,26 @@ EL_PY2_HELPER_PYTHON_VERSION="${EL_PY2_HELPER_PYTHON_VERSION:-3.11.16}"
 
 if [[ ! -x "${HELPER_PATH}/bin/poetry" ]] \
   || [[ ! -x "${HELPER_PATH}/bin/virtualenv" ]]; then
+  # shellcheck source=script/install/lib_python_provider.sh
+  . ./script/install/lib_python_provider.sh
   HELPER_PYTHON="${EL_PY2_HELPER_PYTHON:-}"
+  if [[ -n "${HELPER_PYTHON}" ]] && [[ ! -x "${HELPER_PYTHON}" ]]; then
+    echo "EL_PY2_HELPER_PYTHON=${HELPER_PYTHON} n'est pas un executable."
+    exit 1
+  fi
   if [[ -z "${HELPER_PYTHON}" ]]; then
-    # shellcheck source=script/install/lib_python_provider.sh
-    . ./script/install/lib_python_provider.sh
     HELPER_PYTHON="$(el_python_exec "${EL_PY2_HELPER_PYTHON_VERSION}" mineure)"
   fi
   if [[ -z "${HELPER_PYTHON}" ]] || [[ ! -x "${HELPER_PYTHON}" ]]; then
     echo "Aucun Python ${EL_PY2_HELPER_PYTHON_VERSION} pour faire tourner Poetry ${POETRY_VERSION}."
-    echo "  Voir : mise install python@${EL_PY2_HELPER_PYTHON_VERSION}"
+    # Le chemin absolu de mise : posé par mise.run dans ~/.local/bin, il
+    # échappe souvent au PATH, où un « mise » nu ne le trouverait pas.
+    if el_mise_cmd > /dev/null; then
+      echo "  Voir : $(el_mise_cmd) install python@${EL_PY2_HELPER_PYTHON_VERSION}" \
+        "  (reseau requis)"
+    else
+      echo "  Voir 'make install_mise', ou installez pyenv."
+    fi
     exit 1
   fi
   echo "---- Poetry ${POETRY_VERSION} dans ${HELPER_PATH} ($("${HELPER_PYTHON}" -V 2>&1)) ----"

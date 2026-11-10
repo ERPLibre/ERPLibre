@@ -268,6 +268,57 @@ class TestQuandRienNEstDemande(BancMise):
         self.assertTrue(fini.stdout.strip().endswith("/bin/python"))
 
 
+class TestUneVersionSansPrecompile(BancMise):
+    """python-build-standalone commence à 3.8 : en deçà, mise compilerait,
+    sans les drapeaux de pyenv pour 2.7. Rien ne le propose ni ne l'appelle."""
+
+    ANCIENNES = ("2.7.18", "3.7.17")
+
+    def test_rien_n_est_propose_et_pyenv_compile(self):
+        for version in self.ANCIENNES:
+            with self.subTest(version=version):
+                if self.trace.exists():
+                    self.trace.unlink()
+                fini = self.lancer("o\n", appel=f"el_python_exec {version}")
+                self.assertNotIn(QUESTION, fini.stderr)
+                self.assertNotIn("curl", self.traces())
+                self.assertIn(f"pyenv {version}", self.traces())
+                self.assertNotIn("make install_mise", fini.stderr)
+                self.assertIn("aucun Python precompile", fini.stderr)
+
+    def test_une_version_precompilee_reste_proposee(self):
+        for version in ("3.8.20", "3.11.16", "3.14.7"):
+            with self.subTest(version=version):
+                fini = self.lancer("\n", appel=f"el_python_exec {version}")
+                self.assertIn(QUESTION, fini.stderr)
+
+    def test_mise_present_n_est_pas_appele(self):
+        # Le faux mise « installe » toute version : l'appeler rendrait son
+        # python au lieu de celui de pyenv.
+        self.mise_pose.parent.mkdir(parents=True)
+        shutil.copy(self.dir / "faux_mise", self.mise_pose)
+        self.mise_pose.chmod(0o755)
+        for version in self.ANCIENNES:
+            with self.subTest(version=version):
+                fini = self.lancer("", appel=f"el_python_exec {version}")
+                self.assertEqual("/faux/pyenv/python", fini.stdout.strip())
+                self.assertNotIn(f"install python@{version}", fini.stderr)
+                self.assertFalse(
+                    (self.home / ".local" / "share" / "faux_mise").exists()
+                )
+
+    def test_mise_explicite_dit_pourquoi_il_s_arrete(self):
+        fini = self.lancer(
+            "o\n",
+            env={"EL_PYTHON_PROVIDER": "mise"},
+            appel="el_python_exec 2.7.18",
+        )
+        self.assertNotEqual(0, fini.returncode)
+        self.assertNotIn(QUESTION, fini.stderr)
+        self.assertNotIn("curl", self.traces())
+        self.assertIn("aucun CPython precompile pour 2.7.18", fini.stderr)
+
+
 class TestCeQueLaRevueAVu(BancMise):
     def test_un_tube_sur_stdin_ne_pose_aucune_question(self):
         # Le VRAI garde, non remplacé : stdin et stderr sont des tubes, comme
