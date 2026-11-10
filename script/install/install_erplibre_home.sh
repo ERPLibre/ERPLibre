@@ -498,20 +498,22 @@ make_venv() {
     fi
 }
 
-# ---------- Jeux ----------
+# ---------- Clones ordinaires ----------
 
-# Les jeux sont un dépôt à part, que Google Repo clone dans un checkout qu'il
-# gère. Un checkout cloné par git ne les a pas : le niveau Stream Deck les
-# clone alors lui-même, à la révision que le manifeste nomme : une branche,
-# que chaque installation suit, une étiquette ou un commit.
-GAMES_DIR="${RACINE}/${DECK_GAMES_DIR}"
-GAMES_MANIFEST="${RACINE}/manifest/git_manifest_streamdeck_game.xml"
+# Les jeux et l'extension sont des dépôts à part, que Google Repo clone dans
+# un checkout qu'il gère. Un checkout cloné par git ne les a pas :
+# l'installateur les clone alors lui-même, en clone ordinaire, à la révision
+# que leur manifeste nomme : une branche, que chaque installation suit, une
+# étiquette ou un commit. Les fonctions plain_clone_* prennent le
+# répertoire, le manifeste et le path du projet en arguments ; LABEL est le
+# mot qui ouvre les lignes du bilan (« games », « extension »).
 
-# Rend « <url> <révision> » du projet du manifeste dont le path est celui des
-# jeux ; l'URL est le fetch de son remote suivi de son name. La révision ne
-# se lit que là, pour que l'installateur et repo sync clonent la même.
-games_source() {
-    python3 - "${GAMES_MANIFEST}" "${DECK_GAMES_DIR}" <<'PY'
+# plain_clone_source MANIFESTE PATH rend « <url> <révision> » du projet du
+# manifeste dont le path est PATH ; l'URL est le fetch de son remote suivi
+# de son name. La révision ne se lit que là, pour que l'installateur et repo
+# sync clonent la même.
+plain_clone_source() {
+    python3 - "$1" "$2" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
@@ -526,6 +528,178 @@ for projet in racine.iter("project"):
 else:
     sys.exit("no project at %s in %s" % (chemin, manifeste))
 PY
+}
+
+# Sort en 0 quand la révision du manifeste est une branche : refs/heads/<x>,
+# ou un nom nu qui n'est pas un commit, comme repo les lit. Les étiquettes
+# s'écrivent refs/tags/<x>.
+plain_clone_is_branch() {
+    case "${1}" in
+        refs/tags/*) return 1 ;;
+        refs/heads/*) return 0 ;;
+    esac
+    ! [[ "${1}" =~ ^[0-9a-f]{40}$ ]]
+}
+
+# La référence du clone ordinaire qui porte la révision du manifeste : celle
+# du remote pour une branche, qu'un fetch avance, la révision elle-même
+# sinon.
+plain_clone_ref() {
+    if plain_clone_is_branch "${1}"; then
+        echo "refs/remotes/origin/${1#refs/heads/}"
+    else
+        echo "${1}"
+    fi
+}
+
+# plain_clone_pinned_commit DIR RÉVISION : le commit de la révision du
+# manifeste dans le clone ordinaire DIR, vide quand le clone ne la connaît
+# pas (encore).
+plain_clone_pinned_commit() {
+    git -C "${1}" rev-parse -q --verify \
+        "$(plain_clone_ref "${2}")^{commit}" 2>/dev/null || true
+}
+
+# Retire les branches locales du clone `$1`, détaché, et marque son HEAD
+# dans refs/erplibre/installed : plain_clone_held_back et les passations à
+# repo sync (script/manifest/) ne comptent pas ce commit comme local.
+plain_clone_mark_installed() {
+    local ref
+    git -C "${1}" for-each-ref --format='%(refname)' refs/heads/ \
+        | while IFS= read -r ref; do
+            git -C "${1}" update-ref -d "${ref}"
+        done
+    git -C "${1}" update-ref refs/erplibre/installed HEAD
+}
+
+# Sort en 0 quand DIR est un clone ordinaire, celui que plain_clone_clone
+# pose ou qu'un développeur clone à la main : un .git répertoire. Celui de
+# repo est un lien, ou, dans son ancienne disposition, un répertoire dont
+# objects/ est un lien ; il suit repo sync.
+plain_clone_plain() {
+    [ -d "${1}/.git" ] && [ ! -L "${1}/.git" ] \
+        && [ ! -L "${1}/.git/objects" ]
+}
+
+# Sort en 0 quand le clone ordinaire DIR ne doit pas bouger : HEAD sur une
+# branche, une modification ou un fichier non suivi, ou un commit que ni
+# ses remotes, ni une étiquette, ni refs/erplibre/installed n'atteignent.
+# plain_clone_clone le laisse en HEAD détaché sans rien de tel.
+plain_clone_held_back() {
+    git -C "${1}" symbolic-ref -q HEAD >/dev/null \
+        || [ -n "$(git -C "${1}" status --porcelain --untracked-files=normal)" ] \
+        || [ -n "$(git -C "${1}" rev-list HEAD --not --remotes --tags \
+            --glob='refs/erplibre/*')" ]
+}
+
+# plain_clone_clone DIR URL RÉVISION [SOUS-RÉPERTOIRE] clone URL dans un
+# répertoire voisin de DIR, renommé en DIR une fois la révision extraite :
+# un échec ne laisse pas un DIR à moitié rempli, et sort en 1 sans rien
+# changer. SOUS-RÉPERTOIRE, quand DIR le porte, passe dans le clone avant
+# qu'il remplace DIR : les sauvegardes des jeux. Le reste de DIR part.
+plain_clone_clone() {
+    local dir="$1" url="$2" revision="$3" garder="${4:-}" partiel
+    partiel="$(mktemp -d "${dir}.XXXXXX")"
+    # HEAD détaché, même sur une branche, et sans la branche locale que
+    # git clone crée : plain_clone_update et les passations à repo sync
+    # prennent une branche locale pour un travail en cours.
+    # refs/erplibre/installed marque le commit installé : un main réécrit en
+    # amont ne le fait pas passer pour un commit local.
+    # mktemp crée le répertoire en 0700 ; le clone prend le mode qu'un
+    # git clone ou repo sync lui donnerait sous le même umask.
+    chmod "$(printf '%o' "$((0777 & ~$(umask)))")" "${partiel}"
+    if git clone --quiet --no-checkout "${url}" "${partiel}" \
+        && git -C "${partiel}" -c advice.detachedHead=false \
+            checkout --quiet --detach "$(plain_clone_ref "${revision}")" \
+        && plain_clone_mark_installed "${partiel}"; then
+        if [ -n "${garder}" ] && [ -d "${dir}/${garder}" ]; then
+            mkdir -p "${partiel}/${garder}"
+            cp -a "${dir}/${garder}/." "${partiel}/${garder}/"
+        fi
+        rm -rf "${dir}"
+        mv "${partiel}" "${dir}"
+        return 0
+    fi
+    rm -rf "${partiel}"
+    return 1
+}
+
+# plain_clone_update DIR MANIFESTE PATH LABEL amène le clone ordinaire DIR à
+# la révision du manifeste, sauf quand plain_clone_held_back le retient : le
+# bilan le dit alors. Une branche se rafraîchit à chaque appel ; une
+# étiquette ou un commit déjà connus ne demandent pas le réseau. Un fetch
+# qui échoue laisse le clone où il est. Sort en 1 quand le manifeste ne se
+# lit pas, sans rien changer.
+plain_clone_update() {
+    local dir="$1" manifeste="$2" chemin="$3" label="$4"
+    local origine revision voulu=""
+    plain_clone_plain "${dir}" || return 0
+    origine="$(plain_clone_source "${manifeste}" "${chemin}")" || return 1
+    revision="${origine#* }"
+    if ! plain_clone_is_branch "${revision}"; then
+        voulu="$(plain_clone_pinned_commit "${dir}" "${revision}")"
+    fi
+    if [ -z "${voulu}" ]; then
+        if ! git -C "${dir}" fetch --quiet --tags origin 2>/dev/null; then
+            DONE+=("${label} NOT updated to ${revision}: fetch from origin failed")
+            return 0
+        fi
+        voulu="$(plain_clone_pinned_commit "${dir}" "${revision}")"
+    fi
+    if [ -z "${voulu}" ]; then
+        DONE+=("${label} NOT updated to ${revision}: unknown to ${dir}")
+        return 0
+    fi
+    [ "$(git -C "${dir}" rev-parse HEAD)" = "${voulu}" ] && return 0
+    if plain_clone_held_back "${dir}"; then
+        DONE+=("${label} NOT updated to ${revision}: ${dir} holds a branch or local work")
+        return 0
+    fi
+    git -C "${dir}" -c advice.detachedHead=false checkout --quiet \
+        --detach "${voulu}"
+    plain_clone_mark_installed "${dir}"
+    DONE+=("${label} updated: ${dir} (${revision})")
+}
+
+# plain_clone_dry_run DIR MANIFESTE PATH LABEL RAISON_GARDÉ : la ligne de
+# --dry-run d'un clone gardé, « LABEL: keep DIR », suivie de RAISON_GARDÉ
+# quand elle n'est pas vide, ou, pour un clone ordinaire, de ce qu'en ferait
+# l'installation : la mise à jour, ou le refus de plain_clone_held_back. Le
+# dry-run ne va pas sur le réseau : une branche n'y est donc qu'annoncée,
+# l'installation la rafraîchit.
+plain_clone_dry_run() {
+    local dir="$1" manifeste="$2" chemin="$3" label="$4" raison="$5"
+    local origine revision
+    if [ -z "${raison}" ] && plain_clone_plain "${dir}"; then
+        origine="$(plain_clone_source "${manifeste}" "${chemin}")" || return 1
+        revision="${origine#* }"
+        if plain_clone_is_branch "${revision}" \
+            || [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" \
+                != "$(plain_clone_pinned_commit "${dir}" "${revision}")" ]; then
+            if plain_clone_is_branch "${revision}"; then
+                raison="follow ${revision}: fetched on install"
+                if plain_clone_held_back "${dir}"; then
+                    raison="${raison}; a branch or local work keeps it"
+                fi
+            elif plain_clone_held_back "${dir}"; then
+                raison="not updated to ${revision}: a branch or local work"
+            else
+                raison="update to ${revision}"
+            fi
+        fi
+    fi
+    echo "${label}: keep ${dir}${raison:+ (${raison})}"
+}
+
+# ---------- Jeux ----------
+
+# Les jeux, au niveau Stream Deck seulement : le programme du deck, le
+# contrôleur et le service tournent sans eux.
+GAMES_DIR="${RACINE}/${DECK_GAMES_DIR}"
+GAMES_MANIFEST="${RACINE}/manifest/git_manifest_streamdeck_game.xml"
+
+games_source() {
+    plain_clone_source "${GAMES_MANIFEST}" "${DECK_GAMES_DIR}"
 }
 
 # Les entrées de games/ autres que save/ et __pycache__/, séparées par une
@@ -570,12 +744,11 @@ games_kept_without_games() {
     echo "no games_cli.py; move away $(games_strays)then run again"
 }
 
-# Clone les jeux quand games_need_clone le demande. Le clone se fait dans un
-# répertoire voisin, renommé une fois la révision extraite : un échec ne
-# laisse pas un games/ à moitié rempli. Les sauvegardes d'un games/ qui n'en
-# gardait que des restes passent dans le clone avant qu'il le remplace.
+# Clone les jeux quand games_need_clone le demande ; les sauvegardes d'un
+# games/ qui n'en gardait que des restes passent dans le clone. Un games/
+# gardé qui porte les jeux suit le manifeste par update_games.
 clone_games() {
-    local origine url revision partiel raison
+    local origine raison
     if ! games_need_clone; then
         raison="$(games_kept_without_games)"
         if [ -n "${raison}" ]; then
@@ -589,127 +762,22 @@ clone_games() {
         || die "git est requis pour cloner les jeux : installez le paquet git"
     origine="$(games_source)" \
         || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
-    url="${origine% *}"
-    revision="${origine#* }"
-    partiel="$(mktemp -d "${GAMES_DIR}.XXXXXX")"
-    # HEAD détaché, même sur une branche, et sans la branche locale que
-    # git clone crée : update_games et streamdeck_games_to_repo.sh prennent
-    # une branche locale pour un travail en cours. refs/erplibre/installed
-    # marque le commit installé : un main réécrit en amont ne le fait pas
-    # passer pour un commit local.
-    # mktemp crée le répertoire en 0700 ; le clone prend le mode qu'un
-    # git clone ou repo sync lui donnerait sous le même umask.
-    chmod "$(printf '%o' "$((0777 & ~$(umask)))")" "${partiel}"
-    if git clone --quiet --no-checkout "${url}" "${partiel}" \
-        && git -C "${partiel}" -c advice.detachedHead=false \
-            checkout --quiet --detach "$(games_ref "${revision}")" \
-        && games_mark_installed "${partiel}"; then
-        if [ -d "${GAMES_DIR}/save" ]; then
-            mkdir -p "${partiel}/save"
-            cp -a "${GAMES_DIR}/save/." "${partiel}/save/"
-        fi
-        rm -rf "${GAMES_DIR}"
-        mv "${partiel}" "${GAMES_DIR}"
-        DONE+=("games cloned: ${GAMES_DIR} (${revision})")
-    else
-        rm -rf "${partiel}"
-        die "clone des jeux impossible : ${url} ${revision}"
-    fi
+    plain_clone_clone "${GAMES_DIR}" "${origine% *}" "${origine#* }" save \
+        || die "clone des jeux impossible : ${origine}"
+    DONE+=("games cloned: ${GAMES_DIR} (${origine#* })")
 }
 
-# Sort en 0 quand la révision du manifeste est une branche : refs/heads/<x>,
-# ou un nom nu qui n'est pas un commit, comme repo les lit. Les étiquettes
-# s'écrivent refs/tags/<x>.
-games_is_branch() {
-    case "${1}" in
-        refs/tags/*) return 1 ;;
-        refs/heads/*) return 0 ;;
-    esac
-    ! [[ "${1}" =~ ^[0-9a-f]{40}$ ]]
-}
+games_is_branch() { plain_clone_is_branch "$@"; }
+games_ref() { plain_clone_ref "$@"; }
+games_pinned_commit() { plain_clone_pinned_commit "${GAMES_DIR}" "$1"; }
+games_mark_installed() { plain_clone_mark_installed "$1"; }
+games_plain_clone() { plain_clone_plain "${GAMES_DIR}"; }
+games_held_back() { plain_clone_held_back "${GAMES_DIR}"; }
 
-# La référence du clone ordinaire qui porte la révision du manifeste : celle
-# du remote pour une branche, qu'un fetch avance, la révision elle-même
-# sinon.
-games_ref() {
-    if games_is_branch "${1}"; then
-        echo "refs/remotes/origin/${1#refs/heads/}"
-    else
-        echo "${1}"
-    fi
-}
-
-# Le commit de la révision du manifeste dans le clone ordinaire des jeux,
-# vide quand le clone ne la connaît pas (encore).
-games_pinned_commit() {
-    git -C "${GAMES_DIR}" rev-parse -q --verify \
-        "$(games_ref "${1}")^{commit}" 2>/dev/null || true
-}
-
-# Retire les branches locales du clone `$1`, détaché, et marque son HEAD
-# dans refs/erplibre/installed : games_held_back et
-# streamdeck_games_to_repo.sh ne comptent pas ce commit comme local.
-games_mark_installed() {
-    local ref
-    git -C "${1}" for-each-ref --format='%(refname)' refs/heads/ \
-        | while IFS= read -r ref; do
-            git -C "${1}" update-ref -d "${ref}"
-        done
-    git -C "${1}" update-ref refs/erplibre/installed HEAD
-}
-
-# Sort en 0 quand games/ est un clone ordinaire, celui que clone_games pose :
-# un .git répertoire. Celui de repo est un lien, ou, dans son ancienne
-# disposition, un répertoire dont objects/ est un lien ; il suit repo sync.
-games_plain_clone() {
-    [ -d "${GAMES_DIR}/.git" ] && [ ! -L "${GAMES_DIR}/.git" ] \
-        && [ ! -L "${GAMES_DIR}/.git/objects" ]
-}
-
-# Sort en 0 quand le clone ordinaire des jeux ne doit pas bouger : HEAD sur
-# une branche, une modification ou un fichier non suivi, ou un commit que ni
-# ses remotes, ni une étiquette, ni refs/erplibre/installed n'atteignent.
-# clone_games le laisse en HEAD détaché sans rien de tel.
-games_held_back() {
-    git -C "${GAMES_DIR}" symbolic-ref -q HEAD >/dev/null \
-        || [ -n "$(git -C "${GAMES_DIR}" status --porcelain --untracked-files=normal)" ] \
-        || [ -n "$(git -C "${GAMES_DIR}" rev-list HEAD --not --remotes --tags \
-            --glob='refs/erplibre/*')" ]
-}
-
-# Amène le clone ordinaire des jeux à la révision du manifeste, sauf quand
-# games_held_back le retient : le bilan le dit alors. Une branche se
-# rafraîchit à chaque appel ; une étiquette ou un commit déjà connus ne
-# demandent pas le réseau. Un fetch qui échoue laisse le clone où il est.
 update_games() {
-    local origine revision voulu=""
-    games_plain_clone || return 0
-    origine="$(games_source)" \
+    plain_clone_update "${GAMES_DIR}" "${GAMES_MANIFEST}" \
+        "${DECK_GAMES_DIR}" games \
         || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
-    revision="${origine#* }"
-    if ! games_is_branch "${revision}"; then
-        voulu="$(games_pinned_commit "${revision}")"
-    fi
-    if [ -z "${voulu}" ]; then
-        if ! git -C "${GAMES_DIR}" fetch --quiet --tags origin 2>/dev/null; then
-            DONE+=("games NOT updated to ${revision}: fetch from origin failed")
-            return 0
-        fi
-        voulu="$(games_pinned_commit "${revision}")"
-    fi
-    if [ -z "${voulu}" ]; then
-        DONE+=("games NOT updated to ${revision}: unknown to ${GAMES_DIR}")
-        return 0
-    fi
-    [ "$(git -C "${GAMES_DIR}" rev-parse HEAD)" = "${voulu}" ] && return 0
-    if games_held_back; then
-        DONE+=("games NOT updated to ${revision}: ${GAMES_DIR} holds a branch or local work")
-        return 0
-    fi
-    git -C "${GAMES_DIR}" -c advice.detachedHead=false checkout --quiet \
-        --detach "${voulu}"
-    games_mark_installed "${GAMES_DIR}"
-    DONE+=("games updated: ${GAMES_DIR} (${revision})")
 }
 
 # ---------- Service du deck ----------
@@ -1237,36 +1305,14 @@ step_venv() {
 }
 
 # Sous --dry-run, « games: clone » quand les jeux sont à cloner, « games:
-# keep » sinon, suivi de la raison quand le répertoire gardé n'a pas les
-# jeux, ou, pour un clone ordinaire, de ce qu'en ferait l'installation : la
-# mise à jour, ou le refus de games_held_back. Le dry-run ne va pas sur le
-# réseau : une branche n'y est donc qu'annoncée, l'installation la
-# rafraîchit.
+# keep » sinon, avec ce que plain_clone_dry_run en dit.
 step_games() {
-    local origine raison revision
+    local origine
     if [ "${DRY_RUN}" = 1 ]; then
         if ! games_need_clone; then
-            raison="$(games_kept_without_games)"
-            if [ -z "${raison}" ] && games_plain_clone; then
-                origine="$(games_source)" \
-                    || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
-                revision="${origine#* }"
-                if games_is_branch "${revision}" \
-                    || [ "$(git -C "${GAMES_DIR}" rev-parse HEAD 2>/dev/null)" \
-                        != "$(games_pinned_commit "${revision}")" ]; then
-                    if games_is_branch "${revision}"; then
-                        raison="follow ${revision}: fetched on install"
-                        if games_held_back; then
-                            raison="${raison}; a branch or local work keeps it"
-                        fi
-                    elif games_held_back; then
-                        raison="not updated to ${revision}: a branch or local work"
-                    else
-                        raison="update to ${revision}"
-                    fi
-                fi
-            fi
-            echo "games: keep ${GAMES_DIR}${raison:+ (${raison})}"
+            plain_clone_dry_run "${GAMES_DIR}" "${GAMES_MANIFEST}" \
+                "${DECK_GAMES_DIR}" games "$(games_kept_without_games)" \
+                || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
         else
             origine="$(games_source)" \
                 || die "révision des jeux illisible dans ${GAMES_MANIFEST}"
