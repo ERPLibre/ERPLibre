@@ -26,7 +26,17 @@ setuptools==80.10.2
 
 # Module extra unknown name
 filetype
-PyPDF2
+# La version qu'Odoo 19 épingle : sans elle, pip-audit résout la dernière,
+# 3.0.1, et rapporte une version que personne n'installe. Son alias
+# PYSEC-2026-1835 annonce « corrigée en 3.9.0 », une version de pypdf :
+# PyPDF2 s'arrête à 3.0.1, que l'avis touche aussi.
+PyPDF2==2.12.1
+# pypdf : failles de 2026, corrigées au plus tard en 6.21.4.
+pypdf==6.21.4
+# oauthlib 3.3.1 : CVE-2026-49264, CVE-2026-49265, CVE-2026-118669,
+# corrigées en 4.0.0 ; CVE-2026-49272 (jeton Bearer du flux « device »
+# obtenu avec un simple client ID) touche aussi 4.0.0, corrigée en 4.0.1.
+oauthlib==4.0.1
 img2pdf
 
 # For logical test and quality
