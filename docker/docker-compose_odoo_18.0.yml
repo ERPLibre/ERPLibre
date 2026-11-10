@@ -1,10 +1,18 @@
+# Relative paths resolve from the checkout root, as in docker-compose.yml:
+#   docker compose --project-directory . -f docker/docker-compose_odoo_18.0.yml up -d
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_18.0_eae4054
+    image: technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad
+    # Published on the host's loopback only: Odoo answers the host, never
+    # the network. To serve the network, put a reverse proxy on the host in
+    # front of 127.0.0.1:8069 and 8072, or change the bind address, e.g.
+    # "0.0.0.0:8069:8069", once admin_passwd and list_db = False are set
+    # (docker/README.md, Exposure). A port published by a rootful Docker
+    # daemon bypasses the host firewall: Docker inserts its own iptables
+    # rules ahead of those of ufw or firewalld.
     ports:
-      - 8069:8069
-      - 8071:8071
-      - 8072:8072
+      - "127.0.0.1:8069:8069"
+      - "127.0.0.1:8072:8072"
     environment:
       HOST: db
       PASSWORD: mysecretpassword
@@ -13,26 +21,39 @@ services:
       STOP_BEFORE_INIT: "False"
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
-      # Python packages the image lacks, on one line, separated by spaces,
-      # pinned when needed. Installed at each start, before Odoo; nothing is
+      # Python packages the image lacks, separated by spaces or newlines (a
+      # YAML | block works), pinned when needed. Installed at each start, before Odoo; nothing is
       # downloaded once satisfied.
       # Example: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
       # Odoo's venv, the one the addons import
       PIP_EXTRA_REQUIREMENTS_ODOO: ""
       # ERPLibre tools' venv (.venv.erplibre), the one of script/
       PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Debian packages, one name per word, installed as root at each start
+      # before the pip lists, e.g. "libmagic1" for python-magic. Needs the
+      # longer cap_add below; an installed package is skipped, offline.
+      APT_EXTRA_PACKAGES: ""
       # Shell command run at each start, once PostgreSQL answers and before
       # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
-      # packages go in the PIP_EXTRA_REQUIREMENTS_* lists above.
+      # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
-    # The venvs belong to root: the container starts as root to install the
-    # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
+      # The checkout's entrypoint.sh instead of the image's /entrypoint.sh;
+      # uncomment with the ./docker:/ERPLibre/docker mount below.
+      #ERPLIBRE_ENTRYPOINT: /ERPLibre/docker/entrypoint.sh
+    # The container starts as root: apt installs as root, each pip as the
+    # owner of its venv, odoo, then the entrypoint runs Odoo as odoo. In an
+    # image built with ERPLIBRE_CODE_OWNER=root, the venvs belong to root
+    # under an /ERPLibre that odoo owns, and the entrypoint refuses any
+    # PIP_EXTRA_* list: root never runs a pip that odoo can rewrite.
     user: root
-    entrypoint: ["/entrypoint_pip_extra.sh"]
+    entrypoint: ["/opt/erplibre/docker/entrypoint_pip_extra.sh"]
     # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
     # with no capability and can never regain one.
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID]
+    # With APT_EXTRA_PACKAGES, apt needs four more, which root drops when
+    # it hands over to odoo; replace the line above with:
+    #cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
     security_opt:
       - no-new-privileges:true
     depends_on:
@@ -52,14 +73,17 @@ services:
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
       - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
-      - ./docker/entrypoint_pip_extra.sh:/entrypoint_pip_extra.sh:ro
-      # The checkout's entrypoint.sh instead of the image's copy, made at its
-      # build: INIT_CMD without rebuilding an image that predates it. The
-      # three lines go together: this entrypoint.sh calls odoo_rc_db.py and
-      # the --config of wait-for-psql.py, absent from older images.
-      #- ./docker/entrypoint.sh:/entrypoint.sh:ro
-      #- ./docker/odoo_rc_db.py:/ERPLibre/docker/odoo_rc_db.py:ro
-      #- ./docker/wait-for-psql.py:/ERPLibre/docker/wait-for-psql.py:ro
+      # The checkout's docker/, read-only, for the entrypoint above. A
+      # directory follows the files git replaces on a pull, where a
+      # single-file bind keeps serving the replaced copy until a restart.
+      - ./docker:/opt/erplibre/docker:ro
+      # The checkout's entrypoint.sh and its helpers instead of the image's
+      # copies, made at its build: INIT_CMD without rebuilding an image that
+      # predates it. entrypoint.sh calls /ERPLibre/docker/odoo_rc_db.py and
+      # the --config of wait-for-psql.py, absent from older images: the
+      # mount replaces the image's /ERPLibre/docker, a copy of docker/.
+      # Uncomment with ERPLIBRE_ENTRYPOINT above.
+      #- ./docker:/ERPLibre/docker:ro
     restart: always
 
   db:

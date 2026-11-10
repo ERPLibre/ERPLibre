@@ -1,22 +1,131 @@
+# Relative paths resolve from the checkout root, as in docker-compose.yml.
+# Pass the env file that names the grid's two secret files to every
+# command; without it, up, create and config stop before touching anything
+# (script/selenium/install.md):
+#   docker compose --project-directory . \
+#     --env-file "$HOME/.config/erplibre/selenium.env" \
+#     -f docker/docker-compose_odoo_18.0_selenium.yml up -d
+# Naming services, e.g. "up -d ERPLibre firefox", skips the other browsers'
+# nodes and their images.
+
+# The grid's secrets live in two TOML files outside the checkout, mounted
+# read-only at /run/secrets/selenium.toml: Selenium reads them with --config,
+# so they appear neither in an environment variable, which docker inspect
+# shows, nor on a command line, which any account of the host reads with ps.
+# The image's start scripts turn SE_ROUTER_USERNAME, SE_ROUTER_PASSWORD and
+# SE_REGISTRATION_SECRET into java arguments: none of the three is set here.
+# Long syntax, create_host_path false: a missing file stops the container's
+# creation, where the short syntax would create an empty directory in its
+# place.
+
+# The node's file holds [server] registration-secret only.
+x-selenium-node-volumes: &selenium-node-volumes
+  - type: bind
+    source: ${SELENIUM_NODE_CONFIG:?set it in the --env-file, see script/selenium/install.md}
+    target: /run/secrets/selenium.toml
+    read_only: true
+    bind:
+      create_host_path: false
+
+# Environment shared by the three browser nodes.
+x-selenium-node-environment: &selenium-node-environment
+  SE_EVENT_BUS_HOST: selenium-hub
+  # Two config files: the one the image generates at each start from the
+  # SE_NODE_* variables, the [events], [server] host and [node] sections,
+  # and the secret one. Selenium merges them, and the two set no option in
+  # common. The start script adds its own --config only when SE_OPTS holds
+  # none, hence the generated file named here too. CONFIG_FILE keeps
+  # naming the generated one, the file the start script prints to the
+  # log: the secret file never reaches it. The hub refuses a node
+  # whose secret differs from its own: a container of the grid network
+  # without it registers no node, so receives neither the sessions nor what
+  # the scripts type into the browser.
+  SE_OPTS: "--config /opt/selenium/config.toml --config /run/secrets/selenium.toml"
+  # The node's Selenium server, 5555, listens on the node's grid address
+  # only, the name SE_NODE_HOST gives each node below and that resolves on
+  # the grid network alone: from the web network, ERPLibre's, nothing
+  # answers on 5555. The image's default, "false", listens on every
+  # interface and only advertises SE_NODE_HOST.
+  SE_BIND_HOST: "true"
+  # No X display: the image's Xvfb listens on TCP 6099 of every interface,
+  # access control off (-ac), and would let ERPLibre, on the web network,
+  # read the screen and the keys the scripts type. The browser runs
+  # headless; the scripts take --headless.
+  SE_START_XVFB: "false"
+  # No VNC server nor noVNC either; the image's VNC password is the public
+  # default "secret". SE_START_NO_VNC follows, or supervisord restarts
+  # noVNC until it marks it FATAL. To watch a browser, set the three to
+  # "true" and SE_VNC_PASSWORD, with no space as the image's script splits
+  # it, on that node, publish "127.0.0.1:7900:7900" for noVNC and drop
+  # --headless: the display then answers the web network, ERPLibre
+  # included, so never while a script types the vault's credentials.
+  SE_START_VNC: "false"
+  SE_START_NO_VNC: "false"
+
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_18.0_eae4054
+    image: technolibre/erplibre:1.8.0_odoo_18.0_d3e5b5ad
+    # Published on the host's loopback only: Odoo answers the host, never
+    # the network. To serve the network, put a reverse proxy on the host in
+    # front of 127.0.0.1:8069 and 8072, or change the bind address, e.g.
+    # "0.0.0.0:8069:8069", once admin_passwd and list_db = False are set
+    # (docker/README.md, Exposure). A port published by a rootful Docker
+    # daemon bypasses the host firewall: Docker inserts its own iptables
+    # rules ahead of those of ufw or firewalld.
     ports:
-      - 8069:8069
-      - 8071:8071
-      - 8072:8072
+      - "127.0.0.1:8069:8069"
+      - "127.0.0.1:8072:8072"
     environment:
-      HOST: db,selenium-hub
+      HOST: db
       PASSWORD: mysecretpassword
       USER: odoo
       POSTGRES_DB: postgres
       STOP_BEFORE_INIT: "False"
       DB_NAME: ""
       UPDATE_ALL_DB: "False"
+      # Python packages the image lacks, separated by spaces or newlines (a
+      # YAML | block works), pinned when needed. Installed at each start, before Odoo; nothing is
+      # downloaded once satisfied.
+      # Example: "humanize pyotp==2.9.0 phonenumbers>=8.13,<9"
+      # Odoo's venv, the one the addons import
+      PIP_EXTRA_REQUIREMENTS_ODOO: ""
+      # ERPLibre tools' venv (.venv.erplibre), the one of script/
+      PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Debian packages, one name per word, installed as root at each start
+      # before the pip lists, e.g. "libmagic1" for python-magic. Needs the
+      # longer cap_add below; an installed package is skipped, offline.
+      APT_EXTRA_PACKAGES: ""
+      # Shell command run at each start, once PostgreSQL answers and before
+      # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
+      # and Debian packages go in the *_EXTRA_* lists above.
       INIT_CMD: ""
+    # The Selenium scripts run from the host's checkout, never in this
+    # container: the account that runs Odoo reads neither the KeePass vault
+    # nor its password, and private/ is not mounted here. They drive the
+    # grid through the router, published below on 127.0.0.1:8075; the
+    # browser, on its node, reaches Odoo by its service name over the web
+    # network, http://ERPLibre:8069. See script/selenium/install.md.
+    # The container starts as root: apt installs as root, each pip as the
+    # owner of its venv, odoo, then the entrypoint runs Odoo as odoo. In an
+    # image built with ERPLIBRE_CODE_OWNER=root, the venvs belong to root
+    # under an /ERPLibre that odoo owns, and the entrypoint refuses any
+    # PIP_EXTRA_* list: root never runs a pip that odoo can rewrite.
+    user: root
+    entrypoint: ["/opt/erplibre/docker/entrypoint_pip_extra.sh"]
+    # Root keeps only what setpriv needs to switch to odoo; Odoo then runs
+    # with no capability and can never regain one.
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    # With APT_EXTRA_PACKAGES, apt needs four more, which root drops when
+    # it hands over to odoo; replace the line above with:
+    #cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, FSETID]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - db
-      - selenium-hub
+    networks:
+      - backend
+      - web
     # not behind a proxy
     #command: odoo --workers 0
     # behind a proxy
@@ -30,8 +139,11 @@ services:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
       - ./odoo18.0/addons/addons:/ERPLibre/odoo18.0/addons/addons
-      - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
+      # The checkout's docker/, read-only, for the entrypoint above. A
+      # directory follows the files git replaces on a pull, where a
+      # single-file bind keeps serving the replaced copy until a restart.
+      - ./docker:/opt/erplibre/docker:ro
     restart: always
 
   db:
@@ -43,6 +155,8 @@ services:
       PGDATA: /var/lib/postgresql/pgdata
     volumes:
       - erplibre-db-data:/var/lib/postgresql/pgdata
+    networks:
+      - backend
     restart: always
 
   chrome:
@@ -52,7 +166,13 @@ services:
     depends_on:
       - selenium-hub
     environment:
-      - SE_EVENT_BUS_HOST=selenium-hub
+      <<: *selenium-node-environment
+      SE_NODE_HOST: chrome-grid
+    volumes: *selenium-node-volumes
+    networks:
+      grid:
+        aliases: [chrome-grid]
+      web:
 
   edge:
     image: selenium/node-edge:4.34.0-20250707
@@ -61,7 +181,13 @@ services:
     depends_on:
       - selenium-hub
     environment:
-      - SE_EVENT_BUS_HOST=selenium-hub
+      <<: *selenium-node-environment
+      SE_NODE_HOST: edge-grid
+    volumes: *selenium-node-volumes
+    networks:
+      grid:
+        aliases: [edge-grid]
+      web:
 
   firefox:
     image: selenium/node-firefox:4.34.0-20250707
@@ -69,21 +195,55 @@ services:
     depends_on:
       - selenium-hub
     environment:
-      - SE_EVENT_BUS_HOST=selenium-hub
-#      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
-#      - SE_NODE_MAX_SESSIONS=2
+      <<: *selenium-node-environment
+      SE_NODE_HOST: firefox-grid
+      # Two sessions on this node:
+      #SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      #SE_NODE_MAX_SESSIONS: "2"
+    volumes: *selenium-node-volumes
+    networks:
+      grid:
+        aliases: [firefox-grid]
+      web:
 
-  # put into config.conf selenium_network_url=http://selenium-hub:4444
-  # in python
-  # from odoo.tools import config
-  # config.get("selenium_network_url")
+  # No container_name: the service name selenium-hub resolves on each
+  # project's grid network. The host ports below and the ERPLibre ones
+  # still allow one such project per host.
   selenium-hub:
     image: selenium/hub:4.34.0-20250707
-    container_name: selenium-hub
+    # The nodes reach the event bus, 4442 and 4443, over the grid network:
+    # neither is published. The router, which the scripts drive, is
+    # published on the host's loopback only.
+    networks:
+      - grid
     ports:
-      - "8073:4442"
-      - "8074:4443"
-      - "8075:4444"
+      - "127.0.0.1:8075:4444"
+    environment:
+      # The start script passes CONFIG_FILE to --config, in place of the
+      # image's empty /opt/selenium/config.toml.
+      CONFIG_FILE: /run/secrets/selenium.toml
+    # The hub's file holds [router] username and password, the basic
+    # authentication on the router: a request without them, /status
+    # included, which lists the sessions, gets 401. It holds [server]
+    # registration-secret too, the value of the nodes' file.
+    volumes:
+      - type: bind
+        source: ${SELENIUM_HUB_CONFIG:?set it in the --env-file, see script/selenium/install.md}
+        target: /run/secrets/selenium.toml
+        read_only: true
+        bind:
+          create_host_path: false
+
+# Each network joins only the containers that talk to each other:
+# - backend: ERPLibre and PostgreSQL; the browser nodes never reach the
+#   database.
+# - web: ERPLibre and the nodes, whose browser loads http://ERPLibre:8069.
+# - grid: the hub and the nodes. ERPLibre is not on it, so neither the
+#   router, nor the event bus, nor a node's Selenium server answers it.
+networks:
+  backend:
+  web:
+  grid:
 
 # We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help

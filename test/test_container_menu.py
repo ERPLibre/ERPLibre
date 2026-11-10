@@ -159,12 +159,13 @@ class TestLigneDeCommandeDocker(Banc):
         with mock.patch.object(
             container_menu.shutil, "which", return_value="/usr/bin/docker"
         ):
-            with self.reponses(prompts=["1", "5", "0"]):
+            with self.reponses(prompts=["1", "5", "8", "0"]):
                 todo._container_erplibre()
         self.assertEqual(
             [
                 "./script/docker/docker_exec.sh",
                 "./script/docker/docker_repo_show_status.sh",
+                "./script/docker/docker_show_odoo_conf.sh",
             ],
             todo.execute.commandes,
         )

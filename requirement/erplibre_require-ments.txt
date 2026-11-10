@@ -93,4 +93,5 @@ nbconvert>=7.17.2
 
 # Ignore because need installation system
 # pymysql
-# Don't forget to install selenium script/selenium/requirements.txt
+# Don't forget to install selenium script/selenium/requirements.txt,
+# and script/selenium/requirements-video.txt for video recording

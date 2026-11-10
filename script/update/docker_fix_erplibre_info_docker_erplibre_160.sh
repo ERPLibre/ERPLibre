@@ -2,40 +2,62 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Prépare un conteneur Docker d'ERPLibre 1.6.0 (Odoo 18) pour
-# erplibre_info_git : l'instantané du code, en lecture seule. Se lance depuis
-# l'hôte, à la racine de ce checkout ; agit dans le conteneur par
-# « docker exec ». Relancé, il refait ce qui manque et garde ce qui est fait.
+# Met à jour la racine ERPLibre d'un conteneur Docker d'Odoo 18.0 en marche
+# et la prépare pour erplibre_info_git : l'instantané du code, en lecture
+# seule. Se lance depuis l'hôte, à la racine de ce checkout ; agit dans le
+# conteneur par « docker exec ». Relancé, il refait ce qui manque et garde ce
+# qui est fait.
+#
+# Image prise en charge : celle dont le code appartient à son propriétaire,
+# un compte autre que root qui peut écrire /ERPLibre, son .git et les
+# répertoires suivis — une image construite avec ERPLIBRE_CODE_OWNER=odoo,
+# la valeur par défaut de docker/Dockerfile.prod.pkg. git ne tourne jamais
+# en root (voir « Les comptes ») : une image d'ERPLibre 1.6.0 ou antérieure,
+# qui laisse ce code à root, est refusée avant tout script quand /ERPLibre
+# appartient à root, et à l'étape 2, après la seule mémoire de l'étape 1,
+# quand seuls .git ou des répertoires suivis sont à root. Le message nomme
+# le premier chemin que le propriétaire ne peut pas écrire.
 #
 #   1. Mémorise l'état de la racine ERPLibre (commit, HEAD, branche,
 #      version), une seule fois, dans le volume des données d'Odoo
 #      (MEMOIRE). Hors de la racine, il ne la rend pas « modifiée », et il
 #      survit à la recréation du conteneur.
-#   2. Met la racine sur master (origin/master) : l'image n'a ni
-#      script/git/repo_state.py ni repo_pull.py. odoo18.0/ ne bouge pas.
+#   2. Met la racine sur la branche de -b (origin/<branche>), en avance
+#      rapide quand elle y est déjà : une racine plus ancienne que master n'a
+#      ni script/git/repo_state.py ni repo_pull.py. odoo18.0/ ne bouge pas.
+#      S'arrête avant git quand le propriétaire ne peut pas écrire .git ou un
+#      répertoire suivi, ou quand un fichier suivi est modifié.
 #   3. Active l'option extra de la version (.erplibre-state.json) quand un
 #      dépôt de manifest/git_manifest_extra_odoo<V>.xml est déjà cloné : ces
 #      dépôts sont au manifeste par défaut de la 1.6.0, mais seulement à
 #      l'extra de master. Sans l'option, le manifeste local que régénère le
 #      pull les laisse « hors manifeste », et plus aucun pull ne les suit.
-#   4. Ouvre en lecture au compte odoo les dossiers de /ERPLibre/.repo que
-#      l'image laisse à root en mode 700, les « projects/*.git » : sans eux,
-#      chaque dépôt de l'instantané est en erreur. Seuls les dossiers
+#   4. Quand /ERPLibre/.repo appartient à root seul, ouvre en lecture au
+#      compte odoo ses dossiers en mode 700, les « projects/*.git » : sans
+#      eux, chaque dépôt de l'instantané est en erreur. Seuls les dossiers
 #      changent : sur overlayfs, changer un dossier ne recopie que ses
 #      métadonnées, et les fichiers sont déjà lisibles. odoo n'y gagne
-#      aucune écriture.
+#      aucune écriture. Un .repo d'un autre compte reste tel quel.
 #   5. Installe ou met à jour erplibre_info_git et erplibre_info_developer_menu
 #      dans la base, puis redémarre le conteneur.
 #   6. Prend un premier instantané et y remet l'état mémorisé à l'étape 1 :
-#      il décrit le déploiement d'avant le checkout de master. Une seule
-#      fois : l'identifiant de l'instantané rejoint le fichier mémorisé.
+#      il décrit le déploiement d'avant la mise à jour de la racine. Une
+#      seule fois : l'identifiant de l'instantané rejoint le fichier mémorisé.
 #
-# Le tirage (erplibre_info_git_fetch) n'est pas préparé : il écrit dans les
-# dépôts git, que l'image 1.6.0 laisse à root, et il exige un serveur lancé
-# avec --dev. Il vient avec une image récente, dont le code appartient au
-# compte odoo (ERPLIBRE_CODE_OWNER) ; --dev=all n'y suffit pas seul. Le
-# message de fin lit les deux conditions dans le conteneur et nomme celle qui
-# manque.
+# Le tirage (erplibre_info_git_fetch) n'est pas installé : il demande des
+# dépôts git que le compte odoo peut écrire, et un serveur lancé avec une
+# valeur de --dev. Le message de fin lit les deux conditions dans le
+# conteneur et nomme celle qui manque.
+#
+# Les comptes. git et les lectures de python tournent sous le propriétaire de
+# /ERPLibre, jamais sous root : ce compte peut réécrire .git/config, les
+# crochets et tout ce que git exécute (core.fsmonitor, core.hooksPath,
+# diff.external), et, propriétaire de /ERPLibre, il y remplace .git entier
+# même quand .git appartient à root. git sous root y exécuterait donc son
+# code en root.
+# Un propriétaire root est refusé d'emblée. Root ne fait que l'étape 4, des
+# chmod sans git ni python, sans --privileged. Odoo (étapes 5 et 6) tourne
+# sous le compte odoo.
 #
 # Ce qui change dans le conteneur survit à un redémarrage, pas à sa
 # recréation (« docker compose down », nouvelle image) ; la base, elle, garde
@@ -82,27 +104,39 @@ fi
 [[ "$(docker inspect -f '{{.State.Running}}' "${CONTENEUR}" 2>/dev/null)" == "true" ]] ||
   echec "le conteneur ${CONTENEUR} n'est pas en marche"
 
-# --privileged rend à cette seule commande les capacités que le compose peut
-# retirer au conteneur (cap_drop) : sans elles, root ne peut ni chown ni
-# écrire dans un dossier du compte odoo. Le conteneur, lui, garde les siennes.
-en_root() { docker exec --privileged -i -u root "${CONTENEUR}" bash -s -- "$@"; }
+source "$(dirname "$0")/../docker/lib_conteneur.sh"
+PROPRIO=$(proprietaire_code "${CONTENEUR}") || exit 1
+[[ "${PROPRIO}" != 0 ]] ||
+  echec "/ERPLibre appartient à root dans ${CONTENEUR} : git ne se lance que sous le propriétaire du code, jamais sous root ; ce script prend en charge une image dont le code appartient à un autre compte (ERPLIBRE_CODE_OWNER=odoo), pas celle d'ERPLibre 1.6.0 ou antérieure"
+
+# Chaque docker exec nomme son compte : sous « user: root », un exec sans -u
+# tourne en root. en_root part de « / » sous env -i avec un PATH système,
+# sans --privileged : il garde les capacités du compose. Il ne prend aucun
+# argument : son seul script, l'étape 4, n'en lit pas.
+en_root() {
+  docker exec -i -u root -w / "${CONTENEUR}" /usr/bin/env -i \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    bash -s
+}
+en_proprio() { docker exec -i -u "${PROPRIO}" "${CONTENEUR}" bash -s -- "$@"; }
 en_odoo() { docker exec -i -u odoo "${CONTENEUR}" bash -s -- "$@"; }
 
-VERSION_ODOO=$(docker exec "${CONTENEUR}" cat /ERPLibre/.odoo-version 2>/dev/null || true)
+VERSION_ODOO=$(docker exec -u "${PROPRIO}" "${CONTENEUR}" cat /ERPLibre/.odoo-version 2>/dev/null || true)
 [[ "${VERSION_ODOO}" == "18.0" ]] ||
   echec "/ERPLibre/.odoo-version vaut « ${VERSION_ODOO} », ce script vise Odoo 18.0"
 
 # Les points de montage sous /ERPLibre : ni chown, ni git n'y entrent.
 MONTAGES=$(docker inspect -f '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "${CONTENEUR}" |
   grep '^/ERPLibre/' || true)
-echo "Conteneur : ${CONTENEUR}  base : ${BASE}  branche : ${BRANCHE}"
+echo "Conteneur : ${CONTENEUR}  base : ${BASE}  branche : ${BRANCHE}  propriétaire du code : uid ${PROPRIO}"
 echo "Volumes montés sous /ERPLibre : ${MONTAGES:-aucun}" | tr '\n' ' '
 echo
 
 # ── 1. mémoire de l'état d'avant ───────────────────────────────────────
 etape "1. Mémoire de la racine ERPLibre avant la mise à jour"
-en_root "${MEMOIRE}" <<'EOF'
+en_proprio "${MEMOIRE}" <<'EOF'
 set -euo pipefail
+umask 022
 memoire="$1"
 cd /ERPLibre
 if [[ -f "${memoire}" ]]; then
@@ -110,7 +144,7 @@ if [[ -f "${memoire}" ]]; then
   cat "${memoire}"
   exit 0
 fi
-g() { git -c safe.directory='*' "$@"; }
+g() { git --no-optional-locks -c safe.directory='*' "$@"; }
 python3 - "${memoire}" \
   "$(g describe --tags --always HEAD)" \
   "$(g rev-parse HEAD)" \
@@ -134,16 +168,33 @@ with open(chemin, "w") as fh:
     json.dump(etat, fh, indent=1)
 print(json.dumps(etat, indent=1))
 PY
-chown odoo:odoo "${memoire}"
 EOF
 
 # ── 2. racine sur la branche ───────────────────────────────────────────
 etape "2. Racine ERPLibre sur ${BRANCHE}"
-en_root "${BRANCHE}" <<'EOF'
+en_proprio "${BRANCHE}" <<'EOF'
 set -euo pipefail
+umask 022
 branche="$1"
 cd /ERPLibre
 g() { git -c safe.directory='*' "$@"; }
+# fetch et checkout écrivent les répertoires de .git, ses journaux, et
+# recréent les fichiers suivis dans leur répertoire : le premier de ces
+# chemins que ce compte ne peut pas écrire arrête l'étape avant git.
+bloque=$(
+  {
+    find .git -type d ! -writable -print 2>/dev/null
+    find .git/logs -type f ! -writable -print 2>/dev/null
+    g ls-files | sed -n 's#/[^/]*$##p' | sort -u | while IFS= read -r d; do
+      [[ -w "${d}" ]] || echo "${d}"
+    done
+  } | head -1
+)
+if [[ -n "${bloque}" ]]; then
+  echo "/ERPLibre/${bloque} : le compte $(id -un) ne peut pas l'écrire ; git ne se lance jamais en root." >&2
+  echo "  Ce script prend en charge une image dont le code, .git compris, appartient à son propriétaire (ERPLIBRE_CODE_OWNER=odoo) ; celle d'ERPLibre 1.6.0 ou antérieure laisse .git à root." >&2
+  exit 1
+fi
 if [[ -n "$(g status --porcelain --untracked-files=no)" ]]; then
   echo "Fichiers suivis modifiés dans /ERPLibre : rien n'est extrait." >&2
   g status --short --untracked-files=no | head -20 >&2
@@ -163,8 +214,9 @@ EOF
 
 # ── 3. option extra ────────────────────────────────────────────────────
 etape "3. Option extra, si ses dépôts sont déjà clonés"
-en_root <<'EOF'
+en_proprio <<'EOF'
 set -euo pipefail
+umask 022
 cd /ERPLibre
 ".venv.erplibre/bin/python" - <<'PY'
 import os
@@ -215,10 +267,29 @@ EOF
 
 # ── 4. lecture des dépôts git ──────────────────────────────────────────
 etape "4. Dossiers de /ERPLibre/.repo lisibles par le compte odoo"
+# Root n'agit que sous un .repo à lui : le répertoire courant, fixé par cd,
+# doit être /ERPLibre/.repo même, à root, fermé en écriture au groupe et aux
+# autres. find ne suit aucun lien et n'entre pas dans un répertoire d'un
+# autre compte ou ouvert en écriture, où un autre compte pourrait substituer
+# un lien à un nom ; -execdir lance chmod depuis le parent de chaque
+# dossier, un parent de root fermé en écriture.
 en_root <<'EOF'
 set -euo pipefail
-fermes=$(find /ERPLibre/.repo -type d ! -perm -o=rx -print | wc -l)
-find /ERPLibre/.repo -type d ! -perm -o=rx -print0 | xargs -0 -r chmod go+rx
+if [[ ! -d /ERPLibre/.repo ]]; then
+  echo "Pas de /ERPLibre/.repo : rien à ouvrir."
+  exit 0
+fi
+cd -P /ERPLibre/.repo
+etat=$(stat -c '%u %a' .)
+if [[ "$(pwd -P)" != /ERPLibre/.repo || "${etat% *}" != 0 ]] ||
+  (((8#${etat#* } & 8#022) != 0)); then
+  echo "/ERPLibre/.repo n'appartient pas à root seul : root n'y change rien."
+  exit 0
+fi
+fermes=$(find . \( ! -user 0 -o -perm /022 \) -prune -o \
+  -type d ! -perm -o=rx -print | wc -l)
+find . \( ! -user 0 -o -perm /022 \) -prune -o \
+  -type d ! -perm -o=rx -execdir chmod go+rx {} +
 echo "Dossiers ouverts en lecture : ${fermes}"
 EOF
 
@@ -302,7 +373,7 @@ EOF
 docker restart "${CONTENEUR}" >/dev/null
 echo "Attente d'Odoo sur le port 8069…"
 for _ in $(seq 90); do
-  if docker exec "${CONTENEUR}" python3 -c \
+  if docker exec -u "${PROPRIO}" "${CONTENEUR}" python3 -c \
     "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=3)" \
     2>/dev/null; then
     echo "Odoo répond."
@@ -364,7 +435,7 @@ EOF
 then
   :
 else
-  docker exec "${CONTENEUR}" tail -40 /tmp/erplibre_fix_snapshot.log >&2
+  docker exec -u odoo "${CONTENEUR}" tail -40 /tmp/erplibre_fix_snapshot.log >&2
   echec "l'instantané n'a pas abouti"
 fi
 

@@ -4,8 +4,9 @@ services:
       image: technolibre/erplibre-dev:12.0
       # image: technolibre/erplibre-prod:pkg-12.0
       # image: technolibre/erplibre-prod:deb-12.0
+      # Published on the host's loopback only, as in docker-compose.yml.
       ports:
-        - 8069:8069
+        - "127.0.0.1:8069:8069"
       environment:
         HOST: db
         PASSWORD: mysecretpassword

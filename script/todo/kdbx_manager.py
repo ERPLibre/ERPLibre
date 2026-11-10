@@ -4,14 +4,15 @@
 
 import getpass
 import logging
+import os
 
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
 
 # pykeepass s'importe dans `get_kdbx`, au moment d'ouvrir le coffre : le
-# charger ici coûtait un cinquième de l'import de TODO, qui crée ce
-# gestionnaire au démarrage sans ouvrir le coffre pour autant.
+# charger ici alourdirait l'import de TODO, qui crée ce gestionnaire au
+# démarrage sans ouvrir le coffre pour autant.
 #
 # tkinter reste à part : il ne sert QU'au sélecteur de fichier quand aucun
 # chemin n'est configuré, et son absence ne doit pas empêcher d'ouvrir le
@@ -23,6 +24,85 @@ except ModuleNotFoundError:
     tk = None
     filedialog = None
 
+from script.config.config_file import CONFIG_OVERRIDE_PRIVATE_FILE
+
+# Le mot de passe du coffre, pour un script lancé sans terminal (conteneur,
+# tâche planifiée) : le CHEMIN d'un fichier qui le porte, un secret docker
+# monté sous /run/secrets par exemple. La valeur elle-même ne passe ni par
+# l'environnement, que « docker inspect » et /proc/<pid>/environ montrent, ni
+# par la configuration JSON. Prioritaire sur kdbx.password.
+ENV_PASSWORD_FILE = "KDBX_PASSWORD_FILE"
+
+
+def lire_mot_de_passe_fichier(chemin: str) -> str:
+    """Le mot de passe que porte le fichier ``chemin``, fin de ligne finale
+    retirée, ou une chaîne vide, avec la raison affichée, si le fichier ne se
+    lit pas ou ne porte rien.
+
+    Le fichier se lit en UTF-8, marque d'ordre d'octets (BOM) en tête
+    retirée : un éditeur Windows l'ajoute, et elle ferait partie du mot de
+    passe. Un fichier qui n'est pas de l'UTF-8 est refusé sous une raison
+    générique : le texte de UnicodeDecodeError cite l'octet fautif et sa
+    position, donc un morceau du secret.
+    """
+    try:
+        with open(chemin, encoding="utf-8-sig") as fh:
+            mot_de_passe = fh.read().rstrip("\r\n")
+    except UnicodeDecodeError:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} :"
+            f" {t('kdbx_password_file_not_utf8')}"
+        )
+        return ""
+    except OSError as e:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} : {e.strerror}"
+        )
+        return ""
+    if not mot_de_passe:
+        print(
+            f"{t('kdbx_password_file_unreadable')}"
+            f" {ENV_PASSWORD_FILE}={chemin} : {t('kdbx_password_file_empty')}"
+        )
+    return mot_de_passe
+
+
+def _afficher_coffre_illisible(chemin: str, erreur: OSError) -> None:
+    """Affiche le chemin du coffre et la raison système pour laquelle il ne
+    s'ouvre pas — absent, illisible, répertoire —, au lieu de laisser
+    remonter la trace de FileNotFoundError ou de PermissionError."""
+    print(
+        f"{t('kdbx_vault_unreadable')} {chemin} : {erreur.strerror or erreur}"
+    )
+
+
+def choisir_fichier_kdbx() -> str:
+    """Le chemin du coffre choisi dans un sélecteur de fichier Tk, ou une
+    chaîne vide : choix annulé, tkinter absent, ou aucun affichage.
+
+    Sans affichage — un serveur, un conteneur, une session ssh sans
+    redirection X — Tk ne s'ouvre pas et lève TclError ; le chemin vient
+    alors de kdbx.path dans la configuration, que l'appelant réclame.
+    """
+    if tk is None:
+        _logger.error("tkinter is not available: no file picker")
+        return ""
+    try:
+        root = tk.Tk()
+    except tk.TclError as e:
+        _logger.error("No display for the file picker: %s", e)
+        return ""
+    try:
+        root.withdraw()
+        return filedialog.askopenfilename(
+            title="Select a File",
+            filetypes=(("KeepassX files", "*.kdbx"),),
+        )
+    finally:
+        root.destroy()
+
 
 class KdbxManager:
     def __init__(self, config_file) -> None:
@@ -33,21 +113,18 @@ class KdbxManager:
         if self._kdbx:
             return self._kdbx
 
-        kdbx_file_path = self._config_file.get_config_value(["kdbx", "path"])
+        # « ~ » se développe comme dans vault.py et code_messagerie.py, qui
+        # lisent la même clé : un chemin noté « ~/coffre.kdbx » désigne le
+        # même fichier pour les trois.
+        kdbx_file_path = os.path.expanduser(
+            self._config_file.get_config_value(["kdbx", "path"]) or ""
+        )
         if not kdbx_file_path:
-            if tk is None:
-                _logger.error("tkinter is not available")
-                return None
-            root = tk.Tk()
-            root.withdraw()
-            kdbx_file_path = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
+            kdbx_file_path = choisir_fichier_kdbx()
         if not kdbx_file_path:
             _logger.error(
-                "KDBX is not configured, please fill"
-                f" {self._config_file.CONFIG_FILE}"
+                "KDBX is not configured, please fill kdbx.path in %s",
+                CONFIG_OVERRIDE_PRIVATE_FILE,
             )
             return None
 
@@ -58,9 +135,15 @@ class KdbxManager:
             _logger.error("pykeepass is not installed")
             return None
 
-        kdbx_password = self._config_file.get_config_value(
-            ["kdbx", "password"]
-        )
+        chemin_secret = os.environ.get(ENV_PASSWORD_FILE)
+        if chemin_secret:
+            kdbx_password = lire_mot_de_passe_fichier(chemin_secret)
+            if not kdbx_password:
+                return None
+        else:
+            kdbx_password = self._config_file.get_config_value(
+                ["kdbx", "password"]
+            )
         if kdbx_password:
             # Mot de passe pris dans la configuration : personne à qui
             # redemander, mais il peut être faux — le dire au lieu de
@@ -70,16 +153,19 @@ class KdbxManager:
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 return None
+            except OSError as e:
+                _afficher_coffre_illisible(kdbx_file_path, e)
+                return None
             return self._kdbx
 
         # Saisie interactive. Un mot de passe refusé est le cas NORMAL ici,
-        # pas une panne : la bibliothèque lève `CredentialsError` et, sans
-        # ce rattrapage, la trace remontait jusqu'à tuer le CLI. On nomme
-        # aussi le coffre — l'invite ne disait pas DE QUOI elle parlait.
-        # `flush` : l'invite de getpass part vers le terminal, ce `print`
-        # vers la sortie standard — qui est un TUBE quand le menu nous lance.
-        # Sans vidage, on lisait « Mot de passe du coffre : Coffre KeePass :
-        # /chemin » — la question avant ce dont elle parle.
+        # pas une panne : `CredentialsError` se rattrape, le message le dit
+        # et la saisie recommence, sans trace qui arrête le CLI. Le chemin
+        # du coffre s'affiche avant l'invite, plusieurs coffres pouvant
+        # exister. `flush` : l'invite de getpass part vers le terminal, ce
+        # `print` vers la sortie standard — un TUBE quand le menu lance ce
+        # code ; sans vidage, la question s'afficherait avant le chemin du
+        # coffre dont elle parle.
         print(f"{t('kdbx_vault_is')} {kdbx_file_path}", flush=True)
         for _ in range(attempts):
             # Sans terminal, `getpass` lève — `termios.error` quand il ne
@@ -92,6 +178,7 @@ class KdbxManager:
                 password = getpass.getpass(prompt=t("kdbx_ask_password"))
             except (EOFError, OSError):
                 print(t("kdbx_no_terminal"))
+                print(t("kdbx_no_terminal_hint"))
                 return None
             if not password:
                 print(t("kdbx_give_up"))
@@ -101,6 +188,11 @@ class KdbxManager:
             except CredentialsError:
                 print(t("kdbx_wrong_password"))
                 continue
+            except OSError as e:
+                # Un autre mot de passe n'y changerait rien : pas de
+                # nouvelle saisie.
+                _afficher_coffre_illisible(kdbx_file_path, e)
+                return None
             return self._kdbx
         print(t("kdbx_give_up"))
         return None

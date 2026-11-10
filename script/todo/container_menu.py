@@ -761,14 +761,18 @@ class ContainerMenuMixin:
         """Vrai quand buildx émule chacune des architectures. Sinon, propose
         l'installation de buildx et de QEMU, commande montrée d'abord."""
         manquantes = [
-            a for a in archs if a not in self._container_plateformes_emulees(prefixe)
+            a
+            for a in archs
+            if a not in self._container_plateformes_emulees(prefixe)
         ]
         if not manquantes:
             return True
         commande = "sudo bash script/install/install_container.sh --multiarch"
         print(f"\n⚠ {t('No emulation for: %s') % ', '.join(manquantes)}")
         print(f"  {commande}")
-        if not self._is_yes(input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")):
+        if not self._is_yes(
+            input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")
+        ):
             return False
         self.execute.exec_command_live(commande, source_erplibre=False)
         emulees = self._container_plateformes_emulees(prefixe)
@@ -810,11 +814,15 @@ class ContainerMenuMixin:
             )
 
     def _container_erplibre(self):
-        """Les gestes qui visent le conteneur ERPLibre déjà démarré.
+        """Les gestes sur le projet docker compose ERPLibre de ce dépôt.
 
         Tous passent par les scripts de script/docker/, qui retrouvent le
-        conteneur d'après le nom du répertoire courant — les lancer depuis
-        un autre répertoire ne trouve rien.
+        projet par « docker compose config » du répertoire courant — les
+        lancer depuis un autre répertoire ne trouve rien. Les entrées 1 à 6
+        entrent dans le conteneur ERPLibre et exigent qu'il tourne ; un
+        conteneur arrêté se signale comme tel. L'entrée 7 efface les volumes
+        et retire les conteneurs du projet (docker compose down -v) ;
+        l'entrée 8 lit odoo.conf dans son volume, projet arrêté ou non.
         """
         prefixe = self._container_exige_docker()
         if prefixe is None:
@@ -831,6 +839,7 @@ class ContainerMenuMixin:
                     "Delete the volumes: databases, filestore, configuration"
                 )
             },
+            {"prompt_description": t("Show odoo.conf from its volume")},
         ]
         help_info = self.fill_help_info(choices)
         scripts = {
@@ -842,6 +851,8 @@ class ContainerMenuMixin:
             # Le script liste les volumes et demande lui-même ses deux
             # confirmations : un « y », puis le nom du projet retapé.
             "7": "./script/docker/docker_volume_clean.sh",
+            # Lit le volume, pas le conteneur : sert aussi projet arrêté.
+            "8": "./script/docker/docker_show_odoo_conf.sh",
         }
         while True:
             status = click.prompt(help_info)
@@ -1380,7 +1391,9 @@ class ContainerMenuMixin:
         print(f"  {t('This database is a copy: it gets a new UUID.')}")
         print(f"  {t('This database was moved: it keeps its original UUID.')}")
         if not self._is_yes_default_yes(
-            input(f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}")
+            input(
+                f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}"
+            )
         ):
             options.append("--move")
         # Une sauvegarde d'une version précédente du code ne se charge pas

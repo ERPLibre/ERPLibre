@@ -18,16 +18,16 @@ Ce que ces tests gardent :
 - la valeur est vérifiée avant toute étape, et docker_build.sh la transmet.
 """
 
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
 PROD = (RACINE / "docker/Dockerfile.prod.pkg").read_text(encoding="utf-8")
 BUILD = (RACINE / "script/docker/docker_build.sh").read_text(encoding="utf-8")
-ENTREE = (RACINE / "docker/entrypoint_pip_extra.sh").read_text(
-    encoding="utf-8"
-)
 
 
 def _instructions(texte):
@@ -99,9 +99,58 @@ class TestProprietaireDuCode(unittest.TestCase):
             "--build-arg ERPLIBRE_CODE_OWNER=${ERPLIBRE_CODE_OWNER}", BUILD
         )
 
+    @unittest.skipIf(os.getuid() == 0, "le venv doit appartenir à un compte")
     def test_pip_extra_tourne_sous_le_proprietaire_du_venv(self):
-        self.assertIn('stat -c %u "${venv}"', ENTREE)
-        self.assertIn('"${sous[@]}" "${python}" -m pip install', ENTREE)
+        """Lancé en root, l'entrypoint fait tourner pip sous le compte et le
+        groupe qui possèdent le venv : un faux « id » répond 0, un faux
+        « setpriv » note ses arguments puis lance la commande, et le
+        « python » du venv note les siens."""
+        with tempfile.TemporaryDirectory() as d:
+            journal = os.path.join(d, "journal.log")
+            faux = os.path.join(d, "faux")
+            bindir = os.path.join(d, ".venv.erplibre", "bin")
+            os.makedirs(faux)
+            os.makedirs(bindir)
+            for chemin, corps in (
+                (os.path.join(faux, "id"), "echo 0\n"),
+                (
+                    os.path.join(faux, "setpriv"),
+                    f'echo "setpriv $*" >> {journal}\n'
+                    'while [[ "$1" != env ]]; do shift; done; shift\n'
+                    'while [[ "$1" == *=* ]]; do shift; done\nexec "$@"\n',
+                ),
+                (
+                    os.path.join(bindir, "python"),
+                    f'echo "python $*" >> {journal}\n',
+                ),
+                (os.path.join(d, "suite.sh"), "exit 0\n"),
+            ):
+                with open(chemin, "w") as fh:
+                    fh.write("#!/usr/bin/env bash\n" + corps)
+                os.chmod(chemin, 0o755)
+            res = subprocess.run(
+                ["bash", str(RACINE / "docker/entrypoint_pip_extra.sh")],
+                env=dict(
+                    os.environ,
+                    PATH=faux + os.pathsep + os.environ["PATH"],
+                    ODOO_PREFIX=d,
+                    ERPLIBRE_ENTRYPOINT=os.path.join(d, "suite.sh"),
+                    ERPLIBRE_RUN_AS="root",
+                    PIP_EXTRA_REQUIREMENTS_ERPLIBRE="rich",
+                    PIP_EXTRA_REQUIREMENTS_ODOO="",
+                ),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            self.assertEqual(0, res.returncode, res.stderr)
+            info = os.stat(os.path.join(d, ".venv.erplibre"))
+            with open(journal) as fh:
+                setpriv, python = fh.read().splitlines()
+        self.assertIn(f"--reuid={info.st_uid}", setpriv.split())
+        self.assertIn(f"--regid={info.st_gid}", setpriv.split())
+        self.assertIn("-m pip install", python)
+        self.assertTrue(python.endswith(" rich"), python)
 
 
 if __name__ == "__main__":

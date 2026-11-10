@@ -52,9 +52,11 @@ if __name__ == "__main__":
     start_time = time.time()
     print("Try connection to postgres...")
 
-    connected = False
-    error = ""
-    while ((time.time() - start_time) < args.timeout) or connected is True:
+    # Une tentative au moins, puis une par seconde. La première connexion
+    # réussie sort en 0, quelles que soient les erreurs des tentatives
+    # d'avant ; passé args.timeout secondes, l'erreur de la dernière
+    # tentative sort en 1.
+    while True:
         try:
             conn = psycopg2.connect(
                 user=args.db_user,
@@ -63,14 +65,15 @@ if __name__ == "__main__":
                 password=args.db_password,
                 dbname=args.db_name,
             )
-            break
-        except psycopg2.OperationalError as e:
-            error = e
+        except psycopg2.OperationalError as error:
+            if (time.time() - start_time) >= args.timeout:
+                print(
+                    "Database connection failure: %s" % error,
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             print(".")
             time.sleep(1)
         else:
-            connected = True
             conn.close()
-    if error:
-        print("Database connection failure: %s" % error, file=sys.stderr)
-        sys.exit(1)
+            sys.exit(0)

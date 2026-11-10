@@ -16965,6 +16965,36 @@ TRANSLATIONS = {
         ),
         "en": ("No terminal to type the vault password: vault left closed."),
     },
+    "kdbx_no_terminal_hint": {
+        "fr": (
+            "Sans terminal, donnez dans KDBX_PASSWORD_FILE le chemin d'un"
+            " fichier qui porte le mot de passe, hors du checkout et en mode"
+            " 600. kdbx.password convient aussi, mais le garde en clair dans"
+            " la configuration."
+        ),
+        "en": (
+            "With no terminal, set KDBX_PASSWORD_FILE to the path of a file"
+            " holding the password, outside the checkout, mode 600."
+            " kdbx.password works too, but keeps it in plain text in the"
+            " configuration."
+        ),
+    },
+    "kdbx_password_file_unreadable": {
+        "fr": "Mot de passe du coffre illisible :",
+        "en": "Vault password unreadable:",
+    },
+    "kdbx_password_file_empty": {
+        "fr": "fichier vide",
+        "en": "empty file",
+    },
+    "kdbx_password_file_not_utf8": {
+        "fr": "le fichier n'est pas encodé en UTF-8",
+        "en": "the file is not UTF-8 encoded",
+    },
+    "kdbx_vault_unreadable": {
+        "fr": "Coffre KeePass illisible :",
+        "en": "KeePass vault unreadable:",
+    },
     "Some gateways demand an embedded browser (SAML): openconnect stops on"
     " \u00ab No SSO handler \u00bb and a helper is needed for the web step. It is"
     " optional, and its upstream is no longer maintained.": {
@@ -19015,6 +19045,10 @@ TRANSLATIONS = {
     "Delete the volumes: databases, filestore, configuration": {
         "fr": "🗑 Effacer les volumes : bases, filestore, configuration",
         "en": "🗑 Delete the volumes: databases, filestore, configuration",
+    },
+    "Show odoo.conf from its volume": {
+        "fr": "📄 Afficher odoo.conf depuis son volume",
+        "en": "📄 Show odoo.conf from its volume",
     },
     "File to copy": {
         "fr": "Fichier à copier",

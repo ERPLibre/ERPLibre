@@ -7,6 +7,10 @@ SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 ENV LANG=C.UTF-8
 
 # Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf
+#
+# libcap2-bin fournit capsh, par lequel script/docker/docker_exec.sh ouvre un
+# shell root réduit à SETUID et SETGID. Il est nommé, et non laissé à
+# iproute2 : --no-install-recommends ne garantit pas qu'un paquet le tire.
 RUN apt-get update \
         && apt-get install -y --no-install-recommends \
             ca-certificates \
@@ -33,6 +37,7 @@ RUN apt-get update \
             xz-utils \
             git \
             iproute2 \
+            libcap2-bin \
             inetutils-ping \
         && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb \
         && echo 'd9f259a67e05e1c221d48b504453645e6c491fab wkhtmltox.deb' | sha1sum -c - \

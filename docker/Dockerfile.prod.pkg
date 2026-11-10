@@ -21,8 +21,10 @@ ENV DOCKER_BUILD=true
 # celui qui fait tourner Odoo, ou « root ». Sous « odoo »,
 # erplibre_info_git_fetch tire le code depuis Odoo : un fetch écrit dans .git,
 # et le processus d'Odoo peut donc réécrire son propre code. Sous « root »,
-# l'image est immuable pour Odoo, et un tirage refuse en nommant le
-# propriétaire. Tout ce qui écrit dans /ERPLibre s'exécute sous ce compte, de
+# les fichiers clonés appartiennent à root et un tirage refuse en nommant le
+# propriétaire ; /ERPLibre lui-même reste à odoo en mode 1777
+# (Dockerfile.base), si bien qu'Odoo peut encore y renommer une entrée, et
+# l'entrypoint refuse alors les listes PIP_EXTRA_REQUIREMENTS_*. Tout ce qui écrit dans /ERPLibre s'exécute sous ce compte, de
 # sorte que rien ne change de propriétaire après coup : un « chown -R »
 # recopierait l'arbre entier dans une couche de plus.
 ARG ERPLIBRE_CODE_OWNER=odoo
