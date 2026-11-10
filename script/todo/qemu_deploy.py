@@ -104,7 +104,13 @@ class QemuDeployMixin:
                 + note
             )
         if not final_cmd:
-            final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
+            # La même commande que le profil de cette version : avec son
+            # PG_VERSION quand le catalogue en exige un.
+            majeure = self.ERPLIBRE_ODOO_TARGET.rsplit("_", 1)[-1]
+            final_cmd = (
+                f"{self._qemu_install_os_cmd([majeure])}"
+                f" && make {self.ERPLIBRE_ODOO_TARGET}"
+            )
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».

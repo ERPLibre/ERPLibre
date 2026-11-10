@@ -57,20 +57,48 @@ class QemuInstallMixin:
         )
         return [v.split(".")[0] for v in defaut + autres]
 
+    @staticmethod
+    def _qemu_install_os_cmd(majeures=None):
+        """« make install_os », suivi de « PG_VERSION=<n> » quand une des
+        versions majeures d'Odoo `majeures` (« 18 ») exige un PostgreSQL
+        minimal au catalogue : n est la plus haute de ces exigences.
+        `majeures` à None vaut toutes les versions du catalogue.
+
+        La version est passée explicitement parce que, dans une VM neuve,
+        install_os tourne avant qu'aucune version d'Odoo ne soit active : il
+        n'a pas de .odoo-version d'où la déduire. Sans exigence, la commande
+        reste nue et l'installeur garde son propre plancher."""
+        from script.todo.version_manager import (
+            get_odoo_version,
+            postgresql_requise,
+        )
+
+        versions, _installees, _active = get_odoo_version()
+        requises = {
+            postgresql_requise(v["odoo_version"])
+            for v in versions
+            if majeures is None or v["odoo_version"].split(".")[0] in majeures
+        } - {None}
+        if not requises:
+            return "make install_os"
+        return f"make install_os PG_VERSION={max(requises)}"
+
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
         défaut. Partagé par l'invite en ligne et le formulaire TUI."""
+        majeures = self._qemu_odoo_versions()
         profiles = [
             (
                 f"ERPLibre + Odoo {v}",
-                f"make install_os && make install_odoo_{v}",
+                f"{self._qemu_install_os_cmd([v])} && make install_odoo_{v}",
             )
-            for v in self._qemu_odoo_versions()
+            for v in majeures
         ]
         profiles += [
             (
                 t("ERPLibre + all Odoo versions"),
-                "make install_os && make install_odoo_all_version",
+                f"{self._qemu_install_os_cmd()}"
+                " && make install_odoo_all_version",
             ),
             (
                 t("ERPLibre only (no Odoo)"),
@@ -82,8 +110,10 @@ class QemuInstallMixin:
             ),
             (
                 t("ERPLibre Deployment (+ QEMU + dev)"),
-                "make install_os && make install_dev && "
-                + self._QEMU_QEMU_PKGS,
+                # « make install_dev » pose la version par défaut, en tête
+                # de `majeures`.
+                f"{self._qemu_install_os_cmd(majeures[:1])}"
+                " && make install_dev && " + self._QEMU_QEMU_PKGS,
             ),
             (
                 t("Proxmox VE hypervisor (no Odoo)"),
