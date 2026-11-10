@@ -1015,6 +1015,13 @@ class TestRestoreFromDatabase(unittest.TestCase):
         )
         cwd.start()
         self.addCleanup(cwd.stop)
+        # Une version qui neutralise, quelle que soit celle du checkout.
+        self.neutralisable = patch(
+            "script.database.db_duplicate.supporte_neutralisation",
+            return_value=True,
+        )
+        self.neutralisable.start()
+        self.addCleanup(self.neutralisable.stop)
 
     def restaurer(self, reponses, statuts=None):
         todo = TODO()
@@ -1052,6 +1059,21 @@ class TestRestoreFromDatabase(unittest.TestCase):
     def test_neutralize_is_the_default(self):
         cmds = self.restaurer(["1", "backup", "mydb", "", "", "", ""])
         self.assertIn("--neutralize", cmds[0])
+
+    def test_neutralize_flag_needs_odoo_16(self):
+        # Avant Odoo 16, odoo_db_legacy.py refuse « --neutralize » :
+        # update_prod_to_dev.sh neutralise seul, sur la base suffixée.
+        self.neutralisable.stop()
+        with patch(
+            "script.database.db_duplicate.supporte_neutralisation",
+            return_value=False,
+        ):
+            cmds = self.restaurer(["1", "backup", "mydb", "", "", "", ""])
+        self.neutralisable.start()
+        self.assertEqual(2, len(cmds), cmds)
+        self.assertNotIn("--neutralize", cmds[0])
+        self.assertIn("-d mydb_neutralize ", cmds[0])
+        self.assertIn("update_prod_to_dev.sh mydb_neutralize", cmds[1])
 
     def test_non_in_french_refuses_neutralization(self):
         # Comparer à « n » seul faisait de « non » un oui.
@@ -1208,6 +1230,59 @@ class TestRestoreFromDatabase(unittest.TestCase):
         ):
             todo.db_manager.restore_from_database()
         todo.db_manager._execute.exec_command_live.assert_not_called()
+
+
+class TestMonitoringRestore(unittest.TestCase):
+    """Réponses : nom de la base, puis neutraliser (défaut oui)."""
+
+    def restaurer(self, reponses, neutralisable):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, [])
+        with (
+            patch.object(
+                TODO, "_monitoring_image_name", return_value="backup"
+            ),
+            patch(
+                "script.database.db_duplicate.supporte_neutralisation",
+                return_value=neutralisable,
+            ),
+            patch("script.analyse.monitoring.neutralize_state"),
+            patch(
+                "script.analyse.monitoring.neutralize_report",
+                return_value="",
+            ),
+            patch("builtins.input", side_effect=reponses),
+            patch("sys.stdout", io.StringIO()),
+        ):
+            base = todo._monitoring_restore("backup.zip")
+        cmds = [
+            appel[0][0]
+            for appel in todo.execute.exec_command_live.call_args_list
+        ]
+        return base, cmds
+
+    def test_neutralize_flag_from_odoo_16(self):
+        base, cmds = self.restaurer(["mydb", ""], neutralisable=True)
+        self.assertEqual("mydb_neutralize", base)
+        self.assertIn("--neutralize", cmds[0])
+        self.assertIn("update_prod_to_dev.sh mydb_neutralize", cmds[1])
+
+    def test_neutralize_flag_needs_odoo_16(self):
+        # Avant Odoo 16, odoo_db_legacy.py refuse « --neutralize » :
+        # update_prod_to_dev.sh neutralise seul, sur la base suffixée.
+        base, cmds = self.restaurer(["mydb", ""], neutralisable=False)
+        self.assertEqual("mydb_neutralize", base)
+        self.assertEqual(2, len(cmds), cmds)
+        self.assertNotIn("--neutralize", cmds[0])
+        self.assertIn("-d mydb_neutralize ", cmds[0])
+        self.assertIn("update_prod_to_dev.sh mydb_neutralize", cmds[1])
+
+    def test_refused_neutralization_runs_restore_only(self):
+        base, cmds = self.restaurer(["mydb", "n"], neutralisable=True)
+        self.assertEqual("mydb", base)
+        self.assertEqual(1, len(cmds), cmds)
+        self.assertNotIn("--neutralize", cmds[0])
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
