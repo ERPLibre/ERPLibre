@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Hook post-checkout : avertit quand un changement de commit a touché un
+# dépôt à part cloné dans le checkout et qu'ERPLibre ignore, l'extension
+# GNOME ou les jeux du Stream Deck. git tient les fichiers ignorés pour
+# jetables : extraire un commit qui suit encore le chemin d'un de ces
+# clones écrit ses versions par-dessus les fichiers du clone, sans rien
+# demander, et revenir sur un commit qui ne le suit plus les supprime. La
+# session GNOME charge l'extension depuis ce répertoire.
+#
+# Le hook n'avertit que lorsque l'ancien ou le nouveau commit suit le
+# chemin, et ne restaure rien : il ne distingue pas un écrasement d'une
+# modification voulue. Il sort toujours en 0.
+#
+# Installation :
+#
+#     git config core.hooksPath script/git/hooks
+
+# $1 ancien HEAD, $2 nouveau HEAD, $3 1 pour un changement de branche ou
+# de commit, 0 pour l'extraction de fichiers.
+[ "${3:-0}" = 1 ] || exit 0
+[ "${1:-}" != "${2:-}" ] || exit 0
+racine="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+suit() {
+    git -C "${racine}" cat-file -e "${1}:${2}" 2>/dev/null
+}
+
+for chemin in script/gnome-extension/erplibre_home script/stream_deck/games; do
+    [ -e "${racine}/${chemin}/.git" ] || continue
+    if suit "${2}" "${chemin}"; then
+        echo "[ERPLibre] ${chemin}/: this commit tracks it, so its" \
+            "versions were written over the clone's files. Work on such a" \
+            "commit in its own worktree (git worktree add). Back on a" \
+            "commit that does not track it, restore the clone with:" \
+            "git -C ${chemin} checkout -- ." >&2
+    elif suit "${1}" "${chemin}"; then
+        echo "[ERPLibre] ${chemin}/: the previous commit tracked it, so" \
+            "this checkout deleted or overwrote the clone's files." \
+            "Restore them with: git -C ${chemin} checkout -- ." >&2
+    fi
+done
+exit 0

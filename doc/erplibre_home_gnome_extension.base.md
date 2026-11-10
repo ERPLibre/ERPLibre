@@ -130,6 +130,32 @@ over D-Bus and degrade when it does not answer. The extension, in turn,
 finds the checkout from its own path and runs the deck program, the
 controller and the games gallery from there.
 
+## Older ERPLibre commits
+
+ERPLibre commits older than the extension's move to its own repository
+track its files at this same path, and so do the branches made from them.
+Git treats the files it ignores as expendable: checking out such a branch
+or commit writes its versions over the clone's files without asking, and
+uncommitted changes to the extension are lost. Checking a newer commit out
+again deletes those files, and the directory the session loads keeps only
+`.git` and what the clone does not track. A bisect across that move does
+the same.
+
+Work on such a branch in its own worktree, `git worktree add <dir>
+<branch>`, and merge the current branch into it there; once merged, it no
+longer tracks the extension. When it happened, restore the clone's files
+from its own history:
+
+```
+git -C script/gnome-extension/erplibre_home checkout -- .
+```
+
+The `post-checkout` hook of `script/git/hooks` (`git config core.hooksPath
+script/git/hooks`) prints that command after a checkout from or to a
+commit that tracks the extension, or the games at
+`script/stream_deck/games/`. It restores nothing itself: it cannot tell an
+overwrite from a wanted change.
+
 ## Changing the extension
 
 A commit pushed to `main` of erplibre-home-gnome-extension reaches every
@@ -165,6 +191,33 @@ Deck, le contrôleur, le traducteur et le menu TODO parlent à l'extension en
 marche par D-Bus et se dégradent quand elle ne répond pas. L'extension,
 elle, trouve le checkout par son propre chemin et y lance le programme du
 deck, le contrôleur et la galerie des jeux.
+
+## Les commits d'ERPLibre plus anciens
+
+Les commits d'ERPLibre antérieurs au passage de l'extension dans son propre
+dépôt suivent ses fichiers à ce même chemin, comme les branches faites à
+partir d'eux. git tient les fichiers qu'il ignore pour jetables : extraire
+une telle branche ou un tel commit écrit ses versions par-dessus les
+fichiers du clone sans rien demander, et les modifications non commitées de
+l'extension sont perdues. Extraire de nouveau un commit plus récent
+supprime ces fichiers, et le répertoire que charge la session ne garde que
+`.git` et ce que le clone ne suit pas. Un bisect qui traverse ce passage
+fait de même.
+
+Travailler sur une telle branche dans son propre worktree, `git worktree
+add <répertoire> <branche>`, et y fusionner la branche courante ; une fois
+fusionnée, elle ne suit plus l'extension. Quand c'est arrivé, restaurer les
+fichiers du clone depuis son propre historique :
+
+```
+git -C script/gnome-extension/erplibre_home checkout -- .
+```
+
+Le hook `post-checkout` de `script/git/hooks` (`git config core.hooksPath
+script/git/hooks`) affiche cette commande après une extraction depuis ou
+vers un commit qui suit l'extension, ou les jeux de
+`script/stream_deck/games/`. Il ne restaure rien lui-même : il ne
+distingue pas un écrasement d'une modification voulue.
 
 ## Modifier l'extension
 
