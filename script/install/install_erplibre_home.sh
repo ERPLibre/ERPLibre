@@ -1502,7 +1502,11 @@ step_summary() {
 step_uninstall() {
     if [ "${DRY_RUN}" = 1 ]; then
         if [ "${STREAM_DECK}" = 0 ]; then
-            echo "gsettings: org.gnome.shell enabled-extensions -${UUID}"
+            if [ -f "${EXT_SRC}/tools/gsettings_strv.py" ]; then
+                echo "gsettings: org.gnome.shell enabled-extensions -${UUID}"
+            else
+                echo "skip: enabled-extensions -${UUID}, no ${EXT_SRC}/tools/gsettings_strv.py"
+            fi
             echo "remove: ${EXT_LINK}"
         fi
         echo "systemctl: --user stop ${DECK_UNIT_NAME}"

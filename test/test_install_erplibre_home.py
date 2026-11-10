@@ -506,6 +506,7 @@ class LeDryRun(Installateur):
         )
         self.assertEqual([], self.lignes(fini, "gsettings: "))
 
+    @SANS_EXTENSION
     def test_uninstall_lists_what_it_removes_and_keeps_packages(self):
         fini = self.lancer(
             "--uninstall", "--dry-run", systeme="nixos", gnome="none"
@@ -1802,10 +1803,24 @@ class TestUnCheckoutSansExtension(unittest.TestCase):
         self.assertIn("gnome=48.1", fait.stdout.splitlines())
 
     def test_uninstall_clones_nothing(self):
+        """Ni clone, ni lecture d'enabled-extensions sans le lecteur des
+        outils de l'extension : la ligne le dit, le lien part quand même."""
         fait = self.lancer("--dry-run", "--uninstall")
         self.assertEqual(0, fait.returncode, fait.stderr)
         self.assertNotIn("extension: ", fait.stdout)
         self.assertFalse(self.ext.exists())
+        lignes = fait.stdout.splitlines()
+        self.assertIn(
+            "skip: enabled-extensions -%s, no %s/tools/gsettings_strv.py"
+            % (UUID, self.ext),
+            lignes,
+        )
+        self.assertNotIn("gsettings: ", fait.stdout)
+        self.assertIn(
+            "remove: %s/.local/share/gnome-shell/extensions/%s"
+            % (self.home, UUID),
+            lignes,
+        )
 
 
 class TestVenv(unittest.TestCase):
