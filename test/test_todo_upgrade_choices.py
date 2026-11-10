@@ -154,6 +154,15 @@ class TestLesChoix(Banc):
                     gestes = self.migrer([*avant, retour])
                     self.assertEqual(gestes, [])
 
+    def test_ctrl_d_at_the_module_name_or_the_path_migrates_nothing(self):
+        """Ctrl+D au nom du module, au chemin du module ou à celui du
+        dépôt : la migration revient sans ouvrir le navigateur, sans
+        basculer de version ni rien migrer."""
+        for avant in (["1", "2"], ["1", "1"], ["2"]):
+            with self.subTest(avant=avant):
+                self.assertEqual(self.migrer([*avant, EOFError()]), [])
+        self.assertEqual(NavigateurQuiRenonce.ouverts, [])
+
     def test_an_empty_module_name_switches_nothing(self):
         """Un nom de module vide, ou fait de blancs, revient avant que les
         versions soient demandées : le checkout ne bascule pas."""

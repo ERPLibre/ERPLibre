@@ -1033,7 +1033,7 @@ class TodoUpgrade:
         les règles d'un sélecteur ; [0], Ctrl+D, ou une réponse vide d'un
         choix sans défaut reviennent avant que le checkout change de
         version d'Odoo ou que rien ne soit migré, comme un nom de module
-        vide."""
+        vide, et Ctrl+D au nom du module ou au chemin."""
         print("Welcome to Odoo module upgrade processus with ERPLibre 🤖")
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
@@ -1071,7 +1071,10 @@ class TodoUpgrade:
             if status is None:
                 return
             if status == "name":
-                module_name = input("💬 Module name : ").strip().lower()
+                try:
+                    module_name = ui.ask("💬 Module name : ").strip().lower()
+                except EOFError:
+                    return
                 # Un nom vide ne désigne aucun module : rien à basculer.
                 if not module_name:
                     return
@@ -1100,11 +1103,12 @@ class TodoUpgrade:
                         print(f"Error list : {lst_module_error}")
                     return
                 lst_dir_path.extend(lst_module_exist)
-            else:
-                self.dir_path = input("💬 Path : ").strip()
-        elif status == "repo":
-            self.dir_path = input("💬 Path : ").strip()
-        else:
+        if status in ("path", "repo"):
+            try:
+                self.dir_path = ui.ask("💬 Path : ").strip()
+            except EOFError:
+                return
+        elif status == "browse":
             self.dir_path = None
 
         if not self.dir_path and not lst_dir_path:

@@ -113,9 +113,12 @@ class LongTestMenuMixin:
         """Lance la descente `script`, deep_proxmox.py ou deep_qemu.py : la
         profondeur est DEMANDÉE, c'est le réglage qui décide de la durée
         (voir `_longtest_depth` pour ce qu'elle coûte selon l'étage), puis
-        d'où elle part ; un départ abandonné ne lance rien. `dry_run` n'en
-        montre que le plan."""
-        args = f"--depth {self._longtest_depth()}"
+        d'où elle part ; Ctrl+D à la profondeur ou un départ abandonné ne
+        lancent rien. `dry_run` n'en montre que le plan."""
+        profondeur = self._longtest_depth()
+        if profondeur is None:
+            return
+        args = f"--depth {profondeur}"
         depart = self._longtest_depart(script)
         if depart is None:
             return
@@ -242,15 +245,17 @@ class LongTestMenuMixin:
         Pas de sélecteur vérifié comme pour Proxmox : ce qu'on veut ici, c'est
         un hôte qui porte KVM, et c'est le script qui le CONSTATE au premier
         contrôle — /dev/kvm et l'imbrication — plutôt que le menu qui le
-        suppose.
+        suppose. Rend {"target", "jump"}, ou None pour une adresse vide ou
+        Ctrl+D à l'une des deux questions.
         """
-        cible = input(t("Address (user@host, blank = cancel): ")).strip()
-        if not cible:
+        try:
+            cible = ui.ask(t("Address (user@host, blank = cancel): ")).strip()
+            if not cible:
+                return None
+            jump = ui.ask(t("SSH jump host (blank = none): ")).strip()
+        except EOFError:
             return None
-        return {
-            "target": cible,
-            "jump": input(t("SSH jump host (blank = none): ")).strip(),
-        }
+        return {"target": cible, "jump": jump}
 
     def _longtest_depth(self):
         """Profondeur demandée. Trois par défaut, parce que trois marche.
@@ -265,7 +270,11 @@ class LongTestMenuMixin:
         nombre que l'invite n'a pas montré. Trois chiffres au plus : int()
         lève au-delà de 4 300 chiffres (limite de conversion de Python), et
         une réponse plus longue garde le défaut comme tout autre texte.
+        None sur Ctrl+D : la descente ne part pas.
         """
-        brut = input(f"{t('Depth (default 3): ')}").strip()
+        try:
+            brut = ui.ask(t("Depth (default 3): ")).strip()
+        except EOFError:
+            return None
         chiffres = brut.isascii() and brut.isdigit() and len(brut) <= 3
         return int(brut) if chiffres and int(brut) > 0 else 3
