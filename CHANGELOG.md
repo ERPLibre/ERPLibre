@@ -418,6 +418,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Python versions menu: Odoo 8 and 9 sources (openerp-server) are now recognised, targets are listed newest first in numeric order (Odoo 20 before Odoo 8), and a Python 2.7 venv (Odoo 8 to 10) gets its target's Poetry 1.1.15 even when started from a Python 3 checkout; the Poetry install phase no longer pip-installs Poetry into a Python 2.7 venv, which used to replace its bin/poetry wrapper
 - Database restore from the TODO menu (and the monitoring restore) now works on Odoo 8 to 15: it neutralizes with update_prod_to_dev.sh only and passes --neutralize to db_restore.py from Odoo 16 on. On Odoo 20, `db drop --if-exists` on a missing database exits quietly again, so the master password check before a restore works. `db list`, `db list-incompatible` and `db version` on upstream cores now print only their result: Odoo's startup warnings no longer show up as database names in the delete menu, and stderr still appears when the command fails
 - `./dev.sh`, `./test.sh` and every caller of `odoo_bin.sh` that passes `--limit-memory-hard=0` or `--limit-memory-soft=0` now work on Odoo 8 to 11. These versions apply 0 as given instead of reading it as "no limit", so each worker died on MemoryError. They now get a finite 1 TiB limit instead, and Odoo 12 and later still get 0
+- The OpenUpgrade hops to Odoo 14 to 20 and the views_migration_17 pass lift the memory and time limits again, so a whole-database update no longer runs under the 2560 MiB default of production `run.sh`
 
 ## Removed
 
