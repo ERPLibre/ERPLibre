@@ -26,6 +26,13 @@
         groups="addons,odoo20.0"
     />
     <project
+        name="queue.git"
+        revision="20.0"
+        path="odoo20.0/addons/OCA_queue"
+        remote="OCA"
+        groups="addons,odoo20.0"
+    />
+    <project
         name="storage.git"
         revision="20.0"
         path="odoo20.0/addons/OCA_storage"

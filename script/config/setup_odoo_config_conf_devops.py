@@ -24,7 +24,8 @@ def get_config():
         description="""\
 DESCRIPTION
     Force config.conf file to has workers 0 and support queue; --channel
-    declares extra queue_job channels.
+    declares extra job channels: queue_job ones, or OCA connector ones on
+    Odoo 8 and 9.
 
 SUGGESTION
     ./script/config/setup_odoo_config_conf_devops.py
@@ -38,7 +39,7 @@ SUGGESTION
         action="append",
         default=[],
         metavar="NAME:CAPACITY",
-        help="queue_job channel to declare, e.g. root.ms_graph:1; "
+        help="job channel to declare, e.g. root.ms_graph:1; "
         "repeatable. A channel already declared keeps its capacity.",
     )
     args = parser.parse_args()
@@ -88,6 +89,44 @@ def add_channels(channels, wanted):
     return separator.join(([existing] if existing.strip() else []) + added)
 
 
+def odoo_major_version(path=".odoo-version"):
+    """Return the major Odoo version that ``path`` names (``18`` for
+    ``18.0``), or ``None`` when the file is missing or unreadable."""
+    try:
+        with open(path) as handle:
+            return int(handle.read().strip().split(".")[0])
+    except (OSError, ValueError):
+        return None
+
+
+def default_server_wide_modules(major):
+    """Return the server-wide modules Odoo ``major`` loads when the config
+    names none, as its ``tools/config.py`` defines them. Writing the key
+    replaces that default, so it is kept rather than shortened: Odoo 19
+    serves /xmlrpc and /jsonrpc without a database only through ``rpc``,
+    and Odoo 8 to 10 load ``web_kanban`` there. An unknown version gets
+    ``base,web``."""
+    if major is None:
+        return "base,web"
+    if major <= 10:
+        return "web,web_kanban"
+    if major == 11:
+        return "web"
+    if major <= 18:
+        return "base,web"
+    return "base,rpc,web"
+
+
+def job_runner(major):
+    """Return ``(module, section)``: the server-wide module that runs the
+    job channels on Odoo ``major`` and the config section it reads them
+    from. Odoo 8 and 9 have no queue_job; OCA connector runs the jobs
+    there, with the same channel syntax under ``[options-connector]``."""
+    if major is not None and major <= 9:
+        return "connector", "options-connector"
+    return "queue_job", "queue_job"
+
+
 def main():
     config = get_config()
 
@@ -110,36 +149,41 @@ def main():
         else:
             config_parser.set("options", "workers", "0")
 
-        # Load queue_job
+        major = odoo_major_version()
+        runner_module, runner_section = job_runner(major)
+
+        # Load the job runner
         if config_parser.has_option("options", "server_wide_modules"):
             server_wide_modules = config_parser.get(
                 "options", "server_wide_modules"
             )
-            if "queue_job" not in server_wide_modules:
+            if runner_module not in server_wide_modules:
                 config_parser.set(
                     "options",
                     "server_wide_modules",
-                    server_wide_modules + ",queue_job",
+                    f"{server_wide_modules},{runner_module}",
                 )
         else:
             config_parser.set(
-                "options", "server_wide_modules", "base,web,queue_job"
+                "options",
+                "server_wide_modules",
+                f"{default_server_wide_modules(major)},{runner_module}",
             )
 
-        # Support queue_job size channels
-        queue_job_channels = ""
-        if config_parser.has_section("queue_job"):
-            if config_parser.has_option("queue_job", "channels"):
-                queue_job_channels = config_parser.get("queue_job", "channels")
+        # Support job runner size channels
+        job_channels = ""
+        if config_parser.has_section(runner_section):
+            if config_parser.has_option(runner_section, "channels"):
+                job_channels = config_parser.get(runner_section, "channels")
         else:
-            config_parser.add_section("queue_job")
+            config_parser.add_section(runner_section)
 
-        if not queue_job_channels:
-            queue_job_channels = f"root:{os.cpu_count()}"
+        if not job_channels:
+            job_channels = f"root:{os.cpu_count()}"
         config_parser.set(
-            "queue_job",
+            runner_section,
             "channels",
-            add_channels(queue_job_channels, config.channel),
+            add_channels(job_channels, config.channel),
         )
 
         with open(config_path, "w") as configfile:
