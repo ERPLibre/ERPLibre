@@ -56,9 +56,10 @@ fi
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_mobile "${MERGE_FREEZE[@]}"
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} "$@"
-# Un clone ordinaire des jeux Stream Deck, que repo sync refuserait, est
-# mis de côté une fois l'init fait (voir le script).
+# Un clone ordinaire des jeux Stream Deck ou de l'extension GNOME, que repo
+# sync refuserait, est mis de côté une fois l'init fait (voir les scripts).
 ./script/manifest/streamdeck_games_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }
+./script/manifest/erplibre_home_extension_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}

@@ -26,8 +26,9 @@ Ce que ces tests gardent :
   supprimer, voit ses sauvegardes copiées dans games.save-<date>/ ;
 - sans games/, sans repo prêt, ou quand repo n'extrait pas les jeux, rien
   ne change ;
-- chaque script update_manifest_*.sh le lance après repo init et juste
-  avant repo sync, et l'init de code_generator garde le groupe streamdeck.
+- chaque script update_manifest_*.sh le lance juste après repo init, puis
+  les autres passations seulement avant repo sync, et l'init de
+  code_generator garde le groupe streamdeck.
 """
 
 import os
@@ -342,7 +343,12 @@ class LesScriptsDeMiseAJour(unittest.TestCase):
 
                 appel = rang(r"streamdeck_games_to_repo\.sh")
                 self.assertEqual(rang(r"bin/repo init") + 1, appel)
-                self.assertEqual(appel + 1, rang(r"bin/repo sync"))
+                # Jusqu'à repo sync, rien que les autres passations.
+                entre = lignes[appel + 1 : rang(r"bin/repo sync")]
+                self.assertTrue(
+                    all(re.search(r"_to_repo\.sh ", ligne) for ligne in entre),
+                    entre,
+                )
                 self.assertIn("exit 1", lignes[appel])
 
     def test_the_code_generator_init_keeps_the_streamdeck_group(self):

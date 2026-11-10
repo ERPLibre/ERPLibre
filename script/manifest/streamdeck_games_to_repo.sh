@@ -26,15 +26,17 @@
 #
 # Rien n'est supprimé par ce script ; ce qu'il met de côté se retire à la
 # main une fois inutile. repo décide seul des projets qu'il extrait :
-# « repo list -p --all » le dit, selon les groupes de l'init. Sans --all,
-# repo list ne nomme que les projets déjà extraits, et rien juste après un
-# premier init. Sans repo prêt à la racine, il n'y a rien à préparer.
+# « repo list -p --all » le dit, selon les groupes de l'init. Sans repo
+# prêt à la racine, il n'y a rien à préparer. Les lectures sont celles de
+# plain_clone_lib.sh, que partage la passation de l'extension GNOME.
 #
 # Codes de sortie : 0 rien à faire, clone ou sauvegardes mis de côté ;
 # 1 clone retenu.
 set -euo pipefail
 
 RACINE="${1:-.}"
+# shellcheck source=script/manifest/plain_clone_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/plain_clone_lib.sh"
 JEUX="script/stream_deck/games"
 DIR="${RACINE}/${JEUX}"
 DATE="$(date +%Y%m%d-%H%M%S)"
@@ -49,23 +51,16 @@ retenu() {
 }
 
 [ -e "${DIR}/.git" ] || [ -L "${DIR}/.git" ] || exit 0
-[ -x "${RACINE}/.venv.erplibre/bin/repo" ] \
-    && [ -d "${RACINE}/.repo/manifests" ] || exit 0
+plain_clone_repo_ready "${RACINE}" || exit 0
 
-# Le shebang de repo est relatif à la racine. Une liste illisible vaut
-# « pas extrait » : le clone ordinaire reste, et pour un games/ de repo,
-# save/ n'est que copié.
-geres="$(cd "${RACINE}" && .venv.erplibre/bin/repo list -p --all 2>/dev/null || true)"
+# Une liste illisible vaut « pas extrait » : le clone ordinaire reste, et
+# pour un games/ de repo, save/ n'est que copié.
 extrait=0
-if grep -qxF "${JEUX}" <<<"${geres}"; then
+if plain_clone_extracted "${RACINE}" "${JEUX}"; then
     extrait=1
 fi
 
-# Extrait par repo : .git en lien (repo actuel), répertoire dont objects/
-# est un lien (ancienne disposition de repo), ou fichier qui pointe dans
-# .repo/ (repo init --worktree).
-if [ -L "${DIR}/.git" ] || [ -L "${DIR}/.git/objects" ] \
-    || { [ -f "${DIR}/.git" ] && grep -q '/\.repo/' "${DIR}/.git"; }; then
+if plain_clone_by_repo "${DIR}"; then
     [ "${extrait}" = 1 ] && exit 0
     if [ -n "$(find "${DIR}/save" -mindepth 1 ! -name .gitkeep -print -quit 2>/dev/null)" ]; then
         cp -a "${DIR}/save" "${DIR}.save-${DATE}"
@@ -75,22 +70,10 @@ if [ -L "${DIR}/.git" ] || [ -L "${DIR}/.git/objects" ] \
 fi
 
 [ "${extrait}" = 1 ] || exit 0
-[ -d "${DIR}/.git" ] \
-    || retenu "its .git is a file: a linked worktree or a separate git dir"
-
 # Ces lectures ne servent qu'à prévenir : le clone déplacé garde de toute
-# façon ce qu'elles manqueraient. Le mode des fichiers non suivis est fixé,
-# pour qu'un status.showUntrackedFiles=no de l'utilisateur ne les cache pas.
-modifs="$(git -C "${DIR}" status --porcelain --untracked-files=normal)"
-[ -z "${modifs}" ] || retenu "changes or untracked files: $(echo "${modifs}" | head -3 | tr '\n' ' ')"
-# refs/erplibre/installed marque le commit que l'installateur a extrait :
-# un main réécrit en amont ne le fait pas passer pour un commit local.
-locaux="$(git -C "${DIR}" rev-list HEAD --branches --not --remotes --tags \
-    --glob='refs/erplibre/*')"
-[ -z "${locaux}" ] || retenu "commits on no remote: $(echo "${locaux}" | wc -l)"
-[ -z "$(git -C "${DIR}" stash list)" ] || retenu "a stash"
-liees="$(git -C "${DIR}" worktree list --porcelain | grep -c '^worktree ' || true)"
-[ "${liees}" -le 1 ] || retenu "linked worktrees: $((liees - 1))"
+# façon ce qu'elles manqueraient.
+travail="$(plain_clone_local_work "${DIR}")"
+[ -z "${travail}" ] || retenu "${travail}"
 
 mv "${DIR}" "${DIR}.plain-clone-${DATE}"
 mkdir "${DIR}"

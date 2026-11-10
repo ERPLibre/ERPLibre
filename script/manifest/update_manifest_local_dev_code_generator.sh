@@ -60,9 +60,10 @@ fi
 # repo le répertoire du projet, sauvegardes des jeux et extension GNOME de
 # la session comprises.
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} -g base,code_generator,streamdeck,erplibre_home
-# Un clone ordinaire des jeux Stream Deck, que repo sync refuserait, est
-# mis de côté une fois l'init fait (voir le script).
+# Un clone ordinaire des jeux Stream Deck ou de l'extension GNOME, que repo
+# sync refuserait, est mis de côté une fois l'init fait (voir les scripts).
 ./script/manifest/streamdeck_games_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }
+./script/manifest/erplibre_home_extension_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}
