@@ -27,6 +27,9 @@ setuptools==80.10.2
 filetype
 # Pas de PyPDF2 : en Python 3.13 et au-delà, Odoo 20 exige pypdf, et il
 # préfère PyPDF2 dès qu'il est importable — la bibliothèque dépréciée.
+# pypdf : failles de 2026, corrigées au plus tard en 6.21.4 ; Odoo 20 épingle
+# 5.4.0, que cette ligne remplace comme le font celles d'Odoo 18.
+pypdf==6.21.4
 img2pdf
 
 # For logical test and quality
