@@ -529,6 +529,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code › Upgrade Module goes back on an empty module name before asking the Odoo versions, where the checkout switched to the start version once they were chosen
 - Ctrl+D at a value typed after a list goes back without opening or running anything, where TODO ended on an error: the ports of Execute › Deploy › SSH port forwarding (open Odoo in the browser) and Configure a SOCKS proxy over SSH, the host typed by hand for Configure a SOCKS proxy over SSH and Configure sshfs, the address and the jump host typed for a Proxmox host or for a host of Execute › Test › Long tests - real VMs, hours, the depth of Nested Proxmox depth and Nested QEMU depth, and the module name and the path of Execute › Code › Upgrade Module
 - The first launch, which asks the language, says [0] Back and an invalid answer in French and in English, as its question does, where they came in the default language
+- Execute › Code › Upgrade Module, run again in the same TODO, opens the directory browser for a module found by name without a path, where it migrated the directory chosen by the previous run
 
 ## Removed
 
