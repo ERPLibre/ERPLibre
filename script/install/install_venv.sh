@@ -3,7 +3,7 @@
 # Check if all 3 parameters are present
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
   echo "Error: One or more parameters are missing."
-  echo "Usage: $0 <Context> <Venv_Path> <Python_Version>"
+  echo "Usage: $0 <Context> <Venv_Path> <Python_Version> [Poetry_Version]"
   exit 1
 fi
 
@@ -12,6 +12,11 @@ CONTEXT="$1"
 # Sans « / » final : « rm -rf lien/ » viderait la cible d'un lien.
 VENV_PATH="${2%"${2##*[!/]}"}"
 PYTHON_VERSION="$3"
+# Le Poetry d'un venv Python 2, bâti par install_venv_python2.sh ; celui de
+# .poetry-version quand il est omis. Un appelant qui prépare un venv AVANT de
+# changer de version active passe celui de la cible, que le fichier ne porte
+# pas encore.
+POETRY_VERSION="$4"
 if [ -z "${VENV_PATH}" ]; then
   echo "Error: Venv_Path '$2' designates the root."
   exit 1
@@ -162,7 +167,7 @@ if [[ "${PYTHON_VERSION}" == 2.* ]]; then
   # Python 2 n'a pas de module venv, et son Poetry vit ailleurs : le script
   # dédié pose les deux, et l'enveloppe bin/poetry qu'attend install_locally.
   if ! ./script/install/install_venv_python2.sh "${VENV_PATH}" \
-    "${PYTHON_EXEC}" "$(xargs < .poetry-version)"; then
+    "${PYTHON_EXEC}" "${POETRY_VERSION:-$(xargs < .poetry-version)}"; then
     exit 1
   fi
 elif [[ ! -d ${VENV_PATH} ]]; then
