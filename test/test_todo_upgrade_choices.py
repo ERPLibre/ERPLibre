@@ -596,6 +596,9 @@ class TestLaReprise(Reprise):
         self.assertEqual(self.archives(), [])
 
     def test_a_bump_by_its_number_or_its_name_rewinds_once_confirmed(self):
+        """Le palier vers 15 par son numéro, [6], ou par son nom, puis oui :
+        la progression rembobinée, sans archive. La confirmation nomme le
+        palier et dit qu'il recrée la base intermédiaire, comme la liste."""
         attendu = self.attendu(TodoUpgrade.rewind_version_bump, 0)
         self.assertEqual(attendu["state_4_switch_odoo_lst"], [False, False])
         for reponse in ("6", f"{t('Step')} 4.15"):
@@ -603,6 +606,12 @@ class TestLaReprise(Reprise):
                 self.assertEqual(self.reprendre(reponse, "o"), (attendu, True))
                 self.assertEqual(self.effacements, ["rewind_version_bump"])
         self.assertIn(f"[6] {t('Step')} 4.15 · ", self.ecran)
+        self.assertEqual(
+            self.invites[-1],
+            f"💬 {t('Step')} 4.15 : Odoo 15.0 —"
+            f" {t('rebuilds the intermediate database')}."
+            f" {t('Confirm? (y/N): ')}",
+        )
         self.assertEqual(self.archives(), [])
 
     def test_an_erasing_answer_not_confirmed_changes_nothing(self):
