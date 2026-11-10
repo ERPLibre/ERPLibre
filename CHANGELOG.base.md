@@ -962,6 +962,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `script/database/db_restore.py` passes Odoo's `db_sslmode` to psql, so a server that demands `verify-full` is not joined without checking its certificate
 - Odoo 18 installs oauthlib 4.0.1, which fixes CVE-2026-49272: in the device authorization flow, 4.0.0 handed a Bearer token to anyone knowing a valid client ID. PyPDF2 is pinned at 2.12.1, the version Odoo 18 installs, so `pip-audit` on the requirements audits that version instead of 3.0.1; its PYSEC-2026-1835 (CVE-2023-36464) stays, the advertised fix 3.9.0 being a pypdf version and no PyPDF2 release fixing it
 - With `website_event_require_login` on Odoo 18, a public user can no longer register to an event that requires a login by posting the attendee form straight to `/event/<id>/registration/confirm`: the post is sent to `/web/login`. `OCA_event` is cloned from the ERPLibre fork, branch `18.0_dev`, until the fix reaches OCA
+- Odoo 19 installs oauthlib 4.0.1, as Odoo 18 does, fixing CVE-2026-49264, CVE-2026-49265, CVE-2026-118669 and CVE-2026-49272, and Odoo 19 and 20 install pypdf 6.21.4, which fixes the 2026 pypdf advisories; Odoo 20 pins 5.4.0 upstream. PyPDF2 is pinned at the 2.12.1 Odoo 19 uses, so pip-audit no longer reports a 3.0.1 nobody installs
 
 <!-- [fr] -->
 
@@ -987,6 +988,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `script/database/db_restore.py` transmet le `db_sslmode` d'Odoo à psql : un serveur qui exige `verify-full` n'est pas joint sans vérifier son certificat
 - Odoo 18 installe oauthlib 4.0.1, qui corrige CVE-2026-49272 : dans le flux d'autorisation « device », 4.0.0 remettait un jeton Bearer à qui connaissait un client ID valide. PyPDF2 est épinglé à 2.12.1, la version qu'Odoo 18 installe, si bien que `pip-audit` sur les requirements audite cette version plutôt que 3.0.1 ; son PYSEC-2026-1835 (CVE-2023-36464) demeure, le correctif annoncé 3.9.0 étant une version de pypdf et aucune version de PyPDF2 ne le corrigeant
 - Avec `website_event_require_login` sur Odoo 18, un usager public ne peut plus s'inscrire à un événement qui exige une connexion en postant le formulaire directement sur `/event/<id>/registration/confirm` : le post est renvoyé vers `/web/login`. `OCA_event` est cloné depuis le fork ERPLibre, branche `18.0_dev`, le temps que le correctif arrive chez OCA
+- Odoo 19 installe oauthlib 4.0.1, comme Odoo 18, qui corrige CVE-2026-49264, CVE-2026-49265, CVE-2026-118669 et CVE-2026-49272, et Odoo 19 et 20 installent pypdf 6.21.4, qui corrige les avis pypdf de 2026 ; l'amont d'Odoo 20 épingle 5.4.0. PyPDF2 est épinglé à la 2.12.1 qu'utilise Odoo 19 : pip-audit ne rapporte plus une 3.0.1 que personne n'installe
 
 <!-- [common] -->
 
