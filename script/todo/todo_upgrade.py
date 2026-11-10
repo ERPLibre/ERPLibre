@@ -559,18 +559,27 @@ class TodoUpgrade:
 
     def confirm_rewind(self, answer):
         """Vrai si l'utilisateur confirme `answer`, ce qui efface la
-        progression : une étape, « 0 » à « 4 », ou un palier, « 4.V », que
-        la question nomme en disant que la progression reprend depuis là ;
+        progression : une étape, « 0 » à « 4 », que la question nomme en
+        disant que la progression reprend depuis là ; un palier, « 4.V »,
+        nommé comme la liste l'affiche, qui recrée la base intermédiaire ;
         « n » ou « r », sous leur libellé. Le défaut est non : une réponse
         vide, toute autre que oui, Ctrl+D ou la fin du compte à rebours ne
         confirment rien."""
-        what = {
-            "n": t("New migration, erase everything"),
-            "r": t("Keep the zip only, ask every question again"),
-        }.get(answer) or (
-            f"{t('Step')} {answer} : {t('Replay from that step')}"
-            f" ({t('erases the progression of that step and the next ones')})"
-        )
+        if answer in ("n", "r"):
+            what = {
+                "n": t("New migration, erase everything"),
+                "r": t("Keep the zip only, ask every question again"),
+            }[answer]
+        elif answer.startswith("4."):
+            what = (
+                f"{t('Step')} {answer} : Odoo {answer[2:]}.0"
+                f" — {t('rebuilds the intermediate database')}"
+            )
+        else:
+            what = (
+                f"{t('Step')} {answer} : {t('Replay from that step')}"
+                f" ({t('erases the progression of that step and the next ones')})"
+            )
         try:
             reponse = self.ask(f"💬 {what}. {t('Confirm? (y/N): ')}", "n")
         except EOFError:
