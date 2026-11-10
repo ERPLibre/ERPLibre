@@ -20,6 +20,7 @@ import contextlib
 import io
 import sys
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -66,6 +67,45 @@ class TestLaRegle(unittest.TestCase):
                 builtins.input = vrai_input
         self.assertEqual(cmd, PVE_CMD)
         self.assertIn("odoo_18", ordinaire[1])
+
+    def _choisir_a_vide(self, distro, versions):
+        """(invite affichée, profil rendu) pour une réponse vide, le
+        catalogue des versions remplacé par « versions »."""
+        invites = []
+
+        def repondre(invite=""):
+            invites.append(invite)
+            return ""
+
+        with (
+            mock.patch(
+                "script.todo.version_manager.get_odoo_version",
+                return_value=(versions, [], ""),
+            ),
+            mock.patch("builtins.input", repondre),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            choisi = self.todo._qemu_pick_install_profile(distro)
+        self.assertEqual(len(invites), 1)
+        return invites[0], choisi
+
+    def test_the_prompt_names_the_profile_a_blank_answer_takes(self):
+        # L'invite annonce le premier profil, celui que rend la réponse
+        # vide : un défaut du catalogue qui change, ou un système qui impose
+        # le sien, change aussi ce qu'elle annonce.
+        versions = [
+            {"odoo_version": "18.0"},
+            {"odoo_version": "19.0", "default": True},
+        ]
+        invite, choisi = self._choisir_a_vide("ubuntu", versions)
+        self.assertEqual(choisi[0], "ERPLibre + Odoo 19")
+        self.assertIn("ERPLibre + Odoo 19", invite)
+        self.assertNotIn("Odoo 18", invite)
+
+        invite, choisi = self._choisir_a_vide("proxmox", versions)
+        self.assertEqual(choisi[1], PVE_CMD)
+        self.assertIn(choisi[0], invite)
+        self.assertNotIn("Odoo", invite.replace(choisi[0], ""))
 
 
 class TestUneSeuleVM(unittest.TestCase):

@@ -236,6 +236,24 @@ class TestLaRestauration(Bac):
         self.assertIn("odoo18.0_base", self.sortie)
         self.assertIn("odoo18.0_website", self.sortie)
 
+    def test_a_version_without_any_image_says_so(self):
+        # image_db ne porte que les images d'autres versions : rien à
+        # proposer, et la sortie le dit au lieu d'une liste vide.
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        _ecrit(self.dev / ".odoo-version", "19.0\n")
+        rc, journal = self.lance(mon.db_restore_cmd(["neutralize"]))
+        self.assertEqual(1, rc)
+        self.assertNotIn("systemctl stop erplibre.service", journal)
+        self.assertFalse([x for x in journal if x.startswith("restore")])
+        self.assertIn("image_db has no image for Odoo 19.0", self.sortie)
+        self.assertNotIn("available:", self.sortie)
+        self.assertNotIn("odoo18.0", self.sortie)
+
     def test_the_confirmation_names_what_is_lost(self):
         lignes = "\n".join(mon.db_restore_lines(["neutralize"]))
         self.assertIn(mon.DB_RESTORE_NAME, lignes)
