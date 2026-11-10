@@ -29,13 +29,17 @@ EL_INSTALL_NGINX=False
 
 
 class TestLesNomsDePort(unittest.TestCase):
-    def generer(self, version, paquet, options):
+    def generer(self, version, paquet, options, extra="", nginx="False"):
         racine = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, racine)
         with open(os.path.join(racine, ".odoo-version"), "w") as handle:
             handle.write(version)
         with open(os.path.join(racine, "env_var.sh"), "w") as handle:
-            handle.write(ENV_VAR)
+            handle.write(
+                ENV_VAR.replace(
+                    "EL_INSTALL_NGINX=False", f"EL_INSTALL_NGINX={nginx}"
+                )
+            )
         os.makedirs(os.path.join(racine, "script"))
         shutil.copy(SCRIPT, os.path.join(racine, "script"))
         outils = os.path.join(
@@ -48,6 +52,7 @@ class TestLesNomsDePort(unittest.TestCase):
                     f'group.add_option("{option}", dest="x")\n'
                     for option in options
                 )
+                + extra
             )
         done = subprocess.run(
             ["bash", "script/generate_config.sh"],
@@ -82,6 +87,71 @@ class TestLesNomsDePort(unittest.TestCase):
         self.assertIn("gevent_port = 8072\n", conf)
         self.assertNotIn("xmlrpc_port", conf)
         self.assertNotIn("longpolling_port", conf)
+
+
+class TestLInterfaceHttp(unittest.TestCase):
+    """Odoo 20 lit un http_interface vide comme 127.0.0.1, là où 11 à 19
+    écoutent sur toutes les interfaces. Sans nginx devant, l'instance doit
+    rester joignable depuis une autre machine."""
+
+    generer = TestLesNomsDePort.generer
+
+    ODOO_20 = (
+        'group.add_option("--http-interface", dest="http_interface",'
+        " my_default='127.0.0.1')\n"
+    )
+    ODOO_18 = (
+        'group.add_option("--http-interface", dest="http_interface",'
+        " my_default='')\n"
+    )
+
+    def test_odoo_20_sans_nginx_ecoute_toutes_les_interfaces(self):
+        conf = self.generer("20.0", "odoo", ["--http-port"], self.ODOO_20)
+        self.assertIn("http_interface = 0.0.0.0\n", conf)
+
+    # Odoo 19 ne connaît plus xmlrpc_interface et écoute par défaut sur
+    # toutes les interfaces.
+    ODOO_19 = (
+        'group.add_option("--http-interface", dest="http_interface",'
+        " my_default='0.0.0.0')\n"
+    )
+    # De 11 à 18, l'ancien nom reste un alias caché de --http-interface.
+    ALIAS_XMLRPC = (
+        'group.add_option("--xmlrpc-interface", dest="http_interface")\n'
+    )
+
+    def test_derriere_nginx_odoo_19_et_20_ecoutent_la_machine_locale(self):
+        for version, defaut in (
+            ("19.0", self.ODOO_19),
+            ("20.0", self.ODOO_20),
+        ):
+            with self.subTest(version=version):
+                conf = self.generer(
+                    version, "odoo", ["--http-port"], defaut, nginx="True"
+                )
+                self.assertIn("http_interface = 127.0.0.1\n", conf)
+                self.assertNotIn("xmlrpc_interface", conf)
+
+    def test_derriere_nginx_odoo_8_et_18_gardent_l_ancien_nom(self):
+        for version, paquet, options, extra in (
+            ("8.0", "openerp", ["--xmlrpc-port"], 'dest="xmlrpc_interface"\n'),
+            (
+                "18.0",
+                "odoo",
+                ["--http-port"],
+                self.ODOO_18 + self.ALIAS_XMLRPC,
+            ),
+        ):
+            with self.subTest(version=version):
+                conf = self.generer(
+                    version, paquet, options, extra, nginx="True"
+                )
+                self.assertIn("xmlrpc_interface = 127.0.0.1\n", conf)
+                self.assertNotIn("http_interface", conf)
+
+    def test_odoo_18_garde_son_defaut(self):
+        conf = self.generer("18.0", "odoo", ["--http-port"], self.ODOO_18)
+        self.assertNotIn("http_interface", conf)
 
 
 if __name__ == "__main__":

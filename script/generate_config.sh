@@ -30,6 +30,13 @@ EL_KEY_PORT="xmlrpc_port"
 grep -qE "[\"']--http-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_PORT="http_port"
 EL_KEY_LONGPOLLING="longpolling_port"
 grep -qE "[\"']--gevent-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_LONGPOLLING="gevent_port"
+# L'interface d'écoute derrière nginx : xmlrpc_interface tant que cet Odoo
+# connaît l'ancien nom, http_interface depuis 19, qui l'ignore et écouterait
+# alors sur toutes les interfaces, port 8069 joignable sans passer par nginx.
+EL_KEY_INTERFACE="xmlrpc_interface"
+if [[ -f "${EL_CONFIG_PY}" ]] && ! grep -qE "xmlrpc[-_]interface" "${EL_CONFIG_PY}"; then
+    EL_KEY_INTERFACE="http_interface"
+fi
 printf "${EL_KEY_PORT} = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "${EL_KEY_LONGPOLLING} = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
@@ -177,10 +184,17 @@ printf "max_cron_threads = 2\n" >> "${EL_CONFIG_FILE}"
 # TODO support queue_job
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "workers = 2\n" >> "${EL_CONFIG_FILE}"
-    printf "xmlrpc_interface = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
+    printf "${EL_KEY_INTERFACE} = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
     printf "proxy_mode = True\n" >> "${EL_CONFIG_FILE}"
 else
     printf "workers = 0\n" >> "${EL_CONFIG_FILE}"
+    # Sans nginx devant, Odoo sert lui-même les autres machines. Jusqu'à 19,
+    # un http_interface vide écoute sur toutes les interfaces ; l'Odoo dont
+    # --http-interface vaut 127.0.0.1 par défaut (20) n'écoute que la machine
+    # locale. La valeur est alors écrite, comme dans docker/odoo.conf.
+    if grep -qE "[\"']--http-interface[\"'].*my_default=[\"']127\.0\.0\.1[\"']" "${EL_CONFIG_PY}" 2> /dev/null; then
+        printf "http_interface = 0.0.0.0\n" >> "${EL_CONFIG_FILE}"
+    fi
 fi
 
 # Update and fix the config.conf
