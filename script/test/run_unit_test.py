@@ -764,15 +764,17 @@ def essais(lanceur):
     ]
 
 
-def lancer_une_fois(fichiers, args):
+def lancer_une_fois(fichiers, args, surveille=False):
     """Un passage complet sur `fichiers` : exécution, bilan, rapports, et
     mise à jour des durées et des échecs retenus. Rend le code de sortie.
 
     Avec les variables ERPLIBRE_REQUIREMENT_* (requirement_report.py),
     chaque test est noté puis son verdict poussé au registre des requis,
-    après les rapports et les caches ; le code de sortie reste celui de la
-    suite, même quand Ctrl+C ou SIGTERM arrête l'envoi. Sans elles, rien de
-    cela : ni détail par test, ni connexion."""
+    après les rapports et les caches. Quand Ctrl+C ou SIGTERM arrête
+    l'envoi, le code rendu reste celui de la suite ; sous --watch
+    (`surveille`), c'est 130, qui met fin à la surveillance comme un
+    Ctrl+C pendant les tests. Sans ces variables, rien de cela : ni détail
+    par test, ni connexion."""
     registre = requirement_report.depuis_environnement()
     lanceur = Lanceur(
         fichiers,
@@ -803,8 +805,8 @@ def lancer_une_fois(fichiers, args):
             requirement_report.avertir(
                 "suite interrompue, aucun verdict envoyé."
             )
-        elif registre:
-            registre.pousser(essais(lanceur))
+        elif registre and registre.pousser(essais(lanceur)) and surveille:
+            return 130
         return code
     finally:
         lanceur.arreter()
@@ -848,9 +850,13 @@ def surveiller(tests, args, pause=1.0):
                 f"{' …' if len(modifies) > 3 else ''}"
                 f" → {len(concernes)} fichier(s) de tests"
             )
-            # Un Ctrl+C pendant le passage est reçu par l'affichage, qui
-            # arrête les tests et rend 130 : c'est aussi la fin de --watch.
-            if concernes and lancer_une_fois(concernes, args) == 130:
+            # Un Ctrl+C pendant le passage — reçu par l'affichage, qui
+            # arrête les tests, ou par l'envoi au registre — rend 130 : c'est
+            # aussi la fin de --watch.
+            if (
+                concernes
+                and lancer_une_fois(concernes, args, surveille=True) == 130
+            ):
                 print("  --watch : fin.")
                 return 130
             # Un test qui écrit dans le dépôt relancerait la boucle : ce

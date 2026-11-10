@@ -31,8 +31,8 @@ laisse aucun avertissement dans le journal du serveur.
 
 L'envoi s'arrête au premier échec — serveur injoignable, identifiants
 refusés, droit manquant, Ctrl+C — et le dit en UNE ligne ; il ne lève
-jamais, et le code de sortie de la suite n'en dépend pas. La clé n'est jamais affichée :
-tout message lisible passe par `Registre._masquer`.
+jamais, et le code de sortie de la suite n'en dépend pas. La clé n'est
+jamais affichée : tout message lisible passe par `Registre._masquer`.
 
 Le journal d'un verdict, lisible par tout utilisateur interne du registre,
 passe par `Registre._neutraliser` avant de partir : la clé y est masquée,
@@ -360,7 +360,8 @@ class Registre:
     def pousser(self, essais, racine=None, sortie=None):
         """Envoie le verdict de chaque référence déclarée que les `essais`
         ont notée, puis écrit une ligne : le bilan, ou l'avertissement du
-        premier échec. Ne lève jamais. `racine` : RACINE par défaut, lue à
+        premier échec. Ne lève jamais ; rend vrai si Ctrl+C ou SIGTERM a
+        arrêté l'envoi, faux sinon. `racine` : RACINE par défaut, lue à
         l'appel."""
         racine = racine or RACINE
         sortie = sortie or sys.stdout
@@ -404,7 +405,8 @@ class Registre:
         # Tout échec, y compris imprévu, devient la ligne d'avertissement :
         # le registre ne décide jamais du code de sortie de la suite. Ctrl+C,
         # ou SIGTERM que le lanceur change en KeyboardInterrupt, arrête
-        # l'envoi de même, et la suite rend son propre code.
+        # l'envoi de même ; la valeur rendue le dit à l'appelant, qui
+        # décide s'il s'arrête aussi.
         except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001
             raison = str(exc)
             if isinstance(exc, KeyboardInterrupt):
@@ -421,7 +423,7 @@ class Registre:
                 ),
                 sortie=sortie,
             )
-            return
+            return isinstance(exc, KeyboardInterrupt)
         print(
             "  "
             + self._masquer(
@@ -431,3 +433,4 @@ class Registre:
             ),
             file=sortie,
         )
+        return False

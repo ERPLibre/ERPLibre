@@ -256,6 +256,25 @@ class TestLaConfiguration(unittest.TestCase):
                 )
                 self.assertNotIn(CLE, sortie.getvalue())
 
+    def test_a_refused_url_is_shown_without_its_credentials(self):
+        """L'URL refusée est citée dans l'avertissement, sans l'utilisateur,
+        le mot de passe, la requête ni le fragment qu'elle porte."""
+        url = (
+            f"http://lanceur:{CLE}@registre.invalid:8069/odoo"
+            f"?jeton={CLE}#{CLE}"
+        )
+        sortie = io.StringIO()
+        env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=AssertionError("réseau")
+        ):
+            self.assertIsNone(rr.depuis_environnement(env, sortie))
+        self.assertIn(
+            "« http://registre.invalid:8069/odoo »", sortie.getvalue()
+        )
+        self.assertNotIn(CLE, sortie.getvalue())
+        self.assertNotIn("lanceur:", sortie.getvalue())
+
     def test_a_complete_configuration_gives_a_silent_registry(self):
         sortie = io.StringIO()
         registre = rr.depuis_environnement(ENV, sortie)
@@ -602,6 +621,32 @@ class TestLEnvoi(unittest.TestCase):
         )
         self.assertNotIn(CLE, sortie)
 
+    def test_the_root_is_replaced_before_the_home_it_lies_under(self):
+        """Une racine sous le répertoire personnel devient relative, pas
+        « ~/<racine> » : elle est remplacée la première."""
+        maison = "/srv/compte-invente"
+        racine = f"{maison}/depot-invente"
+        message = (
+            f'  File "{racine}/test/test_demo.py", line 3, in test_faux\n'
+            f'  File "{maison}/.pyenv/lib/case.py", line 9\n'
+            f"cwd {racine}"
+        )
+        essai = rr.Essai(
+            f"{racine}/test/test_demo.py",
+            [entree("A::test_faux", "echec", message)],
+            None,
+        )
+        faux = FauxRegistre(declarees=[self.FAUX])
+        with mock.patch.dict(os.environ, {"HOME": maison}):
+            pousser(faux, [essai], racine=racine)
+        ((_args, kwargs),) = faux.envois()
+        self.assertEqual(
+            kwargs["log"],
+            '  File "test/test_demo.py", line 3, in test_faux\n'
+            '  File "~/.pyenv/lib/case.py", line 9\n'
+            "cwd .",
+        )
+
     def test_an_interrupt_during_the_push_ends_it_in_one_line(self):
         """Ctrl+C, ou SIGTERM que le lanceur change en KeyboardInterrupt,
         n'échappe pas à pousser : la suite garde son propre code."""
@@ -682,10 +727,15 @@ class TestLeLanceur(unittest.TestCase):
         # L'ordre des écritures des caches et des appels au registre.
         self.ordre = []
 
-    def lancer(self, source, env, reseau=None):
+    def lancer(self, source, env, reseau=None, passage=None):
         """(code, sortie, reseau, Lanceur) d'un passage sur un fichier
         test/test_lot.py écrit dans une racine provisoire. `reseau` remplace
-        urlopen ; par défaut, toute connexion est refusée."""
+        urlopen ; par défaut, toute connexion est refusée. `passage(chemin,
+        args)` rend le code ; par défaut, `r.lancer_une_fois([chemin],
+        args)`."""
+        passage = passage or (
+            lambda chemin, args: r.lancer_une_fois([chemin], args)
+        )
         args = argparse.Namespace(
             tui=False, repeat=1, slowest=0, junit=None, jobs=1, timeout=60
         )
@@ -720,7 +770,7 @@ class TestLeLanceur(unittest.TestCase):
                 for nom in rr.VARIABLES:
                     if nom not in env:
                         os.environ.pop(nom, None)
-                code = r.lancer_une_fois([chemin], args)
+                code = passage(chemin, args)
         return code, sortie.getvalue(), reseau, lanceur
 
     def test_unset_environment_runs_as_before_and_opens_no_connection(self):
@@ -763,6 +813,53 @@ class TestLeLanceur(unittest.TestCase):
                 registre = [x for x in sortie.splitlines() if "Registre" in x]
                 self.assertEqual(len(registre), 1)
                 self.assertIn("interrompu", registre[0])
+
+    def test_an_interrupted_push_ends_watch(self):
+        """Sous --watch, Ctrl+C ou SIGTERM pendant l'envoi met fin à la
+        surveillance après les caches, comme pendant les tests : un seul
+        signal suffit."""
+        pause = 0.0123
+        veilles = []
+        dormir = r.time.sleep
+
+        def veille(duree):
+            # Seules les pauses de la boucle sont comptées : la deuxième
+            # veut dire que la surveillance continue après l'interruption.
+            if duree != pause:
+                return dormir(duree)
+            veilles.append(duree)
+            if len(veilles) > 1:
+                raise AssertionError("--watch continue après l'interruption")
+
+        def interrompre(*_a, **_k):
+            self.ordre.append("envoi")
+            raise KeyboardInterrupt
+
+        def surveiller(chemin, args):
+            # Un relevé avant la boucle, un modifié au premier tour, puis
+            # le même après le passage.
+            releves = iter([{chemin: 1}, {chemin: 2}])
+            with (
+                mock.patch.object(
+                    r.unit_selection, "fichiers_du_depot", return_value=[]
+                ),
+                mock.patch.object(
+                    r.unit_selection, "concernes", return_value=[chemin]
+                ),
+                mock.patch.object(
+                    r, "releve", lambda _f: next(releves, {chemin: 2})
+                ),
+                mock.patch("time.sleep", veille),
+            ):
+                return r.surveiller([chemin], args, pause=pause)
+
+        code, sortie, _reseau, _lanceur = self.lancer(
+            PASSE, ENV, mock.Mock(side_effect=interrompre), surveiller
+        )
+        self.assertEqual(code, 130)
+        self.assertEqual(self.ordre, ["durees", "echecs", "envoi"])
+        self.assertEqual(len(veilles), 1)
+        self.assertIn("--watch : fin.", sortie)
 
     def test_a_suite_stopped_by_ctrl_c_sends_nothing(self):
         with mock.patch.object(r, "en_ligne", return_value=130):
