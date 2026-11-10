@@ -468,9 +468,9 @@ TRANSLATIONS = {
         "fr": "pour régénérer config.conf :",
         "en": "to regenerate config.conf:",
     },
-    "Security - Dependency audit and signature seals": {
-        "fr": "🔒 Sécurité - Audit des dépendances et sceaux de signature",
-        "en": "🔒 Security - Dependency audit and signature seals",
+    "Security - Dependency audit and key generation": {
+        "fr": "🔒 Sécurité - Audit des dépendances et génération de clés",
+        "en": "🔒 Security - Dependency audit and key generation",
     },
     "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
@@ -972,9 +972,9 @@ TRANSLATIONS = {
         "fr": "Outil réseautique!",
         "en": "Network tools!",
     },
-    "Dependency audit and signature seals!": {
-        "fr": "Audit des dépendances et sceaux de signature!",
-        "en": "Dependency audit and signature seals!",
+    "Dependency audit and key generation!": {
+        "fr": "Audit des dépendances et génération de clés!",
+        "en": "Dependency audit and key generation!",
     },
     "The Bash script failed with return code": {
         "fr": "Le script Bash a échoué avec le code de retour",
@@ -1019,6 +1019,95 @@ TRANSLATIONS = {
     "pip-audit - Check vulnerabilities on Python environments": {
         "fr": "🛡️ pip-audit - Vérifier les vulnérabilités des environnements Python",
         "en": "🛡️ pip-audit - Check vulnerabilities on Python environments",
+    },
+    # Security › clé SSH (script/todo/ssh_key_menu.py)
+    "Cannot create the folder of the key:": {
+        "fr": "Impossible de créer le dossier de la clé :",
+        "en": "Cannot create the folder of the key:",
+    },
+    "Key generation": {
+        "fr": "Génération de clé",
+        "en": "Key generation",
+    },
+    "Seal for PAdES signature": {
+        "fr": "🔏 Sceau pour signature PAdES",
+        "en": "🔏 PAdES signature seal",
+    },
+    "SSH key": {
+        "fr": "🔑 Clé SSH",
+        "en": "🔑 SSH key",
+    },
+    "An SSH key is a pair: the private key never leaves this computer, the public key (.pub) is copied to the servers that should accept it.": {
+        "fr": "Une clé SSH est une paire : la clé privée ne quitte jamais ce poste, la clé publique (.pub) se copie sur les serveurs qui doivent l'accepter.",
+        "en": "An SSH key is a pair: the private key never leaves this computer, the public key (.pub) is copied to the servers that should accept it.",
+    },
+    "Comment of the key (default: %s): ": {
+        "fr": "Commentaire de la clé (défaut : %s) : ",
+        "en": "Comment of the key (default: %s): ",
+    },
+    "Command run:": {
+        "fr": "Commande exécutée :",
+        "en": "Command run:",
+    },
+    "ssh-keygen asks for the passphrase next: it protects the key if the file is copied. Leave it empty only for a key used by an automated task.": {
+        "fr": "ssh-keygen demande ensuite la phrase de passe : elle protège la clé si le fichier est copié. La laisser vide seulement pour une clé d'une tâche automatisée.",
+        "en": "ssh-keygen asks for the passphrase next: it protects the key if the file is copied. Leave it empty only for a key used by an automated task.",
+    },
+    "ssh-keygen failed:": {
+        "fr": "ssh-keygen a échoué :",
+        "en": "ssh-keygen failed:",
+    },
+    "Key type: 1. ed25519 (recommended), 2. RSA 4096 (old servers) (default: 1): ": {
+        "fr": "Type de clé : 1. ed25519 (recommandé), 2. RSA 4096 (anciens serveurs) (défaut : 1) : ",
+        "en": "Key type: 1. ed25519 (recommended), 2. RSA 4096 (old servers) (default: 1): ",
+    },
+    "File of the private key (default: %s): ": {
+        "fr": "Fichier de la clé privée (défaut : %s) : ",
+        "en": "File of the private key (default: %s): ",
+    },
+    "A key already exists here; replacing it would cut the access of the servers that accept it:": {
+        "fr": "Une clé existe déjà ici ; la remplacer couperait l'accès aux serveurs qui l'acceptent :",
+        "en": "A key already exists here; replacing it would cut the access of the servers that accept it:",
+    },
+    "Give another file name, such as %s.": {
+        "fr": "Donner un autre nom de fichier, comme %s.",
+        "en": "Give another file name, such as %s.",
+    },
+    "the type of the key: %s": {
+        "fr": "le type de la clé : %s",
+        "en": "the type of the key: %s",
+    },
+    "the size of an RSA key, in bits": {
+        "fr": "la taille d'une clé RSA, en bits",
+        "en": "the size of an RSA key, in bits",
+    },
+    "the rounds that make a stolen passphrase-protected key slow to guess": {
+        "fr": "les tours qui rendent lente à deviner une clé volée protégée par phrase de passe",
+        "en": "the rounds that make a stolen passphrase-protected key slow to guess",
+    },
+    "the file of the private key; the public key adds .pub": {
+        "fr": "le fichier de la clé privée ; la clé publique y ajoute .pub",
+        "en": "the file of the private key; the public key adds .pub",
+    },
+    "the comment that names the key on the servers": {
+        "fr": "le commentaire qui nomme la clé sur les serveurs",
+        "en": "the comment that names the key on the servers",
+    },
+    "Key written:": {
+        "fr": "Clé écrite :",
+        "en": "Key written:",
+    },
+    "Public key, to copy to the servers:": {
+        "fr": "Clé publique, à copier sur les serveurs :",
+        "en": "Public key, to copy to the servers:",
+    },
+    "Fingerprint:": {
+        "fr": "Empreinte :",
+        "en": "Fingerprint:",
+    },
+    "Next, to a server: ssh-copy-id -i %s user@server": {
+        "fr": "Ensuite, vers un serveur : ssh-copy-id -i %s utilisateur@serveur",
+        "en": "Next, to a server: ssh-copy-id -i %s user@server",
     },
     # Security › sceau PAdES (script/todo/seal_menu.py)
     "Commands run, the password read from %s:": {

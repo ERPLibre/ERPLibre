@@ -149,6 +149,7 @@ from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.python_menu import PythonMenuMixin
 from script.todo.seal_menu import SealMenuMixin
+from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -223,6 +224,7 @@ class TODO(
     GitRepoMenuMixin,
     ModuleMenuMixin,
     SealMenuMixin,
+    SshKeyMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -373,7 +375,7 @@ class TODO(
 ── {t("Deployment, network & security")} ──
 [17] {t("Deploy - Deploy ERPLibre locally")}
 [18] {t("Network - Network tools")}
-[19] {t("Security - Dependency audit and signature seals")}
+[19] {t("Security - Dependency audit and key generation")}
 [20] {t("Docker / Podman - Container engines")}
 {retour(t('Back'))}
 """
@@ -926,6 +928,7 @@ class TODO(
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
+        "prompt_execute_seal": "PAdES seal",
         "prompt_execute_python": "Python",
         "prompt_execute_container": "Docker / Podman",
         "_container_service": "Service",
@@ -6206,7 +6209,7 @@ class TODO(
         )
 
     def prompt_execute_security(self):
-        print(f"🤖 {t('Dependency audit and signature seals!')}")
+        print(f"🤖 {t('Dependency audit and key generation!')}")
         choices = [
             {"section": t("Dependencies")},
             {
@@ -6214,15 +6217,9 @@ class TODO(
                     "pip-audit - Check vulnerabilities on Python environments"
                 )
             },
-            # Les textes de seal_menu.py citent ces numéros (ENTREE_*).
-            {"section": t("PAdES signature seal")},
-            {"prompt_description": t("Status of the generated seals")},
-            {"prompt_description": t("Internal or external key?")},
-            {
-                "prompt_description": t(
-                    "Generate an internal PAdES seal (self-signed)"
-                )
-            },
+            {"section": t("Key generation")},
+            {"prompt_description": t("Seal for PAdES signature")},
+            {"prompt_description": t("SSH key")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6234,11 +6231,9 @@ class TODO(
             elif status == "1":
                 self.execute_pip_audit()
             elif status == "2":
-                self.execute_seal_status()
+                self.prompt_execute_seal()
             elif status == "3":
-                self.execute_seal_guide()
-            elif status == "4":
-                self.execute_generate_seal()
+                self.execute_generate_ssh_key()
             else:
                 print(t("Command not found !"))
 

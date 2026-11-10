@@ -38,6 +38,8 @@ import stat
 import subprocess
 import tempfile
 
+import click
+
 from script.todo.todo_i18n import t
 
 RACINE = os.path.normpath(
@@ -74,10 +76,11 @@ MARQUE_CLE_PEM = b"PRIVATE KEY-----"
 # Les dépôts du checkout que Google Repo gère, un chemin relatif par ligne.
 LISTE_DEPOTS = os.path.join(".repo", "project.list")
 URL_AATL = "https://helpx.adobe.com/acrobat/kb/approved-trust-list1.html"
-# Numéros des entrées du menu Sécurité que les textes citent.
-ENTREE_ETAT = "2"
-ENTREE_GUIDE = "3"
-ENTREE_GENERER = "4"
+# Numéros des entrées du sous-menu du sceau (prompt_execute_seal) que les
+# textes citent.
+ENTREE_ETAT = "1"
+ENTREE_GUIDE = "2"
+ENTREE_GENERER = "3"
 
 
 def _depot_englobant(dossier):
@@ -527,6 +530,33 @@ def jours_restants(fin, maintenant=None):
 
 
 class SealMenuMixin:
+    def prompt_execute_seal(self):
+        print(f"🔏 {t('PAdES signature seal')}")
+        choices = [
+            # Les textes de ce fichier citent ces numéros (ENTREE_*).
+            {"prompt_description": t("Status of the generated seals")},
+            {"prompt_description": t("Internal or external key?")},
+            {
+                "prompt_description": t(
+                    "Generate an internal PAdES seal (self-signed)"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_seal_status()
+            elif status == "2":
+                self.execute_seal_guide()
+            elif status == "3":
+                self.execute_generate_seal()
+            else:
+                print(t("Command not found !"))
+
     def execute_seal_status(self):
         print(t("Status of the generated seals"))
         dossiers = sceaux_connus()
