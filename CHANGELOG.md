@@ -251,6 +251,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TODO › Execute › Database › Erase databases** erases one or more databases chosen by their numbers, separated by spaces, where it offered all of them or a single one. One confirmation names every database (default no), each is dropped in turn and a summary says which remain; an entry holding a single invalid number is refused whole, so a typo never erases the valid part of what was typed
 - `./run.sh`, the production launcher, no longer forces `--limit-time-real 99999`, `--limit-time-cpu 99999` and `--limit-memory-hard=0`: the time and memory limits of `config.conf` now apply, so a runaway request is killed and a worker's memory bounded. A setup that relied on unlimited requests sets them in `config.conf`, or uses `./dev.sh`. `./test.sh` also lifts `limit_memory_soft`, so a heavy test run keeps its worker
 - The Odoo 18 lock is refreshed: 63 packages move within the pyproject bounds, four across a major version — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — and oauthlib reaches 4.0.1, which fixes CVE-2026-49272 (see Security). markdown-it-py, which `erplibre_assistant_core` imports, is declared in the pyproject instead of arriving through rich; deprecated leaves the lock. An existing venv follows with `poetry install --no-root`
+- `script/install/install_dev_extra_ubuntu.sh`, the MariaDB and rootless Docker extras for tests,
+  targets the Ubuntu versions ERPLibre supports — 24.04, 25.10 and 26.04 — and exits 1 elsewhere. It
+  used to accept only 18.04 and 20.04, and a missing `fi` made bash reject the whole file. It now
+  installs `uidmap`, without which the rootless Docker setup refuses to run. The production guide
+  documents a single Ubuntu server section for those versions
 
 ## Fixed
 
@@ -384,6 +389,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **[0] All** in the `./run.sh` database menu no longer sends the warmup probe: with no database chosen, each of its requests, one per worker, landed on the database selector and filled the log with errors, with nothing to wake
 - `script/database/db_restore.py` names a permission denial on the image archive, where it reported the archive missing and Odoo answered "Not a zipped dump file": a directory the restoring account cannot traverse hides the file from `os.path.exists`, and Odoo swallows the read error. The message names the blocking directory or file, its owner, group and mode, and the command that fixes it — `sudo chown`, or `chmod` when the account already owns it —, before the master password when the archive must serve and before Odoo reads it otherwise. A missing archive is reported as before, and a `_cache_` clone still needs no zip
 - `script/config/setup_odoo_config_conf_devops.py`, run by **TODO › Execute** to configure queue_job and by `make robot_libre_pre`, keeps the queue_job channels already declared in `config.conf`, where it always replaced them with `root:<CPU count>`: it looked for the `channels` option in the wrong place
+- `repo init` no longer stops an installation on a question. The colour question is answered in
+  advance as `y` would (`color.ui = auto`, written to the git config repo reads, an existing choice
+  kept). Without a git identity (`user.name`, `user.email`), **TODO › Install** offers to enter and
+  confirm one after the install-type menu; declined, `repo init` runs without a terminal on its
+  input and asks nothing. `--config-name` passed to the manifest scripts still asks
 
 ## Removed
 
