@@ -495,6 +495,59 @@ l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
 
 <!-- [en] -->
 
+### Odoo module tests
+
+`script/test/odoo_test_report.py` runs the tests of Odoo modules and sends
+their verdicts with the same four variables. It installs the modules on a
+throwaway database, `erplibre_odoo_test_<random>`, runs their standard tests,
+drops the database and prints a summary. A requirement that an Odoo test proves
+lists a *Python test* line whose reference is the dotted path of the test
+method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
+error reaches every declared method of its class. A declared test missing from
+a module whose run reached its end is recorded as an error.
+
+<!-- [fr] -->
+
+### Tests des modules Odoo
+
+`script/test/odoo_test_report.py` lance les tests de modules Odoo et envoie
+leurs verdicts avec les mêmes quatre variables. Il installe les modules sur une
+base jetable, `erplibre_odoo_test_<aléatoire>`, lance leurs tests standard,
+supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
+une ligne *Test Python* dont la référence est le chemin pointé de la méthode
+de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
+de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
+absent d'un module dont le passage est allé jusqu'au bout est noté en erreur.
+
+<!-- [common] -->
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_streamdeck
+```
+
+<!-- [en] -->
+
+Odoo never starts with the repository's `config.conf`: the run uses a generated
+configuration that keeps only `addons_path` and the PostgreSQL access, listens
+on 127.0.0.1 only, on two free ports, and never receives the registry
+variables. `--keep-db` keeps the database and prints its name. The exit code is
+0 when every test passes, 1 when a test fails, 2 when the run proves nothing
+(a module that does not install, no test run), and 130 after Ctrl+C, which
+still drops the database and sends nothing.
+
+<!-- [fr] -->
+
+Odoo ne démarre jamais avec le `config.conf` du dépôt : le passage utilise une
+configuration générée qui n'en garde que `addons_path` et l'accès à
+PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
+jamais les variables du registre. `--keep-db` garde la base et affiche son
+nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
+échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
+aucun test lancé), et 130 après Ctrl+C, qui supprime quand même la base et
+n'envoie rien.
+
+<!-- [en] -->
+
 # Documentation
 
 | Guide | Description |

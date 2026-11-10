@@ -11,6 +11,11 @@ référence se lit `erplibre:test/<fichier>::<Classe>::<méthode>`, le chemin
 chaque test noté par unit_file.py, puis écrit le verdict par
 `devops.requirement.test.record_result_by_reference`, en JSON-RPC.
 
+L'envoi lui-même, `Registre.pousser_verdicts`, ne connaît ni unittest ni
+le dépôt : une sorte, un motif de référence et des verdicts par référence
+ou par préfixe. odoo_test_report.py s'en sert pour les tests d'un module
+Odoo, sorte `python`.
+
 La configuration vient de l'environnement, les quatre variables ou aucune :
 
     ERPLIBRE_REQUIREMENT_URL    racine HTTPS de l'instance Odoo
@@ -143,13 +148,11 @@ def references(essai, racine=RACINE):
     return notes
 
 
-def _prefixes(reference):
-    """Les préfixes dont les notes s'appliquent aussi à `reference` : celui
-    de son fichier et celui de sa classe."""
-    morceaux = reference.split("::")
-    if len(morceaux) < 3:
-        return []
-    return [f"{morceaux[0]}::", f"{morceaux[0]}::{morceaux[1]}::"]
+def _est_prefixe(cle):
+    """Vrai si `cle` est un préfixe : elle finit par un séparateur, « :: »
+    d'une référence de dépôt ou « . » d'un chemin pointé Python, et vaut
+    pour toute référence qui commence par elle."""
+    return cle.endswith((":", "."))
 
 
 def _pire(verdicts):
@@ -168,43 +171,62 @@ def _pire(verdicts):
     )
 
 
-def verdicts_declares(essais, declarees, racine=RACINE):
-    """{référence: verdict} pour chaque référence de `declarees` notée par
-    les `essais`, elle-même ou par le préfixe de sa classe ou de son
-    fichier.
+def resoudre(verdicts, declarees, complets=None):
+    """{référence: verdict} pour chaque référence de `declarees` que
+    `verdicts` note, elle-même ou par un préfixe qui la commence.
+
+    `verdicts` : {référence ou préfixe: verdict} ; un préfixe finit par un
+    séparateur (`_est_prefixe`). Plusieurs notes d'une même référence se
+    résument à la plus grave. `complets` : {préfixe: libellé} de ce qui a
+    tourné jusqu'au bout. Une référence déclarée sous un tel préfixe que
+    rien n'a notée désigne un test qui n'y existe plus : elle reçoit une
+    erreur qui le dit, avec le libellé. Toute autre référence non notée
+    n'y figure pas : son dernier verdict reste celui du registre."""
+    prefixes = [cle for cle in verdicts if _est_prefixe(cle)]
+    resultat = {}
+    for reference in declarees:
+        notes = [verdicts[reference]] if reference in verdicts else []
+        notes += [verdicts[p] for p in prefixes if reference.startswith(p)]
+        if notes:
+            resultat[reference] = _pire(notes)
+            continue
+        for prefixe, libelle in (complets or {}).items():
+            if reference.startswith(prefixe):
+                resultat[reference] = _verdict(
+                    "error",
+                    f"{reference[len(prefixe) :]} absent de {libelle} lors"
+                    " d'un passage complet : test renommé ou supprimé, la"
+                    " référence est à mettre à jour.",
+                    0.0,
+                )
+                break
+    return resultat
+
+
+def notes_des_essais(essais, racine=RACINE):
+    """({clé: verdict}, {préfixe: libellé}) des `essais`, pour `resoudre`.
 
     Un essai qui a noté au moins un test est COMPLET : unit_file.py n'écrit
-    ses notes qu'une fois tous les tests du fichier passés. Une référence
-    déclarée de ce fichier que rien n'a notée désigne un test qui n'y existe
-    plus, renommé ou supprimé : elle reçoit une erreur qui le dit, plutôt
-    que de garder un verdict qui ne prouve plus rien. Une référence d'un
-    fichier qui n'a pas tourné n'y figure pas : son dernier verdict reste
-    celui du registre."""
+    ses notes qu'une fois tous les tests du fichier passés. Son préfixe,
+    `erplibre:<fichier>::`, a pour libellé le chemin du fichier."""
     notes = {}
-    complets = set()
+    complets = {}
     for essai in essais:
         for cle, verdicts in references(essai, racine).items():
             notes.setdefault(cle, []).extend(verdicts)
         base = _base(essai.chemin, racine)
         if base is not None and essai.tests:
-            complets.add(base)
-    resultat = {}
-    for reference in declarees:
-        verdicts = list(notes.get(reference, []))
-        for prefixe in _prefixes(reference):
-            verdicts += notes.get(prefixe, [])
-        base, separateur, test = reference.partition("::")
-        if verdicts:
-            resultat[reference] = _pire(verdicts)
-        elif separateur and base in complets:
-            resultat[reference] = _verdict(
-                "error",
-                f"{test} absent de {base.split(':', 1)[1]} lors d'un"
-                " passage complet du fichier : test renommé ou supprimé,"
-                " la référence est à mettre à jour.",
-                0.0,
-            )
-    return resultat
+            complets[f"{base}::"] = base.split(":", 1)[1]
+    return {cle: _pire(v) for cle, v in notes.items()}, complets
+
+
+def verdicts_declares(essais, declarees, racine=RACINE):
+    """{référence: verdict} pour chaque référence de `declarees` notée par
+    les `essais`, elle-même ou par le préfixe de sa classe ou de son
+    fichier ; une référence déclarée d'un fichier complet que rien n'a
+    notée est en erreur (`resoudre`)."""
+    notes, complets = notes_des_essais(essais, racine)
+    return resoudre(notes, declarees, complets)
 
 
 def _affichable(url):
@@ -359,13 +381,50 @@ class Registre:
         )
 
     def pousser(self, essais, racine=None, sortie=None):
-        """Envoie le verdict de chaque référence déclarée que les `essais`
-        ont notée, puis écrit une ligne : le bilan, ou l'avertissement du
-        premier échec. Ne lève jamais ; rend vrai si Ctrl+C ou SIGTERM a
-        arrêté l'envoi, faux sinon. `racine` : RACINE par défaut, lue à
+        """Envoie le verdict de chaque test unitaire déclaré que les
+        `essais` ont noté : `pousser_verdicts` sur les lignes
+        `repo_unittest` du dépôt. `racine` : RACINE par défaut, lue à
         l'appel."""
         racine = racine or RACINE
+        notes, complets = notes_des_essais(essais, racine)
+        return self.pousser_verdicts(
+            notes,
+            SORTE,
+            f"{DEPOT}:%",
+            racine=racine,
+            sortie=sortie,
+            complets=complets,
+        )
+
+    def pousser_verdicts(
+        self,
+        verdicts,
+        sorte,
+        motif_reference,
+        racine=None,
+        sortie=None,
+        complets=None,
+    ):
+        """Envoie le verdict de chaque référence déclarée que `verdicts`
+        note, puis écrit une ligne : le bilan, ou l'avertissement du premier
+        échec. Ne lève jamais ; rend vrai si Ctrl+C ou SIGTERM a arrêté
+        l'envoi, faux sinon.
+
+        Seules les lignes de sorte `sorte` dont la référence est `=like`
+        `motif_reference` sont lues — un motif, ou une liste de motifs
+        réunis par un OU. `verdicts` et `complets` se résolvent contre elles
+        par `resoudre`. `racine` : RACINE par défaut, lue à l'appel ; les
+        journaux envoyés y sont rendus relatifs."""
+        racine = racine or RACINE
         sortie = sortie or sys.stdout
+        motifs = (
+            [motif_reference]
+            if isinstance(motif_reference, str)
+            else list(motif_reference)
+        )
+        domaine = [["kind", "=", sorte]]
+        domaine += ["|"] * (len(motifs) - 1)
+        domaine += [["reference", "=like", motif] for motif in motifs]
         envoyes = mises_a_jour = 0
         try:
             uid = self._appel(
@@ -376,25 +435,17 @@ class Registre:
                     f"identifiants refusés pour « {self.login} »"
                 )
             lignes = self._execute(
-                uid,
-                "search_read",
-                [
-                    [
-                        ["kind", "=", SORTE],
-                        ["reference", "=like", f"{DEPOT}:%"],
-                    ]
-                ],
-                {"fields": ["reference"]},
+                uid, "search_read", [domaine], {"fields": ["reference"]}
             )
             declarees = {ligne["reference"] for ligne in lignes or []}
-            verdicts = verdicts_declares(essais, declarees, racine)
-            for reference in sorted(verdicts):
-                verdict = verdicts[reference]
+            resolus = resoudre(verdicts, declarees, complets)
+            for reference in sorted(resolus):
+                verdict = resolus[reference]
                 mises_a_jour += int(
                     self._execute(
                         uid,
                         "record_result_by_reference",
-                        [SORTE, reference, verdict["result"]],
+                        [sorte, reference, verdict["result"]],
                         {
                             "log": self._neutraliser(verdict["log"], racine),
                             "duration": verdict["duration"],

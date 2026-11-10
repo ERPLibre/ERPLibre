@@ -1,0 +1,158 @@
+2026-11-10 12:39:37,826 1272650 INFO ? odoo: Odoo version 18.0 
+2026-11-10 12:39:37,826 1272650 INFO ? odoo: Using configuration file at /srv/invented-scratch/odoo_erplibre_odoo_test_4b5a6978.conf 
+2026-11-10 12:39:37,826 1272650 INFO ? odoo: addons paths: ['/srv/invented-erplibre/odoo18.0/odoo/odoo/addons', '/srv/invented-erplibre/.venv.odoo18.0_python3.12.10/lib/python3.12/site-packages/odoo/addons', '/srv/invented-scratch/data/addons/18.0', '/srv/invented-erplibre/odoo18.0/odoo/addons', '/srv/invented-addons'] 
+2026-11-10 12:39:37,826 1272650 INFO ? odoo: database: odoo@default:default 
+2026-11-10 12:39:37,961 1272650 INFO ? odoo.addons.base.models.ir_actions_report: Will use the Wkhtmltopdf binary at /usr/local/bin/wkhtmltopdf 
+2026-11-10 12:39:37,966 1272650 INFO ? odoo.addons.base.models.ir_actions_report: Will use the Wkhtmltoimage binary at /usr/local/bin/wkhtmltoimage 
+2026-11-10 12:39:38,028 1272650 INFO ? odoo.service.server: HTTP service (werkzeug) running on localhost:49625 
+2026-11-10 12:39:38,043 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.tests.common: Importing test framework 
+2026-11-10 12:39:38,060 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: init db 
+2026-11-10 12:39:38,445 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading 1 modules... 
+2026-11-10 12:39:38,446 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: Loading module base (1/1) 
+2026-11-10 12:39:38,468 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.registry: module base: creating or updating database tables 
+2026-11-10 12:39:38,570 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of ir.module.module.menus_by_module 
+2026-11-10 12:39:38,570 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of ir.module.module.reports_by_module 
+2026-11-10 12:39:38,570 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of ir.module.module.views_by_module 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.user_id 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.commercial_partner_id 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.complete_name 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.company_registry 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.commercial_company_name 
+2026-11-10 12:39:38,604 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.partner.partner_share 
+2026-11-10 12:39:38,614 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.currency.decimal_places 
+2026-11-10 12:39:38,621 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.company.uses_default_logo 
+2026-11-10 12:39:38,621 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.company.logo_web 
+2026-11-10 12:39:38,622 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Computing parent_path for table res_company... 
+2026-11-10 12:39:38,629 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.users.signature 
+2026-11-10 12:39:38,629 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.models: Prepare computation of res.users.share 
+2026-11-10 12:39:39,450 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_bank.xml 
+2026-11-10 12:39:39,453 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res.lang.csv 
+2026-11-10 12:39:39,478 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_lang_data.xml 
+2026-11-10 12:39:39,501 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_partner_data.xml 
+2026-11-10 12:39:39,529 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_currency_data.xml 
+2026-11-10 12:39:39,742 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_company_data.xml 
+2026-11-10 12:39:39,746 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_users_data.xml 
+2026-11-10 12:39:40,277 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/report_paperformat_data.xml 
+2026-11-10 12:39:40,282 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_country_data.xml 
+2026-11-10 12:39:40,451 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_demo_data.xml 
+2026-11-10 12:39:40,457 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/security/base_groups.xml 
+2026-11-10 12:39:40,584 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/security/base_security.xml 
+2026-11-10 12:39:40,645 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/base_menus.xml 
+2026-11-10 12:39:40,669 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/decimal_precision_views.xml 
+2026-11-10 12:39:40,677 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_config_views.xml 
+2026-11-10 12:39:40,679 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res.country.state.csv 
+2026-11-10 12:39:41,085 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_actions_views.xml 
+2026-11-10 12:39:41,161 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_asset_views.xml 
+2026-11-10 12:39:41,171 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_config_parameter_views.xml 
+2026-11-10 12:39:41,181 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_cron_views.xml 
+2026-11-10 12:39:41,196 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_cron_trigger_views.xml 
+2026-11-10 12:39:41,205 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_filters_views.xml 
+2026-11-10 12:39:41,215 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_mail_server_views.xml 
+2026-11-10 12:39:41,226 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_model_views.xml 
+2026-11-10 12:39:41,305 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_attachment_views.xml 
+2026-11-10 12:39:41,316 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_rule_views.xml 
+2026-11-10 12:39:41,327 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_sequence_views.xml 
+2026-11-10 12:39:41,337 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_ui_menu_views.xml 
+2026-11-10 12:39:41,347 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_ui_view_views.xml 
+2026-11-10 12:39:41,372 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_default_views.xml 
+2026-11-10 12:39:41,382 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_config_parameter_data.xml 
+2026-11-10 12:39:41,383 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_cron_data.xml 
+2026-11-10 12:39:41,389 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/report/ir_model_report.xml 
+2026-11-10 12:39:41,391 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/report/ir_model_templates.xml 
+2026-11-10 12:39:41,395 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_logging_views.xml 
+2026-11-10 12:39:41,405 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_qweb_widget_templates.xml 
+2026-11-10 12:39:41,411 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_module_views.xml 
+2026-11-10 12:39:41,439 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_module_category_data.xml 
+2026-11-10 12:39:41,473 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_module_module.xml 
+2026-11-10 12:39:41,501 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/report/ir_module_reports.xml 
+2026-11-10 12:39:41,502 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/report/ir_module_report_templates.xml 
+2026-11-10 12:39:41,505 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_module_update_views.xml 
+2026-11-10 12:39:41,511 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_language_install_views.xml 
+2026-11-10 12:39:41,516 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_import_language_views.xml 
+2026-11-10 12:39:41,521 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_module_upgrade_views.xml 
+2026-11-10 12:39:41,528 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_module_uninstall_views.xml 
+2026-11-10 12:39:41,532 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_export_language_views.xml 
+2026-11-10 12:39:41,537 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/wizard/base_partner_merge_views.xml 
+2026-11-10 12:39:41,544 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/ir_demo_failure_data.xml 
+2026-11-10 12:39:41,552 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/ir_profile_views.xml 
+2026-11-10 12:39:41,561 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_company_views.xml 
+2026-11-10 12:39:41,570 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_lang_views.xml 
+2026-11-10 12:39:41,584 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_partner_views.xml 
+2026-11-10 12:39:41,633 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_bank_views.xml 
+2026-11-10 12:39:41,647 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_country_views.xml 
+2026-11-10 12:39:41,665 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_currency_views.xml 
+2026-11-10 12:39:41,682 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_users_views.xml 
+2026-11-10 12:39:41,735 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_device_views.xml 
+2026-11-10 12:39:41,744 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_users_identitycheck_views.xml 
+2026-11-10 12:39:41,747 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/res_config_settings_views.xml 
+2026-11-10 12:39:41,750 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/views/report_paperformat_views.xml 
+2026-11-10 12:39:41,760 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/security/ir.model.access.csv 
+2026-11-10 12:39:41,826 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: Module base: loading demo 
+2026-11-10 12:39:41,826 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_users_demo.xml 
+2026-11-10 12:39:42,681 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_partner_bank_demo.xml 
+2026-11-10 12:39:42,683 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_currency_demo.xml 
+2026-11-10 12:39:42,685 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_currency_rate_demo.xml 
+2026-11-10 12:39:42,782 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_bank_demo.xml 
+2026-11-10 12:39:42,784 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_partner_demo.xml 
+2026-11-10 12:39:42,859 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading base/data/res_partner_image_demo.xml 
+2026-11-10 12:39:43,140 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: Module base loaded in 4.69s, 9318 queries (+9318 other) 
+2026-11-10 12:39:43,140 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: 1 modules loaded in 4.69s, 9318 queries (+9318 extra) 
+2026-11-10 12:39:43,154 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: updating modules list 
+2026-11-10 12:39:43,155 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.addons.base.models.ir_module: ALLOW access to module.update_list on [] to user __system__ #1 via n/a 
+2026-11-10 12:39:43,429 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.addons.base.models.ir_module: ALLOW access to module.button_install on ['Demo test broken'] to user __system__ #1 via n/a 
+2026-11-10 12:39:43,468 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: loading 10 modules... 
+2026-11-10 12:39:43,468 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.modules.loading: Loading module demo_test_broken (2/10) 
+2026-11-10 12:39:43,491 1272650 WARNING erplibre_odoo_test_4b5a6978 odoo.modules.loading: Transient module states were reset 
+2026-11-10 12:39:43,493 1272650 ERROR erplibre_odoo_test_4b5a6978 odoo.modules.registry: Failed to load registry 
+2026-11-10 12:39:43,493 1272650 CRITICAL erplibre_odoo_test_4b5a6978 odoo.service.server: Failed to initialize database `erplibre_odoo_test_4b5a6978`. 
+Traceback (most recent call last):
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/service/server.py", line 1416, in preload_registries
+    registry = Registry.new(dbname, update_module=update_module)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/.venv.odoo18.0_python3.12.10/lib/python3.12/site-packages/decorator.py", line 232, in fun
+    return caller(func, *(extras + args), **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/tools/func.py", line 97, in locked
+    return func(inst, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/modules/registry.py", line 118, in new
+    odoo.modules.load_modules(registry, force_demo, status, update_module)
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/modules/loading.py", line 489, in load_modules
+    processed_modules += load_marked_modules(env, graph,
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/modules/loading.py", line 365, in load_marked_modules
+    loaded, processed = load_module_graph(
+                        ^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/modules/loading.py", line 278, in load_module_graph
+    suite = loader.make_suite([module_name], 'at_install')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/tests/loader.py", line 108, in make_suite
+    return OdooSuite(sorted(tests, key=lambda t: t.test_sequence))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/tests/loader.py", line 104, in <genexpr>
+    for m in get_test_modules(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/tests/loader.py", line 51, in get_test_modules
+    results = _get_tests_modules(importlib.util.find_spec(f'odoo.addons.{module}'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/tests/loader.py", line 62, in _get_tests_modules
+    tests_mod = importlib.import_module(spec.name)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/invented-pyenv/versions/3.12.10/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/srv/invented-addons/demo_test_broken/tests/__init__.py", line 1, in <module>
+    from . import test_broken
+  File "/srv/invented-addons/demo_test_broken/tests/test_broken.py", line 3, in <module>
+    from odoo.addons.demo_test_missing import nothing  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'odoo.addons.demo_test_missing'
+2026-11-10 12:39:43,495 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.service.server: Initiating shutdown 
+2026-11-10 12:39:43,495 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.service.server: Hit CTRL-C again or send a second signal to force the shutdown. 
+2026-11-10 12:39:43,542 1272650 INFO erplibre_odoo_test_4b5a6978 odoo.sql_db: ConnectionPool(read/write;used=0/count=0/max=64): Closed 1 connections  

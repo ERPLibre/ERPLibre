@@ -260,6 +260,33 @@ s'arrête. Le code de sortie est celui de la suite ; seul un Ctrl+C pendant
 l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
 
 
+### Tests des modules Odoo
+
+`script/test/odoo_test_report.py` lance les tests de modules Odoo et envoie
+leurs verdicts avec les mêmes quatre variables. Il installe les modules sur une
+base jetable, `erplibre_odoo_test_<aléatoire>`, lance leurs tests standard,
+supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
+une ligne *Test Python* dont la référence est le chemin pointé de la méthode
+de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
+de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
+absent d'un module dont le passage est allé jusqu'au bout est noté en erreur.
+
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_streamdeck
+```
+
+
+Odoo ne démarre jamais avec le `config.conf` du dépôt : le passage utilise une
+configuration générée qui n'en garde que `addons_path` et l'accès à
+PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
+jamais les variables du registre. `--keep-db` garde la base et affiche son
+nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
+échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
+aucun test lancé), et 130 après Ctrl+C, qui supprime quand même la base et
+n'envoie rien.
+
+
 # Documentation
 
 | Guide | Description |

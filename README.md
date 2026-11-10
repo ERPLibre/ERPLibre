@@ -255,6 +255,32 @@ the suite's own; only Ctrl+C during the send ends `--watch`, with code 130. The
 key is never printed.
 
 
+### Odoo module tests
+
+`script/test/odoo_test_report.py` runs the tests of Odoo modules and sends
+their verdicts with the same four variables. It installs the modules on a
+throwaway database, `erplibre_odoo_test_<random>`, runs their standard tests,
+drops the database and prints a summary. A requirement that an Odoo test proves
+lists a *Python test* line whose reference is the dotted path of the test
+method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
+error reaches every declared method of its class. A declared test missing from
+a module whose run reached its end is recorded as an error.
+
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_streamdeck
+```
+
+
+Odoo never starts with the repository's `config.conf`: the run uses a generated
+configuration that keeps only `addons_path` and the PostgreSQL access, listens
+on 127.0.0.1 only, on two free ports, and never receives the registry
+variables. `--keep-db` keeps the database and prints its name. The exit code is
+0 when every test passes, 1 when a test fails, 2 when the run proves nothing
+(a module that does not install, no test run), and 130 after Ctrl+C, which
+still drops the database and sends nothing.
+
+
 # Documentation
 
 | Guide | Description |
