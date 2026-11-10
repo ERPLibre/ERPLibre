@@ -425,7 +425,7 @@ class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
 
     def test_it_does_not_settle_for_direct_membership(self):
         """`res_groups_users_rel` dirait « quelqu'un est dans le groupe »,
-        ce qui était vrai et menait au faux positif."""
+        ce qui serait vrai et mènerait au faux positif."""
         self.assertNotIn("res_groups_users_rel", self._controle()["sql"])
 
     def test_it_still_requires_the_module_and_the_table(self):

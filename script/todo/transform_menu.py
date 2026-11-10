@@ -171,7 +171,7 @@ class TransformMenuMixin:
         Ce mixin fournit SON rappel au lieu d'emprunter celui de sa classe
         d'accueil : `TODO` nomme le sien `on_dir_selected` et pose
         `dir_path`, tandis que le préfixé vit sur le gestionnaire de bases,
-        qui n'est pas un mixin mais un objet à part. Emprunter faisait
+        qui n'est pas un mixin mais un objet à part. Emprunter ferait
         lever `AttributeError` à l'ouverture du navigateur — donc au
         premier usage de l'entrée, et sur la première ligne du menu.
 
