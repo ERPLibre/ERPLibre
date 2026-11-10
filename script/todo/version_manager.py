@@ -76,6 +76,36 @@ def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
     return versions, installed_versions, odoo_installed_version
 
 
+def postgresql_requise(odoo_version) -> int | None:
+    """La version majeure MINIMALE de PostgreSQL qu'exige `odoo_version`
+    (« 18.0 »), lue dans le champ « postgresql_version » du catalogue.
+
+    None quand l'entrée ne porte pas ce champ, ou qu'aucune entrée ne
+    correspond : l'installeur garde alors son propre plancher. Plusieurs
+    entrées de la même Odoo (deux patchs de Python) rendent la plus exigeante.
+    """
+    with open(VERSION_DATA_FILE) as txt:
+        data_version = json.load(txt)
+    requises = [
+        int(value["postgresql_version"])
+        for value in data_version.values()
+        if value.get("odoo_version") == odoo_version
+        and value.get("postgresql_version")
+    ]
+    return max(requises) if requises else None
+
+
+def odoo_par_defaut() -> str | None:
+    """La version d'Odoo (« 18.0 ») de l'entrée du catalogue marquée
+    « default » : celle qu'installe un clone neuf. None si aucune ne l'est."""
+    with open(VERSION_DATA_FILE) as txt:
+        data_version = json.load(txt)
+    for value in data_version.values():
+        if value.get("default"):
+            return value.get("odoo_version")
+    return None
+
+
 def diagnostiquer_version(version_active, versions):
     """Situe la version active (.erplibre-version) parmi les supportées.
 
@@ -170,3 +200,24 @@ def planifier_venvs(versions, venvs, sources, complets=None, active=None):
             }
         )
     return plan
+
+
+if __name__ == "__main__":
+    # Depuis la racine du dépôt, une valeur par ligne, vide quand il n'y en
+    # a pas :
+    #   version_manager.py postgresql_requise 18.0   → la version exigée
+    #   version_manager.py odoo_par_defaut           → l'Odoo par défaut
+    # Sert aux installeurs shell, qui tournent sur le Python du système
+    # avant que le moindre venv existe — d'où rien d'autre que la stdlib ici.
+    import sys
+
+    if len(sys.argv) == 3 and sys.argv[1] == "postgresql_requise":
+        requise = postgresql_requise(sys.argv[2])
+        print("" if requise is None else requise)
+    elif len(sys.argv) == 2 and sys.argv[1] == "odoo_par_defaut":
+        print(odoo_par_defaut() or "")
+    else:
+        sys.exit(
+            f"usage: {sys.argv[0]} postgresql_requise <odoo_version>"
+            " | odoo_par_defaut"
+        )

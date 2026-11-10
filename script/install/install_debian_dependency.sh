@@ -97,35 +97,12 @@ echo -e "\n---- Update Server ----"
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-# Au moins la 16 : c'est le MIN_PG_VERSION d'Odoo 20, et une base y échoue
-# sur « any_value() n'existe pas » en dessous. Le paquet de la distribution
-# sert quand il suffit ; sinon — Debian 12 livre la 15 — la version vient du
-# dépôt officiel PostgreSQL (PGDG).
-#
-# PG_VERSION impose une version, par exemple « make install_os PG_VERSION=15 »
-# pour une machine qui n'accueillera qu'Odoo 10 ou 11.
-PG_MIN=16
-DISTRO_PG=$(LC_ALL=C apt-cache depends postgresql 2>/dev/null \
-  | sed -n 's/.*Depends: postgresql-\([0-9][0-9]*\)$/\1/p' | head -1)
-PG_WANT="${PG_VERSION:-}"
-if [[ -z "${PG_WANT}" && -n "${DISTRO_PG}" && "${DISTRO_PG}" -ge "${PG_MIN}" ]]; then
-  echo "PostgreSQL ${DISTRO_PG} de la distribution."
-  ${APT_GET} install postgresql postgresql-contrib libpq-dev -y
-else
-  PG_WANT="${PG_WANT:-${PG_MIN}}"
-  if [[ "${PG_WANT}" != "${DISTRO_PG}" ]]; then
-    echo "PostgreSQL ${PG_WANT} du dépôt PGDG (la distribution fournit ${DISTRO_PG:-aucune version})."
-    ${APT_GET} install postgresql-common -y \
-      && sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
-      || { echo "Ajout du dépôt PGDG en erreur."; exit 1; }
-  fi
-  ${APT_GET} install "postgresql-${PG_WANT}" libpq-dev -y
-fi
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "apt-get install postgresql installation error."
-  exit 1
-fi
+# La version vient de la version d'Odoo active et de la distribution, ou de
+# PG_VERSION : voir lib_postgres_version.sh. Elle est posée à côté d'un
+# cluster existant, jamais à sa place ; el_pg_avis_ancien_cluster le dit à la
+# toute fin, là où on le lit.
+. ./script/install/lib_postgres_version.sh
+el_pg_installer || exit 1
 # PostGIS : optionnel (géospatial). Le nom du paquet « postgis » n'existe pas
 # sur toutes les versions (Ubuntu 24.04) -> best-effort, ne bloque pas.
 ${APT_GET} install postgis -y \
@@ -388,3 +365,6 @@ elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
 else
   echo "Wkhtmltopdf isn't installed due to the choice of the user!"
 fi
+
+# En dernier : le reste de la sortie ne le recouvre pas.
+el_pg_avis_ancien_cluster
