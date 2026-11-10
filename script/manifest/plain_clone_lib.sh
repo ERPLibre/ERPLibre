@@ -41,28 +41,47 @@ plain_clone_by_repo() {
 # status.showUntrackedFiles=no de l'utilisateur ne les cache pas.
 # refs/erplibre/installed marque le commit que l'installateur a extrait :
 # un main réécrit en amont ne le fait pas passer pour un commit local.
+# Une lecture git qui échoue (index corrompu, propriétaire refusé par
+# safe.directory) compte comme du travail local : l'appel se fait dans une
+# substitution de commande, où errexit ne s'applique pas, et une sortie
+# vide y passerait pour un clone sans travail. git écrit sa raison sur
+# stderr, qui n'est pas capturé.
 plain_clone_local_work() {
-    local modifs locaux liees
+    local modifs locaux remises liste liees
     if [ ! -d "${1}/.git" ]; then
         echo "its .git is a file: a linked worktree or a separate git dir"
         return 0
     fi
-    modifs="$(git -C "${1}" status --porcelain --untracked-files=normal)"
+    if ! modifs="$(git -C "${1}" status --porcelain --untracked-files=normal)"; then
+        echo "git status failed, the clone cannot be read"
+        return 0
+    fi
     if [ -n "${modifs}" ]; then
         echo "changes or untracked files: $(echo "${modifs}" | head -3 | tr '\n' ' ')"
         return 0
     fi
-    locaux="$(git -C "${1}" rev-list HEAD --branches --not --remotes --tags \
-        --glob='refs/erplibre/*')"
+    if ! locaux="$(git -C "${1}" rev-list HEAD --branches --not --remotes \
+        --tags --glob='refs/erplibre/*')"; then
+        echo "git rev-list failed, the clone cannot be read"
+        return 0
+    fi
     if [ -n "${locaux}" ]; then
         echo "commits on no remote: $(echo "${locaux}" | wc -l)"
         return 0
     fi
-    if [ -n "$(git -C "${1}" stash list)" ]; then
+    if ! remises="$(git -C "${1}" stash list)"; then
+        echo "git stash list failed, the clone cannot be read"
+        return 0
+    fi
+    if [ -n "${remises}" ]; then
         echo "a stash"
         return 0
     fi
-    liees="$(git -C "${1}" worktree list --porcelain | grep -c '^worktree ' || true)"
+    if ! liste="$(git -C "${1}" worktree list --porcelain)"; then
+        echo "git worktree list failed, the clone cannot be read"
+        return 0
+    fi
+    liees="$(grep -c '^worktree ' <<<"${liste}" || true)"
     if [ "${liees}" -gt 1 ]; then
         echo "linked worktrees: $((liees - 1))"
     fi

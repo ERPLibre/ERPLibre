@@ -16,9 +16,9 @@ Ce que ces tests gardent :
   games.plain-clone-<date>/, et games/ ne garde qu'une copie de save/ ;
   rien n'est supprimé, pas même ce que les vérifications ne voient pas ;
 - un clone avec une modification, un fichier non suivi (même sous
-  status.showUntrackedFiles=no), un commit sur aucun remote, une remise ou
-  un worktree lié reste en place, et le script sort en 1 en nommant la
-  raison ;
+  status.showUntrackedFiles=no), un commit sur aucun remote, une remise,
+  un worktree lié ou un dépôt que git ne lit pas reste en place, et le
+  script sort en 1 en nommant la raison ;
 - un .git en fichier qui ne pointe pas dans .repo/ (worktree lié,
   --separate-git-dir) retient le clone ;
 - un games/ extrait par repo (.git en lien, ancienne disposition, ou
@@ -189,6 +189,18 @@ class LeScript(unittest.TestCase):
                 self.assertIn("repo sync cannot take it over", fini.stderr)
                 self.assertEqual(avant, self.contenu())
                 self.assertEqual([], self.mis_de_cote())
+
+    def test_an_unreadable_clone_is_kept(self):
+        """git status échoue sur un index corrompu : une sortie vide n'y
+        vaut pas « rien de local »."""
+        (self.jeux / "games_cli.py").write_text("modifié\n")
+        (self.jeux / ".git/index").write_bytes(b"illisible")
+        avant = self.contenu()
+        fini = self.lancer()
+        self.assertEqual(1, fini.returncode, fini.stdout)
+        self.assertIn("git status failed", fini.stderr)
+        self.assertEqual(avant, self.contenu())
+        self.assertEqual([], self.mis_de_cote())
 
     def test_the_installed_commit_is_not_local_work(self):
         """main réécrit en amont : le commit extrait n'est plus sur un

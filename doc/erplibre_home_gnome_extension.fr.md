@@ -36,7 +36,8 @@ Elle arrive de deux façons :
   `script/manifest/erplibre_home_extension_to_repo.sh`, lancé entre
   `repo init` et `repo sync`, ne déplace que son `.git` vers
   `script/gnome-extension/erplibre_home.plain-clone-git-<date>/` quand il
-  ne porte aucun travail local, et repo extrait `main` par-dessus les
+  ne porte aucun travail local (un clone que git ne lit pas compte comme
+  en portant), et repo extrait `main` par-dessus les
   fichiers en place : le répertoire que charge la session n'est jamais
   vide. Il arrête sinon la mise à jour en nommant ce travail, et aussi
   quand l'init ferait supprimer l'extension par repo (groupe

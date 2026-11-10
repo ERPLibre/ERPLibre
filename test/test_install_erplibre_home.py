@@ -1162,6 +1162,31 @@ class TestJeux(unittest.TestCase):
                         fait.stdout,
                     )
 
+    def test_an_unreadable_clone_stays_where_it_is(self):
+        """git status échoue sur un index corrompu : sa sortie vide ne dit
+        pas « rien de local ». L'étiquette est déjà connue du clone, le
+        fetch n'a pas lieu."""
+        with tempfile.TemporaryDirectory() as dossier:
+            sha, manifeste = depot_de_jeux(dossier)
+            self.cloner(dossier, manifeste)
+            jeux = Path(dossier, "games")
+            self.nouvelle_etiquette(dossier, manifeste)
+            subprocess.run(
+                ["git", "-C", str(jeux), "fetch", "-q", "--tags", "origin"],
+                check=True,
+            )
+            (jeux / "games_cli.py").write_text("x")
+            (jeux / ".git/index").write_bytes(b"illisible")
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(sha, self.tete(jeux))
+            self.assertEqual("x", (jeux / "games_cli.py").read_text())
+            self.assertEqual(
+                "games NOT updated to refs/tags/v9.9.10: %s holds a"
+                " branch or local work\n" % jeux,
+                fait.stdout,
+            )
+
     def test_the_venv_gets_the_games_requirements_when_they_are_there(self):
         """Un second appel de pip, après celui du deck ; son échec est dit
         au bilan et n'arrête pas l'installation."""

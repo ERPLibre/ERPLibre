@@ -19,8 +19,9 @@ Ce que ces tests gardent :
   dans erplibre_home.plain-clone-git-<date>/ ; chaque fichier, suivi ou
   ignoré, reste en place, et l'adoption par repo laisse un arbre propre ;
 - un clone avec une modification, un fichier non suivi, un commit sur
-  aucun remote, une remise, un worktree lié ou un .git en fichier hors de
-  .repo/ reste entier, et le script sort en 1 en nommant la raison ;
+  aucun remote, une remise, un worktree lié, un .git en fichier hors de
+  .repo/ ou un dépôt que git ne lit pas reste entier, et le script sort en
+  1 en nommant la raison ;
 - une extension extraite par repo que l'init n'extrait plus, et que repo
   sync supprimerait, arrête la mise à jour en nommant le groupe
   erplibre_home ; extraite et gardée par l'init, elle est laissée à repo ;
@@ -190,6 +191,21 @@ class LeScript(unittest.TestCase):
                 self.assertEqual(avant, self.contenu())
                 self.assertTrue((self.ext / ".git").is_dir())
                 self.assertEqual([], self.mis_de_cote())
+
+    def test_an_unreadable_clone_is_kept_with_its_changes(self):
+        """git status échoue sur un index corrompu : une sortie vide n'y
+        vaut pas « rien de local », sans quoi repo écraserait la
+        modification par read-tree."""
+        (self.ext / "metadata.json").write_text('{"x": 1}\n')
+        (self.ext / ".git/index").write_bytes(b"illisible")
+        avant = self.contenu()
+        fini = self.lancer()
+        self.assertEqual(1, fini.returncode, fini.stdout)
+        self.assertIn("git status failed", fini.stderr)
+        self.assertIn("repo sync cannot take it over", fini.stderr)
+        self.assertEqual(avant, self.contenu())
+        self.assertTrue((self.ext / ".git").is_dir())
+        self.assertEqual([], self.mis_de_cote())
 
     def test_a_git_file_outside_repo_holds_the_clone_back(self):
         ailleurs = self.tmp / "git_ailleurs"

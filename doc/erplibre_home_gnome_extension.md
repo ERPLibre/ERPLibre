@@ -36,7 +36,8 @@ It arrives two ways:
   `script/manifest/erplibre_home_extension_to_repo.sh`, run between
   `repo init` and `repo sync`, moves only its `.git` to
   `script/gnome-extension/erplibre_home.plain-clone-git-<date>/` when it
-  holds no local work, and repo checks `main` out over the files in place:
+  holds no local work (a clone git cannot read counts as local work), and
+  repo checks `main` out over the files in place:
   the directory the session loads is never empty. It stops the update,
   naming the work, otherwise, and also when the init would make repo
   remove the extension (group `erplibre_home` missing from `repo init -g`).

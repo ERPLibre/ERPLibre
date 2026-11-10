@@ -611,12 +611,18 @@ plain_clone_plain() {
 # Sort en 0 quand le clone ordinaire DIR ne doit pas bouger : HEAD sur une
 # branche, une modification ou un fichier non suivi, ou un commit que ni
 # ses remotes, ni une étiquette, ni refs/erplibre/installed n'atteignent.
-# plain_clone_clone le laisse en HEAD détaché sans rien de tel.
+# plain_clone_clone le laisse en HEAD détaché sans rien de tel. Une lecture
+# git qui échoue le retient aussi : une sortie vide n'y vaut pas « rien de
+# local ».
 plain_clone_held_back() {
-    git -C "${1}" symbolic-ref -q HEAD >/dev/null \
-        || [ -n "$(git -C "${1}" status --porcelain --untracked-files=normal)" ] \
-        || [ -n "$(git -C "${1}" rev-list HEAD --not --remotes --tags \
-            --glob='refs/erplibre/*')" ]
+    local modifs locaux
+    git -C "${1}" symbolic-ref -q HEAD >/dev/null && return 0
+    modifs="$(git -C "${1}" status --porcelain --untracked-files=normal)" \
+        || return 0
+    [ -z "${modifs}" ] || return 0
+    locaux="$(git -C "${1}" rev-list HEAD --not --remotes --tags \
+        --glob='refs/erplibre/*')" || return 0
+    [ -n "${locaux}" ]
 }
 
 # plain_clone_clone DIR URL RÉVISION [SOUS-RÉPERTOIRE] clone URL dans un
