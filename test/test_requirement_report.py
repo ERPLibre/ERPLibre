@@ -95,6 +95,17 @@ if __name__ == "__main__":
     unittest.main()
 """
 
+# Meurt à l'import : unit_file.py n'écrit aucune note.
+CASSE = """import unittest
+
+import module_qui_n_existe_pas  # noqa: F401
+
+
+class T(unittest.TestCase):
+    def test_x(self):
+        pass
+"""
+
 FAUX = """import unittest
 
 
@@ -137,8 +148,10 @@ class FauxRegistre:
         self.uid = uid
         self.erreur = erreur or {}
         self.appels = []
+        self.delais = []
 
     def __call__(self, requete, timeout=None):
+        self.delais.append(timeout)
         corps = json.loads(requete.data.decode("utf-8"))
         params = corps["params"]
         self.appels.append((requete.full_url, params))
@@ -340,6 +353,24 @@ class TestLesReferences(unittest.TestCase):
             (verdict["result"], verdict["duration"]), ("failed", 2.0)
         )
 
+    def test_a_run_outcome_outweighs_a_skip(self):
+        """Un passage ignoré et un passage réussi du même test font un test
+        réussi ; un échec l'emporte sur les deux."""
+        chemin = "/depot/test/test_demo.py"
+        declaree = ref("test_demo.py", "A::test_x")
+        for issues, attendu in (
+            (("ignore", "ok"), "passed"),
+            (("ok", "ignore"), "passed"),
+            (("ignore", "echec", "ok"), "failed"),
+        ):
+            with self.subTest(issues=issues):
+                essais = [
+                    rr.Essai(chemin, [entree("A::test_x", issue)], None)
+                    for issue in issues
+                ]
+                verdict = self.verdicts(*essais, declarees=[declaree])
+                self.assertEqual(verdict[declaree]["result"], attendu)
+
     def test_a_class_fixture_reaches_the_declared_tests_of_its_class(self):
         essai = rr.Essai(
             "/depot/test/test_demo.py",
@@ -495,6 +526,9 @@ class TestLEnvoi(unittest.TestCase):
                 ),
             ],
         )
+        # Chaque appel porte un délai : un registre muet n'arrête pas la
+        # fin de la suite pour toujours.
+        self.assertEqual(faux.delais, [rr.DELAI] * len(faux.appels))
         lignes = sortie.splitlines()
         self.assertEqual(len(lignes), 1)
         self.assertIn("2 verdicts", lignes[0])
@@ -592,6 +626,52 @@ class TestLEnvoi(unittest.TestCase):
         self.assertEqual(len(sortie.splitlines()), 1)
         self.assertNotIn(CLE, sortie)
         self.assertIn("bad credentials", sortie)
+
+
+class TestLesEssais(unittest.TestCase):
+    """r.essais : ce que le lanceur transmet au registre, fichier par
+    fichier."""
+
+    @staticmethod
+    def fichier(nom, etat, tests=(), log=""):
+        f = r.Fichier(f"/depot/test/{nom}")
+        f.etat, f.tests, f.log = etat, list(tests), log
+        return f
+
+    def test_a_stopped_file_proved_nothing_and_is_left_out(self):
+        lanceur = mock.Mock(
+            fichiers=[
+                self.fichier("test_ok.py", r.OK, [entree("A::t")]),
+                self.fichier("test_arrete.py", r.ARRETE, [entree("A::t")]),
+                self.fichier("test_attente.py", r.ATTENTE),
+            ]
+        )
+        self.assertEqual(
+            [e.chemin for e in r.essais(lanceur)], ["/depot/test/test_ok.py"]
+        )
+
+    def test_a_failed_file_without_notes_carries_its_log_tail(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = os.path.join(dossier, "f.log")
+            with open(journal, "w", encoding="utf-8") as fh:
+                fh.write("".join(f"ligne {n}\n" for n in range(100)))
+            lanceur = mock.Mock(
+                fichiers=[
+                    self.fichier("test_mort.py", r.ECHEC, log=journal),
+                    self.fichier("test_delai.py", r.DELAI, log=journal),
+                    self.fichier(
+                        "test_note.py", r.ECHEC, [entree("A::t")], journal
+                    ),
+                    self.fichier("test_vert.py", r.OK, log=journal),
+                ]
+            )
+            essais = r.essais(lanceur)
+        pannes = {os.path.basename(e.chemin): e.panne for e in essais}
+        for nom in ("test_mort.py", "test_delai.py"):
+            self.assertIn("ligne 99", pannes[nom])
+            self.assertNotIn("ligne 59\n", pannes[nom])
+        self.assertIsNone(pannes["test_note.py"])
+        self.assertIsNone(pannes["test_vert.py"])
 
 
 class TestLeLanceur(unittest.TestCase):
@@ -693,6 +773,17 @@ class TestLeLanceur(unittest.TestCase):
         self.assertEqual(len(registre), 1)
         self.assertIn("aucun verdict", registre[0])
         self.assertEqual(self.ordre, ["durees", "echecs"])
+
+    def test_a_file_dying_at_import_errs_its_declared_tests(self):
+        """Mort à l'import, le fichier n'a rien noté : la fin de son journal
+        part comme panne, et ses tests déclarés passent en erreur."""
+        declaree = ref("test_lot.py", "T::test_x")
+        faux = FauxRegistre(declarees=[declaree])
+        code, _sortie, _reseau, _lanceur = self.lancer(CASSE, ENV, faux)
+        self.assertEqual(code, 1)
+        ((args, kwargs),) = faux.envois()
+        self.assertEqual(args, ["repo_unittest", declaree, "error"])
+        self.assertIn("module_qui_n_existe_pas", kwargs["log"])
 
     def test_tests_do_not_inherit_the_registry_variables(self):
         """Un test qui affiche la clé de son environnement n'en trouve
