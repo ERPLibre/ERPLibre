@@ -27,6 +27,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script.database.migration_cluster import version_du_dump
 from script.execute.execute import redact_secrets
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -352,6 +353,155 @@ def base_existe(database):
     if reponse is None:
         return None
     return reponse == "1"
+
+
+def version_serveur():
+    """La version majeure du serveur PostgreSQL d'Odoo, ou None.
+
+    « server_version_num » vaut 160004 pour une 16.4 : depuis la 10, la
+    majeure en est le quotient par 10000. None quand « psql » ne répond pas
+    ou rend autre chose qu'un nombre.
+    """
+    reponse = interroger("postgres", "show server_version_num")
+    try:
+        return int(reponse) // 10000
+    except (TypeError, ValueError):
+        return None
+
+
+def refus_version_pg(image):
+    """None quand le serveur peut charger le dump de `image` ; sinon le
+    refus, avec la commande qui le lève.
+
+    Un serveur PostgreSQL ne charge pas le dump d'une majeure plus récente :
+    le dump porte la syntaxe de sa version, et « psql », lancé par Odoo
+    sans « ON_ERROR_STOP », saute chaque instruction refusée puis rend
+    zéro. La restauration s'annonce réussie, une partie des tables en
+    moins. Le contrôle se fait donc AVANT de toucher à la base cible ou au
+    cache : un refus ici ne laisse rien à nettoyer.
+
+    La version du dump est lue dans l'en-tête de « dump.sql », sans rien
+    extraire (« version_du_dump »). Ne refusent rien : une archive absente
+    ou illisible, que la restauration signale avec son propre message ; un
+    dump sans en-tête, ou un serveur muet, qui laissent la compatibilité
+    inconnue — le journal le dit.
+    """
+    chemin = chemin_image(image)
+    if not os.access(chemin, os.R_OK):
+        return None
+    dump = version_du_dump(chemin)
+    if dump is None:
+        _logger.info(
+            f"## {chemin} : aucune version PostgreSQL en tête de dump.sql,"
+            " compatibilité avec le serveur non vérifiée ##"
+        )
+        return None
+    serveur = version_serveur()
+    if serveur is None:
+        _logger.warning(
+            f"## {chemin} vient de PostgreSQL {dump} ; version du serveur"
+            " inconnue, compatibilité non vérifiée ##"
+        )
+        return None
+    if dump <= serveur:
+        return None
+    return (
+        f"❌ {chemin} vient de PostgreSQL {dump}, le serveur est en"
+        f" PostgreSQL {serveur} : il ne charge pas le dump d'une version plus"
+        " récente, et « psql » en sauterait des tables sans échouer.\n"
+        f"   Installez PostgreSQL {dump} : make install_os PG_VERSION={dump}\n"
+        "   puis, pour les bases existantes : TODO › Exécution › Database ›"
+        " « Mettre à niveau le serveur PostgreSQL »."
+    )
+
+
+# Une définition de table de « pg_dump » en texte, UNLOGGED comprise, dans
+# le schéma « public ». Le nom est nu, ou entre guillemets quand il en a
+# besoin, un guillemet interne doublé.
+CREATE_TABLE = re.compile(
+    r'CREATE (?:UNLOGGED )?TABLE public\.("(?:[^"]|"")+"|[^\s("]+)'
+)
+
+# Le début de la section des données d'un dump : « COPY », ou « INSERT »
+# pour un dump fait avec « --inserts ».
+DEBUT_DONNEES = (b"COPY ", b"INSERT INTO ")
+
+
+def tables_du_dump(chemin_zip):
+    """Les tables que le dump.sql de `chemin_zip` crée dans « public ».
+
+    « pg_dump » écrit toutes les définitions (section pre-data) avant la
+    première donnée : la lecture s'arrête au premier « COPY » ou
+    « INSERT », sans décompresser les données, qui font l'essentiel d'un
+    dump. Rien n'est écrit sur disque.
+
+    Un ensemble vide quand l'archive, ou son dump.sql, est illisible.
+    """
+    tables = set()
+    try:
+        with zipfile.ZipFile(chemin_zip) as archive:
+            with archive.open("dump.sql") as dump:
+                for brute in dump:
+                    if brute.startswith(DEBUT_DONNEES):
+                        break
+                    trouve = CREATE_TABLE.match(
+                        brute.decode("utf-8", "replace")
+                    )
+                    if not trouve:
+                        continue
+                    nom = trouve.group(1)
+                    if nom.startswith('"'):
+                        nom = nom[1:-1].replace('""', '"')
+                    tables.add(nom)
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return set()
+    return tables
+
+
+def tables_presentes(database):
+    """Les tables du schéma « public » de `database`, ou None sans réponse.
+
+    Lues dans « pg_class », que tout rôle peut lire, quels que soient ses
+    droits sur les tables elles-mêmes.
+    """
+    reponse = interroger(
+        database,
+        "select c.relname from pg_class c"
+        " join pg_namespace n on n.oid = c.relnamespace"
+        " where n.nspname = 'public' and c.relkind in ('r', 'p')",
+    )
+    if reponse is None:
+        return None
+    return set(reponse.splitlines())
+
+
+def tables_manquantes(image, database):
+    """Les tables que le dump de `image` crée et que `database` n'a pas,
+    triées.
+
+    Ce que « est_chargee » ne voit pas : une base qui porte ses tables,
+    mais pas TOUTES. « psql » saute l'instruction qu'il refuse et rend
+    zéro ; une table dont la définition est refusée manque alors sans
+    qu'aucun code de retour ne le dise.
+
+    Une liste vide quand rien ne manque, et aussi quand le contrôle ne peut
+    pas se faire — dump illisible, ou « psql » muet, que le journal dit.
+    """
+    attendues = tables_du_dump(chemin_image(image))
+    if not attendues:
+        return []
+    presentes = tables_presentes(database)
+    if presentes is None:
+        _logger.warning(
+            f"## {database} : tables non vérifiées, « psql » ne répond pas ##"
+        )
+        return []
+    return sorted(attendues - presentes)
+
+
+# Le nombre de tables manquantes nommées dans un échec : au-delà, le
+# message dit combien d'autres manquent.
+TABLES_NOMMEES = 10
 
 
 def chemin_image(image):
@@ -1187,8 +1337,8 @@ def restaurer(arg_base, image, database, neutralize=False):
     L'appelant tient le verrou EXCLUSIF de `database` : la liste lue ici
     pour `existait` vaut alors jusqu'à la fin de la restauration.
 
-    Tout échec — code non nul, interruption au clavier, base restée vide —
-    passe par « echec_restauration », qui supprime la base si ce passage
+    Tout échec — code non nul, interruption au clavier, base restée vide,
+    table du dump absente — passe par « echec_restauration », qui supprime la base si ce passage
     l'a créée. L'état INCONNU (« psql » muet) n'arrête rien et ne supprime
     rien : Odoo a rendu zéro, la base est peut-être bonne, et rien ne
     prouve le contraire — un avertissement le dit.
@@ -1242,6 +1392,22 @@ def restaurer(arg_base, image, database, neutralize=False):
             existait,
             env,
             "« psql » a rendu zéro sans charger le dump, la base est VIDE",
+        )
+    manquantes = tables_manquantes(image, database)
+    if manquantes:
+        noms = ", ".join(manquantes[:TABLES_NOMMEES])
+        if len(manquantes) > TABLES_NOMMEES:
+            noms += f" et {len(manquantes) - TABLES_NOMMEES} autres"
+        echec_restauration(
+            arg_base,
+            image,
+            database,
+            existait,
+            env,
+            f"« psql » a rendu zéro, mais {len(manquantes)} table(s) du dump"
+            f" manquent : {noms}. « psql » saute l'instruction qu'il refuse"
+            " — un dump d'un PostgreSQL plus récent que le serveur en est la"
+            " cause ordinaire",
         )
     _logger.info(f"## {database} porte bien ses tables ##")
 
@@ -1362,6 +1528,10 @@ def restaurer_cible(config, arg_base):
     AVANT celui du cache, et jamais l'inverse : deux passages ne peuvent
     s'attendre en croix. Une image donnée par un chemin est restaurée sans
     cache, voir « nom_cache ».
+
+    Une image que le serveur ne peut pas charger (« refus_version_pg ») est
+    refusée AVANT la suppression : la base cible et le cache restent
+    intacts. « --only_drop » ne charge rien et n'est pas contrôlé.
     """
     cache_database = nom_cache(config.image)
     if cache_database is None and not config.ignore_cache:
@@ -1374,6 +1544,10 @@ def restaurer_cible(config, arg_base):
             f"❌ {config.database} est le cache de l'image {config.image} :"
             " choisissez une autre base cible."
         )
+    if not config.only_drop:
+        refus = refus_version_pg(config.image)
+        if refus:
+            raise SystemExit(refus)
     with Verrou(config.database) as verrou:
         verrou.prendre(exclusif=True)
         if config.database in bases_existantes(arg_base):

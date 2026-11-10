@@ -8,12 +8,15 @@ Odoo crée la base AVANT d'extraire l'image. Un échec d'extraction laisse
 donc une base vide ; quand c'est un cache « _cache_<image> », la relance
 suivante le trouve, saute la restauration et clone le vide.
 
-Trois protections, éprouvées ici avec la commande « db » d'Odoo simulée :
+Les protections, éprouvées ici avec la commande « db » d'Odoo simulée :
 
 - l'échec supprime la base que CE passage a créée, et seulement elle ;
 - un cache existant sans tables est supprimé et recréé avant d'être cloné ;
 - deux passages simultanés sur la même image ne suppriment rien l'un à
-  l'autre : le second attend le verrou du premier.
+  l'autre : le second attend le verrou du premier ;
+- le dump d'un PostgreSQL plus récent que le serveur est refusé avant de
+  toucher à quoi que ce soit, et une table du dump absente après le
+  chargement est un échec.
 """
 
 import io
@@ -25,6 +28,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import zipfile
 from types import SimpleNamespace
 from unittest import mock
 
@@ -721,6 +725,189 @@ class TestPsql(unittest.TestCase):
         with mock.patch.object(db_restore, "check_output", echoue):
             with self.assertLogs(db_restore._logger, "ERROR"):
                 self.assertIsNone(db_restore.est_chargee("_cache_x"))
+
+
+def dump_sql(version="16.4", tables=("ir_module_module",), apres=()):
+    """Un dump.sql comme l'écrit « pg_dump » : en-tête, définitions, puis
+    données. `version` None omet la ligne de version ; `apres` donne des
+    lignes écrites après le premier « COPY »."""
+    lignes = ["--", "-- PostgreSQL database dump", "--", ""]
+    if version:
+        lignes.append(f"-- Dumped from database version {version}")
+        lignes.append(f"-- Dumped by pg_dump version {version}")
+    lignes.append("")
+    for table in tables:
+        lignes += [f"CREATE TABLE public.{table} (", "    id integer", ");"]
+    for table in tables:
+        lignes += [f"COPY public.{table} (id) FROM stdin;", "1", "\\."]
+    lignes += list(apres)
+    return "\n".join(lignes) + "\n"
+
+
+class BaseImage(Base):
+    """Une image « essai » dans un dossier courant jetable, et un « psql »
+    simulé : `serveur` est la réponse à « server_version_num », `absentes`
+    les tables du dump que la base restaurée n'a pas."""
+
+    TABLES = ("ir_module_module", "ir_act_window", "res_partner")
+
+    def setUp(self):
+        super().setUp()
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier)
+        ancien = os.getcwd()
+        os.chdir(dossier)
+        self.addCleanup(os.chdir, ancien)
+        os.mkdir("image_db")
+        self.serveur = "160004"
+        self.absentes = set()
+        self.requetes = []
+        self.remplacer(db_restore, "interroger", self.psql)
+
+    def image(self, contenu):
+        with zipfile.ZipFile("image_db/essai.zip", "w") as archive:
+            archive.writestr("dump.sql", contenu)
+
+    def psql(self, database, sql, **_variables):
+        self.requetes.append((database, sql))
+        if "server_version_num" in sql:
+            return self.serveur
+        if "pg_class" in sql:
+            return "\n".join(sorted(set(self.TABLES) - self.absentes))
+        raise AssertionError(sql)
+
+
+class TestVersionPostgresql(BaseImage):
+    """Un dump d'une majeure plus récente que le serveur est refusé avant
+    que la base cible ou le cache ne soient touchés."""
+
+    def test_un_dump_plus_recent_est_refuse_sans_rien_toucher(self):
+        odoo = self.brancher(
+            FauxOdoo({"essai_db": True, "_cache_essai": True})
+        )
+        self.image(dump_sql("18.1 (Debian 18.1-1)"))
+        with self.assertRaises(SystemExit) as sortie:
+            db_restore.restaurer_cible(self.config(only_drop=False), ARG_BASE)
+        self.assertEqual(odoo.commandes, [])
+        self.assertEqual(odoo.bases, {"essai_db": True, "_cache_essai": True})
+        message = sortie.exception.code
+        # Un SystemExit porteur d'un texte sort en 1.
+        self.assertIsInstance(message, str)
+        self.assertIn("PostgreSQL 18", message)
+        self.assertIn("PostgreSQL 16", message)
+        self.assertIn("make install_os PG_VERSION=18", message)
+        self.assertIn("Mettre à niveau le serveur PostgreSQL", message)
+
+    def test_un_dump_de_meme_version_ou_plus_ancien_passe(self):
+        for dump, serveur in (("16.4", "160009"), ("16.4", "180001")):
+            with self.subTest(dump=dump, serveur=serveur):
+                odoo = self.brancher(FauxOdoo())
+                self.serveur = serveur
+                self.image(dump_sql(dump, self.TABLES))
+                db_restore.restaurer_cible(
+                    self.config(only_drop=False), ARG_BASE
+                )
+                self.assertTrue(odoo.bases["essai_db"])
+
+    def test_un_dump_sans_en_tete_passe_avec_une_ligne_au_journal(self):
+        odoo = self.brancher(FauxOdoo())
+        self.image(dump_sql(None, self.TABLES))
+        with self.assertLogs(db_restore._logger, "INFO") as journal:
+            db_restore.restaurer_cible(self.config(only_drop=False), ARG_BASE)
+        self.assertTrue(odoo.bases["essai_db"])
+        self.assertIn("aucune version PostgreSQL", "\n".join(journal.output))
+        self.assertFalse(
+            [r for r in self.requetes if "server_version_num" in r[1]]
+        )
+
+    def test_un_serveur_muet_ne_refuse_rien(self):
+        odoo = self.brancher(FauxOdoo())
+        self.serveur = None
+        self.image(dump_sql("18.1", self.TABLES))
+        with self.assertLogs(db_restore._logger, "WARNING") as journal:
+            db_restore.restaurer_cible(self.config(only_drop=False), ARG_BASE)
+        self.assertTrue(odoo.bases["essai_db"])
+        self.assertIn("non vérifiée", "\n".join(journal.output))
+
+    def test_only_drop_supprime_sans_lire_la_version(self):
+        odoo = self.brancher(FauxOdoo({"essai_db": True}))
+        self.image(dump_sql("18.1"))
+        db_restore.restaurer_cible(self.config(only_drop=True), ARG_BASE)
+        self.assertEqual(odoo.supprimees, ["essai_db"])
+        self.assertEqual(self.requetes, [])
+
+
+class TestTablesManquantes(BaseImage):
+    """« psql » saute la définition qu'il refuse et rend zéro : chaque
+    table que le dump crée doit exister après le chargement."""
+
+    def test_une_table_absente_fait_echouer_et_nettoie(self):
+        odoo = self.brancher(FauxOdoo())
+        self.image(dump_sql("16.4", self.TABLES))
+        self.absentes = {"ir_act_window"}
+        with self.assertRaises(SystemExit) as sortie:
+            self.lancer(odoo, self.config())
+        message = str(sortie.exception)
+        self.assertIn("1 table(s) du dump manquent : ir_act_window", message)
+        self.assertNotIn("res_partner", message)
+        # Le nettoyage d'un échec : le cache créé ici est supprimé, rien
+        # n'est cloné.
+        self.assertEqual(odoo.supprimees, ["_cache_essai"])
+        self.assertNotIn("essai_db", odoo.bases)
+
+    def test_au_dela_de_dix_le_message_compte_les_autres(self):
+        odoo = self.brancher(FauxOdoo())
+        tables = tuple(f"t{n:02d}" for n in range(13))
+        self.TABLES = ("ir_module_module",) + tables
+        self.image(dump_sql("16.4", self.TABLES))
+        self.absentes = set(tables)
+        with self.assertRaises(SystemExit) as sortie:
+            db_restore.restaurer(ARG_BASE, "essai", "_cache_essai")
+        message = str(sortie.exception)
+        self.assertIn("13 table(s)", message)
+        self.assertIn("t09 et 3 autres", message)
+        self.assertNotIn("t10", message)
+
+    def test_toutes_les_tables_presentes_passe(self):
+        odoo = self.brancher(FauxOdoo())
+        self.image(dump_sql("16.4", self.TABLES))
+        self.lancer(odoo, self.config())
+        self.assertTrue(odoo.bases["essai_db"])
+        self.assertEqual(odoo.supprimees, [])
+
+    def test_un_psql_muet_laisse_la_base(self):
+        odoo = self.brancher(FauxOdoo())
+        self.image(dump_sql("16.4", self.TABLES))
+        self.remplacer(db_restore, "interroger", lambda *a, **k: None)
+        with self.assertLogs(db_restore._logger, "WARNING") as journal:
+            db_restore.restaurer(ARG_BASE, "essai", "_cache_essai")
+        self.assertEqual(odoo.supprimees, [])
+        self.assertIn("tables non vérifiées", "\n".join(journal.output))
+
+    def test_les_definitions_sont_lues_jusqu_aux_donnees(self):
+        self.image(
+            dump_sql(
+                "16.4", ("a",), apres=["CREATE TABLE public.apres ("]
+            ).replace(
+                "CREATE TABLE public.a (",
+                "CREATE TABLE public.a (\nCREATE UNLOGGED TABLE public.b (\n"
+                'CREATE TABLE public."x""y" (\n'
+                "CREATE TABLE autre.c (\nCREATE TABLE public.d PARTITION OF",
+            )
+        )
+        self.assertEqual(
+            db_restore.tables_du_dump("image_db/essai.zip"),
+            {"a", "b", 'x"y', "d"},
+        )
+
+    def test_une_archive_sans_dump_ne_demande_rien(self):
+        with zipfile.ZipFile("image_db/essai.zip", "w") as archive:
+            archive.writestr("manifest.json", "{}")
+        self.assertEqual(
+            db_restore.tables_du_dump("image_db/essai.zip"), set()
+        )
+        self.assertEqual(db_restore.tables_manquantes("essai", "x"), [])
+        self.assertEqual(self.requetes, [])
 
 
 class TestSupprimerBase(unittest.TestCase):

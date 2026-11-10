@@ -449,6 +449,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The OpenUpgrade hops to Odoo 14 to 20 and the views_migration_17 pass lift the memory and time limits again, so a whole-database update no longer runs under the 2560 MiB default of production `run.sh`
 - setup_odoo_config_conf_devops.py now keeps the active Odoo's default server-wide modules when config.conf names none (so 'rpc' stays loaded on Odoo 19 and 20, and 'web_kanban' stays loaded on 8 to 10). On Odoo 8 and 9 it sets up the OCA connector job runner ([options-connector] channels, 'connector' module) instead of queue_job. The Odoo 20 manifest now clones OCA/queue
 - Installing every Odoo version (make install_odoo_all_version) now ends by switching to the default version (Odoo 18), so the service and the database image restore point to it instead of the last version it installed. The VM install prompt names the profile that a blank answer picks. Restoring a database on a VM whose Odoo version has no image now says so, instead of printing an empty list
+- db_restore refuses an image whose dump comes from a newer PostgreSQL major than the server, before touching the target database or the cache, and names the fix (`make install_os PG_VERSION=<N>`, then the PostgreSQL server upgrade for existing databases); after loading, it fails and cleans up when a table the dump creates is missing, instead of reporting success
 
 ## Removed
 
