@@ -22,10 +22,12 @@ line-length = 79
 # force-exclude : sans lui, l'exclusion ne vaut que pour les fichiers que ruff
 # DÉCOUVRE, et un chemin nommé en argument y échappe — or format_python.sh
 # passe les fichiers un par un.
+# « odoo[0-9]* » vise les checkouts odoo<version> ; « odoo* » écarterait
+# aussi l'outillage dont le nom commence par odoo, comme script/odoo/.
 force-exclude = true
 extend-exclude = [
   "addons",
-  "odoo*",
+  "odoo[0-9]*",
   "script/OCA_maintainer-tools",
   "script/OCA_odoo-module-migrator",
   "script/gnome-extension/erplibre_home",
