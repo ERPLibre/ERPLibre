@@ -46,6 +46,20 @@ class NavigateurQuiRenonce:
         pass
 
 
+class NavigateurQuiChoisit(NavigateurQuiRenonce):
+    """Le navigateur où l'on choisit le répertoire `choix` : son rappel
+    reçoit ce chemin."""
+
+    choix = None
+
+    def __init__(self, start, callback, open_dir=False):
+        super().__init__(start, callback, open_dir)
+        self.callback = callback
+
+    def run_main_frame(self):
+        self.callback(NavigateurQuiChoisit.choix)
+
+
 class Banc(unittest.TestCase):
     def setUp(self):
         dossier = tempfile.TemporaryDirectory()
@@ -57,26 +71,33 @@ class Banc(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         NavigateurQuiRenonce.ouverts = []
+        self.trouves = [["forged_module", "/forged"]]
 
-    def migrer(self, reponses):
+    def migrer(self, reponses, arret=True, navigateur=NavigateurQuiRenonce):
         """Lance execute_module_upgrade ; rend les gestes notés, dans
         l'ordre. Une réponse qui est une exception est levée (EOFError,
         Ctrl+D) ; une question de plus que de réponses fait échouer le
         test en le disant, une réponse restée non lue aussi : un retour
         qui vient avant la question visée ne passe pas pour elle. Le
         premier `switch_odoo` arrête la migration après l'avoir noté
-        (`Arret`), et `check_addons_exist` trouve le module demandé.
-        L'écran imprimé est dans `self.ecran`."""
+        (`Arret`), sauf avec `arret` faux : la migration va alors au bout,
+        et `ask`, la pause après chaque palier, est noté aussi.
+        `check_addons_exist` trouve le module demandé, `self.trouves`.
+        `navigateur` double le navigateur de fichiers, sans la boucle
+        urwid que son choix quitte (`exit_program`). L'écran imprimé est
+        dans `self.ecran`."""
         upgrade = TodoUpgrade(todo=None)
         gestes = []
 
         def noter(nom):
             def double(*args, **kwargs):
                 gestes.append((nom, args))
-                if nom == "switch_odoo":
+                if nom == "switch_odoo" and arret:
                     raise Arret
                 if nom == "check_addons_exist":
-                    return [], [], [["forged_module", "/forged"]], []
+                    return [], [], self.trouves, []
+                if nom == "ask":
+                    return ""
 
             return double
 
@@ -86,6 +107,7 @@ class Banc(unittest.TestCase):
             "internal_module_upgrade",
             "todo_upgrade_execute",
             "check_addons_exist",
+            "ask",
         ):
             setattr(upgrade, nom, noter(nom))
         suite = iter(reponses)
@@ -105,10 +127,9 @@ class Banc(unittest.TestCase):
         with (
             mock.patch.object(builtins, "input", repondre),
             mock.patch.object(
-                todo_upgrade.todo_file_browser,
-                "FileBrowser",
-                NavigateurQuiRenonce,
+                todo_upgrade.todo_file_browser, "FileBrowser", navigateur
             ),
+            mock.patch.object(todo_upgrade.todo_file_browser, "exit_program"),
             contextlib.redirect_stdout(ecran),
         ):
             try:
@@ -200,6 +221,92 @@ class TestLesChoix(Banc):
         self.assertEqual(gestes, [])
         self.assertEqual(self.ecran.count(t("Invalid choice: ")), 2)
         self.assertIn(f"{t('Directory browser')} {t('(default)')}", self.ecran)
+
+
+class TestLaMigrationDuCode(Banc):
+    """La migration du code, une fois ses choix faits, palier par palier :
+    chaque geste noté par un double, dans l'ordre, pour un module de
+    `forged_repo` présent sous odoo12.0 et odoo13.0."""
+
+    def setUp(self):
+        super().setUp()
+        racine = tempfile.TemporaryDirectory()
+        self.addCleanup(racine.cleanup)
+        for version in (12, 13):
+            depot = os.path.join(
+                racine.name, f"odoo{version}.0", "forged_repo"
+            )
+            os.makedirs(os.path.join(depot, "forged_notes"))
+            os.makedirs(os.path.join(depot, "forged_module"))
+            manifeste = os.path.join(depot, "forged_module", "__manifest__.py")
+            open(manifeste, "w").close()
+        self.depot = os.path.join(racine.name, "odoo12.0", "forged_repo")
+        self.module = os.path.join(self.depot, "forged_module")
+        self.trouves = [["forged_module", self.module]]
+
+    def paliers(self, depart, arrivee):
+        """Les gestes de chaque palier de `depart` à `arrivee` : basculer,
+        cloner le migrateur, migrer le module, commiter son dépôt, puis
+        attendre la validation des commits."""
+        gestes = []
+        for version in range(depart, arrivee):
+            suivante = version + 1
+            source = self.module.replace("odoo12.0", f"odoo{version}.0")
+            cible = source.replace(f"odoo{version}.0", f"odoo{suivante}.0")
+            module = {
+                "source_module_path": source,
+                "source_manifest_path": os.path.join(
+                    source, "__manifest__.py"
+                ),
+                "source_addons_path": os.path.dirname(source),
+                "target_module_path": cible,
+                "target_manifest_path": os.path.join(cible, "__manifest__.py"),
+                "target_addons_path": os.path.dirname(cible),
+                "module_name": "forged_module",
+                "source_version_odoo": version,
+                "target_version_odoo": suivante,
+            }
+            commit = (
+                "./script/code/git_commit_migration_addons_path.py"
+                f" --path {os.path.dirname(cible)}"
+                f" --odoo_version {suivante}.0"
+            )
+            pause = (
+                f"💬 {t('Please validate git commit on repos, press to')}"
+                f" {t('continue')} : "
+            )
+            gestes += [
+                ("switch_odoo", (suivante,)),
+                ("install_OCA_odoo_module_migrator", ()),
+                ("internal_module_upgrade", (suivante, [module], [])),
+                ("todo_upgrade_execute", (commit,)),
+                ("ask", (pause,)),
+            ]
+        return gestes
+
+    def test_a_repo_migrates_each_of_its_modules_at_each_step(self):
+        gestes = self.migrer(["2", self.depot, "1", "2"], arret=False)
+        self.assertEqual(gestes, self.paliers(12, 14))
+
+    def test_a_module_by_its_path_migrates_one_step(self):
+        gestes = self.migrer(["1", "1", self.module, "1", "1"], arret=False)
+        self.assertEqual(gestes, self.paliers(12, 13))
+
+    def test_a_directory_from_the_browser_migrates_its_modules(self):
+        NavigateurQuiChoisit.choix = self.depot
+        gestes = self.migrer(
+            ["", "1", "1"], arret=False, navigateur=NavigateurQuiChoisit
+        )
+        self.assertEqual(gestes, self.paliers(12, 13))
+
+    def test_a_module_by_its_name_switches_to_the_start_first(self):
+        gestes = self.migrer(
+            ["1", "2", "forged_module", "12", "2"], arret=False
+        )
+        trouve = ("check_addons_exist", (["forged_module"],))
+        self.assertEqual(
+            gestes, [("switch_odoo", (12,)), trouve, *self.paliers(12, 14)]
+        )
 
 
 class TestLesInstantanesCOW(unittest.TestCase):

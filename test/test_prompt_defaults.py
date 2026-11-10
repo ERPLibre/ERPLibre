@@ -499,8 +499,14 @@ class TestWhereBlockingIsStillRight(unittest.TestCase):
         # par le lecteur temporisé comme les autres.
         import inspect
 
-        source = inspect.getsource(TodoUpgrade.execute_module_upgrade)
-        source += inspect.getsource(TodoUpgrade._module_upgrade_versions)
+        source = "".join(
+            inspect.getsource(getattr(TodoUpgrade, nom))
+            for nom in (
+                "_module_upgrade_what",
+                "_module_upgrade_by_name",
+                "_module_upgrade_versions",
+            )
+        )
         for question in ("Module name", "Path", "From odoo version"):
             self.assertIn(question, source)
 

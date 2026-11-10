@@ -1111,18 +1111,63 @@ class TodoUpgrade:
                         f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
                     )
 
-        lst_dir_path = []
-        from_version = 0
-        to_version = 0
+        choisi = self._module_upgrade_what()
+        if choisi is None:
+            return
+        lst_dir_path, from_version, to_version = choisi
 
+        # TODO ask option direct migration
+        for actual_version in range(from_version, to_version):
+            next_version = actual_version + 1
+            if not lst_dir_path:
+                lst_dir_path = self._module_upgrade_dirs(self.dir_path)
+            lst_module_to_migrate_all = [
+                dct_module
+                for dir_path in lst_dir_path
+                if (
+                    dct_module := self._module_upgrade_paths(
+                        dir_path, from_version, actual_version
+                    )
+                )
+            ]
+            set_path_migrate_addons = {
+                dct_module["target_addons_path"]
+                for dct_module in lst_module_to_migrate_all
+            }
+            # TODO auto detect version from
+            # TODO if detect from directory, check from repo list
+            # TODO detect from manifest version
+
+            self.switch_odoo(next_version)
+            self.install_OCA_odoo_module_migrator()
+
+            self.internal_module_upgrade(
+                next_version, lst_module_to_migrate_all, []
+            )
+
+            for commit_path in set_path_migrate_addons:
+                cmd = f"./script/code/git_commit_migration_addons_path.py --path {commit_path} --odoo_version {next_version}.0"
+                self.todo_upgrade_execute(cmd)
+            print(set_path_migrate_addons)
+            self.ask(
+                f"💬 {t('Please validate git commit on repos, press to')}"
+                f" {t('continue')} : "
+            )
+
+    def _module_upgrade_what(self):
+        """Ce qu'Upgrade Module migre : (modules, version de départ,
+        version d'arrivée), les modules une liste de [nom, chemin], vide
+        quand ils se lisent palier par palier sous `self.dir_path`. None
+        quand on y renonce : [0], Ctrl+D ou une réponse vide sans défaut à
+        un choix, Ctrl+D au chemin, un navigateur quitté sans répertoire,
+        un chemin qui n'existe pas, ou None de `_module_upgrade_by_name`.
+        """
         status = ui.choose(
             f"💬 {t('What do you migrate?')}",
             ["module", "repo", "browse"],
             default="browse",
             labels=[t("One module"), t("One repo"), t("Directory browser")],
         )
-        if status is None:
-            return
         if status == "module":
             status = ui.choose(
                 f"💬 {t('Find the module by:')}",
@@ -1130,48 +1175,21 @@ class TodoUpgrade:
                 default="path",
                 labels=[t("Path"), t("Name")],
             )
-            if status is None:
-                return
-            if status == "name":
-                try:
-                    module_name = ui.ask("💬 Module name : ").strip().lower()
-                except EOFError:
-                    return
-                # Un nom vide ne désigne aucun module : rien à basculer.
-                if not module_name:
-                    return
-                versions = self._module_upgrade_versions()
-                if versions is None:
-                    return
-                from_version, to_version = versions
-                self.switch_odoo(from_version)
-                # TODO detect path
-                (
-                    lst_module_missing,
-                    lst_module_duplicate,
-                    lst_module_exist,
-                    lst_module_error,
-                ) = self.check_addons_exist([module_name], get_all_info=True)
-                if (
-                    lst_module_missing
-                    or lst_module_duplicate
-                    or lst_module_error
-                ):
-                    if lst_module_missing:
-                        print(f"Missing list : {lst_module_missing}")
-                    if lst_module_duplicate:
-                        print(f"Duplicate list : {lst_module_duplicate}")
-                    if lst_module_error:
-                        print(f"Error list : {lst_module_error}")
-                    return
-                lst_dir_path.extend(lst_module_exist)
-        if status in ("path", "repo"):
+        lst_dir_path, versions = [], None
+        if status == "name":
+            choisi = self._module_upgrade_by_name()
+            if choisi is None:
+                return None
+            lst_dir_path, versions = choisi
+        elif status in ("path", "repo"):
             try:
                 self.dir_path = ui.ask("💬 Path : ").strip()
             except EOFError:
-                return
+                return None
         elif status == "browse":
             self.dir_path = None
+        else:
+            return None
 
         if not self.dir_path and not lst_dir_path:
             initial_dir = os.getcwd()
@@ -1183,105 +1201,104 @@ class TodoUpgrade:
             # Le navigateur quitté sans choix laisse `dir_path` vide ou à
             # None ; None ferait lever TypeError à `os.path.exists`.
             if not self.dir_path:
-                return
+                return None
 
         if not lst_dir_path and not os.path.exists(self.dir_path):
             _logger.error(f"Path '{self.dir_path}' not exists.")
-            return
+            return None
 
-        if not from_version:
+        if versions is None:
             versions = self._module_upgrade_versions()
             if versions is None:
-                return
-            from_version, to_version = versions
+                return None
+        return lst_dir_path, *versions
 
-        # TODO ask option direct migration
+    def _module_upgrade_by_name(self):
+        """Le module d'Upgrade Module choisi par son nom : (modules,
+        (version de départ, version d'arrivée)), après avoir basculé le
+        checkout sur la version de départ pour y chercher le module. None,
+        avant toute bascule, sur Ctrl+D ou un nom vide, puis sur [0],
+        Ctrl+D ou une réponse vide aux versions ; None aussi, une fois la
+        bascule faite, quand le module manque, est en double ou en erreur,
+        ce qui se dit.
+        """
+        try:
+            module_name = ui.ask("💬 Module name : ").strip().lower()
+        except EOFError:
+            return None
+        # Un nom vide ne désigne aucun module : rien à basculer.
+        if not module_name:
+            return None
+        versions = self._module_upgrade_versions()
+        if versions is None:
+            return None
+        self.switch_odoo(versions[0])
+        # TODO detect path
+        (
+            lst_module_missing,
+            lst_module_duplicate,
+            lst_module_exist,
+            lst_module_error,
+        ) = self.check_addons_exist([module_name], get_all_info=True)
+        if lst_module_missing or lst_module_duplicate or lst_module_error:
+            if lst_module_missing:
+                print(f"Missing list : {lst_module_missing}")
+            if lst_module_duplicate:
+                print(f"Duplicate list : {lst_module_duplicate}")
+            if lst_module_error:
+                print(f"Error list : {lst_module_error}")
+            return None
+        return list(lst_module_exist), versions
 
-        lst_version_to_update = [
-            (a, a + 1) for a in range(from_version, to_version)
+    @staticmethod
+    def _module_upgrade_dirs(dir_path):
+        """Les modules de `dir_path`, une liste de [nom, chemin] : lui-même
+        s'il porte un manifeste, sinon chacun de ses sous-répertoires qui
+        en porte un."""
+        if os.path.exists(os.path.join(dir_path, "__manifest__.py")):
+            return [[os.path.basename(dir_path), dir_path]]
+        return [
+            [a, os.path.join(dir_path, a)]
+            for a in os.listdir(dir_path)
+            if os.path.exists(os.path.join(dir_path, a, "__manifest__.py"))
         ]
-        # lst_version_to_update = [(from_version, to_version)]
-        # for actual_version in range(from_version, to_version):
-        #     next_version = actual_version + 1
-        for actual_version, next_version in lst_version_to_update:
-            set_path_migrate_addons = set()
 
-            if not lst_dir_path:
-                if os.path.exists(
-                    os.path.join(self.dir_path, "__manifest__.py")
-                ):
-                    lst_dir_path = [
-                        [os.path.basename(self.dir_path), self.dir_path]
-                    ]
-                else:
-                    lst_dir_path = [
-                        [a, os.path.join(self.dir_path, a)]
-                        for a in os.listdir(self.dir_path)
-                        if os.path.exists(
-                            os.path.join(self.dir_path, a, "__manifest__.py")
-                        )
-                    ]
-
-            lst_path_git_clone_migrate = []
-            lst_module_to_migrate_all = []
-            for dir_path in lst_dir_path:
-                source_manifest_path = os.path.join(
-                    dir_path[1], "__manifest__.py"
-                ).replace(f"odoo{from_version}.0", f"odoo{actual_version}.0")
-
-                is_dir_module = os.path.exists(source_manifest_path)
-                if not is_dir_module:
-                    continue
-                source_module_path = dir_path[1].replace(
-                    f"odoo{from_version}.0", f"odoo{actual_version}.0"
-                )
-                source_addons_path = os.path.dirname(dir_path[1]).replace(
-                    f"odoo{from_version}.0", f"odoo{actual_version}.0"
-                )
-                target_module_path = source_module_path.replace(
-                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
-                )
-                target_manifest_path = source_manifest_path.replace(
-                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
-                )
-                target_addons_path = source_addons_path.replace(
-                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
-                )
-                dct_module = {
-                    "source_module_path": source_module_path,
-                    "source_manifest_path": source_manifest_path,
-                    "source_addons_path": source_addons_path,
-                    "target_module_path": target_module_path,
-                    "target_manifest_path": target_manifest_path,
-                    "target_addons_path": target_addons_path,
-                    "module_name": dir_path[0],
-                    "source_version_odoo": actual_version,
-                    "target_version_odoo": next_version,
-                }
-                lst_module_to_migrate_all.append(dct_module)
-                set_path_migrate_addons.add(target_addons_path)
-                # lst_path_git_clone_migrate.append(target_addons_path)
-            # TODO auto detect version from
-            # TODO if detect from directory, check from repo list
-            # TODO detect from manifest version
-
-            self.switch_odoo(next_version)
-            self.install_OCA_odoo_module_migrator()
-
-            self.internal_module_upgrade(
-                next_version,
-                lst_module_to_migrate_all,
-                lst_path_git_clone_migrate,
-            )
-
-            for commit_path in set_path_migrate_addons:
-                cmd = f"./script/code/git_commit_migration_addons_path.py --path {commit_path} --odoo_version {next_version}.0"
-                self.todo_upgrade_execute(cmd)
-            print(set_path_migrate_addons)
-            status = self.ask(
-                f"💬 {t('Please validate git commit on repos, press to')}"
-                f" {t('continue')} : "
-            ).strip()
+    @staticmethod
+    def _module_upgrade_paths(dir_path, from_version, actual_version):
+        """Les chemins d'un module, `dir_path` ([nom, chemin], le chemin
+        sous odoo<from_version>.0), pour le palier qui part
+        d'`actual_version` : les sources sous odoo<actual_version>.0, les
+        cibles sous la version suivante. None quand la source n'a pas de
+        manifeste."""
+        next_version = actual_version + 1
+        source_manifest_path = os.path.join(
+            dir_path[1], "__manifest__.py"
+        ).replace(f"odoo{from_version}.0", f"odoo{actual_version}.0")
+        if not os.path.exists(source_manifest_path):
+            return None
+        source_module_path = dir_path[1].replace(
+            f"odoo{from_version}.0", f"odoo{actual_version}.0"
+        )
+        source_addons_path = os.path.dirname(dir_path[1]).replace(
+            f"odoo{from_version}.0", f"odoo{actual_version}.0"
+        )
+        return {
+            "source_module_path": source_module_path,
+            "source_manifest_path": source_manifest_path,
+            "source_addons_path": source_addons_path,
+            "target_module_path": source_module_path.replace(
+                f"odoo{actual_version}.0", f"odoo{next_version}.0"
+            ),
+            "target_manifest_path": source_manifest_path.replace(
+                f"odoo{actual_version}.0", f"odoo{next_version}.0"
+            ),
+            "target_addons_path": source_addons_path.replace(
+                f"odoo{actual_version}.0", f"odoo{next_version}.0"
+            ),
+            "module_name": dir_path[0],
+            "source_version_odoo": actual_version,
+            "target_version_odoo": next_version,
+        }
 
     @staticmethod
     def _module_upgrade_versions():
