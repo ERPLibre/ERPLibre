@@ -16,10 +16,12 @@ courant jetable, où s'écrit l'archive du journal.
 
 import builtins
 import contextlib
+import copy
 import glob
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -89,7 +91,10 @@ class Banc(unittest.TestCase):
         premier `switch_odoo` arrête la migration après l'avoir noté
         (`Arret`), sauf avec `arret` faux : la migration va alors au bout,
         et `ask`, la pause après chaque palier, est noté aussi.
-        `check_addons_exist` trouve le module demandé, `self.trouves`.
+        `check_addons_exist` trouve le module demandé, `self.trouves`, et
+        `internal_module_upgrade` complète son troisième argument comme le
+        vrai, chaque dépôt cible une fois ; les arguments sont notés tels
+        qu'à l'appel.
         `navigateur` double le navigateur de fichiers, sans la boucle
         urwid que son choix quitte (`exit_program`). L'écran imprimé est
         dans `self.ecran`."""
@@ -98,7 +103,11 @@ class Banc(unittest.TestCase):
 
         def noter(nom):
             def double(*args, **kwargs):
-                gestes.append((nom, args))
+                gestes.append((nom, copy.deepcopy(args)))
+                if nom == "internal_module_upgrade":
+                    for module in args[1]:
+                        if module["target_addons_path"] not in args[2]:
+                            args[2].append(module["target_addons_path"])
                 if nom == "switch_odoo" and arret:
                     raise Arret
                 if nom == "check_addons_exist":
@@ -307,13 +316,34 @@ class TestLaMigrationDuCode(Banc):
         self.assertEqual(gestes, self.paliers(12, 13))
 
     def test_a_module_by_its_name_switches_to_the_start_first(self):
+        """Le nom tapé, sans ses blancs et en minuscules, est celui que
+        `check_addons_exist` cherche."""
+        trouve = ("check_addons_exist", (["forged_module"],))
+        for nom in ("forged_module", "  Forged_Module "):
+            with self.subTest(nom=nom):
+                gestes = self.migrer(["1", "2", nom, "12", "2"], arret=False)
+                self.assertEqual(
+                    gestes,
+                    [("switch_odoo", (12,)), trouve, *self.paliers(12, 14)],
+                )
+
+    def test_a_module_found_without_a_path_opens_the_browser_once(self):
+        """Un module que `check_addons_exist` dit présent sans chemin : le
+        navigateur s'ouvre une fois, après la bascule sur le départ, et
+        le dépôt qu'on y choisit migre, sans que les versions soient
+        redemandées."""
+        self.trouves = []
+        NavigateurQuiChoisit.choix = self.depot
         gestes = self.migrer(
-            ["1", "2", "forged_module", "12", "2"], arret=False
+            ["1", "2", "forged_module", "1", "1"],
+            arret=False,
+            navigateur=NavigateurQuiChoisit,
         )
         trouve = ("check_addons_exist", (["forged_module"],))
         self.assertEqual(
-            gestes, [("switch_odoo", (12,)), trouve, *self.paliers(12, 14)]
+            gestes, [("switch_odoo", (12,)), trouve, *self.paliers(12, 13)]
         )
+        self.assertEqual(len(NavigateurQuiChoisit.ouverts), 1)
 
     def test_a_module_by_name_never_migrates_a_previous_directory(self):
         """Upgrade Module lancé deux fois sur la même instance : un module
@@ -475,10 +505,13 @@ class TestLaReprise(Reprise):
     reprise par le port, sur une progression qui n'est pas écrite ici
     (l'appelant l'écrit quand elle change)."""
 
-    def reprendre(self, *reponses, auto=False):
+    def reprendre(self, *reponses, auto=False, delai=None):
         """La reprise par le port ; avec `auto`, en mode automatique, où
-        une question à compte à rebours imprimerait « ⏱ »."""
+        une question à compte à rebours imprimerait « ⏱ », un compte de
+        `delai` secondes quand il est donné."""
         upgrade = TodoUpgrade(todo=None)
+        if delai is not None:
+            upgrade.AUTO_DELAY = delai
         if auto:
             upgrade.auto_execute = True
             auto_ask.export(True, upgrade.AUTO_DELAY)
@@ -581,6 +614,26 @@ class TestLaReprise(Reprise):
                 with self.subTest(efface=efface, refus=refus):
                     self.assertIsNone(self.reprendre(efface, refus, "0"))
                     self.assertEqual(self.effacements, [])
+        self.assertEqual(self.archives(), [])
+
+    def test_the_countdown_at_the_confirmation_rewinds_nothing(self):
+        """En mode automatique, une étape ou « n », puis la confirmation
+        laissée à son compte à rebours, sur une entrée qui ne dit rien
+        sans être fermée : son échéance prend le défaut, non, rien n'est
+        archivé ni rembobiné, et [0] quitte ensuite."""
+        lecture, ecriture = os.pipe()
+        self.addCleanup(os.close, ecriture)
+        entree = os.fdopen(lecture)
+        self.addCleanup(entree.close)
+        for efface in ("3", "n"):
+            with (
+                self.subTest(efface=efface),
+                mock.patch.object(sys, "stdin", entree),
+            ):
+                rendu = self.reprendre(efface, "0", auto=True, delai=0.1)
+                self.assertIsNone(rendu)
+                self.assertIn(f"⏱ → {t('Enter')} (n)", self.ecran)
+                self.assertEqual(self.effacements, [])
         self.assertEqual(self.archives(), [])
 
     def test_an_answer_no_screen_returns_changes_nothing(self):
