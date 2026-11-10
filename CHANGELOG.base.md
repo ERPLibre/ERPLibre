@@ -739,6 +739,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Each bump of the migration takes its modules from the database: a module Odoo auto-installs on the way, such as an OCA `auto_install` module, is checked before the next bump instead of arriving without code, and a module a bump removed is no longer offered for uninstallation
 - Odoo 19 no longer warns at every start: `OPENERP_SERVER` is set for Odoo 8 and 9 only, and `config.conf` names its ports as the active Odoo reads them — `http_port` from 11, `gevent_port` from 16
 - The migration of a database without `auto_backup` no longer installs it, nor stops on `db.backup` in Odoo 16; the default reconcile models are recreated on Odoo 19, without rewriting one edited by hand; a module removed before a bump because the next version lacks it is forgotten with its record, where its `auto_install` flag set it back « to install » without code
+- The Poetry lock drift check now works on Odoo 8 to 14 venvs: it falls back to `install --remove-untracked` on Poetry 1.1, reads the `•` operation bullets of Poetry 1.1 and 1.5 (counting each operation once), and lists installed versions on Python 2.7 and 3.7 through pkg_resources
 
 <!-- [fr] -->
 
@@ -903,6 +904,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Chaque palier de la migration prend ses modules dans la base : un module qu'Odoo installe de lui-même en route, comme un module OCA `auto_install`, est contrôlé avant le palier suivant au lieu d'y arriver sans code, et un module qu'un palier a retiré n'est plus proposé à la désinstallation
 - Odoo 19 n'avertit plus à chaque démarrage : `OPENERP_SERVER` n'est posé que pour Odoo 8 et 9, et `config.conf` nomme ses ports comme les lit l'Odoo actif — `http_port` dès 11, `gevent_port` dès 16
 - La migration d'une base sans `auto_backup` ne l'installe plus, ni ne s'arrête sur `db.backup` en Odoo 16 ; les modèles de rapprochement par défaut sont recréés en Odoo 19, sans réécrire un modèle modifié à la main ; un module retiré avant un palier faute d'exister dans la version suivante est oublié avec sa fiche, dont le drapeau `auto_install` le remettait « to install » sans code
+- La vérification des écarts entre le venv et le lock Poetry fonctionne désormais sur les venvs d’Odoo 8 à 14 : elle se rabat sur « install --remove-untracked » avec Poetry 1.1, lit les puces « • » de Poetry 1.1 et 1.5 (chaque opération comptée une seule fois) et relève les versions installées sous Python 2.7 et 3.7 par pkg_resources
 
 <!-- [en] -->
 ## Removed

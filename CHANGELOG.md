@@ -439,6 +439,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Each bump of the migration takes its modules from the database: a module Odoo auto-installs on the way, such as an OCA `auto_install` module, is checked before the next bump instead of arriving without code, and a module a bump removed is no longer offered for uninstallation
 - Odoo 19 no longer warns at every start: `OPENERP_SERVER` is set for Odoo 8 and 9 only, and `config.conf` names its ports as the active Odoo reads them — `http_port` from 11, `gevent_port` from 16
 - The migration of a database without `auto_backup` no longer installs it, nor stops on `db.backup` in Odoo 16; the default reconcile models are recreated on Odoo 19, without rewriting one edited by hand; a module removed before a bump because the next version lacks it is forgotten with its record, where its `auto_install` flag set it back « to install » without code
+- The Poetry lock drift check now works on Odoo 8 to 14 venvs: it falls back to `install --remove-untracked` on Poetry 1.1, reads the `•` operation bullets of Poetry 1.1 and 1.5 (counting each operation once), and lists installed versions on Python 2.7 and 3.7 through pkg_resources
 
 ## Removed
 
