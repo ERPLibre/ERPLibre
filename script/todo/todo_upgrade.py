@@ -400,6 +400,8 @@ class TodoUpgrade:
         for item in ctx["versions"] if bumps else ():
             version = item["version"]
             options.append(f"4.{version}")
+            # Une marque blanche plutôt qu'absente : « Odoo V.0 » reste
+            # aligné d'un palier fait à un palier à faire.
             mark = "✓" if item["done"] else " "
             labels.append(
                 f"{step} 4.{version} · {mark} Odoo {version}.0 — {rebuilds}"
@@ -516,10 +518,13 @@ class TodoUpgrade:
 
     def prompt_resume(self, old_dct_progression, use_tui=False):
         """Où en est la migration, et par où elle reprend : l'écran Textual
-        avec `use_tui`, sinon, ou sans Textual, le choix du port
-        (`resume_choice`). Rend (progression, changée), ou None pour
-        quitter sans rien changer : [0], Ctrl+D ou « q » de l'écran
-        Textual.
+        avec `use_tui`, sinon le choix du port (`resume_choice`), qui prend
+        aussi le relais quand Textual manque ou que l'écran se ferme sans
+        réponse. Rend (progression, changée), ou None pour quitter sans
+        rien changer : [0] ou Ctrl+D au choix du port, « q » ou toute
+        chaîne qu'`apply_resume_answer` ne connaît pas venue de l'écran
+        Textual. Le choix du port demande un oui avant d'effacer
+        (`confirm_rewind`) ; l'écran Textual efface sans confirmation.
         """
         ctx = self.resume_context(old_dct_progression)
         answer = self.resume_tui(ctx) if use_tui else None
@@ -833,8 +838,8 @@ class TodoUpgrade:
     def resume_tui(ctx):
         """L'écran de reprise en TUI : « c », « n », « r », « q », « 0 » à
         « 4 » ou « 4.V », les chaînes du choix du port plus « q », sans
-        confirmation ; None quand Textual manque, et le choix du port
-        prend le relais."""
+        confirmation ; None quand Textual manque ou que l'écran se ferme
+        sans réponse, et le choix du port prend le relais."""
         from script.todo import textual_setup
 
         if not textual_setup.ensure():
@@ -1170,6 +1175,8 @@ class TodoUpgrade:
         quand on y renonce : [0], Ctrl+D ou une réponse vide sans défaut à
         un choix, Ctrl+D au chemin, un navigateur quitté sans répertoire,
         un chemin qui n'existe pas, ou None de `_module_upgrade_by_name`.
+        Le navigateur s'ouvre pour le défaut, pour un « Path » vide et pour
+        un module trouvé par son nom sans chemin.
         """
         status = ui.choose(
             f"💬 {t('What do you migrate?')}",

@@ -297,19 +297,18 @@ class BasePort:
         une option qui est une chaîne est aussi son nom. `default`, une
         option d'un choix simple, ou la lettre d'une de ses actions, est
         ce que prend une réponse vide ; une action de `letters` ({lettre:
-        libellé}), tapée seule, rend sa lettre,
-        en choix multiple comme en choix simple. Dans un choix multiple, un
-        nom qui porte une espace ou une virgule ne se tape pas, coupé par les
-        séparateurs : son option s'y choisit par son numéro. Une réponse
-        invalide le dit (`notice`) et la question revient. Les règles sont
-        celles de `chosen_keys` ; la question, un `ask` de genre `choose`
-        (`choice_question`), posé par `menu`. ValueError, avant de demander,
-        pour un défaut dans un choix multiple, une lettre hors de a à z, une
-        option égale à une lettre, que son numéro rendrait comme la lettre,
-        un nom qu'une lettre lirait à sa place, sans casse (une option sans
-        libellé est son propre nom), un libellé de plus ou de moins que
-        d'options, un défaut hors des options et des lettres, un nom hors
-        des options."""
+        libellé}), tapée seule, rend sa lettre, en choix multiple comme en
+        choix simple. Dans un choix multiple, un nom qui porte une espace ou
+        une virgule ne se tape pas, coupé par les séparateurs : son option
+        s'y choisit par son numéro. Une réponse invalide le dit (`notice`)
+        et la question revient. Les règles sont celles de `chosen_keys` ; la
+        question, un `ask` de genre `choose` (`choice_question`), posé par
+        `menu`. ValueError, avant de demander, pour un défaut dans un choix
+        multiple, une lettre hors de a à z, une option égale à une lettre,
+        que son numéro rendrait comme la lettre, un nom qu'une lettre lirait
+        à sa place, sans casse (une option sans libellé est son propre nom),
+        un libellé de plus ou de moins que d'options, un défaut hors des
+        options et des lettres, un nom hors des options."""
         options = list(options)
         if labels is None:
             labels = [str(option) for option in options]
