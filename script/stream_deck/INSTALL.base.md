@@ -34,9 +34,12 @@ base quand elle manque. Les deux tournent sous ton compte et n'appellent
 
 <!-- [end] -->
 <!-- [en] -->
-Run them from the checkout. The first command installs the base: the system
-packages of the base, `make` among them, then it links the GNOME extension
-into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
+Run them from the checkout. The first command installs the base: it clones
+the GNOME extension, a repository of its own, into
+`script/gnome-extension/erplibre_home/` when it is missing (`git` is
+needed; see [the extension in ERPLibre](../../doc/erplibre_home_gnome_extension.md)),
+installs the system packages of the base, `make` among them, then it links
+the extension into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
 translations (with `msgfmt`), and enables it. The second one, for a
 workstation with a Stream Deck, adds the Stream Deck packages, writes the
 udev rule, creates `.venv.streamdeck` from
@@ -53,9 +56,12 @@ the base is installed, `make erplibre_home_install` and
 script takes these options:
 
 <!-- [fr] -->
-Lance-les depuis le dépôt. La première commande installe la base : les
-paquets système de la base, `make` compris, puis elle lie l'extension GNOME
-dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
+Lance-les depuis le dépôt. La première commande installe la base : elle
+clone l'extension GNOME, un dépôt à part, dans
+`script/gnome-extension/erplibre_home/` quand elle manque (`git` est
+requis ; voir [l'extension dans ERPLibre](../../doc/erplibre_home_gnome_extension.fr.md)),
+installe les paquets système de la base, `make` compris, puis lie
+l'extension dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
 traductions (avec `msgfmt`), et l'active. La seconde, pour un poste qui a un
 Stream Deck, ajoute les paquets du Stream Deck, écrit la règle udev, crée
 `.venv.streamdeck` depuis `script/stream_deck/requirements.txt` et clone les
@@ -76,7 +82,7 @@ script accepte ces options :
 |---|---|
 | `--stream-deck` | add the Stream Deck level: USB packages, udev rule, `.venv.streamdeck`; the base installs too when missing |
 | `--no-enable` | install without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
-| `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
+| `--extension-only` | clone the extension when missing, migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
 | `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
@@ -96,7 +102,7 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 |---|---|
 | `--stream-deck` | ajoute le niveau Stream Deck : paquets USB, règle udev, `.venv.streamdeck` ; la base s'installe aussi quand elle manque |
 | `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
-| `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
+| `--extension-only` | clone l'extension quand elle manque, migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
 | `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
 | `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session et au branchement d'un deck (défaut : non activé) |

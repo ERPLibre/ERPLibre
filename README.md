@@ -232,6 +232,7 @@ time make test_full_fast
 | [IMPROVE_ODOO](doc/improve_odoo.md) | ERPLibre's Odoo fork and its patches |
 
 | [streamdeck_game](doc/streamdeck_game.md) | Stream Deck games, a repository of their own |
+| [erplibre_home_gnome_extension](doc/erplibre_home_gnome_extension.md) | The ERPLibre Home GNOME extension, a repository of its own |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |

@@ -53,9 +53,12 @@ Keyboard automation script. Uses `wmctrl` to target a terminal window, then send
 
 ### GNOME Shell extension
 
-The `script/gnome-extension/erplibre_home/` directory ships a six-indicator panel button (controller,
+The GNOME extension, a repository of its own
+([erplibre-home-gnome-extension](https://github.com/TechnoLibre/erplibre-home-gnome-extension)) cloned at
+`script/gnome-extension/erplibre_home/`, ships a six-indicator panel button (controller,
 pencil, film, ERPLibre, network, device) plus the tiling D-Bus interface used by
-the Python helpers. See [`../gnome-extension/erplibre_home/README.md`](../gnome-extension/erplibre_home/README.md).
+the Python helpers. See its `README.md` and
+[the extension in ERPLibre](../../doc/erplibre_home_gnome_extension.md).
 
 
 ## Deck program
@@ -786,8 +789,10 @@ script/stream_deck/
     └── index.html             # Gallery page / Page de la galerie
 ```
 
-The GNOME Shell extension lives in `script/gnome-extension/erplibre_home/`. /
-L'extension GNOME Shell vit dans `script/gnome-extension/erplibre_home/`.
+The GNOME Shell extension is cloned at `script/gnome-extension/erplibre_home/`
+from its own repository. /
+L'extension GNOME Shell est clonée dans `script/gnome-extension/erplibre_home/`
+depuis son propre dépôt.
 
 
 ## License

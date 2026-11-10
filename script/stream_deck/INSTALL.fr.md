@@ -14,9 +14,12 @@ base quand elle manque. Les deux tournent sous ton compte et n'appellent
 ./script/install/install_erplibre_home.sh --stream-deck
 ```
 
-Lance-les depuis le dépôt. La première commande installe la base : les
-paquets système de la base, `make` compris, puis elle lie l'extension GNOME
-dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
+Lance-les depuis le dépôt. La première commande installe la base : elle
+clone l'extension GNOME, un dépôt à part, dans
+`script/gnome-extension/erplibre_home/` quand elle manque (`git` est
+requis ; voir [l'extension dans ERPLibre](../../doc/erplibre_home_gnome_extension.fr.md)),
+installe les paquets système de la base, `make` compris, puis lie
+l'extension dans `~/.local/share/gnome-shell/extensions/`, compile ses schémas et ses
 traductions (avec `msgfmt`), et l'active. La seconde, pour un poste qui a un
 Stream Deck, ajoute les paquets du Stream Deck, écrit la règle udev, crée
 `.venv.streamdeck` depuis `script/stream_deck/requirements.txt` et clone les
@@ -35,7 +38,7 @@ script accepte ces options :
 |---|---|
 | `--stream-deck` | ajoute le niveau Stream Deck : paquets USB, règle udev, `.venv.streamdeck` ; la base s'installe aussi quand elle manque |
 | `--no-enable` | installe sans activer l'extension ; un poste où l'ancienne extension était active garde cet état sous le nouveau nom |
-| `--extension-only` | migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
+| `--extension-only` | clone l'extension quand elle manque, migre depuis l'ancienne extension, lie l'extension et compile ses schémas et ses traductions, rien d'autre ; ni `sudo` ni vérification du système ; ni avec `--stream-deck` ni avec `--uninstall` |
 | `--with-extras` | installe aussi `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` et le module Python `lz4`, à l'un ou l'autre niveau, une commande du gestionnaire de paquets chacun ; un paquet absent est sauté avec un avertissement |
 | `--deck-program=tiler\|controller\|none` | avec `--stream-deck` : le programme que lance le service du deck (défaut `tiler`) |
 | `--autostart` | avec `--stream-deck` : active le service du deck à l'ouverture de session et au branchement d'un deck (défaut : non activé) |

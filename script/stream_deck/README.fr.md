@@ -224,9 +224,12 @@ Script d'automatisation clavier. Utilise `wmctrl` pour cibler une fenêtre termi
 
 ### Extension GNOME Shell
 
-Le répertoire `script/gnome-extension/erplibre_home/` fournit un panneau à six indicateurs (controller,
+L'extension GNOME, un dépôt à part
+([erplibre-home-gnome-extension](https://github.com/TechnoLibre/erplibre-home-gnome-extension)) cloné dans
+`script/gnome-extension/erplibre_home/`, fournit un panneau à six indicateurs (controller,
 pencil, film, ERPLibre, network, device) ainsi que l'interface D-Bus de tuilage
-utilisée par les helpers Python. Voir [`../gnome-extension/erplibre_home/README.fr.md`](../gnome-extension/erplibre_home/README.fr.md).
+utilisée par les helpers Python. Voir son `README.fr.md` et
+[l'extension dans ERPLibre](../../doc/erplibre_home_gnome_extension.fr.md).
 
 ## Jeux
 
@@ -785,8 +788,10 @@ script/stream_deck/
     └── index.html             # Gallery page / Page de la galerie
 ```
 
-The GNOME Shell extension lives in `script/gnome-extension/erplibre_home/`. /
-L'extension GNOME Shell vit dans `script/gnome-extension/erplibre_home/`.
+The GNOME Shell extension is cloned at `script/gnome-extension/erplibre_home/`
+from its own repository. /
+L'extension GNOME Shell est clonée dans `script/gnome-extension/erplibre_home/`
+depuis son propre dépôt.
 
 
 ## Licence

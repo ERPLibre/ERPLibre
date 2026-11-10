@@ -14,9 +14,12 @@ udev rule.
 ./script/install/install_erplibre_home.sh --stream-deck
 ```
 
-Run them from the checkout. The first command installs the base: the system
-packages of the base, `make` among them, then it links the GNOME extension
-into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
+Run them from the checkout. The first command installs the base: it clones
+the GNOME extension, a repository of its own, into
+`script/gnome-extension/erplibre_home/` when it is missing (`git` is
+needed; see [the extension in ERPLibre](../../doc/erplibre_home_gnome_extension.md)),
+installs the system packages of the base, `make` among them, then it links
+the extension into `~/.local/share/gnome-shell/extensions/`, compiles its schemas and its
 translations (with `msgfmt`), and enables it. The second one, for a
 workstation with a Stream Deck, adds the Stream Deck packages, writes the
 udev rule, creates `.venv.streamdeck` from
@@ -36,7 +39,7 @@ script takes these options:
 |---|---|
 | `--stream-deck` | add the Stream Deck level: USB packages, udev rule, `.venv.streamdeck`; the base installs too when missing |
 | `--no-enable` | install without enabling the extension; a workstation where the former extension was enabled keeps that state under the new name |
-| `--extension-only` | migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
+| `--extension-only` | clone the extension when missing, migrate from the former extension, link the extension and compile its schemas and translations only; no `sudo`, no system check; not with `--stream-deck` nor `--uninstall` |
 | `--with-extras` | also install `mpv`, `yt-dlp`, `nmap`, `keepassxc`, `xdotool` and the Python `lz4` module, at either level, one package manager command each; a missing one is skipped with a warning |
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
 | `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
