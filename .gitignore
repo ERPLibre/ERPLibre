@@ -50,6 +50,9 @@ requirement/ignore_requirements.txt
 screenshots
 screencasts
 private/todo/todo_override_private.json
+# Sceau PAdES : un .p12 porte une clé privée. private/ est versionné, ce
+# dossier-ci ne l'est pas ; TODO › Execute › Security y écrit par défaut.
+/private/sceau/
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
 

@@ -148,6 +148,8 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.python_menu import PythonMenuMixin
+from script.todo.seal_menu import SealMenuMixin
+from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -221,6 +223,8 @@ class TODO(
     ContainerMenuMixin,
     GitRepoMenuMixin,
     ModuleMenuMixin,
+    SealMenuMixin,
+    SshKeyMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -371,7 +375,7 @@ class TODO(
 ── {t("Deployment, network & security")} ──
 [17] {t("Deploy - Deploy ERPLibre locally")}
 [18] {t("Network - Network tools")}
-[19] {t("Security - Dependency security audit")}
+[19] {t("Security - Dependency audit and key generation")}
 [20] {t("Docker / Podman - Container engines")}
 {retour(t('Back'))}
 """
@@ -924,6 +928,7 @@ class TODO(
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
+        "prompt_execute_seal": "PAdES seal",
         "prompt_execute_python": "Python",
         "prompt_execute_container": "Docker / Podman",
         "_container_service": "Service",
@@ -6204,13 +6209,17 @@ class TODO(
         )
 
     def prompt_execute_security(self):
-        print(f"🤖 {t('Dependency security audit!')}")
+        print(f"🤖 {t('Dependency audit and key generation!')}")
         choices = [
+            {"section": t("Dependencies")},
             {
                 "prompt_description": t(
                     "pip-audit - Check vulnerabilities on Python environments"
                 )
             },
+            {"section": t("Key generation")},
+            {"prompt_description": t("Seal for PAdES signature")},
+            {"prompt_description": t("SSH key")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6221,6 +6230,10 @@ class TODO(
                 return False
             elif status == "1":
                 self.execute_pip_audit()
+            elif status == "2":
+                self.prompt_execute_seal()
+            elif status == "3":
+                self.execute_generate_ssh_key()
             else:
                 print(t("Command not found !"))
 
