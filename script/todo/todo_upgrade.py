@@ -1193,9 +1193,9 @@ class TodoUpgrade:
             )
         lst_dir_path, versions = [], None
         if status == "name":
-            # Le répertoire d'un appel précédent ne vaut pas pour un module
-            # trouvé par son nom : présent sans chemin, il passe par le
-            # navigateur.
+            # Une instance réutilisée garde le répertoire de son appel
+            # précédent, qui ne vaut pas pour un module trouvé par son nom :
+            # présent sans chemin, il passe par le navigateur.
             self.dir_path = None
             choisi = self._module_upgrade_by_name()
             if choisi is None:
