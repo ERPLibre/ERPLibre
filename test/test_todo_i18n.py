@@ -62,6 +62,25 @@ class TestT(unittest.TestCase):
         result = todo_i18n.t("Quit")
         self.assertEqual(result, "Quitter")
 
+    def test_both_languages_say_french_then_english(self):
+        # Le décor qui ouvre les deux textes ne se répète pas ; une
+        # ponctuation ouvrante reste des deux côtés.
+        both = todo_i18n.BOTH
+        self.assertEqual(todo_i18n.translate("Back", both), "🔙 Retour / Back")
+        self.assertEqual(
+            todo_i18n.translate("(default)", both), "(défaut) / (default)"
+        )
+
+    def test_both_languages_give_the_language_back_when_the_block_raises(
+        self,
+    ):
+        todo_i18n._current_lang = "en"
+        with self.assertRaises(RuntimeError):
+            with todo_i18n.both_languages():
+                self.assertEqual(todo_i18n.t("Quit"), "Quitter / Quit")
+                raise RuntimeError("forged")
+        self.assertEqual(todo_i18n.get_lang(), "en")
+
 
 class TestGetLang(unittest.TestCase):
     """Test get_lang() function."""

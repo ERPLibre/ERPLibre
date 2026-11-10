@@ -855,6 +855,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code › Upgrade Module asks again for an Odoo version typed wrong and goes back on one left empty, where TODO ended on an error
 - Execute › Code › Upgrade Module goes back on an empty module name before asking the Odoo versions, where the checkout switched to the start version once they were chosen
 - Ctrl+D at a value typed after a list goes back without opening or running anything, where TODO ended on an error: the ports of Execute › Deploy › SSH port forwarding (open Odoo in the browser) and Configure a SOCKS proxy over SSH, the host typed by hand for Configure a SOCKS proxy over SSH and Configure sshfs, the address and the jump host typed for a Proxmox host or for a host of Execute › Test › Long tests - real VMs, hours, the depth of Nested Proxmox depth and Nested QEMU depth, and the module name and the path of Execute › Code › Upgrade Module
+- The first launch, which asks the language, says [0] Back and an invalid answer in French and in English, as its question does, where they came in the default language
 
 <!-- [fr] -->
 
@@ -1078,6 +1079,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Code › Mise à jour de module redemande une version d'Odoo mal tapée et revient sur une version laissée vide, là où TODO s'arrêtait sur une erreur
 - Exécution › Code › Mise à jour de module revient sur un nom de module vide avant de demander les versions d'Odoo, là où le checkout passait à la version de départ une fois celles-ci choisies
 - Ctrl+D à une valeur tapée après une liste revient sans rien ouvrir ni lancer, là où TODO s'arrêtait sur une erreur : les ports d'Exécution › Déployer › Redirection de port SSH (ouvrir Odoo dans le navigateur) et de Configurer Proxy vers SSH, l'hôte tapé à la main de Configurer Proxy vers SSH et de Configurer sshfs, l'adresse et le rebond tapés d'un hôte Proxmox ou d'un hôte d'Exécution › Test › Tests longs - vraies VM, des heures, la profondeur de Profondeur Proxmox imbriqué et de Profondeur QEMU imbriqué, et le nom et le chemin du module d'Exécution › Code › Mise à jour de module
+- Le premier lancement, qui demande la langue, dit [0] Retour et une réponse invalide en français et en anglais, comme sa question, là où ils venaient dans la langue par défaut
 
 <!-- [en] -->
 ## Removed

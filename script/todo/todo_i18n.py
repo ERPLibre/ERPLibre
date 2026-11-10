@@ -2,6 +2,7 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import contextlib
 import os
 import re
 
@@ -11,6 +12,8 @@ _current_lang = None
 
 # Langues que TRANSLATIONS porte pour chaque clé.
 LANGUAGES = ("fr", "en")
+# La langue de `both_languages` : chaque texte en français puis en anglais.
+BOTH = "fr/en"
 
 TRANSLATIONS = {
     # Main menu
@@ -21207,12 +21210,32 @@ def translate(key: str, lang: str) -> str:
     """Traduction de `key` dans `lang`, sans toucher à la langue du processus.
 
     Clé inconnue : la clé elle-même. Langue absente de l'entrée : le
-    français, comme `t`.
+    français, comme `t`. BOTH rend le français, « / », puis l'anglais sans
+    le décor qui ouvre déjà le français, symboles et espaces, jamais une
+    ponctuation ouvrante : « 🔙 Retour / Back », « (défaut) / (default) ».
     """
     entry = TRANSLATIONS.get(key)
     if entry is None:
         return key
+    if lang == BOTH:
+        french, english = entry.get("fr", key), entry.get("en", key)
+        decor = re.match(r"[^\w«\"'(\[]*", french)[0]
+        return f"{french.rstrip()} / {english.removeprefix(decor)}"
     return entry.get(lang, entry.get("fr", key))
+
+
+@contextlib.contextmanager
+def both_languages():
+    """Le temps du bloc, `t` rend chaque texte dans les deux langues
+    (BOTH), pour une question posée avant tout choix de langue ; la langue
+    d'avant revient ensuite, même quand le bloc lève."""
+    global _current_lang
+    before = _current_lang
+    _current_lang = BOTH
+    try:
+        yield
+    finally:
+        _current_lang = before
 
 
 def lang_is_configured() -> bool:

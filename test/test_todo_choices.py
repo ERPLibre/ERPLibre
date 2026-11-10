@@ -89,6 +89,21 @@ class TestLaLangue(unittest.TestCase):
                     self.assertIn("[0] ", sortie)
         self.set_lang.assert_not_called()
 
+    def test_the_first_launch_says_back_and_faults_in_both_languages(self):
+        # Avant tout choix de langue, les lignes du port parlent les deux
+        # langues, comme la question ; la langue du processus revient
+        # ensuite.
+        retour = t("Back")
+        with patch.object(
+            todo_module, "lang_is_configured", return_value=False
+        ):
+            _, sortie, reste = joue_tout(self.todo._ask_language, "x", "0")
+        self.assertIn("[0] 🔙 Retour / Back\n", sortie)
+        self.assertIn("Choix invalide : / Invalid choice: x\n", sortie)
+        self.assertEqual(reste, [])
+        self.assertEqual(t("Back"), retour)
+        self.set_lang.assert_not_called()
+
     def test_a_configured_language_asks_nothing(self):
         with patch.object(
             todo_module, "lang_is_configured", return_value=True

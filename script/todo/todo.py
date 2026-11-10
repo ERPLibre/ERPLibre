@@ -123,6 +123,7 @@ from script.todo import (
     healthcheck,
     ssh_config,
     todo_etat,
+    todo_i18n,
     todo_install,
     todo_journal,
     todo_prefs,
@@ -245,16 +246,19 @@ class TODO(
     def _ask_language(self):
         """Au premier lancement, la langue de TODO, gardée par `set_lang`.
         [0], une réponse vide ou Ctrl+D n'en gardent aucune : TODO parle sa
-        langue par défaut et redemande au lancement suivant."""
+        langue par défaut et redemande au lancement suivant. Le port y
+        parle les deux langues, comme la question : « [0] 🔙 Retour / Back »
+        et « Choix invalide : / Invalid choice: »."""
         if lang_is_configured():
             return
         print()
-        langue = ui.choose(
-            "🌍 Choisir la langue / Choose language:",
-            ["fr", "en"],
-            labels=["🇫🇷 Français", "🇬🇧 English"],
-            names={"Français": "fr", "English": "en"},
-        )
+        with todo_i18n.both_languages():
+            langue = ui.choose(
+                "🌍 Choisir la langue / Choose language:",
+                ["fr", "en"],
+                labels=["🇫🇷 Français", "🇬🇧 English"],
+                names={"Français": "fr", "English": "en"},
+            )
         if langue is not None:
             set_lang(langue)
 
