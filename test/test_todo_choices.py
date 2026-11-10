@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from script.todo import todo as todo_module
+from script.todo import todo_i18n
 from script.todo.todo import TODO
 from script.todo.todo_i18n import t
 
@@ -91,17 +92,19 @@ class TestLaLangue(unittest.TestCase):
 
     def test_the_first_launch_says_back_and_faults_in_both_languages(self):
         # Avant tout choix de langue, les lignes du port parlent les deux
-        # langues, comme la question ; la langue du processus revient
-        # ensuite.
-        retour = t("Back")
-        with patch.object(
-            todo_module, "lang_is_configured", return_value=False
+        # langues, comme la question ; la langue du processus, le français
+        # posé ici quel que soit l'ordre des tests, revient ensuite.
+        with (
+            patch.object(todo_i18n, "_current_lang", "fr"),
+            patch.object(
+                todo_module, "lang_is_configured", return_value=False
+            ),
         ):
             _, sortie, reste = joue_tout(self.todo._ask_language, "x", "0")
+            self.assertEqual(todo_i18n._current_lang, "fr")
         self.assertIn("[0] 🔙 Retour / Back\n", sortie)
         self.assertIn("Choix invalide : / Invalid choice: x\n", sortie)
         self.assertEqual(reste, [])
-        self.assertEqual(t("Back"), retour)
         self.set_lang.assert_not_called()
 
     def test_a_configured_language_asks_nothing(self):
