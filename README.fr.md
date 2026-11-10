@@ -233,17 +233,24 @@ aucun appel.
 
 Quatre variables d'environnement l'activent, les quatre ou aucune.
 L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
-clé est la clé d'API de cet utilisateur :
+clé est la clé d'API de cet utilisateur. `read -rs` lit la clé sans l'afficher
+et la garde hors de l'historique du shell :
 
 
 ```bash
-ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com \
-ERPLIBRE_REQUIREMENT_DB=registry \
-ERPLIBRE_REQUIREMENT_LOGIN=test_runner \
-ERPLIBRE_REQUIREMENT_KEY=<api key> \
+export ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com
+export ERPLIBRE_REQUIREMENT_DB=registry
+export ERPLIBRE_REQUIREMENT_LOGIN=test_runner
+read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
 ./script/test/run_unit_test.sh
 ```
 
+
+L'URL doit être en HTTPS. HTTP sans chiffrement n'est accepté que vers une
+adresse de bouclage, comme un tunnel SSH vers l'instance, parce que la clé part
+avec chaque appel. Les tests eux-mêmes ne reçoivent pas ces variables. Chaque
+journal envoyé a la clé masquée, les chemins relatifs au dépôt et le répertoire
+personnel affiché `~`.
 
 Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
 inchangée. Un envoi qui échoue affiche une ligne d'avertissement et

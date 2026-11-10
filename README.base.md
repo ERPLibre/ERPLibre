@@ -433,7 +433,9 @@ runner writes the verdict of each declared reference that ran, with one call
 per reference. A test that no requirement cites costs no call.
 
 Four environment variables turn this on, all four or none. The login is a user
-of the *Requirement test runner* group, and the key is that user's API key:
+of the *Requirement test runner* group, and the key is that user's API key.
+`read -rs` reads the key without echoing it and keeps it out of the shell
+history:
 
 <!-- [fr] -->
 
@@ -449,25 +451,37 @@ aucun appel.
 
 Quatre variables d'environnement l'activent, les quatre ou aucune.
 L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
-clé est la clé d'API de cet utilisateur :
+clé est la clé d'API de cet utilisateur. `read -rs` lit la clé sans l'afficher
+et la garde hors de l'historique du shell :
 
 <!-- [common] -->
 
 ```bash
-ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com \
-ERPLIBRE_REQUIREMENT_DB=registry \
-ERPLIBRE_REQUIREMENT_LOGIN=test_runner \
-ERPLIBRE_REQUIREMENT_KEY=<api key> \
+export ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com
+export ERPLIBRE_REQUIREMENT_DB=registry
+export ERPLIBRE_REQUIREMENT_LOGIN=test_runner
+read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
 ./script/test/run_unit_test.sh
 ```
 
 <!-- [en] -->
+
+The URL must be HTTPS. Plain HTTP is accepted only for a loopback address,
+such as an SSH tunnel to the instance, because the key travels with every call.
+The tests themselves do not receive these variables. Each sent log has the key
+masked, paths relative to the repository, and the home directory shown as `~`.
 
 Without these variables, the runner opens no connection and its output is
 unchanged. A failed send prints one warning line and stops. The exit code is
 always the suite's own, and the key is never printed.
 
 <!-- [fr] -->
+
+L'URL doit être en HTTPS. HTTP sans chiffrement n'est accepté que vers une
+adresse de bouclage, comme un tunnel SSH vers l'instance, parce que la clé part
+avec chaque appel. Les tests eux-mêmes ne reçoivent pas ces variables. Chaque
+journal envoyé a la clé masquée, les chemins relatifs au dépôt et le répertoire
+personnel affiché `~`.
 
 Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
 inchangée. Un envoi qui échoue affiche une ligne d'avertissement et

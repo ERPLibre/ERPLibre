@@ -276,8 +276,15 @@ class Lanceur:
         self.debut = 0.0
         self.fin = 0.0
         self.travail = tempfile.mkdtemp(prefix="run_unit_test.")
-        self.env = dict(
-            os.environ,
+        # Les variables du registre des requis ne vont pas aux tests : aucun
+        # n'en a besoin, et un test qui affiche son environnement mettrait
+        # la clé dans son journal, donc dans le registre.
+        self.env = {
+            nom: valeur
+            for nom, valeur in os.environ.items()
+            if nom not in requirement_report.VARIABLES
+        }
+        self.env.update(
             PATH=doublures(self.travail)
             + os.pathsep
             + os.environ.get("PATH", ""),

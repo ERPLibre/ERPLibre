@@ -13,7 +13,7 @@ chaque test noté par unit_file.py, puis écrit le verdict par
 
 La configuration vient de l'environnement, les quatre variables ou aucune :
 
-    ERPLIBRE_REQUIREMENT_URL    racine HTTP(S) de l'instance Odoo
+    ERPLIBRE_REQUIREMENT_URL    racine HTTPS de l'instance Odoo
     ERPLIBRE_REQUIREMENT_DB     sa base
     ERPLIBRE_REQUIREMENT_LOGIN  un utilisateur du groupe des lanceurs
     ERPLIBRE_REQUIREMENT_KEY    sa clé d'API
@@ -21,6 +21,8 @@ La configuration vient de l'environnement, les quatre variables ou aucune :
 Aucune définie : `depuis_environnement` rend None sans rien écrire, et le
 lanceur se comporte comme sans ce module — aucune connexion, même sortie,
 même code. En partie définies : une ligne d'avertissement, aucun envoi.
+HTTP sans chiffrement n'est accepté que vers une adresse de bouclage (un
+tunnel SSH vers l'instance) : ailleurs, la clé passerait en clair.
 
 Seules les références que le registre déclare partent : une lecture des
 lignes `repo_unittest` du dépôt, puis un appel par référence déclarée qui a
@@ -31,10 +33,18 @@ L'envoi s'arrête au premier échec — serveur injoignable, identifiants
 refusés, droit manquant — et le dit en UNE ligne ; il ne lève jamais, et le
 code de sortie de la suite n'en dépend pas. La clé n'est jamais affichée :
 tout message lisible passe par `Registre._masquer`.
+
+Le journal d'un verdict, lisible par tout utilisateur interne du registre,
+passe par `Registre._neutraliser` avant de partir : la clé y est masquée,
+les chemins sous la racine du dépôt deviennent relatifs et le répertoire
+personnel devient « ~ ». Les variables elles-mêmes ne sont pas transmises
+aux tests (run_unit_test.py les retire de leur environnement).
 """
 
+import ipaddress
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -194,12 +204,24 @@ def _avertir(sortie, message):
     print(f"  {JAUNE}Registre des requis : {message}{FIN}", file=sortie)
 
 
+def _bouclage(hote):
+    """Vrai si `hote` désigne la machine elle-même : `localhost` ou une
+    adresse de bouclage, IPv4 ou IPv6."""
+    if (hote or "").lower() in ("localhost", "localhost."):
+        return True
+    try:
+        return ipaddress.ip_address(hote).is_loopback
+    except ValueError:
+        return False
+
+
 def depuis_environnement(env=None, sortie=None):
     """Le Registre que l'environnement configure, ou None.
 
-    Aucune variable : None, sans rien écrire. Une partie seulement, ou une
-    URL qui n'est pas HTTP(S) : None et une ligne d'avertissement sur
-    `sortie`, sans aucune connexion."""
+    Aucune variable : None, sans rien écrire. Une partie seulement, une URL
+    qui n'est pas HTTPS, ou HTTP vers un hôte qui n'est pas de bouclage :
+    None et une ligne d'avertissement sur `sortie`, sans aucune
+    connexion."""
     env = os.environ if env is None else env
     sortie = sortie or sys.stdout
     valeurs = {nom: (env.get(nom) or "").strip() for nom in VARIABLES}
@@ -213,14 +235,23 @@ def depuis_environnement(env=None, sortie=None):
         )
         return None
     url, base, login, cle = (valeurs[nom] for nom in VARIABLES)
-    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
-        _avertir(
-            sortie,
-            f"URL « {_affichable(url)} » ni HTTP ni HTTPS,"
-            " aucun verdict envoyé.",
+    morceaux = urllib.parse.urlsplit(url)
+    if morceaux.scheme == "https":
+        return Registre(url, base, login, cle)
+    if morceaux.scheme == "http" and _bouclage(morceaux.hostname):
+        return Registre(url, base, login, cle)
+    if morceaux.scheme == "http":
+        raison = (
+            "HTTP sans chiffrement hors de la machine, la clé passerait en"
+            " clair ; HTTPS, ou un tunnel vers localhost"
         )
-        return None
-    return Registre(url, base, login, cle)
+    else:
+        raison = "ni HTTPS ni HTTP"
+    _avertir(
+        sortie,
+        f"URL « {_affichable(url)} » : {raison}, aucun verdict envoyé.",
+    )
+    return None
 
 
 class Registre:
@@ -243,6 +274,32 @@ class Registre:
         if borne and len(texte) > borne:
             texte = texte[: borne - 1] + "…"
         return texte
+
+    def _neutraliser(self, journal, racine):
+        """`journal` tel qu'il peut partir au registre, lignes gardées : la
+        clé remplacée par « *** », un chemin sous `racine` rendu relatif à
+        elle, le répertoire personnel remplacé par « ~ ». None reste None.
+
+        Un chemin n'est remplacé qu'entier : `/depot` ne touche ni
+        `/depot2` ni `/x/depot`. La racine passe avant le répertoire
+        personnel, qui la contient d'ordinaire."""
+        if not journal:
+            return journal
+        if self.cle:
+            journal = journal.replace(self.cle, "***")
+        for chemin, dessous, seul in (
+            (os.path.abspath(racine), "", "."),
+            (os.path.expanduser("~"), "~/", "~"),
+        ):
+            chemin = re.escape(chemin.rstrip(os.sep))
+            if not chemin:
+                continue
+            avant = r"(?<![\w.-])"
+            journal = re.sub(
+                avant + chemin + re.escape(os.sep), dessous, journal
+            )
+            journal = re.sub(avant + chemin + r"(?![\w.-])", seul, journal)
+        return journal
 
     def _appel(self, service, methode, args):
         """Le `result` d'un appel JSON-RPC ; RegistreIndisponible si le
@@ -275,10 +332,12 @@ class Registre:
             [self.base, uid, self.cle, MODELE, methode, args, kwargs],
         )
 
-    def pousser(self, essais, racine=RACINE, sortie=None):
+    def pousser(self, essais, racine=None, sortie=None):
         """Envoie le verdict de chaque référence déclarée que les `essais`
         ont notée, puis écrit une ligne : le bilan, ou l'avertissement du
-        premier échec. Ne lève jamais."""
+        premier échec. Ne lève jamais. `racine` : RACINE par défaut, lue à
+        l'appel."""
+        racine = racine or RACINE
         sortie = sortie or sys.stdout
         envoyes = mises_a_jour = 0
         try:
@@ -310,7 +369,7 @@ class Registre:
                         "record_result_by_reference",
                         [SORTE, reference, verdict["result"]],
                         {
-                            "log": verdict["log"],
+                            "log": self._neutraliser(verdict["log"], racine),
                             "duration": verdict["duration"],
                         },
                     )

@@ -29,7 +29,7 @@ import run_unit_test as r  # noqa: E402
 CLE = "cle-inventee-0123456789"
 
 ENV = {
-    "ERPLIBRE_REQUIREMENT_URL": "http://registre.invalid:8069/",
+    "ERPLIBRE_REQUIREMENT_URL": "https://registre.invalid/",
     "ERPLIBRE_REQUIREMENT_DB": "registre",
     "ERPLIBRE_REQUIREMENT_LOGIN": "lanceur",
     "ERPLIBRE_REQUIREMENT_KEY": CLE,
@@ -75,6 +75,20 @@ PASSE = """import unittest
 class T(unittest.TestCase):
     def test_vrai(self):
         pass
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+
+# Un test qui met dans son message ce que son environnement porte de la clé.
+FUIT = """import os
+import unittest
+
+
+class T(unittest.TestCase):
+    def test_env(self):
+        self.fail("cle vue : %s" % os.environ.get("ERPLIBRE_REQUIREMENT_KEY"))
 
 
 if __name__ == "__main__":
@@ -203,6 +217,31 @@ class TestLaConfiguration(unittest.TestCase):
                 env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
                 self.assertIsNone(rr.depuis_environnement(env, sortie))
                 self.assertEqual(len(sortie.getvalue().splitlines()), 1)
+
+    def test_plain_http_is_accepted_for_loopback_only(self):
+        """La clé part dans chaque appel : en HTTP, elle ne quitte pas la
+        machine, ou l'envoi n'a pas lieu."""
+        for url, accepte in (
+            ("https://registre.invalid/", True),
+            ("http://127.0.0.1:8069", True),
+            ("http://localhost:8069/", True),
+            ("http://[::1]:8069", True),
+            ("http://registre.invalid:8069/", False),
+            ("http://192.0.2.10:8069", False),
+        ):
+            with self.subTest(url=url):
+                sortie = io.StringIO()
+                env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    side_effect=AssertionError("réseau"),
+                ):
+                    registre = rr.depuis_environnement(env, sortie)
+                self.assertEqual(registre is not None, accepte)
+                self.assertEqual(
+                    len(sortie.getvalue().splitlines()), 0 if accepte else 1
+                )
+                self.assertNotIn(CLE, sortie.getvalue())
 
     def test_a_complete_configuration_gives_a_silent_registry(self):
         sortie = io.StringIO()
@@ -475,6 +514,36 @@ class TestLEnvoi(unittest.TestCase):
         self.assertEqual(len(lignes), 1)
         self.assertIn("Only a requirement test runner", lignes[0])
 
+    def test_a_sent_log_carries_neither_the_key_nor_a_local_path(self):
+        """Le journal part dans une base que tout utilisateur interne lit :
+        la clé y est masquée, la racine du dépôt et le répertoire personnel
+        n'y apparaissent plus, et ses lignes restent des lignes."""
+        message = (
+            "Traceback (most recent call last):\n"
+            '  File "/depot/test/test_demo.py", line 3, in test_faux\n'
+            '  File "/srv/compte-invente/.pyenv/lib/case.py", line 9\n'
+            f"AssertionError: {CLE} != 2\n"
+            "cwd /depot, autre /depot2/x, voisin /x/depot/y"
+        )
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [entree("A::test_faux", "echec", message)],
+            None,
+        )
+        faux = FauxRegistre(declarees=[self.FAUX])
+        with mock.patch.dict(os.environ, {"HOME": "/srv/compte-invente"}):
+            sortie = pousser(faux, [essai])
+        ((_args, kwargs),) = faux.envois()
+        self.assertEqual(
+            kwargs["log"],
+            "Traceback (most recent call last):\n"
+            '  File "test/test_demo.py", line 3, in test_faux\n'
+            '  File "~/.pyenv/lib/case.py", line 9\n'
+            "AssertionError: *** != 2\n"
+            "cwd ., autre /depot2/x, voisin /x/depot/y",
+        )
+        self.assertNotIn(CLE, sortie)
+
     def test_the_key_is_never_printed_even_when_a_server_echoes_it(self):
         faux = FauxRegistre(
             erreur={
@@ -495,20 +564,26 @@ class TestLeLanceur(unittest.TestCase):
     """lancer_une_fois avec et sans le registre : le code de sortie est
     celui de la suite dans tous les cas."""
 
-    def lancer(self, source, env):
+    def lancer(self, source, env, reseau=None):
+        """(code, sortie, reseau, Lanceur) d'un passage sur un fichier
+        test/test_lot.py écrit dans une racine provisoire. `reseau` remplace
+        urlopen ; par défaut, toute connexion est refusée."""
         args = argparse.Namespace(
             tui=False, repeat=1, slowest=0, junit=None, jobs=1, timeout=60
         )
         sortie = io.StringIO()
         with tempfile.TemporaryDirectory() as dossier:
-            chemin = os.path.join(dossier, "test_lot.py")
+            os.mkdir(os.path.join(dossier, "test"))
+            chemin = os.path.join(dossier, "test", "test_lot.py")
             with open(chemin, "w", encoding="utf-8") as fh:
                 fh.write(source)
-            reseau = mock.Mock(side_effect=urllib.error.URLError("refusé"))
+            if reseau is None:
+                reseau = mock.Mock(side_effect=urllib.error.URLError("refusé"))
             # Le cache des durées et des échecs est celui du poste : le test
             # ne le touche pas.
             with (
                 mock.patch.dict(os.environ, env, clear=False),
+                mock.patch.object(rr, "RACINE", dossier),
                 mock.patch("urllib.request.urlopen", reseau),
                 mock.patch.object(r, "lire_durees", return_value={}),
                 mock.patch.object(r, "ecrire_durees"),
@@ -541,6 +616,20 @@ class TestLeLanceur(unittest.TestCase):
                 self.assertEqual(len(registre), 1)
                 self.assertNotIn(CLE, sortie)
                 self.assertTrue(lanceur.call_args.kwargs["detaille"])
+
+    def test_tests_do_not_inherit_the_registry_variables(self):
+        """Un test qui affiche la clé de son environnement n'en trouve
+        aucune : ni le journal envoyé ni la sortie du lanceur ne la
+        portent."""
+        declaree = ref("test_lot.py", "T::test_env")
+        faux = FauxRegistre(declarees=[declaree])
+        code, sortie, _reseau, _lanceur = self.lancer(FUIT, ENV, faux)
+        self.assertEqual(code, 1)
+        ((args, kwargs),) = faux.envois()
+        self.assertEqual(args, ["repo_unittest", declaree, "failed"])
+        self.assertIn("cle vue : None", kwargs["log"])
+        self.assertNotIn(CLE, json.dumps(faux.envois()))
+        self.assertNotIn(CLE, sortie)
 
 
 if __name__ == "__main__":
