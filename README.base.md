@@ -504,7 +504,10 @@ drops the database and prints a summary. A requirement that an Odoo test proves
 lists a *Python test* line whose reference is the dotted path of the test
 method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
 error reaches every declared method of its class. A declared test missing from
-a module whose run reached its end is recorded as an error.
+a complete run, one where Odoo printed its final summary and returned the
+tests' exit code, is recorded as an error. After an incomplete run, a declared
+test that did not run keeps its last verdict, unless its module was never
+reached.
 
 <!-- [fr] -->
 
@@ -517,7 +520,10 @@ supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
 une ligne *Test Python* dont la référence est le chemin pointé de la méthode
 de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
 de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
-absent d'un module dont le passage est allé jusqu'au bout est noté en erreur.
+absent d'un passage complet, où Odoo a écrit son bilan final et rendu le code
+des tests, est noté en erreur. Après un passage incomplet, un test déclaré qui
+n'a pas tourné garde son dernier verdict, sauf si son module n'a jamais été
+atteint.
 
 <!-- [common] -->
 
@@ -532,8 +538,8 @@ configuration that keeps only `addons_path` and the PostgreSQL access, listens
 on 127.0.0.1 only, on two free ports, and never receives the registry
 variables. `--keep-db` keeps the database and prints its name. The exit code is
 0 when every test passes, 1 when a test fails, 2 when the run proves nothing
-(a module that does not install, no test run), and 130 after Ctrl+C, which
-still drops the database and sends nothing.
+(a module that does not install, Odoo crashing, no test run), and 130 after
+Ctrl+C, which still drops the database and sends nothing.
 
 <!-- [fr] -->
 
@@ -543,8 +549,8 @@ PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
 jamais les variables du registre. `--keep-db` garde la base et affiche son
 nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
 échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
-aucun test lancé), et 130 après Ctrl+C, qui supprime quand même la base et
-n'envoie rien.
+Odoo qui plante, aucun test lancé), et 130 après Ctrl+C, qui supprime quand
+même la base et n'envoie rien.
 
 <!-- [en] -->
 

@@ -264,7 +264,10 @@ drops the database and prints a summary. A requirement that an Odoo test proves
 lists a *Python test* line whose reference is the dotted path of the test
 method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
 error reaches every declared method of its class. A declared test missing from
-a module whose run reached its end is recorded as an error.
+a complete run, one where Odoo printed its final summary and returned the
+tests' exit code, is recorded as an error. After an incomplete run, a declared
+test that did not run keeps its last verdict, unless its module was never
+reached.
 
 
 ```bash
@@ -277,8 +280,8 @@ configuration that keeps only `addons_path` and the PostgreSQL access, listens
 on 127.0.0.1 only, on two free ports, and never receives the registry
 variables. `--keep-db` keeps the database and prints its name. The exit code is
 0 when every test passes, 1 when a test fails, 2 when the run proves nothing
-(a module that does not install, no test run), and 130 after Ctrl+C, which
-still drops the database and sends nothing.
+(a module that does not install, Odoo crashing, no test run), and 130 after
+Ctrl+C, which still drops the database and sends nothing.
 
 
 # Documentation

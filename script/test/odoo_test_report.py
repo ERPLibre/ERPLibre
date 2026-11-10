@@ -33,12 +33,13 @@ de plus. Odoo ne reçoit jamais ces variables.
 
 Une erreur de setUpClass ou de tearDownClass n'a pas de méthode : elle
 note le préfixe de sa classe, que chaque méthode déclarée de la classe
-reçoit. Un passage qui atteint le bilan final d'Odoo a lancé tous les tests
-standard des modules : une référence déclarée d'un module que rien n'a
-notée désigne un test renommé, supprimé ou hors des étiquettes standard,
-et passe en erreur. Un module qu'Odoo n'a pas atteint, parce qu'il s'est
-arrêté avant, met ses références déclarées en erreur avec les erreurs du
-journal.
+reçoit. Un passage complet — Odoo écrit son bilan final et rend le code
+des tests — a lancé tous les tests standard des modules : une référence
+déclarée d'un module que rien n'a notée désigne un test renommé, supprimé
+ou hors des étiquettes standard, et passe en erreur. Après un passage
+incomplet, un module qu'Odoo n'a pas atteint met ses références déclarées
+en erreur avec les erreurs du journal ; une référence que rien n'a notée
+dans un module atteint garde son dernier verdict.
 """
 
 import argparse
@@ -227,11 +228,19 @@ def parse_odoo_test_log(lignes):
     return analyser(lignes).verdicts
 
 
+def passage_complet(rc, analyse):
+    """Vrai si Odoo a lancé tous les tests standard des modules : il a
+    écrit son bilan final ET rendu le code des tests, 0 ou 1. Le bilan
+    seul ne suffit pas : quand la phase post_install lève, Odoo 18 écrit
+    quand même le bilan du registre déjà chargé, puis rend 255."""
+    return analyse.fin is not None and rc in (0, 1)
+
+
 def code_de_sortie(rc, analyse):
     """0 tout vert, 1 un test en échec ou en erreur, 2 un passage qui ne
-    prouve rien : Odoo arrêté avant son bilan final ou sur un code qui
-    n'est pas celui des tests, ou aucun test lancé."""
-    if rc not in (0, 1) or analyse.fin is None or not analyse.fin[2]:
+    prouve rien : passage incomplet (`passage_complet`) ou aucun test
+    lancé."""
+    if not passage_complet(rc, analyse) or not analyse.fin[2]:
         return 2
     echecs, erreurs, _total = analyse.fin
     mauvais = any(
@@ -471,7 +480,7 @@ def _ecrire_bilan(analyse, modules, rc, code, sortie):
         )
         print(f"    {resultat:8} {nom}", file=sortie)
     if code == 2:
-        if analyse.fin is None or rc not in (0, 1):
+        if not passage_complet(rc, analyse):
             derniere = (analyse.erreurs or "").strip().splitlines()[-1:]
             raison = (
                 f"Odoo s'est arrêté avant la fin de ses tests (code {rc})"
@@ -484,15 +493,16 @@ def _ecrire_bilan(analyse, modules, rc, code, sortie):
         )
 
 
-def _verdicts_a_pousser(analyse, modules, lignes):
+def _verdicts_a_pousser(analyse, modules, lignes, rc):
     """({clé: verdict}, {préfixe: libellé}) à résoudre contre le registre.
 
-    Un passage qui a atteint son bilan a lancé tous les tests standard des
-    modules : chaque module est complet. Sinon, un module dont aucun test
-    n'a été noté met ses références déclarées en erreur, avec les erreurs
-    du journal ou, à défaut, sa fin."""
+    Après un passage complet (`passage_complet`), chaque module est
+    complet. Sinon, un module dont aucun test n'a été noté met ses
+    références déclarées en erreur, avec les erreurs du journal ou, à
+    défaut, sa fin ; un module dont un test a été noté garde ses verdicts,
+    et ses références que rien n'a notées, leur dernier verdict."""
     verdicts = dict(analyse.verdicts)
-    if analyse.fin is not None:
+    if passage_complet(rc, analyse):
         return verdicts, {
             f"odoo.addons.{m}.": f"odoo.addons.{m} (--test-tags /{m})"
             for m in modules
@@ -593,7 +603,7 @@ def principal(
     code = code_de_sortie(rc, analyse)
     _ecrire_bilan(analyse, modules, rc, code, sortie)
     if registre:
-        verdicts, complets = _verdicts_a_pousser(analyse, modules, lignes)
+        verdicts, complets = _verdicts_a_pousser(analyse, modules, lignes, rc)
         registre.pousser_verdicts(
             verdicts,
             SORTE,

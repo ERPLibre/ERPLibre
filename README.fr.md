@@ -269,7 +269,10 @@ supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
 une ligne *Test Python* dont la référence est le chemin pointé de la méthode
 de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
 de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
-absent d'un module dont le passage est allé jusqu'au bout est noté en erreur.
+absent d'un passage complet, où Odoo a écrit son bilan final et rendu le code
+des tests, est noté en erreur. Après un passage incomplet, un test déclaré qui
+n'a pas tourné garde son dernier verdict, sauf si son module n'a jamais été
+atteint.
 
 
 ```bash
@@ -283,8 +286,8 @@ PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
 jamais les variables du registre. `--keep-db` garde la base et affiche son
 nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
 échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
-aucun test lancé), et 130 après Ctrl+C, qui supprime quand même la base et
-n'envoie rien.
+Odoo qui plante, aucun test lancé), et 130 après Ctrl+C, qui supprime quand
+même la base et n'envoie rien.
 
 
 # Documentation

@@ -64,6 +64,34 @@ def tranche(nom, debut=None, fin=None):
     return lignes[premier:dernier]
 
 
+def enregistrement(niveau, logger, message, *suite):
+    """Un enregistrement du journal d'Odoo, avec ses lignes de suite."""
+    return [
+        f"2026-11-10 12:39:37,000 1272239 {niveau} erplibre_odoo_test_0f1e2d3c"
+        f" {logger}: {message} \n",
+        *(f"{x}\n" for x in suite),
+    ]
+
+
+# Ce qu'Odoo 18 écrit quand la phase post_install lève : preload_registries
+# journalise l'exception, rend -1 (code 255), et le registre déjà chargé
+# reçoit quand même son bilan final.
+PANNE_POST_INSTALL = enregistrement(
+    "CRITICAL",
+    "odoo.service.server",
+    "Failed to initialize database `erplibre_odoo_test_0f1e2d3c`.",
+    "Traceback (most recent call last):",
+    '  File "/srv/invented-erplibre/odoo18.0/odoo/odoo/service/server.py",'
+    " line 1443, in preload_registries",
+    "RuntimeError: invented post-install crash",
+) + enregistrement(
+    "ERROR",
+    "odoo.tests.result",
+    "2 failed, 2 error(s) of 5 tests when loading database"
+    " 'erplibre_odoo_test_0f1e2d3c'",
+)
+
+
 class TestLeJournal(unittest.TestCase):
     """parse_odoo_test_log et analyser sur de vrais journaux d'Odoo."""
 
@@ -165,6 +193,19 @@ class TestLeCodeDeSortie(unittest.TestCase):
         lignes = journal("green.txt")
         lignes = [x for x in lignes if "when loading database" not in x]
         self.assertEqual(otr.code_de_sortie(0, otr.analyser(lignes)), 2)
+
+    def test_a_crash_after_the_tests_is_a_setup_error_despite_its_summary(
+        self,
+    ):
+        lignes = (
+            tranche("verdicts.txt", fin="Starting post tests")
+            + PANNE_POST_INSTALL
+        )
+        analyse = otr.analyser(lignes)
+        self.assertEqual(analyse.fin, (2, 2, 5))
+        self.assertEqual(otr.code_de_sortie(255, analyse), 2)
+        self.assertFalse(otr.passage_complet(255, analyse))
+        self.assertTrue(otr.passage_complet(1, analyse))
 
 
 class TestLaConfiguration(unittest.TestCase):
@@ -561,6 +602,40 @@ class TestLeLanceur(unittest.TestCase):
         # Le chemin du dépôt part relatif, comme pour les tests unitaires.
         self.assertIn("odoo18.0/odoo/odoo/tests/loader.py", kwargs["log"])
         self.assertNotIn(self.racine, kwargs["log"])
+
+    def test_a_crash_after_the_tests_renames_nothing(self):
+        """Odoo écrit son bilan final après une exception de la phase
+        post_install, mais rend 255 : le passage n'est pas complet. Un test
+        post_install déclaré et jamais lancé garde son dernier verdict ; il
+        n'est pas « renommé ou supprimé »."""
+        faux_registre = FauxRegistre(
+            declarees=[
+                VERDICTS + "test_pass",
+                VERDICTS + "test_fail",
+                POST + "test_after_install",
+            ]
+        )
+        code, sortie, _ = self.lancer(
+            ["--modules", "demo_test_verdicts"],
+            FauxOdoo(
+                lignes=tranche("verdicts.txt", fin="Starting post tests")
+                + PANNE_POST_INSTALL,
+                rc=255,
+            ),
+            env=ENV,
+            reseau=faux_registre,
+        )
+        self.assertEqual(code, 2)
+        envois = self.envois(faux_registre)
+        self.assertEqual(
+            {ref: resultat for ref, (resultat, _) in envois.items()},
+            {
+                VERDICTS + "test_pass": "passed",
+                VERDICTS + "test_fail": "failed",
+            },
+        )
+        self.assertIn("(code 255)", sortie)
+        self.assertIn("invented post-install crash", sortie)
 
     def test_a_run_stopped_between_two_modules_keeps_the_first_verdicts(self):
         """Le premier module a passé ses tests at_install, le second ne
