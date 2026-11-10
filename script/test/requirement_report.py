@@ -31,8 +31,9 @@ laisse aucun avertissement dans le journal du serveur.
 
 L'envoi s'arrête au premier échec — serveur injoignable, identifiants
 refusés, droit manquant, Ctrl+C — et le dit en UNE ligne ; il ne lève
-jamais, et le code de sortie de la suite n'en dépend pas. La clé n'est
-jamais affichée : tout message lisible passe par `Registre._masquer`.
+jamais. Le code de sortie d'un lancement reste celui de la suite ; seul
+un Ctrl+C pendant l'envoi met fin à --watch, qui sort alors en 130. La clé
+n'est jamais affichée : tout message lisible passe par `Registre._masquer`.
 
 Le journal d'un verdict, lisible par tout utilisateur interne du registre,
 passe par `Registre._neutraliser` avant de partir : la clé y est masquée,
@@ -419,7 +420,8 @@ class Registre:
                 self._masquer(
                     f"envoi interrompu après {envoyes} verdict(s)"
                     f" ({self._masquer(raison, borne=300)}) ; le code de"
-                    " sortie de la suite n'en dépend pas."
+                    " sortie reste celui de la suite, hors --watch qu'un"
+                    " Ctrl+C arrête."
                 ),
                 sortie=sortie,
             )

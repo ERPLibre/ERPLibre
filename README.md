@@ -251,7 +251,8 @@ masked, paths relative to the repository, and the home directory shown as `~`.
 
 Without these variables, the runner opens no connection and its output is
 unchanged. A failed send prints one warning line and stops. The exit code is
-always the suite's own, and the key is never printed.
+the suite's own; only Ctrl+C during the send ends `--watch`, with code 130. The
+key is never printed.
 
 
 # Documentation

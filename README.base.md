@@ -477,7 +477,8 @@ masked, paths relative to the repository, and the home directory shown as `~`.
 
 Without these variables, the runner opens no connection and its output is
 unchanged. A failed send prints one warning line and stops. The exit code is
-always the suite's own, and the key is never printed.
+the suite's own; only Ctrl+C during the send ends `--watch`, with code 130. The
+key is never printed.
 
 <!-- [fr] -->
 
@@ -489,8 +490,8 @@ personnel affiché `~`.
 
 Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
 inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
-s'arrête. Le code de sortie est toujours celui de la suite, et la clé n'est
-jamais affichée.
+s'arrête. Le code de sortie est celui de la suite ; seul un Ctrl+C pendant
+l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
 
 <!-- [en] -->
 

@@ -256,8 +256,8 @@ personnel affiché `~`.
 
 Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
 inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
-s'arrête. Le code de sortie est toujours celui de la suite, et la clé n'est
-jamais affichée.
+s'arrête. Le code de sortie est celui de la suite ; seul un Ctrl+C pendant
+l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
 
 
 # Documentation

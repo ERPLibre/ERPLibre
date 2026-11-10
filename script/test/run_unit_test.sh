@@ -28,7 +28,8 @@
 # verdict de chaque test au registre des requis d'une instance Odoo
 # (requirement_report.py en décrit le contrat). Sans elles, aucune
 # connexion : la sortie est celle de toujours. Le code de sortie reste
-# celui de la suite, que l'envoi réussisse ou non.
+# celui de la suite, que l'envoi réussisse ou non ; seul un Ctrl+C pendant
+# l'envoi met fin à --watch, en 130.
 #
 # Une option à valeur s'écrit avec « = » : tout argument sans « -- » est
 # pris pour un fichier de tests.
