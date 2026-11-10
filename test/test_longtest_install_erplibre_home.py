@@ -96,7 +96,7 @@ GDM_LIVRE = """# GDM configuration storage
 
 
 class LaMatrice(unittest.TestCase):
-    def test_the_keys_are_those_of_the_spec(self):
+    def test_the_keys_are_the_supported_systems(self):
         self.assertEqual(
             [sd.cle(e) for e in sd.MATRICE],
             [
@@ -159,7 +159,7 @@ class LaMatrice(unittest.TestCase):
                 self.assertNotIn(sd.cle(entree), dans)
                 self.assertTrue(entree["raison"])
 
-    def test_the_out_of_scope_systems_are_those_of_the_spec(self):
+    def test_the_out_of_scope_systems_are_refused_with_a_reason(self):
         """Chacun est au rapport UNSUPPORTED, avec la raison qui l'écarte,
         sans VM ni journal, et --only le refuse en donnant cette raison."""
         self.assertEqual(

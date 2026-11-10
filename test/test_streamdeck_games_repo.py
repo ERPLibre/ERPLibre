@@ -214,7 +214,7 @@ def port_de_l_extension():
 
 
 class LePortDeLaGalerie(unittest.TestCase):
-    """Contrat 5 : la galerie sert sur 8042, et l'extension GNOME l'y
+    """Contrat des jeux : la galerie sert sur 8042, et l'extension GNOME l'y
     cherche. Un port qui diverge montre la galerie hors ligne dans le menu
     de l'extension alors qu'elle tourne."""
 

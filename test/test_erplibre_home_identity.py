@@ -405,8 +405,6 @@ class TestLegacyNames(unittest.TestCase):
         "script/gnome-extension/erplibre_home/test/unit/git-sync.test.js",
         "test/test_erplibre_home_migrate_legacy.py",
     )
-    # Design documents record the decisions, under their names of the time.
-    ALLOWED_DIRS = ("docs/superpowers/",)
     # The deck program's former make target stays an alias.
     ALIASES = {"streamdeck_tiler", "streamdeck_tiler_unittest"}
 
@@ -431,7 +429,7 @@ class TestLegacyNames(unittest.TestCase):
         stray = []
         for line in done.stdout.splitlines():
             path, _, match = line.split(":", 2)
-            if path in self.ALLOWED or path.startswith(self.ALLOWED_DIRS):
+            if path in self.ALLOWED:
                 continue
             if match in self.ALIASES:
                 continue
