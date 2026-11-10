@@ -378,7 +378,8 @@ class TestTheSourceQuestion(unittest.TestCase):
 
     def test_monitoring_goes_back_before_any_analysis(self):
         """[0], une réponse vide ou Ctrl+D à la provenance : ni
-        description, ni écran des analyses."""
+        description, ni écran des analyses. La réponse est lue : un retour
+        qui viendrait avant la question ne passe pas pour elle."""
         from unittest import mock
 
         for reponse in ("0", "", EOFError()):
@@ -391,6 +392,7 @@ class TestTheSourceQuestion(unittest.TestCase):
                 ):
                     rendu = self.todo.execute_analyse_monitoring()
                 self.assertIsNone(rendu)
+                self.assertEqual(scripted.answers, [])
                 ecran.assert_not_called()
                 analyse.assert_not_called()
 
