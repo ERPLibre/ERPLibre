@@ -35,13 +35,15 @@ DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
 # Les listes des manifestes qu'ERPLibre déclare pour lui-même, hors versions
-# d'Odoo : le mobile et les jeux du Stream Deck, entre autres.
+# d'Odoo : le mobile, les jeux du Stream Deck et l'extension GNOME, entre
+# autres.
 DECLARED_MANIFEST_LISTS = tuple(
     os.path.join("conf", nom)
     for nom in (
         "git_manifest.csv",
         "git_manifest_mobile.csv",
         "git_manifest_streamdeck.csv",
+        "git_manifest_erplibre_home.csv",
     )
 )
 

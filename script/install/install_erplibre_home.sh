@@ -3,8 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
 # Installe ERPLibre Home sans Odoo, à deux niveaux. La base : l'extension
-# GNOME liée au dépôt, ses schémas et ses traductions, puis activée ; ni
-# accès au périphérique ni venv. --stream-deck ajoute le niveau Stream Deck
+# GNOME, un dépôt à part cloné dans script/gnome-extension/erplibre_home/
+# quand il manque et amené au dernier commit de main à chaque exécution,
+# liée, ses schémas et ses traductions compilés, puis activée ; ni accès au
+# périphérique ni venv. --stream-deck ajoute le niveau Stream Deck
 # par-dessus la base : paquets USB, règle udev, venv dédié .venv.streamdeck,
 # les jeux, clonés quand ils manquent et amenés au dernier commit de main à
 # chaque exécution, et le service systemd --user
@@ -38,7 +40,8 @@ cd "${RACINE}"
 . "${RACINE}/script/install/erplibre_home_settings.sh"
 
 UUID="erplibre-home@technolibre.ca"
-EXT_SRC="${RACINE}/script/gnome-extension/erplibre_home"
+EXT_SRC="${RACINE}/${ERPLIBRE_HOME_EXT_DIR}"
+EXT_MANIFEST="${RACINE}/manifest/git_manifest_erplibre_home_gnome_extension.xml"
 EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 METADATA="${EXT_SRC}/metadata.json"
 UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
@@ -91,6 +94,9 @@ Usage : ./script/install/install_erplibre_home.sh [options]
 
 Installe ERPLibre Home sans Odoo : l'extension GNOME erplibre-home, ses
 schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
+L'extension est clonée dans script/gnome-extension/erplibre_home/ quand
+elle manque, et amenée au dernier commit de main à chaque exécution (une
+branche ou du travail local la retient) ; git est alors requis.
 
   --stream-deck     ajoute le niveau Stream Deck : paquets USB, règle udev,
                     .venv.streamdeck, et les jeux de
@@ -101,8 +107,9 @@ schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
   --no-enable       n'active pas l'extension ; un poste où l'ancienne
                     extension était active garde cet état sous le
                     nouveau nom (migration)
-  --extension-only  migration de l'ancienne identité, lien, schémas et
-                    traductions de l'extension seulement, sans sudo ni
+  --extension-only  clone de l'extension, migration de l'ancienne
+                    identité, lien, schémas et traductions de
+                    l'extension seulement, sans sudo ni
                     vérification du système ; ne se combine ni avec
                     --stream-deck ni avec --uninstall
   --with-extras     ajoute mpv, yt-dlp, nmap, keepassxc, xdotool et le
@@ -121,8 +128,8 @@ schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
                     qui n'y est pas.
   --uninstall       retire tout : extension, règle udev, .venv.streamdeck,
                     service et réglages ; avec --stream-deck, tout sauf
-                    l'extension, qui reste active ; les paquets système
-                    et les jeux restent
+                    l'extension, qui reste active ; les paquets système,
+                    le clone de l'extension et les jeux restent
   --dry-run         affiche ce qui serait fait, sans rien changer ni
                     appeler sudo
   -h, --help        cette aide
@@ -280,12 +287,10 @@ shell_versions() {
         | tr -d '"' | tr '\n' ' ' | sed 's/ *$//'
 }
 
-# Le majeur de la version doit figurer dans « shell-version » de
-# metadata.json, la liste même que GNOME Shell confronte à sa version avant
-# de charger l'extension. La lire là, plutôt que d'en tenir une copie ici,
-# empêche les deux listes de diverger.
-check_gnome() {
-    local accepted major
+# Pose GNOME_VERSION, la version de GNOME Shell ; un poste sans GNOME Shell
+# n'est pas supporté. Ne lit rien de l'extension : elle peut n'être pas
+# encore clonée.
+read_gnome_version() {
     if [ -n "${ERPLIBRE_HOME_GNOME_VERSION:-}" ]; then
         GNOME_VERSION="${ERPLIBRE_HOME_GNOME_VERSION}"
     elif command -v gnome-shell >/dev/null 2>&1; then
@@ -300,6 +305,15 @@ check_gnome() {
         GNOME_VERSION=none
     fi
     [ "${GNOME_VERSION}" != none ] || unsupported "no GNOME Shell"
+}
+
+# Le majeur de la version doit figurer dans « shell-version » de
+# metadata.json, la liste même que GNOME Shell confronte à sa version avant
+# de charger l'extension. La lire là, plutôt que d'en tenir une copie ici,
+# empêche les deux listes de diverger. Suit read_gnome_version et le clone
+# de l'extension.
+check_shell_version() {
+    local accepted major
     accepted="$(shell_versions)" || accepted=""
     [ -n "${accepted}" ] || die "shell-version illisible dans ${METADATA}"
     major="${GNOME_VERSION%%.*}"
@@ -511,23 +525,36 @@ make_venv() {
 # plain_clone_source MANIFESTE PATH rend « <url> <révision> » du projet du
 # manifeste dont le path est PATH ; l'URL est le fetch de son remote suivi
 # de son name. La révision ne se lit que là, pour que l'installateur et repo
-# sync clonent la même.
+# sync clonent la même. tr, grep et sed, et non python3 : la base clone
+# l'extension avant l'étape des paquets, qui installe python3. Le
+# manifeste est lu comme ceux de manifest/ s'écrivent : attributs entre
+# guillemets doubles, sans « > » dans leurs valeurs ; ses sauts de ligne
+# ne comptent pas.
 plain_clone_source() {
-    python3 - "$1" "$2" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
+    local texte projet remote fetch
+    texte="$(tr '\n\r\t' '   ' <"$1")" || return 1
+    projet="$(grep -o '<project [^>]*>' <<<"${texte}" \
+        | grep -F " path=\"$2\"" | head -n 1)" || true
+    if [ -z "${projet}" ]; then
+        echo "no project at $2 in $1" >&2
+        return 1
+    fi
+    remote="$(plain_clone_attribute remote "${projet}")"
+    fetch="$(grep -o '<remote [^>]*>' <<<"${texte}" \
+        | grep -F " name=\"${remote}\"" | head -n 1)" || true
+    fetch="$(plain_clone_attribute fetch "${fetch}")"
+    if [ -z "${remote}" ] || [ -z "${fetch}" ]; then
+        echo "no remote for $2 in $1" >&2
+        return 1
+    fi
+    echo "${fetch%/}/$(plain_clone_attribute name "${projet}")" \
+        "$(plain_clone_attribute revision "${projet}")"
+}
 
-manifeste, chemin = sys.argv[1:]
-racine = ET.parse(manifeste).getroot()
-remotes = {r.get("name"): r.get("fetch") for r in racine.iter("remote")}
-for projet in racine.iter("project"):
-    if projet.get("path") == chemin:
-        fetch = remotes[projet.get("remote")].rstrip("/")
-        print("%s/%s %s" % (fetch, projet.get("name"), projet.get("revision")))
-        break
-else:
-    sys.exit("no project at %s in %s" % (chemin, manifeste))
-PY
+# plain_clone_attribute NOM ÉLÉMENT : la valeur de l'attribut NOM="…" de
+# l'élément XML ÉLÉMENT, écrit sur une ligne ; vide quand il manque.
+plain_clone_attribute() {
+    sed -n "s/.*[[:space:]]$1=\"\([^\"]*\)\".*/\1/p" <<<"$2"
 }
 
 # Sort en 0 quand la révision du manifeste est une branche : refs/heads/<x>,
@@ -689,6 +716,73 @@ plain_clone_dry_run() {
         fi
     fi
     echo "${label}: keep ${dir}${raison:+ (${raison})}"
+}
+
+# ---------- Extension : le clone ----------
+
+# Les fichiers de EXT_SRC autres que les restes ignorés qu'une mise à jour
+# d'ERPLibre laisse quand elle cesse de suivre l'extension : locale/, les
+# schémas compilés et les caches Python, que la base recompile. Rendus
+# relatifs à EXT_SRC, séparés par une espace, trois au plus suivis de
+# « ... ». Un EXT_SRC qui n'est pas un répertoire est lui-même nommé ; un
+# .git, de repo ou d'un clone, compte.
+extension_strays() {
+    local nom n=0
+    if [ ! -d "${EXT_SRC}" ] || [ -L "${EXT_SRC}" ]; then
+        printf '%s ' "${EXT_SRC}"
+        return 0
+    fi
+    while IFS= read -r -d '' nom; do
+        n=$((n + 1))
+        if [ "${n}" -gt 3 ]; then
+            printf '... '
+            break
+        fi
+        printf '%s ' "${nom#"${EXT_SRC}/"}"
+    done < <(find "${EXT_SRC}" -mindepth 1 \( -type f -o -type l \) \
+        ! -path "${EXT_SRC}/locale/*" \
+        ! -path "${EXT_SRC}/schemas/gschemas.compiled" \
+        ! -path "*/__pycache__/*" -print0)
+}
+
+# Sort en 0 quand l'extension est à cloner : son répertoire manque, ou ne
+# garde que les restes que nomme extension_strays. Tout autre contenu est un
+# clone, de ce script, de repo ou d'un développeur, et reste en place.
+extension_need_clone() {
+    [ -e "${EXT_SRC}" ] || [ -L "${EXT_SRC}" ] || return 0
+    [ -z "$(extension_strays)" ]
+}
+
+# Rend, vide quand EXT_SRC porte l'extension (metadata.json), la raison
+# pour laquelle un EXT_SRC gardé ne la porte pas, avec les entrées qui ont
+# empêché le clone.
+extension_kept_without_extension() {
+    [ -f "${EXT_SRC}/metadata.json" ] && return 0
+    echo "no metadata.json; move away $(extension_strays)then run again"
+}
+
+# Clone l'extension quand extension_need_clone le demande, à la révision de
+# son manifeste ; un clone ordinaire déjà là la suit par plain_clone_update.
+# Un EXT_SRC gardé sans l'extension arrête l'installation : la base n'est
+# rien sans elle.
+clone_extension() {
+    local origine raison
+    if ! extension_need_clone; then
+        raison="$(extension_kept_without_extension)"
+        [ -z "${raison}" ] \
+            || die "extension absente, ${EXT_SRC} gardé : ${raison}"
+        plain_clone_update "${EXT_SRC}" "${EXT_MANIFEST}" \
+            "${ERPLIBRE_HOME_EXT_DIR}" extension \
+            || die "révision de l'extension illisible dans ${EXT_MANIFEST}"
+        return 0
+    fi
+    command -v git >/dev/null \
+        || die "git est requis pour cloner l'extension : installez le paquet git"
+    origine="$(plain_clone_source "${EXT_MANIFEST}" "${ERPLIBRE_HOME_EXT_DIR}")" \
+        || die "révision de l'extension illisible dans ${EXT_MANIFEST}"
+    plain_clone_clone "${EXT_SRC}" "${origine% *}" "${origine#* }" \
+        || die "clone de l'extension impossible : ${origine}"
+    DONE+=("extension cloned: ${EXT_SRC} (${origine#* })")
 }
 
 # ---------- Jeux ----------
@@ -1228,7 +1322,9 @@ UNINSTALL_ERROR=""
 # l'UUID peut y rester, et la désinstallation n'est pas complète.
 uninstall() {
     local current wanted
-    if current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null)" \
+    if [ ! -f "${EXT_SRC}/tools/gsettings_strv.py" ]; then
+        DONE+=("enabled-extensions NOT edited: no ${EXT_SRC}/tools/gsettings_strv.py; ${UUID} may still be listed")
+    elif current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null)" \
         && wanted="$(uuid_list_edit remove "${current}" "${UUID}" 2>/dev/null)"; then
         if [ "${wanted}" != "${current}" ]; then
             if gsettings_bus set org.gnome.shell enabled-extensions "${wanted}"; then
@@ -1337,6 +1433,37 @@ step_service() {
     install_service
 }
 
+# Sous --dry-run, « extension: clone » quand l'extension est à cloner,
+# « extension: keep » sinon, avec ce que plain_clone_dry_run en dit.
+step_extension_source() {
+    local origine
+    if [ "${DRY_RUN}" = 1 ]; then
+        if ! extension_need_clone; then
+            plain_clone_dry_run "${EXT_SRC}" "${EXT_MANIFEST}" \
+                "${ERPLIBRE_HOME_EXT_DIR}" extension \
+                "$(extension_kept_without_extension)" \
+                || die "révision de l'extension illisible dans ${EXT_MANIFEST}"
+        else
+            origine="$(plain_clone_source "${EXT_MANIFEST}" "${ERPLIBRE_HOME_EXT_DIR}")" \
+                || die "révision de l'extension illisible dans ${EXT_MANIFEST}"
+            echo "extension: clone ${origine% *} at ${origine#* } into ${EXT_SRC}"
+        fi
+        return 0
+    fi
+    clone_extension
+}
+
+# Sous --dry-run, la vérification de shell-version ne se fait que sur une
+# extension déjà là : celle qui n'est pas encore clonée ne la dit pas, et
+# une ligne l'annonce.
+step_shell_version() {
+    if [ "${DRY_RUN}" = 1 ] && [ ! -f "${METADATA}" ]; then
+        echo "check: shell-version of ${METADATA} after the clone"
+        return 0
+    fi
+    check_shell_version
+}
+
 step_extension() {
     local lang
     if [ "${DRY_RUN}" = 1 ]; then
@@ -1401,6 +1528,9 @@ step_uninstall() {
 # doit marcher sur un GNOME sorti de shell-version. La base passe toujours ;
 # la règle udev, le venv, les jeux et le service n'arrivent qu'avec
 # --stream-deck, dont le chemin du dépôt se vérifie avant tout le reste.
+# L'extension se clone, ou suit main, avant la lecture de shell-version,
+# qu'elle porte, mais après la version de GNOME : un poste sans GNOME Shell
+# n'est pas supporté sans rien cloner. La désinstallation ne clone jamais.
 main() {
     parse_args "$@"
     check_not_root
@@ -1414,7 +1544,11 @@ main() {
     if [ "${EXTENSION_ONLY}" = 0 ]; then
         detect_os
         detect_family
-        check_gnome
+        read_gnome_version
+    fi
+    step_extension_source
+    if [ "${EXTENSION_ONLY}" = 0 ]; then
+        step_shell_version
         if [ "${DRY_RUN}" = 1 ]; then
             echo "family=${FAMILY}"
             echo "gnome=${GNOME_VERSION}"

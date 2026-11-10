@@ -23,6 +23,12 @@ Ce que ces tests gardent :
   propre y est amené, une branche ou du travail local le retient, un clone
   qui échoue ne laisse rien, un checkout de repo ne bouge pas ; ils passent
   avant le venv, qui installe leurs dépendances ;
+- la base clone l'extension GNOME, quand elle manque, à la révision que son
+  manifeste nomme, main, avant de lire shell-version dans son
+  metadata.json, et sans python3 ; un clone ordinaire propre suit main, une
+  branche le retient, des restes ignorés se remplacent par le clone, tout
+  autre contenu arrête l'installation ; --dry-run l'annonce sans cloner, et
+  --uninstall ne la clone jamais ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
 - --uninstall retire tout, --uninstall --stream-deck tout sauf
   l'extension ; aucun des deux ne vérifie le système ni ne retire les
@@ -53,7 +59,12 @@ Ce que ces tests gardent :
 - les .mo portent le domaine gettext de metadata.json, que le schéma
   déclare aussi ; « make test_gnome_extension » valide le schéma en
   --strict avant de lancer node sur chaque test unitaire, et
-  « make extension_i18n_compile » compile chaque po/ sous ce domaine.
+  « make extension_i18n_compile » compile chaque po/ sous ce domaine ;
+  sans le clone de l'extension, ces cibles s'arrêtent sur la commande qui
+  l'installe.
+
+Ce qui lit la vraie extension est sauté (SANS_EXTENSION) quand son clone
+manque.
 """
 
 import importlib.util
@@ -62,14 +73,17 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from erplibre_home_extension import EXTENSION, SANS_EXTENSION  # noqa: E402
+
 RACINE = Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script/install/install_erplibre_home.sh"
-EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
 UUID = "erplibre-home@technolibre.ca"
 REGLE = "/etc/udev/rules.d/70-streamdeck.rules"
 UNITE = "erplibre-home-streamdeck.service"
@@ -358,6 +372,7 @@ class LaFamille(Installateur):
 
 
 class LeDryRun(Installateur):
+    @SANS_EXTENSION
     def test_the_base_lists_its_files_and_neither_rule_nor_venv(self):
         fini = self.lancer("--dry-run")
         self.assertEqual(0, fini.returncode, fini.stderr)
@@ -413,6 +428,7 @@ class LeDryRun(Installateur):
         ]
         self.assertEqual(["games", "venv"], etapes)
 
+    @SANS_EXTENSION
     def test_the_translations_use_msgfmt_check_at_both_levels(self):
         attendus = [str(EXTENSION / "tools/migrate_legacy.py")] + [
             "msgfmt --check -o %s %s"
@@ -428,6 +444,7 @@ class LeDryRun(Installateur):
                 fini = self.lancer("--dry-run", *niveau)
                 self.assertEqual(attendus, self.lignes(fini, "run: "))
 
+    @SANS_EXTENSION
     def test_the_mo_files_carry_the_gettext_domain_of_metadata(self):
         """GNOME Shell loads <domain>.mo for the gettext-domain of
         metadata.json, and the schema names the same domain."""
@@ -518,6 +535,7 @@ class LeDryRun(Installateur):
         self.assertNotIn("enabled-extensions", fini.stdout)
         self.assertEqual([], self.lignes(fini, "packages: "))
 
+    @SANS_EXTENSION
     def test_uninstall_skips_the_gnome_version_check(self):
         """Une désinstallation marche encore quand GNOME a dépassé les
         versions que metadata.json déclare."""
@@ -553,6 +571,7 @@ class LesRefus(Installateur):
             self.lancer("--dry-run", gnome="none"), "no GNOME Shell"
         )
 
+    @SANS_EXTENSION
     def test_gnome_outside_shell_version_is_unsupported(self):
         acceptees = versions_acceptees()
         liste = " ".join(str(v) for v in acceptees)
@@ -566,6 +585,7 @@ class LesRefus(Installateur):
                     "GNOME %s not in shell-version (%s)" % (version, liste),
                 )
 
+    @SANS_EXTENSION
     def test_both_bounds_of_shell_version_are_accepted(self):
         acceptees = versions_acceptees()
         for version in ("%d.0" % acceptees[0], "%d.2" % acceptees[-1]):
@@ -574,6 +594,7 @@ class LesRefus(Installateur):
                 self.assertEqual(0, fini.returncode, fini.stderr)
                 self.assertEqual([version], self.lignes(fini, "gnome="))
 
+    @SANS_EXTENSION
     def test_shell_version_is_read_without_python(self):
         """python3 est un paquet de base, installé APRÈS cette lecture : un
         python3 qui échoue en tête du PATH ne change pas la liste lue, la
@@ -670,6 +691,7 @@ def sourcer(fragment, env=None):
         )
 
 
+@SANS_EXTENSION
 class TestListeEnabledExtensions(unittest.TestCase):
     """uuid_list_edit : les deux formes que gsettings affiche, lues par
     tools/gsettings_strv.py."""
@@ -1436,6 +1458,356 @@ class TestJeux(unittest.TestCase):
             self.assertEqual([], restes)
 
 
+def depot_d_extension(dossier):
+    """Un dépôt git local d'extension sous `dossier`/ext.git, sur main, et
+    un manifeste qui le nomme au chemin de l'extension. Rend le chemin du
+    manifeste."""
+    depot = os.path.join(dossier, "ext.git")
+    os.makedirs(depot)
+    _git(depot, "init", "-q", "-b", "main")
+    Path(depot, "metadata.json").write_text('{"shell-version": ["48"]}\n')
+    _git(depot, "add", "metadata.json")
+    _git(depot, "commit", "-q", "-m", "un")
+    manifeste = os.path.join(dossier, "manifeste.xml")
+    Path(manifeste).write_text(
+        '<?xml version="1.0" encoding="UTF-8" ?>\n<manifest>\n'
+        '  <remote name="local"\n          fetch="file://%s/" />\n'
+        "  <project\n"
+        '      name="ext.git"\n'
+        '      path="script/gnome-extension/erplibre_home"\n'
+        '      remote="local"\n'
+        '      revision="main"\n'
+        "  />\n</manifest>\n" % dossier
+    )
+    return manifeste
+
+
+def _git(depot, *args):
+    return subprocess.run(
+        [
+            "git",
+            "-C",
+            str(depot),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+class TestLExtensionClonee(unittest.TestCase):
+    """clone_extension : l'extension manquante se clone à la révision de son
+    manifeste, main, en HEAD détaché ; un clone ordinaire propre suit main,
+    une branche ou du travail local le retient. Jamais le vrai répertoire :
+    EXT_SRC et EXT_MANIFEST visent un dossier temporaire."""
+
+    def jouer(self, dossier, manifeste, suite, env=None):
+        environ = {"DOSSIER": dossier, "MANIFESTE": manifeste}
+        environ.update(env or {})
+        return sourcer(
+            'EXT_SRC="$DOSSIER/erplibre_home"\n'
+            'EXT_MANIFEST="$MANIFESTE"\n' + suite,
+            environ,
+        )
+
+    def cloner(self, dossier, manifeste):
+        return self.jouer(
+            dossier,
+            manifeste,
+            'clone_extension\nprintf "%s\\n" "${DONE[@]}"\n',
+        )
+
+    def simuler(self, dossier, manifeste):
+        return self.jouer(
+            dossier, manifeste, "DRY_RUN=1\nstep_extension_source\n"
+        )
+
+    def test_the_source_is_the_project_of_the_manifest_read_without_python(
+        self,
+    ):
+        """La base clone l'extension avant d'installer python3 : la lecture
+        du manifeste n'en dépend pas, et ses attributs sur plusieurs lignes
+        se lisent."""
+        with tempfile.TemporaryDirectory() as dossier:
+            faux = Path(dossier, "bin")
+            faux.mkdir()
+            for nom in ("python3", "python"):
+                (faux / nom).write_text("#!/bin/sh\nexit 1\n")
+                (faux / nom).chmod(0o755)
+            env = {"PATH": "%s:%s" % (faux, os.environ.get("PATH", ""))}
+            fait = sourcer(
+                'plain_clone_source "$EXT_MANIFEST" "$ERPLIBRE_HOME_EXT_DIR"\n',
+                env,
+            )
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(
+                "https://github.com/TechnoLibre/"
+                "erplibre-home-gnome-extension.git main\n",
+                fait.stdout,
+            )
+            manifeste = depot_d_extension(dossier)
+            fait = self.jouer(
+                dossier,
+                manifeste,
+                'plain_clone_source "$EXT_MANIFEST" "$ERPLIBRE_HOME_EXT_DIR"\n',
+                env,
+            )
+            self.assertEqual("file://%s/ext.git main\n" % dossier, fait.stdout)
+
+    def test_a_missing_extension_is_cloned_detached_on_main(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            ext = Path(dossier, "erplibre_home")
+            self.assertEqual(
+                "extension cloned: %s (main)\n" % ext, fait.stdout
+            )
+            self.assertTrue((ext / "metadata.json").is_file())
+            self.assertEqual(
+                _git(Path(dossier, "ext.git"), "rev-parse", "main"),
+                _git(ext, "rev-parse", "HEAD"),
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "-C", str(ext), "symbolic-ref", "-q", "HEAD"]
+                ).returncode,
+            )
+            masque = os.umask(0)
+            os.umask(masque)
+            self.assertEqual(0o777 & ~masque, ext.stat().st_mode & 0o777)
+
+    def test_the_leftovers_of_the_untrack_are_replaced_by_the_clone(self):
+        """La mise à jour d'ERPLibre qui cesse de suivre l'extension laisse
+        ses fichiers ignorés : traductions et schémas compilés, caches
+        Python. Ce répertoire se clone ; la base les recompile."""
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            ext = Path(dossier, "erplibre_home")
+            for reste in (
+                "locale/fr/LC_MESSAGES/erplibre-home.mo",
+                "schemas/gschemas.compiled",
+                "tools/__pycache__/migrate_legacy.cpython-312.pyc",
+            ):
+                (ext / reste).parent.mkdir(parents=True, exist_ok=True)
+                (ext / reste).write_text("")
+            self.assertIn(
+                "extension: clone ", self.simuler(dossier, manifeste).stdout
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertTrue((ext / ".git").is_dir())
+            self.assertFalse((ext / "locale").exists())
+            self.assertTrue((ext / "metadata.json").is_file())
+
+    def test_a_kept_directory_without_the_extension_stops_the_install(self):
+        """Une entrée de trop empêche le clone : sans l'extension, la base
+        n'a rien à lier, et l'installation s'arrête en la nommant."""
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            ext = Path(dossier, "erplibre_home")
+            (ext / "locale").mkdir(parents=True)
+            (ext / "notes.txt").write_text("x")
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(1, fait.returncode, fait.stdout)
+            self.assertIn(
+                "no metadata.json; move away notes.txt then run again",
+                fait.stderr,
+            )
+            self.assertEqual(["locale", "notes.txt"], sorted(os.listdir(ext)))
+            self.assertEqual(
+                "extension: keep %s (no metadata.json; move away notes.txt"
+                " then run again)\n" % ext,
+                self.simuler(dossier, manifeste).stdout,
+            )
+
+    def test_the_dry_run_names_the_clone_and_clones_nothing(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            ext = Path(dossier, "erplibre_home")
+            fait = self.simuler(dossier, manifeste)
+            self.assertEqual(
+                "extension: clone file://%s/ext.git at main into %s\n"
+                % (dossier, ext),
+                fait.stdout,
+            )
+            self.assertFalse(ext.exists())
+
+    def nouveau_commit(self, dossier):
+        depot = Path(dossier, "ext.git")
+        Path(depot, "extension.js").write_text("")
+        _git(depot, "add", "extension.js")
+        _git(depot, "commit", "-q", "-m", "deux")
+        return _git(depot, "rev-parse", "main")
+
+    def test_a_clean_clone_follows_main(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            self.assertEqual(0, self.cloner(dossier, manifeste).returncode)
+            ext = Path(dossier, "erplibre_home")
+            voulu = self.nouveau_commit(dossier)
+            self.assertEqual(
+                "extension: keep %s (follow main: fetched on install)\n" % ext,
+                self.simuler(dossier, manifeste).stdout,
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(
+                "extension updated: %s (main)\n" % ext, fait.stdout
+            )
+            self.assertEqual(voulu, _git(ext, "rev-parse", "HEAD"))
+
+    def test_a_branch_holds_the_working_copy_back(self):
+        """Le clone d'un développeur, sur sa branche main : l'installation
+        ne le déplace pas, et le bilan le dit."""
+        with tempfile.TemporaryDirectory() as dossier:
+            manifeste = depot_d_extension(dossier)
+            self.assertEqual(0, self.cloner(dossier, manifeste).returncode)
+            ext = Path(dossier, "erplibre_home")
+            _git(ext, "checkout", "-q", "-b", "main")
+            avant = _git(ext, "rev-parse", "HEAD")
+            self.nouveau_commit(dossier)
+            self.assertEqual(
+                "extension: keep %s (follow main: fetched on install; a"
+                " branch or local work keeps it)\n" % ext,
+                self.simuler(dossier, manifeste).stdout,
+            )
+            fait = self.cloner(dossier, manifeste)
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertEqual(
+                "extension NOT updated to main: %s holds a branch or local"
+                " work\n" % ext,
+                fait.stdout,
+            )
+            self.assertEqual(avant, _git(ext, "rev-parse", "HEAD"))
+
+    def test_the_extension_comes_before_the_shell_version_it_carries(self):
+        """main clone l'extension après la version de GNOME, qui ne lit
+        rien d'elle, et avant shell-version, qui lit son metadata.json ; la
+        désinstallation ne la clone jamais."""
+        texte = INSTALLEUR.read_text(encoding="utf-8")
+        corps = texte[texte.index("\nmain() {") :]
+        self.assertLess(
+            corps.index("read_gnome_version"),
+            corps.index("step_extension_source"),
+        )
+        self.assertLess(
+            corps.index("step_extension_source"),
+            corps.index("step_shell_version"),
+        )
+        self.assertLess(
+            corps.index("step_uninstall"), corps.index("step_extension_source")
+        )
+
+    def test_uninstall_without_the_extension_removes_the_link(self):
+        """Sans le clone, la liste enabled-extensions ne se lit pas par
+        gsettings_strv.py : le lien part quand même, et le bilan dit que
+        l'UUID peut y rester."""
+        with tempfile.TemporaryDirectory() as dossier:
+            base = Path(dossier, "extensions")
+            base.mkdir()
+            (base / UUID).symlink_to(Path(dossier, "erplibre_home"))
+            fait = sourcer(
+                'EXT_SRC="$DOSSIER/erplibre_home"\n'
+                'EXT_LINK="$DOSSIER/extensions/$UUID"\n'
+                'UDEV_RULE="$DOSSIER/absente.rules"\n'
+                'VENV="$DOSSIER/venv"\n'
+                "uninstall_service() { :; }\n"
+                'gsettings_bus() { echo "gsettings $*"; }\n'
+                'uninstall\nprintf "%s\\n" "${DONE[@]}"\n',
+                {"DOSSIER": dossier, "UUID": UUID},
+            )
+            self.assertEqual(0, fait.returncode, fait.stderr)
+            self.assertNotIn("gsettings get", fait.stdout)
+            self.assertFalse(os.path.lexists(base / UUID))
+            self.assertIn(
+                "enabled-extensions NOT edited: no %s/erplibre_home/tools/"
+                "gsettings_strv.py; %s may still be listed" % (dossier, UUID),
+                fait.stdout,
+            )
+
+
+class TestUnCheckoutSansExtension(unittest.TestCase):
+    """L'installateur dans une copie du dépôt sans le clone de l'extension :
+    --dry-run annonce le clone sans le faire, et ne prétend pas vérifier
+    shell-version ; --uninstall --dry-run ne clone rien."""
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.depot = Path(dossier.name, "depot")
+        (self.depot / "script/install").mkdir(parents=True)
+        (self.depot / "manifest").mkdir()
+        shutil.copy2(INSTALLEUR, self.depot / "script/install")
+        shutil.copy2(BIBLIOTHEQUE, self.depot / "script/install")
+        shutil.copy2(
+            RACINE / "manifest/git_manifest_erplibre_home_gnome_extension.xml",
+            self.depot / "manifest",
+        )
+        self.home = Path(dossier.name, "home")
+        self.home.mkdir()
+        self.ext = self.depot / "script/gnome-extension/erplibre_home"
+
+    def lancer(self, *options):
+        fichier = self.home.parent / "os-release"
+        fichier.write_text(OS_RELEASE["ubuntu:24.04"])
+        environ = dict(os.environ)
+        environ.pop("XDG_CONFIG_HOME", None)
+        environ.update(
+            {
+                "HOME": str(self.home),
+                "ERPLIBRE_HOME_UID": "1000",
+                "ERPLIBRE_HOME_OS_RELEASE": str(fichier),
+                "ERPLIBRE_HOME_GNOME_VERSION": "48.1",
+            }
+        )
+        return subprocess.run(
+            [
+                "bash",
+                str(self.depot / "script/install/install_erplibre_home.sh"),
+                *options,
+            ],
+            capture_output=True,
+            text=True,
+            env=environ,
+            cwd="/",
+            timeout=60,
+        )
+
+    def test_the_dry_run_announces_the_clone_first(self):
+        for options in (("--dry-run",), ("--dry-run", "--extension-only")):
+            with self.subTest(options=options):
+                fait = self.lancer(*options)
+                self.assertEqual(0, fait.returncode, fait.stderr)
+                lignes = fait.stdout.splitlines()
+                self.assertEqual(
+                    "extension: clone https://github.com/TechnoLibre/"
+                    "erplibre-home-gnome-extension.git at main into %s"
+                    % self.ext,
+                    lignes[0],
+                )
+                self.assertFalse(self.ext.exists())
+        fait = self.lancer("--dry-run")
+        self.assertIn(
+            "check: shell-version of %s/metadata.json after the clone"
+            % self.ext,
+            fait.stdout.splitlines(),
+        )
+        self.assertIn("gnome=48.1", fait.stdout.splitlines())
+
+    def test_uninstall_clones_nothing(self):
+        fait = self.lancer("--dry-run", "--uninstall")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertNotIn("extension: ", fait.stdout)
+        self.assertFalse(self.ext.exists())
+
+
 class TestVenv(unittest.TestCase):
     """make_venv sous un faux python3 en tête du PATH : celui que le
     système fournit, et non un python de pyenv."""
@@ -1487,6 +1859,7 @@ class TestVenv(unittest.TestCase):
         self.assertNotIn("venv created", reprise.stdout)
 
 
+@SANS_EXTENSION
 class TestActivation(unittest.TestCase):
     """enable_extension sur un gsettings simulé par des fichiers, en tête du
     PATH, qui note chacun de ses appels. tools/enable_next_login.py, que le
@@ -1662,6 +2035,7 @@ class TestBusDeSession(unittest.TestCase):
 
 
 class TestDesinstallation(unittest.TestCase):
+    @SANS_EXTENSION
     def test_retire_lien_regle_venv_et_uuid(self):
         with tempfile.TemporaryDirectory() as dossier:
             base = Path(dossier, "extensions")
@@ -1802,6 +2176,7 @@ class TestDesinstallation(unittest.TestCase):
         env = {"DOSSIER": dossier, "UUID": UUID, echec: "1"}
         return sourcer(fragment, env), base / UUID
 
+    @SANS_EXTENSION
     def test_a_second_full_uninstall_changes_nothing(self):
         """La seconde exécution lit une liste où l'UUID n'est plus, sous la
         forme « @as [] » que gsettings rend d'une liste vide : elle n'y
@@ -1840,6 +2215,7 @@ class TestDesinstallation(unittest.TestCase):
         self.assertEqual("", second)
         self.assertEqual("[]", liste)
 
+    @SANS_EXTENSION
     def test_une_liste_illisible_ne_passe_pas_pour_un_succes(self):
         """gsettings absent ou bus en panne : le reste part quand même, puis
         le script sort en 1 en nommant l'UUID qui peut rester activé."""
@@ -2562,6 +2938,7 @@ OUTILS_EXTENSION = shutil.which("glib-compile-schemas") and shutil.which(
 )
 
 
+@SANS_EXTENSION
 class TestExtensionSeule(unittest.TestCase):
     """--extension-only sur une copie du checkout, HOME temporaire.
 
@@ -2587,7 +2964,9 @@ class TestExtensionSeule(unittest.TestCase):
             EXTENSION,
             self.depot / "script/gnome-extension/erplibre_home",
             symlinks=True,
-            ignore=shutil.ignore_patterns("locale", "gschemas.compiled"),
+            ignore=shutil.ignore_patterns(
+                ".git", "locale", "gschemas.compiled"
+            ),
         )
         # Un faux sudo en tête du PATH : --extension-only ne doit jamais
         # l'appeler, et s'il le fait, rien ne s'exécute en root.
@@ -2827,6 +3206,7 @@ class TestTraductions(unittest.TestCase):
                     self.assertIn("msgfmt is missing; " + attendu, fait.stderr)
 
 
+@SANS_EXTENSION
 class TestLectureShellVersion(unittest.TestCase):
     """shell_versions lit metadata.json par tr, grep et sed : un python3
     qui échoue en tête du PATH ne change rien à ce qu'elle rend."""
@@ -2927,6 +3307,7 @@ class TestMakefile(unittest.TestCase):
         self.assertIn("log out", indication[0])
         self.assertIn("log in", indication[0])
 
+    @SANS_EXTENSION
     def test_les_cibles_de_l_extension_existent(self):
         """Chaque cible porte le nom erplibre_home_ et lance ce qu'elle
         annonce."""
@@ -2989,8 +3370,8 @@ class TestCiblesDeLExtension(unittest.TestCase):
     La copie ne porte que ce que la cible lit, sous le chemin relatif que
     sa recette nomme, plus la bibliothèque des réglages et un metadata.json
     pour le garde erplibre_home_extension_present du fragment Stream Deck ;
-    node est remplacé par un témoin qui note ses arguments,
-    glib-compile-schemas et msgfmt sont les vrais.
+    node et python3 sont remplacés par des témoins qui notent leurs
+    arguments, glib-compile-schemas et msgfmt sont les vrais.
     """
 
     def setUp(self):
@@ -3004,6 +3385,10 @@ class TestCiblesDeLExtension(unittest.TestCase):
         node = self.bin / "node"
         node.write_text('#!/bin/sh\necho "$@" >>"%s"\n' % self.trace_node)
         node.chmod(0o755)
+        self.trace_python = Path(dossier.name) / "python3.appele"
+        python = self.bin / "python3"
+        python.write_text('#!/bin/sh\necho "$@" >>"%s"\n' % self.trace_python)
+        python.chmod(0o755)
         reglages = self.depot / "script/install/erplibre_home_settings.sh"
         reglages.parent.mkdir(parents=True)
         shutil.copy2(
@@ -3042,6 +3427,7 @@ class TestCiblesDeLExtension(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which("glib-compile-schemas"), "glib-compile-schemas absent"
     )
+    @SANS_EXTENSION
     def test_test_gnome_extension_valide_le_schema_puis_lance_node(self):
         self.copier_l_extension()
         fait = self.faire(MAKEFILE_TEST, "test_gnome_extension")
@@ -3053,6 +3439,11 @@ class TestCiblesDeLExtension(unittest.TestCase):
         self.assertIn("%s/test/unit/extension.test.js" % EXT_REL, tests)
         self.assertEqual(
             self.trace_node.read_text().split(), ["--test", *tests]
+        )
+        # Les tests Python des outils, que le dépôt de l'extension porte.
+        self.assertEqual(
+            self.trace_python.read_text().split(),
+            ["-m", "unittest", "discover", "-s", EXT_REL + "/test/python"],
         )
         self.assertIn(
             "test_gnome_extension",
@@ -3066,6 +3457,7 @@ class TestCiblesDeLExtension(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which("glib-compile-schemas"), "glib-compile-schemas absent"
     )
+    @SANS_EXTENSION
     def test_un_schema_refuse_en_strict_arrete_test_gnome_extension(self):
         """Un défaut qui ne se lit pas dans son type : sans --strict,
         glib-compile-schemas ignore le fichier et sort en 0."""
@@ -3079,6 +3471,7 @@ class TestCiblesDeLExtension(unittest.TestCase):
         fait = self.faire(MAKEFILE_TEST, "test_gnome_extension")
         self.assertNotEqual(fait.returncode, 0)
         self.assertFalse(self.trace_node.exists())
+        self.assertFalse(self.trace_python.exists())
 
     def test_sans_l_extension_chaque_cible_qui_la_lit_s_arrete(self):
         """Un checkout sans le clone de l'extension : la cible s'arrête sur
@@ -3110,7 +3503,9 @@ class TestCiblesDeLExtension(unittest.TestCase):
                     fait.stderr,
                 )
         self.assertFalse(self.trace_node.exists())
+        self.assertFalse(self.trace_python.exists())
 
+    @SANS_EXTENSION
     @unittest.skipUnless(shutil.which("msgfmt"), "msgfmt absent")
     def test_extension_i18n_compile_compile_chaque_po_au_nom_du_domaine(
         self,

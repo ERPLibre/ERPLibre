@@ -24,10 +24,13 @@ CE QU'IL INSTALLE : HEAD, ET RIEN D'AUTRE
 
 Le code part du checkout par « git bundle create … HEAD », et la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course :
-ce qui serait installé ne serait pas ce qui est commité. Seuls les jeux du
-Stream Deck, un dépôt à part que le bundle ne porte pas, viennent de GitHub :
-le niveau Stream Deck les clone à la révision que leur manifeste nomme, et
-le contrôle « games » le vérifie.
+ce qui serait installé ne serait pas ce qui est commité. Seuls deux dépôts à
+part, que le bundle ne porte pas, viennent de GitHub, chacun à la révision
+que son manifeste nomme : l'extension GNOME, que la base clone, vérifiée par
+le contrôle « extension-clone », et les jeux du Stream Deck, que le niveau
+Stream Deck clone, vérifiés par le contrôle « games ». La VM installe donc
+le main publié de l'extension, et non une copie locale qui n'est pas
+poussée.
 
   ./long_test/install_erplibre_home.py                 # toute la matrice
   ./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:43
@@ -207,14 +210,13 @@ CMD_VENV = (
 )
 
 
-def reference_des_jeux():
-    """La référence du clone des jeux qui porte la révision du manifeste,
-    comme install_erplibre_home.sh la lit : refs/remotes/origin/<x> pour
-    une branche, la révision elle-même pour une étiquette ou un commit."""
-    manifeste = os.path.join(
-        RACINE, "manifest", "git_manifest_streamdeck_game.xml"
-    )
-    (projet,) = ET.parse(manifeste).getroot().iter("project")
+def reference_du_clone(manifeste):
+    """La référence du clone qui porte la révision du manifeste `manifeste`,
+    un nom de fichier de manifest/, comme install_erplibre_home.sh la lit :
+    refs/remotes/origin/<x> pour une branche, la révision elle-même pour une
+    étiquette ou un commit."""
+    chemin = os.path.join(RACINE, "manifest", manifeste)
+    (projet,) = ET.parse(chemin).getroot().iter("project")
     revision = projet.get("revision")
     if revision.startswith("refs/tags/") or re.fullmatch(
         r"[0-9a-f]{40}", revision
@@ -223,13 +225,29 @@ def reference_des_jeux():
     return "refs/remotes/origin/" + revision.removeprefix("refs/heads/")
 
 
+def cmd_clone(chemin, temoin, manifeste):
+    """« ok » quand le clone sous ~/git/erplibre/`chemin` porte `temoin` et
+    que son HEAD est le commit de la révision de son manifeste."""
+    return (
+        f"cd ~/git/erplibre/{chemin} && test -f {temoin}"
+        ' && test "$(git rev-parse HEAD)" = "$(git rev-parse '
+        + shlex.quote(reference_du_clone(manifeste) + "^{commit}")
+        + ')" && echo ok'
+    )
+
+
 # Les jeux : le bundle git de HEAD ne porte que les fichiers qu'ERPLibre
 # suit, et --stream-deck les clone donc à la révision du manifeste.
-CMD_JEUX = (
-    "cd ~/git/erplibre/script/stream_deck/games && test -f games_cli.py"
-    ' && test "$(git rev-parse HEAD)" = "$(git rev-parse '
-    + shlex.quote(reference_des_jeux() + "^{commit}")
-    + ')" && echo ok'
+CMD_JEUX = cmd_clone(
+    "script/stream_deck/games",
+    "games_cli.py",
+    "git_manifest_streamdeck_game.xml",
+)
+# L'extension, de même, que la base clone.
+CMD_EXTENSION = cmd_clone(
+    "script/gnome-extension/erplibre_home",
+    "metadata.json",
+    "git_manifest_erplibre_home_gnome_extension.xml",
 )
 REGLE_UDEV = "/etc/udev/rules.d/70-streamdeck.rules"
 VENV_DECK = "~/git/erplibre/.venv.streamdeck"
@@ -397,6 +415,7 @@ ETAPES = (
         (
             "session",
             "gnome-version",
+            "extension-clone",
             "extension-active",
             "extension-dbus",
             "extension-indicators",
@@ -1406,6 +1425,8 @@ def _etape_base(cible, entree, log, base):
     attendu = entree["gnome_attendu"]
     if majeur(gnome) != attendu:
         _ajouter(log, f"⚠ GNOME mesuré {gnome}, la matrice dit {attendu}")
+    if not constat(cible, log, "extension-clone", CMD_EXTENSION):
+        return "extension-clone", info, gnome
     controle = Controle(cible, log, "extension-active")
     info = extension_active(controle)
     if not controle.clore(est_active(info)):

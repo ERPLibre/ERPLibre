@@ -539,6 +539,7 @@ class LesEtapes(unittest.TestCase):
                 [
                     "session",
                     "gnome-version",
+                    "extension-clone",
                     "extension-active",
                     "extension-dbus",
                     "extension-indicators",
@@ -1883,6 +1884,8 @@ class VMSimulee:
         self.regle = self.venv = self.service = self.autostart = False
         # Les jeux clonés : aucune désinstallation ne les retire.
         self.jeux = False
+        # L'extension que la base a clonée à la révision de son manifeste.
+        self.extension = True
         self.lien = self.uuid = self.actif = True
         # Sans deck, systemd saute le démarrage du service et le point
         # d'entrée en écrit la raison au journal de l'unité. « resultat »
@@ -1936,6 +1939,7 @@ class VMSimulee:
             sd.CMD_UDEV: "ok" if self.regle else "",
             sd.CMD_VENV: "ok" if self.venv else "",
             sd.CMD_JEUX: "ok" if self.jeux else "",
+            sd.CMD_EXTENSION: "ok" if self.extension else "",
             sd.CMD_LIEN: "ok" if self.lien else "",
             sd.CMD_SANS_LIEN: "" if self.lien else "ok",
             sd.CMD_ENABLED: (
@@ -2044,6 +2048,18 @@ class LesCinqEtapes(unittest.TestCase):
         echec, _info, _gnome = self._controler(VMSimulee([""]))
         self.assertEqual(echec, "extension-indicators")
         self.assertIn("journal de session sans", self._journal())
+
+    def test_the_base_must_leave_the_extension_cloned_on_main(self):
+        """La base clone l'extension depuis GitHub, à la révision de son
+        manifeste : le bundle de HEAD ne la porte pas."""
+        self.assertIn(
+            "cd ~/git/erplibre/script/gnome-extension/erplibre_home"
+            " && test -f metadata.json",
+            sd.CMD_EXTENSION,
+        )
+        self.assertIn("refs/remotes/origin/main^{commit}", sd.CMD_EXTENSION)
+        vm = VMSimulee([self.ENTIER], extension=False)
+        self.assertEqual(self._controler(vm)[0], "extension-clone")
 
     def test_the_base_must_leave_no_rule_nor_venv(self):
         for etat, attendu in (

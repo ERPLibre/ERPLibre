@@ -131,7 +131,7 @@ def chemins(manifeste):
 
 
 class LaVersionDOdoo(unittest.TestCase):
-    def fusionner(self, contenu, jeux=False, options=()):
+    def fusionner(self, contenu, jeux=False, options=(), extension=False):
         with tempfile.TemporaryDirectory() as dossier:
             for nom in ("conf", "manifest"):
                 shutil.copytree(RACINE / nom, Path(dossier, nom))
@@ -139,6 +139,10 @@ class LaVersionDOdoo(unittest.TestCase):
                 Path(dossier, ".odoo-version").write_text(contenu)
             if jeux:
                 Path(dossier, "script/stream_deck/games").mkdir(parents=True)
+            if extension:
+                Path(dossier, "script/gnome-extension/erplibre_home").mkdir(
+                    parents=True
+                )
             sortie = os.path.join(dossier, "fusion.xml")
             fini = subprocess.run(
                 [sys.executable, str(SCRIPT), "--output", sortie, *options],
@@ -175,6 +179,39 @@ class LesJeuxDuStreamDeck(unittest.TestCase):
             with self.subTest(odoo=contenu, jeux=jeux, options=options):
                 _sortie, projets = self.fusionner(contenu, jeux, options)
                 self.assertEqual(attendu, self.JEUX in projets)
+
+
+class LExtensionGnome(unittest.TestCase):
+    """Le manifeste de l'extension n'entre qu'avec son répertoire ou
+    --with_erplibre_home, indépendamment de celui des jeux : la base
+    d'ERPLibre Home s'installe sans le Stream Deck."""
+
+    EXTENSION = "script/gnome-extension/erplibre_home"
+    JEUX = LesJeuxDuStreamDeck.JEUX
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_it_comes_only_with_its_directory_or_the_option(self):
+        for contenu, extension, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_erplibre_home",), True),
+            (None, False, ("--with_streamdeck",), False),
+        ):
+            with self.subTest(
+                odoo=contenu, extension=extension, options=options
+            ):
+                _sortie, projets = self.fusionner(
+                    contenu, False, options, extension=extension
+                )
+                self.assertEqual(attendu, self.EXTENSION in projets)
+
+    def test_the_games_do_not_bring_it_nor_it_the_games(self):
+        _sortie, projets = self.fusionner(None, True, ())
+        self.assertNotIn(self.EXTENSION, projets)
+        _sortie, projets = self.fusionner(None, False, (), extension=True)
+        self.assertNotIn(self.JEUX, projets)
 
 
 if __name__ == "__main__":

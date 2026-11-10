@@ -56,9 +56,10 @@ fi
 # Generate local manifest
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}"
 
-# streamdeck : un groupe absent de l'init fait supprimer par repo le
-# répertoire du projet, sauvegardes des jeux comprises.
-.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} -g base,code_generator,streamdeck
+# streamdeck, erplibre_home : un groupe absent de l'init fait supprimer par
+# repo le répertoire du projet, sauvegardes des jeux et extension GNOME de
+# la session comprises.
+.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} -g base,code_generator,streamdeck,erplibre_home
 # Un clone ordinaire des jeux Stream Deck, que repo sync refuserait, est
 # mis de côté une fois l'init fait (voir le script).
 ./script/manifest/streamdeck_games_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }

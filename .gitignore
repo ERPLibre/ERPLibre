@@ -65,6 +65,15 @@ private/todo/todo_override_private.json
 # pese douze megaoctets.
 /script/erplibre_sip_go/erplibre_sip_go
 
+# L'extension GNOME ERPLibre Home : un dépôt à part, cloné ici par Google
+# Repo ou par install_erplibre_home.sh
+# (manifest/git_manifest_erplibre_home_gnome_extension.xml).
+/script/gnome-extension/erplibre_home/
+# Ce que erplibre_home_extension_to_repo.sh met de côté
+# (erplibre_home.plain-clone-git-<date>), et le clone en cours de
+# l'installateur (erplibre_home.XXXXXX).
+/script/gnome-extension/erplibre_home.*/
+
 # Les jeux Stream Deck : un dépôt à part, cloné ici par Google Repo ou par
 # install_erplibre_home.sh --stream-deck
 # (manifest/git_manifest_streamdeck_game.xml).

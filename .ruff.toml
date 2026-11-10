@@ -28,6 +28,8 @@ extend-exclude = [
   "odoo*",
   "script/OCA_maintainer-tools",
   "script/OCA_odoo-module-migrator",
+  "script/gnome-extension/erplibre_home",
+  "script/stream_deck/games",
 ]
 
 [lint]
