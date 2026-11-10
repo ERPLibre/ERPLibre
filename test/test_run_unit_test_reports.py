@@ -10,7 +10,9 @@ pose le TMPDIR de chaque fichier, et lui seul qui le compte et le supprime.
 """
 
 import glob
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -52,6 +54,17 @@ class T(unittest.TestCase):
         print('TMPDIR=' + os.environ['TMPDIR'])
 if __name__ == '__main__':
     unittest.main()
+"""
+
+# Un test dont un sous-test échoue et un autre lève.
+SOUS_TESTS = """import unittest
+class T(unittest.TestCase):
+    def test_sub(self):
+        for i in range(3):
+            with self.subTest(i=i):
+                if i == 2:
+                    raise KeyError(i)
+                self.assertNotEqual(i, 1)
 """
 
 # Un fichier qui laisse un temporaire puis attend qu'on le tue.
@@ -163,6 +176,30 @@ class TestLeJUnit(unittest.TestCase):
         suite = racine.find("testsuite")
         self.assertEqual(suite.get("errors"), "1")
         self.assertIn("aucun résultat", suite.find("testcase/error").text)
+
+
+class TestLeDetailNoteLesSousTests(unittest.TestCase):
+    def test_a_failing_subtest_is_noted_as_a_failure(self):
+        """Un sous-test en échec ne passe ni par addFailure ni par addError,
+        et son test ne reçoit aucun verdict : le détail doit le noter, sans
+        quoi le test manque à --junit comme s'il n'existait pas."""
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "test_sous.py")
+            sortie = os.path.join(dossier, "detail.json")
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(SOUS_TESTS)
+            subprocess.run(
+                [sys.executable, r.UNIT_FILE, chemin, sortie],
+                capture_output=True,
+                check=False,
+            )
+            with open(sortie, encoding="utf-8") as fh:
+                detail = json.load(fh)
+        self.assertEqual(
+            sorted((t["nom"], t["etat"]) for t in detail),
+            [("test_sub (i=1)", "echec"), ("test_sub (i=2)", "erreur")],
+        )
+        self.assertIn("AssertionError", detail[0]["message"])
 
 
 class TestLesEchecsRetenusSurPlusieursPassages(unittest.TestCase):

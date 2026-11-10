@@ -87,6 +87,17 @@ class Resultat(unittest.TextTestResult):
         # d'un _ErrorHolder, sans méthode de test : on la note quand même.
         self._noter(test, "erreur", self._exc_info_to_string(err, test))
 
+    def addSubTest(self, test, subtest, err):
+        super().addSubTest(test, subtest, err)
+        # Un sous-test en échec ne passe ni par addFailure ni par addError,
+        # et son test ne reçoit alors aucun verdict : sans cette note, le
+        # test disparaîtrait du détail au lieu d'y paraître en échec.
+        if err is not None:
+            etat = "erreur"
+            if issubclass(err[0], test.failureException):
+                etat = "echec"
+            self._noter(subtest, etat, self._exc_info_to_string(err, test))
+
     def addSkip(self, test, reason):
         super().addSkip(test, reason)
         self._noter(test, "ignore", reason)
