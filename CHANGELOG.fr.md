@@ -255,6 +255,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TODO › Exécution › Base › Effacer des bases de données** efface une ou plusieurs bases choisies par leurs numéros, séparés par des espaces, là où il offrait toutes les bases ou une seule. Une seule confirmation nomme chaque base (défaut non), chacune est effacée à son tour et un bilan dit celles qui restent ; une saisie qui porte un seul numéro invalide est refusée en entier, si bien qu'une faute de frappe n'efface jamais la partie valide de ce qui a été tapé
 - `./run.sh`, le lanceur de production, n'impose plus `--limit-time-real 99999`, `--limit-time-cpu 99999` ni `--limit-memory-hard=0` : les limites de temps et de mémoire de `config.conf` s'appliquent désormais, si bien qu'une requête emballée est tuée et la mémoire d'un worker bornée. Une installation qui comptait sur des requêtes sans limite les pose dans `config.conf`, ou passe par `./dev.sh`. `./test.sh` lève aussi `limit_memory_soft`, pour qu'une suite de tests gourmande garde son worker
 - Le lock d'Odoo 18 est rafraîchi : 63 paquets bougent dans les bornes du pyproject, dont quatre changent de version majeure — ebcdic 2, iso3166 3, python-utils 4, rpds-py 2026.9 — et oauthlib passe à 4.0.1, qui corrige CVE-2026-49272 (voir Sécurité). markdown-it-py, qu'importe `erplibre_assistant_core`, est déclaré dans le pyproject au lieu d'arriver par rich ; deprecated quitte le lock. Un venv existant suit par `poetry install --no-root`
+- `script/install/install_dev_extra_ubuntu.sh`, les extras MariaDB et Docker rootless pour les
+  tests, vise les versions d'Ubuntu qu'ERPLibre supporte — 24.04, 25.10 et 26.04 — et rend 1
+  ailleurs. Il n'acceptait que 18.04 et 20.04, et un `fi` manquant faisait refuser le fichier entier
+  par bash. Il installe désormais `uidmap`, sans lequel la mise en place de Docker rootless refuse
+  de tourner. Le guide de production documente une seule section serveur Ubuntu pour ces versions
 
 ## Corrigé
 
@@ -388,6 +393,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **[0] Tous** du menu des bases de `./run.sh` n'envoie plus la sonde de réveil : sans base choisie, chacune de ses requêtes, une par worker, tombait sur le sélecteur de bases et remplissait le journal d'erreurs, sans rien à réveiller
 - `script/database/db_restore.py` nomme un refus de permission sur l'archive à restaurer, là où il la disait absente et où Odoo répondait « Not a zipped dump file » : un dossier que le compte qui restaure ne peut pas traverser cache le fichier à `os.path.exists`, et Odoo avale l'erreur de lecture. Le message nomme le dossier ou le fichier bloquant, son propriétaire, son groupe et son mode, et la commande qui corrige — `sudo chown`, ou `chmod` quand le compte en est déjà propriétaire —, avant le mot de passe maître quand l'archive doit servir, avant qu'Odoo la lise sinon. Une archive absente est signalée comme avant, et le clone d'un `_cache_` se passe toujours du zip
 - `script/config/setup_odoo_config_conf_devops.py`, lancé par **TODO › Exécution** pour configurer queue_job et par `make robot_libre_pre`, garde les canaux queue_job déjà déclarés dans `config.conf`, là où il les remplaçait toujours par `root:<nombre de CPU>` : il cherchait l'option `channels` au mauvais endroit
+- `repo init` n'arrête plus une installation sur une question. Celle de la couleur reçoit d'avance
+  la réponse d'un `y` (`color.ui = auto`, écrit dans la config git que lit repo, un choix existant
+  gardé). Sans identité git (`user.name`, `user.email`), **TODO › Installation** propose de la
+  saisir et de la confirmer après le menu du type d'installation ; refusée, `repo init` tourne sans
+  terminal sur son entrée et ne demande rien. `--config-name` passé aux scripts de manifeste
+  demande encore
 
 ## Retiré
 

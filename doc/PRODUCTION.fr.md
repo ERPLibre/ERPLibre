@@ -36,18 +36,7 @@ sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
 ```
 
-#### Serveur Ubuntu 18.04
-
-```bash
-./script/install/install_dev.sh
-./script/install/install_production.sh
-```
-
-Un service est en cours d'exécution via SystemD. Vous pouvez y accéder avec le nom DNS trouvé dans `env_var.sh`
-
-#### Serveur Ubuntu 24.04
-
-Appliquer le correctif libpng12-0 : https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
+#### Serveur Ubuntu (24.04, 25.10, 26.04)
 
 ```bash
 ./script/install/install_dev.sh

@@ -128,6 +128,115 @@ class TestOrdreDesQuestions(Banc):
         self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
 
 
+class TestIdentiteGit(Banc):
+    """Sans identité git, le menu propose de la saisir APRÈS le dernier
+    menu qui offre « 0: Back » et AVANT la question système.
+
+    _fragment_repo_init est remplacé : repo_identity_ready rend
+    `self.prete`, et chaque repo_identity_set est noté dans `self.ecrits`.
+    """
+
+    def setUp(self):
+        self.prete = False
+        self.ecrits = []
+
+        def fragment(fonction, *args):
+            if fonction == "repo_identity_ready":
+                code = 0 if self.prete else 1
+            else:
+                self.ecrits.append((fonction, *args))
+                code = 0
+            return subprocess.CompletedProcess(fonction, code, "", "")
+
+        patch = mock.patch.object(
+            TODO, "_fragment_repo_init", staticmethod(fragment)
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_identite_presente_aucune_question(self):
+        self.prete = True
+        questions, _ = self.jouer(["1", "1", "1", "n"])
+        self.assertEqual(len(questions), 4)
+        self.assertIn(QUESTION_SYSTEME, questions[3])
+
+    def test_refus_rien_n_est_ecrit(self):
+        questions, commandes = self.jouer(["1", "1", "1", "n", "n"])
+        self.assertIn(todo_module.t("Configure it now? (y/N): "), questions[3])
+        self.assertIn(QUESTION_SYSTEME, questions[4])
+        self.assertEqual(self.ecrits, [])
+        self.assertTrue(any("--install_dev" in c for c in commandes))
+
+    def test_saisie_confirmee_puis_ecrite(self):
+        questions, _ = self.jouer(
+            [
+                "1",
+                "1",
+                "1",
+                "y",
+                "Nom Fictif",
+                "fictif@example.invalid",
+                "y",
+                "n",
+            ]
+        )
+        self.assertIn(QUESTION_SYSTEME, questions[-1])
+        self.assertEqual(
+            self.ecrits,
+            [("repo_identity_set", "Nom Fictif", "fictif@example.invalid")],
+        )
+
+    def test_courriel_invalide_redemande(self):
+        self.jouer(
+            [
+                "1",
+                "1",
+                "1",
+                "y",
+                "Nom Fictif",
+                "sans-arobase",
+                "fictif@example.invalid",
+                "y",
+                "n",
+            ]
+        )
+        self.assertEqual(
+            self.ecrits,
+            [("repo_identity_set", "Nom Fictif", "fictif@example.invalid")],
+        )
+
+    def test_non_a_la_confirmation_reprend_avec_defauts(self):
+        questions, _ = self.jouer(
+            [
+                "1",
+                "1",
+                "1",
+                "y",
+                "Nom Fictif",
+                "fictif@example.invalid",
+                "n",
+                "",
+                "autre@example.invalid",
+                "y",
+                "n",
+            ]
+        )
+        self.assertIn("[Nom Fictif]", questions[7])
+        self.assertEqual(
+            self.ecrits,
+            [("repo_identity_set", "Nom Fictif", "autre@example.invalid")],
+        )
+
+    def test_erplibre_seul_ne_propose_rien(self):
+        questions, _ = self.jouer(["q", "n"])
+        self.assertEqual(len(questions), 2)
+        self.assertIn(QUESTION_SYSTEME, questions[1])
+
+    def test_retour_ne_propose_rien(self):
+        questions, _ = self.jouer(["1", "1", "0"])
+        self.assertEqual(len(questions), 3)
+
+
 class TestPycharmFerme(unittest.TestCase):
     """PyCharm s'ouvre sans bloquer : l'installation attend qu'il soit
     refermé, faute de quoi son analyse du projet, reprise à chaque fichier
@@ -207,6 +316,10 @@ class TestPycharmFerme(unittest.TestCase):
         with (
             mock.patch.object(builtins, "input", repondre),
             mock.patch.object(todo_module.subprocess, "run", run),
+            # L'identité git a ses tests : TestIdentiteGit.
+            mock.patch.object(
+                TODO, "_proposer_identite_git", lambda self: None
+            ),
             mock.patch.object(
                 todo_module.os.path,
                 "exists",

@@ -84,7 +84,7 @@ class TestScriptsDeManifeste(unittest.TestCase):
         for script in SCRIPTS:
             texte = script.read_text(encoding="utf-8")
             with self.subTest(script=script.name):
-                inits = re.findall(r"^[^#\n]*repo init .*$", texte, re.M)
+                inits = re.findall(r"^[^#\n]*\brepo_init .*$", texte, re.M)
                 self.assertTrue(inits)
                 for ligne in inits:
                     self.assertIn('-b "${MANIFEST_REV}"', ligne)
