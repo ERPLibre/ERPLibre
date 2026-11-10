@@ -167,6 +167,58 @@ class TestReecritureParOdooBin(unittest.TestCase):
             ["--no-http", "-d", "base"], self._args("--no-http", "-d", "base")
         )
 
+    SERVER_SANS_GARDE = (
+        "        if vms > config['limit_memory_soft']:\n"
+        "        resource.setrlimit(resource.RLIMIT_AS,"
+        " (config['limit_memory_hard'], hard))\n"
+    )
+    SERVER_AVEC_GARDE = (
+        "        if config['limit_memory_soft'] and memory >"
+        " config['limit_memory_soft']:\n"
+    )
+
+    def _server(self, contenu):
+        service = self.racine / "odoo10.0" / "odoo" / "odoo" / "service"
+        service.mkdir(parents=True)
+        (service / "server.py").write_text(contenu)
+
+    def test_une_limite_memoire_nulle_devient_finie_avant_odoo_12(self):
+        """Odoo 8 à 11 appliquent 0 tel quel : chaque worker mourrait sur
+        MemoryError. Les deux écritures de l'option sont réécrites."""
+        self._server(self.SERVER_SANS_GARDE)
+        self.assertEqual(
+            [
+                "--limit-memory-hard=1099511627776",
+                "--limit-memory-soft",
+                "1099511627776",
+                "-d",
+                "base",
+            ],
+            self._args(
+                "--limit-memory-hard=0",
+                "--limit-memory-soft",
+                "0",
+                "-d",
+                "base",
+            ),
+        )
+
+    def test_une_limite_memoire_non_nulle_reste_telle_quelle(self):
+        self._server(self.SERVER_SANS_GARDE)
+        args = [
+            "--limit-memory-hard=10737418240",
+            "--limit-memory-soft",
+            "8589934592",
+            "--limit-time-cpu",
+            "0",
+        ]
+        self.assertEqual(args, self._args(*args))
+
+    def test_odoo_12_et_plus_lisent_zero_comme_sans_limite(self):
+        self._server(self.SERVER_AVEC_GARDE)
+        args = ["--limit-memory-hard=0", "--limit-memory-soft", "0"]
+        self.assertEqual(args, self._args(*args))
+
     def test_uninstall_d_un_odoo_amont_passe_a_erplibre_uninstall(self):
         self._config('group.add_option("--no-http", dest="http_enable")\n')
         self.assertEqual(
@@ -280,6 +332,23 @@ class TestLaDispositionOpenerp(unittest.TestCase):
         lignes = self.lancer("--dev", "cg", "-d", "base", "-i", "user_test")
         self.assertEqual(["-d", "base", "-i", "user_test"], lignes[1:-1])
         self.assertEqual("DEV=cg", lignes[-1])
+
+    def test_odoo_8_recoit_une_limite_memoire_finie(self):
+        self.monter("8.0", self.CONFIG_8)
+        service = self.racine / "odoo8.0" / "odoo" / "openerp" / "service"
+        service.mkdir()
+        (service / "server.py").write_text(
+            TestReecritureParOdooBin.SERVER_SANS_GARDE
+        )
+        self.assertEqual(
+            [
+                "--limit-memory-hard=1099511627776",
+                "--limit-memory-soft=1099511627776",
+            ],
+            self.lancer("--limit-memory-hard=0", "--limit-memory-soft=0")[
+                1:-1
+            ],
+        )
 
     def test_odoo_8_lit_la_configuration_par_openerp_server(self):
         self.monter("8.0", self.CONFIG_8)
