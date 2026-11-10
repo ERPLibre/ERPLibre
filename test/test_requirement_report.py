@@ -375,6 +375,29 @@ class TestLesReferences(unittest.TestCase):
         self.assertIn("ImportError", verdicts[refs[0]]["log"])
         self.assertEqual(verdicts[refs[1]]["result"], "passed")
 
+    def test_a_declared_test_missing_from_a_complete_file_is_an_error(self):
+        """Le fichier a tourné jusqu'au bout sans ce test : il a été
+        renommé ou supprimé, et son ancien verdict ne prouve plus rien. Un
+        fichier qui n'a pas tourné, ou rien noté, ne dit rien de ses
+        tests."""
+        complet = rr.Essai(
+            "/depot/test/test_demo.py", [entree("A::test_ok")], None
+        )
+        vide = rr.Essai("/depot/test/test_vide.py", [], None)
+        refs = [
+            ref("test_demo.py", "A::test_ok"),
+            ref("test_demo.py", "A::test_renomme"),
+            ref("test_vide.py", "V::test_v"),
+            ref("test_pas_lance.py", "P::test_p"),
+        ]
+        verdicts = self.verdicts(complet, vide, declarees=refs)
+        self.assertEqual(sorted(verdicts), sorted(refs[:2]))
+        self.assertEqual(verdicts[refs[0]]["result"], "passed")
+        absent = verdicts[refs[1]]
+        self.assertEqual(absent["result"], "error")
+        self.assertIn("A::test_renomme", absent["log"])
+        self.assertIn("test/test_demo.py", absent["log"])
+
 
 class TestDeVraisPassages(unittest.TestCase):
     """unit_file.py note chaque test, et ses notes deviennent les références
@@ -430,7 +453,8 @@ class TestLEnvoi(unittest.TestCase):
     )
     OK = ref("test_demo.py", "A::test_ok")
     FAUX = ref("test_demo.py", "A::test_faux")
-    PAS_LANCE = ref("test_demo.py", "A::test_pas_lance")
+    # Un fichier que ce passage n'a pas lancé.
+    PAS_LANCE = ref("test_autre.py", "A::test_pas_lance")
 
     def test_one_call_per_declared_reference_that_ran(self):
         faux = FauxRegistre(

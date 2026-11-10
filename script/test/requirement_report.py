@@ -170,19 +170,39 @@ def _pire(verdicts):
 def verdicts_declares(essais, declarees, racine=RACINE):
     """{référence: verdict} pour chaque référence de `declarees` notée par
     les `essais`, elle-même ou par le préfixe de sa classe ou de son
-    fichier. Une référence que rien n'a notée n'y figure pas : son test n'a
-    pas tourné, son dernier verdict reste celui du registre."""
+    fichier.
+
+    Un essai qui a noté au moins un test est COMPLET : unit_file.py n'écrit
+    ses notes qu'une fois tous les tests du fichier passés. Une référence
+    déclarée de ce fichier que rien n'a notée désigne un test qui n'y existe
+    plus, renommé ou supprimé : elle reçoit une erreur qui le dit, plutôt
+    que de garder un verdict qui ne prouve plus rien. Une référence d'un
+    fichier qui n'a pas tourné n'y figure pas : son dernier verdict reste
+    celui du registre."""
     notes = {}
+    complets = set()
     for essai in essais:
         for cle, verdicts in references(essai, racine).items():
             notes.setdefault(cle, []).extend(verdicts)
+        base = _base(essai.chemin, racine)
+        if base is not None and essai.tests:
+            complets.add(base)
     resultat = {}
     for reference in declarees:
         verdicts = list(notes.get(reference, []))
         for prefixe in _prefixes(reference):
             verdicts += notes.get(prefixe, [])
+        base, separateur, test = reference.partition("::")
         if verdicts:
             resultat[reference] = _pire(verdicts)
+        elif separateur and base in complets:
+            resultat[reference] = _verdict(
+                "error",
+                f"{test} absent de {base.split(':', 1)[1]} lors d'un"
+                " passage complet du fichier : test renommé ou supprimé,"
+                " la référence est à mettre à jour.",
+                0.0,
+            )
     return resultat
 
 

@@ -229,7 +229,9 @@ Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
 dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
 la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
 tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
-aucun appel.
+aucun appel. Un test déclaré absent d'un fichier qui a tourné jusqu'au bout est
+noté en erreur : il a été renommé ou supprimé, et sa référence est à mettre à
+jour.
 
 Quatre variables d'environnement l'activent, les quatre ou aucune.
 L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la

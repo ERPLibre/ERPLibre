@@ -225,7 +225,9 @@ Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
 that a unit test proves lists a *Repository unit test* line with the
 reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
 runner writes the verdict of each declared reference that ran, with one call
-per reference. A test that no requirement cites costs no call.
+per reference. A test that no requirement cites costs no call. A declared test
+missing from a file that ran to the end is recorded as an error: it was renamed
+or deleted, and its reference needs updating.
 
 Four environment variables turn this on, all four or none. The login is a user
 of the *Requirement test runner* group, and the key is that user's API key.
