@@ -445,6 +445,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 19 n'avertit plus à chaque démarrage : `OPENERP_SERVER` n'est posé que pour Odoo 8 et 9, et `config.conf` nomme ses ports comme les lit l'Odoo actif — `http_port` dès 11, `gevent_port` dès 16
 - La migration d'une base sans `auto_backup` ne l'installe plus, ni ne s'arrête sur `db.backup` en Odoo 16 ; les modèles de rapprochement par défaut sont recréés en Odoo 19, sans réécrire un modèle modifié à la main ; un module retiré avant un palier faute d'exister dans la version suivante est oublié avec sa fiche, dont le drapeau `auto_install` le remettait « to install » sans code
 - La vérification des écarts entre le venv et le lock Poetry fonctionne désormais sur les venvs d’Odoo 8 à 14 : elle se rabat sur « install --remove-untracked » avec Poetry 1.1, lit les puces « • » de Poetry 1.1 et 1.5 (chaque opération comptée une seule fois) et relève les versions installées sous Python 2.7 et 3.7 par pkg_resources
+- Menu des versions Python : les sources d'Odoo 8 et 9 (openerp-server) sont désormais reconnues, les cibles sont listées de la plus récente à la plus ancienne en ordre numérique (Odoo 20 avant Odoo 8), et un venv Python 2.7 (Odoo 8 à 10) reçoit le Poetry 1.1.15 de sa cible même lancé depuis un checkout Python 3 ; la phase Poetry n'installe plus Poetry par pip dans un venv Python 2.7, ce qui remplaçait son enveloppe bin/poetry
 
 ## Retiré
 

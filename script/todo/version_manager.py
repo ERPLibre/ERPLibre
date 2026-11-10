@@ -6,11 +6,39 @@ import json
 import os
 import re
 
+
+def odoo_tree_layout(racine):
+    """Le lanceur et le dossier d'addons du cœur d'un arbre Odoo complet.
+
+    OpenUpgrade jusqu'à 13 est un tel arbre. En 9.0 et avant, le paquet
+    s'appelle openerp : lanceur openerp-server, cœur openerp/addons. Depuis
+    10.0 : odoo-bin et odoo/addons. Les chemins gardent la forme de racine.
+    """
+    if os.path.isdir(os.path.join(racine, "openerp")):
+        return (
+            os.path.join(racine, "openerp-server"),
+            os.path.join(racine, "openerp", "addons"),
+        )
+    return os.path.join(racine, "odoo-bin"), os.path.join(
+        racine, "odoo", "addons"
+    )
+
+
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 INSTALLED_ODOO_VERSION_FILE = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 ODOO_VERSION_FILE = ".odoo-version"
+
+
+def cle_naturelle(erplibre_version):
+    """Clé de tri qui compare les nombres d'une version d'ERPLibre comme des
+    nombres : « odoo8.0 » avant « odoo20.0 », « python3.12.9 » avant
+    « python3.12.10 ». Un tri de texte rend l'inverse dans les deux cas."""
+    return [
+        int(p) if p.isdigit() else p
+        for p in re.split(r"(\d+)", erplibre_version)
+    ]
 
 
 def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
@@ -41,13 +69,8 @@ def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
         with open(ODOO_VERSION_FILE) as txt:
             odoo_installed_version = f"odoo{txt.read().strip()}"
 
-    # Tri naturel : un tri de texte rangeait « odoo8.0 » après « odoo20.0 ».
     versions = sorted(
-        version_entries,
-        key=lambda k: [
-            int(p) if p.isdigit() else p
-            for p in re.split(r"(\d+)", k.get("erplibre_version"))
-        ],
+        version_entries, key=lambda k: cle_naturelle(k["erplibre_version"])
     )
 
     return versions, installed_versions, odoo_installed_version
@@ -107,13 +130,16 @@ def planifier_venvs(versions, venvs, sources, complets=None, active=None):
     complets = set(venvs) if complets is None else set(complets)
     plan = []
     for version in sorted(
-        versions, key=lambda v: v["erplibre_version"], reverse=True
+        versions,
+        key=lambda v: cle_naturelle(v["erplibre_version"]),
+        reverse=True,
     ):
         cible = version["erplibre_version"]
         odoo = version.get("odoo_version")
         prefixe = f"odoo{odoo}_python"
         autres = sorted(
-            v for v in venvs if v.startswith(prefixe) and v != cible
+            (v for v in venvs if v.startswith(prefixe) and v != cible),
+            key=cle_naturelle,
         )
         active_rivale = (
             active
