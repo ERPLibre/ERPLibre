@@ -147,6 +147,7 @@ from script.todo import (
     dev_tools,
     healthcheck,
     install_non_interactif,
+    postgresql_upgrade,
     ssh_config,
     todo_etat,
     todo_install,
@@ -4911,6 +4912,11 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
+    def execute_postgresql_upgrade(self):
+        """Passe le cluster du port 5432 à la version de PostgreSQL qu'exige
+        l'Odoo actif ; tout le travail est dans postgresql_upgrade."""
+        postgresql_upgrade.mettre_a_niveau()
+
     def prompt_execute_database(self):
         print(f"🤖 {t('Make changes to databases!')}")
         choices = [
@@ -4925,6 +4931,8 @@ class TODO(
             {"prompt_description": t("Restore from backup (.zip)")},
             {"section": t("Duplicate")},
             {"prompt_description": t("Duplicate a database")},
+            {"section": t("PostgreSQL server")},
+            {"prompt_description": t("Upgrade the PostgreSQL server")},
             {"section": t("Danger zone")},
             {"prompt_description": t("Erase databases")},
         ]
@@ -4944,6 +4952,8 @@ class TODO(
             elif status == "4":
                 self.db_manager.duplicate_database()
             elif status == "5":
+                self.execute_postgresql_upgrade()
+            elif status == "6":
                 self.db_manager.drop_database()
             else:
                 print(t("Command not found !"))

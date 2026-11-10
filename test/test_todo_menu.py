@@ -617,6 +617,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
         "Download database": "download_database_backup_cli",
         "Restore from backup": "restore_from_database",
         "Duplicate a database": "duplicate_database",
+        "Upgrade the PostgreSQL server": "execute_postgresql_upgrade",
         "Erase databases": "drop_database",
     }
 

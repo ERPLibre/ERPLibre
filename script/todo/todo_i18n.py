@@ -22856,6 +22856,167 @@ TRANSLATIONS = {
             "data_dir is not consulted."
         ),
     },
+    # Mise à niveau du serveur PostgreSQL (Base de données).
+    "PostgreSQL server": {
+        "fr": "Serveur PostgreSQL",
+        "en": "PostgreSQL server",
+    },
+    "Upgrade the PostgreSQL server": {
+        "fr": "Mettre à niveau le serveur PostgreSQL",
+        "en": "Upgrade the PostgreSQL server",
+    },
+    "Upgrading the PostgreSQL server needs postgresql-common (pg_lsclusters, pg_upgradecluster): Debian and Ubuntu only.": {
+        "fr": "La mise à niveau du serveur PostgreSQL exige postgresql-common (pg_lsclusters, pg_upgradecluster) : Debian et Ubuntu seulement.",
+        "en": "Upgrading the PostgreSQL server needs postgresql-common (pg_lsclusters, pg_upgradecluster): Debian and Ubuntu only.",
+    },
+    "Elsewhere, by hand:": {
+        "fr": "Ailleurs, à la main :",
+        "en": "Elsewhere, by hand:",
+    },
+    "back up each database: pg_dump -Fc -f BASE.dump BASE": {
+        "fr": "sauvegarder chaque base : pg_dump -Fc -f BASE.dump BASE",
+        "en": "back up each database: pg_dump -Fc -f BASE.dump BASE",
+    },
+    "install the new PostgreSQL version and start it": {
+        "fr": "installer la nouvelle version de PostgreSQL et la démarrer",
+        "en": "install the new PostgreSQL version and start it",
+    },
+    "restore each one: pg_restore -C -d postgres BASE.dump": {
+        "fr": "restaurer chacune : pg_restore -C -d postgres BASE.dump",
+        "en": "restore each one: pg_restore -C -d postgres BASE.dump",
+    },
+    "or follow pg_upgrade in your distribution guide.": {
+        "fr": "ou suivre pg_upgrade dans le guide de votre distribution.",
+        "en": "or follow pg_upgrade in your distribution guide.",
+    },
+    "the newest available, no minimum set by Odoo": {
+        "fr": "la plus récente disponible, Odoo n'impose aucun minimum",
+        "en": "the newest available, no minimum set by Odoo",
+    },
+    "Upgrade now? (y/N): ": {
+        "fr": "Mettre à niveau maintenant ? (o/N) : ",
+        "en": "Upgrade now? (y/N): ",
+    },
+    "PostgreSQL upgrade plan": {
+        "fr": "Plan de mise à niveau de PostgreSQL",
+        "en": "PostgreSQL upgrade plan",
+    },
+    "Backups, pg_dump -Fc, one file per database, in:": {
+        "fr": "Sauvegardes, pg_dump -Fc, un fichier par base, dans :",
+        "en": "Backups, pg_dump -Fc, one file per database, in:",
+    },
+    "Once everything works, drop the old cluster with:": {
+        "fr": "Quand tout fonctionne, retirez l'ancien cluster avec :",
+        "en": "Once everything works, drop the old cluster with:",
+    },
+    "pg_lsclusters failed: cannot read the clusters.": {
+        "fr": "pg_lsclusters a échoué : impossible de lire les clusters.",
+        "en": "pg_lsclusters failed: cannot read the clusters.",
+    },
+    "The new cluster does not list the same databases.": {
+        "fr": "Le nouveau cluster ne liste pas les mêmes bases.",
+        "en": "The new cluster does not list the same databases.",
+    },
+    "No PostgreSQL version to upgrade to.": {
+        "fr": "Aucune version de PostgreSQL vers laquelle mettre à niveau.",
+        "en": "No PostgreSQL version to upgrade to.",
+    },
+    "the minimum Odoo {odoo} requires": {
+        "fr": "le minimum qu'exige Odoo {odoo}",
+        "en": "the minimum Odoo {odoo} requires",
+    },
+    "Backups:": {
+        "fr": "Sauvegardes :",
+        "en": "Backups:",
+    },
+    "Cluster {cluster}, port {port}": {
+        "fr": "Cluster {cluster}, port {port}",
+        "en": "Cluster {cluster}, port {port}",
+    },
+    "Version {ancien} -> {cible}": {
+        "fr": "Version {ancien} -> {cible}",
+        "en": "Version {ancien} -> {cible}",
+    },
+    "Databases ({nombre}):": {
+        "fr": "Bases ({nombre}) :",
+        "en": "Databases ({nombre}):",
+    },
+    "The old cluster {cluster} is kept, stopped, until you drop it.": {
+        "fr": "L'ancien cluster {cluster} est conservé, arrêté, jusqu'à ce que vous le retiriez.",
+        "en": "The old cluster {cluster} is kept, stopped, until you drop it.",
+    },
+    "pg_upgradecluster failed (exit code {code}).": {
+        "fr": "pg_upgradecluster a échoué (code de sortie {code}).",
+        "en": "pg_upgradecluster failed (exit code {code}).",
+    },
+    "PostgreSQL {cible} now serves the databases on port {port}.": {
+        "fr": "PostgreSQL {cible} sert désormais les bases sur le port {port}.",
+        "en": "PostgreSQL {cible} now serves the databases on port {port}.",
+    },
+    "Cannot tell whether cluster {cluster} is empty: check it, then drop it with pg_dropcluster --stop {cible} {nom}.": {
+        "fr": "Impossible de savoir si le cluster {cluster} est vide : vérifiez-le, puis retirez-le avec pg_dropcluster --stop {cible} {nom}.",
+        "en": "Cannot tell whether cluster {cluster} is empty: check it, then drop it with pg_dropcluster --stop {cible} {nom}.",
+    },
+    "Cluster {cluster} already holds databases: {bases}.": {
+        "fr": "Le cluster {cluster} contient déjà des bases : {bases}.",
+        "en": "Cluster {cluster} already holds databases: {bases}.",
+    },
+    "Cannot drop the empty cluster {cluster}.": {
+        "fr": "Impossible de retirer le cluster vide {cluster}.",
+        "en": "Cannot drop the empty cluster {cluster}.",
+    },
+    "Cluster {cluster} is not online on port {port}.": {
+        "fr": "Le cluster {cluster} n'est pas en ligne sur le port {port}.",
+        "en": "Cluster {cluster} is not online on port {port}.",
+    },
+    "Upgrade stopped. Cluster {cluster} was not touched and still serves port {port}.": {
+        "fr": "Mise à niveau arrêtée. Le cluster {cluster} n'a pas été touché et sert toujours le port {port}.",
+        "en": "Upgrade stopped. Cluster {cluster} was not touched and still serves port {port}.",
+    },
+    "Upgrade stopped. The old cluster {cluster} is still on disk. To go back to it:": {
+        "fr": "Mise à niveau arrêtée. L'ancien cluster {cluster} est toujours sur le disque. Pour y revenir :",
+        "en": "Upgrade stopped. The old cluster {cluster} is still on disk. To go back to it:",
+    },
+    "If pg_lsclusters then shows it on a port other than {port}, set port = {port} in {conf} and restart it.": {
+        "fr": "Si pg_lsclusters le montre alors sur un autre port que {port}, mettez port = {port} dans {conf} et redémarrez-le.",
+        "en": "If pg_lsclusters then shows it on a port other than {port}, set port = {port} in {conf} and restart it.",
+    },
+    "No PostgreSQL cluster on port {port}.": {
+        "fr": "Aucun cluster PostgreSQL sur le port {port}.",
+        "en": "No PostgreSQL cluster on port {port}.",
+    },
+    "PostgreSQL {version} already meets {cible}: nothing to do.": {
+        "fr": "PostgreSQL {version} atteint déjà {cible} : rien à faire.",
+        "en": "PostgreSQL {version} already meets {cible}: nothing to do.",
+    },
+    "Cannot list the databases of cluster {cluster}.": {
+        "fr": "Impossible de lister les bases du cluster {cluster}.",
+        "en": "Cannot list the databases of cluster {cluster}.",
+    },
+    "postgresql-{cible} installed by: {commande}": {
+        "fr": "postgresql-{cible} installé par : {commande}",
+        "en": "postgresql-{cible} installed by: {commande}",
+    },
+    "Service {service} stopped, then restarted.": {
+        "fr": "Service {service} arrêté, puis relancé.",
+        "en": "Service {service} stopped, then restarted.",
+    },
+    "Cannot stop {service}.": {
+        "fr": "Impossible d'arrêter {service}.",
+        "en": "Cannot stop {service}.",
+    },
+    "postgresql-{cible} could not be installed.": {
+        "fr": "postgresql-{cible} n'a pas pu être installé.",
+        "en": "postgresql-{cible} could not be installed.",
+    },
+    "Backup of {base} failed (exit code {code}).": {
+        "fr": "La sauvegarde de {base} a échoué (code de sortie {code}).",
+        "en": "Backup of {base} failed (exit code {code}).",
+    },
+    "Cannot restart {service}.": {
+        "fr": "Impossible de relancer {service}.",
+        "en": "Cannot restart {service}.",
+    },
 }
 
 
