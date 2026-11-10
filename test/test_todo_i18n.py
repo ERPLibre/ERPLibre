@@ -143,6 +143,29 @@ class TestGetLang(unittest.TestCase):
                 os.unlink(f.name)
 
 
+class TestLesChampsDesTraductions(unittest.TestCase):
+    def test_each_translation_keeps_the_fields_of_its_key(self):
+        """Une traduction qui perd, ajoute ou renomme un champ {…} fait
+        lever .format() là où le texte sert : dans une commande d'effacement,
+        le suivi tomberait au lieu d'afficher son refus."""
+        import string
+
+        def champs(texte):
+            return {
+                f
+                for _l, f, _s, _c in string.Formatter().parse(texte)
+                if f is not None
+            }
+
+        ecarts = [
+            (cle, langue)
+            for cle, entree in todo_i18n.TRANSLATIONS.items()
+            for langue in ("fr", "en")
+            if champs(entree[langue]) != champs(cle)
+        ]
+        self.assertEqual([], ecarts)
+
+
 class TestSetLang(unittest.TestCase):
     """Test set_lang() function."""
 

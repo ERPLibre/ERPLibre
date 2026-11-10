@@ -2487,14 +2487,22 @@ def pve_identity_guard(vmid: int, name: str) -> str:
     Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
     vérifiable. Enfouie dans la commande, elle ne se testait qu'à travers deux
     « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le jour
-    où il casse, au lieu de se fermer."""
+    où il casse, au lieu de se fermer.
+
+    Le refus suit la langue choisie, entre guillemets doubles pour y porter
+    « $vu » : _dq neutralise ce que la traduction et le nom contiennent."""
     q = shlex.quote(name)
+    refus = _dq(
+        t(
+            "REFUSED: VMID {vmid} now carries {seen}, not {name}."
+            " Nothing was deleted."
+        )
+    ).format(vmid=int(vmid), seen="$vu", name=_dq(name))
     return (
         f"vu=$(qm config {int(vmid)} 2>/dev/null"
         " | sed -n 's/^name: //p' | head -1); "
         f'if [ "$vu" != {q} ]; then '
-        f'echo "REFUS : le VMID {int(vmid)} porte maintenant $vu,"'
-        f' "et non {name}. Rien n\'a ete efface."; exit 1; fi; '
+        f'echo "{refus}"; exit 1; fi; '
     )
 
 
@@ -2507,13 +2515,19 @@ def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
     commande efface le VMID quoi qu'il porte aujourd'hui."""
     vmid = int((info or {}).get("vmid") or 0)
+    return pve_host_cmd(info, delete_suite_pve(vmid, name, purge))
+
+
+def delete_suite_pve(vmid: int, name: str = "", purge: bool = True) -> str:
+    """Le shell que delete_vm_cmd_pve joue SUR l'hôte : le garde d'identité
+    si `name` est connu, puis l'arrêt et la destruction du VMID."""
+    vmid = int(vmid)
     suite = pve_identity_guard(vmid, name) if name else ""
-    suite += (
+    return suite + (
         f"qm stop {vmid} --skiplock 1 || true; "
         f"qm destroy {vmid}"
         f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
     )
-    return pve_host_cmd(info, suite)
 
 
 def is_pve_spec(spec) -> bool:
@@ -2540,27 +2554,32 @@ def recreate_delete_suite_pve(
     recréation la reprend sous le même numéro."""
     vmid = int(vmid)
 
-    def refus(motif):
-        texte = f"REFUS : {motif} Rien n'a ete efface."
+    def refus(texte):
+        # Traduit ici, entre guillemets simples là-bas : rien ne s'y développe.
         return "{ echo " + shlex.quote(texte) + "; exit 1; }"
 
     suite = ""
     if storage:
+        manque = t(
+            "REFUSED: storage {storage} not found. Nothing was deleted."
+        ).format(storage=storage)
         suite += (
             f"pvesm status --storage {shlex.quote(storage)} >/dev/null 2>&1 "
-            f"|| {refus(f'le stockage {storage} est introuvable.')}; "
+            f"|| {refus(manque)}; "
         )
     if bridge:
+        manque = t(
+            "REFUSED: bridge {bridge} not found. Nothing was deleted."
+        ).format(bridge=bridge)
         suite += (
             f"ip link show {shlex.quote(bridge)} >/dev/null 2>&1 "
-            f"|| {refus(f'le pont {bridge} est introuvable.')}; "
+            f"|| {refus(manque)}; "
         )
     if gpu3d:
-        suite += (
-            "ls /dev/dri/renderD* >/dev/null 2>&1 "
-            f"|| {refus('aucun noeud de rendu pour la 3D.')}; "
-        )
-    suite += f"ids=$(qm list) || {refus('qm list ne repond pas.')}; "
+        manque = t("REFUSED: no render node for 3D. Nothing was deleted.")
+        suite += f"ls /dev/dri/renderD* >/dev/null 2>&1 || {refus(manque)}; "
+    muet = t("REFUSED: qm list does not answer. Nothing was deleted.")
+    suite += f"ids=$(qm list) || {refus(muet)}; "
     suite += (
         "if printf '%s\\n' \"$ids\" | awk 'NR>1{print $1}' "
         f"| grep -qx {vmid}; then "
@@ -2585,6 +2604,70 @@ def recreate_delete_cmd_pve(info, name, spec) -> str:
             spec.get("bridge") or "",
             bool(spec.get("gpu3d")),
         ),
+    )
+
+
+def _pve_effacement_lignes(info, verifs, journal, suite) -> list:
+    """Ce que le terminal montre avant un effacement sur un hôte Proxmox.
+
+    La commande elle-même traverse deux niveaux de guillemets — ssh, puis
+    « sudo sh -c » — et ne se relit plus. On montre donc l'hôte, ce qui est
+    vérifié, puis ce qui est détruit. `journal` : le journal de session qui
+    reçoit la commande exacte (lancer_au_terminal l'y écrit) ; sans lui,
+    `suite`, le shell joué sur l'hôte, suit à un seul niveau de guillemets."""
+    info = info or {}
+    vmid = int(info.get("vmid") or 0)
+    hote = info.get("target") or "?"
+    if info.get("jump"):
+        hote += f" -J {info['jump']}"
+    lignes = [f"→ ssh {hote}{' (sudo)' if info.get('sudo') else ''}"]
+    if verifs:
+        lignes.append(f"  {t('checks first:')} {', '.join(verifs)}")
+    lignes.append(
+        f"  qm stop {vmid} --skiplock 1; qm destroy {vmid} --purge 1"
+        " --destroy-unreferenced-disks 1"
+    )
+    if journal:
+        lignes.append(
+            "  "
+            + t("Full command in the session log {log}.").format(log=journal)
+        )
+    else:
+        lignes.append(f"  {suite}")
+    return lignes
+
+
+def recreate_delete_lines_pve(info, name, spec, journal="") -> list:
+    """L'effacement Proxmox d'une recréation, dit par _pve_effacement_lignes :
+    les vérifications sont celles de recreate_delete_suite_pve."""
+    info, spec = info or {}, spec or {}
+    vmid = int(info.get("vmid") or 0)
+    verifs = []
+    if spec.get("storage"):
+        verifs.append(f"pvesm {spec['storage']}")
+    if spec.get("bridge"):
+        verifs.append(f"ip link {spec['bridge']}")
+    if spec.get("gpu3d"):
+        verifs.append("/dev/dri/renderD*")
+    verifs.append(f"qm config {vmid} = {name}")
+    suite = recreate_delete_suite_pve(
+        vmid,
+        name,
+        spec.get("storage") or "",
+        spec.get("bridge") or "",
+        bool(spec.get("gpu3d")),
+    )
+    return _pve_effacement_lignes(info, verifs, journal, suite)
+
+
+def delete_lines_pve(info, name, journal="") -> list:
+    """La suppression d'une VM Proxmox (actions VM), dite par
+    _pve_effacement_lignes : seul le garde d'identité vérifie, et seulement
+    quand le nom est connu (delete_suite_pve)."""
+    vmid = int((info or {}).get("vmid") or 0)
+    verifs = [f"qm config {vmid} = {name}"] if name else []
+    return _pve_effacement_lignes(
+        info, verifs, journal, delete_suite_pve(vmid, name)
     )
 
 
@@ -2623,6 +2706,18 @@ def delete_lines(vm) -> list:
     ]
 
 
+def _refus_autre_domaine(name: str) -> str:
+    """Le refus d'un nom repris par un autre domaine, à placer entre
+    guillemets doubles : « $vu », l'UUID lu par virsh, s'y développe ; la
+    traduction et le nom, neutralisés par _dq, non."""
+    return _dq(
+        t(
+            "REFUSED: {name} is no longer the same domain ({seen})."
+            " Nothing was deleted."
+        )
+    ).format(name=_dq(name), seen="$vu")
+
+
 def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
     arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
@@ -2641,8 +2736,7 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
             " 2>/dev/null"
             " | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f'echo "REFUS : {name} n\'est plus le même domaine"'
-            f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
+            f'echo "{_refus_autre_domaine(name)}"; exit 1; fi; '
         )
     cmd += (
         f"{sudo_prefix()}virsh --connect {URI} destroy {q} 2>/dev/null; "
@@ -2671,24 +2765,24 @@ def recreate_delete_cmd(name: str, uuid: str) -> str:
     refus, sans rien avoir effacé."""
     q = shlex.quote(name)
     v = f"{sudo_prefix()}virsh --connect {URI}"
-    rien = "Rien n'a été effacé."
     if uuid:
         garde = (
             f"vu=$({v} domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f"echo \"REFUS : {name} n'est plus le même domaine ($vu)."
-            f' {rien}"; exit 1; fi; '
+            f'echo "{_refus_autre_domaine(name)}"; exit 1; fi; '
         )
     else:
-        garde = (
-            f"echo \"REFUS : la session ne connaît pas l'UUID de {name}."
-            f' {rien}"; exit 1; '
-        )
+        inconnu = t(
+            "REFUSED: the session does not know the UUID of {name}."
+            " Nothing was deleted."
+        ).format(name=name)
+        garde = f"echo {shlex.quote(inconnu)}; exit 1; "
+    illisible = t("REFUSED: virsh unreadable. Nothing was deleted.")
     disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
     seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
     return (
         f"noms=$({v} list --all --name) || "
-        f'{{ echo "REFUS : virsh illisible. {rien}"; exit 1; }}; '
+        f"{{ echo {shlex.quote(illisible)}; exit 1; }}; "
         f"if printf '%s\\n' \"$noms\" | grep -qxF -- {q}; then "
         + garde
         + f"{v} destroy {q} 2>/dev/null; "
@@ -4394,10 +4488,22 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     if info
                     else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
                 )
+                from script.todo import todo_journal
+
                 with self.suspend():
                     print(f"\n=== {t('Deletion')} — {vm['name']} ===")
-                    print(f"→ {cmd}\n")
-                    os.system(cmd + " || true")
+                    if info:
+                        ouvert = todo_journal.session_en_cours() or {}
+                        for ligne in delete_lines_pve(
+                            info, vm["name"], ouvert.get("nom") or ""
+                        ):
+                            print(ligne)
+                        print()
+                    else:
+                        print(f"→ {cmd}\n")
+                    # Par lancer_au_terminal : la commande exacte et son code
+                    # vont au journal de session, le résumé ci-dessus y renvoie.
+                    todo_journal.lancer_au_terminal(["bash", "-c", cmd])
                     input(f"\n{t('Press Enter to return to the monitor')}… ")
 
             self.push_screen(
@@ -4711,7 +4817,15 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                             if vm.get("pve")
                             else recreate_delete_cmd(nom, vm.get("uuid") or "")
                         )
-                        print(f"→ {cmd}\n")
+                        if vm.get("pve"):
+                            ouvert = todo_journal.session_en_cours() or {}
+                            for ligne in recreate_delete_lines_pve(
+                                vm["pve"], nom, spec, ouvert.get("nom") or ""
+                            ):
+                                print(ligne)
+                            print()
+                        else:
+                            print(f"→ {cmd}\n")
                         ok = (
                             todo_journal.lancer_au_terminal(
                                 ["bash", "-c", cmd]

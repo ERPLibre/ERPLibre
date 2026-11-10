@@ -19590,6 +19590,47 @@ TRANSLATIONS = {
         "fr": "Raccourcis et options",
         "en": "Shortcuts and options",
     },
+    # Refus des commandes d'effacement, affichés depuis l'hôte ou la VM.
+    "REFUSED: VMID {vmid} now carries {seen}, not {name}. Nothing was deleted.": {
+        "fr": "REFUS : le VMID {vmid} porte maintenant {seen}, et non {name}. Rien n'a été effacé.",
+        "en": "REFUSED: VMID {vmid} now carries {seen}, not {name}. Nothing was deleted.",
+    },
+    "REFUSED: storage {storage} not found. Nothing was deleted.": {
+        "fr": "REFUS : le stockage {storage} est introuvable. Rien n'a été effacé.",
+        "en": "REFUSED: storage {storage} not found. Nothing was deleted.",
+    },
+    "REFUSED: bridge {bridge} not found. Nothing was deleted.": {
+        "fr": "REFUS : le pont {bridge} est introuvable. Rien n'a été effacé.",
+        "en": "REFUSED: bridge {bridge} not found. Nothing was deleted.",
+    },
+    "REFUSED: no render node for 3D. Nothing was deleted.": {
+        "fr": "REFUS : aucun nœud de rendu pour la 3D. Rien n'a été effacé.",
+        "en": "REFUSED: no render node for 3D. Nothing was deleted.",
+    },
+    "REFUSED: qm list does not answer. Nothing was deleted.": {
+        "fr": "REFUS : qm list ne répond pas. Rien n'a été effacé.",
+        "en": "REFUSED: qm list does not answer. Nothing was deleted.",
+    },
+    "REFUSED: {name} is no longer the same domain ({seen}). Nothing was deleted.": {
+        "fr": "REFUS : {name} n'est plus le même domaine ({seen}). Rien n'a été effacé.",
+        "en": "REFUSED: {name} is no longer the same domain ({seen}). Nothing was deleted.",
+    },
+    "REFUSED: the session does not know the UUID of {name}. Nothing was deleted.": {
+        "fr": "REFUS : la session ne connaît pas l'UUID de {name}. Rien n'a été effacé.",
+        "en": "REFUSED: the session does not know the UUID of {name}. Nothing was deleted.",
+    },
+    "REFUSED: virsh unreadable. Nothing was deleted.": {
+        "fr": "REFUS : virsh illisible. Rien n'a été effacé.",
+        "en": "REFUSED: virsh unreadable. Nothing was deleted.",
+    },
+    "checks first:": {
+        "fr": "vérifie d'abord :",
+        "en": "checks first:",
+    },
+    "Full command in the session log {log}.": {
+        "fr": "Commande complète dans le journal de session {log}.",
+        "en": "Full command in the session log {log}.",
+    },
     # Recréation d'une VM Proxmox depuis le suivi (touche « n »).
     "The kept parameters do not match this VM (host or VMID): deploy it again from the menu.": {
         "fr": "Les paramètres gardés ne correspondent pas à cette VM (hôte ou VMID) : redéployez-la depuis le menu.",

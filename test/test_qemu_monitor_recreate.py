@@ -397,6 +397,57 @@ class TestLeSuivi(AsyncCase):
         self.assertNotEqual("ConfirmScreen", type(app.screen).__name__)
         return notify.call_args[0][0]
 
+    async def supprime(self, pve=None):
+        """Le geste de suppression des actions VM, confirmé : ce qui est
+        affiché, et ce que lancer_au_terminal reçoit."""
+        import contextlib
+        import io
+
+        from script.todo import todo_journal
+
+        app = self.app(pve=pve)
+        lances, sortie = [], io.StringIO()
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            with (
+                mock.patch.object(app, "suspend", mock.MagicMock()),
+                mock.patch.object(
+                    todo_journal,
+                    "lancer_au_terminal",
+                    lambda argv, **k: lances.append(argv)
+                    or mock.Mock(returncode=0),
+                ),
+                mock.patch.object(
+                    todo_journal,
+                    "session_en_cours",
+                    lambda: {"nom": "session.log"},
+                ),
+                mock.patch("builtins.input", lambda *a: ""),
+                contextlib.redirect_stdout(sortie),
+            ):
+                app._ask_delete(app._vm_by_name("vm-a"))
+                await pilot.pause()
+                await pilot.click("#c_yes")
+                await pilot.pause()
+        return lances, sortie.getvalue()
+
+    async def test_a_proxmox_delete_shows_a_summary_and_reaches_the_log(self):
+        lances, sortie = await self.supprime(pve=PVE)
+        self.assertEqual(
+            [["bash", "-c", mon.delete_vm_cmd_pve(PVE, name="vm-a")]], lances
+        )
+        self.assertIn("→ ssh erplibre@hote-essai (sudo)", sortie)
+        self.assertIn("qm config 101 = vm-a", sortie)
+        self.assertIn("session.log", sortie)
+        # La commande brute, à deux niveaux de guillemets, n'est plus montrée.
+        self.assertNotIn("'\"'\"'", sortie)
+
+    async def test_a_local_delete_still_shows_its_command(self):
+        lances, sortie = await self.supprime()
+        self.assertEqual(1, len(lances))
+        self.assertEqual(["bash", "-c"], lances[0][:2])
+        self.assertIn(f"→ {lances[0][2]}", sortie)
+
     async def test_n_efface_recree_et_remet_la_ligne_a_zero(self):
         from textual.widgets import DataTable
 
@@ -905,6 +956,173 @@ class TestLaCommandeDEffacementPve(unittest.TestCase):
                 # Refusé avant la moindre question à qm.
                 self.assertEqual("", journal)
                 self.assertIn("REFUS", sortie)
+
+
+class TestLesRefusSuiventLaLangue(unittest.TestCase):
+    """Les refus des commandes d'effacement s'affichent dans la langue
+    choisie, depuis l'hôte Proxmox comme en local, et une traduction ne peut
+    rien développer dans le shell qui les affiche."""
+
+    def langue(self, code):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = code
+
+    def pve(self, **env_vm):
+        coin = tempfile.TemporaryDirectory()
+        self.addCleanup(coin.cleanup)
+        for nom, texte in (
+            ("qm", FAUX_QM),
+            ("pvesm", '#!/bin/sh\n[ "$STOCKAGE" = ok ]\n'),
+            ("ip", "#!/bin/sh\nexit 0\n"),
+            ("sudo", "#!/bin/sh\nexit 1\n"),
+        ):
+            Path(coin.name, nom).write_text(texte)
+            Path(coin.name, nom).chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=f"{coin.name}:/usr/bin:/bin",
+            JOURNAL=str(Path(coin.name, "journal")),
+            NOM="vm-a",
+            PRESENT="101",
+            STOCKAGE="ok",
+        )
+        env.update(env_vm)
+        cmd = mon.recreate_delete_suite_pve(101, "vm-a", "local-lvm", "vmbr1")
+        return subprocess.run(
+            ["bash", "-c", cmd], env=env, capture_output=True, text=True
+        )
+
+    def local(self, uuid="uuid-ancien", **env_faux):
+        coin = tempfile.TemporaryDirectory()
+        self.addCleanup(coin.cleanup)
+        for nom, corps in (
+            ("virsh", TestLaCommandeDEffacement.VIRSH),
+            ("sudo", TestLaCommandeDEffacement.SUDO),
+        ):
+            Path(coin.name, nom).write_text(corps)
+            Path(coin.name, nom).chmod(0o755)
+        env = {
+            "PATH": f"{coin.name}:/usr/bin:/bin",
+            "FAUX_JOURNAL": str(Path(coin.name, "journal")),
+            "FAUX_DOMAINES": "vm-a",
+            "FAUX_UUID": "",
+        }
+        env.update({k: str(v) for k, v in env_faux.items()})
+        with mock.patch.object(mon, "sudo_prefix", lambda: ""):
+            cmd = mon.recreate_delete_cmd("vm-a", uuid)
+        return subprocess.run(
+            ["bash", "-c", cmd], env=env, capture_output=True, text=True
+        )
+
+    def test_a_proxmox_refusal_follows_the_language(self):
+        for code, attendu in (
+            ("fr", "le stockage local-lvm est introuvable. Rien n'a été"),
+            ("en", "storage local-lvm not found. Nothing was deleted."),
+        ):
+            with self.subTest(code=code):
+                self.langue(code)
+                res = self.pve(STOCKAGE="")
+                self.assertEqual(1, res.returncode)
+                self.assertIn(attendu, res.stdout)
+
+    def test_the_identity_guard_names_what_the_vmid_carries(self):
+        for code, attendu in (
+            (
+                "fr",
+                "porte maintenant autre, et non vm-a. Rien n'a été effacé.",
+            ),
+            (
+                "en",
+                "VMID 101 now carries autre, not vm-a. Nothing was deleted.",
+            ),
+        ):
+            with self.subTest(code=code):
+                self.langue(code)
+                res = self.pve(NOM="autre")
+                self.assertEqual(1, res.returncode)
+                self.assertIn(attendu, res.stdout)
+
+    def test_a_local_refusal_follows_the_language(self):
+        self.langue("en")
+        autre = self.local(FAUX_UUID="uuid-autre")
+        self.assertIn(
+            "vm-a is no longer the same domain (uuid-autre).", autre.stdout
+        )
+        inconnu = self.local(uuid="")
+        self.assertIn("does not know the UUID of vm-a.", inconnu.stdout)
+        illisible = self.local(FAUX_LIST_RC=1)
+        self.assertIn(
+            "virsh unreadable. Nothing was deleted.", illisible.stdout
+        )
+
+    def test_a_translation_cannot_expand_anything(self):
+        """Une traduction qui porterait $( ), ` ou " ne s'exécute pas et ne
+        casse pas la commande ; « $vu » voulu, lui, se développe toujours."""
+        with tempfile.TemporaryDirectory() as coin:
+            temoin = Path(coin, "touche")
+            # La clé suit la charge hostile : chaque message garde ainsi
+            # exactement les champs qu'il attend.
+            hostile = f'X $(touch {temoin}) `touch {temoin}` " $HOME '
+            with mock.patch.object(mon, "t", lambda k: hostile + k):
+                garde = self.pve(NOM="autre")
+                manque = self.pve(STOCKAGE="")
+                local = self.local(FAUX_UUID="uuid-autre")
+            self.assertFalse(temoin.exists())
+            self.assertIn("$HOME", garde.stdout)
+            self.assertIn("carries autre,", garde.stdout)
+            self.assertIn("$(touch", manque.stdout)
+            self.assertIn("uuid-autre", local.stdout)
+            for res in (garde, manque, local):
+                self.assertEqual(1, res.returncode, res.stderr)
+
+
+class TestLeResumeAvantLEffacementPve(unittest.TestCase):
+    """La commande d'effacement Proxmox traverse deux niveaux de guillemets :
+    le terminal en montre un résumé, et dit où lire la commande exacte."""
+
+    INFO = {"target": "pve1", "sudo": "sudo ", "jump": "", "vmid": 101}
+    SPEC = {"storage": "local", "bridge": "vmbr0", "gpu3d": True}
+
+    def test_it_names_the_host_the_checks_and_the_destruction(self):
+        lignes = mon.recreate_delete_lines_pve(
+            self.INFO, "vm-a", self.SPEC, "20261110.log"
+        )
+        texte = "\n".join(lignes)
+        self.assertIn("→ ssh pve1 (sudo)", texte)
+        for verif in (
+            "pvesm local",
+            "ip link vmbr0",
+            "/dev/dri",
+            "qm config 101 = vm-a",
+        ):
+            self.assertIn(verif, texte)
+        self.assertIn("qm destroy 101 --purge 1", texte)
+        self.assertIn("20261110.log", texte)
+        # Aucun guillemet imbriqué : c'est ce qui rendait la ligne illisible.
+        self.assertNotIn("'\"'\"'", texte)
+
+    def test_without_a_session_log_the_host_suite_is_shown(self):
+        lignes = mon.recreate_delete_lines_pve(self.INFO, "vm-a", self.SPEC)
+        self.assertIn(
+            mon.recreate_delete_suite_pve(101, "vm-a", "local", "vmbr0", True),
+            lignes[-1],
+        )
+        # La suite jouée SUR l'hôte, sans l'enveloppe ssh et « sudo sh -c ».
+        self.assertNotIn("sh -c", "\n".join(lignes))
+
+    def test_a_plain_delete_checks_only_the_identity(self):
+        lignes = mon.delete_lines_pve(self.INFO, "vm-a", "s.log")
+        self.assertIn("qm config 101 = vm-a", lignes[1])
+        self.assertNotIn("pvesm", "\n".join(lignes))
+        self.assertIn("s.log", lignes[-1])
+        # Sans nom, aucun garde : la ligne des vérifications disparaît.
+        sans_nom = mon.delete_lines_pve(self.INFO, "")
+        self.assertNotIn("qm config", "\n".join(sans_nom))
+        self.assertEqual(mon.delete_suite_pve(101, ""), sans_nom[-1].strip())
 
 
 class TestLAncienLanceurEstArrete(unittest.TestCase):
