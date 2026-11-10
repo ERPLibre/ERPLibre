@@ -37,6 +37,18 @@ def joue(action, *reponses):
     return rendu, sortie.getvalue()
 
 
+def joue_tout(action, *reponses):
+    """Comme `joue`, avec en troisième les réponses qu'`action` n'a pas
+    lues : une liste vide quand elle les a toutes lues."""
+    suite = iter(reponses)
+    with (
+        patch("builtins.input", side_effect=suite),
+        contextlib.redirect_stdout(io.StringIO()) as sortie,
+    ):
+        rendu = action()
+    return rendu, sortie.getvalue(), list(suite)
+
+
 class TestLaLangue(unittest.TestCase):
     """La langue du premier lancement, puis Configuration › Language /
     Langue ; `set_lang`, qui écrit env_var.sh, est un double."""
@@ -263,6 +275,29 @@ class TestLaCibleSSH(unittest.TestCase):
         self.assertEqual(rendu[0], "forged-a")
         self.assertEqual(sortie.count(t("Invalid choice: ")), 4)
 
+    def test_ctrl_d_at_the_typed_host_gives_up(self):
+        # Ctrl+D à l'hôte tapé, après la liste : None, comme une réponse
+        # vide.
+        for avant in ("1", ""):
+            with self.subTest(avant=avant):
+                rendu, _, reste = joue_tout(
+                    self.todo._ask_ssh_target, avant, EOFError()
+                )
+                self.assertIsNone(rendu)
+                self.assertEqual(reste, [])
+
+    def test_ctrl_d_at_the_socks_port_opens_nothing(self):
+        # La cible choisie, puis Ctrl+D au port du proxy SOCKS : aucun
+        # tunnel.
+        self.todo.execute = Execute()
+        self.todo._first_free_port = lambda debut, essais=20: debut
+        rendu, _, reste = joue_tout(
+            self.todo._deploy_socks_proxy, "2", "1", EOFError()
+        )
+        self.assertIsNone(rendu)
+        self.assertEqual(reste, [])
+        self.assertEqual(self.todo.execute.commandes, [])
+
     def test_neither_tunnel_nor_mount_without_a_target(self):
         # Les deux appelants reviennent sur [0] avant de rien lancer ni
         # créer : ni ssh, ni répertoire de montage.
@@ -359,6 +394,20 @@ class TestLaRedirectionDePort(unittest.TestCase):
                     self.assertEqual(commandes, [])
                     self.assertIn(t("Cancelled."), sortie)
         self.assertEqual(sondes, [])
+
+    def test_ctrl_d_at_either_port_probes_and_opens_nothing(self):
+        # Ctrl+D au port distant, ou au port local après un port distant
+        # vide : ni sonde ni tunnel, et chaque réponse est lue.
+        sondes = []
+        self.todo._remote_port_open = lambda host, port: sondes.append(host)
+        for apres in ([EOFError()], ["", EOFError()]):
+            with self.subTest(apres=len(apres)):
+                _, _, reste = joue_tout(
+                    self.todo._deploy_port_forward, "1", *apres
+                )
+                self.assertEqual(reste, [])
+        self.assertEqual(sondes, [])
+        self.assertEqual(self.todo.execute.commandes, [])
 
     def test_a_typo_asks_again(self):
         commandes, sortie = self.tunnel("forged-B", "01", "1", "", "")

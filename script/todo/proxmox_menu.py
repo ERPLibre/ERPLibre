@@ -117,13 +117,18 @@ class ProxmoxMenuMixin:
         return self._pve_confirm_host(host)
 
     def _pve_host_manual(self):
-        """Saisie libre. « root@ » par défaut : « qm » exige les privilèges."""
-        brut = input(t("Address (user@host, default user root): ")).strip()
-        if not brut:
-            print(t("Cancelled."))
+        """Saisie libre. « root@ » par défaut : « qm » exige les privilèges.
+        None pour une adresse vide ou Ctrl+D à l'une des deux questions."""
+        try:
+            brut = ui.ask(t("Address (user@host, default user root): "))
+            if not brut.strip():
+                print(t("Cancelled."))
+                return None
+            jump = ui.ask(t("SSH jump host (blank = none): ")).strip()
+        except EOFError:
             return None
+        brut = brut.strip()
         cible = brut if "@" in brut else f"root@{brut}"
-        jump = input(t("SSH jump host (blank = none): ")).strip()
         return {"target": cible, "jump": jump}
 
     def _pve_host_from_qemu(self):

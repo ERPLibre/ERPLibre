@@ -1467,6 +1467,40 @@ class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
         self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
         self.assertEqual(self.lances, [("install_nixos.py", "")])
 
+    def test_ctrl_d_at_the_depth_runs_no_descent(self):
+        # La vraie profondeur, son seul appelant `_longtest_descente`, pour
+        # les deux descentes : Ctrl+D y revient avant le départ, sans
+        # descente, à blanc ou pour de vrai.
+        del self.todo._longtest_depth
+        for script in ("deep_proxmox.py", "deep_qemu.py"):
+            for dry_run in (False, True):
+                with self.subTest(script=script, dry_run=dry_run):
+                    suite = iter([EOFError()])
+                    self._joue(
+                        suite,
+                        lambda s=script, d=dry_run: (
+                            self.todo._longtest_descente(s, d)
+                        ),
+                    )
+                    self.assertEqual(next(suite, None), None)
+        self.assertEqual(self.lances, [])
+
+    def test_ctrl_d_at_a_typed_host_runs_nothing(self):
+        # « Start from another existing host » d'une descente QEMU, ou
+        # « Use a NixOS machine you already have », puis Ctrl+D à
+        # l'adresse ou au rebond : ni descente, ni installation.
+        actions = {
+            "qemu": lambda: self.todo._longtest_descente("deep_qemu.py"),
+            "nixos": self.todo._longtest_nixos,
+        }
+        for nom, action in actions.items():
+            for apres in ([EOFError()], ["forged@forged-kvm", EOFError()]):
+                with self.subTest(action=nom, apres=len(apres)):
+                    suite = iter(["2", *apres])
+                    self._joue(suite, action)
+                    self.assertEqual(next(suite, None), None)
+        self.assertEqual(self.lances, [])
+
     def test_no_nixos_machine_typed_runs_no_install(self):
         for dry_run in (False, True):
             with self.subTest(dry_run=dry_run):

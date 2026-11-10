@@ -619,6 +619,27 @@ class TestChoixDeLHote(unittest.TestCase):
         ):
             self.assertEqual(todo._pve_pick_host(), kept)
 
+    def test_ctrl_d_at_a_typed_host_confirms_nothing(self):
+        # [2] Type an address, puis Ctrl+D à l'adresse ou au rebond : aucun
+        # hôte, et rien ne s'y connecte pour le confirmer.
+        import contextlib
+        import io
+
+        todo = self._todo()
+        todo._pve_confirm_host = lambda host: self.fail("hôte confirmé")
+        for apres in ([EOFError()], ["forged-pve-typed", EOFError()]):
+            suite = iter(["2", *apres])
+            with (
+                self.subTest(apres=len(apres)),
+                mock.patch(
+                    "script.todo.proxmox_menu.todo_prefs.get", return_value={}
+                ),
+                mock.patch("builtins.input", side_effect=suite),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertIsNone(todo._pve_pick_host())
+            self.assertEqual(next(suite, None), None)
+
     def test_an_unknown_host_key_is_recognised(self):
         for texte in (
             "Host key verification failed.",

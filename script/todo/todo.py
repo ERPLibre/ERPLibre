@@ -2268,7 +2268,8 @@ class TODO(
         seule question quand le fichier ne déclare aucun hôte. [0], une
         réponse vide ou Ctrl+D reviennent sans rien sonder ni ouvrir. « 0 »
         tapé comme adresse vaut une réponse vide : il suit une liste où [0]
-        veut dire Retour, et l'hôte « 0 » désigne la machine locale."""
+        veut dire Retour, et l'hôte « 0 » désigne la machine locale.
+        Ctrl+D à l'un des deux ports revient aussi, sans sonde ni tunnel."""
         print(f"\n🔌 {t('SSH port forwarding')}")
         hosts = self._ssh_config_hosts()
         host = ""
@@ -2292,9 +2293,12 @@ class TODO(
             print(t("Cancelled."))
             return
 
-        raw = input(f"{t('Remote port (default:')} 8069): ").strip()
-        remote = raw if raw.isdigit() else "8069"
-        raw = input(f"{t('Local port (default:')} {remote}): ").strip()
+        try:
+            raw = ui.ask(f"{t('Remote port (default:')} 8069): ").strip()
+            remote = raw if raw.isdigit() else "8069"
+            raw = ui.ask(f"{t('Local port (default:')} {remote}): ").strip()
+        except EOFError:
+            return
         local = raw if raw.isdigit() else remote
 
         # Sonde AVANT d'ouvrir : sans elle, un service arrêté à l'autre bout
@@ -2543,8 +2547,9 @@ class TODO(
         """Demande OÙ se connecter, à la main ou depuis ~/.ssh/config.
 
         Rend (cible, utilisateur, hôte, nom, depuis_config), ou None si l'on
-        renonce : [0] ou Ctrl+D à l'une des deux listes ; la saisie à la
-        main est le défaut d'une réponse vide. La CIBLE est ce qu'on passe à
+        renonce : [0] ou Ctrl+D à l'une des deux listes, Ctrl+D ou une
+        réponse vide à l'hôte tapé ; la saisie à la main est le défaut
+        d'une réponse vide à la première liste. La CIBLE est ce qu'on passe à
         ssh : l'alias quand il vient du fichier de configuration, pour que
         son User et son ProxyJump s'appliquent — un « user@hôte » écrit à la
         main les perdrait, et une VM imbriquée sans route directe deviendrait
@@ -2603,7 +2608,11 @@ class TODO(
             user = host_info.get("user", getpass.getuser())
             return host_name, user, hostname, host_name, True
 
-        ssh_host = input(t("SSH host (e.g.: user@192.168.1.100): ")).strip()
+        try:
+            ssh_host = ui.ask(t("SSH host (e.g.: user@192.168.1.100): "))
+        except EOFError:
+            return None
+        ssh_host = ssh_host.strip()
         if not ssh_host:
             print(t("SSH host is required!"))
             return None
@@ -2625,7 +2634,8 @@ class TODO(
         réseau sans route depuis ici.
 
         « -N » n'ouvre aucun shell — rien à exécuter là-bas —, et « -C »
-        comprime, ce qui se sent sur une liaison lente.
+        comprime, ce qui se sent sur une liaison lente. Renoncer à la cible
+        ou Ctrl+D au port revient sans rien ouvrir.
         """
         print(f"\n🧦 {t('SOCKS proxy over SSH')}")
         choisi = self._ask_ssh_target()
@@ -2636,7 +2646,10 @@ class TODO(
         # Le défaut proposé est déjà libre : un autre relais — un premier
         # proxy SOCKS, un client Tor — tient souvent 1080.
         defaut = self._first_free_port(1080) or 1080
-        raw = input(f"{t('SOCKS port (default:')} {defaut}): ").strip()
+        try:
+            raw = ui.ask(f"{t('SOCKS port (default:')} {defaut}): ").strip()
+        except EOFError:
+            return
         port = int(raw) if raw.isdigit() else defaut
 
         if not self._port_is_free(port):

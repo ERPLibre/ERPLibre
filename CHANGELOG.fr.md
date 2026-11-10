@@ -530,6 +530,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Git › Installer Claude Code et Installer opencode disent d'ouvrir un nouveau shell chaque fois que le fichier de shell choisi porte le répertoire de l'outil et que le PATH sous lequel tourne TODO ne le porte pas, y compris pour une ligne que l'installateur amont a écrite lui-même, que le conseil taisait ; un répertoire déjà sur ce PATH ne demande aucun nouveau shell
 - Exécution › Code › Mise à jour de module redemande une version d'Odoo mal tapée et revient sur une version laissée vide, là où TODO s'arrêtait sur une erreur
 - Exécution › Code › Mise à jour de module revient sur un nom de module vide avant de demander les versions d'Odoo, là où le checkout passait à la version de départ une fois celles-ci choisies
+- Ctrl+D à une valeur tapée après une liste revient sans rien ouvrir ni lancer, là où TODO s'arrêtait sur une erreur : les ports d'Exécution › Déployer › Redirection de port SSH (ouvrir Odoo dans le navigateur) et de Configurer Proxy vers SSH, l'hôte tapé à la main de Configurer Proxy vers SSH et de Configurer sshfs, l'adresse et le rebond tapés d'un hôte Proxmox ou d'un hôte d'Exécution › Test › Tests longs - vraies VM, des heures, la profondeur de Profondeur Proxmox imbriqué et de Profondeur QEMU imbriqué, et le nom et le chemin du module d'Exécution › Code › Mise à jour de module
 
 ## Retiré
 
