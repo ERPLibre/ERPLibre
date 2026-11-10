@@ -61,8 +61,14 @@ test_full:
 	#./script/make.sh doc |& tee -a ${LOG_FILE}
 	./script/test/check_result_test.sh ${LOG_FILE}
 
+# The Odoo suite does not need the GNOME extension: its suites run first
+# when the clone is there, and test_gnome_extension_skipped announces them
+# skipped otherwise. metadata.json is the witness that
+# erplibre_home_extension_present reads too.
+ERPLIBRE_HOME_EXT_CLONED := $(wildcard script/gnome-extension/erplibre_home/metadata.json)
+
 .PHONY: test_full_fast
-test_full_fast: test_gnome_extension
+test_full_fast: $(if $(ERPLIBRE_HOME_EXT_CLONED),test_gnome_extension,test_gnome_extension_skipped)
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
@@ -175,3 +181,7 @@ test_gnome_extension: erplibre_home_extension_present
 	python3 -m unittest discover -s script/gnome-extension/erplibre_home/test/python
 
 .PHONY: test_gnome_extension
+
+.PHONY: test_gnome_extension_skipped
+test_gnome_extension_skipped:
+	@echo "→ skip test_gnome_extension: script/gnome-extension/erplibre_home/ is not cloned (make erplibre_home_install_extension)"

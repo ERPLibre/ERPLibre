@@ -118,11 +118,12 @@ erplibre_home_extension_present() {
 }
 
 # erplibre_home_extension_absent_message écrit, sur une ligne, que
-# l'extension manque et la commande qui la clone.
+# l'extension manque et la commande qui la clone. Cette cible ne demande
+# pas GNOME Shell : un serveur de tests sans session GNOME s'en sert aussi.
 erplibre_home_extension_absent_message() {
     echo "[ERPLibre Home] the GNOME extension is not installed" \
         "(no metadata.json in ${ERPLIBRE_HOME_EXT_DIR}/);" \
-        "install it with make erplibre_home_install"
+        "clone it with make erplibre_home_install_extension"
 }
 
 # deck_plugins_off écrit, un par ligne, les identifiants de plugins que

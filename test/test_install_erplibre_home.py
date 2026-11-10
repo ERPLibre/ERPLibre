@@ -3539,12 +3539,49 @@ class TestCiblesDeLExtension(unittest.TestCase):
                 self.assertNotEqual(fait.returncode, 0)
                 self.assertIn(
                     "no metadata.json in script/gnome-extension/"
-                    "erplibre_home/); install it with make"
-                    " erplibre_home_install",
+                    "erplibre_home/); clone it with make"
+                    " erplibre_home_install_extension",
                     fait.stderr,
                 )
         self.assertFalse(self.trace_node.exists())
         self.assertFalse(self.trace_python.exists())
+
+    def test_test_full_fast_saute_l_extension_absente(self):
+        """La suite Odoo ne demande pas l'extension : sans le clone, elle
+        annonce ses tests sautés au lieu de s'arrêter sur le garde."""
+        prevu = {}
+        for cas in ("avec", "sans"):
+            if cas == "sans":
+                (self.source / "metadata.json").unlink()
+            fait = subprocess.run(
+                [
+                    "make",
+                    "-n",
+                    "--no-print-directory",
+                    "-f",
+                    str(MAKEFILE_STREAMDECK),
+                    "-f",
+                    str(MAKEFILE_TEST),
+                    "test_full_fast",
+                ],
+                cwd=self.depot,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            self.assertEqual(fait.returncode, 0, fait.stderr)
+            prevu[cas] = fait.stdout
+        self.assertIn("node --test", prevu["avec"])
+        self.assertNotIn("skip test_gnome_extension", prevu["avec"])
+        self.assertNotIn("node --test", prevu["sans"])
+        self.assertNotIn("erplibre_home_extension_present", prevu["sans"])
+        self.assertIn(
+            "skip test_gnome_extension: script/gnome-extension/"
+            "erplibre_home/ is not cloned (make"
+            " erplibre_home_install_extension)",
+            prevu["sans"],
+        )
+        self.assertIn("run_parallel_test.py", prevu["sans"])
 
     @SANS_EXTENSION
     @unittest.skipUnless(shutil.which("msgfmt"), "msgfmt absent")

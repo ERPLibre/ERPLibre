@@ -70,11 +70,13 @@ L'installateur lie le clone, lance `tools/migrate_legacy.py`, compile
 `erplibre_home_e2e_nested`, `erplibre_home_compile_locale`,
 `extension_i18n_compile`, `claude_install_hooks` et `test_gnome_extension`
 lancent un de ses fichiers : sans le clone, chacune s'arrête sur une ligne
-qui nomme `make erplibre_home_install`. Le programme du Stream Deck, le
-contrôleur, le traducteur et le menu TODO parlent à l'extension en marche
-par D-Bus et se dégradent quand elle ne répond pas. L'extension, elle,
-trouve le checkout par son propre chemin et y lance le programme du deck,
-le contrôleur et la galerie des jeux.
+qui nomme `make erplibre_home_install_extension`, qui la clone sans
+demander GNOME Shell. `make test_full_fast` lance les suites de l'extension
+quand le clone est là, et les annonce sautées sinon. Le programme du Stream
+Deck, le contrôleur, le traducteur et le menu TODO parlent à l'extension en
+marche par D-Bus et se dégradent quand elle ne répond pas. L'extension,
+elle, trouve le checkout par son propre chemin et y lance le programme du
+deck, le contrôleur et la galerie des jeux.
 
 ## Modifier l'extension
 

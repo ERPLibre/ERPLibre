@@ -65,12 +65,14 @@ The installer links the clone, runs `tools/migrate_legacy.py`, compiles
 `erplibre_home_enable_extension`, `erplibre_home_dev_nested`,
 `erplibre_home_e2e_nested`, `erplibre_home_compile_locale`,
 `extension_i18n_compile`, `claude_install_hooks` and `test_gnome_extension`
-run one of its files: without the clone each stops on one line naming
-`make erplibre_home_install`. The Stream Deck program, the controller, the
-translator and the TODO menu talk to the running extension over D-Bus and
-degrade when it does not answer. The extension, in turn, finds the
-checkout from its own path and runs the deck program, the controller and
-the games gallery from there.
+run one of its files: without the clone each stops on one line naming `make
+erplibre_home_install_extension`, which clones it without requiring GNOME
+Shell. `make test_full_fast` runs the extension's suites when the clone is
+there and announces them skipped otherwise. The Stream Deck program, the
+controller, the translator and the TODO menu talk to the running extension
+over D-Bus and degrade when it does not answer. The extension, in turn,
+finds the checkout from its own path and runs the deck program, the
+controller and the games gallery from there.
 
 ## Changing the extension
 

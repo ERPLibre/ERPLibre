@@ -29,7 +29,7 @@ EXTENSION = RACINE / CHEMIN
 PRESENTE = (EXTENSION / "metadata.json").is_file()
 
 SANS_EXTENSION = unittest.skipUnless(
-    PRESENTE, CHEMIN + " absent : make erplibre_home_install"
+    PRESENTE, CHEMIN + " absent : make erplibre_home_install_extension"
 )
 
 # Les types D-Bus simples : chacun compte pour un argument.
