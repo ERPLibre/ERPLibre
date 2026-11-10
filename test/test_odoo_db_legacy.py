@@ -33,6 +33,10 @@ def odoo(*argv, env=None):
     return L.Step("odoo_bin", ["db"] + list(argv), env or ENV)
 
 
+def lire(*argv, env=None):
+    return L.Step("odoo_bin_read", ["db"] + list(argv), env or ENV)
+
+
 class Base(unittest.TestCase):
     version = "14.0"
 
@@ -47,16 +51,16 @@ class Base(unittest.TestCase):
 
 class TestLesListes(Base):
     def test_list(self):
-        self.assertEqual([odoo("--list")], self.t("db", "list"))
+        self.assertEqual([lire("--list")], self.t("db", "list"))
 
     def test_list_incompatible(self):
         self.assertEqual(
-            [odoo("--list_incompatible_db")],
+            [lire("--list_incompatible_db")],
             self.t("db", "list-incompatible"),
         )
 
     def test_version(self):
-        self.assertEqual([odoo("--version")], self.t("db", "version"))
+        self.assertEqual([lire("--version")], self.t("db", "version"))
 
     def test_c_devient_odoo_rc(self):
         env = dict(ENV, ODOO_RC="/srv/x/autre.conf")
@@ -66,7 +70,7 @@ class TestLesListes(Base):
             ["--config=/srv/x/autre.conf"],
         ):
             self.assertEqual(
-                [odoo("--list", env=env)], self.t("db", *forme, "list")
+                [lire("--list", env=env)], self.t("db", *forme, "list")
             )
 
     def test_une_autre_globale_est_refusee(self):
@@ -618,10 +622,38 @@ class TestMain(unittest.TestCase):
         )
 
     def test_c_passe_par_odoo_rc(self):
-        _code, appels, _run, _err = self.lancer(
-            ["db", "-c", "/srv/x/autre.conf", "list"], [0]
+        _code, appels, run, _err = self.lancer(
+            ["db", "-c", "/srv/x/autre.conf", "list"], []
         )
-        self.assertEqual("/srv/x/autre.conf", appels[0][1]["ODOO_RC"])
+        self.assertEqual([], appels)
+        self.assertEqual(
+            "/srv/x/autre.conf", run.call_args[1]["env"]["ODOO_RC"]
+        )
+
+    def lister(self, code_enfant):
+        """main(["db", "list"]) dont l'enfant écrit deux noms sur stdout et
+        un avertissement sur stderr. Rend (code, stdout, stderr)."""
+        fait = subprocess.CompletedProcess(
+            [], code_enfant, stdout="a\nb\n", stderr="WARNING x\n"
+        )
+        sortie, erreur = io.StringIO(), io.StringIO()
+        with mock.patch.object(L, "lire_version", return_value="20.0"):
+            with mock.patch.object(L.subprocess, "run", return_value=fait):
+                with redirect_stdout(sortie), redirect_stderr(erreur):
+                    code = L.main(["db", "list"])
+        return code, sortie.getvalue(), erreur.getvalue()
+
+    def test_la_liste_reussie_ne_rend_que_les_noms(self):
+        code, sortie, erreur = self.lister(0)
+        self.assertEqual(0, code)
+        self.assertEqual("a\nb\n", sortie)
+        self.assertEqual("", erreur)
+
+    def test_la_liste_en_echec_montre_son_stderr(self):
+        code, sortie, erreur = self.lister(1)
+        self.assertEqual(1, code)
+        self.assertEqual("a\nb\n", sortie)
+        self.assertEqual("WARNING x\n", erreur)
 
     def test_run_sh_pour_module(self):
         _code, appels, _run, _err = self.lancer(

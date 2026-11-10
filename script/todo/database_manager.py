@@ -296,7 +296,14 @@ class DatabaseManager:
         développement (compte test/test, courriel et sauvegardes coupés).
         La mise à jour « avant » se place entre les deux : ces modules
         s'installent alors sur des modules déjà au niveau du code.
+
+        « --neutralize » n'est passé qu'à partir d'Odoo 16 : avant,
+        `odoo_db_legacy.py` refuse l'option et la restauration échoue dès
+        la première commande. update_prod_to_dev.sh reste alors le seul
+        temps de la neutralisation, et le suffixe « _neutralize » est gardé.
         """
+        from script.database import db_duplicate
+
         cache = _oui(
             input(
                 "\U0001f4ac "
@@ -343,7 +350,7 @@ class DatabaseManager:
         restore = (
             f"python3 ./script/database/db_restore.py -d {database_name} "
         )
-        if neutraliser:
+        if neutraliser and db_duplicate.supporte_neutralisation():
             restore += "--neutralize "
         if not cache:
             restore += "--ignore_cache "

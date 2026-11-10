@@ -31,6 +31,7 @@ import types
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest.mock import patch
 
 RACINE = Path(__file__).resolve().parents[1]
 ODOO_BIN = RACINE / "odoo_bin.sh"
@@ -427,7 +428,23 @@ def _charger_commande(api):
                 ("clone", db_original_name, db_name, neutralize_database)
             )
 
+        # drop d'Odoo 20 lève sur une base absente : le faux aussi.
+        def drop(db_name):
+            appels.append(("drop", db_name))
+            if db_name not in bases:
+                raise RuntimeError("database %s does not exist" % db_name)
+
+        def list_dbs(force=False):
+            return list(bases)
+
+        def verify_admin_password(password):
+            appels.append(("verify", password))
+
+        bases = ["presente"]
         db.duplicate = duplicate
+        db.drop = drop
+        db.list_dbs = list_dbs
+        db.verify_admin_password = verify_admin_password
         modules.db = db
         faux["odoo.modules.db"] = db
 
@@ -475,6 +492,32 @@ class TestAdaptateur(unittest.TestCase):
         module, appels = _charger_commande("moderne")
         module.cloner("source", "cible", True)
         self.assertEqual([("clone", "source", "cible", True)], appels)
+
+    def test_odoo_20_supprimer_une_base_absente_rend_false(self):
+        """drop d'Odoo 20 lève sur une base absente, exp_drop rend False."""
+        module, appels = _charger_commande("moderne")
+        self.assertFalse(module.supprimer("absente"))
+        self.assertEqual([], appels)
+
+    def test_odoo_20_supprimer_une_base_presente_la_supprime(self):
+        module, appels = _charger_commande("moderne")
+        module.supprimer("presente")
+        self.assertEqual([("drop", "presente")], appels)
+
+    def test_odoo_20_drop_verifie_le_mot_de_passe_avant_l_existence(self):
+        """La sonde du mot de passe maître supprime une base absente : le
+        mot de passe se vérifie quand même, avant le constat d'absence."""
+        module, appels = _charger_commande("moderne")
+        opt = types.SimpleNamespace(
+            list=False,
+            list_incompatible_db=False,
+            drop=True,
+            db_name="absente",
+            master_password="secret",
+        )
+        with patch.dict(os.environ, {"MASTER_PWD": ""}):
+            module.Erplibre_db().executer(opt, None)
+        self.assertEqual([("verify", "secret")], appels)
 
     def test_une_image_designe_le_zip_d_image_db(self):
         module, _appels = _charger_commande("legacy")
