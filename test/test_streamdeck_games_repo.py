@@ -21,7 +21,8 @@ Ce que ces tests gardent :
   galerie du clone sert ;
 - le menu TODO et la galerie trouvent exactement les jeux du clone.
 
-Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque.
+Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque ;
+ce qui lit l'extension GNOME, quand son clone manque.
 Les jeux eux-mêmes se testent dans leur dépôt (tests/test_contract.py).
 """
 
@@ -34,6 +35,9 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from erplibre_home_extension import SANS_EXTENSION  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DECK_DIR = ROOT / "script" / "stream_deck"
@@ -218,16 +222,19 @@ class LePortDeLaGalerie(unittest.TestCase):
     cherche. Un port qui diverge montre la galerie hors ligne dans le menu
     de l'extension alors qu'elle tourne."""
 
+    @SANS_EXTENSION
     def test_the_extension_talks_to_the_gallery_on_8042(self):
         self.assertEqual(8042, port_de_l_extension())
 
     @SANS_JEUX
+    @SANS_EXTENSION
     def test_the_extension_talks_on_the_port_the_gallery_serves(self):
         galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
         self.assertEqual(galerie.PORT, port_de_l_extension())
 
 
 @SANS_JEUX
+@SANS_EXTENSION
 class LEnTeteDActionDeLaGalerie(unittest.TestCase):
     """Une route de la galerie qui agit exige un en-tête (contrat 2.0) :
     l'extension GNOME l'envoie à /launch/<id>, sous le nom que la galerie

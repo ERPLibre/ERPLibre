@@ -32,6 +32,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.argv = ["todo.py"]
 
@@ -39,6 +40,9 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE / "long_test"))
 
 import install_erplibre_home as sd  # noqa: E402
+
+sys.path.insert(0, str(RACINE / "test"))
+from erplibre_home_extension import SANS_EXTENSION  # noqa: E402
 
 EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
 # Un « Depuis= » de CMD_CONDITION : secondes epoch, microsecondes.
@@ -133,6 +137,7 @@ class LaMatrice(unittest.TestCase):
                     entree["version"], catalogue[entree["distro"]][0]
                 )
 
+    @SANS_EXTENSION
     def test_every_expected_gnome_is_declared_by_the_extension(self):
         """Un GNOME attendu hors « shell-version » promettrait ACTIVE là où
         l'installateur rendra 2."""
@@ -256,12 +261,14 @@ class LaReponseDeGnomeShell(unittest.TestCase):
 
 
 class LesCommandesVisentLExtension(unittest.TestCase):
+    @SANS_EXTENSION
     def test_the_uuid_is_the_one_of_metadata(self):
         meta = json.loads(
             (EXTENSION / "metadata.json").read_text(encoding="utf-8")
         )
         self.assertEqual(sd.UUID_EXTENSION, meta["uuid"])
 
+    @SANS_EXTENSION
     def test_the_object_and_interface_are_those_extension_js_exports(self):
         src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
         self.assertIn(f"'{sd.OBJET_EXTENSION}'", src)
@@ -374,6 +381,7 @@ class LesIndicateursNonMontes(unittest.TestCase):
             )
         )
 
+    @SANS_EXTENSION
     def test_the_command_reads_the_lines_extension_js_writes(self):
         src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
         self.assertIn("[ERPLibreHome] mount ${id} failed", src)
@@ -727,6 +735,7 @@ class LesEtapes(unittest.TestCase):
                 etat = sd.etat_systemd(sortie)
                 self.assertFalse(sd.condition_sautee(etat, raison))
 
+    @SANS_EXTENSION
     def test_the_enabled_list_is_read(self):
         self.assertEqual(sd.liste_extensions("@as []"), [])
         self.assertEqual(
@@ -736,6 +745,17 @@ class LesEtapes(unittest.TestCase):
             ["autre@exemple.org", "erplibre-home@technolibre.ca"],
         )
 
+    def test_without_the_extension_the_reader_names_its_install(self):
+        """Le module se charge sans le clone de l'extension ; c'est la
+        lecture d'une liste qui le réclame, avec la commande qui le pose."""
+        with tempfile.TemporaryDirectory() as vide:
+            with mock.patch.object(sd, "EXTENSION", vide):
+                with self.assertRaisesRegex(
+                    RuntimeError, "make erplibre_home_install"
+                ):
+                    sd.liste_extensions("@as []")
+
+    @SANS_EXTENSION
     def test_an_unread_list_is_none(self):
         """Une lecture ratée n'est ni une liste vide ni une liste pleine."""
         for sortie in (None, "", "No such schema", "[cassé"):
@@ -1953,9 +1973,12 @@ class VMSimulee:
 DECK = sd.OPTION["install-stream-deck"]
 
 
+@SANS_EXTENSION
 class LesCinqEtapes(unittest.TestCase):
     """controler() mène les cinq étapes sur une VM simulée : l'ordre des
-    commandes, et le nom que chaque faute laisse au rapport."""
+    commandes, et le nom que chaque faute laisse au rapport. La liste
+    enabled-extensions s'y lit par le lecteur des outils de l'extension,
+    d'où SANS_EXTENSION."""
 
     ENTIER = "[ERPLibreHome] enabled\n"
     ECHEC = (

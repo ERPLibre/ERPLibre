@@ -63,12 +63,12 @@ from descente import (  # noqa: E402
     retirer_alias,
 )
 
+# L'extension, un dépôt à part que Google Repo ou l'installateur clone là.
 # Les listes que gsettings affiche se lisent par le lecteur que partagent
-# les outils de l'extension.
-sys.path.insert(
-    0, os.path.join(RACINE, "script/gnome-extension/erplibre_home/tools")
-)
-from gsettings_strv import parse_strv  # noqa: E402
+# ses outils (tools/gsettings_strv.py), importé à la première lecture :
+# sans le clone, le reste du module, le plan et --dry-run compris, se
+# charge quand même.
+EXTENSION = os.path.join(RACINE, "script/gnome-extension/erplibre_home")
 
 OUTIL = "install_erplibre_home"
 NOM_BASE = "long-sd"
@@ -469,6 +469,23 @@ def decrire_etapes(extras=False):
     return lignes
 
 
+def lecteur_strv():
+    """parse_strv de tools/gsettings_strv.py, le lecteur des outils de
+    l'extension. Lève RuntimeError, avec la commande qui la clone, quand
+    l'extension manque."""
+    outils = os.path.join(EXTENSION, "tools")
+    if not os.path.isfile(os.path.join(outils, "gsettings_strv.py")):
+        raise RuntimeError(
+            "script/gnome-extension/erplibre_home absent :"
+            " make erplibre_home_install"
+        )
+    if outils not in sys.path:
+        sys.path.insert(0, outils)
+    from gsettings_strv import parse_strv
+
+    return parse_strv
+
+
 def liste_extensions(sortie):
     """La liste qu'affiche « gsettings get … enabled-extensions », ou None.
 
@@ -480,6 +497,7 @@ def liste_extensions(sortie):
     texte = (sortie or "").strip()
     if not texte:
         return None
+    parse_strv = lecteur_strv()
     try:
         return parse_strv(texte)
     except (ValueError, SyntaxError):

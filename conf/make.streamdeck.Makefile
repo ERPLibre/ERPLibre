@@ -31,6 +31,17 @@ streamdeck_games_guard: streamdeck_games_present
 	@bash -c '. script/install/erplibre_home_settings.sh && \
 		{ deck_games_enabled || { deck_games_message >&2; exit 1; }; }'
 
+# The GNOME extension is a separate repository cloned at
+# script/gnome-extension/erplibre_home/. A target that runs one of its
+# files lists erplibre_home_extension_present, which stops it, when the
+# clone is missing, with the command that installs it. The targets that
+# go through the installer need no guard: the installer clones it.
+.PHONY: erplibre_home_extension_present
+erplibre_home_extension_present:
+	@bash -c '. script/install/erplibre_home_settings.sh && \
+		{ erplibre_home_extension_present || \
+		{ erplibre_home_extension_absent_message >&2; exit 1; }; }'
+
 .PHONY: streamdeck
 streamdeck: $(STREAMDECK_PY)
 	$(STREAMDECK_PY) script/stream_deck/erplibre_controller.py
@@ -174,7 +185,7 @@ erplibre_home_install_extension:
 	@echo "Then: make erplibre_home_enable_extension (Wayland: then log out / log in to load it; X11: Alt+F2, r)"
 
 .PHONY: erplibre_home_enable_extension
-erplibre_home_enable_extension:
+erplibre_home_enable_extension: erplibre_home_extension_present
 	@# Wayland scans the extensions directory only at login, so a fresh
 	@# symlink is unknown to the running Shell and `enable` fails; the
 	@# helper then writes the setting the Shell reads at login.
@@ -203,14 +214,14 @@ erplibre_home_uninstall_extension:
 # isolated XDG sandbox. Lets the dev reload code freely without
 # touching the parent Wayland session — close the window to wipe.
 .PHONY: erplibre_home_dev_nested
-erplibre_home_dev_nested:
+erplibre_home_dev_nested: erplibre_home_extension_present
 	@$(ERPLIBRE_HOME_EXT_SRC)/dev_nested.sh
 
 # Headless-ish smoke test: launch a nested gnome-shell with the
 # extension enabled and verify the D-Bus interface answers. Needs a
 # Wayland host on the dev machine (skipped on bare CI).
 .PHONY: erplibre_home_e2e_nested
-erplibre_home_e2e_nested:
+erplibre_home_e2e_nested: erplibre_home_extension_present
 	@$(ERPLIBRE_HOME_EXT_SRC)/test/e2e_nested.sh
 
 # ---------- Translator stack (STT + LLM) ----------
@@ -453,19 +464,19 @@ CLAUDE_HOOKS_INSTALLER := \
 	$(ERPLIBRE_HOME_EXT_SRC)/hooks/install_claude_hooks.py
 
 .PHONY: claude_install_hooks
-claude_install_hooks:
+claude_install_hooks: erplibre_home_extension_present
 	@$(CLAUDE_HOOKS_INSTALLER)
 
 .PHONY: claude_install_hooks_dry_run
-claude_install_hooks_dry_run:
+claude_install_hooks_dry_run: erplibre_home_extension_present
 	@$(CLAUDE_HOOKS_INSTALLER) --dry-run
 
 .PHONY: claude_uninstall_hooks
-claude_uninstall_hooks:
+claude_uninstall_hooks: erplibre_home_extension_present
 	@$(CLAUDE_HOOKS_INSTALLER) --remove
 
 # ---------- erplibre-home i18n ----------
 
 .PHONY: erplibre_home_compile_locale
-erplibre_home_compile_locale:
+erplibre_home_compile_locale: erplibre_home_extension_present
 	@python3 $(ERPLIBRE_HOME_EXT_SRC)/po/compile_locales.py

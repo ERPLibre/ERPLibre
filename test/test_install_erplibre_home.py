@@ -2987,8 +2987,10 @@ class TestCiblesDeLExtension(unittest.TestCase):
     """Les cibles make de l'extension, lancées pour de vrai dans une copie.
 
     La copie ne porte que ce que la cible lit, sous le chemin relatif que
-    sa recette nomme ; node est remplacé par un témoin qui note ses
-    arguments, glib-compile-schemas et msgfmt sont les vrais.
+    sa recette nomme, plus la bibliothèque des réglages et un metadata.json
+    pour le garde erplibre_home_extension_present du fragment Stream Deck ;
+    node est remplacé par un témoin qui note ses arguments,
+    glib-compile-schemas et msgfmt sont les vrais.
     """
 
     def setUp(self):
@@ -3002,10 +3004,25 @@ class TestCiblesDeLExtension(unittest.TestCase):
         node = self.bin / "node"
         node.write_text('#!/bin/sh\necho "$@" >>"%s"\n' % self.trace_node)
         node.chmod(0o755)
+        reglages = self.depot / "script/install/erplibre_home_settings.sh"
+        reglages.parent.mkdir(parents=True)
+        shutil.copy2(
+            RACINE / "script/install/erplibre_home_settings.sh", reglages
+        )
+        self.source.mkdir(parents=True)
+        (self.source / "metadata.json").write_text("{}")
 
     def faire(self, makefile, cible):
         return subprocess.run(
-            ["make", "--no-print-directory", "-f", str(makefile), cible],
+            [
+                "make",
+                "--no-print-directory",
+                "-f",
+                str(MAKEFILE_STREAMDECK),
+                "-f",
+                str(makefile),
+                cible,
+            ],
             cwd=self.depot,
             env=dict(
                 os.environ,
@@ -3063,11 +3080,42 @@ class TestCiblesDeLExtension(unittest.TestCase):
         self.assertNotEqual(fait.returncode, 0)
         self.assertFalse(self.trace_node.exists())
 
+    def test_sans_l_extension_chaque_cible_qui_la_lit_s_arrete(self):
+        """Un checkout sans le clone de l'extension : la cible s'arrête sur
+        la commande qui l'installe, avant de lancer quoi que ce soit."""
+        (self.source / "metadata.json").unlink()
+        cibles = [
+            (MAKEFILE_TEST, "test_gnome_extension"),
+            (MAKEFILE_INSTALLATION, "extension_i18n_compile"),
+        ] + [
+            (MAKEFILE_STREAMDECK, cible)
+            for cible in (
+                "erplibre_home_enable_extension",
+                "erplibre_home_dev_nested",
+                "erplibre_home_e2e_nested",
+                "erplibre_home_compile_locale",
+                "claude_install_hooks",
+                "claude_install_hooks_dry_run",
+                "claude_uninstall_hooks",
+            )
+        ]
+        for makefile, cible in cibles:
+            with self.subTest(cible=cible):
+                fait = self.faire(makefile, cible)
+                self.assertNotEqual(fait.returncode, 0)
+                self.assertIn(
+                    "no metadata.json in script/gnome-extension/"
+                    "erplibre_home/); install it with make"
+                    " erplibre_home_install",
+                    fait.stderr,
+                )
+        self.assertFalse(self.trace_node.exists())
+
     @unittest.skipUnless(shutil.which("msgfmt"), "msgfmt absent")
     def test_extension_i18n_compile_compile_chaque_po_au_nom_du_domaine(
         self,
     ):
-        (self.source / "po").mkdir(parents=True)
+        (self.source / "po").mkdir()
         for po in (EXTENSION / "po").glob("*.po"):
             shutil.copy2(po, self.source / "po")
         fait = self.faire(MAKEFILE_INSTALLATION, "extension_i18n_compile")

@@ -4,7 +4,8 @@
 # Bibliothèque sourcée par l'installateur, le point d'entrée du service et
 # l'outil de passation : les noms et les chemins du service Stream Deck, et
 # la lecture de ses réglages. Elle ne lance rien et ne pose que des
-# fonctions et les constantes DECK_UNIT_NAME et DECK_GAMES_DIR.
+# fonctions et les constantes DECK_UNIT_NAME, DECK_GAMES_DIR et
+# ERPLIBRE_HOME_EXT_DIR.
 #
 # Les réglages sont des lignes « CLÉ=valeur » ; une ligne qui ne commence pas
 # par « CLÉ= » est ignorée, si bien qu'un commentaire « # … » est permis.
@@ -16,6 +17,10 @@ DECK_UNIT_NAME="erplibre-home-streamdeck.service"
 # ou le niveau Stream Deck de l'installateur clone là. Le programme du deck,
 # le contrôleur et le service n'en dépendent pas.
 DECK_GAMES_DIR="script/stream_deck/games"
+
+# L'extension GNOME, relative à la racine du dépôt : un dépôt à part, que
+# Google Repo ou la base de l'installateur clone là.
+ERPLIBRE_HOME_EXT_DIR="script/gnome-extension/erplibre_home"
 
 # Le répertoire de configuration de l'utilisateur : $XDG_CONFIG_HOME, ou
 # ~/.config quand il est vide ou absent, comme systemd --user le lit.
@@ -102,6 +107,22 @@ deck_games_absent_message() {
     echo "[ERPLibre Home] Stream Deck games are not installed" \
         "(no games_cli.py in ${DECK_GAMES_DIR}/);" \
         "install them with make erplibre_home_streamdeck_install"
+}
+
+# erplibre_home_extension_present [RACINE] sort en 0 quand l'extension est
+# clonée sous RACINE, le répertoire courant par défaut : metadata.json en
+# est le témoin. Les fichiers ignorés qu'une mise à jour d'ERPLibre laisse
+# derrière elle (locale/, schémas compilés, caches) ne suffisent pas.
+erplibre_home_extension_present() {
+    [ -f "${1:-.}/${ERPLIBRE_HOME_EXT_DIR}/metadata.json" ]
+}
+
+# erplibre_home_extension_absent_message écrit, sur une ligne, que
+# l'extension manque et la commande qui la clone.
+erplibre_home_extension_absent_message() {
+    echo "[ERPLibre Home] the GNOME extension is not installed" \
+        "(no metadata.json in ${ERPLIBRE_HOME_EXT_DIR}/);" \
+        "install it with make erplibre_home_install"
 }
 
 # deck_plugins_off écrit, un par ligne, les identifiants de plugins que

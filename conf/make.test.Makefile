@@ -163,7 +163,7 @@ test_addons_project_sale_link_specific_file:
 	./script/addons/install_addons_dev.sh test_addons_project_sale_link project_sale_link
 	./test.sh -d test_addons_project_sale_link --db-filter test_addons_project_sale_link -i project_sale_link --test-file=odoo18.0/addons/OCA_project/project_sale_link/tests/test_project_sale_link.py
 
-test_gnome_extension:
+test_gnome_extension: erplibre_home_extension_present
 	@echo "→ schema strict dry-run"
 	glib-compile-schemas --strict --dry-run \
 	    script/gnome-extension/erplibre_home/schemas/

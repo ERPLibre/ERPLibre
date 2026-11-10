@@ -2,15 +2,24 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """`make erplibre_home_enable_extension` against fake gnome-extensions and
 gsettings: the real session is never reached because the fakes come first
-on PATH (asserted in setUp)."""
+on PATH (asserted in setUp).
+
+The target runs the extension's tools/enable_next_login.py: without the
+extension clone, every test is skipped (SANS_EXTENSION), and the target's
+refusal is tested in test_install_erplibre_home.py, TestCiblesDeLExtension.
+"""
 
 import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from erplibre_home_extension import SANS_EXTENSION  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 UUID = "erplibre-home@technolibre.ca"
@@ -34,6 +43,7 @@ else echo "$*" >> "$FAKE_DIR/calls"; printf '%s\\n' "$4" > "$FAKE_DIR/$3"; fi
 """
 
 
+@SANS_EXTENSION
 class EnableTargetTest(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())

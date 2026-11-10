@@ -9,10 +9,11 @@
 # lançables partout, là où « make test » demande une base et plusieurs
 # minutes.
 #
-# DÉPENDANCE DÉCLARÉE : les tests du transfert mobile lisent
-# mobile/erplibre_home_mobile. Absent, ils se disent ignorés plutôt que de
-# passer en silence — un test vert sans son dépôt ne prouve rien. Ce script
-# l'annonce donc avant de commencer.
+# DÉPENDANCES DÉCLARÉES : les tests du transfert mobile lisent
+# mobile/erplibre_home_mobile, ceux de l'installateur et du contrat de
+# l'extension GNOME script/gnome-extension/erplibre_home. Absents, ils se
+# disent ignorés plutôt que de passer en silence — un test vert sans son
+# dépôt ne prouve rien. Ce script les annonce donc avant de commencer.
 #
 #   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [--failed]
 #       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [fichiers...]
@@ -58,6 +59,13 @@ if [[ -d "${MOBILE}" ]]; then
 else
     echo -e "  dépendance ${MOBILE} : ${Yellow}absente${Color_Off}"
     echo "    (les tests du transfert mobile s'en passeront et le diront)"
+fi
+EXTENSION=script/gnome-extension/erplibre_home
+if [[ -f "${EXTENSION}/metadata.json" ]]; then
+    echo -e "  dépendance ${EXTENSION} : ${Green}présente${Color_Off}"
+else
+    echo -e "  dépendance ${EXTENSION} : ${Yellow}absente${Color_Off}"
+    echo "    (les tests qui lisent l'extension s'en passeront et le diront)"
 fi
 
 OPTIONS=()
