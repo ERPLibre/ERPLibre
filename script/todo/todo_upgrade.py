@@ -194,6 +194,26 @@ def http_off_option(version):
 # plus : voir script/odoo/openupgrade_addons/erplibre_openupgrade_compat.
 OPENUPGRADE_COMPAT_MODULE = "erplibre_openupgrade_compat"
 
+# run.sh, en production, laisse les limites à config.conf, sinon à celles
+# d'Odoo : 2560 Mio d'espace d'adresses, posés même avec --stop-after-init
+# depuis Odoo 12. Une mise à jour de toute une base peut les dépasser ; les
+# appels de la migration à run.sh les lèvent donc, comme dev.sh. Ils visent
+# tous Odoo 14 et plus, où « 0 » vaut « sans limite ».
+RUN_SH_NO_LIMIT = (
+    "--limit-memory-hard=0 --limit-memory-soft=0"
+    " --limit-time-real 99999 --limit-time-cpu 99999"
+)
+
+
+def openupgrade_run_command(version, database):
+    """La migration des données vers version, depuis 14 : run.sh avec les
+    scripts d'OpenUpgrade de cette version et le module de compatibilité."""
+    return (
+        f"./run.sh --upgrade-path=./odoo{version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts"
+        f" --update all -c config.conf --stop-after-init --no-http {RUN_SH_NO_LIMIT}"
+        f" --load=base,web,openupgrade_framework,{OPENUPGRADE_COMPAT_MODULE} -d {database}"
+    )
+
 
 def openupgrade_addons(path_openupgrade, version, racine="."):
     """Les chemins d'addons à ajouter pour la montée vers version.
@@ -1398,7 +1418,7 @@ class TodoUpgrade:
                 module_name = dct_module.get("module_name")
                 cmd_migration = (
                     f"echo 'views_migration_17 {module_name}' && "
-                    f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init"
+                    f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init {RUN_SH_NO_LIMIT}"
                 )
                 cmd_parallel += f' "{cmd_migration}"'
                 cmd_serial += f"{cmd_migration};"
@@ -2798,7 +2818,9 @@ class TodoUpgrade:
                     )[0]
                     cmd_upgrade = f".venv.{erplibre_version}/bin/python {lanceur} -c ./config.conf --update all {http_off_option(next_version)} --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework,{OPENUPGRADE_COMPAT_MODULE} -d {database_name_upgrade}"
+                    cmd_upgrade = openupgrade_run_command(
+                        next_version, database_name_upgrade
+                    )
                 # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`
                 # EST la liste de `dct_progression` — `.get` rend l'objet,
                 # pas une copie — donc la muter maintenant la fait persister
