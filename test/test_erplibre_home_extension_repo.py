@@ -17,15 +17,19 @@ Ce que ces tests gardent :
 - erplibre_home_contract porte une version MAJEUR.MINEUR, et un clone dont
   CONTRACT.md porte une autre version MAJEURE fait échouer la suite ;
 - chaque méthode D-Bus qu'appelle le programme du deck figure au tableau
-  du contrat, et extension.js la déclare avec autant d'arguments d'entrée
-  que l'appel en passe, sur l'objet et l'interface que le client nomme ;
-- les chemins qu'emploie l'extension dans un checkout désignent des
-  fichiers d'ERPLibre, et son motif de racine reconnaît le chemin du
-  manifeste.
+  du contrat avec autant d'arguments d'entrée que l'appel en passe, sur
+  l'objet et l'interface que le client nomme ;
+- les chemins d'ERPLibre que le contrat dit employés par l'extension
+  désignent des fichiers d'ERPLibre, et la racine de checkout qu'il
+  énonce est le chemin du manifeste ;
+- chaque clé que le deck lit d'un enregistrement partagé figure au
+  tableau des enregistrements du contrat ;
+- make test_gnome_extension lance les commandes de test du contrat.
 
 Ce qui lit le clone est sauté, avec sa raison, quand il manque
-(SANS_EXTENSION). L'extension se teste elle-même dans son dépôt :
-test/unit/contract.test.js y confronte CONTRACT.md à ses propres fichiers.
+(SANS_EXTENSION), et n'en lit que CONTRACT.md. L'extension se teste
+elle-même dans son dépôt : test/unit/contract.test.js y tient son code à
+CONTRACT.md.
 """
 
 import ast
@@ -43,6 +47,11 @@ from erplibre_home_extension import (  # noqa: E402
     CHEMIN,
     EXTENSION,
     SANS_EXTENSION,
+    contrat,
+    contrat_a_plat,
+    enregistrements,
+    methodes_promises,
+    objet_et_interface,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -142,7 +151,9 @@ class LeManifeste(unittest.TestCase):
         ):
             with self.subTest(liste=liste):
                 with open(ROOT / "conf" / liste, encoding="utf-8") as fh:
-                    fichiers = [l["filepath"] for l in csv.DictReader(fh)]
+                    fichiers = [
+                        ligne["filepath"] for ligne in csv.DictReader(fh)
+                    ]
                 self.assertEqual(nomme, MANIFESTE in fichiers)
 
     def test_the_code_generator_init_keeps_the_erplibre_home_group(self):
@@ -178,6 +189,23 @@ class LeContrat(unittest.TestCase):
         self.assertEqual(self.majeure(attendue), self.majeure(clonee))
 
 
+@SANS_EXTENSION
+class LesSuitesDeLExtension(unittest.TestCase):
+    def test_make_runs_the_test_commands_the_contract_states(self):
+        """make test_gnome_extension lance, depuis la racine d'ERPLibre,
+        les commandes que l'article 2 du contrat énonce depuis celle du
+        clone."""
+        makefile = texte(ROOT / "conf/make.test.Makefile")
+        a_plat = contrat_a_plat()
+        for commande, dossier in (
+            ("node --test %stest/unit/*.test.js", "test/unit"),
+            ("python3 -m unittest discover -s %stest/python", "test/python"),
+        ):
+            with self.subTest(dossier=dossier):
+                self.assertIn("`%s`" % (commande % ""), a_plat)
+                self.assertIn(commande % (CHEMIN + "/"), makefile)
+
+
 def appels_d_bus():
     """{méthode: {nombres d'arguments}} des appels dbus.call(...) du
     programme du deck dont la méthode est une chaîne littérale."""
@@ -205,28 +233,14 @@ def appels_d_bus():
 class LInterfaceDBus(unittest.TestCase):
     """Le deck appelle l'extension par erplibre_streamdeck/dbus.py. Une
     méthode renommée ou un argument de plus ne se voit qu'à l'exécution,
-    sur une session, par un bouton qui ne fait rien."""
+    sur une session, par un bouton qui ne fait rien. Le tableau du
+    contrat en fait foi ; contract.test.js, dans le dépôt de l'extension,
+    y tient extension.js."""
 
     def setUp(self):
-        self.source = texte(EXTENSION / "extension.js")
-        self.methodes = {
-            nom: corps.count('direction="in"')
-            for nom, corps in re.findall(
-                r'<method name="(\w+)">(.*?)</method>', self.source, re.S
-            )
-        }
-        self.methodes.update(
-            {
-                nom: 0
-                for nom in re.findall(
-                    r'<method name="(\w+)"\s*/>', self.source
-                )
-            }
-        )
-        contrat = texte(EXTENSION / "CONTRACT.md")
-        self.promises = set(re.findall(r"^\s*\| `(\w+)` \|", contrat, re.M))
+        self.promises = methodes_promises()
 
-    def test_the_client_names_the_exported_object(self):
+    def test_the_client_names_the_promised_object(self):
         client = ast.parse(texte(DECK / "erplibre_streamdeck/dbus.py"))
         valeurs = {
             cible.id: noeud.value.value
@@ -237,17 +251,18 @@ class LInterfaceDBus(unittest.TestCase):
             if isinstance(cible, ast.Name)
         }
         self.assertEqual("org.gnome.Shell", valeurs["DEST"])
-        self.assertIn("'%s'" % valeurs["PATH"], self.source)
-        self.assertIn('<interface name="%s">' % valeurs["IFACE"], self.source)
+        self.assertIn("`org.gnome.Shell`", contrat_a_plat())
+        self.assertEqual(
+            objet_et_interface(), (valeurs["PATH"], valeurs["IFACE"])
+        )
 
-    def test_every_call_is_promised_and_declared_with_its_arguments(self):
+    def test_every_call_is_promised_with_its_arguments(self):
         appels = appels_d_bus()
         self.assertIn("TileWindow", appels)
         for methode, arites in sorted(appels.items()):
             with self.subTest(methode=methode):
                 self.assertIn(methode, self.promises)
-                self.assertIn(methode, self.methodes)
-                self.assertEqual({self.methodes[methode]}, arites)
+                self.assertEqual({self.promises[methode]}, arites)
 
     def test_the_claude_session_methods_take_the_session_id(self):
         """claude_sessions.py passe le nom de la méthode en variable, avec
@@ -262,56 +277,153 @@ class LInterfaceDBus(unittest.TestCase):
         for methode in nommees:
             with self.subTest(methode=methode):
                 self.assertIn('"%s"' % methode, source)
-                self.assertEqual(1, self.methodes[methode])
+                self.assertEqual(1, self.promises[methode])
 
 
 @SANS_EXTENSION
 class LesChemins(unittest.TestCase):
     """Les chemins, relatifs au checkout, que l'extension lance ou cherche
-    quand elle tourne dans ERPLibre."""
+    quand elle tourne dans ERPLibre, tels que les énonce la section « What
+    the extension relies on » du contrat."""
 
-    def constante(self, fichier, nom):
-        (valeur,) = re.findall(
-            r"^export const %s = '([^']+)';$" % nom,
-            texte(EXTENSION / fichier),
-            re.M,
+    def setUp(self):
+        (self.section,) = re.findall(
+            r"^## What the extension relies on\n(.*?)^## ",
+            contrat(),
+            re.M | re.S,
         )
-        return valeur
 
-    def test_the_deck_files_it_runs_exist(self):
-        for fichier, nom in (
-            ("lib/deck-service.js", "CONTROLLER_REL"),
-            ("lib/deck-service.js", "DECK_ENTRY_REL"),
+    def chemins(self):
+        """Les chemins script/... que la section nomme, ./ ôté."""
+        return set(
+            re.findall(
+                r"(?<![\w./-])(?:\./)?(script/[\w./-]+\.(?:py|sh|md))",
+                self.section,
+            )
+        )
+
+    def test_the_erplibre_files_it_runs_exist(self):
+        jeux = self.galerie()
+        chemins = self.chemins() - {jeux}
+        for attendu in (
+            "script/stream_deck/erplibre_controller.py",
+            "script/install/erplibre_home_deck.sh",
+            "script/todo/todo.py",
         ):
-            with self.subTest(nom=nom):
-                self.assertTrue(
-                    (ROOT / self.constante(fichier, nom)).is_file()
-                )
+            self.assertIn(attendu, chemins)
+        for relatif in sorted(chemins):
+            with self.subTest(chemin=relatif):
+                self.assertTrue((ROOT / relatif).is_file())
 
     def test_the_deck_python_is_the_venv_the_installer_creates(self):
-        relatif = self.constante(
-            "lib/project-root.js", "STREAMDECK_PYTHON_REL"
-        )
         installateur = texte(ROOT / "script/install/install_erplibre_home.sh")
-        self.assertIn('VENV="${RACINE}/.venv.streamdeck"', installateur)
-        self.assertEqual(".venv.streamdeck/bin/python", relatif)
+        (venv,) = re.findall(
+            r'^VENV="\$\{RACINE\}/([^"]+)"$', installateur, re.M
+        )
+        self.assertIn("`%s/bin/python`" % venv, self.section)
+
+    def galerie(self):
+        (relatif,) = re.findall(
+            r"`(script/[\w./-]+/gallery_server\.py)`", self.section
+        )
+        return relatif
 
     def test_the_gallery_is_the_one_of_the_games_clone(self):
-        relatif = self.constante("lib/project-root.js", "GALLERY_SERVER_REL")
         reglages = texte(ROOT / "script/install/erplibre_home_settings.sh")
         (jeux,) = re.findall(r'^DECK_GAMES_DIR="([^"]+)"$', reglages, re.M)
-        self.assertEqual(jeux + "/gallery_server.py", relatif)
+        self.assertEqual(jeux + "/gallery_server.py", self.galerie())
 
-    def test_the_checkout_root_is_found_from_the_manifest_path(self):
-        (motif,) = re.findall(
-            r"^const EXTENSION_SUFFIX_RE = /(.+)/;$",
-            texte(EXTENSION / "lib/project-root.js"),
-            re.M,
+    def test_the_deck_unit_and_install_target_are_erplibre_s(self):
+        (unite,) = re.findall(r"`([\w-]+\.service)`", self.section)
+        self.assertIn(
+            unite,
+            texte(ROOT / "script/install/erplibre_home_settings.sh")
+            + texte(ROOT / "script/install/install_erplibre_home.sh"),
         )
-        motif = re.compile(motif.replace("\\/", "/"))
-        self.assertTrue(motif.search("/racine/" + CHEMIN))
-        self.assertTrue(motif.search("/racine/" + CHEMIN + "/"))
-        self.assertFalse(motif.search("/racine/" + CHEMIN + "_contract"))
+        (cible,) = re.findall(r"`make (\w+_install)`", self.section)
+        makefiles = "".join(
+            texte(f) for f in sorted((ROOT / "conf").glob("make.*.Makefile"))
+        )
+        self.assertRegex(makefiles, r"(?m)^%s:" % cible)
+
+    def test_the_checkout_root_is_the_manifest_path(self):
+        self.assertIn("`/%s`" % CHEMIN, self.section)
+
+
+def cles_lues(fichier, variables):
+    """Les clés littérales lues par `v.get("clé")` ou `v["clé"]` d'un
+    fichier Python, pour v parmi `variables`."""
+    cles = set()
+    for noeud in ast.walk(ast.parse(texte(fichier))):
+        if (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "get"
+            and isinstance(noeud.func.value, ast.Name)
+            and noeud.func.value.id in variables
+            and noeud.args
+            and isinstance(noeud.args[0], ast.Constant)
+        ):
+            cles.add(noeud.args[0].value)
+        elif (
+            isinstance(noeud, ast.Subscript)
+            and isinstance(noeud.value, ast.Name)
+            and noeud.value.id in variables
+            and isinstance(noeud.slice, ast.Constant)
+        ):
+            cles.add(noeud.slice.value)
+    return cles
+
+
+def cles_ecrites(fichier, temoin):
+    """Les clés de chaque dict littéral d'un fichier Python qui porte la
+    clé `temoin` : ce que le fichier écrit d'un enregistrement."""
+    ecrits = []
+    for noeud in ast.walk(ast.parse(texte(fichier))):
+        if isinstance(noeud, ast.Dict):
+            cles = {c.value for c in noeud.keys if isinstance(c, ast.Constant)}
+            if temoin in cles:
+                ecrits.append(cles)
+    return ecrits
+
+
+@SANS_EXTENSION
+class LesEnregistrements(unittest.TestCase):
+    """Le deck lit clé par clé les fichiers d'état que l'extension écrit.
+    Une clé que le contrat ne nomme pas peut changer sur main sans que la
+    version bouge : le deck montrerait alors un mauvais état, sans erreur.
+    Les tests du deck, eux, lisent des fichiers fabriqués."""
+
+    PLUGINS = DECK / "erplibre_streamdeck/plugins"
+
+    def setUp(self):
+        self.tableau = enregistrements()
+
+    def test_the_contract_lists_the_three_records(self):
+        self.assertEqual(
+            {"claude/*.json", "mpv/*.json", "todo_terminals.json"},
+            set(self.tableau),
+        )
+
+    def test_the_deck_reads_only_promised_claude_keys(self):
+        lues = cles_lues(self.PLUGINS / "claude_sessions.py", {"d"})
+        self.assertIn("ts_active", lues)
+        self.assertLessEqual(lues, set(self.tableau["claude/*.json"]))
+
+    def test_the_deck_reads_only_promised_mpv_keys(self):
+        lues = cles_lues(self.PLUGINS / "mpv_sessions.py", {"d"})
+        self.assertIn("started_at", lues)
+        self.assertLessEqual(lues, set(self.tableau["mpv/*.json"]))
+
+    def test_the_deck_reads_and_writes_promised_terminal_keys(self):
+        """Le deck et l'extension ajoutent chacun leurs entrées au même
+        fichier : le deck écrit toutes les clés du contrat."""
+        fichier = self.PLUGINS / "todo_terminals.py"
+        promises = set(self.tableau["todo_terminals.json"])
+        lues = cles_lues(fichier, {"t", "term", "existing"})
+        self.assertIn("window_id", lues)
+        self.assertLessEqual(lues, promises)
+        self.assertEqual([promises], cles_ecrites(fichier, "window_id"))
 
 
 if __name__ == "__main__":

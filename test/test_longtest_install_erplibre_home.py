@@ -42,7 +42,12 @@ sys.path.insert(0, str(RACINE / "long_test"))
 import install_erplibre_home as sd  # noqa: E402
 
 sys.path.insert(0, str(RACINE / "test"))
-from erplibre_home_extension import SANS_EXTENSION  # noqa: E402
+from erplibre_home_extension import (  # noqa: E402
+    SANS_EXTENSION,
+    contrat_a_plat,
+    methodes_promises,
+    objet_et_interface,
+)
 
 EXTENSION = RACINE / "script/gnome-extension/erplibre_home"
 # Un « Depuis= » de CMD_CONDITION : secondes epoch, microsecondes.
@@ -269,13 +274,14 @@ class LesCommandesVisentLExtension(unittest.TestCase):
         self.assertEqual(sd.UUID_EXTENSION, meta["uuid"])
 
     @SANS_EXTENSION
-    def test_the_object_and_interface_are_those_extension_js_exports(self):
-        src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
-        self.assertIn(f"'{sd.OBJET_EXTENSION}'", src)
-        self.assertIn(f'<interface name="{sd.INTERFACE_EXTENSION}">', src)
+    def test_the_object_and_interface_are_those_the_contract_states(self):
+        self.assertEqual(
+            (sd.OBJET_EXTENSION, sd.INTERFACE_EXTENSION),
+            objet_et_interface(),
+        )
         for methode in ("ListPaths", "ListDevices"):
             with self.subTest(methode=methode):
-                self.assertIn(f'<method name="{methode}">', src)
+                self.assertEqual(0, methodes_promises()[methode])
                 self.assertIn(
                     f"{sd.INTERFACE_EXTENSION}.{methode}",
                     sd.cmd_methode(methode),
@@ -382,10 +388,12 @@ class LesIndicateursNonMontes(unittest.TestCase):
         )
 
     @SANS_EXTENSION
-    def test_the_command_reads_the_lines_extension_js_writes(self):
-        src = (EXTENSION / "extension.js").read_text(encoding="utf-8")
-        self.assertIn("[ERPLibreHome] mount ${id} failed", src)
-        self.assertIn("'[ERPLibreHome] enabled'", src)
+    def test_the_command_reads_the_lines_the_contract_states(self):
+        """contract.test.js, dans le dépôt de l'extension, tient
+        extension.js à ces lignes."""
+        texte = contrat_a_plat()
+        self.assertIn("`[ERPLibreHome] mount <id> failed: <reason>`", texte)
+        self.assertIn("`[ERPLibreHome] enabled`", texte)
         self.assertIn("journalctl --user -b", sd.CMD_MONTAGES)
         self.assertIn("mount", sd.CMD_MONTAGES)
         self.assertIn("enabled", sd.CMD_MONTAGES)

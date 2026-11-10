@@ -19,7 +19,10 @@ ERPLibre's git ignores, and linked as
 `script/gnome-extension/erplibre_home_contract` holds the contract version
 ERPLibre is written against, and
 `test/test_erplibre_home_extension_repo.py` fails when the clone's MAJOR
-differs.
+differs. ERPLibre's tests read from the clone only what its `CONTRACT.md`
+states, with the values it gives (`test/erplibre_home_extension.py`):
+the extension's code may change shape as long as its own tests hold it
+to the contract.
 
 It arrives two ways:
 

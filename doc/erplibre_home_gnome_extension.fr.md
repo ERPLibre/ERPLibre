@@ -19,7 +19,10 @@ branche `main` : un checkout reçoit la dernière extension à chaque mise à
 jour. `script/gnome-extension/erplibre_home_contract` porte la version du
 contrat pour laquelle ERPLibre est écrit, et
 `test/test_erplibre_home_extension_repo.py` échoue quand la version
-MAJEURE du clone diffère.
+MAJEURE du clone diffère. Les tests d'ERPLibre ne lisent du clone que ce
+qu'énonce son `CONTRACT.md`, avec les valeurs qu'il donne
+(`test/erplibre_home_extension.py`) : le code de l'extension peut changer
+de forme tant que ses propres tests le tiennent au contrat.
 
 Elle arrive de deux façons :
 

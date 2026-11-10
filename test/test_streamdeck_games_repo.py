@@ -18,7 +18,8 @@ Ce que ces tests gardent :
 - games_contract porte une version MAJEUR.MINEUR, et des jeux clonés dont
   la version MAJEURE diffère font échouer la suite ;
 - l'extension GNOME parle à la galerie sur le port 8042, celui que la
-  galerie du clone sert ;
+  galerie du clone sert, avec l'en-tête d'action qu'elle exige, tels que
+  les énonce le CONTRACT.md de l'extension ;
 - le menu TODO et la galerie trouvent exactement les jeux du clone.
 
 Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque ;
@@ -37,7 +38,10 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from erplibre_home_extension import SANS_EXTENSION  # noqa: E402
+from erplibre_home_extension import (  # noqa: E402
+    SANS_EXTENSION,
+    valeur_du_contrat,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DECK_DIR = ROOT / "script" / "stream_deck"
@@ -45,9 +49,6 @@ GAMES_DIR = DECK_DIR / "games"
 GAMES_PATH = "script/stream_deck/games"
 MANIFESTE = "manifest/git_manifest_streamdeck_game.xml"
 CONTRAT = DECK_DIR / "games_contract"
-CONTROLEUR_JS = (
-    ROOT / "script/gnome-extension/erplibre_home/indicators/controller.js"
-)
 sys.argv = ["todo.py"]
 from script.todo import todo as todo_mod  # noqa: E402
 
@@ -182,7 +183,9 @@ class LeManifeste(unittest.TestCase):
         ):
             with self.subTest(liste=liste):
                 with open(ROOT / "conf" / liste, encoding="utf-8") as fh:
-                    fichiers = [l["filepath"] for l in csv.DictReader(fh)]
+                    fichiers = [
+                        ligne["filepath"] for ligne in csv.DictReader(fh)
+                    ]
                 self.assertEqual(nomme, MANIFESTE in fichiers)
 
 
@@ -207,14 +210,9 @@ class LeContrat(unittest.TestCase):
 
 
 def port_de_l_extension():
-    """Le port de GALLERY_PORT dans controller.js, après avoir vérifié que
-    GALLERY_URL, par où passent /api/games et /launch/<id>, s'en sert."""
-    texte = CONTROLEUR_JS.read_text(encoding="utf-8")
-    (port,) = re.findall(r"^const GALLERY_PORT = (\d+);$", texte, re.M)
-    (url,) = re.findall(r"^const GALLERY_URL = `([^`]*)`;$", texte, re.M)
-    if url != "http://localhost:${GALLERY_PORT}":
-        raise AssertionError("GALLERY_URL n'est pas sur GALLERY_PORT : " + url)
-    return int(port)
+    """Le port de la galerie selon le CONTRACT.md de l'extension, que
+    contract.test.js tient à GALLERY_URL de controller.js."""
+    return int(valeur_du_contrat(r"`http://localhost:(\d+)`"))
 
 
 class LePortDeLaGalerie(unittest.TestCase):
@@ -237,27 +235,14 @@ class LePortDeLaGalerie(unittest.TestCase):
 @SANS_EXTENSION
 class LEnTeteDActionDeLaGalerie(unittest.TestCase):
     """Une route de la galerie qui agit exige un en-tête (contrat 2.0) :
-    l'extension GNOME l'envoie à /launch/<id>, sous le nom que la galerie
-    du clone attend."""
-
-    EXTENSION = ROOT / "script/gnome-extension/erplibre_home"
+    l'extension GNOME l'envoie à /launch/<id>, sous le nom et avec la
+    valeur que son CONTRACT.md énonce et que la galerie du clone attend."""
 
     def test_the_extension_sends_the_header_the_gallery_requires(self):
         galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
-        lib = (self.EXTENSION / "lib/gallery-launch.js").read_text(
-            encoding="utf-8"
-        )
-        (nom,) = re.findall(
-            r"export const GALLERY_ACTION_HEADER = '([^']+)';", lib
-        )
+        nom, valeur = valeur_du_contrat(r"header `([\w-]+): (\w+)`")
         self.assertEqual(galerie.GameHandler.ACTION_HEADER, nom)
-        controleur = (self.EXTENSION / "indicators/controller.js").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(
-            "get_request_headers().append(GALLERY_ACTION_HEADER, '1')",
-            controleur,
-        )
+        self.assertEqual("1", valeur)
 
 
 @SANS_JEUX

@@ -9,10 +9,11 @@ deck programs and translator each spell one of the extension's names: a
 D-Bus object, a gettext domain, a data directory, a file prefix. A writer
 and a reader of the same file, or a client and the object it calls, that
 spell it differently fail only at run time, on a desktop session, and
-without an error: the reader finds nothing. These tests read each spelling
-from the file that holds it, on both sides, and compare them. The
-extension's own names, among its files, are tested in its repository
-(test/python/test_identity.py).
+without an error: the reader finds nothing. These tests read ERPLibre's
+spelling from the file that holds it and the extension's from what its
+CONTRACT.md states, and compare them. The extension's code is held to its
+contract, and its own names among its files are tested, in its repository
+(test/unit/contract.test.js, test/python/test_identity.py).
 
 Every test that reads the extension is skipped when its clone is missing
 (SANS_EXTENSION). The extension's previous identity is named in ERPLibre
@@ -33,7 +34,13 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from erplibre_home_extension import EXTENSION, SANS_EXTENSION  # noqa: E402
+from erplibre_home_extension import (  # noqa: E402
+    EXTENSION,
+    SANS_EXTENSION,
+    methodes_promises,
+    objet_et_interface,
+    valeur_du_contrat,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 EXT = EXTENSION
@@ -60,16 +67,6 @@ def _make_variable(name):
     )
     if len(found) != 1:
         raise AssertionError(f"{name}: {len(found)} definitions")
-    return found[0]
-
-
-def _js_const(path, name):
-    """The string literal assigned to ``const NAME`` in a JS file."""
-    found = re.findall(
-        r"\bconst %s\s*=\s*'([^']*)'" % re.escape(name), _text(path)
-    )
-    if len(found) != 1:
-        raise AssertionError(f"{path.name} {name}: {len(found)} definitions")
     return found[0]
 
 
@@ -124,17 +121,11 @@ class TestGettextDomain(unittest.TestCase):
 @SANS_EXTENSION
 class TestDbusClients(unittest.TestCase):
     """Every ERPLibre caller of the extension's D-Bus object names the path
-    and interface extension.js exports, and a method it declares."""
+    and interface CONTRACT.md states, and a method of its table."""
 
     def setUp(self):
-        src = _text(EXT / "extension.js")
-        exported = re.findall(r"\.export\(\s*[^,]+,\s*'([^']+)'\)", src)
-        self.assertEqual(len(exported), 1)
-        self.path = exported[0]
-        ifaces = re.findall(r'<interface name="([^"]+)">', src)
-        self.assertEqual(len(ifaces), 1)
-        self.iface = ifaces[0]
-        self.methods = set(re.findall(r'<method name="(\w+)"', src))
+        self.path, self.iface = objet_et_interface()
+        self.methods = set(methodes_promises())
 
     def test_the_translator_calls_the_exported_object(self):
         strings = _py_strings(ROOT / "script/stream_deck/translator.py")
@@ -173,25 +164,23 @@ class TestDataDirectories(unittest.TestCase):
         self.assertEqual(self._deck_state_name(), DOMAIN)
 
     @SANS_EXTENSION
-    def test_the_extension_reads_the_deck_state_directory(self):
-        """The TODO indicator lists what the deck writes there."""
-        name = self._deck_state_name()
-        erplibre = _text(EXT / "indicators/erplibre.js")
-        self.assertIn("`${stateBase}/%s/todo`" % name, erplibre)
-        self.assertIn("`${stateBase}/%s`" % name, erplibre)
+    def test_the_contract_names_the_deck_state_directory(self):
+        """The extension reads and writes the records and the TODO logs
+        there, as CONTRACT.md states."""
+        self.assertEqual(
+            valeur_du_contrat(r"`\$XDG_STATE_HOME/([^`]+)/`"),
+            self._deck_state_name(),
+        )
 
     def test_the_controller_pid_file_is_named_after_the_domain(self):
         self.assertEqual(self._pid_file_rel(), f"{DOMAIN}/controller.pid")
 
     @SANS_EXTENSION
-    def test_the_device_indicator_reads_the_controller_pid_file(self):
+    def test_the_contract_names_the_controller_pid_file(self):
+        """The device indicator reads it there, as CONTRACT.md states."""
         self.assertEqual(
-            re.findall(
-                r"const PIDFILE\s*=\s*`\$\{GLib\.get_user_cache_dir\(\)\}/"
-                r"([^`]*)`",
-                _text(EXT / "indicators/device.js"),
-            ),
-            [self._pid_file_rel()],
+            valeur_du_contrat(r"`\$XDG_CACHE_HOME/([^`]+)`"),
+            self._pid_file_rel(),
         )
 
     def _pid_file_rel(self):
@@ -234,9 +223,10 @@ class TestHotReload(unittest.TestCase):
 
     @SANS_EXTENSION
     def test_extension_and_makefile_share_the_copy_prefix(self):
-        """The Makefile's clean-up removes the copies the extension makes;
-        another prefix would leave them loaded."""
-        prefix = _js_const(EXT / "extension.js", "RELOAD_UUID_PREFIX")
+        """The Makefile's clean-up removes the copies the extension makes,
+        under the prefix CONTRACT.md states; another prefix would leave
+        them loaded."""
+        prefix = valeur_du_contrat(r"`([\w-]+)\*@[\w.]+`")
         self.assertEqual(
             _make_variable("ERPLIBRE_HOME_EXT_TMP_PREFIX"), prefix
         )
