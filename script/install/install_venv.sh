@@ -117,7 +117,12 @@ PYTHON_EXEC="$(el_python_exec "${PYTHON_VERSION}" "${EXIGENCE}")"
 if [[ -z "${PYTHON_EXEC}" ]] || [[ ! -x "${PYTHON_EXEC}" ]]; then
   echo "Aucun interpreteur Python ${PYTHON_VERSION} n'a pu etre obtenu."
   echo "  Fournisseur demande : ${EL_PYTHON_PROVIDER:-auto}"
-  if el_mise_cmd > /dev/null; then
+  # Sans CPython précompilé, « mise install » compilerait lui-même, sans les
+  # drapeaux qu'el_pyenv_install pose : il n'est pas conseillé.
+  if ! el_mise_a_precompile "${PYTHON_VERSION}"; then
+    echo "  Aucun CPython precompile pour ${PYTHON_VERSION} : seul pyenv le" \
+      "fournit, en le compilant."
+  elif el_mise_cmd > /dev/null; then
     echo "  Voir : $(el_mise_cmd) install python@${PYTHON_VERSION}" \
       "  (reseau requis)"
   else

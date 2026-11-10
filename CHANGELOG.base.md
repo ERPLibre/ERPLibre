@@ -489,6 +489,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In **TODO › Install**, Enter picks production in the environment menu — development when the Odoo version has no frozen commit, as before — and the standard install in the install-type menu; each menu marks its default and shows it in its prompt. The system-step question defaults to yes when something it installs is missing — git, make, a C compiler, psql, node, npm, or the account's PostgreSQL role — and names it, to no when all of it is there. Enter now accepts to enter a missing git identity
 - A locally installed Odoo 20 listens on 127.0.0.1 only, Odoo's own default from 20 on, where 12 to 19 listen on every interface: set `http_interface` in `config.conf` to reach it from another machine. The Docker image sets `http_interface = 0.0.0.0` for every version
 - The « ERPLibre + Odoo N » install profiles of a QEMU VM come from `conf/supported_version_erplibre.json`, the default version first, so every supported version is offered
+- Python 2.7 and 3.7 (Odoo 8 to 13) no longer go through mise. mise has no precompiled CPython for these versions, so the install no longer offers to install mise for them, no longer calls it, and no longer suggests "mise install". Run by hand, that command compiled CPython 2.7 without the -fpermissive flag that pyenv adds. The error from the Python 2 Poetry helper now gives mise's absolute path, or "make install_mise" when mise is missing
 
 <!-- [fr] -->
 
@@ -572,6 +573,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans **TODO › Installation**, Entrée choisit la production au menu de l'environnement — le développement quand la version d'Odoo n'a aucun commit gelé, comme avant — et l'installation standard au menu du type ; chaque menu marque son défaut et l'affiche dans son invite. La question de l'étape système vaut oui par défaut quand quelque chose qu'elle pose manque — git, make, un compilateur C, psql, node, npm, ou le rôle PostgreSQL du compte — et le nomme, non quand tout est là. Entrée accepte désormais de saisir une identité git absente
 - Un Odoo 20 installé localement n'écoute que sur 127.0.0.1, le défaut d'Odoo lui-même dès la 20, là où 12 à 19 écoutent sur toutes les interfaces : poser `http_interface` dans `config.conf` pour l'atteindre d'une autre machine. L'image Docker pose `http_interface = 0.0.0.0` pour toutes les versions
 - Les profils d'installation « ERPLibre + Odoo N » d'une VM QEMU viennent de `conf/supported_version_erplibre.json`, la version par défaut en tête : chaque version prise en charge est proposée
+- Python 2.7 et 3.7 (Odoo 8 à 13) ne passent plus par mise. mise n'a aucun CPython précompilé pour ces versions : l'installation ne propose plus de le poser pour elles, ne l'appelle plus et ne conseille plus « mise install ». Lancée à la main, cette commande compilait CPython 2.7 sans le drapeau -fpermissive qu'ajoute pyenv. L'erreur du Poetry auxiliaire de Python 2 donne maintenant le chemin absolu de mise, ou « make install_mise » quand mise est absent
 
 <!-- [en] -->
 ## Fixed
