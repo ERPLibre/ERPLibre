@@ -419,6 +419,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Database restore from the TODO menu (and the monitoring restore) now works on Odoo 8 to 15: it neutralizes with update_prod_to_dev.sh only and passes --neutralize to db_restore.py from Odoo 16 on. On Odoo 20, `db drop --if-exists` on a missing database exits quietly again, so the master password check before a restore works. `db list`, `db list-incompatible` and `db version` on upstream cores now print only their result: Odoo's startup warnings no longer show up as database names in the delete menu, and stderr still appears when the command fails
 - `./dev.sh`, `./test.sh` and every caller of `odoo_bin.sh` that passes `--limit-memory-hard=0` or `--limit-memory-soft=0` now work on Odoo 8 to 11. These versions apply 0 as given instead of reading it as "no limit", so each worker died on MemoryError. They now get a finite 1 TiB limit instead, and Odoo 12 and later still get 0
 - The OpenUpgrade hops to Odoo 14 to 20 and the views_migration_17 pass lift the memory and time limits again, so a whole-database update no longer runs under the 2560 MiB default of production `run.sh`
+- setup_odoo_config_conf_devops.py now keeps the active Odoo's default server-wide modules when config.conf names none (so 'rpc' stays loaded on Odoo 19 and 20, and 'web_kanban' stays loaded on 8 to 10). On Odoo 8 and 9 it sets up the OCA connector job runner ([options-connector] channels, 'connector' module) instead of queue_job. The Odoo 20 manifest now clones OCA/queue
 
 ## Removed
 
