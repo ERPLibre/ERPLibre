@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install NTFY self-hosted push notification server
 # https://github.com/binwiederhier/ntfy
-# Supports: Ubuntu 20.04+, Debian 11+, Arch Linux (and derivatives)
+# Supports: Ubuntu 24.04+, Debian 11+, Arch Linux (and derivatives)
 #
 # Usage:
 #   sudo bash install_ntfy.sh
