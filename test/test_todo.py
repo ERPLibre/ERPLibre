@@ -1931,7 +1931,7 @@ class TestLeFluxQuiEcrit(unittest.TestCase):
 
     def test_seul_le_code_du_TRAVAIL_ouvre_la_confirmation(self):
         """Une trace Python sort en 1. Lire « ni 0 ni 2 » comme du travail
-        faisait demander la confirmation destructrice après un plantage,
+        ferait demander la confirmation destructrice après un plantage,
         puis « appliquer » un plan jamais calculé."""
         for code in (0, 1, 2, 4, 5, 127):
             with self.subTest(code=code):
@@ -1956,9 +1956,9 @@ class TestLeFluxQuiEcrit(unittest.TestCase):
         self.assertFalse(self._dit("The dry run ended on an unexpected code:"))
 
     def test_une_ecriture_SANS_EFFET_ne_vaut_pas_une_ecriture(self):
-        """Un plan devenu vide entre les deux passes rendait 0, psql
-        acceptant un script vide : l'appelant tirait alors une sauvegarde
-        de la base intacte en l'annonçant anonymisée."""
+        """Un plan devenu vide entre les deux passes rendrait 0, psql
+        acceptant un script vide : l'appelant tirerait alors une
+        sauvegarde de la base intacte en l'annonçant anonymisée."""
         from script.analyse import anonymize
 
         self._codes(3, anonymize.SORTIE_SANS_EFFET)
