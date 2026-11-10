@@ -400,6 +400,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   saisir et de la confirmer après le menu du type d'installation ; refusée, `repo init` tourne sans
   terminal sur son entrée et ne demande rien. `--config-name` passé aux scripts de manifeste
   demande encore
+- Les sites web d'Odoo 18 relisent le consentement du bandeau de cookies sous Werkzeug 3.1.9, qui écarte le cookie en JSON brut qu'écrit le site : après **Tout accepter**, les iframes tierces comme les vidéos ne restent plus vides, et une valeur de cookie qui n'est pas du JSON vaut refus au lieu de faire échouer la page en HTTP 500
+- Odoo 18 envoie les avis de changement d'identifiant, de mot de passe et de courriel dans la langue de chaque usager notifié, et non dans celle de qui fait le changement, et un changement de courriel ne notifie plus que l'usager dont l'adresse change
+- Avec `login_user_detail` installé sur Odoo 18, les appels XML-RPC répondent de nouveau : le contrôle d'accès lisait une requête HTTP que XML-RPC ne lie jamais, et faisait échouer chaque appel sur `object is not bound`
 
 ## Retiré
 
@@ -429,6 +432,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les secrets qui ne portent pas `password` dans un nom d'option ou de variable en majuscules sont caviardés eux aussi, à l'écran et au journal de session : `odoo-bin -w`, `sshpass -p`, `mysql -p<valeur>`, `curl -u user:pass`, les lignes de configuration comme `admin_passwd = …`, les identifiants dans une URL, les jetons GitHub et GitLab, les clés JSON, les variables en minuscules et les clés privées, la clé ou l'utilisateur restant lisible. Les options courtes ne sont masquées que dans leur outil : `grep -w` ou `docker exec -u` restent intacts. Les messages des loggers et le traceback d'un plantage passent par le même caviardage avant d'atteindre le journal, où ils arrivaient sans filtre
 - `script/database/db_restore.py` transmet le `db_sslmode` d'Odoo à psql : un serveur qui exige `verify-full` n'est pas joint sans vérifier son certificat
 - Odoo 18 installe oauthlib 4.0.1, qui corrige CVE-2026-49272 : dans le flux d'autorisation « device », 4.0.0 remettait un jeton Bearer à qui connaissait un client ID valide. PyPDF2 est épinglé à 2.12.1, la version qu'Odoo 18 installe, si bien que `pip-audit` sur les requirements audite cette version plutôt que 3.0.1 ; son PYSEC-2026-1835 (CVE-2023-36464) demeure, le correctif annoncé 3.9.0 étant une version de pypdf et aucune version de PyPDF2 ne le corrigeant
+- Avec `website_event_require_login` sur Odoo 18, un usager public ne peut plus s'inscrire à un événement qui exige une connexion en postant le formulaire directement sur `/event/<id>/registration/confirm` : le post est renvoyé vers `/web/login`. `OCA_event` est cloné depuis le fork ERPLibre, branche `18.0_dev`, le temps que le correctif arrive chez OCA
 
 
 ## [1.8.0] - 2026-09-04
