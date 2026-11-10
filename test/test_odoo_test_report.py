@@ -9,16 +9,21 @@ test/fixtures/odoo_test_log/ avec leurs chemins, leur base et leur compte
 remplacés par des valeurs inventées : un module de démonstration aux
 tests réussi, en échec, en erreur, ignoré, en sous-test, en post_install et
 en erreur de setUpClass (verdicts.txt), un module tout vert (green.txt) et
-un module dont les tests ne s'importent pas (install_error.txt). Odoo
-lui-même est remplacé par un exécutant qui rend ces journaux, et
-`urllib.request.urlopen` par le faux registre de test_requirement_report.
+un module dont les tests ne s'importent pas (install_error.txt). Un
+passage qu'Odoo n'a pas mené à son terme se compose de leurs tranches,
+coupées sur une ligne qu'ils portent, plus les lignes qu'Odoo écrit
+alors. Odoo lui-même est remplacé par un exécutant qui rend ces journaux,
+et `urllib.request.urlopen` par le faux registre de
+test_requirement_report.
 """
 
 import io
 import os
 import re
+import signal
 import sys
 import tempfile
+import threading
 import unittest
 import urllib.error
 from unittest import mock
@@ -43,6 +48,20 @@ CASSE = "odoo.addons.demo_test_broken.tests.test_broken.TestBroken."
 def journal(nom):
     with open(os.path.join(FIXTURES, nom), encoding="utf-8") as fh:
         return fh.read().splitlines(keepends=True)
+
+
+def tranche(nom, debut=None, fin=None):
+    """Les lignes de la fixture `nom` à partir de la première qui porte
+    `debut` (incluse), jusqu'à la première qui porte `fin` (incluse) ;
+    du début ou jusqu'au bout quand l'une manque."""
+    lignes = journal(nom)
+
+    def indice(marque):
+        return next(i for i, x in enumerate(lignes) if marque in x)
+
+    premier = indice(debut) if debut else 0
+    dernier = indice(fin) + 1 if fin else len(lignes)
+    return lignes[premier:dernier]
 
 
 class TestLeJournal(unittest.TestCase):
@@ -250,17 +269,30 @@ class TestLaConfiguration(unittest.TestCase):
 
 
 class FauxOdoo:
-    """Exécutant d'Odoo : rend `journal` et `rc` pour le lancement des
-    tests, 0 pour la suppression de la base, et garde chaque commande avec
-    son environnement. `interruption` : lève KeyboardInterrupt au
-    lancement des tests."""
+    """Exécutant d'Odoo : rend le journal `nom` (ou `lignes`) et `rc` pour
+    le lancement des tests, `suppression` (code, lignes) pour celle de la
+    base, et garde chaque commande avec son environnement. `interruption` :
+    lève KeyboardInterrupt au lancement des tests ; `lancement` : lève
+    cette exception à sa place. `signaux_pendant_suppression` : les
+    gestionnaires de SIGINT et SIGTERM en place pendant la suppression."""
 
-    def __init__(self, nom="verdicts.txt", rc=1, interruption=False):
-        self.lignes = journal(nom)
+    def __init__(
+        self,
+        nom="verdicts.txt",
+        rc=1,
+        interruption=False,
+        lignes=None,
+        suppression=(0, []),
+        lancement=None,
+    ):
+        self.lignes = journal(nom) if lignes is None else lignes
         self.rc = rc
         self.interruption = interruption
+        self.suppression = suppression
+        self.lancement = lancement
         self.commandes = []
         self.configurations = []
+        self.signaux_pendant_suppression = None
 
     def __call__(self, commande, env, sortie=None):
         self.commandes.append((commande, env))
@@ -268,9 +300,15 @@ class FauxOdoo:
         with open(conf, encoding="utf-8") as fh:
             self.configurations.append(fh.read())
         if "drop" in commande:
-            return 0, []
+            self.signaux_pendant_suppression = (
+                signal.getsignal(signal.SIGINT),
+                signal.getsignal(signal.SIGTERM),
+            )
+            return self.suppression
         if self.interruption:
             raise KeyboardInterrupt
+        if self.lancement is not None:
+            raise self.lancement
         if sortie is not None:
             sortie.writelines(self.lignes)
         return self.rc, self.lignes
@@ -289,6 +327,13 @@ class TestLeLanceur(unittest.TestCase):
     modules de démonstration."""
 
     MODULES = ("demo_test_verdicts", "demo_test_broken", "demo_test_green")
+
+    def envois(self, faux_registre):
+        """{référence: (résultat, journal)} de ce que le registre a reçu."""
+        return {
+            args[1]: (args[2], kw["log"])
+            for args, kw in faux_registre.envois()
+        }
 
     def setUp(self):
         self._dossier = tempfile.TemporaryDirectory()
@@ -516,6 +561,136 @@ class TestLeLanceur(unittest.TestCase):
         # Le chemin du dépôt part relatif, comme pour les tests unitaires.
         self.assertIn("odoo18.0/odoo/odoo/tests/loader.py", kwargs["log"])
         self.assertNotIn(self.racine, kwargs["log"])
+
+    def test_a_run_stopped_between_two_modules_keeps_the_first_verdicts(self):
+        """Le premier module a passé ses tests at_install, le second ne
+        s'installe pas : les verdicts réels du premier partent tels quels,
+        le second passe en erreur avec la trace, et un test post_install du
+        premier, que la panne a empêché, garde son dernier verdict."""
+        faux_registre = FauxRegistre(
+            declarees=[
+                VERDICTS + "test_pass",
+                VERDICTS + "test_fail",
+                POST + "test_after_install",
+                CASSE + "test_unreachable",
+            ]
+        )
+        lignes = tranche("verdicts.txt", fin="Starting post tests")[:-1]
+        lignes += tranche(
+            "install_error.txt", debut="Loading module demo_test_broken"
+        )
+        code, _, _ = self.lancer(
+            ["--modules", "demo_test_verdicts,demo_test_broken"],
+            FauxOdoo(lignes=lignes, rc=255),
+            env=ENV,
+            reseau=faux_registre,
+        )
+        self.assertEqual(code, 2)
+        envois = self.envois(faux_registre)
+        self.assertEqual(
+            {ref: resultat for ref, (resultat, _) in envois.items()},
+            {
+                VERDICTS + "test_pass": "passed",
+                VERDICTS + "test_fail": "failed",
+                CASSE + "test_unreachable": "error",
+            },
+        )
+        self.assertIn(
+            "ModuleNotFoundError", envois[CASSE + "test_unreachable"][1]
+        )
+
+    def test_a_killed_run_errs_its_module_with_the_end_of_the_log(self):
+        """Odoo tué sans rien journaliser en ERROR : le journal envoyé est
+        la fin de sa sortie."""
+        faux_registre = FauxRegistre(declarees=[CASSE + "test_unreachable"])
+        code, _, _ = self.lancer(
+            ["--modules", "demo_test_broken"],
+            FauxOdoo(
+                lignes=tranche(
+                    "install_error.txt", fin="Loading module demo_test_broken"
+                ),
+                rc=-9,
+            ),
+            env=ENV,
+            reseau=faux_registre,
+        )
+        self.assertEqual(code, 2)
+        resultat, log = self.envois(faux_registre)[CASSE + "test_unreachable"]
+        self.assertEqual(resultat, "error")
+        self.assertIn("Loading module demo_test_broken", log)
+
+    def test_odoo_that_cannot_start_proves_nothing_and_warns_of_no_drop(self):
+        """Le python du venv manque : le lancement lève OSError, la base n'a
+        jamais existé, et la suppression le dit sans que rien ne s'affiche.
+        Le message de l'OSError part avec le verdict du module."""
+        faux_registre = FauxRegistre(declarees=[VERDICTS + "test_pass"])
+        faux = FauxOdoo(
+            lancement=FileNotFoundError(2, "No such file or directory"),
+            suppression=(
+                1,
+                ["Database erplibre_odoo_test_0f1e2d3c does not exist.\n"],
+            ),
+        )
+        code, sortie, _ = self.lancer(
+            ["--modules", "demo_test_verdicts"],
+            faux,
+            env=ENV,
+            reseau=faux_registre,
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(len(faux.suppressions()), 1)
+        self.assertNotIn("non supprimée", sortie)
+        resultat, log = self.envois(faux_registre)[VERDICTS + "test_pass"]
+        self.assertEqual(resultat, "error")
+        self.assertIn("No such file or directory", log)
+
+    def test_a_drop_that_fails_names_the_database_to_drop_by_hand(self):
+        faux = FauxOdoo(
+            "green.txt",
+            rc=0,
+            suppression=(1, ["psycopg2.OperationalError: invented refusal\n"]),
+        )
+        code, sortie, _ = self.lancer(["--modules", "demo_test_green"], faux)
+        self.assertEqual(code, 0)
+        avertissement = [
+            x for x in sortie.splitlines() if "non supprimée" in x
+        ]
+        self.assertEqual(len(avertissement), 1)
+        self.assertIn("invented refusal", avertissement[0])
+        self.assertIn(f"dropdb {faux.base()}", avertissement[0])
+
+    def test_ctrl_c_and_sigterm_cannot_cut_the_drop_short(self):
+        if threading.current_thread() is not threading.main_thread():
+            self.skipTest("signal ne s'installe que dans le fil principal")
+        avant = (
+            signal.getsignal(signal.SIGINT),
+            signal.getsignal(signal.SIGTERM),
+        )
+        for faux in (FauxOdoo(), FauxOdoo(interruption=True)):
+            with self.subTest(interruption=faux.interruption):
+                self.lancer(["--modules", "demo_test_verdicts"], faux)
+                self.assertEqual(
+                    faux.signaux_pendant_suppression,
+                    (signal.SIG_IGN, signal.SIG_IGN),
+                )
+                self.assertEqual(
+                    (
+                        signal.getsignal(signal.SIGINT),
+                        signal.getsignal(signal.SIGTERM),
+                    ),
+                    avant,
+                )
+
+    def test_a_module_name_that_is_not_a_bare_name_is_refused(self):
+        """« ../addons/demo_test_green » désigne un manifeste qui existe :
+        seul le contrôle du nom l'arrête avant Odoo."""
+        for valeur in ("../addons/demo_test_green", "a;b", "demo test", ","):
+            with self.subTest(valeur=valeur):
+                faux = FauxOdoo()
+                code, sortie, _ = self.lancer(["--modules", valeur], faux)
+                self.assertEqual(code, 2)
+                self.assertEqual(faux.commandes, [])
+                self.assertIn("Modules invalides", sortie)
 
     def test_the_key_is_never_printed_nor_given_to_odoo(self):
         echo = {
