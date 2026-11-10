@@ -73,8 +73,15 @@ class Banc(unittest.TestCase):
         NavigateurQuiRenonce.ouverts = []
         self.trouves = [["forged_module", "/forged"]]
 
-    def migrer(self, reponses, arret=True, navigateur=NavigateurQuiRenonce):
-        """Lance execute_module_upgrade ; rend les gestes notés, dans
+    def migrer(
+        self,
+        reponses,
+        arret=True,
+        navigateur=NavigateurQuiRenonce,
+        upgrade=None,
+    ):
+        """Lance execute_module_upgrade sur `upgrade`, une instance neuve
+        par défaut ; rend les gestes notés, dans
         l'ordre. Une réponse qui est une exception est levée (EOFError,
         Ctrl+D) ; une question de plus que de réponses fait échouer le
         test en le disant, une réponse restée non lue aussi : un retour
@@ -86,7 +93,7 @@ class Banc(unittest.TestCase):
         `navigateur` double le navigateur de fichiers, sans la boucle
         urwid que son choix quitte (`exit_program`). L'écran imprimé est
         dans `self.ecran`."""
-        upgrade = TodoUpgrade(todo=None)
+        upgrade = upgrade or TodoUpgrade(todo=None)
         gestes = []
 
         def noter(nom):
@@ -307,6 +314,26 @@ class TestLaMigrationDuCode(Banc):
         self.assertEqual(
             gestes, [("switch_odoo", (12,)), trouve, *self.paliers(12, 14)]
         )
+
+    def test_a_module_by_name_never_migrates_a_previous_directory(self):
+        """Upgrade Module lancé deux fois sur la même instance : un module
+        par son chemin, puis un module par son nom que
+        `check_addons_exist` dit présent sans chemin. Le second ouvre le
+        navigateur, quitté ici sans choix, et ne migre pas le répertoire
+        du premier."""
+        upgrade = TodoUpgrade(todo=None)
+        gestes = self.migrer(
+            ["1", "1", self.module, "1", "1"], arret=False, upgrade=upgrade
+        )
+        self.assertEqual(gestes, self.paliers(12, 13))
+        self.assertEqual(NavigateurQuiRenonce.ouverts, [])
+        self.trouves = []
+        gestes = self.migrer(
+            ["1", "2", "forged_module", "1", "1"], arret=False, upgrade=upgrade
+        )
+        trouve = ("check_addons_exist", (["forged_module"],))
+        self.assertEqual(gestes, [("switch_odoo", (12,)), trouve])
+        self.assertEqual(len(NavigateurQuiRenonce.ouverts), 1)
 
 
 class TestLesInstantanesCOW(unittest.TestCase):
