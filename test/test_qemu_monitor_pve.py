@@ -833,6 +833,14 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertIn("erplibre@pve1", cmd)
         self.assertIn("erplibre@10.10.10.151", cmd)
 
+    def test_a_jump_host_and_the_target_make_one_chain(self):
+        """ssh refuse une seconde option -J : le rebond et l'hôte Proxmox
+        forment UNE chaîne, séparée par une virgule."""
+        vm = dict(self.DISTANTE, pve=dict(self.DISTANTE["pve"], jump="gw"))
+        cmd = mon.vm_ssh_prefix(vm, tty=True).split()
+        self.assertEqual(1, cmd.count("-J"))
+        self.assertEqual("gw,erplibre@pve1", cmd[cmd.index("-J") + 1])
+
     def test_without_an_address_it_falls_back_to_the_alias(self):
         vm = {"name": "vm-a", "ip": "pve1+vm-a", "pve": {"target": "pve1"}}
         self.assertIn("erplibre@pve1+vm-a", mon.vm_ssh_prefix(vm))

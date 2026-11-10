@@ -27,6 +27,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.argv = ["todo.py"]
@@ -100,6 +101,35 @@ class LeClavier(unittest.TestCase):
         self.assertEqual("/etc/default/keyboard", fichiers[0][0])
         self.assertIn("XKBLAYOUT=ca", fichiers[0][2])
         self.assertIn("XKBVARIANT=multix", fichiers[0][2])
+
+    def test_proxmox_shares_the_debian_image_and_its_fix(self):
+        """La VM Proxmox démarre sur l'image genericcloud de Debian, sans
+        console-setup : le bloc cloud-init y échoue de la même façon."""
+        self.assertEqual([], DQ.keyboard_lines("proxmox", "ca", "multix"))
+        self.assertEqual(
+            "/etc/default/keyboard",
+            DQ.keyboard_files("proxmox", "ca", "multix")[0][0],
+        )
+
+    def test_every_distro_on_the_debian_image_writes_the_file(self):
+        """Un système qui télécharge l'image Debian hérite de son échec : la
+        liste suit ce que image_candidates télécharge, pas un nom."""
+        for distro, (versions, defaut) in DQ.DISTROS.items():
+            if distro == "debian":
+                continue
+            with self.subTest(distro=distro), mock.patch.object(
+                DQ, "image_candidates", wraps=DQ.image_candidates
+            ) as espion:
+                try:
+                    DQ.image_candidates(distro, "", "amd64", defaut, True)
+                except Exception:
+                    continue
+                via_debian = any(
+                    c.args and c.args[0] == "debian"
+                    for c in espion.call_args_list
+                )
+                if via_debian:
+                    self.assertIn(distro, DQ.DISTROS_CLAVIER_PAR_FICHIER)
 
     def test_elsewhere_cloud_init_keeps_the_job(self):
         """Une VM Ubuntu applique le clavier sans erreur : lui retirer le

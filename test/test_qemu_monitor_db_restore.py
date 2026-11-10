@@ -22,6 +22,7 @@ Les commandes tournent pour de vrai sous bash, avec de faux systemctl,
 sudo, git et db_restore.py qui notent leurs appels.
 """
 
+import contextlib
 import json
 import os
 import subprocess
@@ -61,6 +62,9 @@ FAUX_RESTORE = """#!/bin/sh
 printf 'restore dans %s :' "$(pwd)" >> "$LOG"
 for a in "$@"; do printf ' %s|' "$a" >> "$LOG"; done
 echo >> "$LOG"
+# TUE : la restauration est interrompue, comme par un ctrl+C ou une
+# connexion coupée, qui atteignent le shell qui l'a lancée.
+if [ -n "$TUE" ]; then kill -TERM $PPID; sleep 1; fi
 exit ${RC:-0}
 """
 
@@ -87,8 +91,13 @@ class Bac(unittest.TestCase):
         ):
             _ecrit(self.base / "bin" / nom, texte, executable=True)
 
-    def erplibre(self, dossier, version="18.0\n"):
+    def erplibre(self, dossier, version="18.0\n", images=("base", "website")):
         _ecrit(dossier / ".odoo-version", version)
+        for image in images:
+            _ecrit(
+                dossier / "image_db" / f"odoo{version.strip()}_{image}.zip",
+                "",
+            )
         _ecrit(
             dossier / "script" / "database" / "db_restore.py",
             FAUX_RESTORE,
@@ -102,7 +111,7 @@ class Bac(unittest.TestCase):
             )
         return dossier
 
-    def lance(self, cmd, unit=True, actif=True, wd="", rc=0):
+    def lance(self, cmd, unit=True, actif=True, wd="", rc=0, tue=False):
         # Le PATH ci-dessous perd la doublure du lanceur : le faux sudo est
         # posé ici, pour que la commande n'atteigne jamais le vrai.
         _ecrit(self.base / "bin" / "sudo", FAUX_SUDO, executable=True)
@@ -116,10 +125,12 @@ class Bac(unittest.TestCase):
             ACTIVE="1" if actif else "0",
             WD=wd,
             RC=str(rc),
+            TUE="1" if tue else "",
         )
         fin = subprocess.run(
             ["bash", "-c", cmd], env=env, capture_output=True, text=True
         )
+        self.sortie = fin.stdout
         return fin.returncode, self.journal.read_text().splitlines()
 
 
@@ -153,6 +164,23 @@ class TestLaRestauration(Bac):
         rc, journal = self.lance(mon.db_restore_cmd([]), rc=3)
         self.assertEqual(3, rc)
         self.assertEqual("systemctl start erplibre.service", journal[-1])
+
+    def test_an_interrupted_restore_still_restarts_the_service(self):
+        rc, journal = self.lance(mon.db_restore_cmd([]), tue=True)
+        self.assertNotEqual(0, rc)
+        self.assertEqual(
+            1, journal.count("systemctl start erplibre.service"), journal
+        )
+
+    def test_an_interrupted_restore_leaves_a_stopped_service_stopped(self):
+        _rc, journal = self.lance(
+            mon.db_restore_cmd([]), actif=False, tue=True
+        )
+        self.assertNotIn("systemctl start erplibre.service", journal)
+
+    def test_a_finished_restore_restarts_the_service_once(self):
+        _rc, journal = self.lance(mon.db_restore_cmd([]))
+        self.assertEqual(1, journal.count("systemctl start erplibre.service"))
 
     def test_the_image_follows_the_checkout_version(self):
         self.erplibre(self.dev, version="17.0 \n")
@@ -191,11 +219,100 @@ class TestLaRestauration(Bac):
         self.assertNotIn("systemctl stop erplibre.service", journal)
         self.assertFalse([x for x in journal if x.startswith("restore")])
 
+    def test_a_chosen_name_and_image_are_passed(self):
+        _rc, journal = self.lance(
+            mon.db_restore_cmd([], database="essai_2", image="website")
+        )
+        ligne = self.restore(journal)
+        self.assertIn(" --database| essai_2|", ligne)
+        self.assertIn(" --image| odoo18.0_website|", ligne)
+
+    def test_a_missing_image_stops_before_the_service(self):
+        rc, journal = self.lance(mon.db_restore_cmd([], image="base_demo"))
+        self.assertEqual(1, rc)
+        self.assertNotIn("systemctl stop erplibre.service", journal)
+        self.assertFalse([x for x in journal if x.startswith("restore")])
+        # Les images de cette version sont nommées, pour choisir.
+        self.assertIn("odoo18.0_base", self.sortie)
+        self.assertIn("odoo18.0_website", self.sortie)
+
     def test_the_confirmation_names_what_is_lost(self):
         lignes = "\n".join(mon.db_restore_lines(["neutralize"]))
         self.assertIn(mon.DB_RESTORE_NAME, lignes)
+        choisi = "\n".join(mon.db_restore_lines([], "essai_2", "website"))
+        self.assertIn("essai_2", choisi)
+        self.assertIn("odoo<version>_website", choisi)
         self.assertIn("crons", lignes)
         self.assertNotIn("crons", "\n".join(mon.db_restore_lines([])))
+
+
+class TestLesDeuxLangues(unittest.TestCase):
+    """L'écran des actions VM et ses confirmations suivent la langue choisie,
+    au moment où ils s'affichent."""
+
+    def langue(self, code):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = code
+
+    def test_the_confirmations_follow_the_language(self):
+        self.langue("en")
+        en = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.langue("fr")
+        fr = " ".join(
+            mon.db_restore_lines(["neutralize"])
+            + mon.delete_lines({"name": "vm-a"})
+        )
+        self.assertIn("DROPPED", en)
+        self.assertIn("ERASED", en)
+        self.assertIn("SUPPRIMÉE", fr)
+        self.assertIn("EFFACÉ", fr)
+        for texte in (en, fr):
+            self.assertIn(mon.DB_RESTORE_NAME, texte)
+            self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", texte)
+
+    def test_every_tick_box_label_is_translated(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for _cle, libelle in mon.UPDATE_PARTS + mon.DB_RESTORE_PARTS:
+            with self.subTest(libelle=libelle):
+                self.assertIn(libelle, TRANSLATIONS)
+
+
+class TestLesMessagesDansLaVM(Bac):
+    """Ce que les commandes affichent dans la VM suit la langue choisie, et
+    une traduction ne peut rien développer dans le shell."""
+
+    def setUp(self):
+        super().setUp()
+        self.erplibre(self.home / "git" / "erplibre")
+
+    def test_the_restore_speaks_english_with_its_variables(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        self.lance(mon.db_restore_cmd([]), rc=3)
+        self.assertIn("== Restoring test from odoo18.0_base ==", self.sortie)
+        self.assertIn("== Restore finished (code 3) ==", self.sortie)
+
+    def test_a_translation_expands_nothing(self):
+        texte = 'a "b" $HOME `id` \\c'
+        fin = subprocess.run(
+            ["bash", "-c", f'echo "{mon._dq(texte)}"'],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(texte, fin.stdout.rstrip("\n"))
 
 
 class TestLaMiseAJourSuitLeMemeDossier(Bac):
@@ -292,6 +409,67 @@ class TestLeBouton(Suivi):
         self.assertEqual("vm-a", vm["name"])
         self.assertEqual(mon.db_restore_cmd(["ignore_cache"]), cmd)
         self.assertEqual("", lance.call_args[1]["guard"])
+
+    async def test_vm_actions_run_with_a_terminal(self):
+        """Sans « ssh -t », sudo n'aurait pas où demander son mot de passe,
+        et db_restore.py afficherait le mot de passe maître en clair."""
+        lances = []
+        async with self.app.run_test(size=(150, 40)) as pilote:
+            await pilote.pause()
+            vm = self.app._vm_by_name("vm-a")
+            with mock.patch.object(
+                self.app, "suspend", lambda: contextlib.nullcontext()
+            ), mock.patch.object(
+                mon.os, "system", lambda c: lances.append(c) or 0
+            ), mock.patch(
+                "builtins.input", lambda *a: ""
+            ):
+                self.app._run_in_vm(vm, "echo x", "essai")
+        self.assertEqual(1, len(lances))
+        self.assertTrue(lances[0].startswith("ssh -t "), lances[0])
+        self.assertNotIn("-t", mon.vm_ssh_prefix(vm).split()[:2])
+
+    async def test_an_invalid_name_is_refused_on_the_spot(self):
+        from textual.widgets import Input
+
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await pilote.pause()
+                await pilote.press("a")
+                await pilote.pause()
+                self.app.screen.query_one("#d_name", Input).value = "a b;rm"
+                self.app.screen.query_one("#a_dbrestore").press()
+                await pilote.pause()
+                await pilote.pause()
+                self.assertEqual(
+                    "VmActionsScreen", type(self.app.screen).__name__
+                )
+        lance.assert_not_called()
+
+    async def test_the_chosen_name_and_image_reach_the_command(self):
+        from textual.widgets import Input, Select
+
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await pilote.pause()
+                await pilote.press("a")
+                await pilote.pause()
+                ecran = self.app.screen
+                ecran.query_one("#d_name", Input).value = "essai_2"
+                ecran.query_one("#d_image", Select).value = "website"
+                ecran.query_one("#a_dbrestore").press()
+                await pilote.pause()
+                await pilote.pause()
+                self.app.screen.query_one("#c_yes").press()
+                await pilote.pause()
+                await pilote.pause()
+        _vm, cmd, _titre = lance.call_args[0]
+        self.assertEqual(
+            mon.db_restore_cmd(
+                ["neutralize", "ignore_cache"], "essai_2", "website"
+            ),
+            cmd,
+        )
 
     async def test_nothing_runs_without_yes(self):
         with mock.patch.object(type(self.app), "_run_in_vm") as lance:

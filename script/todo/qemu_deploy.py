@@ -135,20 +135,21 @@ class QemuDeployMixin:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
-        # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
+        # APRÈS le make : sur un dépôt cloné mais pas installé, PyCharm
+        # n'écrit AUCUN .idea — son configurateur d'interpréteur Python
         # échoue faute de venv, et il renonce. Le même appel sur un dépôt
-        # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
+        # installé l'écrit en quelques minutes : erplibre.iml, misc.xml,
         # modules.xml, vcs.xml.
         #
         # On ouvre donc quand l'interpréteur existe, puis on demande la
-        # configuration explicitement : l'installation est déjà passée, et
-        # pycharm_update() n'avait alors rien à configurer.
+        # configuration explicitement : le pycharm_update() que lance
+        # l'installation ne fait rien sans .idea, et PyCharm n'a pas encore
+        # été ouvert à ce moment-là.
         open_step = (
             self._qemu_pycharm_project_cmd(prod)
             # Le venv du dépôt, comme le fait update_env_version.
             # pycharm_update() : le script importe xmltodict, absent du python
-            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # système ; lancé par celui-ci, il s'arrête sur
             # « No module named 'xmltodict' ».
             + "./.venv.erplibre/bin/python "
             "./script/ide/pycharm_configuration.py --init || true; "
@@ -1571,9 +1572,9 @@ class QemuDeployMixin:
 
         « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
         VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
-        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
-        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
-        d'attendre vaut mieux que de chercher la cause après."""
+        Une VM s390x sur un hôte s390x lui-même invité KVM sort ainsi en
+        « <domain type='qemu'> », et met plusieurs minutes à démarrer. Le
+        savoir avant d'attendre vaut mieux que de chercher la cause après."""
         try:
             mod = self._qemu_import_module()
             if mod.kvm_available():
@@ -2216,7 +2217,7 @@ class QemuDeployMixin:
 
     def _qemu_ask_locale(self):
         """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
-        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        locale-gen dans l'invité, de l'ordre de 30 s sur s390x — payé à chaque
         déploiement pour un confort dont une VM jetable n'a pas besoin."""
         default = "C.UTF-8"
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
@@ -2409,15 +2410,22 @@ class QemuDeployMixin:
             return None
         return spec
 
-    def _qemu_deploy_jobs_cli(self, jobs, workers):
+    def _qemu_deploy_jobs_cli(self, jobs, workers, stdin=None):
         """Déploiement parallèle, sortie texte. Renvoie
-        [(nom, rc, sortie, durée)] — même contrat que la vue TUI."""
+        [(nom, rc, sortie, durée)] — même contrat que la vue TUI.
+
+        `stdin` : l'entrée des travaux. subprocess.DEVNULL derrière un suivi
+        ouvert, dont la boucle lit le même terminal : un ssh qui en hérite lui
+        vole des frappes pendant toute la création. Hors du suivi, l'entrée
+        reste ouverte, une invite sudo pouvant y attendre."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _run(job):
             jid, jname, jparts = job
             j0 = time.time()
-            res = subprocess.run(jparts, capture_output=True, text=True)
+            res = subprocess.run(
+                jparts, capture_output=True, text=True, stdin=stdin
+            )
             out = (res.stdout or "") + (res.stderr or "")
             return jid, jname, res.returncode, out, time.time() - j0
 
@@ -3064,7 +3072,11 @@ class QemuDeployMixin:
             else:
                 outcome = None
             if outcome is None:
-                outcome = self._qemu_deploy_jobs_cli(jobs, workers)
+                outcome = self._qemu_deploy_jobs_cli(
+                    jobs,
+                    workers,
+                    stdin=subprocess.DEVNULL if session else None,
+                )
             for name, rc, _out, _secs in outcome:
                 if rc == 0:
                     deployed.append(name)

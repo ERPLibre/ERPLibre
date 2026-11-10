@@ -283,9 +283,8 @@ def _launch_one(
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
-    # lancement devient donc morte en cours de route, et l'attente échouait
-    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
-    # pendant que la VM vivait en .248).
+    # lancement devient donc morte en cours de route, et l'attente échouerait
+    # 20 minutes durant sur une VM parfaitement saine.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -307,10 +306,23 @@ def _launch_one(
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
+    #
+    # « sg libvirt » en dernier : une session ouverte AVANT l'ajout au groupe
+    # ne le porte pas, et ce processus en hérite ; sg prend le groupe dans
+    # /etc/group, sans reconnexion ni mot de passe pour un membre. Son entrée
+    # est fermée : hors du groupe, sg demanderait un mot de passe et échoue.
+    # Là où shadow ne fournit pas sg (Arch), le newgrp d'util-linux fait de
+    # même en lisant la commande sur son entrée ; sans tty, un non-membre y
+    # échoue aussi au lieu d'attendre.
     name_q = shlex.quote(name) if name else ""
     vsh = (
         'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
-        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null '
+        "|| { command -v sg >/dev/null 2>&1 && sg libvirt -c "
+        '"virsh --connect qemu:///system $(printf \'%q \' "$@")" '
+        "</dev/null 2>/dev/null; } "
+        "|| { printf '%s\\n' \"virsh --connect qemu:///system "
+        '$(printf \'%q \' "$@")" | newgrp libvirt 2>/dev/null; }; }; '
     )
     # Deux trous rendaient cette ré-résolution incapable de rattraper une IP
     # qui bouge — le cas exact où elle sert :
@@ -327,7 +339,11 @@ def _launch_one(
     refresh = (
         (
             f"raw=$(vsh domifaddr {name_q} --source lease); vrc=$?; "
-            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ]; then vwarn=1; '
+            # domifaddr échoue aussi sur une VM pas encore démarrée : seul un
+            # « virsh uri » refusé, qui ne dépend d'aucune VM, dit que libvirt
+            # est injoignable.
+            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ] '
+            "&& ! vsh uri >/dev/null; then vwarn=1; "
             f"echo {shlex.quote('   ' + msg_novirsh)} >> {log_q}; fi; "
             "cands=$(echo \"$raw\" | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.'); "
@@ -900,8 +916,8 @@ def read_status(log_path: str) -> tuple[str, int | None]:
 
 # Au-delà de ce silence, la colonne d'état le DIT. Ce n'est pas un verdict mais
 # un chiffre : plusieurs étapes sont légitimement muettes, leur sortie partant
-# ailleurs. Mesuré sur une installation réelle : le téléchargement d'Android
-# Studio tient ~5 min sans une ligne, et l'étape « APK debug » davantage — son
+# ailleurs. Le téléchargement d'Android Studio tient environ 5 min sans une
+# ligne, et l'étape « APK debug » davantage — son
 # détail va dans le journal de la VM. Dix minutes passent donc au-dessus du
 # premier sans attendre le second, qui reste bruyant par nature.
 #
@@ -1174,9 +1190,8 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         if EXIT_MARKER in line:
             continue
         # Un échec d'étape EST une erreur, même sans le mot « error » : sinon le
-        # tableau de bord affiche « 0 erreur » sur une installation ratée —
-        # mesuré sur erplibre-ubuntu-2604-gnome, 0 ligne « error » pour un APK
-        # tué par le noyau.
+        # tableau de bord afficherait « 0 erreur » sur une installation ratée :
+        # un APK tué par le noyau n'écrit aucune ligne « error ».
         if _is_hard_signal(line):
             nerr += 1
             continue
@@ -1814,9 +1829,9 @@ def vm_stats_line(name, rec, bps, now, ecrit=None) -> str:
 def read_domstats() -> str:
     """Sortie brute de « virsh domstats --balloon --block » (tout le parc).
 
-    UN appel pour toutes les VM — 0,03 s mesuré sur deux domaines. Le suivi
-    relève toutes les deux secondes : une commande par VM y coûterait N
-    processus à chaque tour."""
+    UN appel pour toutes les VM, de l'ordre de quelques centièmes de seconde.
+    Le suivi relève toutes les deux secondes : une commande par VM y coûterait
+    N processus à chaque tour."""
     try:
         res = subprocess.run(
             virsh_argv("domstats", "--balloon", "--block"),
@@ -1992,8 +2007,8 @@ def parse_pvestats(text: str) -> dict:
 # Combien de relevés SUCCESSIFS sans la VM avant de la déclarer effacée. Un
 # seul silence ne prouve rien : l'hôte peut être occupé, la VM en train de
 # démarrer, le relevé en cache d'avant sa création. Or « effacée » est un état
-# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Vécu sur une VM Arch
-# déployée sur Proxmox : poubelle dès le premier tour.
+# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Conclure au premier
+# silence met à la poubelle une VM Proxmox à peine déployée.
 PVE_ABSENCES_AVANT_EFFACEE = 3
 
 
@@ -2016,10 +2031,8 @@ def drop_local_twins(stats, vms) -> dict:
     """Retire des relevés LOCAUX ceux d'une VM qui vit ailleurs.
 
     « virsh domstats » indexe par NOM, et un nom se partage : une VM posée
-    sur un Proxmox distant héritait des chiffres du domaine local homonyme.
-    Vécu sur trois VM — « erplibre-ubuntu-2604 » affichait 1,5 Gio de RAM sur
-    12 et 58 Gio de disque sur 65, tout cela appartenant à la machine locale
-    du même nom, pendant que la vraie tournait avec 3 Gio et 25.
+    sur un Proxmox distant hériterait des chiffres du domaine local homonyme,
+    sa RAM et son disque compris.
 
     Retirés AVANT d'ajouter ceux de l'hôte : ainsi un hôte muet laisse la
     colonne VIDE — ce qui est vrai — au lieu de la remplir avec la mauvaise
@@ -2085,14 +2098,13 @@ def _read_pvestats(vms, now=None):
         )
         # Le code de sortie ne prouve RIEN, dans AUCUN sens. La commande
         # est une SUITE (pvesh ; echo ; du ; echo ; boucle) et son code est
-        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rendait
+        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rend
         # donc 0, « l'hôte a répondu, la VM n'y est plus », et trois tours
-        # plus tard la poubelle ; c'est ce qu'on avait corrigé. Mais
-        # l'exiger à 0 était l'erreur SYMÉTRIQUE : tant qu'Odoo n'écoute pas
-        # — c'est-à-dire pendant TOUTE l'installation, précisément quand on
-        # regarde — la boucle finit en échec et le relevé, parfait, était
-        # jeté. Mesuré sur trois VM : colonnes vides côté Proxmox, et les
-        # lignes qui avaient un homonyme LOCAL affichaient ses chiffres.
+        # plus tard la poubelle. L'exiger à 0 est l'erreur SYMÉTRIQUE : tant
+        # qu'Odoo n'écoute pas — c'est-à-dire pendant TOUTE l'installation,
+        # précisément quand on regarde — la boucle finit en échec et le
+        # relevé, parfait, serait jeté : colonnes vides côté Proxmox, et une
+        # ligne qui a un homonyme LOCAL afficherait ses chiffres.
         #
         # Ce qui prouve une réponse, c'est une LISTE de ressources
         # analysable. Rien d'autre, et surtout pas le code.
@@ -2136,7 +2148,7 @@ def web_tunnel_argv(info, port=18069, cible_port=8069):
     return argv
 
 
-def vm_ssh_prefix(vm) -> str:
+def vm_ssh_prefix(vm, tty=False) -> str:
     """« ssh … » pour entrer dans CETTE VM, adresse comprise.
 
     Une VM d'un hôte Proxmox vit derrière lui : son adresse n'est pas
@@ -2144,16 +2156,21 @@ def vm_ssh_prefix(vm) -> str:
     plutôt que de compter sur un alias ~/.ssh/config, qui peut ne pas exister
     — ou, pire, désigner une VM LOCALE homonyme. C'est ce qui a fait ouvrir
     la mauvaise machine avec « s ».
+
+    `tty` force un terminal (« -t ») pour une COMMANDE, que ssh exécute sinon
+    sans : une invite de sudo n'aurait pas où demander, un mot de passe lu
+    par getpass s'afficherait en clair, et ctrl+C n'atteindrait pas la
+    commande distante.
     """
+    ssh = "ssh -t" if tty else "ssh"
     info = (vm or {}).get("pve") or {}
     adresse = info.get("addr")
     if info.get("target") and adresse:
-        saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
-        return (
-            f"ssh {SSH_OPTS} {saut}-J {shlex.quote(info['target'])} "
-            f"erplibre@{adresse}"
-        )
-    return f"ssh {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
+        # UNE option -J, les rebonds séparés par des virgules : ssh refuse
+        # une seconde option -J et s'arrête avant même de se connecter.
+        chaine = ",".join(h for h in (info.get("jump"), info["target"]) if h)
+        return f"{ssh} {SSH_OPTS} -J {shlex.quote(chaine)} erplibre@{adresse}"
+    return f"{ssh} {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
 
 
 def pve_host_cmd(info, remote, tty=False) -> str:
@@ -2180,9 +2197,9 @@ def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
     Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
-    dernier rapport du pilote : mesuré sur une VM fraîche, 388 Mo annoncés
-    contre 1,1 Go réellement occupés, avec un horodatage vieux d'une
-    demi-heure. La période se perd quand le domaine redémarre — ce qu'une
+    dernier rapport du pilote : le chiffre annoncé peut valoir une fraction de
+    l'occupation réelle, avec un horodatage vieux d'une demi-heure. La
+    période se perd quand le domaine redémarre — ce qu'une
     installation fait — donc on la réarme à intervalle lent.
     """
     for name in names or ():
@@ -2233,10 +2250,12 @@ COL_DEFAULT_WIDTHS = {
 # Parties d'une remise à jour, dans l'ordre où elles doivent tourner : les
 # paquets système d'abord (compilateurs et en-têtes), le code ensuite, les
 # dépendances Python en dernier — elles se compilent contre les deux premiers.
+# Les libellés sont des clés de traduction : t() les rend à l'affichage, dans
+# la langue choisie à ce moment-là, et non à l'import du module.
 UPDATE_PARTS = (
-    ("system", "Paquets systeme (apt/dnf/pacman/zypper)"),
-    ("git", "Depots git (ERPLibre + addons)"),
-    ("python", "Dependances Python (poetry)"),
+    ("system", "System packages (apt/dnf/pacman/zypper)"),
+    ("git", "Git repositories (ERPLibre + addons)"),
+    ("python", "Python dependencies (poetry)"),
 )
 EL_DIR = "~/git/erplibre"
 
@@ -2258,6 +2277,14 @@ def el_dir_cd() -> str:
     )
 
 
+def _dq(texte) -> str:
+    """Texte à placer entre guillemets doubles dans une commande shell.
+
+    \\, ", $ et ` y sont échappés : une traduction ne peut rien y développer.
+    Une variable voulue — « $img », « $rc » — s'ajoute APRÈS, par format()."""
+    return re.sub(r'([\\"$`])', r"\\\1", texte)
+
+
 def update_remote_cmd(parts) -> str:
     """Commande exécutée DANS la VM pour remettre à jour ce qui est coché.
 
@@ -2270,7 +2297,7 @@ def update_remote_cmd(parts) -> str:
     out = ["set -u"]
     if "system" in chosen:
         out.append(
-            'echo "== Paquets systeme =="; '
+            f'echo "== {_dq(t("System packages"))} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
             "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq "
             "&& sudo DEBIAN_FRONTEND=noninteractive "
@@ -2289,11 +2316,11 @@ def update_remote_cmd(parts) -> str:
             "--auto-agree-with-licenses --allow-vendor-change;; "
             "*) sudo zypper --non-interactive up "
             "--auto-agree-with-licenses;; esac; "
-            'else echo "Gestionnaire de paquets inconnu"; fi; '
+            f'else echo "{_dq(t("Unknown package manager"))}"; fi; '
         )
     if "git" in chosen:
         out.append(
-            'echo "== Depots git =="; '
+            f'echo "== {_dq(t("Git repositories"))} =="; '
             + el_dir_cd()
             # --ff-only : une VM ne doit jamais fusionner toute seule. Un
             # historique divergent s'arrête ici, visiblement.
@@ -2304,12 +2331,12 @@ def update_remote_cmd(parts) -> str:
         )
     if "python" in chosen:
         out.append(
-            'echo "== Dependances Python =="; '
+            f'echo "== {_dq(t("Python dependencies"))} =="; '
             + el_dir_cd()
             # La phase « poetry » seule : ni venvs ni repo, juste les paquets.
             + "EL_PHASE=poetry ./script/install/install_locally.sh; "
         )
-    out.append('echo "== Mise a jour terminee =="')
+    out.append(f'echo "== {_dq(t("Update finished"))} =="')
     return "".join(out[:1]) + "; " + "".join(out[1:])
 
 
@@ -2322,37 +2349,55 @@ def restart_odoo_cmd() -> str:
         "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
         "sudo systemctl restart erplibre.service "
         "&& sudo systemctl --no-pager --lines=15 status erplibre.service; "
-        "else echo 'Pas de service erplibre : lancez ./run.sh dans "
-        f"{EL_DIR}'; fi"
+        f'else echo "{_dq(t("No erplibre service: run ./run.sh in"))} '
+        f'{EL_DIR}"; fi'
     )
 
 
-# Nom de la base que l'écran de suivi crée. Il n'y a pas de champ de saisie :
-# l'écran n'a que des cases à cocher et des boutons, et le fichier n'importe
-# aucun widget de saisie. « test » est le nom que les cibles « db_restore_* »
-# du Makefile emploient déjà, donc celui que la documentation et les commandes
-# du dépôt désignent ensuite.
+# Nom proposé pour la base que l'écran de suivi crée. « test » est le nom que
+# les cibles « db_restore_* » du Makefile emploient déjà, donc celui que la
+# documentation et les commandes du dépôt désignent ensuite.
 DB_RESTORE_NAME = "test"
+
+# Un nom de base qu'on peut passer tel quel à PostgreSQL et à db_restore.py :
+# lettres, chiffres, « _ », « . » et « - », sans commencer par un signe, et
+# 63 caractères au plus — au-delà, PostgreSQL tronque le nom sans le dire.
+DB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+
+# Les variantes d'image que le dépôt image_db publie, la base d'abord. Toutes
+# n'existent pas pour chaque version d'Odoo : la commande le vérifie DANS la
+# VM, où la version est connue, et nomme alors celles qui existent.
+DB_RESTORE_IMAGES = (
+    "base",
+    "base_demo",
+    "base_demo_adv_full",
+    "website",
+    "website_crm",
+    "website_crm_chat",
+    "website_ecommerce",
+)
 
 # Options de db_restore.py offertes par l'écran, dans l'ordre d'affichage. Les
 # deux sont cochées par défaut : une base de démonstration ne doit pas lancer
 # de crons dans une VM d'essai, et restaurer sans « _cache_ » épargne au
 # disque de la VM un double complet de la base.
 DB_RESTORE_PARTS = (
-    ("neutralize", "Neutraliser : désactive les crons"),
-    ("ignore_cache", "Sans base _cache_ : restaure directement"),
+    ("neutralize", "Neutralize: disables the crons"),
+    ("ignore_cache", "No _cache_ database: restores directly"),
 )
 
 
-def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
+def db_restore_cmd(parts, database=DB_RESTORE_NAME, image="base") -> str:
     """Commande exécutée DANS la VM pour (re)créer une base depuis une image.
 
     L'image SUIT la version du checkout : « .odoo-version » est lu à
-    l'exécution, dans la VM, et composé en « odoo<version>_base » — le nom
+    l'exécution, dans la VM, et composé en « odoo<version>_<image> » — le nom
     que porte chaque image du répertoire image_db, que le repo sync rapatrie.
     Rien n'est figé ici : une VM change de version après son installation sans
     que ce code le sache. « tr -d » retire le saut de ligne final du fichier,
-    qui sinon couperait le nom en deux.
+    qui sinon couperait le nom en deux. Une variante absente pour cette
+    version arrête tout AVANT le service et la base, en nommant celles qui
+    existent.
 
     db_restore.py ne touche à aucun service : il SUPPRIME la base puis la
     recharge, pendant qu'un Odoo lancé garde ses connexions ouvertes et les
@@ -2360,7 +2405,9 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
     « database is being accessed by other users », et un Odoo qui y survit
     sert un registre qui ne décrit plus la base. Le service est donc arrêté
     autour de l'opération, et relancé SEULEMENT s'il tournait avant : une VM
-    installée sans profil de production n'a pas d'unité systemd.
+    installée sans profil de production n'a pas d'unité systemd. La relance
+    passe par un piège posé AVANT l'arrêt : une restauration interrompue —
+    ctrl+C, connexion coupée — relance quand même le service, une fois.
 
     Le code rendu est celui de la restauration, pas celui du redémarrage :
     c'est la restauration qu'on vient lire."""
@@ -2370,40 +2417,58 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME) -> str:
     db = shlex.quote(database)
     return (
         "set -u; " + el_dir_cd() + "ver=$(tr -d '[:space:]' < .odoo-version); "
-        'img="odoo${ver}_base"; '
-        f'echo "== Restauration de {database} depuis $img =="; '
+        f'img="odoo${{ver}}_"{shlex.quote(image)}; '
+        'if [ ! -f "image_db/$img.zip" ]; then echo "'
+        + _dq(t("No image {img} for this version; available:")).format(
+            img="$img"
+        )
+        + '"; ls image_db | sed -n "s/^\\(odoo${ver}_.*\\)\\.zip$/  \\1/p"; '
+        "exit 1; fi; "
+        'echo "== '
+        + _dq(t("Restoring {db} from {img}")).format(
+            db=_dq(database), img="$img"
+        )
+        + ' =="; '
         "actif=non; "
+        'relance() { if [ "$actif" = oui ]; then actif=fait; '
+        "sudo systemctl start erplibre.service; fi; }; "
+        "trap relance EXIT; trap 'exit 130' INT TERM HUP PIPE; "
         "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
         "systemctl is-active --quiet erplibre.service && actif=oui; "
         "sudo systemctl stop erplibre.service; fi; "
         f'./script/database/db_restore.py --database {db} --image "$img"'
         f"{opts}; "
         "rc=$?; "
-        'if [ "$actif" = oui ]; then sudo systemctl start erplibre.service; '
-        "fi; "
-        'echo "== Restauration terminee (code $rc) =="; '
+        "relance; "
+        'echo "== '
+        + _dq(t("Restore finished (code {rc})")).format(rc="$rc")
+        + ' =="; '
         "exit $rc"
     )
 
 
-def db_restore_lines(parts) -> list:
+def db_restore_lines(parts, database=DB_RESTORE_NAME, image="base") -> list:
     """Ce que la restauration détruit, dit avant qu'elle parte.
 
     Une confirmation nomme ce qu'elle détruit : une base de ce nom existe
     peut-être déjà dans la VM, et db_restore.py la supprime sans rien
-    demander. L'image n'est pas nommée : son nom se calcule dans la VM, à
-    partir d'une version que cet écran ne lit pas."""
+    demander. La version de l'image reste « <version> » : elle se lit dans la
+    VM, et cet écran ne la connaît pas."""
     lignes = [
-        f"La base « {DB_RESTORE_NAME} », si elle existe, est SUPPRIMÉE",
-        "puis rechargée depuis l'image odoo<version>_base du",
-        "répertoire image_db. Rien n'est récupérable.",
+        t("The « {db} » database, if it exists, is DROPPED").format(
+            db=database
+        ),
+        t("then reloaded from the odoo<version>_{image} image of the").format(
+            image=image
+        ),
+        t("image_db directory. Nothing can be recovered."),
         "",
-        "Le service erplibre est arrêté le temps de l'opération,",
-        "puis relancé s'il tournait.",
+        t("The erplibre service is stopped during the operation,"),
+        t("then started again if it was running."),
     ]
     if "neutralize" in parts:
         lignes.append("")
-        lignes.append("Les crons de la base restaurée restent désactivés.")
+        lignes.append(t("The restored database's crons stay disabled."))
     return lignes
 
 
@@ -2417,14 +2482,22 @@ def pve_identity_guard(vmid: int, name: str) -> str:
     Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
     vérifiable. Enfouie dans la commande, elle ne se testait qu'à travers deux
     « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le jour
-    où il casse, au lieu de se fermer."""
+    où il casse, au lieu de se fermer.
+
+    Le refus suit la langue choisie, entre guillemets doubles pour y porter
+    « $vu » : _dq neutralise ce que la traduction et le nom contiennent."""
     q = shlex.quote(name)
+    refus = _dq(
+        t(
+            "REFUSED: VMID {vmid} now carries {seen}, not {name}."
+            " Nothing was deleted."
+        )
+    ).format(vmid=int(vmid), seen="$vu", name=_dq(name))
     return (
         f"vu=$(qm config {int(vmid)} 2>/dev/null"
         " | sed -n 's/^name: //p' | head -1); "
         f'if [ "$vu" != {q} ]; then '
-        f'echo "REFUS : le VMID {int(vmid)} porte maintenant $vu,"'
-        f' "et non {name}. Rien n\'a ete efface."; exit 1; fi; '
+        f'echo "{refus}"; exit 1; fi; '
     )
 
 
@@ -2437,13 +2510,160 @@ def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
     commande efface le VMID quoi qu'il porte aujourd'hui."""
     vmid = int((info or {}).get("vmid") or 0)
+    return pve_host_cmd(info, delete_suite_pve(vmid, name, purge))
+
+
+def delete_suite_pve(vmid: int, name: str = "", purge: bool = True) -> str:
+    """Le shell que delete_vm_cmd_pve joue SUR l'hôte : le garde d'identité
+    si `name` est connu, puis l'arrêt et la destruction du VMID."""
+    vmid = int(vmid)
     suite = pve_identity_guard(vmid, name) if name else ""
-    suite += (
+    return suite + (
         f"qm stop {vmid} --skiplock 1 || true; "
         f"qm destroy {vmid}"
         f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
     )
-    return pve_host_cmd(info, suite)
+
+
+def is_pve_spec(spec) -> bool:
+    """La spec vient-elle d'un déploiement Proxmox ? Elle seule porte l'hôte :
+    une spec QEMU/KVM n'a pas de clé « host »."""
+    return bool(((spec or {}).get("host") or {}).get("target"))
+
+
+def recreate_delete_suite_pve(
+    vmid, name, storage="", bridge="", gpu3d=False
+) -> str:
+    """Shell, sur l'hôte Proxmox, qui efface une VM avant sa recréation.
+
+    Échoue FERMÉ, et rien n'est détruit avant que tout ait été vérifié :
+
+    - le stockage, le pont et, pour la 3D, le nœud de rendu dont la
+      recréation aura besoin existent encore. Sinon elle échouerait APRÈS
+      l'effacement, et ce qu'il faudrait reposer — un pont, les paquets du
+      GPU — ne se pose que depuis le formulaire ;
+    - « qm list » répond ;
+    - le VMID, s'il existe, porte encore ce nom (pve_identity_guard).
+
+    Un VMID absent n'est pas une erreur : la VM a déjà disparu, et la
+    recréation la reprend sous le même numéro."""
+    vmid = int(vmid)
+
+    def refus(texte):
+        # Traduit ici, entre guillemets simples là-bas : rien ne s'y développe.
+        return "{ echo " + shlex.quote(texte) + "; exit 1; }"
+
+    suite = ""
+    if storage:
+        manque = t(
+            "REFUSED: storage {storage} not found. Nothing was deleted."
+        ).format(storage=storage)
+        suite += (
+            f"pvesm status --storage {shlex.quote(storage)} >/dev/null 2>&1 "
+            f"|| {refus(manque)}; "
+        )
+    if bridge:
+        manque = t(
+            "REFUSED: bridge {bridge} not found. Nothing was deleted."
+        ).format(bridge=bridge)
+        suite += (
+            f"ip link show {shlex.quote(bridge)} >/dev/null 2>&1 "
+            f"|| {refus(manque)}; "
+        )
+    if gpu3d:
+        manque = t("REFUSED: no render node for 3D. Nothing was deleted.")
+        suite += f"ls /dev/dri/renderD* >/dev/null 2>&1 || {refus(manque)}; "
+    muet = t("REFUSED: qm list does not answer. Nothing was deleted.")
+    suite += f"ids=$(qm list) || {refus(muet)}; "
+    suite += (
+        "if printf '%s\\n' \"$ids\" | awk 'NR>1{print $1}' "
+        f"| grep -qx {vmid}; then "
+        + pve_identity_guard(vmid, name)
+        + f"qm stop {vmid} --skiplock 1 || true; "
+        f"qm destroy {vmid} --purge 1 --destroy-unreferenced-disks 1 "
+        "|| exit 1; fi"
+    )
+    return suite
+
+
+def recreate_delete_cmd_pve(info, name, spec) -> str:
+    """La suite d'effacement, envoyée à l'hôte de la VM. Le stockage, le
+    pont et la 3D sont ceux que la spec gardée réclamera à la recréation."""
+    spec = spec or {}
+    return pve_host_cmd(
+        info,
+        recreate_delete_suite_pve(
+            int((info or {}).get("vmid") or 0),
+            name,
+            spec.get("storage") or "",
+            spec.get("bridge") or "",
+            bool(spec.get("gpu3d")),
+        ),
+    )
+
+
+def _pve_effacement_lignes(info, verifs, journal, suite) -> list:
+    """Ce que le terminal montre avant un effacement sur un hôte Proxmox.
+
+    La commande elle-même traverse deux niveaux de guillemets — ssh, puis
+    « sudo sh -c » — et ne se relit plus. On montre donc l'hôte, ce qui est
+    vérifié, puis ce qui est détruit. `journal` : le journal de session qui
+    reçoit la commande exacte (lancer_au_terminal l'y écrit) ; sans lui,
+    `suite`, le shell joué sur l'hôte, suit à un seul niveau de guillemets."""
+    info = info or {}
+    vmid = int(info.get("vmid") or 0)
+    hote = info.get("target") or "?"
+    if info.get("jump"):
+        hote += f" -J {info['jump']}"
+    lignes = [f"→ ssh {hote}{' (sudo)' if info.get('sudo') else ''}"]
+    if verifs:
+        lignes.append(f"  {t('checks first:')} {', '.join(verifs)}")
+    lignes.append(
+        f"  qm stop {vmid} --skiplock 1; qm destroy {vmid} --purge 1"
+        " --destroy-unreferenced-disks 1"
+    )
+    if journal:
+        lignes.append(
+            "  "
+            + t("Full command in the session log {log}.").format(log=journal)
+        )
+    else:
+        lignes.append(f"  {suite}")
+    return lignes
+
+
+def recreate_delete_lines_pve(info, name, spec, journal="") -> list:
+    """L'effacement Proxmox d'une recréation, dit par _pve_effacement_lignes :
+    les vérifications sont celles de recreate_delete_suite_pve."""
+    info, spec = info or {}, spec or {}
+    vmid = int(info.get("vmid") or 0)
+    verifs = []
+    if spec.get("storage"):
+        verifs.append(f"pvesm {spec['storage']}")
+    if spec.get("bridge"):
+        verifs.append(f"ip link {spec['bridge']}")
+    if spec.get("gpu3d"):
+        verifs.append("/dev/dri/renderD*")
+    verifs.append(f"qm config {vmid} = {name}")
+    suite = recreate_delete_suite_pve(
+        vmid,
+        name,
+        spec.get("storage") or "",
+        spec.get("bridge") or "",
+        bool(spec.get("gpu3d")),
+    )
+    return _pve_effacement_lignes(info, verifs, journal, suite)
+
+
+def delete_lines_pve(info, name, journal="") -> list:
+    """La suppression d'une VM Proxmox (actions VM), dite par
+    _pve_effacement_lignes : seul le garde d'identité vérifie, et seulement
+    quand le nom est connu (delete_suite_pve)."""
+    vmid = int((info or {}).get("vmid") or 0)
+    verifs = [f"qm config {vmid} = {name}"] if name else []
+    return _pve_effacement_lignes(
+        info, verifs, journal, delete_suite_pve(vmid, name)
+    )
 
 
 def delete_lines(vm) -> list:
@@ -2462,21 +2682,35 @@ def delete_lines(vm) -> list:
     info = vm.get("pve")
     if not info:
         return [
-            "La VM est arrêtée, sa définition retirée,",
-            "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+            t("The VM is stopped, its definition removed,"),
+            t("and its qcow2 disk ERASED. Nothing can be recovered."),
             "",
             f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
         ]
     hote = info.get("target") or "?"
     return [
-        f"Sur l'hôte Proxmox {hote}, la VM {info.get('vmid')} est arrêtée",
-        "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
+        t("On the Proxmox host {host}, VM {vmid} is stopped").format(
+            host=hote, vmid=info.get("vmid")
+        ),
+        t("then DESTROYED with its disks. Nothing can be recovered."),
         "",
         f"  qm destroy {info.get('vmid')} --purge",
         "",
-        "Aucun fichier n'est touché ici : le disque vit dans le",
-        "stockage de l'hôte.",
+        t("No file is touched here: the disk lives in the"),
+        t("host's storage."),
     ]
+
+
+def _refus_autre_domaine(name: str) -> str:
+    """Le refus d'un nom repris par un autre domaine, à placer entre
+    guillemets doubles : « $vu », l'UUID lu par virsh, s'y développe ; la
+    traduction et le nom, neutralisés par _dq, non."""
+    return _dq(
+        t(
+            "REFUSED: {name} is no longer the same domain ({seen})."
+            " Nothing was deleted."
+        )
+    ).format(name=_dq(name), seen="$vu")
 
 
 def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
@@ -2497,8 +2731,7 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
             " 2>/dev/null"
             " | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f'echo "REFUS : {name} n\'est plus le même domaine"'
-            f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
+            f'echo "{_refus_autre_domaine(name)}"; exit 1; fi; '
         )
     cmd += (
         f"{sudo_prefix()}virsh --connect {URI} destroy {q} 2>/dev/null; "
@@ -2527,24 +2760,24 @@ def recreate_delete_cmd(name: str, uuid: str) -> str:
     refus, sans rien avoir effacé."""
     q = shlex.quote(name)
     v = f"{sudo_prefix()}virsh --connect {URI}"
-    rien = "Rien n'a été effacé."
     if uuid:
         garde = (
             f"vu=$({v} domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f"echo \"REFUS : {name} n'est plus le même domaine ($vu)."
-            f' {rien}"; exit 1; fi; '
+            f'echo "{_refus_autre_domaine(name)}"; exit 1; fi; '
         )
     else:
-        garde = (
-            f"echo \"REFUS : la session ne connaît pas l'UUID de {name}."
-            f' {rien}"; exit 1; '
-        )
+        inconnu = t(
+            "REFUSED: the session does not know the UUID of {name}."
+            " Nothing was deleted."
+        ).format(name=name)
+        garde = f"echo {shlex.quote(inconnu)}; exit 1; "
+    illisible = t("REFUSED: virsh unreadable. Nothing was deleted.")
     disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
     seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
     return (
         f"noms=$({v} list --all --name) || "
-        f'{{ echo "REFUS : virsh illisible. {rien}"; exit 1; }}; '
+        f"{{ echo {shlex.quote(illisible)}; exit 1; }}; "
         f"if printf '%s\\n' \"$noms\" | grep -qxF -- {q}; then "
         + garde
         + f"{v} destroy {q} 2>/dev/null; "
@@ -2664,7 +2897,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         DataTable,
         Footer,
         Header,
+        Input,
         RichLog,
+        Select,
         Static,
     )
 
@@ -2833,7 +3068,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         """Confirmation d'une action irréversible. Le bouton dangereux n'est
         PAS le défaut : il faut le viser, pas juste appuyer sur Entrée."""
 
-        BINDINGS = [("escape", "cancel", "Annuler")]
+        BINDINGS = [("escape", "cancel", t("Cancel"))]
 
         def __init__(self, title, lines, danger_label):
             super().__init__()
@@ -2847,7 +3082,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 for line in self._lines:
                     yield Static(line)
                 with Horizontal(id="confbtns"):
-                    yield Button("Annuler", variant="primary", id="c_no")
+                    yield Button(t("Cancel"), variant="primary", id="c_no")
                     yield Button(self._danger, variant="error", id="c_yes")
 
         def on_button_pressed(self, event) -> None:
@@ -2862,7 +3097,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         Plutôt que trois touches de plus dans un pied de page qui en compte
         déjà neuf : on voit ce qu'on va faire, et sur quelle machine."""
 
-        BINDINGS = [("escape", "cancel", "Fermer")]
+        BINDINGS = [("escape", "cancel", t("Close"))]
 
         def __init__(self, vm):
             super().__init__()
@@ -2871,34 +3106,48 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def compose(self) -> ComposeResult:
             with Vertical(id="actbox"):
                 yield Static(
-                    f"Actions — {self._vm['name']}  ({self._vm.get('ip') or '?'})",
+                    f"{t('Actions')} — {self._vm['name']}"
+                    f"  ({self._vm.get('ip') or '?'})",
                     id="acttitle",
                 )
-                yield Static("Remettre à jour", classes="actgroup")
+                yield Static(t("Update"), classes="actgroup")
                 for key, label in UPDATE_PARTS:
-                    yield Checkbox(label, value=True, id=f"u_{key}")
+                    yield Checkbox(t(label), value=True, id=f"u_{key}")
                 yield Button(
-                    "Lancer la mise à jour",
+                    t("Run the update"),
                     variant="primary",
                     id="a_update",
                 )
-                yield Static("Service", classes="actgroup")
-                yield Button("Redémarrer Odoo", id="a_restart")
-                yield Static("Base de données", classes="actgroup")
+                yield Static(t("Service"), classes="actgroup")
+                yield Button(t("Restart Odoo"), id="a_restart")
+                yield Static(t("Odoo database"), classes="actgroup")
                 yield Static(
-                    f"Recrée « {DB_RESTORE_NAME} » depuis l'image de la"
-                    " version installée dans la VM."
+                    t(
+                        "Recreates the database from an image of the version"
+                        " installed in the VM."
+                    )
+                )
+                yield Input(
+                    value=DB_RESTORE_NAME,
+                    placeholder=t("Database name"),
+                    id="d_name",
+                )
+                yield Select(
+                    [(img, img) for img in DB_RESTORE_IMAGES],
+                    value=DB_RESTORE_IMAGES[0],
+                    allow_blank=False,
+                    id="d_image",
                 )
                 for key, label in DB_RESTORE_PARTS:
-                    yield Checkbox(label, value=True, id=f"d_{key}")
+                    yield Checkbox(t(label), value=True, id=f"d_{key}")
                 yield Button(
-                    f"Restaurer la base « {DB_RESTORE_NAME} »",
+                    t("Restore this database"),
                     variant="warning",
                     id="a_dbrestore",
                 )
-                yield Static("Irréversible", classes="actdanger")
+                yield Static(t("Irreversible"), classes="actdanger")
                 yield Button(
-                    "Supprimer la VM et ses disques",
+                    t("Delete the VM and its disks"),
                     variant="error",
                     id="a_delete",
                 )
@@ -2914,12 +3163,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             elif event.button.id == "a_restart":
                 self.dismiss(("restart", []))
             elif event.button.id == "a_dbrestore":
+                nom = self.query_one("#d_name", Input).value.strip()
+                if not DB_NAME_RE.match(nom):
+                    # Refusé ICI, la fenêtre ouverte : le nom se corrige sur
+                    # place au lieu de partir vers la VM.
+                    self.notify(
+                        t(
+                            "Invalid database name: letters, digits, _ . -"
+                            " (63 at most)."
+                        ),
+                        severity="error",
+                    )
+                    return
                 parts = [
                     k
                     for k, _lbl in DB_RESTORE_PARTS
                     if self.query_one(f"#d_{k}", Checkbox).value
                 ]
-                self.dismiss(("dbrestore", parts))
+                image = self.query_one("#d_image", Select).value
+                self.dismiss(("dbrestore", (parts, nom, image)))
             elif event.button.id == "a_delete":
                 self.dismiss(("delete", []))
 
@@ -3599,11 +3861,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if vm.get("pve"):
                     if not hote_ok:
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
-                        # « effacée » ici gelait la ligne sur 🗑 dès le premier
-                        # tour, pour toujours — vécu sur une VM Arch à peine
-                        # déployée. Et on OUBLIE les absences déjà comptées :
-                        # elles ne prouvent une disparition que si elles se
-                        # SUIVENT, l'hôte répondant à chaque fois.
+                        # « effacée » ici gèlerait la ligne sur 🗑 dès le
+                        # premier tour, pour toujours. Et on OUBLIE les
+                        # absences déjà comptées : elles ne prouvent une
+                        # disparition que si elles se SUIVENT, l'hôte
+                        # répondant à chaque fois.
                         self._pve_absences[nom] = 0
                         continue
                     releve = distants.get(nom)
@@ -3767,7 +4029,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             l'installation TERMINÉE."""
             vm = self._vm_by_name(self._selected)
             if not vm or not vm.get("ip"):
-                self.notify("Pas d'IP pour cette VM.", title="Web")
+                self.notify(t("No IP for this VM."), title="Web")
                 return
             browser = self._choose_browser()
             if not browser:
@@ -3969,12 +4231,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def _apply_column_widths(self, table) -> None:
             """Fait PRENDRE les largeurs à l'écran.
 
-            « refresh(layout=True) » ne suffit pas, et c'est le piège :
-            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
-            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
-            rien ne bouge. « clear_cached_dimensions » et « refresh_column »
-            n'y changent rien non plus ; seul le recalcul des dimensions la
-            porte à 93.
+            « refresh(layout=True) » ne suffit pas, et c'est le piège : sous
+            Textual 8.2.8, la largeur de la colonne change bien, mais la
+            taille virtuelle du tableau ne suit pas — donc rien ne bouge.
+            « clear_cached_dimensions » et « refresh_column » n'y changent
+            rien non plus ; seul le recalcul des dimensions la met à jour.
 
             C'est une API privée, d'où le repli : une version future de
             Textual dégradera l'ajustement au lieu de casser le suivi."""
@@ -4071,10 +4332,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._run_update(vm, parts)
                 elif kind == "restart":
                     self._run_in_vm(
-                        vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
+                        vm, restart_odoo_cmd(), t("Restarting Odoo")
                     )
                 elif kind == "dbrestore":
-                    self._ask_db_restore(vm, parts)
+                    self._ask_db_restore(vm, *parts)
                 elif kind == "delete":
                     self._ask_delete(vm)
 
@@ -4091,22 +4352,23 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             `guard` : commande shell exécutée AVANT le ssh, liée par « && » :
             son échec empêche la connexion, et sa sortie dit pourquoi."""
             if not vm.get("ip"):
-                self.notify("Pas d'IP pour cette VM.", severity="error")
+                self.notify(t("No IP for this VM."), severity="error")
                 return
             avant = f"{guard} && " if guard else ""
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
                 os.system(
-                    f"{avant}{vm_ssh_prefix(vm)} {shlex.quote(cmd)} || true"
+                    f"{avant}{vm_ssh_prefix(vm, tty=True)} {shlex.quote(cmd)}"
+                    " || true"
                 )
-                input("\nEntrée pour revenir au suivi… ")
+                input(f"\n{t('Press Enter to return to the monitor')}… ")
 
         def _run_update(self, vm, parts) -> None:
             cmd = update_remote_cmd(parts)
             if not cmd:
-                self.notify("Rien de coché.", severity="warning")
+                self.notify(t("Nothing ticked."), severity="warning")
                 return
-            self._run_in_vm(vm, cmd, "Mise a jour")
+            self._run_in_vm(vm, cmd, t("Update"))
 
         def _db_restore_refusal(self, vm, resolve=False) -> str:
             """Pourquoi la restauration ne peut pas viser `vm`, ou "".
@@ -4150,7 +4412,9 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._refresh_ssh()
             return ""
 
-        def _ask_db_restore(self, vm, parts) -> None:
+        def _ask_db_restore(
+            self, vm, parts, database=DB_RESTORE_NAME, image="base"
+        ) -> None:
             """Restauration : une base du même nom est PERDUE.
 
             Même garde que la suppression d'une VM, et pour la même raison :
@@ -4187,16 +4451,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 )
                 self._run_in_vm(
                     vm,
-                    db_restore_cmd(parts),
-                    "Restauration de la base",
+                    db_restore_cmd(parts, database, image),
+                    t("Database restore"),
                     guard=garde,
                 )
 
             self.push_screen(
                 ConfirmScreen(
-                    f"Restaurer « {DB_RESTORE_NAME} » sur {vm['name']} ?",
-                    db_restore_lines(parts),
-                    f"Écraser {DB_RESTORE_NAME}",
+                    t("Restore « {db} » on {name}?").format(
+                        db=database, name=vm["name"]
+                    ),
+                    db_restore_lines(parts, database, image),
+                    t("Overwrite {db}").format(db=database),
                 ),
                 confirmed,
             )
@@ -4216,17 +4482,29 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     if info
                     else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
                 )
+                from script.todo import todo_journal
+
                 with self.suspend():
-                    print(f"\n=== Suppression — {vm['name']} ===")
-                    print(f"→ {cmd}\n")
-                    os.system(cmd + " || true")
-                    input("\nEntrée pour revenir au suivi… ")
+                    print(f"\n=== {t('Deletion')} — {vm['name']} ===")
+                    if info:
+                        ouvert = todo_journal.session_en_cours() or {}
+                        for ligne in delete_lines_pve(
+                            info, vm["name"], ouvert.get("nom") or ""
+                        ):
+                            print(ligne)
+                        print()
+                    else:
+                        print(f"→ {cmd}\n")
+                    # Par lancer_au_terminal : la commande exacte et son code
+                    # vont au journal de session, le résumé ci-dessus y renvoie.
+                    todo_journal.lancer_au_terminal(["bash", "-c", cmd])
+                    input(f"\n{t('Press Enter to return to the monitor')}… ")
 
             self.push_screen(
                 ConfirmScreen(
-                    f"Supprimer {vm['name']} ?",
+                    t("Delete {name}?").format(name=vm["name"]),
                     delete_lines(vm),
-                    "Supprimer définitivement",
+                    t("Delete for good"),
                 ),
                 confirmed,
             )
@@ -4356,23 +4634,53 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def _recreate_refusal(self, vm):
             """Pourquoi `vm` ne peut pas être recréée d'ici, ou "".
 
-            Il faut un objet TODO (c'est lui qui crée), une VM LOCALE — une VM
-            Proxmox se recrée par son hôte, par un autre chemin —, sa spec de
-            création gardée, aucune installation en cours (la VM serait
-            effacée sous elle), et Internet : la même règle que la relance,
-            pour la même raison."""
+            Il faut un objet TODO (c'est lui qui crée), la spec de création
+            gardée, aucune installation en cours (la VM serait effacée sous
+            elle), et Internet : la même règle que la relance, pour la même
+            raison. Une VM Proxmox exige en plus une spec Proxmox qui désigne
+            le MÊME hôte et le MÊME VMID que sa ligne : c'est cet hôte qu'on
+            vide et ce VMID qu'on recrée."""
             if todo is None:
                 return t("Recreating a VM is not available from this monitor.")
             if self._adding:
                 return t("VMs are already being added.")
-            if vm.get("pve"):
-                return t("A Proxmox VM cannot be recreated from the monitor.")
-            if read_vm_spec(vm) is None:
+            spec = read_vm_spec(vm)
+            if spec is None:
                 return t(
                     "This VM's creation parameters were not kept (older"
                     " session, or a VM only monitored). Deploy it again"
                     " from the menu."
                 )
+            info = vm.get("pve") or {}
+            cible = (spec.get("vms") or [{}])[0]
+            if bool(info) != is_pve_spec(spec) or (
+                info
+                and (
+                    spec["host"]["target"] != info.get("target")
+                    or str(cible.get("vmid")) != str(info.get("vmid"))
+                )
+            ):
+                return t(
+                    "The kept parameters do not match this VM (host or"
+                    " VMID): deploy it again from the menu."
+                )
+            if info and not hasattr(todo, "_pve_deploie_spec"):
+                return t("Recreating a VM is not available from this monitor.")
+            if info:
+                # Les commandes de création se bâtissent ICI, avant toute
+                # destruction : une version retirée du catalogue depuis le
+                # déploiement ne se recréerait plus, et la VM serait perdue.
+                try:
+                    todo._pve_vm_commands(
+                        todo._qemu_import_module(), cible, spec
+                    )
+                except Exception:
+                    return t(
+                        "The kept parameters no longer build this VM (the"
+                        " catalog changed): deploy it again from the menu."
+                    )
+            if spec.get("offline"):
+                return t("Recreate is not available for an offline session.")
             nom = vm["name"]
             if nom not in self._final and self._domstate.get(nom) != "gone":
                 return t(
@@ -4401,11 +4709,18 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 return
             spec = read_vm_spec(vm)
             cible = (spec.get("vms") or [{}])[0]
-            lignes = [
-                t(
+            if vm.get("pve"):
+                entete = t(
+                    "The VM is destroyed on its Proxmox host, then created"
+                    " again with the same VMID and parameters:"
+                )
+            else:
+                entete = t(
                     "The VM is deleted (domain, disk, seed), then created"
                     " again with the same parameters:"
-                ),
+                )
+            lignes = [
+                entete,
                 "  "
                 + " ".join(
                     str(cible.get(k) or "")
@@ -4415,6 +4730,17 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 f"{cible.get('vcpus', '?')} vCPU · {cible.get('disk', '?')}",
                 t("The current log is kept as <log>.N."),
             ]
+            if vm.get("pve"):
+                lignes.append(t("On a DHCP bridge its address may change."))
+                if cible.get("distro") == "proxmox":
+                    # Un hyperviseur imbriqué emporte ses propres VM : la
+                    # confirmation le dit, puisque rien d'autre ne le dira.
+                    lignes.append(
+                        t(
+                            "It is a Proxmox VE hypervisor: the VMs it"
+                            " carries disappear with it."
+                        )
+                    )
 
             def confirmed(yes):
                 if not yes:
@@ -4431,7 +4757,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 except RelaunchRefused as exc:
                     self.notify(str(exc), severity="warning")
                     return
-                if not self._delete_for_recreate(vm):
+                if not self._delete_for_recreate(vm, spec):
                     release_recreate(manifest_path, vm["name"])
                     return
                 spec["recreate"] = True
@@ -4446,21 +4772,26 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 confirmed,
             )
 
-        def _delete_for_recreate(self, vm) -> bool:
+        def _delete_for_recreate(self, vm, spec=None) -> bool:
             """Terminal rendu : ticket sudo, effacement de la VM
             (recreate_delete_cmd), arrêt de l'ancien lanceur, puis ménage des
             exceptions du cache. Rend True si l'effacement a réussi,
             condition de la création qui suit.
 
-            Un ticket sudo refusé arrête tout : sans lui, virsh serait
-            illisible et la commande refuserait de toute façon, mais autant
-            le dire tout de suite. Ce ticket est celui que le thread de
-            création entretient ensuite.
+            Un ticket sudo refusé arrête tout pour une VM locale : sans lui,
+            virsh serait illisible et la commande refuserait de toute façon,
+            mais autant le dire tout de suite. Une VM Proxmox, effacée sur son
+            hôte, passe outre. Ce ticket est celui que le thread de création
+            entretient ensuite — y compris pour une VM Proxmox, dont la
+            création lit les domaines locaux et l'état du cache.
 
-            Le lanceur n'est arrêté qu'une fois l'effacement fait : c'est
-            recreate_delete_cmd qui décide s'il a lieu, et un refus laisse la
+            Le lanceur n'est arrêté qu'une fois l'effacement fait : c'est la
+            commande d'effacement qui décide s'il a lieu, et un refus laisse la
             VM — et son installation — telles quelles. Arrêté avant la
-            création, il ne peut plus atteindre la VM neuve."""
+            création, il ne peut plus atteindre la VM neuve.
+
+            Une VM Proxmox est effacée sur son hôte (recreate_delete_cmd_pve),
+            et aucun ménage local ne suit : rien n'a bougé ici."""
             nom = vm["name"]
             try:
                 with self.suspend():
@@ -4470,9 +4801,25 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
 
                     if os.geteuid() != 0:
                         ok = subprocess.run(["sudo", "-v"]).returncode == 0
+                        # Une VM Proxmox s'efface sur son hôte : le sudo local
+                        # n'y sert qu'aux étapes facultatives de la création,
+                        # qui le demandent sans invite. Son refus n'arrête rien.
+                        ok = ok or bool(vm.get("pve"))
                     if ok:
-                        cmd = recreate_delete_cmd(nom, vm.get("uuid") or "")
-                        print(f"→ {cmd}\n")
+                        cmd = (
+                            recreate_delete_cmd_pve(vm["pve"], nom, spec)
+                            if vm.get("pve")
+                            else recreate_delete_cmd(nom, vm.get("uuid") or "")
+                        )
+                        if vm.get("pve"):
+                            ouvert = todo_journal.session_en_cours() or {}
+                            for ligne in recreate_delete_lines_pve(
+                                vm["pve"], nom, spec, ouvert.get("nom") or ""
+                            ):
+                                print(ligne)
+                            print()
+                        else:
+                            print(f"→ {cmd}\n")
                         ok = (
                             todo_journal.lancer_au_terminal(
                                 ["bash", "-c", cmd]
@@ -4499,6 +4846,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                             f"\n{t('Press Enter to return to the monitor')}… "
                         )
                         return False
+                    if vm.get("pve"):
+                        return True
                     try:
                         from script.todo.qemu_cache_menu import bypass_menage
 
@@ -4572,6 +4921,11 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             # la reposerait en 🗑 avant que virsh la revoie. Son ancien 🟢,
             # lui, ne dit rien de la nouvelle.
             self._domstate.pop(nom, None)
+            # Une VM Proxmox recréée a manqué à l'hôte le temps de sa
+            # recréation : ces absences comptées, et un relevé en cache d'avant
+            # elle, la remettraient en 🗑 au tour suivant.
+            self._pve_absences.pop(nom, None)
+            _PVE_CACHE["at"] = 0.0
             self._odoo_up.discard(nom)
             self._odoo_revu.pop(nom, None)
             self._offsets[nom] = 0
@@ -4752,6 +5106,14 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             ajoutees = {e.get("name") for e in res.get("added") or []}
             if not nom or nom in ajoutees:
                 return res
+            if is_pve_spec(spec):
+                # Une VM Proxmox n'a pas d'UUID local : en lire un ici
+                # trouverait au mieux rien, au pire un domaine homonyme.
+                try:
+                    release_recreate(manifest_path, nom)
+                except (OSError, ValueError):
+                    pass
+                return res
             uuid = local_uuid(nom)
             try:
                 release_recreate(manifest_path, nom, uuid=uuid)
@@ -4784,7 +5146,12 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             res = None
             erreur = None
             try:
-                res = todo._qemu_deploie_spec(spec, session=manifest_path)
+                deploie = (
+                    todo._pve_deploie_spec
+                    if is_pve_spec(spec)
+                    else todo._qemu_deploie_spec
+                )
+                res = deploie(spec, session=manifest_path)
             except Exception as exc:
                 erreur = f"{type(exc).__name__}: {exc}"
             finally:

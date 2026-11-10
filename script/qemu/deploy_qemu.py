@@ -3347,8 +3347,10 @@ def build_gitconfig(name: str, email: str, editor: str) -> str:
 # genericcloud de Debian ne le porte pas. Le réglage EST écrit avant cet
 # échec — dans /etc/default/keyboard, que localed et X relisent — mais
 # cloud-init se déclare en erreur, et ce mot masque les vraies pannes dans le
-# compte-rendu de déploiement.
-DISTROS_CLAVIER_PAR_FICHIER = ("debian",)
+# compte-rendu de déploiement. « proxmox » part de la même image Debian
+# (image_candidates) : l'hyperviseur s'installe PAR-DESSUS, une fois
+# cloud-init passé, et hérite donc du même échec.
+DISTROS_CLAVIER_PAR_FICHIER = ("debian", "proxmox")
 
 # Un locale se génère à partir de /etc/locale.gen et de nulle part ailleurs :
 # « locale-gen xx_YY.UTF-8 » ne prend pas son argument pour une demande, il

@@ -19486,10 +19486,6 @@ TRANSLATIONS = {
         "fr": "La recréation de VM n'est pas disponible depuis ce suivi.",
         "en": "Recreating a VM is not available from this monitor.",
     },
-    "A Proxmox VM cannot be recreated from the monitor.": {
-        "fr": "Une VM Proxmox ne peut pas être recréée depuis le suivi.",
-        "en": "A Proxmox VM cannot be recreated from the monitor.",
-    },
     (
         "This VM's creation parameters were not kept (older session, or a VM "
         "only monitored). Deploy it again from the menu."
@@ -19584,6 +19580,259 @@ TRANSLATIONS = {
     "Previous launcher stopped: {n}": {
         "fr": "Ancien lanceur arrêté : {n}",
         "en": "Previous launcher stopped: {n}",
+    },
+    # Nom lisible de la touche Échap, dans l'aide des formulaires.
+    "Esc": {
+        "fr": "Échap",
+        "en": "Esc",
+    },
+    "Shortcuts and options": {
+        "fr": "Raccourcis et options",
+        "en": "Shortcuts and options",
+    },
+    # Refus des commandes d'effacement, affichés depuis l'hôte ou la VM.
+    "REFUSED: VMID {vmid} now carries {seen}, not {name}. Nothing was deleted.": {
+        "fr": "REFUS : le VMID {vmid} porte maintenant {seen}, et non {name}. Rien n'a été effacé.",
+        "en": "REFUSED: VMID {vmid} now carries {seen}, not {name}. Nothing was deleted.",
+    },
+    "REFUSED: storage {storage} not found. Nothing was deleted.": {
+        "fr": "REFUS : le stockage {storage} est introuvable. Rien n'a été effacé.",
+        "en": "REFUSED: storage {storage} not found. Nothing was deleted.",
+    },
+    "REFUSED: bridge {bridge} not found. Nothing was deleted.": {
+        "fr": "REFUS : le pont {bridge} est introuvable. Rien n'a été effacé.",
+        "en": "REFUSED: bridge {bridge} not found. Nothing was deleted.",
+    },
+    "REFUSED: no render node for 3D. Nothing was deleted.": {
+        "fr": "REFUS : aucun nœud de rendu pour la 3D. Rien n'a été effacé.",
+        "en": "REFUSED: no render node for 3D. Nothing was deleted.",
+    },
+    "REFUSED: qm list does not answer. Nothing was deleted.": {
+        "fr": "REFUS : qm list ne répond pas. Rien n'a été effacé.",
+        "en": "REFUSED: qm list does not answer. Nothing was deleted.",
+    },
+    "REFUSED: {name} is no longer the same domain ({seen}). Nothing was deleted.": {
+        "fr": "REFUS : {name} n'est plus le même domaine ({seen}). Rien n'a été effacé.",
+        "en": "REFUSED: {name} is no longer the same domain ({seen}). Nothing was deleted.",
+    },
+    "REFUSED: the session does not know the UUID of {name}. Nothing was deleted.": {
+        "fr": "REFUS : la session ne connaît pas l'UUID de {name}. Rien n'a été effacé.",
+        "en": "REFUSED: the session does not know the UUID of {name}. Nothing was deleted.",
+    },
+    "REFUSED: virsh unreadable. Nothing was deleted.": {
+        "fr": "REFUS : virsh illisible. Rien n'a été effacé.",
+        "en": "REFUSED: virsh unreadable. Nothing was deleted.",
+    },
+    "checks first:": {
+        "fr": "vérifie d'abord :",
+        "en": "checks first:",
+    },
+    "Full command in the session log {log}.": {
+        "fr": "Commande complète dans le journal de session {log}.",
+        "en": "Full command in the session log {log}.",
+    },
+    # Recréation d'une VM Proxmox depuis le suivi (touche « n »).
+    "The kept parameters do not match this VM (host or VMID): deploy it again from the menu.": {
+        "fr": "Les paramètres gardés ne correspondent pas à cette VM (hôte ou VMID) : redéployez-la depuis le menu.",
+        "en": "The kept parameters do not match this VM (host or VMID): deploy it again from the menu.",
+    },
+    "The VM is destroyed on its Proxmox host, then created again with the same VMID and parameters:": {
+        "fr": "La VM est détruite sur son hôte Proxmox, puis recréée avec le même VMID et les mêmes paramètres :",
+        "en": "The VM is destroyed on its Proxmox host, then created again with the same VMID and parameters:",
+    },
+    "On a DHCP bridge its address may change.": {
+        "fr": "Sur un pont DHCP, son adresse peut changer.",
+        "en": "On a DHCP bridge its address may change.",
+    },
+    "It is a Proxmox VE hypervisor: the VMs it carries disappear with it.": {
+        "fr": "C'est un hyperviseur Proxmox VE : les VM qu'il porte disparaissent avec lui.",
+        "en": "It is a Proxmox VE hypervisor: the VMs it carries disappear with it.",
+    },
+    "The kept parameters no longer build this VM (the catalog changed): deploy it again from the menu.": {
+        "fr": "Les paramètres gardés ne permettent plus de bâtir cette VM (le catalogue a changé) : redéployez-la depuis le menu.",
+        "en": "The kept parameters no longer build this VM (the catalog changed): deploy it again from the menu.",
+    },
+    # Messages des commandes que les actions VM lancent dans la VM.
+    "System packages": {
+        "fr": "Paquets système",
+        "en": "System packages",
+    },
+    "Unknown package manager": {
+        "fr": "Gestionnaire de paquets inconnu",
+        "en": "Unknown package manager",
+    },
+    "Git repositories": {
+        "fr": "Dépôts git",
+        "en": "Git repositories",
+    },
+    "Python dependencies": {
+        "fr": "Dépendances Python",
+        "en": "Python dependencies",
+    },
+    "Update finished": {
+        "fr": "Mise à jour terminée",
+        "en": "Update finished",
+    },
+    "No erplibre service: run ./run.sh in": {
+        "fr": "Pas de service erplibre : lancez ./run.sh dans",
+        "en": "No erplibre service: run ./run.sh in",
+    },
+    "Restoring {db} from {img}": {
+        "fr": "Restauration de {db} depuis {img}",
+        "en": "Restoring {db} from {img}",
+    },
+    "Restore finished (code {rc})": {
+        "fr": "Restauration terminée (code {rc})",
+        "en": "Restore finished (code {rc})",
+    },
+    # Écran des actions VM du suivi d'installation (touche a).
+    "Actions": {
+        "fr": "Actions",
+        "en": "Actions",
+    },
+    "System packages (apt/dnf/pacman/zypper)": {
+        "fr": "Paquets système (apt/dnf/pacman/zypper)",
+        "en": "System packages (apt/dnf/pacman/zypper)",
+    },
+    "Git repositories (ERPLibre + addons)": {
+        "fr": "Dépôts git (ERPLibre + addons)",
+        "en": "Git repositories (ERPLibre + addons)",
+    },
+    "Python dependencies (poetry)": {
+        "fr": "Dépendances Python (poetry)",
+        "en": "Python dependencies (poetry)",
+    },
+    "Run the update": {
+        "fr": "Lancer la mise à jour",
+        "en": "Run the update",
+    },
+    "Service": {
+        "fr": "Service",
+        "en": "Service",
+    },
+    "Restart Odoo": {
+        "fr": "Redémarrer Odoo",
+        "en": "Restart Odoo",
+    },
+    "Restarting Odoo": {
+        "fr": "Redémarrage d'Odoo",
+        "en": "Restarting Odoo",
+    },
+    "Odoo database": {
+        "fr": "Base de données",
+        "en": "Odoo database",
+    },
+    "Recreates the database from an image of the version installed in the VM.": {
+        "fr": "Recrée la base depuis une image de la version installée dans la VM.",
+        "en": "Recreates the database from an image of the version installed in the VM.",
+    },
+    "Neutralize: disables the crons": {
+        "fr": "Neutraliser : désactive les crons",
+        "en": "Neutralize: disables the crons",
+    },
+    "No _cache_ database: restores directly": {
+        "fr": "Sans base _cache_ : restaure directement",
+        "en": "No _cache_ database: restores directly",
+    },
+    "Restore this database": {
+        "fr": "Restaurer la base",
+        "en": "Restore this database",
+    },
+    "Invalid database name: letters, digits, _ . - (63 at most).": {
+        "fr": "Nom de base invalide : lettres, chiffres, _ . - (63 au plus).",
+        "en": "Invalid database name: letters, digits, _ . - (63 at most).",
+    },
+    "No image {img} for this version; available:": {
+        "fr": "Pas d'image {img} pour cette version ; disponibles :",
+        "en": "No image {img} for this version; available:",
+    },
+    "Irreversible": {
+        "fr": "Irréversible",
+        "en": "Irreversible",
+    },
+    "Delete the VM and its disks": {
+        "fr": "Supprimer la VM et ses disques",
+        "en": "Delete the VM and its disks",
+    },
+    "No IP for this VM.": {
+        "fr": "Pas d'IP pour cette VM.",
+        "en": "No IP for this VM.",
+    },
+    "Nothing ticked.": {
+        "fr": "Rien de coché.",
+        "en": "Nothing ticked.",
+    },
+    "Database restore": {
+        "fr": "Restauration de la base",
+        "en": "Database restore",
+    },
+    "Restore « {db} » on {name}?": {
+        "fr": "Restaurer « {db} » sur {name} ?",
+        "en": "Restore « {db} » on {name}?",
+    },
+    "Overwrite {db}": {
+        "fr": "Écraser {db}",
+        "en": "Overwrite {db}",
+    },
+    "The « {db} » database, if it exists, is DROPPED": {
+        "fr": "La base « {db} », si elle existe, est SUPPRIMÉE",
+        "en": "The « {db} » database, if it exists, is DROPPED",
+    },
+    "then reloaded from the odoo<version>_{image} image of the": {
+        "fr": "puis rechargée depuis l'image odoo<version>_{image} du",
+        "en": "then reloaded from the odoo<version>_{image} image of the",
+    },
+    "image_db directory. Nothing can be recovered.": {
+        "fr": "répertoire image_db. Rien n'est récupérable.",
+        "en": "image_db directory. Nothing can be recovered.",
+    },
+    "The erplibre service is stopped during the operation,": {
+        "fr": "Le service erplibre est arrêté le temps de l'opération,",
+        "en": "The erplibre service is stopped during the operation,",
+    },
+    "then started again if it was running.": {
+        "fr": "puis relancé s'il tournait.",
+        "en": "then started again if it was running.",
+    },
+    "The restored database's crons stay disabled.": {
+        "fr": "Les crons de la base restaurée restent désactivés.",
+        "en": "The restored database's crons stay disabled.",
+    },
+    "Deletion": {
+        "fr": "Suppression",
+        "en": "Deletion",
+    },
+    "Delete {name}?": {
+        "fr": "Supprimer {name} ?",
+        "en": "Delete {name}?",
+    },
+    "Delete for good": {
+        "fr": "Supprimer définitivement",
+        "en": "Delete for good",
+    },
+    "The VM is stopped, its definition removed,": {
+        "fr": "La VM est arrêtée, sa définition retirée,",
+        "en": "The VM is stopped, its definition removed,",
+    },
+    "and its qcow2 disk ERASED. Nothing can be recovered.": {
+        "fr": "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+        "en": "and its qcow2 disk ERASED. Nothing can be recovered.",
+    },
+    "On the Proxmox host {host}, VM {vmid} is stopped": {
+        "fr": "Sur l'hôte Proxmox {host}, la VM {vmid} est arrêtée",
+        "en": "On the Proxmox host {host}, VM {vmid} is stopped",
+    },
+    "then DESTROYED with its disks. Nothing can be recovered.": {
+        "fr": "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
+        "en": "then DESTROYED with its disks. Nothing can be recovered.",
+    },
+    "No file is touched here: the disk lives in the": {
+        "fr": "Aucun fichier n'est touché ici : le disque vit dans le",
+        "en": "No file is touched here: the disk lives in the",
+    },
+    "host's storage.": {
+        "fr": "stockage de l'hôte.",
+        "en": "host's storage.",
     },
     # Rafraîchissement forcé du suivi d'installation (touche F5).
     "State and probes refreshed.": {

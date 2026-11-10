@@ -24,6 +24,7 @@ _launch_one est remplacé : aucun processus n'est détaché, aucune VM créée.
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -218,7 +219,7 @@ class TestLaDemandeDeRecreationTraverseLeDeploiement(unittest.TestCase):
             ("_qemu_deploy_parts_for", lambda vm, spec, **k: ["true"]),
             (
                 "_qemu_deploy_jobs_cli",
-                lambda jobs, w: [(n, 0, "", 1.0) for _i, n, _p in jobs],
+                self.travaux,
             ),
             (
                 "_qemu_resolve_ips",
@@ -231,6 +232,17 @@ class TestLaDemandeDeRecreationTraverseLeDeploiement(unittest.TestCase):
             setattr(todo, nom, valeur)
         todo._qemu_deploie_spec_corps(spec, False, "/session.json")
         return recu
+
+    def travaux(self, jobs, workers, stdin=None):
+        """Les travaux réussis, et l'entrée qu'ils ont reçue."""
+        self.entree = stdin
+        return [(n, 0, "", 1.0) for _i, n, _p in jobs]
+
+    def test_les_travaux_ne_lisent_pas_le_terminal_du_suivi(self):
+        import subprocess
+
+        self.corps(dict(SPEC))
+        self.assertEqual(subprocess.DEVNULL, self.entree)
 
     def test_recreate_devient_remplacement(self):
         recu = self.corps(dict(SPEC, recreate=True))
@@ -255,6 +267,56 @@ class FauxTodo:
         return self.res
 
 
+class FauxTodoPve(FauxTodo):
+    """Le même, avec la voie Proxmox : chaque appel note par où il passe."""
+
+    def _qemu_deploie_spec(self, spec, session=None):
+        self.appels.append(("qemu", spec, session))
+        return self.res
+
+    def _pve_deploie_spec(self, spec, session=None):
+        self.appels.append(("pve", spec, session))
+        return self.res
+
+    def _qemu_import_module(self):
+        return None
+
+    def _pve_vm_commands(self, mod, vm, spec):
+        # Une version que le catalogue ne connaît plus ne se bâtit pas.
+        if vm.get("version") == "retiree":
+            raise KeyError(vm["version"])
+        return ["true"]
+
+
+PVE = {
+    "target": "erplibre@hote-essai",
+    "sudo": "sudo ",
+    "jump": "",
+    "vmid": 101,
+    "addr": "10.10.10.151",
+}
+SPEC_PVE = {
+    "host": {"target": "erplibre@hote-essai", "sudo": "sudo "},
+    "storage": "local-lvm",
+    "bridge": "vmbr1",
+    "gpu3d": False,
+    "vms": [
+        {
+            "name": "vm-a",
+            "distro": "debian",
+            "version": "13",
+            "arch": "amd64",
+            "ram": 4096,
+            "vcpus": 2,
+            "disk": "40G",
+            "vmid": 101,
+            "ipconfig": "ip=10.10.10.151/24,gw=10.10.10.1",
+        }
+    ],
+    "existing": [],
+}
+
+
 class TestLeSuivi(AsyncCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -266,6 +328,9 @@ class TestLeSuivi(AsyncCase):
             ("virsh_domstates", lambda: {}),
             ("_port_open", lambda ip, port=8069, timeout=0.5: False),
             ("record_duration", lambda *a, **k: None),
+            # Une VM Proxmox ne doit joindre aucun hôte réel.
+            ("read_pvestats_detail", lambda vms: ({}, True)),
+            ("read_pvestats", lambda vms: {}),
         ):
             patch = mock.patch.object(mon, cible, valeur)
             patch.start()
@@ -286,7 +351,7 @@ class TestLeSuivi(AsyncCase):
         }
         if spec:
             fichier = self.base / "vm-a.spec.json"
-            fichier.write_text(json.dumps(SPEC))
+            fichier.write_text(json.dumps(SPEC if spec is True else spec))
             entree["spec_file"] = str(fichier)
         if pve:
             entree["pve"] = pve
@@ -331,6 +396,57 @@ class TestLeSuivi(AsyncCase):
             await pilot.pause()
         self.assertNotEqual("ConfirmScreen", type(app.screen).__name__)
         return notify.call_args[0][0]
+
+    async def supprime(self, pve=None):
+        """Le geste de suppression des actions VM, confirmé : ce qui est
+        affiché, et ce que lancer_au_terminal reçoit."""
+        import contextlib
+        import io
+
+        from script.todo import todo_journal
+
+        app = self.app(pve=pve)
+        lances, sortie = [], io.StringIO()
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            with (
+                mock.patch.object(app, "suspend", mock.MagicMock()),
+                mock.patch.object(
+                    todo_journal,
+                    "lancer_au_terminal",
+                    lambda argv, **k: lances.append(argv)
+                    or mock.Mock(returncode=0),
+                ),
+                mock.patch.object(
+                    todo_journal,
+                    "session_en_cours",
+                    lambda: {"nom": "session.log"},
+                ),
+                mock.patch("builtins.input", lambda *a: ""),
+                contextlib.redirect_stdout(sortie),
+            ):
+                app._ask_delete(app._vm_by_name("vm-a"))
+                await pilot.pause()
+                await pilot.click("#c_yes")
+                await pilot.pause()
+        return lances, sortie.getvalue()
+
+    async def test_a_proxmox_delete_shows_a_summary_and_reaches_the_log(self):
+        lances, sortie = await self.supprime(pve=PVE)
+        self.assertEqual(
+            [["bash", "-c", mon.delete_vm_cmd_pve(PVE, name="vm-a")]], lances
+        )
+        self.assertIn("→ ssh erplibre@hote-essai (sudo)", sortie)
+        self.assertIn("qm config 101 = vm-a", sortie)
+        self.assertIn("session.log", sortie)
+        # La commande brute, à deux niveaux de guillemets, n'est plus montrée.
+        self.assertNotIn("'\"'\"'", sortie)
+
+    async def test_a_local_delete_still_shows_its_command(self):
+        lances, sortie = await self.supprime()
+        self.assertEqual(1, len(lances))
+        self.assertEqual(["bash", "-c"], lances[0][:2])
+        self.assertIn(f"→ {lances[0][2]}", sortie)
 
     async def test_n_efface_recree_et_remet_la_ligne_a_zero(self):
         from textual.widgets import DataTable
@@ -510,14 +626,116 @@ class TestLeSuivi(AsyncCase):
                 msg,
             )
 
-    async def test_une_vm_proxmox_est_refusee(self):
-        app = self.app(todo=FauxTodo(), pve={"vmid": 101})
+    def parametres_differents(self):
+        return mon.t(
+            "The kept parameters do not match this VM (host or VMID): deploy"
+            " it again from the menu."
+        )
+
+    async def test_une_vm_proxmox_avec_une_spec_qemu_est_refusee(self):
+        app = self.app(todo=FauxTodoPve(), pve=dict(PVE))
         async with app.run_test(size=(150, 30)) as pilot:
-            msg = await self.refus(app, pilot)
             self.assertEqual(
-                mon.t("A Proxmox VM cannot be recreated from the monitor."),
-                msg,
+                self.parametres_differents(), await self.refus(app, pilot)
             )
+
+    async def test_un_autre_vmid_ou_un_autre_hote_est_refuse(self):
+        for ecart in ({"vmid": 102}, {"target": "erplibre@autre"}):
+            with self.subTest(ecart=ecart):
+                app = self.app(
+                    todo=FauxTodoPve(),
+                    pve=dict(PVE, **ecart),
+                    spec=SPEC_PVE,
+                )
+                async with app.run_test(size=(150, 30)) as pilot:
+                    self.assertEqual(
+                        self.parametres_differents(),
+                        await self.refus(app, pilot),
+                    )
+
+    async def test_une_vm_locale_avec_une_spec_proxmox_est_refusee(self):
+        app = self.app(todo=FauxTodoPve(), spec=SPEC_PVE)
+        async with app.run_test(size=(150, 30)) as pilot:
+            self.assertEqual(
+                self.parametres_differents(), await self.refus(app, pilot)
+            )
+
+    async def test_sans_voie_proxmox_la_recreation_est_refusee(self):
+        app = self.app(todo=FauxTodo(), pve=dict(PVE), spec=SPEC_PVE)
+        async with app.run_test(size=(150, 30)) as pilot:
+            self.assertEqual(
+                mon.t("Recreating a VM is not available from this monitor."),
+                await self.refus(app, pilot),
+            )
+
+    async def test_une_version_retiree_est_refusee_avant_toute_destruction(
+        self,
+    ):
+        spec = json.loads(json.dumps(SPEC_PVE))
+        spec["vms"][0]["version"] = "retiree"
+        app = self.app(todo=FauxTodoPve(), pve=dict(PVE), spec=spec)
+        async with app.run_test(size=(150, 30)) as pilot:
+            self.assertEqual(
+                mon.t(
+                    "The kept parameters no longer build this VM (the"
+                    " catalog changed): deploy it again from the menu."
+                ),
+                await self.refus(app, pilot),
+            )
+
+    async def test_n_recree_une_vm_proxmox_par_sa_voie(self):
+        """La VM Proxmox passe par _pve_deploie_spec, jamais par la voie
+        QEMU ; la ligne reprend avec la nouvelle entrée, adresse comprise."""
+        neuve = {
+            "name": "vm-a",
+            "ip": "hote-essai+vm-a",
+            "log": str(self.base / "vm-a.log"),
+            "pve": dict(PVE, addr="10.10.10.152"),
+            "started": time.time(),
+        }
+        todo = FauxTodoPve({"added": [neuve], "failed": [], "no_ip": []})
+        app = self.app(todo=todo, pve=dict(PVE), spec=SPEC_PVE)
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            app._pve_absences["vm-a"] = 2
+            with mock.patch.object(
+                app, "_delete_for_recreate", return_value=True
+            ) as efface:
+                await pilot.press("n")
+                await pilot.pause()
+                self.assertEqual("ConfirmScreen", type(app.screen).__name__)
+                await pilot.click("#c_yes")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+            self.assertEqual(
+                SPEC_PVE["storage"], efface.call_args[0][1]["storage"]
+            )
+            voie, spec, session = todo.appels[0]
+            self.assertEqual("pve", voie)
+            self.assertTrue(spec["recreate"])
+            self.assertEqual(self.chemin, session)
+            self.assertNotIn("vm-a", app._final)
+            self.assertNotIn("vm-a", app._pve_absences)
+            self.assertEqual(0.0, mon._PVE_CACHE["at"])
+            self.assertEqual(
+                "10.10.10.152", app._vm_by_name("vm-a")["pve"]["addr"]
+            )
+
+    async def test_une_recreation_proxmox_sans_installation_ne_lit_aucun_uuid(
+        self,
+    ):
+        app = self.app(todo=FauxTodoPve(), pve=dict(PVE), spec=SPEC_PVE)
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            spec = dict(SPEC_PVE, recreate=True)
+            with mock.patch.object(
+                mon, "local_uuid", side_effect=AssertionError("uuid lu")
+            ), mock.patch.object(mon, "release_recreate") as libere:
+                res = app._settle_recreation(
+                    spec, {"added": [], "failed": ["vm-a"], "no_ip": []}
+                )
+            libere.assert_called_once_with(self.chemin, "vm-a")
+            self.assertNotIn("recreated_uuid", res)
 
     async def test_sans_todo_la_recreation_est_refusee(self):
         app = self.app(todo=None)
@@ -640,6 +858,271 @@ exec "$@"
         )
         self.assertEqual(1, res.returncode)
         self.assertEqual([], self.rm(appels))
+
+
+FAUX_QM = """#!/bin/sh
+echo "qm $*" >> "$JOURNAL"
+case "$1" in
+  list) [ "$QM_LIST" = echec ] && exit 2
+        echo "VMID NAME STATUS"
+        [ -n "$PRESENT" ] && echo "$PRESENT $NOM running"
+        exit 0 ;;
+  config) echo "name: $NOM" ;;
+  destroy) exit ${RC_DESTROY:-0} ;;
+esac
+exit 0
+"""
+
+
+class TestLaCommandeDEffacementPve(unittest.TestCase):
+    """recreate_delete_suite_pve, jouée sous bash avec de faux qm, pvesm, ip
+    et ls : rien n'est détruit tant que tout n'a pas été vérifié."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name)
+        self.bin = self.base / "bin"
+        self.bin.mkdir()
+        self.journal = self.base / "journal"
+        for nom, texte in (
+            ("qm", FAUX_QM),
+            ("pvesm", '#!/bin/sh\n[ "$STOCKAGE" = ok ]\n'),
+            ("ip", '#!/bin/sh\n[ "$PONT" = ok ]\n'),
+            ("ls", '#!/bin/sh\n[ "$RENDU" = ok ]\n'),
+        ):
+            (self.bin / nom).write_text(texte)
+            (self.bin / nom).chmod(0o755)
+
+    def lance(self, gpu3d=False, **env_vm):
+        # Le PATH ci-dessous perd la doublure du lanceur : ce faux sudo
+        # refuse. La suite tourne déjà sous le sudo de pve_host_cmd, elle
+        # n'en appelle aucun.
+        (self.bin / "sudo").write_text("#!/bin/sh\nexit 1\n")
+        (self.bin / "sudo").chmod(0o755)
+        self.journal.write_text("")
+        env = dict(
+            os.environ,
+            PATH=f"{self.bin}:/usr/bin:/bin",
+            JOURNAL=str(self.journal),
+            NOM="vm-a",
+            PRESENT="101",
+            STOCKAGE="ok",
+            PONT="ok",
+            RENDU="ok",
+        )
+        env.update(env_vm)
+        cmd = mon.recreate_delete_suite_pve(
+            101, "vm-a", "local-lvm", "vmbr1", gpu3d
+        )
+        fin = subprocess.run(
+            ["bash", "-c", cmd], env=env, capture_output=True, text=True
+        )
+        return fin.returncode, self.journal.read_text(), fin.stdout
+
+    def test_the_same_vm_is_stopped_then_destroyed(self):
+        rc, journal, _ = self.lance()
+        self.assertEqual(0, rc)
+        self.assertIn("qm stop 101 --skiplock 1", journal)
+        self.assertIn(
+            "qm destroy 101 --purge 1 --destroy-unreferenced-disks 1", journal
+        )
+
+    def test_a_vmid_carrying_another_name_is_refused(self):
+        rc, journal, sortie = self.lance(NOM="autre")
+        self.assertEqual(1, rc)
+        self.assertNotIn("destroy", journal)
+        self.assertIn("REFUS", sortie)
+
+    def test_an_absent_vmid_destroys_nothing_and_passes(self):
+        rc, journal, _ = self.lance(PRESENT="")
+        self.assertEqual(0, rc)
+        self.assertNotIn("destroy", journal)
+
+    def test_an_unreadable_qm_refuses(self):
+        rc, journal, sortie = self.lance(QM_LIST="echec")
+        self.assertEqual(1, rc)
+        self.assertNotIn("destroy", journal)
+        self.assertIn("REFUS", sortie)
+
+    def test_a_failed_destroy_fails(self):
+        self.assertEqual(1, self.lance(RC_DESTROY="1")[0])
+
+    def test_what_the_recreation_needs_is_checked_first(self):
+        for manque in ({"STOCKAGE": ""}, {"PONT": ""}, {"RENDU": ""}):
+            with self.subTest(manque=manque):
+                rc, journal, sortie = self.lance(gpu3d=True, **manque)
+                self.assertEqual(1, rc)
+                # Refusé avant la moindre question à qm.
+                self.assertEqual("", journal)
+                self.assertIn("REFUS", sortie)
+
+
+class TestLesRefusSuiventLaLangue(unittest.TestCase):
+    """Les refus des commandes d'effacement s'affichent dans la langue
+    choisie, depuis l'hôte Proxmox comme en local, et une traduction ne peut
+    rien développer dans le shell qui les affiche."""
+
+    def langue(self, code):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = code
+
+    def pve(self, **env_vm):
+        coin = tempfile.TemporaryDirectory()
+        self.addCleanup(coin.cleanup)
+        for nom, texte in (
+            ("qm", FAUX_QM),
+            ("pvesm", '#!/bin/sh\n[ "$STOCKAGE" = ok ]\n'),
+            ("ip", "#!/bin/sh\nexit 0\n"),
+            ("sudo", "#!/bin/sh\nexit 1\n"),
+        ):
+            Path(coin.name, nom).write_text(texte)
+            Path(coin.name, nom).chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=f"{coin.name}:/usr/bin:/bin",
+            JOURNAL=str(Path(coin.name, "journal")),
+            NOM="vm-a",
+            PRESENT="101",
+            STOCKAGE="ok",
+        )
+        env.update(env_vm)
+        cmd = mon.recreate_delete_suite_pve(101, "vm-a", "local-lvm", "vmbr1")
+        return subprocess.run(
+            ["bash", "-c", cmd], env=env, capture_output=True, text=True
+        )
+
+    def local(self, uuid="uuid-ancien", **env_faux):
+        coin = tempfile.TemporaryDirectory()
+        self.addCleanup(coin.cleanup)
+        for nom, corps in (
+            ("virsh", TestLaCommandeDEffacement.VIRSH),
+            ("sudo", TestLaCommandeDEffacement.SUDO),
+        ):
+            Path(coin.name, nom).write_text(corps)
+            Path(coin.name, nom).chmod(0o755)
+        env = {
+            "PATH": f"{coin.name}:/usr/bin:/bin",
+            "FAUX_JOURNAL": str(Path(coin.name, "journal")),
+            "FAUX_DOMAINES": "vm-a",
+            "FAUX_UUID": "",
+        }
+        env.update({k: str(v) for k, v in env_faux.items()})
+        with mock.patch.object(mon, "sudo_prefix", lambda: ""):
+            cmd = mon.recreate_delete_cmd("vm-a", uuid)
+        return subprocess.run(
+            ["bash", "-c", cmd], env=env, capture_output=True, text=True
+        )
+
+    def test_a_proxmox_refusal_follows_the_language(self):
+        for code, attendu in (
+            ("fr", "le stockage local-lvm est introuvable. Rien n'a été"),
+            ("en", "storage local-lvm not found. Nothing was deleted."),
+        ):
+            with self.subTest(code=code):
+                self.langue(code)
+                res = self.pve(STOCKAGE="")
+                self.assertEqual(1, res.returncode)
+                self.assertIn(attendu, res.stdout)
+
+    def test_the_identity_guard_names_what_the_vmid_carries(self):
+        for code, attendu in (
+            (
+                "fr",
+                "porte maintenant autre, et non vm-a. Rien n'a été effacé.",
+            ),
+            (
+                "en",
+                "VMID 101 now carries autre, not vm-a. Nothing was deleted.",
+            ),
+        ):
+            with self.subTest(code=code):
+                self.langue(code)
+                res = self.pve(NOM="autre")
+                self.assertEqual(1, res.returncode)
+                self.assertIn(attendu, res.stdout)
+
+    def test_a_local_refusal_follows_the_language(self):
+        self.langue("en")
+        autre = self.local(FAUX_UUID="uuid-autre")
+        self.assertIn(
+            "vm-a is no longer the same domain (uuid-autre).", autre.stdout
+        )
+        inconnu = self.local(uuid="")
+        self.assertIn("does not know the UUID of vm-a.", inconnu.stdout)
+        illisible = self.local(FAUX_LIST_RC=1)
+        self.assertIn(
+            "virsh unreadable. Nothing was deleted.", illisible.stdout
+        )
+
+    def test_a_translation_cannot_expand_anything(self):
+        """Une traduction qui porterait $( ), ` ou " ne s'exécute pas et ne
+        casse pas la commande ; « $vu » voulu, lui, se développe toujours."""
+        with tempfile.TemporaryDirectory() as coin:
+            temoin = Path(coin, "touche")
+            # La clé suit la charge hostile : chaque message garde ainsi
+            # exactement les champs qu'il attend.
+            hostile = f'X $(touch {temoin}) `touch {temoin}` " $HOME '
+            with mock.patch.object(mon, "t", lambda k: hostile + k):
+                garde = self.pve(NOM="autre")
+                manque = self.pve(STOCKAGE="")
+                local = self.local(FAUX_UUID="uuid-autre")
+            self.assertFalse(temoin.exists())
+            self.assertIn("$HOME", garde.stdout)
+            self.assertIn("carries autre,", garde.stdout)
+            self.assertIn("$(touch", manque.stdout)
+            self.assertIn("uuid-autre", local.stdout)
+            for res in (garde, manque, local):
+                self.assertEqual(1, res.returncode, res.stderr)
+
+
+class TestLeResumeAvantLEffacementPve(unittest.TestCase):
+    """La commande d'effacement Proxmox traverse deux niveaux de guillemets :
+    le terminal en montre un résumé, et dit où lire la commande exacte."""
+
+    INFO = {"target": "pve1", "sudo": "sudo ", "jump": "", "vmid": 101}
+    SPEC = {"storage": "local", "bridge": "vmbr0", "gpu3d": True}
+
+    def test_it_names_the_host_the_checks_and_the_destruction(self):
+        lignes = mon.recreate_delete_lines_pve(
+            self.INFO, "vm-a", self.SPEC, "20261110.log"
+        )
+        texte = "\n".join(lignes)
+        self.assertIn("→ ssh pve1 (sudo)", texte)
+        for verif in (
+            "pvesm local",
+            "ip link vmbr0",
+            "/dev/dri",
+            "qm config 101 = vm-a",
+        ):
+            self.assertIn(verif, texte)
+        self.assertIn("qm destroy 101 --purge 1", texte)
+        self.assertIn("20261110.log", texte)
+        # Aucun guillemet imbriqué : c'est ce qui rendait la ligne illisible.
+        self.assertNotIn("'\"'\"'", texte)
+
+    def test_without_a_session_log_the_host_suite_is_shown(self):
+        lignes = mon.recreate_delete_lines_pve(self.INFO, "vm-a", self.SPEC)
+        self.assertIn(
+            mon.recreate_delete_suite_pve(101, "vm-a", "local", "vmbr0", True),
+            lignes[-1],
+        )
+        # La suite jouée SUR l'hôte, sans l'enveloppe ssh et « sudo sh -c ».
+        self.assertNotIn("sh -c", "\n".join(lignes))
+
+    def test_a_plain_delete_checks_only_the_identity(self):
+        lignes = mon.delete_lines_pve(self.INFO, "vm-a", "s.log")
+        self.assertIn("qm config 101 = vm-a", lignes[1])
+        self.assertNotIn("pvesm", "\n".join(lignes))
+        self.assertIn("s.log", lignes[-1])
+        # Sans nom, aucun garde : la ligne des vérifications disparaît.
+        sans_nom = mon.delete_lines_pve(self.INFO, "")
+        self.assertNotIn("qm config", "\n".join(sans_nom))
+        self.assertEqual(mon.delete_suite_pve(101, ""), sans_nom[-1].strip())
 
 
 class TestLAncienLanceurEstArrete(unittest.TestCase):
@@ -804,9 +1287,11 @@ class TestLEffacementAvantRecreation(AsyncCase):
         )
         self.chemin = str(chemin)
 
-    async def efface(self, rc_sudo=0, rc_bash=0):
+    async def efface(self, rc_sudo=0, rc_bash=0, vm=None, spec=None):
         class Todo:
             execute = None
+
+        menages = []
 
         app = mon.run_monitor(self.chemin, run_app=False, todo=Todo())
         commandes = self.commandes
@@ -828,9 +1313,11 @@ class TestLEffacementAvantRecreation(AsyncCase):
             ), mock.patch(
                 "builtins.input", lambda *a: ""
             ), mock.patch(
-                "script.todo.qemu_cache_menu.bypass_menage", lambda e: 0
+                "script.todo.qemu_cache_menu.bypass_menage",
+                lambda e: menages.append(e) or 0,
             ):
-                ok = app._delete_for_recreate(self.vm)
+                ok = app._delete_for_recreate(vm or self.vm, spec)
+        self.menages = menages
         return ok, [
             c for c in commandes if c[0] == "bash" or c[:2] == ["sudo", "-v"]
         ]
@@ -840,6 +1327,32 @@ class TestLEffacementAvantRecreation(AsyncCase):
         self.assertTrue(ok)
         self.assertEqual(["sudo", "-v"], cmds[0])
         self.assertIn("uuid-ancien", cmds[1][2])
+
+    async def test_une_vm_proxmox_est_effacee_sur_son_hote(self):
+        vm = dict(self.vm, pve=dict(PVE))
+        with mock.patch.object(
+            mon, "read_pvestats_detail", lambda vms: ({}, True)
+        ), mock.patch.object(mon, "read_pvestats", lambda vms: {}):
+            ok, cmds = await self.efface(vm=vm, spec=SPEC_PVE)
+        self.assertTrue(ok)
+        commande = cmds[1][2]
+        self.assertIn("erplibre@hote-essai", commande)
+        self.assertIn("qm destroy 101", commande)
+        self.assertIn("vmbr1", commande)
+        self.assertNotIn("virsh", commande)
+        # Rien n'a bougé ici : pas de ménage local.
+        self.assertEqual([], self.menages)
+
+    async def test_sans_sudo_local_une_vm_proxmox_s_efface_quand_meme(self):
+        """L'effacement se fait sur l'hôte : le sudo local n'y est pour rien,
+        et son refus ne doit pas bloquer la recréation."""
+        vm = dict(self.vm, pve=dict(PVE))
+        with mock.patch.object(
+            mon, "read_pvestats_detail", lambda vms: ({}, True)
+        ), mock.patch.object(mon, "read_pvestats", lambda vms: {}):
+            ok, cmds = await self.efface(rc_sudo=1, vm=vm, spec=SPEC_PVE)
+        self.assertTrue(ok)
+        self.assertIn("qm destroy 101", cmds[1][2])
 
     async def test_un_ticket_sudo_refuse_n_efface_rien(self):
         ok, cmds = await self.efface(rc_sudo=1)

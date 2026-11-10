@@ -143,6 +143,77 @@ class TestGetLang(unittest.TestCase):
                 os.unlink(f.name)
 
 
+def _references_set_lang(arbre):
+    """Chaque nœud qui désigne set_lang : un appel, mais aussi la fonction
+    passée en argument — addCleanup(set_lang, …), side_effect=set_lang — et
+    un alias d'import."""
+    noms = {"set_lang"} | {
+        alias.asname
+        for noeud in ast.walk(arbre)
+        if isinstance(noeud, ast.ImportFrom)
+        for alias in noeud.names
+        if alias.name == "set_lang" and alias.asname
+    }
+    for noeud in ast.walk(arbre):
+        if (isinstance(noeud, ast.Name) and noeud.id in noms) or (
+            isinstance(noeud, ast.Attribute) and noeud.attr == "set_lang"
+        ):
+            yield noeud
+
+
+def _detourne(expr):
+    """patch.object(…, "ENV_VAR_FILE", …), patch("….ENV_VAR_FILE", …), ou
+    la même cible passée par mot-clé."""
+    if not isinstance(expr, ast.Call):
+        return False
+    valeurs = list(expr.args) + [kw.value for kw in expr.keywords]
+    return any(kw.arg == "ENV_VAR_FILE" for kw in expr.keywords) or any(
+        isinstance(a, ast.Constant)
+        and isinstance(a.value, str)
+        and a.value.split(".")[-1] == "ENV_VAR_FILE"
+        for a in valeurs
+    )
+
+
+def _sous_detournement(noeud, parents):
+    """Le nœud est-il sous un « with » ou un décorateur qui détourne
+    ENV_VAR_FILE ?"""
+    while noeud in parents:
+        noeud = parents[noeud]
+        if isinstance(noeud, (ast.With, ast.AsyncWith)):
+            if any(_detourne(item.context_expr) for item in noeud.items):
+                return True
+        elif isinstance(
+            noeud, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            if any(_detourne(d) for d in noeud.decorator_list):
+                return True
+    return False
+
+
+class TestLesChampsDesTraductions(unittest.TestCase):
+    def test_each_translation_keeps_the_fields_of_its_key(self):
+        """Une traduction qui perd, ajoute ou renomme un champ {…} fait
+        lever .format() là où le texte sert : dans une commande d'effacement,
+        le suivi tomberait au lieu d'afficher son refus."""
+        import string
+
+        def champs(texte):
+            return {
+                f
+                for _l, f, _s, _c in string.Formatter().parse(texte)
+                if f is not None
+            }
+
+        ecarts = [
+            (cle, langue)
+            for cle, entree in todo_i18n.TRANSLATIONS.items()
+            for langue in ("fr", "en")
+            if champs(entree[langue]) != champs(cle)
+        ]
+        self.assertEqual([], ecarts)
+
+
 class TestSetLang(unittest.TestCase):
     """Test set_lang() function."""
 
@@ -200,6 +271,32 @@ class TestSetLang(unittest.TestCase):
         ):
             todo_i18n.set_lang("en")
         self.assertEqual(todo_i18n._current_lang, "en")
+
+    def test_no_test_writes_the_repository_env_var_sh(self):
+        """Un set_lang() hors d'un détournement de ENV_VAR_FILE réécrit le
+        ./env_var.sh du dépôt : suivi par git, et lu par les autres tests de
+        la suite parallèle, qui changent alors de langue en cours de route.
+        Un test qui veut une langue fixe `_current_lang`, sans persister.
+
+        Seules les références directes à set_lang sont lues : un test qui
+        mène TODO._change_language() ou _ask_language() y arrive sans le
+        nommer."""
+        racine = os.path.dirname(os.path.abspath(__file__))
+        fautifs = []
+        for nom in sorted(os.listdir(racine)):
+            if not (nom.startswith("test_") and nom.endswith(".py")):
+                continue
+            with open(os.path.join(racine, nom), encoding="utf-8") as fh:
+                arbre = ast.parse(fh.read())
+            parents = {
+                enfant: noeud
+                for noeud in ast.walk(arbre)
+                for enfant in ast.iter_child_nodes(noeud)
+            }
+            for noeud in _references_set_lang(arbre):
+                if not _sous_detournement(noeud, parents):
+                    fautifs.append(f"{nom}:{noeud.lineno}")
+        self.assertEqual([], fautifs)
 
 
 class TestLangIsConfigured(unittest.TestCase):

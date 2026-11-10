@@ -907,7 +907,13 @@ def run_deploy_form(ctx, run_app: bool = True):
 
             Aucun risque de boucle : on_select_changed ignore une valeur déjà
             égale à celle du modèle, et le modèle vient précisément d'être
-            recalculé."""
+            recalculé.
+
+            Une liste à peine montée peut avoir sa partie « valeur courante »
+            sans encore son libellé : y poser une valeur lève alors NoMatches
+            dans Textual. Une telle liste est sautée, et le rafraîchissement
+            reprend après le suivant."""
+            en_attente = False
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
                 for field, presets in (
@@ -918,6 +924,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     try:
                         sel = self.query_one(f"#v{i}_{field}", Select)
                     except Exception:
+                        continue
+                    if not self._select_ready(sel):
+                        en_attente = True
                         continue
                     # Une liste posée sur « libre… » ne doit PAS être remise
                     # sur une valeur : l'utilisateur vient de la choisir, et
@@ -936,10 +945,27 @@ def run_deploy_form(ctx, run_app: bool = True):
                     (f"#v{i}_prof", self._row_profile_index(i)),
                 ):
                     try:
-                        self.query_one(wid, Select).value = value
+                        sel = self.query_one(wid, Select)
+                    except Exception:
+                        continue
+                    if not self._select_ready(sel):
+                        en_attente = True
+                        continue
+                    try:
+                        sel.value = value
                     except Exception:
                         pass
             self._sync_free_inputs()
+            if en_attente:
+                self.call_after_refresh(self._refresh_row_widgets)
+
+        @staticmethod
+        def _select_ready(sel) -> bool:
+            """La liste accepte-t-elle une valeur ? Pas encore construite, oui
+            — Textual la reprend au montage ; construite, oui ; entre les
+            deux, sa partie « valeur courante » sans son libellé, non."""
+            courant = sel.query("SelectCurrent")
+            return not courant or bool(courant.first().query("#label"))
 
         def _render_plan(self):
             # Le JEU de VM a-t-il changé ? Si oui on remonte les widgets, sinon
@@ -1113,6 +1139,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             wid = event.input.id or ""
             row = re.match(r"c(\d+)_(vcpus|ram|disk)$", wid)
             if row and not self._is_current(event.input):
+                return
+            # Un champ de la génération courante peut avoir QUITTÉ le DOM : à
+            # la fermeture, l'écran retire ses widgets pendant que les Changed
+            # de leur montage attendent encore. Cherché par son id, il n'est
+            # plus trouvé ; sa valeur ne compte plus.
+            if row and not event.input.is_attached:
                 return
             if row:
                 index, field = int(row.group(1)), row.group(2)
