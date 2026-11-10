@@ -46,6 +46,8 @@ fi
 # La branche doit exister sur le dépôt distant passé à -u.
 MANIFEST_REV=$(manifest_revision) || exit 1
 
+. ./script/manifest/repo_color.sh
+repo_color_default
 # Update git-repo. Sans -m, repo init prendrait default.xml, absent du dépôt.
 .venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b "${MANIFEST_REV}" -m "${EL_MANIFEST_DEV}"
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE} -j "$JOBS"

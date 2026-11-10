@@ -80,6 +80,8 @@ fi
 . ./script/manifest/manifest_revision.sh
 MANIFEST_REV=$(manifest_revision) || exit 1
 
+. ./script/manifest/repo_color.sh
+repo_color_default
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} "$@"
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 

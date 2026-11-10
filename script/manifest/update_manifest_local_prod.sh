@@ -56,6 +56,8 @@ fi
 # Generate local manifest
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}"
 
+. ./script/manifest/repo_color.sh
+repo_color_default
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET}
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 
