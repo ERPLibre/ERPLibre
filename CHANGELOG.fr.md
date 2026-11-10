@@ -376,6 +376,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - La couverture des modules Odoo (`make test_full_fast_coverage`) passe par `conf/coverage.odoo.cfg` et le coverage du venv Odoo, et apparaît dans l'écran de couverture comme un jeu à part
 - Un Odoo 20 installé localement n'écoute que sur 127.0.0.1, le défaut d'Odoo lui-même dès la 20, là où 12 à 19 écoutent sur toutes les interfaces : poser `http_interface` dans `config.conf` pour l'atteindre d'une autre machine. L'image Docker pose `http_interface = 0.0.0.0` pour toutes les versions
 - Les profils d'installation « ERPLibre + Odoo N » d'une VM QEMU viennent de `conf/supported_version_erplibre.json`, la version par défaut en tête : chaque version prise en charge est proposée
+- Python 2.7 et 3.7 (Odoo 8 à 13) ne passent plus par mise. mise n'a aucun CPython précompilé pour ces versions : l'installation ne propose plus de le poser pour elles, ne l'appelle plus et ne conseille plus « mise install ». Lancée à la main, cette commande compilait CPython 2.7 sans le drapeau -fpermissive qu'ajoute pyenv. L'erreur du Poetry auxiliaire de Python 2 donne maintenant le chemin absolu de mise, ou « make install_mise » quand mise est absent
 
 ## Corrigé
 

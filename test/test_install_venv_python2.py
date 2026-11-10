@@ -19,6 +19,7 @@ bouchons déjà en place, que le script garde : il n'écrit que l'enveloppe.
 """
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -139,6 +140,72 @@ class TestEnveloppePoetry(unittest.TestCase):
     def test_un_venv_existant_n_est_pas_recree(self):
         """Le faux virtualenv échoue : l'atteindre ferait échouer setUp."""
         self.assertTrue((self.racine / VENV / "bin/poetry").is_file())
+
+
+class TestSansPythonPourPoetry(unittest.TestCase):
+    """Le conseil donné quand aucun Python 3 ne peut porter Poetry."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.racine = Path(self._tmp.name).resolve()
+        lib = self.racine / "script" / "install" / "lib_python_provider.sh"
+        lib.parent.mkdir(parents=True)
+        lib.write_text(
+            (RACINE / "script/install/lib_python_provider.sh").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.home = self.racine / "home"
+        self.home.mkdir()
+        # Un PATH qui ne porte que bash : aucun mise du système n'y répond.
+        self.bin = self.racine / "bin"
+        self.bin.mkdir()
+        os.symlink(shutil.which("bash"), self.bin / "bash")
+
+    def lancer(self, **env):
+        return subprocess.run(
+            [
+                str(self.bin / "bash"),
+                str(SCRIPT),
+                VENV,
+                "/bin/false",
+                "1.1.15",
+            ],
+            cwd=self.racine,
+            env={
+                "PATH": str(self.bin),
+                "HOME": str(self.home),
+                "PYENV_ROOT": str(self.racine / "pyenv"),
+                "EL_PYTHON_PROVIDER": "mise",
+                **env,
+            },
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_un_mise_hors_du_path_est_nomme_par_son_chemin(self):
+        mise = self.home / ".local" / "bin" / "mise"
+        mise.parent.mkdir(parents=True)
+        mise.write_text("#!/bin/bash\nexit 1\n")
+        mise.chmod(0o755)
+        sortie = self.lancer()
+        self.assertEqual(1, sortie.returncode)
+        self.assertIn(f"Voir : {mise} install python@3.11.16", sortie.stdout)
+
+    def test_sans_mise_la_pose_est_conseillee(self):
+        sortie = self.lancer()
+        self.assertEqual(1, sortie.returncode)
+        self.assertIn("make install_mise", sortie.stdout)
+        self.assertNotIn("mise install", sortie.stdout)
+
+    def test_un_interpreteur_designe_introuvable_est_nomme(self):
+        absent = self.racine / "absent" / "python3"
+        sortie = self.lancer(EL_PY2_HELPER_PYTHON=str(absent))
+        self.assertEqual(1, sortie.returncode)
+        self.assertIn(f"EL_PY2_HELPER_PYTHON={absent}", sortie.stdout)
+        self.assertNotIn("mise", sortie.stdout)
 
 
 class TestAliasSwigHorsPython2(unittest.TestCase):

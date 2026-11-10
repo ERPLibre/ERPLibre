@@ -371,6 +371,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The coverage of the Odoo modules (`make test_full_fast_coverage`) goes through `conf/coverage.odoo.cfg` and the coverage of the Odoo venv, and shows in the coverage screen as its own set
 - A locally installed Odoo 20 listens on 127.0.0.1 only, Odoo's own default from 20 on, where 12 to 19 listen on every interface: set `http_interface` in `config.conf` to reach it from another machine. The Docker image sets `http_interface = 0.0.0.0` for every version
 - The « ERPLibre + Odoo N » install profiles of a QEMU VM come from `conf/supported_version_erplibre.json`, the default version first, so every supported version is offered
+- Python 2.7 and 3.7 (Odoo 8 to 13) no longer go through mise. mise has no precompiled CPython for these versions, so the install no longer offers to install mise for them, no longer calls it, and no longer suggests "mise install". Run by hand, that command compiled CPython 2.7 without the -fpermissive flag that pyenv adds. The error from the Python 2 Poetry helper now gives mise's absolute path, or "make install_mise" when mise is missing
 
 ## Fixed
 
