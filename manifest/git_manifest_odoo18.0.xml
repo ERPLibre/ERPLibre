@@ -372,7 +372,17 @@
         remote="ERPLibre"
         groups="addons,base,odoo18.0"
     />
-    <project name="event.git" revision="18.0" freeze-revision="eef07cb2610f1233c8a17f3ecea3778f0c899b65" path="odoo18.0/addons/OCA_event" remote="OCA" groups="addons,odoo18.0" />
+    <project
+        name="event.git"
+        revision="18.0_dev"
+        freeze-revision="0d97887beecab111416f1654327d457235701950"
+        path="odoo18.0/addons/OCA_event"
+        remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
+        fork-upstream-freeze-revision="eef07cb2610f1233c8a17f3ecea3778f0c899b65"
+        groups="addons,odoo18.0"
+    />
     <project
         name="field-service.git"
         revision="18.0"
