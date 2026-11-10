@@ -409,6 +409,7 @@ class TestBackGate(unittest.TestCase):
                 returned = upgrade.ask_gate("? ")
         except MigrationRewind:
             stopped = True
+        self.assertEqual(next(seq, None), None, "réponse non lue")
         return stopped, returned, upgrade.dct_progression
 
     def test_a_normal_answer_passes_straight_through(self):
@@ -417,29 +418,44 @@ class TestBackGate(unittest.TestCase):
         self.assertEqual(returned, "y")
 
     def test_b_then_a_step_rewinds_and_stops(self):
-        stopped, _, progression = self.gate(["b", "2"])
-        self.assertTrue(stopped)
-        # L'étape choisie et les suivantes sont effacées, les précédentes non.
-        self.assertIn("state_1_restore_database", progression)
-        self.assertNotIn("state_2_update_all", progression)
-        self.assertNotIn("state_3_clean_database", progression)
+        # L'étape 2, par le numéro que la liste affiche, [3], ou par son
+        # nom, puis confirmée.
+        for answer in ("3", "Step 2"):
+            with self.subTest(answer=answer):
+                stopped, _, progression = self.gate(["b", answer, "y"])
+                self.assertTrue(stopped)
+                # L'étape choisie et les suivantes sont effacées, les
+                # précédentes non.
+                self.assertIn("state_1_restore_database", progression)
+                self.assertNotIn("state_2_update_all", progression)
+                self.assertNotIn("state_3_clean_database", progression)
 
     def test_cancelling_the_rewind_does_not_stop_the_migration(self):
-        # LE piège : renoncer au retour en arrière arrêtait quand même tout.
-        # On revient à la même invite, exactement là où l'on était.
+        # Renoncer au retour en arrière n'arrête pas la migration : on
+        # revient à la même invite, exactement là où l'on était.
         stopped, returned, progression = self.gate(["b", "", "y"])
         self.assertFalse(stopped)
         self.assertEqual(returned, "y")
         self.assertIn("state_3_clean_database", progression)
 
+    def test_a_step_not_confirmed_is_not_a_rewind(self):
+        # Une étape choisie, puis une réponse vide à la confirmation : rien
+        # n'est rembobiné, et l'invite reprend.
+        stopped, returned, progression = self.gate(["b", "3", "", "y"])
+        self.assertFalse(stopped)
+        self.assertEqual(returned, "y")
+        self.assertIn("state_3_clean_database", progression)
+
     def test_an_unknown_step_is_not_a_rewind(self):
-        stopped, returned, progression = self.gate(["b", "zzz", ""])
+        # « zzz » est dit invalide et la question revient ; la réponse vide
+        # qui suit renonce, et l'invite reprend.
+        stopped, returned, progression = self.gate(["b", "zzz", "", ""])
         self.assertFalse(stopped)
         self.assertEqual(returned, "")
         self.assertIn("state_3_clean_database", progression)
 
     def test_the_answer_is_case_insensitive(self):
-        stopped, _, _ = self.gate(["B", "1"])
+        stopped, _, _ = self.gate(["B", "1", "y"])
         self.assertTrue(stopped)
 
 

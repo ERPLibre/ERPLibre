@@ -4,10 +4,11 @@
 """Écran de reprise de migration Odoo, en TUI.
 
 Pendant de `qemu_deploy_form` pour l'outil de migration. Deux interfaces
-posent la MÊME première question — « où en est-on, et par où reprend-on ? » —
-et renvoient les MÊMES chaînes de réponse (« c », « n », « r », « q »,
-« 0 »..« 4 », « 4.<version> ») que `TodoUpgrade.apply_resume_answer` traduit
-en progression. La décision est donc écrite une seule fois.
+posent la MÊME première question — « où en est-on, et par où reprend-on ? ».
+Cet écran rend « c », « n », « r », « q », « 0 »..« 4 » ou « 4.<version> » ;
+le choix du port de `TodoUpgrade.resume_choice`, les mêmes sauf « q », [0] y
+rendant None. `TodoUpgrade.apply_resume_answer` traduit ces chaînes en
+progression : la décision est donc écrite une seule fois.
 
 - run_resume_tui(ctx, run_app=True) : renvoie la réponse, ou None pour
   retomber sur les invites en ligne.

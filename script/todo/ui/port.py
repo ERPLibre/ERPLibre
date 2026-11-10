@@ -295,8 +295,9 @@ class BasePort:
         de `labels`, `str(option)` sans eux, et se choisit par son numéro,
         ou par un nom de `names` ({nom affiché: option}) ; sans `labels`,
         une option qui est une chaîne est aussi son nom. `default`, une
-        option d'un choix simple, est ce que prend une réponse vide ; une
-        action de `letters` ({lettre: libellé}), tapée seule, rend sa lettre,
+        option d'un choix simple, ou la lettre d'une de ses actions, est
+        ce que prend une réponse vide ; une action de `letters` ({lettre:
+        libellé}), tapée seule, rend sa lettre,
         en choix multiple comme en choix simple. Dans un choix multiple, un
         nom qui porte une espace ou une virgule ne se tape pas, coupé par les
         séparateurs : son option s'y choisit par son numéro. Une réponse
@@ -307,7 +308,8 @@ class BasePort:
         option égale à une lettre, que son numéro rendrait comme la lettre,
         un nom qu'une lettre lirait à sa place, sans casse (une option sans
         libellé est son propre nom), un libellé de plus ou de moins que
-        d'options, un défaut ou un nom hors des options."""
+        d'options, un défaut hors des options et des lettres, un nom hors
+        des options."""
         options = list(options)
         if labels is None:
             labels = [str(option) for option in options]
@@ -328,7 +330,10 @@ class BasePort:
             name: str(options.index(option) + 1)
             for name, option in (names or {}).items()
         }
-        key = None if default is None else str(options.index(default) + 1)
+        if isinstance(default, str) and default in (letters or {}):
+            key = default
+        else:
+            key = None if default is None else str(options.index(default) + 1)
         message = choice_question(text, labels, multi, key, shown, letters)
         while True:
             try:
