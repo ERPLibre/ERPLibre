@@ -143,15 +143,31 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # Un venv bâti avant un changement de .poetry-version garde son Poetry :
     # la version installée doit être celle que le checkout demande, sinon
     # « poetry install » tourne avec l'ancien et réécrit le lock à sa façon.
-    poetry_installe=""
-    if [[ -x "${POETRY_ODOO_PATH}" ]]; then
-        poetry_installe="$("${VENV_ODOO_PATH}/bin/python" -m pip show poetry \
-            2> /dev/null | awk '/^Version:/ {print $2}')"
-    fi
-    if [[ "${poetry_installe}" != "${EL_POETRY_VERSION}" ]]; then
-        echo -e "Install Poetry ${EL_POETRY_VERSION} ${POETRY_ODOO_PATH}${poetry_installe:+ (was ${poetry_installe})}"
-        el_pip_install "${VENV_ODOO_PATH}" \
-          ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
+    #
+    # En Python 2, Poetry vit dans .venv.poetry<version> et bin/poetry est
+    # l'enveloppe d'install_venv_python2.sh : pip n'en voit aucun dans le
+    # venv 2.7, et l'y installer remplacerait l'enveloppe par un script pip,
+    # sans VIRTUAL_ENV épinglé, ni cache absolu, ni -fpermissive. Le script
+    # dédié, idempotent, pose le Poetry demandé et réécrit l'enveloppe. Le
+    # venv 2.7 existe à cette phase : l'interpréteur passé ne sert qu'à le
+    # créer, ce qui n'a pas lieu.
+    if [[ "${EL_PYTHON_ODOO_VERSION}" == 2.* ]]; then
+        if ! ./script/install/install_venv_python2.sh "${VENV_ODOO_PATH}" \
+            "${VENV_ODOO_PATH}/bin/python" "${EL_POETRY_VERSION}"; then
+            echo "Poetry ${EL_POETRY_VERSION} pour ${VENV_ODOO_PATH} en echec, arret."
+            exit 1
+        fi
+    else
+        poetry_installe=""
+        if [[ -x "${POETRY_ODOO_PATH}" ]]; then
+            poetry_installe="$("${VENV_ODOO_PATH}/bin/python" -m pip show poetry \
+                2> /dev/null | awk '/^Version:/ {print $2}')"
+        fi
+        if [[ "${poetry_installe}" != "${EL_POETRY_VERSION}" ]]; then
+            echo -e "Install Poetry ${EL_POETRY_VERSION} ${POETRY_ODOO_PATH}${poetry_installe:+ (was ${poetry_installe})}"
+            el_pip_install "${VENV_ODOO_PATH}" \
+              ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
+        fi
     fi
     # Chemin EXPLICITE, jamais le « poetry » du PATH. Le script active pourtant
     # le bon venv juste avant, mais poetry.toml porte « virtualenvs.create =

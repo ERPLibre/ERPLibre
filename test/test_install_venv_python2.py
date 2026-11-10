@@ -202,5 +202,171 @@ class TestLdapRAvantPoetryInstall(unittest.TestCase):
         self.assertLess(lien, installe)
 
 
+def _pose(racine, chemin, contenu):
+    """Un fichier exécutable sous racine, dossiers compris."""
+    fichier = racine / chemin
+    fichier.parent.mkdir(parents=True, exist_ok=True)
+    fichier.write_text(contenu)
+    fichier.chmod(0o755)
+
+
+# Un script qui inscrit son nom et ses arguments au journal, puis réussit.
+TRACEUR = '#!/usr/bin/env bash\necho "{nom} $*" >> journal\n'
+
+# Un python 2.7.18 qui suffit à install_venv.sh : sa version et pip.
+PYTHON_27 = """#!/bin/sh
+case "$1" in
+  -c) echo 2.7.18 ;;
+  -m) echo "pip 20.3.4" ;;
+esac
+exit 0
+"""
+
+
+class TestPoetryDuVenvPython2(unittest.TestCase):
+    """install_venv.sh donne à install_venv_python2.sh le Poetry passé en
+    quatrième argument, et celui de .poetry-version sans lui."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.racine = Path(self._tmp.name).resolve()
+        (self.racine / ".poetry-version").write_text("2.5.1\n")
+        _pose(
+            self.racine,
+            "script/install/lib_python_provider.sh",
+            (RACINE / "script/install/lib_python_provider.sh").read_text(
+                encoding="utf-8"
+            ),
+        )
+        _pose(self.racine, "pyenv/versions/2.7.18/bin/python", PYTHON_27)
+        # Le bouchon pose le venv qu'attend le contrôle final.
+        _pose(
+            self.racine,
+            "script/install/install_venv_python2.sh",
+            TRACEUR.format(nom="install_venv_python2")
+            + 'mkdir -p "$1/bin" && : > "$1/pyvenv.cfg"'
+            ' && : > "$1/bin/activate"'
+            ' && cp pyenv/versions/2.7.18/bin/python "$1/bin/python"\n',
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _lance(self, *poetry):
+        sortie = subprocess.run(
+            ["bash", str(RACINE / "script/install/install_venv.sh")]
+            + ["Odoo", VENV, "2.7.18", *poetry],
+            cwd=self.racine,
+            env={
+                **os.environ,
+                "PYENV_ROOT": str(self.racine / "pyenv"),
+                "EL_PYTHON_PROVIDER": "pyenv",
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, sortie.returncode, sortie.stdout + sortie.stderr)
+        return (self.racine / "journal").read_text().split()
+
+    def test_le_poetry_passe_l_emporte_sur_le_fichier(self):
+        self.assertEqual("1.1.15", self._lance("1.1.15")[-1])
+
+    def test_sans_argument_le_fichier_decide(self):
+        self.assertEqual("2.5.1", self._lance()[-1])
+
+
+# Ce que la phase poetry d'install_locally.sh source et appelle, réduit à
+# des traceurs : aucun pip, aucun Poetry réel ne tourne.
+ENV_VAR = """EL_ODOO_VERSION={odoo}
+EL_POETRY_VERSION={poetry}
+EL_PYTHON_ODOO_VERSION={python}
+EL_ERPLIBRE_VERSION={erplibre}
+"""
+
+
+class TestPhasePoetryEnPython2(unittest.TestCase):
+    """La phase poetry ne pip-installe pas Poetry dans un venv Python 2 :
+    pip n'y en voit jamais, et l'installer y écraserait l'enveloppe."""
+
+    def _lance(self, odoo, python, poetry):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        racine = Path(tmp.name).resolve()
+        erplibre = f"odoo{odoo}_python{python}"
+        venv = f".venv.{erplibre}"
+        (racine / "env_var.sh").write_text(
+            ENV_VAR.format(
+                odoo=odoo, poetry=poetry, python=python, erplibre=erplibre
+            )
+        )
+        (racine / "conf").mkdir()
+        (racine / "conf/python-erplibre-venv").write_text(".venv.erplibre\n")
+        for chemin, contenu in {
+            # Comme un vrai « pip install poetry », il réécrit bin/poetry en
+            # simple script de console : l'enveloppe et son VIRTUAL_ENV
+            # disparaîtraient.
+            "script/install/lib_pip_provider.sh": (
+                "el_pip_install() {\n"
+                '    echo "el_pip_install $*" >> journal\n'
+                "    printf '#!/bin/sh\\necho \"poetry $*\" >> journal\\n'"
+                ' > "$1/bin/poetry"\n'
+                '    chmod +x "$1/bin/poetry"\n'
+                "}\n"
+            ),
+            "script/install/S390x/lib_lowmem.sh": "",
+            "script/install/lib_ldap_compat.sh": "el_ldap_r_compat() { :; }\n",
+            "script/install/install_venv_python2.sh": TRACEUR.format(
+                nom="install_venv_python2"
+            ),
+            f"{venv}/bin/activate": "",
+            # Muet à « pip show poetry », comme un vrai venv 2.7.
+            f"{venv}/bin/python": TRACEUR.format(nom="python"),
+            f"{venv}/bin/poetry": "#!/usr/bin/env bash\n"
+            'export VIRTUAL_ENV="${VENV}"\n'
+            'echo "poetry $*" >> journal\n',
+            ".venv.erplibre/bin/activate": "",
+            ".venv.erplibre/bin/python": "#!/bin/sh\nexit 0\n",
+            "faux_bin/pip": "#!/bin/sh\nexit 0\n",
+        }.items():
+            _pose(racine, chemin, contenu)
+        sortie = subprocess.run(
+            ["bash", str(RACINE / "script/install/install_locally.sh")],
+            cwd=racine,
+            env={
+                **os.environ,
+                "EL_PHASE": "poetry",
+                "PATH": f"{racine}/faux_bin:{os.environ['PATH']}",
+            },
+            capture_output=True,
+            text=True,
+        )
+        journal = (racine / "journal").read_text().splitlines()
+        self.assertIn(
+            "poetry install --no-root", journal, sortie.stdout + sortie.stderr
+        )
+        return journal, (racine / venv / "bin/poetry").read_text()
+
+    def test_python_2_repasse_par_le_script_dedie(self):
+        journal, enveloppe = self._lance("10.0", "2.7.18", "1.1.15")
+        venv = ".venv.odoo10.0_python2.7.18"
+        self.assertIn(
+            f"install_venv_python2 {venv} {venv}/bin/python 1.1.15", journal
+        )
+        self.assertFalse(
+            [ligne for ligne in journal if ligne.startswith("el_pip_install")]
+        )
+        self.assertIn("VIRTUAL_ENV", enveloppe)
+
+    def test_python_3_installe_poetry_par_pip(self):
+        journal, _ = self._lance("18.0", "3.12.16", "2.5.1")
+        self.assertIn(
+            "el_pip_install .venv.odoo18.0_python3.12.16 poetry==2.5.1",
+            journal,
+        )
+        self.assertFalse(
+            [ligne for ligne in journal if "install_venv_python2" in ligne]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

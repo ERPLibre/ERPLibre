@@ -42,6 +42,7 @@ from script.database import migration_cluster
 from script.execute import execute
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import manifest_branch
+from script.todo.version_manager import odoo_tree_layout  # noqa: F401
 
 _logger = logging.getLogger(__name__)
 
@@ -181,21 +182,6 @@ SUFFIXE_MAX = len("_neutralize_upgrade_18")
 NOM_BASE_MAX = 63 - SUFFIXE_MAX
 
 
-def odoo_tree_layout(racine):
-    """Le lanceur et le dossier d'addons du cœur d'un arbre Odoo complet.
-
-    OpenUpgrade jusqu'à 13 est un tel arbre. En 9.0 et avant, le paquet
-    s'appelle openerp : lanceur openerp-server, cœur openerp/addons. Depuis
-    10.0 : odoo-bin et odoo/addons. Les chemins gardent la forme de racine.
-    """
-    if os.path.isdir(os.path.join(racine, "openerp")):
-        return (
-            os.path.join(racine, "openerp-server"),
-            os.path.join(racine, "openerp", "addons"),
-        )
-    return os.path.join(racine, "odoo-bin"), os.path.join(
-        racine, "odoo", "addons"
-    )
 
 
 def http_off_option(version):

@@ -38,6 +38,8 @@ from script.todo import version_manager as vm  # noqa: E402
 VERSION = "odoo18.0_python3.12.16"
 # Un checkout resté sur un patch de Python que le json ne connaît plus.
 NON_SUPPORTEE = "odoo18.0_python3.12.10"
+# Une version au paquet « openerp » : lanceur openerp-server, pas d'odoo-bin.
+OPENERP = "odoo8.0_python2.7.18"
 SUPPORTEES = {
     "odoo17.0_python3.10.18": {
         "odoo_version": "17.0",
@@ -719,18 +721,44 @@ class TestPlanifierVenvs(unittest.TestCase):
         self.assertEqual(vm.SOURCES_ABSENTES, plan[VERSION]["action"])
 
     def test_la_plus_recente_d_abord(self):
-        cibles = [
-            e["cible"] for e in vm.planifier_venvs(self.VERSIONS, set(), set())
+        # Les nombres se comparent en nombres : un tri de texte rangerait
+        # odoo8.0 en tête et odoo20.0 avant odoo18.0.
+        versions = self.VERSIONS + [
+            {"erplibre_version": e, "odoo_version": e[4:].split("_")[0]}
+            for e in (OPENERP, "odoo20.0_python3.14.7")
         ]
-        self.assertEqual([VERSION, "odoo17.0_python3.10.18"], cibles)
+        cibles = [
+            e["cible"] for e in vm.planifier_venvs(versions, set(), set())
+        ]
+        self.assertEqual(
+            [
+                "odoo20.0_python3.14.7",
+                VERSION,
+                "odoo17.0_python3.10.18",
+                OPENERP,
+            ],
+            cibles,
+        )
+
+    def test_la_mise_a_jour_part_du_patch_le_plus_recent(self):
+        plan = self.plan({"odoo18.0_python3.12.9", NON_SUPPORTEE}, {"18.0"})
+        self.assertEqual(NON_SUPPORTEE, plan[VERSION]["depuis"])
 
 
 class TestVersionsPython(BancMenu):
     """Installer ou mettre à jour les venvs sans la phase git."""
 
-    def preparer(self, venvs, sources=("18.0",), active=None, incomplets=()):
+    def preparer(
+        self,
+        venvs,
+        sources=("18.0",),
+        active=None,
+        incomplets=(),
+        sources_openerp=(),
+    ):
         """Des venvs complets — interpréteur et Poetry — sauf ceux de
-        `incomplets`, qui n'ont qu'un dossier bin vide."""
+        `incomplets`, qui n'ont qu'un dossier bin vide. `sources_openerp`
+        sont des arbres d'Odoo 8 ou 9 : paquet openerp et openerp-server."""
         shutil.rmtree(f".venv.{VERSION}")
         for venv in list(venvs) + list(incomplets):
             Path(f".venv.{venv}/bin").mkdir(parents=True)
@@ -740,6 +768,9 @@ class TestVersionsPython(BancMenu):
         for odoo in sources:
             Path(f"odoo{odoo}/odoo").mkdir(parents=True)
             Path(f"odoo{odoo}/odoo/odoo-bin").write_text("")
+        for odoo in sources_openerp:
+            Path(f"odoo{odoo}/odoo/openerp").mkdir(parents=True)
+            Path(f"odoo{odoo}/odoo/openerp-server").write_text("")
         Path(".erplibre-version").write_text((active or venvs[0]) + "\n")
 
     def jouer(self, reponses, statuts=None):
@@ -762,7 +793,7 @@ class TestVersionsPython(BancMenu):
         self.assertEqual(
             [
                 f'./script/install/install_venv.sh "Odoo" .venv.{VERSION}'
-                " 3.12.16",
+                " 3.12.16 2.5.1",
                 f"./script/version/update_env_version.py --erplibre_version"
                 f" {VERSION} --switch",
                 "EL_PHASE=poetry ./script/install/install_locally.sh",
@@ -772,6 +803,39 @@ class TestVersionsPython(BancMenu):
         for commande in self.installe():
             self.assertNotIn("repo", commande)
             self.assertNotIn("install_dev", commande)
+
+    def test_le_venv_recoit_le_poetry_de_la_cible(self):
+        # install_venv.sh tourne avant --switch : .poetry-version porte encore
+        # le Poetry du départ, qu'un venv Python 2 ne sait pas installer.
+        commande = self.todo._python_versions_commandes(
+            {"cible": OPENERP, "python": "2.7.18", "poetry": "1.1.15"}
+        )[0]
+        self.assertEqual(
+            f'./script/install/install_venv.sh "Odoo" .venv.{OPENERP}'
+            " 2.7.18 1.1.15",
+            commande,
+        )
+
+    def actions(self):
+        return {
+            e["cible"]: e["action"]
+            for e in self.todo._python_versions_etat()[0]
+        }
+
+    def test_les_sources_openerp_sont_reconnues(self):
+        supportees = dict(SUPPORTEES)
+        supportees[OPENERP] = {
+            "odoo_version": "8.0",
+            "python_version": "2.7.18",
+            "poetry_version": "1.1.15",
+        }
+        Path("conf", "supported_version_erplibre.json").write_text(
+            json.dumps(supportees), encoding="utf-8"
+        )
+        self.preparer([VERSION], active=VERSION, sources_openerp=("8.0",))
+        self.assertEqual(vm.INSTALLATION, self.actions()[OPENERP])
+        Path(f".venv.{OPENERP}/bin").mkdir(parents=True)
+        self.assertEqual(vm.REPRISE, self.actions()[OPENERP])
 
     def test_le_defaut_est_non(self):
         self.preparer([NON_SUPPORTEE])
