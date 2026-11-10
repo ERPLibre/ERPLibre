@@ -446,6 +446,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./dev.sh`, `./test.sh` and every caller of `odoo_bin.sh` that passes `--limit-memory-hard=0` or `--limit-memory-soft=0` now work on Odoo 8 to 11. These versions apply 0 as given instead of reading it as "no limit", so each worker died on MemoryError. They now get a finite 1 TiB limit instead, and Odoo 12 and later still get 0
 - The OpenUpgrade hops to Odoo 14 to 20 and the views_migration_17 pass lift the memory and time limits again, so a whole-database update no longer runs under the 2560 MiB default of production `run.sh`
 - setup_odoo_config_conf_devops.py now keeps the active Odoo's default server-wide modules when config.conf names none (so 'rpc' stays loaded on Odoo 19 and 20, and 'web_kanban' stays loaded on 8 to 10). On Odoo 8 and 9 it sets up the OCA connector job runner ([options-connector] channels, 'connector' module) instead of queue_job. The Odoo 20 manifest now clones OCA/queue
+- Installing every Odoo version (make install_odoo_all_version) now ends by switching to the default version (Odoo 18), so the service and the database image restore point to it instead of the last version it installed. The VM install prompt names the profile that a blank answer picks. Restoring a database on a VM whose Odoo version has no image now says so, instead of printing an empty list
 
 ## Removed
 

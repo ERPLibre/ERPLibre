@@ -2397,7 +2397,7 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME, image="base") -> str:
     que ce code le sache. « tr -d » retire le saut de ligne final du fichier,
     qui sinon couperait le nom en deux. Une variante absente pour cette
     version arrête tout AVANT le service et la base, en nommant celles qui
-    existent.
+    existent, ou en disant que cette version d'Odoo n'en a aucune.
 
     db_restore.py ne touche à aucun service : il SUPPRIME la base puis la
     recharge, pendant qu'un Odoo lancé garde ses connexions ouvertes et les
@@ -2418,12 +2418,21 @@ def db_restore_cmd(parts, database=DB_RESTORE_NAME, image="base") -> str:
     return (
         "set -u; " + el_dir_cd() + "ver=$(tr -d '[:space:]' < .odoo-version); "
         f'img="odoo${{ver}}_"{shlex.quote(image)}; '
-        'if [ ! -f "image_db/$img.zip" ]; then echo "'
+        'if [ ! -f "image_db/$img.zip" ]; then '
+        "autres=$(ls image_db 2>/dev/null"
+        ' | sed -n "s/^\\(odoo${ver}_.*\\)\\.zip$/  \\1/p"); '
+        'if [ -n "$autres" ]; then echo "'
         + _dq(t("No image {img} for this version; available:")).format(
             img="$img"
         )
-        + '"; ls image_db | sed -n "s/^\\(odoo${ver}_.*\\)\\.zip$/  \\1/p"; '
-        "exit 1; fi; "
+        + '"; echo "$autres"; else echo "'
+        + _dq(
+            t(
+                "image_db has no image for Odoo {ver}:"
+                " create the database from Odoo instead"
+            )
+        ).format(ver="$ver")
+        + '"; fi; exit 1; fi; '
         'echo "== '
         + _dq(t("Restoring {db} from {img}")).format(
             db=_dq(database), img="$img"

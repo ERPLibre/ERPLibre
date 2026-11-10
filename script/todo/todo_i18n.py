@@ -8875,9 +8875,13 @@ TRANSLATIONS = {
         "fr": "Que veut-on installer sur la/les VM ?",
         "en": "What to install on the VM(s)?",
     },
-    "Choice (number, blank = Odoo 18): ": {
-        "fr": "Choix (numéro, vide = Odoo 18) : ",
-        "en": "Choice (number, blank = Odoo 18): ",
+    "Choice (number, blank = {label}): ": {
+        "fr": "Choix (numéro, vide = {label}) : ",
+        "en": "Choice (number, blank = {label}): ",
+    },
+    "image_db has no image for Odoo {ver}: create the database from Odoo instead": {
+        "fr": "image_db n'a aucune image pour Odoo {ver} : créer plutôt la base depuis Odoo",
+        "en": "image_db has no image for Odoo {ver}: create the database from Odoo instead",
     },
     "ERPLibre + all Odoo versions": {
         "fr": "ERPLibre + toutes les versions Odoo",
