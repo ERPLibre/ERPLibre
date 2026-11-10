@@ -21,7 +21,7 @@
         fork-upstream-freeze-revision="367ec9dc2b965c47867c0f8321bd937dab20644f"
         clone-depth="1"
         revision="18.0_dev"
-        freeze-revision="7c4f37b67e65523187f8b0b99fa2ff40d0c888c9"
+        freeze-revision="b1ad36dd0aa2b6b5b0e5cf54cd1f260b62bce6da"
         groups="extra,odoo18.0"
     />
     <project
