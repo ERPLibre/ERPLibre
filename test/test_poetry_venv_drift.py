@@ -83,6 +83,26 @@ Package operations: 0 installs, 0 updates, 1 removal
   - Removing poetry (2.1.3)
 """
 
+# Poetry 1.5 (Odoo 11 à 14) : la puce est « • ».
+SORTIE_POETRY_15 = """Installing dependencies from lock file
+
+Package operations: 0 installs, 1 update, 0 removals
+
+  • Updating six (1.15.0 -> 1.16.0)
+"""
+
+# Poetry 1.1 (Odoo 8 à 10) : puce « • », chaque opération imprimée deux
+# fois, et la version d'un retrait suivie de son chemin.
+SORTIE_POETRY_11 = """Installing dependencies from lock file
+
+Package operations: 0 installs, 1 update, 1 removal
+
+  • Removing vieux (0.1.2 /depot/.venv/lib/python2.7/site-packages)
+  • Removing vieux (0.1.2 /depot/.venv/lib/python2.7/site-packages)
+  • Updating six (1.15.0 -> 1.16.0)
+  • Updating six (1.15.0 -> 1.16.0)
+"""
+
 REFUS = (
     "Current Python version (3.12.10) is not allowed by the project"
     " (>=3.12.16,<3.13).\n"
@@ -112,6 +132,36 @@ class TestLireLesOperations(unittest.TestCase):
         self.assertEqual([], drift.lire_operations(SAUTEES))
         melange = SORTIE + SAUTEES.split("\n\n", 2)[2]
         self.assertEqual(5, len(drift.lire_operations(melange)))
+
+    def test_la_puce_de_poetry_1_5_est_lue(self):
+        ops = drift.lire_operations(SORTIE_POETRY_15)
+        self.assertEqual(
+            [("Updating", "six", "1.15.0", "1.16.0")],
+            [(o["action"], o["nom"], o["avant"], o["apres"]) for o in ops],
+        )
+        self.assertTrue(drift.a_des_ecarts(ops))
+
+    def test_poetry_1_1_ne_retire_pas_l_interpreteur(self):
+        """Poetry 1.1 annonce le retrait de « python », le lib-dynload de
+        l'interpréteur de base : ce n'est pas un paquet du venv."""
+        sortie = (
+            "  • Removing python (2.7.18 /opt/python/2.7.18/lib/python2.7/lib-dynload)\n"
+            "  • Removing python (2.7.18 /opt/python/2.7.18/lib/python2.7/lib-dynload)\n"
+            "  • Removing six (1.16.0 /venv/lib/python2.7/site-packages)\n"
+        )
+        noms = [o["nom"] for o in drift.lire_operations(sortie)]
+        self.assertEqual(["six"], noms)
+
+    def test_poetry_1_1_chaque_operation_une_seule_fois(self):
+        ops = drift.lire_operations(SORTIE_POETRY_11)
+        self.assertEqual(
+            [
+                ("Removing", "vieux", "0.1.2", None),
+                ("Updating", "six", "1.15.0", "1.16.0"),
+            ],
+            [(o["action"], o["nom"], o["avant"], o["apres"]) for o in ops],
+        )
+        self.assertTrue(drift.a_des_ecarts(ops))
 
     def test_le_reste_de_la_sortie_est_ignore(self):
         self.assertEqual([], drift.lire_operations("Resolving...\n\nOK\n"))
@@ -169,6 +219,38 @@ class TestSimuler(unittest.TestCase):
         self.assertEqual(["install", "--sync", "--dry-run"], commandes[1][1:4])
         self.assertTrue(res["ok"])
 
+    def test_poetry_1_1_retombe_sur_install_remove_untracked(self):
+        """Poetry 1.1 dit « not defined » pour la commande, puis ne connaît
+        pas l'option --sync."""
+        commandes = []
+
+        def executer(commande, **_kwargs):
+            commandes.append(commande)
+            if "sync" == commande[1]:
+                return fini(1, "", 'The command "sync" is not defined.\n')
+            if "--sync" in commande:
+                return fini(1, "", 'The "--sync" option does not exist.\n')
+            return fini(0, SORTIE_POETRY_11)
+
+        res = drift.simuler("/depot", VERSION, executer=executer)
+        self.assertEqual(3, len(commandes))
+        self.assertEqual(
+            ["install", "--remove-untracked", "--dry-run"], commandes[2][1:4]
+        )
+        self.assertIn("--remove-untracked", res["commande"])
+        self.assertTrue(res["ok"])
+        self.assertEqual(2, len(res["operations"]))
+
+    def test_un_refus_sans_rapport_avec_la_commande_ne_reessaie_pas(self):
+        commandes = []
+
+        def executer(commande, **_kwargs):
+            commandes.append(commande)
+            return fini(1, "", REFUS)
+
+        drift.simuler("/depot", VERSION, executer=executer)
+        self.assertEqual(1, len(commandes))
+
     def test_un_refus_de_poetry_garde_sa_raison(self):
         res = drift.simuler(
             "/depot", VERSION, executer=lambda *a, **k: fini(1, "", REFUS)
@@ -218,6 +300,36 @@ class TestReleverEtComparer(unittest.TestCase):
         releve = drift.relever(tmp, VERSION)
         self.assertIn("pip", releve, sorted(releve)[:10])
         self.assertEqual("pip", releve["pip"][0])
+
+    def test_le_releve_repond_avant_python_3_8(self):
+        """Python 2.7 et 3.7 n'ont pas importlib.metadata : le relevé passe
+        par pkg_resources. Lancé par chaque interpréteur trouvé sous pyenv
+        ou mise ; aucun n'est requis."""
+        racines = [
+            os.path.join(
+                os.environ.get("PYENV_ROOT") or os.path.expanduser("~/.pyenv"),
+                "versions",
+            ),
+            os.path.expanduser("~/.local/share/mise/installs/python"),
+        ]
+        trouves = []
+        for version in ("2.7.18", "3.7.17"):
+            for racine in racines:
+                python = os.path.join(racine, version, "bin", "python")
+                if os.access(python, os.X_OK):
+                    trouves.append(python)
+                    break
+        if not trouves:
+            self.skipTest("aucun interpréteur Python 2.7 ou 3.7")
+        for python in trouves:
+            with self.subTest(python=python):
+                fini_ = subprocess.run(
+                    [python, "-c", drift.RELEVE],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(0, fini_.returncode, fini_.stderr)
+                self.assertIn("pip", json.loads(fini_.stdout))
 
     def test_un_interpreteur_muet_rend_un_releve_vide(self):
         executer = lambda *a, **k: fini(1, "", "boom")  # noqa: E731

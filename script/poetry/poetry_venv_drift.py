@@ -28,15 +28,31 @@ import os
 import re
 import subprocess
 
-# Une opération par ligne : « - Updating six (1.16.0 -> 1.17.0) ». Ancrée
-# en fin de ligne : en simulation, Poetry imprime aussi chaque opération
-# SAUTÉE — « - Installing pip (26.2.2): Skipped for the following reason:
-# Already installed » pour tout paquet déjà à la version du lock, « Not
-# required » pour un extra non demandé. Lue comme une installation, elle
-# ferait de chaque paquet à jour un paquet manquant.
+# Une opération par ligne : « - Updating six (1.16.0 -> 1.17.0) ». La puce
+# est « - » depuis Poetry 1.8, « • » jusqu'à 1.5 : sans la seconde, toute
+# opération d'un vieux Poetry passe inaperçue et le venv se dit aligné.
+# Ancrée en fin de ligne : en simulation, Poetry imprime aussi chaque
+# opération SAUTÉE — « - Installing pip (26.2.2): Skipped for the following
+# reason: Already installed » pour tout paquet déjà à la version du lock,
+# « Not required » pour un extra non demandé. Lue comme une installation,
+# elle ferait de chaque paquet à jour un paquet manquant.
 RE_OPERATION = re.compile(
-    r"^\s*-\s+(Installing|Updating|Downgrading|Removing)\s+(\S+)"
+    r"^\s*[-•]\s+(Installing|Updating|Downgrading|Removing)\s+(\S+)"
     r"\s+\(([^()]*)\)\s*$"
+)
+
+# Synchroniser le venv sur le lock, du Poetry le plus récent au plus
+# ancien : « sync » (2.x), « install --sync » (1.2 à 1.8), « install
+# --remove-untracked » (1.1). Un Poetry qui ne connaît pas la commande ou
+# l'option le dit avant tout calcul, dans l'un des messages de RE_INCONNU :
+# la forme suivante est alors essayée.
+SYNCHRONISER = (
+    ("sync",),
+    ("install", "--sync"),
+    ("install", "--remove-untracked"),
+)
+RE_INCONNU = re.compile(
+    r'"(?:sync|--sync)"(?: option)? (?:does not exist|is not defined)'
 )
 
 # Les trois premières sont des écarts : la mise à jour les corrige.
@@ -44,11 +60,20 @@ ECARTS = ("Installing", "Updating", "Downgrading")
 
 # Le relevé des versions passe par importlib.metadata et non par pip : pip
 # peut manquer, ou ne plus démarrer, dans un venv dont on cherche justement
-# ce qui cloche.
+# ce qui cloche. importlib.metadata n'existe que depuis Python 3.8 : avant,
+# pkg_resources de setuptools le remplace. L'extrait reste lisible par
+# Python 2.7, sans f-string.
 RELEVE = (
-    "import importlib.metadata as m, json\n"
-    "print(json.dumps({d.metadata['Name']: d.version"
-    " for d in m.distributions() if d.metadata['Name']}))\n"
+    "import json\n"
+    "try:\n"
+    "    import importlib.metadata as m\n"
+    "    d = dict((x.metadata['Name'], x.version)"
+    " for x in m.distributions() if x.metadata['Name'])\n"
+    "except ImportError:\n"
+    "    import pkg_resources\n"
+    "    d = dict((x.project_name, x.version)"
+    " for x in pkg_resources.working_set)\n"
+    "print(json.dumps(d))\n"
 )
 
 
@@ -62,20 +87,30 @@ def lire_operations(sortie):
 
     Chaque opération : {"action", "nom", "avant", "apres"}. « avant » est la
     version installée (None pour une installation), « apres » celle du lock
-    (None pour un retrait).
+    (None pour un retrait). Une opération répétée n'est comptée qu'une
+    fois : Poetry 1.1 imprime chacune deux fois en simulation. Le retrait
+    d'un paquet « python » est écarté : Poetry 1.1 prend le lib-dynload de
+    l'interpréteur de base pour une distribution installée.
     """
     operations = []
+    vues = set()
     for ligne in sortie.splitlines():
         trouve = RE_OPERATION.match(ligne)
         if not trouve:
             continue
         action, nom, versions = trouve.groups()
+        if action == "Removing" and nom == "python":
+            continue
+        if (action, nom) in vues:
+            continue
+        vues.add((action, nom))
         if "->" in versions:
             avant, apres = (v.strip() for v in versions.split("->", 1))
         elif action == "Installing":
             avant, apres = None, versions.strip()
         else:
-            avant, apres = versions.strip(), None
+            # Poetry 1.1 fait suivre la version du chemin du paquet retiré.
+            avant, apres = versions.split()[0], None
         operations.append(
             {"action": action, "nom": nom, "avant": avant, "apres": apres}
         )
@@ -121,30 +156,20 @@ def simuler(racine, version_erplibre, executer=subprocess.run):
     Rend {"ok", "operations", "sortie", "commande"}. « ok » est faux quand
     Poetry refuse — Python du venv hors des bornes du projet, lock
     désaccordé du pyproject — et « sortie » dit alors pourquoi. Rien n'est
-    installé : seule la simulation tourne.
+    installé : seule la simulation tourne. Les formes de SYNCHRONISER sont
+    essayées tour à tour, jusqu'à celle que ce Poetry connaît.
     """
     c = chemins(version_erplibre)
     env = environnement(racine, c["venv"])
     poetry = os.path.join(racine, c["poetry"])
-    commande = [poetry, "sync", "--dry-run", "--no-root", "--no-ansi"]
-    fini = executer(
-        commande, cwd=racine, env=env, capture_output=True, text=True
-    )
-    sortie = (fini.stdout or "") + (fini.stderr or "")
-    # Poetry 1 n'a pas « sync » : son équivalent est « install --sync ».
-    if fini.returncode and '"sync" does not exist' in sortie:
-        commande = [
-            poetry,
-            "install",
-            "--sync",
-            "--dry-run",
-            "--no-root",
-            "--no-ansi",
-        ]
+    for forme in SYNCHRONISER:
+        commande = [poetry, *forme, "--dry-run", "--no-root", "--no-ansi"]
         fini = executer(
             commande, cwd=racine, env=env, capture_output=True, text=True
         )
         sortie = (fini.stdout or "") + (fini.stderr or "")
+        if not fini.returncode or not RE_INCONNU.search(sortie):
+            break
     return {
         "ok": fini.returncode == 0,
         "operations": lire_operations(sortie) if not fini.returncode else [],
