@@ -73,6 +73,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import requirement_report
 import unit_selection
 
 ROUGE = "\033[0;31m"
@@ -735,9 +736,36 @@ def bilan_des_echecs(fichiers):
     return passes, echoues
 
 
+def essais(lanceur):
+    """Les fichiers finis, sous la forme que le registre des requis lit.
+
+    Un fichier arrêté par Ctrl+C n'a rien prouvé et n'y figure pas. Un
+    fichier en échec ou tué par le délai sans aucun test noté porte la fin
+    de son journal comme panne : ses tests déclarés passent en erreur."""
+    return [
+        requirement_report.Essai(
+            f.chemin,
+            f.tests,
+            (
+                _lire(f.log, fin=40)
+                if not f.tests and f.etat in (ECHEC, DELAI)
+                else None
+            ),
+        )
+        for f in lanceur.fichiers
+        if f.etat in (OK, ECHEC, DELAI)
+    ]
+
+
 def lancer_une_fois(fichiers, args):
     """Un passage complet sur `fichiers` : exécution, bilan, rapports, et
-    mise à jour des durées et des échecs retenus. Rend le code de sortie."""
+    mise à jour des durées et des échecs retenus. Rend le code de sortie.
+
+    Avec les variables ERPLIBRE_REQUIREMENT_* (requirement_report.py),
+    chaque test est noté puis son verdict poussé au registre des requis,
+    après les rapports ; le code de sortie reste celui de la suite. Sans
+    elles, rien de cela : ni détail par test, ni connexion."""
+    registre = requirement_report.depuis_environnement()
     lanceur = Lanceur(
         fichiers,
         py=sys.executable,
@@ -745,7 +773,7 @@ def lancer_une_fois(fichiers, args):
         delai=args.timeout,
         durees=lire_durees(),
         passages=args.repeat,
-        detaille=bool(args.slowest or args.junit),
+        detaille=bool(args.slowest or args.junit or registre),
     )
     try:
         code = None
@@ -758,6 +786,8 @@ def lancer_une_fois(fichiers, args):
         # Toujours produits : c'est après un échec qu'on en a besoin.
         instable = rapports(lanceur, args)
         code = code or instable
+        if registre:
+            registre.pousser(essais(lanceur))
         ecrire_durees(lanceur.fichiers)
         passes, echoues = bilan_des_echecs(lanceur.fichiers)
         unit_selection.retenir_echecs(ECHECS, passes=passes, echoues=echoues)

@@ -221,6 +221,36 @@ time make test_full_fast
 ```
 
 
+## Verdicts des tests dans le registre des requis
+
+Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
+requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
+Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
+la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
+aucun appel.
+
+Quatre variables d'environnement l'activent, les quatre ou aucune.
+L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
+clé est la clé d'API de cet utilisateur :
+
+
+```bash
+ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com \
+ERPLIBRE_REQUIREMENT_DB=registry \
+ERPLIBRE_REQUIREMENT_LOGIN=test_runner \
+ERPLIBRE_REQUIREMENT_KEY=<api key> \
+./script/test/run_unit_test.sh
+```
+
+
+Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
+inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
+s'arrête. Le code de sortie est toujours celui de la suite, et la clé n'est
+jamais affichée.
+
+
 # Documentation
 
 | Guide | Description |

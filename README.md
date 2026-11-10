@@ -218,6 +218,33 @@ time make test_full_fast
 ```
 
 
+## Test verdicts in the requirement registry
+
+The unit tests can send each test's verdict to the requirement registry of an
+Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
+that a unit test proves lists a *Repository unit test* line with the
+reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
+runner writes the verdict of each declared reference that ran, with one call
+per reference. A test that no requirement cites costs no call.
+
+Four environment variables turn this on, all four or none. The login is a user
+of the *Requirement test runner* group, and the key is that user's API key:
+
+
+```bash
+ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com \
+ERPLIBRE_REQUIREMENT_DB=registry \
+ERPLIBRE_REQUIREMENT_LOGIN=test_runner \
+ERPLIBRE_REQUIREMENT_KEY=<api key> \
+./script/test/run_unit_test.sh
+```
+
+
+Without these variables, the runner opens no connection and its output is
+unchanged. A failed send prints one warning line and stops. The exit code is
+always the suite's own, and the key is never printed.
+
+
 # Documentation
 
 | Guide | Description |

@@ -423,6 +423,59 @@ time make test_full_fast
 
 <!-- [en] -->
 
+## Test verdicts in the requirement registry
+
+The unit tests can send each test's verdict to the requirement registry of an
+Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
+that a unit test proves lists a *Repository unit test* line with the
+reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
+runner writes the verdict of each declared reference that ran, with one call
+per reference. A test that no requirement cites costs no call.
+
+Four environment variables turn this on, all four or none. The login is a user
+of the *Requirement test runner* group, and the key is that user's API key:
+
+<!-- [fr] -->
+
+## Verdicts des tests dans le registre des requis
+
+Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
+requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
+Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
+la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
+aucun appel.
+
+Quatre variables d'environnement l'activent, les quatre ou aucune.
+L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
+clé est la clé d'API de cet utilisateur :
+
+<!-- [common] -->
+
+```bash
+ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com \
+ERPLIBRE_REQUIREMENT_DB=registry \
+ERPLIBRE_REQUIREMENT_LOGIN=test_runner \
+ERPLIBRE_REQUIREMENT_KEY=<api key> \
+./script/test/run_unit_test.sh
+```
+
+<!-- [en] -->
+
+Without these variables, the runner opens no connection and its output is
+unchanged. A failed send prints one warning line and stops. The exit code is
+always the suite's own, and the key is never printed.
+
+<!-- [fr] -->
+
+Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
+inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
+s'arrête. Le code de sortie est toujours celui de la suite, et la clé n'est
+jamais affichée.
+
+<!-- [en] -->
+
 # Documentation
 
 | Guide | Description |
