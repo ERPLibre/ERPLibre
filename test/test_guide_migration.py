@@ -25,6 +25,9 @@ import re
 import unittest
 from unittest.mock import MagicMock, patch
 
+from script.todo.version_manager import get_odoo_version
+from script.version import install_odoo_versions
+
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 README = os.path.join(RACINE, "README.base.md")
 TODO_JSON = os.path.join(RACINE, "script", "todo", "todo.json")
@@ -127,13 +130,24 @@ class TestGuideMigration(unittest.TestCase):
         )
         commandes = [appel.args[0] for appel in lancer.call_args_list]
         self.assertIn(
-            SANS_INTERACTION + "make install_odoo_all_version", commandes
+            SANS_INTERACTION
+            + "./script/version/install_odoo_versions.py --all",
+            commandes,
         )
+        # « w » installe tout le catalogue : l'étape système reçoit le
+        # PostgreSQL le plus exigeant parmi toutes les versions.
         todo.execute.exec_command_live.assert_any_call(
             SANS_INTERACTION
             + "./script/version/update_env_version.py --install",
             source_erplibre=False,
             single_source_erplibre=True,
+            new_env={
+                "PG_VERSION": str(
+                    install_odoo_versions.postgresql_minimum(
+                        get_odoo_version()[0]
+                    )
+                )
+            },
         )
 
 

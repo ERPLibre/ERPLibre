@@ -31,6 +31,7 @@ sys.path.insert(0, str(RACINE))
 from script.todo import install_non_interactif  # noqa: E402
 from script.todo import todo as todo_module  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 QUESTION_SYSTEME = todo_module.t(
     "First system installation? Installs the system packages first (y/N): "
@@ -847,6 +848,271 @@ class TestSondeSysteme(unittest.TestCase):
 
     def test_sans_psql_le_role_n_est_pas_sonde(self):
         self.assertEqual(self.sonder(absentes=("psql",), role=2), ["psql"])
+
+
+PLUSIEURS = t(
+    "Several numbers separated by spaces install those"
+    " versions one after the other, in the order typed."
+)
+SANS_GEL = (
+    "No frozen commit for this Odoo version: installing the development,"
+    " on the branches."
+)
+GEL = "Production: each repository on its frozen commit."
+LETTRES = "Letters and 0 are single choices, to type alone:"
+INCOMPRIS = "Error, cannot understand value"
+ECHEC = "The Bash script failed with return code"
+
+# Un catalogue inventé, dans l'ordre que rend get_odoo_version : le menu le
+# renverse, d'où « 1 » pour 21.0, « 2 » pour 17.0 et « 3 » pour 12.0.
+CATALOGUE = [
+    {"odoo_version": "12.0", "erplibre_version": "odoo12.0_python3.7.17"},
+    {"odoo_version": "17.0", "erplibre_version": "odoo17.0_python3.10.18"},
+    {
+        "odoo_version": "21.0",
+        "erplibre_version": "odoo21.0_python3.14.7",
+        "postgresql_version": "18",
+    },
+]
+
+
+class Poste:
+    """Le checkout simulé : la version active et les Odoo installés.
+
+    Une commande « --install_dev » rend sa version active, puis l'inscrit
+    parmi les installées si elle réussit ; « --switch » ne fait que la
+    rendre active. `echecs` donne le code de retour d'une version d'ERPLibre
+    dont l'installation échoue.
+    """
+
+    def __init__(self, active="", installees=(), echecs=None):
+        self.active = active
+        self.installees = list(installees)
+        self.echecs = echecs or {}
+        self.lancees = []  # (commande, kwargs) dans l'ordre
+        self.marquees = []
+
+    def version_de(self, cmd):
+        return cmd.split("--erplibre_version ", 1)[1].split()[0]
+
+    def exec_command_live(self, cmd, **kwargs):
+        self.lancees.append((cmd, kwargs))
+        if "--switch" in cmd:
+            self.active = self.version_de(cmd)
+        return 0
+
+    def run(self, cmd, *args, **kwargs):
+        if isinstance(cmd, list):
+            # « which pycharm » échoue : pas de question PyCharm ici.
+            return subprocess.CompletedProcess(cmd, 1, "", "")
+        self.lancees.append((cmd, kwargs))
+        cible = self.version_de(cmd)
+        self.active = cible
+        code = self.echecs.get(cible, 0)
+        if not code:
+            self.installees.append(cible.split("_python", 1)[0])
+        if code and kwargs.get("check"):
+            raise subprocess.CalledProcessError(code, cmd)
+        return subprocess.CompletedProcess(cmd, code, "", "")
+
+    def get_odoo_version(self):
+        odoo_active = self.active.split("_python", 1)[0] or None
+        return [dict(e) for e in CATALOGUE], list(self.installees), odoo_active
+
+    def commandes(self):
+        return [cmd for cmd, _ in self.lancees]
+
+
+class TestPlusieursVersions(unittest.TestCase):
+    """Plusieurs numéros séparés par des espaces installent ces versions
+    l'une après l'autre, dans l'ordre tapé ; l'environnement, le type et
+    l'étape système ne sont demandés qu'une fois pour le lot."""
+
+    def jouer(self, reponses, poste, gels=None):
+        """Lance prompt_install ; rend (questions, sortie, restart_script).
+
+        `gels` donne, par version d'Odoo, ce que rend gel_des_sources."""
+        todo = TODO.__new__(TODO)
+        todo.execute = poste
+        todo._poetry_drift_version = lambda: poste.active
+        todo._python_versions_marquer_courante = poste.marquees.append
+        todo.restart_script = mock.Mock()
+        # La suite interactive et l'identité git ont leurs propres tests :
+        # ici, rien ne s'intercale entre l'étape système et le lot.
+        todo._choisir_suite = lambda: False
+        todo._proposer_identite_git = lambda **_kwargs: None
+        questions = []
+        suite = iter(reponses)
+        gels = gels or {}
+
+        def repondre(prompt=""):
+            questions.append(prompt)
+            try:
+                return next(suite)
+            except StopIteration:
+                raise AssertionError(
+                    f"question sans réponse prévue : {prompt!r}"
+                ) from None
+
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(builtins, "input", repondre),
+            mock.patch.object(todo_module.subprocess, "run", poste.run),
+            mock.patch.object(
+                todo_module, "get_odoo_version", poste.get_odoo_version
+            ),
+            mock.patch.object(
+                todo_module,
+                "gel_des_sources",
+                lambda odoo_version: gels.get(odoo_version, (0, 9)),
+            ),
+            contextlib.redirect_stdout(sortie),
+        ):
+            todo.prompt_install()
+        return questions, sortie.getvalue(), todo.restart_script
+
+    def installations(self, poste):
+        return [c for c in poste.commandes() if "--install_dev" in c]
+
+    def test_the_prompt_says_several_numbers_may_be_given(self):
+        poste = Poste()
+        questions, _, _ = self.jouer(["0"], poste)
+        self.assertIn(t("Choose one or more versions:"), questions[0])
+        self.assertIn(PLUSIEURS, questions[0])
+
+    def test_versions_install_in_the_order_typed(self):
+        poste = Poste()
+        # Les versions, le développement, le standard, système non.
+        questions, _, _ = self.jouer(["3 1", "1", "1", "n"], poste)
+        self.assertEqual(len(questions), 4)
+        self.assertIn(QUESTION_SYSTEME, questions[3])
+        self.assertEqual(
+            self.installations(poste),
+            [
+                "EL_FREEZE=0 ./script/version/update_env_version.py"
+                " --erplibre_version odoo12.0_python3.7.17 --install_dev",
+                "EL_FREEZE=0 ./script/version/update_env_version.py"
+                " --erplibre_version odoo21.0_python3.14.7 --install_dev",
+            ],
+        )
+
+    def test_mode_and_extra_are_asked_once_for_the_batch(self):
+        """La production, demandée une fois, se rabat sur le développement
+        pour la seule version sans gel, et le dit en la nommant."""
+        poste = Poste()
+        _, sortie, _ = self.jouer(
+            ["2 1", "2", "2", "n"],
+            poste,
+            gels={"21.0": (5, 9), "17.0": (0, 9)},
+        )
+        self.assertEqual(
+            self.installations(poste),
+            [
+                "EL_FREEZE=0 ./script/version/update_env_version.py"
+                " --erplibre_version odoo17.0_python3.10.18 --install_dev"
+                " --with_extra",
+                "EL_FREEZE=1 ./script/version/update_env_version.py"
+                " --erplibre_version odoo21.0_python3.14.7 --install_dev"
+                " --with_extra",
+            ],
+        )
+        self.assertIn(f"Odoo 17.0: {t(SANS_GEL)}", sortie)
+        self.assertIn(f"Odoo 21.0: {t(GEL)}", sortie)
+
+    def test_invalid_selections_are_refused_and_asked_again(self):
+        poste = Poste()
+        questions, sortie, _ = self.jouer(
+            ["q 3", "3 0", "3 3", "3 9", "3 x", "7", "0"], poste
+        )
+        self.assertEqual(len(questions), 7)
+        self.assertEqual(poste.lancees, [])
+        self.assertEqual(sortie.count(t(LETTRES)), 2)
+        self.assertIn(f"{t('Version number given twice:')} '3'", sortie)
+        self.assertIn(f"{t('Unknown version number:')} '9'", sortie)
+        self.assertIn(f"{t(INCOMPRIS)} 'x'", sortie)
+        self.assertIn(f"{t(INCOMPRIS)} '7'", sortie)
+
+    def test_a_failure_does_not_stop_the_batch(self):
+        poste = Poste(echecs={"odoo17.0_python3.10.18": 4})
+        _, sortie, restart = self.jouer(["3 2 1", "1", "1", "n"], poste)
+        self.assertEqual(len(self.installations(poste)), 3)
+        resume = sortie.split(t("Installation summary:"), 1)[1]
+        self.assertIn("✅ Odoo 12.0", resume)
+        self.assertIn("❌ Odoo 17.0", resume)
+        self.assertIn(f"{t(ECHEC)} 4.", resume)
+        self.assertIn("✅ Odoo 21.0", resume)
+        restart.assert_not_called()
+
+    def test_the_version_active_before_becomes_active_again(self):
+        poste = Poste(active="odoo17.0_python3.10.18", installees=["odoo17.0"])
+        self.jouer(["1 3", "1", "1", "n"], poste)
+        self.assertEqual(
+            poste.commandes()[-1],
+            "./script/version/update_env_version.py --erplibre_version"
+            " odoo17.0_python3.10.18 --switch",
+        )
+        self.assertEqual(poste.active, "odoo17.0_python3.10.18")
+        self.assertEqual(poste.marquees, ["odoo17.0_python3.10.18"])
+
+    def test_without_the_previous_version_the_last_installed_stays(self):
+        poste = Poste(active="odoo17.0_python3.10.18")
+        self.jouer(["3 1", "1", "1", "n"], poste)
+        self.assertFalse(any("--switch" in c for c in poste.commandes()))
+        self.assertEqual(poste.active, "odoo21.0_python3.14.7")
+
+    def test_a_failed_last_version_leaves_the_last_success_active(self):
+        poste = Poste(echecs={"odoo12.0_python3.7.17": 2})
+        self.jouer(["1 3", "1", "1", "n"], poste)
+        self.assertEqual(poste.active, "odoo21.0_python3.14.7")
+        self.assertIn("--switch", poste.commandes()[-1])
+
+    def test_the_system_step_runs_once_with_the_highest_postgresql(self):
+        poste = Poste()
+        self.jouer(["3 1", "1", "1", "y"], poste)
+        systeme = [
+            kwargs
+            for cmd, kwargs in poste.lancees
+            if cmd == "./script/version/update_env_version.py --install"
+        ]
+        self.assertEqual(len(systeme), 1)
+        self.assertEqual(systeme[0].get("new_env"), {"PG_VERSION": "18"})
+
+    def test_without_postgresql_requirement_the_system_step_is_unchanged(
+        self,
+    ):
+        poste = Poste()
+        self.jouer(["3 2", "1", "1", "y"], poste)
+        systeme = [
+            kwargs
+            for cmd, kwargs in poste.lancees
+            if cmd == "./script/version/update_env_version.py --install"
+        ]
+        self.assertEqual(systeme, [{"source_erplibre": True}])
+
+    def test_a_single_version_passes_its_postgresql_requirement(self):
+        poste = Poste()
+        self.jouer(["1", "1", "1", "y"], poste)
+        systeme = [
+            kwargs
+            for cmd, kwargs in poste.lancees
+            if cmd == "./script/version/update_env_version.py --install"
+        ]
+        self.assertEqual(systeme[0].get("new_env"), {"PG_VERSION": "18"})
+
+    def test_a_single_version_keeps_its_behaviour(self):
+        """Une version seule : pas de bilan, pas de retour, et un échec
+        relance TODO comme avant."""
+        poste = Poste(
+            active="odoo17.0_python3.10.18",
+            installees=["odoo17.0"],
+            echecs={"odoo12.0_python3.7.17": 3},
+        )
+        _, sortie, restart = self.jouer(["3", "1", "1", "n"], poste)
+        self.assertEqual(len(self.installations(poste)), 1)
+        self.assertFalse(any("--switch" in c for c in poste.commandes()))
+        self.assertNotIn(t("Installation summary:"), sortie)
+        self.assertIn(f"{t(ECHEC)} 3.", sortie)
+        restart.assert_called_once()
 
 
 if __name__ == "__main__":

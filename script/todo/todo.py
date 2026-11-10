@@ -179,6 +179,7 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
+from script.version import install_odoo_versions
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 # Le générateur des images de image_db/, lancé avec le Python des outils.
@@ -635,7 +636,7 @@ class TODO(
         return False
 
     def _install_system_step(
-        self, systeme=None, non_interactif=False, prefixe=""
+        self, systeme=None, non_interactif=False, prefixe="", pg_version=None
     ):
         """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
         et propose d'ouvrir PyCharm.
@@ -646,14 +647,27 @@ class TODO(
         interactif, l'installation système tourne dans ce terminal et
         l'appelant attend sa fin, au lieu d'une fenêtre à part ; PyCharm
         n'est pas proposé. Rend le code de l'installation système, 0 quand
-        elle n'a pas lieu."""
+        elle n'a pas lieu.
+
+        `pg_version`, le PostgreSQL majeur minimum des versions choisies,
+        atteint install_debian_dependency.sh par la variable PG_VERSION, à
+        travers update_env_version.py --install ; None laisse l'installeur
+        choisir."""
         if systeme is None:
             systeme = self._demander_systeme()
         if systeme:
             cmd = prefixe + "./script/version/update_env_version.py --install"
+            pg_env = (
+                {"new_env": {"PG_VERSION": str(pg_version)}}
+                if pg_version
+                else {}
+            )
             if non_interactif:
                 code = self.execute.exec_command_live(
-                    cmd, source_erplibre=False, single_source_erplibre=True
+                    cmd,
+                    source_erplibre=False,
+                    single_source_erplibre=True,
+                    **pg_env,
                 )
                 if code:
                     print(
@@ -661,7 +675,9 @@ class TODO(
                     )
                     return code
             else:
-                self.execute.exec_command_live(cmd, source_erplibre=True)
+                self.execute.exec_command_live(
+                    cmd, source_erplibre=True, **pg_env
+                )
                 print(
                     t(
                         "Wait for the system installation to finish before continuing."
@@ -795,7 +811,12 @@ class TODO(
         suite : interactive par défaut, ou sans interaction, ses valeurs
         par défaut prises (_choisir_suite). La cible « m » n'offre pas ce
         choix : sa dernière étape fait choisir un appareil Android au
-        clavier."""
+        clavier.
+
+        Plusieurs numéros séparés par des espaces installent ces versions
+        en lot (_install_lot) : l'environnement, le type et l'étape système
+        valent pour tout le lot, et un échec n'arrête pas les versions
+        suivantes ni ne relance TODO."""
         depuis_cli = reponses is not None
         reponses = reponses or {}
         key_i = 0
@@ -808,7 +829,7 @@ class TODO(
             "w": (
                 "w",
                 f"w: {t('All Odoo versions with ERPLibre')}",
-                "make install_odoo_all_version",
+                "./script/version/install_odoo_versions.py --all",
             ),
             "m": (
                 "m",
@@ -826,10 +847,12 @@ class TODO(
         )
 
         version_par_cle = {}
+        entree_par_cle = {}
         for version_info in versions[::-1]:
             key_i += 1
             key_s = str(key_i)
             version_par_cle[key_s] = version_info.get("odoo_version")
+            entree_par_cle[key_s] = version_info
             label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
@@ -851,11 +874,11 @@ class TODO(
         # Add final command
         install_commands = {**commands_begin, **commands_end}
 
-        odoo_version_input = ""
+        selection = None
         cible = reponses.get("cible")
         if cible is not None:
-            odoo_version_input = self._cle_de_cible(cible, version_par_cle)
-            if odoo_version_input is None:
+            cle = self._cle_de_cible(cible, version_par_cle)
+            if cle is None:
                 valides = ", ".join(
                     ["q", "w", "m"] + list(version_par_cle.values())
                 )
@@ -864,66 +887,66 @@ class TODO(
                     f" ({t('expected')} {valides})"
                 )
                 return 2
-        while odoo_version_input not in install_commands:
-            if odoo_version_input:
-                print(
-                    f"{t('Error, cannot understand value')} '{odoo_version_input}'"
-                )
+            selection = [cle]
+        while selection is None:
             str_input_dyn_odoo_version = (
-                f"💬 {t('Choose a version:')}\n\t"
+                f"💬 {t('Choose one or more versions:')}\n\t"
                 + "\n\t".join([a[1] for a in install_commands.values()])
+                + "\n"
+                + t(
+                    "Several numbers separated by spaces install those"
+                    " versions one after the other, in the order typed."
+                )
                 + f"\n{t('Select: ')}"
             )
-            odoo_version_input = (
-                input(str_input_dyn_odoo_version).strip().lower()
+            saisie = input(str_input_dyn_odoo_version).strip().lower()
+            selection, erreur = self._lire_selection_installation(
+                saisie, install_commands
             )
+            if erreur:
+                print(erreur)
 
-        if odoo_version_input == "0":
+        if selection == ["0"]:
             return
 
-        cmd_intern = install_commands.get(odoo_version_input)[2]
-
-        # For numbered version selections, offer extra modules sub-menu
-        if odoo_version_input.isdigit():
-            environnement = reponses.get("environnement")
-            mode = self._choisir_mode_installation(
-                version_par_cle[odoo_version_input],
-                saisie={"dev": "1", "prod": "2"}.get(environnement),
+        entrees, active_avant = [], None
+        if not selection[0].isdigit():
+            commandes = [install_commands[selection[0]][2]]
+            # « w » installe tout le catalogue : le PostgreSQL le plus exigeant.
+            pg_version = (
+                self._postgresql_minimum(versions)
+                if selection == ["w"]
+                else None
             )
-            if mode is None:
+        else:
+            entrees = [entree_par_cle[cle] for cle in selection]
+            odoo_versions = [entree.get("odoo_version") for entree in entrees]
+            prefixes = self._choisir_mode_installation_lot(
+                odoo_versions,
+                saisie={"dev": "1", "prod": "2"}.get(
+                    reponses.get("environnement")
+                ),
+            )
+            if prefixes is None:
                 return
-            cmd_intern = f"{mode} {cmd_intern}"
-            extra_choices = {
-                "1": (
-                    "1",
-                    f"1: {t('Standard install (without extra modules)')}"
-                    f" {t('(default)')}",
-                ),
-                "2": (
-                    "2",
-                    f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
-                ),
-                "0": ("0", bleu_poudre(f"0: {t('Back')}")),
-            }
-            extra_input = {"standard": "1", "extra": "2"}.get(
-                reponses.get("type"), ""
-            )
-            while extra_input not in extra_choices:
-                if extra_input:
-                    print(
-                        f"{t('Error, cannot understand value')} '{extra_input}'"
-                    )
-                str_extra = (
-                    f"💬 {t('Install type:')}\n\t"
-                    + "\n\t".join([a[1] for a in extra_choices.values()])
-                    + f"\n{t('Select [1]: ')}"
+            avec_extra = self._choisir_modules_extra(
+                saisie={"standard": "1", "extra": "2"}.get(
+                    reponses.get("type")
                 )
-                # Entrée : l'installation standard.
-                extra_input = input(str_extra).strip() or "1"
-            if extra_input == "0":
+            )
+            if avec_extra is None:
                 return
-            if extra_input == "2":
-                cmd_intern = cmd_intern + " --with_extra"
+            commandes = []
+            for cle, odoo_version in zip(selection, odoo_versions):
+                cmd_intern = (
+                    f"{prefixes[odoo_version]} {install_commands[cle][2]}"
+                )
+                if avec_extra:
+                    cmd_intern = cmd_intern + " --with_extra"
+                commandes.append(cmd_intern)
+            pg_version = self._postgresql_minimum(entrees)
+            # Lue avant l'étape système : la version à retrouver à la fin.
+            active_avant = self._poetry_drift_version()
 
         # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
         systeme = reponses.get("systeme")
@@ -933,7 +956,7 @@ class TODO(
         # par leur préfixe et non par os.environ : TODO, relancé après un
         # échec, refuserait son menu sous EL_NON_INTERACTIVE=1.
         sans_interaction, prefixe = non_interactif, ""
-        if not non_interactif and odoo_version_input != "m":
+        if not non_interactif and selection != ["m"]:
             sans_interaction = self._choisir_suite()
             if sans_interaction:
                 print(
@@ -956,18 +979,69 @@ class TODO(
                     f" EL_INSTALL_MISE={'0' if mise is False else '1'} "
                 )
         # « q » n'installe qu'ERPLibre et ne lance pas repo init.
-        if odoo_version_input != "q":
+        if selection != ["q"]:
             self._proposer_identite_git(
                 nom=reponses.get("git_nom"),
                 courriel=reponses.get("git_courriel"),
                 non_interactif=sans_interaction,
             )
         code = self._install_system_step(
-            systeme=systeme, non_interactif=sans_interaction, prefixe=prefixe
+            systeme=systeme,
+            non_interactif=sans_interaction,
+            prefixe=prefixe,
+            pg_version=pg_version,
         )
         if code:
             return code
-        cmd_intern = prefixe + cmd_intern
+        commandes = [prefixe + cmd for cmd in commandes]
+        if len(commandes) == 1:
+            return self._install_lancer_unique(commandes[0], depuis_cli)
+        return self._install_lot(entrees, commandes, active_avant)
+
+    @staticmethod
+    def _lire_selection_installation(saisie, install_commands):
+        """Découpe la saisie du menu Installation sur les espaces.
+
+        Rend (clés, erreur) : les clés de `install_commands` dans l'ordre
+        tapé, ou None avec le message à afficher avant de reposer la
+        question. Une saisie vide rend (None, None). Une clé seule est
+        acceptée telle quelle ; plusieurs ne peuvent être que des numéros de
+        version, chacun une seule fois. Les lettres et « 0 » restent des
+        choix uniques : mêlés à des numéros, ils sont refusés.
+        """
+        cles = saisie.split()
+        if not cles:
+            return None, None
+        if len(cles) == 1:
+            if cles[0] in install_commands:
+                return cles, None
+            return None, f"{t('Error, cannot understand value')} '{saisie}'"
+        vues = []
+        for cle in cles:
+            if cle in install_commands and (not cle.isdigit() or cle == "0"):
+                return None, (
+                    f"{t('Letters and 0 are single choices, to type alone:')}"
+                    f" '{saisie}'"
+                )
+            if not cle.isdigit():
+                return None, f"{t('Error, cannot understand value')} '{cle}'"
+            if cle not in install_commands:
+                return None, f"{t('Unknown version number:')} '{cle}'"
+            if cle in vues:
+                return None, f"{t('Version number given twice:')} '{cle}'"
+            vues.append(cle)
+        return vues, None
+
+    @staticmethod
+    def _postgresql_minimum(entrees):
+        """Le PostgreSQL majeur qu'exigent ensemble des entrées du catalogue,
+        ou None (voir install_odoo_versions.postgresql_minimum)."""
+        return install_odoo_versions.postgresql_minimum(entrees)
+
+    def _install_lancer_unique(self, cmd_intern, depuis_cli=False):
+        """Lance une commande d'installation et rend son code, 0 si elle
+        réussit. Lancé depuis le menu (`depuis_cli` faux), un échec relance
+        TODO avant de rendre son code."""
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
@@ -992,6 +1066,59 @@ class TODO(
             self.restart_script(str(e))
             return e.returncode
         return 0
+
+    def _install_lot(self, entrees, commandes, active_avant):
+        """Installe plusieurs versions d'Odoo l'une après l'autre, par le même
+        chemin que « w » et « make install_odoo_all_version »
+        (install_odoo_versions.installer_lot). `active_avant` est la version
+        à retrouver, lue avant l'étape système. Rend 0 si toutes ont
+        réussi, 1 sinon."""
+        return install_odoo_versions.installer_lot(
+            entrees,
+            commandes,
+            lancer=lambda cmd: todo_journal.lancer_au_terminal(
+                cmd, shell=True, executable="/bin/bash"
+            ).returncode,
+            active=self._poetry_drift_version,
+            marquer=self._python_versions_marquer_courante,
+            t=t,
+            active_avant=active_avant,
+            installees=lambda: get_odoo_version()[1],
+        )
+
+    def _choisir_modules_extra(self, saisie=None):
+        """Installation standard ou avec les modules extra (CybroOdoo).
+
+        `saisie` (« 1 » ou « 2 ») répond d'avance à la question ; sinon,
+        Entrée choisit l'installation standard. Rend True pour les modules
+        extra, False sans eux, None pour revenir.
+        """
+        extra_choices = {
+            "1": (
+                "1",
+                f"1: {t('Standard install (without extra modules)')}"
+                f" {t('(default)')}",
+            ),
+            "2": (
+                "2",
+                f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
+            ),
+            "0": ("0", bleu_poudre(f"0: {t('Back')}")),
+        }
+        extra_input = saisie or ""
+        while extra_input not in extra_choices:
+            if extra_input:
+                print(f"{t('Error, cannot understand value')} '{extra_input}'")
+            str_extra = (
+                f"💬 {t('Install type:')}\n\t"
+                + "\n\t".join([a[1] for a in extra_choices.values()])
+                + f"\n{t('Select [1]: ')}"
+            )
+            # Entrée : l'installation standard.
+            extra_input = input(str_extra).strip() or "1"
+        if extra_input == "0":
+            return None
+        return extra_input == "2"
 
     @staticmethod
     def _cle_de_cible(cible, version_par_cle):
@@ -1111,12 +1238,40 @@ class TODO(
         dans les deux cas : une valeur exportée par le shell ne décide pas à
         la place du choix.
         """
-        etat = gel_des_sources(odoo_version=odoo_version)
-        geles = etat[0] if etat else 0
-        if geles:
-            detail = f"{geles}/{etat[1]} {t('projects frozen')}"
+        prefixes = self._choisir_mode_installation_lot([odoo_version], saisie)
+        if prefixes is None:
+            return None
+        return prefixes[odoo_version]
+
+    def _choisir_mode_installation_lot(self, odoo_versions, saisie=None):
+        """Le choix de _choisir_mode_installation, posé une seule fois pour
+        toutes les `odoo_versions`.
+
+        Rend {version: préfixe}, ou None pour revenir. La production se
+        décide version par version : celle dont aucun manifeste ne porte de
+        gel se rabat sur le développement, et le message la nomme dès que
+        le lot en compte plusieurs.
+        """
+        geles, details = {}, {}
+        for odoo_version in odoo_versions:
+            etat = gel_des_sources(odoo_version=odoo_version)
+            geles[odoo_version] = etat[0] if etat else 0
+            if geles[odoo_version]:
+                details[odoo_version] = (
+                    f"{geles[odoo_version]}/{etat[1]} {t('projects frozen')}"
+                )
+            else:
+                details[odoo_version] = t(
+                    "no freeze, falls back to development"
+                )
+        seule = len(odoo_versions) == 1
+        if seule:
+            detail = details[odoo_versions[0]]
         else:
-            detail = t("no freeze, falls back to development")
+            detail = "; ".join(
+                f"Odoo {odoo_version}: {details[odoo_version]}"
+                for odoo_version in odoo_versions
+            )
         choix = {
             "1": f"1: {t('Development: follows the branches (revision)')}",
             "2": (
@@ -1139,16 +1294,21 @@ class TODO(
             )
         if saisie == "0":
             return None
-        if saisie == "2" and geles:
-            print(
-                f"🧊 {t('Production: each repository on its frozen commit.')}"
-            )
-            return "EL_FREEZE=1"
-        if saisie == "2":
-            print(
-                f"⚠  {t('No frozen commit for this Odoo version: installing the development, on the branches.')}"
-            )
-        return "EL_FREEZE=0"
+        prefixes = {}
+        for odoo_version in odoo_versions:
+            nom = "" if seule else f"Odoo {odoo_version}: "
+            if saisie == "2" and geles[odoo_version]:
+                print(
+                    f"🧊 {nom}{t('Production: each repository on its frozen commit.')}"
+                )
+                prefixes[odoo_version] = "EL_FREEZE=1"
+                continue
+            if saisie == "2":
+                print(
+                    f"⚠  {nom}{t('No frozen commit for this Odoo version: installing the development, on the branches.')}"
+                )
+            prefixes[odoo_version] = "EL_FREEZE=0"
+        return prefixes
 
     def execute_from_configuration(
         self, instance, exec_run_db=False, ignore_makefile=False
