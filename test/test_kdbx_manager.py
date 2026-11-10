@@ -187,13 +187,34 @@ class TestPasswordFile(KdbxCase):
     def test_a_missing_file_is_named_and_never_prompts(self):
         resultat, vu, saisies = self._ouvrir(None, configure="bon")
         self.assertIsNone(resultat)
-        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertIn("KDBX_PASSWORD_FILE", vu)
         self.assertEqual(0, saisies)
+
+    def test_a_password_set_instead_of_a_path_is_never_shown(self):
+        """La variable porte le mot de passe au lieu d'un chemin : le
+        fichier est absent, et le message ne cite pas la valeur."""
+        vues = []
+        with (
+            patch.dict(
+                os.environ, {"KDBX_PASSWORD_FILE": "Zq7-pas-un-chemin"}
+            ),
+            patch("getpass.getpass") as saisie,
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+            ),
+        ):
+            resultat = self._manager("bon").get_kdbx()
+        vu = "\n".join(vues)
+        self.assertIsNone(resultat)
+        self.assertEqual(0, saisie.call_count)
+        self.assertIn("KDBX_PASSWORD_FILE", vu)
+        self.assertNotIn("Zq7-pas-un-chemin", vu)
 
     def test_an_empty_file_is_refused(self):
         resultat, vu, saisies = self._ouvrir("\n")
         self.assertIsNone(resultat)
-        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertIn("KDBX_PASSWORD_FILE", vu)
         self.assertEqual(0, saisies)
 
     def test_a_byte_order_mark_is_not_part_of_the_password(self):
@@ -206,7 +227,7 @@ class TestPasswordFile(KdbxCase):
         resultat, vu, saisies = self._ouvrir(b"bo\xe9n\xff\n", configure="bon")
         self.assertIsNone(resultat)
         self.assertEqual(0, saisies)
-        self.assertIn("KDBX_PASSWORD_FILE=", vu)
+        self.assertIn("KDBX_PASSWORD_FILE", vu)
         self.assertIn("UTF-8", vu)
         for fuite in ("0xe9", "0xff", "\\x", "position", "codec"):
             self.assertNotIn(fuite, vu)

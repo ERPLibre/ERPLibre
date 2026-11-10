@@ -44,6 +44,10 @@ def lire_mot_de_passe_fichier(chemin: str) -> str:
     passe. Un fichier qui n'est pas de l'UTF-8 est refusé sous une raison
     générique : le texte de UnicodeDecodeError cite l'octet fautif et sa
     position, donc un morceau du secret.
+
+    Les messages nomment la variable, jamais sa valeur : quand le mot de
+    passe lui-même y est posé au lieu d'un chemin, l'erreur « fichier
+    absent » l'afficherait en clair, dans un terminal ou un journal.
     """
     try:
         with open(chemin, encoding="utf-8-sig") as fh:
@@ -51,20 +55,20 @@ def lire_mot_de_passe_fichier(chemin: str) -> str:
     except UnicodeDecodeError:
         print(
             f"{t('kdbx_password_file_unreadable')}"
-            f" {ENV_PASSWORD_FILE}={chemin} :"
+            f" {ENV_PASSWORD_FILE} :"
             f" {t('kdbx_password_file_not_utf8')}"
         )
         return ""
     except OSError as e:
         print(
             f"{t('kdbx_password_file_unreadable')}"
-            f" {ENV_PASSWORD_FILE}={chemin} : {e.strerror}"
+            f" {ENV_PASSWORD_FILE} : {e.strerror}"
         )
         return ""
     if not mot_de_passe:
         print(
             f"{t('kdbx_password_file_unreadable')}"
-            f" {ENV_PASSWORD_FILE}={chemin} : {t('kdbx_password_file_empty')}"
+            f" {ENV_PASSWORD_FILE} : {t('kdbx_password_file_empty')}"
         )
     return mot_de_passe
 
