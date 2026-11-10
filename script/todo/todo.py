@@ -5940,6 +5940,7 @@ class TODO(
         — on relit donc la base.
         """
         from script.analyse import monitoring
+        from script.database import db_duplicate
 
         image = self._monitoring_image_name(zip_path)
         if not image:
@@ -5955,9 +5956,13 @@ class TODO(
             .strip()
             .lower()
         )
+        neutraliser = neutralise != "n"
         more_arg = ""
-        if neutralise != "n":
-            more_arg = "--neutralize "
+        if neutraliser:
+            # Avant Odoo 16, odoo_db_legacy.py refuse « --neutralize » :
+            # update_prod_to_dev.sh neutralise alors seul, plus bas.
+            if db_duplicate.supporte_neutralisation():
+                more_arg = "--neutralize "
             database += "_neutralize"
         else:
             # Refuser est un choix légitime — reproduire un bug de cron
@@ -5978,7 +5983,7 @@ class TODO(
         if status:
             print(f"❌ {t('The restore failed.')}")
             return None
-        if more_arg:
+        if neutraliser:
             status, _ = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database}",
                 return_status_and_output=True,

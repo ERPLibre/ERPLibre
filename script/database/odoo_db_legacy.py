@@ -43,8 +43,10 @@ import urllib.parse
 
 VARIABLE_LEGACY = "ERPLIBRE_ODOO_CLI_LEGACY"
 
-# kind : « odoo_bin » (./odoo_bin.sh ARGS), « run_sh » (./run.sh ARGS) ou
-# « require_db » (ARGS = [BASE], qui doit figurer dans « db --list »).
+# kind : « odoo_bin » (./odoo_bin.sh ARGS), « odoo_bin_read » (de même,
+# mais seule la sortie standard passe, stderr ne paraissant qu'en cas
+# d'échec), « run_sh » (./run.sh ARGS) ou « require_db » (ARGS = [BASE],
+# qui doit figurer dans « db --list »).
 # env : variables ajoutées à l'environnement hérité pour cette étape.
 # stdin : texte donné sur l'entrée standard d'une étape « odoo_bin », ou
 # None pour hériter de celle du traducteur.
@@ -290,6 +292,9 @@ class _Contexte:
     def odoo(self, *argv):
         return Step("odoo_bin", ["db"] + list(argv), self.env)
 
+    def lire(self, *argv):
+        return Step("odoo_bin_read", ["db"] + list(argv), self.env)
+
     def dropper(self, base):
         return self.odoo("--drop", "--database", base)
 
@@ -401,11 +406,11 @@ def _db_rename(args, ctx):
 
 
 TRADUCTIONS_DB = {
-    "list": lambda args, ctx: [ctx.odoo("--list")],
+    "list": lambda args, ctx: [ctx.lire("--list")],
     "list-incompatible": lambda args, ctx: [
-        ctx.odoo("--list_incompatible_db")
+        ctx.lire("--list_incompatible_db")
     ],
-    "version": lambda args, ctx: [ctx.odoo("--version")],
+    "version": lambda args, ctx: [ctx.lire("--version")],
     "create": _db_create,
     "drop": _db_drop,
     "load": _db_load,
@@ -487,6 +492,23 @@ def _executer(etape):
         ).returncode
     if etape.kind == "odoo_bin":
         return subprocess.call(["./odoo_bin.sh"] + etape.args, env=env)
+    if etape.kind == "odoo_bin_read":
+        # Les lecteurs de « db list » prennent chaque ligne pour un nom de
+        # base, stderr compris quand ils le fusionnent. Les avertissements
+        # que l'Odoo écrit au démarrage n'en sont pas : stderr ne passe
+        # que si l'étape échoue, pour que sa trace reste visible.
+        fait = subprocess.run(
+            ["./odoo_bin.sh"] + etape.args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            env=env,
+        )
+        sys.stdout.write(fait.stdout)
+        sys.stdout.flush()
+        if fait.returncode:
+            sys.stderr.write(fait.stderr)
+        return fait.returncode
     if etape.kind == "run_sh":
         return subprocess.call(["./run.sh"] + etape.args, env=env)
     # require_db : la liste sur stdout, une base par ligne ; les journaux

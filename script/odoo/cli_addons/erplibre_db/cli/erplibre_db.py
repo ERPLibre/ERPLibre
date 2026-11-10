@@ -154,8 +154,17 @@ def cloner(source, cible, neutraliser):
 
 
 def supprimer(nom):
+    """Supprime la base, et rend False sans rien faire si elle n'existe pas.
+
+    exp_drop d'Odoo 8 à 19 rend déjà False sur une base absente ; drop de
+    modules.db (Odoo 20) lève alors InvalidCatalogName. « db drop
+    --if-exists » d'odoo_db_legacy.py compte sur ce silence, et la sonde du
+    mot de passe maître de db_restore.py supprime une base qui n'existe pas.
+    """
     if _db_legacy is not None:
         return _db_legacy.exp_drop(nom)
+    if nom not in lister():
+        return False
     return _db_moderne.drop(nom)
 
 
