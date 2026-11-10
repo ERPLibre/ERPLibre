@@ -123,6 +123,36 @@ if [ -f "${EL_CONFIG_PY}" ] && ! el_option_connue "--no-http"; then
   set -- "${EL_ARGS[@]}"
 fi
 
+# « 0 » vaut « sans limite » pour --limit-memory-hard et --limit-memory-soft
+# depuis Odoo 12, qui teste la valeur avant de l'appliquer. Odoo 8 à 11
+# l'appliquent telle quelle : RLIMIT_AS à 0 fait échouer toute allocation
+# d'un processus du serveur, et une limite douce à 0 recycle chaque worker
+# après chaque tour. Ils reçoivent à la place une limite finie qu'aucun
+# processus n'atteint, 1 Tio. Sans server.py lisible, rien n'est réécrit.
+EL_SERVER_PY="${EL_PKG}/service/server.py"
+if [ -f "${EL_SERVER_PY}" ] \
+  && ! grep -q "config\['limit_memory_soft'\] and" "${EL_SERVER_PY}"; then
+  EL_SANS_LIMITE=1099511627776
+  EL_ARGS=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit-memory-hard=0 | --limit-memory-soft=0)
+        EL_ARGS+=("${1%=0}=${EL_SANS_LIMITE}")
+        ;;
+      --limit-memory-hard | --limit-memory-soft)
+        EL_ARGS+=("$1")
+        if [[ $# -gt 1 && "$2" == "0" ]]; then
+          EL_ARGS+=("${EL_SANS_LIMITE}")
+          shift
+        fi
+        ;;
+      *) EL_ARGS+=("$1") ;;
+    esac
+    shift
+  done
+  set -- "${EL_ARGS[@]}"
+fi
+
 # « --dev <mode> » prend une valeur depuis Odoo 10. Odoo 9 n'a qu'un drapeau
 # « --dev », sans valeur ; Odoo 8 n'a pas l'option du tout. Le mode y passe
 # alors par ERPLIBRE_DEV_MODE, que lisent les modules de neutralisation du
