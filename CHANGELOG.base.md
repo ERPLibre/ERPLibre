@@ -706,6 +706,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./dev.sh`, `./test.sh` and every caller of `odoo_bin.sh` that passes `--limit-memory-hard=0` or `--limit-memory-soft=0` now work on Odoo 8 to 11. These versions apply 0 as given instead of reading it as "no limit", so each worker died on MemoryError. They now get a finite 1 TiB limit instead, and Odoo 12 and later still get 0
 - The OpenUpgrade hops to Odoo 14 to 20 and the views_migration_17 pass lift the memory and time limits again, so a whole-database update no longer runs under the 2560 MiB default of production `run.sh`
 - setup_odoo_config_conf_devops.py now keeps the active Odoo's default server-wide modules when config.conf names none (so 'rpc' stays loaded on Odoo 19 and 20, and 'web_kanban' stays loaded on 8 to 10). On Odoo 8 and 9 it sets up the OCA connector job runner ([options-connector] channels, 'connector' module) instead of queue_job. The Odoo 20 manifest now clones OCA/queue
+- Installing every Odoo version (make install_odoo_all_version) now ends by switching to the default version (Odoo 18), so the service and the database image restore point to it instead of the last version it installed. The VM install prompt names the profile that a blank answer picks. Restoring a database on a VM whose Odoo version has no image now says so, instead of printing an empty list
 
 <!-- [fr] -->
 
@@ -864,6 +865,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./dev.sh`, `./test.sh` et tout appelant d'`odoo_bin.sh` qui passe `--limit-memory-hard=0` ou `--limit-memory-soft=0` fonctionnent maintenant sur Odoo 8 à 11. Ces versions appliquent 0 tel quel au lieu d'y lire « sans limite », si bien que chaque worker mourait sur MemoryError. Elles reçoivent désormais une limite finie de 1 Tio, et Odoo 12 et suivants reçoivent toujours 0
 - Les sauts OpenUpgrade vers Odoo 14 à 20 et le passage views_migration_17 lèvent de nouveau les limites de mémoire et de temps : la mise à jour de toute une base ne tourne plus sous les 2560 Mio par défaut du `run.sh` de production
 - setup_odoo_config_conf_devops.py conserve désormais les modules server-wide par défaut de la version d'Odoo active quand config.conf n'en déclare aucun (« rpc » reste chargé sous Odoo 19 et 20, et « web_kanban » sous Odoo 8 à 10). Sous Odoo 8 et 9, il configure l'exécuteur de tâches d'OCA connector (canaux dans [options-connector], module « connector ») au lieu de queue_job. Le manifeste d'Odoo 20 clone maintenant OCA/queue
+- L'installation de toutes les versions d'Odoo (make install_odoo_all_version) se termine désormais par une bascule sur la version par défaut (Odoo 18) : le service et la restauration d'image de base pointent sur elle, et non plus sur la dernière version installée. L'invite d'installation d'une VM nomme le profil que choisit une réponse vide. La restauration d'une base sur une VM dont la version d'Odoo n'a aucune image le dit, au lieu d'afficher une liste vide
 
 <!-- [en] -->
 ## Removed

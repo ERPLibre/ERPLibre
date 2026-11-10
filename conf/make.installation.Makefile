@@ -229,6 +229,9 @@ install_odoo_13_with_extra:
 install_odoo_12_with_extra:
 	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --install_dev --with_extra
 
+# Each install_odoo_N rewrites .odoo-version: the final switch leaves the
+# checkout, its service and its database images on the catalogue default
+# ("default" in conf/supported_version_erplibre.json).
 .PHONY: install_odoo_all_version
 install_odoo_all_version:
 	./script/make.sh install_odoo_20
@@ -244,6 +247,7 @@ install_odoo_all_version:
 	./script/make.sh install_odoo_10
 	./script/make.sh install_odoo_9
 	./script/make.sh install_odoo_8
+	./script/make.sh switch_odoo_18
 
 .PHONY: install_odoo_all_version_dev
 install_odoo_all_version_dev:

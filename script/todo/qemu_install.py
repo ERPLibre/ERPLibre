@@ -153,14 +153,18 @@ class QemuInstallMixin:
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
+        sel = input(
+            t("Choice (number, blank = {label}): ").format(
+                label=profiles[0][0]
+            )
+        ).strip()
         try:
             idx = int(sel) - 1
             if 0 <= idx < len(profiles):
                 return profiles[idx]
         except ValueError:
             pass
-        return profiles[0]  # défaut : ERPLibre + Odoo 18
+        return profiles[0]  # réponse vide ou hors liste : le premier profil
 
     @staticmethod
     def _qemu_install_dir(prod):
