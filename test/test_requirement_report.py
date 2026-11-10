@@ -544,6 +544,16 @@ class TestLEnvoi(unittest.TestCase):
         )
         self.assertNotIn(CLE, sortie)
 
+    def test_an_interrupt_during_the_push_ends_it_in_one_line(self):
+        """Ctrl+C, ou SIGTERM que le lanceur change en KeyboardInterrupt,
+        n'échappe pas à pousser : la suite garde son propre code."""
+        interrompu = mock.Mock(side_effect=KeyboardInterrupt)
+        sortie = pousser(interrompu, [self.ESSAI])
+        lignes = sortie.splitlines()
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("interrompu", lignes[0])
+        self.assertEqual(interrompu.call_count, 1)
+
     def test_the_key_is_never_printed_even_when_a_server_echoes_it(self):
         faux = FauxRegistre(
             erreur={
@@ -563,6 +573,10 @@ class TestLEnvoi(unittest.TestCase):
 class TestLeLanceur(unittest.TestCase):
     """lancer_une_fois avec et sans le registre : le code de sortie est
     celui de la suite dans tous les cas."""
+
+    def setUp(self):
+        # L'ordre des écritures des caches et des appels au registre.
+        self.ordre = []
 
     def lancer(self, source, env, reseau=None):
         """(code, sortie, reseau, Lanceur) d'un passage sur un fichier
@@ -586,8 +600,16 @@ class TestLeLanceur(unittest.TestCase):
                 mock.patch.object(rr, "RACINE", dossier),
                 mock.patch("urllib.request.urlopen", reseau),
                 mock.patch.object(r, "lire_durees", return_value={}),
-                mock.patch.object(r, "ecrire_durees"),
-                mock.patch.object(r.unit_selection, "retenir_echecs"),
+                mock.patch.object(
+                    r,
+                    "ecrire_durees",
+                    side_effect=lambda *_a, **_k: self.ordre.append("durees"),
+                ),
+                mock.patch.object(
+                    r.unit_selection,
+                    "retenir_echecs",
+                    side_effect=lambda *_a, **_k: self.ordre.append("echecs"),
+                ),
                 mock.patch.object(r, "Lanceur", wraps=r.Lanceur) as lanceur,
                 contextlib.redirect_stdout(sortie),
             ):
@@ -616,6 +638,37 @@ class TestLeLanceur(unittest.TestCase):
                 self.assertEqual(len(registre), 1)
                 self.assertNotIn(CLE, sortie)
                 self.assertTrue(lanceur.call_args.kwargs["detaille"])
+
+    def test_an_interrupted_push_keeps_the_caches_and_the_exit_code(self):
+        """L'envoi vient après les caches : Ctrl+C ou SIGTERM pendant
+        l'envoi ne coûte ni les durées ni les échecs retenus, et la suite
+        rend son propre code."""
+
+        def interrompre(*_a, **_k):
+            self.ordre.append("envoi")
+            raise KeyboardInterrupt
+
+        for source, attendu in ((PASSE, 0), (FAUX, 1)):
+            with self.subTest(attendu=attendu):
+                self.ordre.clear()
+                code, sortie, _reseau, _lanceur = self.lancer(
+                    source, ENV, mock.Mock(side_effect=interrompre)
+                )
+                self.assertEqual(code, attendu)
+                self.assertEqual(self.ordre, ["durees", "echecs", "envoi"])
+                registre = [x for x in sortie.splitlines() if "Registre" in x]
+                self.assertEqual(len(registre), 1)
+                self.assertIn("interrompu", registre[0])
+
+    def test_a_suite_stopped_by_ctrl_c_sends_nothing(self):
+        with mock.patch.object(r, "en_ligne", return_value=130):
+            code, sortie, reseau, _lanceur = self.lancer(PASSE, ENV)
+        self.assertEqual(code, 130)
+        reseau.assert_not_called()
+        registre = [x for x in sortie.splitlines() if "Registre" in x]
+        self.assertEqual(len(registre), 1)
+        self.assertIn("aucun verdict", registre[0])
+        self.assertEqual(self.ordre, ["durees", "echecs"])
 
     def test_tests_do_not_inherit_the_registry_variables(self):
         """Un test qui affiche la clé de son environnement n'en trouve

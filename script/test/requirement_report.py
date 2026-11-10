@@ -30,8 +30,8 @@ un verdict. Un test qu'aucun requis ne cite ne coûte aucun appel et ne
 laisse aucun avertissement dans le journal du serveur.
 
 L'envoi s'arrête au premier échec — serveur injoignable, identifiants
-refusés, droit manquant — et le dit en UNE ligne ; il ne lève jamais, et le
-code de sortie de la suite n'en dépend pas. La clé n'est jamais affichée :
+refusés, droit manquant, Ctrl+C — et le dit en UNE ligne ; il ne lève
+jamais, et le code de sortie de la suite n'en dépend pas. La clé n'est jamais affichée :
 tout message lisible passe par `Registre._masquer`.
 
 Le journal d'un verdict, lisible par tout utilisateur interne du registre,
@@ -200,8 +200,13 @@ def _affichable(url):
     )
 
 
-def _avertir(sortie, message):
-    print(f"  {JAUNE}Registre des requis : {message}{FIN}", file=sortie)
+def avertir(message, sortie=None):
+    """Une ligne jaune « Registre des requis : `message` » sur `sortie`,
+    la sortie standard par défaut."""
+    print(
+        f"  {JAUNE}Registre des requis : {message}{FIN}",
+        file=sortie or sys.stdout,
+    )
 
 
 def _bouclage(hote):
@@ -229,9 +234,9 @@ def depuis_environnement(env=None, sortie=None):
         return None
     manquantes = [nom for nom, valeur in valeurs.items() if not valeur]
     if manquantes:
-        _avertir(
-            sortie,
+        avertir(
             f"{', '.join(manquantes)} absente(s), aucun verdict envoyé.",
+            sortie=sortie,
         )
         return None
     url, base, login, cle = (valeurs[nom] for nom in VARIABLES)
@@ -247,9 +252,9 @@ def depuis_environnement(env=None, sortie=None):
         )
     else:
         raison = "ni HTTPS ni HTTP"
-    _avertir(
-        sortie,
+    avertir(
         f"URL « {_affichable(url)} » : {raison}, aucun verdict envoyé.",
+        sortie=sortie,
     )
     return None
 
@@ -377,20 +382,24 @@ class Registre:
                 )
                 envoyes += 1
         # Tout échec, y compris imprévu, devient la ligne d'avertissement :
-        # le registre ne décide jamais du code de sortie de la suite.
-        except Exception as exc:  # noqa: BLE001
+        # le registre ne décide jamais du code de sortie de la suite. Ctrl+C,
+        # ou SIGTERM que le lanceur change en KeyboardInterrupt, arrête
+        # l'envoi de même, et la suite rend son propre code.
+        except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001
             raison = str(exc)
-            if not isinstance(
+            if isinstance(exc, KeyboardInterrupt):
+                raison = "arrêté par Ctrl+C ou SIGTERM"
+            elif not isinstance(
                 exc, (RegistreIndisponible, urllib.error.URLError)
             ):
                 raison = f"{type(exc).__name__}: {raison}"
-            _avertir(
-                sortie,
+            avertir(
                 self._masquer(
                     f"envoi interrompu après {envoyes} verdict(s)"
                     f" ({self._masquer(raison, borne=300)}) ; le code de"
                     " sortie de la suite n'en dépend pas."
                 ),
+                sortie=sortie,
             )
             return
         print(

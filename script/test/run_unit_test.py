@@ -770,8 +770,9 @@ def lancer_une_fois(fichiers, args):
 
     Avec les variables ERPLIBRE_REQUIREMENT_* (requirement_report.py),
     chaque test est noté puis son verdict poussé au registre des requis,
-    après les rapports ; le code de sortie reste celui de la suite. Sans
-    elles, rien de cela : ni détail par test, ni connexion."""
+    après les rapports et les caches ; le code de sortie reste celui de la
+    suite, même quand Ctrl+C ou SIGTERM arrête l'envoi. Sans elles, rien de
+    cela : ni détail par test, ni connexion."""
     registre = requirement_report.depuis_environnement()
     lanceur = Lanceur(
         fichiers,
@@ -793,11 +794,17 @@ def lancer_une_fois(fichiers, args):
         # Toujours produits : c'est après un échec qu'on en a besoin.
         instable = rapports(lanceur, args)
         code = code or instable
-        if registre:
-            registre.pousser(essais(lanceur))
         ecrire_durees(lanceur.fichiers)
         passes, echoues = bilan_des_echecs(lanceur.fichiers)
         unit_selection.retenir_echecs(ECHECS, passes=passes, echoues=echoues)
+        # En dernier : un envoi lent, ou interrompu, ne coûte ni les durées
+        # ni les échecs retenus. Une suite arrêtée par Ctrl+C n'envoie rien.
+        if registre and code == 130:
+            requirement_report.avertir(
+                "suite interrompue, aucun verdict envoyé."
+            )
+        elif registre:
+            registre.pousser(essais(lanceur))
         return code
     finally:
         lanceur.arreter()
