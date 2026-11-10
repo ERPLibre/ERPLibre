@@ -26636,6 +26636,35 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # Installation de plusieurs versions d'Odoo à la fois.
+    "Choose one or more versions:": {
+        "fr": "Choisir une ou plusieurs versions :",
+        "en": "Choose one or more versions:",
+    },
+    "Several numbers separated by spaces install those versions one after the other, in the order typed.": {
+        "fr": "Plusieurs numéros séparés par des espaces installent ces versions l'une après l'autre, dans l'ordre saisi.",
+        "en": "Several numbers separated by spaces install those versions one after the other, in the order typed.",
+    },
+    "Letters and 0 are single choices, to type alone:": {
+        "fr": "Les lettres et 0 sont des choix uniques, à saisir seuls :",
+        "en": "Letters and 0 are single choices, to type alone:",
+    },
+    "Unknown version number:": {
+        "fr": "Numéro de version inconnu :",
+        "en": "Unknown version number:",
+    },
+    "Version number given twice:": {
+        "fr": "Numéro de version donné deux fois :",
+        "en": "Version number given twice:",
+    },
+    "Installation summary:": {
+        "fr": "Bilan de l'installation :",
+        "en": "Installation summary:",
+    },
+    "Switching back to:": {
+        "fr": "Retour à la version :",
+        "en": "Switching back to:",
+    },
     # Mise à niveau du serveur PostgreSQL (Base de données).
     "PostgreSQL server": {
         "fr": "Serveur PostgreSQL",
