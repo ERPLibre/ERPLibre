@@ -499,6 +499,16 @@ def en_ligne(lanceur):
     return bilan(lanceur)
 
 
+def ecoule_total(lanceur, maintenant=None):
+    """Le temps écoulé depuis le début de la passe, arrêté à sa fin : une
+    passe finie garde sa durée au lieu de compter jusqu'à ce qu'on quitte
+    l'affichage."""
+    if not lanceur.debut:
+        return 0.0
+    fin = lanceur.fin or (maintenant or time.monotonic())
+    return fin - lanceur.debut
+
+
 def tui(lanceur):
     """Le tableau Textual. Rend None si Textual manque : l'appelant
     retombe alors sur l'affichage en ligne."""
@@ -550,7 +560,7 @@ def tui(lanceur):
                 f.etat not in (ATTENTE, EN_COURS) for f in lanceur.fichiers
             )
             rouges = sum(f.echoue() for f in lanceur.fichiers)
-            ecoule = time.monotonic() - lanceur.debut if lanceur.debut else 0
+            ecoule = ecoule_total(lanceur)
             fin = "" if self.fil.is_alive() else " — terminé, q pour quitter"
             self.sub_title = (
                 f"{faits}/{len(lanceur.fichiers)} finis,"

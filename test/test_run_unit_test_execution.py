@@ -86,6 +86,28 @@ class TestLesCommandesRefusees(unittest.TestCase):
             self.assertIn("refusé", res.stderr)
 
 
+class TestLeTempsEcoule(unittest.TestCase):
+    """Le temps affiché par la vue Textual s'arrête à la fin de la passe."""
+
+    def test_une_passe_finie_garde_sa_duree(self):
+        from types import SimpleNamespace
+
+        lanceur = SimpleNamespace(debut=100.0, fin=147.0)
+        self.assertEqual(r.ecoule_total(lanceur, 500.0), 47.0)
+
+    def test_une_passe_en_cours_compte_jusqu_a_maintenant(self):
+        from types import SimpleNamespace
+
+        lanceur = SimpleNamespace(debut=100.0, fin=None)
+        self.assertEqual(r.ecoule_total(lanceur, 130.0), 30.0)
+
+    def test_une_passe_pas_commencee_vaut_zero(self):
+        from types import SimpleNamespace
+
+        lanceur = SimpleNamespace(debut=None, fin=None)
+        self.assertEqual(r.ecoule_total(lanceur, 130.0), 0.0)
+
+
 class TestLeBilanMontreLeVerdict(unittest.TestCase):
     def test_a_failing_file_that_prints_ends_on_its_verdict(self):
         """Sans terminal, la sortie standard d'un test ne se vide qu'à la fin
