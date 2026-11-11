@@ -29,6 +29,7 @@ explique après le sommaire, et le menu les offre comme entrées. Elles seules
 (voir `executer_resolution`).
 """
 
+import copy
 import json
 import os
 import re
@@ -193,6 +194,20 @@ def titre(verification):
     return f"{ICONES_VERIFICATIONS[nom]} {t(TITRES[nom])}"
 
 
+class _Caches:
+    """Ce que les vérifications d'une même passe calculent une fois et se
+    partagent : la liste des dépôts, le `git status` de chacun, le relevé
+    de `repo_state`. Le verrou sérialise chaque calcul, si bien que deux
+    vérifications parallèles qui demandent la même chose n'en lancent
+    qu'un."""
+
+    def __init__(self):
+        self.verrou = threading.RLock()
+        self.depots = None
+        self.status = {}
+        self.snapshot = None
+
+
 class Contexte:
     """Ce que les vérifications partagent : racine, portées, commandes.
 
@@ -217,15 +232,28 @@ class Contexte:
         self.commandes_claude = commandes_claude or {}
         self._verrou = threading.Lock()
         self._commandes = None
-        self._depots = None
-        self._status = {}
-        self._snapshot = None
+        self._depots_notes = False
+        self._caches = _Caches()
+        # Le tampon de commandes d'un fil lancé par `en_parallele`.
+        self._fil = threading.local()
+
+    def pour_verification(self):
+        """Un contexte pour une vérification lancée en parallèle des
+        autres : son propre relevé de commandes, les caches de la passe
+        partagés. Une commande dont le résultat vient du cache est notée
+        quand même : le rapport de chaque vérification ne dépend pas de
+        celle qui a calculé la première."""
+        sous = copy.copy(self)
+        sous._verrou = threading.Lock()
+        sous._commandes = None
+        return sous
 
     # ── commandes ──────────────────────────────────────────────────────
 
     def commencer(self):
         """Ouvre le relevé des commandes d'une nouvelle vérification."""
         self._commandes = OrderedDict()
+        self._depots_notes = False
 
     def commandes(self):
         """Les commandes notées, « (×N) » quand une forme s'est répétée."""
@@ -235,10 +263,34 @@ class Contexte:
         ]
 
     def noter(self, texte):
+        tampon = getattr(self._fil, "tampon", None)
+        if tampon is not None:
+            tampon.append(texte)
+            return
         if self._commandes is None:
             return
         with self._verrou:
             self._commandes[texte] = self._commandes.get(texte, 0) + 1
+
+    def en_parallele(self, fonction, elements, max_workers=8):
+        """[fonction(élément)] dans l'ordre des `elements`, calculés en
+        parallèle. Les commandes que chaque appel note sont tamponnées dans
+        son fil, puis versées au relevé dans l'ordre des éléments : le
+        rapport ne dépend pas de l'appel qui finit le premier."""
+
+        def appeler(element):
+            self._fil.tampon = []
+            try:
+                return fonction(element), self._fil.tampon
+            finally:
+                self._fil.tampon = None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            paires = list(pool.map(appeler, elements))
+        for _rendu, notees in paires:
+            for texte in notees:
+                self.noter(texte)
+        return [rendu for rendu, _notees in paires]
 
     def lancer(self, args, cwd=None, forme=None, delai=DELAI_GIT, env=None):
         """Lance `args` et note la commande ; ne lève jamais.
@@ -284,13 +336,27 @@ class Contexte:
         ERPLibre (« . ») d'abord ; avec la portée « tous », chaque projet du
         manifeste local dont le clone existe, dans l'ordre du manifeste.
         """
-        if self._depots is not None:
-            return self._depots
+        caches = self._caches
+        if self.portee_depots == DEPOTS_TOUS:
+            from script.git import repo_state
+
+            # Une fois par vérification, qu'elle lise ou trouve en cache ;
+            # sous verrou, ses fils parallèles ne la notent pas deux fois.
+            with caches.verrou:
+                premiere = not self._depots_notes
+                self._depots_notes = True
+            if premiere:
+                self.noter(f"cat {repo_state.MANIFESTE_LOCAL}")
+        with caches.verrou:
+            if caches.depots is None:
+                caches.depots = self._lire_depots()
+            return caches.depots
+
+    def _lire_depots(self):
         depots = [(".", None)]
         if self.portee_depots == DEPOTS_TOUS:
             from script.git import repo_state
 
-            self.noter(f"cat {repo_state.MANIFESTE_LOCAL}")
             try:
                 local = repo_state.lire_manifeste_local(self.racine)
             except Exception:
@@ -307,7 +373,6 @@ class Contexte:
                         os.path.join(self.racine, chemin, ".git")
                     ):
                         depots.append((chemin, complet))
-        self._depots = depots
         return depots
 
     def plusieurs_depots(self):
@@ -318,11 +383,17 @@ class Contexte:
         dépôts. `forme` remplace les arguments notés quand l'un d'eux varie
         d'un dépôt à l'autre."""
         cmd = ["git", "-C", depot, *args]
+        return self.lancer(
+            cmd, forme=self._forme_git(depot, args, forme), delai=delai
+        )
+
+    def _forme_git(self, depot, args, forme=None):
+        """Le texte noté pour `git -C depot args` (voir `git`)."""
         if forme is not None:
-            forme = f"git -C {self.depot_note(depot)} {forme}"
-        elif self.marqueur(depot):
-            forme = self.afficher(["git", "-C", "<dépôt>", *args])
-        return self.lancer(cmd, forme=forme, delai=delai)
+            return f"git -C {self.depot_note(depot)} {forme}"
+        if self.marqueur(depot):
+            return self.afficher(["git", "-C", "<dépôt>", *args])
+        return shlex.join(["git", "-C", depot, *args])
 
     def marqueur(self, depot):
         """Le chemin d'un dépôt d'addons s'affiche « <dépôt> » quand
@@ -338,22 +409,25 @@ class Contexte:
         calculés en parallèle : chaque appel à git attend surtout le
         disque."""
         depots = self.depots()
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            rendus = list(pool.map(lambda d: fonction(*d), depots))
+        rendus = self.en_parallele(lambda d: fonction(*d), depots)
         return [(d[0], r) for d, r in zip(depots, rendus)]
 
     def status(self, depot):
         """Les lignes de `git status --porcelain=v2`, en cache par dépôt."""
-        if depot not in self._status:
-            sortie = self.git(
-                depot, "status", "--porcelain=v2", "--untracked-files=normal"
-            )
-            self._status[depot] = (
-                None
-                if sortie.returncode
-                else [ligne for ligne in sortie.stdout.splitlines() if ligne]
-            )
-        return self._status[depot]
+        args = ("status", "--porcelain=v2", "--untracked-files=normal")
+        caches = self._caches
+        with caches.verrou:
+            if depot in caches.status:
+                self.noter(self._forme_git(depot, args))
+                return caches.status[depot]
+        sortie = self.git(depot, *args)
+        lignes = (
+            None
+            if sortie.returncode
+            else [ligne for ligne in sortie.stdout.splitlines() if ligne]
+        )
+        with caches.verrou:
+            return caches.status.setdefault(depot, lignes)
 
     # ── fichiers ───────────────────────────────────────────────────────
 
@@ -440,7 +514,11 @@ class Contexte:
         python = self.outil("python3") or "python3"
         script = os.path.join("script", "git", "repo_state.py")
         forme = f"{self.relatif(python)} {script} snapshot"
-        if self._snapshot is None:
+        caches = self._caches
+        with caches.verrou:
+            if caches.snapshot is not None:
+                self.noter(forme)
+                return caches.snapshot
             sortie = self.lancer(
                 [python, script, "snapshot"], forme=forme, delai=DELAI_OUTIL
             )
@@ -448,10 +526,8 @@ class Contexte:
                 donnees = json.loads(sortie.stdout)
             except ValueError:
                 donnees = None
-            self._snapshot = (donnees, sortie.stderr)
-        else:
-            self.noter(forme)
-        return self._snapshot
+            caches.snapshot = (donnees, sortie.stderr)
+            return caches.snapshot
 
     def outil(self, nom):
         """Le chemin d'un outil du venv d'ERPLibre, ou du PATH, ou None."""
@@ -706,8 +782,8 @@ def verifier_formatage(ctx):
     """
     par_contexte = {"odoo": [], "outillage": []}
     manques = []
-    for depot, attrs in ctx.depots():
-        fichiers, raison = ctx.fichiers(depot, attrs)
+    # Deux commandes git par dépôt : en parallèle, dans l'ordre des dépôts.
+    for depot, (fichiers, raison) in ctx.chaque_depot(ctx.fichiers):
         if fichiers is None:
             manques.append(f"{_nom_depot(depot)} : {raison}")
             continue
@@ -1135,8 +1211,7 @@ def verifier_branches(ctx):
             ecarts.append((branche, seul_branche, seul_head))
         return ecarts
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        rendus = list(pool.map(examiner, depots))
+    rendus = ctx.en_parallele(examiner, depots)
     avec_travail, en_retard = [], []
     for depot, ecarts in zip(depots, rendus):
         for branche, plus, moins in ecarts:
@@ -1308,8 +1383,9 @@ def verifier_dependances_venvs(ctx):
     candidats = drift.venvs(ctx.racine, active=active)
     if not candidats:
         return Resultat(nom, SAUTE, t("no venv"))
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        rendus = list(pool.map(lambda c: _ecarts_venv(ctx, c), candidats))
+    rendus = ctx.en_parallele(
+        lambda c: _ecarts_venv(ctx, c), candidats, max_workers=4
+    )
     details, a_jour = [], []
     for choix, rendu in zip(candidats, rendus):
         if rendu["erreur"]:
@@ -1641,15 +1717,24 @@ def lancer(ctx, verifications=None, sortie=print):
     puis le sommaire. Rend la liste des Resultat."""
     debut = time.monotonic()
     sortie(f"{t('Healthcheck')} — {libelle_portee(ctx)}")
+    liste = list(verifications or VERIFICATIONS)
     resultats = []
     section = None
-    for nom_section, verification in verifications or VERIFICATIONS:
-        if nom_section != section:
-            section = nom_section
-            sortie(f"\n━━ {t(SECTIONS[section])} ━━")
-        resultat = executer(ctx, verification)
-        resultats.append(resultat)
-        sortie(rendre(resultat))
+    # Toutes en parallèle, chacune avec son contexte ; l'affichage suit
+    # l'ordre de la liste, un bloc dès que lui et ceux qui le précèdent sont
+    # finis : le rapport est le même d'une passe à l'autre.
+    with ThreadPoolExecutor(max_workers=max(1, len(liste))) as pool:
+        futurs = [
+            pool.submit(executer, ctx.pour_verification(), verification)
+            for _nom_section, verification in liste
+        ]
+        for (nom_section, _verification), futur in zip(liste, futurs):
+            if nom_section != section:
+                section = nom_section
+                sortie(f"\n━━ {t(SECTIONS[section])} ━━")
+            resultat = futur.result()
+            resultats.append(resultat)
+            sortie(rendre(resultat))
     sortie("")
     sortie(sommaire(resultats, time.monotonic() - debut))
     resolutions = [r for x in resultats for r in x.resolutions]

@@ -814,6 +814,61 @@ class TestRapport(unittest.TestCase):
         self.assertNotIn("🩺 🩺", lignes[0])
 
 
+class TestParallele(unittest.TestCase):
+    """« Tout vérifier » lance les vérifications en parallèle et affiche
+    leurs blocs, et leurs commandes, toujours dans le même ordre."""
+
+    def test_checks_run_together_and_print_in_list_order(self):
+        import threading
+
+        signal = threading.Event()
+
+        def verifier_disque(ctx):
+            # Bloquerait jusqu'au délai si la suivante ne tournait pas en
+            # même temps.
+            ctx.noter("attend")
+            self.assertTrue(signal.wait(timeout=10))
+            return h.Resultat("D", h.OK, "premier")
+
+        def verifier_odoo(ctx):
+            ctx.noter("signale")
+            signal.set()
+            return h.Resultat("O", h.OK, "second")
+
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [
+                ("environnement", verifier_disque),
+                ("environnement", verifier_odoo),
+            ],
+            sortie=lignes.append,
+        )
+        texte = "\n".join(lignes)
+        self.assertLess(texte.index("premier"), texte.index("second"))
+        # Chaque bloc ne porte que ses propres commandes.
+        bloc_d = texte[texte.index("── D ──") : texte.index("── O ──")]
+        self.assertIn("$ attend", bloc_d)
+        self.assertNotIn("signale", bloc_d)
+
+    def test_commands_of_parallel_items_keep_the_items_order(self):
+        import time
+
+        ctx = h.Contexte(tempfile.gettempdir())
+        ctx.commencer()
+
+        def examiner(rang):
+            # Le premier élément finit le dernier.
+            time.sleep(0.05 * (3 - rang))
+            ctx.noter(f"commande {rang}")
+            return rang
+
+        self.assertEqual(ctx.en_parallele(examiner, [0, 1, 2]), [0, 1, 2])
+        self.assertEqual(
+            ctx.commandes(), ["commande 0", "commande 1", "commande 2"]
+        )
+
+
 class TestTraductions(unittest.TestCase):
     """Chaque libellé du healthcheck a sa traduction : une clé absente
     s'afficherait en anglais dans un TODO en français."""
