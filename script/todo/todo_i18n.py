@@ -21871,6 +21871,56 @@ TRANSLATIONS = {
         "fr": "📦 Conteneurs - taille et nettoyage",
         "en": "📦 Containers - size and cleanup",
     },
+    # Système : mémoire CPU par processus
+    "CPU memory per process": {
+        "fr": "🧠 Mémoire CPU par processus",
+        "en": "🧠 CPU memory per process",
+    },
+    "not installed: runs in a nix-shell": {
+        "fr": "absent : se lance dans un nix-shell",
+        "en": "not installed: runs in a nix-shell",
+    },
+    "not installed: can be installed": {
+        "fr": "absent : installable",
+        "en": "not installed: can be installed",
+    },
+    "not installed, unknown package manager": {
+        "fr": "absent, gestionnaire de paquets inconnu",
+        "en": "not installed, unknown package manager",
+    },
+    "Tool number, Enter for none: ": {
+        "fr": "Numéro de l'outil, Entrée pour aucun : ",
+        "en": "Tool number, Enter for none: ",
+    },
+    "is still not in the PATH.": {
+        "fr": "n'est toujours pas dans le PATH.",
+        "en": "is still not in the PATH.",
+    },
+    "sort by memory:": {
+        "fr": "tri par mémoire :",
+        "en": "sort by memory:",
+    },
+    "Installation failed:": {
+        "fr": "L'installation a échoué :",
+        "en": "Installation failed:",
+    },
+    "Install {name}? (y/N): ": {
+        "fr": "Installer {name} ? (o/N) : ",
+        "en": "Install {name}? (y/N): ",
+    },
+    (
+        "The package database may be stale: run sudo pacman -Syu, then try "
+        "again."
+    ): {
+        "fr": (
+            "La base des paquets est peut-être périmée : lancez sudo pacman "
+            "-Syu, puis réessayez."
+        ),
+        "en": (
+            "The package database may be stale: run sudo pacman -Syu, then "
+            "try again."
+        ),
+    },
     # Système : rapports et caches du système
     "Measuring": {
         "fr": "Mesure de",

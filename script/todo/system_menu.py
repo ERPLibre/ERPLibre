@@ -20,7 +20,7 @@ import time
 
 import click
 
-from script.todo import system_cleanup, system_diagnostic
+from script.todo import system_cleanup, system_cpu, system_diagnostic
 from script.todo.todo_i18n import t
 
 # Les jours d'inactivité au-delà desquels un reste de /tmp ou une session
@@ -272,6 +272,7 @@ class SystemMenuMixin:
                 )
             },
             {"prompt_description": t("Containers - size and cleanup")},
+            {"prompt_description": t("CPU memory per process")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -291,6 +292,8 @@ class SystemMenuMixin:
                 self._system_cache_qemu()
             elif status == "6":
                 self._system_conteneurs()
+            elif status == "7":
+                self._system_cpu()
             else:
                 print(t("Command not found !"))
 
@@ -310,6 +313,80 @@ class SystemMenuMixin:
         with open(chemin, "w", encoding="utf-8") as fh:
             fh.write("\n".join(lignes) + "\n")
         print(f"  ✓ {t('Report saved:')} {chemin}")
+
+    def _system_cpu(self):
+        """Choisir top, htop, btop ou glances, l'installer s'il manque,
+        puis le lancer trié par mémoire quand l'outil le permet."""
+        outils = system_cpu.etat()
+        nix = system_cpu.gestionnaire() == "nix"
+        for i, o in enumerate(outils, 1):
+            if o["chemin"]:
+                note = f"✓ {o['chemin']}"
+            elif nix:
+                note = f"✗ {t('not installed: runs in a nix-shell')}"
+            elif system_cpu.plan_installation(o["nom"]):
+                note = f"✗ {t('not installed: can be installed')}"
+            else:
+                note = f"✗ {t('not installed, unknown package manager')}"
+            print(f"  [{i}] {o['nom']:<8} {note}")
+        reponse = input(t("Tool number, Enter for none: ")).strip()
+        if not (reponse.isdigit() and 1 <= int(reponse) <= len(outils)):
+            return
+        outil = outils[int(reponse) - 1]
+        if outil["chemin"]:
+            commande = [outil["chemin"]] + outil["args"]
+        elif nix:
+            commande = system_cpu.commande_nix(outil["nom"])
+        else:
+            if not self._system_cpu_installer(outil["nom"]):
+                return
+            outil = next(
+                o for o in system_cpu.etat() if o["nom"] == outil["nom"]
+            )
+            if not outil["chemin"]:
+                print(f"  ⚠ {outil['nom']} {t('is still not in the PATH.')}")
+                return
+            commande = [outil["chemin"]] + outil["args"]
+        print(
+            f"  {t('Will execute:')} {shlex.join(commande)}"
+            f"  · {t('sort by memory:')} {outil['touche']}"
+        )
+        try:
+            subprocess.run(commande)
+        except OSError as e:
+            print(f"  ⚠ {e}")
+        except KeyboardInterrupt:
+            print()
+
+    def _system_cpu_installer(self, nom):
+        """Montre les commandes qui installent `nom` et les lance après un
+        oui ; sudo y demande son mot de passe dans le terminal. Rend vrai
+        si toutes ont réussi."""
+        plan = system_cpu.plan_installation(nom)
+        if not plan:
+            print(f"  ⚠ {nom} : {t('not installed, unknown package manager')}")
+            return False
+        for commande in plan:
+            print(f"  {t('Will execute:')} {shlex.join(commande)}")
+        if not self._is_yes(
+            input(t("Install {name}? (y/N): ").format(name=nom))
+        ):
+            return False
+        for commande in plan:
+            try:
+                res = subprocess.run(commande)
+            except (OSError, KeyboardInterrupt):
+                return False
+            if res.returncode != 0:
+                print(
+                    f"  ⚠ {t('Installation failed:')} {shlex.join(commande)}"
+                )
+                if commande[1:2] == ["pacman"]:
+                    print(
+                        f"  {t('The package database may be stale: run sudo pacman -Syu, then try again.')}"
+                    )
+                return False
+        return True
 
     def _system_bases(self, config_path=None):
         """Les bases que PostgreSQL connaît, ou None s'il ne répond pas.
