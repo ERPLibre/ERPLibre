@@ -22,8 +22,14 @@ c'est la cible que le manifeste local lui donne (voir
 
 Une vérification qui lève rend un échec à son nom et laisse passer les
 suivantes.
+
+Une vérification peut joindre des résolutions à son verdict : le rapport les
+explique après le sommaire, et le menu les offre comme entrées. Elles seules
+écrivent ou touchent au réseau, et seulement une fois lancées et confirmées
+(voir `executer_resolution`).
 """
 
+import copy
 import json
 import os
 import re
@@ -38,7 +44,14 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from script.todo import todo_etat, todo_journal
+from script.git import freeze_resolution
+from script.poetry import poetry_venv_drift as drift
+from script.todo import (
+    container_runtime,
+    todo_couleur,
+    todo_etat,
+    todo_journal,
+)
 from script.todo.todo_i18n import t
 
 OK = "ok"
@@ -97,14 +110,36 @@ JOURNAUX_ALERTE = 1024**3
 
 
 @dataclass
+class Resolution:
+    """Ce qu'on peut faire d'un écart qu'une vérification a trouvé.
+
+    `cle` nomme l'action d'`executer_resolution` (une constante de
+    `freeze_resolution`) ; None pour une résolution qui ne fait qu'expliquer
+    ce qui reste à faire à la main. `libelle` est l'entrée du menu,
+    `lignes` l'explication du rapport, `depots` les entrées de
+    `repo_state` visées."""
+
+    cle: object
+    libelle: str
+    lignes: list
+    depots: list = field(default_factory=list)
+
+    @property
+    def actionnable(self):
+        return self.cle is not None
+
+
+@dataclass
 class Resultat:
-    """Le verdict d'une vérification et les commandes qui l'ont produit."""
+    """Le verdict d'une vérification, les commandes qui l'ont produit et
+    les résolutions qu'il propose."""
 
     titre: str
     statut: str
     resume: str
     details: list = field(default_factory=list)
     commandes: list = field(default_factory=list)
+    resolutions: list = field(default_factory=list)
 
 
 # Le titre de chaque vérification, clé de traduction, par nom de fonction :
@@ -117,8 +152,10 @@ TITRES = {
     "verifier_hygiene": "Comment hygiene",
     "verifier_docs": "Docs to regenerate (mmg)",
     "verifier_manifeste": "Addons against the manifest",
+    "verifier_branches": "Repo branches",
     "verifier_hooks": "Git hooks",
     "verifier_venv": "Odoo venv",
+    "verifier_dependances_venvs": "Venv dependencies",
     "verifier_disque": "Free disk space",
     "verifier_postgresql": "PostgreSQL",
     "verifier_odoo": "Odoo HTTP port",
@@ -139,8 +176,10 @@ ICONES_VERIFICATIONS = {
     "verifier_hygiene": "🧼",
     "verifier_docs": "📚",
     "verifier_manifeste": "🧩",
+    "verifier_branches": "🌿",
     "verifier_hooks": "🪝",
     "verifier_venv": "🧪",
+    "verifier_dependances_venvs": "📦",
     "verifier_disque": "💾",
     "verifier_postgresql": "🐘",
     "verifier_odoo": "🌐",
@@ -153,6 +192,20 @@ def titre(verification):
     """Le titre traduit d'une vérification, précédé de son icône."""
     nom = verification.__name__
     return f"{ICONES_VERIFICATIONS[nom]} {t(TITRES[nom])}"
+
+
+class _Caches:
+    """Ce que les vérifications d'une même passe calculent une fois et se
+    partagent : la liste des dépôts, le `git status` de chacun, le relevé
+    de `repo_state`. Le verrou sérialise chaque calcul, si bien que deux
+    vérifications parallèles qui demandent la même chose n'en lancent
+    qu'un."""
+
+    def __init__(self):
+        self.verrou = threading.RLock()
+        self.depots = None
+        self.status = {}
+        self.snapshot = None
 
 
 class Contexte:
@@ -179,14 +232,28 @@ class Contexte:
         self.commandes_claude = commandes_claude or {}
         self._verrou = threading.Lock()
         self._commandes = None
-        self._depots = None
-        self._status = {}
+        self._depots_notes = False
+        self._caches = _Caches()
+        # Le tampon de commandes d'un fil lancé par `en_parallele`.
+        self._fil = threading.local()
+
+    def pour_verification(self):
+        """Un contexte pour une vérification lancée en parallèle des
+        autres : son propre relevé de commandes, les caches de la passe
+        partagés. Une commande dont le résultat vient du cache est notée
+        quand même : le rapport de chaque vérification ne dépend pas de
+        celle qui a calculé la première."""
+        sous = copy.copy(self)
+        sous._verrou = threading.Lock()
+        sous._commandes = None
+        return sous
 
     # ── commandes ──────────────────────────────────────────────────────
 
     def commencer(self):
         """Ouvre le relevé des commandes d'une nouvelle vérification."""
         self._commandes = OrderedDict()
+        self._depots_notes = False
 
     def commandes(self):
         """Les commandes notées, « (×N) » quand une forme s'est répétée."""
@@ -196,10 +263,34 @@ class Contexte:
         ]
 
     def noter(self, texte):
+        tampon = getattr(self._fil, "tampon", None)
+        if tampon is not None:
+            tampon.append(texte)
+            return
         if self._commandes is None:
             return
         with self._verrou:
             self._commandes[texte] = self._commandes.get(texte, 0) + 1
+
+    def en_parallele(self, fonction, elements, max_workers=8):
+        """[fonction(élément)] dans l'ordre des `elements`, calculés en
+        parallèle. Les commandes que chaque appel note sont tamponnées dans
+        son fil, puis versées au relevé dans l'ordre des éléments : le
+        rapport ne dépend pas de l'appel qui finit le premier."""
+
+        def appeler(element):
+            self._fil.tampon = []
+            try:
+                return fonction(element), self._fil.tampon
+            finally:
+                self._fil.tampon = None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            paires = list(pool.map(appeler, elements))
+        for _rendu, notees in paires:
+            for texte in notees:
+                self.noter(texte)
+        return [rendu for rendu, _notees in paires]
 
     def lancer(self, args, cwd=None, forme=None, delai=DELAI_GIT, env=None):
         """Lance `args` et note la commande ; ne lève jamais.
@@ -245,13 +336,27 @@ class Contexte:
         ERPLibre (« . ») d'abord ; avec la portée « tous », chaque projet du
         manifeste local dont le clone existe, dans l'ordre du manifeste.
         """
-        if self._depots is not None:
-            return self._depots
+        caches = self._caches
+        if self.portee_depots == DEPOTS_TOUS:
+            from script.git import repo_state
+
+            # Une fois par vérification, qu'elle lise ou trouve en cache ;
+            # sous verrou, ses fils parallèles ne la notent pas deux fois.
+            with caches.verrou:
+                premiere = not self._depots_notes
+                self._depots_notes = True
+            if premiere:
+                self.noter(f"cat {repo_state.MANIFESTE_LOCAL}")
+        with caches.verrou:
+            if caches.depots is None:
+                caches.depots = self._lire_depots()
+            return caches.depots
+
+    def _lire_depots(self):
         depots = [(".", None)]
         if self.portee_depots == DEPOTS_TOUS:
             from script.git import repo_state
 
-            self.noter(f"cat {repo_state.MANIFESTE_LOCAL}")
             try:
                 local = repo_state.lire_manifeste_local(self.racine)
             except Exception:
@@ -268,7 +373,6 @@ class Contexte:
                         os.path.join(self.racine, chemin, ".git")
                     ):
                         depots.append((chemin, complet))
-        self._depots = depots
         return depots
 
     def plusieurs_depots(self):
@@ -279,11 +383,17 @@ class Contexte:
         dépôts. `forme` remplace les arguments notés quand l'un d'eux varie
         d'un dépôt à l'autre."""
         cmd = ["git", "-C", depot, *args]
+        return self.lancer(
+            cmd, forme=self._forme_git(depot, args, forme), delai=delai
+        )
+
+    def _forme_git(self, depot, args, forme=None):
+        """Le texte noté pour `git -C depot args` (voir `git`)."""
         if forme is not None:
-            forme = f"git -C {self.depot_note(depot)} {forme}"
-        elif self.marqueur(depot):
-            forme = self.afficher(["git", "-C", "<dépôt>", *args])
-        return self.lancer(cmd, forme=forme, delai=delai)
+            return f"git -C {self.depot_note(depot)} {forme}"
+        if self.marqueur(depot):
+            return self.afficher(["git", "-C", "<dépôt>", *args])
+        return shlex.join(["git", "-C", depot, *args])
 
     def marqueur(self, depot):
         """Le chemin d'un dépôt d'addons s'affiche « <dépôt> » quand
@@ -299,22 +409,25 @@ class Contexte:
         calculés en parallèle : chaque appel à git attend surtout le
         disque."""
         depots = self.depots()
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            rendus = list(pool.map(lambda d: fonction(*d), depots))
+        rendus = self.en_parallele(lambda d: fonction(*d), depots)
         return [(d[0], r) for d, r in zip(depots, rendus)]
 
     def status(self, depot):
         """Les lignes de `git status --porcelain=v2`, en cache par dépôt."""
-        if depot not in self._status:
-            sortie = self.git(
-                depot, "status", "--porcelain=v2", "--untracked-files=normal"
-            )
-            self._status[depot] = (
-                None
-                if sortie.returncode
-                else [ligne for ligne in sortie.stdout.splitlines() if ligne]
-            )
-        return self._status[depot]
+        args = ("status", "--porcelain=v2", "--untracked-files=normal")
+        caches = self._caches
+        with caches.verrou:
+            if depot in caches.status:
+                self.noter(self._forme_git(depot, args))
+                return caches.status[depot]
+        sortie = self.git(depot, *args)
+        lignes = (
+            None
+            if sortie.returncode
+            else [ligne for ligne in sortie.stdout.splitlines() if ligne]
+        )
+        with caches.verrou:
+            return caches.status.setdefault(depot, lignes)
 
     # ── fichiers ───────────────────────────────────────────────────────
 
@@ -393,6 +506,28 @@ class Contexte:
                 vus.add(nom)
                 rendus.append(nom)
         return rendus, None
+
+    def snapshot(self):
+        """(données, stderr) de `repo_state.py snapshot`, lu une fois par
+        contexte : le manifeste et les branches des dépôts le partagent.
+        `données` vaut None quand la sortie n'est pas du JSON."""
+        python = self.outil("python3") or "python3"
+        script = os.path.join("script", "git", "repo_state.py")
+        forme = f"{self.relatif(python)} {script} snapshot"
+        caches = self._caches
+        with caches.verrou:
+            if caches.snapshot is not None:
+                self.noter(forme)
+                return caches.snapshot
+            sortie = self.lancer(
+                [python, script, "snapshot"], forme=forme, delai=DELAI_OUTIL
+            )
+            try:
+                donnees = json.loads(sortie.stdout)
+            except ValueError:
+                donnees = None
+            caches.snapshot = (donnees, sortie.stderr)
+            return caches.snapshot
 
     def outil(self, nom):
         """Le chemin d'un outil du venv d'ERPLibre, ou du PATH, ou None."""
@@ -647,8 +782,8 @@ def verifier_formatage(ctx):
     """
     par_contexte = {"odoo": [], "outillage": []}
     manques = []
-    for depot, attrs in ctx.depots():
-        fichiers, raison = ctx.fichiers(depot, attrs)
+    # Deux commandes git par dépôt : en parallèle, dans l'ordre des dépôts.
+    for depot, (fichiers, raison) in ctx.chaque_depot(ctx.fichiers):
         if fichiers is None:
             manques.append(f"{_nom_depot(depot)} : {raison}")
             continue
@@ -893,21 +1028,13 @@ def verifier_manifeste(ctx):
     peut y être conforme et rester loin de son gel, que seul « freeze »
     voit."""
     nom = titre(verifier_manifeste)
-    python = ctx.outil("python3") or "python3"
-    script = os.path.join("script", "git", "repo_state.py")
-    sortie = ctx.lancer(
-        [python, script, "snapshot"],
-        forme=f"{ctx.relatif(python)} {script} snapshot",
-        delai=DELAI_OUTIL,
-    )
-    try:
-        donnees = json.loads(sortie.stdout)
-    except ValueError:
+    donnees, erreur = ctx.snapshot()
+    if donnees is None:
         return Resultat(
             nom,
             ECHEC,
             t("unreadable output"),
-            _limiter(sortie.stderr.strip().splitlines()),
+            _limiter(erreur.strip().splitlines()),
         )
     depots = donnees.get("repos") or []
     if not donnees.get("local_manifest") and not depots:
@@ -930,9 +1057,190 @@ def verifier_manifeste(ctx):
     if hors_gel:
         resume += f" · {len(hors_gel)} {t('off the freeze')}"
         details += hors_gel
+    resolutions = resolutions_gel(ctx, depots)
     if details:
-        return Resultat(nom, ALERTE, resume, _limiter(details))
-    return Resultat(nom, OK, resume)
+        return Resultat(
+            nom, ALERTE, resume, _limiter(details), resolutions=resolutions
+        )
+    return Resultat(nom, OK, resume, resolutions=resolutions)
+
+
+def _ligne_gel(depot):
+    alignement = freeze_resolution.hors_gel(depot)
+    return f"   {depot['path']} — {t(ECARTS_GEL.get(alignement, alignement))}"
+
+
+def resolutions_gel(ctx, depots):
+    """Les résolutions des dépôts hors de leur gel, classés par
+    `freeze_resolution.classer`. Un `git status` par dépôt hors du gel, et
+    pour eux seuls, dit lesquels ont des fichiers modifiés."""
+    candidats = [d for d in depots if freeze_resolution.hors_gel(d)]
+    if not candidats:
+        return []
+
+    def est_sale(depot):
+        fait = ctx.lancer(
+            ["git", "-C", depot["path"], "status", "--porcelain"],
+            forme="git -C <dépôt> status --porcelain",
+        )
+        return fait.returncode != 0 or bool(fait.stdout.strip())
+
+    classes = freeze_resolution.classer(candidats, est_sale)
+    resolutions = []
+    remettre = classes[freeze_resolution.REMETTRE]
+    if remettre:
+        resolutions.append(
+            Resolution(
+                freeze_resolution.REMETTRE,
+                f"🧊 {t('Put back on the freeze:')} {len(remettre)}"
+                f" {t('repositories')}",
+                [
+                    t(
+                        "Behind their freeze, or missing the frozen commit: HEAD is detached on the frozen commit, fetched first from the manifest URL when the clone lacks it."
+                    )
+                ]
+                + [_ligne_gel(d) for d in remettre],
+                remettre,
+            )
+        )
+    maj = classes[freeze_resolution.MAJ_GEL]
+    if maj:
+        resolutions.append(
+            Resolution(
+                freeze_resolution.MAJ_GEL,
+                f"🧊 {t('Update the freeze to HEAD:')} {len(maj)}"
+                f" {t('repositories')}",
+                [
+                    t(
+                        "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first."
+                    )
+                ]
+                + [_ligne_gel(d) for d in maj],
+                maj,
+            )
+        )
+    if classes[freeze_resolution.SALES]:
+        resolutions.append(
+            Resolution(
+                None,
+                "",
+                [
+                    t(
+                        "Skipped, modified files: commit or stash them, then run the check again."
+                    )
+                ]
+                + [_ligne_gel(d) for d in classes[freeze_resolution.SALES]],
+            )
+        )
+    if classes[freeze_resolution.MANUELS]:
+        resolutions.append(
+            Resolution(
+                None,
+                "",
+                [
+                    t(
+                        "To settle by hand: HEAD and the freeze both carry commits, or the shallow clone hides the gap. Compare with:"
+                    )
+                ]
+                + [
+                    f"   git -C {d['path']} log --oneline --left-right"
+                    f" HEAD...{(d.get('freeze_revision') or '')[:10]}"
+                    for d in classes[freeze_resolution.MANUELS]
+                ],
+            )
+        )
+    return resolutions
+
+
+def verifier_branches(ctx):
+    """Les branches locales des dépôts d'addons dont la pointe n'est pas
+    HEAD. git-repo laisse HEAD détaché : une branche ouverte par
+    « repo start », ou un travail commité sur une branche puis quitté par
+    une synchronisation, reste en dehors de ce que le checkout exécute.
+    Une branche qui porte des commits absents de HEAD est signalée ; une
+    branche seulement en retard sur HEAD est une information."""
+    nom = titre(verifier_branches)
+    donnees, erreur = ctx.snapshot()
+    if donnees is None:
+        return Resultat(
+            nom,
+            ECHEC,
+            t("unreadable output"),
+            _limiter(erreur.strip().splitlines()),
+        )
+    depots = [d for d in donnees.get("repos") or [] if d.get("head")]
+    if not depots:
+        return Resultat(nom, SAUTE, t("no local manifest"))
+
+    def examiner(depot):
+        refs = ctx.lancer(
+            [
+                "git",
+                "-C",
+                depot["path"],
+                "for-each-ref",
+                "--format=%(refname:short) %(objectname)",
+                "refs/heads",
+            ],
+            forme="git -C <dépôt> for-each-ref refs/heads",
+        )
+        ecarts = []
+        for ligne in refs.stdout.splitlines():
+            branche, _, sha = ligne.rpartition(" ")
+            if not sha or sha == depot["head"]:
+                continue
+            compte = ctx.lancer(
+                [
+                    "git",
+                    "-C",
+                    depot["path"],
+                    "rev-list",
+                    "--left-right",
+                    "--count",
+                    f"HEAD...{sha}",
+                ],
+                forme=(
+                    "git -C <dépôt> rev-list --left-right --count"
+                    " HEAD...<branche>"
+                ),
+            )
+            try:
+                seul_head, seul_branche = map(int, compte.stdout.split())
+            except ValueError:
+                seul_head = seul_branche = None
+            ecarts.append((branche, seul_branche, seul_head))
+        return ecarts
+
+    rendus = ctx.en_parallele(examiner, depots)
+    avec_travail, en_retard = [], []
+    for depot, ecarts in zip(depots, rendus):
+        for branche, plus, moins in ecarts:
+            if plus is None:
+                avec_travail.append(f"{depot['path']} : {branche}")
+            elif plus:
+                avec_travail.append(
+                    f"{depot['path']} : {branche} (+{plus} −{moins})"
+                )
+            else:
+                en_retard.append(f"{depot['path']} : {branche} (+0 −{moins})")
+    if not avec_travail and not en_retard:
+        return Resultat(
+            nom,
+            OK,
+            f"{len(depots)} {t('repositories')},"
+            f" {t('no local branch off HEAD')}",
+        )
+    morceaux = []
+    if avec_travail:
+        morceaux.append(f"{len(avec_travail)} {t('with commits HEAD lacks')}")
+    if en_retard:
+        morceaux.append(f"{len(en_retard)} {t('behind HEAD')}")
+    return Resultat(
+        nom,
+        ALERTE if avec_travail else INFO,
+        " · ".join(morceaux),
+        _limiter(avec_travail + en_retard),
+    )
 
 
 def verifier_hooks(ctx):
@@ -978,6 +1286,162 @@ def verifier_venv(ctx):
             nom, ALERTE, f"{venv} : {obtenu}, {t('expected')} {attendu}"
         )
     return Resultat(nom, OK, f"{venv} · {obtenu}")
+
+
+MAJ_VENVS = "maj_venvs"
+
+
+def _ecarts_venv(ctx, choix):
+    """L'écart d'un venv (une entrée de `drift.venvs`) à ce qu'il doit
+    porter : {"venv", "ecarts": [lignes], "info": [lignes], "erreur"}.
+    Un venv d'Odoo passe par la simulation de Poetry, contre le lock de la
+    racine pour la version active et contre son propre lock, depuis un
+    dossier temporaire, pour une autre ; le venv de l'outillage par
+    venv_requirements_drift.py. Rien n'est installé."""
+    rendu = {"venv": choix["venv"], "ecarts": [], "info": [], "erreur": None}
+
+    def noter_et_lancer(commande, **options):
+        ctx.noter(f"{ctx.relatif(commande[0])} {shlex.join(commande[1:])}")
+        return subprocess.run(commande, **options)
+
+    if choix["genre"] == "outillage":
+        sortie = ctx.lancer(
+            [
+                os.path.join(choix["venv"], "bin", "python"),
+                os.path.join("script", "poetry", "venv_requirements_drift.py"),
+                drift.EXIGENCES_OUTILLAGE,
+            ],
+            forme=(
+                f"{choix['venv']}/bin/python"
+                " script/poetry/venv_requirements_drift.py"
+                f" {drift.EXIGENCES_OUTILLAGE}"
+            ),
+            delai=DELAI_OUTIL,
+        )
+        try:
+            etat = json.loads(sortie.stdout)
+        except ValueError:
+            etat = {"erreur": (sortie.stderr or sortie.stdout).strip()}
+        if "erreur" in etat:
+            rendu["erreur"] = etat["erreur"]
+            return rendu
+        rendu["ecarts"] += [f"{t('Missing')} {e}" for e in etat["manquantes"]]
+        rendu["ecarts"] += [
+            f"{t('Out of bounds')} {e['exigence']}"
+            f" ({t('installed')} {e['installee']})"
+            for e in etat["hors_bornes"]
+        ]
+        if etat["de_trop"]:
+            rendu["info"].append(
+                f"{len(etat['de_trop'])}"
+                f" {t('installed but required by nothing')}"
+            )
+        return rendu
+
+    version = choix["version"]
+    c = drift.chemins(version)
+    for fichier in (c["poetry"], c["lock"]):
+        if not os.path.isfile(os.path.join(ctx.racine, fichier)):
+            rendu["erreur"] = f"{t('missing:')} {fichier}"
+            return rendu
+    if choix["active"]:
+        simulation = drift.simuler(
+            ctx.racine, version, executer=noter_et_lancer
+        )
+    else:
+        with drift.projet_temporaire(ctx.racine, version) as projet:
+            simulation = drift.simuler(
+                ctx.racine, version, executer=noter_et_lancer, projet=projet
+            )
+    if not simulation["ok"]:
+        derniere = (simulation["sortie"].strip().splitlines() or [""])[-1]
+        rendu["erreur"] = f"{t('Poetry refuses to compare:')} {derniere}"
+        return rendu
+    classes = drift.classer(simulation["operations"])
+    for action in drift.ECARTS:
+        for op in classes.get(action, []):
+            versions = (
+                op["apres"]
+                if action == "Installing"
+                else f"{op['avant']} → {op['apres']}"
+            )
+            rendu["ecarts"].append(f"{op['nom']} {versions}")
+    hors_lock = classes.get("Removing", [])
+    if hors_lock:
+        rendu["info"].append(f"{len(hors_lock)} {t('outside the lock')}")
+    return rendu
+
+
+def verifier_dependances_venvs(ctx):
+    """Chaque venv du checkout face à ce qu'il doit porter : un venv
+    d'Odoo face à son poetry.lock, le venv de l'outillage face à ses
+    exigences. Un venv qui s'en écarte est offert à la résolution « Mettre
+    à jour les venvs ». Un paquet hors du lock, ou que rien ne demande, est
+    une information : la mise à jour ne le retire pas."""
+    nom = titre(verifier_dependances_venvs)
+    active = todo_etat._lire(os.path.join(ctx.racine, ".erplibre-version"))
+    candidats = drift.venvs(ctx.racine, active=active)
+    if not candidats:
+        return Resultat(nom, SAUTE, t("no venv"))
+    rendus = ctx.en_parallele(
+        lambda c: _ecarts_venv(ctx, c), candidats, max_workers=4
+    )
+    details, a_jour = [], []
+    for choix, rendu in zip(candidats, rendus):
+        if rendu["erreur"]:
+            details.append(f"{choix['venv']} : ❌ {rendu['erreur']}")
+            continue
+        if rendu["ecarts"]:
+            details.append(
+                f"{choix['venv']} : {len(rendu['ecarts'])}"
+                f" {t('differences')} — {', '.join(rendu['ecarts'][:6])}"
+                + (" …" if len(rendu["ecarts"]) > 6 else "")
+            )
+            choix = dict(choix, resume=details[-1].split(" : ", 1)[1])
+            a_jour.append(choix)
+        for info in rendu["info"]:
+            details.append(f"{choix['venv']} : ℹ️  {info}")
+    erreurs = sum(1 for r in rendus if r["erreur"])
+    resume = f"{len(candidats)} venvs"
+    if a_jour:
+        resume += f" · {len(a_jour)} {t('to update')}"
+    if erreurs:
+        resume += f" · {erreurs} {t('unreadable')}"
+    resolutions = []
+    if a_jour:
+        resolutions.append(
+            Resolution(
+                MAJ_VENVS,
+                f"📦 {t('Update the venvs:')} {len(a_jour)}",
+                [
+                    t(
+                        "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays."
+                    )
+                ]
+                + [f"   {c['venv']} — {c['resume']}" for c in a_jour],
+                a_jour,
+            )
+        )
+    statut = ALERTE if (a_jour or erreurs) else OK
+    return Resultat(nom, statut, resume, details, resolutions=resolutions)
+
+
+def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
+    sortie(t("Venvs to update:"))
+    choisis = choisir_depots(
+        venvs,
+        demander,
+        sortie,
+        decrire=lambda c: f"{c['venv']} — {c['resume']}",
+        tous=t("All venvs"),
+    )
+    if not choisis or mettre_a_jour_venv is None:
+        sortie(t("Nothing changed."))
+        return False
+    for choix in choisis:
+        sortie(f"── {choix['venv']} ──")
+        mettre_a_jour_venv(choix)
+    return True
 
 
 def verifier_disque(ctx):
@@ -1179,8 +1643,10 @@ VERIFICATIONS = (
     ("code", verifier_hygiene),
     ("code", verifier_docs),
     ("code", verifier_manifeste),
+    ("code", verifier_branches),
     ("code", verifier_hooks),
     ("environnement", verifier_venv),
+    ("environnement", verifier_dependances_venvs),
     ("environnement", verifier_disque),
     ("environnement", verifier_postgresql),
     ("environnement", verifier_odoo),
@@ -1251,18 +1717,162 @@ def lancer(ctx, verifications=None, sortie=print):
     puis le sommaire. Rend la liste des Resultat."""
     debut = time.monotonic()
     sortie(f"{t('Healthcheck')} — {libelle_portee(ctx)}")
+    liste = list(verifications or VERIFICATIONS)
     resultats = []
     section = None
-    for nom_section, verification in verifications or VERIFICATIONS:
-        if nom_section != section:
-            section = nom_section
-            sortie(f"\n━━ {t(SECTIONS[section])} ━━")
-        resultat = executer(ctx, verification)
-        resultats.append(resultat)
-        sortie(rendre(resultat))
+    # Toutes en parallèle, chacune avec son contexte ; l'affichage suit
+    # l'ordre de la liste, un bloc dès que lui et ceux qui le précèdent sont
+    # finis : le rapport est le même d'une passe à l'autre.
+    with ThreadPoolExecutor(max_workers=max(1, len(liste))) as pool:
+        futurs = [
+            pool.submit(executer, ctx.pour_verification(), verification)
+            for _nom_section, verification in liste
+        ]
+        for (nom_section, _verification), futur in zip(liste, futurs):
+            if nom_section != section:
+                section = nom_section
+                sortie(f"\n━━ {t(SECTIONS[section])} ━━")
+            resultat = futur.result()
+            resultats.append(resultat)
+            sortie(rendre(resultat))
     sortie("")
     sortie(sommaire(resultats, time.monotonic() - debut))
+    resolutions = [r for x in resultats for r in x.resolutions]
+    if resolutions:
+        sortie("")
+        sortie(rendre_resolutions(resolutions))
     return resultats
+
+
+def rendre_resolutions(resolutions):
+    """Le bloc « Résolution » : l'explication de chaque résolution, et pour
+    celles qui agissent, l'entrée apparue dans le menu."""
+    lignes = [f"── {t('Resolution')} ──"]
+    for resolution in resolutions:
+        lignes += [f"   {ligne}" for ligne in resolution.lignes]
+        if resolution.actionnable:
+            lignes.append(f"   → {t('Menu entry:')} {resolution.libelle}")
+    if any(r.actionnable for r in resolutions):
+        lignes.append(
+            f"   {t('These entries now appear in the menu, under Resolution.')}"
+        )
+    return "\n".join(lignes)
+
+
+def choisir_depots(depots, demander, sortie, decrire=None, tous=None):
+    """Les dépôts que l'utilisateur choisit parmi `depots`, numérotés :
+    plusieurs numéros séparés par des espaces ou des virgules, des plages
+    (« 2-3 »), « a » pour tous, 0 ou Entrée pour revenir sans rien choisir.
+    Une saisie dont une partie est fautive est refusée en entier, puis
+    redemandée : une faute ne retient jamais en silence une partie de la
+    sélection. Une fin d'entrée (Ctrl+D) vaut retour. `decrire(élément)`
+    rend la ligne d'un élément, l'écart au gel d'un dépôt par défaut ;
+    `tous` est le libellé de « a »."""
+    decrire = decrire or (lambda depot: _ligne_gel(depot).strip())
+    while True:
+        for numero, depot in enumerate(depots, 1):
+            sortie(f"   [{numero}] {decrire(depot)}")
+        sortie(f"   [a] {tous or t('All repositories')}")
+        sortie(f"   {todo_couleur.retour()}")
+        try:
+            reponse = demander(
+                f"💬 {t('Repositories, numbers separated by spaces (a = all): ')}"
+            )
+        except EOFError:
+            print()
+            return []
+        reponse = reponse.strip().lower()
+        if reponse in ("", "0"):
+            return []
+        rangs = container_runtime.lire_selection(
+            "all" if reponse == "a" else reponse, len(depots)
+        )
+        if rangs is not None:
+            return [depots[rang] for rang in rangs]
+        sortie(f"{t('Error, cannot understand value')} '{reponse}'")
+
+
+def _afficher_commande(sortie):
+    """Le `noter` de `freeze_resolution` : chaque commande s'affiche au
+    moment où elle tourne, comme celles des vérifications."""
+    return lambda commande: sortie(f"   $ {commande}")
+
+
+def executer_resolution(
+    ctx, resolution, demander=None, sortie=print, mettre_a_jour_venv=None
+):
+    """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
+    True si quelque chose a changé. `demander` vaut `input` par défaut, lu
+    à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
+    TODO, qui sait installer un lock et faire le rapport."""
+    demander = demander or input
+    if resolution.cle == MAJ_VENVS:
+        return _mettre_a_jour_venvs(
+            resolution.depots, demander, sortie, mettre_a_jour_venv
+        )
+    if resolution.cle == freeze_resolution.REMETTRE:
+        return _remettre_au_gel(ctx, resolution.depots, demander, sortie)
+    if resolution.cle == freeze_resolution.MAJ_GEL:
+        return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
+    return False
+
+
+def _remettre_au_gel(ctx, depots, demander, sortie):
+    sortie(t("Repositories to put back on their freeze:"))
+    depots = choisir_depots(depots, demander, sortie)
+    if not depots:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for depot in depots:
+        reussi, message = freeze_resolution.remettre_au_gel(
+            ctx.racine, depot, noter=_afficher_commande(sortie)
+        )
+        change = change or reussi
+        sortie(f"   {'✅' if reussi else '❌'} {depot['path']} — {message}")
+    return change
+
+
+def _mettre_a_jour_gel(ctx, depots, demander, sortie):
+    sortie(t("Repositories whose freeze moves to HEAD:"))
+    depots = choisir_depots(depots, demander, sortie)
+    if not depots:
+        sortie(t("Nothing changed."))
+        return False
+    sortie(t("Checking that each HEAD is pushed…"))
+    publies = []
+    for depot in depots:
+        publie, detail = freeze_resolution.publication(
+            ctx.racine, depot, noter=_afficher_commande(sortie)
+        )
+        if publie:
+            publies.append(depot)
+            sortie(f"   ✅ {depot['path']} — {t('pushed on')} {detail}")
+        elif publie is False:
+            sortie(
+                f"   ⚠️  {depot['path']} — {t('not pushed, push it first:')}"
+                f" {detail}"
+            )
+        else:
+            sortie(f"   ❌ {depot['path']} — {detail}")
+    if not publies:
+        sortie(t("Nothing changed."))
+        return False
+    changes, sans_base = freeze_resolution.mettre_a_jour_gel(
+        ctx.racine, publies
+    )
+    if not changes:
+        sortie(t("Nothing changed."))
+        return False
+    sortie(f"✅ {t('Freeze updated in:')} {', '.join(changes)}")
+    if sans_base:
+        sortie(
+            t(
+                "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again."
+            )
+        )
+    sortie(t("Commit manifest/ to share the new freeze."))
+    return True
 
 
 SECTIONS = {"code": "Code checks", "environnement": "Environment checks"}
