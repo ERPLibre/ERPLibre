@@ -257,9 +257,49 @@ TRANSLATIONS = {
         "fr": "Outils Python et Poetry !",
         "en": "Python and Poetry tools!",
     },
-    "Lock drift - Compare the venv with poetry.lock": {
-        "fr": "🔍 Écarts du lock - Comparer le venv à poetry.lock",
-        "en": "🔍 Lock drift - Compare the venv with poetry.lock",
+    "Lock drift - Compare a venv with its lock or requirements": {
+        "fr": "🔍 Écarts du lock - Comparer un venv à son lock ou ses exigences",
+        "en": "🔍 Lock drift - Compare a venv with its lock or requirements",
+    },
+    "tooling": {
+        "fr": "outillage",
+        "en": "tooling",
+    },
+    "active version": {
+        "fr": "version active",
+        "en": "active version",
+    },
+    "Venv to check: ": {
+        "fr": "Venv à vérifier : ",
+        "en": "Venv to check: ",
+    },
+    "Install the missing requirements (y/N, default: N)? ": {
+        "fr": "Installer les exigences manquantes (o/N, défaut : N) ? ",
+        "en": "Install the missing requirements (y/N, default: N)? ",
+    },
+    "The venv satisfies its requirements:": {
+        "fr": "Le venv respecte ses exigences :",
+        "en": "The venv satisfies its requirements:",
+    },
+    "Requirements not satisfied:": {
+        "fr": "Exigences non respectées :",
+        "en": "Requirements not satisfied:",
+    },
+    "Missing": {
+        "fr": "Manquante",
+        "en": "Missing",
+    },
+    "Out of bounds": {
+        "fr": "Hors bornes",
+        "en": "Out of bounds",
+    },
+    "Unreadable requirement:": {
+        "fr": "Exigence illisible :",
+        "en": "Unreadable requirement:",
+    },
+    "Installed but required by nothing, left untouched:": {
+        "fr": "Installés sans qu'aucune exigence ne les demande, laissés en place :",
+        "en": "Installed but required by nothing, left untouched:",
     },
     "Install mise - Precompiled Python": {
         "fr": "🧰 Installer mise - Python précompilé",

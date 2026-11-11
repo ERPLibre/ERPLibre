@@ -22,11 +22,15 @@ Les opérations de Poetry se classent ainsi :
                  pas un écart à corriger.
 """
 
+import contextlib
 import datetime
+import glob
 import json
 import os
 import re
+import shlex
 import subprocess
+import tempfile
 
 # Une opération par ligne : « - Updating six (1.16.0 -> 1.17.0) ». Ancrée
 # en fin de ligne : en simulation, Poetry imprime aussi chaque opération
@@ -38,6 +42,9 @@ RE_OPERATION = re.compile(
     r"^\s*-\s+(Installing|Updating|Downgrading|Removing)\s+(\S+)"
     r"\s+\(([^()]*)\)\s*$"
 )
+
+# Les exigences du venv de l'outillage, qui n'a pas de lock.
+EXIGENCES_OUTILLAGE = "requirement/erplibre_require-ments.txt"
 
 # Les trois premières sont des écarts : la mise à jour les corrige.
 ECARTS = ("Installing", "Updating", "Downgrading")
@@ -115,20 +122,103 @@ def environnement(racine, venv):
     return env
 
 
-def simuler(racine, version_erplibre, executer=subprocess.run):
+def venvs(racine, active=None):
+    """Les venvs du checkout que la comparaison sait lire, actif d'abord.
+
+    Rend [{"venv", "genre", "version", "active"}] : « genre » vaut
+    « odoo » pour un `.venv.odoo*`, comparé à son
+    requirement/poetry.<version>.lock, ou « outillage » pour le venv des
+    outils (conf/python-erplibre-venv), comparé à
+    requirement/erplibre_require-ments.txt. Un dossier sans interpréteur
+    n'est pas un venv utilisable et n'est pas rendu."""
+    rendus = []
+    for dossier in sorted(glob.glob(os.path.join(racine, ".venv.odoo*"))):
+        if not os.path.isfile(os.path.join(dossier, "bin", "python")):
+            continue
+        version = os.path.basename(dossier).removeprefix(".venv.")
+        rendus.append(
+            {
+                "venv": f".venv.{version}",
+                "genre": "odoo",
+                "version": version,
+                "active": version == active,
+            }
+        )
+    rendus.sort(key=lambda v: not v["active"])
+    try:
+        with open(os.path.join(racine, "conf", "python-erplibre-venv")) as fh:
+            outillage = fh.read().strip()
+    except OSError:
+        outillage = ""
+    if outillage and os.path.isfile(
+        os.path.join(racine, outillage, "bin", "python")
+    ):
+        rendus.append(
+            {
+                "venv": outillage,
+                "genre": "outillage",
+                "version": None,
+                "active": False,
+            }
+        )
+    return rendus
+
+
+@contextlib.contextmanager
+def projet_temporaire(racine, version_erplibre):
+    """Un dossier de projet Poetry pour une version qui n'est pas l'active.
+
+    Poetry lit pyproject.toml, poetry.lock et poetry.toml dans son dossier
+    courant ; ceux de la racine sont les liens de la version ACTIVE. Ce
+    dossier porte des liens vers le pyproject et le lock de
+    `version_erplibre`, et vers le poetry.toml de la racine : la version
+    active et ses liens ne bougent pas. Le dossier disparaît à la sortie."""
+    c = chemins(version_erplibre)
+    with tempfile.TemporaryDirectory(prefix="el_poetry_") as dossier:
+        for lien, cible in (
+            ("pyproject.toml", c["pyproject"]),
+            ("poetry.lock", c["lock"]),
+            ("poetry.toml", "poetry.toml"),
+        ):
+            source = os.path.abspath(os.path.join(racine, cible))
+            if os.path.exists(source):
+                os.symlink(source, os.path.join(dossier, lien))
+        yield dossier
+
+
+def commande_installation(racine, version_erplibre, projet):
+    """La commande shell qui installe le lock de `version_erplibre` dans
+    son venv depuis `projet` (voir `projet_temporaire`), le venv activé
+    comme pour `simuler`. « install » et non « sync » : un paquet hors du
+    lock — Poetry lui-même en premier — reste en place."""
+    c = chemins(version_erplibre)
+    venv = os.path.abspath(os.path.join(racine, c["venv"]))
+    poetry = os.path.join(venv, "bin", "poetry")
+    return (
+        f"cd {shlex.quote(projet)}"
+        f" && VIRTUAL_ENV={shlex.quote(venv)}"
+        f' PATH={shlex.quote(os.path.join(venv, "bin"))}:"$PATH"'
+        " PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring"
+        f" {shlex.quote(poetry)} install --no-root"
+    )
+
+
+def simuler(racine, version_erplibre, executer=subprocess.run, projet=None):
     """Demande à Poetry ce que l'installation du lock changerait.
 
     Rend {"ok", "operations", "sortie", "commande"}. « ok » est faux quand
     Poetry refuse — Python du venv hors des bornes du projet, lock
     désaccordé du pyproject — et « sortie » dit alors pourquoi. Rien n'est
-    installé : seule la simulation tourne.
+    installé : seule la simulation tourne. Poetry tourne dans `projet`
+    quand il est donné (voir `projet_temporaire`), sinon à la racine.
     """
     c = chemins(version_erplibre)
     env = environnement(racine, c["venv"])
     poetry = os.path.join(racine, c["poetry"])
     commande = [poetry, "sync", "--dry-run", "--no-root", "--no-ansi"]
+    dossier = projet or racine
     fini = executer(
-        commande, cwd=racine, env=env, capture_output=True, text=True
+        commande, cwd=dossier, env=env, capture_output=True, text=True
     )
     sortie = (fini.stdout or "") + (fini.stderr or "")
     # Poetry 1 n'a pas « sync » : son équivalent est « install --sync ».
@@ -142,7 +232,7 @@ def simuler(racine, version_erplibre, executer=subprocess.run):
             "--no-ansi",
         ]
         fini = executer(
-            commande, cwd=racine, env=env, capture_output=True, text=True
+            commande, cwd=dossier, env=env, capture_output=True, text=True
         )
         sortie = (fini.stdout or "") + (fini.stderr or "")
     return {

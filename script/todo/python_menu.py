@@ -8,18 +8,25 @@ Il regroupe ce qui concerne Python, même quand l'outil vit aussi ailleurs :
 deux chemins mènent à la MÊME méthode — rien n'est recopié ici, et
 test_todo_menu le vérifie.
 
-L'analyse des écarts avec poetry.lock DEMANDE et affiche ; la simulation de
+L'analyse des écarts DEMANDE et affiche : un venv d'Odoo face à son
+poetry.lock, le venv de l'outillage face à ses exigences. La simulation de
 Poetry, le relevé des versions et la comparaison vivent dans
-script/poetry/poetry_venv_drift.py.
+script/poetry/poetry_venv_drift.py ; la lecture des exigences, dans
+script/poetry/venv_requirements_drift.py. Le Healthcheck offre la même
+analyse, par la même méthode.
 """
 
 import glob
+import json
 import os
+import shlex
+import subprocess
 
 import click
 
 from script.poetry import poetry_venv_drift as drift
 from script.todo import version_manager as vm
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 from script.todo.version_manager import (
     diagnostiquer_version,
@@ -46,7 +53,7 @@ class PythonMenuMixin:
         choices = [
             {
                 "prompt_description": t(
-                    "Lock drift - Compare the venv with poetry.lock"
+                    "Lock drift - Compare a venv with its lock or requirements"
                 )
             },
             {
@@ -451,10 +458,13 @@ class PythonMenuMixin:
                 f" — {etat}{actif}"
             )
 
-    def _poetry_drift_afficher(self, version, simulation):
-        """Affiche une simulation ; rend vrai s'il y a des écarts."""
+    def _poetry_drift_afficher(self, version, simulation, lock=None):
+        """Affiche une simulation ; rend vrai s'il y a des écarts. `lock`
+        nomme le lock comparé, celui de la racine par défaut."""
         c = drift.chemins(version)
-        print(f"🐍 {c['venv']} ↔ {os.path.realpath(c['lien_lock'])}")
+        lock = lock or os.path.realpath(c["lien_lock"])
+        print(f"   $ {simulation['commande']}")
+        print(f"🐍 {c['venv']} ↔ {lock}")
         if not simulation["ok"]:
             print(f"❌ {t('Poetry refuses to compare:')}")
             for ligne in simulation["sortie"].strip().splitlines()[-6:]:
@@ -485,9 +495,60 @@ class PythonMenuMixin:
         return bool(ecarts)
 
     def execute_poetry_drift(self):
-        """Compare le venv d'Odoo à son lock, propose la mise à jour, et en
-        écrit le rapport."""
-        version = self._poetry_drift_version()
+        """Compare un venv, choisi parmi ceux du checkout, à ce qu'il doit
+        porter, et propose la mise à jour.
+
+        Un venv d'Odoo se compare à son poetry.lock : celui de la version
+        active par les liens de la racine, comme l'installation, un autre
+        par son propre lock dans un dossier temporaire, sans toucher à la
+        version active. Le venv de l'outillage se compare à ses exigences.
+        Un seul venv est pris sans question."""
+        active = self._poetry_drift_version()
+        candidats = drift.venvs(".", active=active)
+        if not active:
+            print(f"ℹ️  {t('No .erplibre-version: no active Odoo version.')}")
+        if not candidats:
+            self._afficher_versions_supportees()
+            return
+        choix = self._venv_drift_choisir(candidats)
+        if choix is None:
+            return
+        if choix["genre"] == "outillage":
+            self._venv_outillage_drift(choix["venv"])
+        elif choix["active"]:
+            self._poetry_drift_actif(choix["version"])
+        else:
+            self._poetry_drift_autre(choix["version"])
+
+    def _venv_drift_choisir(self, candidats):
+        """Le venv choisi, ou None pour revenir ; un seul est pris
+        d'office."""
+        if len(candidats) == 1:
+            print(f"🐍 {candidats[0]['venv']}")
+            return candidats[0]
+        for numero, venv in enumerate(candidats, 1):
+            if venv["genre"] == "outillage":
+                detail = f"{t('tooling')} — {drift.EXIGENCES_OUTILLAGE}"
+            else:
+                detail = drift.chemins(venv["version"])["lock"]
+                if venv["active"]:
+                    detail = f"{t('active version')} — {detail}"
+            print(f"   [{numero}] {venv['venv']} — {detail}")
+        print(f"   {retour(t('Back'))}")
+        while True:
+            try:
+                reponse = input(f"💬 {t('Venv to check: ')}").strip()
+            except EOFError:
+                print()
+                return None
+            if reponse in ("", "0"):
+                return None
+            if reponse.isdigit() and 1 <= int(reponse) <= len(candidats):
+                return candidats[int(reponse) - 1]
+            print(f"{t('Error, cannot understand value')} '{reponse}'")
+
+    def _poetry_drift_actif(self, version):
+        """Le venv de la version active face au lock de la racine."""
         if not self._poetry_drift_prerequis(version):
             return
         simulation = drift.simuler(".", version)
@@ -502,16 +563,121 @@ class PythonMenuMixin:
             return
         self._poetry_drift_mettre_a_jour(version, simulation)
 
-    def _poetry_drift_mettre_a_jour(self, version, simulation_avant):
-        """Installe le lock par le chemin de l'installation, puis rapporte ce
-        qui a changé et ce qui diverge encore."""
+    def _poetry_drift_autre(self, version):
+        """Un venv d'Odoo qui n'est pas l'actif, face à SON lock, depuis un
+        dossier de projet temporaire : la version active ne bouge pas."""
+        c = drift.chemins(version)
+        if not os.path.isfile(c["poetry"]):
+            print(f"❌ {t('Poetry is missing from the venv:')} {c['poetry']}")
+            return
+        for fichier in (c["lock"], c["pyproject"]):
+            if not os.path.isfile(fichier):
+                print(f"❌ {t('Missing file read by Poetry:')} {fichier}")
+                return
+        with drift.projet_temporaire(".", version) as projet:
+            simulation = drift.simuler(".", version, projet=projet)
+            if not self._poetry_drift_afficher(
+                version, simulation, lock=c["lock"]
+            ):
+                return
+            question = t(
+                "Update the venv to match the lock (y/N, default: N)? "
+            )
+            if not self._is_yes(input(f"💬 {question}")):
+                return
+            self._poetry_drift_mettre_a_jour(
+                version,
+                simulation,
+                commande=drift.commande_installation(".", version, projet),
+                projet=projet,
+            )
+
+    def _venv_outillage_drift(self, venv):
+        """Le venv de l'outillage face à ses exigences : manquantes, hors
+        bornes, et paquets que rien ne demande. Propose d'installer ce qui
+        manque ; un paquet de trop n'est jamais retiré."""
+        etat = self._venv_outillage_analyser(venv)
+        if etat is None or not self._venv_outillage_afficher(venv, etat):
+            return
+        question = t("Install the missing requirements (y/N, default: N)? ")
+        if not self._is_yes(input(f"💬 {question}")):
+            return
+        commande = (
+            ". ./script/install/lib_pip_provider.sh && el_pip_install"
+            f" {shlex.quote(venv)} -r {drift.EXIGENCES_OUTILLAGE}"
+        )
+        print(f"   $ {commande}")
+        self.execute.exec_command_live(commande, source_erplibre=False)
+        etat = self._venv_outillage_analyser(venv)
+        if etat is not None:
+            self._venv_outillage_afficher(venv, etat)
+
+    def _venv_outillage_analyser(self, venv):
+        """La sortie JSON de venv_requirements_drift.py lancé par le Python
+        de `venv`, ou None après l'avoir dit."""
+        commande = [
+            os.path.join(venv, "bin", "python"),
+            "script/poetry/venv_requirements_drift.py",
+            drift.EXIGENCES_OUTILLAGE,
+        ]
+        print(f"   $ {shlex.join(commande)}")
+        fini = subprocess.run(commande, capture_output=True, text=True)
+        try:
+            etat = json.loads(fini.stdout)
+        except ValueError:
+            etat = {"erreur": (fini.stderr or fini.stdout).strip()}
+        if "erreur" in etat:
+            print(f"❌ {etat['erreur']}")
+            return None
+        return etat
+
+    def _venv_outillage_afficher(self, venv, etat):
+        """Affiche l'analyse ; rend vrai si une exigence n'est pas tenue."""
+        print(f"🐍 {venv} ↔ {drift.EXIGENCES_OUTILLAGE}")
+        ecarts = len(etat["manquantes"]) + len(etat["hors_bornes"])
+        if not ecarts:
+            print(
+                f"✅ {t('The venv satisfies its requirements:')}"
+                f" {etat['exigences']}"
+            )
+        else:
+            print(f"⚠️  {t('Requirements not satisfied:')} {ecarts}")
+            for exigence in etat["manquantes"]:
+                print(f"   {t('Missing')} : {exigence}")
+            for ecart in etat["hors_bornes"]:
+                print(
+                    f"   {t('Out of bounds')} : {ecart['exigence']}"
+                    f" ({t('installed')} {ecart['installee']})"
+                )
+        for ligne in etat["illisibles"]:
+            print(f"ℹ️  {t('Unreadable requirement:')} {ligne}")
+        de_trop = etat["de_trop"]
+        if de_trop:
+            noms = ", ".join(f"{n} {v}" for n, v in de_trop[:10])
+            suite = " …" if len(de_trop) > 10 else ""
+            print(
+                f"ℹ️  {t('Installed but required by nothing, left untouched:')}"
+                f" {len(de_trop)} ({noms}{suite})"
+            )
+        return bool(ecarts)
+
+    def _poetry_drift_mettre_a_jour(
+        self, version, simulation_avant, commande=None, projet=None
+    ):
+        """Installe le lock, puis rapporte ce qui a changé et ce qui diverge
+        encore. Par défaut, par le chemin de l'installation pour la version
+        active ; `commande` et `projet` servent une autre version (voir
+        `_poetry_drift_autre`)."""
+        commande = (
+            commande or "EL_PHASE=poetry ./script/install/install_locally.sh"
+        )
         avant = drift.relever(".", version)
+        print(f"   $ {commande}")
         status = self.execute.exec_command_live(
-            "EL_PHASE=poetry ./script/install/install_locally.sh",
-            source_erplibre=False,
+            commande, source_erplibre=False
         )
         apres = drift.relever(".", version)
-        simulation_apres = drift.simuler(".", version)
+        simulation_apres = drift.simuler(".", version, projet=projet)
         texte = self._poetry_drift_rapport(
             version, status, simulation_avant, simulation_apres, avant, apres
         )

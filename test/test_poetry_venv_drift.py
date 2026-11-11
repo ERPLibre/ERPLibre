@@ -268,6 +268,7 @@ class BancMenu(unittest.TestCase):
         Path(".erplibre-version").write_text(VERSION + "\n")
         Path(f".venv.{VERSION}/bin").mkdir(parents=True)
         Path(f".venv.{VERSION}/bin/poetry").write_text("")
+        Path(f".venv.{VERSION}/bin/python").write_text("")
         Path("requirement").mkdir()
         for nom in (f"poetry.{VERSION}.lock", f"pyproject.{VERSION}.toml"):
             Path("requirement", nom).write_text("")
@@ -442,12 +443,147 @@ class TestLesPrerequis(BancMenu):
         self.assertIn(todo_i18n.t("Poetry is missing from the venv:"), texte)
 
     def test_aucune_version_active(self):
+        # Le venv reste comparable : par son propre lock, hors de la racine.
         os.remove(".erplibre-version")
-        texte, _ = self.lancer([])
+        texte, _ = self.lancer([self.simulation(ALIGNE)])
         self.assertIn(
             todo_i18n.t("No .erplibre-version: no active Odoo version."),
             texte,
         )
+        self.assertIn(todo_i18n.t("The venv matches the lock."), texte)
+        self.assertIsNotNone(self.simuler.call_args.kwargs.get("projet"))
+
+    def test_aucun_venv(self):
+        shutil.rmtree(f".venv.{VERSION}")
+        texte, _ = self.lancer([])
+        self.simuler.assert_not_called()
+        self.assertIn("conf/supported_version_erplibre.json", texte)
+
+
+class TestPlusieursVenvs(BancMenu):
+    """Le choix du venv : un venv d'Odoo non actif, comparé à son propre
+    lock, et le venv de l'outillage, comparé à ses exigences."""
+
+    AUTRE = "odoo17.0_python3.10.18"
+
+    def setUp(self):
+        super().setUp()
+        Path(f".venv.{self.AUTRE}/bin").mkdir(parents=True)
+        for nom in ("python", "poetry"):
+            Path(f".venv.{self.AUTRE}/bin/{nom}").write_text("")
+        for nom in (
+            f"poetry.{self.AUTRE}.lock",
+            f"pyproject.{self.AUTRE}.toml",
+        ):
+            Path("requirement", nom).write_text("")
+        Path(".venv.erplibre/bin").mkdir(parents=True)
+        Path(".venv.erplibre/bin/python").write_text("")
+        Path("conf", "python-erplibre-venv").write_text(".venv.erplibre\n")
+
+    def jouer(self, reponses, simulations=(), sorties_outillage=()):
+        sortie = io.StringIO()
+        projets = []
+
+        def simuler(_racine, _version, projet=None, **_k):
+            projets.append(projet)
+            if projet:
+                # Le dossier temporaire porte les liens du lock visé.
+                self.assertTrue(
+                    os.path.realpath(
+                        os.path.join(projet, "poetry.lock")
+                    ).endswith(f"poetry.{self.AUTRE}.lock")
+                )
+            return simulations[len(projets) - 1]
+
+        analyses = iter(sorties_outillage)
+
+        def run(commande, *a, **k):
+            return subprocess.CompletedProcess(
+                commande, 0, json.dumps(next(analyses)), ""
+            )
+
+        with (
+            patch.object(drift, "simuler", side_effect=simuler),
+            patch.object(drift, "relever", return_value={}),
+            patch("builtins.input", side_effect=list(reponses)),
+            patch("script.todo.python_menu.subprocess.run", side_effect=run),
+            patch("sys.stdout", sortie),
+        ):
+            self.todo.execute_poetry_drift()
+        return sortie.getvalue(), projets
+
+    def test_la_liste_met_l_actif_d_abord_et_l_outillage_a_la_fin(self):
+        texte, projets = self.jouer(["0"])
+        actif = texte.index(f"[1] .venv.{VERSION}")
+        self.assertLess(actif, texte.index(f"[2] .venv.{self.AUTRE}"))
+        self.assertIn("[3] .venv.erplibre", texte)
+        self.assertEqual(projets, [])
+
+    def test_un_venv_non_actif_se_compare_et_s_installe_par_son_lock(self):
+        texte, projets = self.jouer(
+            ["2", "o"],
+            simulations=[self.simulation(SORTIE), self.simulation(ALIGNE)],
+        )
+        self.assertIsNotNone(projets[0])
+        self.assertIn(f"requirement/poetry.{self.AUTRE}.lock", texte)
+        commande = self.installe()[0]
+        self.assertIn("install --no-root", commande)
+        self.assertIn(f".venv.{self.AUTRE}", commande)
+        # La version active et ses liens n'ont pas bougé.
+        self.assertEqual(
+            os.readlink("poetry.lock"), f"requirement/poetry.{VERSION}.lock"
+        )
+
+    def test_l_outillage_dit_ce_qui_manque_et_ce_qui_est_de_trop(self):
+        etat = {
+            "exigences": 3,
+            "manquantes": ["absent>=1"],
+            "hors_bornes": [{"exigence": "black==2", "installee": "1"}],
+            "illisibles": [],
+            "de_trop": [["ajoute-a-la-main", "0.1"]],
+        }
+        aligne = dict(etat, manquantes=[], hors_bornes=[])
+        texte, _ = self.jouer(["3", "o"], sorties_outillage=[etat, aligne])
+        self.assertIn(f"{todo_i18n.t('Requirements not satisfied:')} 2", texte)
+        self.assertIn("absent>=1", texte)
+        self.assertIn("black==2", texte)
+        self.assertIn("ajoute-a-la-main 0.1", texte)
+        self.assertIn("$ .venv.erplibre/bin/python", texte)
+        self.assertEqual(
+            self.installe(),
+            [
+                ". ./script/install/lib_pip_provider.sh && el_pip_install"
+                f" .venv.erplibre -r {drift.EXIGENCES_OUTILLAGE}"
+            ],
+        )
+        self.assertIn(
+            todo_i18n.t("The venv satisfies its requirements:"), texte
+        )
+
+    def test_un_numero_inconnu_est_redemande(self):
+        texte, _ = self.jouer(["9", "0"])
+        self.assertIn("'9'", texte)
+
+
+class TestDossierTemporaire(unittest.TestCase):
+    def test_les_liens_visent_la_version_puis_disparaissent(self):
+        racine = tempfile.mkdtemp(prefix="el_drift_projet_")
+        self.addCleanup(shutil.rmtree, racine, True)
+        Path(racine, "requirement").mkdir()
+        for nom in (f"poetry.{VERSION}.lock", f"pyproject.{VERSION}.toml"):
+            Path(racine, "requirement", nom).write_text("")
+        Path(racine, "poetry.toml").write_text("")
+        with drift.projet_temporaire(racine, VERSION) as projet:
+            self.assertEqual(
+                sorted(os.listdir(projet)),
+                ["poetry.lock", "poetry.toml", "pyproject.toml"],
+            )
+            self.assertTrue(
+                os.path.realpath(os.path.join(projet, "poetry.lock")).endswith(
+                    f"poetry.{VERSION}.lock"
+                )
+            )
+        self.assertFalse(os.path.exists(projet))
 
 
 class TestDiagnostiquerVersion(unittest.TestCase):
