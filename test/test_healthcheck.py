@@ -316,13 +316,72 @@ class TestEnvironnement(unittest.TestCase):
 class TestManifeste(unittest.TestCase):
     """« Addons face au manifeste » sur une sortie de `repo_state` simulée."""
 
-    def ctx_snapshot(self, depots):
+    def ctx_snapshot(self, depots, sales=()):
+        """Un Contexte dont `repo_state snapshot` rend `depots` et dont
+        `git status` dit modifiés les chemins de `sales`."""
         ctx = h.Contexte(tempfile.gettempdir())
         sortie = json.dumps({"local_manifest": True, "repos": depots})
-        ctx.lancer = lambda *a, **k: subprocess.CompletedProcess(
-            [], 0, sortie, ""
-        )
+
+        def lancer(args, *a, **k):
+            if "status" in args:
+                chemin = args[args.index("-C") + 1]
+                modifie = " M x.py\n" if chemin in sales else ""
+                return subprocess.CompletedProcess(args, 0, modifie, "")
+            return subprocess.CompletedProcess(args, 0, sortie, "")
+
+        ctx.lancer = lancer
         return ctx
+
+    def test_resolutions_by_kind_of_gap(self):
+        def ecart(alignement):
+            return {"ahead": None, "behind": None, "alignment": alignement}
+
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot(
+                [
+                    self.depot("A/retard", "b" * 40, ecart("en_retard")),
+                    self.depot(
+                        "A/introuvable", "c" * 40, ecart("introuvable")
+                    ),
+                    self.depot("A/avance", "d" * 40, ecart("en_avance")),
+                    self.depot("A/decale", "e" * 40, ecart("decale")),
+                    self.depot("A/sale", "f" * 40, ecart("en_retard")),
+                    self.depot("A/gel", "a" * 40, ecart("conforme")),
+                ],
+                sales={"A/sale"},
+            )
+        )
+        par_cle = {r.cle: r for r in resultat.resolutions}
+        remettre = par_cle[h.freeze_resolution.REMETTRE]
+        self.assertEqual(
+            [d["path"] for d in remettre.depots], ["A/retard", "A/introuvable"]
+        )
+        self.assertIn("2", remettre.libelle)
+        self.assertEqual(
+            [d["path"] for d in par_cle[h.freeze_resolution.MAJ_GEL].depots],
+            ["A/avance"],
+        )
+        # Le dépôt modifié et l'écart dans les deux sens ne font qu'expliquer.
+        explications = [r for r in resultat.resolutions if not r.actionnable]
+        self.assertEqual(len(explications), 2)
+        texte = "\n".join(l for r in explications for l in r.lignes)
+        self.assertIn("A/sale", texte)
+        self.assertIn("git -C A/decale log --oneline --left-right", texte)
+        self.assertNotIn("A/sale", "\n".join(remettre.lignes))
+
+    def test_no_resolution_when_every_repository_is_on_its_freeze(self):
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot(
+                [
+                    self.depot(
+                        "A/gel",
+                        "a" * 40,
+                        {"ahead": 0, "behind": 0, "alignment": "conforme"},
+                    )
+                ]
+            )
+        )
+        self.assertEqual(resultat.resolutions, [])
 
     def depot(self, chemin, gel=None, ecart=None):
         return {
@@ -463,6 +522,154 @@ class TestBranches(unittest.TestCase):
         )
 
 
+class TestResolutions(unittest.TestCase):
+    """Le bloc « Résolution » et l'exécution confirmée."""
+
+    def resolution(self, cle, depots):
+        return h.Resolution(cle, "🧊 X", ["explication"], depots)
+
+    def test_the_report_explains_and_announces_the_menu_entries(self):
+        res = self.resolution(h.freeze_resolution.REMETTRE, [])
+
+        def verifier_manifeste(_ctx):
+            return h.Resultat("M", h.ALERTE, "", resolutions=[res])
+
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [("code", verifier_manifeste)],
+            sortie=lignes.append,
+        )
+        texte = "\n".join(lignes)
+        self.assertIn(f"── {t('Resolution')} ──", texte)
+        self.assertLess(
+            texte.index(t("Summary")), texte.index(t("Resolution"))
+        )
+        self.assertIn("explication", texte)
+        self.assertIn(f"{t('Menu entry:')} 🧊 X", texte)
+        self.assertIn(
+            t("These entries now appear in the menu, under Resolution."), texte
+        )
+
+    def test_selection_by_numbers_ranges_all_or_back(self):
+        depots = [
+            {"path": f"A/{n}", "freeze": {"alignment": "en_retard"}}
+            for n in ("un", "deux", "trois")
+        ]
+
+        def choisir(*reponses):
+            suite = iter(reponses)
+            lignes = []
+            choisis = h.choisir_depots(
+                depots, lambda _q: next(suite), lignes.append
+            )
+            return [d["path"] for d in choisis], lignes
+
+        self.assertEqual(choisir("1 3")[0], ["A/un", "A/trois"])
+        self.assertEqual(choisir("3,1")[0], ["A/un", "A/trois"])
+        self.assertEqual(choisir("2-3")[0], ["A/deux", "A/trois"])
+        self.assertEqual(choisir("a")[0], ["A/un", "A/deux", "A/trois"])
+        self.assertEqual(choisir("0")[0], [])
+        self.assertEqual(choisir("")[0], [])
+        # Une partie fautive refuse toute la saisie, qui est redemandée.
+        choisis, lignes = choisir("1 9", "2")
+        self.assertEqual(choisis, ["A/deux"])
+        self.assertIn(f"{t('Error, cannot understand value')} '1 9'", lignes)
+        self.assertIn("   [1] A/un — " + t("behind the freeze"), lignes)
+        self.assertIn(f"   [a] {t('All repositories')}", lignes)
+
+    def test_put_back_asks_first(self):
+        depots = [{"path": "A/x", "freeze": {"alignment": "en_retard"}}]
+        res = self.resolution(h.freeze_resolution.REMETTRE, depots)
+        ctx = h.Contexte(tempfile.gettempdir())
+        with mock.patch.object(
+            h.freeze_resolution, "remettre_au_gel", return_value=(True, "ok")
+        ) as remettre:
+            self.assertFalse(
+                h.executer_resolution(
+                    ctx, res, demander=lambda _q: "", sortie=lambda _l: None
+                )
+            )
+            remettre.assert_not_called()
+            self.assertTrue(
+                h.executer_resolution(
+                    ctx, res, demander=lambda _q: "1", sortie=lambda _l: None
+                )
+            )
+            remettre.assert_called_once()
+            self.assertEqual(remettre.call_args.args, (ctx.racine, depots[0]))
+
+    def test_the_commands_show_as_they_run(self):
+        depots = [{"path": "A/x", "freeze": {"alignment": "en_retard"}}]
+        res = self.resolution(h.freeze_resolution.REMETTRE, depots)
+
+        def remettre(_racine, _depot, noter):
+            noter("git -C A/x checkout --quiet --detach abc")
+            return True, "abc"
+
+        lignes = []
+        with mock.patch.object(
+            h.freeze_resolution, "remettre_au_gel", side_effect=remettre
+        ):
+            h.executer_resolution(
+                h.Contexte(tempfile.gettempdir()),
+                res,
+                demander=lambda _q: "a",
+                sortie=lignes.append,
+            )
+        commande = lignes.index(
+            "   $ git -C A/x checkout --quiet --detach abc"
+        )
+        self.assertLess(commande, lignes.index("   ✅ A/x — abc"))
+
+    def test_end_of_input_means_no(self):
+        res = self.resolution(
+            h.freeze_resolution.REMETTRE,
+            [{"path": "A/x", "freeze": {"alignment": "en_retard"}}],
+        )
+
+        def fin(_question):
+            raise EOFError
+
+        with mock.patch.object(
+            h.freeze_resolution, "remettre_au_gel"
+        ) as remettre:
+            self.assertFalse(
+                h.executer_resolution(
+                    h.Contexte(tempfile.gettempdir()),
+                    res,
+                    demander=fin,
+                    sortie=lambda _l: None,
+                )
+            )
+        remettre.assert_not_called()
+
+    def test_freeze_update_writes_only_pushed_heads(self):
+        publie = {"path": "A/publie", "freeze": {"alignment": "en_avance"}}
+        local = {"path": "A/local", "freeze": {"alignment": "en_avance"}}
+        res = self.resolution(h.freeze_resolution.MAJ_GEL, [publie, local])
+        ctx = h.Contexte(tempfile.gettempdir())
+        lignes = []
+        with (
+            mock.patch.object(
+                h.freeze_resolution,
+                "publication",
+                side_effect=[(True, "18.0"), (False, "git push x")],
+            ),
+            mock.patch.object(
+                h.freeze_resolution,
+                "mettre_a_jour_gel",
+                return_value=({"manifest/m.xml": ["k"]}, []),
+            ) as maj,
+        ):
+            change = h.executer_resolution(
+                ctx, res, demander=lambda _q: "a", sortie=lignes.append
+            )
+        self.assertTrue(change)
+        self.assertEqual(maj.call_args_list[-1].args[1], [publie])
+        self.assertIn("git push x", "\n".join(lignes))
+
+
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
         def verifier_conflits(_ctx):
@@ -548,6 +755,42 @@ class TestMenu(unittest.TestCase):
         from script.todo.todo import TODO
 
         cls.TODO = TODO
+
+    def test_a_resolution_becomes_a_menu_entry_and_reruns_its_check(self):
+        obj = self.TODO.__new__(self.TODO)
+        obj._claude_context_root = lambda: tempfile.gettempdir()
+        res = h.Resolution(h.freeze_resolution.REMETTRE, "🧊 X", [], [])
+        manifeste = next(
+            (s, v) for s, v in h.VERIFICATIONS if v is h.verifier_manifeste
+        )
+        appels = []
+
+        def lancer(ctx, v=None):
+            appels.append(v)
+            return [
+                h.Resultat(
+                    h.titre(h.verifier_manifeste),
+                    h.ALERTE,
+                    "",
+                    resolutions=[res] if len(appels) == 1 else [],
+                )
+            ]
+
+        entree = str(4 + len(h.VERIFICATIONS))
+        with (
+            mock.patch.object(self.TODO, "fill_help_info", return_value=""),
+            mock.patch(
+                "script.todo.todo.click.prompt",
+                side_effect=["1", entree, entree, "0"],
+            ),
+            mock.patch.object(h, "lancer", side_effect=lancer),
+            mock.patch.object(h, "executer_resolution") as executer,
+        ):
+            obj.prompt_healthcheck()
+        executer.assert_called_once()
+        self.assertIs(executer.call_args.args[1], res)
+        # La vérification repasse ; sans résolution, l'entrée disparaît.
+        self.assertEqual(appels, [None, [manifeste]])
 
     def test_scopes_cycle_and_one_check_runs_alone(self):
         obj = self.TODO.__new__(self.TODO)

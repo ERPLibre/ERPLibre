@@ -2133,6 +2133,30 @@ TRANSLATIONS = {
         "fr": "Branches des dépôts",
         "en": "Repo branches",
     },
+    "Put back on the freeze:": {
+        "fr": "Remettre au gel :",
+        "en": "Put back on the freeze:",
+    },
+    "Behind their freeze, or missing the frozen commit: HEAD is detached on the frozen commit, fetched first from the manifest URL when the clone lacks it.": {
+        "fr": "En retard sur leur gel, ou sans le commit gelé : HEAD est détaché sur le commit gelé, rapatrié d'abord depuis l'URL du manifeste quand le clone ne l'a pas.",
+        "en": "Behind their freeze, or missing the frozen commit: HEAD is detached on the frozen commit, fetched first from the manifest URL when the clone lacks it.",
+    },
+    "Update the freeze to HEAD:": {
+        "fr": "Mettre à jour le gel avec HEAD :",
+        "en": "Update the freeze to HEAD:",
+    },
+    "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first.": {
+        "fr": "HEAD porte des commits que le gel n'a pas : le gel de manifest/ passe sur HEAD, pour chaque HEAD déjà poussé ; les autres sont nommés avec le push à faire d'abord.",
+        "en": "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first.",
+    },
+    "Skipped, modified files: commit or stash them, then run the check again.": {
+        "fr": "Sautés, fichiers modifiés : commitez-les ou mettez-les de côté, puis relancez la vérification.",
+        "en": "Skipped, modified files: commit or stash them, then run the check again.",
+    },
+    "To settle by hand: HEAD and the freeze both carry commits, or the shallow clone hides the gap. Compare with:": {
+        "fr": "À trancher à la main : HEAD et le gel portent chacun des commits, ou le clone tronqué cache l'écart. Comparez avec :",
+        "en": "To settle by hand: HEAD and the freeze both carry commits, or the shallow clone hides the gap. Compare with:",
+    },
     "no local branch off HEAD": {
         "fr": "aucune branche locale hors de HEAD",
         "en": "no local branch off HEAD",
@@ -2144,6 +2168,62 @@ TRANSLATIONS = {
     "behind HEAD": {
         "fr": "en retard sur HEAD",
         "en": "behind HEAD",
+    },
+    "Resolution": {
+        "fr": "Résolution",
+        "en": "Resolution",
+    },
+    "Menu entry:": {
+        "fr": "Entrée du menu :",
+        "en": "Menu entry:",
+    },
+    "These entries now appear in the menu, under Resolution.": {
+        "fr": "Ces entrées apparaissent désormais dans le menu, sous Résolution.",
+        "en": "These entries now appear in the menu, under Resolution.",
+    },
+    "Repositories, numbers separated by spaces (a = all): ": {
+        "fr": "Dépôts, numéros séparés par des espaces (a = tous) : ",
+        "en": "Repositories, numbers separated by spaces (a = all): ",
+    },
+    "All repositories": {
+        "fr": "Tous les dépôts",
+        "en": "All repositories",
+    },
+    "Repositories to put back on their freeze:": {
+        "fr": "Dépôts à remettre sur leur gel :",
+        "en": "Repositories to put back on their freeze:",
+    },
+    "Repositories whose freeze moves to HEAD:": {
+        "fr": "Dépôts dont le gel passe sur HEAD :",
+        "en": "Repositories whose freeze moves to HEAD:",
+    },
+    "Nothing changed.": {
+        "fr": "Rien n'a changé.",
+        "en": "Nothing changed.",
+    },
+    "Checking that each HEAD is pushed…": {
+        "fr": "Vérification que chaque HEAD est poussé…",
+        "en": "Checking that each HEAD is pushed…",
+    },
+    "pushed on": {
+        "fr": "poussé sur",
+        "en": "pushed on",
+    },
+    "not pushed, push it first:": {
+        "fr": "non poussé, poussez-le d'abord :",
+        "en": "not pushed, push it first:",
+    },
+    "Freeze updated in:": {
+        "fr": "Gel mis à jour dans :",
+        "en": "Freeze updated in:",
+    },
+    "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again.": {
+        "fr": "Leur fork-upstream-freeze-revision est retiré : make repo_freeze UPSTREAM=1 le recalcule.",
+        "en": "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again.",
+    },
+    "Commit manifest/ to share the new freeze.": {
+        "fr": "Commitez manifest/ pour partager le nouveau gel.",
+        "en": "Commit manifest/ to share the new freeze.",
     },
     "Odoo venv": {
         "fr": "Venv Odoo",

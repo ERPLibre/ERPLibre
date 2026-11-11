@@ -22,6 +22,11 @@ c'est la cible que le manifeste local lui donne (voir
 
 Une vérification qui lève rend un échec à son nom et laisse passer les
 suivantes.
+
+Une vérification peut joindre des résolutions à son verdict : le rapport les
+explique après le sommaire, et le menu les offre comme entrées. Elles seules
+écrivent ou touchent au réseau, et seulement une fois lancées et confirmées
+(voir `executer_resolution`).
 """
 
 import json
@@ -38,7 +43,13 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from script.todo import todo_etat, todo_journal
+from script.git import freeze_resolution
+from script.todo import (
+    container_runtime,
+    todo_couleur,
+    todo_etat,
+    todo_journal,
+)
 from script.todo.todo_i18n import t
 
 OK = "ok"
@@ -97,14 +108,36 @@ JOURNAUX_ALERTE = 1024**3
 
 
 @dataclass
+class Resolution:
+    """Ce qu'on peut faire d'un écart qu'une vérification a trouvé.
+
+    `cle` nomme l'action d'`executer_resolution` (une constante de
+    `freeze_resolution`) ; None pour une résolution qui ne fait qu'expliquer
+    ce qui reste à faire à la main. `libelle` est l'entrée du menu,
+    `lignes` l'explication du rapport, `depots` les entrées de
+    `repo_state` visées."""
+
+    cle: object
+    libelle: str
+    lignes: list
+    depots: list = field(default_factory=list)
+
+    @property
+    def actionnable(self):
+        return self.cle is not None
+
+
+@dataclass
 class Resultat:
-    """Le verdict d'une vérification et les commandes qui l'ont produit."""
+    """Le verdict d'une vérification, les commandes qui l'ont produit et
+    les résolutions qu'il propose."""
 
     titre: str
     statut: str
     resume: str
     details: list = field(default_factory=list)
     commandes: list = field(default_factory=list)
+    resolutions: list = field(default_factory=list)
 
 
 # Le titre de chaque vérification, clé de traduction, par nom de fonction :
@@ -924,7 +957,6 @@ def verifier_manifeste(ctx):
             t("unreadable output"),
             _limiter(erreur.strip().splitlines()),
         )
-
     depots = donnees.get("repos") or []
     if not donnees.get("local_manifest") and not depots:
         return Resultat(nom, SAUTE, t("no local manifest"))
@@ -946,9 +978,99 @@ def verifier_manifeste(ctx):
     if hors_gel:
         resume += f" · {len(hors_gel)} {t('off the freeze')}"
         details += hors_gel
+    resolutions = resolutions_gel(ctx, depots)
     if details:
-        return Resultat(nom, ALERTE, resume, _limiter(details))
-    return Resultat(nom, OK, resume)
+        return Resultat(
+            nom, ALERTE, resume, _limiter(details), resolutions=resolutions
+        )
+    return Resultat(nom, OK, resume, resolutions=resolutions)
+
+
+def _ligne_gel(depot):
+    alignement = freeze_resolution.hors_gel(depot)
+    return f"   {depot['path']} — {t(ECARTS_GEL.get(alignement, alignement))}"
+
+
+def resolutions_gel(ctx, depots):
+    """Les résolutions des dépôts hors de leur gel, classés par
+    `freeze_resolution.classer`. Un `git status` par dépôt hors du gel, et
+    pour eux seuls, dit lesquels ont des fichiers modifiés."""
+    candidats = [d for d in depots if freeze_resolution.hors_gel(d)]
+    if not candidats:
+        return []
+
+    def est_sale(depot):
+        fait = ctx.lancer(
+            ["git", "-C", depot["path"], "status", "--porcelain"],
+            forme="git -C <dépôt> status --porcelain",
+        )
+        return fait.returncode != 0 or bool(fait.stdout.strip())
+
+    classes = freeze_resolution.classer(candidats, est_sale)
+    resolutions = []
+    remettre = classes[freeze_resolution.REMETTRE]
+    if remettre:
+        resolutions.append(
+            Resolution(
+                freeze_resolution.REMETTRE,
+                f"🧊 {t('Put back on the freeze:')} {len(remettre)}"
+                f" {t('repositories')}",
+                [
+                    t(
+                        "Behind their freeze, or missing the frozen commit: HEAD is detached on the frozen commit, fetched first from the manifest URL when the clone lacks it."
+                    )
+                ]
+                + [_ligne_gel(d) for d in remettre],
+                remettre,
+            )
+        )
+    maj = classes[freeze_resolution.MAJ_GEL]
+    if maj:
+        resolutions.append(
+            Resolution(
+                freeze_resolution.MAJ_GEL,
+                f"🧊 {t('Update the freeze to HEAD:')} {len(maj)}"
+                f" {t('repositories')}",
+                [
+                    t(
+                        "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first."
+                    )
+                ]
+                + [_ligne_gel(d) for d in maj],
+                maj,
+            )
+        )
+    if classes[freeze_resolution.SALES]:
+        resolutions.append(
+            Resolution(
+                None,
+                "",
+                [
+                    t(
+                        "Skipped, modified files: commit or stash them, then run the check again."
+                    )
+                ]
+                + [_ligne_gel(d) for d in classes[freeze_resolution.SALES]],
+            )
+        )
+    if classes[freeze_resolution.MANUELS]:
+        resolutions.append(
+            Resolution(
+                None,
+                "",
+                [
+                    t(
+                        "To settle by hand: HEAD and the freeze both carry commits, or the shallow clone hides the gap. Compare with:"
+                    )
+                ]
+                + [
+                    f"   git -C {d['path']} log --oneline --left-right"
+                    f" HEAD...{(d.get('freeze_revision') or '')[:10]}"
+                    for d in classes[freeze_resolution.MANUELS]
+                ],
+            )
+        )
+    return resolutions
 
 
 def verifier_branches(ctx):
@@ -1371,7 +1493,132 @@ def lancer(ctx, verifications=None, sortie=print):
         sortie(rendre(resultat))
     sortie("")
     sortie(sommaire(resultats, time.monotonic() - debut))
+    resolutions = [r for x in resultats for r in x.resolutions]
+    if resolutions:
+        sortie("")
+        sortie(rendre_resolutions(resolutions))
     return resultats
+
+
+def rendre_resolutions(resolutions):
+    """Le bloc « Résolution » : l'explication de chaque résolution, et pour
+    celles qui agissent, l'entrée apparue dans le menu."""
+    lignes = [f"── {t('Resolution')} ──"]
+    for resolution in resolutions:
+        lignes += [f"   {ligne}" for ligne in resolution.lignes]
+        if resolution.actionnable:
+            lignes.append(f"   → {t('Menu entry:')} {resolution.libelle}")
+    if any(r.actionnable for r in resolutions):
+        lignes.append(
+            f"   {t('These entries now appear in the menu, under Resolution.')}"
+        )
+    return "\n".join(lignes)
+
+
+def choisir_depots(depots, demander, sortie):
+    """Les dépôts que l'utilisateur choisit parmi `depots`, numérotés :
+    plusieurs numéros séparés par des espaces ou des virgules, des plages
+    (« 2-3 »), « a » pour tous, 0 ou Entrée pour revenir sans rien choisir.
+    Une saisie dont une partie est fautive est refusée en entier, puis
+    redemandée : une faute ne retient jamais en silence une partie de la
+    sélection. Une fin d'entrée (Ctrl+D) vaut retour."""
+    while True:
+        for numero, depot in enumerate(depots, 1):
+            sortie(f"   [{numero}]{_ligne_gel(depot)[2:]}")
+        sortie(f"   [a] {t('All repositories')}")
+        sortie(f"   {todo_couleur.retour()}")
+        try:
+            reponse = demander(
+                f"💬 {t('Repositories, numbers separated by spaces (a = all): ')}"
+            )
+        except EOFError:
+            print()
+            return []
+        reponse = reponse.strip().lower()
+        if reponse in ("", "0"):
+            return []
+        rangs = container_runtime.lire_selection(
+            "all" if reponse == "a" else reponse, len(depots)
+        )
+        if rangs is not None:
+            return [depots[rang] for rang in rangs]
+        sortie(f"{t('Error, cannot understand value')} '{reponse}'")
+
+
+def _afficher_commande(sortie):
+    """Le `noter` de `freeze_resolution` : chaque commande s'affiche au
+    moment où elle tourne, comme celles des vérifications."""
+    return lambda commande: sortie(f"   $ {commande}")
+
+
+def executer_resolution(ctx, resolution, demander=None, sortie=print):
+    """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
+    True si quelque chose a changé. `demander` vaut `input` par défaut, lu
+    à l'appel."""
+    demander = demander or input
+    if resolution.cle == freeze_resolution.REMETTRE:
+        return _remettre_au_gel(ctx, resolution.depots, demander, sortie)
+    if resolution.cle == freeze_resolution.MAJ_GEL:
+        return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
+    return False
+
+
+def _remettre_au_gel(ctx, depots, demander, sortie):
+    sortie(t("Repositories to put back on their freeze:"))
+    depots = choisir_depots(depots, demander, sortie)
+    if not depots:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for depot in depots:
+        reussi, message = freeze_resolution.remettre_au_gel(
+            ctx.racine, depot, noter=_afficher_commande(sortie)
+        )
+        change = change or reussi
+        sortie(f"   {'✅' if reussi else '❌'} {depot['path']} — {message}")
+    return change
+
+
+def _mettre_a_jour_gel(ctx, depots, demander, sortie):
+    sortie(t("Repositories whose freeze moves to HEAD:"))
+    depots = choisir_depots(depots, demander, sortie)
+    if not depots:
+        sortie(t("Nothing changed."))
+        return False
+    sortie(t("Checking that each HEAD is pushed…"))
+    publies = []
+    for depot in depots:
+        publie, detail = freeze_resolution.publication(
+            ctx.racine, depot, noter=_afficher_commande(sortie)
+        )
+        if publie:
+            publies.append(depot)
+            sortie(f"   ✅ {depot['path']} — {t('pushed on')} {detail}")
+        elif publie is False:
+            sortie(
+                f"   ⚠️  {depot['path']} — {t('not pushed, push it first:')}"
+                f" {detail}"
+            )
+        else:
+            sortie(f"   ❌ {depot['path']} — {detail}")
+    if not publies:
+        sortie(t("Nothing changed."))
+        return False
+    changes, sans_base = freeze_resolution.mettre_a_jour_gel(
+        ctx.racine, publies
+    )
+    if not changes:
+        sortie(t("Nothing changed."))
+        return False
+    sortie(f"✅ {t('Freeze updated in:')} {', '.join(changes)}")
+    if sans_base:
+        sortie(
+            t(
+                "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again."
+            )
+        )
+    sortie(t("Commit manifest/ to share the new freeze."))
+    return True
 
 
 SECTIONS = {"code": "Code checks", "environnement": "Environment checks"}

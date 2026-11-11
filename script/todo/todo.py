@@ -1420,9 +1420,23 @@ class TODO(
         Les deux portées partent de la plus étroite — fichiers non commités,
         ERPLibre seul — et chaque entrée de portée passe à la suivante. Elles
         valent pour la durée du menu.
+
+        Les résolutions qu'une vérification propose deviennent des entrées
+        de la section « Résolution », sous les vérifications seules. Chaque
+        vérification garde les siennes jusqu'à sa prochaine passe ; une
+        résolution lancée repasse sa vérification.
         """
         portee_fichiers = 0
         portee_depots = 0
+        # {titre de vérification: [Resolution actionnables]}
+        resolutions = {}
+
+        def retenir(resultats):
+            for resultat in resultats or []:
+                resolutions[resultat.titre] = [
+                    r for r in resultat.resolutions if r.actionnable
+                ]
+
         while True:
             ctx = healthcheck.Contexte(
                 self._claude_context_root(),
@@ -1453,6 +1467,16 @@ class TODO(
                 choices.append(
                     {"prompt_description": healthcheck.titre(verification)}
                 )
+            # Dans l'ordre des vérifications qui les ont proposées.
+            offertes = [
+                (verification, r)
+                for _section, verification in seules
+                for r in resolutions.get(healthcheck.titre(verification), [])
+            ]
+            if offertes:
+                choices.append({"section": t("Resolution")})
+                for _verification, resolution in offertes:
+                    choices.append({"prompt_description": resolution.libelle})
             status = click.prompt(self.fill_help_info(choices))
             print()
             try:
@@ -1462,7 +1486,7 @@ class TODO(
             if numero == 0:
                 return
             elif numero == 1:
-                healthcheck.lancer(ctx)
+                retenir(healthcheck.lancer(ctx))
             elif numero == 2:
                 portee_fichiers = (portee_fichiers + 1) % len(
                     healthcheck.PORTEES_FICHIERS
@@ -1472,7 +1496,25 @@ class TODO(
                     healthcheck.PORTEES_DEPOTS
                 )
             elif 4 <= numero < 4 + len(seules):
-                healthcheck.lancer(ctx, [seules[numero - 4]])
+                retenir(healthcheck.lancer(ctx, [seules[numero - 4]]))
+            elif 4 + len(seules) <= numero < 4 + len(seules) + len(offertes):
+                verification, resolution = offertes[numero - 4 - len(seules)]
+                healthcheck.executer_resolution(ctx, resolution)
+                print()
+                # La vérification repasse : ses résolutions suivent l'état.
+                section = next(s for s, v in seules if v is verification)
+                retenir(
+                    healthcheck.lancer(
+                        healthcheck.Contexte(
+                            self._claude_context_root(),
+                            fichiers=ctx.portee_fichiers,
+                            depots=ctx.portee_depots,
+                            etat_commande_claude=self._claude_command_state,
+                            commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+                        ),
+                        [(section, verification)],
+                    )
+                )
             else:
                 print(t("Command not found !"))
 
