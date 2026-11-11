@@ -192,6 +192,15 @@ STRINGS_FILE = os.path.join(
 )
 GRADLE_FILE = os.path.join(MOBILE_HOME_PATH, ANDROID_DIR, "app/build.gradle")
 
+# GitPython, importé plus bas, refuse de se charger sans exécutable git et
+# rendrait un traceback. ./todo.sh, par install.sh, propose de le poser.
+if shutil.which("git") is None:
+    print(
+        t(
+            "git is missing and TODO needs it: run ./todo.sh, which offers to install it."
+        )
+    )
+    sys.exit(1)
 
 try:
     import click

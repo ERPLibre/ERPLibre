@@ -40,6 +40,11 @@ for el_arg in "$@"; do
   esac
 done
 
+# TODO importe GitPython, qui refuse de se charger sans exécutable git : git
+# est posé, ou proposé, avant qu'aucun Python ne parte.
+. ./script/install/lib_git_requis.sh
+el_git_requis || exit 1
+
 VENV="$(xargs < conf/python-erplibre-venv 2> /dev/null)"
 VOULUE="$(xargs < conf/python-erplibre-version 2> /dev/null)"
 ATTENDUE="${VOULUE%.*}"

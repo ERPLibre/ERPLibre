@@ -409,6 +409,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - With `login_user_detail` installed on Odoo 18, XML-RPC calls answer again: the credential check read an HTTP request XML-RPC never binds, and failed every call with `object is not bound`
 - The wkhtmltopdf `.deb` is installed by `apt-get install ./<file>.deb` rather than gdebi, which leaves the dependency list: under sudo-rs, the default sudo of Ubuntu 26.04, gdebi run with its input on a terminal and its output in a pipe — the system step launched by TODO — stopped on a terminal signal and never resumed, with or without the non-interactive mode
 - **TODO › Install** is translated — the q, w and m entries, the version labels, the system and PyCharm questions — and its yes/no prompts show `(y/N)`, Enter meaning no, where they showed `(Y/N)`
+- `./todo.sh` and `make` no longer stop on a GitPython traceback when git is missing: `install.sh` offers to install it with the system's package manager — apt, dnf, pacman, zypper or Homebrew, Enter meaning yes — then goes on; without a terminal it prints the command, and in non-interactive mode it installs git without asking. On NixOS, or with no known package manager, it says how to add git
 
 ## Removed
 

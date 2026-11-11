@@ -1553,6 +1553,10 @@ TRANSLATIONS = {
         "fr": "Sélection [1] : ",
         "en": "Select [1]: ",
     },
+    "git is missing and TODO needs it: run ./todo.sh, which offers to install it.": {
+        "fr": "git est absent et TODO en a besoin : lancez ./todo.sh, qui propose de l'installer.",
+        "en": "git is missing and TODO needs it: run ./todo.sh, which offers to install it.",
+    },
     "Select [2]: ": {
         "fr": "Sélection [2] : ",
         "en": "Select [2]: ",

@@ -231,6 +231,8 @@ class TestInstallSh(unittest.TestCase):
         self.racine = Path(tmp.name)
         for fichier in (
             "install.sh",
+            "script/install/lib_git_requis.sh",
+            "script/install/lib_non_interactive.sh",
             "script/__init__.py",
             "script/todo/install_non_interactif.py",
             "script/todo/todo_i18n.py",

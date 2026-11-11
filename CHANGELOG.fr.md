@@ -414,6 +414,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Avec `login_user_detail` installé sur Odoo 18, les appels XML-RPC répondent de nouveau : le contrôle d'accès lisait une requête HTTP que XML-RPC ne lie jamais, et faisait échouer chaque appel sur `object is not bound`
 - Le `.deb` de wkhtmltopdf s'installe par `apt-get install ./<fichier>.deb` plutôt que par gdebi, qui quitte la liste des dépendances : sous sudo-rs, le sudo par défaut d'Ubuntu 26.04, gdebi lancé avec l'entrée sur un terminal et la sortie dans un tube — l'étape système lancée par TODO — s'arrêtait sur un signal du terminal et ne reprenait jamais, en mode non interactif ou non
 - **TODO › Installation** est traduit — les entrées q, w et m, les étiquettes de version, les questions système et PyCharm — et ses questions oui/non affichent `(o/N)`, Entrée valant non, là où elles affichaient `(Y/N)`
+- `./todo.sh` et `make` ne s'arrêtent plus sur un traceback de GitPython quand git manque : `install.sh` propose de l'installer par le gestionnaire de paquets du système — apt, dnf, pacman, zypper ou Homebrew, Entrée valant oui —, puis continue ; sans terminal, il affiche la commande, et en mode non interactif il installe git sans demander. Sur NixOS, ou sans gestionnaire connu, il dit comment ajouter git
 
 ## Retiré
 
