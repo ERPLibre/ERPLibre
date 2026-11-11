@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le service Stream Deck d'ERPLibre Home, vu de TODO : noms, chemins,
-réglages, et l'appel d'une commande.
+réglages, le fichier pilote de l'extension, et l'appel d'une commande.
 
 Les mêmes règles que script/install/erplibre_home_settings.sh, que lisent
 l'installateur, le point d'entrée du service et l'outil de passation :
@@ -11,6 +11,7 @@ l'emporte, $XDG_CONFIG_HOME prime sur ~/.config. Les fonctions prennent
 `environ` pour que les tests désignent un HOME jetable.
 """
 
+import json
 import os
 import re
 import stat
@@ -29,6 +30,19 @@ DEFAULTS = {
 # Bornes incluses de DECK_SESSION_REFRESH_SEC, en secondes.
 SESSION_REFRESH_RANGE = (0.5, 60.0)
 _NOMBRE = re.compile(r"([0-9]+\.?[0-9]*|\.[0-9]+)")
+# Les réglages qu'un Odoo pilote peut fixer : clé du fil de l'inventaire →
+# ligne de streamdeck.conf, le tableau du CONTRACT.md de l'extension.
+CONFIG_LINES = {
+    "deck_program": "DECK_PROGRAM",
+    "plugins_off": "DECK_PLUGINS_OFF",
+    "session_refresh_sec": "DECK_SESSION_REFRESH_SEC",
+    "games": "GAMES",
+}
+# Un identifiant de plugin que le fil accepte dans DECK_PLUGINS_OFF.
+PLUGIN_ID_PATTERN = r"[a-z][a-z0-9_]{0,63}"
+_PLUGIN_ID = re.compile(PLUGIN_ID_PATTERN)
+# pilot.json tient en quelques centaines d'octets ; au-delà, il est faux.
+_PILOT_MAX_BYTES = 65536
 
 
 def games_enabled(settings):
@@ -76,9 +90,9 @@ def session_refresh_sec(settings):
 
 def deck_plugin_ids(repo_root, environ=None):
     """Les identifiants des plugins du deck présents sur disque, triés et
-    sans doublon : ceux du dépôt et ceux de l'utilisateur. Les fichiers
-    « _* » sont ignorés, et rien n'est importé : l'import demande le venv
-    Stream Deck."""
+    sans doublon : ceux du dépôt et ceux de l'utilisateur. Un fichier
+    « _* », ou dont le nom sort de PLUGIN_ID_PATTERN, est ignoré, et rien
+    n'est importé : l'import demande le venv Stream Deck."""
     dossiers = (
         os.path.join(
             repo_root,
@@ -96,7 +110,7 @@ def deck_plugin_ids(repo_root, environ=None):
         except OSError:
             continue
         for nom in noms:
-            if nom.endswith(".py") and not nom.startswith("_"):
+            if nom.endswith(".py") and _PLUGIN_ID.fullmatch(nom[:-3]):
                 ids.add(nom[:-3])
     return sorted(ids)
 
@@ -107,6 +121,60 @@ def config_home(environ=None):
     return environ.get("XDG_CONFIG_HOME") or os.path.join(
         environ.get("HOME", ""), ".config"
     )
+
+
+def state_home(environ=None):
+    """$XDG_STATE_HOME, ou ~/.local/state quand il est vide ou absent."""
+    environ = os.environ if environ is None else environ
+    return environ.get("XDG_STATE_HOME") or os.path.join(
+        environ.get("HOME", ""), ".local", "state"
+    )
+
+
+def pilot_path(environ=None):
+    return os.path.join(state_home(environ), "erplibre-home", "pilot.json")
+
+
+def read_pilot(environ=None):
+    """Le fichier pilote que l'extension écrit quand un Odoo pilote ses
+    réglages : {"destination": libellé, "revision": entier, "locked":
+    [clés du fil]}, ou None quand il manque, ne se lit pas, dépasse
+    _PILOT_MAX_BYTES ou sort de cette forme. Les clés de `locked` que
+    CONFIG_LINES ne connaît pas sont ignorées, chaque clé une fois. Le
+    libellé s'affiche dans un terminal : chaque caractère non imprimable
+    y devient « ? »."""
+    try:
+        with open(pilot_path(environ), "rb") as fh:
+            octets = fh.read(_PILOT_MAX_BYTES + 1)
+        if len(octets) > _PILOT_MAX_BYTES:
+            return None
+        pilote = json.loads(octets.decode("utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    if not isinstance(pilote, dict):
+        return None
+    destination = pilote.get("destination")
+    revision = pilote.get("revision")
+    verrous = pilote.get("locked")
+    if (
+        not isinstance(destination, str)
+        or not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or not isinstance(verrous, list)
+        or not all(isinstance(cle, str) for cle in verrous)
+    ):
+        return None
+    return {
+        "destination": "".join(
+            c if c.isprintable() else "?" for c in destination
+        ),
+        "revision": revision,
+        "locked": [
+            cle
+            for rang, cle in enumerate(verrous)
+            if cle in CONFIG_LINES and cle not in verrous[:rang]
+        ],
+    }
 
 
 def settings_path(environ=None):
@@ -164,6 +232,25 @@ def settings_text(current, updates):
     return "".join(ligne + "\n" for ligne in lignes)
 
 
+def _settings_file_text(path):
+    """Le texte de `path` sous « surrogateescape », sans traduction des
+    fins de ligne ; "" quand il manque."""
+    try:
+        with open(
+            path, encoding="utf-8", errors="surrogateescape", newline=""
+        ) as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return ""
+
+
+def settings_change(path, updates):
+    """Vrai quand write_settings(path, updates) écrirait : poser `updates`
+    change le texte du fichier."""
+    avant = _settings_file_text(path)
+    return settings_text(avant, updates) != avant
+
+
 def write_settings(path, updates):
     """Pose `updates` dans le fichier de réglages `path`, créé au besoin.
     N'écrit que si le texte change ; rend vrai quand il a écrit. Le
@@ -171,13 +258,7 @@ def write_settings(path, updates):
     « surrogateescape » : un octet hors UTF-8 se relit en substitut et se
     réécrit en lui-même, si bien que seules les lignes des clés posées
     changent, octet pour octet, comme avec settings_content."""
-    try:
-        with open(
-            path, encoding="utf-8", errors="surrogateescape", newline=""
-        ) as fh:
-            avant = fh.read()
-    except FileNotFoundError:
-        avant = ""
+    avant = _settings_file_text(path)
     apres = settings_text(avant, updates)
     if apres == avant:
         return False

@@ -132,6 +132,7 @@ class Menu(unittest.TestCase):
         environ.start()
         self.addCleanup(environ.stop)
         os.environ.pop("XDG_CONFIG_HOME", None)
+        os.environ.pop("XDG_STATE_HOME", None)
         self.reglages = self.home / ".config/erplibre-home/streamdeck.conf"
         self.sondes = []
         self.reponses_sondes = {}

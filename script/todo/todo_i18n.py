@@ -584,6 +584,12 @@ TRANSLATIONS = {
         "Entrée pour garder : ",
         "en": "New period in seconds ({bas} to {haut}), Enter to keep: ",
     },
+    "Setting locked by Odoo ({destination}): it will be offered again.": {
+        "fr": "Réglage verrouillé par Odoo ({destination}) : "
+        "il sera reproposé.",
+        "en": "Setting locked by Odoo ({destination}): "
+        "it will be offered again.",
+    },
     "Invalid period, expected {bas} to {haut} seconds.": {
         "fr": "Période invalide, attendu de {bas} à {haut} secondes.",
         "en": "Invalid period, expected {bas} to {haut} seconds.",

@@ -12,13 +12,17 @@ témoin, comme pour erplibre_home_extension_present de
 erplibre_home_settings.sh. L'extension elle-même se teste dans son dépôt.
 
 Ce qu'un test lit du clone passe par CONTRACT.md : les fonctions
-ci-dessous en tirent le tableau D-Bus, l'objet et l'interface, et le
-tableau des enregistrements.
+ci-dessous en tirent sa version, le tableau D-Bus, l'objet et l'interface,
+le tableau des enregistrements et celui des réglages que pilote Odoo. Les
+fixtures partagées de streamdeck.conf, que le contrat décrit, sont les
+seuls autres fichiers lus : des données, que les tests des deux dépôts
+passent chacun à leur propre code.
 
 Sans le préfixe test_, le lanceur unitaire ne prend pas ce module pour un
 fichier de tests.
 """
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -99,3 +103,62 @@ def enregistrements():
     ):
         tableau.setdefault(nom, {})[cle] = type_
     return tableau
+
+
+def version_du_contrat():
+    """(MAJEURE, MINEURE) de la ligne « **Contract version: X.Y** » du
+    contrat ; AssertionError s'il n'en porte pas exactement une."""
+    versions = re.findall(
+        r"^\*\*Contract version: (\d+)\.(\d+)\*\*$", contrat(), re.M
+    )
+    if len(versions) != 1:
+        raise AssertionError("CONTRACT.md : versions %s" % versions)
+    return tuple(int(nombre) for nombre in versions[0])
+
+
+def reglages_du_contrat():
+    """{clé du fil: (ligne de streamdeck.conf, cellule des valeurs)} du
+    tableau des réglages que pilote Odoo : chaque rangée « | `clé` |
+    `LIGNE` | valeurs | » du contrat, la clé en minuscules, la ligne en
+    majuscules, la cellule sans ses blancs de bord. Une clé qui revient
+    lève AssertionError plutôt que de cacher sa première rangée."""
+    tableau = {}
+    for cle, ligne, valeurs in re.findall(
+        r"^\s*\| `([a-z][a-z0-9_]*)` \| `([A-Z][A-Z0-9_]*)` \|([^|\n]*)\|",
+        contrat(),
+        re.M,
+    ):
+        if cle in tableau:
+            raise AssertionError("CONTRACT.md : %s deux fois" % cle)
+        tableau[cle] = (ligne, valeurs.strip())
+    return tableau
+
+
+def fixtures_de_reglages():
+    """[(nom, octets lus, réglages du fil, lignes, octets réécrits)] des
+    fixtures partagées de test/fixtures/streamdeck_conf/ du clone, triées
+    par nom, sous la forme que décrit le contrat : <nom>.in.conf, le
+    fichier avant ; <nom>.json, dont `settings` porte les valeurs du fil et
+    `lines` la valeur que chacune donne à sa ligne « CLÉ= », dans l'ordre
+    où une ligne absente s'ajoute ; <nom>.out.conf, les octets une fois
+    `lines` écrites. Une fixture à laquelle manque l'un des trois lève
+    AssertionError."""
+    dossier = EXTENSION / "test/fixtures/streamdeck_conf"
+    fixtures = []
+    for entree in sorted(dossier.glob("*.in.conf")):
+        nom = entree.name[: -len(".in.conf")]
+        donnees = dossier / (nom + ".json")
+        reecrit = dossier / (nom + ".out.conf")
+        if not (donnees.is_file() and reecrit.is_file()):
+            raise AssertionError("fixture %s incomplète" % nom)
+        valeurs = json.loads(donnees.read_text(encoding="utf-8"))
+        fixtures.append(
+            (
+                nom,
+                entree.read_bytes(),
+                valeurs["settings"],
+                valeurs["lines"],
+                reecrit.read_bytes(),
+            )
+        )
+    return fixtures

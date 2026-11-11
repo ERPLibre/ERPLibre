@@ -14,6 +14,8 @@ direct et sans récapitulatif : l'annonce du lanceur, ou la question de
 confirmation qui la remplace, est le seul endroit où la commande
 s'affiche. Les sondes muettes passent par _streamdeck_probe, que les
 tests remplacent. L'état et le diagnostic viennent d'erplibre_home_status.
+Chaque réglage s'écrit par _streamdeck_write, qui prévient quand l'Odoo
+pilote de l'extension verrouille la clé changée.
 """
 
 import os
@@ -192,6 +194,29 @@ class StreamDeckMenuMixin:
         )
         return False
 
+    @staticmethod
+    def _streamdeck_write(chemin, updates):
+        """write_settings(chemin, updates), précédé d'une ligne qui le dit
+        quand l'écriture change une clé que l'Odoo pilote verrouille
+        (pilot.json de l'extension) : Odoo la reproposera à sa remontée
+        suivante. L'écriture se fait dans tous les cas. Rend ce que rend
+        write_settings."""
+        pilote = service.read_pilot()
+        if pilote:
+            verrouilles = {
+                service.CONFIG_LINES[cle]: updates[service.CONFIG_LINES[cle]]
+                for cle in pilote["locked"]
+                if service.CONFIG_LINES[cle] in updates
+            }
+            if verrouilles and service.settings_change(chemin, verrouilles):
+                print(
+                    t(
+                        "Setting locked by Odoo ({destination}):"
+                        " it will be offered again."
+                    ).replace("{destination}", pilote["destination"])
+                )
+        return service.write_settings(chemin, updates)
+
     def _streamdeck_systemctl(self, *args):
         """systemctl --user <args> en direct, sortie affichée, avec les
         variables du bus que user_bus_env ajoute sous su ou sudo -u."""
@@ -264,7 +289,7 @@ class StreamDeckMenuMixin:
         )
         if choix is None:
             return
-        if choix == actuel or not service.write_settings(
+        if choix == actuel or not self._streamdeck_write(
             chemin, {"DECK_PROGRAM": choix}
         ):
             print(t("Unchanged."))
@@ -295,7 +320,7 @@ class StreamDeckMenuMixin:
         )
         if choix is None:
             return
-        if choix == actuel or not service.write_settings(
+        if choix == actuel or not self._streamdeck_write(
             chemin, {"GAMES": choix}
         ):
             print(t("Unchanged."))
@@ -334,7 +359,7 @@ class StreamDeckMenuMixin:
             coupes = [c for c in coupes if c != choix]
         else:
             coupes.append(choix)
-        if not service.write_settings(
+        if not self._streamdeck_write(
             chemin, {"DECK_PLUGINS_OFF": ",".join(coupes)}
         ):
             print(t("Unchanged."))
@@ -380,7 +405,7 @@ class StreamDeckMenuMixin:
                 .replace("{haut}", f"{haut:g}")
             )
             return
-        if not service.write_settings(
+        if not self._streamdeck_write(
             chemin, {"DECK_SESSION_REFRESH_SEC": reponse}
         ):
             print(t("Unchanged."))
