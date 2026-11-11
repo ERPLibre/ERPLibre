@@ -4,6 +4,7 @@
 """Le healthcheck du TODO : portées, verdicts, commandes notées, sommaire."""
 
 import ast
+import json
 import os
 import shutil
 import subprocess
@@ -312,6 +313,93 @@ class TestEnvironnement(unittest.TestCase):
             self.assertEqual(h.verifier_odoo(ctx).statut, h.INFO)
 
 
+class TestManifeste(unittest.TestCase):
+    """« Addons face au manifeste » sur une sortie de `repo_state` simulée."""
+
+    def ctx_snapshot(self, depots):
+        ctx = h.Contexte(tempfile.gettempdir())
+        sortie = json.dumps({"local_manifest": True, "repos": depots})
+        ctx.lancer = lambda *a, **k: subprocess.CompletedProcess(
+            [], 0, sortie, ""
+        )
+        return ctx
+
+    def depot(self, chemin, gel=None, ecart=None):
+        return {
+            "path": chemin,
+            "state": "conforme",
+            "head": "a" * 40,
+            "freeze_revision": gel,
+            "freeze": ecart,
+        }
+
+    def test_a_repository_conforming_to_its_branch_but_off_its_freeze(self):
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot(
+                [
+                    self.depot(
+                        "odoo18.0/addons/R_gel",
+                        "a" * 40,
+                        {"ahead": 0, "behind": 0, "alignment": "conforme"},
+                    ),
+                    self.depot("odoo18.0/addons/R_sans_gel"),
+                    self.depot(
+                        "odoo18.0/addons/R_retard",
+                        "b" * 40,
+                        {"ahead": 0, "behind": 2, "alignment": "en_retard"},
+                    ),
+                    self.depot(
+                        "odoo18.0/addons/R_introuvable",
+                        "c" * 40,
+                        {
+                            "ahead": None,
+                            "behind": None,
+                            "alignment": "introuvable",
+                        },
+                    ),
+                ]
+            )
+        )
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"2 {t('off the freeze')}", resultat.resume)
+        self.assertEqual(len(resultat.details), 2)
+        retard, introuvable = resultat.details
+        self.assertIn("odoo18.0/addons/R_retard", retard)
+        self.assertIn(t("behind the freeze"), retard)
+        self.assertIn("(+0 −2)", retard)
+        self.assertIn("odoo18.0/addons/R_introuvable", introuvable)
+        self.assertIn(t("frozen commit missing from the clone"), introuvable)
+        self.assertNotIn("(+", introuvable)
+
+    def test_a_repository_whose_target_is_its_freeze_shows_once(self):
+        depot = self.depot(
+            "odoo18.0/addons/R_gele",
+            "b" * 40,
+            {"ahead": 0, "behind": 1, "alignment": "en_retard"},
+        )
+        depot.update(state="decale", target="b" * 40)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([depot]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual(resultat.details, ["decale : odoo18.0/addons/R_gele"])
+        self.assertNotIn(t("off the freeze"), resultat.resume)
+
+    def test_every_repository_on_its_freeze_is_fine(self):
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot(
+                [
+                    self.depot(
+                        "odoo18.0/addons/R_gel",
+                        "a" * 40,
+                        {"ahead": 0, "behind": 0, "alignment": "conforme"},
+                    ),
+                    self.depot("odoo18.0/addons/R_sans_gel"),
+                ]
+            )
+        )
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resume, "2 conforme")
+
+
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
         def verifier_conflits(_ctx):
@@ -371,6 +459,7 @@ class TestTraductions(unittest.TestCase):
         cles |= set(h.LIBELLES_FICHIERS.values())
         cles |= set(h.LIBELLES_DEPOTS.values())
         cles |= set(h.SECTIONS.values())
+        cles |= set(h.ECARTS_GEL.values())
         cles.discard("PostgreSQL")
         self.assertEqual(sorted(cles - set(TRANSLATIONS)), [])
 

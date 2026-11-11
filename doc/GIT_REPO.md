@@ -589,7 +589,12 @@ the version of their `__manifest__.py` (read with `ast.literal_eval`, never impo
 is the requested commit), `en_avance` (HEAD descends from it), `decale` (any other case), `absent` (not cloned),
 `hors_manifeste` (a clone under `odoo<V>/` the manifest does not name), `erreur`, and with `--dirty`, which also runs
 `git status` in every clone, `sale`: a modified tracked file or an untracked file that no `.gitignore` covers, such as
-a module copied into the clone; ignored files (`.pyc`, `__pycache__`) do not count. `fingerprint` hashes everything
+a module copied into the clone; ignored files (`.pyc`, `__pycache__`) do not count.
+That state compares HEAD with the local manifest only, which follows a branch outside a frozen checkout; `freeze`
+compares HEAD with the `freeze-revision` that the merge applies — from the files of the active Odoo version and from
+the common fragments listed in `conf/` — and gives `ahead`, `behind` and an alignment: `conforme`, `en_avance` (the
+freeze needs redoing), `en_retard` (the clone needs to move forward), `decale`, `introuvable` (the frozen commit is
+not in the clone), `indetermine` (a shallow clone where both sides seem to hold commits) or `erreur`. `fingerprint` hashes everything
 but the date: two snapshots of the same state share it. About 250 repositories take a second or two without `--dirty`.
 
 `between` lists the commits between two revisions of a clone, bounded by `--max` (200), and says when the list is

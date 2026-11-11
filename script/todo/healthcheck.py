@@ -843,9 +843,55 @@ def verifier_docs(ctx):
     return Resultat(nom, OK, f"{len(bases)} {t('docs up to date')}")
 
 
+# Le libellé, clé de traduction, de chaque « freeze.alignment » de
+# `repo_state` qui n'est pas « conforme ».
+ECARTS_GEL = {
+    "en_avance": "ahead of the freeze",
+    "en_retard": "behind the freeze",
+    "decale": "diverged from the freeze",
+    "introuvable": "frozen commit missing from the clone",
+    "indetermine": "shallow clone, gap to the freeze unknown",
+    "erreur": "git could not measure the gap to the freeze",
+}
+# Les états de `repo_state` que « Addons face au manifeste » détaille.
+ETATS_SIGNALES = ("decale", "absent", "erreur")
+
+
+def _ecart_gel(depot):
+    """La ligne de détail d'un dépôt dont HEAD n'est pas le commit gelé
+    (« freeze » de `repo_state`), ou None s'il l'est, n'a pas de gel, ou si
+    sa ligne d'état dit déjà le même écart : un dépôt signalé dont la cible
+    du manifeste local EST le commit gelé."""
+    gel = depot.get("freeze") or {}
+    alignement = gel.get("alignment")
+    if alignement in (None, "conforme"):
+        return None
+    if (
+        depot.get("state") in ETATS_SIGNALES
+        and depot.get("target")
+        and depot.get("target") == depot.get("freeze_revision")
+    ):
+        return None
+    head = (depot.get("head") or "")[:10]
+    commit = (depot.get("freeze_revision") or "")[:10]
+    libelle = ECARTS_GEL.get(alignement, alignement)
+    ligne = (
+        f"{t(libelle)} : {depot.get('path')} — "
+        f"HEAD {head}, {t('freeze')} {commit}"
+    )
+    if gel.get("ahead") is not None:
+        ligne += f" (+{gel['ahead']} −{gel['behind']})"
+    return ligne
+
+
 def verifier_manifeste(ctx):
     """L'écart de chaque dépôt d'addons à ce que le manifeste local demande,
-    lu par `repo_state.py snapshot`."""
+    et de son HEAD au « freeze-revision » de `manifest/`, lus par
+    `repo_state.py snapshot`.
+
+    Le manifeste local suit une branche hors d'un checkout gelé : un dépôt
+    peut y être conforme et rester loin de son gel, que seul « freeze »
+    voit."""
     nom = titre(verifier_manifeste)
     python = ctx.outil("python3") or "python3"
     script = os.path.join("script", "git", "repo_state.py")
@@ -868,15 +914,22 @@ def verifier_manifeste(ctx):
         return Resultat(nom, SAUTE, t("no local manifest"))
     comptes = {}
     details = []
+    hors_gel = []
     for depot in depots:
         etat = depot.get("state")
         comptes[etat] = comptes.get(etat, 0) + 1
-        if etat in ("decale", "absent", "erreur"):
+        if etat in ETATS_SIGNALES:
             details.append(
                 f"{etat} : {depot.get('path')}"
                 + (f" — {depot.get('error')}" if depot.get("error") else "")
             )
+        ligne = _ecart_gel(depot)
+        if ligne:
+            hors_gel.append(ligne)
     resume = " · ".join(f"{n} {etat}" for etat, n in sorted(comptes.items()))
+    if hors_gel:
+        resume += f" · {len(hors_gel)} {t('off the freeze')}"
+        details += hors_gel
     if details:
         return Resultat(nom, ALERTE, resume, _limiter(details))
     return Resultat(nom, OK, resume)

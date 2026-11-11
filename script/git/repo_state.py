@@ -61,6 +61,28 @@ l'écart sans base, « base_reason » disant pourquoi.
                   manifeste local ne nomme pas
   erreur          git n'a pas pu lire le clone ; « error » dit pourquoi
 
+Le gel
+------
+« state » ne compare HEAD qu'à la « revision » du manifeste local, qui suit
+une branche hors d'un checkout gelé. « freeze » compare HEAD au
+« freeze-revision » des fichiers de `manifest/` : None sans gel déclaré ou
+sans HEAD lisible, sinon « ahead » (commits de HEAD absents du gel),
+« behind » (commits du gel absents de HEAD) et « alignment » :
+
+  conforme        HEAD est le commit gelé
+  en_avance       le gel est un ancêtre de HEAD : le gel est à refaire
+  en_retard       HEAD est un ancêtre du gel : le clone est à avancer
+  decale          les deux portent des commits que l'autre n'a pas
+  introuvable     le commit gelé n'est pas dans le clone
+  indetermine     le clone est tronqué et les deux côtés semblent porter
+                  des commits : l'ancêtre commun peut être sous la coupe
+  erreur          git n'a pas pu compter l'écart
+
+« ahead » et « behind » valent None pour les trois derniers.
+
+Un manifeste local en retard sur `manifest/` laisse « state » conforme à
+une ancienne branche : seul « freeze » voit alors l'écart.
+
 Lecture seule, y compris pour un compte de service
 --------------------------------------------------
 Chaque appel à git passe « -c safe.directory=* » — le compte d'un service
@@ -120,6 +142,7 @@ sys.path.append(
 
 from script.git import (  # noqa: E402
     command_echo,
+    git_freeze_manifest,
     manifest_freeze,
     repo_stats,
     repo_upgrade,
@@ -486,12 +509,20 @@ def chemin_projet(attrs):
     return attrs.get("path") or attrs.get("name")
 
 
-def lire_sources(racine, versions):
+def lire_sources(racine, versions, active=None):
     """(remotes, {chemin: attributs}) des fichiers de `manifest/` de ces
-    versions, fusionnés par `repo_upgrade.lire_manifestes`.
+    versions, fusionnés par `repo_upgrade.lire_manifestes`, puis des
+    fragments communs à toutes les versions
+    (`git_freeze_manifest.common_sources`).
 
-    Une version dont les fichiers sont illisibles est sautée : le manifeste
-    local suffit à décrire ses dépôts, il n'y manquera que les gels.
+    Le « freeze-revision » suit ce que la fusion applique
+    (`git_freeze_manifest.honored_sources`) : celui des fichiers de la
+    version `active` et des fragments communs ; celui d'une autre version
+    est retiré. Un projet que nomment à la fois un fichier de version et un
+    fragment commun garde les attributs du fichier de version.
+
+    Un fichier illisible est sauté : le manifeste local suffit à décrire
+    ses dépôts, il n'y manquera que les gels.
     """
     dossier = os.path.join(racine, "manifest")
     remotes, par_chemin = {}, {}
@@ -505,7 +536,18 @@ def lire_sources(racine, versions):
         for attrs in projets.values():
             attrs = dict(attrs)
             attrs.pop("_fichier", None)
+            if version != active:
+                attrs.pop(manifest_freeze.FREEZE_ATTR, None)
             par_chemin[chemin_projet(attrs)] = attrs
+    for fichier in git_freeze_manifest.common_sources(racine):
+        try:
+            arbre = ET.parse(os.path.join(racine, fichier)).getroot()
+        except (OSError, ET.ParseError):
+            continue
+        for e in arbre.findall("remote"):
+            remotes.setdefault(e.get("name"), e.get("fetch"))
+        for p in arbre.findall("project"):
+            par_chemin.setdefault(chemin_projet(p.attrib), dict(p.attrib))
     return remotes, par_chemin
 
 
@@ -527,19 +569,22 @@ def definitions(racine):
     (« freeze-revision », « fork-upstream-freeze-revision »). Le manifeste
     local l'emporte sur le reste : c'est lui que git-repo a appliqué.
     `présent` est False quand le manifeste local manque ; les projets sont
-    alors ceux des fichiers de `manifest/` de la version active.
+    alors ceux des fichiers de `manifest/` de la version active et des
+    fragments communs.
     """
     local = lire_manifeste_local(racine)
     if local is None:
         version = repo_upgrade.version_active(racine)
-        remotes, sources = lire_sources(racine, {version} if version else ())
+        remotes, sources = lire_sources(
+            racine, {version} if version else (), version
+        )
         return sources, remotes, False
     remotes_local, defaut, projets = local
     versions = versions_des_chemins(chemin_projet(p) for p in projets)
     version = repo_upgrade.version_active(racine)
     if version:
         versions.add(version)
-    remotes_src, sources = lire_sources(racine, versions)
+    remotes_src, sources = lire_sources(racine, versions, version)
     remotes = dict(remotes_src)
     remotes.update(remotes_local)
     fusion = {}
@@ -752,6 +797,7 @@ def entree_depot(racine, chemin, attrs, remotes, sale, delai):
         "ahead": None,
         "behind": None,
         "alignment": None,
+        "freeze": None,
         "state": None,
         "dirty": None,
         "modules": [],
@@ -794,6 +840,33 @@ def ecart_amont(clone, chemin, attrs, remotes, head, delai):
             ecart["tracking"] = ref
             ecart["behind"] = avance_retard(clone, suivi, head, delai)[1]
     return ecart
+
+
+def ecart_gel(clone, gel, head, delai):
+    """L'écart de HEAD au commit gelé, pour « freeze » (voir la docstring
+    du module). Ne lit git que si HEAD n'est pas le gel lui-même."""
+    if gel.lower() == head.lower():
+        return {"ahead": 0, "behind": 0, "alignment": "conforme"}
+    cible = resoudre(clone, gel, delai)
+    if not cible:
+        return {"ahead": None, "behind": None, "alignment": "introuvable"}
+    if cible == head:
+        return {"ahead": 0, "behind": 0, "alignment": "conforme"}
+    avance, retard = avance_retard(clone, cible, head, delai)
+    if avance is None:
+        return {"ahead": None, "behind": None, "alignment": "erreur"}
+    if not retard:
+        alignement = "en_avance"
+    elif not avance:
+        alignement = "en_retard"
+    elif est_superficiel(clone, delai) is not False:
+        # Dans un clone tronqué, deux pointes rapatriées chacune à
+        # profondeur 1 n'ont pas de parent : leur ancêtre commun est
+        # invisible et les deux côtés semblent porter des commits.
+        return {"ahead": None, "behind": None, "alignment": "indetermine"}
+    else:
+        alignement = "decale"
+    return {"ahead": avance, "behind": retard, "alignment": alignement}
 
 
 def remplir_depot(entree, racine, chemin, attrs, remotes, sale, delai):
@@ -860,6 +933,10 @@ def remplir_depot(entree, racine, chemin, attrs, remotes, sale, delai):
         else:
             entree["alignment"] = "decale"
         entree["state"] = entree["alignment"]
+        if entree["freeze_revision"]:
+            entree["freeze"] = ecart_gel(
+                clone, entree["freeze_revision"], head, delai
+            )
 
     if sale:
         entree["dirty"] = est_sale(clone, delai)

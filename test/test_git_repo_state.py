@@ -446,6 +446,129 @@ class TestSnapshot(Checkout):
         self.assertIsNone(amont["tracking"])
         self.assertIsNone(amont["behind"])
 
+    def test_ecart_au_gel(self):
+        """« freeze » compare HEAD au gel de `manifest/`, même quand le
+        manifeste local, qui suit une branche, rend le dépôt conforme."""
+        _code, d = self.lancer()
+        r = self.depots(d)
+        self.assertEqual(
+            r[WEB18]["freeze"],
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        self.assertIsNone(r[WEB17]["freeze"])
+        self.assertIsNone(r["odoo18.0/addons/R_absent"]["freeze"])
+        self.assertIsNone(r["odoo18.0/addons/R_extra"]["freeze"])
+
+        def enfant(parent, message):
+            return _git(
+                self.web18,
+                "commit-tree",
+                "-p",
+                parent,
+                "-m",
+                message,
+                f"{parent}^{{tree}}",
+            )
+
+        cas = {
+            "en_avance": (self.sha["o1"], 1, 0),
+            "en_retard": (enfant(self.sha["o2"], "o3"), 0, 1),
+            "decale": (enfant(self.sha["o1"], "o2bis"), 1, 1),
+            "introuvable": ("0123456789" * 4, None, None),
+        }
+        for alignement, (gel, avance, retard) in cas.items():
+            with self.subTest(alignement):
+                self.sources18[WEB18]["freeze-revision"] = gel
+                self.ecrire_sources()
+                _code, d = self.lancer()
+                web = self.depots(d)[WEB18]
+                self.assertEqual(web["state"], "conforme")
+                self.assertEqual(
+                    web["freeze"],
+                    {
+                        "ahead": avance,
+                        "behind": retard,
+                        "alignment": alignement,
+                    },
+                )
+
+    def test_gel_des_fragments_communs_et_des_autres_versions(self):
+        """Le gel d'un fragment commun listé dans conf/ compte ; celui
+        d'une autre version d'Odoo que l'active, que la fusion ignore,
+        non."""
+        un = _git(self.ahead, "rev-parse", "refs/remotes/R/18.0")
+        commun = {
+            "name": "R_ahead.git",
+            "path": "odoo18.0/addons/R_ahead",
+            "remote": "R",
+            "revision": "18.0",
+            "freeze-revision": un,
+        }
+        _ecrire(
+            self.racine,
+            {
+                "conf/git_manifest.csv": (
+                    '"filepath"\nmanifest/git_manifest_commun.xml\n'
+                ),
+                "manifest/git_manifest_commun.xml": (
+                    f"<manifest>\n{_projet(commun)}\n</manifest>\n"
+                ),
+            },
+        )
+        self.sources17[WEB17] = {
+            **self.local[WEB17],
+            "freeze-revision": self.sha["p1"],
+        }
+        self.ecrire_sources()
+        _code, d = self.lancer()
+        r = self.depots(d)
+        self.assertEqual(r["odoo18.0/addons/R_ahead"]["freeze_revision"], un)
+        self.assertEqual(
+            r["odoo18.0/addons/R_ahead"]["freeze"],
+            {"ahead": 1, "behind": 0, "alignment": "en_avance"},
+        )
+        self.assertIsNone(r[WEB17]["freeze_revision"])
+        self.assertIsNone(r[WEB17]["freeze"])
+
+    def test_ecart_au_gel_illisible(self):
+        """Un gel présent dont git ne sait pas compter l'écart est une
+        erreur, pas un commit absent."""
+        with patch.object(
+            repo_state, "avance_retard", return_value=(None, None)
+        ):
+            ecart = repo_state.ecart_gel(
+                self.web18, self.sha["o1"], self.sha["o2"], 30
+            )
+        self.assertEqual(
+            ecart, {"ahead": None, "behind": None, "alignment": "erreur"}
+        )
+
+    def test_ecart_au_gel_dans_un_clone_tronque(self):
+        """Deux pointes rapatriées à profondeur 1 semblent décalées : sans
+        histoire complète, l'écart reste indéterminé."""
+        source = os.path.join(self.dossier, "source")
+        os.makedirs(source)
+        _git(source, "init", "-q", "-b", "main")
+        commits = []
+        for i in range(4):
+            commits.append(self.commit(source, {"f.txt": f"{i}\n"}, f"c{i}"))
+        clone = os.path.join(self.dossier, "tronque")
+        _git(
+            self.dossier,
+            "clone",
+            "-q",
+            "--depth",
+            "1",
+            f"file://{source}",
+            clone,
+        )
+        _git(clone, "fetch", "-q", "--depth", "1", "origin", commits[1])
+        ecart = repo_state.ecart_gel(clone, commits[1], commits[3], 30)
+        self.assertEqual(
+            ecart,
+            {"ahead": None, "behind": None, "alignment": "indetermine"},
+        )
+
     def test_hors_manifeste(self):
         _code, d = self.lancer()
         extra = self.depots(d)["odoo18.0/addons/R_extra"]
