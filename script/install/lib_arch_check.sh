@@ -10,9 +10,12 @@
 # une telle architecture, PyPI n'a pas de wheel pour une bonne part des
 # dépendances, pip les compile, et rien n'y est testé. La réponse se donne
 # en français ou en anglais (o, oui, y, yes, toute casse) ; Entrée seule
-# vaut non, et rend 1. Sans terminal sur l'entrée, personne ne peut
-# répondre : la réponse est non, sauf si EL_ALLOW_UNSUPPORTED_ARCH=1 est
-# dans l'environnement, qui répond oui sans question.
+# vaut non, et rend 1. Sans terminal sur l'entrée, ou en mode non
+# interactif (lib_non_interactive.sh), personne ne peut répondre : la
+# réponse est non, sauf si EL_ALLOW_UNSUPPORTED_ARCH=1 est dans
+# l'environnement, qui répond oui sans question.
+
+. ./script/install/lib_non_interactive.sh
 
 el_arch_check() {
   local arch reponse
@@ -27,8 +30,8 @@ el_arch_check() {
     echo "  EL_ALLOW_UNSUPPORTED_ARCH=1 : l'installation continue."
     return 0
   fi
-  if [[ ! -t 0 ]]; then
-    echo "  Aucun terminal pour répondre : arrêt. Pour continuer sans"
+  if [[ ! -t 0 ]] || el_non_interactive; then
+    echo "  Personne pour répondre : arrêt. Pour continuer sans"
     echo "  question, préfixez la commande :"
     echo "    EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os"
     echo "    EL_ALLOW_UNSUPPORTED_ARCH=1 make install"

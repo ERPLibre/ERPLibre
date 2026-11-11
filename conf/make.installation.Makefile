@@ -5,6 +5,24 @@
 .PHONY: install
 install:install_os install_dev
 
+# L'installation du menu TODO, sans aucune question. Les réponses viennent de
+# l'environnement ou de la ligne de commande de make, qui les exporte :
+#   make install_non_interactive EL_INSTALL_TARGET=18.0 FREEZE=0 \
+#     EL_WITH_EXTRA=0 EL_INSTALL_SYSTEM=1
+# Une réponse manquante arrête tout avant le début, en nommant sa variable.
+# Voir script/todo/install_non_interactif.py.
+#
+# L'environnement (développement ou production) se donne par FREEZE, comme
+# pour les autres cibles, ou par EL_FREEZE sur la ligne de commande de make.
+# Le EL_FREEZE que ce Makefile exporte sinon toujours, à 0 par défaut, n'est
+# pas une réponse : il est retiré, et seul un FREEZE donné devient --env.
+# Une valeur autre que 0 ou 1 est refusée par todo.py.
+.PHONY: install_non_interactive
+install_non_interactive:
+	$(if $(filter command line,$(origin EL_FREEZE)),,env -u EL_FREEZE) \
+		EL_NON_INTERACTIVE=1 ./todo.sh install --non-interactive \
+		$(if $(FREEZE),--env $(if $(filter 0,$(FREEZE)),dev,$(if $(filter 1,$(FREEZE)),prod,FREEZE=$(FREEZE))))
+
 .PHONY: install_dev
 install_dev:
 	#	./script/version/update_env_version.py

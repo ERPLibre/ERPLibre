@@ -69,9 +69,12 @@ el_mise_exec_path() {
 # VM, un build Docker ou une CI n'ont pas de terminal, et n'attendent donc
 # jamais une réponse que personne ne donnera.
 #
+# En mode non interactif (EL_NON_INTERACTIVE=1, voir lib_non_interactive.sh),
+# jamais : chaque question prend son défaut sans attendre.
+#
 # Fonction isolée pour qu'un test puisse la remplacer sans pseudo-terminal.
 el_peut_demander() {
-  [ -t 0 ] && [ -t 2 ]
+  [ "${EL_NON_INTERACTIVE:-}" != "1" ] && [ -t 0 ] && [ -t 2 ]
 }
 
 # Vrai pour un oui explicite, en français ou en anglais. Les casses sont
@@ -83,21 +86,45 @@ el_repond_oui() {
   return 1
 }
 
+# Vrai pour un non explicite, en français ou en anglais.
+el_repond_non() {
+  case "$1" in
+    n | N | non | Non | NON | no | No | NO) return 0 ;;
+  esac
+  return 1
+}
+
 # Pose une question oui/non sur stderr, lit la réponse sur stdin, et rend 0
-# pour un oui explicite. Le défaut est non, et il s'applique aussi au bout de
-# EL_QUESTION_DELAI secondes (60 par défaut) : chaque venv s'installe dans
-# son propre processus, la question revient donc au suivant, et une
-# installation laissée sans surveillance après un premier « non » ne doit
-# pas attendre une réponse que personne ne donnera.
+# pour un oui. $2 donne le défaut d'une réponse vide (Entrée), « o » ou « n »
+# (non si absent). $3 donne la réponse quand personne ne répond — fin de
+# l'entrée, ou EL_QUESTION_DELAI secondes écoulées (60 par défaut) — et vaut
+# $2 si absent. Chaque venv s'installe dans son propre processus : la
+# question revient au suivant, et une installation laissée sans surveillance
+# ne doit pas attendre une réponse que personne ne donnera. Avec le défaut
+# non, seul un oui explicite rend 0 ; avec le défaut oui, seul un non rend 1.
 el_demander() {
-  local question="$1" delai="${EL_QUESTION_DELAI:-60}" reponse=""
-  printf '%s (o/N, defaut : N dans %s s) ? ' "${question}" "${delai}" >&2
+  local question="$1" defaut="${2:-n}" delai="${EL_QUESTION_DELAI:-60}"
+  local muet="${3:-${2:-n}}" reponse="" choix="o/N" lettre="N" absent="N"
+  [ "${defaut}" = "o" ] && choix="O/n" && lettre="O"
+  [ "${muet}" = "o" ] && absent="O"
+  if [ "${absent}" = "${lettre}" ]; then
+    printf '%s (%s, defaut : %s dans %s s) ? ' "${question}" "${choix}" \
+      "${lettre}" "${delai}" >&2
+  else
+    printf '%s (%s, sans reponse en %s s : %s) ? ' "${question}" \
+      "${choix}" "${delai}" "${absent}" >&2
+  fi
   if ! read -r -t "${delai}" reponse; then
     # Fin de l'entrée ou délai écoulé : finir la ligne de l'invite.
     echo >&2
-    reponse=""
+    reponse="${muet}"
   fi
-  el_repond_oui "${reponse}"
+  [ -n "${reponse}" ] || reponse="${defaut}"
+  if [ "${defaut}" = "o" ]; then
+    ! el_repond_non "${reponse}"
+  else
+    el_repond_oui "${reponse}"
+  fi
 }
 
 # Pose l'OUTIL mise. 0 s'il est utilisable ensuite, 2 sur une plateforme
@@ -114,7 +141,17 @@ el_mise_poser() {
     return 0
   fi
   if command -v pacman > /dev/null 2>&1; then
-    sudo pacman -S --needed --noconfirm mise >&2 || return 1
+    # En mode non interactif, sudo ne demande pas de mot de passe que
+    # personne ne saisirait : sans ticket, il échoue aussitôt, et pyenv
+    # reprend la main.
+    if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+      sudo -n pacman -S --needed --noconfirm mise >&2 || {
+        echo "sudo demanderait un mot de passe : mise n'est pas pose." >&2
+        return 1
+      }
+    else
+      sudo pacman -S --needed --noconfirm mise >&2 || return 1
+    fi
   elif [ "$(uname -m)" = "s390x" ]; then
     echo "mise ne publie pas de binaire s390x : on reste sur pyenv." >&2
     return 2
@@ -203,12 +240,29 @@ el_mise_proposer_permanent() {
 
 # Propose de poser mise juste avant que pyenv ne compile CPython. Rend 0 si
 # mise vient d'être posé, 2 si la question a été posée et que la suite est
-# pyenv — l'utilisateur sait déjà pourquoi —, 1 si rien n'a été demandé.
+# pyenv — l'utilisateur sait déjà pourquoi —, 1 si rien n'a été demandé, 3
+# si la réponse manque en mode non interactif : l'installation s'arrête.
 #
 # Rien n'est demandé quand mise est déjà là, sur s390x (aucun binaire), sans
 # terminal, ni quand pyenv porte déjà la version : rien ne serait compilé.
-# La réponse par défaut est non : exécuter l'installateur d'un tiers engage,
-# et c'est à l'utilisateur de le décider, pas au script.
+# Le défaut est oui, pour Entrée comme sans réponse au bout du délai : mise
+# pose un CPython précompilé en quelques secondes, là où pyenv le compile et
+# exige une douzaine de -dev. Le délai laisse le temps de refuser.
+#
+# En mode auto, un refus est retenu dans EL_MISE_REFUS, à la racine du
+# dépôt : chaque venv
+# s'installe dans son propre processus, et sans lui la question reviendrait
+# au venv suivant, où le délai écoulé renverserait le « non ». Tant que le
+# fichier existe, rien n'est plus demandé et pyenv compile ; « make
+# install_mise » pose mise et l'efface.
+#
+# En mode non interactif (EL_NON_INTERACTIVE=1), rien n'est demandé non plus,
+# mais rien n'est décidé à la place de l'utilisateur : EL_INSTALL_MISE=1 pose
+# mise, EL_INSTALL_MISE=0 laisse pyenv compiler, et sans l'une ni l'autre
+# l'installation s'arrête en les nommant.
+# Relatif au dossier courant, la racine du dépôt ; une valeur déjà posée
+# l'emporte.
+EL_MISE_REFUS="${EL_MISE_REFUS:-.erplibre-mise-refus}"
 el_mise_proposer() {
   local version="$1" provider="${EL_PYTHON_PROVIDER:-auto}" suite
   el_mise_cmd > /dev/null && return 1
@@ -216,6 +270,27 @@ el_mise_proposer() {
   if [ "${provider}" != "mise" ] \
     && [ -d "$(el_pyenv_root)/versions/${version}" ]; then
     return 1
+  fi
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    case "${EL_INSTALL_MISE:-}" in
+      1)
+        echo "mise est absent : EL_INSTALL_MISE=1, il est pose." >&2
+        el_mise_poser && return 0
+        echo "mise n'a pas pu etre pose." >&2
+        return 2
+        ;;
+      0)
+        echo "mise est absent, EL_INSTALL_MISE=0 : pyenv fournit Python" \
+          "${version}." >&2
+        return 2
+        ;;
+      *)
+        echo "Mode non interactif : mise est absent, et rien ne dit s'il" >&2
+        echo "  faut le poser pour fournir Python ${version}. Repondez par" >&2
+        echo "  --mise yes|no, ou EL_INSTALL_MISE=1|0." >&2
+        return 3
+        ;;
+    esac
   fi
   el_peut_demander || return 1
   # Ce qui suit un refus, dit tel quel : avec EL_PYTHON_PROVIDER=mise, il
@@ -231,8 +306,19 @@ el_mise_proposer() {
     echo "  de -dev (openssl, zlib, readline, sqlite, bzip2, xz, tk). mise" >&2
     echo "  pose un CPython precompile en quelques secondes." >&2
   fi
-  if ! el_demander "Installer mise maintenant"; then
+  # Le refus retenu ne vaut qu'en mode auto : EL_PYTHON_PROVIDER=mise exige
+  # mise, et la question y revient à chaque fois.
+  if [ "${provider}" != "mise" ] && [ -e "${EL_MISE_REFUS}" ]; then
+    echo "mise a ete refuse pour ce depot (${EL_MISE_REFUS}) : ${suite}" >&2
+    echo "  « make install_mise » le pose et oublie ce refus." >&2
+    return 2
+  fi
+  if ! el_demander "Installer mise maintenant" o; then
     echo "mise n'est pas pose : ${suite}" >&2
+    if [ "${provider}" != "mise" ]; then
+      : > "${EL_MISE_REFUS}"
+      echo "  Refus retenu (${EL_MISE_REFUS}) : la question ne revient plus." >&2
+    fi
     return 2
   fi
   if ! el_mise_poser; then
@@ -312,7 +398,15 @@ el_mise_install() {
   local version="$1" exe mise
   mise="$(el_mise_cmd)" || return 1
   echo "---- Python ${version} via mise (precompile) ----" >&2
-  "${mise}" install "python@${version}" >&2 || return 1
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    # Un mise.toml non approuvé fait demander « Trust them? ». Les dossiers
+    # au-dessus du checkout ne sont pas lus, et l'entrée vide fait échouer
+    # mise sur un fichier non approuvé du checkout au lieu de le demander.
+    MISE_CEILING_PATHS="$(dirname "${PWD}")" \
+      "${mise}" install "python@${version}" < /dev/null >&2 || return 1
+  else
+    "${mise}" install "python@${version}" >&2 || return 1
+  fi
   exe="$(el_mise_exec_path "${version}")" || return 1
   el_python_is_version "${exe}" "${version}" || return 1
   echo "${exe}"
@@ -496,6 +590,8 @@ el_python_exec() {
     local propose
     el_mise_proposer "${version}"
     propose=$?
+    # Réponse manquante en mode non interactif : rien d'autre ne démarre.
+    [ "${propose}" -eq 3 ] && return 1
     if [ "${propose}" -eq 0 ] && exe="$(el_mise_install "${version}")"; then
       echo "${exe}"
       return 0

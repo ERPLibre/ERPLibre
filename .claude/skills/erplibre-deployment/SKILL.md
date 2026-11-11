@@ -32,15 +32,19 @@ en C++20, quand focal livre GCC 9.
 il préfère mise, qui pose un CPython précompilé, et retombe sur pyenv, qui le
 compile.
 
-Un seul fichier décide : `script/install/lib_python_provider.sh`. mise n'est
-jamais installé sans accord : devant un terminal, l'installation le propose
-juste avant que pyenv ne compile (non par défaut), puis propose d'écrire son
-activation dans `~/.bashrc` (ou `~/.zshrc`) ; `make install_mise` le pose sur
-demande. Sans terminal — VM, Docker, CI — rien n'est demandé. Devant un
-terminal, chaque question applique son défaut au bout de `EL_QUESTION_DELAI`
-secondes (60) : chaque venv s'installe dans son propre processus, un « non »
-n'est pas retenu d'un venv à l'autre, et une installation laissée seule doit
-continuer.
+Un seul fichier décide : `script/install/lib_python_provider.sh`. Devant un
+terminal, l'installation propose mise juste avant que pyenv ne compile
+(Entrée vaut oui), puis propose d'écrire son activation dans `~/.bashrc` (ou
+`~/.zshrc`, non par défaut) ; `make install_mise` le pose sur demande. Sans
+terminal — VM, Docker, CI — rien n'est demandé. Au bout de
+`EL_QUESTION_DELAI` secondes (60) sans réponse, chaque question prend son
+défaut : oui pour mise, non pour le `~/.bashrc`. Chaque venv s'installe dans
+son propre processus : en mode `auto`, un refus de mise est donc retenu dans
+`.erplibre-mise-refus`, à la racine du dépôt, pour que le délai écoulé au venv
+suivant ne le renverse pas ; `make install_mise` pose mise et l'efface. Le
+mode non interactif ne demande rien :
+`EL_INSTALL_MISE=1|0` décide, et le menu TODO « sans interaction » pose 1, sauf
+réponse déjà donnée.
 Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
 ## Le Python de l'outillage

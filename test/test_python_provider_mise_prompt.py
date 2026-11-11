@@ -7,8 +7,10 @@
 La question ne se pose que devant un terminal : un déploiement de VM, un
 build Docker ou une CI lancent la même installation sans personne pour
 répondre, et doivent garder le comportement d'avant — l'avertissement, puis
-la compilation. Devant un terminal, la réponse par défaut est non : « curl |
-sh » engage, et c'est à l'utilisateur de le décider.
+la compilation. Devant un terminal, le défaut est oui, pour Entrée comme
+au bout du délai : un CPython précompilé vaut mieux qu'une compilation. Un
+refus est retenu dans .erplibre-mise-refus, pour que le délai écoulé au
+venv suivant ne le renverse pas.
 
 Tout est faux et local : curl dépose un installateur qui pose un faux mise
 dans le HOME du test, ce mise « installe » un faux python, et pyenv est
@@ -109,7 +111,8 @@ class BancMise(unittest.TestCase):
             vrai = "true" if terminal else "false"
             garde = f"el_peut_demander() {{ {vrai}; }}\n"
         script = (
-            f'source "{LIB}"\n' + garde
+            f'source "{LIB}"\n'
+            + garde
             # Le python du système ne doit pas court-circuiter la question.
             + "el_distro_python_exec() { return 1; }\n"
             "el_pyenv_install() {\n"
@@ -125,9 +128,11 @@ class BancMise(unittest.TestCase):
             "SHELL": "/bin/bash",
         }
         milieu.update(env or {})
+        # Dans le dossier du banc : un refus y écrit .erplibre-mise-refus.
         return subprocess.run(
             [str(self.bin / "bash"), "-c", script],
             input=entree,
+            cwd=self.dir,
             env=milieu,
             capture_output=True,
             text=True,
@@ -136,6 +141,10 @@ class BancMise(unittest.TestCase):
 
     def traces(self):
         return self.trace.read_text() if self.trace.exists() else ""
+
+    @property
+    def refus(self):
+        return self.dir / ".erplibre-mise-refus"
 
     @property
     def mise_pose(self):
@@ -153,21 +162,60 @@ class TestSansTerminal(BancMise):
 
 
 class TestLaQuestion(BancMise):
-    def test_le_defaut_est_non(self):
-        fini = self.lancer("\n")
+    def test_le_defaut_est_oui(self):
+        # Entrée pose mise ; la seconde, à l'activation permanente, dont le
+        # défaut reste non : elle modifie le .bashrc.
+        fini = self.lancer("\n\n")
         self.assertIn(QUESTION, fini.stderr)
+        self.assertIn("(O/n, defaut : O dans 60 s)", fini.stderr)
         self.assertIn("(o/N, defaut : N dans 60 s)", fini.stderr)
-        self.assertNotIn("curl", self.traces())
-        self.assertIn(f"pyenv {VERSION}", self.traces())
-        # Le refus a déjà dit pourquoi pyenv compile : pas de conseil
-        # d'interrompre pour poser mise, juste après avoir refusé.
-        self.assertNotIn("Ctrl+C", fini.stderr)
+        self.assertTrue(self.mise_pose.exists(), fini.stderr)
+        self.assertNotIn("pyenv", self.traces())
+        self.assertFalse((self.home / ".bashrc").exists())
 
-    def test_la_fin_de_l_entree_vaut_non(self):
+    def test_non_explicite_laisse_pyenv_compiler(self):
+        for non in ("n", "non", "No"):
+            with self.subTest(non=non):
+                if self.trace.exists():
+                    self.trace.unlink()
+                self.refus.unlink(missing_ok=True)
+                fini = self.lancer(f"{non}\n")
+                self.assertNotIn("curl", self.traces())
+                self.assertIn(f"pyenv {VERSION}", self.traces())
+                self.assertFalse(self.mise_pose.exists())
+                self.assertTrue(self.refus.exists(), fini.stderr)
+                # Le refus a déjà dit pourquoi pyenv compile : pas de
+                # conseil d'interrompre pour poser mise, juste après.
+                self.assertNotIn("Ctrl+C", fini.stderr)
+
+    def test_la_fin_de_l_entree_prend_le_defaut(self):
         fini = self.lancer("")
-        self.assertNotIn("curl", self.traces())
-        self.assertIn(f"pyenv {VERSION}", self.traces())
+        self.assertTrue(self.mise_pose.exists(), fini.stderr)
+        self.assertNotIn("pyenv", self.traces())
         self.assertEqual(0, fini.returncode, fini.stderr)
+
+    def test_un_refus_est_retenu_au_venv_suivant(self):
+        # Sans lui, le délai écoulé au venv suivant renverserait le « non ».
+        self.lancer("n\n")
+        self.trace.unlink()
+        fini = self.lancer("")
+        self.assertNotIn(QUESTION + " (", fini.stderr)
+        self.assertIn("refuse pour ce depot", fini.stderr)
+        self.assertIn(f"pyenv {VERSION}", self.traces())
+        self.assertFalse(self.mise_pose.exists())
+
+    def test_non_interactif_sudo_ne_demande_rien(self):
+        # Sur un hôte à pacman, la pose passe par sudo : en mode non
+        # interactif, « sudo -n », qui échoue sans ticket au lieu
+        # d'attendre un mot de passe ; pyenv reprend la main.
+        self.faux("pacman", "exit 0\n")
+        self.faux("sudo", f'echo "sudo $*" >> "{self.trace}"\nexit 1\n')
+        fini = self.lancer(
+            env={"EL_NON_INTERACTIVE": "1", "EL_INSTALL_MISE": "1"}
+        )
+        self.assertIn("sudo -n pacman", self.traces(), fini.stderr)
+        self.assertIn("sudo demanderait un mot de passe", fini.stderr)
+        self.assertNotIn(QUESTION + " (", fini.stderr)
 
     def test_oui_pose_mise_et_continue_avec_lui(self):
         for oui in ("o", "oui", "y", "Yes"):
@@ -304,6 +352,7 @@ class TestCeQueLaRevueAVu(BancMise):
                 stdin=lecture,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                cwd=self.dir,
                 env=milieu,
                 text=True,
             )
@@ -311,13 +360,28 @@ class TestCeQueLaRevueAVu(BancMise):
         finally:
             os.close(lecture)
             os.close(ecriture)
-        self.assertIn("defaut : N dans 1 s", erreur)
-        self.assertEqual("/faux/pyenv/python", sortie.strip(), erreur)
-        self.assertNotIn("curl", self.traces())
+        # Le délai écoulé prend le défaut, oui : mise est posé.
+        self.assertIn("defaut : O dans 1 s", erreur)
+        self.assertTrue(
+            sortie.strip().endswith(f"/{VERSION}/bin/python"), erreur
+        )
+        self.assertNotIn("pyenv", self.traces())
+
+    def test_mise_explicite_ignore_le_refus_retenu(self):
+        # EL_PYTHON_PROVIDER=mise exige mise : un refus retenu en mode auto
+        # ne le bloque pas, et un refus ici n'est pas retenu.
+        self.refus.touch()
+        fini = self.lancer("n\n", env={"EL_PYTHON_PROVIDER": "mise"})
+        self.assertIn(QUESTION + " (", fini.stderr)
+        self.refus.unlink()
+        self.lancer("n\n", env={"EL_PYTHON_PROVIDER": "mise"})
+        self.assertFalse(self.refus.exists())
 
     def test_mise_explicite_ne_promet_pas_pyenv(self):
         for reponses in ("n\n", "o\n"):
             with self.subTest(reponses=reponses):
+                # Chaque tour part sans refus retenu.
+                self.refus.unlink(missing_ok=True)
                 if reponses == "o\n":
                     self.faux("curl", "exit 22\n")
                 fini = self.lancer(
@@ -377,6 +441,7 @@ class TestMakeInstallMise(BancMise):
     def make(self):
         if not (self.bin / "make").exists():
             os.symlink(shutil.which("make"), self.bin / "make")
+        # Le refus vit dans le banc, jamais à la racine du vrai dépôt.
         return subprocess.run(
             [str(self.bin / "make"), "-s", "install_mise"],
             cwd=RACINE,
@@ -386,6 +451,7 @@ class TestMakeInstallMise(BancMise):
                 "HOME": str(self.home),
                 "TMPDIR": str(self.dir),
                 "SHELL": "/bin/bash",
+                "EL_MISE_REFUS": str(self.refus),
             },
             capture_output=True,
             text=True,
@@ -393,7 +459,10 @@ class TestMakeInstallMise(BancMise):
         )
 
     def test_pose_mise_et_dit_comment_l_activer(self):
+        self.refus.touch()
         fini = self.make()
+        # mise posé à la demande : le refus retenu est oublié.
+        self.assertFalse(self.refus.exists(), fini.stderr)
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertTrue(self.mise_pose.exists(), fini.stderr)
         # Sans terminal, rien n'est demandé : la ligne est donnée à copier.
@@ -409,7 +478,10 @@ class TestMakeInstallMise(BancMise):
 
     def test_s390x_n_est_pas_une_erreur(self):
         self.faux("uname", 'echo "s390x"\n')
+        self.refus.touch()
         fini = self.make()
+        # Rien n'est posé : le refus reste.
+        self.assertTrue(self.refus.exists(), fini.stderr)
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertIn("s390x", fini.stderr)
 
@@ -441,6 +513,7 @@ class TestDerriereUnVraiTerminal(BancMise):
             stdin=esclave,
             stdout=esclave,
             stderr=esclave,
+            cwd=self.dir,
             env=milieu,
             close_fds=True,
         )

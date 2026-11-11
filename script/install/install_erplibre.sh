@@ -26,6 +26,9 @@ PYTHON_ERPLIBRE_VERSION=$(xargs < "${CONF_PYTHON_VERSION}")
 # Architecture non supportée : question avant tout travail ;
 # EL_ALLOW_UNSUPPORTED_ARCH=1 y répond oui. Voir lib_arch_check.sh.
 . ./script/install/lib_arch_check.sh
+# Mode non interactif : git et pip ne demandent rien. lib_arch_check.sh vient
+# de sourcer lib_non_interactive.sh.
+el_non_interactive_env
 el_arch_check || exit 1
 
 # Sur s390x, pip compile ce qui n'a pas de wheel : on vérifie qu'il en a les

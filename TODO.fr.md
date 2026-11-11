@@ -13,9 +13,6 @@ Actuellement, il faut pousser manuellement tous les différents dépôts distant
 ## Financement
 - Ajouter du financement pour MathBenTech et TechnoLibre
 
-## Améliorer l'utilisation de repo init
-- Supporter l'exécution de repo init sans interaction humaine. Faut-il créer un nom d'utilisateur temporaire ?
-
 ## Améliorer l'utilisation de repo sync
 - Tester repo sync avec l'argument -d
 - Tester repo sync avec l'argument -t SMART_TAG, comme le tag ERPLibre/v1.0.0

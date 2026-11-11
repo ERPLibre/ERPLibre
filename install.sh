@@ -18,6 +18,33 @@
 
 cd "$(dirname "$0")" || exit 1
 
+# « --non-interactive » parmi les arguments vaut EL_NON_INTERACTIVE=1 dès ici,
+# pour la question ci-dessous comme pour l'installation qu'elle lancerait ;
+# « --mise yes|no » vaut EL_INSTALL_MISE, que lit l'installation du venv
+# d'outillage, la première à fournir Python. Les arguments restent en place :
+# todo.py les lit aussi.
+el_suivant=""
+for el_arg in "$@"; do
+  if [ "${el_suivant}" = "mise" ]; then
+    case "${el_arg}" in
+      yes) export EL_INSTALL_MISE=1 ;;
+      no) export EL_INSTALL_MISE=0 ;;
+    esac
+  fi
+  el_suivant=""
+  case "${el_arg}" in
+    --non-interactive) export EL_NON_INTERACTIVE=1 ;;
+    --mise) el_suivant="mise" ;;
+    --mise=yes) export EL_INSTALL_MISE=1 ;;
+    --mise=no) export EL_INSTALL_MISE=0 ;;
+  esac
+done
+
+# TODO importe GitPython, qui refuse de se charger sans exécutable git : git
+# est posé, ou proposé, avant qu'aucun Python ne parte.
+. ./script/install/lib_git_requis.sh
+el_git_requis || exit 1
+
 VENV="$(xargs < conf/python-erplibre-venv 2> /dev/null)"
 VOULUE="$(xargs < conf/python-erplibre-version 2> /dev/null)"
 ATTENDUE="${VOULUE%.*}"
@@ -45,8 +72,15 @@ el_assez_recent() {
 # Vrai sur une réponse affirmative lue au terminal, en français ou en anglais :
 # o, oui, y, yes, sans égard à la casse. Le défaut est NON : une frappe sur
 # Entrée ne lance pas une installation qui peut détruire un venv. Sans
-# terminal sur l'entrée, rien ne peut consentir, et la réponse est non.
+# terminal sur l'entrée, rien ne peut consentir, et la réponse est non. En
+# mode non interactif (EL_NON_INTERACTIVE=1, voir
+# script/install/lib_non_interactive.sh), la réponse est oui : ce mode EST la
+# demande d'installer, et sans le venv d'outillage rien ne peut suivre.
 el_confirmer() {
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    echo "$1 oui (EL_NON_INTERACTIVE=1)"
+    return 0
+  fi
   [ -t 0 ] || return 1
   printf '%s [o/N] ' "$1"
   read -r reponse || return 1
@@ -86,6 +120,19 @@ echo "  ./script/install/install_erplibre.sh"
 if [ -d "./${VENV}" ]; then
   echo "  ${VENV} existant sera SUPPRIME puis rebati, avec ce qui y a ete"
   echo "  pose a la main."
+fi
+# En mode non interactif, rien ne s'installe tant qu'une réponse manque. Le
+# module de réponses ne demande que la bibliothèque standard ; un python3 trop
+# vieux pour le charger laisse la vérification à todo.py, une fois le venv
+# posé.
+if [ "${EL_NON_INTERACTIVE:-}" = "1" ] && command -v python3 > /dev/null 2>&1; then
+  if [ "$1" = "install" ]; then
+    python3 ./script/todo/install_non_interactif.py "${@:2}"
+  else
+    python3 ./script/todo/install_non_interactif.py
+  fi
+  code=$?
+  [ "${code}" -eq 2 ] && exit 2
 fi
 if ! el_confirmer "Lancer l'installation ?"; then
   echo "Installation non lancee : TODO ne demarre pas."

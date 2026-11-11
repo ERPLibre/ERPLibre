@@ -5,10 +5,10 @@
 EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
 
-# apt-get qui ATTEND le verrou (jusqu'à 10 min) : sur une image cloud fraîche,
-# cloud-init / unattended-upgrades tiennent souvent le verrou apt au 1er boot
-# (« Could not get lock » -> échec de l'install). DPkg::Lock::Timeout patiente.
-APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
+# apt-get attend le verrou, et en mode non interactif ne pose aucune
+# question : voir el_apt_get.
+. ./script/install/lib_non_interactive.sh
+APT_GET="$(el_apt_get)"
 
 ##
 ###  WKHTMLTOPDF download links
@@ -65,8 +65,8 @@ if [[ "${OS}" == "Ubuntu" ]]; then
   # « jammy » est le plus récent et fonctionne de 24.04 à 26.04 et au-delà.
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [[ "${OS}" == "Linuxmint" ]]; then
-  # Sans « else », toute Mint autre que 22.3 laissait WKHTMLTOX_X64 VIDE, et
-  # gdebi etait appele sans fichier. Mint 22.x repose sur noble : meme .deb.
+  # Toute Mint 22.x repose sur noble : même .deb. Sans cette branche,
+  # WKHTMLTOX_X64 resterait vide et wkhtmltopdf serait sauté.
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
   # bookworm (12), trixie (13) et au-delà : wkhtmltopdf ne publie pas de build
@@ -117,7 +117,7 @@ el_postgres_role "${EL_USER}" || exit 1
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-${APT_GET} install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev xmlsec1 -y
+${APT_GET} install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev xmlsec1 -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."
@@ -186,7 +186,12 @@ echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 ${APT_GET} update
 ${APT_GET} install -y ca-certificates curl gnupg
 sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+# Une clé déjà posée par une installation précédente fait demander à gpg
+# « Overwrite? » : en mode non interactif, --batch --yes la remplace.
+GPG_OPTS=""
+el_non_interactive && GPG_OPTS="--batch --yes"
+# shellcheck disable=SC2086
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg ${GPG_OPTS} --dearmor -o /etc/apt/keyrings/nodesource.gpg
 
 # Node 22+ required by @capacitor/cli v8.x (mobile app dependency)
 NODE_MAJOR=22
@@ -307,7 +312,7 @@ sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 if [ ${EL_INSTALL_NGINX} = "True" ]; then
   echo -e "\n---- Installing nginx ----"
-  sudo apt install nginx -y
+  ${APT_GET} install -y nginx
   retVal=$?
   if [[ $retVal -ne 0 ]]; then
     echo "apt install nginx installation error."
@@ -320,8 +325,8 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" != "x86_64" ]; then
   # WKHTMLTOX_X64 pointe vers un .deb amd64 : sur toute autre architecture
-  # (s390x, arm64/aarch64…) gdebi échouerait. On saute proprement plutôt que
-  # d'avorter tout l'install (wkhtmltopdf est optionnel).
+  # (s390x, arm64/aarch64…) apt-get le refuserait. On saute proprement
+  # plutôt que d'avorter tout l'install (wkhtmltopdf est optionnel).
   echo "wkhtmltopdf : pas de build pour $(uname -m), ignoré (optionnel)."
 elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   echo -e "\n---- Installing wkhtml ----"
@@ -331,11 +336,17 @@ elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
     _url=${WKHTMLTOX_X64}
     if [ -z "${_url}" ]; then
       # Aucune URL (version non mappée) : wkhtmltopdf est OPTIONNEL, on saute
-      # proprement plutôt que d'appeler gdebi sans fichier (« Usage: gdebi »).
+      # proprement plutôt que de lancer apt-get sans fichier à installer.
       echo "wkhtmltopdf : aucune URL pour cette version, ignoré (optionnel)."
     else
       sudo wget ${_url}
-      sudo gdebi --n $(basename ${_url})
+      # apt-get installe le .deb local et ses dépendances, avec le verrou
+      # attendu et, en mode non interactif, sans question (el_apt_get).
+      # Pas gdebi : sous sudo-rs (Ubuntu 25.10 et suivantes, use_pty),
+      # gdebi lancé avec l'entrée sur un terminal et la sortie dans un tube
+      # — l'étape système lancée par TODO — se suspend sur un signal de
+      # contrôle du terminal et n'en sort plus.
+      ${APT_GET} install -y "./$(basename "${_url}")"
       retVal=$?
       if [[ $retVal -ne 0 ]]; then
         # wkhtmltopdf est OPTIONNEL (rapports PDF). NON bloquant : sur Debian

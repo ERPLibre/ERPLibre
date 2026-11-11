@@ -2,6 +2,18 @@
 
 . ./env_var.sh
 
+# Mode non interactif : sudo sans mot de passe vérifié avant le premier
+# sudo. sudo su vide l'environnement : les commandes lancées sous EL_USER
+# reçoivent le mode et ses variables git sur leur propre ligne (EL_SU_ENV).
+. ./script/install/lib_non_interactive.sh
+el_sudo_preflight || exit 1
+el_sudo_keepalive
+EL_SU_ENV=""
+if el_non_interactive; then
+  EL_SU_ENV="EL_NON_INTERACTIVE=1 GIT_TERMINAL_PROMPT=0"
+  EL_SU_ENV+=" GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'"
+fi
+
 # --freeze, ou EL_FREEZE=1 : l'installation prend le SHA du freeze-revision de
 # chaque dépôt (voir script/manifest/update_manifest_prod.sh). « sudo su »
 # repart d'un environnement propre où EL_FREEZE n'arrive pas : le choix y
@@ -41,16 +53,16 @@ REMOTE_URL_GIT=$(git remote get-url origin)
 BRANCH_GIT=$(git rev-parse --abbrev-ref HEAD)
 if [ "HEAD" = "${BRANCH_GIT}" ]; then
   # Checkout version of env_var.sh
-  sudo su ${EL_USER} -c "git clone --branch v${ERPLIBRE_VERSION} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
+  sudo su ${EL_USER} -c "${EL_SU_ENV} git clone --branch v${ERPLIBRE_VERSION} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
 else
-  sudo su ${EL_USER} -c "git clone --branch ${BRANCH_GIT} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
+  sudo su ${EL_USER} -c "${EL_SU_ENV} git clone --branch ${BRANCH_GIT} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
 fi
 sudo cp ./env_var.sh ${EL_HOME_ERPLIBRE}
 sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
-sudo su ${EL_USER} -c "./script/install/install_locally_prod.sh ${PROD_ARGS}"
+sudo su ${EL_USER} -c "${EL_SU_ENV} ./script/install/install_locally_prod.sh ${PROD_ARGS}"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"
