@@ -395,6 +395,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   kept). Without a git identity (`user.name`, `user.email`), **TODO › Install** offers to enter and
   confirm one after the install-type menu; declined, `repo init` runs without a terminal on its
   input and asks nothing. `--config-name` passed to the manifest scripts still asks
+- Odoo 18 websites read the cookie bar consent again under Werkzeug 3.1.9, which drops the bare JSON cookie the website writes: after **Accept all**, third-party iframes such as videos no longer stay blank, and a cookie value that is not JSON counts as no consent instead of failing the page with an HTTP 500
+- Odoo 18 sends the login, password and email change notices in the language of each notified user, not in that of whoever made the change, and an email change notifies only the user whose address changed
+- With `login_user_detail` installed on Odoo 18, XML-RPC calls answer again: the credential check read an HTTP request XML-RPC never binds, and failed every call with `object is not bound`
 
 ## Removed
 
@@ -424,6 +427,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Secrets that carry no `password` in an option or upper-case variable name are redacted too, on screen and in the session log: `odoo-bin -w`, `sshpass -p`, `mysql -p<value>`, `curl -u user:pass`, configuration lines such as `admin_passwd = …`, credentials in a URL, GitHub and GitLab tokens, JSON keys, lower-case variables and private keys, the key or user kept readable. Short options are masked only in their own tool, so `grep -w` or `docker exec -u` stay intact. Logger messages and a crash traceback go through the same masking before they reach the log, where they went unfiltered
 - `script/database/db_restore.py` passes Odoo's `db_sslmode` to psql, so a server that demands `verify-full` is not joined without checking its certificate
 - Odoo 18 installs oauthlib 4.0.1, which fixes CVE-2026-49272: in the device authorization flow, 4.0.0 handed a Bearer token to anyone knowing a valid client ID. PyPDF2 is pinned at 2.12.1, the version Odoo 18 installs, so `pip-audit` on the requirements audits that version instead of 3.0.1; its PYSEC-2026-1835 (CVE-2023-36464) stays, the advertised fix 3.9.0 being a pypdf version and no PyPDF2 release fixing it
+- With `website_event_require_login` on Odoo 18, a public user can no longer register to an event that requires a login by posting the attendee form straight to `/event/<id>/registration/confirm`: the post is sent to `/web/login`. `OCA_event` is cloned from the ERPLibre fork, branch `18.0_dev`, until the fix reaches OCA
 
 
 ## [1.8.0] - 2026-09-04
