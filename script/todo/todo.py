@@ -134,8 +134,8 @@ from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
-from script.todo.system_menu import SystemMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
+from script.todo.python_menu import PythonMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
 from script.todo.qemu_deploy import QemuDeployMixin
@@ -144,13 +144,13 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.seal_menu import SealMenuMixin
+from script.todo.ssh_key_menu import SshKeyMenuMixin
+from script.todo.system_menu import SystemMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
-from script.todo.python_menu import PythonMenuMixin
-from script.todo.seal_menu import SealMenuMixin
-from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -331,7 +331,7 @@ class TODO(
 [2] {t("mail_menu")}
 [3] {t("sms_menu")}
 [4] {t("modem_menu")}
-{retour(t('Back'))}"""
+{retour(t("Back"))}"""
             status = click.prompt(help_info)
             print()
             if status == "0":
@@ -382,7 +382,7 @@ class TODO(
 
 ── {t("System")} ──
 [21] {t("System - Diagnostic and disk space")}
-{retour(t('Back'))}
+{retour(t("Back"))}
 """
         while True:
             status = click.prompt(help_info)
