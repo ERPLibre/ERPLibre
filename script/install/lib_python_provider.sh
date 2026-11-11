@@ -69,9 +69,12 @@ el_mise_exec_path() {
 # VM, un build Docker ou une CI n'ont pas de terminal, et n'attendent donc
 # jamais une réponse que personne ne donnera.
 #
+# En mode non interactif (EL_NON_INTERACTIVE=1, voir lib_non_interactive.sh),
+# jamais : chaque question prend son défaut sans attendre.
+#
 # Fonction isolée pour qu'un test puisse la remplacer sans pseudo-terminal.
 el_peut_demander() {
-  [ -t 0 ] && [ -t 2 ]
+  [ "${EL_NON_INTERACTIVE:-}" != "1" ] && [ -t 0 ] && [ -t 2 ]
 }
 
 # Vrai pour un oui explicite, en français ou en anglais. Les casses sont
@@ -203,12 +206,18 @@ el_mise_proposer_permanent() {
 
 # Propose de poser mise juste avant que pyenv ne compile CPython. Rend 0 si
 # mise vient d'être posé, 2 si la question a été posée et que la suite est
-# pyenv — l'utilisateur sait déjà pourquoi —, 1 si rien n'a été demandé.
+# pyenv — l'utilisateur sait déjà pourquoi —, 1 si rien n'a été demandé, 3
+# si la réponse manque en mode non interactif : l'installation s'arrête.
 #
 # Rien n'est demandé quand mise est déjà là, sur s390x (aucun binaire), sans
 # terminal, ni quand pyenv porte déjà la version : rien ne serait compilé.
 # La réponse par défaut est non : exécuter l'installateur d'un tiers engage,
 # et c'est à l'utilisateur de le décider, pas au script.
+#
+# En mode non interactif (EL_NON_INTERACTIVE=1), rien n'est demandé non plus,
+# mais rien n'est décidé à la place de l'utilisateur : EL_INSTALL_MISE=1 pose
+# mise, EL_INSTALL_MISE=0 laisse pyenv compiler, et sans l'une ni l'autre
+# l'installation s'arrête en les nommant.
 el_mise_proposer() {
   local version="$1" provider="${EL_PYTHON_PROVIDER:-auto}" suite
   el_mise_cmd > /dev/null && return 1
@@ -216,6 +225,27 @@ el_mise_proposer() {
   if [ "${provider}" != "mise" ] \
     && [ -d "$(el_pyenv_root)/versions/${version}" ]; then
     return 1
+  fi
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    case "${EL_INSTALL_MISE:-}" in
+      1)
+        echo "mise est absent : EL_INSTALL_MISE=1, il est pose." >&2
+        el_mise_poser && return 0
+        echo "mise n'a pas pu etre pose." >&2
+        return 2
+        ;;
+      0)
+        echo "mise est absent, EL_INSTALL_MISE=0 : pyenv fournit Python" \
+          "${version}." >&2
+        return 2
+        ;;
+      *)
+        echo "Mode non interactif : mise est absent, et rien ne dit s'il" >&2
+        echo "  faut le poser pour fournir Python ${version}. Repondez par" >&2
+        echo "  --mise yes|no, ou EL_INSTALL_MISE=1|0." >&2
+        return 3
+        ;;
+    esac
   fi
   el_peut_demander || return 1
   # Ce qui suit un refus, dit tel quel : avec EL_PYTHON_PROVIDER=mise, il
@@ -312,7 +342,15 @@ el_mise_install() {
   local version="$1" exe mise
   mise="$(el_mise_cmd)" || return 1
   echo "---- Python ${version} via mise (precompile) ----" >&2
-  "${mise}" install "python@${version}" >&2 || return 1
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    # Un mise.toml non approuvé fait demander « Trust them? ». Les dossiers
+    # au-dessus du checkout ne sont pas lus, et l'entrée vide fait échouer
+    # mise sur un fichier non approuvé du checkout au lieu de le demander.
+    MISE_CEILING_PATHS="$(dirname "${PWD}")" \
+      "${mise}" install "python@${version}" < /dev/null >&2 || return 1
+  else
+    "${mise}" install "python@${version}" >&2 || return 1
+  fi
   exe="$(el_mise_exec_path "${version}")" || return 1
   el_python_is_version "${exe}" "${version}" || return 1
   echo "${exe}"
@@ -496,6 +534,8 @@ el_python_exec() {
     local propose
     el_mise_proposer "${version}"
     propose=$?
+    # Réponse manquante en mode non interactif : rien d'autre ne démarre.
+    [ "${propose}" -eq 3 ] && return 1
     if [ "${propose}" -eq 0 ] && exe="$(el_mise_install "${version}")"; then
       echo "${exe}"
       return 0

@@ -45,8 +45,15 @@ el_assez_recent() {
 # Vrai sur une réponse affirmative lue au terminal, en français ou en anglais :
 # o, oui, y, yes, sans égard à la casse. Le défaut est NON : une frappe sur
 # Entrée ne lance pas une installation qui peut détruire un venv. Sans
-# terminal sur l'entrée, rien ne peut consentir, et la réponse est non.
+# terminal sur l'entrée, rien ne peut consentir, et la réponse est non. En
+# mode non interactif (EL_NON_INTERACTIVE=1, voir
+# script/install/lib_non_interactive.sh), la réponse est oui : ce mode EST la
+# demande d'installer, et sans le venv d'outillage rien ne peut suivre.
 el_confirmer() {
+  if [ "${EL_NON_INTERACTIVE:-}" = "1" ]; then
+    echo "$1 oui (EL_NON_INTERACTIVE=1)"
+    return 0
+  fi
   [ -t 0 ] || return 1
   printf '%s [o/N] ' "$1"
   read -r reponse || return 1

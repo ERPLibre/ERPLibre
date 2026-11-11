@@ -5,10 +5,10 @@
 EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
 
-# apt-get qui ATTEND le verrou (jusqu'à 10 min) : sur une image cloud fraîche,
-# cloud-init / unattended-upgrades tiennent souvent le verrou apt au 1er boot
-# (« Could not get lock » -> échec de l'install). DPkg::Lock::Timeout patiente.
-APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
+# apt-get attend le verrou, et en mode non interactif ne pose aucune
+# question : voir el_apt_get.
+. ./script/install/lib_non_interactive.sh
+APT_GET="$(el_apt_get)"
 
 ##
 ###  WKHTMLTOPDF download links
@@ -186,7 +186,12 @@ echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 ${APT_GET} update
 ${APT_GET} install -y ca-certificates curl gnupg
 sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+# Une clé déjà posée par une installation précédente fait demander à gpg
+# « Overwrite? » : en mode non interactif, --batch --yes la remplace.
+GPG_OPTS=""
+el_non_interactive && GPG_OPTS="--batch --yes"
+# shellcheck disable=SC2086
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg ${GPG_OPTS} --dearmor -o /etc/apt/keyrings/nodesource.gpg
 
 # Node 22+ required by @capacitor/cli v8.x (mobile app dependency)
 NODE_MAJOR=22
@@ -307,7 +312,7 @@ sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 if [ ${EL_INSTALL_NGINX} = "True" ]; then
   echo -e "\n---- Installing nginx ----"
-  sudo apt install nginx -y
+  ${APT_GET} install -y nginx
   retVal=$?
   if [[ $retVal -ne 0 ]]; then
     echo "apt install nginx installation error."
@@ -335,7 +340,14 @@ elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
       echo "wkhtmltopdf : aucune URL pour cette version, ignoré (optionnel)."
     else
       sudo wget ${_url}
-      sudo gdebi --n $(basename ${_url})
+      # sudo vide l'environnement : debconf et needrestart reçoivent le
+      # mode non interactif sur la ligne, comme pour el_apt_get.
+      if el_non_interactive; then
+        sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \
+          gdebi --n $(basename ${_url})
+      else
+        sudo gdebi --n $(basename ${_url})
+      fi
       retVal=$?
       if [[ $retVal -ne 0 ]]; then
         # wkhtmltopdf est OPTIONNEL (rapports PDF). NON bloquant : sur Debian

@@ -6,8 +6,8 @@
 # sur s390x seulement : swap, paquets de compilation, libclang, qpdf, PROJ et
 # Rust. Sur cette architecture PyPI ne publie presque aucune roue, et
 # poetry install compile ce que pip poserait ailleurs tout prêt. Hérite de
-# l'appelant APT_GET et les variables d'env_var.sh ; un « exit » y arrête
-# toute l'installation, comme dans le script qui le source.
+# l'appelant APT_GET, el_non_interactive et les variables d'env_var.sh ; un
+# « exit » y arrête toute l'installation, comme dans le script qui le source.
 
 . ./script/install/S390x/lib_qpdf.sh
 . ./script/install/S390x/lib_proj.sh
@@ -60,7 +60,14 @@ apt_install_batch() {
   # Sans cette réparation, la boucle ci-dessous accusait les quinze paquets
   # à cause d'un seul, et l'installation s'arrêtait sur un paquet présent.
   echo "Lot apt en echec : tentative de reparation dpkg..."
-  sudo dpkg --configure -a || true
+  # dpkg peut rejouer une question debconf ou de fichier de configuration :
+  # en mode non interactif, elle prend la réponse qui garde l'existant.
+  if el_non_interactive; then
+    sudo DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confold \
+      --configure -a || true
+  else
+    sudo dpkg --configure -a || true
+  fi
   ${APT_GET} --fix-broken install -y || true
   if ${APT_GET} install "$@" -y; then
     echo "Reparation reussie."

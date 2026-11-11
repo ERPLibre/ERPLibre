@@ -25,6 +25,11 @@ VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
 # fichier aurait existé, « poetry install » aurait été purement sauté.
 POETRY_ODOO_PATH=${VENV_ODOO_PATH}/bin/poetry
 
+# Mode non interactif : git et pip ne demandent rien, poetry non plus
+# (POETRY_INTERACTION ci-dessous). Voir lib_non_interactive.sh.
+. ./script/install/lib_non_interactive.sh
+el_non_interactive_env
+
 # Choix pip/uv : un seul endroit décide, comme pour mise/pyenv.
 # shellcheck source=script/install/lib_pip_provider.sh
 . ./script/install/lib_pip_provider.sh
@@ -43,6 +48,11 @@ if [[ "${EL_VERBOSE:-0}" == "1" ]]; then
 else
     POETRY_VERBOSE=""
 fi
+# Mode non interactif : --no-interaction pour chaque poetry install, rejeu
+# compris. Une option, et non POETRY_NO_INTERACTION : poetry ne lit pas
+# cette variable.
+POETRY_INTERACTION=""
+el_non_interactive && POETRY_INTERACTION="--no-interaction"
 
 # EL_PHASE controls which steps to execute.  Used by install_locally_dev.sh
 # for parallel installation — do not set manually unless you know what you do.
@@ -243,7 +253,8 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
                 || echo "Dependances incompletes : poetry install s'en chargera."
         fi
         rm -f "${contraintes_verrou}"
-        "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE}
+        # shellcheck disable=SC2086
+        "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE} ${POETRY_INTERACTION}
         retVal=$?
         if [[ $retVal -ne 0 ]]; then
             echo "Poetry installation error with status ${retVal}"
@@ -257,7 +268,8 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
             # C'est ce qui a arrêté openSUSE Leap 16 sur un pdfminer-six posé
             # correctement au second essai.
             echo "---- Poetry: rejeu -vvv (diagnostic et seconde chance) ----"
-            if "${POETRY_ODOO_PATH}" install --no-root -vvv 2>&1; then
+            # shellcheck disable=SC2086
+            if "${POETRY_ODOO_PATH}" install --no-root -vvv ${POETRY_INTERACTION} 2>&1; then
                 echo "Le rejeu a REUSSI : le premier echec etait transitoire."
             else
                 exit 1
