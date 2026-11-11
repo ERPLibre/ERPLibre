@@ -442,6 +442,21 @@ class TestManifeste(unittest.TestCase):
         self.assertEqual(resultat.details, ["decale : odoo18.0/addons/R_gele"])
         self.assertNotIn(t("off the freeze"), resultat.resume)
 
+    def test_ahead_and_diverged_repositories_are_named_with_their_gap(self):
+        avance = self.depot("odoo18.0/addons/R_avance")
+        avance.update(state="en_avance", ahead=2, behind=0)
+        decale = self.depot("odoo18.0/addons/R_decale")
+        decale.update(state="decale", ahead=1, behind=3)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([avance, decale]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance : odoo18.0/addons/R_avance (+2 −0)",
+                "decale : odoo18.0/addons/R_decale (+1 −3)",
+            ],
+        )
+
     def test_every_repository_on_its_freeze_is_fine(self):
         resultat = h.verifier_manifeste(
             self.ctx_snapshot(

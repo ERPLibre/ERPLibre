@@ -988,8 +988,10 @@ ECARTS_GEL = {
     "indetermine": "shallow clone, gap to the freeze unknown",
     "erreur": "git could not measure the gap to the freeze",
 }
-# Les états de `repo_state` que « Addons face au manifeste » détaille.
-ETATS_SIGNALES = ("decale", "absent", "erreur")
+# Les états de `repo_state` que « Addons face au manifeste » détaille : tout
+# écart à la cible du manifeste local, en avance compris — des commits que la
+# branche du manifeste n'a pas encore.
+ETATS_SIGNALES = ("decale", "en_avance", "absent", "erreur")
 
 
 def _ecart_gel(depot):
@@ -1046,10 +1048,12 @@ def verifier_manifeste(ctx):
         etat = depot.get("state")
         comptes[etat] = comptes.get(etat, 0) + 1
         if etat in ETATS_SIGNALES:
-            details.append(
-                f"{etat} : {depot.get('path')}"
-                + (f" — {depot.get('error')}" if depot.get("error") else "")
-            )
+            ligne = f"{etat} : {depot.get('path')}"
+            if depot.get("ahead") is not None:
+                ligne += f" (+{depot['ahead']} −{depot['behind']})"
+            if depot.get("error"):
+                ligne += f" — {depot['error']}"
+            details.append(ligne)
         ligne = _ecart_gel(depot)
         if ligne:
             hors_gel.append(ligne)
