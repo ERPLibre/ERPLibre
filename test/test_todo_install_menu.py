@@ -35,6 +35,8 @@ from script.todo.todo import TODO  # noqa: E402
 QUESTION_SYSTEME = todo_module.t(
     "First system installation? Installs the system packages first (y/N): "
 ).strip()
+QUESTION_SUITE = todo_module.t("Rest of the installation:")
+SANS_INTERACTION = "EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=1 "
 
 
 class ExecuteFactice:
@@ -47,8 +49,12 @@ class ExecuteFactice:
 
 
 class Banc(unittest.TestCase):
-    def jouer(self, reponses):
+    def jouer(self, reponses, sudo=0, sudo_n=1):
         """Lance prompt_install ; rend (questions posées, commandes lancées).
+        Le code rendu est dans self.code, chaque commande en liste dans
+        self.listes. `sudo` est le code de « sudo -v », None pour un
+        sudo absent ; `sudo_n`, celui de « sudo -n true » : 1 par défaut,
+        un mot de passe serait demandé.
 
         Une question de plus que de réponses fait échouer le test en le
         disant, au lieu d'un StopIteration anonyme.
@@ -73,14 +79,25 @@ class Banc(unittest.TestCase):
             lances.append(cmd)
             # « which pycharm » échoue : pas de question PyCharm ici.
             code = 1 if isinstance(cmd, list) and cmd[:1] == ["which"] else 0
+            if cmd[:1] == ["sudo"] and sudo is None:
+                raise FileNotFoundError("sudo")
+            if cmd == ["sudo", "-v"]:
+                code = sudo
+            if cmd == ["sudo", "-n", "true"]:
+                code = sudo_n
             return subprocess.CompletedProcess(cmd, code, "", "")
 
         with (
             mock.patch.object(builtins, "input", repondre),
             mock.patch.object(todo_module.subprocess, "run", run),
+            mock.patch.object(todo_module.os, "geteuid", lambda: 1000),
+            mock.patch.dict(os.environ, {}, clear=False),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            todo.prompt_install()
+            os.environ.pop("EL_NON_INTERACTIVE", None)
+            self.code = todo.prompt_install()
+            self.environ_apres = dict(os.environ)
+        self.listes = [c for c in lances if isinstance(c, list)]
         commandes = todo.execute.commandes + [
             c for c in lances if isinstance(c, str)
         ]
@@ -94,14 +111,16 @@ class TestOrdreDesQuestions(Banc):
         self.assertNotIn(QUESTION_SYSTEME, questions[0])
         self.assertEqual(commandes, [])
 
-    def test_an_odoo_version_asks_the_system_question_last(self):
-        # La version, le développement, l'installation standard, puis la
-        # question système.
-        questions, commandes = self.jouer(["1", "1", "1", "y"])
-        self.assertEqual(len(questions), 4)
+    def test_an_odoo_version_asks_system_then_the_rest(self):
+        # La version, le développement, l'installation standard, la
+        # question système, puis la suite, Entrée : interactive.
+        questions, commandes = self.jouer(["1", "1", "1", "y", ""])
+        self.assertEqual(len(questions), 5)
         for question in questions[:3]:
             self.assertNotIn(QUESTION_SYSTEME, question)
         self.assertIn(QUESTION_SYSTEME, questions[3])
+        self.assertIn(QUESTION_SUITE, questions[4])
+        self.assertFalse(any(SANS_INTERACTION in c for c in commandes))
         self.assertIn(
             "./script/version/update_env_version.py --install", commandes
         )
@@ -126,14 +145,89 @@ class TestOrdreDesQuestions(Banc):
         self.assertEqual(commandes, [])
 
     def test_erplibre_only_keeps_the_system_question(self):
-        questions, commandes = self.jouer(["q", "n"])
+        questions, commandes = self.jouer(["q", "n", ""])
         self.assertIn(QUESTION_SYSTEME, questions[1])
+        self.assertIn(QUESTION_SUITE, questions[2])
         self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
+
+    def test_mobile_offers_no_unattended_rest(self):
+        # Sa dernière étape fait choisir un appareil Android au clavier.
+        questions, commandes = self.jouer(["m", "n"])
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(commandes, ["./mobile/install_and_run.sh"])
+
+
+class TestSuiteSansInteraction(Banc):
+    """« Sans interaction », choisi au menu après la question système :
+    chaque question suivante prend sa réponse par défaut."""
+
+    def test_unattended_prefixes_every_command(self):
+        questions, commandes = self.jouer(["1", "1", "1", "y", "2"])
+        self.assertEqual(len(questions), 5)
+        self.assertEqual(
+            commandes[0],
+            SANS_INTERACTION
+            + "./script/version/update_env_version.py --install",
+        )
+        self.assertTrue(commandes[-1].startswith(SANS_INTERACTION))
+        self.assertIn("--install_dev", commandes[-1])
+        self.assertEqual(self.code, 0)
+
+    def test_unattended_leaves_todo_environment_alone(self):
+        # Relancé après un échec, TODO refuserait son menu sous
+        # EL_NON_INTERACTIVE=1.
+        self.jouer(["1", "1", "1", "y", "2"])
+        self.assertNotIn("EL_NON_INTERACTIVE", self.environ_apres)
+
+    def test_sudo_password_asked_once_before_leaving(self):
+        _, commandes = self.jouer(["1", "1", "1", "y", "2"])
+        self.assertEqual(self.listes.count(["sudo", "-v"]), 1)
+        # Avant l'étape système : elle passe par exec_command_live, que
+        # ExecuteFactice note ; sudo -v est demandé, puis elle part.
+        self.assertTrue(
+            commandes[0].endswith("update_env_version.py --install")
+        )
+
+    def test_passwordless_sudo_asks_nothing(self):
+        # NOPASSWD, ou un ticket valide : « sudo -v » n'est pas lancé, sudo-rs
+        # le ferait authentifier quand même.
+        _, commandes = self.jouer(["1", "1", "1", "y", "2"], sudo=1, sudo_n=0)
+        self.assertNotIn(["sudo", "-v"], self.listes)
+        self.assertEqual(self.code, 0)
+        self.assertTrue(commandes[-1].startswith(SANS_INTERACTION))
+
+    def test_missing_sudo_is_a_refusal_not_a_crash(self):
+        _, commandes = self.jouer(["1", "1", "1", "y", "2"], sudo=None)
+        self.assertEqual((self.code, commandes), (1, []))
+
+    def test_an_exported_no_to_mise_is_kept(self):
+        with mock.patch.dict(os.environ, {"EL_INSTALL_MISE": "0"}):
+            _, commandes = self.jouer(["1", "1", "1", "n", "2"])
+        self.assertTrue(
+            commandes[-1].startswith(
+                "EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=0 "
+            ),
+            commandes,
+        )
+
+    def test_without_system_step_sudo_is_not_asked(self):
+        self.jouer(["1", "1", "1", "n", "2"])
+        self.assertNotIn(["sudo", "-v"], self.listes)
+
+    def test_sudo_refused_installs_nothing(self):
+        _, commandes = self.jouer(["1", "1", "1", "y", "2"], sudo=1)
+        self.assertEqual((self.code, commandes), (1, []))
+
+    def test_unknown_value_asks_again(self):
+        questions, commandes = self.jouer(["1", "1", "1", "n", "x", "1"])
+        self.assertEqual(len(questions), 6)
+        self.assertIn(QUESTION_SUITE, questions[5])
+        self.assertFalse(any(SANS_INTERACTION in c for c in commandes))
 
 
 class TestIdentiteGit(Banc):
-    """Sans identité git, le menu propose de la saisir APRÈS le dernier
-    menu qui offre « 0: Back » et AVANT la question système.
+    """Sans identité git, le menu propose de la saisir après la question
+    système et le choix d'une suite interactive.
 
     _fragment_repo_init est remplacé : repo_identity_ready rend
     `self.prete`, et chaque repo_identity_set est noté dans `self.ecrits`.
@@ -159,14 +253,15 @@ class TestIdentiteGit(Banc):
 
     def test_identite_presente_aucune_question(self):
         self.prete = True
-        questions, _ = self.jouer(["1", "1", "1", "n"])
-        self.assertEqual(len(questions), 4)
+        questions, _ = self.jouer(["1", "1", "1", "n", ""])
+        self.assertEqual(len(questions), 5)
         self.assertIn(QUESTION_SYSTEME, questions[3])
 
     def test_refus_rien_n_est_ecrit(self):
-        questions, commandes = self.jouer(["1", "1", "1", "n", "n"])
-        self.assertIn(todo_module.t("Configure it now? (y/N): "), questions[3])
-        self.assertIn(QUESTION_SYSTEME, questions[4])
+        questions, commandes = self.jouer(["1", "1", "1", "n", "", "n"])
+        self.assertIn(QUESTION_SYSTEME, questions[3])
+        self.assertIn(QUESTION_SUITE, questions[4])
+        self.assertIn(todo_module.t("Configure it now? (y/N): "), questions[5])
         self.assertEqual(self.ecrits, [])
         self.assertTrue(any("--install_dev" in c for c in commandes))
 
@@ -176,14 +271,15 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "1",
+                "n",
+                "",
                 "y",
                 "Nom Fictif",
                 "fictif@example.invalid",
                 "y",
-                "n",
             ]
         )
-        self.assertIn(QUESTION_SYSTEME, questions[-1])
+        self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertEqual(
             self.ecrits,
             [("repo_identity_set", "Nom Fictif", "fictif@example.invalid")],
@@ -195,12 +291,13 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "1",
+                "n",
+                "",
                 "y",
                 "Nom Fictif",
                 "sans-arobase",
                 "fictif@example.invalid",
                 "y",
-                "n",
             ]
         )
         self.assertEqual(
@@ -214,6 +311,8 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "1",
+                "n",
+                "",
                 "y",
                 "Nom Fictif",
                 "fictif@example.invalid",
@@ -221,19 +320,23 @@ class TestIdentiteGit(Banc):
                 "",
                 "autre@example.invalid",
                 "y",
-                "n",
             ]
         )
-        self.assertIn("[Nom Fictif]", questions[7])
+        self.assertIn("[Nom Fictif]", questions[9])
         self.assertEqual(
             self.ecrits,
             [("repo_identity_set", "Nom Fictif", "autre@example.invalid")],
         )
 
     def test_erplibre_seul_ne_propose_rien(self):
-        questions, _ = self.jouer(["q", "n"])
-        self.assertEqual(len(questions), 2)
+        questions, _ = self.jouer(["q", "n", ""])
+        self.assertEqual(len(questions), 3)
         self.assertIn(QUESTION_SYSTEME, questions[1])
+
+    def test_sans_interaction_rien_n_est_demande_ni_ecrit(self):
+        questions, _ = self.jouer(["1", "1", "1", "n", "2"])
+        self.assertEqual(len(questions), 5)
+        self.assertEqual(self.ecrits, [])
 
     def test_retour_ne_propose_rien(self):
         questions, _ = self.jouer(["1", "1", "0"])
@@ -478,13 +581,28 @@ class TestInstallCli(unittest.TestCase):
         self.assertEqual((code, questions), (0, []))
         self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
 
+    def test_mise_no_survit_a_la_suite_sans_interaction(self):
+        # Une affectation en préfixe écraserait --mise no.
+        code, commandes, _, _ = self.lancer(
+            ["--target", "18.0", "--env", "dev", "--type", "standard"]
+            + ["--system", "no", "--mise", "no"],
+            reponses=["2"],
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(
+            commandes[-1].startswith(
+                "EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=0 "
+            ),
+            commandes,
+        )
+
     def test_sans_mode_les_reponses_absentes_sont_demandees(self):
         # La cible est donnée, l'environnement et le reste sont demandés.
         code, _, questions, _ = self.lancer(
-            ["--target", "18.0"], reponses=["1", "1", "n", "n"]
+            ["--target", "18.0"], reponses=["1", "1", "n", "", "n"]
         )
         self.assertEqual(code, 0)
-        self.assertEqual(len(questions), 4)
+        self.assertEqual(len(questions), 5)
         version = todo_module.t("Choose a version:")
         self.assertFalse(any(version in q for q in questions))
 
@@ -553,8 +671,9 @@ class TestPycharmFerme(unittest.TestCase):
                 return 0
 
         todo.execute = Execute()
-        # Version, environnement, type, système non, PyCharm oui, Entrée.
-        suite = iter(["1", "1", "1", "n", "y", ""])
+        # Version, environnement, type, système non, suite interactive,
+        # PyCharm oui, Entrée.
+        suite = iter(["1", "1", "1", "n", "", "y", ""])
 
         def repondre(prompt=""):
             evenements.append(("question", prompt))

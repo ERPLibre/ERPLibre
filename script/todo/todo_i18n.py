@@ -1537,6 +1537,34 @@ TRANSLATIONS = {
         "fr": "Première installation du système ? Installe d'abord les paquets du système (o/N) : ",
         "en": "First system installation? Installs the system packages first (y/N): ",
     },
+    "Rest of the installation:": {
+        "fr": "Suite de l'installation :",
+        "en": "Rest of the installation:",
+    },
+    "Interactive: the next questions are asked (default)": {
+        "fr": "Interactive : les questions suivantes sont posées (défaut)",
+        "en": "Interactive: the next questions are asked (default)",
+    },
+    "Unattended: each next question takes its default answer": {
+        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut",
+        "en": "Unattended: each next question takes its default answer",
+    },
+    "Select [1]: ": {
+        "fr": "Sélection [1] : ",
+        "en": "Select [1]: ",
+    },
+    "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered.": {
+        "fr": "Sans interaction : les réponses par défaut sont prises. Aucune identité git n'est écrite, mise est posé s'il manque, PyCharm n'est pas proposé.",
+        "en": "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered.",
+    },
+    "Unattended: sudo asks for its password now, once.": {
+        "fr": "Sans interaction : sudo demande son mot de passe maintenant, une seule fois.",
+        "en": "Unattended: sudo asks for its password now, once.",
+    },
+    "sudo refused: nothing was installed.": {
+        "fr": "sudo a refusé : rien n'a été installé.",
+        "en": "sudo refused: nothing was installed.",
+    },
     "Wait for the system installation to finish before continuing.": {
         "fr": "Attendez la fin de l'installation du système avant de continuer.",
         "en": "Wait for the system installation to finish before continuing.",

@@ -177,6 +177,15 @@ and says so. An
 unsupported architecture still needs `EL_ALLOW_UNSUPPORTED_ARCH=1`. Without a
 git identity, `repo init` runs without asking for one.
 
+Someone who starts from the menu can also leave once the first questions are
+answered: after the system question, **Rest of the installation** offers
+*Interactive* (default, Enter) or *Unattended*; the target `m` does not offer
+it. Unattended, each following question takes its default answer — no git
+identity is written, mise is installed when absent unless `--mise no` or
+`EL_INSTALL_MISE=0` says otherwise, PyCharm is not offered — and, when the
+system step was chosen, sudo asks for its password at that moment, once,
+while someone is still there.
+
 
 ### Manually
 

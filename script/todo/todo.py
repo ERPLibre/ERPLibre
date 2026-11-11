@@ -502,28 +502,85 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def _install_system_step(self, systeme=None, non_interactif=False):
-        """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
-        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
-        une technologie qui installe ses propres paquets ne passe pas ici.
-        Pour une version d'Odoo, elle vient après la dernière question qui
-        offre « 0: Back » : un retour ne laisse rien d'installé.
+    def _demander_systeme(self):
+        """Demande l'étape système ; rend True sur un oui, Entrée vaut non.
+        Posée APRÈS le choix de prompt_install : une technologie qui
+        installe ses propres paquets ne passe pas ici. Pour une version
+        d'Odoo, elle vient après la dernière question qui offre « 0: Back » :
+        un retour ne laisse rien d'installé."""
+        return self._is_yes(
+            input(
+                f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
+            )
+            .strip()
+            .lower()
+        )
 
-        `systeme` (True/False) répond d'avance à la question. En mode non
+    def _choisir_suite(self):
+        """Demande comment se déroule la suite de l'installation ; rend True
+        pour « sans interaction ». Entrée choisit l'interactif : les
+        questions suivantes (identité git, mise, PyCharm) sont posées.
+        Sans interaction, chacune prend sa valeur par défaut, et personne
+        n'a plus à rester devant l'installation."""
+        choix = {
+            "1": f"1: {t('Interactive: the next questions are asked (default)')}",
+            "2": f"2: {t('Unattended: each next question takes its default answer')}",
+        }
+        while True:
+            saisie = (
+                input(
+                    f"💬 {t('Rest of the installation:')}\n\t"
+                    + "\n\t".join(choix.values())
+                    + f"\n{t('Select [1]: ')}"
+                ).strip()
+                or "1"
+            )
+            if saisie in choix:
+                return saisie == "2"
+            print(f"{t('Error, cannot understand value')} '{saisie}'")
+
+    @staticmethod
+    def _ouvrir_ticket_sudo():
+        """Demande le mot de passe sudo tant que quelqu'un est là, avant la
+        suite sans interaction : l'étape système vérifie un sudo sans mot
+        de passe dès son départ (el_sudo_preflight) et garde le ticket
+        vivant. Rend False si sudo refuse ou manque ; vrai d'office pour
+        root.
+
+        « sudo -n true » passe d'abord, comme el_sudo_preflight : un compte
+        sans mot de passe (NOPASSWD), ou un ticket encore valide, n'a rien
+        à saisir. « sudo -v » seul ne suffit pas : sudo-rs le fait
+        authentifier même sous NOPASSWD."""
+        if os.geteuid() == 0:
+            return True
+        try:
+            if subprocess.run(["sudo", "-n", "true"]).returncode == 0:
+                return True
+            print(t("Unattended: sudo asks for its password now, once."))
+            if subprocess.run(["sudo", "-v"]).returncode == 0:
+                return True
+        except OSError:
+            pass  # sudo absent : un refus comme un autre.
+        print(f"❌ {t('sudo refused: nothing was installed.')}")
+        return False
+
+    def _install_system_step(
+        self, systeme=None, non_interactif=False, prefixe=""
+    ):
+        """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
+        et propose d'ouvrir PyCharm.
+
+        `systeme` (True/False) répond d'avance à la question, posée par
+        _demander_systeme sinon. `prefixe`, des affectations de variables
+        terminées par une espace, précède la commande. En mode non
         interactif, l'installation système tourne dans ce terminal et
         l'appelant attend sa fin, au lieu d'une fenêtre à part ; PyCharm
         n'est pas proposé. Rend le code de l'installation système, 0 quand
         elle n'a pas lieu."""
         if systeme is None:
-            systeme = self._is_yes(
-                input(
-                    f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
-                )
-                .strip()
-                .lower()
-            )
+            systeme = self._demander_systeme()
         if systeme:
-            cmd = "./script/version/update_env_version.py --install"
+            cmd = prefixe + "./script/version/update_env_version.py --install"
             if non_interactif:
                 code = self.execute.exec_command_live(
                     cmd, source_erplibre=False, single_source_erplibre=True
@@ -661,7 +718,14 @@ class TODO(
         qu'aucune ne manque. Rend None sur « 0 », sinon le code de
         l'installation, 0 si elle réussit. Lancé depuis le menu
         (`reponses` à None), un échec relance TODO au lieu de rendre son
-        code."""
+        code.
+
+        L'ordre : la cible, l'environnement et le type pour une version
+        d'Odoo, l'étape système, puis, hors du mode `non_interactif`, la
+        suite : interactive par défaut, ou sans interaction, ses valeurs
+        par défaut prises (_choisir_suite). La cible « m » n'offre pas ce
+        choix : sa dernière étape fait choisir un appareil Android au
+        clavier."""
         depuis_cli = reponses is not None
         reponses = reponses or {}
         key_i = 0
@@ -790,18 +854,48 @@ class TODO(
                 cmd_intern = cmd_intern + " --with_extra"
 
         # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
+        systeme = reponses.get("systeme")
+        if systeme is None:
+            systeme = self._demander_systeme()
+        # La suite sans interaction, choisie au menu, passe aux commandes
+        # par leur préfixe et non par os.environ : TODO, relancé après un
+        # échec, refuserait son menu sous EL_NON_INTERACTIVE=1.
+        sans_interaction, prefixe = non_interactif, ""
+        if not non_interactif and odoo_version_input != "m":
+            sans_interaction = self._choisir_suite()
+            if sans_interaction:
+                print(
+                    t(
+                        "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered."
+                    )
+                )
+                if systeme and not self._ouvrir_ticket_sudo():
+                    return 1
+                # mise par défaut, sauf réponse donnée : --mise ou
+                # EL_INSTALL_MISE, qu'une affectation en préfixe écraserait.
+                mise = reponses.get("mise")
+                if mise is None and os.environ.get("EL_INSTALL_MISE") in (
+                    "0",
+                    "1",
+                ):
+                    mise = os.environ["EL_INSTALL_MISE"] == "1"
+                prefixe = (
+                    "EL_NON_INTERACTIVE=1"
+                    f" EL_INSTALL_MISE={'0' if mise is False else '1'} "
+                )
         # « q » n'installe qu'ERPLibre et ne lance pas repo init.
         if odoo_version_input != "q":
             self._proposer_identite_git(
                 nom=reponses.get("git_nom"),
                 courriel=reponses.get("git_courriel"),
-                non_interactif=non_interactif,
+                non_interactif=sans_interaction,
             )
         code = self._install_system_step(
-            systeme=reponses.get("systeme"), non_interactif=non_interactif
+            systeme=systeme, non_interactif=sans_interaction, prefixe=prefixe
         )
         if code:
             return code
+        cmd_intern = prefixe + cmd_intern
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system

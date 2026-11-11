@@ -182,6 +182,15 @@ le dit. Une architecture non supportée
 demande toujours `EL_ALLOW_UNSUPPORTED_ARCH=1`. Sans identité git, `repo
 init` tourne sans en demander.
 
+Qui part du menu peut aussi s'en aller une fois les premières questions
+répondues : après la question système, **Suite de l'installation** offre
+*Interactive* (défaut, Entrée) ou *Sans interaction* ; la cible `m` ne l'offre
+pas. Sans interaction, chaque question suivante prend sa réponse par défaut
+— aucune identité git n'est écrite, mise est posé s'il manque sauf
+`--mise no` ou `EL_INSTALL_MISE=0`, PyCharm n'est pas proposé — et, si
+l'étape système a été choisie, sudo demande son mot de passe à ce moment,
+une seule fois, tant que quelqu'un est là.
+
 
 ### Manuellement
 

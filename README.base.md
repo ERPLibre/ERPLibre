@@ -333,6 +333,15 @@ and says so. An
 unsupported architecture still needs `EL_ALLOW_UNSUPPORTED_ARCH=1`. Without a
 git identity, `repo init` runs without asking for one.
 
+Someone who starts from the menu can also leave once the first questions are
+answered: after the system question, **Rest of the installation** offers
+*Interactive* (default, Enter) or *Unattended*; the target `m` does not offer
+it. Unattended, each following question takes its default answer — no git
+identity is written, mise is installed when absent unless `--mise no` or
+`EL_INSTALL_MISE=0` says otherwise, PyCharm is not offered — and, when the
+system step was chosen, sudo asks for its password at that moment, once,
+while someone is still there.
+
 <!-- [fr] -->
 
 | Réponse | Option | Variable |
@@ -363,6 +372,15 @@ compte un sudo sans mot de passe ; sinon l'installation s'arrête aussitôt et
 le dit. Une architecture non supportée
 demande toujours `EL_ALLOW_UNSUPPORTED_ARCH=1`. Sans identité git, `repo
 init` tourne sans en demander.
+
+Qui part du menu peut aussi s'en aller une fois les premières questions
+répondues : après la question système, **Suite de l'installation** offre
+*Interactive* (défaut, Entrée) ou *Sans interaction* ; la cible `m` ne l'offre
+pas. Sans interaction, chaque question suivante prend sa réponse par défaut
+— aucune identité git n'est écrite, mise est posé s'il manque sauf
+`--mise no` ou `EL_INSTALL_MISE=0`, PyCharm n'est pas proposé — et, si
+l'étape système a été choisie, sudo demande son mot de passe à ce moment,
+une seule fois, tant que quelqu'un est là.
 
 <!-- [en] -->
 
