@@ -1553,6 +1553,10 @@ TRANSLATIONS = {
         "fr": "Sélection [1] : ",
         "en": "Select [1]: ",
     },
+    "Select [2]: ": {
+        "fr": "Sélection [2] : ",
+        "en": "Select [2]: ",
+    },
     "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered.": {
         "fr": "Sans interaction : les réponses par défaut sont prises. Aucune identité git n'est écrite, mise est posé s'il manque, PyCharm n'est pas proposé.",
         "en": "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered.",

@@ -128,6 +128,25 @@ class TestOrdreDesQuestions(Banc):
             any("--install_dev" in c for c in commandes), commandes
         )
 
+    def test_enter_picks_production_then_standard(self):
+        # La version, puis Entrée à l'environnement et au type.
+        with mock.patch.object(
+            todo_module, "gel_des_sources", lambda **_: (5, 5)
+        ):
+            questions, commandes = self.jouer(["1", "", "", "n", ""])
+        self.assertIn("[2]", questions[1])
+        self.assertIn("[1]", questions[2])
+        principale = commandes[-1]
+        self.assertTrue(principale.startswith("EL_FREEZE=1 "), principale)
+        self.assertNotIn("--with_extra", principale)
+
+    def test_enter_without_freeze_falls_back_to_development(self):
+        with mock.patch.object(
+            todo_module, "gel_des_sources", lambda **_: (0, 5)
+        ):
+            _, commandes = self.jouer(["1", "", "", "n", ""])
+        self.assertTrue(commandes[-1].startswith("EL_FREEZE=0 "), commandes)
+
     def test_back_from_the_environment_menu_installs_nothing(self):
         """La version, puis « 0: Back » au choix de l'environnement."""
         questions, commandes = self.jouer(["1", "0"])

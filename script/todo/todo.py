@@ -826,7 +826,8 @@ class TODO(
             extra_choices = {
                 "1": (
                     "1",
-                    f"1: {t('Standard install (without extra modules)')}",
+                    f"1: {t('Standard install (without extra modules)')}"
+                    f" {t('(default)')}",
                 ),
                 "2": (
                     "2",
@@ -845,9 +846,10 @@ class TODO(
                 str_extra = (
                     f"💬 {t('Install type:')}\n\t"
                     + "\n\t".join([a[1] for a in extra_choices.values()])
-                    + f"\n{t('Select: ')}"
+                    + f"\n{t('Select [1]: ')}"
                 )
-                extra_input = input(str_extra).strip()
+                # Entrée : l'installation standard.
+                extra_input = input(str_extra).strip() or "1"
             if extra_input == "0":
                 return
             if extra_input == "2":
@@ -1024,7 +1026,8 @@ class TODO(
     def _choisir_mode_installation(self, odoo_version, saisie=None):
         """Développement ou production pour `odoo_version` (« 18.0 »).
 
-        `saisie` (« 1 » ou « 2 ») répond d'avance à la question.
+        `saisie` (« 1 » ou « 2 ») répond d'avance à la question ; sinon,
+        Entrée choisit la production.
 
         Rend le préfixe de la commande d'installation, « EL_FREEZE=0 » ou
         « EL_FREEZE=1 », ou None pour revenir. Le développement suit les
@@ -1046,7 +1049,7 @@ class TODO(
             "1": f"1: {t('Development: follows the branches (revision)')}",
             "2": (
                 f"2: {t('Production: frozen commits (freeze-revision)')}"
-                f" — {detail}"
+                f" — {detail} {t('(default)')}"
             ),
             "0": bleu_poudre(f"0: {t('Back')}"),
         }
@@ -1054,11 +1057,14 @@ class TODO(
         while saisie not in choix:
             if saisie:
                 print(f"{t('Error, cannot understand value')} '{saisie}'")
-            saisie = input(
-                f"💬 {t('Environment:')}\n\t"
-                + "\n\t".join(choix.values())
-                + f"\n{t('Select: ')}"
-            ).strip()
+            saisie = (
+                input(
+                    f"💬 {t('Environment:')}\n\t"
+                    + "\n\t".join(choix.values())
+                    + f"\n{t('Select [2]: ')}"
+                ).strip()
+                or "2"
+            )
         if saisie == "0":
             return None
         if saisie == "2" and geles:
