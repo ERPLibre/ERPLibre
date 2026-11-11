@@ -265,7 +265,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   used to accept only 18.04 and 20.04, and a missing `fi` made bash reject the whole file. It now
   installs `uidmap`, without which the rootless Docker setup refuses to run. The production guide
   documents a single Ubuntu server section for those versions
-- In **TODO › Install**, Enter picks production in the environment menu — development when the Odoo version has no frozen commit, as before — and the standard install in the install-type menu; each menu marks its default and shows it in its prompt
+- In **TODO › Install**, Enter picks production in the environment menu — development when the Odoo version has no frozen commit, as before — and the standard install in the install-type menu; each menu marks its default and shows it in its prompt. The system-step question defaults to yes when something it installs is missing — git, make, a C compiler, psql, node, npm, or the account's PostgreSQL role — and names it, to no when all of it is there. Enter now accepts to enter a missing git identity
 
 ## Fixed
 

@@ -1621,9 +1621,21 @@ TRANSLATIONS = {
         "fr": "Aucune identité git (user.name, user.email) : repo init la demanderait.",
         "en": "No git identity (user.name, user.email): repo init would ask for it.",
     },
-    "Configure it now? (y/N): ": {
-        "fr": "La configurer maintenant ? (o/N) : ",
-        "en": "Configure it now? (y/N): ",
+    "Configure it now? (Y/n): ": {
+        "fr": "La configurer maintenant ? (O/n) : ",
+        "en": "Configure it now? (Y/n): ",
+    },
+    "System packages missing:": {
+        "fr": "Paquets du système manquants :",
+        "en": "System packages missing:",
+    },
+    "PostgreSQL role of this account": {
+        "fr": "rôle PostgreSQL de ce compte",
+        "en": "PostgreSQL role of this account",
+    },
+    "First system installation? Installs the system packages first (Y/n): ": {
+        "fr": "Première installation du système ? Installe d'abord les paquets du système (O/n) : ",
+        "en": "First system installation? Installs the system packages first (Y/n): ",
     },
     "Skipped: the installation will not ask for it.": {
         "fr": "Ignoré : l'installation ne la demandera pas.",

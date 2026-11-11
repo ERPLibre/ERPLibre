@@ -35,7 +35,26 @@ from script.todo.todo import TODO  # noqa: E402
 QUESTION_SYSTEME = todo_module.t(
     "First system installation? Installs the system packages first (y/N): "
 ).strip()
+QUESTION_SYSTEME_OUI = todo_module.t(
+    "First system installation? Installs the system packages first (Y/n): "
+).strip()
 QUESTION_SUITE = todo_module.t("Rest of the installation:")
+
+
+# La vraie sonde, gardée avant que setUpModule la remplace.
+SONDE_REELLE = TODO.__dict__["_systeme_manquant"].__func__
+
+
+def setUpModule():
+    # La sonde du système lirait l'hôte : rien ne manque, sauf dans les
+    # tests qui disent le contraire.
+    patch = mock.patch.object(
+        TODO, "_systeme_manquant", staticmethod(lambda: [])
+    )
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+
+
 SANS_INTERACTION = "EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=1 "
 
 
@@ -146,6 +165,23 @@ class TestOrdreDesQuestions(Banc):
         ):
             _, commandes = self.jouer(["1", "", "", "n", ""])
         self.assertTrue(commandes[-1].startswith("EL_FREEZE=0 "), commandes)
+
+    def test_enter_installs_the_system_when_something_is_missing(self):
+        with mock.patch.object(
+            TODO, "_systeme_manquant", staticmethod(lambda: ["psql", "node"])
+        ):
+            questions, commandes = self.jouer(["1", "1", "1", "", ""])
+        self.assertIn(QUESTION_SYSTEME_OUI, questions[3])
+        self.assertIn(
+            "./script/version/update_env_version.py --install", commandes
+        )
+
+    def test_enter_skips_the_system_when_nothing_is_missing(self):
+        questions, commandes = self.jouer(["1", "1", "1", "", ""])
+        self.assertIn(QUESTION_SYSTEME, questions[3])
+        self.assertNotIn(
+            "./script/version/update_env_version.py --install", commandes
+        )
 
     def test_back_from_the_environment_menu_installs_nothing(self):
         """La version, puis « 0: Back » au choix de l'environnement."""
@@ -280,7 +316,7 @@ class TestIdentiteGit(Banc):
         questions, commandes = self.jouer(["1", "1", "1", "n", "", "n"])
         self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertIn(QUESTION_SUITE, questions[4])
-        self.assertIn(todo_module.t("Configure it now? (y/N): "), questions[5])
+        self.assertIn(todo_module.t("Configure it now? (Y/n): "), questions[5])
         self.assertEqual(self.ecrits, [])
         self.assertTrue(any("--install_dev" in c for c in commandes))
 
@@ -345,6 +381,25 @@ class TestIdentiteGit(Banc):
         self.assertEqual(
             self.ecrits,
             [("repo_identity_set", "Nom Fictif", "autre@example.invalid")],
+        )
+
+    def test_entree_ouvre_la_saisie(self):
+        questions, _ = self.jouer(
+            [
+                "1",
+                "1",
+                "1",
+                "n",
+                "",
+                "",
+                "Nom Fictif",
+                "fictif@example.invalid",
+                "y",
+            ]
+        )
+        self.assertEqual(
+            self.ecrits,
+            [("repo_identity_set", "Nom Fictif", "fictif@example.invalid")],
         )
 
     def test_erplibre_seul_ne_propose_rien(self):
@@ -742,6 +797,56 @@ class TestPycharmFerme(unittest.TestCase):
         }
         self.assertLess(rangs["pycharm"], rangs["attente"])
         self.assertLess(rangs["attente"], rangs["installation"])
+
+
+class TestSondeSysteme(unittest.TestCase):
+    """_systeme_manquant : ce que l'étape système poserait et qui manque."""
+
+    def sonder(self, absentes=(), role=0):
+        """`role` : code de psql, ou une exception qu'il lève."""
+        self.appels = []
+
+        def run(cmd, *a, **k):
+            self.appels.append((cmd, k))
+            if isinstance(role, BaseException):
+                raise role
+            return subprocess.CompletedProcess(cmd, role, "", "")
+
+        with (
+            mock.patch.object(
+                todo_module.shutil,
+                "which",
+                lambda c, path=None: (
+                    None if c in absentes else f"/usr/bin/{c}"
+                ),
+            ),
+            mock.patch.object(todo_module.subprocess, "run", run),
+        ):
+            return SONDE_REELLE()
+
+    def test_psql_ne_demande_jamais_de_mot_de_passe(self):
+        # Une invite sur le terminal, tuée au délai, laisserait l'écho coupé.
+        self.sonder()
+        cmd, options = self.appels[0]
+        self.assertIn("-w", cmd)
+        self.assertEqual(options["env"].get("PGCONNECT_TIMEOUT"), "5")
+
+    def test_delai_ou_erreur_valent_role_manquant(self):
+        for erreur in (subprocess.TimeoutExpired("psql", 10), OSError()):
+            with self.subTest(erreur=type(erreur).__name__):
+                self.assertEqual(len(self.sonder(role=erreur)), 1)
+
+    def test_tout_est_la(self):
+        self.assertEqual(self.sonder(), [])
+
+    def test_commandes_et_role_absents(self):
+        manque = self.sonder(absentes=("node", "npm"), role=2)
+        self.assertEqual(
+            manque[:2] + [len(manque)], ["node", "npm", 3], manque
+        )
+
+    def test_sans_psql_le_role_n_est_pas_sonde(self):
+        self.assertEqual(self.sonder(absentes=("psql",), role=2), ["psql"])
 
 
 if __name__ == "__main__":

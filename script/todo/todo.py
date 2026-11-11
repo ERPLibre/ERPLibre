@@ -503,11 +503,22 @@ class TODO(
                 print(t("Command not found !"))
 
     def _demander_systeme(self):
-        """Demande l'étape système ; rend True sur un oui, Entrée vaut non.
-        Posée APRÈS le choix de prompt_install : une technologie qui
-        installe ses propres paquets ne passe pas ici. Pour une version
-        d'Odoo, elle vient après la dernière question qui offre « 0: Back » :
-        un retour ne laisse rien d'installé."""
+        """Demande l'étape système ; rend True sur un oui. Posée APRÈS le
+        choix de prompt_install : une technologie qui installe ses propres
+        paquets ne passe pas ici. Pour une version d'Odoo, elle vient après
+        la dernière question qui offre « 0: Back » : un retour ne laisse
+        rien d'installé.
+
+        Entrée vaut oui quand _systeme_manquant trouve un manque, qui est
+        nommé ; non quand tout est là."""
+        manque = self._systeme_manquant()
+        if manque:
+            print(f"⚠  {t('System packages missing:')} {', '.join(manque)}")
+            return self._is_yes_default_yes(
+                input(
+                    f"💬 {t('First system installation? Installs the system packages first (Y/n): ')}"
+                )
+            )
         return self._is_yes(
             input(
                 f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
@@ -515,6 +526,55 @@ class TODO(
             .strip()
             .lower()
         )
+
+    @staticmethod
+    def _systeme_manquant():
+        """Rend ce que l'étape système poserait et qui manque, dans une
+        liste vide quand tout est là. Sondé sans rien installer, pour tous
+        les systèmes que sert install_dev.sh : les commandes git, make,
+        cc, psql, node et npm, puis le rôle PostgreSQL du compte, que pose
+        el_postgres_role (script/install/lib_postgres_role.sh) et sans
+        lequel Odoo ne se connecte pas. Une sonde, et non un inventaire des
+        paquets : elle ne fait que choisir le défaut de la question.
+
+        Les commandes se cherchent dans le PATH, puis dans les dossiers où
+        Homebrew pose postgresql@15 sans le lier (« keg-only ») : sur macOS,
+        psql n'est jamais dans le PATH. psql ne demande jamais de mot de
+        passe (-w) : une invite sur le terminal, tuée au bout du délai,
+        laisserait l'écho coupé pour toutes les questions suivantes."""
+        chemin = os.pathsep.join(
+            [os.environ.get("PATH", "")]
+            + [
+                d
+                for d in (
+                    "/opt/homebrew/opt/postgresql@15/bin",
+                    "/usr/local/opt/postgresql@15/bin",
+                )
+                if os.path.isdir(d)
+            ]
+        )
+        trouvees = {
+            commande: shutil.which(commande, path=chemin)
+            for commande in ("git", "make", "cc", "psql", "node", "npm")
+        }
+        manque = [c for c, trouvee in trouvees.items() if not trouvee]
+        if trouvees["psql"]:
+            try:
+                role = subprocess.run(
+                    [trouvees["psql"], "-w", "-X", "-At", "-d", "postgres"]
+                    + ["-c", "SELECT 1"],
+                    cwd="/",
+                    env={**os.environ, "PGCONNECT_TIMEOUT": "5"},
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    timeout=10,
+                )
+                role_ok = role.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                role_ok = False
+            if not role_ok:
+                manque.append(t("PostgreSQL role of this account"))
+        return manque
 
     def _choisir_suite(self):
         """Demande comment se déroule la suite de l'installation ; rend True
@@ -968,7 +1028,9 @@ class TODO(
         print(
             f"⚠  {t('No git identity (user.name, user.email): repo init would ask for it.')}"
         )
-        if not self._is_yes(input(f"💬 {t('Configure it now? (y/N): ')}")):
+        if not self._is_yes_default_yes(
+            input(f"💬 {t('Configure it now? (Y/n): ')}")
+        ):
             print(t("Skipped: the installation will not ask for it."))
             return
         nom = courriel = ""

@@ -269,7 +269,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ailleurs. Il n'acceptait que 18.04 et 20.04, et un `fi` manquant faisait refuser le fichier entier
   par bash. Il installe désormais `uidmap`, sans lequel la mise en place de Docker rootless refuse
   de tourner. Le guide de production documente une seule section serveur Ubuntu pour ces versions
-- Dans **TODO › Installation**, Entrée choisit la production au menu de l'environnement — le développement quand la version d'Odoo n'a aucun commit gelé, comme avant — et l'installation standard au menu du type ; chaque menu marque son défaut et l'affiche dans son invite
+- Dans **TODO › Installation**, Entrée choisit la production au menu de l'environnement — le développement quand la version d'Odoo n'a aucun commit gelé, comme avant — et l'installation standard au menu du type ; chaque menu marque son défaut et l'affiche dans son invite. La question de l'étape système vaut oui par défaut quand quelque chose qu'elle pose manque — git, make, un compilateur C, psql, node, npm, ou le rôle PostgreSQL du compte — et le nomme, non quand tout est là. Entrée accepte désormais de saisir une identité git absente
 
 ## Corrigé
 
