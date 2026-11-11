@@ -21830,6 +21830,72 @@ TRANSLATIONS = {
         "fr": "La suppression a échoué, code",
         "en": "The deletion failed, code",
     },
+    # Système : espace à récupérer
+    "Venv of another checkout": {
+        "fr": "Venv d'un autre checkout",
+        "en": "Venv of another checkout",
+    },
+    "Unknown cache": {
+        "fr": "Cache inconnu",
+        "en": "Unknown cache",
+    },
+    "Trash": {
+        "fr": "Corbeille",
+        "en": "Trash",
+    },
+    "downloaded again on next use": {
+        "fr": "retéléchargé au prochain usage",
+        "en": "downloaded again on next use",
+    },
+    "contents unknown: look before deleting": {
+        "fr": "contenu inconnu : regarder avant d'effacer",
+        "en": "contents unknown: look before deleting",
+    },
+    "that checkout needs a reinstall to run": {
+        "fr": "ce checkout devra être réinstallé pour tourner",
+        "en": "that checkout needs a reinstall to run",
+    },
+    "Heavy directories next to the repository": {
+        "fr": "🗂 Répertoires lourds à côté du dépôt",
+        "en": "🗂 Heavy directories next to the repository",
+    },
+    "System caches (sudo)": {
+        "fr": "🔐 Caches du système (sudo)",
+        "en": "🔐 System caches (sudo)",
+    },
+    "QEMU download cache - size and cleanup": {
+        "fr": "💿 Cache de téléchargement QEMU - taille et nettoyage",
+        "en": "💿 QEMU download cache - size and cleanup",
+    },
+    "Containers - size and cleanup": {
+        "fr": "📦 Conteneurs - taille et nettoyage",
+        "en": "📦 Containers - size and cleanup",
+    },
+    # Système : rapports et caches du système
+    "Measuring": {
+        "fr": "Mesure de",
+        "en": "Measuring",
+    },
+    "since the last commit": {
+        "fr": "depuis le dernier commit",
+        "en": "since the last commit",
+    },
+    "in total": {
+        "fr": "au total",
+        "en": "in total",
+    },
+    "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.": {
+        "fr": "Les venvs des autres checkouts ERPLibre sont proposés, décochés, dans Espace à récupérer.",
+        "en": "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.",
+    },
+    "Numbers to run (e.g. 1,2), Enter for none: ": {
+        "fr": "Numéros à lancer (ex. 1,2), Entrée pour aucun : ",
+        "en": "Numbers to run (e.g. 1,2), Enter for none: ",
+    },
+    "Run these commands with sudo? (y/N): ": {
+        "fr": "Lancer ces commandes avec sudo ? (o/N) : ",
+        "en": "Run these commands with sudo? (y/N): ",
+    },
     # Système : diagnostic
     "System": {
         "fr": "Système",
@@ -21846,6 +21912,10 @@ TRANSLATIONS = {
     "System diagnostic": {
         "fr": "🩺 Diagnostic du système",
         "en": "🩺 System diagnostic",
+    },
+    "Space to reclaim": {
+        "fr": "🧹 Espace à récupérer",
+        "en": "🧹 Space to reclaim",
     },
     "Identity": {
         "fr": "Identité",
@@ -21938,6 +22008,155 @@ TRANSLATIONS = {
     "Report saved:": {
         "fr": "Rapport enregistré :",
         "en": "Report saved:",
+    },
+    "Searching for space to reclaim…": {
+        "fr": "Recherche de l'espace à récupérer…",
+        "en": "Searching for space to reclaim…",
+    },
+    "Nothing to reclaim.": {
+        "fr": "Rien à récupérer.",
+        "en": "Nothing to reclaim.",
+    },
+    "Check what to delete, then choose Delete.": {
+        "fr": "Cochez ce qu'il faut effacer, puis choisissez Effacer.",
+        "en": "Check what to delete, then choose Delete.",
+    },
+    "Delete": {
+        "fr": "Effacer",
+        "en": "Delete",
+    },
+    "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ": {
+        "fr": "Numéros à effacer (ex. 1,3), Entrée pour les cochés, c pour annuler : ",
+        "en": "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ",
+    },
+    "Delete these items?": {
+        "fr": "Effacer ces éléments ?",
+        "en": "Delete these items?",
+    },
+    "Nothing deleted.": {
+        "fr": "Rien n'a été effacé.",
+        "en": "Nothing deleted.",
+    },
+    "Freed:": {
+        "fr": "Libéré :",
+        "en": "Freed:",
+    },
+    "Left in place:": {
+        "fr": "Laissés en place :",
+        "en": "Left in place:",
+    },
+    "Cache": {
+        "fr": "Cache",
+        "en": "Cache",
+    },
+    "Temporary leftover": {
+        "fr": "Reste temporaire",
+        "en": "Temporary leftover",
+    },
+    "Orphan filestore": {
+        "fr": "Filestore orphelin",
+        "en": "Orphan filestore",
+    },
+    "Odoo web sessions": {
+        "fr": "Sessions web d'Odoo",
+        "en": "Odoo web sessions",
+    },
+    "Other Odoo venv": {
+        "fr": "Venv d'une autre version d'Odoo",
+        "en": "Other Odoo venv",
+    },
+    "reinstall to switch back to this version": {
+        "fr": "réinstaller pour revenir à cette version",
+        "en": "reinstall to switch back to this version",
+    },
+    "recent: its database may be being created": {
+        "fr": "récent : sa base est peut-être en création",
+        "en": "recent: its database may be being created",
+    },
+    "path is or crosses a link": {
+        "fr": "le chemin est ou traverse un lien",
+        "en": "path is or crosses a link",
+    },
+    "not yours": {
+        "fr": "ne vous appartient pas",
+        "en": "not yours",
+    },
+    "private/ or tasks/": {
+        "fr": "private/ ou tasks/",
+        "en": "private/ or tasks/",
+    },
+    "outside the allowed directories": {
+        "fr": "hors des répertoires permis",
+        "en": "outside the allowed directories",
+    },
+    "already gone": {
+        "fr": "déjà absent",
+        "en": "already gone",
+    },
+    "its database exists again": {
+        "fr": "sa base existe de nouveau",
+        "en": "its database exists again",
+    },
+    "database list unavailable": {
+        "fr": "liste des bases indisponible",
+        "en": "database list unavailable",
+    },
+    "a filesystem is mounted on it or under it": {
+        "fr": "un système de fichiers y est monté, sur lui ou dessous",
+        "en": "a filesystem is mounted on it or under it",
+    },
+    "a process is using it": {
+        "fr": "un processus l'emploie",
+        "en": "a process is using it",
+    },
+    (
+        "A PostgreSQL that serves this data_dir is unreachable: Odoo "
+        "filestores are not proposed."
+    ): {
+        "fr": (
+            "Un PostgreSQL qui sert ce data_dir est injoignable : aucun "
+            "filestore d'Odoo n'est proposé."
+        ),
+        "en": (
+            "A PostgreSQL that serves this data_dir is unreachable: Odoo "
+            "filestores are not proposed."
+        ),
+    },
+    "No data_dir in config.conf: Odoo filestores are not proposed.": {
+        "fr": (
+            "Aucun data_dir dans config.conf : aucun filestore d'Odoo n'est "
+            "proposé."
+        ),
+        "en": "No data_dir in config.conf: Odoo filestores are not proposed.",
+    },
+    (
+        "exported: the cluster of each Odoo is uncertain, Odoo filestores are "
+        "not proposed."
+    ): {
+        "fr": (
+            "exporté : le cluster de chaque Odoo est incertain, aucun "
+            "filestore d'Odoo n'est proposé."
+        ),
+        "en": (
+            "exported: the cluster of each Odoo is uncertain, Odoo filestores "
+            "are not proposed."
+        ),
+    },
+    (
+        "An orphan filestore is one no PostgreSQL of the neighbouring "
+        "ERPLibre checkouts knows; an Odoo elsewhere sharing this data_dir is "
+        "not consulted."
+    ): {
+        "fr": (
+            "Un filestore orphelin est un filestore qu'aucun PostgreSQL des "
+            "checkouts ERPLibre voisins ne connaît ; un Odoo ailleurs qui "
+            "partage ce data_dir n'est pas consulté."
+        ),
+        "en": (
+            "An orphan filestore is one no PostgreSQL of the neighbouring "
+            "ERPLibre checkouts knows; an Odoo elsewhere sharing this "
+            "data_dir is not consulted."
+        ),
     },
 }
 
