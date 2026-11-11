@@ -547,15 +547,28 @@ class PythonMenuMixin:
                 return candidats[int(reponse) - 1]
             print(f"{t('Error, cannot understand value')} '{reponse}'")
 
-    def _poetry_drift_actif(self, version):
-        """Le venv de la version active face au lock de la racine."""
+    def mettre_a_jour_venv(self, choix):
+        """Met à jour le venv `choix` (une entrée de `drift.venvs`) sans
+        poser de question : la résolution du Healthcheck qui l'appelle l'a
+        fait choisir. La comparaison est refaite d'abord, et rien n'est
+        installé si le venv est déjà aligné."""
+        if choix["genre"] == "outillage":
+            self._venv_outillage_drift(choix["venv"], demander=False)
+        elif choix["active"]:
+            self._poetry_drift_actif(choix["version"], demander=False)
+        else:
+            self._poetry_drift_autre(choix["version"], demander=False)
+
+    def _poetry_drift_actif(self, version, demander=True):
+        """Le venv de la version active face au lock de la racine.
+        `demander` faux : la mise à jour suit sans question."""
         if not self._poetry_drift_prerequis(version):
             return
         simulation = drift.simuler(".", version)
         if not self._poetry_drift_afficher(version, simulation):
             return
         question = t("Update the venv to match the lock (y/N, default: N)? ")
-        if not self._is_yes(input(f"💬 {question}")):
+        if demander and not self._is_yes(input(f"💬 {question}")):
             print(
                 t("To update it later: %s")
                 % "EL_PHASE=poetry ./script/install/install_locally.sh"
@@ -563,9 +576,10 @@ class PythonMenuMixin:
             return
         self._poetry_drift_mettre_a_jour(version, simulation)
 
-    def _poetry_drift_autre(self, version):
+    def _poetry_drift_autre(self, version, demander=True):
         """Un venv d'Odoo qui n'est pas l'actif, face à SON lock, depuis un
-        dossier de projet temporaire : la version active ne bouge pas."""
+        dossier de projet temporaire : la version active ne bouge pas.
+        `demander` faux : la mise à jour suit sans question."""
         c = drift.chemins(version)
         if not os.path.isfile(c["poetry"]):
             print(f"❌ {t('Poetry is missing from the venv:')} {c['poetry']}")
@@ -583,7 +597,7 @@ class PythonMenuMixin:
             question = t(
                 "Update the venv to match the lock (y/N, default: N)? "
             )
-            if not self._is_yes(input(f"💬 {question}")):
+            if demander and not self._is_yes(input(f"💬 {question}")):
                 return
             self._poetry_drift_mettre_a_jour(
                 version,
@@ -592,15 +606,16 @@ class PythonMenuMixin:
                 projet=projet,
             )
 
-    def _venv_outillage_drift(self, venv):
+    def _venv_outillage_drift(self, venv, demander=True):
         """Le venv de l'outillage face à ses exigences : manquantes, hors
         bornes, et paquets que rien ne demande. Propose d'installer ce qui
-        manque ; un paquet de trop n'est jamais retiré."""
+        manque ; un paquet de trop n'est jamais retiré. `demander` faux :
+        l'installation suit sans question."""
         etat = self._venv_outillage_analyser(venv)
         if etat is None or not self._venv_outillage_afficher(venv, etat):
             return
         question = t("Install the missing requirements (y/N, default: N)? ")
-        if not self._is_yes(input(f"💬 {question}")):
+        if demander and not self._is_yes(input(f"💬 {question}")):
             return
         commande = (
             ". ./script/install/lib_pip_provider.sh && el_pip_install"

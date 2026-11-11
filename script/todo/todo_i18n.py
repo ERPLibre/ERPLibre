@@ -2169,6 +2169,54 @@ TRANSLATIONS = {
         "fr": "Addons face au manifeste",
         "en": "Addons against the manifest",
     },
+    "Venv dependencies": {
+        "fr": "Dépendances des venvs",
+        "en": "Venv dependencies",
+    },
+    "no venv": {
+        "fr": "aucun venv",
+        "en": "no venv",
+    },
+    "missing:": {
+        "fr": "manquant :",
+        "en": "missing:",
+    },
+    "outside the lock": {
+        "fr": "hors du lock",
+        "en": "outside the lock",
+    },
+    "differences": {
+        "fr": "écarts",
+        "en": "differences",
+    },
+    "to update": {
+        "fr": "à mettre à jour",
+        "en": "to update",
+    },
+    "unreadable": {
+        "fr": "illisibles",
+        "en": "unreadable",
+    },
+    "installed but required by nothing": {
+        "fr": "installés sans qu'aucune exigence ne les demande",
+        "en": "installed but required by nothing",
+    },
+    "Update the venvs:": {
+        "fr": "Mettre à jour les venvs :",
+        "en": "Update the venvs:",
+    },
+    "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
+        "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",
+        "en": "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.",
+    },
+    "Venvs to update:": {
+        "fr": "Venvs à mettre à jour :",
+        "en": "Venvs to update:",
+    },
+    "All venvs": {
+        "fr": "Tous les venvs",
+        "en": "All venvs",
+    },
     "Repo branches": {
         "fr": "Branches des dépôts",
         "en": "Repo branches",

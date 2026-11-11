@@ -44,6 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from script.git import freeze_resolution
+from script.poetry import poetry_venv_drift as drift
 from script.todo import (
     container_runtime,
     todo_couleur,
@@ -153,6 +154,7 @@ TITRES = {
     "verifier_branches": "Repo branches",
     "verifier_hooks": "Git hooks",
     "verifier_venv": "Odoo venv",
+    "verifier_dependances_venvs": "Venv dependencies",
     "verifier_disque": "Free disk space",
     "verifier_postgresql": "PostgreSQL",
     "verifier_odoo": "Odoo HTTP port",
@@ -176,6 +178,7 @@ ICONES_VERIFICATIONS = {
     "verifier_branches": "🌿",
     "verifier_hooks": "🪝",
     "verifier_venv": "🧪",
+    "verifier_dependances_venvs": "📦",
     "verifier_disque": "💾",
     "verifier_postgresql": "🐘",
     "verifier_odoo": "🌐",
@@ -1210,6 +1213,161 @@ def verifier_venv(ctx):
     return Resultat(nom, OK, f"{venv} · {obtenu}")
 
 
+MAJ_VENVS = "maj_venvs"
+
+
+def _ecarts_venv(ctx, choix):
+    """L'écart d'un venv (une entrée de `drift.venvs`) à ce qu'il doit
+    porter : {"venv", "ecarts": [lignes], "info": [lignes], "erreur"}.
+    Un venv d'Odoo passe par la simulation de Poetry, contre le lock de la
+    racine pour la version active et contre son propre lock, depuis un
+    dossier temporaire, pour une autre ; le venv de l'outillage par
+    venv_requirements_drift.py. Rien n'est installé."""
+    rendu = {"venv": choix["venv"], "ecarts": [], "info": [], "erreur": None}
+
+    def noter_et_lancer(commande, **options):
+        ctx.noter(f"{ctx.relatif(commande[0])} {shlex.join(commande[1:])}")
+        return subprocess.run(commande, **options)
+
+    if choix["genre"] == "outillage":
+        sortie = ctx.lancer(
+            [
+                os.path.join(choix["venv"], "bin", "python"),
+                os.path.join("script", "poetry", "venv_requirements_drift.py"),
+                drift.EXIGENCES_OUTILLAGE,
+            ],
+            forme=(
+                f"{choix['venv']}/bin/python"
+                " script/poetry/venv_requirements_drift.py"
+                f" {drift.EXIGENCES_OUTILLAGE}"
+            ),
+            delai=DELAI_OUTIL,
+        )
+        try:
+            etat = json.loads(sortie.stdout)
+        except ValueError:
+            etat = {"erreur": (sortie.stderr or sortie.stdout).strip()}
+        if "erreur" in etat:
+            rendu["erreur"] = etat["erreur"]
+            return rendu
+        rendu["ecarts"] += [f"{t('Missing')} {e}" for e in etat["manquantes"]]
+        rendu["ecarts"] += [
+            f"{t('Out of bounds')} {e['exigence']}"
+            f" ({t('installed')} {e['installee']})"
+            for e in etat["hors_bornes"]
+        ]
+        if etat["de_trop"]:
+            rendu["info"].append(
+                f"{len(etat['de_trop'])}"
+                f" {t('installed but required by nothing')}"
+            )
+        return rendu
+
+    version = choix["version"]
+    c = drift.chemins(version)
+    for fichier in (c["poetry"], c["lock"]):
+        if not os.path.isfile(os.path.join(ctx.racine, fichier)):
+            rendu["erreur"] = f"{t('missing:')} {fichier}"
+            return rendu
+    if choix["active"]:
+        simulation = drift.simuler(
+            ctx.racine, version, executer=noter_et_lancer
+        )
+    else:
+        with drift.projet_temporaire(ctx.racine, version) as projet:
+            simulation = drift.simuler(
+                ctx.racine, version, executer=noter_et_lancer, projet=projet
+            )
+    if not simulation["ok"]:
+        derniere = (simulation["sortie"].strip().splitlines() or [""])[-1]
+        rendu["erreur"] = f"{t('Poetry refuses to compare:')} {derniere}"
+        return rendu
+    classes = drift.classer(simulation["operations"])
+    for action in drift.ECARTS:
+        for op in classes.get(action, []):
+            versions = (
+                op["apres"]
+                if action == "Installing"
+                else f"{op['avant']} → {op['apres']}"
+            )
+            rendu["ecarts"].append(f"{op['nom']} {versions}")
+    hors_lock = classes.get("Removing", [])
+    if hors_lock:
+        rendu["info"].append(f"{len(hors_lock)} {t('outside the lock')}")
+    return rendu
+
+
+def verifier_dependances_venvs(ctx):
+    """Chaque venv du checkout face à ce qu'il doit porter : un venv
+    d'Odoo face à son poetry.lock, le venv de l'outillage face à ses
+    exigences. Un venv qui s'en écarte est offert à la résolution « Mettre
+    à jour les venvs ». Un paquet hors du lock, ou que rien ne demande, est
+    une information : la mise à jour ne le retire pas."""
+    nom = titre(verifier_dependances_venvs)
+    active = todo_etat._lire(os.path.join(ctx.racine, ".erplibre-version"))
+    candidats = drift.venvs(ctx.racine, active=active)
+    if not candidats:
+        return Resultat(nom, SAUTE, t("no venv"))
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        rendus = list(pool.map(lambda c: _ecarts_venv(ctx, c), candidats))
+    details, a_jour = [], []
+    for choix, rendu in zip(candidats, rendus):
+        if rendu["erreur"]:
+            details.append(f"{choix['venv']} : ❌ {rendu['erreur']}")
+            continue
+        if rendu["ecarts"]:
+            details.append(
+                f"{choix['venv']} : {len(rendu['ecarts'])}"
+                f" {t('differences')} — {', '.join(rendu['ecarts'][:6])}"
+                + (" …" if len(rendu["ecarts"]) > 6 else "")
+            )
+            choix = dict(choix, resume=details[-1].split(" : ", 1)[1])
+            a_jour.append(choix)
+        for info in rendu["info"]:
+            details.append(f"{choix['venv']} : ℹ️  {info}")
+    erreurs = sum(1 for r in rendus if r["erreur"])
+    resume = f"{len(candidats)} venvs"
+    if a_jour:
+        resume += f" · {len(a_jour)} {t('to update')}"
+    if erreurs:
+        resume += f" · {erreurs} {t('unreadable')}"
+    resolutions = []
+    if a_jour:
+        resolutions.append(
+            Resolution(
+                MAJ_VENVS,
+                f"📦 {t('Update the venvs:')} {len(a_jour)}",
+                [
+                    t(
+                        "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays."
+                    )
+                ]
+                + [f"   {c['venv']} — {c['resume']}" for c in a_jour],
+                a_jour,
+            )
+        )
+    statut = ALERTE if (a_jour or erreurs) else OK
+    return Resultat(nom, statut, resume, details, resolutions=resolutions)
+
+
+def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
+    sortie(t("Venvs to update:"))
+    choisis = choisir_depots(
+        venvs,
+        demander,
+        sortie,
+        decrire=lambda c: f"{c['venv']} — {c['resume']}",
+        tous=t("All venvs"),
+    )
+    if not choisis or mettre_a_jour_venv is None:
+        sortie(t("Nothing changed."))
+        return False
+    for choix in choisis:
+        sortie(f"── {choix['venv']} ──")
+        mettre_a_jour_venv(choix)
+    return True
+
+
 def verifier_disque(ctx):
     nom = titre(verifier_disque)
     sortie = ctx.lancer(["df", "-Pk", ctx.racine], forme="df -Pk .")
@@ -1412,6 +1570,7 @@ VERIFICATIONS = (
     ("code", verifier_branches),
     ("code", verifier_hooks),
     ("environnement", verifier_venv),
+    ("environnement", verifier_dependances_venvs),
     ("environnement", verifier_disque),
     ("environnement", verifier_postgresql),
     ("environnement", verifier_odoo),
@@ -1515,17 +1674,20 @@ def rendre_resolutions(resolutions):
     return "\n".join(lignes)
 
 
-def choisir_depots(depots, demander, sortie):
+def choisir_depots(depots, demander, sortie, decrire=None, tous=None):
     """Les dépôts que l'utilisateur choisit parmi `depots`, numérotés :
     plusieurs numéros séparés par des espaces ou des virgules, des plages
     (« 2-3 »), « a » pour tous, 0 ou Entrée pour revenir sans rien choisir.
     Une saisie dont une partie est fautive est refusée en entier, puis
     redemandée : une faute ne retient jamais en silence une partie de la
-    sélection. Une fin d'entrée (Ctrl+D) vaut retour."""
+    sélection. Une fin d'entrée (Ctrl+D) vaut retour. `decrire(élément)`
+    rend la ligne d'un élément, l'écart au gel d'un dépôt par défaut ;
+    `tous` est le libellé de « a »."""
+    decrire = decrire or (lambda depot: _ligne_gel(depot).strip())
     while True:
         for numero, depot in enumerate(depots, 1):
-            sortie(f"   [{numero}]{_ligne_gel(depot)[2:]}")
-        sortie(f"   [a] {t('All repositories')}")
+            sortie(f"   [{numero}] {decrire(depot)}")
+        sortie(f"   [a] {tous or t('All repositories')}")
         sortie(f"   {todo_couleur.retour()}")
         try:
             reponse = demander(
@@ -1551,11 +1713,18 @@ def _afficher_commande(sortie):
     return lambda commande: sortie(f"   $ {commande}")
 
 
-def executer_resolution(ctx, resolution, demander=None, sortie=print):
+def executer_resolution(
+    ctx, resolution, demander=None, sortie=print, mettre_a_jour_venv=None
+):
     """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
     True si quelque chose a changé. `demander` vaut `input` par défaut, lu
-    à l'appel."""
+    à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
+    TODO, qui sait installer un lock et faire le rapport."""
     demander = demander or input
+    if resolution.cle == MAJ_VENVS:
+        return _mettre_a_jour_venvs(
+            resolution.depots, demander, sortie, mettre_a_jour_venv
+        )
     if resolution.cle == freeze_resolution.REMETTRE:
         return _remettre_au_gel(ctx, resolution.depots, demander, sortie)
     if resolution.cle == freeze_resolution.MAJ_GEL:

@@ -1467,6 +1467,7 @@ class TODO(
                 choices.append(
                     {"prompt_description": healthcheck.titre(verification)}
                 )
+            premiere_resolution = 4 + len(seules)
             # Dans l'ordre des vérifications qui les ont proposées.
             offertes = [
                 (verification, r)
@@ -1497,9 +1498,17 @@ class TODO(
                 )
             elif 4 <= numero < 4 + len(seules):
                 retenir(healthcheck.lancer(ctx, [seules[numero - 4]]))
-            elif 4 + len(seules) <= numero < 4 + len(seules) + len(offertes):
-                verification, resolution = offertes[numero - 4 - len(seules)]
-                healthcheck.executer_resolution(ctx, resolution)
+            elif (
+                premiere_resolution
+                <= numero
+                < premiere_resolution + len(offertes)
+            ):
+                verification, resolution = offertes[
+                    numero - premiere_resolution
+                ]
+                healthcheck.executer_resolution(
+                    ctx, resolution, mettre_a_jour_venv=self.mettre_a_jour_venv
+                )
                 print()
                 # La vérification repasse : ses résolutions suivent l'état.
                 section = next(s for s, v in seules if v is verification)

@@ -670,6 +670,109 @@ class TestResolutions(unittest.TestCase):
         self.assertIn("git push x", "\n".join(lignes))
 
 
+class TestDependancesVenvs(unittest.TestCase):
+    """« Dépendances des venvs » : chaque venv face à son lock ou à ses
+    exigences, Poetry et l'analyse remplacés."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = tmp.name
+        self.version = "odoo18.0_python3.12.16"
+        ecrire(self.racine, ".erplibre-version", self.version + "\n")
+        for f in (
+            f".venv.{self.version}/bin/poetry",
+            f"requirement/poetry.{self.version}.lock",
+        ):
+            ecrire(self.racine, f, "")
+        self.venvs = [
+            {
+                "venv": f".venv.{self.version}",
+                "genre": "odoo",
+                "version": self.version,
+                "active": True,
+            },
+            {
+                "venv": ".venv.erplibre",
+                "genre": "outillage",
+                "version": None,
+                "active": False,
+            },
+        ]
+
+    def verifier(self, simulation, analyse):
+        ctx = h.Contexte(self.racine)
+        ctx.lancer = lambda *a, **k: subprocess.CompletedProcess(
+            [], 0, json.dumps(analyse), ""
+        )
+        with (
+            mock.patch.object(h.drift, "venvs", return_value=self.venvs),
+            mock.patch.object(h.drift, "simuler", return_value=simulation),
+        ):
+            return h.verifier_dependances_venvs(ctx)
+
+    def simulation(self, texte):
+        return {
+            "ok": True,
+            "operations": h.drift.lire_operations(texte),
+            "sortie": texte,
+            "commande": "poetry sync --dry-run",
+        }
+
+    ANALYSE_OK = {
+        "exigences": 3,
+        "manquantes": [],
+        "hors_bornes": [],
+        "illisibles": [],
+        "de_trop": [],
+    }
+
+    def test_every_venv_aligned_is_fine(self):
+        resultat = self.verifier(self.simulation(""), self.ANALYSE_OK)
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resume, "2 venvs")
+        self.assertEqual(resultat.resolutions, [])
+
+    def test_gaps_are_listed_and_offered_to_the_resolution(self):
+        analyse = dict(self.ANALYSE_OK, manquantes=["absent>=1"])
+        resultat = self.verifier(
+            self.simulation(
+                "  - Updating requests (2.31.0 -> 2.32.3)\n"
+                "  - Removing poetry (2.1.3)\n"
+            ),
+            analyse,
+        )
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"2 {t('to update')}", resultat.resume)
+        texte = "\n".join(resultat.details)
+        self.assertIn("requests 2.31.0 → 2.32.3", texte)
+        self.assertIn("absent>=1", texte)
+        self.assertIn(f"1 {t('outside the lock')}", texte)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.MAJ_VENVS)
+        self.assertEqual(
+            [c["venv"] for c in resolution.depots],
+            [f".venv.{self.version}", ".venv.erplibre"],
+        )
+
+    def test_the_resolution_updates_the_chosen_venvs(self):
+        choix = [
+            {"venv": ".venv.a", "resume": "1 écart"},
+            {"venv": ".venv.b", "resume": "2 écarts"},
+        ]
+        res = h.Resolution(h.MAJ_VENVS, "📦 X", [], choix)
+        mis_a_jour = []
+        change = h.executer_resolution(
+            h.Contexte(tempfile.gettempdir()),
+            res,
+            demander=lambda _q: "2",
+            sortie=lambda _l: None,
+            mettre_a_jour_venv=mis_a_jour.append,
+        )
+        self.assertTrue(change)
+        self.assertEqual(mis_a_jour, [choix[1]])
+
+
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
         def verifier_conflits(_ctx):
@@ -776,6 +879,7 @@ class TestMenu(unittest.TestCase):
                 )
             ]
 
+        # Juste après les vérifications seules.
         entree = str(4 + len(h.VERIFICATIONS))
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),

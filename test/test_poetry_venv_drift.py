@@ -460,6 +460,39 @@ class TestLesPrerequis(BancMenu):
         self.assertIn("conf/supported_version_erplibre.json", texte)
 
 
+class TestMiseAJourSansQuestion(BancMenu):
+    """mettre_a_jour_venv, appelée par la résolution du Healthcheck : le
+    choix est déjà fait, rien n'est redemandé."""
+
+    def test_le_venv_actif_s_installe_sans_question(self):
+        with (
+            patch.object(
+                drift,
+                "simuler",
+                side_effect=[
+                    self.simulation(SORTIE),
+                    self.simulation(ALIGNE),
+                ],
+            ),
+            patch.object(drift, "relever", return_value={}),
+            patch("builtins.input", side_effect=AssertionError) as question,
+            patch("sys.stdout", io.StringIO()),
+        ):
+            self.todo.mettre_a_jour_venv(
+                {
+                    "venv": f".venv.{VERSION}",
+                    "genre": "odoo",
+                    "version": VERSION,
+                    "active": True,
+                }
+            )
+        question.assert_not_called()
+        self.assertEqual(
+            ["EL_PHASE=poetry ./script/install/install_locally.sh"],
+            self.installe(),
+        )
+
+
 class TestPlusieursVenvs(BancMenu):
     """Le choix du venv : un venv d'Odoo non actif, comparé à son propre
     lock, et le venv de l'outillage, comparé à ses exigences."""
