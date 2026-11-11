@@ -276,9 +276,9 @@ class TODO(
 [1] {t("Execute")}
 [2] {t("Install")}
 [3] {t("Assistant")}
-[4] {t("Navigation telemetry (TUI)")}
-[5] {t("Configuration")}
-[6] {t("Healthcheck")}
+[4] {t("Healthcheck")}
+[5] {t("Navigation telemetry (TUI)")}
+[6] {t("Configuration")}
 {quitter()}
 """
         while True:
@@ -304,11 +304,11 @@ class TODO(
             elif status == "3":
                 self.prompt_assistant()
             elif status == "4":
-                self._todo_telemetry_tui()
-            elif status == "5":
-                self.prompt_configuration()
-            elif status == "6":
                 self.prompt_healthcheck()
+            elif status == "5":
+                self._todo_telemetry_tui()
+            elif status == "6":
+                self.prompt_configuration()
             # elif status == "3" or status == "install":
             #     print("install")
             else:

@@ -1913,9 +1913,9 @@ TRANSLATIONS = {
         "fr": "Hooks git non exécutables : ",
         "en": "Git hooks not executable: ",
     },
-    # Healthcheck (menu principal [6])
+    # Healthcheck (menu principal [4])
     "Healthcheck": {
-        "fr": "🩺 Healthcheck",
+        "fr": "🩺 Bilan de santé",
         "en": "🩺 Healthcheck",
     },
     "Summary": {
