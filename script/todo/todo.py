@@ -144,7 +144,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.todo_couleur import quitter, retour
+from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -589,7 +589,7 @@ class TODO(
             ),
             "0": (
                 "0",
-                f"0: {t('Quit')}",
+                bleu_poudre(f"0: {t('Quit')}"),
             ),
         }
         commands_end = {}
@@ -661,7 +661,7 @@ class TODO(
                     "2",
                     f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
                 ),
-                "0": ("0", f"0: {t('Back')}"),
+                "0": ("0", bleu_poudre(f"0: {t('Back')}")),
             }
             extra_input = ""
             while extra_input not in extra_choices:
@@ -795,7 +795,7 @@ class TODO(
                 f"2: {t('Production: frozen commits (freeze-revision)')}"
                 f" — {detail}"
             ),
-            "0": f"0: {t('Back')}",
+            "0": bleu_poudre(f"0: {t('Back')}"),
         }
         saisie = ""
         while saisie not in choix:
@@ -6435,7 +6435,8 @@ class TODO(
         str_input = (
             f"💬 {t('Choose an environment for the audit:')}\n\t"
             + "\n\t".join([v["label"] for v in environments.values()])
-            + f"\n\t0: {t('Back')}"
+            + "\n\t"
+            + bleu_poudre(f"0: {t('Back')}")
             + f"\n{t('Select: ')}"
         )
         env_input = ""

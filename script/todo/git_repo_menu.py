@@ -50,7 +50,7 @@ from script.git import (  # noqa: E402
     repo_apply,
     repo_upgrade,
 )
-from script.todo.todo_couleur import retour  # noqa: E402
+from script.todo.todo_couleur import bleu_poudre, retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
@@ -673,7 +673,7 @@ class GitRepoMenuMixin:
             print()
             print(f"  N   🐯 {t('tig on fork N: its commits since the base')}")
             print(f"  a   🐯 {t('tig on each fork, one after another')}")
-            print(f"  ⏎   {t('Back')}")
+            print(f"  {bleu_poudre('⏎   ' + t('Back'))}")
             choix = input("  : ").strip().lower()
             if choix in ("", "0"):
                 return
@@ -889,7 +889,7 @@ class GitRepoMenuMixin:
             print(f"  [6] ⏭️  {t('Skip this commit')}")
             print(f"  [7] ⏸️  {t('Abort this rebase')}")
             print(f"  [8] ↩️  {t('Return to the state managed by repo')}")
-            print(f"  [0] 🔙 {t('Later')}")
+            print(f"  {retour('🔙 ' + t('Later'))}")
             choix = input("  : ").strip()
             if choix in ("0", ""):
                 return
@@ -1346,7 +1346,7 @@ class GitRepoMenuMixin:
                 f"  f   📥 {t('Refresh: branches, tags and missing commits')}"
             )
             print(f"  w   🌳 {t('Open an old commit in a git worktree')}")
-            print(f"  ⏎   {t('Back')}")
+            print(f"  {bleu_poudre('⏎   ' + t('Back'))}")
             choix = input("  : ").strip().lower()
             if choix in ("", "0"):
                 return

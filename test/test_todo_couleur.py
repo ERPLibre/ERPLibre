@@ -93,6 +93,56 @@ class TestMenus(unittest.TestCase):
                     restes.append(chemin)
         self.assertEqual(restes, [])
 
+    def test_toute_sortie_composee_passe_par_le_bleu_poudre(self):
+        """« 0: 🔙 Retour », « ⏎ 🔙 Retour », « 0: Quitter », « [0] 🔙
+        Plus tard » : toute sortie de menu COMPOSÉE en texte — f-string ou
+        concaténation qui porte t("Back"), t("Quit") ou « 🔙 » — passe par
+        retour(), quitter() ou bleu_poudre(). Un t("Quit") nu, libellé de
+        bouton ou raccourci Textual, n'est pas composé : une séquence ANSI
+        s'y afficherait telle quelle, il reste hors de la règle."""
+        import ast
+        import glob
+
+        colorants = {"retour", "quitter", "bleu_poudre"}
+
+        def sortie(noeud):
+            if isinstance(noeud, ast.Call):
+                return (
+                    getattr(noeud.func, "id", None) == "t"
+                    and len(noeud.args) == 1
+                    and isinstance(noeud.args[0], ast.Constant)
+                    and noeud.args[0].value in ("Back", "Quit")
+                )
+            return isinstance(noeud, ast.Constant) and "🔙" in str(noeud.value)
+
+        restes = []
+        for chemin in glob.glob("script/todo/**/*.py", recursive=True):
+            if chemin.endswith(("todo_couleur.py", "todo_i18n.py")):
+                continue
+            with open(chemin, encoding="utf-8") as fh:
+                arbre = ast.parse(fh.read())
+            parents = {}
+            for noeud in ast.walk(arbre):
+                for enfant in ast.iter_child_nodes(noeud):
+                    parents[enfant] = noeud
+            for noeud in ast.walk(arbre):
+                if not sortie(noeud):
+                    continue
+                compose = colore = False
+                courant = parents.get(noeud)
+                while courant is not None and not colore:
+                    if isinstance(courant, (ast.JoinedStr, ast.BinOp)):
+                        compose = True
+                    if (
+                        isinstance(courant, ast.Call)
+                        and getattr(courant.func, "id", None) in colorants
+                    ):
+                        colore = True
+                    courant = parents.get(courant)
+                if compose and not colore:
+                    restes.append(f"{chemin}:{noeud.lineno}")
+        self.assertEqual(restes, [])
+
 
 if __name__ == "__main__":
     unittest.main()
