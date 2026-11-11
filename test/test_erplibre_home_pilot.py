@@ -19,7 +19,8 @@ Ce que ces tests gardent :
   TODO : absent, illisible ou hors forme, il ne compte pas ;
 - avant d'écrire une clé que l'Odoo pilote verrouille, chaque entrée du
   menu le dit en une ligne qui nomme la destination, puis écrit quand
-  même ; une clé libre, ou une valeur inchangée, ne dit rien.
+  même ; une clé libre, ou une valeur inchangée, ne dit rien. L'installation
+  Stream Deck, qui change DECK_PROGRAM par --deck-program, fait de même.
 
 Ce qui lit le clone est sauté quand il manque (SANS_EXTENSION), ou quand
 son contrat précède la version qui pose le tableau : une MINEURE en
@@ -295,8 +296,10 @@ class ExecuteFactice:
     def __init__(self):
         self.commandes = []
 
-    def exec_command_live(self, cmd, **_kwargs):
+    def exec_command_live(self, cmd, **kwargs):
         self.commandes.append(cmd)
+        if kwargs.get("return_status_and_output"):
+            return 0, []
         return 0
 
 
@@ -421,6 +424,47 @@ class LAvertissementDuMenu(unittest.TestCase):
                 sortie = self.jouer("_streamdeck_games_setting", ("2",))
                 self.assertNotIn("locked by Odoo", sortie)
                 self.assertEqual("GAMES=off\n", self.reglages.read_text())
+
+    def installer(self, reponses):
+        """L'installation Stream Deck de TODO sur un poste dont les
+        réglages portent DECK_PROGRAM=tiler ; rend sa sortie et les
+        commandes lancées."""
+        self.reglages.parent.mkdir(parents=True, exist_ok=True)
+        self.reglages.write_text("DECK_PROGRAM=tiler\n")
+        todo = TODO.__new__(TODO)
+        todo.execute = ExecuteFactice()
+        sortie = io.StringIO()
+        with (
+            contextlib.redirect_stdout(sortie),
+            mock.patch("builtins.input", side_effect=list(reponses)),
+        ):
+            todo._erplibre_home_streamdeck_install_local()
+        return sortie.getvalue(), todo.execute.commandes
+
+    def test_the_stream_deck_install_warns_on_a_locked_program(self):
+        """L'installateur réécrit DECK_PROGRAM par --deck-program : un
+        autre programme que celui en place, verrouillé, se dit avant de
+        partir, et l'installation part quand même."""
+        self.piloter(["deck_program"])
+        sortie, commandes = self.installer(("2", "", "", ""))
+        self.assertEqual(1, sortie.splitlines().count(AVERTISSEMENT))
+        self.assertEqual(1, len(commandes))
+        self.assertIn("--deck-program=controller", commandes[0])
+
+    def test_the_stream_deck_install_keeping_the_program_does_not_warn(self):
+        for verrouilles, reponses in (
+            (["deck_program"], ("", "", "", "")),
+            (["deck_program"], ("1", "", "", "")),
+            (
+                [k for k in service.CONFIG_LINES if k != "deck_program"],
+                ("2", "", "", ""),
+            ),
+        ):
+            with self.subTest(verrouilles=verrouilles, reponses=reponses):
+                self.piloter(verrouilles)
+                sortie, commandes = self.installer(reponses)
+                self.assertNotIn("locked by Odoo", sortie)
+                self.assertEqual(1, len(commandes))
 
 
 if __name__ == "__main__":

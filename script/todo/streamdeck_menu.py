@@ -14,8 +14,10 @@ direct et sans récapitulatif : l'annonce du lanceur, ou la question de
 confirmation qui la remplace, est le seul endroit où la commande
 s'affiche. Les sondes muettes passent par _streamdeck_probe, que les
 tests remplacent. L'état et le diagnostic viennent d'erplibre_home_status.
-Chaque réglage s'écrit par _streamdeck_write, qui prévient quand l'Odoo
-pilote de l'extension verrouille la clé changée.
+Chaque réglage s'écrit par _streamdeck_write, et l'installation Stream
+Deck change DECK_PROGRAM par --deck-program : l'un et l'autre préviennent
+par _streamdeck_warn_locked quand l'Odoo pilote de l'extension verrouille
+la clé changée.
 """
 
 import os
@@ -195,26 +197,40 @@ class StreamDeckMenuMixin:
         return False
 
     @staticmethod
-    def _streamdeck_write(chemin, updates):
-        """write_settings(chemin, updates), précédé d'une ligne qui le dit
-        quand l'écriture change une clé que l'Odoo pilote verrouille
-        (pilot.json de l'extension) : Odoo la reproposera à sa remontée
-        suivante. L'écriture se fait dans tous les cas. Rend ce que rend
-        write_settings."""
+    def _streamdeck_warn_locked(changer):
+        """Affiche une ligne qui nomme l'Odoo pilote (pilot.json de
+        l'extension) quand une clé du fil qu'il verrouille va changer :
+        Odoo la reproposera à sa remontée suivante. `changer(verrous)`
+        reçoit les clés verrouillées et dit si l'écriture à venir en change
+        une ; il n'est appelé que s'il y a un pilote et des verrous. Rien
+        n'est bloqué : l'appelant écrit dans tous les cas."""
         pilote = service.read_pilot()
-        if pilote:
-            verrouilles = {
-                service.CONFIG_LINES[cle]: updates[service.CONFIG_LINES[cle]]
-                for cle in pilote["locked"]
-                if service.CONFIG_LINES[cle] in updates
-            }
-            if verrouilles and service.settings_change(chemin, verrouilles):
-                print(
-                    t(
-                        "Setting locked by Odoo ({destination}):"
-                        " it will be offered again."
-                    ).replace("{destination}", pilote["destination"])
-                )
+        if pilote and pilote["locked"] and changer(pilote["locked"]):
+            print(
+                t(
+                    "Setting locked by Odoo ({destination}):"
+                    " it will be offered again."
+                ).replace("{destination}", pilote["destination"])
+            )
+
+    @classmethod
+    def _streamdeck_write(cls, chemin, updates):
+        """write_settings(chemin, updates), précédé de l'avertissement de
+        _streamdeck_warn_locked quand le texte d'une ligne verrouillée
+        change. Rend ce que rend write_settings."""
+
+        def changer(verrous):
+            lignes = {service.CONFIG_LINES[cle] for cle in verrous}
+            return service.settings_change(
+                chemin,
+                {
+                    ligne: valeur
+                    for ligne, valeur in updates.items()
+                    if ligne in lignes
+                },
+            )
+
+        cls._streamdeck_warn_locked(changer)
         return service.write_settings(chemin, updates)
 
     def _streamdeck_systemctl(self, *args):
@@ -473,10 +489,12 @@ class StreamDeckMenuMixin:
         défauts sont les valeurs des réglages en place, si bien qu'Entrée
         partout les réécrit telles quelles ; sans réglages, ce sont ceux de
         DEFAULTS. Un programme invalide dans les réglages se montre avec
-        la question, sans défaut. Le démarrage automatique et les outils
-        facultatifs n'ont pas d'option négative : « non » n'ajoute rien.
-        Rend la liste des options dans l'ordre des questions, ou None quand
-        la première est abandonnée par 0."""
+        la question, sans défaut. Un autre programme que celui en place,
+        quand l'Odoo pilote le verrouille, s'annonce par une ligne sitôt
+        choisi, et l'option part quand même. Le démarrage automatique et
+        les outils facultatifs n'ont pas d'option négative : « non »
+        n'ajoute rien. Rend la liste des options dans l'ordre des
+        questions, ou None quand la première est abandonnée par 0."""
         reglages = service.read_settings(service.settings_path())
         actuel = reglages["DECK_PROGRAM"]
         question = t("Deck program:")
@@ -489,6 +507,9 @@ class StreamDeckMenuMixin:
         )
         if programme is None:
             return None
+        self._streamdeck_warn_locked(
+            lambda verrous: "deck_program" in verrous and programme != actuel
+        )
         options = [f"--deck-program={programme}"]
         demande = t(
             "Start the deck program at login and when the deck is plugged in?"
