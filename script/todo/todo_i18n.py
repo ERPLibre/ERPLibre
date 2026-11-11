@@ -1485,6 +1485,58 @@ TRANSLATIONS = {
         "fr": "Va exécuter :",
         "en": "Will execute:",
     },
+    "First system installation? Installs the system packages first (y/N): ": {
+        "fr": "Première installation du système ? Installe d'abord les paquets du système (o/N) : ",
+        "en": "First system installation? Installs the system packages first (y/N): ",
+    },
+    "Wait for the system installation to finish before continuing.": {
+        "fr": "Attendez la fin de l'installation du système avant de continuer.",
+        "en": "Wait for the system installation to finish before continuing.",
+    },
+    "Open PyCharm? (y/N): ": {
+        "fr": "Ouvrir PyCharm ? (o/N) : ",
+        "en": "Open PyCharm? (y/N): ",
+    },
+    "Wait until PyCharm has loaded the project, close it, then press Enter (c to continue anyway): ": {
+        "fr": "Attendez que PyCharm ait chargé le projet, fermez-le, puis appuyez sur Entrée (c pour continuer quand même) : ",
+        "en": "Wait until PyCharm has loaded the project, close it, then press Enter (c to continue anyway): ",
+    },
+    "PyCharm is still running: close it before continuing.": {
+        "fr": "PyCharm tourne encore : fermez-le avant de continuer.",
+        "en": "PyCharm is still running: close it before continuing.",
+    },
+    "ERPLibre only, without Odoo, with the required Python": {
+        "fr": "ERPLibre seul, sans Odoo, avec le Python requis",
+        "en": "ERPLibre only, without Odoo, with the required Python",
+    },
+    "All Odoo versions with ERPLibre": {
+        "fr": "Toutes les versions d'Odoo avec ERPLibre",
+        "en": "All Odoo versions with ERPLibre",
+    },
+    "ERPLibre with the mobile home application": {
+        "fr": "ERPLibre avec l'application mobile home",
+        "en": "ERPLibre with the mobile home application",
+    },
+    "odoo_version_installed": {
+        "fr": "Installée",
+        "en": "Installed",
+    },
+    "odoo_version_current": {
+        "fr": "Actuelle",
+        "en": "Current",
+    },
+    "odoo_version_default": {
+        "fr": "Par défaut",
+        "en": "Default",
+    },
+    "odoo_version_deprecated": {
+        "fr": "Dépréciée",
+        "en": "Deprecated",
+    },
+    "Wait for the installation to finish, then open the projects from a terminal:": {
+        "fr": "Attendez la fin de l'installation, puis ouvrez les projets depuis un terminal :",
+        "en": "Wait for the installation to finish, then open the projects from a terminal:",
+    },
     "No git identity (user.name, user.email): repo init would ask for it.": {
         "fr": "Aucune identité git (user.name, user.email) : repo init la demanderait.",
         "en": "No git identity (user.name, user.email): repo init would ask for it.",

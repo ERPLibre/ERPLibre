@@ -409,6 +409,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les sites web d'Odoo 18 relisent le consentement du bandeau de cookies sous Werkzeug 3.1.9, qui écarte le cookie en JSON brut qu'écrit le site : après **Tout accepter**, les iframes tierces comme les vidéos ne restent plus vides, et une valeur de cookie qui n'est pas du JSON vaut refus au lieu de faire échouer la page en HTTP 500
 - Odoo 18 envoie les avis de changement d'identifiant, de mot de passe et de courriel dans la langue de chaque usager notifié, et non dans celle de qui fait le changement, et un changement de courriel ne notifie plus que l'usager dont l'adresse change
 - Avec `login_user_detail` installé sur Odoo 18, les appels XML-RPC répondent de nouveau : le contrôle d'accès lisait une requête HTTP que XML-RPC ne lie jamais, et faisait échouer chaque appel sur `object is not bound`
+- **TODO › Installation** est traduit — les entrées q, w et m, les étiquettes de version, les questions système et PyCharm — et ses questions oui/non affichent `(o/N)`, Entrée valant non, là où elles affichaient `(Y/N)`
 
 ## Retiré
 

@@ -482,12 +482,9 @@ class TODO(
         une technologie qui installe ses propres paquets ne passe pas ici.
         Pour une version d'Odoo, elle vient après la dernière question qui
         offre « 0: Back » : un retour ne laisse rien d'installé."""
-        print("Detect first installation from code source.")
-
         first_installation_input = (
             input(
-                "💬 First system installation? This will process system installation"
-                " before (Y/N): "
+                f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
             )
             .strip()
             .lower()
@@ -495,7 +492,11 @@ class TODO(
         if self._is_yes(first_installation_input):
             cmd = "./script/version/update_env_version.py --install"
             self.execute.exec_command_live(cmd, source_erplibre=True)
-            print("Wait after OS installation before continue.")
+            print(
+                t(
+                    "Wait for the system installation to finish before continuing."
+                )
+            )
 
         # First detect pycharm, need to be open before installation and close to increase speed
         has_pycharm = False
@@ -520,7 +521,7 @@ class TODO(
             ".idea"
         ):
             pycharm_configuration_input = (
-                input("💬 Open Pycharm? (Y/N): ").strip().lower()
+                input(f"💬 {t('Open PyCharm? (y/N): ')}").strip().lower()
             )
             if self._is_yes(pycharm_configuration_input):
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
@@ -548,9 +549,7 @@ class TODO(
         while True:
             reponse = (
                 input(
-                    "👹 WAIT until Pycharm has finished loading the project,"
-                    " close it, then press Enter to continue"
-                    " (c to continue anyway): "
+                    f"👹 {t('Wait until PyCharm has loaded the project, close it, then press Enter (c to continue anyway): ')}"
                 )
                 .strip()
                 .lower()
@@ -565,7 +564,9 @@ class TODO(
             )
             if encore.returncode != 0:
                 return
-            print("⚠️  Pycharm is still running: close it before continuing.")
+            print(
+                f"⚠️  {t('PyCharm is still running: close it before continuing.')}"
+            )
 
     def prompt_install(self):
         # TODO detect last version supported
@@ -574,17 +575,17 @@ class TODO(
         commands_begin = {
             "q": (
                 "q",
-                "q: ERPLibre only without Odoo, with the required Python",
+                f"q: {t('ERPLibre only, without Odoo, with the required Python')}",
                 "./script/install/install_erplibre.sh",
             ),
             "w": (
                 "w",
-                "w: Install all Odoo version with ERPLibre",
+                f"w: {t('All Odoo versions with ERPLibre')}",
                 "make install_odoo_all_version",
             ),
             "m": (
                 "m",
-                "m: ERPLibre with mobile home",
+                f"m: {t('ERPLibre with the mobile home application')}",
                 "./mobile/install_and_run.sh",
             ),
             "0": (
@@ -606,13 +607,13 @@ class TODO(
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
             if odoo_version in installed_versions:
-                label += " - Installed"
+                label += f" - {t('odoo_version_installed')}"
             if odoo_version == odoo_installed_version:
-                label += " - Actual"
+                label += f" - {t('odoo_version_current')}"
             if version_info.get("default"):
-                label += " - Default"
+                label += f" - {t('odoo_version_default')}"
             if version_info.get("is_deprecated"):
-                label += " - Deprecated"
+                label += f" - {t('odoo_version_deprecated')}"
             erplibre_version = version_info.get("erplibre_version")
             commands_begin[key_s] = (
                 key_s,
@@ -698,7 +699,11 @@ class TODO(
             print(
                 f"{t('The Bash script failed with return code')} {e.returncode}."
             )
-            print("Wait after installation and open projects by terminal.")
+            print(
+                t(
+                    "Wait for the installation to finish, then open the projects from a terminal:"
+                )
+            )
             print("make open_terminal")
             self.restart_script(str(e))
 

@@ -691,6 +691,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 websites read the cookie bar consent again under Werkzeug 3.1.9, which drops the bare JSON cookie the website writes: after **Accept all**, third-party iframes such as videos no longer stay blank, and a cookie value that is not JSON counts as no consent instead of failing the page with an HTTP 500
 - Odoo 18 sends the login, password and email change notices in the language of each notified user, not in that of whoever made the change, and an email change notifies only the user whose address changed
 - With `login_user_detail` installed on Odoo 18, XML-RPC calls answer again: the credential check read an HTTP request XML-RPC never binds, and failed every call with `object is not bound`
+- **TODO › Install** is translated — the q, w and m entries, the version labels, the system and PyCharm questions — and its yes/no prompts show `(y/N)`, Enter meaning no, where they showed `(Y/N)`
 
 <!-- [fr] -->
 
@@ -833,6 +834,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les sites web d'Odoo 18 relisent le consentement du bandeau de cookies sous Werkzeug 3.1.9, qui écarte le cookie en JSON brut qu'écrit le site : après **Tout accepter**, les iframes tierces comme les vidéos ne restent plus vides, et une valeur de cookie qui n'est pas du JSON vaut refus au lieu de faire échouer la page en HTTP 500
 - Odoo 18 envoie les avis de changement d'identifiant, de mot de passe et de courriel dans la langue de chaque usager notifié, et non dans celle de qui fait le changement, et un changement de courriel ne notifie plus que l'usager dont l'adresse change
 - Avec `login_user_detail` installé sur Odoo 18, les appels XML-RPC répondent de nouveau : le contrôle d'accès lisait une requête HTTP que XML-RPC ne lie jamais, et faisait échouer chaque appel sur `object is not bound`
+- **TODO › Installation** est traduit — les entrées q, w et m, les étiquettes de version, les questions système et PyCharm — et ses questions oui/non affichent `(o/N)`, Entrée valant non, là où elles affichaient `(Y/N)`
 
 <!-- [en] -->
 ## Removed

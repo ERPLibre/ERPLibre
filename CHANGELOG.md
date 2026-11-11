@@ -404,6 +404,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 websites read the cookie bar consent again under Werkzeug 3.1.9, which drops the bare JSON cookie the website writes: after **Accept all**, third-party iframes such as videos no longer stay blank, and a cookie value that is not JSON counts as no consent instead of failing the page with an HTTP 500
 - Odoo 18 sends the login, password and email change notices in the language of each notified user, not in that of whoever made the change, and an email change notifies only the user whose address changed
 - With `login_user_detail` installed on Odoo 18, XML-RPC calls answer again: the credential check read an HTTP request XML-RPC never binds, and failed every call with `object is not bound`
+- **TODO › Install** is translated — the q, w and m entries, the version labels, the system and PyCharm questions — and its yes/no prompts show `(y/N)`, Enter meaning no, where they showed `(Y/N)`
 
 ## Removed
 

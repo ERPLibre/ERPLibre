@@ -31,7 +31,9 @@ sys.path.insert(0, str(RACINE))
 from script.todo import todo as todo_module  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
-QUESTION_SYSTEME = "First system installation?"
+QUESTION_SYSTEME = todo_module.t(
+    "First system installation? Installs the system packages first (y/N): "
+).strip()
 
 
 class ExecuteFactice:
@@ -277,7 +279,12 @@ class TestPycharmFerme(unittest.TestCase):
         questions, appels, sortie = self._attendre(["", ""], [0, 1])
         self.assertEqual(len(questions), 2)
         self.assertEqual(len(appels), 2)
-        self.assertIn("still running", sortie)
+        self.assertIn(
+            todo_module.t(
+                "PyCharm is still running: close it before continuing."
+            ),
+            sortie,
+        )
 
     def test_c_continues_without_checking(self):
         questions, appels, _ = self._attendre(["c"], [])
@@ -337,7 +344,7 @@ class TestPycharmFerme(unittest.TestCase):
             "attente": next(
                 i
                 for i, (k, v) in enumerate(evenements)
-                if k == "question" and "close it" in v
+                if k == "question" and "PyCharm" in v and "(c " in v
             ),
             "installation": next(
                 i
