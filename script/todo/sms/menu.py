@@ -20,12 +20,15 @@ from script.todo.sms import steps as steps_mod
 from script.todo.sms.steps import STEPS
 
 try:
-    from script.todo.todo_couleur import retour
+    from script.todo.todo_couleur import bleu_poudre, retour
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
 
     def t(key: str) -> str:
         return key
+
+    def bleu_poudre(texte: str) -> str:
+        return texte
 
     def retour(libelle: str) -> str:
         return f"[0] {libelle}"
@@ -485,7 +488,7 @@ def _run_one(todo, state, step) -> bool:
     except KeyboardInterrupt:
         # Une interruption n'est pas un échec de l'étape : ne rien marquer
         # laisse l'étape reprenable telle quelle.
-        print(f"\n  {t('Back')}")
+        print(f"\n  {bleu_poudre(t('Back'))}")
         return False
     except Exception as exc:  # noqa: BLE001 - on rapporte, on ne masque pas
         ok, message = False, f"{type(exc).__name__}: {exc}"

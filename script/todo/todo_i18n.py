@@ -21830,6 +21830,492 @@ TRANSLATIONS = {
         "fr": "La suppression a échoué, code",
         "en": "The deletion failed, code",
     },
+    # Système : espace à récupérer
+    "Venv of another checkout": {
+        "fr": "Venv d'un autre checkout",
+        "en": "Venv of another checkout",
+    },
+    "Unknown cache": {
+        "fr": "Cache inconnu",
+        "en": "Unknown cache",
+    },
+    "Trash": {
+        "fr": "Corbeille",
+        "en": "Trash",
+    },
+    "downloaded again on next use": {
+        "fr": "retéléchargé au prochain usage",
+        "en": "downloaded again on next use",
+    },
+    "contents unknown: look before deleting": {
+        "fr": "contenu inconnu : regarder avant d'effacer",
+        "en": "contents unknown: look before deleting",
+    },
+    "that checkout needs a reinstall to run": {
+        "fr": "ce checkout devra être réinstallé pour tourner",
+        "en": "that checkout needs a reinstall to run",
+    },
+    "Heavy directories next to the repository": {
+        "fr": "🗂 Répertoires lourds à côté du dépôt",
+        "en": "🗂 Heavy directories next to the repository",
+    },
+    "System caches (sudo)": {
+        "fr": "🔐 Caches du système (sudo)",
+        "en": "🔐 System caches (sudo)",
+    },
+    "QEMU download cache - size and cleanup": {
+        "fr": "💿 Cache de téléchargement QEMU - taille et nettoyage",
+        "en": "💿 QEMU download cache - size and cleanup",
+    },
+    "Containers - size and cleanup": {
+        "fr": "📦 Conteneurs - taille et nettoyage",
+        "en": "📦 Containers - size and cleanup",
+    },
+    # Système : mémoire CPU et GPU par processus
+    "GPU memory per process": {
+        "fr": "🎮 Mémoire GPU par processus",
+        "en": "🎮 GPU memory per process",
+    },
+    "Reading GPU memory…": {
+        "fr": "Lecture de la mémoire GPU…",
+        "en": "Reading GPU memory…",
+    },
+    "Graphics cards": {
+        "fr": "Cartes graphiques",
+        "en": "Graphics cards",
+    },
+    "driver": {
+        "fr": "pilote",
+        "en": "driver",
+    },
+    "used of": {
+        "fr": "utilisée sur",
+        "en": "used of",
+    },
+    "No graphics card found.": {
+        "fr": "Aucune carte graphique trouvée.",
+        "en": "No graphics card found.",
+    },
+    (
+        "An NVIDIA card is present, but nvidia-smi is missing or fails: "
+        "install the NVIDIA driver utilities."
+    ): {
+        "fr": (
+            "Une carte NVIDIA est présente, mais nvidia-smi manque ou échoue "
+            ": installez les utilitaires du pilote NVIDIA."
+        ),
+        "en": (
+            "An NVIDIA card is present, but nvidia-smi is missing or fails: "
+            "install the NVIDIA driver utilities."
+        ),
+    },
+    "Compute processes only: graphics processes are not listed.": {
+        "fr": (
+            "Processus de calcul seulement : les processus graphiques ne sont "
+            "pas listés."
+        ),
+        "en": "Compute processes only: graphics processes are not listed.",
+    },
+    "No process uses this card.": {
+        "fr": "Aucun processus n'utilise cette carte.",
+        "en": "No process uses this card.",
+    },
+    "Account": {
+        "fr": "Compte",
+        "en": "Account",
+    },
+    "Process": {
+        "fr": "Processus",
+        "en": "Process",
+    },
+    (
+        "Not attributed to a listed process (driver, contexts, other "
+        "containers)"
+    ): {
+        "fr": (
+            "Non attribuée à un processus listé (pilote, contextes, autres "
+            "conteneurs)"
+        ),
+        "en": (
+            "Not attributed to a listed process (driver, contexts, other "
+            "containers)"
+        ),
+    },
+    "No process of this account uses a DRM card.": {
+        "fr": "Aucun processus de ce compte n'utilise une carte DRM.",
+        "en": "No process of this account uses a DRM card.",
+    },
+    "process(es) hold a card whose driver publishes no per-process memory:": {
+        "fr": (
+            "processus tiennent une carte dont le pilote ne publie pas la "
+            "mémoire par processus :"
+        ),
+        "en": (
+            "process(es) hold a card whose driver publishes no per-process "
+            "memory:"
+        ),
+    },
+    (
+        "processes of other accounts cannot be read without root: their GPU "
+        "memory is not counted."
+    ): {
+        "fr": (
+            "processus d'autres comptes ne se lisent pas sans root : leur "
+            "mémoire GPU n'est pas comptée."
+        ),
+        "en": (
+            "processes of other accounts cannot be read without root: their "
+            "GPU memory is not counted."
+        ),
+    },
+    "read-only reading of /proc/*/fdinfo": {
+        "fr": "lecture seule de /proc/*/fdinfo",
+        "en": "read-only reading of /proc/*/fdinfo",
+    },
+    "Read them with sudo? The password is asked here. (y/N): ": {
+        "fr": "Les lire avec sudo ? Le mot de passe se tape ici. (o/N) : ",
+        "en": "Read them with sudo? The password is asked here. (y/N): ",
+    },
+    "sudo failed: showing what reads without root.": {
+        "fr": "sudo a échoué : affichage de ce qui se lit sans root.",
+        "en": "sudo failed: showing what reads without root.",
+    },
+    "CPU memory per process": {
+        "fr": "🧠 Mémoire CPU par processus",
+        "en": "🧠 CPU memory per process",
+    },
+    "not installed: runs in a nix-shell": {
+        "fr": "absent : se lance dans un nix-shell",
+        "en": "not installed: runs in a nix-shell",
+    },
+    "not installed: can be installed": {
+        "fr": "absent : installable",
+        "en": "not installed: can be installed",
+    },
+    "not installed, unknown package manager": {
+        "fr": "absent, gestionnaire de paquets inconnu",
+        "en": "not installed, unknown package manager",
+    },
+    "Tool number, Enter for none: ": {
+        "fr": "Numéro de l'outil, Entrée pour aucun : ",
+        "en": "Tool number, Enter for none: ",
+    },
+    "is still not in the PATH.": {
+        "fr": "n'est toujours pas dans le PATH.",
+        "en": "is still not in the PATH.",
+    },
+    "sort by memory:": {
+        "fr": "tri par mémoire :",
+        "en": "sort by memory:",
+    },
+    "Installation failed:": {
+        "fr": "L'installation a échoué :",
+        "en": "Installation failed:",
+    },
+    "Install {name}? (y/N): ": {
+        "fr": "Installer {name} ? (o/N) : ",
+        "en": "Install {name}? (y/N): ",
+    },
+    (
+        "The package database may be stale: run sudo pacman -Syu, then try "
+        "again."
+    ): {
+        "fr": (
+            "La base des paquets est peut-être périmée : lancez sudo pacman "
+            "-Syu, puis réessayez."
+        ),
+        "en": (
+            "The package database may be stale: run sudo pacman -Syu, then "
+            "try again."
+        ),
+    },
+    # Système : rapports et caches du système
+    "Measuring": {
+        "fr": "Mesure de",
+        "en": "Measuring",
+    },
+    "since the last commit": {
+        "fr": "depuis le dernier commit",
+        "en": "since the last commit",
+    },
+    "in total": {
+        "fr": "au total",
+        "en": "in total",
+    },
+    "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.": {
+        "fr": "Les venvs des autres checkouts ERPLibre sont proposés, décochés, dans Espace à récupérer.",
+        "en": "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.",
+    },
+    "Numbers to run (e.g. 1,2), Enter for none: ": {
+        "fr": "Numéros à lancer (ex. 1,2), Entrée pour aucun : ",
+        "en": "Numbers to run (e.g. 1,2), Enter for none: ",
+    },
+    "Run these commands with sudo? (y/N): ": {
+        "fr": "Lancer ces commandes avec sudo ? (o/N) : ",
+        "en": "Run these commands with sudo? (y/N): ",
+    },
+    # Système : diagnostic
+    "System": {
+        "fr": "Système",
+        "en": "System",
+    },
+    "System - Diagnostic and disk space": {
+        "fr": "🩺 Système - Diagnostic et espace disque",
+        "en": "🩺 System - Diagnostic and disk space",
+    },
+    "System and disk space!": {
+        "fr": "Le système et son espace disque !",
+        "en": "System and disk space!",
+    },
+    "System diagnostic": {
+        "fr": "🩺 Diagnostic du système",
+        "en": "🩺 System diagnostic",
+    },
+    "Space to reclaim": {
+        "fr": "🧹 Espace à récupérer",
+        "en": "🧹 Space to reclaim",
+    },
+    "Identity": {
+        "fr": "Identité",
+        "en": "Identity",
+    },
+    "Host name": {
+        "fr": "Nom d'hôte",
+        "en": "Host name",
+    },
+    "Operating system": {
+        "fr": "Système d'exploitation",
+        "en": "Operating system",
+    },
+    "Kernel": {
+        "fr": "Noyau",
+        "en": "Kernel",
+    },
+    "Chassis": {
+        "fr": "Châssis",
+        "en": "Chassis",
+    },
+    "Virtualization": {
+        "fr": "Virtualisation",
+        "en": "Virtualization",
+    },
+    "Hardware": {
+        "fr": "Matériel",
+        "en": "Hardware",
+    },
+    "Processor and memory": {
+        "fr": "Processeur et mémoire",
+        "en": "Processor and memory",
+    },
+    "Processor": {
+        "fr": "Processeur",
+        "en": "Processor",
+    },
+    "Cores (physical / logical)": {
+        "fr": "Cœurs (physiques / logiques)",
+        "en": "Cores (physical / logical)",
+    },
+    "available of": {
+        "fr": "disponibles sur",
+        "en": "available of",
+    },
+    "Swap": {
+        "fr": "Swap",
+        "en": "Swap",
+    },
+    "Graphics": {
+        "fr": "Carte graphique",
+        "en": "Graphics",
+    },
+    "lspci not installed": {
+        "fr": "lspci non installé",
+        "en": "lspci not installed",
+    },
+    "Disks": {
+        "fr": "Disques",
+        "en": "Disks",
+    },
+    "Load": {
+        "fr": "Charge",
+        "en": "Load",
+    },
+    "Load (1, 5, 15 min)": {
+        "fr": "Charge (1, 5, 15 min)",
+        "en": "Load (1, 5, 15 min)",
+    },
+    "Uptime": {
+        "fr": "Démarré depuis",
+        "en": "Uptime",
+    },
+    "Active venv": {
+        "fr": "Venv actif",
+        "en": "Active venv",
+    },
+    "Venvs": {
+        "fr": "Venvs",
+        "en": "Venvs",
+    },
+    "unavailable": {
+        "fr": "indisponible",
+        "en": "unavailable",
+    },
+    "Save this report in private/diagnostic/? (y/N): ": {
+        "fr": "Enregistrer ce rapport dans private/diagnostic/ ? (o/N) : ",
+        "en": "Save this report in private/diagnostic/? (y/N): ",
+    },
+    "Report saved:": {
+        "fr": "Rapport enregistré :",
+        "en": "Report saved:",
+    },
+    "Searching for space to reclaim…": {
+        "fr": "Recherche de l'espace à récupérer…",
+        "en": "Searching for space to reclaim…",
+    },
+    "Nothing to reclaim.": {
+        "fr": "Rien à récupérer.",
+        "en": "Nothing to reclaim.",
+    },
+    "Check what to delete, then choose Delete.": {
+        "fr": "Cochez ce qu'il faut effacer, puis choisissez Effacer.",
+        "en": "Check what to delete, then choose Delete.",
+    },
+    "Delete": {
+        "fr": "Effacer",
+        "en": "Delete",
+    },
+    "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ": {
+        "fr": "Numéros à effacer (ex. 1,3), Entrée pour les cochés, c pour annuler : ",
+        "en": "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ",
+    },
+    "Delete these items?": {
+        "fr": "Effacer ces éléments ?",
+        "en": "Delete these items?",
+    },
+    "Nothing deleted.": {
+        "fr": "Rien n'a été effacé.",
+        "en": "Nothing deleted.",
+    },
+    "Freed:": {
+        "fr": "Libéré :",
+        "en": "Freed:",
+    },
+    "Left in place:": {
+        "fr": "Laissés en place :",
+        "en": "Left in place:",
+    },
+    "Cache": {
+        "fr": "Cache",
+        "en": "Cache",
+    },
+    "Temporary leftover": {
+        "fr": "Reste temporaire",
+        "en": "Temporary leftover",
+    },
+    "Orphan filestore": {
+        "fr": "Filestore orphelin",
+        "en": "Orphan filestore",
+    },
+    "Odoo web sessions": {
+        "fr": "Sessions web d'Odoo",
+        "en": "Odoo web sessions",
+    },
+    "Other Odoo venv": {
+        "fr": "Venv d'une autre version d'Odoo",
+        "en": "Other Odoo venv",
+    },
+    "reinstall to switch back to this version": {
+        "fr": "réinstaller pour revenir à cette version",
+        "en": "reinstall to switch back to this version",
+    },
+    "recent: its database may be being created": {
+        "fr": "récent : sa base est peut-être en création",
+        "en": "recent: its database may be being created",
+    },
+    "path is or crosses a link": {
+        "fr": "le chemin est ou traverse un lien",
+        "en": "path is or crosses a link",
+    },
+    "not yours": {
+        "fr": "ne vous appartient pas",
+        "en": "not yours",
+    },
+    "private/ or tasks/": {
+        "fr": "private/ ou tasks/",
+        "en": "private/ or tasks/",
+    },
+    "outside the allowed directories": {
+        "fr": "hors des répertoires permis",
+        "en": "outside the allowed directories",
+    },
+    "already gone": {
+        "fr": "déjà absent",
+        "en": "already gone",
+    },
+    "its database exists again": {
+        "fr": "sa base existe de nouveau",
+        "en": "its database exists again",
+    },
+    "database list unavailable": {
+        "fr": "liste des bases indisponible",
+        "en": "database list unavailable",
+    },
+    "a filesystem is mounted on it or under it": {
+        "fr": "un système de fichiers y est monté, sur lui ou dessous",
+        "en": "a filesystem is mounted on it or under it",
+    },
+    "a process is using it": {
+        "fr": "un processus l'emploie",
+        "en": "a process is using it",
+    },
+    (
+        "A PostgreSQL that serves this data_dir is unreachable: Odoo "
+        "filestores are not proposed."
+    ): {
+        "fr": (
+            "Un PostgreSQL qui sert ce data_dir est injoignable : aucun "
+            "filestore d'Odoo n'est proposé."
+        ),
+        "en": (
+            "A PostgreSQL that serves this data_dir is unreachable: Odoo "
+            "filestores are not proposed."
+        ),
+    },
+    "No data_dir in config.conf: Odoo filestores are not proposed.": {
+        "fr": (
+            "Aucun data_dir dans config.conf : aucun filestore d'Odoo n'est "
+            "proposé."
+        ),
+        "en": "No data_dir in config.conf: Odoo filestores are not proposed.",
+    },
+    (
+        "exported: the cluster of each Odoo is uncertain, Odoo filestores are "
+        "not proposed."
+    ): {
+        "fr": (
+            "exporté : le cluster de chaque Odoo est incertain, aucun "
+            "filestore d'Odoo n'est proposé."
+        ),
+        "en": (
+            "exported: the cluster of each Odoo is uncertain, Odoo filestores "
+            "are not proposed."
+        ),
+    },
+    (
+        "An orphan filestore is one no PostgreSQL of the neighbouring "
+        "ERPLibre checkouts knows; an Odoo elsewhere sharing this data_dir is "
+        "not consulted."
+    ): {
+        "fr": (
+            "Un filestore orphelin est un filestore qu'aucun PostgreSQL des "
+            "checkouts ERPLibre voisins ne connaît ; un Odoo ailleurs qui "
+            "partage ce data_dir n'est pas consulté."
+        ),
+        "en": (
+            "An orphan filestore is one no PostgreSQL of the neighbouring "
+            "ERPLibre checkouts knows; an Odoo elsewhere sharing this "
+            "data_dir is not consulted."
+        ),
+    },
 }
 
 

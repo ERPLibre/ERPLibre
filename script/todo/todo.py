@@ -134,6 +134,7 @@ from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
+from script.todo.system_menu import SystemMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -143,7 +144,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.todo_couleur import quitter, retour
+from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -225,6 +226,7 @@ class TODO(
     ModuleMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
+    SystemMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -377,6 +379,9 @@ class TODO(
 [18] {t("Network - Network tools")}
 [19] {t("Security - Dependency audit and key generation")}
 [20] {t("Docker / Podman - Container engines")}
+
+── {t("System")} ──
+[21] {t("System - Diagnostic and disk space")}
 {retour(t('Back'))}
 """
         while True:
@@ -462,6 +467,10 @@ class TODO(
                     return
             elif status == "20":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "21":
+                status = self.prompt_execute_system()
                 if status is not False:
                     return
             else:
@@ -580,7 +589,7 @@ class TODO(
             ),
             "0": (
                 "0",
-                f"0: {t('Quit')}",
+                bleu_poudre(f"0: {t('Quit')}"),
             ),
         }
         commands_end = {}
@@ -652,7 +661,7 @@ class TODO(
                     "2",
                     f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
                 ),
-                "0": ("0", f"0: {t('Back')}"),
+                "0": ("0", bleu_poudre(f"0: {t('Back')}")),
             }
             extra_input = ""
             while extra_input not in extra_choices:
@@ -786,7 +795,7 @@ class TODO(
                 f"2: {t('Production: frozen commits (freeze-revision)')}"
                 f" — {detail}"
             ),
-            "0": f"0: {t('Back')}",
+            "0": bleu_poudre(f"0: {t('Back')}"),
         }
         saisie = ""
         while saisie not in choix:
@@ -931,6 +940,8 @@ class TODO(
         "prompt_execute_seal": "PAdES seal",
         "prompt_execute_python": "Python",
         "prompt_execute_container": "Docker / Podman",
+        "prompt_execute_system": "System",
+        "_system_conteneurs": "Containers",
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
@@ -6424,7 +6435,8 @@ class TODO(
         str_input = (
             f"💬 {t('Choose an environment for the audit:')}\n\t"
             + "\n\t".join([v["label"] for v in environments.values()])
-            + f"\n\t0: {t('Back')}"
+            + "\n\t"
+            + bleu_poudre(f"0: {t('Back')}")
             + f"\n{t('Select: ')}"
         )
         env_input = ""
