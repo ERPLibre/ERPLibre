@@ -137,7 +137,7 @@ install_uv:
 .PHONY: install_mise
 install_mise:
 	@bash -c '. ./script/install/lib_python_provider.sh; el_mise_poser; rc=$$?; \
-		if [ $$rc -eq 0 ]; then el_mise_proposer_permanent; \
+		if [ $$rc -eq 0 ]; then rm -f "$${EL_MISE_REFUS}"; el_mise_proposer_permanent; \
 		elif [ $$rc -ne 2 ]; then exit 1; fi'
 
 .PHONY: db_create_db_test

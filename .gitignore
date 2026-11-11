@@ -40,6 +40,7 @@ pyproject.toml
 .erplibre-semver-version
 # State of what this checkout has installed.
 .erplibre-state.json
+.erplibre-mise-refus
 .erplibre-version
 .odoo-version
 .poetry-version
