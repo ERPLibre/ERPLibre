@@ -348,13 +348,16 @@ class TestBranchement(unittest.TestCase):
         ]
         self.assertEqual(nues, [])
 
-    def test_gdebi_recoit_le_mode(self):
+    def test_le_deb_local_passe_par_apt_get(self):
         texte = self.lire("script/install/install_debian_dependency.sh")
-        self.assertIn(
-            "sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \\\n"
-            "          gdebi --n",
-            texte,
-        )
+        self.assertIn('${APT_GET} install -y "./$(basename "${_url}")"', texte)
+        code = [
+            ligne
+            for ligne in texte.splitlines()
+            if not ligne.lstrip().startswith("#")
+        ]
+        # Ni appel ni paquet gdebi-core dans la liste apt.
+        self.assertFalse(any("gdebi" in ligne for ligne in code))
 
     def test_ticket_sudo_garde_vivant(self):
         for chemin in (

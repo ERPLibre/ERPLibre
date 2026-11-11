@@ -405,6 +405,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 websites read the cookie bar consent again under Werkzeug 3.1.9, which drops the bare JSON cookie the website writes: after **Accept all**, third-party iframes such as videos no longer stay blank, and a cookie value that is not JSON counts as no consent instead of failing the page with an HTTP 500
 - Odoo 18 sends the login, password and email change notices in the language of each notified user, not in that of whoever made the change, and an email change notifies only the user whose address changed
 - With `login_user_detail` installed on Odoo 18, XML-RPC calls answer again: the credential check read an HTTP request XML-RPC never binds, and failed every call with `object is not bound`
+- The wkhtmltopdf `.deb` is installed by `apt-get install ./<file>.deb` rather than gdebi, which leaves the dependency list: under sudo-rs, the default sudo of Ubuntu 26.04, gdebi run with its input on a terminal and its output in a pipe — the system step launched by TODO — stopped on a terminal signal and never resumed, with or without the non-interactive mode
 - **TODO › Install** is translated — the q, w and m entries, the version labels, the system and PyCharm questions — and its yes/no prompts show `(y/N)`, Enter meaning no, where they showed `(Y/N)`
 
 ## Removed
