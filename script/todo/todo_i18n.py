@@ -2154,6 +2154,38 @@ TRANSLATIONS = {
         "fr": "sortie illisible",
         "en": "unreadable output",
     },
+    "freeze": {
+        "fr": "gel",
+        "en": "freeze",
+    },
+    "off the freeze": {
+        "fr": "hors du gel",
+        "en": "off the freeze",
+    },
+    "ahead of the freeze": {
+        "fr": "en avance sur le gel",
+        "en": "ahead of the freeze",
+    },
+    "behind the freeze": {
+        "fr": "en retard sur le gel",
+        "en": "behind the freeze",
+    },
+    "diverged from the freeze": {
+        "fr": "décalé du gel",
+        "en": "diverged from the freeze",
+    },
+    "frozen commit missing from the clone": {
+        "fr": "commit gelé absent du clone",
+        "en": "frozen commit missing from the clone",
+    },
+    "shallow clone, gap to the freeze unknown": {
+        "fr": "clone tronqué, écart au gel inconnu",
+        "en": "shallow clone, gap to the freeze unknown",
+    },
+    "git could not measure the gap to the freeze": {
+        "fr": "git n'a pas pu mesurer l'écart au gel",
+        "en": "git could not measure the gap to the freeze",
+    },
     "docs up to date": {
         "fr": "docs à jour",
         "en": "docs up to date",

@@ -1129,7 +1129,12 @@ the version of their `__manifest__.py` (read with `ast.literal_eval`, never impo
 is the requested commit), `en_avance` (HEAD descends from it), `decale` (any other case), `absent` (not cloned),
 `hors_manifeste` (a clone under `odoo<V>/` the manifest does not name), `erreur`, and with `--dirty`, which also runs
 `git status` in every clone, `sale`: a modified tracked file or an untracked file that no `.gitignore` covers, such as
-a module copied into the clone; ignored files (`.pyc`, `__pycache__`) do not count. `fingerprint` hashes everything
+a module copied into the clone; ignored files (`.pyc`, `__pycache__`) do not count.
+That state compares HEAD with the local manifest only, which follows a branch outside a frozen checkout; `freeze`
+compares HEAD with the `freeze-revision` that the merge applies — from the files of the active Odoo version and from
+the common fragments listed in `conf/` — and gives `ahead`, `behind` and an alignment: `conforme`, `en_avance` (the
+freeze needs redoing), `en_retard` (the clone needs to move forward), `decale`, `introuvable` (the frozen commit is
+not in the clone), `indetermine` (a shallow clone where both sides seem to hold commits) or `erreur`. `fingerprint` hashes everything
 but the date: two snapshots of the same state share it. About 250 repositories take a second or two without `--dirty`.
 
 `between` lists the commits between two revisions of a clone, bounded by `--max` (200), and says when the list is
@@ -1163,6 +1168,11 @@ est le commit demandé), `en_avance` (HEAD en descend), `decale` (tout autre cas
 `hors_manifeste` (un clone sous `odoo<V>/` que le manifeste ne nomme pas), `erreur`, et avec `--dirty`, qui lance en
 plus `git status` dans chaque clone, `sale` : un fichier suivi modifié, ou un fichier non suivi qu'aucun `.gitignore`
 ne couvre, tel un module copié dans le clone ; les fichiers ignorés (`.pyc`, `__pycache__`) ne comptent pas.
+Cet état ne compare HEAD qu'au manifeste local, qui suit une branche hors d'un checkout gelé ; `freeze` compare HEAD
+au `freeze-revision` qu'applique la fusion — celui des fichiers de la version d'Odoo active et des fragments communs
+listés dans `conf/` — et donne `ahead`, `behind` et un alignement : `conforme`, `en_avance` (le gel est à refaire),
+`en_retard` (le clone est à avancer), `decale`, `introuvable` (le commit gelé n'est pas dans le clone),
+`indetermine` (un clone tronqué où les deux côtés semblent porter des commits) ou `erreur`.
 `fingerprint` hache tout sauf la date : deux instantanés du même état la partagent. Environ 250 dépôts prennent une seconde ou deux sans `--dirty`.
 
 `between` liste les commits entre deux révisions d'un clone, bornés par `--max` (200), et dit quand la liste est
