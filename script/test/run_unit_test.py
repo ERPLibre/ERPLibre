@@ -87,6 +87,12 @@ ECHEC = "ÉCHEC"
 DELAI = "DÉLAI"
 ARRETE = "arrêté"
 
+# Un fichier dont la dernière durée connue dépasse ce nombre de secondes
+# tourne en plusieurs processus, chacun avec une tranche de ses tests (voir
+# unit_file.py) : la suite dure alors moins que son fichier le plus long.
+# UNIT_TRANCHE=0 n'en découpe aucun.
+SEUIL_TRANCHE = int(os.environ.get("UNIT_TRANCHE") or 30)
+
 # Un fichier qui dure plus que cela est signalé, puis de nouveau à chaque
 # intervalle : c'est la réponse à « lequel bloque ? » sans tout interrompre.
 # Le plus long fichier de la suite tient sous la minute, même sous charge.
@@ -120,14 +126,18 @@ REFUSEES = {
 class Fichier:
     """Un fichier de tests et ce qu'on sait de son passage."""
 
-    def __init__(self, chemin, passage=0, passages=1):
+    def __init__(self, chemin, passage=0, passages=1, tranche=None):
         self.chemin = chemin
+        # (rang, nombre) quand le fichier tourne en tranches, sinon None.
+        self.tranche = tranche
         # Le nom du FICHIER, sur lequel se règlent les durées et les échecs
         # retenus ; `nom` est celui qu'on affiche, un passage de --repeat
         # y portant son rang.
         self.fichier = os.path.basename(chemin)
         self.passage = passage
         self.nom = self.fichier
+        if tranche:
+            self.nom += f" [{tranche[0] + 1}/{tranche[1]}]"
         if passages > 1:
             self.nom += f" #{passage + 1}"
         self.etat = ATTENTE
@@ -174,11 +184,17 @@ def ecrire_durees(fichiers, chemin=DURATIONS):
     """Remplace les durées des fichiers finis, garde celles des autres.
 
     Un fichier arrêté par Ctrl+C n'a pas de durée qui vaille : on garde
-    l'ancienne plutôt que d'en inventer une."""
+    l'ancienne plutôt que d'en inventer une. Un fichier en tranches retient
+    la SOMME de ses tranches, sa durée d'un seul tenant : c'est elle qui
+    décide de le découper au passage suivant, qui le découpe donc de même,
+    et seulement si toutes ses tranches ont fini."""
     durees = lire_durees(chemin)
+    par_passage = {}
     for f in fichiers:
-        if f.etat in (OK, ECHEC, DELAI):
-            durees[f.fichier] = int(round(f.duree))
+        par_passage.setdefault((f.fichier, f.passage), []).append(f)
+    for (nom, _passage), groupe in par_passage.items():
+        if all(f.etat in (OK, ECHEC, DELAI) for f in groupe):
+            durees[nom] = int(round(sum(f.duree for f in groupe)))
     try:
         os.makedirs(os.path.dirname(chemin), exist_ok=True)
         provisoire = chemin + ".tmp"
@@ -190,11 +206,25 @@ def ecrire_durees(fichiers, chemin=DURATIONS):
         pass
 
 
+def nombre_de_tranches(duree, jobs, seuil=None):
+    """En combien de tranches lancer un fichier de durée connue `duree`
+    (None si inconnue) : une par tranche de `seuil` secondes commencée, au
+    plus `jobs`. Un seuil nul ne découpe rien."""
+    seuil = SEUIL_TRANCHE if seuil is None else seuil
+    if not seuil or not duree or duree <= seuil:
+        return 1
+    return max(1, min(jobs, -(-duree // seuil)))
+
+
 def ordonner(fichiers, durees):
-    """Durée connue décroissante, inconnue d'abord."""
-    return sorted(
-        fichiers, key=lambda f: (-durees.get(f.fichier, 10**9), f.passage)
-    )
+    """Durée connue décroissante, inconnue d'abord ; une tranche compte pour
+    sa part de la durée de son fichier."""
+
+    def estimation(f):
+        duree = durees.get(f.fichier, 10**9)
+        return duree / f.tranche[1] if f.tranche else duree
+
+    return sorted(fichiers, key=lambda f: (-estimation(f), f.passage))
 
 
 # Les doublures vivent à un chemin FIXE, hors du dépôt, et non dans le
@@ -259,9 +289,20 @@ class Lanceur:
     ):
         self.fichiers = ordonner(
             [
-                Fichier(c, k, passages)
+                Fichier(
+                    c,
+                    k,
+                    passages,
+                    tranche=(rang, nombre) if nombre > 1 else None,
+                )
                 for c in fichiers
+                for nombre in [
+                    nombre_de_tranches(
+                        durees.get(os.path.basename(c)), max(1, jobs)
+                    )
+                ]
                 for k in range(max(1, passages))
+                for rang in range(nombre)
             ],
             durees,
         )
@@ -297,8 +338,10 @@ class Lanceur:
         # un programme que le test lance garde le tampon qu'il aurait hors
         # du lanceur.
         cmd = [self.py, "-u", f.chemin]
-        if self.detaille:
+        if self.detaille or f.tranche:
             cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
+        if f.tranche:
+            cmd += ["--tranche", f"{f.tranche[0]}/{f.tranche[1]}"]
         # Un TMPDIR par fichier, sous le répertoire de travail : ce qu'un
         # test oublie de supprimer y reste, est compté puis supprimé, au lieu
         # de s'accumuler dans /tmp jusqu'à en épuiser les inodes.
@@ -499,6 +542,16 @@ def en_ligne(lanceur):
     return bilan(lanceur)
 
 
+def ecoule_total(lanceur, maintenant=None):
+    """Le temps écoulé depuis le début de la passe, arrêté à sa fin : une
+    passe finie garde sa durée au lieu de compter jusqu'à ce qu'on quitte
+    l'affichage."""
+    if not lanceur.debut:
+        return 0.0
+    fin = lanceur.fin or (maintenant or time.monotonic())
+    return fin - lanceur.debut
+
+
 def tui(lanceur):
     """Le tableau Textual. Rend None si Textual manque : l'appelant
     retombe alors sur l'affichage en ligne."""
@@ -550,7 +603,7 @@ def tui(lanceur):
                 f.etat not in (ATTENTE, EN_COURS) for f in lanceur.fichiers
             )
             rouges = sum(f.echoue() for f in lanceur.fichiers)
-            ecoule = time.monotonic() - lanceur.debut if lanceur.debut else 0
+            ecoule = ecoule_total(lanceur)
             fin = "" if self.fil.is_alive() else " — terminé, q pour quitter"
             self.sub_title = (
                 f"{faits}/{len(lanceur.fichiers)} finis,"
@@ -620,10 +673,20 @@ def choisir(fichiers, reference, echecs):
 def instables(lanceur):
     """Les fichiers dont l'issue a varié d'un passage de --repeat à
     l'autre, avec le décompte de leurs issues."""
-    par_fichier = {}
+    # Un passage en tranches a une seule issue : la pire de ses tranches.
+    # Comparées entre elles, deux tranches d'un même passage passeraient
+    # pour un fichier instable.
+    gravite = {OK: 0, DELAI: 1, ECHEC: 2}
+    par_passage = {}
     for f in lanceur.fichiers:
-        if f.etat in (OK, ECHEC, DELAI):
-            par_fichier.setdefault(f.fichier, []).append(f.etat)
+        if f.etat in gravite:
+            cle = (f.fichier, f.passage)
+            pire = par_passage.get(cle)
+            if pire is None or gravite[f.etat] > gravite[pire]:
+                par_passage[cle] = f.etat
+    par_fichier = {}
+    for (nom, _passage), etat in par_passage.items():
+        par_fichier.setdefault(nom, []).append(etat)
     return {
         nom: {e: etats.count(e) for e in sorted(set(etats))}
         for nom, etats in sorted(par_fichier.items())

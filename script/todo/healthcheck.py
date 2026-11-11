@@ -988,8 +988,10 @@ ECARTS_GEL = {
     "indetermine": "shallow clone, gap to the freeze unknown",
     "erreur": "git could not measure the gap to the freeze",
 }
-# Les états de `repo_state` que « Addons face au manifeste » détaille.
-ETATS_SIGNALES = ("decale", "absent", "erreur")
+# Les états de `repo_state` que « Addons face au manifeste » détaille : tout
+# écart à la cible du manifeste local, en avance compris — des commits que la
+# branche du manifeste n'a pas encore.
+ETATS_SIGNALES = ("decale", "en_avance", "absent", "erreur")
 
 
 def _ecart_gel(depot):
@@ -1042,27 +1044,80 @@ def verifier_manifeste(ctx):
     comptes = {}
     details = []
     hors_gel = []
+    perimes = manifeste_perime(donnees)
     for depot in depots:
+        if depot in perimes:
+            continue
         etat = depot.get("state")
         comptes[etat] = comptes.get(etat, 0) + 1
         if etat in ETATS_SIGNALES:
-            details.append(
-                f"{etat} : {depot.get('path')}"
-                + (f" — {depot.get('error')}" if depot.get("error") else "")
-            )
+            ligne = f"{etat} : {depot.get('path')}"
+            if depot.get("ahead") is not None:
+                ligne += f" (+{depot['ahead']} −{depot['behind']})"
+            if depot.get("error"):
+                ligne += f" — {depot['error']}"
+            details.append(ligne)
         ligne = _ecart_gel(depot)
         if ligne:
             hors_gel.append(ligne)
     resume = " · ".join(f"{n} {etat}" for etat, n in sorted(comptes.items()))
+    if perimes:
+        resume += f" · {len(perimes)} {t('stale local manifest')}"
+        details += [
+            f"{t('stale local manifest')} : {d.get('path')} —"
+            f" {t('local target')} {d['revision'][:10]},"
+            f" {t('freeze')} {d['freeze_revision'][:10]}"
+            for d in perimes
+        ]
     if hors_gel:
         resume += f" · {len(hors_gel)} {t('off the freeze')}"
         details += hors_gel
     resolutions = resolutions_gel(ctx, depots)
+    if perimes:
+        resolutions.insert(
+            0,
+            Resolution(
+                REGENERER,
+                f"🧾 {t('Regenerate the local manifest')}"
+                f" ({COMMANDE_REGENERER})",
+                [
+                    t(
+                        "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. It is written again from manifest/, then repo sync puts each repository on its freeze; a repository with modified files makes the sync fail without being overwritten."
+                    )
+                ]
+                + [f"   {d.get('path')}" for d in perimes],
+                perimes,
+            ),
+        )
     if details:
         return Resultat(
             nom, ALERTE, resume, _limiter(details), resolutions=resolutions
         )
     return Resultat(nom, OK, resume, resolutions=resolutions)
+
+
+REGENERER = "regenerer"
+COMMANDE_REGENERER = "make repo_configure_all FREEZE=1"
+
+
+def manifeste_perime(donnees):
+    """Les dépôts dont le manifeste local, en checkout gelé, vise un autre
+    commit que le « freeze-revision » de `manifest/` : le manifeste local a
+    été généré avant le dernier gel. Leur écart à sa cible (« en_avance »,
+    « decale ») ne dit alors rien de vrai, et la réponse est de le
+    régénérer. Hors d'un checkout gelé, la cible est une branche : rien
+    n'est périmé de cette façon."""
+    from script.git import manifest_freeze
+
+    if donnees.get("mode") != "frozen":
+        return []
+    return [
+        d
+        for d in donnees.get("repos") or []
+        if d.get("freeze_revision")
+        and manifest_freeze.is_sha((d.get("revision") or "").lower())
+        and d["revision"].lower() != d["freeze_revision"].lower()
+    ]
 
 
 def _ligne_gel(depot):
@@ -1806,6 +1861,8 @@ def executer_resolution(
     à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
     TODO, qui sait installer un lock et faire le rapport."""
     demander = demander or input
+    if resolution.cle == REGENERER:
+        return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
         return _mettre_a_jour_venvs(
             resolution.depots, demander, sortie, mettre_a_jour_venv
@@ -1815,6 +1872,38 @@ def executer_resolution(
     if resolution.cle == freeze_resolution.MAJ_GEL:
         return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
     return False
+
+
+def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
+    """Régénère le manifeste local et synchronise, après confirmation.
+    Agit sur tout le checkout : aucun choix de dépôt. `lancer(commande)`
+    rend le code de sortie, `subprocess.run` dans le terminal par
+    défaut."""
+    sortie(
+        f"{len(depots)} {t('repositories target an older freeze in the local manifest.')}"
+    )
+    try:
+        reponse = demander(
+            f"💬 {t('Regenerate the local manifest and sync? (y/N): ')}"
+        )
+    except EOFError:
+        reponse = ""
+    if reponse.strip().lower() not in ("y", "yes", "o", "oui"):
+        sortie(t("Nothing changed."))
+        return False
+    sortie(f"   $ {COMMANDE_REGENERER}")
+    lancer = lancer or (
+        lambda commande: (
+            subprocess.run(shlex.split(commande), cwd=ctx.racine).returncode
+        )
+    )
+    code = lancer(COMMANDE_REGENERER)
+    sortie(
+        f"✅ {t('Local manifest regenerated.')}"
+        if code == 0
+        else f"❌ {COMMANDE_REGENERER} : {t('failure, code')} {code}"
+    )
+    return code == 0
 
 
 def _remettre_au_gel(ctx, depots, demander, sortie):

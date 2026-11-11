@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Exécute un fichier de tests et note chaque test : son résultat, sa durée.
 
-    unit_file.py FICHIER SORTIE.json
+    unit_file.py FICHIER SORTIE.json [--tranche K/N]
 
 Lancé par `run_unit_test.py` à la place du fichier lui-même, quand on lui
 demande un détail par test (--slowest, --junit). La sortie à l'écran est
@@ -100,10 +100,35 @@ class Resultat(unittest.TextTestResult):
         self._noter(test, "echec", "succès inattendu")
 
 
-def executer(chemin, sortie):
+def aplatir(suite):
+    """Les tests de `suite`, dans l'ordre où unittest les lancerait."""
+    for element in suite:
+        if isinstance(element, unittest.TestSuite):
+            yield from aplatir(element)
+        else:
+            yield element
+
+
+def tranche(suite, rang, nombre):
+    """Les tests de rang `rang` modulo `nombre`, dans leur ordre d'origine.
+
+    Le rang alterne d'un test au suivant, si bien que des tests lents qui
+    se suivent se répartissent entre les tranches. L'ordre d'origine garde
+    contigus les tests d'une même classe : unittest ne rejoue pas sa
+    préparation de classe entre deux d'entre eux."""
+    return unittest.TestSuite(
+        test
+        for indice, test in enumerate(aplatir(suite))
+        if indice % nombre == rang
+    )
+
+
+def executer(chemin, sortie, rang=None, nombre=None):
     """Charge `chemin`, exécute ses tests, écrit le détail dans `sortie`.
 
-    Rend le code de sortie : 0 si tout est vert."""
+    Avec `rang` et `nombre`, n'exécute que cette tranche de ses tests (voir
+    `tranche`) ; une tranche vide réussit. Rend le code de sortie : 0 si
+    tout est vert."""
     chemin = os.path.abspath(chemin)
     sys.path[0] = os.path.dirname(chemin)
     sys.argv = [chemin]
@@ -113,6 +138,14 @@ def executer(chemin, sortie):
     sys.modules[nom] = module
     spec.loader.exec_module(module)
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+    if nombre:
+        suite = tranche(suite, rang, nombre)
+        if not suite.countTestCases():
+            # unittest rend 5 sans test ; la tranche, elle, est réussie.
+            print("Ran 0 tests in 0.000s\n\nOK", file=sys.stderr)
+            with open(sortie, "w", encoding="utf-8") as fh:
+                json.dump([], fh)
+            return 0
     resultat = unittest.TextTestRunner(resultclass=Resultat).run(suite)
     with open(sortie, "w", encoding="utf-8") as fh:
         json.dump(resultat.detail, fh)
@@ -120,4 +153,8 @@ def executer(chemin, sortie):
 
 
 if __name__ == "__main__":
-    sys.exit(executer(sys.argv[1], sys.argv[2]))
+    arguments = sys.argv[1:]
+    rang = nombre = None
+    if len(arguments) == 4 and arguments[2] == "--tranche":
+        rang, nombre = (int(x) for x in arguments[3].split("/"))
+    sys.exit(executer(arguments[0], arguments[1], rang, nombre))

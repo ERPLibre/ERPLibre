@@ -442,6 +442,93 @@ class TestManifeste(unittest.TestCase):
         self.assertEqual(resultat.details, ["decale : odoo18.0/addons/R_gele"])
         self.assertNotIn(t("off the freeze"), resultat.resume)
 
+    def test_ahead_and_diverged_repositories_are_named_with_their_gap(self):
+        avance = self.depot("odoo18.0/addons/R_avance")
+        avance.update(state="en_avance", ahead=2, behind=0)
+        decale = self.depot("odoo18.0/addons/R_decale")
+        decale.update(state="decale", ahead=1, behind=3)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([avance, decale]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance : odoo18.0/addons/R_avance (+2 −0)",
+                "decale : odoo18.0/addons/R_decale (+1 −3)",
+            ],
+        )
+
+    def ctx_gele(self, depots, mode="frozen"):
+        ctx = h.Contexte(tempfile.gettempdir())
+        ctx.snapshot = lambda: (
+            {"local_manifest": True, "mode": mode, "repos": depots},
+            "",
+        )
+        ctx.lancer = lambda args, *a, **k: subprocess.CompletedProcess(
+            args, 0, "", ""
+        )
+        return ctx
+
+    def depot_perime(self):
+        # La cible locale est l'ancien gel ; HEAD est sur le gel actuel.
+        depot = self.depot(
+            "odoo18.0/addons/R_perime",
+            "b" * 40,
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        depot.update(
+            state="en_avance",
+            revision="a" * 40,
+            target="a" * 40,
+            head="b" * 40,
+            ahead=1,
+            behind=0,
+        )
+        return depot
+
+    def test_a_stale_local_manifest_is_named_not_counted_ahead(self):
+        resultat = h.verifier_manifeste(self.ctx_gele([self.depot_perime()]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"1 {t('stale local manifest')}", resultat.resume)
+        self.assertNotIn("en_avance", resultat.resume)
+        (ligne,) = resultat.details
+        self.assertIn("odoo18.0/addons/R_perime", ligne)
+        self.assertIn("aaaaaaaaaa", ligne)
+        self.assertIn("bbbbbbbbbb", ligne)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.REGENERER)
+        self.assertIn(h.COMMANDE_REGENERER, resolution.libelle)
+
+    def test_a_branch_checkout_is_never_stale(self):
+        depot = self.depot_perime()
+        depot["revision"] = "18.0"
+        resultat = h.verifier_manifeste(
+            self.ctx_gele([depot], mode="branches")
+        )
+        self.assertNotIn(t("stale local manifest"), resultat.resume)
+        self.assertIn("1 en_avance", resultat.resume)
+
+    def test_regenerating_asks_first_and_shows_the_command(self):
+        ctx = h.Contexte(tempfile.gettempdir())
+        lances, lignes = [], []
+
+        def lancer(commande):
+            lances.append(commande)
+            return 0
+
+        self.assertFalse(
+            h._regenerer_manifeste(
+                ctx, [{}], lambda _q: "", lignes.append, lancer=lancer
+            )
+        )
+        self.assertEqual(lances, [])
+        self.assertTrue(
+            h._regenerer_manifeste(
+                ctx, [{}], lambda _q: "o", lignes.append, lancer=lancer
+            )
+        )
+        self.assertEqual(lances, [h.COMMANDE_REGENERER])
+        self.assertIn(f"   $ {h.COMMANDE_REGENERER}", lignes)
+
     def test_every_repository_on_its_freeze_is_fine(self):
         resultat = h.verifier_manifeste(
             self.ctx_snapshot(
