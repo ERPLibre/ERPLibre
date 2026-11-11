@@ -13,9 +13,6 @@ Actually, need to push manually all different remote.
 ## Funding
 - Add funding for MathBenTech and TechnoLibre
 
-## Improve repo init usage
-- Support run repo init without human interaction. Do we need to create a temporary user name?
-
 ## Improve repo sync usage
 - Test repo sync with argument -d
 - Test repo sync with argument -t SMART_TAG, like tag ERPLibre/v1.0.0
