@@ -21871,7 +21871,115 @@ TRANSLATIONS = {
         "fr": "📦 Conteneurs - taille et nettoyage",
         "en": "📦 Containers - size and cleanup",
     },
-    # Système : mémoire CPU par processus
+    # Système : mémoire CPU et GPU par processus
+    "GPU memory per process": {
+        "fr": "🎮 Mémoire GPU par processus",
+        "en": "🎮 GPU memory per process",
+    },
+    "Reading GPU memory…": {
+        "fr": "Lecture de la mémoire GPU…",
+        "en": "Reading GPU memory…",
+    },
+    "Graphics cards": {
+        "fr": "Cartes graphiques",
+        "en": "Graphics cards",
+    },
+    "driver": {
+        "fr": "pilote",
+        "en": "driver",
+    },
+    "used of": {
+        "fr": "utilisée sur",
+        "en": "used of",
+    },
+    "No graphics card found.": {
+        "fr": "Aucune carte graphique trouvée.",
+        "en": "No graphics card found.",
+    },
+    (
+        "An NVIDIA card is present, but nvidia-smi is missing or fails: "
+        "install the NVIDIA driver utilities."
+    ): {
+        "fr": (
+            "Une carte NVIDIA est présente, mais nvidia-smi manque ou échoue "
+            ": installez les utilitaires du pilote NVIDIA."
+        ),
+        "en": (
+            "An NVIDIA card is present, but nvidia-smi is missing or fails: "
+            "install the NVIDIA driver utilities."
+        ),
+    },
+    "Compute processes only: graphics processes are not listed.": {
+        "fr": (
+            "Processus de calcul seulement : les processus graphiques ne sont "
+            "pas listés."
+        ),
+        "en": "Compute processes only: graphics processes are not listed.",
+    },
+    "No process uses this card.": {
+        "fr": "Aucun processus n'utilise cette carte.",
+        "en": "No process uses this card.",
+    },
+    "Account": {
+        "fr": "Compte",
+        "en": "Account",
+    },
+    "Process": {
+        "fr": "Processus",
+        "en": "Process",
+    },
+    (
+        "Not attributed to a listed process (driver, contexts, other "
+        "containers)"
+    ): {
+        "fr": (
+            "Non attribuée à un processus listé (pilote, contextes, autres "
+            "conteneurs)"
+        ),
+        "en": (
+            "Not attributed to a listed process (driver, contexts, other "
+            "containers)"
+        ),
+    },
+    "No process of this account uses a DRM card.": {
+        "fr": "Aucun processus de ce compte n'utilise une carte DRM.",
+        "en": "No process of this account uses a DRM card.",
+    },
+    "process(es) hold a card whose driver publishes no per-process memory:": {
+        "fr": (
+            "processus tiennent une carte dont le pilote ne publie pas la "
+            "mémoire par processus :"
+        ),
+        "en": (
+            "process(es) hold a card whose driver publishes no per-process "
+            "memory:"
+        ),
+    },
+    (
+        "processes of other accounts cannot be read without root: their GPU "
+        "memory is not counted."
+    ): {
+        "fr": (
+            "processus d'autres comptes ne se lisent pas sans root : leur "
+            "mémoire GPU n'est pas comptée."
+        ),
+        "en": (
+            "processes of other accounts cannot be read without root: their "
+            "GPU memory is not counted."
+        ),
+    },
+    "read-only reading of /proc/*/fdinfo": {
+        "fr": "lecture seule de /proc/*/fdinfo",
+        "en": "read-only reading of /proc/*/fdinfo",
+    },
+    "Read them with sudo? The password is asked here. (y/N): ": {
+        "fr": "Les lire avec sudo ? Le mot de passe se tape ici. (o/N) : ",
+        "en": "Read them with sudo? The password is asked here. (y/N): ",
+    },
+    "sudo failed: showing what reads without root.": {
+        "fr": "sudo a échoué : affichage de ce qui se lit sans root.",
+        "en": "sudo failed: showing what reads without root.",
+    },
     "CPU memory per process": {
         "fr": "🧠 Mémoire CPU par processus",
         "en": "🧠 CPU memory per process",

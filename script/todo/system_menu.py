@@ -20,7 +20,12 @@ import time
 
 import click
 
-from script.todo import system_cleanup, system_cpu, system_diagnostic
+from script.todo import (
+    system_cleanup,
+    system_cpu,
+    system_diagnostic,
+    system_gpu,
+)
 from script.todo.todo_i18n import t
 
 # Les jours d'inactivité au-delà desquels un reste de /tmp ou une session
@@ -155,6 +160,141 @@ def lignes_diagnostic(faits):
     return lignes
 
 
+def _tri_memoire(p):
+    """Clé de tri : la plus grosse mémoire d'abord, l'inconnue à la fin."""
+    total = p.get("memoire")
+    if total is None and p.get("regions"):
+        total = sum(p["regions"].values())
+    return (total is None, -(total or 0), p["pid"])
+
+
+def affichable(texte):
+    """`texte` sans caractère de contrôle : chacun devient « ? ».
+
+    Le nom (comm) et la ligne de commande d'un processus sont choisis par
+    le compte qui le lance. Après la relecture sudo, ou par nvidia-smi, ce
+    sont ceux de TOUS les comptes : une séquence d'échappement ou un saut
+    de ligne y écrirait dans le terminal de qui lit le rapport, ou y
+    forgerait une ligne."""
+    if texte is None:
+        return None
+    return "".join(c if c.isprintable() else "?" for c in str(texte))
+
+
+def _ligne_processus(p, memoire):
+    """« PID  mémoire  compte  commande », colonnes alignées."""
+    qui = affichable(p.get("compte")) or "?"
+    quoi = affichable(p.get("commande") or p.get("nom")) or "?"
+    return f"  {p['pid']:>8}  {memoire}  {qui:<12} {quoi}"
+
+
+def lignes_gpu(faits):
+    """La mémoire GPU en lignes de texte : les cartes, puis les processus
+    par source, le plus gros d'abord, puis ce que la lecture n'a pas vu."""
+    absent = t("unavailable")
+    lignes = [f"── {t('Graphics cards')} ──"]
+    for c in faits["cartes"]:
+        ligne = (
+            f"  {c['carte']} · {c['fabricant'] or absent}"
+            f" · {c['modele'] or c['pci']}"
+            f" · {t('driver')} {c['pilote']}"
+        )
+        lignes.append(ligne)
+        if c["vram_totale"]:
+            lignes.append(
+                f"      VRAM : {octets(c['vram_utilisee']) or absent}"
+                f" {t('used of')} {octets(c['vram_totale'])}"
+            )
+    if not faits["cartes"]:
+        lignes.append(f"  {t('No graphics card found.')}")
+    if faits["nvidia_sans_reponse"]:
+        lignes.append(
+            f"  ⚠ {t('An NVIDIA card is present, but nvidia-smi is missing or fails: install the NVIDIA driver utilities.')}"
+        )
+
+    nv = faits["nvidia"]
+    if nv:
+        lignes += ["", f"── NVIDIA ({nv['source']}) ──"]
+        if "compute-apps" in nv["source"]:
+            lignes.append(
+                f"  ⚠ {t('Compute processes only: graphics processes are not listed.')}"
+            )
+        for gpu in nv["gpus"]:
+            lignes.append(
+                f"  GPU {gpu['index']} · {gpu['nom'] or absent} :"
+                f" {octets(gpu['utilisee']) or absent}"
+                f" {t('used of')} {octets(gpu['totale']) or absent}"
+            )
+            if not gpu["processus"]:
+                lignes.append(f"      {t('No process uses this card.')}")
+                continue
+            lignes.append(
+                f"  {'PID':>8}  {'Type':<4} {t('Memory'):>10}"
+                f"  {t('Account'):<12} {t('Process')}"
+            )
+            for p in sorted(gpu["processus"], key=_tri_memoire):
+                memoire = f"{p['type'] or '?':<4} {octets(p['memoire']) or 'N/A':>10}"
+                lignes.append(_ligne_processus(p, memoire))
+            connues = [p["memoire"] for p in gpu["processus"]]
+            if gpu["utilisee"] is not None and None not in connues:
+                reste = gpu["utilisee"] - sum(connues)
+                if reste > 0:
+                    lignes.append(
+                        f"  {t('Not attributed to a listed process (driver, contexts, other containers)')} :"
+                        f" {octets(reste)}"
+                    )
+
+    d = faits["drm"]
+    if d is not None:
+        source = "/proc/*/fdinfo, sudo" if d.get("sudo") else "/proc/*/fdinfo"
+        lignes += ["", f"── DRM ({source}) ──"]
+        par_carte = {}
+        for p in d["processus"]:
+            par_carte.setdefault((p["pci"], p["pilote"]), []).append(p)
+        for (pci, pilote), liste in sorted(
+            par_carte.items(), key=lambda x: str(x[0])
+        ):
+            lignes.append(
+                f"  {pci or absent} · {t('driver')} {pilote or absent}"
+            )
+            lignes.append(
+                f"  {'PID':>8}  {t('Memory'):<28}  {t('Account'):<12}"
+                f" {t('Process')}"
+            )
+            for p in sorted(liste, key=_tri_memoire):
+                memoire = (
+                    " · ".join(
+                        f"{region} {octets(n)}"
+                        for region, n in sorted(
+                            p["regions"].items(), key=lambda x: -x[1]
+                        )
+                        if n
+                    )
+                    or "0"
+                )
+                lignes.append(_ligne_processus(p, f"{memoire:<28}"))
+        if not d["processus"] and not d["sans_stats"]:
+            lignes.append(
+                f"  {t('No process of this account uses a DRM card.')}"
+            )
+        if d["sans_stats"]:
+            noms = ", ".join(
+                f"{affichable(p['nom']) or '?'} ({p['pid']})"
+                for p in d["sans_stats"]
+            )
+            lignes.append(
+                f"  ⚠ {len(d['sans_stats'])}"
+                f" {t('process(es) hold a card whose driver publishes no per-process memory:')}"
+                f" {noms}"
+            )
+        if d["illisibles"]:
+            lignes.append(
+                f"  ⚠ {d['illisibles']}"
+                f" {t('processes of other accounts cannot be read without root: their GPU memory is not counted.')}"
+            )
+    return lignes
+
+
 def libelle(candidat):
     """Une ligne du formulaire : taille, catégorie, nom, mise en garde."""
     nom = candidat.nom
@@ -273,6 +413,7 @@ class SystemMenuMixin:
             },
             {"prompt_description": t("Containers - size and cleanup")},
             {"prompt_description": t("CPU memory per process")},
+            {"prompt_description": t("GPU memory per process")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -294,6 +435,8 @@ class SystemMenuMixin:
                 self._system_conteneurs()
             elif status == "7":
                 self._system_cpu()
+            elif status == "8":
+                self._system_gpu()
             else:
                 print(t("Command not found !"))
 
@@ -387,6 +530,43 @@ class SystemMenuMixin:
                     )
                 return False
         return True
+
+    def _system_gpu(self):
+        print(f"  {t('Reading GPU memory…')}")
+        faits = system_gpu.collecter()
+        self._system_gpu_sudo(faits)
+        print("\n".join(lignes_gpu(faits)))
+        print()
+
+    def _system_gpu_sudo(self, faits):
+        """Propose de relire en root les processus d'autres comptes que
+        fdinfo n'a pas pu lire. Sans réponse oui, sans terminal, déjà root
+        ou si sudo échoue, `faits` reste la lecture sans root."""
+        d = faits["drm"]
+        if not d or not d["illisibles"] or os.geteuid() == 0:
+            return
+        if not sys.stdin.isatty():
+            return
+        print(
+            f"  ⚠ {d['illisibles']}"
+            f" {t('processes of other accounts cannot be read without root: their GPU memory is not counted.')}"
+        )
+        print(
+            f"  {t('Will execute:')} sudo python3 -I -c"
+            f" <{t('read-only reading of /proc/*/fdinfo')}>"
+        )
+        if not self._is_yes(
+            input(
+                t("Read them with sudo? The password is asked here. (y/N): ")
+            )
+        ):
+            return
+        lu = system_gpu.drm_sudo()
+        if lu is None:
+            print(f"  ⚠ {t('sudo failed: showing what reads without root.')}")
+            return
+        system_gpu.completer(lu["processus"])
+        faits["drm"] = lu
 
     def _system_bases(self, config_path=None):
         """Les bases que PostgreSQL connaît, ou None s'il ne répond pas.
