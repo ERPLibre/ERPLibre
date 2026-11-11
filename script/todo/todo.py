@@ -134,6 +134,7 @@ from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
+from script.todo.system_menu import SystemMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -225,6 +226,7 @@ class TODO(
     ModuleMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
+    SystemMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -377,6 +379,9 @@ class TODO(
 [18] {t("Network - Network tools")}
 [19] {t("Security - Dependency audit and key generation")}
 [20] {t("Docker / Podman - Container engines")}
+
+── {t("System")} ──
+[21] {t("System - Diagnostic and disk space")}
 {retour(t('Back'))}
 """
         while True:
@@ -462,6 +467,10 @@ class TODO(
                     return
             elif status == "20":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "21":
+                status = self.prompt_execute_system()
                 if status is not False:
                     return
             else:
@@ -931,6 +940,7 @@ class TODO(
         "prompt_execute_seal": "PAdES seal",
         "prompt_execute_python": "Python",
         "prompt_execute_container": "Docker / Podman",
+        "prompt_execute_system": "System",
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",

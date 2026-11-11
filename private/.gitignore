@@ -23,3 +23,8 @@ repondeur/
 
 # Journal des SMS par correspondant : numeros reels et texte des messages.
 sms/
+
+# Rapports du diagnostic système (TODO › Exécution › Système) : nom d'hôte,
+# fabricant et modèle, points de montage, venvs. Ils décrivent UNE machine et
+# n'ont rien à faire dans un dépôt dont le distant est public.
+diagnostic/
