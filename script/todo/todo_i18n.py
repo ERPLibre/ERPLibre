@@ -1485,6 +1485,54 @@ TRANSLATIONS = {
         "fr": "Va exécuter :",
         "en": "Will execute:",
     },
+    "Install mise when it is absent, rather than compile Python.": {
+        "fr": "Poser mise quand il est absent, plutôt que de compiler Python.",
+        "en": "Install mise when it is absent, rather than compile Python.",
+    },
+    "Target m chooses an Android device at the keyboard: not available in non-interactive mode.": {
+        "fr": "La cible m fait choisir un appareil Android au clavier : indisponible en mode non interactif.",
+        "en": "Target m chooses an Android device at the keyboard: not available in non-interactive mode.",
+    },
+    "Install ERPLibre with answers given in advance.": {
+        "fr": "Installer ERPLibre avec des réponses données d'avance.",
+        "en": "Install ERPLibre with answers given in advance.",
+    },
+    "Ask nothing: a missing answer stops the installation.": {
+        "fr": "Ne rien demander : une réponse manquante arrête l'installation.",
+        "en": "Ask nothing: a missing answer stops the installation.",
+    },
+    "Odoo version (18.0), or q, w, m as in the menu.": {
+        "fr": "Version d'Odoo (18.0), ou q, w, m comme dans le menu.",
+        "en": "Odoo version (18.0), or q, w, m as in the menu.",
+    },
+    "Git identity: give both the name and the email, or neither.": {
+        "fr": "Identité git : donner le nom et le courriel, ou ni l'un ni l'autre.",
+        "en": "Git identity: give both the name and the email, or neither.",
+    },
+    "or": {
+        "fr": "ou",
+        "en": "or",
+    },
+    "Unknown install target:": {
+        "fr": "Cible d'installation inconnue :",
+        "en": "Unknown install target:",
+    },
+    "The system installation failed with code": {
+        "fr": "L'installation du système a échoué avec le code",
+        "en": "The system installation failed with code",
+    },
+    "No git identity: repo init runs without asking for one (EL_GIT_NAME and EL_GIT_EMAIL set it).": {
+        "fr": "Aucune identité git : repo init tourne sans en demander (EL_GIT_NAME et EL_GIT_EMAIL la posent).",
+        "en": "No git identity: repo init runs without asking for one (EL_GIT_NAME and EL_GIT_EMAIL set it).",
+    },
+    "Non-interactive mode: missing answers, nothing was installed.": {
+        "fr": "Mode non interactif : réponses manquantes, rien n'a été installé.",
+        "en": "Non-interactive mode: missing answers, nothing was installed.",
+    },
+    "Non-interactive mode: the TODO menu needs someone at the keyboard. Use: ./todo.sh install --non-interactive --help": {
+        "fr": "Mode non interactif : le menu de TODO demande quelqu'un au clavier. Utilisez : ./todo.sh install --non-interactive --help",
+        "en": "Non-interactive mode: the TODO menu needs someone at the keyboard. Use: ./todo.sh install --non-interactive --help",
+    },
     "First system installation? Installs the system packages first (y/N): ": {
         "fr": "Première installation du système ? Installe d'abord les paquets du système (o/N) : ",
         "en": "First system installation? Installs the system packages first (y/N): ",

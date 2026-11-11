@@ -28,6 +28,7 @@ from unittest import mock
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
+from script.todo import install_non_interactif  # noqa: E402
 from script.todo import todo as todo_module  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -239,6 +240,255 @@ class TestIdentiteGit(Banc):
         self.assertEqual(len(questions), 3)
 
 
+class ExecuteNote(ExecuteFactice):
+    """Note aussi les options de chaque appel ; `echec` donne le code rendu
+    par la commande qui le contient."""
+
+    def __init__(self, echec=None):
+        super().__init__()
+        self.options = []
+        self.echec = echec or {}
+
+    def exec_command_live(self, cmd, **kwargs):
+        self.commandes.append(cmd)
+        self.options.append(kwargs)
+        for motif, code in self.echec.items():
+            if motif in cmd:
+                return code
+        return 0
+
+
+class TestInstallCli(unittest.TestCase):
+    """« ./todo.sh install » : réponses données d'avance, et en mode non
+    interactif, aucune question, jamais.
+
+    input() échoue s'il est appelé : une question en mode non interactif
+    est un défaut. _fragment_repo_init et gel_des_sources sont remplacés :
+    l'identité git est absente, chaque version a des commits gelés.
+    """
+
+    def setUp(self):
+        self.ecrits = []
+        self.pret = False
+        self.mise_absente = False
+
+        def fragment(fonction, *args):
+            if fonction == "repo_identity_ready":
+                code = 0 if self.pret else 1
+            else:
+                self.ecrits.append((fonction, *args))
+                code = 0
+            return subprocess.CompletedProcess(fonction, code, "", "")
+
+        for patch in (
+            mock.patch.object(
+                TODO, "_fragment_repo_init", staticmethod(fragment)
+            ),
+            mock.patch.object(
+                todo_module, "gel_des_sources", lambda **_: (5, 5)
+            ),
+            mock.patch.object(
+                install_non_interactif,
+                "mise_requis",
+                lambda environ: self.mise_absente,
+            ),
+            mock.patch.dict(os.environ, {}, clear=False),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+        for variable in (
+            "EL_NON_INTERACTIVE",
+            "EL_INSTALL_TARGET",
+            "EL_FREEZE",
+            "EL_WITH_EXTRA",
+            "EL_INSTALL_SYSTEM",
+            "EL_GIT_NAME",
+            "EL_GIT_EMAIL",
+            "EL_INSTALL_MISE",
+        ):
+            os.environ.pop(variable, None)
+
+    def lancer(
+        self, argv, echec=None, echec_principal=None, reponses=(), sudo=0
+    ):
+        """Lance install_cli ; rend (code, commandes, questions, sortie).
+
+        `echec` : {motif: code} pour exec_command_live ; `echec_principal` :
+        code de la commande d'installation, lancée par subprocess.run ;
+        `sudo` : code du contrôle el_sudo_preflight."""
+        todo = TODO.__new__(TODO)
+        todo.execute = ExecuteNote(echec)
+        self.todo = todo
+        self.preflights = 0
+        questions, suite = [], iter(reponses)
+
+        def repondre(prompt=""):
+            questions.append(prompt)
+            try:
+                return next(suite)
+            except StopIteration:
+                raise AssertionError(f"question posée : {prompt!r}") from None
+
+        lances = []
+
+        def run(cmd, *args, **kwargs):
+            lances.append(cmd)
+            if isinstance(cmd, list) and cmd[:1] == ["which"]:
+                return subprocess.CompletedProcess(cmd, 1, "", "")
+            if isinstance(cmd, list) and "el_sudo_preflight" in " ".join(cmd):
+                self.preflights += 1
+                return subprocess.CompletedProcess(cmd, sudo, "", "")
+            if isinstance(cmd, str) and echec_principal:
+                raise subprocess.CalledProcessError(echec_principal, cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        sortie = io.StringIO()
+        relance = mock.Mock()
+        with (
+            mock.patch.object(builtins, "input", repondre),
+            mock.patch.object(todo_module.subprocess, "run", run),
+            mock.patch.object(TODO, "restart_script", relance),
+            contextlib.redirect_stdout(sortie),
+        ):
+            code = todo.install_cli(argv)
+        self.relance = relance
+        commandes = todo.execute.commandes + [
+            c for c in lances if isinstance(c, str)
+        ]
+        return code, commandes, questions, sortie.getvalue()
+
+    TOUT = [
+        "--non-interactive",
+        "--target",
+        "18.0",
+        "--env",
+        "dev",
+        "--type",
+        "standard",
+        "--system",
+        "yes",
+    ]
+
+    def test_aucune_question_et_tout_est_lance(self):
+        code, commandes, questions, _ = self.lancer(self.TOUT)
+        self.assertEqual(code, 0)
+        self.assertEqual(questions, [])
+        self.assertEqual(self.preflights, 1)
+        self.assertEqual(
+            commandes[0], "./script/version/update_env_version.py --install"
+        )
+        principale = commandes[-1]
+        self.assertTrue(principale.startswith("EL_FREEZE=0 "), principale)
+        self.assertIn("--install_dev", principale)
+        self.assertNotIn("--with_extra", principale)
+        self.assertEqual(os.environ.get("EL_NON_INTERACTIVE"), "1")
+
+    def test_l_etape_systeme_tourne_ici_et_attend(self):
+        self.lancer(self.TOUT)
+        options = self.todo.execute.options[0]
+        self.assertIs(options.get("source_erplibre"), False)
+        self.assertIs(options.get("single_source_erplibre"), True)
+
+    def test_production_et_extras(self):
+        argv = [a for a in self.TOUT]
+        argv[argv.index("dev")] = "prod"
+        argv[argv.index("standard")] = "extra"
+        _, commandes, _, _ = self.lancer(argv)
+        self.assertTrue(commandes[-1].startswith("EL_FREEZE=1 "))
+        self.assertTrue(commandes[-1].endswith(" --with_extra"))
+
+    def test_sudo_qui_demanderait_un_mot_de_passe(self):
+        code, commandes, questions, _ = self.lancer(self.TOUT, sudo=1)
+        self.assertEqual((code, commandes, questions), (1, [], []))
+
+    def test_sans_etape_systeme_sudo_n_est_pas_controle(self):
+        argv = [a for a in self.TOUT]
+        argv[argv.index("yes")] = "no"
+        self.lancer(argv)
+        self.assertEqual(self.preflights, 0)
+
+    def test_cible_m_refusee(self):
+        code, commandes, _, _ = self.lancer(
+            ["--non-interactive", "--target", "m", "--system", "no"]
+        )
+        self.assertEqual((code, commandes), (2, []))
+
+    def test_mise_absente_sans_reponse(self):
+        self.mise_absente = True
+        code, commandes, _, sortie = self.lancer(self.TOUT)
+        self.assertEqual((code, commandes), (2, []))
+        self.assertIn("--mise", sortie)
+
+    def test_reponse_mise_transmise_aux_scripts(self):
+        self.mise_absente = True
+        code, _, _, _ = self.lancer(self.TOUT + ["--mise", "yes"])
+        self.assertEqual(code, 0)
+        self.assertEqual(os.environ.get("EL_INSTALL_MISE"), "1")
+
+    def test_reponse_manquante_rien_n_est_lance(self):
+        code, commandes, questions, sortie = self.lancer(
+            ["--non-interactive", "--target", "18.0"]
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual((commandes, questions), ([], []))
+        for attendu in ("--env", "--type", "--system"):
+            self.assertIn(attendu, sortie)
+
+    def test_mode_par_la_variable(self):
+        os.environ["EL_NON_INTERACTIVE"] = "1"
+        code, commandes, _, _ = self.lancer([])
+        self.assertEqual((code, commandes), (2, []))
+
+    def test_cible_inconnue(self):
+        argv = [a for a in self.TOUT]
+        argv[argv.index("18.0")] = "99.0"
+        code, commandes, _, sortie = self.lancer(argv)
+        self.assertEqual((code, commandes), (2, []))
+        self.assertIn("99.0", sortie)
+
+    def test_echec_systeme_arrete_avant_l_installation(self):
+        code, commandes, _, _ = self.lancer(self.TOUT, echec={"--install": 7})
+        self.assertEqual(code, 7)
+        self.assertFalse(any("--install_dev" in c for c in commandes))
+
+    def test_echec_de_l_installation_rend_son_code(self):
+        code, _, _, _ = self.lancer(self.TOUT, echec_principal=3)
+        self.assertEqual(code, 3)
+        self.relance.assert_not_called()
+
+    def test_sans_identite_rien_n_est_ecrit(self):
+        self.lancer(self.TOUT)
+        self.assertEqual(self.ecrits, [])
+
+    def test_identite_donnee_est_ecrite(self):
+        self.pret = True
+        self.lancer(
+            self.TOUT
+            + ["--git-name", "Nom Fictif", "--git-email", "f@example.invalid"]
+        )
+        self.assertEqual(
+            self.ecrits,
+            [("repo_identity_set", "Nom Fictif", "f@example.invalid")],
+        )
+
+    def test_q_sans_environnement_ni_type(self):
+        code, commandes, questions, _ = self.lancer(
+            ["--non-interactive", "--target", "q", "--system", "no"]
+        )
+        self.assertEqual((code, questions), (0, []))
+        self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
+
+    def test_sans_mode_les_reponses_absentes_sont_demandees(self):
+        # La cible est donnée, l'environnement et le reste sont demandés.
+        code, _, questions, _ = self.lancer(
+            ["--target", "18.0"], reponses=["1", "1", "n", "n"]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(len(questions), 4)
+        version = todo_module.t("Choose a version:")
+        self.assertFalse(any(version in q for q in questions))
+
+
 class TestPycharmFerme(unittest.TestCase):
     """PyCharm s'ouvre sans bloquer : l'installation attend qu'il soit
     refermé, faute de quoi son analyse du projet, reprise à chaque fichier
@@ -325,7 +575,7 @@ class TestPycharmFerme(unittest.TestCase):
             mock.patch.object(todo_module.subprocess, "run", run),
             # L'identité git a ses tests : TestIdentiteGit.
             mock.patch.object(
-                TODO, "_proposer_identite_git", lambda self: None
+                TODO, "_proposer_identite_git", lambda self, **_: None
             ),
             mock.patch.object(
                 todo_module.os.path,

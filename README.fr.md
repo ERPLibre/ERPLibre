@@ -141,6 +141,48 @@ autre version de Python est SUPPRIMÉ puis rebâti, et ce qu'on y avait posé à
 main part avec lui.
 
 
+### Installation non interactive
+
+Sans personne au clavier — une VM, une CI, un script — le menu Installation
+de TODO prend ses réponses d'avance et ne demande rien :
+
+
+```bash
+./todo.sh install --non-interactive --target 18.0 --env dev --type standard --system yes
+make install_non_interactive EL_INSTALL_TARGET=18.0 FREEZE=0 EL_WITH_EXTRA=0 EL_INSTALL_SYSTEM=1
+```
+
+
+| Réponse | Option | Variable |
+|---|---|---|
+| version d'Odoo, ou `q`, `w` comme dans le menu | `--target` | `EL_INSTALL_TARGET` |
+| développement ou production (version d'Odoo seulement) | `--env dev\|prod` | `EL_FREEZE=0\|1` (make : `FREEZE`) |
+| modules extra (version d'Odoo seulement) | `--type standard\|extra` | `EL_WITH_EXTRA=0\|1` |
+| paquets du système d'abord | `--system yes\|no` | `EL_INSTALL_SYSTEM=0\|1` |
+| poser mise plutôt que compiler Python (quand mise est absent) | `--mise yes\|no` | `EL_INSTALL_MISE=0\|1` |
+| identité git, facultative | `--git-name`, `--git-email` | `EL_GIT_NAME`, `EL_GIT_EMAIL` |
+
+Une option l'emporte sur sa variable. Aucune de ces réponses n'a de défaut :
+une réponse manquante arrête l'installation avant qu'elle commence — avant
+même le venv d'outillage d'un clone neuf — en nommant l'option et la
+variable qui la donnent. La cible `m` est refusée dans ce mode : sa dernière
+étape fait choisir un appareil Android au clavier. Sans `--non-interactive`
+(ou `EL_NON_INTERACTIVE=1`), les réponses données servent et les autres sont
+demandées.
+
+Dans ce mode, `EL_NON_INTERACTIVE=1` atteint chaque script de
+l'installation : apt ne pose aucune question et garde un fichier de
+configuration modifié localement, needrestart se contente de lister les
+services à relancer, git, pip et poetry ne demandent jamais d'identifiants,
+et mise ne demande jamais d'approuver un fichier de configuration. sudo ne
+peut pas demander de mot de passe : ouvrez un ticket sudo juste avant
+(`sudo -v`), que l'installation garde vivant jusqu'à la fin, ou donnez au
+compte un sudo sans mot de passe ; sinon l'installation s'arrête aussitôt et
+le dit. Une architecture non supportée
+demande toujours `EL_ALLOW_UNSUPPORTED_ARCH=1`. Sans identité git, `repo
+init` tourne sans en demander.
+
+
 ### Manuellement
 
 Sous Ubuntu, dépendance minimale :

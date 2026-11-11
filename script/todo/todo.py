@@ -95,12 +95,37 @@ def _bootstrap():
     print("TODO cannot start from %s: %s." % (sys.executable, reason))
     print("Install the tools virtualenv %s with:" % VENV_ERPLIBRE)
     print("\n    %s\n" % INSTALL_CMD)
-    # Amorçage de « make » sur un clone neuf : proposer l'installation, une fois.
-    if relaunched != "installed" and os.isatty(0) and os.isatty(1):
-        try:
-            answer = input("Run it now? [y/o/N] ")
-        except (EOFError, KeyboardInterrupt):
-            answer = ""
+    # Amorçage de « make » sur un clone neuf : proposer l'installation, une
+    # fois. En mode non interactif, la lancer sans question : ce mode EST la
+    # demande d'installer, et rien ne suit sans le venv d'outillage.
+    non_interactive = (
+        os.environ.get("EL_NON_INTERACTIVE") == "1"
+        or "--non-interactive" in sys.argv[1:]
+    )
+    if non_interactive:
+        os.environ["EL_NON_INTERACTIVE"] = "1"
+        # Rien ne s'installe tant qu'une réponse manque : le module de
+        # réponses ne dépend que de la bibliothèque standard.
+        from script.todo import install_non_interactif
+
+        argv = sys.argv[2:] if sys.argv[1:2] == ["install"] else []
+        code = install_non_interactif.verifier(argv, os.environ)
+        if code:
+            sys.exit(code)
+        # La réponse sur mise sert déjà au venv d'outillage, posé ci-dessous.
+        reponses, mode, _ = install_non_interactif.preparer(argv, os.environ)
+        install_non_interactif.exporter(reponses, mode, os.environ)
+    if relaunched != "installed" and (
+        non_interactive or (os.isatty(0) and os.isatty(1))
+    ):
+        if non_interactive:
+            print("Run it now? yes (EL_NON_INTERACTIVE=1)")
+            answer = "y"
+        else:
+            try:
+                answer = input("Run it now? [y/o/N] ")
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
         if answer.strip().lower() in ("y", "yes", "o", "oui"):
             if subprocess.call([INSTALL_CMD], cwd=new_path) != 0:
                 print("Installation failed, see above.")
@@ -121,6 +146,7 @@ from script.execute import execute
 from script.todo import (
     dev_tools,
     healthcheck,
+    install_non_interactif,
     ssh_config,
     todo_etat,
     todo_install,
@@ -476,27 +502,46 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def _install_system_step(self):
+    def _install_system_step(self, systeme=None, non_interactif=False):
         """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
         et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
         une technologie qui installe ses propres paquets ne passe pas ici.
         Pour une version d'Odoo, elle vient après la dernière question qui
-        offre « 0: Back » : un retour ne laisse rien d'installé."""
-        first_installation_input = (
-            input(
-                f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
-            )
-            .strip()
-            .lower()
-        )
-        if self._is_yes(first_installation_input):
-            cmd = "./script/version/update_env_version.py --install"
-            self.execute.exec_command_live(cmd, source_erplibre=True)
-            print(
-                t(
-                    "Wait for the system installation to finish before continuing."
+        offre « 0: Back » : un retour ne laisse rien d'installé.
+
+        `systeme` (True/False) répond d'avance à la question. En mode non
+        interactif, l'installation système tourne dans ce terminal et
+        l'appelant attend sa fin, au lieu d'une fenêtre à part ; PyCharm
+        n'est pas proposé. Rend le code de l'installation système, 0 quand
+        elle n'a pas lieu."""
+        if systeme is None:
+            systeme = self._is_yes(
+                input(
+                    f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
                 )
+                .strip()
+                .lower()
             )
+        if systeme:
+            cmd = "./script/version/update_env_version.py --install"
+            if non_interactif:
+                code = self.execute.exec_command_live(
+                    cmd, source_erplibre=False, single_source_erplibre=True
+                )
+                if code:
+                    print(
+                        f"❌ {t('The system installation failed with code')} {code}."
+                    )
+                    return code
+            else:
+                self.execute.exec_command_live(cmd, source_erplibre=True)
+                print(
+                    t(
+                        "Wait for the system installation to finish before continuing."
+                    )
+                )
+        if non_interactif:
+            return 0
 
         # First detect pycharm, need to be open before installation and close to increase speed
         has_pycharm = False
@@ -534,6 +579,7 @@ class TODO(
                     new_window=True,
                 )
                 self._wait_pycharm_closed()
+        return 0
 
     def _wait_pycharm_closed(self):
         """Attend que PyCharm, ouvert pour indexer le projet, soit refermé.
@@ -568,9 +614,56 @@ class TODO(
                 f"⚠️  {t('PyCharm is still running: close it before continuing.')}"
             )
 
-    def prompt_install(self):
-        # TODO detect last version supported
-        # cmd_intern = "./script/install/install_erplibre.sh"
+    def install_cli(self, argv):
+        """« ./todo.sh install [options] » : le menu Installation, ses
+        réponses prises dans les options `argv` ou l'environnement (voir
+        script/todo/install_non_interactif.py). Rend le code de sortie :
+        celui de l'installation, 2 pour une réponse invalide ou manquante,
+        1 pour un sudo qui demanderait un mot de passe en mode non
+        interactif. Rien n'est lancé tant qu'une réponse manque."""
+        reponses, non_interactif, erreurs = install_non_interactif.preparer(
+            argv, os.environ
+        )
+        for ligne in erreurs:
+            print(ligne if ligne.startswith("   ") else f"❌ {ligne}")
+        if erreurs:
+            return 2
+        # Pour chaque processus enfant : scripts shell, make, poetry.
+        install_non_interactif.exporter(reponses, non_interactif, os.environ)
+        if non_interactif:
+            if reponses.get("systeme"):
+                preflight = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        ". ./script/install/lib_non_interactive.sh"
+                        " && el_sudo_preflight",
+                    ],
+                    cwd=os.path.dirname(
+                        os.path.dirname(
+                            os.path.dirname(os.path.abspath(__file__))
+                        )
+                    ),
+                )
+                if preflight.returncode:
+                    return 1
+        code = self.prompt_install(
+            reponses=reponses, non_interactif=non_interactif
+        )
+        return 0 if code is None else code
+
+    def prompt_install(self, reponses=None, non_interactif=False):
+        """Le menu Installation.
+
+        `reponses` donne d'avance des réponses, aux clés décrites dans
+        script/todo/install_non_interactif.py ; une réponse absente est
+        demandée, sauf en mode `non_interactif`, où l'appelant a vérifié
+        qu'aucune ne manque. Rend None sur « 0 », sinon le code de
+        l'installation, 0 si elle réussit. Lancé depuis le menu
+        (`reponses` à None), un échec relance TODO au lieu de rendre son
+        code."""
+        depuis_cli = reponses is not None
+        reponses = reponses or {}
         key_i = 0
         commands_begin = {
             "q": (
@@ -624,8 +717,19 @@ class TODO(
         # Add final command
         install_commands = {**commands_begin, **commands_end}
 
-        # Show command
         odoo_version_input = ""
+        cible = reponses.get("cible")
+        if cible is not None:
+            odoo_version_input = self._cle_de_cible(cible, version_par_cle)
+            if odoo_version_input is None:
+                valides = ", ".join(
+                    ["q", "w", "m"] + list(version_par_cle.values())
+                )
+                print(
+                    f"❌ {t('Unknown install target:')} '{cible}'"
+                    f" ({t('expected')} {valides})"
+                )
+                return 2
         while odoo_version_input not in install_commands:
             if odoo_version_input:
                 print(
@@ -647,8 +751,10 @@ class TODO(
 
         # For numbered version selections, offer extra modules sub-menu
         if odoo_version_input.isdigit():
+            environnement = reponses.get("environnement")
             mode = self._choisir_mode_installation(
-                version_par_cle[odoo_version_input]
+                version_par_cle[odoo_version_input],
+                saisie={"dev": "1", "prod": "2"}.get(environnement),
             )
             if mode is None:
                 return
@@ -664,7 +770,9 @@ class TODO(
                 ),
                 "0": ("0", bleu_poudre(f"0: {t('Back')}")),
             }
-            extra_input = ""
+            extra_input = {"standard": "1", "extra": "2"}.get(
+                reponses.get("type"), ""
+            )
             while extra_input not in extra_choices:
                 if extra_input:
                     print(
@@ -684,8 +792,16 @@ class TODO(
         # Ici et pas plus tôt : le choix est entier, plus rien ne revient.
         # « q » n'installe qu'ERPLibre et ne lance pas repo init.
         if odoo_version_input != "q":
-            self._proposer_identite_git()
-        self._install_system_step()
+            self._proposer_identite_git(
+                nom=reponses.get("git_nom"),
+                courriel=reponses.get("git_courriel"),
+                non_interactif=non_interactif,
+            )
+        code = self._install_system_step(
+            systeme=reponses.get("systeme"), non_interactif=non_interactif
+        )
+        if code:
+            return code
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
@@ -705,21 +821,53 @@ class TODO(
                 )
             )
             print("make open_terminal")
+            if depuis_cli:
+                return e.returncode
             self.restart_script(str(e))
+            return e.returncode
+        return 0
 
-    def _proposer_identite_git(self):
+    @staticmethod
+    def _cle_de_cible(cible, version_par_cle):
+        """La touche du menu Installation pour `cible` : « q », « w » ou
+        « m » tels quels, une version d'Odoo (« 18.0 ») par son numéro
+        affiché. None pour une cible inconnue. La version et non le
+        numéro : celui-ci se décale à chaque version ajoutée."""
+        if cible in ("q", "w", "m"):
+            return cible
+        for cle, version in version_par_cle.items():
+            if version == cible:
+                return cle
+        return None
+
+    def _proposer_identite_git(
+        self, nom=None, courriel=None, non_interactif=False
+    ):
         """Propose de saisir l'identité git que repo init demanderait.
 
-        Ne demande rien quand repo_identity_ready, de
+        `nom` et `courriel`, donnés ensemble, sont écrits sans rien
+        demander, même sur une identité existante : ils ont été fournis
+        pour cela. Sinon, ne demande rien quand repo_identity_ready, de
         script/manifest/repo_init.sh, la trouve déjà : c'est le même test
-        que celui de repo. Sinon, sur un oui, demande le nom et le courriel,
-        les fait confirmer, et les écrit par repo_identity_set. Un « non »
-        à la confirmation reprend la saisie, les valeurs précédentes
+        que celui de repo. En mode non interactif, n'en demande pas
+        davantage. Sinon, sur un oui, demande le nom et le courriel, les
+        fait confirmer, et les écrit par repo_identity_set. Un « non » à
+        la confirmation reprend la saisie, les valeurs précédentes
         proposées par défaut. Sur un non à la première question, rien
         n'est écrit : repo_init lance alors repo init sans terminal sur
         l'entrée, et il ne demande pas d'identité.
         """
+        if nom and courriel:
+            self._ecrire_identite_git(nom, courriel)
+            return
         if self._fragment_repo_init("repo_identity_ready").returncode == 0:
+            return
+        if non_interactif:
+            print(
+                t(
+                    "No git identity: repo init runs without asking for one (EL_GIT_NAME and EL_GIT_EMAIL set it)."
+                )
+            )
             return
         print(
             f"⚠  {t('No git identity (user.name, user.email): repo init would ask for it.')}"
@@ -737,6 +885,10 @@ class TODO(
             print(f"{t('Your identity is:')} {nom} <{courriel}>")
             if self._is_yes(input(f"💬 {t('Is this correct? (y/N): ')}")):
                 break
+        self._ecrire_identite_git(nom, courriel)
+
+    def _ecrire_identite_git(self, nom, courriel):
+        """Écrit l'identité par repo_identity_set et dit si c'est fait."""
         fait = self._fragment_repo_init("repo_identity_set", nom, courriel)
         if fait.returncode == 0:
             print(f"✅ {t('Git identity saved.')}")
@@ -775,8 +927,10 @@ class TODO(
             text=True,
         )
 
-    def _choisir_mode_installation(self, odoo_version):
+    def _choisir_mode_installation(self, odoo_version, saisie=None):
         """Développement ou production pour `odoo_version` (« 18.0 »).
+
+        `saisie` (« 1 » ou « 2 ») répond d'avance à la question.
 
         Rend le préfixe de la commande d'installation, « EL_FREEZE=0 » ou
         « EL_FREEZE=1 », ou None pour revenir. Le développement suit les
@@ -802,7 +956,7 @@ class TODO(
             ),
             "0": bleu_poudre(f"0: {t('Back')}"),
         }
-        saisie = ""
+        saisie = saisie or ""
         while saisie not in choix:
             if saisie:
                 print(f"{t('Error, cannot understand value')} '{saisie}'")
@@ -6949,6 +7103,18 @@ if __name__ == "__main__":
         todo = TODO()
         if ENABLE_CRASH:
             todo.crash_diagnostic(CRASH_E)
+        # SystemExit traverse les except ci-dessous, et le finally imprime
+        # quand même la durée et le journal.
+        if sys.argv[1:2] == ["install"]:
+            raise SystemExit(todo.install_cli(sys.argv[2:]))
+        if (
+            os.environ.get(install_non_interactif.NON_INTERACTIF) == "1"
+            or "--non-interactive" in sys.argv[1:]
+        ):
+            print(
+                f"❌ {t('Non-interactive mode: the TODO menu needs someone at the keyboard. Use: ./todo.sh install --non-interactive --help')}"
+            )
+            raise SystemExit(2)
         todo.run()
     except (KeyboardInterrupt, click.exceptions.Abort):
         # click.prompt() raises Abort (not a KeyboardInterrupt subclass) on

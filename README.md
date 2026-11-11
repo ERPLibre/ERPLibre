@@ -138,6 +138,46 @@ another Python version is DELETED and rebuilt, and whatever was installed in it
 by hand goes with it.
 
 
+### Non-interactive installation
+
+With nobody at the keyboard — a VM, a CI job, a script — the TODO install
+menu takes its answers in advance and asks nothing:
+
+
+```bash
+./todo.sh install --non-interactive --target 18.0 --env dev --type standard --system yes
+make install_non_interactive EL_INSTALL_TARGET=18.0 FREEZE=0 EL_WITH_EXTRA=0 EL_INSTALL_SYSTEM=1
+```
+
+
+| Answer | Option | Variable |
+|---|---|---|
+| Odoo version, or `q`, `w` as in the menu | `--target` | `EL_INSTALL_TARGET` |
+| development or production (Odoo version only) | `--env dev\|prod` | `EL_FREEZE=0\|1` (make: `FREEZE`) |
+| extra modules (Odoo version only) | `--type standard\|extra` | `EL_WITH_EXTRA=0\|1` |
+| system packages first | `--system yes\|no` | `EL_INSTALL_SYSTEM=0\|1` |
+| install mise rather than compile Python (when mise is absent) | `--mise yes\|no` | `EL_INSTALL_MISE=0\|1` |
+| git identity, optional | `--git-name`, `--git-email` | `EL_GIT_NAME`, `EL_GIT_EMAIL` |
+
+An option wins over its variable. None of these answers has a default: a
+missing one stops the installation before it starts — before even the tools
+virtualenv of a fresh clone — naming the option and the variable that give
+it. The target `m` is refused in this mode: its last step chooses an Android
+device at the keyboard. Without `--non-interactive` (or
+`EL_NON_INTERACTIVE=1`), the answers given are used and the others asked.
+
+In this mode, `EL_NON_INTERACTIVE=1` reaches every script of the
+installation: apt answers no question and keeps a locally modified
+configuration file, needrestart only lists the services to restart, and git,
+pip and poetry never ask for credentials, and mise never asks to trust a
+configuration file. sudo cannot ask for a password: open a sudo ticket just
+before (`sudo -v`), which the installation keeps alive until it ends, or give
+the account a password-less sudo; otherwise the installation stops at once
+and says so. An
+unsupported architecture still needs `EL_ALLOW_UNSUPPORTED_ARCH=1`. Without a
+git identity, `repo init` runs without asking for one.
+
+
 ### Manually
 
 Into Ubuntu, minimal dependency:
