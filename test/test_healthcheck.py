@@ -400,6 +400,69 @@ class TestManifeste(unittest.TestCase):
         self.assertEqual(resultat.resume, "2 conforme")
 
 
+class TestBranches(unittest.TestCase):
+    """« Branches des dépôts » sur un vrai dépôt jetable."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = tmp.name
+        self.chemin = "odoo18.0/addons/R_branches"
+        clone = os.path.join(self.racine, self.chemin)
+        os.makedirs(clone)
+        env = {**os.environ, **ENV_GIT}
+
+        def g(*args):
+            return subprocess.run(
+                ["git", "-C", clone, *args],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+        self.g = g
+        g("init", "-q", "-b", "18.0")
+        for nom in ("un", "deux"):
+            ecrire(clone, f"{nom}.txt", nom)
+            g("add", ".")
+            g("commit", "-q", "-m", nom)
+        self.head = g("rev-parse", "HEAD")
+
+    def verifier(self):
+        ctx = h.Contexte(self.racine)
+        ctx.snapshot = lambda: (
+            {"repos": [{"path": self.chemin, "head": self.head}]},
+            "",
+        )
+        return h.verifier_branches(ctx)
+
+    def test_branch_on_head_is_fine(self):
+        resultat = self.verifier()
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertIn(t("no local branch off HEAD"), resultat.resume)
+
+    def test_a_branch_with_commits_head_lacks_is_flagged(self):
+        self.g("checkout", "-q", "-b", "travail")
+        ecrire(os.path.join(self.racine, self.chemin), "trois.txt", "trois")
+        self.g("add", ".")
+        self.g("commit", "-q", "-m", "trois")
+        self.g("checkout", "-q", "--detach", self.head)
+        self.g("branch", "vieille", "HEAD~1")
+        resultat = self.verifier()
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"{self.chemin} : travail (+1 −0)", resultat.details)
+        self.assertIn(f"{self.chemin} : vieille (+0 −1)", resultat.details)
+
+    def test_a_branch_only_behind_head_is_information(self):
+        self.g("branch", "vieille", "HEAD~1")
+        resultat = self.verifier()
+        self.assertEqual(resultat.statut, h.INFO)
+        self.assertEqual(
+            resultat.details, [f"{self.chemin} : vieille (+0 −1)"]
+        )
+
+
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
         def verifier_conflits(_ctx):

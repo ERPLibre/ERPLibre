@@ -117,6 +117,7 @@ TITRES = {
     "verifier_hygiene": "Comment hygiene",
     "verifier_docs": "Docs to regenerate (mmg)",
     "verifier_manifeste": "Addons against the manifest",
+    "verifier_branches": "Repo branches",
     "verifier_hooks": "Git hooks",
     "verifier_venv": "Odoo venv",
     "verifier_disque": "Free disk space",
@@ -139,6 +140,7 @@ ICONES_VERIFICATIONS = {
     "verifier_hygiene": "🧼",
     "verifier_docs": "📚",
     "verifier_manifeste": "🧩",
+    "verifier_branches": "🌿",
     "verifier_hooks": "🪝",
     "verifier_venv": "🧪",
     "verifier_disque": "💾",
@@ -181,6 +183,7 @@ class Contexte:
         self._commandes = None
         self._depots = None
         self._status = {}
+        self._snapshot = None
 
     # ── commandes ──────────────────────────────────────────────────────
 
@@ -393,6 +396,26 @@ class Contexte:
                 vus.add(nom)
                 rendus.append(nom)
         return rendus, None
+
+    def snapshot(self):
+        """(données, stderr) de `repo_state.py snapshot`, lu une fois par
+        contexte : le manifeste et les branches des dépôts le partagent.
+        `données` vaut None quand la sortie n'est pas du JSON."""
+        python = self.outil("python3") or "python3"
+        script = os.path.join("script", "git", "repo_state.py")
+        forme = f"{self.relatif(python)} {script} snapshot"
+        if self._snapshot is None:
+            sortie = self.lancer(
+                [python, script, "snapshot"], forme=forme, delai=DELAI_OUTIL
+            )
+            try:
+                donnees = json.loads(sortie.stdout)
+            except ValueError:
+                donnees = None
+            self._snapshot = (donnees, sortie.stderr)
+        else:
+            self.noter(forme)
+        return self._snapshot
 
     def outil(self, nom):
         """Le chemin d'un outil du venv d'ERPLibre, ou du PATH, ou None."""
@@ -893,22 +916,15 @@ def verifier_manifeste(ctx):
     peut y être conforme et rester loin de son gel, que seul « freeze »
     voit."""
     nom = titre(verifier_manifeste)
-    python = ctx.outil("python3") or "python3"
-    script = os.path.join("script", "git", "repo_state.py")
-    sortie = ctx.lancer(
-        [python, script, "snapshot"],
-        forme=f"{ctx.relatif(python)} {script} snapshot",
-        delai=DELAI_OUTIL,
-    )
-    try:
-        donnees = json.loads(sortie.stdout)
-    except ValueError:
+    donnees, erreur = ctx.snapshot()
+    if donnees is None:
         return Resultat(
             nom,
             ECHEC,
             t("unreadable output"),
-            _limiter(sortie.stderr.strip().splitlines()),
+            _limiter(erreur.strip().splitlines()),
         )
+
     depots = donnees.get("repos") or []
     if not donnees.get("local_manifest") and not depots:
         return Resultat(nom, SAUTE, t("no local manifest"))
@@ -933,6 +949,98 @@ def verifier_manifeste(ctx):
     if details:
         return Resultat(nom, ALERTE, resume, _limiter(details))
     return Resultat(nom, OK, resume)
+
+
+def verifier_branches(ctx):
+    """Les branches locales des dépôts d'addons dont la pointe n'est pas
+    HEAD. git-repo laisse HEAD détaché : une branche ouverte par
+    « repo start », ou un travail commité sur une branche puis quitté par
+    une synchronisation, reste en dehors de ce que le checkout exécute.
+    Une branche qui porte des commits absents de HEAD est signalée ; une
+    branche seulement en retard sur HEAD est une information."""
+    nom = titre(verifier_branches)
+    donnees, erreur = ctx.snapshot()
+    if donnees is None:
+        return Resultat(
+            nom,
+            ECHEC,
+            t("unreadable output"),
+            _limiter(erreur.strip().splitlines()),
+        )
+    depots = [d for d in donnees.get("repos") or [] if d.get("head")]
+    if not depots:
+        return Resultat(nom, SAUTE, t("no local manifest"))
+
+    def examiner(depot):
+        refs = ctx.lancer(
+            [
+                "git",
+                "-C",
+                depot["path"],
+                "for-each-ref",
+                "--format=%(refname:short) %(objectname)",
+                "refs/heads",
+            ],
+            forme="git -C <dépôt> for-each-ref refs/heads",
+        )
+        ecarts = []
+        for ligne in refs.stdout.splitlines():
+            branche, _, sha = ligne.rpartition(" ")
+            if not sha or sha == depot["head"]:
+                continue
+            compte = ctx.lancer(
+                [
+                    "git",
+                    "-C",
+                    depot["path"],
+                    "rev-list",
+                    "--left-right",
+                    "--count",
+                    f"HEAD...{sha}",
+                ],
+                forme=(
+                    "git -C <dépôt> rev-list --left-right --count"
+                    " HEAD...<branche>"
+                ),
+            )
+            try:
+                seul_head, seul_branche = map(int, compte.stdout.split())
+            except ValueError:
+                seul_head = seul_branche = None
+            ecarts.append((branche, seul_branche, seul_head))
+        return ecarts
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rendus = list(pool.map(examiner, depots))
+    avec_travail, en_retard = [], []
+    for depot, ecarts in zip(depots, rendus):
+        for branche, plus, moins in ecarts:
+            if plus is None:
+                avec_travail.append(f"{depot['path']} : {branche}")
+            elif plus:
+                avec_travail.append(
+                    f"{depot['path']} : {branche} (+{plus} −{moins})"
+                )
+            else:
+                en_retard.append(f"{depot['path']} : {branche} (+0 −{moins})")
+    if not avec_travail and not en_retard:
+        return Resultat(
+            nom,
+            OK,
+            f"{len(depots)} {t('repositories')},"
+            f" {t('no local branch off HEAD')}",
+        )
+    morceaux = []
+    if avec_travail:
+        morceaux.append(f"{len(avec_travail)} {t('with commits HEAD lacks')}")
+    if en_retard:
+        morceaux.append(f"{len(en_retard)} {t('behind HEAD')}")
+    return Resultat(
+        nom,
+        ALERTE if avec_travail else INFO,
+        " · ".join(morceaux),
+        _limiter(avec_travail + en_retard),
+    )
 
 
 def verifier_hooks(ctx):
@@ -1179,6 +1287,7 @@ VERIFICATIONS = (
     ("code", verifier_hygiene),
     ("code", verifier_docs),
     ("code", verifier_manifeste),
+    ("code", verifier_branches),
     ("code", verifier_hooks),
     ("environnement", verifier_venv),
     ("environnement", verifier_disque),

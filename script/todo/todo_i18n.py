@@ -2129,6 +2129,22 @@ TRANSLATIONS = {
         "fr": "Addons face au manifeste",
         "en": "Addons against the manifest",
     },
+    "Repo branches": {
+        "fr": "Branches des dépôts",
+        "en": "Repo branches",
+    },
+    "no local branch off HEAD": {
+        "fr": "aucune branche locale hors de HEAD",
+        "en": "no local branch off HEAD",
+    },
+    "with commits HEAD lacks": {
+        "fr": "avec des commits absents de HEAD",
+        "en": "with commits HEAD lacks",
+    },
+    "behind HEAD": {
+        "fr": "en retard sur HEAD",
+        "en": "behind HEAD",
+    },
     "Odoo venv": {
         "fr": "Venv Odoo",
         "en": "Odoo venv",
