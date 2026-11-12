@@ -2645,6 +2645,26 @@ TRANSLATIONS = {
         "fr": "Attention",
         "en": "Attention",
     },
+    "uncommitted files": {
+        "fr": "fichiers non commités",
+        "en": "uncommitted files",
+    },
+    "unpushed commits": {
+        "fr": "commits non poussés",
+        "en": "unpushed commits",
+    },
+    "Plan in progress": {
+        "fr": "Plan en cours",
+        "en": "Plan in progress",
+    },
+    "ERPLibre — session resumed": {
+        "fr": "ERPLibre — reprise de session",
+        "en": "ERPLibre — session resumed",
+    },
+    "ERPLibre — new session": {
+        "fr": "ERPLibre — nouvelle session",
+        "en": "ERPLibre — new session",
+    },
     "obsolete, not in the catalogue": {
         "fr": "obsolète, absent du catalogue",
         "en": "obsolete, not in the catalogue",
