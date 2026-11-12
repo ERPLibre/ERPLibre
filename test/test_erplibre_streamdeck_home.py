@@ -7,6 +7,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,6 +17,7 @@ import streamdeck_stubs as S  # noqa: E402
 
 S.install()
 from erplibre_streamdeck import home  # noqa: E402
+from erplibre_streamdeck import keymap  # noqa: E402
 from erplibre_streamdeck import kernel as K  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
     Fixture,
@@ -381,6 +383,129 @@ class FixtureOrderTest(unittest.TestCase):
                 (fixtures[mic][0], fixtures[first_shortcut][0]),
                 order,
             )
+
+
+def entry(key, action, icon=None, label=None):
+    return keymap.Entry(key, action, icon, label)
+
+
+class LayoutAllocationTest(unittest.TestCase):
+    """allocate() with a keymap.json layout: it is the home screen."""
+
+    def test_without_a_file_the_layout_is_unchanged(self):
+        """No file: layout_for gives None, and every geometry of the
+        single file's facts is laid out as before."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data = keymap.load(Path(tmp) / "keymap.json")
+        for (cols, rows), (keys, fixed, pool) in (
+            AllocationTest.EXPECT.items()
+        ):
+            geo = Geometry(cols, rows, cols * rows)
+            layout, problems = keymap.layout_for(
+                data, "0084", geo, set(ORDERS), set()
+            )
+            self.assertEqual((None, []), (layout, problems))
+            loaded = plugins()
+            alloc = home.allocate(geo, loaded, layout=layout)
+            before = home.allocate(geo, loaded)
+            self.assertEqual(before, alloc, (cols, rows))
+            for pid, key in keys.items():
+                self.assertEqual(key, alloc.home_keys[pid], (cols, pid))
+            self.assertEqual(fixed, sorted(alloc.fixtures), (cols, rows))
+            self.assertEqual(pool, alloc.pool, (cols, rows))
+
+    def test_named_plugins_take_their_keys(self):
+        geo = Geometry(5, 3, 15)
+        alloc = home.allocate(geo, plugins(), layout=[
+            entry(14, "plugin:timers"), entry(7, "plugin:tiling"),
+        ])
+        self.assertEqual(14, alloc.home_keys["timers"])
+        self.assertEqual(7, alloc.home_keys["tiling"])
+        self.assertEqual("timers", alloc.buttons[14][0])
+        self.assertEqual({7, 14}, set(alloc.buttons))
+
+    def test_an_unnamed_plugin_gets_no_home_key(self):
+        geo = Geometry(4, 2, 8)
+        alloc = home.allocate(geo, plugins(), layout=[
+            entry(0, "plugin:timers"),
+        ])
+        for pid in ORDERS:
+            if pid != "timers":
+                self.assertEqual(-1, alloc.home_keys[pid], pid)
+        self.assertEqual({0: "timers"},
+                         {k: v[0] for k, v in alloc.buttons.items()})
+
+    def test_fixtures_skip_named_keys(self):
+        """The mic fixture asks for the first key of the last row: named
+        `empty` there, it gets no key; the layouts shortcuts follow the
+        layouts key and skip a named one."""
+        geo = Geometry(8, 4, 32)
+        alloc = home.allocate(geo, plugins(), layout=[
+            entry(24, "empty"),
+            entry(1, "plugin:layouts"),
+            entry(26, "tiles"),
+        ])
+        self.assertEqual(1, alloc.home_keys["layouts"])
+        self.assertNotIn(24, alloc.fixtures)
+        self.assertEqual({25: "layouts", 27: "layouts"},
+                         {k: v[0] for k, v in alloc.fixtures.items()})
+
+    def test_the_dashboard_takes_tiles_keys_first_then_free_keys(self):
+        geo = Geometry(4, 2, 8)
+        alloc = home.allocate(geo, plugins(off=("sound",)), layout=[
+            entry(0, "plugin:timers"),
+            entry(6, "tiles"),
+            entry(3, "tiles"),
+            entry(1, "empty"),
+        ])
+        self.assertEqual([3, 6, 2, 4, 5, 7], alloc.pool)
+
+    def test_a_named_plugin_not_loaded_leaves_its_key_empty(self):
+        """layout_for keeps the entry of a plugin whose setup is still
+        to come; a plugin the kernel then refuses is not in allocate's
+        list, and its key stays out of the dashboard and the fixtures."""
+        geo = Geometry(4, 2, 8)
+        alloc = home.allocate(geo, plugins(off=("timers",)), layout=[
+            entry(5, "plugin:timers"),
+        ])
+        self.assertNotIn(5, alloc.buttons)
+        self.assertNotIn(5, alloc.pool)
+        self.assertNotIn(5, alloc.fixtures)
+        self.assertNotIn("timers", alloc.home_keys)
+
+    def test_icon_and_label_replace_the_home_face_only(self):
+        with mock.patch.object(render, "set_key", S.recorder()):
+            deck = S.FakeDeck(4, 2)
+            pressed = []
+            button = LoadedPlugin("timers", Plugin(
+                api=PLUGIN_API,
+                home_button=HomeButton(
+                    1,
+                    lambda ctx: KeyFace((9, 8, 7), "TIMERS", "tile"),
+                    lambda ctx: pressed.append("timers"),
+                ),
+            ), "repo", Path("timers.py"))
+            other = LoadedPlugin("tiling", Plugin(
+                api=PLUGIN_API,
+                home_button=HomeButton(
+                    2,
+                    lambda ctx: KeyFace((1, 2, 3), "TILE", "tile"),
+                    lambda ctx: None,
+                ),
+            ), "repo", Path("tiling.py"))
+            with mock.patch.object(
+                K, "dbus_mod", mock.Mock(available=bool)
+            ):
+                k = K.Kernel(deck, [button, other], layout=[
+                    entry(2, "plugin:timers", "timer", "Minuteries"),
+                    entry(3, "plugin:tiling", None, "Fenêtres"),
+                ])
+            k.render()
+            screen = deck.rendering()
+            self.assertEqual(["090807", "Minuteries", "timer"], screen[2])
+            self.assertEqual(["010203", "Fenêtres", "tile"], screen[3])
+            k.handle_key(2, True)
+            self.assertEqual(["timers"], pressed)
 
 
 class FaceAndPressFailureTest(unittest.TestCase):

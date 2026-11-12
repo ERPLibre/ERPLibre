@@ -199,6 +199,18 @@ class TransportError(Exception):
 
 
 DEVICES = []  # what DeviceManager().enumerate() answers
+TRANSPORTS = []  # the transport of each DeviceManager made
+# (product id, cols, rows, visual) of what the library's dummy transport
+# lists, a subset: the pedal is the deck without a screen.
+DUMMY_MODELS = [
+    (0x0060, 5, 3, True),
+    (0x0063, 3, 2, True),
+    (0x006C, 8, 4, True),
+    (0x0084, 4, 2, True),
+    (0x0086, 3, 1, False),
+]
+# The product id a FakeDeck answers by default, by (cols, rows).
+PRODUCTS = {(3, 2): 0x0063, (4, 2): 0x0084, (5, 3): 0x0060, (8, 4): 0x006C}
 
 
 def _module(name, **attrs):
@@ -222,7 +234,21 @@ def _install_pil():
 
 def _install_streamdeck():
     class DeviceManager:
+        """DeviceManager(transport): the library's "dummy" transport
+        answers one deck per DUMMY_MODELS entry, never opened; any other
+        answers DEVICES. Each transport asked for is recorded in
+        TRANSPORTS."""
+
+        def __init__(self, transport=None):
+            TRANSPORTS.append(transport)
+            self.transport = transport
+
         def enumerate(self):
+            if self.transport == "dummy":
+                return [
+                    FakeDeck(cols, rows, product=pid, visual=visual)
+                    for pid, cols, rows, visual in DUMMY_MODELS
+                ]
             return list(DEVICES)
 
     pilhelper = _module(
@@ -454,12 +480,17 @@ class FakeProcesses:
 
 
 class FakeDeck:
-    """A visual deck of `cols` x `rows` keys. `screen` holds the last face
-    painted on each key; `is_open` lets `polls` loop iterations through,
-    calling `on_poll` before each."""
+    """A deck of `cols` x `rows` keys, visual unless `visual` is False,
+    whose product_id() is `product` or PRODUCTS' entry for its size.
+    `screen` holds the last face painted on each key; `is_open` lets
+    `polls` loop iterations through, calling `on_poll` before each."""
 
-    def __init__(self, cols, rows, pixels=72):
+    def __init__(self, cols, rows, pixels=72, product=None, visual=True):
         self.cols, self.rows, self.pixels = cols, rows, pixels
+        self.product = (
+            PRODUCTS.get((cols, rows), 0x0060) if product is None else product
+        )
+        self.visual = visual
         self.screen = {}
         self.images = []
         self.polls = 0
@@ -481,7 +512,10 @@ class FakeDeck:
         }
 
     def is_visual(self):
-        return True
+        return self.visual
+
+    def product_id(self):
+        return self.product
 
     def deck_type(self):
         return f"Fake {self.cols}x{self.rows}"

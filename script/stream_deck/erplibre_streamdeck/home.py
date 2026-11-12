@@ -9,9 +9,16 @@ skipping keys already taken. The dashboard is every other key from row
 1 on, in reading order, filled by the tile providers in their order.
 A render stores which item each dashboard key shows, and a tap reads
 that: it opens what the key showed. A face whose paint raises leaves
-its key empty."""
+its key empty.
 
-from dataclasses import dataclass, field
+A keymap.json layout (keymap.layout_for's entries) replaces the rules
+above: a plugin's home button goes to the key its "plugin:<id>" entry
+names, and a plugin the layout does not name gets no key; fixtures are
+placed on keys the layout does not name; the dashboard takes the
+"tiles" keys, in key order, then every key left, from key 0. An entry's
+icon and label replace those of its button's face."""
+
+from dataclasses import dataclass, field, replace
 
 from erplibre_streamdeck.plugin import KeyFace
 from erplibre_streamdeck.ui import colors, i18n
@@ -25,6 +32,8 @@ class Allocation:
     buttons: dict = field(default_factory=dict)
     fixtures: dict = field(default_factory=dict)
     pool: list = field(default_factory=list)
+    # Key -> (icon, label) of a layout entry, None for what it keeps.
+    faces: dict = field(default_factory=dict)
 
 
 def _validated_place(fx, geo, home_keys):
@@ -35,14 +44,8 @@ def _validated_place(fx, geo, home_keys):
     return keys
 
 
-def allocate(geo, plugins, guard=None):
-    """Lay out `plugins` on `geo`. With `guard` (kernel.guard's
-    signature) a fixture whose place raises is skipped."""
-    alloc = Allocation()
-    with_button = sorted(
-        (lp for lp in plugins if lp.plugin.home_button is not None),
-        key=lambda lp: (lp.plugin.home_button.order, lp.id),
-    )
+def _automatic_buttons(geo, with_button, alloc):
+    """Row 0, then row 1 on a deck of three rows or more."""
     for i, lp in enumerate(with_button):
         alloc.home_keys[lp.id] = i if i < geo.cols else -1
     if geo.rows >= 3:
@@ -58,7 +61,51 @@ def allocate(geo, plugins, guard=None):
         key = alloc.home_keys[lp.id]
         if key >= 0:
             alloc.buttons[key] = (lp.id, lp.plugin.home_button)
-    taken = set(alloc.buttons)
+
+
+def _laid_out_buttons(geo, with_button, alloc, layout):
+    """The buttons of the layout's "plugin:<id>" entries; the keys the
+    layout names, and its "tiles" keys in key order. An entry outside
+    `geo` is dropped; one of a plugin not in `with_button` keeps its
+    key named, so it stays empty."""
+    by_id = {lp.id: lp for lp in with_button}
+    for lp in with_button:
+        alloc.home_keys[lp.id] = -1
+    named, tiles = set(), []
+    for entry in layout:
+        if not 0 <= entry.key < geo.total_keys or entry.key in named:
+            continue
+        named.add(entry.key)
+        if entry.action == "tiles":
+            tiles.append(entry.key)
+        pid = entry.action.removeprefix("plugin:")
+        if pid == entry.action or pid not in by_id:
+            continue
+        if alloc.home_keys[pid] >= 0:
+            continue
+        alloc.home_keys[pid] = entry.key
+        alloc.buttons[entry.key] = (pid, by_id[pid].plugin.home_button)
+        if entry.icon is not None or entry.label is not None:
+            alloc.faces[entry.key] = (entry.icon, entry.label)
+    return named, sorted(tiles)
+
+
+def allocate(geo, plugins, guard=None, layout=None):
+    """Lay out `plugins` on `geo`, by the automatic rules or, when
+    `layout` is a list of keymap.Entry, by it. With `guard`
+    (kernel.guard's signature) a fixture whose place raises is
+    skipped."""
+    alloc = Allocation()
+    with_button = sorted(
+        (lp for lp in plugins if lp.plugin.home_button is not None),
+        key=lambda lp: (lp.plugin.home_button.order, lp.id),
+    )
+    if layout is None:
+        _automatic_buttons(geo, with_button, alloc)
+        taken, tiles, first_free = set(alloc.buttons), [], geo.cols
+    else:
+        named, tiles = _laid_out_buttons(geo, with_button, alloc, layout)
+        taken, first_free = set(named), 0
     fixtures = sorted(
         (
             (fx.order, lp.id, fx)
@@ -79,20 +126,21 @@ def allocate(geo, plugins, guard=None):
             if 0 <= key < geo.total_keys and key not in taken:
                 alloc.fixtures[key] = (pid, fx, index)
                 taken.add(key)
-    alloc.pool = [
-        k for k in range(geo.cols, geo.total_keys) if k not in taken
+    alloc.pool = tiles + [
+        k for k in range(first_free, geo.total_keys) if k not in taken
     ]
     return alloc
 
 
 class Home:
-    def __init__(self, geo, plugins, guard=None):
+    def __init__(self, geo, plugins, guard=None, layout=None):
         self.geo = geo
-        alloc = allocate(geo, plugins, guard)
+        alloc = allocate(geo, plugins, guard, layout)
         self.home_keys = alloc.home_keys
         self.buttons = alloc.buttons
         self.fixtures = alloc.fixtures
         self.pool = alloc.pool
+        self.faces = alloc.faces
         self.providers = sorted(
             (
                 (tp.order, lp.id, tp)
@@ -129,6 +177,13 @@ class Home:
             ok, face = kernel.guard(
                 pid, f"home face {key}", button.face, kernel.ctx(pid)
             )
+            if ok and isinstance(face, KeyFace) and key in self.faces:
+                icon, label = self.faces[key]
+                face = replace(
+                    face,
+                    icon=face.icon if icon is None else icon,
+                    text=face.text if label is None else label,
+                )
         elif key in self.fixtures:
             pid, fx, index = self.fixtures[key]
             ok, face = kernel.guard(

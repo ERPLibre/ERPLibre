@@ -114,16 +114,17 @@ the Python helpers. See its `README.md` and
 ```bash
 python script/stream_deck/erplibre_streamdeck
 python script/stream_deck/erplibre_streamdeck --list-plugins
+python script/stream_deck/erplibre_streamdeck --catalog
 python script/stream_deck/erplibre_streamdeck --help
 ```
 
 <!-- [en] -->
 
-`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. `-h` and `--help` print the usage, the settings file and the exit codes (2: deck lock held or bad option, 3: no Stream Deck with a screen, 143: SIGTERM), then exit 0; any other argument prints the usage on stderr and exits 2. Neither takes the lock nor needs the Stream Deck library. Layout of the package:
+`--list-plugins` prints what the loader finds (one line per plugin: `active`, `off`, `replaced by user` or `refused` with its reason; `unreadable` for a plugin directory it cannot list) without opening the deck or taking its lock. `-h` and `--help` print the usage, the settings file and the exit codes (2: deck lock held or bad option, 3: no Stream Deck with a screen, 143: SIGTERM), then exit 0; any other argument prints the usage on stderr and exits 2. Neither takes the lock nor needs the Stream Deck library. `--catalog` prints, as JSON, what a `keymap.json` layout may name (see below); it reads the deck models from the Stream Deck library without opening any deck, and takes no lock. Layout of the package:
 
 <!-- [fr] -->
 
-`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. Disposition du paquet :
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. `--catalog` affiche en JSON ce qu'une disposition de `keymap.json` peut nommer (voir plus bas) ; il lit les modèles de deck dans la bibliothèque Stream Deck sans ouvrir aucun deck, et ne prend pas de verrou. Disposition du paquet :
 
 <!-- [common] -->
 
@@ -133,6 +134,7 @@ erplibre_streamdeck/
 ├── app.py        # build(): settings, plugins, kernel / assemblage
 ├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
 ├── home.py       # home screen: buttons, fixtures, tiles / accueil
+├── keymap.py     # keymap.json, --catalog / disposition des touches
 ├── loader.py     # discovery of the plugins / découverte
 ├── plugin.py     # Plugin, Page, HomeButton, Fixture, TileProvider
 ├── context.py    # Context, the one object a plugin receives
@@ -160,6 +162,48 @@ Le réglage `DECK_PLUGINS_OFF` de `streamdeck.conf` est une liste d'identifiants
 ```
 DECK_PLUGINS_OFF=bluetooth,translate
 ```
+
+<!-- [en] -->
+
+### Home key layout (`keymap.json`)
+
+Without a layout, the home buttons take row 0 in their order (and row 1 on a deck of three rows or more), and the dashboard every other key from row 1 on. `~/.config/erplibre-home/keymap.json` replaces that for the deck models it names. The GNOME extension writes it, from a layout Odoo offers and the employee applies; the deck program reads it each time it starts, or its deck comes back. Format 1:
+
+<!-- [fr] -->
+
+### Disposition des touches d'accueil (`keymap.json`)
+
+Sans disposition, les boutons d'accueil prennent la rangée 0 dans leur ordre (et la rangée 1 sur un deck de trois rangées ou plus), et le tableau de bord toutes les autres touches à partir de la rangée 1. `~/.config/erplibre-home/keymap.json` remplace cela pour les modèles de deck qu'il nomme. L'extension GNOME l'écrit, à partir d'une disposition qu'Odoo propose et que l'employé applique ; le programme du deck le lit à chaque démarrage, ou au retour de son deck. Format 1 :
+
+<!-- [common] -->
+
+```json
+{"format": 1, "revision": 7,
+ "layouts": {"0084": {"keys": [
+   {"key": 0, "action": "plugin:timers", "icon": "timer", "label": "Timers"},
+   {"key": 1, "action": "tiles"},
+   {"key": 2, "action": "empty"}]}}}
+```
+
+<!-- [en] -->
+
+- `layouts`: by USB product id, 4 lowercase hex digits, at most 16 models.
+- `keys`: at most the model's key count. `key` is an integer from 0 to the key count minus one, used once. `action` is `plugin:<id>` (that plugin's home button), `tiles` (a dashboard key) or `empty` (a black key). `icon` is a name of `ui/icons.py` `ICONS`, or absent. `label` has at most 16 characters and no control character, or is absent.
+- With a layout, it is the home screen: a plugin's home button goes to the key that names it, and a plugin with a home button the layout does not name gets no key. Fixtures (the mic, the layout shortcuts) only take keys the layout does not name. The dashboard takes the `tiles` keys, then every key left. `icon` and `label` replace the icon and the text of the home button; its colour and state stay the plugin's.
+- A missing or unreadable file, another `format`, more than 16 models, a model absent, a layout without a `keys` list or with more entries than keys: the automatic layout. An invalid entry is skipped; a `plugin:<id>` of a plugin turned off or absent leaves its key black. Each case is one journal line, ten at most per start, then one line counting the rest.
+- Dials and the touch screen of the Stream Deck + are outside format 1; the controller (`DECK_PROGRAM=controller`) ignores the file.
+
+`--catalog` gives what a layout may name on this checkout: `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. The actions are the plugins present with a home button, turned off ones included, then `tiles` and `empty`; the models are every deck with a screen the Stream Deck library knows.
+
+<!-- [fr] -->
+
+- `layouts` : par identifiant de produit USB, 4 chiffres hexadécimaux minuscules, au plus 16 modèles.
+- `keys` : au plus le nombre de touches du modèle. `key` est un entier de 0 au nombre de touches moins un, employé une fois. `action` vaut `plugin:<id>` (le bouton d'accueil de ce plugin), `tiles` (une touche du tableau de bord) ou `empty` (une touche noire). `icon` est un nom de `ui/icons.py` `ICONS`, ou absent. `label` a au plus 16 caractères et aucun caractère de contrôle, ou est absent.
+- Avec une disposition, elle fait l'écran d'accueil : le bouton d'accueil d'un plugin va à la touche qui le nomme, et un plugin à bouton d'accueil que la disposition ne nomme pas n'a pas de touche. Les fixtures (le micro, les raccourcis de dispositions de fenêtres) ne prennent que des touches que la disposition ne nomme pas. Le tableau de bord prend les touches `tiles`, puis toutes les touches restantes. `icon` et `label` remplacent l'icône et le texte du bouton d'accueil ; sa couleur et son état restent ceux du plugin.
+- Fichier absent ou illisible, autre `format`, plus de 16 modèles, modèle absent, disposition sans liste `keys` ou avec plus d'entrées que de touches : la disposition automatique. Une entrée invalide est sautée ; un `plugin:<id>` d'un plugin coupé ou absent laisse sa touche noire. Chaque cas fait une ligne de journal, dix au plus par démarrage, puis une ligne qui compte le reste.
+- Les molettes et l'écran tactile du Stream Deck + sont hors du format 1 ; le contrôleur (`DECK_PROGRAM=controller`) ignore le fichier.
+
+`--catalog` donne ce qu'une disposition peut nommer sur ce checkout : `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. Les actions sont les plugins présents à bouton d'accueil, coupés compris, puis `tiles` et `empty` ; les modèles sont tous les decks à écran que connaît la bibliothèque Stream Deck.
 
 <!-- [en] -->
 

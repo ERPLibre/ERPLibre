@@ -55,11 +55,12 @@ python script/stream_deck/erplibre_controller.py --help
 ```bash
 python script/stream_deck/erplibre_streamdeck
 python script/stream_deck/erplibre_streamdeck --list-plugins
+python script/stream_deck/erplibre_streamdeck --catalog
 python script/stream_deck/erplibre_streamdeck --help
 ```
 
 
-`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. Disposition du paquet :
+`--list-plugins` affiche ce que le chargeur trouve (une ligne par plugin : `active`, `off`, `replaced by user` ou `refused` avec sa raison ; `unreadable` pour un répertoire de plugins illisible) sans ouvrir le deck ni prendre son verrou. `-h` et `--help` affichent l'usage, le fichier de réglages et les codes de sortie (2 : verrou du deck tenu ou option invalide, 3 : aucun Stream Deck à écran, 143 : SIGTERM), puis sortent en 0 ; tout autre argument affiche l'usage sur la sortie d'erreur et sort en 2. Ni l'un ni l'autre ne prend le verrou ni n'a besoin de la bibliothèque Stream Deck. `--catalog` affiche en JSON ce qu'une disposition de `keymap.json` peut nommer (voir plus bas) ; il lit les modèles de deck dans la bibliothèque Stream Deck sans ouvrir aucun deck, et ne prend pas de verrou. Disposition du paquet :
 
 
 ```
@@ -68,6 +69,7 @@ erplibre_streamdeck/
 ├── app.py        # build(): settings, plugins, kernel / assemblage
 ├── kernel.py     # deck, lock, flash, loop, dispatch / noyau
 ├── home.py       # home screen: buttons, fixtures, tiles / accueil
+├── keymap.py     # keymap.json, --catalog / disposition des touches
 ├── loader.py     # discovery of the plugins / découverte
 ├── plugin.py     # Plugin, Page, HomeButton, Fixture, TileProvider
 ├── context.py    # Context, the one object a plugin receives
@@ -87,6 +89,29 @@ Le réglage `DECK_PLUGINS_OFF` de `streamdeck.conf` est une liste d'identifiants
 ```
 DECK_PLUGINS_OFF=bluetooth,translate
 ```
+
+
+### Disposition des touches d'accueil (`keymap.json`)
+
+Sans disposition, les boutons d'accueil prennent la rangée 0 dans leur ordre (et la rangée 1 sur un deck de trois rangées ou plus), et le tableau de bord toutes les autres touches à partir de la rangée 1. `~/.config/erplibre-home/keymap.json` remplace cela pour les modèles de deck qu'il nomme. L'extension GNOME l'écrit, à partir d'une disposition qu'Odoo propose et que l'employé applique ; le programme du deck le lit à chaque démarrage, ou au retour de son deck. Format 1 :
+
+
+```json
+{"format": 1, "revision": 7,
+ "layouts": {"0084": {"keys": [
+   {"key": 0, "action": "plugin:timers", "icon": "timer", "label": "Timers"},
+   {"key": 1, "action": "tiles"},
+   {"key": 2, "action": "empty"}]}}}
+```
+
+
+- `layouts` : par identifiant de produit USB, 4 chiffres hexadécimaux minuscules, au plus 16 modèles.
+- `keys` : au plus le nombre de touches du modèle. `key` est un entier de 0 au nombre de touches moins un, employé une fois. `action` vaut `plugin:<id>` (le bouton d'accueil de ce plugin), `tiles` (une touche du tableau de bord) ou `empty` (une touche noire). `icon` est un nom de `ui/icons.py` `ICONS`, ou absent. `label` a au plus 16 caractères et aucun caractère de contrôle, ou est absent.
+- Avec une disposition, elle fait l'écran d'accueil : le bouton d'accueil d'un plugin va à la touche qui le nomme, et un plugin à bouton d'accueil que la disposition ne nomme pas n'a pas de touche. Les fixtures (le micro, les raccourcis de dispositions de fenêtres) ne prennent que des touches que la disposition ne nomme pas. Le tableau de bord prend les touches `tiles`, puis toutes les touches restantes. `icon` et `label` remplacent l'icône et le texte du bouton d'accueil ; sa couleur et son état restent ceux du plugin.
+- Fichier absent ou illisible, autre `format`, plus de 16 modèles, modèle absent, disposition sans liste `keys` ou avec plus d'entrées que de touches : la disposition automatique. Une entrée invalide est sautée ; un `plugin:<id>` d'un plugin coupé ou absent laisse sa touche noire. Chaque cas fait une ligne de journal, dix au plus par démarrage, puis une ligne qui compte le reste.
+- Les molettes et l'écran tactile du Stream Deck + sont hors du format 1 ; le contrôleur (`DECK_PROGRAM=controller`) ignore le fichier.
+
+`--catalog` donne ce qu'une disposition peut nommer sur ce checkout : `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. Les actions sont les plugins présents à bouton d'accueil, coupés compris, puis `tiles` et `empty` ; les modèles sont tous les decks à écran que connaît la bibliothèque Stream Deck.
 
 
 ### Écrire un plugin

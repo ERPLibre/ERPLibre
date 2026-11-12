@@ -25,6 +25,7 @@ import deck_lock  # noqa: E402
 
 from erplibre_streamdeck import context  # noqa: E402
 from erplibre_streamdeck import kernel as K  # noqa: E402
+from erplibre_streamdeck import keymap  # noqa: E402
 from erplibre_streamdeck import paths  # noqa: E402
 from erplibre_streamdeck.plugin import (  # noqa: E402
     LoadedPlugin,
@@ -119,6 +120,106 @@ class BuildTest(AppCase):
         k = self.build()
         k.render()
         self.assertIn("tile: key 5 paint failed", self.journal.getvalue())
+
+
+class KeymapBuildTest(AppCase):
+    """build() reads keymap.json for the model of the deck it opened."""
+
+    BUTTONS = ("alpha", "beta")
+
+    def setUp(self):
+        super().setUp()
+        self.deck = S.FakeDeck(4, 2)  # product 0x0084
+        for order, pid in enumerate(self.BUTTONS):
+            self.put(pid, f"home_button=HomeButton({order}, print, print)")
+            self.addCleanup(
+                sys.modules.pop, f"erplibre_streamdeck_user.{pid}", None
+            )
+
+    def keymap(self, data):
+        text = data if isinstance(data, str) else json.dumps(data)
+        paths.KEYMAP_FILE.write_text(text, encoding="utf-8")
+
+    def layouts(self, keys, model="0084"):
+        return {"format": 1, "revision": 3,
+                "layouts": {model: {"keys": keys}}}
+
+    def test_without_a_file_the_layout_is_unchanged(self):
+        k = self.build()
+        self.assertEqual({"alpha": 0, "beta": 1}, k.home.home_keys)
+        self.assertEqual([4, 5, 6, 7], k.home.pool)
+        self.assertNotIn("keymap", self.journal.getvalue())
+
+    def test_the_layout_of_the_deck_s_product_id_is_used(self):
+        self.keymap(self.layouts([
+            {"key": 7, "action": "plugin:alpha"},
+            {"key": 0, "action": "tiles"},
+        ]))
+        k = self.build()
+        self.assertEqual({"alpha": 7, "beta": -1}, k.home.home_keys)
+        self.assertEqual([0, 1, 2, 3, 4, 5, 6], k.home.pool)
+        self.assertIn("keymap: layout 0084", self.journal.getvalue())
+
+    def test_the_product_id_is_four_lowercase_hex_digits(self):
+        self.deck = S.FakeDeck(8, 4)  # product 0x006C
+        self.keymap(self.layouts(
+            [{"key": 9, "action": "plugin:alpha"}], model="006c"
+        ))
+        self.assertEqual(9, self.build().home.home_keys["alpha"])
+
+    def test_the_layout_of_another_model_is_ignored(self):
+        self.keymap(self.layouts(
+            [{"key": 7, "action": "plugin:alpha"}], model="0060"
+        ))
+        k = self.build()
+        self.assertEqual({"alpha": 0, "beta": 1}, k.home.home_keys)
+
+    def test_an_off_plugin_leaves_its_named_key_empty(self):
+        self.keymap(self.layouts([
+            {"key": 5, "action": "plugin:beta"},
+            {"key": 6, "action": "plugin:alpha"},
+        ]))
+        k = self.build(off=["beta"])
+        self.assertEqual({"alpha": 6}, k.home.home_keys)
+        self.assertNotIn(5, k.home.pool)
+        self.assertIn("beta", self.journal.getvalue())
+
+    def test_a_hostile_keymap_still_starts_the_deck(self):
+        """Every hostile file gives a kernel, today's layout or the valid
+        part of the layout, and a bounded journal."""
+        flood = [{"key": 1, "action": "plugin:x" + str(i)}
+                 for i in range(5000)]
+        bad_entries = [{"key": 0, "action": "plugin:alpha"}] + [
+            {"key": k, "action": "plugin:alpha", "label": "\x07"}
+            for k in range(1, 8)
+        ]
+        for content in (
+            "{nope",
+            json.dumps({"format": 9, "layouts": {}}),
+            json.dumps(self.layouts(flood)),
+            json.dumps(self.layouts(bad_entries)),
+            json.dumps(self.layouts([{"key": 99, "action": "tiles"}])),
+            json.dumps(self.layouts([{"key": 2, "action": "plugin:gone"}])),
+        ):
+            self.journal.seek(0)
+            self.journal.truncate()
+            self.keymap(content)
+            k = self.build()
+            self.assertIsInstance(k, K.Kernel, content[:40])
+            k.render()
+            lines = [
+                ln for ln in self.journal.getvalue().splitlines()
+                if "keymap" in ln
+            ]
+            self.assertTrue(lines, content[:40])
+            self.assertLessEqual(
+                len(lines), keymap.PROBLEM_LINES + 2, content[:40]
+            )
+
+    def test_a_rebuilt_kernel_reads_the_file_again(self):
+        self.build()
+        self.keymap(self.layouts([{"key": 3, "action": "plugin:alpha"}]))
+        self.assertEqual(3, self.build().home.home_keys["alpha"])
 
 
 class ReadDeckSettingsTest(AppCase):

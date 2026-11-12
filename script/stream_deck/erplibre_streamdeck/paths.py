@@ -2,9 +2,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Every path of the deck program, anchored on this file.
 
-settings.json and layouts.json live under the literal
-~/.config/erplibre-home, the location the deck has always written; the
-user plugin directory follows $XDG_CONFIG_HOME, like streamdeck.conf.
+settings.json, layouts.json (window layouts) and keymap.json (home key
+layouts) live under the literal ~/.config/erplibre-home, the location
+the deck has always written; the user plugin directory follows
+$XDG_CONFIG_HOME, like streamdeck.conf.
 The state directory is read at call time from $XDG_STATE_HOME."""
 
 import os
@@ -15,6 +16,7 @@ REPO_ROOT = STREAM_DECK_DIR.parent.parent
 CONFIG_DIR = Path(os.path.expanduser("~/.config/erplibre-home"))
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 LAYOUTS_FILE = CONFIG_DIR / "layouts.json"
+KEYMAP_FILE = CONFIG_DIR / "keymap.json"
 SETTINGS_LIB = REPO_ROOT / "script/install/erplibre_home_settings.sh"
 
 

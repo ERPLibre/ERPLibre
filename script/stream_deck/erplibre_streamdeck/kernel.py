@@ -69,7 +69,9 @@ class ErrorLog:
 
 
 class Kernel:
-    def __init__(self, deck, plugins, settings=None):
+    def __init__(self, deck, plugins, settings=None, layout=None):
+        """`layout`: the keymap.Entry list of the home screen, or None
+        for its automatic layout (see home)."""
         from erplibre_streamdeck import home
 
         self.deck = deck
@@ -120,7 +122,7 @@ class Kernel:
                 for page in lp.plugin.pages:
                     self.pages[page.id] = (lp.id, page)
                     self.page_keys[page.id] = keys[page.id]
-        self.home = home.Home(self.geo, self.plugins, self.guard)
+        self.home = home.Home(self.geo, self.plugins, self.guard, layout)
         self.dbus_ok = self.dbus.available()
         self._dbus_checked_at = time.monotonic()
 

@@ -3,8 +3,9 @@
 """Start of the deck program: find the deck, build the kernel, run.
 
 build() is what a test drives: the style restored from settings.json,
-the plugins loaded, the kernel made, without the lock file, the signal
-handler or the loop thread.
+the plugins loaded, the home layout of the deck's model read from
+keymap.json, the kernel made, without the lock file, the signal handler
+or the loop thread.
 
 main() outlives its deck. When the library closes a deck that vanished,
 the plugins are shut down, DeviceManager is polled every
@@ -27,10 +28,11 @@ except ImportError as e:
 
 import deck_lock
 
-from erplibre_streamdeck import loader, paths
+from erplibre_streamdeck import keymap, loader, paths
 from erplibre_streamdeck import settings as settings_mod
 from erplibre_streamdeck.kernel import Kernel
-from erplibre_streamdeck.ui import render
+from erplibre_streamdeck.plugin import Geometry
+from erplibre_streamdeck.ui import icons, render
 
 # How long the shutdown waits for the kernel lock. A key callback holds
 # it across a blocking plugin call (a dialog may wait minutes); past
@@ -95,13 +97,33 @@ def read_deck_settings():
     return result
 
 
+def home_layout(deck, plugins):
+    """The keymap.json layout of `deck`'s model (its USB product id as 4
+    lowercase hex digits) for the loaded `plugins`, or None for the
+    automatic one; its problems are journaled, keymap.capped."""
+    model = f"{deck.product_id():04x}"
+    rows, cols = deck.key_layout()
+    layout, problems = keymap.layout_for(
+        keymap.load(),
+        model,
+        Geometry(cols, rows, cols * rows),
+        {lp.id for lp in plugins if lp.plugin.home_button is not None},
+        set(icons.ICONS),
+    )
+    for line in keymap.capped(problems):
+        _journal(f"keymap: {line}")
+    if layout is not None:
+        _journal(f"keymap: layout {model}, {len(layout)} keys named")
+    return layout
+
+
 def build(deck, *, plugins_off=(), user_dir=None, settings=None):
     render.STYLE.restore(settings_mod.load())
     plugins, report = loader.load(off=plugins_off, user_dir=user_dir)
     for entry in report.entries:
         if entry[1] != "active":
             _journal(f"plugin {loader.Report.line(*entry)}")
-    kernel = Kernel(deck, plugins, settings)
+    kernel = Kernel(deck, plugins, settings, home_layout(deck, plugins))
     for pid, reason in kernel.refused:
         _journal(f"plugin {pid}: refused: {reason}")
     return kernel
