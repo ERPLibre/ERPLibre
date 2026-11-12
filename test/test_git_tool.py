@@ -16,7 +16,6 @@ from script.git.git_tool import (
     DEFAULT_REMOTE_URL,
     DEFAULT_WEBSITE,
     EL_GITHUB_TOKEN,
-    SOURCE_REPO_ADDONS_FILE,
     GitTool,
     RepoAttrs,
 )
@@ -388,9 +387,6 @@ class TestGetManifestXmlInfo(unittest.TestCase):
 
 
 class TestConstants(unittest.TestCase):
-    def test_file_source_repo_addons(self):
-        self.assertEqual(SOURCE_REPO_ADDONS_FILE, "source_repo_addons.csv")
-
     def test_default_project_name(self):
         self.assertEqual(DEFAULT_PROJECT_NAME, "ERPLibre")
 

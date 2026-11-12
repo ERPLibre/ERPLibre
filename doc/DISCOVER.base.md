@@ -53,20 +53,17 @@ cd ERPLibre
 <!-- [en] -->
 ## Add repo
 
-To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
-
-Execute script:
+To access a new repo, add a `<project>` for it, and its `<remote>` if the organisation is new, to
+`./manifest/git_manifest_odoo<version>.xml`, then:
 
 <!-- [fr] -->
 ## Ajouter un dépôt
 
-Pour accéder à un nouveau dépôt, ajoutez votre URL au fichier [source_repo_addons.csv](../source_repo_addons.csv)
-
-Exécutez le script :
+Pour accéder à un nouveau dépôt, ajoutez son `<project>`, et son `<remote>` si l'organisation est nouvelle, à
+`./manifest/git_manifest_odoo<version>.xml`, puis :
 
 <!-- [common] -->
 ```bash
-./script/git/git_repo_manifest.py
 git checkout -b NEW_BRANCH
 git commit -am "Add new repo"
 ./script/install/install_locally_dev.sh

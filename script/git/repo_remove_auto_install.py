@@ -44,10 +44,8 @@ def get_config():
     )
     parser.add_argument(
         "--addons_dir",
-        help=(
-            "Path of addons to remove auto_install. If empty, will take all"
-            " repo from manifest."
-        ),
+        required=True,
+        help="Path of the addons repository to remove auto_install from.",
     )
     parser.add_argument(
         "--ignore_commit",
@@ -65,37 +63,18 @@ def get_config():
 
 def main():
     config = get_config()
-    git_tool = g_tool.GitTool()
-
-    if not config.addons_dir:
-        lst_repo = git_tool.get_source_repo_addons(
-            repo_path=config.dir, add_repo_root=False
+    organization = os.path.basename(config.addons_dir)
+    # TODO information is wrong, need to extract organisation and repo_name
+    lst_repo_organization = [
+        g_tool.RepoAttrs(
+            **{
+                "organization": organization,
+                "path": config.addons_dir,
+                "relative_path": config.addons_dir,
+                "repo_name": config.addons_dir,
+            }
         )
-        lst_repo_organization = [
-            git_tool.get_transformed_repo_info_from_url(
-                a.get("url"),
-                repo_path=config.dir,
-                get_obj=True,
-                is_submodule=a.get("is_submodule"),
-                sub_path=a.get("sub_path"),
-                revision=a.get("revision"),
-                clone_depth=a.get("clone_depth"),
-            )
-            for a in lst_repo
-        ]
-    else:
-        organization = os.path.basename(config.addons_dir)
-        # TODO information is wrong, need to extract organisation and repo_name
-        lst_repo_organization = [
-            g_tool.Struct(
-                **{
-                    "organization": organization,
-                    "path": config.addons_dir,
-                    "relative_path": config.addons_dir,
-                    "repo_name": config.addons_dir,
-                }
-            )
-        ]
+    ]
 
     lst_ignore_repo = ["odoo"]
 

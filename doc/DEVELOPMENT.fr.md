@@ -34,36 +34,6 @@ Complétez son historique avant d'y faire des commits et des pushs :
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
-## Forker le projet pour créer un nouveau projet indépendant d'ERPLibre (obsolète)
-
-ERPLibre a été créé avec ce script. Il est maintenant obsolète. Utilisez ce script lorsque vous devez forker directement depuis la
-source originale. N'utilisez pas ce script si vous voulez recevoir les mises à jour d'ERPLibre et suivre le développement principal.
-
-```bash
-./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
-```
-
-# Forker tous les dépôts pour votre propre organisation
-
-Allez dans votre compte Github et générez un jeton pour accéder à l'option de fork avec votre utilisateur. Créez une organisation ou utilisez votre
-compte personnel et choisissez votre nom d'utilisateur.
-
-Cette commande va forker tous les dépôts et ERPLibre vers votre propre organisation. Elle garde le suivi d'ERPLibre.
-
-```bash
-./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
-```
-
-## Générer le manifeste à partir du csv des dépôts
-
-Ajoutez le dépôt dans le fichier [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Exécutez pour générer le manifeste Repo
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
-
 ## Déplacer une base de données de la prod vers le dev
 
 Copiez l'image de la base de données dans `./image_db/prod_client.zip` et exécutez `make db_restore_prod_client`. Cela va créer une
@@ -126,26 +96,12 @@ Pour afficher les différences entre le code actuel et le manifeste
 ./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
 
-## Ajouter un dépôt
-
-Pour accéder à un nouveau dépôt, ajoutez votre URL dans le fichier [source_repo_addons.csv](../source_repo_addons.csv)
-
-Forkez le dépôt pour pouvoir pousser du nouveau code :
-
-```bash
-./script/git/fork_project_ERPLibre.py
-```
-
-Pour régénérer uniquement le manifest.xml.
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
+## Retirer auto_install d'un dépôt d'addons
 
 Vérifier si le manifeste contient "auto_install" et changer la valeur à False.
 
 ```bash
-./script/git/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py --addons_dir PATH
 ```
 
 ## Filtrer les dépôts par groupe
@@ -234,14 +190,6 @@ Lorsque vous devez changer de python 3.7.17 à 3.8.10, faites :
 rm -r .venv
 make install_dev
 ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
-```
-
-# Demande de tirage (Pull request)
-
-## Afficher toutes les demandes de tirage d'une organisation
-
-```bash
-/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 # Commit

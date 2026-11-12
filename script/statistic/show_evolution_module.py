@@ -7,6 +7,7 @@ import csv
 import datetime
 import logging
 import os
+import re
 import shutil
 import sys
 from collections import defaultdict
@@ -19,6 +20,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script import lib_asyncio
+from script.git import repo_upgrade
 
 FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"), format=FORMAT)
@@ -28,7 +30,6 @@ _logger = logging.getLogger(__name__)
 PROJECT_NAME = os.path.basename(os.getcwd())
 VENV_PATH = "./.venv"
 CACHE_CLONE_PATH = os.path.join(VENV_PATH, "stat_repo")
-CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
 MAX_COROUTINE = 300
 IGNORE_REPO_LIST = (
     "https://github.com/OCA/odoo-module-migrator.git",
@@ -71,7 +72,8 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-        Clone all OCA repo from file 'source_repo_addons.csv', checkout branch from param --branches
+        Clone every repository of the Odoo manifests (manifest/git_manifest_odoo*.xml),
+        the upstream of a fork rather than the fork, and checkout branch from param --branches
 """,
         epilog="""\
 """,
@@ -495,36 +497,39 @@ async def clone_repo(i, repo_url, force_fetch):
     return repo_name, repo_path
 
 
-def get_OCA_repo_list(config):
-    # TODO instead using CSV file source repo, use repo from all manifest, need an algorithm to extract all
-    with open(CST_FILE_SOURCE_REPO_ADDONS) as file:
-        all_lines = file.readlines()
-        if all_lines:
-            # Validate first line is supported column
-            expected_header = "url,path,revision,clone-depth\n"
-            if all_lines[0] != expected_header:
-                raise Exception(
-                    "Not supported csv, please validate"
-                    f" {CST_FILE_SOURCE_REPO_ADDONS} with first line"
-                    f" {expected_header}"
+def urls_des_manifestes(dossier=repo_upgrade.DOSSIER):
+    """L'URL de chaque dépôt des manifestes d'Odoo, toutes versions, sans
+    doublon. Un fork y est remplacé par son AMONT (fork-upstream-remote,
+    fork-upstream-name, ou à défaut la convention du remote « _origin_ ») :
+    l'évolution des modules se mesure chez celui qui les publie."""
+    urls = set()
+    for nom in sorted(os.listdir(dossier)):
+        trouve = re.fullmatch(r"git_manifest_odoo(\d+\.\d+)\.xml", nom)
+        if not trouve:
+            continue
+        remotes, projets = repo_upgrade.lire_manifestes(
+            trouve.group(1), dossier
+        )
+        for projet in projets.values():
+            amont = repo_upgrade.resoudre_amont(projet, remotes)
+            if amont and amont["url"]:
+                url = amont["url"]
+            else:
+                url = repo_upgrade.url_amont(
+                    remotes.get(projet.get("remote")), projet.get("name")
                 )
-            # Ignore first line
-            all_lines = all_lines[1:]
+            if url:
+                urls.add(url if url.endswith(".git") else f"{url}.git")
+    return sorted(urls)
 
-            # Be sure empty endline at the end of file
-            if all_lines[-1][-1] != "\n":
-                all_lines[-1] = all_lines[-1] + "\n"
-        all_lines = [a.split(",")[0] for a in all_lines]
-        # TODO support split(",")
-        if config.filter:
-            all_lines = [
-                a
-                for a in all_lines
-                if config.filter in a and a not in IGNORE_REPO_LIST
-            ]
-        else:
-            all_lines = [a for a in all_lines if a not in IGNORE_REPO_LIST]
-    return all_lines
+
+def get_OCA_repo_list(config):
+    """Les dépôts à cloner : ceux des manifestes, filtrés par --filter, sans
+    ceux d'IGNORE_REPO_LIST."""
+    urls = [a for a in urls_des_manifestes() if a not in IGNORE_REPO_LIST]
+    if config.filter:
+        urls = [a for a in urls if config.filter in a]
+    return urls
 
 
 if __name__ == "__main__":

@@ -40,22 +40,14 @@ La mise à jour est possible sur la branche 12.0, vous devez vérifier l'existen
 ```
 
 <!-- [en] -->
-3. Run update script
+3. Rebase each fork on its upstream branch, declared by `fork-upstream-remote` and `fork-upstream` in
+   `./manifest/git_manifest_odoo<version>.xml`, then force push the needed repos and manage rebase conflicts.
+
+4. Test a clone with dev, check file [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 <!-- [fr] -->
-3. Exécutez le script de mise à jour
+3. Rebasez chaque fork sur sa branche amont, déclarée par `fork-upstream-remote` et `fork-upstream` dans
+   `./manifest/git_manifest_odoo<version>.xml`, puis faites un push forcé sur les dépôts nécessaires et gérez les
+   conflits de rebase.
 
-<!-- [common] -->
-```bash
-./script/git/git_update_repo.py
-```
-
-<!-- [en] -->
-4. Do a forced push on all needed repo and manage rebase conflicts.
-
-5. Test a clone with dev, check file [DEVELOPMENT.md](./DEVELOPMENT.md)
-
-<!-- [fr] -->
-4. Faites un push forcé sur tous les dépôts nécessaires et gérez les conflits de rebase.
-
-5. Testez un clone en dev, consultez le fichier [DEVELOPMENT.md](./DEVELOPMENT.md)
+4. Testez un clone en dev, consultez le fichier [DEVELOPMENT.md](./DEVELOPMENT.md)

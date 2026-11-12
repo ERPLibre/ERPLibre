@@ -34,36 +34,6 @@ Complete its history before committing and pushing in it:
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
-## Fork project to create a new project independent of ERPLibre (deprecated)
-
-ERPLibre was created with this script. It's now deprecated. Use this script when you need to fork directly from the
-original source. Don't use this script if you want to update from ERPLibre and follow mainstream development.
-
-```bash
-./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
-```
-
-# Fork all repos for you own organization
-
-Go to your Github account and generate a token to access fork option with your user. Create an organization or use your
-personal account and choose your user name.
-
-This command will fork all repos and ERPLibre to your own organization. It keeps track of ERPLibre.
-
-```bash
-./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
-```
-
-## Generate manifest from csv repo
-
-Add repo in file [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Execute to generate Repo manifest
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
-
 ## Move database from prod to dev
 
 Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a
@@ -126,26 +96,12 @@ To show differences between actual code and manifest
 ./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
 
-## Add repo
-
-To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
-
-Fork the repo to be able to push new code:
-
-```bash
-./script/git/fork_project_ERPLibre.py
-```
-
-To regenerate only manifest.xml.
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
+## Remove auto_install from an addons repository
 
 Check if manifest contains "auto_install" and change the value to False.
 
 ```bash
-./script/git/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py --addons_dir PATH
 ```
 
 ## Filter repo by group
@@ -234,14 +190,6 @@ When you need to change python 3.7.17 to 3.8.10, do :
 rm -r .venv
 make install_dev
 ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
-```
-
-# Pull request
-
-## Show all pull requests from organization
-
-```bash
-/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 # Commit

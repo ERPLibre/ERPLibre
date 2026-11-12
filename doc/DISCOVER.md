@@ -27,12 +27,10 @@ cd ERPLibre
 
 ## Add repo
 
-To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
-
-Execute script:
+To access a new repo, add a `<project>` for it, and its `<remote>` if the organisation is new, to
+`./manifest/git_manifest_odoo<version>.xml`, then:
 
 ```bash
-./script/git/git_repo_manifest.py
 git checkout -b NEW_BRANCH
 git commit -am "Add new repo"
 ./script/install/install_locally_dev.sh

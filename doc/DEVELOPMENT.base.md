@@ -60,11 +60,6 @@ Complete its history before committing and pushing in it:
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
-## Fork project to create a new project independent of ERPLibre (deprecated)
-
-ERPLibre was created with this script. It's now deprecated. Use this script when you need to fork directly from the
-original source. Don't use this script if you want to update from ERPLibre and follow mainstream development.
-
 <!-- [fr] -->
 ## Développer dans le dépôt Odoo
 
@@ -73,56 +68,6 @@ Complétez son historique avant d'y faire des commits et des pushs :
 
 ```bash
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
-```
-
-## Forker le projet pour créer un nouveau projet indépendant d'ERPLibre (obsolète)
-
-ERPLibre a été créé avec ce script. Il est maintenant obsolète. Utilisez ce script lorsque vous devez forker directement depuis la
-source originale. N'utilisez pas ce script si vous voulez recevoir les mises à jour d'ERPLibre et suivre le développement principal.
-
-<!-- [common] -->
-```bash
-./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
-```
-
-<!-- [en] -->
-# Fork all repos for you own organization
-
-Go to your Github account and generate a token to access fork option with your user. Create an organization or use your
-personal account and choose your user name.
-
-This command will fork all repos and ERPLibre to your own organization. It keeps track of ERPLibre.
-
-<!-- [fr] -->
-# Forker tous les dépôts pour votre propre organisation
-
-Allez dans votre compte Github et générez un jeton pour accéder à l'option de fork avec votre utilisateur. Créez une organisation ou utilisez votre
-compte personnel et choisissez votre nom d'utilisateur.
-
-Cette commande va forker tous les dépôts et ERPLibre vers votre propre organisation. Elle garde le suivi d'ERPLibre.
-
-<!-- [common] -->
-```bash
-./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
-```
-
-<!-- [en] -->
-## Generate manifest from csv repo
-
-Add repo in file [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Execute to generate Repo manifest
-
-<!-- [fr] -->
-## Générer le manifeste à partir du csv des dépôts
-
-Ajoutez le dépôt dans le fichier [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Exécutez pour générer le manifeste Repo
-
-<!-- [common] -->
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
 ```
 
 <!-- [en] -->
@@ -243,44 +188,18 @@ Pour afficher les différences entre le code actuel et le manifeste
 ```
 
 <!-- [en] -->
-## Add repo
+## Remove auto_install from an addons repository
 
-To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
-
-Fork the repo to be able to push new code:
-
-<!-- [fr] -->
-## Ajouter un dépôt
-
-Pour accéder à un nouveau dépôt, ajoutez votre URL dans le fichier [source_repo_addons.csv](../source_repo_addons.csv)
-
-Forkez le dépôt pour pouvoir pousser du nouveau code :
-
-<!-- [common] -->
-```bash
-./script/git/fork_project_ERPLibre.py
-```
-
-<!-- [en] -->
-To regenerate only manifest.xml.
-
-<!-- [fr] -->
-Pour régénérer uniquement le manifest.xml.
-
-<!-- [common] -->
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
-
-<!-- [en] -->
 Check if manifest contains "auto_install" and change the value to False.
 
 <!-- [fr] -->
+## Retirer auto_install d'un dépôt d'addons
+
 Vérifier si le manifeste contient "auto_install" et changer la valeur à False.
 
 <!-- [common] -->
 ```bash
-./script/git/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py --addons_dir PATH
 ```
 
 <!-- [en] -->
@@ -443,21 +362,6 @@ Lorsque vous devez changer de python 3.7.17 à 3.8.10, faites :
 rm -r .venv
 make install_dev
 ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
-```
-
-<!-- [en] -->
-# Pull request
-
-## Show all pull requests from organization
-
-<!-- [fr] -->
-# Demande de tirage (Pull request)
-
-## Afficher toutes les demandes de tirage d'une organisation
-
-<!-- [common] -->
-```bash
-/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 <!-- [en] -->

@@ -16,19 +16,15 @@ from typing import List
 
 import git
 import xmltodict
-from agithub.GitHub import GitHub  # pip install agithub
 from colorama import Fore, Style
 from git import Repo
-from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
-from script.git import github_api
 from script.git.repo_url import (
     get_transformed_repo_info_from_url as _get_transformed_repo_info,
 )
 from script.git.repo_url import get_url as _get_url
 
-SOURCE_REPO_ADDONS_FILE = "source_repo_addons.csv"
 EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
@@ -697,92 +693,6 @@ class GitTool:
         else:
             print(str_xml_text + "\n")
 
-    def generate_git_modules(
-        self, repo_list: List[RepoAttrs], repo_path: str = "."
-    ):
-        modules = []
-        for repo in repo_list:
-            if repo.is_submodule:
-                modules.append(
-                    f'[submodule "{repo.path}"]\n'
-                    f"\turl = {repo.url_https}\n"
-                    f"\tpath = {repo.path}\n"
-                )
-
-        # create file
-        with open(os.path.join(repo_path, ".gitmodules"), mode="w") as file:
-            file.writelines(modules)
-
-    def get_source_repo_addons(self, repo_path=".", add_repo_root=False):
-        """
-        Read file SOURCE_REPO_ADDONS_FILE and return structure of data
-        :param repo_path: path to find file SOURCE_REPO_ADDONS_FILE
-        :param add_repo_root: force adding repo root in the list
-        :return:
-        [{
-            "url": original_url,
-            "url_https": url in https,
-            "url_git": url in git,
-            "path": path of the submodule
-            "relative_path": relative path of the submodule
-            "name": name of the submodule
-        }]
-        """
-        file_name = os.path.join(repo_path, SOURCE_REPO_ADDONS_FILE)
-        results = []
-        if add_repo_root:
-            # TODO what to do if origin not exist?
-            repo = Repo(repo_path)
-            url = [a for a in repo.remotes][0].url
-            repo_info = self.get_transformed_repo_info_from_url(
-                url, repo_path=repo_path, get_obj=False, is_submodule=False
-            )
-            results.append(repo_info)
-        with open(file_name) as file:
-            all_lines = file.readlines()
-            if all_lines:
-                # Validate first line is supported column
-                expected_header = "url,path,revision,clone-depth\n"
-                if all_lines[0] != expected_header:
-                    raise Exception(
-                        f"Not supported csv, please validate {file_name} "
-                        f"with first line {expected_header}"
-                    )
-                # Ignore first line
-                all_lines = all_lines[1:]
-
-                # Be sure empty endline at the end of file
-                if all_lines[-1][-1] != "\n":
-                    all_lines[-1] = all_lines[-1] + "\n"
-
-        for line in all_lines:
-            # Separate information with path in tuple
-            line = line.strip()
-            if not line:
-                continue
-            line_split = line.split(",")
-            if len(line_split) != 4:
-                print(
-                    f"{Fore.RED}Error{Style.RESET_ALL} with line {line},"
-                    " suppose to have only 4 ','."
-                )
-                exit(1)
-            url, path, revision, clone_depth = line_split
-            # Validate url
-            # If begin by http, need to finish by .git
-            if len(url) > 5 and url[0:4] == "http" and url[-4:] != ".git":
-                url = f"{url}.git"
-            repo_info = self.get_transformed_repo_info_from_url(
-                url,
-                repo_path=repo_path,
-                get_obj=False,
-                sub_path=path,
-                revision=revision,
-                clone_depth=clone_depth,
-            )
-            results.append(repo_info)
-        return results
-
     def get_manifest_file(self, repo_path: str = "."):
         """
         Find .repo and return default manifest file.
@@ -913,27 +823,3 @@ class GitTool:
                 print(f"SAME - {original.get('name')}")
                 same.append((original, compare_to))
         print(f"finish same {len(same)}, diff {len(diffs)}")
-
-    @staticmethod
-    def add_and_fetch_remote(
-        repo_info: RepoAttrs, root_repo: Repo = None, branch_name: str = ""
-    ):
-        """Deprecated function, not use anymore git submodule"""
-        return github_api.add_and_fetch_remote(
-            repo_info, root_repo, branch_name
-        )
-
-    def get_pull_request_repo(
-        self, upstream_url: str, github_token: str, organization_name: str = ""
-    ):
-        return github_api.get_pull_request_repo(
-            upstream_url, github_token, organization_name
-        )
-
-    def fork_repo(
-        self, upstream_url: str, github_token: str, organization_name: str = ""
-    ):
-        return github_api.fork_repo(
-            upstream_url, github_token, organization_name
-        )
-        return forked_repo

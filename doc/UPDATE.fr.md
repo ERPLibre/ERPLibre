@@ -18,12 +18,8 @@ La mise à jour est possible sur la branche 12.0, vous devez vérifier l'existen
 ./script/git/git_change_remote_https_to_git.py
 ```
 
-3. Exécutez le script de mise à jour
+3. Rebasez chaque fork sur sa branche amont, déclarée par `fork-upstream-remote` et `fork-upstream` dans
+   `./manifest/git_manifest_odoo<version>.xml`, puis faites un push forcé sur les dépôts nécessaires et gérez les
+   conflits de rebase.
 
-```bash
-./script/git/git_update_repo.py
-```
-
-4. Faites un push forcé sur tous les dépôts nécessaires et gérez les conflits de rebase.
-
-5. Testez un clone en dev, consultez le fichier [DEVELOPMENT.md](./DEVELOPMENT.md)
+4. Testez un clone en dev, consultez le fichier [DEVELOPMENT.md](./DEVELOPMENT.md)
