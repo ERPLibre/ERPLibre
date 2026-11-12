@@ -22,10 +22,10 @@ Ce que ces tests gardent :
   même ; une clé libre, ou une valeur inchangée, ne dit rien. L'installation
   Stream Deck, qui change DECK_PROGRAM par --deck-program, fait de même ;
 - le format de keymap.json que pose le contrat égale les constantes de
-  keymap.py, --catalog rend la forme qu'il énonce, et le chargeur du deck
-  donne à chaque fixture partagée de keymap.json le verdict qu'elle porte :
-  il ne saute rien de ce que l'extension écrit, et pose telles qu'envoyées
-  les entrées qu'il dit poser.
+  keymap.py, --catalog rend la forme et les actions qu'il énonce, et le
+  chargeur du deck donne à chaque fixture partagée de keymap.json le
+  verdict qu'elle porte : il ne saute rien de ce que l'extension écrit, et
+  pose telles qu'envoyées les entrées qu'il dit poser.
 
 Ce qui lit le clone est sauté quand il manque (SANS_EXTENSION), ou quand
 son contrat précède la version qui pose le tableau ou le format : une
@@ -488,8 +488,15 @@ class LeContratDesDispositions(unittest.TestCase):
         self.assertEqual(forme["format"], catalogue["format"])
         (modele,) = forme["models"].values()
         self.assertEqual(list(modele), list(catalogue["models"]["0084"]))
+        # La règle des actions telle que le contrat l'énonce : les plugins
+        # chargés à touche d'accueil (timers, pas tiling) et ceux que
+        # DECK_PLUGINS_OFF coupe (sound, jamais importé, donc sans rien
+        # savoir de sa touche), triés, puis les deux actions fixes.
         fixes = valeur_du_contrat(
-            r"that have a home key, then (`\w+` and `\w+`)"
+            r"the actions `plugin:<id>` of the plugins loaded with a home "
+            r"key and of the plugins `DECK_PLUGINS_OFF` turns off, listed "
+            r"without being imported and so whether they have a home key "
+            r"or not, sorted, then (`\w+` and `\w+`)"
         )
         self.assertEqual(
             re.findall(r"`(\w+)`", fixes), catalogue["actions"][-2:]
@@ -504,6 +511,42 @@ class LeContratDesDispositions(unittest.TestCase):
         for nom in catalogue["icons"]:
             with self.subTest(icone=nom):
                 self.assertRegex(nom, r"\A(?:%s)\Z" % motif_icone)
+
+    def test_an_off_plugin_turned_on_without_a_home_key_gets_a_black_key(
+        self,
+    ):
+        """Le catalogue offre un plugin coupé sans savoir s'il a une
+        touche d'accueil ; une révision qui le rallume et le nomme passe
+        l'extension. Le contrat le dit, et le chargeur fait ce qu'il dit :
+        la touche reste noire, une ligne au journal."""
+        valeur_du_contrat(
+            r"(A plugin the catalog lists because it is turned off may have "
+            r"no home key: a revision that turns it on and names it gets a "
+            r"black key), with a line in the deck's journal"
+        )
+        donnees = {
+            "format": 1,
+            "layouts": {
+                "0084": {
+                    "keys": [
+                        {"key": 0, "action": "plugin:timers"},
+                        {"key": 3, "action": "plugin:sound"},
+                    ]
+                }
+            },
+        }
+        entrees, problemes = keymap.layout_for(
+            donnees, "0084", Geometry(4, 2, 8), {"timers"}, set()
+        )
+        self.assertEqual(
+            [
+                keymap.Entry(0, "plugin:timers"),
+                keymap.Entry(3, "empty"),
+            ],
+            entrees,
+        )
+        self.assertEqual(1, len(problemes), problemes)
+        self.assertIn("sound", problemes[0])
 
     def test_the_loader_gives_each_keymap_fixture_its_stated_verdict(self):
         fixtures = fixtures_de_dispositions()
