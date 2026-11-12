@@ -687,6 +687,7 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "🌿 Create a branch in a repository": "_git_creer_branche",
         "🔭 Add the upstream remote of a repository": "_git_ajouter_amont",
         "➖ Remove a repository from a manifest": "_git_retirer_depot",
+        "🔄 Synchronise one repository": "_git_synchroniser_depot",
         "📋 List the pull requests of an organisation": "_git_lister_pull_requests",
         "📬 Open a pull request from the current branch": "_git_creer_pull_request",
         "Kill git daemon server process": "process_kill_git_daemon",
@@ -789,6 +790,7 @@ class TestGitMenuSections(unittest.TestCase):
                     t("Repositories"),
                     t("➖ Remove a repository from a manifest"),
                 ),
+                (t("Repositories"), t("🔄 Synchronise one repository")),
                 (
                     t("Repositories"),
                     t("📋 List the pull requests of an organisation"),
@@ -824,7 +826,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[13] est l'éditeur vim, après douze entrées et deux sections."""
+        """[14] est l'éditeur vim, après treize entrées et deux sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -833,7 +835,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["13", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["14", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,

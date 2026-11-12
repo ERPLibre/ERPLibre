@@ -163,5 +163,18 @@ class TestLaLigneDeCommande(Base):
         self.assertIn("-l", executer.call_args.args[0][1])
         self.assertNotIn('name="outil.git"', self.lire())
 
+    def test_sync_targets_the_one_path(self):
+        with (
+            mock.patch.object(mr, "_racine", return_value=self.racine),
+            mock.patch.object(mr, "executer", return_value=0) as executer,
+        ):
+            self.assertEqual(
+                mr.main(["sync", "OCA_ai", "--version", "18.0"]), 0
+            )
+        self.assertEqual(
+            executer.call_args.args[0][1][-1], "odoo18.0/addons/OCA_ai"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
