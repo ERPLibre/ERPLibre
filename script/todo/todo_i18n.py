@@ -2134,6 +2134,77 @@ TRANSLATIONS = {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
         "en": "🔭 Add the upstream remote of a repository",
     },
+    "📋 List the pull requests of an organisation": {
+        "fr": "📋 Lister les pull requests d'une organisation",
+        "en": "📋 List the pull requests of an organisation",
+    },
+    "📬 Open a pull request from the current branch": {
+        "fr": "📬 Ouvrir une pull request depuis la branche courante",
+        "en": "📬 Open a pull request from the current branch",
+    },
+    "declared upstream": {
+        "fr": "amont déclaré",
+        "en": "declared upstream",
+    },
+    "manifest repository": {
+        "fr": "dépôt du manifeste",
+        "en": "manifest repository",
+    },
+    "Open it as a draft? (y/N): ": {
+        "fr": "L'ouvrir en brouillon ? (o/N) : ",
+        "en": "Open it as a draft? (y/N): ",
+    },
+    "open pull requests": {
+        "fr": "pull requests ouvertes",
+        "en": "open pull requests",
+    },
+    "repositories absent from the organisation": {
+        "fr": "dépôts absents de l'organisation",
+        "en": "repositories absent from the organisation",
+    },
+    "Organisation (or GitHub account): ": {
+        "fr": "Organisation (ou compte GitHub) : ",
+        "en": "Organisation (or GitHub account): ",
+    },
+    "Querying GitHub for each repository of the manifest…": {
+        "fr": "Interrogation de GitHub pour chaque dépôt du manifeste…",
+        "en": "Querying GitHub for each repository of the manifest…",
+    },
+    "Target of the pull request:": {
+        "fr": "Cible de la pull request :",
+        "en": "Target of the pull request:",
+    },
+    "Pull request opened:": {
+        "fr": "Pull request ouverte :",
+        "en": "Pull request opened:",
+    },
+    "The current branch is not pushed: create it with a push first.": {
+        "fr": (
+            "La branche courante n'est pas poussée : créez-la d'abord avec un "
+            "push."
+        ),
+        "en": "The current branch is not pushed: create it with a push first.",
+    },
+    "No GitHub repository to open the pull request on.": {
+        "fr": "Aucun dépôt GitHub où ouvrir la pull request.",
+        "en": "No GitHub repository to open the pull request on.",
+    },
+    "default": {
+        "fr": "défaut",
+        "en": "default",
+    },
+    "Open the pull request on": {
+        "fr": "Ouvrir la pull request sur",
+        "en": "Open the pull request on",
+    },
+    "Title": {
+        "fr": "Titre",
+        "en": "Title",
+    },
+    "Description (Enter: the list of commits)": {
+        "fr": "Description (Entrée : la liste des commits)",
+        "en": "Description (Enter: the list of commits)",
+    },
     "Fork it for an organisation now? (y/N): ": {
         "fr": "Le forker pour une organisation maintenant ? (o/N) : ",
         "en": "Fork it for an organisation now? (y/N): ",

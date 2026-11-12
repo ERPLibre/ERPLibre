@@ -3760,6 +3760,18 @@ class TODO(
                 ),
                 "method": "_git_ajouter_amont",
             },
+            {
+                "prompt_description": t(
+                    "📋 List the pull requests of an organisation"
+                ),
+                "method": "_git_lister_pull_requests",
+            },
+            {
+                "prompt_description": t(
+                    "📬 Open a pull request from the current branch"
+                ),
+                "method": "_git_creer_pull_request",
+            },
             {"section": t("Settings")},
             {
                 "prompt_description": t(

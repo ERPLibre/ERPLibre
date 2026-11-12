@@ -131,9 +131,13 @@ Les mêmes outils tournent sans le menu :
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MonOrg
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py branch OCA_l10n-switzerland 18.0_ma_fonction --push origin
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pulls --organisation MonOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pr OCA_l10n-switzerland --title "Corriger le rapport de facture" --target amont
 ```
 
-`branch` crée une branche dans le clone et s'y place, puis la pousse en la faisant suivre quand `--push` nomme un
+`pulls` liste les pull requests ouvertes, dans une organisation, de chaque dépôt du manifeste ; `pr` en ouvre une depuis
+la branche courante du clone, une fois poussée, vers l'amont (`amont`) ou le dépôt du manifeste (`manifeste`). `branch`
+crée une branche dans le clone et s'y place, puis la pousse en la faisant suivre quand `--push` nomme un
 remote ; `upstream` pose le remote amont que le manifeste déclare pour un fork, et récupère sa branche. Les deux sont
 aussi dans TODO › Exécution › Répertoire git.
 

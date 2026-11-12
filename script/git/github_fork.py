@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Forker un dépôt GitHub dans une organisation, par l'API REST.
+"""Forker un dépôt GitHub dans une organisation, et en lister ou ouvrir
+les pull requests, par l'API REST.
 
 GitHub crée un fork en arrière-plan : POST /repos/{owner}/{repo}/forks
 répond 202 avant que le dépôt existe vraiment, d'où `attendre()`, qui le
@@ -88,8 +89,16 @@ class ClientGitHub:
         )
         if rep.status_code not in ok:
             try:
-                message = rep.json().get("message", "")
-            except ValueError:
+                corps = rep.json()
+                details = [
+                    e.get("message") or e.get("code") or ""
+                    for e in corps.get("errors") or []
+                    if isinstance(e, dict)
+                ]
+                message = " ; ".join(
+                    m for m in [corps.get("message", "")] + details if m
+                )
+            except (ValueError, AttributeError):
                 message = ""
             raise ErreurGitHub(
                 f"{methode} {chemin} : {rep.status_code} {message}"
@@ -150,6 +159,46 @@ class ClientGitHub:
             self.dormir(pas)
             ecoule += pas
         return False
+
+    def pull_requests(self, nom_complet, etat="open", pages=10):
+        """Les pull requests de `nom_complet` dans l'état `etat`, toutes
+        pages lues jusqu'à `pages` (100 par page) ; None si le dépôt
+        n'existe pas ou n'est pas visible."""
+        res = []
+        for page in range(1, pages + 1):
+            rep = self._appel(
+                "GET",
+                f"/repos/{nom_complet}/pulls",
+                ok=(200, 404),
+                params={"state": etat, "per_page": 100, "page": page},
+            )
+            if rep.status_code == 404:
+                return None
+            lot = rep.json()
+            res.extend(lot)
+            if len(lot) < 100:
+                break
+        return res
+
+    def creer_pull_request(
+        self, nom_complet, tete, base, titre, corps="", brouillon=False
+    ):
+        """Ouvre une pull request sur `nom_complet`, de `tete`
+        (« propriétaire:branche ») vers la branche `base`. Rend la pull
+        request créée."""
+        rep = self._appel(
+            "POST",
+            f"/repos/{nom_complet}/pulls",
+            ok=(201,),
+            json={
+                "title": titre,
+                "head": tete,
+                "base": base,
+                "body": corps,
+                "draft": brouillon,
+            },
+        )
+        return rep.json()
 
     def creer_branche(self, nom_complet, branche, sha):
         """Pose refs/heads/`branche` sur `sha` dans le fork. Une branche déjà

@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Les dépôts des manifestes d'Odoo : en ajouter un, le forker pour une
-organisation, y créer une branche, poser son remote amont.
+organisation, y créer une branche, poser son remote amont, lister et
+ouvrir des pull requests.
 
 Ce module fait le travail sans rien demander ; le menu Répertoire git de
 TODO pose les questions et l'appelle, et la ligne de commande fait de même
@@ -14,6 +15,9 @@ sans menu :
                      [--manifest 17.0,18.0 | --no-manifest]
     manifest_repo.py branch CHEMIN NOM [--from REF] [--push REMOTE]
     manifest_repo.py upstream CHEMIN [--version 18.0]
+    manifest_repo.py pulls --organisation ORG [--version 18.0]
+    manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
+                     [--draft]
 
 CHEMIN est le « path » du projet dans le manifeste, ou la fin de ce chemin
 (« OCA_server-tools »). Le jeton GitHub du fork est EL_GITHUB_TOKEN.
@@ -462,6 +466,97 @@ def ajouter_amont(chemin, projet, remotes):
     )
 
 
+# ── Pull requests ──────────────────────────────────────────────────────
+
+
+def lister_pull_requests(client, organisation, version, dossier=None, jobs=8):
+    """Les pull requests ouvertes de chaque dépôt des manifestes de
+    `version` dans `organisation` : [(chemin, nom complet, [pr] ou None)],
+    None quand l'organisation n'a pas ce dépôt. Les dépôts se lisent en
+    parallèle : l'API répond à chacun en une requête."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    _remotes, liste = projets_github(version, dossier)
+    vus, cibles = set(), []
+    for projet, _proprietaire, depot in liste:
+        nom = f"{organisation}/{depot}"
+        if nom.lower() not in vus:
+            vus.add(nom.lower())
+            cibles.append((projet.get("path"), nom))
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        prs = list(ex.map(lambda c: client.pull_requests(c[1]), cibles))
+    return [(chemin, nom, lot) for (chemin, nom), lot in zip(cibles, prs)]
+
+
+def branche_poussee(chemin):
+    """(branche courante, remote suivi, branche distante) du clone, ou
+    None hors branche ou sans branche suivie."""
+    code, branche = git(chemin, "branch", "--show-current")
+    if code or not branche:
+        return None
+    code, suivie = git(chemin, "rev-parse", "--abbrev-ref", "@{u}")
+    if code or "/" not in suivie:
+        return None
+    remote, distante = suivie.split("/", 1)
+    return branche, remote, distante
+
+
+def cibles_pull_request(projet, remotes):
+    """Les dépôts où ouvrir la pull request : {clé: (propriétaire/dépôt,
+    branche de base)}. « manifeste » est le dépôt que le manifeste clone,
+    vers sa branche ; « amont » l'amont déclaré d'un fork, vers sa branche
+    amont, quand il y en a un."""
+    res = {}
+    depot = github_fork.depot_github(url_du_projet(projet, remotes))
+    branche = branche_du_projet(projet)
+    if depot and branche:
+        res["manifeste"] = ("/".join(depot), branche)
+    amont = repo_upgrade.resoudre_amont(projet, remotes)
+    if amont and amont.get("branche"):
+        depot_amont = github_fork.depot_github(amont.get("url"))
+        if depot_amont:
+            res["amont"] = ("/".join(depot_amont), amont["branche"])
+    return res
+
+
+def ouvrir_pull_request(
+    client, chemin, cible, base, titre, corps="", brouillon=False
+):
+    """Ouvre, sur le dépôt `cible` vers `base`, la pull request de la
+    branche courante du clone `chemin`, telle que poussée vers son remote
+    suivi. Refuse une branche non suivie, un remote hors de GitHub, ou une
+    branche identique à la base sur le même dépôt."""
+    poussee = branche_poussee(chemin)
+    if not poussee:
+        raise ValueError(
+            "branche courante non poussée (pas de branche suivie)"
+        )
+    _branche, remote, distante = poussee
+    code, url = git(chemin, "remote", "get-url", remote)
+    tete = github_fork.depot_github(url) if not code else None
+    if not tete:
+        raise ValueError(f"remote {remote} hors de GitHub")
+    if "/".join(tete).lower() == cible.lower() and distante == base:
+        raise ValueError(f"{distante} est déjà la branche de base")
+    return client.creer_pull_request(
+        cible, f"{tete[0]}:{distante}", base, titre, corps, brouillon
+    )
+
+
+def resume_commits(chemin, base_ref, limite=20):
+    """(sujet du dernier commit, liste « - sujet » des commits depuis
+    `base_ref`) : le titre et le corps proposés pour une pull request."""
+    _c, sujet = git(chemin, "log", "-1", "--format=%s")
+    code, sujets = git(
+        chemin,
+        "log",
+        f"--max-count={limite}",
+        "--format=- %s",
+        f"{base_ref}..HEAD",
+    )
+    return sujet, (sujets if not code else "")
+
+
 # ── Ligne de commande ──────────────────────────────────────────────────
 
 
@@ -519,6 +614,18 @@ def main(argv=None):
     p = sous.add_parser("upstream", help="add and fetch the upstream remote")
     p.add_argument("chemin")
     p.add_argument("--version")
+    p = sous.add_parser("pulls", help="list the open pull requests")
+    p.add_argument("--organisation", required=True)
+    p.add_argument("--version")
+    p = sous.add_parser(
+        "pr", help="open a pull request from the current branch"
+    )
+    p.add_argument("chemin")
+    p.add_argument("--title", required=True)
+    p.add_argument("--body", default="")
+    p.add_argument("--target", choices=("manifeste", "amont"), default="amont")
+    p.add_argument("--draft", action="store_true")
+    p.add_argument("--version")
     args = parser.parse_args(argv)
     racine = _racine()
     version = args.version or repo_upgrade.version_active(racine)
@@ -536,8 +643,45 @@ def main(argv=None):
                 f"{', ' + gel[:12] if gel else ''})"
             )
             return 0
+        if args.commande == "pulls":
+            client = _client(racine)
+            if not client:
+                return 2
+            total = absents = 0
+            for chemin_p, nom, lot in lister_pull_requests(
+                client, args.organisation, version
+            ):
+                if lot is None:
+                    absents += 1
+                    continue
+                for pr in lot:
+                    total += 1
+                    print(
+                        f"{nom}#{pr.get('number')} {pr.get('title')} — {pr.get('html_url')}"
+                    )
+            print(f"{total} pull request(s); {absents} repositories not found")
+            return 0
         remotes, projet = trouver_projet(version, args.chemin)
         chemin = os.path.join(racine, projet["path"])
+        if args.commande == "pr":
+            cibles = cibles_pull_request(projet, remotes)
+            if args.target not in cibles:
+                raise ValueError(
+                    f"no {args.target} target for {projet['path']}"
+                )
+            client = _client(racine)
+            if not client:
+                return 2
+            pr = ouvrir_pull_request(
+                client,
+                chemin,
+                *cibles[args.target],
+                args.title,
+                args.body,
+                args.draft,
+            )
+            print(pr.get("html_url"))
+            return 0
         if args.commande == "branch":
             etapes = brancher(chemin, args.nom, args.depart, args.push)
             for etape, code, sortie in etapes:

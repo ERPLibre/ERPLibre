@@ -357,3 +357,151 @@ class GitForkMenuMixin:
         else:
             print(f"⚠ {detail}")
         return 2
+
+    # ── Pull requests ────────────────────────────────────────────────
+
+    def _git_client(self):
+        """Le client GitHub du jeton exporté, ou None (et le dit)."""
+        jeton = github_fork.jeton(RACINE)
+        if not jeton:
+            print(f"⚠ {t(MESSAGE_JETON)}")
+            return None
+        return github_fork.ClientGitHub(jeton)
+
+    def _git_lister_pull_requests(self):
+        """Les pull requests ouvertes, dans une organisation, des dépôts du
+        manifeste de la version active. Rend le nombre trouvé, ou None."""
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        organisation = input(t("Organisation (or GitHub account): ")).strip()
+        if not organisation:
+            return None
+        client = self._git_client()
+        if client is None:
+            return None
+        print(f"  {t('Querying GitHub for each repository of the manifest…')}")
+        try:
+            resultats = manifest_repo.lister_pull_requests(
+                client, organisation, version
+            )
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        print("\n".join(lignes_pull_requests(resultats)))
+        return sum(len(lot) for _c, _n, lot in resultats if lot)
+
+    def _git_creer_pull_request(self):
+        """Ouvre une pull request depuis la branche courante, déjà poussée,
+        du clone choisi, vers le dépôt du manifeste ou l'amont déclaré.
+        Rend son URL, ou None."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return None
+        remotes, projet, chemin = choix
+        poussee = manifest_repo.branche_poussee(chemin)
+        if not poussee:
+            print(
+                f"⚠ {t('The current branch is not pushed: create it with a push first.')}"
+            )
+            return None
+        cibles = manifest_repo.cibles_pull_request(projet, remotes)
+        if not cibles:
+            print(
+                f"⚠ {t('No GitHub repository to open the pull request on.')}"
+            )
+            return None
+        cles = [c for c in ("amont", "manifeste") if c in cibles]
+        print(f"  {t('Target of the pull request:')}")
+        for i, cle in enumerate(cles, 1):
+            depot, base = cibles[cle]
+            libelle = (
+                t("declared upstream")
+                if cle == "amont"
+                else t("manifest repository")
+            )
+            defaut = f" ({t('default')})" if i == 1 else ""
+            print(
+                f"  [{i}] {depot} ← {poussee[2]} → {base} · {libelle}{defaut}"
+            )
+        saisie = input("  : ").strip()
+        cle = (
+            cles[int(saisie) - 1]
+            if saisie in ("1", "2")[: len(cles)]
+            else cles[0]
+        )
+        depot, base = cibles[cle]
+        sujet, corps_propose = manifest_repo.resume_commits(
+            chemin, ref_de_base(chemin, projet, remotes, cle, base)
+        )
+        titre = input(f"{t('Title')} [{sujet}] : ").strip() or sujet
+        corps = (
+            input(
+                f"{t('Description (Enter: the list of commits)')} : "
+            ).strip()
+            or corps_propose
+        )
+        brouillon = self._is_yes(input(t("Open it as a draft? (y/N): ")))
+        if not self._is_yes(
+            input(f"{t('Open the pull request on')} {depot} ? (y/N): ")
+        ):
+            return None
+        client = self._git_client()
+        if client is None:
+            return None
+        try:
+            pr = manifest_repo.ouvrir_pull_request(
+                client, chemin, depot, base, titre, corps, brouillon
+            )
+        except (github_fork.ErreurGitHub, ValueError) as exc:
+            print(f"❌ {exc}")
+            return None
+        print(f"  ✓ {t('Pull request opened:')} {pr.get('html_url')}")
+        return pr.get("html_url")
+
+
+def ref_de_base(chemin, projet, remotes, cle, base):
+    """La ref du clone qui porte la branche de base, pour lister les
+    commits de la pull request : celle du remote amont, ou du remote que
+    git-repo donne au projet. "HEAD" (aucun commit) si le clone ne l'a pas."""
+    remote = (
+        repo_upgrade.remote_amont(repo_upgrade.resoudre_amont(projet, remotes))
+        if cle == "amont"
+        else projet.get("remote")
+    )
+    ref = f"{remote}/{base}" if remote else ""
+    if (
+        ref
+        and manifest_repo.git(chemin, "rev-parse", "--verify", "-q", ref)[0]
+        == 0
+    ):
+        return ref
+    return "HEAD"
+
+
+def lignes_pull_requests(resultats):
+    """Le rapport : chaque dépôt qui a des pull requests, puis le total et
+    les dépôts absents de l'organisation."""
+    lignes = []
+    total = absents = 0
+    for chemin, nom, lot in resultats:
+        if lot is None:
+            absents += 1
+            continue
+        if not lot:
+            continue
+        lignes.append(f"── {nom} ({chemin})")
+        for pr in lot:
+            total += 1
+            marque = " · draft" if pr.get("draft") else ""
+            auteur = (pr.get("user") or {}).get("login", "?")
+            lignes.append(
+                f"  #{pr.get('number')} {pr.get('title')}"
+                f" ({auteur}{marque}) — {pr.get('html_url')}"
+            )
+    lignes.append(
+        f"📋 {total} {t('open pull requests')} · {absents}"
+        f" {t('repositories absent from the organisation')}"
+    )
+    return lignes
