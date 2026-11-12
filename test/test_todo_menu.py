@@ -102,10 +102,11 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Image Odoo": "prompt_execute_image_db",
         "Analyse module": "prompt_execute_module_analysis",
         "Python": "prompt_execute_python",
+        "Git repository": "prompt_execute_git",
         "Database": "prompt_execute_database",
         "Analyse": "prompt_execute_analyse",
         "Transform data": "prompt_execute_transform",
-        "Git": "prompt_execute_git",
+        "Shell": "prompt_execute_shell",
         "Doc": "prompt_execute_doc",
         "GPT code": "prompt_execute_gpt_code",
         "Automation": "prompt_execute_function",
@@ -681,7 +682,55 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",
         "🔃 Update git repo": "prompt_execute_git_repo",
+        "🍴 Fork a repository for an organisation": "_git_fork_organisation",
+        "➕ Add a repository to a manifest": "_git_ajouter_depot",
+        "🌿 Create a branch in a repository": "_git_creer_branche",
+        "🔭 Add the upstream remote of a repository": "_git_ajouter_amont",
+        "📋 List the pull requests of an organisation": "_git_lister_pull_requests",
+        "📬 Open a pull request from the current branch": "_git_creer_pull_request",
+        "Kill git daemon server process": "process_kill_git_daemon",
     }
+
+
+class TestShellMenu(unittest.TestCase):
+    """Le menu Shell garde ce que le menu Git avait d'étranger à git."""
+
+    def test_shell_lists_the_three_installations(self):
+        import sys
+        from unittest import mock
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+        from script.todo.todo_i18n import t
+
+        obj = TODO.__new__(TODO)
+        appels = []
+        with (
+            mock.patch.object(TODO, "fill_help_info", return_value="") as aide,
+            mock.patch(
+                "script.todo.todo.click.prompt", side_effect=["2", "0"]
+            ),
+            mock.patch.object(
+                TODO,
+                "_shell_install_claude_code",
+                lambda _self: appels.append("claude"),
+            ),
+            mock.patch("builtins.print"),
+        ):
+            self.assertIs(obj.prompt_execute_shell(), False)
+        self.assertEqual(appels, ["claude"])
+        libelles = [
+            c.get("prompt_description") for c in aide.call_args.args[0]
+        ]
+        self.assertEqual(
+            libelles,
+            [
+                None,
+                t("Install Starship on Shell"),
+                t("Install Claude Code"),
+                t("Install opencode"),
+            ],
+        )
 
 
 class TestGitMenuSections(unittest.TestCase):
@@ -722,7 +771,27 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertEqual(
             rangs,
             [
-                (None, t("🔃 Update git repo")),
+                (t("Repositories"), t("🔃 Update git repo")),
+                (t("Repositories"), "Show code status"),
+                (t("Repositories"), "Stash all code"),
+                (
+                    t("Repositories"),
+                    t("🍴 Fork a repository for an organisation"),
+                ),
+                (t("Repositories"), t("➕ Add a repository to a manifest")),
+                (t("Repositories"), t("🌿 Create a branch in a repository")),
+                (
+                    t("Repositories"),
+                    t("🔭 Add the upstream remote of a repository"),
+                ),
+                (
+                    t("Repositories"),
+                    t("📋 List the pull requests of an organisation"),
+                ),
+                (
+                    t("Repositories"),
+                    t("📬 Open a pull request from the current branch"),
+                ),
                 (
                     t("Settings"),
                     t("Install git hooks (commit-msg, pre-commit)"),
@@ -735,9 +804,7 @@ class TestGitMenuSections(unittest.TestCase):
                 (t("Tools"), t("Add a remote to a local repository")),
                 (t("Tools"), "Generate git patch to /tmp"),
                 (t("Server"), t("Local git server")),
-                (t("Installation"), t("Install Starship on Shell")),
-                (t("Installation"), t("Install Claude Code")),
-                (t("Installation"), t("Install opencode")),
+                (t("Server"), t("Kill git daemon server process")),
             ],
         )
 
@@ -752,7 +819,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[4] est l'éditeur vim, après trois entrées et une section."""
+        """[12] est l'éditeur vim, après onze entrées et deux sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -761,7 +828,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["4", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["12", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,
@@ -1903,12 +1970,11 @@ class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
     SOURCE = TODO_DIR / "todo.py"
     ENTRY = "def prompt_execute_update(self):"
     END = "def _update_odoo_migration(self):"
-    MINIMUM = 2
+    MINIMUM = 1
 
     EXPECTED = {
         "Upgrade Odoo - Migration Database": "_update_odoo_migration",
         "Upgrade Poetry - Dependency of Odoo": "upgrade_poetry",
-        "🔃 Update git repo": "prompt_execute_git_repo",
     }
 
 

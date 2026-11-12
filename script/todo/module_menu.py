@@ -6,10 +6,19 @@
 
 Ici on DEMANDE (quels dépôts, faut-il `addons/addons`) et on affiche ; la
 comparaison elle-même vit dans `script/git/git_module_diff.py`, qui se lance
-aussi seul en ligne de commande. Rien n'y écrit, rien n'y va sur le réseau.
+aussi seul en ligne de commande. La section Mise à jour n'écrit rien et ne
+va pas sur le réseau.
+
+La section Statistique lance `script/statistic/show_evolution_module.py`,
+qui CLONE l'amont de chaque dépôt des manifestes sous
+.venv.erplibre/stat_repo : réseau, gigaoctets et durée, d'où la
+confirmation qui la précède. Chaque passe y laisse un fichier de données,
+que l'écran de l'entrée 5 (`script/statistic/evolution_tui.py`) trace.
 """
 
+import datetime
 import os
+import shlex
 import sys
 
 import click
@@ -22,12 +31,30 @@ sys.path.append(new_path)
 from script.git import (  # noqa: E402
     git_freeze_diff,
     git_module_diff,
+    repo_remove_auto_install,
     repo_upgrade,
 )
+from script.todo.git_repo_menu import choix_numeros  # noqa: E402
 from script.todo.todo_couleur import retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 RACINE = new_path
+
+# La fenêtre des cibles Makefile stat_module_evolution_per_year : un
+# relevé au 1er janvier de chaque année depuis STAT_DEPUIS, jusqu'au 1er
+# janvier de l'année qui suit la courante. Ce dernier relevé tombe après
+# aujourd'hui : il compte l'état actuel des branches, la version sortie
+# cette année comprise.
+STAT_DEPUIS = "2016-01-01"
+# Les clones et les fichiers de données de show_evolution_module.py.
+STAT_DOSSIER = os.path.join(RACINE, ".venv.erplibre", "stat_repo")
+
+
+def stat_annees(aujourdhui=None):
+    """Le nombre d'années après STAT_DEPUIS (« --more_year ») pour que le
+    dernier relevé soit le 1er janvier de l'année suivant `aujourdhui`."""
+    aujourdhui = aujourdhui or datetime.date.today()
+    return str(aujourdhui.year + 1 - int(STAT_DEPUIS[:4]))
 
 
 class ModuleMenuMixin:
@@ -45,6 +72,28 @@ class ModuleMenuMixin:
                     "🔁 Modules a freeze comparison changed (old → new)"
                 )
             },
+            {"section": t("Statistic")},
+            {
+                "prompt_description": t(
+                    "📈 Module evolution per year, every repository"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "📈 Module evolution per year, OCA repositories"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "📊 Chart of the module evolution (TUI, from entries 3 and 4)"
+                )
+            },
+            {"section": t("Modification")},
+            {
+                "prompt_description": t(
+                    "🚫 Disable auto_install in repositories of the manifest"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -56,8 +105,101 @@ class ModuleMenuMixin:
                 self._module_analysis_diff(git_module_diff.MODE_BRANCHE)
             elif status == "2":
                 self._module_analysis_diff(git_module_diff.MODE_GEL)
+            elif status == "3":
+                self._module_statistique()
+            elif status == "4":
+                self._module_statistique(filtre="/OCA/")
+            elif status == "5":
+                self._module_graphique()
+            elif status == "6":
+                self._module_auto_install()
             else:
                 print(t("Command not found !"))
+
+    def _module_statistique(self, filtre=""):
+        """L'évolution du nombre de modules par année depuis 2016 jusqu'à
+        aujourd'hui, sur les dépôts des manifestes, ceux dont l'URL contient
+        `filtre` s'il est donné. Rien ne se lance sans confirmation : la
+        statistique clone chaque dépôt amont. Rend le statut de la commande,
+        ou None."""
+        commande = [
+            ".venv.erplibre/bin/python",
+            "script/statistic/show_evolution_module.py",
+            "--before_date",
+            STAT_DEPUIS,
+            "--more_year",
+            stat_annees(),
+        ]
+        if filtre:
+            commande += ["--filter", filtre]
+        print(
+            f"📈 {t('Clones the upstream of every repository of the manifests into')}"
+            f" .venv.erplibre/stat_repo — {t('network, several GB, long the first time.')}"
+        )
+        print(f"  {t('Will execute:')} {shlex.join(commande)}")
+        if not click.confirm(f"  {t('Continue?')}", default=False):
+            return None
+        return self.execute.exec_command_live(
+            shlex.join(commande), source_erplibre=False
+        )
+
+    def _module_graphique(self):
+        """L'écran des statistiques que 3 et 4 ont écrites. Sans fichier de
+        données, le dit et n'ouvre rien. Rend le nombre de jeux montrés."""
+        from script.statistic import evolution_tui
+
+        if not evolution_tui.lire_jeux(STAT_DOSSIER):
+            print(
+                f"  {t('No module statistics yet: run entry 3 or 4 first.')}"
+            )
+            return 0
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return 0
+        return evolution_tui.run(STAT_DOSSIER)
+
+    def _module_auto_install(self):
+        """Désactive auto_install dans les dépôts cochés parmi ceux du
+        manifeste de la version active, en parallèle ; committe et pousse
+        seulement si on le demande. Rend le nombre de dépôts traités, ou
+        None si rien n'a été lancé."""
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        depots = depots_d_addons(version)
+        if not depots:
+            print(f"  {t('No addons repository cloned for this version.')}")
+            return None
+        for i, chemin in enumerate(depots, 1):
+            print(f"  [{i}] {chemin}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        if not saisie:
+            return None
+        choisis = choix_numeros(saisie, depots)
+        if not choisis:
+            print(t("Command not found !"))
+            return None
+        commit = click.confirm(
+            f"  {t('Commit the changed manifests in each repository (current branch)?')}",
+            default=False,
+        )
+        push = commit and click.confirm(
+            f"  {t('Push each commit to its tracked branch?')}", default=False
+        )
+        print(f"  {len(choisis)} {t('repositories, in parallel…')}")
+        resultats = repo_remove_auto_install.traiter(
+            [os.path.join(RACINE, c) for c in choisis],
+            commit=commit,
+            push=push,
+        )
+        print("\n".join(rendre_auto_install(resultats)))
+        return len(resultats)
 
     def _module_analysis_choisir(self):
         """(gauche, droite) de la comparaison de gels qui désigne les
@@ -121,6 +263,45 @@ class ModuleMenuMixin:
         resultat = git_module_diff.analyser(RACINE, version, depots, mode)
         print("\n".join(rendre(resultat, len(depots), version, mode)))
         return 0
+
+
+def depots_d_addons(version, racine=RACINE):
+    """Les chemins, relatifs à `racine`, des projets du manifeste de
+    `version` dont le clone existe, triés. Le cœur d'Odoo n'en fait pas
+    partie : ses auto_install font partie de son fonctionnement."""
+    _remotes, projets = repo_upgrade.lire_manifestes(version)
+    chemins = set()
+    for projet in projets.values():
+        chemin = projet.get("path") or ""
+        if not chemin or os.path.basename(chemin) == "odoo":
+            continue
+        if os.path.isdir(os.path.join(racine, chemin)):
+            chemins.add(chemin)
+    return sorted(chemins)
+
+
+def rendre_auto_install(resultats, racine=RACINE):
+    """Une ligne par dépôt : manifestes changés, commit et push s'ils ont
+    été tentés, et l'échec quand il y en a un."""
+    lignes = []
+    for res in resultats:
+        chemin = os.path.relpath(res["depot"], racine)
+        if res["erreur"]:
+            lignes.append(f"❌ {chemin} : {res['erreur']}")
+            continue
+        ligne = f"{'✓' if res['fichiers'] else '·'} {chemin} : {len(res['fichiers'])}"
+        for etape in ("commit", "push"):
+            if res[etape] is not None:
+                code, sortie = res[etape]
+                ligne += f" · {etape} {'✓' if not code else '❌'}"
+                if code:
+                    ligne += (
+                        f" ({sortie.splitlines()[-1] if sortie else code})"
+                    )
+        lignes.append(ligne)
+    total = sum(len(r["fichiers"]) for r in resultats)
+    lignes.append(f"📋 {total} {t('manifests changed')}")
+    return lignes
 
 
 def rendre(resultat, nb_depots, version, mode=git_module_diff.MODE_BRANCHE):

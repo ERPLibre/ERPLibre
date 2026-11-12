@@ -974,7 +974,11 @@ class TestLeMenu(unittest.TestCase):
             sortie[0],
         )
         self.assertIn(
-            f"[10] {todo_i18n.t('Database - Database tools')}", sortie[0]
+            f"[10] {todo_i18n.t('Git repository - Repositories and git tools')}",
+            sortie[0],
+        )
+        self.assertIn(
+            f"[11] {todo_i18n.t('Database - Database tools')}", sortie[0]
         )
 
     def test_le_fil_d_ariane_nomme_le_menu(self):

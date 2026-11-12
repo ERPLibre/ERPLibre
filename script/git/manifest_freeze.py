@@ -35,6 +35,20 @@ FORK_UPSTREAM_FREEZE_ATTR = "fork-upstream-freeze-revision"
 # la première de ces ancres présente.
 _ANCRES = {
     FREEZE_ATTR: ("revision", "path", "name"),
+    # Un projet sans « remote » suit le <default> ; le lui donner le place
+    # après son chemin.
+    "remote": ("path", "name"),
+    # La provenance d'un fork suit le remote, dans cet ordre : remote amont,
+    # nom amont (fork renommé seulement), branche amont, puis sa base gelée.
+    "fork-upstream-remote": ("remote", "path", "name"),
+    "fork-upstream-name": ("fork-upstream-remote", "remote", "path", "name"),
+    "fork-upstream": (
+        "fork-upstream-name",
+        "fork-upstream-remote",
+        "remote",
+        "path",
+        "name",
+    ),
     FORK_UPSTREAM_FREEZE_ATTR: (
         "fork-upstream",
         "fork-upstream-name",

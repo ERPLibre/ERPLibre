@@ -116,6 +116,102 @@ TRANSLATIONS = {
         "fr": "Analyser les modules Odoo du checkout",
         "en": "Analyse the Odoo modules of the checkout",
     },
+    "Statistic": {
+        "fr": "Statistique",
+        "en": "Statistic",
+    },
+    "📈 Module evolution per year, every repository": {
+        "fr": "📈 Évolution des modules par année, tous les dépôts",
+        "en": "📈 Module evolution per year, every repository",
+    },
+    "📈 Module evolution per year, OCA repositories": {
+        "fr": "📈 Évolution des modules par année, dépôts OCA",
+        "en": "📈 Module evolution per year, OCA repositories",
+    },
+    "Clones the upstream of every repository of the manifests into": {
+        "fr": "Clone l'amont de chaque dépôt des manifestes dans",
+        "en": "Clones the upstream of every repository of the manifests into",
+    },
+    "network, several GB, long the first time.": {
+        "fr": "réseau, plusieurs Go, long la première fois.",
+        "en": "network, several GB, long the first time.",
+    },
+    "Continue?": {
+        "fr": "Continuer ?",
+        "en": "Continue?",
+    },
+    "📊 Chart of the module evolution (TUI, from entries 3 and 4)": {
+        "fr": "📊 Graphique de l'évolution des modules (TUI, d'après 3 et 4)",
+        "en": "📊 Chart of the module evolution (TUI, from entries 3 and 4)",
+    },
+    "No module statistics yet: run entry 3 or 4 first.": {
+        "fr": (
+            "Aucune statistique de modules : lancez d'abord l'entrée 3 ou 4."
+        ),
+        "en": "No module statistics yet: run entry 3 or 4 first.",
+    },
+    "unique modules": {
+        "fr": "modules uniques",
+        "en": "unique modules",
+    },
+    "Year": {
+        "fr": "Année",
+        "en": "Year",
+    },
+    "Odoo module evolution per year": {
+        "fr": "Évolution des modules Odoo par année",
+        "en": "Odoo module evolution per year",
+    },
+    "Every curve": {
+        "fr": "Toutes les courbes",
+        "en": "Every curve",
+    },
+    "Both": {
+        "fr": "Les deux",
+        "en": "Both",
+    },
+    "Modification": {
+        "fr": "Modification",
+        "en": "Modification",
+    },
+    "🚫 Disable auto_install in repositories of the manifest": {
+        "fr": "🚫 Désactiver auto_install dans des dépôts du manifeste",
+        "en": "🚫 Disable auto_install in repositories of the manifest",
+    },
+    "No addons repository cloned for this version.": {
+        "fr": "Aucun dépôt d'addons cloné pour cette version.",
+        "en": "No addons repository cloned for this version.",
+    },
+    "Numbers separated by commas, all for every one, Enter for none: ": {
+        "fr": (
+            "Numéros séparés par des virgules, all pour tous, Entrée pour "
+            "aucun : "
+        ),
+        "en": (
+            "Numbers separated by commas, all for every one, Enter for none: "
+        ),
+    },
+    "Commit the changed manifests in each repository (current branch)?": {
+        "fr": (
+            "Committer les manifestes modifiés dans chaque dépôt (branche "
+            "courante) ?"
+        ),
+        "en": (
+            "Commit the changed manifests in each repository (current branch)?"
+        ),
+    },
+    "Push each commit to its tracked branch?": {
+        "fr": "Pousser chaque commit vers sa branche suivie ?",
+        "en": "Push each commit to its tracked branch?",
+    },
+    "repositories, in parallel…": {
+        "fr": "dépôts, en parallèle…",
+        "en": "repositories, in parallel…",
+    },
+    "manifests changed": {
+        "fr": "manifestes modifiés",
+        "en": "manifests changed",
+    },
     "🔀 Modules that differ from the version branch": {
         "fr": "🔀 Modules différents de la branche de la version",
         "en": "🔀 Modules that differ from the version branch",
@@ -1998,13 +2094,325 @@ TRANSLATIONS = {
         "en": "Module name is required!",
     },
     # Git section
-    "Git - Git and shell tools": {
-        "fr": "🌿 Git - Outils Git et Shell",
-        "en": "🌿 Git - Git and shell tools",
+    "Git repository - Repositories and git tools": {
+        "fr": "📁 Répertoire git - Dépôts et outils git",
+        "en": "📁 Git repository - Repositories and git tools",
     },
-    "Git and shell management tools!": {
-        "fr": "Outils de gestion Git et Shell!",
-        "en": "Git and shell management tools!",
+    "Shell - Shell tools": {
+        "fr": "🐚 Shell - Outils du shell",
+        "en": "🐚 Shell - Shell tools",
+    },
+    "Git repositories and git tools!": {
+        "fr": "Dépôts git et outils git !",
+        "en": "Git repositories and git tools!",
+    },
+    "Shell tools!": {
+        "fr": "Outils du shell !",
+        "en": "Shell tools!",
+    },
+    "Git repository": {
+        "fr": "Répertoire git",
+        "en": "Git repository",
+    },
+    "Shell": {
+        "fr": "Shell",
+        "en": "Shell",
+    },
+    "Repositories": {
+        "fr": "Dépôts",
+        "en": "Repositories",
+    },
+    "🍴 Fork a repository for an organisation": {
+        "fr": "🍴 Forker un dépôt pour une organisation",
+        "en": "🍴 Fork a repository for an organisation",
+    },
+    "➕ Add a repository to a manifest": {
+        "fr": "➕ Ajouter un dépôt à un manifeste",
+        "en": "➕ Add a repository to a manifest",
+    },
+    "🌿 Create a branch in a repository": {
+        "fr": "🌿 Créer une branche dans un dépôt",
+        "en": "🌿 Create a branch in a repository",
+    },
+    "🔭 Add the upstream remote of a repository": {
+        "fr": "🔭 Ajouter le remote amont d'un dépôt",
+        "en": "🔭 Add the upstream remote of a repository",
+    },
+    "📋 List the pull requests of an organisation": {
+        "fr": "📋 Lister les pull requests d'une organisation",
+        "en": "📋 List the pull requests of an organisation",
+    },
+    "📬 Open a pull request from the current branch": {
+        "fr": "📬 Ouvrir une pull request depuis la branche courante",
+        "en": "📬 Open a pull request from the current branch",
+    },
+    "declared upstream": {
+        "fr": "amont déclaré",
+        "en": "declared upstream",
+    },
+    "manifest repository": {
+        "fr": "dépôt du manifeste",
+        "en": "manifest repository",
+    },
+    "Open it as a draft? (y/N): ": {
+        "fr": "L'ouvrir en brouillon ? (o/N) : ",
+        "en": "Open it as a draft? (y/N): ",
+    },
+    "open pull requests": {
+        "fr": "pull requests ouvertes",
+        "en": "open pull requests",
+    },
+    "repositories absent from the organisation": {
+        "fr": "dépôts absents de l'organisation",
+        "en": "repositories absent from the organisation",
+    },
+    "Organisation (or GitHub account): ": {
+        "fr": "Organisation (ou compte GitHub) : ",
+        "en": "Organisation (or GitHub account): ",
+    },
+    "Querying GitHub for each repository of the manifest…": {
+        "fr": "Interrogation de GitHub pour chaque dépôt du manifeste…",
+        "en": "Querying GitHub for each repository of the manifest…",
+    },
+    "Target of the pull request:": {
+        "fr": "Cible de la pull request :",
+        "en": "Target of the pull request:",
+    },
+    "Pull request opened:": {
+        "fr": "Pull request ouverte :",
+        "en": "Pull request opened:",
+    },
+    "The current branch is not pushed: create it with a push first.": {
+        "fr": (
+            "La branche courante n'est pas poussée : créez-la d'abord avec un "
+            "push."
+        ),
+        "en": "The current branch is not pushed: create it with a push first.",
+    },
+    "No GitHub repository to open the pull request on.": {
+        "fr": "Aucun dépôt GitHub où ouvrir la pull request.",
+        "en": "No GitHub repository to open the pull request on.",
+    },
+    "default": {
+        "fr": "défaut",
+        "en": "default",
+    },
+    "Open the pull request on": {
+        "fr": "Ouvrir la pull request sur",
+        "en": "Open the pull request on",
+    },
+    "Title": {
+        "fr": "Titre",
+        "en": "Title",
+    },
+    "Description (Enter: the list of commits)": {
+        "fr": "Description (Entrée : la liste des commits)",
+        "en": "Description (Enter: the list of commits)",
+    },
+    "Fork it for an organisation now? (y/N): ": {
+        "fr": "Le forker pour une organisation maintenant ? (o/N) : ",
+        "en": "Fork it for an organisation now? (y/N): ",
+    },
+    "Add the upstream remote to the local clone now? (y/N): ": {
+        "fr": "Ajouter le remote amont au clone local maintenant ? (o/N) : ",
+        "en": "Add the upstream remote to the local clone now? (y/N): ",
+    },
+    "GitHub URL of the repository to add: ": {
+        "fr": "URL GitHub du dépôt à ajouter : ",
+        "en": "GitHub URL of the repository to add: ",
+    },
+    "Checking the branch on GitHub…": {
+        "fr": "Vérification de la branche sur GitHub…",
+        "en": "Checking the branch on GitHub…",
+    },
+    "Commit manifest/, then synchronise the repositories to clone it.": {
+        "fr": (
+            "Committez manifest/, puis synchronisez les dépôts pour le cloner."
+        ),
+        "en": (
+            "Commit manifest/, then synchronise the repositories to clone it."
+        ),
+    },
+    "Name of the new branch: ": {
+        "fr": "Nom de la nouvelle branche : ",
+        "en": "Name of the new branch: ",
+    },
+    "Start from (Enter: the current commit): ": {
+        "fr": "Partir de (Entrée : le commit courant) : ",
+        "en": "Start from (Enter: the current commit): ",
+    },
+    "No upstream remote:": {
+        "fr": "Aucun remote amont :",
+        "en": "No upstream remote:",
+    },
+    "no manifest for this version.": {
+        "fr": "aucun manifeste pour cette version.",
+        "en": "no manifest for this version.",
+    },
+    "Not a GitHub repository URL.": {
+        "fr": "Ce n'est pas l'URL d'un dépôt GitHub.",
+        "en": "Not a GitHub repository URL.",
+    },
+    "no such remote in this clone.": {
+        "fr": "ce remote n'existe pas dans ce clone.",
+        "en": "no such remote in this clone.",
+    },
+    "The repository is not cloned yet.": {
+        "fr": "Le dépôt n'est pas encore cloné.",
+        "en": "The repository is not cloned yet.",
+    },
+    "Upstream remote ready and fetched:": {
+        "fr": "Remote amont en place et récupéré :",
+        "en": "Upstream remote ready and fetched:",
+    },
+    "Odoo version": {
+        "fr": "Version d'Odoo",
+        "en": "Odoo version",
+    },
+    "Push it to the remote (Enter: no push)": {
+        "fr": "La pousser vers le remote (Entrée : pas de push)",
+        "en": "Push it to the remote (Enter: no push)",
+    },
+    "Branch to follow": {
+        "fr": "Branche à suivre",
+        "en": "Branch to follow",
+    },
+    "Freeze it on the head of the branch? (Y/n): ": {
+        "fr": "Le geler sur la tête de la branche ? (O/n) : ",
+        "en": "Freeze it on the head of the branch? (Y/n): ",
+    },
+    "Freeze it on the head of the branch? (y/N): ": {
+        "fr": "Le geler sur la tête de la branche ? (o/N) : ",
+        "en": "Freeze it on the head of the branch? (y/N): ",
+    },
+    "Filter (part of the path or of the repository), Enter for all: ": {
+        "fr": "Filtre (partie du chemin ou du dépôt), Entrée pour tout : ",
+        "en": (
+            "Filter (part of the path or of the repository), Enter for all: "
+        ),
+    },
+    "No repository matches.": {
+        "fr": "Aucun dépôt ne correspond.",
+        "en": "No repository matches.",
+    },
+    "Repository number, Enter for none: ": {
+        "fr": "Numéro du dépôt, Entrée pour aucun : ",
+        "en": "Repository number, Enter for none: ",
+    },
+    "Organisation (or GitHub account) that receives the fork: ": {
+        "fr": "Organisation (ou compte GitHub) qui reçoit le fork : ",
+        "en": "Organisation (or GitHub account) that receives the fork: ",
+    },
+    "The repository already belongs to this organisation.": {
+        "fr": "Le dépôt appartient déjà à cette organisation.",
+        "en": "The repository already belongs to this organisation.",
+    },
+    "This repository is already a fork. Upstream of the new fork:": {
+        "fr": "Ce dépôt est déjà un fork. Amont du nouveau fork :",
+        "en": "This repository is already a fork. Upstream of the new fork:",
+    },
+    "keep the original upstream (default)": {
+        "fr": "garder l'amont d'origine (défaut)",
+        "en": "keep the original upstream (default)",
+    },
+    "the current fork becomes the upstream": {
+        "fr": "le fork actuel devient l'amont",
+        "en": "the current fork becomes the upstream",
+    },
+    "Branches to copy into the fork:": {
+        "fr": "Branches à copier dans le fork :",
+        "en": "Branches to copy into the fork:",
+    },
+    "the active branch only (default)": {
+        "fr": "la branche active seulement (défaut)",
+        "en": "the active branch only (default)",
+    },
+    "every branch of the source": {
+        "fr": "toutes les branches de la source",
+        "en": "every branch of the source",
+    },
+    "all branches": {
+        "fr": "toutes les branches",
+        "en": "all branches",
+    },
+    (
+        "No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO"
+        " (env_var.sh is versioned)."
+    ): {
+        "fr": (
+            "Aucun jeton GitHub : exportez EL_GITHUB_TOKEN dans le shell qui"
+            " ouvre TODO (env_var.sh est versionné)."
+        ),
+        "en": (
+            "No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO"
+            " (env_var.sh is versioned)."
+        ),
+    },
+    "Fork it? (y/N): ": {
+        "fr": "Forker ? (o/N) : ",
+        "en": "Fork it? (y/N): ",
+    },
+    "Waiting for GitHub to create the fork…": {
+        "fr": "Attente de la création du fork par GitHub…",
+        "en": "Waiting for GitHub to create the fork…",
+    },
+    "The fork is still not ready; try again later.": {
+        "fr": "Le fork n'est toujours pas prêt ; réessayez plus tard.",
+        "en": "The fork is still not ready; try again later.",
+    },
+    "Fork created:": {
+        "fr": "Fork créé :",
+        "en": "Fork created:",
+    },
+    "Fork already present:": {
+        "fr": "Fork déjà présent :",
+        "en": "Fork already present:",
+    },
+    "Branch missing at the source:": {
+        "fr": "Branche absente de la source :",
+        "en": "Branch missing at the source:",
+    },
+    "Branch created in the fork:": {
+        "fr": "Branche créée dans le fork :",
+        "en": "Branch created in the fork:",
+    },
+    "Change the manifest to take this fork? (y/N): ": {
+        "fr": "Modifier le manifeste pour prendre ce fork ? (o/N) : ",
+        "en": "Change the manifest to take this fork? (y/N): ",
+    },
+    "Versions whose manifest clones this repository:": {
+        "fr": "Versions dont le manifeste clone ce dépôt :",
+        "en": "Versions whose manifest clones this repository:",
+    },
+    "Versions to change, separated by commas (Enter: the active one)": {
+        "fr": (
+            "Versions à modifier, séparées par des virgules (Entrée : "
+            "l'active)"
+        ),
+        "en": (
+            "Versions to change, separated by commas (Enter: the active one)"
+        ),
+    },
+    "this repository is not in its manifest.": {
+        "fr": "ce dépôt n'est pas dans son manifeste.",
+        "en": "this repository is not in its manifest.",
+    },
+    "project not found in the files.": {
+        "fr": "projet introuvable dans les fichiers.",
+        "en": "project not found in the files.",
+    },
+    (
+        "Commit manifest/, then synchronise the repositories so the clone "
+        "follows the fork."
+    ): {
+        "fr": (
+            "Committez manifest/, puis synchronisez les dépôts pour que le "
+            "clone suive le fork."
+        ),
+        "en": (
+            "Commit manifest/, then synchronise the repositories so the clone "
+            "follows the fork."
+        ),
     },
     "Local git server": {
         "fr": "🗄  Serveur git local",

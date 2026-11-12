@@ -34,35 +34,24 @@ Complete its history before committing and pushing in it:
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
-## Fork project to create a new project independent of ERPLibre (deprecated)
+## Fork a repository for your organisation
 
-ERPLibre was created with this script. It's now deprecated. Use this script when you need to fork directly from the
-original source. Don't use this script if you want to update from ERPLibre and follow mainstream development.
-
-```bash
-./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
-```
-
-# Fork all repos for you own organization
-
-Go to your Github account and generate a token to access fork option with your user. Create an organization or use your
-personal account and choose your user name.
-
-This command will fork all repos and ERPLibre to your own organization. It keeps track of ERPLibre.
+To push your own commits on an addons repository, fork it into your organisation (or your own GitHub account) and
+make the manifest take the fork. You need a GitHub token allowed to create repositories in that organisation
+(classic token: `public_repo`, or `repo` for a private repository). Export it in the shell that opens TODO ›
+Execute › Git repository › Fork a repository for an organisation, rather than writing it into `env_var.sh`, which is
+versioned and would carry the token into a commit:
 
 ```bash
-./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
+export EL_GITHUB_TOKEN="<token>"
+./todo.sh
 ```
 
-## Generate manifest from csv repo
-
-Add repo in file [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Execute to generate Repo manifest
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
+Choose the repository among those of the manifests of the active version, and name the organisation. The tool asks
+which upstream an already forked repository keeps, whether to copy the active branch only or every branch, then whether
+the manifest takes the fork and in which versions. Commit `manifest/`, then synchronise the repositories so the clone
+follows the fork. The details are in [GIT_REPO.md](./GIT_REPO.md#fork-a-repository-for-an-organisation). Repositories
+are forked one at a time.
 
 ## Move database from prod to dev
 
@@ -128,24 +117,40 @@ To show differences between actual code and manifest
 
 ## Add repo
 
-To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
+TODO › Execute › Git repository › Add a repository to a manifest asks for the GitHub URL, the Odoo version (the active
+one by default) and the branch (the version by default). It checks that the branch exists on GitHub, declares the
+project in `./manifest/git_manifest_odoo<version>.xml` with its organisation's remote, at
+`odoo<version>/addons/<organisation>_<repository>`, frozen on the head of the branch when the manifest is frozen, then
+offers to fork it. A repository already in the manifest is refused. Commit `manifest/`, then synchronise the
+repositories to clone it.
 
-Fork the repo to be able to push new code:
+The same tools run without the menu:
 
 ```bash
-./script/git/fork_project_ERPLibre.py
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/OCA/l10n-switzerland --version 18.0
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MyOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py branch OCA_l10n-switzerland 18.0_my_feature --push origin
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pulls --organisation MyOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pr OCA_l10n-switzerland --title "Fix the invoice report" --target amont
 ```
 
-To regenerate only manifest.xml.
+`pulls` lists the open pull requests, in an organisation, of every repository of the manifest; `pr` opens one from the
+current branch of the clone, once pushed, towards the upstream (`amont`) or the repository of the manifest
+(`manifeste`). `branch` creates a branch in the clone and switches to it, then pushes it with tracking when `--push` names a remote;
+`upstream` adds the upstream remote the manifest declares for a fork, and fetches its branch. Both are also in TODO ›
+Execute › Git repository.
+
+## Remove auto_install from an addons repository
+
+Set every `auto_install` to False in the modules of addons repositories. TODO › Execute › Analyse module › Disable
+auto_install in repositories of the manifest lists the cloned repositories of the active version's manifest; check
+several and they are handled in parallel, with an optional commit of the changed manifests only, on the current
+branch, and an optional push. The script does the same for the repositories given, repeating `--addons_dir`; it
+commits and pushes unless `--ignore_commit` or `--ignore_push`.
 
 ```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
-
-Check if manifest contains "auto_install" and change the value to False.
-
-```bash
-./script/git/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py --addons_dir PATH1 --addons_dir PATH2 --ignore_push
 ```
 
 ## Filter repo by group
@@ -234,14 +239,6 @@ When you need to change python 3.7.17 to 3.8.10, do :
 rm -r .venv
 make install_dev
 ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
-```
-
-# Pull request
-
-## Show all pull requests from organization
-
-```bash
-/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 # Commit

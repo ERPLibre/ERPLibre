@@ -31,9 +31,7 @@
 # de l'image accepte, et elle change d'une version d'Odoo à l'autre.
 GitPython
 xmltodict
-agithub
 colorama
-giturlparse
 retrying
 click
 

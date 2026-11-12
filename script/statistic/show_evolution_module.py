@@ -3,12 +3,16 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
+import ast
 import csv
 import datetime
+import json
 import logging
 import os
+import re
 import shutil
 import sys
+import warnings
 from collections import defaultdict
 
 from dateutil.relativedelta import relativedelta
@@ -19,6 +23,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script import lib_asyncio
+from script.git import repo_upgrade
 
 FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"), format=FORMAT)
@@ -26,9 +31,10 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"), format=FORMAT)
 _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
-VENV_PATH = "./.venv"
+# Les clones vivent sous le venv d'ERPLibre, ignoré par git comme tout
+# « .venv* », et que l'installation crée toujours.
+VENV_PATH = "./.venv.erplibre"
 CACHE_CLONE_PATH = os.path.join(VENV_PATH, "stat_repo")
-CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
 MAX_COROUTINE = 300
 IGNORE_REPO_LIST = (
     "https://github.com/OCA/odoo-module-migrator.git",
@@ -37,6 +43,7 @@ IGNORE_REPO_LIST = (
     "https://github.com/itpp-labs/odoo-port-docs.git",
     "https://github.com/itpp-labs/odoo-test-docs.git",
     "https://github.com/odoo/documentation.git",
+    "https://github.com/odoo/documentation-user.git",
     "https://github.com/ERPLibre/ERPLibre_image_db.git",
     "https://github.com/muk-it/muk_docs.git",
 )
@@ -61,7 +68,15 @@ DCT_VERSION_RELEASE = {
     "16.0": datetime.datetime.strptime("2022-10-01", "%Y-%m-%d").date(),
     "17.0": datetime.datetime.strptime("2023-10-01", "%Y-%m-%d").date(),
     "18.0": datetime.datetime.strptime("2024-10-01", "%Y-%m-%d").date(),
+    "19.0": datetime.datetime.strptime("2025-09-01", "%Y-%m-%d").date(),
+    "20.0": datetime.datetime.strptime("2026-09-01", "%Y-%m-%d").date(),
 }
+# Les branches analysées par défaut : chaque version de la table à partir de
+# la 6.1. Une version ajoutée à la table entre dans la statistique sans
+# autre changement.
+BRANCHES_PAR_DEFAUT = ",".join(
+    v for v in DCT_VERSION_RELEASE if float(v) >= 6.1
+)
 CSV_HEADER_MODULE_NAME = "Nom technique"
 # TODO use rich progress bar when clone
 # TODO support conflict repo name
@@ -71,7 +86,8 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-        Clone all OCA repo from file 'source_repo_addons.csv', checkout branch from param --branches
+        Clone every repository of the Odoo manifests (manifest/git_manifest_odoo*.xml),
+        the upstream of a fork rather than the fork, and checkout branch from param --branches
 """,
         epilog="""\
 """,
@@ -151,7 +167,7 @@ def get_config():
     parser.add_argument(
         "-b",
         "--branches",
-        default="6.1,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0",
+        default=BRANCHES_PAR_DEFAUT,
         help="Branch to analyse, separate by ','",
     )
     parser.add_argument(
@@ -234,9 +250,13 @@ def main():
         clone_repo(i, repo_url, config.force_git_fetch)
         for i, repo_url in enumerate(lst_repo_url)
     ]
-    lst_repo_path, has_asyncio_error = lib_asyncio.execute(
+    lst_clone, has_asyncio_error = lib_asyncio.execute(
         config, lst_task_clone, use_uvloop=True
     )
+    # Un clone qui a échoué n'est pas analysé : lancer git dans un dossier
+    # absent lèverait FileNotFoundError et arrêterait toute l'extraction.
+    lst_repo_path = [(nom, chemin) for nom, chemin, ok in lst_clone if ok]
+    lst_repo_absent = [nom for nom, _chemin, ok in lst_clone if not ok]
 
     # Extract module list
     _logger.info("Extract module")
@@ -317,7 +337,25 @@ def main():
         if before_date:
             str_extra = f" before {before_date}"
         print(f"Diff nb unique module{str_extra}, length {len(set_result)}")
+    if lst_repo_absent:
+        print(
+            f"Not counted, {len(lst_repo_absent)} repository not cloned:"
+            f" {', '.join(sorted(lst_repo_absent))}"
+        )
     print("end of stat")
+
+    chemin = fichier_donnees(config.filter)
+    ecrire_donnees(
+        chemin,
+        donnees_evolution(
+            dct_result,
+            dct_result_unique,
+            config.filter,
+            len(lst_repo_path),
+            datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        ),
+    )
+    _logger.info(f"Data written to {chemin}")
 
     if config.compare_csv:
         index_header = -1
@@ -348,6 +386,60 @@ def main():
         print(lst_missing_module_repo)
         print(f"Module missing into CSV '{len(lst_missing_module_csv)}':")
         print(lst_missing_module_csv)
+
+
+# Les données d'une passe, à la racine des clones : une par filtre, pour
+# qu'une passe « tous les dépôts » et une passe « /OCA/ » se lisent côte à
+# côte dans l'écran de statistique (script/statistic/evolution_tui.py).
+PREFIXE_DONNEES = "evolution_modules"
+
+
+def fichier_donnees(filtre, dossier=None):
+    """Le fichier de données de la passe filtrée par `filtre` : sans
+    filtre « evolution_modules.json », sinon le filtre réduit à ses lettres
+    et chiffres, « /OCA/ » donnant « evolution_modules_OCA.json »."""
+    nom = re.sub(r"[^A-Za-z0-9]+", "_", filtre or "").strip("_")
+    fichier = (
+        f"{PREFIXE_DONNEES}_{nom}.json" if nom else f"{PREFIXE_DONNEES}.json"
+    )
+    return os.path.join(dossier or CACHE_CLONE_PATH, fichier)
+
+
+def donnees_evolution(dct_result, dct_result_unique, filtre, nb_depots, quand):
+    """Le contenu du fichier : pour chaque date de coupe, le nombre de
+    modules par version d'Odoo et le nombre de modules UNIQUES, toutes
+    versions confondues, triés par date."""
+    annees = []
+    for date in sorted(dct_result, key=lambda d: (d is None, str(d))):
+        par_version = {
+            branche: nombre
+            for branche, nombre in sorted(
+                dct_result[date].items(), key=lambda b: float(b[0])
+            )
+        }
+        annees.append(
+            {
+                "date": date.isoformat() if date else None,
+                "par_version": par_version,
+                "uniques": len(dct_result_unique.get(date, ())),
+            }
+        )
+    return {
+        "genere": quand,
+        "filtre": filtre or "",
+        "depots": nb_depots,
+        "annees": annees,
+    }
+
+
+def ecrire_donnees(chemin, donnees):
+    """Écrit `donnees` en JSON par un fichier provisoire renommé : l'écran
+    qui le lit pendant une passe ne voit jamais un fichier à moitié écrit."""
+    provisoire = f"{chemin}.{os.getpid()}.tmp"
+    with open(provisoire, "w", encoding="utf-8") as fh:
+        json.dump(donnees, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(provisoire, chemin)
 
 
 def die(cond, message, code=1):
@@ -463,7 +555,11 @@ async def extract_module(lst_branch, repo, path, before_date):
                     # _logger.error(f"Receive status 'git cat-file' {status}")
                     # return return_value
                     continue
-                dct_manifest = eval(manifest + "\n")
+                dct_manifest = lire_manifeste(manifest)
+                if dct_manifest is None:
+                    # Odoo ne charge pas ce que literal_eval refuse : ce
+                    # n'est pas un module pour lui non plus.
+                    continue
                 if dct_manifest.get("installable", True):
                     lst_module_installable.append(module)
                 else:
@@ -477,54 +573,112 @@ async def extract_module(lst_branch, repo, path, before_date):
     return lst_result
 
 
+def lire_manifeste(texte):
+    """Le dict d'un manifeste Odoo, ou None s'il n'est pas un littéral.
+
+    literal_eval, comme Odoo, et non eval : le texte vient de l'historique
+    de dépôts tiers, et rien n'en est exécuté. Une séquence d'échappement
+    invalide d'un vieux manifeste, un backslash suivi d'une espace, n'émet
+    pas de SyntaxWarning : la chaîne garde son backslash, sans effet sur le
+    comptage."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        try:
+            valeur = ast.literal_eval(texte)
+        except (
+            SyntaxError,
+            ValueError,
+            TypeError,
+            MemoryError,
+            RecursionError,
+        ):
+            return None
+    return valeur if isinstance(valeur, dict) else None
+
+
+def derniere_ligne(texte):
+    """La dernière ligne non vide de `texte`, là où git dit pourquoi."""
+    lignes = [ligne for ligne in texte.splitlines() if ligne.strip()]
+    return lignes[-1].strip() if lignes else ""
+
+
 async def clone_repo(i, repo_url, force_fetch):
+    """(nom, chemin, cloné) pour `repo_url` dans CACHE_CLONE_PATH.
+
+    Un clone qui échoue — disque plein, dépôt disparu, réseau — rend
+    cloné=False, avec l'erreur de git au journal : git retire le clone
+    partiel, et le dépôt reste hors du comptage. Un fetch qui échoue garde
+    le clone tel qu'il était."""
     split_repo_url = repo_url.split("/")
     repo_name = f"{split_repo_url[-2]}_{split_repo_url[-1][:-4]}"
     repo_path = os.path.join(CACHE_CLONE_PATH, repo_name)
     if not os.path.isdir(repo_path):
-        await lib_asyncio.run_command_get_output(
+        (
+            _out,
+            err,
+            status,
+        ) = await lib_asyncio.run_command_get_output_and_status(
             "git", "clone", repo_url, repo_name, cwd=CACHE_CLONE_PATH
         )
+        if status or not os.path.isdir(repo_path):
+            _logger.error(
+                f"[{i}]Clone failed {repo_url}, not counted:"
+                f" {derniere_ligne(err) or f'exit {status}'}"
+            )
+            return repo_name, repo_path, False
         _logger.info(f"[{i}]New clone {repo_path} with {repo_url}")
     elif force_fetch:
-        await lib_asyncio.run_command_get_output(
-            "git", "fetch", "--all", cwd=CACHE_CLONE_PATH
+        (
+            _out,
+            err,
+            status,
+        ) = await lib_asyncio.run_command_get_output_and_status(
+            "git", "fetch", "--all", cwd=repo_path
         )
-        _logger.info(f"[{i}]Fetch {repo_path} with {repo_url}")
+        if status:
+            _logger.warning(
+                f"[{i}]Fetch failed {repo_url}, counted as cloned:"
+                f" {derniere_ligne(err)}"
+            )
+        else:
+            _logger.info(f"[{i}]Fetch {repo_path} with {repo_url}")
 
-    return repo_name, repo_path
+    return repo_name, repo_path, True
+
+
+def urls_des_manifestes(dossier=repo_upgrade.DOSSIER):
+    """L'URL de chaque dépôt des manifestes d'Odoo, toutes versions, sans
+    doublon. Un fork y est remplacé par son AMONT (fork-upstream-remote,
+    fork-upstream-name, ou à défaut la convention du remote « _origin_ ») :
+    l'évolution des modules se mesure chez celui qui les publie."""
+    urls = set()
+    for nom in sorted(os.listdir(dossier)):
+        trouve = re.fullmatch(r"git_manifest_odoo(\d+\.\d+)\.xml", nom)
+        if not trouve:
+            continue
+        remotes, projets = repo_upgrade.lire_manifestes(
+            trouve.group(1), dossier
+        )
+        for projet in projets.values():
+            amont = repo_upgrade.resoudre_amont(projet, remotes)
+            if amont and amont["url"]:
+                url = amont["url"]
+            else:
+                url = repo_upgrade.url_amont(
+                    remotes.get(projet.get("remote")), projet.get("name")
+                )
+            if url:
+                urls.add(url if url.endswith(".git") else f"{url}.git")
+    return sorted(urls)
 
 
 def get_OCA_repo_list(config):
-    # TODO instead using CSV file source repo, use repo from all manifest, need an algorithm to extract all
-    with open(CST_FILE_SOURCE_REPO_ADDONS) as file:
-        all_lines = file.readlines()
-        if all_lines:
-            # Validate first line is supported column
-            expected_header = "url,path,revision,clone-depth\n"
-            if all_lines[0] != expected_header:
-                raise Exception(
-                    "Not supported csv, please validate"
-                    f" {CST_FILE_SOURCE_REPO_ADDONS} with first line"
-                    f" {expected_header}"
-                )
-            # Ignore first line
-            all_lines = all_lines[1:]
-
-            # Be sure empty endline at the end of file
-            if all_lines[-1][-1] != "\n":
-                all_lines[-1] = all_lines[-1] + "\n"
-        all_lines = [a.split(",")[0] for a in all_lines]
-        # TODO support split(",")
-        if config.filter:
-            all_lines = [
-                a
-                for a in all_lines
-                if config.filter in a and a not in IGNORE_REPO_LIST
-            ]
-        else:
-            all_lines = [a for a in all_lines if a not in IGNORE_REPO_LIST]
-    return all_lines
+    """Les dépôts à cloner : ceux des manifestes, filtrés par --filter, sans
+    ceux d'IGNORE_REPO_LIST."""
+    urls = [a for a in urls_des_manifestes() if a not in IGNORE_REPO_LIST]
+    if config.filter:
+        urls = [a for a in urls if config.filter in a]
+    return urls
 
 
 if __name__ == "__main__":

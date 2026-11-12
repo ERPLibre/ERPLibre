@@ -34,35 +34,24 @@ Complétez son historique avant d'y faire des commits et des pushs :
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
-## Forker le projet pour créer un nouveau projet indépendant d'ERPLibre (obsolète)
+## Forker un dépôt pour votre organisation
 
-ERPLibre a été créé avec ce script. Il est maintenant obsolète. Utilisez ce script lorsque vous devez forker directement depuis la
-source originale. N'utilisez pas ce script si vous voulez recevoir les mises à jour d'ERPLibre et suivre le développement principal.
-
-```bash
-./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
-```
-
-# Forker tous les dépôts pour votre propre organisation
-
-Allez dans votre compte Github et générez un jeton pour accéder à l'option de fork avec votre utilisateur. Créez une organisation ou utilisez votre
-compte personnel et choisissez votre nom d'utilisateur.
-
-Cette commande va forker tous les dépôts et ERPLibre vers votre propre organisation. Elle garde le suivi d'ERPLibre.
+Pour pousser vos propres commits sur un dépôt d'addons, forkez-le dans votre organisation (ou votre propre compte
+GitHub) et faites prendre le fork au manifeste. Il faut un jeton GitHub autorisé à créer des dépôts dans cette
+organisation (jeton classique : `public_repo`, ou `repo` pour un dépôt privé). Exportez-le dans le shell qui ouvre
+TODO › Exécution › Répertoire git › Forker un dépôt pour une organisation, plutôt que de l'écrire dans `env_var.sh`,
+qui est versionné et emporterait le jeton dans un commit :
 
 ```bash
-./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
+export EL_GITHUB_TOKEN="<jeton>"
+./todo.sh
 ```
 
-## Générer le manifeste à partir du csv des dépôts
-
-Ajoutez le dépôt dans le fichier [./source_repo_addons.csv](./source_repo_addons.csv)
-
-Exécutez pour générer le manifeste Repo
-
-```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
+Choisissez le dépôt parmi ceux des manifestes de la version active, et nommez l'organisation. L'outil demande quel
+amont garde un dépôt déjà forké, s'il faut copier la branche active seulement ou toutes les branches, puis si le
+manifeste prend le fork et dans quelles versions. Committez `manifest/`, puis synchronisez les dépôts pour que le clone
+suive le fork. Le détail est dans [GIT_REPO.fr.md](./GIT_REPO.fr.md#forker-un-dépôt-pour-une-organisation). Les
+dépôts se forkent un à la fois.
 
 ## Déplacer une base de données de la prod vers le dev
 
@@ -128,24 +117,40 @@ Pour afficher les différences entre le code actuel et le manifeste
 
 ## Ajouter un dépôt
 
-Pour accéder à un nouveau dépôt, ajoutez votre URL dans le fichier [source_repo_addons.csv](../source_repo_addons.csv)
+TODO › Exécution › Répertoire git › Ajouter un dépôt à un manifeste demande l'URL GitHub, la version d'Odoo (l'active
+par défaut) et la branche (la version par défaut). Il vérifie que la branche existe sur GitHub, déclare le projet dans
+`./manifest/git_manifest_odoo<version>.xml` avec le remote de son organisation, à
+`odoo<version>/addons/<organisation>_<dépôt>`, gelé sur la tête de la branche quand le manifeste est gelé, puis propose
+de le forker. Un dépôt déjà dans le manifeste est refusé. Committez `manifest/`, puis synchronisez les dépôts pour le
+cloner.
 
-Forkez le dépôt pour pouvoir pousser du nouveau code :
+Les mêmes outils tournent sans le menu :
 
 ```bash
-./script/git/fork_project_ERPLibre.py
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/OCA/l10n-switzerland --version 18.0
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MonOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py branch OCA_l10n-switzerland 18.0_ma_fonction --push origin
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pulls --organisation MonOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py pr OCA_l10n-switzerland --title "Corriger le rapport de facture" --target amont
 ```
 
-Pour régénérer uniquement le manifest.xml.
+`pulls` liste les pull requests ouvertes, dans une organisation, de chaque dépôt du manifeste ; `pr` en ouvre une depuis
+la branche courante du clone, une fois poussée, vers l'amont (`amont`) ou le dépôt du manifeste (`manifeste`). `branch`
+crée une branche dans le clone et s'y place, puis la pousse en la faisant suivre quand `--push` nomme un
+remote ; `upstream` pose le remote amont que le manifeste déclare pour un fork, et récupère sa branche. Les deux sont
+aussi dans TODO › Exécution › Répertoire git.
+
+## Retirer auto_install d'un dépôt d'addons
+
+Passer à False chaque `auto_install` des modules de dépôts d'addons. TODO › Exécution › Analyse module › Désactiver
+auto_install dans des dépôts du manifeste liste les dépôts clonés du manifeste de la version active ; cochez-en
+plusieurs et ils sont traités en parallèle, avec un commit facultatif des seuls manifestes modifiés, sur la branche
+courante, et un push facultatif. Le script fait de même pour les dépôts donnés, en répétant `--addons_dir` ; il
+committe et pousse sauf `--ignore_commit` ou `--ignore_push`.
 
 ```bash
-./script/git/fork_project_ERPLibre.py --skip_fork
-```
-
-Vérifier si le manifeste contient "auto_install" et changer la valeur à False.
-
-```bash
-./script/git/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py --addons_dir PATH1 --addons_dir PATH2 --ignore_push
 ```
 
 ## Filtrer les dépôts par groupe
@@ -234,14 +239,6 @@ Lorsque vous devez changer de python 3.7.17 à 3.8.10, faites :
 rm -r .venv
 make install_dev
 ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
-```
-
-# Demande de tirage (Pull request)
-
-## Afficher toutes les demandes de tirage d'une organisation
-
-```bash
-/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 # Commit
