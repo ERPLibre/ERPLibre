@@ -3789,6 +3789,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "➖ Remove a repository from a manifest"
+                ),
+                "method": "_git_retirer_depot",
+            },
+            {
+                "prompt_description": t(
                     "📋 List the pull requests of an organisation"
                 ),
                 "method": "_git_lister_pull_requests",

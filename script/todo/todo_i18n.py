@@ -2138,6 +2138,31 @@ TRANSLATIONS = {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
         "en": "🔭 Add the upstream remote of a repository",
     },
+    "➖ Remove a repository from a manifest": {
+        "fr": "➖ Retirer un dépôt d'un manifeste",
+        "en": "➖ Remove a repository from a manifest",
+    },
+    "Remove from the manifest": {
+        "fr": "Retirer du manifeste",
+        "en": "Remove from the manifest",
+    },
+    (
+        "Remove the local clone too? repo keeps it if it holds uncommitted "
+        "work. (y/N): "
+    ): {
+        "fr": (
+            "Retirer aussi le clone local ? repo le garde s'il porte du "
+            "travail non committé. (o/N) : "
+        ),
+        "en": (
+            "Remove the local clone too? repo keeps it if it holds "
+            "uncommitted work. (y/N): "
+        ),
+    },
+    "Commit manifest/.": {
+        "fr": "Committez manifest/.",
+        "en": "Commit manifest/.",
+    },
     "📋 List the pull requests of an organisation": {
         "fr": "📋 Lister les pull requests d'une organisation",
         "en": "📋 List the pull requests of an organisation",
