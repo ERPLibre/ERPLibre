@@ -410,6 +410,78 @@ class CatalogTest(unittest.TestCase):
         self.assertFalse(marker.exists())
         self.assertIn("plugin:heavy", json.loads(out)["actions"])
 
+    def test_an_off_plugin_whose_file_shows_no_home_button_is_left_out(
+        self,
+    ):
+        """An off plugin is read, never run: its file states its PLUGIN
+        with no home_button, or home_button=None, and no layout could
+        give it a key, so the catalog does not offer it. A PLUGIN the
+        file builds otherwise may have one, and is offered."""
+        directory = S.CONFIG / "erplibre-home" / "deck-plugins"
+        directory.mkdir(parents=True, exist_ok=True)
+        marker = S.CONFIG / "an-off-plugin-was-imported"
+        bodies = {
+            "plain": "PLUGIN = Plugin(api=PLUGIN_API, pages=[])\n",
+            "unset": "PLUGIN = Plugin(api=PLUGIN_API, home_button=None)\n",
+            "button": "PLUGIN = Plugin(api=PLUGIN_API,"
+            " home_button=HomeButton(5, print, print))\n",
+            "built": "def make():\n    return Plugin(api=PLUGIN_API)\n"
+            "PLUGIN = make()\n",
+            "positional": "PLUGIN = Plugin(PLUGIN_API, [],"
+            " HomeButton(5, print, print))\n",
+            "spread": "OPTIONS = {}\n"
+            "PLUGIN = Plugin(api=PLUGIN_API, **OPTIONS)\n",
+            "patched": "PLUGIN = Plugin(api=PLUGIN_API)\n"
+            "PLUGIN.home_button = HomeButton(5, print, print)\n",
+            "broken": "PLUGIN = Plugin(api=PLUGIN_API,\n",
+        }
+        for pid, body in bodies.items():
+            (directory / f"{pid}.py").write_text(
+                f"open({str(marker)!r}, 'w').close()\n"
+                "from erplibre_streamdeck.plugin import *\n" + body,
+                encoding="utf-8",
+            )
+        off = sorted(bodies) + ["claude_sessions", "mpv_sessions", "timers"]
+        (S.CONFIG / "erplibre-home" / "streamdeck.conf").write_text(
+            "DECK_PLUGINS_OFF=%s\n" % ",".join(off), encoding="utf-8"
+        )
+        code, out = self.run_catalog()
+        self.assertEqual(0, code)
+        self.assertFalse(marker.exists())
+        offered = {
+            a[len("plugin:") :]
+            for a in json.loads(out)["actions"]
+            if a.startswith("plugin:")
+        }
+        self.assertEqual(
+            {
+                "button",
+                "built",
+                "positional",
+                "spread",
+                "patched",
+                "broken",
+                "timers",
+            },
+            offered & set(off),
+        )
+
+    def test_reading_a_repo_plugin_agrees_with_importing_it(self):
+        """For each plugin of the package, the file read without running
+        it gives the verdict its import does: none is offered off and then
+        left without a key once on, none missed."""
+        from erplibre_streamdeck import loader
+
+        plugins, _ = loader.load()
+        loaded = {lp.id: lp.plugin.home_button is not None for lp in plugins}
+        files = sorted(loader.REPO_DIR.glob("[a-z]*.py"))
+        self.assertEqual(sorted(f.stem for f in files), sorted(loaded))
+        for path in files:
+            with self.subTest(plugin=path.stem):
+                self.assertEqual(
+                    loaded[path.stem], loader.may_have_home_button(path)
+                )
+
     def test_an_id_the_format_cannot_name_is_left_out(self):
         """The loader takes any [a-z][a-z0-9_]* stem; a layout names at
         most 64 characters. The catalog offers only what layout_for

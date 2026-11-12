@@ -12,8 +12,11 @@ the SIGTERM's deck_lock.SigtermExit, which stops the service), it has no
 PLUGIN, its api is not PLUGIN_API, a field of PLUGIN has the wrong shape
 (see _shape_error), or one of its pages is already taken; the others
 load. A directory that cannot be listed counts as empty, with one
-"unreadable" entry in the report under its path."""
+"unreadable" entry in the report under its path. The report keeps the
+file of each off plugin, which may_have_home_button reads without
+running it."""
 
+import ast
 import importlib
 import importlib.util
 import os
@@ -45,6 +48,8 @@ USER_PACKAGE = "erplibre_streamdeck_user"
 @dataclass
 class Report:
     entries: list = field(default_factory=list)
+    # Plugin id -> Path of each plugin DECK_PLUGINS_OFF turns off.
+    off_files: dict = field(default_factory=dict)
 
     def add(self, pid, status, detail=""):
         self.entries.append((pid, status, detail))
@@ -141,6 +146,64 @@ def _shape_error(plugin):
     return None
 
 
+def _assigns_home_button(tree):
+    """Whether a statement of `tree` stores an attribute `home_button`,
+    as `PLUGIN.home_button = ...` does."""
+    return any(
+        isinstance(node, ast.Attribute)
+        and node.attr == "home_button"
+        and isinstance(node.ctx, ast.Store)
+        for node in ast.walk(tree)
+    )
+
+
+def may_have_home_button(path):
+    """Whether the plugin file `path` may give its PLUGIN a home button,
+    read and parsed, never run. False only when the file assigns PLUGIN
+    once at module level, to a call of Plugin with at most two
+    positional arguments (api, pages), no `*` nor `**`, and no
+    `home_button` or `home_button=None`, and stores no `home_button`
+    attribute anywhere. Any other form, and a file that
+    cannot be read or parsed, may have one: True."""
+    try:
+        tree = ast.parse(Path(path).read_bytes(), str(path))
+    except (OSError, SyntaxError, ValueError, RecursionError, MemoryError):
+        return True
+    values = [
+        node.value
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and node.value is not None
+        and any(
+            isinstance(target, ast.Name) and target.id == "PLUGIN"
+            for target in (
+                node.targets if isinstance(node, ast.Assign)
+                else [node.target]
+            )
+        )
+    ]
+    if len(values) != 1 or _assigns_home_button(tree):
+        return True
+    call = values[0]
+    func = getattr(call, "func", None)
+    name = getattr(func, "id", None) or getattr(func, "attr", None)
+    if not isinstance(call, ast.Call) or name != "Plugin":
+        return True
+    # Plugin(api, pages, home_button, ...): a third positional, or a
+    # `*` that may reach it, may be one.
+    if len(call.args) > 2 or any(
+        isinstance(arg, ast.Starred) for arg in call.args
+    ):
+        return True
+    keywords = {kw.arg: kw.value for kw in call.keywords}
+    if None in keywords:
+        return True
+    button = keywords.get("home_button")
+    return button is not None and not (
+        isinstance(button, ast.Constant) and button.value is None
+    )
+
+
 def _import(pid, path, by_name):
     """The package's own plugins import by module name, so they share
     the package's module identity; any other file imports by path."""
@@ -180,6 +243,7 @@ def load(off=(), repo_dir=None, user_dir=None):
         origin, path = chosen[pid]
         if pid in off:
             report.add(pid, "off")
+            report.off_files[pid] = path
             continue
         by_name = origin == "repo" and Path(repo_dir) == REPO_DIR
         try:

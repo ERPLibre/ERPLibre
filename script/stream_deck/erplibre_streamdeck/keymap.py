@@ -243,8 +243,8 @@ def catalog(plugins, off=()):
     """The --catalog output: format, the actions, the icon names, and
     models(). The actions are "plugin:<id>" of each loaded plugin of
     `plugins` with a home button and of each id of `off` (plugins
-    present but turned off, never imported, so offered whether or not
-    they have one), sorted, then "tiles" and "empty". An id longer than
+    present but turned off, never imported, that may have one), sorted,
+    then "tiles" and "empty". An id longer than
     PLUGIN_ID admits is left out: layout_for would refuse it."""
     ids = {lp.id for lp in plugins if lp.plugin.home_button is not None}
     actions = sorted(

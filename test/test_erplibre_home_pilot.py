@@ -490,13 +490,17 @@ class LeContratDesDispositions(unittest.TestCase):
         self.assertEqual(list(modele), list(catalogue["models"]["0084"]))
         # La règle des actions telle que le contrat l'énonce : les plugins
         # chargés à touche d'accueil (timers, pas tiling) et ceux que
-        # DECK_PLUGINS_OFF coupe (sound, jamais importé, donc sans rien
-        # savoir de sa touche), triés, puis les deux actions fixes.
+        # DECK_PLUGINS_OFF coupe (sound, jamais importé, que son fichier
+        # lu sans être exécuté ne montre pas sans touche), triés, puis les
+        # deux actions fixes. Le tri des plugins coupés par leur fichier
+        # est celui de loader.may_have_home_button, que
+        # test_erplibre_streamdeck_keymap éprouve.
         fixes = valeur_du_contrat(
             r"the actions `plugin:<id>` of the plugins loaded with a home "
-            r"key and of the plugins `DECK_PLUGINS_OFF` turns off, listed "
-            r"without being imported and so whether they have a home key "
-            r"or not, sorted, then (`\w+` and `\w+`)"
+            r"key and of the plugins `DECK_PLUGINS_OFF` turns off, never "
+            r"imported and left out only when their file, read without "
+            r"being run, shows they have no home key, sorted, then "
+            r"(`\w+` and `\w+`)"
         )
         self.assertEqual(
             re.findall(r"`(\w+)`", fixes), catalogue["actions"][-2:]
