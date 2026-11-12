@@ -147,6 +147,61 @@ class TestSynchroniser(Base):
         self.assertEqual(appel.call_count, 1)
 
 
+class TestRegeler(Base):
+    def clone(self, chemin):
+        clone = os.path.join(self.racine, chemin)
+        os.makedirs(clone)
+        for args in (
+            ["init", "-q", "-b", "18.0"],
+            ["commit", "-q", "--allow-empty", "-m", "x"],
+        ):
+            subprocess.run(
+                ["git", "-C", clone, *args], check=True, capture_output=True
+            )
+        return (
+            clone,
+            subprocess.run(
+                ["git", "-C", clone, "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+        )
+
+    def test_head_is_frozen_and_an_unpushed_commit_flagged(self):
+        clone, tete = self.clone("odoo18.0/addons/Seul_outil")
+        res = mr.regeler("18.0", "Seul_outil", self.racine)
+        self.assertEqual(res["sha"], tete)
+        self.assertFalse(res["pousse"])
+        self.assertIn(f'freeze-revision="{tete}"', self.lire())
+        subprocess.run(
+            ["git", "-C", clone, "update-ref", "refs/remotes/Seul/18.0", tete],
+            check=True,
+        )
+        self.assertTrue(
+            mr.regeler("18.0", "Seul_outil", self.racine)["pousse"]
+        )
+
+    def test_a_fork_gets_its_upstream_base_again(self):
+        _c, tete = self.clone("odoo18.0/addons/OCA_ai")
+        base = "b" * 40
+        with mock.patch(
+            "script.git.git_freeze_manifest.base_amont",
+            return_value={"base": base, "motif": None},
+        ):
+            res = mr.regeler("18.0", "OCA_ai", self.racine)
+        bloc = self.lire().split('name="ai.git"')[1].split("/>")[0]
+        self.assertIn(f'freeze-revision="{tete}"', bloc)
+        self.assertIn(f'fork-upstream-freeze-revision="{base}"', bloc)
+        self.assertEqual(res["base"], base)
+
+    def test_an_unknown_commit_is_refused(self):
+        self.clone("odoo18.0/addons/Seul_outil")
+        avant = self.lire()
+        with self.assertRaises(ValueError):
+            mr.regeler("18.0", "Seul_outil", self.racine, "c" * 40)
+        self.assertEqual(self.lire(), avant)
+
+
 class TestLaLigneDeCommande(Base):
     def test_remove_then_apply_runs_a_local_sync(self):
         with (

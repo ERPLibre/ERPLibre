@@ -3875,6 +3875,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "🧊 Freeze one repository on a commit"
+                ),
+                "method": "_git_regeler_depot",
+            },
+            {
+                "prompt_description": t(
                     "📋 List the pull requests of an organisation"
                 ),
                 "method": "_git_lister_pull_requests",

@@ -420,6 +420,33 @@ class GitForkMenuMixin:
             manifest_repo.commandes_synchro(RACINE, projet["path"])
         )
 
+    def _git_regeler_depot(self):
+        """Pose le commit gelé d'un projet sur la tête de son clone, ou sur
+        le commit tapé. Rend 0, ou 2 sur un refus."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return 0
+        _remotes, projet, _chemin = choix
+        sha = input(t("Commit to freeze (Enter: HEAD of the clone): ")).strip()
+        version = repo_upgrade.version_active(RACINE)
+        try:
+            res = manifest_repo.regeler(
+                version, projet["path"], RACINE, sha or None
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        base = res["base"][:12] if res["base"] else (res["motif"] or "-")
+        print(
+            f"  ✓ {os.path.relpath(res['fichier'], RACINE)} :"
+            f" {res['sha'][:12]} · {t('upstream base')} {base}"
+        )
+        if not res["pousse"]:
+            print(
+                f"⚠ {t('No remote of the clone holds this commit: push it before committing manifest/.')}"
+            )
+        return 0
+
     def _git_lancer(self, commandes):
         """Montre puis lance `commandes` à la racine, sortie au terminal."""
         import shlex
