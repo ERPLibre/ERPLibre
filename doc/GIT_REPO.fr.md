@@ -119,7 +119,7 @@ Peut-être que certaines versions divergent de votre manifest. Nettoyez simpleme
 
 ## Mise à jour ou mise à niveau
 
-Deux gestes que le mot « mise à jour » recouvrait. TODO › Execute › Git › Repo
+Deux gestes que le mot « mise à jour » recouvrait. TODO › Execute › Git repository › Repo
 les sépare, et Execute › Code › Update mène au même écran.
 
 Une **mise à jour** déplace chaque projet sur la pointe de la branche que son
@@ -134,7 +134,7 @@ constate avant de s'appliquer.
 **Tirer** est la mise à jour d'un checkout déployé qui porte des commits ou des
 modifications à lui : chaque dépôt intègre sa cible par les gestes de
 `git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
-et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
+et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git repository ›
 Repo, et le module Odoo `erplibre_info_git_fetch`.
 
 Chaque commande git que ces outils envoient, lectures comprises, s'affiche
@@ -281,7 +281,7 @@ Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, 
 [Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
 en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
 
-`État des forks et de leurs amonts` (TODO › Execute › Git › Repo) liste ensuite, numérotés à partir de 1, les forks
+`État des forks et de leurs amonts` (TODO › Execute › Git repository › Repo) liste ensuite, numérotés à partir de 1, les forks
 qui portent à la fois un commit gelé et une base amont gelée : `<base>..<gel>` et `+N à nous`, les commits du fork
 entre les deux, lus dans le clone sans réseau. Un fork non cloné, dont le clone n'a pas l'un des deux commits, ou
 dont l'historique superficiel ne relie plus la base au commit gelé, affiche son motif à la place ; rien n'est
@@ -290,7 +290,7 @@ tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne 
 
 ### Ajouter les remotes amont
 
-`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git › Repo, ou
+`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git repository › Repo, ou
 `--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
 remote amont nommé, puis récupérer sa branche. L'entrée du menu passe chaque
 version d'Odoo du checkout, chaque arbre `odoo<V>/` qui a un manifeste, en
@@ -340,7 +340,7 @@ branches de suivi de ce remote comme la preuve que le fork porte un commit.
 
 ### Appliquer la mise à niveau
 
-`Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande une confirmation (`o/N`), puis
+`Appliquer la mise à niveau` (TODO › Execute › Git repository › Repo) demande une confirmation (`o/N`), puis
 traite chaque fork que la passe à sec marque à rebaser, en conflit, absorbé par l'amont ou en retard sur l'amont. Rien
 n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`, créée sur HEAD, où :
 
@@ -492,7 +492,7 @@ gelé quand même :
 La base ne vaut que pour le commit gelé à côté d'elle : un gel qui change `freeze-revision` sans calculer de base la
 retire, et un gel sans `--upstream` ne la garde que tant que le commit ne change pas. `make repo_unfreeze` retire les
 deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fusion la consomme, et la retire des
-fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git › Repo compte les forks qui ont une base amont, lue
+fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git repository › Repo compte les forks qui ont une base amont, lue
 dans les fichiers sans réseau.
 
 #### Installer ou reconfigurer sur les commits

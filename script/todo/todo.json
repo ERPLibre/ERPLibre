@@ -40,19 +40,21 @@
     ],
     "code_from_makefile": [
         {
-            "prompt_description_key": "Show code status",
-            "makefile_cmd": "repo_show_status"
-        },
-        {
-            "prompt_description_key": "Stash all code",
-            "makefile_cmd": "repo_do_stash"
-        },
-        {
             "prompt_description_key": "Format modified code",
             "makefile_cmd": "format"
         }
     ],
     "git_from_makefile": [
+        {
+            "prompt_description_key": "Show code status",
+            "menu_group": "repositories",
+            "makefile_cmd": "repo_show_status"
+        },
+        {
+            "prompt_description_key": "Stash all code",
+            "menu_group": "repositories",
+            "makefile_cmd": "repo_do_stash"
+        },
         {
             "prompt_description_key": "Configure git local editor to vim",
             "menu_group": "configuration",

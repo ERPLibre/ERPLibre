@@ -2022,13 +2022,33 @@ TRANSLATIONS = {
         "en": "Module name is required!",
     },
     # Git section
-    "Git - Git and shell tools": {
-        "fr": "🌿 Git - Outils Git et Shell",
-        "en": "🌿 Git - Git and shell tools",
+    "Git repository - Repositories and git tools": {
+        "fr": "📁 Répertoire git - Dépôts et outils git",
+        "en": "📁 Git repository - Repositories and git tools",
     },
-    "Git and shell management tools!": {
-        "fr": "Outils de gestion Git et Shell!",
-        "en": "Git and shell management tools!",
+    "Shell - Shell tools": {
+        "fr": "🐚 Shell - Outils du shell",
+        "en": "🐚 Shell - Shell tools",
+    },
+    "Git repositories and git tools!": {
+        "fr": "Dépôts git et outils git !",
+        "en": "Git repositories and git tools!",
+    },
+    "Shell tools!": {
+        "fr": "Outils du shell !",
+        "en": "Shell tools!",
+    },
+    "Git repository": {
+        "fr": "Répertoire git",
+        "en": "Git repository",
+    },
+    "Shell": {
+        "fr": "Shell",
+        "en": "Shell",
+    },
+    "Repositories": {
+        "fr": "Dépôts",
+        "en": "Repositories",
     },
     "Local git server": {
         "fr": "🗄  Serveur git local",

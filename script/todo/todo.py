@@ -395,28 +395,29 @@ class TODO(
 [7] {t("Image Odoo - Database images for a quick installation")}
 [8] {t("Analyse module - Odoo modules of the checkout")}
 [9] {t("Python - Poetry and Python tools")}
+[10] {t("Git repository - Repositories and git tools")}
 
 ── {t("Data")} ──
-[10] {t("Database - Database tools")}
-[11] {t("Analyse - Odoo database analysis")}
-[12] {t("Transform data - Transform your data")}
+[11] {t("Database - Database tools")}
+[12] {t("Analyse - Odoo database analysis")}
+[13] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[13] {t("Git - Git and shell tools")}
-[14] {t("Doc - Documentation search")}
+[14] {t("Shell - Shell tools")}
+[15] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[15] {t("GPT code - AI assistant tools")}
-[16] {t("Automation - Demonstration of developed features")}
+[16] {t("GPT code - AI assistant tools")}
+[17] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[17] {t("Deploy - Deploy ERPLibre locally")}
-[18] {t("Network - Network tools")}
-[19] {t("Security - Dependency audit and key generation")}
-[20] {t("Docker / Podman - Container engines")}
+[18] {t("Deploy - Deploy ERPLibre locally")}
+[19] {t("Network - Network tools")}
+[20] {t("Security - Dependency audit and key generation")}
+[21] {t("Docker / Podman - Container engines")}
 
 ── {t("System")} ──
-[21] {t("System - Diagnostic and disk space")}
+[22] {t("System - Diagnostic and disk space")}
 {retour(t("Back"))}
 """
         while True:
@@ -461,50 +462,54 @@ class TODO(
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_database()
-                if status is not False:
-                    return
-            elif status == "11":
-                status = self.prompt_execute_analyse()
-                if status is not False:
-                    return
-            elif status == "12":
-                status = self.prompt_execute_transform()
-                if status is not False:
-                    return
-            elif status == "13":
                 status = self.prompt_execute_git()
                 if status is not False:
                     return
+            elif status == "11":
+                status = self.prompt_execute_database()
+                if status is not False:
+                    return
+            elif status == "12":
+                status = self.prompt_execute_analyse()
+                if status is not False:
+                    return
+            elif status == "13":
+                status = self.prompt_execute_transform()
+                if status is not False:
+                    return
             elif status == "14":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_shell()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "16":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "17":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "18":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "19":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "20":
-                status = self.prompt_execute_container()
+                status = self.prompt_execute_security()
                 if status is not False:
                     return
             elif status == "21":
+                status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "22":
                 status = self.prompt_execute_system()
                 if status is not False:
                     return
@@ -1237,7 +1242,8 @@ class TODO(
         "prompt_execute_analyse": "Analyse",
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
-        "prompt_execute_git": "Git",
+        "prompt_execute_git": "Git repository",
+        "prompt_execute_shell": "Shell",
         "prompt_execute_git_repo": "Repo",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_actions": "Actions",
@@ -1705,12 +1711,6 @@ class TODO(
             {
                 "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
                 "method": "upgrade_poetry",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("🔃 Update git repo"),
-                "method": "prompt_execute_git_repo",
             }
         )
         help_info = self.fill_help_info(choices)
@@ -3656,13 +3656,42 @@ class TODO(
     _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
 
     def prompt_execute_git(self):
-        print(f"🤖 {t('Git and shell management tools!')}")
+        print(f"🤖 {t('Git repositories and git tools!')}")
         choices = self._git_menu_choices(
             self.config_file.get_config("git_from_makefile")
         )
-        help_info = self.fill_help_info(choices)
-        # Les sections ne consomment pas de numéro : le numéro tapé indexe
-        # la liste des seules commandes, dans l'ordre de l'affichage.
+        self._lancer_par_methodes(choices, self.fill_help_info(choices))
+        return False
+
+    def prompt_execute_shell(self):
+        print(f"🤖 {t('Shell tools!')}")
+        choices = [
+            {"section": t("Installation")},
+            {
+                "prompt_description": t("Install Starship on Shell"),
+                "method": "_shell_install_starship",
+            },
+            {
+                "prompt_description": t("Install Claude Code"),
+                "method": "_shell_install_claude_code",
+            },
+            {
+                "prompt_description": t("Install opencode"),
+                "method": "_shell_install_opencode",
+            },
+        ]
+        self._lancer_par_methodes(choices, self.fill_help_info(choices))
+        return False
+
+    def _lancer_par_methodes(self, choices, help_info):
+        """Affiche `help_info` et lance l'entrée tapée de `choices` jusqu'à
+        « 0 ». Le menu qui appelle calcule `help_info` lui-même : c'est lui
+        l'écran, avec son étiquette de fil d'Ariane.
+
+        Une entrée porte sa destination dans « method », ou vient de
+        todo.json et passe par execute_from_configuration. Les sections ne
+        consomment pas de numéro : le numéro tapé indexe la liste des seules
+        commandes, dans l'ordre de l'affichage."""
         commandes = [c for c in choices if not c.get("section")]
 
         while True:
@@ -3687,7 +3716,7 @@ class TODO(
     # Section où va une entrée de `git_from_makefile`, selon sa clé
     # « menu_group ». Une entrée sans clé, ou à la clé inconnue, va dans les
     # outils : c'est la forme qu'écrit « Ajouter une automatisation ».
-    _GIT_MENU_GROUPS = ("configuration", "tools")
+    _GIT_MENU_GROUPS = ("repositories", "configuration", "tools")
 
     def _git_menu_choices(self, config_entries):
         """La liste du menu Git, sections comprises, dans l'ordre affiché.
@@ -3703,10 +3732,12 @@ class TODO(
                 groupe = "tools"
             groupes[groupe].append(entree)
         return [
+            {"section": t("Repositories")},
             {
                 "prompt_description": t("🔃 Update git repo"),
                 "method": "prompt_execute_git_repo",
             },
+            *groupes["repositories"],
             {"section": t("Settings")},
             {
                 "prompt_description": t(
@@ -3732,18 +3763,9 @@ class TODO(
                 "prompt_description": t("Local git server"),
                 "method": "prompt_execute_git_local_server",
             },
-            {"section": t("Installation")},
             {
-                "prompt_description": t("Install Starship on Shell"),
-                "method": "_shell_install_starship",
-            },
-            {
-                "prompt_description": t("Install Claude Code"),
-                "method": "_shell_install_claude_code",
-            },
-            {
-                "prompt_description": t("Install opencode"),
-                "method": "_shell_install_opencode",
+                "prompt_description": t("Kill git daemon server process"),
+                "method": "process_kill_git_daemon",
             },
         ]
 

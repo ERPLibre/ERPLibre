@@ -228,7 +228,7 @@ Peut-être que certaines versions divergent de votre manifest. Nettoyez simpleme
 <!-- [en] -->
 ## Update or upgrade
 
-Two gestures the word "update" used to cover. TODO › Execute › Git › Repo
+Two gestures the word "update" used to cover. TODO › Execute › Git repository › Repo
 separates them, and Execute › Code › Update leads to the same screen.
 
 An **update** moves every project to the tip of the branch its manifest gives
@@ -242,7 +242,7 @@ applied.
 A **pull** is the update of a deployed checkout that carries commits or changes
 of its own: each repository integrates its target with `git pull`'s gestures
 (fast-forward, rebase or merge), after a backup branch, and only what its dry
-run showed. Entry 3 of TODO › Execute › Git › Repo, and the Odoo module
+run showed. Entry 3 of TODO › Execute › Git repository › Repo, and the Odoo module
 `erplibre_info_git_fetch`.
 
 Every git command these tools send, reads included, is printed before it
@@ -256,7 +256,7 @@ before it is printed.
 <!-- [fr] -->
 ## Mise à jour ou mise à niveau
 
-Deux gestes que le mot « mise à jour » recouvrait. TODO › Execute › Git › Repo
+Deux gestes que le mot « mise à jour » recouvrait. TODO › Execute › Git repository › Repo
 les sépare, et Execute › Code › Update mène au même écran.
 
 Une **mise à jour** déplace chaque projet sur la pointe de la branche que son
@@ -271,7 +271,7 @@ constate avant de s'appliquer.
 **Tirer** est la mise à jour d'un checkout déployé qui porte des commits ou des
 modifications à lui : chaque dépôt intègre sa cible par les gestes de
 `git pull` (avance rapide, rebase ou fusion), après une branche de sauvegarde,
-et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git ›
+et seulement ce que son essai à sec a montré. Entrée 3 de TODO › Execute › Git repository ›
 Repo, et le module Odoo `erplibre_info_git_fetch`.
 
 Chaque commande git que ces outils envoient, lectures comprises, s'affiche
@@ -537,7 +537,7 @@ When the freeze wrote the upstream base of a fork (`fork-upstream-freeze-revisio
 [Freeze the upstream base](#freeze-the-upstream-base)), the dry run also counts the upstream commits since the freeze,
 or flags in red an upstream rewritten since then: the frozen base is no longer in its history.
 
-`Fork and upstream status` (TODO › Execute › Git › Repo) then lists, numbered from 1, the forks that carry both a
+`Fork and upstream status` (TODO › Execute › Git repository › Repo) then lists, numbered from 1, the forks that carry both a
 frozen commit and a frozen upstream base: `<base>..<frozen>` and `+N ours`, the commits of the fork between the two,
 read in the clone without network. A fork that is not cloned, whose clone lacks one of the two commits, or whose
 shallow history no longer links the base to the frozen commit, shows its reason instead; nothing is fetched. `N` opens that range in tig — `git log --oneline --graph` without tig — and `a`
@@ -545,7 +545,7 @@ opens each one in turn, stopping at a tig that does not exit with `q`.
 
 ### Add the upstream remotes
 
-`Add the upstream remotes`, entry 4 of TODO › Execute › Git › Repo, or
+`Add the upstream remotes`, entry 4 of TODO › Execute › Git repository › Repo, or
 `--add-remotes`, does only that, on every fork, without diagnosing: add the
 named upstream remote, then fetch its branch. The menu entry covers every Odoo
 version of the checkout, each `odoo<V>/` tree that has a manifest, in
@@ -594,7 +594,7 @@ the tracking branches of that remote as proof that the fork holds a commit.
 
 ### Apply the upgrade
 
-`Apply the upgrade` (TODO › Execute › Git › Repo) asks for a confirmation (`y/N`), then handles each fork
+`Apply the upgrade` (TODO › Execute › Git repository › Repo) asks for a confirmation (`y/N`), then handles each fork
 the dry run marks to rebase, conflicting, absorbed upstream or behind upstream. Nothing is pushed. Each fork receives
 a dated branch `<branch>_maj_<YYYYMMDD>`, created on HEAD, where:
 
@@ -654,7 +654,7 @@ Quand le gel a écrit la base amont d'un fork (`fork-upstream-freeze-revision`, 
 [Geler la base amont](#geler-la-base-amont)), la passe à sec compte aussi les commits amont depuis le gel, ou signale
 en rouge un amont réécrit depuis : la base gelée n'est plus dans son historique.
 
-`État des forks et de leurs amonts` (TODO › Execute › Git › Repo) liste ensuite, numérotés à partir de 1, les forks
+`État des forks et de leurs amonts` (TODO › Execute › Git repository › Repo) liste ensuite, numérotés à partir de 1, les forks
 qui portent à la fois un commit gelé et une base amont gelée : `<base>..<gel>` et `+N à nous`, les commits du fork
 entre les deux, lus dans le clone sans réseau. Un fork non cloné, dont le clone n'a pas l'un des deux commits, ou
 dont l'historique superficiel ne relie plus la base au commit gelé, affiche son motif à la place ; rien n'est
@@ -663,7 +663,7 @@ tig — et `a` les ouvre l'une après l'autre, en s'arrêtant sur un tig qui ne 
 
 ### Ajouter les remotes amont
 
-`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git › Repo, ou
+`Ajouter les remotes amont`, l'entrée 4 de TODO › Execute › Git repository › Repo, ou
 `--add-remotes`, ne fait que cela, sur chaque fork, sans diagnostic : poser le
 remote amont nommé, puis récupérer sa branche. L'entrée du menu passe chaque
 version d'Odoo du checkout, chaque arbre `odoo<V>/` qui a un manifeste, en
@@ -713,7 +713,7 @@ branches de suivi de ce remote comme la preuve que le fork porte un commit.
 
 ### Appliquer la mise à niveau
 
-`Appliquer la mise à niveau` (TODO › Execute › Git › Repo) demande une confirmation (`o/N`), puis
+`Appliquer la mise à niveau` (TODO › Execute › Git repository › Repo) demande une confirmation (`o/N`), puis
 traite chaque fork que la passe à sec marque à rebaser, en conflit, absorbé par l'amont ou en retard sur l'amont. Rien
 n'est poussé. Chaque fork reçoit une branche datée `<branche>_maj_<AAAAMMJJ>`, créée sur HEAD, où :
 
@@ -908,7 +908,7 @@ commit is frozen all the same:
 The base only holds for the frozen commit beside it: a freeze that changes `freeze-revision` without computing a base
 removes it, and a freeze without `--upstream` keeps it only while the commit does not change. `make repo_unfreeze`
 removes both attributes. Like `freeze-revision`, it never reaches git-repo: the merge consumes it, and drops it from
-the files the freeze does not write. The header of TODO › Execute › Git › Repo counts the forks with an upstream
+the files the freeze does not write. The header of TODO › Execute › Git repository › Repo counts the forks with an upstream
 base, read from the files without network.
 
 #### Install or reconfigure on the commits
@@ -942,7 +942,7 @@ gelé quand même :
 La base ne vaut que pour le commit gelé à côté d'elle : un gel qui change `freeze-revision` sans calculer de base la
 retire, et un gel sans `--upstream` ne la garde que tant que le commit ne change pas. `make repo_unfreeze` retire les
 deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fusion la consomme, et la retire des
-fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git › Repo compte les forks qui ont une base amont, lue
+fichiers que le gel n'écrit pas. L'en-tête de TODO › Execute › Git repository › Repo compte les forks qui ont une base amont, lue
 dans les fichiers sans réseau.
 
 #### Installer ou reconfigurer sur les commits

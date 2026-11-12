@@ -270,13 +270,13 @@ repo_configure_all:
 	./script/manifest/update_manifest_local_dev.sh $(if $(filter 1,$(FREEZE)),--freeze,)
 
 # bring every repo back to the revision of the local manifest, without
-# regenerating it (TODO › Execute › Git › Repo › Synchronize)
+# regenerating it (TODO › Execute › Git repository › Repo › Synchronize)
 .PHONY: repo_sync
 repo_sync:
 	.venv.erplibre/bin/repo sync -c -j$$(nproc)
 
 # pull every repo: dry run, questions (mode, strategy, deepen, clone), then
-# the pass pinned to the dry run (TODO › Execute › Git › Repo › Pull)
+# the pass pinned to the dry run (TODO › Execute › Git repository › Repo › Pull)
 .PHONY: repo_pull
 repo_pull:
 	.venv.erplibre/bin/python -c "from script.todo.todo import TODO; TODO()._git_repo_tirer()"
