@@ -612,6 +612,63 @@ class GitForkMenuMixin:
             )
         return echecs
 
+    def _git_forks_orphelins(self):
+        """Les forks d'une organisation qu'aucun manifeste ne clone plus,
+        puis, sur demande, l'archivage de ceux qu'on coche, après une
+        dernière confirmation. Rend le nombre archivé, ou None."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        organisation = input(t("Organisation (or GitHub account): ")).strip()
+        if not organisation:
+            return None
+        client = self._git_client(organisation)
+        if client is None:
+            return None
+        try:
+            res = manifest_repo.forks_orphelins(client, organisation)
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        if res is None:
+            print(f"⚠ {organisation} : {t('not found on GitHub.')}")
+            return None
+        orphelins, archives = res
+        for i, depot in enumerate(orphelins, 1):
+            print(
+                f"  [{i}] {depot.get('full_name')}"
+                f" · {t('last push')} {(depot.get('pushed_at') or '-')[:10]}"
+                f" — {depot.get('html_url')}"
+            )
+        print(
+            f"  {len(orphelins)} {t('orphan forks')} · {archives}"
+            f" {t('already archived')}"
+        )
+        if not orphelins:
+            return 0
+        saisie = input(
+            t("Numbers to archive, all for every one, Enter for none: ")
+        ).strip()
+        choisis = choix_numeros(saisie, orphelins) if saisie else None
+        if not choisis:
+            return 0
+        if not self._is_yes(
+            input(
+                f"{t('Archive these repositories on GitHub')}"
+                f" ({len(choisis)}) ? (y/N) : "
+            )
+        ):
+            return 0
+        archives = 0
+        for depot in choisis:
+            try:
+                client.archiver(depot["full_name"])
+            except github_fork.ErreurGitHub as exc:
+                print(f"  ❌ {depot['full_name']} : {exc}")
+                continue
+            archives += 1
+            print(f"  ✓ {depot['full_name']}")
+        return archives
+
     def _git_lancer(self, commandes):
         """Montre puis lance `commandes` à la racine, sortie au terminal."""
         import shlex

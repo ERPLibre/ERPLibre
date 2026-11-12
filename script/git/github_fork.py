@@ -372,6 +372,36 @@ class ClientGitHub:
             corps = {}
         return rep.status_code, corps
 
+    def depots_du_compte(self, compte, pages=20):
+        """Les dépôts de l'organisation ou du compte `compte`, toutes pages
+        lues jusqu'à `pages` (100 par page). Un compte qui n'est pas une
+        organisation se lit par /users ; None s'il n'existe pas."""
+        for racine in (f"/orgs/{compte}/repos", f"/users/{compte}/repos"):
+            res = []
+            for page in range(1, pages + 1):
+                rep = self._appel(
+                    "GET",
+                    racine,
+                    ok=(200, 404),
+                    params={"per_page": 100, "page": page},
+                )
+                if rep.status_code == 404:
+                    break
+                lot = rep.json()
+                res.extend(lot)
+                if len(lot) < 100:
+                    return res
+            else:
+                return res
+        return None
+
+    def archiver(self, nom_complet):
+        """Archive le dépôt : il passe en lecture seule, et se désarchive
+        depuis ses réglages sur GitHub. Demande le rôle admin du dépôt."""
+        return self._appel(
+            "PATCH", f"/repos/{nom_complet}", json={"archived": True}
+        ).json()
+
     def creer_pull_request(
         self, nom_complet, tete, base, titre, corps="", brouillon=False
     ):
