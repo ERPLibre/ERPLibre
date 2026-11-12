@@ -419,7 +419,7 @@ ou votre propre compte, qui reçoit le fork. Trois questions suivent, chacune av
 - Une fois le fork fait, si le manifeste le prend, et dans quelles versions : l'active par défaut, les autres par leur
   numéro. `revision` et `freeze-revision` ne changent pas : le fork porte les mêmes commits.
 
-Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO ; `env_var.sh` est lu en repli, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
+Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO, ou celui que l'assistant du jeton range dans le coffre KeePass d'ERPLibre ; `env_var.sh` est lu en dernier, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
 l'organisation est repris s'il appartient au même réseau de forks, et refusé sinon. Committez `manifest/`, puis
 synchronisez les dépôts pour que le clone suive le fork.
 
