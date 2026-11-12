@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover - PyYAML absent du venv d'outils
 COMBOS = (
     ("ubuntu", "24.04", "amd64"),
     ("debian", "12", "s390x"),
-    ("fedora", "43", "amd64"),
+    ("fedora", "44", "amd64"),
     ("almalinux", "9", "arm64"),
     ("rocky", "10", "amd64"),
     ("opensuse", "16.0", "amd64"),

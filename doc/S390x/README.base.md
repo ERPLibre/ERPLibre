@@ -43,7 +43,7 @@ fonctions laissées de côté.
 |---|---|---|---|
 | Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 builds qpdf from source |
 | Debian | 12, 13 | debian-installer (no s390x cloud image) | 12 builds qpdf and PROJ from source |
-| Fedora | 43 only | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture: only the current release is built |
+| Fedora | 44, 45 | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture, published on a separate tree: a release is offered once its s390x Cloud image is published there |
 | AlmaLinux | 9, 10 | cloud image | Rust below 1.95 (1.92 on 10) → completed by rustup; qpdf built from source (EL9 ships 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | cloud image | same as AlmaLinux |
 | openSUSE | Leap 16.0, Tumbleweed | cloud image | Leap 16.0 builds qpdf (11.10 shipped); Tumbleweed's qpdf is recent enough; distribution Python used |
@@ -61,7 +61,7 @@ C++20, and focal ships GCC 9 with no g++-10 for s390x.
 |---|---|---|---|
 | Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 compile qpdf depuis les sources |
 | Debian | 12, 13 | debian-installer (aucune image cloud s390x) | 12 compile qpdf et PROJ depuis les sources |
-| Fedora | 43 seulement | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora : seule la version courante est construite |
+| Fedora | 44, 45 | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora, publiée sur une arborescence à part : une version n'est proposée qu'une fois son image Cloud s390x publiée là |
 | AlmaLinux | 9, 10 | image cloud | Rust sous 1.95 (1.92 en 10) → complété par rustup ; qpdf compilé depuis les sources (EL9 livre 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | image cloud | comme AlmaLinux |
 | openSUSE | Leap 16.0, Tumbleweed | image cloud | Leap 16.0 compile qpdf (11.10 livré) ; le qpdf de Tumbleweed est assez récent ; Python de la distribution utilisé |

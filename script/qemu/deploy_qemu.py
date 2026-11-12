@@ -18,11 +18,11 @@ Exemples
     sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
         --ssh-key ~/.ssh/id_ed25519.pub
 
-    # Debian 12 / Fedora 42 (mêmes options, --distro change la source d'image)
+    # Debian 12 / Fedora 44 (mêmes options, --distro change la source d'image)
     sudo ./script/qemu/deploy_qemu.py --distro debian --version 12 \\
         --name deb12 --ssh-key ~/.ssh/id_ed25519.pub
-    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 42 \\
-        --name fed42 --ssh-key ~/.ssh/id_ed25519.pub
+    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 44 \\
+        --name fed44 --ssh-key ~/.ssh/id_ed25519.pub
 
     # Voir tout le catalogue (distros, versions, specs minimales)
     ./script/qemu/deploy_qemu.py --list-images
@@ -108,11 +108,15 @@ DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "12": ("bookworm", "debian12", 1024, "20G"),
     "13": ("trixie", "debian13", 1024, "20G"),
 }
+# Fedora : les versions encore maintenues. Une version en fin de vie quitte
+# releases/ pour archive/ sur le serveur maître, et resolve_fedora_url ne lit
+# que releases/ : la garder au catalogue la rendrait introuvable.
+# osinfo : un id absent d'un osinfo-db plus ancien (« fedora45 ») replie sur le
+# dernier id connu de cette table, d'où l'ordre croissant, puis sur
+# « fedora-unknown » quand la base n'en connaît aucun.
 FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "41": ("41", "fedora41", 2048, "20G"),
-    "42": ("42", "fedora42", 2048, "20G"),
-    "43": ("43", "fedora43", 2048, "20G"),
     "44": ("44", "fedora44", 2048, "20G"),
+    "45": ("45", "fedora45", 2048, "20G"),
 }
 # Dérivés RHEL. Le second champ est l'identifiant libosinfo : « almalinux9 » et
 # « almalinux10 » figurent dans osinfo-db, « rocky10 » n'y est pas encore sur
@@ -189,7 +193,7 @@ NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
-    "fedora": (FEDORA_VERSIONS, "42"),
+    "fedora": (FEDORA_VERSIONS, "44"),
     "almalinux": (ALMALINUX_VERSIONS, "9"),
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
@@ -237,14 +241,13 @@ S390X_DISTROS: tuple[str, ...] = (
 # architecture. Déclaration POSITIVE : hors de cette table, toutes les versions
 # du catalogue sont réputées disponibles.
 #
-# Fedora ne construit s390x que pour la version courante, et sur une
-# arborescence à part (« fedora-secondary ») : la 41 et la 42 y sont retirées
-# (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
-# miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
+# Fedora publie s390x sur une arborescence à part (« fedora-secondary »),
+# d'où une liste tenue à la main : une version ajoutée au catalogue n'y est
+# proposée qu'une fois son image Cloud s390x constatée sur le serveur maître.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
     # Debian sur s390x passe par debian-installer, dont les images sont
     # publiées pour bookworm et trixie — vérifié.
-    "s390x": {"fedora": ("43",), "debian": ("12", "13")},
+    "s390x": {"fedora": ("44", "45"), "debian": ("12", "13")},
 }
 
 # Distros installées par debian-installer plutôt que depuis une image cloud.
@@ -759,9 +762,11 @@ def osinfo_known(short_id: str) -> bool:
 def osinfo_arg(osinfo: str, distro: str = "") -> str:
     """Valeur --osinfo résiliente à un osinfo-db périmé. Si l'id est connu on
     l'utilise ; sinon on retombe sur le DERNIER osinfo connu de la même distro
-    (meilleures perfs que « generic », pas d'avertissement) ; en dernier
-    recours, détection best-effort. Utile pour une version plus récente que la
-    base locale (ex. ubuntu26.04, fedora43+)."""
+    (meilleures perfs que « generic », pas d'avertissement) ; puis sur l'id de
+    famille « <distro>-unknown » (fedora, rocky, opensuse, nixos en ont un),
+    qui couvre un catalogue dont TOUTES les versions sont plus récentes que
+    la base locale ; en dernier recours, détection best-effort. Utile pour une
+    version plus récente que la base locale (ex. ubuntu26.04, fedora45)."""
     if "=" in osinfo or "," in osinfo:
         return osinfo  # forme avancée déjà fournie par l'utilisateur
     if osinfo_known(osinfo):
@@ -777,7 +782,16 @@ def osinfo_arg(osinfo: str, distro: str = "") -> str:
             "l'entrée exacte."
         )
         return fallback
-    # Repli 2 : détection best-effort (évite l'échec, peut donner generic).
+    # Repli 2 : l'id de famille, sans version.
+    famille = f"{distro}-unknown" if distro else ""
+    if famille and osinfo_known(famille):
+        print(
+            f"  osinfo « {osinfo} » inconnu (osinfo-db) — repli sur "
+            f"« {famille} » (famille). « sudo apt upgrade osinfo-db » pour "
+            "l'entrée exacte."
+        )
+        return famille
+    # Repli 3 : détection best-effort (évite l'échec, peut donner generic).
     print(
         f"  osinfo « {osinfo} » inconnu de la base locale (osinfo-db) — repli "
         "sur la détection auto (detect=on,require=off).\n"

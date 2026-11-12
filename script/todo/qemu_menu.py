@@ -39,7 +39,7 @@ class QemuMenuMixin:
     _QEMU_DISTROS = {
         "ubuntu": (["24.04", "25.10", "26.04"], "24.04"),
         "debian": (["12", "13"], "12"),
-        "fedora": (["41", "42", "43", "44"], "42"),
+        "fedora": (["44", "45"], "44"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),
         # Leap 16.0 par défaut : numérotée et stable. Tumbleweed reste offerte,

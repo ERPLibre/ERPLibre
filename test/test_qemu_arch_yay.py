@@ -115,7 +115,7 @@ class AurInTheMotd(unittest.TestCase):
         for distro, version in (
             ("ubuntu", "24.04"),
             ("debian", "13"),
-            ("fedora", "43"),
+            ("fedora", "44"),
             ("opensuse", "tumbleweed"),
         ):
             with self.subTest(distro=distro):

@@ -20,7 +20,7 @@ fonctions laissées de côté.
 |---|---|---|---|
 | Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 compile qpdf depuis les sources |
 | Debian | 12, 13 | debian-installer (aucune image cloud s390x) | 12 compile qpdf et PROJ depuis les sources |
-| Fedora | 43 seulement | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora : seule la version courante est construite |
+| Fedora | 44, 45 | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora, publiée sur une arborescence à part : une version n'est proposée qu'une fois son image Cloud s390x publiée là |
 | AlmaLinux | 9, 10 | image cloud | Rust sous 1.95 (1.92 en 10) → complété par rustup ; qpdf compilé depuis les sources (EL9 livre 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | image cloud | comme AlmaLinux |
 | openSUSE | Leap 16.0, Tumbleweed | image cloud | Leap 16.0 compile qpdf (11.10 livré) ; le qpdf de Tumbleweed est assez récent ; Python de la distribution utilisé |

@@ -12,14 +12,20 @@ Ce que ces tests gardent :
   pour une VM graphique.
 - Les deux variantes partagent le même SHA512SUMS : l'appariement doit
   distinguer « generic » de « genericcloud », qui y vivent côte à côte.
+- Fedora : seules des versions servies sous releases/ figurent au catalogue,
+  la version par défaut en fait partie, et s390x n'en propose aucune hors
+  catalogue.
 """
 
+import contextlib
 import importlib.util
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 DEPLOY = RACINE / "script/qemu/deploy_qemu.py"
@@ -171,5 +177,106 @@ class TestDebianVariant(unittest.TestCase):
 
 # Index HTML réduit à ce que resolve_fedora_url y cherche ; les numéros de
 # compilation sont inventés.
+INDEX_FEDORA = (
+    '<a href="Fedora-Cloud-Base-Generic-45-1.2.{a}.qcow2">x</a>\n'
+    '<a href="Fedora-Cloud-Base-Generic-45-1.4.{a}.qcow2">x</a>\n'
+    '<a href="Fedora-Cloud-Base-AmazonEC2-45-1.4.{a}.raw.xz">x</a>\n'
+)
+
+
+class _Reponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestFedoraCatalogue(unittest.TestCase):
+    def test_the_catalogue(self):
+        versions, defaut = DQ.DISTROS["fedora"]
+        self.assertEqual(["44", "45"], list(versions))
+        self.assertEqual("44", defaut)
+
+    def test_s390x_offers_only_catalogue_versions(self):
+        s390x = DQ.ARCH_ONLY_VERSIONS["s390x"]["fedora"]
+        self.assertEqual(("44", "45"), s390x)
+        versions = DQ.DISTROS["fedora"][0]
+        self.assertEqual(
+            list(s390x), DQ.arch_versions("fedora", "s390x", versions)
+        )
+
+    def test_the_url_pattern_per_arch(self):
+        for arch, a, arbre in (
+            ("amd64", "x86_64", "fedora/linux"),
+            ("arm64", "aarch64", "fedora/linux"),
+            ("s390x", "s390x", "fedora-secondary"),
+        ):
+            with self.subTest(arch=arch):
+                url = DQ.resolve_fedora_url("45", arch, True)
+                self.assertIn(f"/{arbre}/releases/45/Cloud/{a}/images/", url)
+                self.assertTrue(
+                    url.endswith(
+                        f"Fedora-Cloud-Base-Generic-45-<build>.{a}" ".qcow2"
+                    ),
+                    url,
+                )
+
+    def test_the_newest_build_of_the_index_is_taken(self):
+        for arch, a in (("amd64", "x86_64"), ("arm64", "aarch64")):
+            with self.subTest(arch=arch):
+                html = INDEX_FEDORA.format(a=a).encode()
+                with mock.patch.object(
+                    DQ.urllib.request,
+                    "urlopen",
+                    side_effect=lambda *_a, **_k: _Reponse(html),
+                ):
+                    url = DQ.resolve_fedora_url("45", arch, False)
+                self.assertTrue(
+                    url.endswith(
+                        f"/45/Cloud/{a}/images/"
+                        f"Fedora-Cloud-Base-Generic-45-1.4.{a}.qcow2"
+                    ),
+                    url,
+                )
+
+    def test_an_unknown_osinfo_falls_back_to_the_last_known_fedora(self):
+        """Un osinfo-db qui ne connaît pas encore fedora45 replie sur
+        fedora44, et non sur la détection automatique."""
+        with mock.patch.object(
+            DQ, "osinfo_known", side_effect=lambda i: i == "fedora44"
+        ), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual("fedora44", DQ.osinfo_arg("fedora45", "fedora"))
+
+    def test_an_osinfo_db_older_than_the_catalogue_takes_the_family(self):
+        """Un osinfo-db qui ne connaît AUCUNE version du catalogue Fedora
+        replie sur « fedora-unknown » avant la détection automatique."""
+        with mock.patch.object(
+            DQ, "osinfo_known", side_effect=lambda i: i == "fedora-unknown"
+        ), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                "fedora-unknown", DQ.osinfo_arg("fedora45", "fedora")
+            )
+
+    def test_without_a_family_id_detection_is_the_last_resort(self):
+        with mock.patch.object(
+            DQ, "osinfo_known", return_value=False
+        ), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                "detect=on,require=off", DQ.osinfo_arg("fedora45", "fedora")
+            )
+
+    def test_the_menu_offers_the_same_catalogue(self):
+        """Le sélecteur de todo.py recopie le catalogue : une version qu'il
+        garde après son retrait d'ici est refusée au déploiement."""
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        versions, defaut = DQ.DISTROS["fedora"]
+        menu, menu_defaut = TODO._QEMU_DISTROS["fedora"]
+        self.assertEqual(list(versions), list(menu))
+        self.assertEqual(defaut, menu_defaut)
+
+
 if __name__ == "__main__":
     unittest.main()

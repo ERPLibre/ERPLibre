@@ -25,7 +25,7 @@ COMMANDE = "systemctl reset-failed systemd-firstboot.service"
 
 def _runcmd(*options):
     args = d.build_parser().parse_args(
-        ["--distro", "fedora", "--version", "43", "--hostname", "x"]
+        ["--distro", "fedora", "--version", "44", "--hostname", "x"]
         + list(options)
     )
     return yaml.safe_load(d.build_cloud_config(args, None, []))["runcmd"]
