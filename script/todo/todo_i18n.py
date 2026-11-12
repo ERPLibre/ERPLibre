@@ -2208,6 +2208,46 @@ TRANSLATIONS = {
         "fr": "📬 Ouvrir une pull request depuis la branche courante",
         "en": "📬 Open a pull request from the current branch",
     },
+    "🚦 Status of my pull requests (review, CI, merged)": {
+        "fr": "🚦 État de mes pull requests (revue, CI, fusion)",
+        "en": "🚦 Status of my pull requests (review, CI, merged)",
+    },
+    "Only the repositories of the manifests? (Y/n): ": {
+        "fr": "Seulement les dépôts des manifestes ? (O/n) : ",
+        "en": "Only the repositories of the manifests? (Y/n): ",
+    },
+    "Querying GitHub for each pull request…": {
+        "fr": "Interrogation de GitHub pour chaque pull request…",
+        "en": "Querying GitHub for each pull request…",
+    },
+    "Pull requests of": {
+        "fr": "Pull requests de",
+        "en": "Pull requests of",
+    },
+    "👍 approved": {
+        "fr": "👍 approuvée",
+        "en": "👍 approved",
+    },
+    "✋ changes requested": {
+        "fr": "✋ changements demandés",
+        "en": "✋ changes requested",
+    },
+    "👀 awaiting review": {
+        "fr": "👀 en attente de revue",
+        "en": "👀 awaiting review",
+    },
+    "✅ CI passed": {
+        "fr": "✅ CI réussie",
+        "en": "✅ CI passed",
+    },
+    "❌ CI failed": {
+        "fr": "❌ CI en échec",
+        "en": "❌ CI failed",
+    },
+    "⏳ CI running": {
+        "fr": "⏳ CI en cours",
+        "en": "⏳ CI running",
+    },
     "declared upstream": {
         "fr": "amont déclaré",
         "en": "declared upstream",

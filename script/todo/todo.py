@@ -3821,6 +3821,12 @@ class TODO(
                 ),
                 "method": "_git_creer_pull_request",
             },
+            {
+                "prompt_description": t(
+                    "🚦 Status of my pull requests (review, CI, merged)"
+                ),
+                "method": "_git_statut_mes_pull_requests",
+            },
             {"section": t("Settings")},
             {
                 "prompt_description": t(
