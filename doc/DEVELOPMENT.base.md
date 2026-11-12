@@ -84,6 +84,13 @@ export EL_GITHUB_TOKEN="<token>"
 ./todo.sh
 ```
 
+Without an exported token, TODO › Execute › Git repository › Check the GitHub token offers an assistant, also
+offered when a GitHub action is refused. It shows both kinds of token — classic, on a page pre-filled with `repo`,
+`workflow` and `read:org`; fine-grained, with the rights to tick — reads the token without echo, checks it, and stores
+it in the ERPLibre KeePass vault (`kdbx.path` in `script/todo/todo.json`), under the title given by
+`kdbx_config.github.kdbx_key`, `GitHub token` by default. The token is read from `EL_GITHUB_TOKEN`, then the vault,
+then `env_var.sh`.
+
 Choose the repository among those of the manifests of the active version, and name the organisation. The tool asks
 which upstream an already forked repository keeps, whether to copy the active branch only or every branch, then whether
 the manifest takes the fork and in which versions. Commit `manifest/`, then synchronise the repositories so the clone
@@ -103,6 +110,13 @@ qui est versionné et emporterait le jeton dans un commit :
 export EL_GITHUB_TOKEN="<jeton>"
 ./todo.sh
 ```
+
+Sans jeton exporté, TODO › Exécution › Répertoire git › Vérifier le jeton GitHub propose un assistant, aussi proposé
+quand une action GitHub est refusée. Il présente les deux sortes de jeton — classique, sur une page préremplie avec
+`repo`, `workflow` et `read:org` ; à granularité fine, avec les droits à cocher —, lit le jeton sans écho, le vérifie,
+et le range dans le coffre KeePass d'ERPLibre (`kdbx.path` dans `script/todo/todo.json`), sous le titre que donne
+`kdbx_config.github.kdbx_key`, `GitHub token` par défaut. Le jeton se lit dans `EL_GITHUB_TOKEN`, puis le coffre, puis
+`env_var.sh`.
 
 Choisissez le dépôt parmi ceux des manifestes de la version active, et nommez l'organisation. L'outil demande quel
 amont garde un dépôt déjà forké, s'il faut copier la branche active seulement ou toutes les branches, puis si le
@@ -246,6 +260,15 @@ The same tools run without the menu:
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py pulls --organisation MyOrg
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py pr OCA_l10n-switzerland --title "Fix the invoice report" --target amont
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py remove OCA_l10n-switzerland --apply
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py sync OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py refreeze OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py branches 18.0_my_feature OCA_web OCA_server-tools --push
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py mine
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py prune OCA_web --fetch --github --apply --remote
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork-sync
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py token --organisation MyOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py orphans MyOrg
 ```
 
 `pulls` lists the open pull requests, in an organisation, of every repository of the manifest; `pr` opens one from the
@@ -253,6 +276,14 @@ current branch of the clone, once pushed, towards the upstream (`amont`) or the 
 (`manifeste`). `branch` creates a branch in the clone and switches to it, then pushes it with tracking when `--push` names a remote;
 `upstream` adds the upstream remote the manifest declares for a fork, and fetches its branch. Both are also in TODO ›
 Execute › Git repository.
+
+`remove` shows the change and writes it only with `--apply`; `sync` synchronises one clone, and `refreeze` writes its
+head, or `--commit`, into the manifest with the upstream base. `branches` creates the same branch in several clones in
+parallel. `mine` shows the token account's pull requests with their review and CI state. `prune` lists the merged
+branches of a clone and deletes them with `--apply`, on the fork remotes too with `--remote`; `--github` adds those
+merged by squash. `fork-sync` updates the manifest's forks from their upstream on GitHub, when the fork's GitHub parent
+is the declared upstream. `token` reports the token's scopes and membership; `orphans` lists the forks of an
+organisation that no manifest clones any more. Each is also in TODO › Execute › Git repository.
 
 <!-- [fr] -->
 ## Ajouter un dépôt
@@ -273,6 +304,15 @@ Les mêmes outils tournent sans le menu :
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py pulls --organisation MonOrg
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py pr OCA_l10n-switzerland --title "Corriger le rapport de facture" --target amont
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py remove OCA_l10n-switzerland --apply
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py sync OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py refreeze OCA_l10n-switzerland
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py branches 18.0_ma_fonction OCA_web OCA_server-tools --push
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py mine
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py prune OCA_web --fetch --github --apply --remote
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork-sync
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py token --organisation MonOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py orphans MonOrg
 ```
 
 `pulls` liste les pull requests ouvertes, dans une organisation, de chaque dépôt du manifeste ; `pr` en ouvre une depuis
@@ -280,6 +320,15 @@ la branche courante du clone, une fois poussée, vers l'amont (`amont`) ou le d�
 crée une branche dans le clone et s'y place, puis la pousse en la faisant suivre quand `--push` nomme un
 remote ; `upstream` pose le remote amont que le manifeste déclare pour un fork, et récupère sa branche. Les deux sont
 aussi dans TODO › Exécution › Répertoire git.
+
+`remove` montre le changement et ne l'écrit qu'avec `--apply` ; `sync` synchronise un seul clone, et `refreeze` écrit
+sa tête, ou `--commit`, dans le manifeste avec la base amont. `branches` crée la même branche dans plusieurs clones, en
+parallèle. `mine` montre les pull requests du compte du jeton avec leur revue et l'état de leur CI. `prune` liste les
+branches fusionnées d'un clone et les supprime avec `--apply`, sur les remotes de fork aussi avec `--remote` ;
+`--github` ajoute celles fusionnées par squash. `fork-sync` met les forks du manifeste à jour depuis leur amont sur
+GitHub, quand le parent GitHub du fork est l'amont déclaré. `token` donne les portées et l'adhésion du jeton ;
+`orphans` liste les forks d'une organisation qu'aucun manifeste ne clone plus. Chacun est aussi dans TODO › Exécution ›
+Répertoire git.
 
 <!-- [en] -->
 ## Remove auto_install from an addons repository
