@@ -11,7 +11,9 @@ réglages s'y gèrent d'ici, sans toucher aux autres clés du fichier :
   clé est retirée plutôt que mise à faux, pour laisser décider le réglage
   du compte ;
 - le hook SessionStart qui lance script/claude/session_start.py à
-  l'ouverture (« startup ») et à la reprise (« resume ») d'une session.
+  l'ouverture (« startup »), à la reprise (« resume ») et à la fourche
+  (« fork ») d'une session : /fork, /branch ou --fork-session portent la
+  source « fork », que « resume » ne couvre pas.
   Une entrée d'un autre hook SessionStart reste en place.
 
 Les fonctions rendent un nouveau dictionnaire et n'écrivent rien ; seule
@@ -26,7 +28,7 @@ FICHIER = os.path.join(".claude", "settings.json")
 # $CLAUDE_PROJECT_DIR est la racine du projet que Claude Code donne au hook :
 # la commande reste juste quel que soit le dossier où la session s'ouvre.
 COMMANDE_HOOK = 'python3 "$CLAUDE_PROJECT_DIR/script/claude/session_start.py"'
-SOURCES_HOOK = ("startup", "resume")
+SOURCES_HOOK = ("startup", "resume", "fork")
 
 
 def lire(racine):

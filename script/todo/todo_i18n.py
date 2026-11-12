@@ -2725,6 +2725,10 @@ TRANSLATIONS = {
         "fr": "ERPLibre — nouvelle session",
         "en": "ERPLibre — new session",
     },
+    "ERPLibre — session forked": {
+        "fr": "ERPLibre — session fourchée",
+        "en": "ERPLibre — session forked",
+    },
     "obsolete, not in the catalogue": {
         "fr": "obsolète, absent du catalogue",
         "en": "obsolete, not in the catalogue",

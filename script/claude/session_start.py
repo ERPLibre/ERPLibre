@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le message du hook SessionStart de Claude Code pour ce dépôt.
 
-Claude Code le lance à l'ouverture d'une session et à sa reprise (voir
-.claude/settings.json). Il écrit sur stdout un objet JSON : « systemMessage »
+Claude Code le lance à l'ouverture d'une session, à sa reprise et à sa
+fourche (voir .claude/settings.json). Il écrit sur stdout un objet JSON : « systemMessage »
 s'affiche dans le terminal, « hookSpecificOutput.additionalContext » entre
 dans le contexte du modèle avant le premier message. Les deux portent le
 même texte :
@@ -106,15 +106,14 @@ def lignes_rappel(racine):
 
 def message(racine, source=None):
     """Le texte du message, une ligne par élément ; `source` vaut ce que
-    Claude Code passe au hook (« startup », « resume »…)."""
+    Claude Code passe au hook (« startup », « resume », « fork »)."""
     from script.todo import todo_etat
     from script.todo.todo_i18n import t
 
-    titre = (
-        t("ERPLibre — session resumed")
-        if source == "resume"
-        else t("ERPLibre — new session")
-    )
+    titre = {
+        "resume": t("ERPLibre — session resumed"),
+        "fork": t("ERPLibre — session forked"),
+    }.get(source, t("ERPLibre — new session"))
     lignes = [titre]
     for partie in (
         lambda: todo_etat.bilan(racine),
