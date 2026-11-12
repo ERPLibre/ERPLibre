@@ -21,6 +21,7 @@ sans menu :
     manifest_repo.py refreeze CHEMIN [--commit SHA] [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py mine [--author LOGIN] [--all-repos]
+    manifest_repo.py fork-sync [CHEMIN...] [--version 18.0]
     manifest_repo.py prune CHEMIN [--fetch] [--github] [--apply] [--remote]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -703,6 +704,83 @@ def rafraichir(chemin, remotes):
     return [(r, *git(chemin, "fetch", "--prune", r)) for r in remotes]
 
 
+# ── Mettre un fork à jour depuis son amont ─────────────────────────────
+
+
+def forks_du_manifeste(version, dossier=None):
+    """Les forks GitHub que les manifestes de `version` clonent :
+    [(chemin, fork « propriétaire/dépôt », branche, amont « propriétaire/
+    dépôt » ou None, branche amont ou None)], triés par chemin."""
+    remotes, liste = projets_github(version, dossier)
+    res = []
+    for projet, proprietaire, depot in liste:
+        if not repo_upgrade.est_fork(projet):
+            continue
+        amont = repo_upgrade.resoudre_amont(projet, remotes) or {}
+        depot_amont = github_fork.depot_github(amont.get("url"))
+        res.append(
+            (
+                projet.get("path"),
+                f"{proprietaire}/{depot}",
+                branche_du_projet(projet),
+                "/".join(depot_amont) if depot_amont else None,
+                amont.get("branche"),
+            )
+        )
+    return res
+
+
+ETATS_SYNCHRO = {
+    "fast-forward": "avance",
+    "merge": "fusion",
+    "none": "a_jour",
+}
+
+
+def synchroniser_un_fork(client, fork, branche, amont, branche_amont):
+    """Met la `branche` du `fork` à jour depuis son parent GitHub. GitHub
+    fusionne la branche du MÊME nom chez le PARENT du fork : l'appel n'est
+    fait que si ce parent est l'amont déclaré et sa branche la même, sans
+    quoi le fork recevrait un autre code que celui que le manifeste dit
+    suivre. Rend (état, détail) ; état parmi « avance », « fusion »,
+    « a_jour », « conflit », « refus », « ignore »."""
+    if not branche:
+        return "ignore", "pas de branche dans le manifeste"
+    if not amont or not branche_amont:
+        return "ignore", "pas d'amont déclaré pour cette version"
+    if branche_amont != branche:
+        return "ignore", f"branche amont {branche_amont} ≠ {branche}"
+    infos = client.depot(*fork.split("/", 1))
+    if infos is None:
+        return "ignore", "fork introuvable sur GitHub"
+    parent = (infos.get("parent") or {}).get("full_name", "")
+    if parent.lower() != amont.lower():
+        return "ignore", f"parent GitHub {parent or '-'} ≠ amont {amont}"
+    code, corps = client.synchroniser_fork(fork, branche)
+    message = corps.get("message", "")
+    if code == 409:
+        return "conflit", message
+    if code == 422:
+        return "refus", message
+    return ETATS_SYNCHRO.get(corps.get("merge_type"), "avance"), message
+
+
+def synchroniser_forks(client, forks, jobs=8):
+    """synchroniser_un_fork() sur chaque entrée de forks_du_manifeste(), en
+    parallèle. Une erreur d'API sur un fork devient son état « erreur » et
+    n'arrête pas les autres. Rend [(entrée, état, détail)] dans l'ordre."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def un(entree):
+        try:
+            return (entree, *synchroniser_un_fork(client, *entree[1:]))
+        except github_fork.ErreurGitHub as exc:
+            return entree, "erreur", str(exc)
+
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        return list(ex.map(un, forks))
+
+
 # ── Pull requests ──────────────────────────────────────────────────────
 
 
@@ -1155,6 +1233,12 @@ def main(argv=None):
     )
     p.add_argument("--version")
     p = sous.add_parser(
+        "fork-sync",
+        help="update forks from their upstream on GitHub (merge-upstream)",
+    )
+    p.add_argument("chemins", nargs="*", help="default: every fork")
+    p.add_argument("--version")
+    p = sous.add_parser(
         "prune", help="list, then delete, the merged branches of a clone"
     )
     p.add_argument("chemin")
@@ -1217,6 +1301,22 @@ def main(argv=None):
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
             return 0
+        if args.commande == "fork-sync":
+            client = _client(racine)
+            if not client:
+                return 2
+            forks = forks_du_manifeste(version)
+            if args.chemins:
+                voulus = {
+                    trouver_projet(version, c)[1]["path"] for c in args.chemins
+                }
+                forks = [f for f in forks if f[0] in voulus]
+            code_final = 0
+            for entree, etat, detail in synchroniser_forks(client, forks):
+                print(f"{etat:<8} {entree[1]} {entree[2]} {detail}")
+                if etat in ("conflit", "refus", "erreur"):
+                    code_final = 1
+            return code_final
         if args.commande == "prune":
             remotes, projet = trouver_projet(version, args.chemin)
             chemin = os.path.join(racine, projet["path"])
