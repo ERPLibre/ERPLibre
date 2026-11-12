@@ -84,7 +84,9 @@ class TestLaCommandeDistante(unittest.TestCase):
 
     def test_a_desktop_only_vm_still_installs_its_desktop(self):
         """Le chemin qui marchait déjà ne doit pas changer de sens."""
-        self.todo._qemu_desktop_remote_cmd = lambda d, s: "INSTALLE_BUREAU; "
+        self.todo._qemu_desktop_remote_cmd = (
+            lambda d, s, **k: "INSTALLE_BUREAU; "
+        )
         self.todo._qemu_tools_remote_cmd = lambda *a, **k: ""
         self.todo._qemu_no_auto_upgrade = lambda *a, **k: ""
         cmd = self.todo._qemu_erplibre_remote_cmd(None, desktop="gnome")

@@ -248,6 +248,63 @@ def vm_name(base, desktop, suffixes):
     return f"{base}-{suffix}"
 
 
+def desktop_ram(ram, desktop, floor):
+    """RAM, en Mo, qu'une VM reçoit une fois son type connu.
+
+    Le minimum du catalogue est celui d'un SERVEUR : 1024 Mo pour Debian ou
+    Arch. Une VM graphique y loge l'écran de connexion, la session de bureau
+    et l'installation d'ERPLibre, sur une image cloud sans swap, et manque de
+    mémoire. Elle reçoit donc au moins `floor` ; une valeur déjà au-dessus
+    est gardée, un serveur garde la sienne, et `floor` nul ne change rien.
+    Une valeur illisible est rendue telle quelle."""
+    try:
+        ram = int(ram)
+    except (TypeError, ValueError):
+        return ram
+    if desktop and floor and ram < int(floor):
+        return int(floor)
+    return ram
+
+
+def raise_desktop_ram(vms, floor):
+    """`desktop_ram` appliqué EN PLACE à chaque VM de la liste.
+
+    Rend les VM dont la RAM a été relevée, pour que l'appelant dise ce qu'il
+    a changé : une valeur montée en silence se lit au plan comme une erreur
+    de saisie."""
+    relevees = []
+    for vm in vms or ():
+        avant = vm.get("ram")
+        apres = desktop_ram(avant, vm.get("desktop"), floor)
+        if apres != avant:
+            vm["ram"] = apres
+            relevees.append(vm)
+    return relevees
+
+
+def desktops_for(distro, desktops, by_distro):
+    """Clés de `desktops` installables sur `distro`, dans l'ordre reçu.
+
+    `by_distro` est {système: [saveurs]}. Vide, ou muet sur ce système, il ne
+    dit rien : toutes les saveurs restent offertes plutôt que d'en retirer à
+    l'aveugle. Un système qui y figure avec une liste vide (NixOS) n'en
+    reçoit aucune, son installation de bureau n'existant pas."""
+    if not by_distro or distro not in by_distro:
+        return list(desktops)
+    permis = set(by_distro.get(distro) or ())
+    return [k for k in desktops if k in permis]
+
+
+def desktops_for_fleet(distros, desktops, by_distro):
+    """Union de `desktops_for` sur les systèmes du parc, dans l'ordre de
+    `desktops`. C'est ce qu'offre un choix posé UNE fois pour tout le parc :
+    une saveur qu'au moins une VM peut recevoir."""
+    offertes = set()
+    for d in distros:
+        offertes.update(desktops_for(d, desktops, by_distro))
+    return [k for k in desktops if k in offertes]
+
+
 def build_vms(
     entries,
     profile,
@@ -257,15 +314,28 @@ def build_vms(
     overrides,
     desktop="",
     suffixes=None,
+    by_distro=None,
+    min_ram=0,
 ):
-    """Catalogue choisi + profil + surcharges -> liste de VM de la spec."""
+    """Catalogue choisi + profil + surcharges -> liste de VM de la spec.
+
+    `by_distro` ({système: [saveurs]}) ramène au serveur une VM dont le
+    système n'installe pas la saveur reçue du choix commun. `min_ram` est le
+    plancher de RAM d'une VM graphique (`desktop_ram`)."""
     vms = apply_overrides(
         apply_profile(entries, profile, base_vcpus, host_cpu, custom, desktop),
         entries,
         overrides,
     )
     # APRÈS les surcharges : c'est là seulement que le type de chaque VM est
-    # connu, puisqu'il se choisit machine par machine.
+    # connu, puisqu'il se choisit machine par machine. Le type se règle avant
+    # le nom, qui en prend le suffixe, et avant la RAM, qui en dépend.
+    for vm in vms:
+        if vm.get("desktop") and not desktops_for(
+            vm.get("distro"), [vm["desktop"]], by_distro
+        ):
+            vm["desktop"] = ""
+    raise_desktop_ram(vms, min_ram)
     for vm, e in zip(vms, entries):
         if (overrides or {}).get(entry_key(e), {}).get("name"):
             # Nom donne a la main : il gagne, sans suffixe ajoute. Y coller

@@ -47,6 +47,7 @@ class QemuDeployMixin:
         app_store="deb",
         tools=(),
         ai_agent="",
+        distro="",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -59,7 +60,9 @@ class QemuDeployMixin:
         comportement par défaut du dépôt (pyenv, qui compile). `tools` : outils
         de développement cochés (PyCharm, Android Studio, extensions GNOME),
         posés APRÈS ERPLibre — PyCharm a besoin du venv du dépôt pour écrire la
-        configuration du projet."""
+        configuration du projet. `distro` : système de la VM, transmis au bloc
+        du bureau, dont les paquets et l'accès distant en dépendent au-delà
+        du seul gestionnaire de paquets ; « » quand l'appelant l'ignore."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
@@ -99,7 +102,9 @@ class QemuDeployMixin:
                 "set -e; "
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
-                + self._qemu_desktop_remote_cmd(desktop, app_store)
+                + self._qemu_desktop_remote_cmd(
+                    desktop, app_store, distro=distro
+                )
                 + self._qemu_tools_remote_cmd(tools, prod, ai_agent=ai_agent)
                 + note
             )
@@ -174,7 +179,9 @@ class QemuDeployMixin:
             # là où l'installation ERPLibre compile longuement. Un échec ici se
             # voit donc tôt plutôt qu'après une heure.
             + (
-                self._qemu_desktop_remote_cmd(desktop, app_store)
+                self._qemu_desktop_remote_cmd(
+                    desktop, app_store, distro=distro
+                )
                 if desktop
                 else ""
             )
@@ -472,8 +479,9 @@ class QemuDeployMixin:
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
-                # connaît.
-                if desk_map or branch_map or cmd_map or vm_tools:
+                # connaît. Le bureau aussi : son bloc dépend du système de la
+                # VM, que la commande commune ignore.
+                if desk_map or branch_map or cmd_map or vm_tools or desktop:
                     # Le bureau de CETTE VM : sa saveur propre si la carte en
                     # donne une, sinon celle du parc. Prendre « rien » quand la
                     # carte est vide privait de bureau toute VM dont seule la
@@ -491,6 +499,7 @@ class QemuDeployMixin:
                         app_store,
                         self._qemu_tools_for(vm_tools, a, vm_desktop, d),
                         ai_agent,
+                        distro=d or "",
                     )
                 vms.append(entry)
             else:
@@ -606,6 +615,7 @@ class QemuDeployMixin:
                 vm_tools, vm_arch or "amd64", desktop, vm_distro or ""
             ),
             ai_agent,
+            distro=vm_distro or "",
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -1000,6 +1010,8 @@ class QemuDeployMixin:
     def _qemu_print_recap(self, spec, existing):
         """État final soumis à approbation : tout ce qui va changer sur
         l'hôte, y compris ce qui ne changera PAS (VM existantes)."""
+        from script.todo.deploy_form_lib import desktop_ram
+
         install = spec.get("install")
         branch = install["branch"] if install else None
         print(f"\n── {t('Final review before deployment')} ──")
@@ -1037,9 +1049,16 @@ class QemuDeployMixin:
                         "label", vm["desktop"]
                     )
                 )
+            # La RAM que recevra la VM, plancher d'un bureau compris : c'est
+            # ce que _qemu_build_deploy_parts passera en « --memory ».
+            ram = desktop_ram(
+                vm["ram"],
+                vm.get("desktop", spec.get("desktop")),
+                self.QEMU_DESKTOP_MIN_RAM_MB,
+            )
             print(
                 f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
-                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
+                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {ram}Mo  "
                 f"{t('disk')} {gigs}G"
                 + (f"  ⟵ {' · '.join(apart)}" if apart else "")
             )
@@ -1223,6 +1242,11 @@ class QemuDeployMixin:
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
+        from script.todo.deploy_form_lib import desktop_ram
+
+        # Dernier rempart du plancher de RAM d'un bureau : toute interface
+        # passe par ici, et deploy_qemu.py prend « --memory » tel quel.
+        eram = desktop_ram(eram, desktop, self.QEMU_DESKTOP_MIN_RAM_MB)
         parts = [] if dry_run else ["sudo"]
         parts += [
             self._qemu_script_path(),
@@ -2037,14 +2061,55 @@ class QemuDeployMixin:
                 )
                 print(f"  ⚠ {warn}")
 
-    def _qemu_ask_desktop(self):
+    def _qemu_raise_desktop_ram_cli(self, vms):
+        """Relève au plancher d'un bureau la RAM des VM graphiques, le dit en
+        une ligne, puis refait le contrôle de la RAM libre de l'hôte sur le
+        nouveau total : celui du plan, affiché plus haut, ne la comptait pas.
+        Rend les VM relevées."""
+        from script.todo.deploy_form_lib import raise_desktop_ram
+
+        plancher = self.QEMU_DESKTOP_MIN_RAM_MB
+        relevees = raise_desktop_ram(vms, plancher)
+        if not relevees:
+            return relevees
+        noms = ", ".join(vm["name"] for vm in relevees)
+        print(
+            f"  ⚠ {t('RAM raised to the desktop minimum')} ({plancher} Mo):"
+            f" {noms}"
+        )
+        total = sum(vm["ram"] for vm in vms)
+        print(f"  {t('Total RAM (all running):')} {total} Mo")
+        libre = self._host_free_ram_mb()
+        if libre and total > libre:
+            warn = t(
+                "Total RAM exceeds host free RAM: not all VMs will run"
+                " at once."
+            )
+            print(f"  ⚠ {warn}")
+        return relevees
+
+    def _qemu_ask_desktop(self, distros=None):
         """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
 
         Serveur par défaut : c'est ce que sert une image cloud, et le bureau
-        ajoute une à deux heures d'installation sur une architecture émulée."""
+        ajoute une à deux heures d'installation sur une architecture émulée.
+
+        `distros` : systèmes du parc. La question est posée une fois pour
+        tout le parc, elle offre donc les saveurs qu'au moins l'un d'eux
+        installe ; sans aucune, elle n'est pas posée. None : toutes."""
+        from script.todo.deploy_form_lib import desktops_for_fleet
+
+        flavours = list(self._QEMU_DESKTOP)
+        if distros is not None:
+            flavours = desktops_for_fleet(
+                distros,
+                flavours,
+                {d: self._qemu_desktops_for(d) for d in distros},
+            )
+            if not flavours:
+                return ""
         print(f"\n{t('VM type:')}")
         print(f"  [1] {t('Server (no graphical interface)')} *")
-        flavours = list(self._QEMU_DESKTOP)
         for i, key in enumerate(flavours, 2):
             label = self._QEMU_DESKTOP[key]["label"]
             print(f"  [{i}] {t('Graphical (server + desktop):')} {label}")
@@ -2246,7 +2311,9 @@ class QemuDeployMixin:
 
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
-        desktop = self._qemu_ask_desktop()
+        desktop = self._qemu_ask_desktop(
+            sorted({vm.get("distro") or "" for vm in vms})
+        )
         # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
         # VM avant de décider du magasin, qui ne concerne que les graphiques.
         # Le nom suit le type, exactement comme dans le formulaire — c'est la
@@ -2254,9 +2321,23 @@ class QemuDeployMixin:
         from script.todo.qemu_deploy_form import vm_name
 
         suffixes = self._qemu_desktop_suffixes()
+        restent_serveurs = []
         for _vm in vms:
             _vm.setdefault("desktop", desktop)
+            # Une saveur que le système de la VM n'installe pas ferait
+            # échouer son installation : la VM reste un serveur, et on le dit.
+            offertes = self._qemu_desktops_for(_vm.get("distro") or "")
+            if _vm.get("desktop") and _vm["desktop"] not in offertes:
+                _vm["desktop"] = ""
+                restent_serveurs.append(_vm["name"])
             _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
+        if restent_serveurs:
+            note = t("No such desktop for their system, kept as servers:")
+            print(f"  ⚠ {note} {', '.join(restent_serveurs)}")
+        # Les ressources ont été choisies AVANT le type : une VM graphique
+        # monte ici au plancher de RAM d'un bureau, et le récapitulatif comme
+        # le contrôle de la RAM libre lisent la valeur relevée.
+        self._qemu_raise_desktop_ram_cli(vms)
         app_store = self._qemu_ask_app_store(vms)
         vm_tools = self._qemu_ask_vm_tools(vms)
         python_provider = self._qemu_ask_python_provider(
@@ -2998,23 +3079,53 @@ class QemuDeployMixin:
         reduite["existing"] = []
         return reduite
 
+    def _qemu_desktop_map(self, spec):
+        """{nom de VM: saveur de bureau, ou "" pour un serveur}, VM à créer
+        et VM existantes de la spec.
+
+        Le type de VM est choisi machine par machine dans la TUI ; la CLI
+        n'en pose qu'un pour tout le parc. Les deux se ramènent à cette
+        carte. Une VM à créer qui porte la clé « desktop », même vide, garde
+        sa valeur ; sans la clé, elle reçoit le bureau du parc.
+
+        Une VM existante n'a pas de rangée : elle reçoit le bureau du parc
+        si son système sait l'installer (_qemu_desktops_for), et rien sinon
+        — une NixOS n'en reçoit aucun. Sa distribution se déduit de son nom
+        (_qemu_vm_meta) ; inconnue, le bureau du parc reste."""
+        desktop_default = spec.get("desktop") or ""
+        desktop_map = {
+            vm["name"]: (vm.get("desktop", desktop_default) or "")
+            for vm in spec["vms"]
+        }
+        existantes = [
+            n for n in spec.get("existing") or [] if n not in desktop_map
+        ]
+        if not existantes:
+            return desktop_map
+        if not desktop_default:
+            desktop_map.update(dict.fromkeys(existantes, ""))
+            return desktop_map
+        try:
+            mod = self._qemu_import_module()
+        except Exception:
+            mod = None
+        for name in existantes:
+            distro = (self._qemu_vm_meta(name, mod)[0] if mod else None) or ""
+            offertes = self._qemu_desktops_for(distro)
+            desktop_map[name] = (
+                desktop_default if desktop_default in offertes else ""
+            )
+        return desktop_map
+
     def _qemu_deploie_spec_corps(self, spec, coupee, session):
         """Corps de _qemu_deploie_spec ; voir sa documentation."""
         pending = spec["vms"]
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
         install_branch = install["branch"] if install else None
-        # Le type de VM est choisi machine par machine dans la TUI ; la CLI n'en
-        # pose qu'un pour tout le parc. On ramene les deux a la meme carte, et
         # `desktop` reste la reponse a « faut-il installer un bureau quelque
         # part ? », qui declenche la phase d'installation.
-        desktop_default = spec.get("desktop") or ""
-        desktop_map = {
-            vm["name"]: (vm.get("desktop", desktop_default) or "")
-            for vm in pending
-        }
-        for _name in deployed:
-            desktop_map.setdefault(_name, desktop_default)
+        desktop_map = self._qemu_desktop_map(spec)
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"

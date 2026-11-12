@@ -273,6 +273,41 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                     TODO._qemu_tools_for(tous, "amd64", "gnome", distro)
                 )
 
+    def test_an_existing_nixos_vm_gets_no_fleet_desktop(self):
+        """Une VM existante n'a pas de rangée : le bureau du parc ne
+        l'atteint que si son système sait l'installer. Sa distribution se
+        déduit de son nom ; inconnue, le bureau reste."""
+        todo = TODO.__new__(TODO)
+        todo._qemu_import_module = lambda: object()
+        distros = {"vm-nix": "nixos", "vm-deb": "debian"}
+        todo._qemu_vm_meta = lambda nom, mod: (
+            distros.get(nom),
+            None,
+            "amd64",
+        )
+        spec = {
+            "desktop": "gnome",
+            "vms": [{"name": "vm-neuve"}, {"name": "vm-srv", "desktop": ""}],
+            "existing": ["vm-nix", "vm-deb", "vm-autre"],
+        }
+        self.assertEqual(
+            {
+                "vm-neuve": "gnome",
+                "vm-srv": "",
+                "vm-nix": "",
+                "vm-deb": "gnome",
+                "vm-autre": "gnome",
+            },
+            todo._qemu_desktop_map(spec),
+        )
+
+    def test_without_fleet_desktop_no_vm_is_read(self):
+        """Sans bureau à offrir, aucune VM existante n'est interrogée."""
+        todo = TODO.__new__(TODO)
+        todo._qemu_vm_meta = mock.Mock(side_effect=AssertionError)
+        spec = {"vms": [], "existing": ["vm-nix"]}
+        self.assertEqual({"vm-nix": ""}, todo._qemu_desktop_map(spec))
+
 
 class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
     """L'image tierce se vérifie sur les DEUX chemins de déploiement.

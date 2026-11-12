@@ -1412,7 +1412,7 @@ class ProxmoxMenuMixin:
         # plan les additionne déjà à l'écran ; sans eux ici, la VM naissait
         # avec le disque d'un serveur nu et GNOME le remplissait.
         marge += extras_disk_gb(
-            dict(vm, desktop=vm.get("desktop") or spec.get("desktop") or ""),
+            dict(vm, desktop=vm.get("desktop", spec.get("desktop")) or ""),
             spec.get("vm_tools") or (),
             extras_tables(self._qemu_guest_context()),
         )
@@ -2460,7 +2460,7 @@ class ProxmoxMenuMixin:
             branche = branches_vm
         bureau = spec.get("desktop") or ""
         bureaux = {
-            vm["name"]: (vm.get("desktop") or bureau) for vm in joignables
+            vm["name"]: vm.get("desktop", bureau) or "" for vm in joignables
         }
         if self._qemu_per_vm(bureaux, bureau):
             bureau = bureaux

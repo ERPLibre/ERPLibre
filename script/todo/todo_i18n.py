@@ -7093,6 +7093,14 @@ TRANSLATIONS = {
         "fr": "Identifiants RDP :",
         "en": "RDP credentials:",
     },
+    "RAM raised to the desktop minimum": {
+        "fr": "RAM portée au minimum d'un bureau",
+        "en": "RAM raised to the desktop minimum",
+    },
+    "No such desktop for their system, kept as servers:": {
+        "fr": "Bureau absent pour leur système, gardées en serveur :",
+        "en": "No such desktop for their system, kept as servers:",
+    },
     "graphical session started": {
         "fr": "session graphique démarrée",
         "en": "graphical session started",
