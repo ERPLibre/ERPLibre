@@ -2245,6 +2245,10 @@ TRANSLATIONS = {
         "fr": "➖ Retirer un dépôt d'un manifeste",
         "en": "➖ Remove a repository from a manifest",
     },
+    "🔄 Synchronise one repository": {
+        "fr": "🔄 Synchroniser un seul dépôt",
+        "en": "🔄 Synchronise one repository",
+    },
     "Remove from the manifest": {
         "fr": "Retirer du manifeste",
         "en": "Remove from the manifest",

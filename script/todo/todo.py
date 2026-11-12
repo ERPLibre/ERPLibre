@@ -3870,6 +3870,10 @@ class TODO(
                 "method": "_git_retirer_depot",
             },
             {
+                "prompt_description": t("🔄 Synchronise one repository"),
+                "method": "_git_synchroniser_depot",
+            },
+            {
                 "prompt_description": t(
                     "📋 List the pull requests of an organisation"
                 ),

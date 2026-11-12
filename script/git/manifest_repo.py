@@ -16,6 +16,7 @@ sans menu :
     manifest_repo.py branch CHEMIN NOM [--from REF] [--push REMOTE]
     manifest_repo.py upstream CHEMIN [--version 18.0]
     manifest_repo.py remove CHEMIN [--version 18.0] [--apply]
+    manifest_repo.py sync CHEMIN [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -737,6 +738,11 @@ def main(argv=None):
         action="store_true",
         help="regenerate the local manifest; repo then deletes a clean clone",
     )
+    p = sous.add_parser(
+        "sync", help="regenerate the local manifest, sync one repo"
+    )
+    p.add_argument("chemin")
+    p.add_argument("--version")
     p = sous.add_parser("pulls", help="list the open pull requests")
     p.add_argument("--organisation", required=True)
     p.add_argument("--version")
@@ -795,6 +801,8 @@ def main(argv=None):
             return 0
         remotes, projet = trouver_projet(version, args.chemin)
         chemin = os.path.join(racine, projet["path"])
+        if args.commande == "sync":
+            return executer(commandes_synchro(racine, projet["path"]), racine)
         if args.commande == "pr":
             cibles = cibles_pull_request(projet, remotes)
             if args.target not in cibles:

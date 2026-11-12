@@ -409,6 +409,17 @@ class GitForkMenuMixin:
         print(f"  {t('Commit manifest/.')}")
         return 0
 
+    def _git_synchroniser_depot(self):
+        """Régénère le manifeste local, puis synchronise le seul clone
+        choisi. Rend le code de sortie."""
+        choix = self._git_choisir_projet_version()
+        if choix is None:
+            return 0
+        _version, projet = choix
+        return self._git_lancer(
+            manifest_repo.commandes_synchro(RACINE, projet["path"])
+        )
+
     def _git_lancer(self, commandes):
         """Montre puis lance `commandes` à la racine, sortie au terminal."""
         import shlex
