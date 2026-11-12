@@ -205,11 +205,19 @@ class TestLesChampsDesTraductions(unittest.TestCase):
                 if f is not None
             }
 
+        def reference(cle, entree):
+            """Les champs de la clé ; une clé identifiant, sans espace ni
+            champ, n'en porte aucun : les deux langues gardent alors ceux
+            du texte anglais, que l'appelant remplit."""
+            if " " in cle or champs(cle):
+                return champs(cle)
+            return champs(entree["en"])
+
         ecarts = [
             (cle, langue)
             for cle, entree in todo_i18n.TRANSLATIONS.items()
             for langue in ("fr", "en")
-            if champs(entree[langue]) != champs(cle)
+            if champs(entree[langue]) != reference(cle, entree)
         ]
         self.assertEqual([], ecarts)
 
