@@ -1051,6 +1051,50 @@ class TestRapport(unittest.TestCase):
         self.assertTrue(lignes[0].startswith(f"{t('Healthcheck')} — "))
         self.assertNotIn("🩺 🩺", lignes[0])
 
+    def test_failures_then_warnings_are_repeated_above_the_summary(self):
+        def verifier_conflits(ctx):
+            ctx.noter("git status")
+            return h.Resultat("C", h.ALERTE, "conflit", ["fichier.py"])
+
+        def verifier_disque(_ctx):
+            return h.Resultat("D", h.OK, "assez")
+
+        def verifier_odoo(_ctx):
+            return h.Resultat("O", h.ECHEC, "plantage", ["trace"])
+
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [
+                ("code", verifier_conflits),
+                ("environnement", verifier_disque),
+                ("environnement", verifier_odoo),
+            ],
+            sortie=lignes.append,
+        )
+        texte = "\n".join(lignes)
+        attention = texte.index(f"── ⚠️  {t('Attention')} ──")
+        resume = texte.index(f"── {t('Summary')} ──")
+        self.assertLess(attention, resume)
+        bloc = texte[attention:resume]
+        # Le détail est celui du rapport, commandes comprises, l'échec en
+        # premier ; une vérification qui va bien n'y figure pas.
+        self.assertLess(bloc.index("── O ──"), bloc.index("── C ──"))
+        self.assertIn("   $ git status", bloc)
+        self.assertIn("      fichier.py", bloc)
+        self.assertIn("      trace", bloc)
+        self.assertNotIn("── D ──", bloc)
+        self.assertEqual(texte.count("      fichier.py"), 2)
+
+    def test_no_attention_block_when_everything_is_fine(self):
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [("environnement", lambda _ctx: h.Resultat("D", h.OK, "assez"))],
+            sortie=lignes.append,
+        )
+        self.assertNotIn(t("Attention"), "\n".join(lignes))
+
 
 class TestParallele(unittest.TestCase):
     """« Tout vérifier » lance les vérifications en parallèle et affiche

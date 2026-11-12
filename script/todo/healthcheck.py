@@ -1890,6 +1890,24 @@ def rendre(resultat):
     return "\n".join(lignes)
 
 
+def rendre_attention(resultats):
+    """Le bloc « Attention », juste avant le sommaire : le bloc complet de
+    chaque vérification en échec, puis de chaque avertissement, dans
+    l'ordre du rapport. Le détail est répété exprès : il se lit au-dessus
+    du sommaire sans remonter un long rapport. "" quand tout va."""
+    retenus = [
+        r
+        for statut in (ECHEC, ALERTE)
+        for r in resultats
+        if r.statut == statut
+    ]
+    if not retenus:
+        return ""
+    lignes = [f"── ⚠️  {t('Attention')} ──"]
+    lignes += [rendre(r) for r in retenus]
+    return "\n".join(lignes)
+
+
 def sommaire(resultats, duree):
     """Le sommaire : une ligne par vérification, puis le décompte."""
     largeur = max((len(r.titre) for r in resultats), default=0)
@@ -1948,6 +1966,10 @@ def lancer(ctx, verifications=None, sortie=print):
             resultat = futur.result()
             resultats.append(resultat)
             sortie(rendre(resultat))
+    attention = rendre_attention(resultats)
+    if attention:
+        sortie("")
+        sortie(attention)
     sortie("")
     sortie(sommaire(resultats, time.monotonic() - debut))
     resolutions = [r for x in resultats for r in x.resolutions]

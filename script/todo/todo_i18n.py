@@ -2641,6 +2641,10 @@ TRANSLATIONS = {
         "fr": "Toutes les commandes",
         "en": "All commands",
     },
+    "Attention": {
+        "fr": "Attention",
+        "en": "Attention",
+    },
     "obsolete, not in the catalogue": {
         "fr": "obsolète, absent du catalogue",
         "en": "obsolete, not in the catalogue",
