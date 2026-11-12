@@ -1253,6 +1253,7 @@ class TODO(
         "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
         "_claude_reglages_depot": "Repository settings",
+        "_healthcheck_une_verification": "One check",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
@@ -1431,10 +1432,12 @@ class TODO(
         ERPLibre seul — et chaque entrée de portée passe à la suivante. Elles
         valent pour la durée du menu.
 
-        Les résolutions qu'une vérification propose deviennent des entrées
-        de la section « Résolution », sous les vérifications seules. Chaque
-        vérification garde les siennes jusqu'à sa prochaine passe ; une
-        résolution lancée repasse sa vérification.
+        « Une seule vérification » ouvre la liste des vérifications ; celle
+        qu'on choisit tourne seule, puis le menu revient. Les résolutions
+        qu'une vérification propose deviennent des entrées de la section
+        « Résolution », juste après. Chaque vérification garde les siennes
+        jusqu'à sa prochaine passe ; une résolution lancée repasse sa
+        vérification.
         """
         portee_fichiers = 0
         portee_depots = 0
@@ -1457,6 +1460,7 @@ class TODO(
             )
             choices = [
                 {"prompt_description": t("Run every check")},
+                {"prompt_description": f"🔎 {t('One check')}"},
                 {"section": t("Scope")},
                 {
                     "prompt_description": (
@@ -1470,14 +1474,9 @@ class TODO(
                         f"{t(healthcheck.LIBELLES_DEPOTS[ctx.portee_depots])}"
                     )
                 },
-                {"section": t("One check")},
             ]
             seules = list(healthcheck.VERIFICATIONS)
-            for _section, verification in seules:
-                choices.append(
-                    {"prompt_description": healthcheck.titre(verification)}
-                )
-            premiere_resolution = 4 + len(seules)
+            premiere_resolution = 5
             # Dans l'ordre des vérifications qui les ont proposées.
             offertes = [
                 (verification, r)
@@ -1499,15 +1498,17 @@ class TODO(
             elif numero == 1:
                 retenir(healthcheck.lancer(ctx))
             elif numero == 2:
+                choisie = self._healthcheck_une_verification(seules)
+                if choisie:
+                    retenir(healthcheck.lancer(ctx, [choisie]))
+            elif numero == 3:
                 portee_fichiers = (portee_fichiers + 1) % len(
                     healthcheck.PORTEES_FICHIERS
                 )
-            elif numero == 3:
+            elif numero == 4:
                 portee_depots = (portee_depots + 1) % len(
                     healthcheck.PORTEES_DEPOTS
                 )
-            elif 4 <= numero < 4 + len(seules):
-                retenir(healthcheck.lancer(ctx, [seules[numero - 4]]))
             elif (
                 premiere_resolution
                 <= numero
@@ -1539,6 +1540,27 @@ class TODO(
                 )
             else:
                 print(t("Command not found !"))
+
+    def _healthcheck_une_verification(self, verifications):
+        """Le sous-menu des vérifications du bilan. Rend le couple (section,
+        vérification) choisi, ou None pour revenir sans rien lancer."""
+        print(f"🔎 {t('One check')}")
+        choices = [
+            {"prompt_description": healthcheck.titre(verification)}
+            for _section, verification in verifications
+        ]
+        while True:
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            try:
+                numero = int(status)
+            except ValueError:
+                numero = -1
+            if numero == 0:
+                return None
+            if 1 <= numero <= len(verifications):
+                return verifications[numero - 1]
+            print(t("Command not found !"))
 
     def prompt_configuration(self):
         """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).

@@ -1389,8 +1389,8 @@ class TestMenu(unittest.TestCase):
                 )
             ]
 
-        # Juste après les vérifications seules.
-        entree = str(4 + len(h.VERIFICATIONS))
+        # Juste après l'entrée « Une seule vérification ».
+        entree = "5"
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
@@ -1406,6 +1406,26 @@ class TestMenu(unittest.TestCase):
         # La vérification repasse ; sans résolution, l'entrée disparaît.
         self.assertEqual(appels, [None, [manifeste]])
 
+    def test_one_check_lists_every_check_in_its_own_menu(self):
+        obj = self.TODO.__new__(self.TODO)
+        menus = []
+        with (
+            mock.patch.object(
+                self.TODO,
+                "fill_help_info",
+                side_effect=lambda choix: menus.append(choix) or "",
+            ),
+            mock.patch("script.todo.todo.click.prompt", side_effect=["0"]),
+            mock.patch("builtins.print"),
+        ):
+            self.assertIsNone(
+                obj._healthcheck_une_verification(list(h.VERIFICATIONS))
+            )
+        self.assertEqual(
+            [c["prompt_description"] for c in menus[0]],
+            [h.titre(v) for _s, v in h.VERIFICATIONS],
+        )
+
     def test_scopes_cycle_and_one_check_runs_alone(self):
         obj = self.TODO.__new__(self.TODO)
         appels = []
@@ -1413,7 +1433,22 @@ class TestMenu(unittest.TestCase):
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
                 "script.todo.todo.click.prompt",
-                side_effect=["2", "3", "1", "4", "2", "2", "1", "0"],
+                # 3 et 4 font tourner les portées ; 2 ouvre la liste des
+                # vérifications, 1 y choisit la première, 0 revient sans
+                # rien lancer.
+                side_effect=[
+                    "3",
+                    "4",
+                    "1",
+                    "2",
+                    "1",
+                    "2",
+                    "0",
+                    "3",
+                    "3",
+                    "1",
+                    "0",
+                ],
             ),
             mock.patch.object(
                 h,
