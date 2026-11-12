@@ -50,11 +50,19 @@ def depot_github(url):
     return (trouve.group(1), trouve.group(2)) if trouve else None
 
 
-def jeton(racine=".", environ=None):
-    """EL_GITHUB_TOKEN de l'environnement, sinon d'env_var.sh, ou ""."""
+def jeton(racine=".", environ=None, coffre=None):
+    """Le jeton GitHub, ou "" : EL_GITHUB_TOKEN de l'environnement, sinon ce
+    que rend `coffre()` (le coffre KeePass d'ERPLibre, lu par le menu),
+    sinon EL_GITHUB_TOKEN d'env_var.sh. `coffre` n'est appelé que si
+    l'environnement n'a rien : l'ouvrir peut demander le mot de passe
+    maître."""
     environ = os.environ if environ is None else environ
     if environ.get("EL_GITHUB_TOKEN"):
         return environ["EL_GITHUB_TOKEN"]
+    if coffre is not None:
+        valeur = coffre()
+        if valeur:
+            return valeur
     chemin = os.path.join(racine, "env_var.sh")
     try:
         with open(chemin, encoding="utf-8") as fh:
@@ -93,7 +101,8 @@ TEXTES_JETON = {
     ),
     "jeton_fin": (
         "Fine-grained token: GitHub does not announce its rights, a missing"
-        " one shows only when the action is refused."
+        " one shows only when the action is refused; the token assistant is"
+        " then offered."
     ),
     "adhesion_illisible": (
         "Membership of the organisation unreadable: the token lacks the"

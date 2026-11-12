@@ -167,21 +167,21 @@ class TestLeMenu(unittest.TestCase):
 
     def test_a_problem_asks_before_acting_a_warning_does_not(self):
         client, questions, texte = self.client(
-            Client(adhesion=("absent", None)), ["n"], "Org"
+            Client(adhesion=("absent", None)), ["n", "n"], "Org"
         )
         self.assertIsNone(client)
-        self.assertEqual(questions, 1)
+        self.assertEqual(questions, 2)
         self.assertIn("❌ Le compte du jeton n'est pas membre", texte)
         faux = Client(adhesion=("absent", None))
-        self.assertIs(self.client(faux, ["o"], "Org")[0], faux)
+        self.assertIs(self.client(faux, ["n", "o"], "Org")[0], faux)
         faux = Client(portees=None)
         client, questions, texte = self.client(faux)
         self.assertEqual((client, questions), (faux, 0))
         self.assertIn("⚠ Jeton à granularité fine", texte)
 
-    def test_a_refused_token_stops_without_asking(self):
-        client, questions, _texte = self.client(Client(refuse=True))
-        self.assertEqual((client, questions), (None, 0))
+    def test_a_refused_token_stops_unless_another_is_given(self):
+        client, questions, _texte = self.client(Client(refuse=True), ["n"])
+        self.assertEqual((client, questions), (None, 1))
 
     def test_the_check_entry_shows_account_and_scopes(self):
         with (
@@ -200,6 +200,141 @@ class TestLeMenu(unittest.TestCase):
         self.assertIn(
             "✓ Le jeton permet toutes les actions de ce menu.", texte
         )
+
+
+class Coffre:
+    """Un faux coffre pykeepass : groupes, entrées par titre, save."""
+
+    class Groupe:
+        def __init__(self, name):
+            self.name = name
+            self.subgroups = []
+            self.entries = []
+
+    def __init__(self):
+        self.root_group = self.Groupe("Root")
+        self.sauvegardes = 0
+
+    def add_group(self, parent, name):
+        groupe = self.Groupe(name)
+        parent.subgroups.append(groupe)
+        return groupe
+
+    def add_entry(self, groupe, titre, utilisateur, mot_de_passe):
+        entree = mock.Mock(title=titre, password=mot_de_passe)
+        groupe.entries.append(entree)
+        return entree
+
+    def find_entries_by_title(self, titre, first=False):
+        def tout(g):
+            yield from g.entries
+            for sg in g.subgroups:
+                yield from tout(sg)
+
+        return next(
+            (e for e in tout(self.root_group) if e.title == titre), None
+        )
+
+    def save(self):
+        self.sauvegardes += 1
+
+
+class TestLeCoffre(unittest.TestCase):
+    def setUp(self):
+        ancienne = todo_i18n._current_lang
+        todo_i18n._current_lang = "fr"
+        self.addCleanup(setattr, todo_i18n, "_current_lang", ancienne)
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+        self.coffre = Coffre()
+        self.config = {"kdbx": {"path": "/x.kdbx"}}
+        self.todo.config_file = mock.Mock()
+        self.todo.config_file.get_config_value.side_effect = self.valeur
+        self.todo.kdbx_manager = mock.Mock()
+        self.todo.kdbx_manager.get_kdbx.return_value = self.coffre
+
+    def valeur(self, cles):
+        noeud = self.config
+        for cle in cles:
+            noeud = (noeud or {}).get(cle) if isinstance(noeud, dict) else None
+        return noeud
+
+    def test_the_token_is_read_env_first_then_vault_then_env_var(self):
+        self.assertTrue(self.todo._git_ranger_jeton("du-coffre"))
+        self.assertEqual(
+            self.coffre.root_group.subgroups[0].name, gm.GROUPE_COFFRE
+        )
+        appels = []
+
+        def coffre():
+            appels.append(1)
+            return "du-coffre"
+
+        self.assertEqual(
+            gf.jeton("/nulle/part", {"EL_GITHUB_TOKEN": "env"}, coffre), "env"
+        )
+        self.assertEqual(appels, [])
+        with mock.patch.dict(gm.os.environ, {}, clear=True):
+            self.assertEqual(self.todo._git_jeton(), "du-coffre")
+        self.assertEqual(gf.jeton("/nulle/part", {}, lambda: ""), "")
+
+    def test_storing_again_replaces_and_the_title_is_configurable(self):
+        self.todo._git_ranger_jeton("a")
+        self.todo._git_ranger_jeton("b")
+        self.assertEqual(self.todo._git_jeton_du_coffre(), "b")
+        self.assertEqual(len(self.coffre.root_group.subgroups[0].entries), 1)
+        self.config["kdbx_config"] = {"github": {"kdbx_key": "Autre titre"}}
+        self.assertEqual(self.todo._git_jeton_du_coffre(), "")
+        self.assertEqual(self.coffre.sauvegardes, 2)
+
+    def test_no_configured_vault_is_never_opened(self):
+        self.config = {}
+        self.assertEqual(self.todo._git_jeton_du_coffre(), "")
+        self.assertFalse(self.todo._git_ranger_jeton("x"))
+        self.todo.kdbx_manager.get_kdbx.assert_not_called()
+
+    def assistant(self, colle, reponses, faux=None):
+        with (
+            mock.patch("getpass.getpass", return_value=colle),
+            mock.patch.object(
+                gm.github_fork, "ClientGitHub", return_value=faux or Client()
+            ),
+            mock.patch("builtins.input", side_effect=reponses),
+            mock.patch("builtins.print") as sortie,
+        ):
+            jeton = self.todo._git_assistant_jeton()
+        return jeton, "\n".join(str(c.args[0]) for c in sortie.call_args_list)
+
+    def test_the_assistant_shows_both_kinds_checks_and_stores(self):
+        jeton, texte = self.assistant("neuf", [""])
+        self.assertEqual(jeton, "neuf")
+        self.assertIn(gm.URL_JETON_CLASSIQUE, texte)
+        self.assertIn(gm.URL_JETON_FIN, texte)
+        self.assertIn("Administration", texte)
+        self.assertEqual(self.todo._git_jeton_du_coffre(), "neuf")
+        self.assertEqual(self.todo._git_jeton(), "neuf")
+
+    def test_a_refused_or_empty_token_is_neither_kept_nor_stored(self):
+        self.assertEqual(
+            self.assistant("", []), (None, self.assistant("", [])[1])
+        )
+        jeton, _texte = self.assistant("mauvais", [], Client(refuse=True))
+        self.assertIsNone(jeton)
+        self.assertEqual(self.coffre.root_group.subgroups, [])
+        self.assertNotIn("_git_jeton_session", self.todo.__dict__)
+
+    def test_a_403_offers_the_assistant_a_404_does_not(self):
+        with (
+            mock.patch.object(
+                type(self.todo), "_git_assistant_jeton"
+            ) as assistant,
+            mock.patch("builtins.input", return_value="o"),
+            mock.patch("builtins.print"),
+        ):
+            self.todo._git_erreur_github(gf.ErreurGitHub("PATCH : 403", 403))
+            self.todo._git_erreur_github(gf.ErreurGitHub("GET : 404", 404))
+        assistant.assert_called_once_with()
 
 
 class TestLaLigneDeCommande(unittest.TestCase):

@@ -453,7 +453,7 @@ class TestLeParcours(Manifestes):
 
     def test_without_token_nothing_is_called(self):
         code, _, fabrique = self.lancer(
-            ["ai", "1", "MonOrg", "", ""], jeton=""
+            ["ai", "1", "MonOrg", "", "", "n"], jeton=""
         )
         self.assertEqual(code, 2)
         fabrique.assert_not_called()
