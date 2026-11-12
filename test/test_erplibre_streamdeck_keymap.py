@@ -98,6 +98,22 @@ class LoadTest(KeymapCase):
             self.assertEqual(1, len(lines), (content[:40], lines))
             self.assertIn("keymap", lines[0])
 
+    def test_a_valid_file_over_max_bytes_is_refused_for_its_size(self):
+        """A file that would load but for its size: refused, its line
+        names the size; one byte less loads."""
+        data = layout_file([{"key": 0, "action": "tiles"}], pad="")
+        room = keymap.MAX_BYTES - len(json.dumps(data))
+        for extra, loads in ((room, True), (room + 1, False)):
+            self.journal.seek(0)
+            self.journal.truncate()
+            data["pad"] = "x" * extra
+            self.write(data)
+            self.assertEqual(keymap.MAX_BYTES + (not loads),
+                             self.path.stat().st_size)
+            self.assertEqual(data if loads else {}, keymap.load(self.path))
+            if not loads:
+                self.assertIn("larger than", self.journal.getvalue())
+
     def test_sixteen_models_load(self):
         data = {
             "format": 1,
@@ -153,6 +169,8 @@ class LayoutForTest(KeymapCase):
         )
 
     def test_hostile_entries_are_skipped_one_problem_each(self):
+        """Each hostile entry has its own key and its own loaded plugin,
+        so the one field it breaks is the only reason to skip it."""
         bad = [
             "not an object",
             {"action": "tiles"},
@@ -162,21 +180,48 @@ class LayoutForTest(KeymapCase):
             {"key": 1.0, "action": "tiles"},
             {"key": "1", "action": "tiles"},
             {"key": 1},
-            {"key": 1, "action": "run:rm -rf"},
-            {"key": 1, "action": "plugin:Bad-Id"},
-            {"key": 1, "action": "plugin:" + "a" * 65},
-            {"key": 1, "action": "plugin:timers", "icon": "no_such"},
-            {"key": 1, "action": "plugin:timers", "icon": None},
-            {"key": 1, "action": "plugin:timers", "label": "a\nb"},
-            {"key": 1, "action": "plugin:timers", "label": "\x1b[31m"},
-            {"key": 1, "action": "plugin:timers", "label": "x" * 17},
-            {"key": 1, "action": "plugin:timers", "label": 5},
+            {"key": 2, "action": "run:rm -rf"},
+            {"key": 3, "action": "plugin:Bad-Id"},
+            {"key": 4, "action": "plugin:" + "a" * 65},
+            {"key": 5, "action": "plugin:p5", "icon": "no_such"},
+            {"key": 6, "action": "plugin:p6", "icon": None},
+            {"key": 7, "action": "plugin:p7", "icon": 5},
+            {"key": 8, "action": "plugin:p8", "label": "a\nb"},
+            {"key": 9, "action": "plugin:p9", "label": "\x1b[31m"},
+            {"key": 10, "action": "plugin:p10", "label": "\x85"},
+            {"key": 11, "action": "plugin:p11", "label": "x" * 17},
+            {"key": 12, "action": "plugin:p12", "label": 5},
+            {"key": 13, "action": "empty", "icon": "no_such"},
+            {"key": 14, "action": "tiles", "label": "\x07"},
         ]
         good = {"key": 0, "action": "plugin:timers"}
-        entries, problems = self.layout([good] + bad, geo=Geometry(8, 4, 32))
+        plugins = PLUGINS | {f"p{i}" for i in range(32)} | {"a" * 65}
+        entries, problems = self.layout(
+            [good] + bad, plugins=plugins, geo=Geometry(8, 4, 32)
+        )
         self.assertEqual([keymap.Entry(0, "plugin:timers")], entries)
         skipped = [p for p in problems if "skipped" in p]
         self.assertEqual(len(bad), len(skipped), problems)
+
+    def test_the_icon_and_label_limits_admit_what_they_name(self):
+        """The other side of the hostile entries: a catalog icon, a
+        label of LABEL_MAX code points, and an empty label pass."""
+        entries, problems = self.layout(
+            [
+                {"key": 0, "action": "plugin:timers", "icon": "timer"},
+                {"key": 1, "action": "plugin:tiling", "label": "x" * 16},
+                {"key": 2, "action": "plugin:sound", "label": ""},
+            ]
+        )
+        self.assertEqual([], [p for p in problems if "skipped" in p])
+        self.assertEqual(
+            [
+                keymap.Entry(0, "plugin:timers", "timer"),
+                keymap.Entry(1, "plugin:tiling", None, "x" * 16),
+                keymap.Entry(2, "plugin:sound", None, ""),
+            ],
+            entries,
+        )
 
     def test_a_duplicate_key_or_plugin_is_skipped(self):
         entries, problems = self.layout(

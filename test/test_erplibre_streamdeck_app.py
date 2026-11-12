@@ -216,6 +216,58 @@ class KeymapBuildTest(AppCase):
                 len(lines), keymap.PROBLEM_LINES + 2, content[:40]
             )
 
+    def test_control_character_labels_are_skipped_on_the_deck(self):
+        """A label with a control character skips its entry: beta stays
+        without a key, the `empty` keys go back to the dashboard."""
+        self.keymap(self.layouts(
+            [{"key": 0, "action": "plugin:alpha"},
+             {"key": 1, "action": "plugin:beta", "label": "\x07"}]
+            + [{"key": k, "action": "empty", "label": "\x1b[2J"}
+               for k in range(2, 8)]
+        ))
+        k = self.build()
+        self.assertEqual({"alpha": 0, "beta": -1}, k.home.home_keys)
+        self.assertEqual([1, 2, 3, 4, 5, 6, 7], k.home.pool)
+        self.assertEqual(7, self.journal.getvalue().count("skipped"))
+
+    def test_the_journal_of_a_build_is_capped(self):
+        """Through build(): more problems than PROBLEM_LINES give
+        PROBLEM_LINES lines, one counting the rest, and the layout
+        line; the plugin without a home button adds no problem."""
+        self.deck = S.FakeDeck(8, 4)  # product 0x006C
+        self.put("quiet", "")
+        self.addCleanup(
+            sys.modules.pop, "erplibre_streamdeck_user.quiet", None
+        )
+        bad = [{"key": k, "action": "tiles", "icon": "no_such"}
+               for k in range(1, 16)]
+        self.keymap(self.layouts(
+            [{"key": 0, "action": "plugin:alpha"}] + bad, model="006c"
+        ))
+        k = self.build()
+        self.assertEqual(["alpha", "beta", "quiet"],
+                         sorted(lp.id for lp in k.plugins))
+        lines = [ln for ln in self.journal.getvalue().splitlines()
+                 if "keymap" in ln]
+        self.assertEqual(keymap.PROBLEM_LINES + 2, len(lines), lines)
+        self.assertIn(f"{len(bad) + 1 - keymap.PROBLEM_LINES} more",
+                      lines[-2])
+        self.assertIn("layout 006c, 1 keys named", lines[-1])
+
+    def test_a_plugin_without_a_home_button_is_not_said_to_lack_a_key(self):
+        self.put("quiet", "")
+        self.addCleanup(
+            sys.modules.pop, "erplibre_streamdeck_user.quiet", None
+        )
+        self.keymap(self.layouts([
+            {"key": 0, "action": "plugin:alpha"},
+            {"key": 1, "action": "plugin:beta"},
+        ]))
+        self.build()
+        journal = self.journal.getvalue()
+        self.assertIn("keymap: layout 0084, 2 keys named", journal)
+        self.assertNotIn("has no key", journal)
+
     def test_a_rebuilt_kernel_reads_the_file_again(self):
         self.build()
         self.keymap(self.layouts([{"key": 3, "action": "plugin:alpha"}]))
