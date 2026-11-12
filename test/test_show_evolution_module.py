@@ -117,6 +117,34 @@ class TestLesVersionsComptees(unittest.TestCase):
         )
 
 
+class TestLaLectureDesManifestes(unittest.TestCase):
+    """Un manifeste se lit comme un littéral, sans rien exécuter."""
+
+    def test_an_invalid_escape_is_read_without_warning(self):
+        import warnings
+
+        texte = '{"name": "x", "description": """/!\\ attention"""}'
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            manifeste = sem.lire_manifeste(texte)
+        self.assertEqual(manifeste["description"], "/!\\ attention")
+
+    def test_code_is_never_executed(self):
+        with unittest.mock.patch("os.system") as system:
+            self.assertIsNone(
+                sem.lire_manifeste('{"name": __import__("os").system("x")}')
+            )
+        system.assert_not_called()
+
+    def test_anything_but_a_dict_is_not_a_manifest(self):
+        self.assertIsNone(sem.lire_manifeste("[1, 2]"))
+        self.assertIsNone(sem.lire_manifeste("{"))
+        self.assertEqual(
+            sem.lire_manifeste("{'installable': False}  # fin\n"),
+            {"installable": False},
+        )
+
+
 class TestLeClonage(unittest.TestCase):
     """Un clone qui échoue sort du comptage au lieu d'arrêter l'extraction.
 

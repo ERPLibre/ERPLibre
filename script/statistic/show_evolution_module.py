@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
+import ast
 import csv
 import datetime
 import logging
@@ -10,6 +11,7 @@ import os
 import re
 import shutil
 import sys
+import warnings
 from collections import defaultdict
 
 from dateutil.relativedelta import relativedelta
@@ -485,7 +487,11 @@ async def extract_module(lst_branch, repo, path, before_date):
                     # _logger.error(f"Receive status 'git cat-file' {status}")
                     # return return_value
                     continue
-                dct_manifest = eval(manifest + "\n")
+                dct_manifest = lire_manifeste(manifest)
+                if dct_manifest is None:
+                    # Odoo ne charge pas ce que literal_eval refuse : ce
+                    # n'est pas un module pour lui non plus.
+                    continue
                 if dct_manifest.get("installable", True):
                     lst_module_installable.append(module)
                 else:
@@ -497,6 +503,29 @@ async def extract_module(lst_branch, repo, path, before_date):
     if not lst_result:
         print(f"No result for repo {repo}")
     return lst_result
+
+
+def lire_manifeste(texte):
+    """Le dict d'un manifeste Odoo, ou None s'il n'est pas un littéral.
+
+    literal_eval, comme Odoo, et non eval : le texte vient de l'historique
+    de dépôts tiers, et rien n'en est exécuté. Une séquence d'échappement
+    invalide d'un vieux manifeste, un backslash suivi d'une espace, n'émet
+    pas de SyntaxWarning : la chaîne garde son backslash, sans effet sur le
+    comptage."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        try:
+            valeur = ast.literal_eval(texte)
+        except (
+            SyntaxError,
+            ValueError,
+            TypeError,
+            MemoryError,
+            RecursionError,
+        ):
+            return None
+    return valeur if isinstance(valeur, dict) else None
 
 
 def derniere_ligne(texte):
