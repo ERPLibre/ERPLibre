@@ -23,6 +23,7 @@ sans menu :
     manifest_repo.py mine [--author LOGIN] [--all-repos]
     manifest_repo.py fork-sync [CHEMIN...] [--version 18.0]
     manifest_repo.py token [--organisation ORG]
+    manifest_repo.py orphans ORGANISATION
     manifest_repo.py prune CHEMIN [--fetch] [--github] [--apply] [--remote]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -782,6 +783,42 @@ def synchroniser_forks(client, forks, jobs=8):
         return list(ex.map(un, forks))
 
 
+# ── Forks orphelins ────────────────────────────────────────────────────
+
+
+def depots_de_tous_les_manifestes(dossier=None):
+    """Les « propriétaire/dépôt », en minuscules, qu'un manifeste d'une
+    version quelconque clone."""
+    res = set()
+    for version in versions_des_manifestes(dossier):
+        _remotes, liste = projets_github(version, dossier)
+        res.update(f"{p}/{d}".lower() for _projet, p, d in liste)
+    return res
+
+
+def forks_orphelins(client, organisation, dossier=None):
+    """Les forks de `organisation` qu'aucun manifeste, toutes versions
+    confondues, ne clone plus : ([dépôt GitHub], nombre d'archivés). Un
+    fork déjà archivé n'est pas proposé, seulement compté. None si
+    l'organisation n'existe pas."""
+    depots = client.depots_du_compte(organisation)
+    if depots is None:
+        return None
+    clones = depots_de_tous_les_manifestes(dossier)
+    orphelins, archives = [], 0
+    for depot in depots:
+        if not depot.get("fork"):
+            continue
+        if depot.get("full_name", "").lower() in clones:
+            continue
+        if depot.get("archived"):
+            archives += 1
+            continue
+        orphelins.append(depot)
+    orphelins.sort(key=lambda d: d.get("full_name", "").lower())
+    return orphelins, archives
+
+
 # ── Pull requests ──────────────────────────────────────────────────────
 
 
@@ -1233,6 +1270,11 @@ def main(argv=None):
         help="do not restrict to the repositories of the manifests",
     )
     p.add_argument("--version")
+    p = sous.add_parser(
+        "orphans", help="forks of an organisation no manifest clones"
+    )
+    p.add_argument("organisation")
+    p.add_argument("--version")
     p = sous.add_parser("token", help="check the scopes of the GitHub token")
     p.add_argument("--organisation", help="also check the membership")
     p.add_argument("--version")
@@ -1304,6 +1346,23 @@ def main(argv=None):
                         f"{nom}#{pr.get('number')} {pr.get('title')} — {pr.get('html_url')}"
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
+            return 0
+        if args.commande == "orphans":
+            client = _client(racine)
+            if not client:
+                return 2
+            res = forks_orphelins(client, args.organisation)
+            if res is None:
+                print(f"{args.organisation}: not found", file=sys.stderr)
+                return 1
+            orphelins, archives = res
+            for depot in orphelins:
+                print(
+                    f"{depot.get('full_name')}"
+                    f" · pushed {(depot.get('pushed_at') or '-')[:10]}"
+                    f" — {depot.get('html_url')}"
+                )
+            print(f"{len(orphelins)} orphan fork(s); {archives} archived")
             return 0
         if args.commande == "token":
             client = _client(racine)

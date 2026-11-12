@@ -2150,6 +2150,34 @@ TRANSLATIONS = {
         "fr": "⏩ Mettre les forks à jour depuis leur amont sur GitHub",
         "en": "⏩ Update forks from their upstream on GitHub",
     },
+    "🪦 List the orphan forks of an organisation": {
+        "fr": "🪦 Lister les forks orphelins d'une organisation",
+        "en": "🪦 List the orphan forks of an organisation",
+    },
+    "not found on GitHub.": {
+        "fr": "introuvable sur GitHub.",
+        "en": "not found on GitHub.",
+    },
+    "last push": {
+        "fr": "dernier push",
+        "en": "last push",
+    },
+    "orphan forks": {
+        "fr": "forks orphelins",
+        "en": "orphan forks",
+    },
+    "already archived": {
+        "fr": "déjà archivés",
+        "en": "already archived",
+    },
+    "Numbers to archive, all for every one, Enter for none: ": {
+        "fr": "Numéros à archiver, all pour tous, Entrée pour aucun : ",
+        "en": "Numbers to archive, all for every one, Enter for none: ",
+    },
+    "Archive these repositories on GitHub": {
+        "fr": "Archiver ces dépôts sur GitHub",
+        "en": "Archive these repositories on GitHub",
+    },
     "No fork in the manifests of this version.": {
         "fr": "Aucun fork dans les manifestes de cette version.",
         "en": "No fork in the manifests of this version.",

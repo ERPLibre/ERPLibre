@@ -3801,6 +3801,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "🪦 List the orphan forks of an organisation"
+                ),
+                "method": "_git_forks_orphelins",
+            },
+            {
+                "prompt_description": t(
                     "➖ Remove a repository from a manifest"
                 ),
                 "method": "_git_retirer_depot",
