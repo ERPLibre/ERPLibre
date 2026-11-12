@@ -403,6 +403,26 @@ git add manifest/
 git commit -m "[UPD] manifest: freeze the forks rebased on upstream"
 ```
 
+### Forker un dépôt pour une organisation
+
+`Forker un dépôt pour une organisation` (TODO › Execute › Git repository) liste les projets GitHub des manifestes
+de la version active, filtrés par une partie de leur chemin ou de leur nom. Choisissez-en un et nommez l'organisation,
+ou votre propre compte, qui reçoit le fork. Trois questions suivent, chacune avec son défaut :
+
+- Pour un projet qui est déjà un fork, l'amont que garde le nouveau fork : celui d'origine (défaut), et le remote
+  devient `<Organisation>_origin_OCA` avec des attributs `fork-upstream-*` inchangés ; ou le fork actuel, et le remote
+  devient `<Organisation>_origin_ERPLibre`, `fork-upstream-remote` nomme l'ancien remote, `fork-upstream` sa branche
+  et `fork-upstream-freeze-revision` son commit gelé. Un projet qui n'est pas un fork prend son ancienne source pour
+  amont.
+- Les branches à copier : la branche active seulement (défaut), créée dans le fork sur le commit gelé, ou toutes les
+  branches de la source.
+- Une fois le fork fait, si le manifeste le prend, et dans quelles versions : l'active par défaut, les autres par leur
+  numéro. `revision` et `freeze-revision` ne changent pas : le fork porte les mêmes commits.
+
+Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO ; `env_var.sh` est lu en repli, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
+l'organisation est repris s'il appartient au même réseau de forks, et refusé sinon. Committez `manifest/`, puis
+synchronisez les dépôts pour que le clone suive le fork.
+
 ### Geler les versions
 
 Chaque `<project>` d'un fichier source garde sa BRANCHE dans `revision`. Le gel écrit le commit de son clone à côté,

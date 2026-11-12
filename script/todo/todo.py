@@ -156,6 +156,7 @@ from script.todo import (
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.git_fork_menu import GitForkMenuMixin
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -258,6 +259,7 @@ class TODO(
     AssistantMenuMixin,
     ContainerMenuMixin,
     GitRepoMenuMixin,
+    GitForkMenuMixin,
     ModuleMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
@@ -3738,6 +3740,12 @@ class TODO(
                 "method": "prompt_execute_git_repo",
             },
             *groupes["repositories"],
+            {
+                "prompt_description": t(
+                    "🍴 Fork a repository for an organisation"
+                ),
+                "method": "_git_fork_organisation",
+            },
             {"section": t("Settings")},
             {
                 "prompt_description": t(

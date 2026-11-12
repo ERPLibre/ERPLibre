@@ -2050,6 +2050,139 @@ TRANSLATIONS = {
         "fr": "Dépôts",
         "en": "Repositories",
     },
+    "🍴 Fork a repository for an organisation": {
+        "fr": "🍴 Forker un dépôt pour une organisation",
+        "en": "🍴 Fork a repository for an organisation",
+    },
+    "Filter (part of the path or of the repository), Enter for all: ": {
+        "fr": "Filtre (partie du chemin ou du dépôt), Entrée pour tout : ",
+        "en": (
+            "Filter (part of the path or of the repository), Enter for all: "
+        ),
+    },
+    "No repository matches.": {
+        "fr": "Aucun dépôt ne correspond.",
+        "en": "No repository matches.",
+    },
+    "Repository number, Enter for none: ": {
+        "fr": "Numéro du dépôt, Entrée pour aucun : ",
+        "en": "Repository number, Enter for none: ",
+    },
+    "Organisation (or GitHub account) that receives the fork: ": {
+        "fr": "Organisation (ou compte GitHub) qui reçoit le fork : ",
+        "en": "Organisation (or GitHub account) that receives the fork: ",
+    },
+    "The repository already belongs to this organisation.": {
+        "fr": "Le dépôt appartient déjà à cette organisation.",
+        "en": "The repository already belongs to this organisation.",
+    },
+    "This repository is already a fork. Upstream of the new fork:": {
+        "fr": "Ce dépôt est déjà un fork. Amont du nouveau fork :",
+        "en": "This repository is already a fork. Upstream of the new fork:",
+    },
+    "keep the original upstream (default)": {
+        "fr": "garder l'amont d'origine (défaut)",
+        "en": "keep the original upstream (default)",
+    },
+    "the current fork becomes the upstream": {
+        "fr": "le fork actuel devient l'amont",
+        "en": "the current fork becomes the upstream",
+    },
+    "Branches to copy into the fork:": {
+        "fr": "Branches à copier dans le fork :",
+        "en": "Branches to copy into the fork:",
+    },
+    "the active branch only (default)": {
+        "fr": "la branche active seulement (défaut)",
+        "en": "the active branch only (default)",
+    },
+    "every branch of the source": {
+        "fr": "toutes les branches de la source",
+        "en": "every branch of the source",
+    },
+    "all branches": {
+        "fr": "toutes les branches",
+        "en": "all branches",
+    },
+    (
+        "No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO"
+        " (env_var.sh is versioned)."
+    ): {
+        "fr": (
+            "Aucun jeton GitHub : exportez EL_GITHUB_TOKEN dans le shell qui"
+            " ouvre TODO (env_var.sh est versionné)."
+        ),
+        "en": (
+            "No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO"
+            " (env_var.sh is versioned)."
+        ),
+    },
+    "Fork it? (y/N): ": {
+        "fr": "Forker ? (o/N) : ",
+        "en": "Fork it? (y/N): ",
+    },
+    "Waiting for GitHub to create the fork…": {
+        "fr": "Attente de la création du fork par GitHub…",
+        "en": "Waiting for GitHub to create the fork…",
+    },
+    "The fork is still not ready; try again later.": {
+        "fr": "Le fork n'est toujours pas prêt ; réessayez plus tard.",
+        "en": "The fork is still not ready; try again later.",
+    },
+    "Fork created:": {
+        "fr": "Fork créé :",
+        "en": "Fork created:",
+    },
+    "Fork already present:": {
+        "fr": "Fork déjà présent :",
+        "en": "Fork already present:",
+    },
+    "Branch missing at the source:": {
+        "fr": "Branche absente de la source :",
+        "en": "Branch missing at the source:",
+    },
+    "Branch created in the fork:": {
+        "fr": "Branche créée dans le fork :",
+        "en": "Branch created in the fork:",
+    },
+    "Change the manifest to take this fork? (y/N): ": {
+        "fr": "Modifier le manifeste pour prendre ce fork ? (o/N) : ",
+        "en": "Change the manifest to take this fork? (y/N): ",
+    },
+    "Versions whose manifest clones this repository:": {
+        "fr": "Versions dont le manifeste clone ce dépôt :",
+        "en": "Versions whose manifest clones this repository:",
+    },
+    "Versions to change, separated by commas (Enter: the active one)": {
+        "fr": (
+            "Versions à modifier, séparées par des virgules (Entrée : "
+            "l'active)"
+        ),
+        "en": (
+            "Versions to change, separated by commas (Enter: the active one)"
+        ),
+    },
+    "this repository is not in its manifest.": {
+        "fr": "ce dépôt n'est pas dans son manifeste.",
+        "en": "this repository is not in its manifest.",
+    },
+    "project not found in the files.": {
+        "fr": "projet introuvable dans les fichiers.",
+        "en": "project not found in the files.",
+    },
+    (
+        "Commit manifest/, then synchronise the repositories so the clone "
+        "follows the fork."
+    ): {
+        "fr": (
+            "Committez manifest/, puis synchronisez les dépôts pour que le "
+            "clone suive le fork."
+        ),
+        "en": (
+            "Commit manifest/, then synchronise the repositories so the clone "
+            "follows the fork."
+        ),
+    },
     "Local git server": {
         "fr": "🗄  Serveur git local",
         "en": "🗄  Local git server",

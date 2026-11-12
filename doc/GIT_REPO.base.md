@@ -778,6 +778,47 @@ git commit -m "[UPD] manifest: freeze the forks rebased on upstream"
 ```
 
 <!-- [en] -->
+### Fork a repository for an organisation
+
+`Fork a repository for an organisation` (TODO › Execute › Git repository) lists the GitHub projects of the
+manifests of the active version, filtered by part of their path or name. Choose one and name the organisation, or
+your own account, that receives the fork. Three questions follow, each with its default:
+
+- For a project that is already a fork, which upstream the new fork keeps: the original one (default), so the remote
+  becomes `<Organisation>_origin_OCA` and the `fork-upstream-*` attributes stay; or the current fork, so the remote
+  becomes `<Organisation>_origin_ERPLibre`, `fork-upstream-remote` names the old remote, `fork-upstream` its branch
+  and `fork-upstream-freeze-revision` its frozen commit. A project that is not a fork takes its old source as upstream.
+- Which branches to copy: the active branch only (default), created in the fork on the frozen commit, or every branch
+  of the source.
+- Once forked, whether the manifest takes the fork, and in which versions: the active one by default, others by their
+  number. `revision` and `freeze-revision` do not change, as the fork holds the same commits.
+
+The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO; `env_var.sh` is read as a fallback, but it is versioned and would carry the token into a commit. A repository of the same name already in
+the organisation is reused when it belongs to the same fork network, and refused otherwise. Commit `manifest/`, then
+synchronise the repositories so the clone follows the fork.
+
+<!-- [fr] -->
+### Forker un dépôt pour une organisation
+
+`Forker un dépôt pour une organisation` (TODO › Execute › Git repository) liste les projets GitHub des manifestes
+de la version active, filtrés par une partie de leur chemin ou de leur nom. Choisissez-en un et nommez l'organisation,
+ou votre propre compte, qui reçoit le fork. Trois questions suivent, chacune avec son défaut :
+
+- Pour un projet qui est déjà un fork, l'amont que garde le nouveau fork : celui d'origine (défaut), et le remote
+  devient `<Organisation>_origin_OCA` avec des attributs `fork-upstream-*` inchangés ; ou le fork actuel, et le remote
+  devient `<Organisation>_origin_ERPLibre`, `fork-upstream-remote` nomme l'ancien remote, `fork-upstream` sa branche
+  et `fork-upstream-freeze-revision` son commit gelé. Un projet qui n'est pas un fork prend son ancienne source pour
+  amont.
+- Les branches à copier : la branche active seulement (défaut), créée dans le fork sur le commit gelé, ou toutes les
+  branches de la source.
+- Une fois le fork fait, si le manifeste le prend, et dans quelles versions : l'active par défaut, les autres par leur
+  numéro. `revision` et `freeze-revision` ne changent pas : le fork porte les mêmes commits.
+
+Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO ; `env_var.sh` est lu en repli, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
+l'organisation est repris s'il appartient au même réseau de forks, et refusé sinon. Committez `manifest/`, puis
+synchronisez les dépôts pour que le clone suive le fork.
+
+<!-- [en] -->
 ### Freeze the versions
 
 Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to

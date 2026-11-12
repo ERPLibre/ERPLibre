@@ -395,6 +395,25 @@ git add manifest/
 git commit -m "[UPD] manifest: freeze the forks rebased on upstream"
 ```
 
+### Fork a repository for an organisation
+
+`Fork a repository for an organisation` (TODO › Execute › Git repository) lists the GitHub projects of the
+manifests of the active version, filtered by part of their path or name. Choose one and name the organisation, or
+your own account, that receives the fork. Three questions follow, each with its default:
+
+- For a project that is already a fork, which upstream the new fork keeps: the original one (default), so the remote
+  becomes `<Organisation>_origin_OCA` and the `fork-upstream-*` attributes stay; or the current fork, so the remote
+  becomes `<Organisation>_origin_ERPLibre`, `fork-upstream-remote` names the old remote, `fork-upstream` its branch
+  and `fork-upstream-freeze-revision` its frozen commit. A project that is not a fork takes its old source as upstream.
+- Which branches to copy: the active branch only (default), created in the fork on the frozen commit, or every branch
+  of the source.
+- Once forked, whether the manifest takes the fork, and in which versions: the active one by default, others by their
+  number. `revision` and `freeze-revision` do not change, as the fork holds the same commits.
+
+The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO; `env_var.sh` is read as a fallback, but it is versioned and would carry the token into a commit. A repository of the same name already in
+the organisation is reused when it belongs to the same fork network, and refused otherwise. Commit `manifest/`, then
+synchronise the repositories so the clone follows the fork.
+
 ### Freeze the versions
 
 Each `<project>` of a source file keeps its BRANCH in `revision`. The freeze writes the commit of its clone next to

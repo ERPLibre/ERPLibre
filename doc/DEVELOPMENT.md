@@ -34,6 +34,25 @@ Complete its history before committing and pushing in it:
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
+## Fork a repository for your organisation
+
+To push your own commits on an addons repository, fork it into your organisation (or your own GitHub account) and
+make the manifest take the fork. You need a GitHub token allowed to create repositories in that organisation
+(classic token: `public_repo`, or `repo` for a private repository). Export it in the shell that opens TODO ›
+Execute › Git repository › Fork a repository for an organisation, rather than writing it into `env_var.sh`, which is
+versioned and would carry the token into a commit:
+
+```bash
+export EL_GITHUB_TOKEN="<token>"
+./todo.sh
+```
+
+Choose the repository among those of the manifests of the active version, and name the organisation. The tool asks
+which upstream an already forked repository keeps, whether to copy the active branch only or every branch, then whether
+the manifest takes the fork and in which versions. Commit `manifest/`, then synchronise the repositories so the clone
+follows the fork. The details are in [GIT_REPO.md](./GIT_REPO.md#fork-a-repository-for-an-organisation). Repositories
+are forked one at a time.
+
 ## Move database from prod to dev
 
 Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a
@@ -95,6 +114,11 @@ To show differences between actual code and manifest
 ```bash
 ./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
+
+## Add repo
+
+To access a new repository, add its `<project>`, and its `<remote>` if the organisation is new, to
+`./manifest/git_manifest_odoo<version>.xml`. To push code to it, fork it as above.
 
 ## Remove auto_install from an addons repository
 

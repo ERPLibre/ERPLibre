@@ -34,6 +34,25 @@ Complétez son historique avant d'y faire des commits et des pushs :
 git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<version>
 ```
 
+## Forker un dépôt pour votre organisation
+
+Pour pousser vos propres commits sur un dépôt d'addons, forkez-le dans votre organisation (ou votre propre compte
+GitHub) et faites prendre le fork au manifeste. Il faut un jeton GitHub autorisé à créer des dépôts dans cette
+organisation (jeton classique : `public_repo`, ou `repo` pour un dépôt privé). Exportez-le dans le shell qui ouvre
+TODO › Exécution › Répertoire git › Forker un dépôt pour une organisation, plutôt que de l'écrire dans `env_var.sh`,
+qui est versionné et emporterait le jeton dans un commit :
+
+```bash
+export EL_GITHUB_TOKEN="<jeton>"
+./todo.sh
+```
+
+Choisissez le dépôt parmi ceux des manifestes de la version active, et nommez l'organisation. L'outil demande quel
+amont garde un dépôt déjà forké, s'il faut copier la branche active seulement ou toutes les branches, puis si le
+manifeste prend le fork et dans quelles versions. Committez `manifest/`, puis synchronisez les dépôts pour que le clone
+suive le fork. Le détail est dans [GIT_REPO.fr.md](./GIT_REPO.fr.md#forker-un-dépôt-pour-une-organisation). Les
+dépôts se forkent un à la fois.
+
 ## Déplacer une base de données de la prod vers le dev
 
 Copiez l'image de la base de données dans `./image_db/prod_client.zip` et exécutez `make db_restore_prod_client`. Cela va créer une
@@ -95,6 +114,11 @@ Pour afficher les différences entre le code actuel et le manifeste
 ```bash
 ./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
+
+## Ajouter un dépôt
+
+Pour accéder à un nouveau dépôt, ajoutez son `<project>`, et son `<remote>` si l'organisation est nouvelle, à
+`./manifest/git_manifest_odoo<version>.xml`. Pour y pousser du code, forkez-le comme plus haut.
 
 ## Retirer auto_install d'un dépôt d'addons
 

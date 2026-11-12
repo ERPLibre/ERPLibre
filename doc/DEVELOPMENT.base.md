@@ -71,6 +71,46 @@ git -C odoo<version>/odoo fetch --unshallow ERPLibre_origin_odoo ERPLibre/<versi
 ```
 
 <!-- [en] -->
+## Fork a repository for your organisation
+
+To push your own commits on an addons repository, fork it into your organisation (or your own GitHub account) and
+make the manifest take the fork. You need a GitHub token allowed to create repositories in that organisation
+(classic token: `public_repo`, or `repo` for a private repository). Export it in the shell that opens TODO ›
+Execute › Git repository › Fork a repository for an organisation, rather than writing it into `env_var.sh`, which is
+versioned and would carry the token into a commit:
+
+```bash
+export EL_GITHUB_TOKEN="<token>"
+./todo.sh
+```
+
+Choose the repository among those of the manifests of the active version, and name the organisation. The tool asks
+which upstream an already forked repository keeps, whether to copy the active branch only or every branch, then whether
+the manifest takes the fork and in which versions. Commit `manifest/`, then synchronise the repositories so the clone
+follows the fork. The details are in [GIT_REPO.md](./GIT_REPO.md#fork-a-repository-for-an-organisation). Repositories
+are forked one at a time.
+
+<!-- [fr] -->
+## Forker un dépôt pour votre organisation
+
+Pour pousser vos propres commits sur un dépôt d'addons, forkez-le dans votre organisation (ou votre propre compte
+GitHub) et faites prendre le fork au manifeste. Il faut un jeton GitHub autorisé à créer des dépôts dans cette
+organisation (jeton classique : `public_repo`, ou `repo` pour un dépôt privé). Exportez-le dans le shell qui ouvre
+TODO › Exécution › Répertoire git › Forker un dépôt pour une organisation, plutôt que de l'écrire dans `env_var.sh`,
+qui est versionné et emporterait le jeton dans un commit :
+
+```bash
+export EL_GITHUB_TOKEN="<jeton>"
+./todo.sh
+```
+
+Choisissez le dépôt parmi ceux des manifestes de la version active, et nommez l'organisation. L'outil demande quel
+amont garde un dépôt déjà forké, s'il faut copier la branche active seulement ou toutes les branches, puis si le
+manifeste prend le fork et dans quelles versions. Committez `manifest/`, puis synchronisez les dépôts pour que le clone
+suive le fork. Le détail est dans [GIT_REPO.fr.md](./GIT_REPO.fr.md#forker-un-dépôt-pour-une-organisation). Les
+dépôts se forkent un à la fois.
+
+<!-- [en] -->
 ## Move database from prod to dev
 
 Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a
@@ -186,6 +226,18 @@ Pour afficher les différences entre le code actuel et le manifeste
 ```bash
 ./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
+
+<!-- [en] -->
+## Add repo
+
+To access a new repository, add its `<project>`, and its `<remote>` if the organisation is new, to
+`./manifest/git_manifest_odoo<version>.xml`. To push code to it, fork it as above.
+
+<!-- [fr] -->
+## Ajouter un dépôt
+
+Pour accéder à un nouveau dépôt, ajoutez son `<project>`, et son `<remote>` si l'organisation est nouvelle, à
+`./manifest/git_manifest_odoo<version>.xml`. Pour y pousser du code, forkez-le comme plus haut.
 
 <!-- [en] -->
 ## Remove auto_install from an addons repository
