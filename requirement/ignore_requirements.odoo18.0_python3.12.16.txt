@@ -42,3 +42,5 @@ cybersource-rest-client-python
 # oauthlib<4, dont les CVE ne sont corrigées qu'en 4.0.0. Le module reste non
 # installable tant que tweepy ne suit pas.
 tweepy
+# Installed from script/lib/erplibre_mail_core by install_locally.sh, never from PyPI
+erplibre-mail-core

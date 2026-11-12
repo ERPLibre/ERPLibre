@@ -2019,7 +2019,7 @@ ci-dessous, l'ouvre aux utilisateurs du portail.
   Odoo 18 (Python 3.12 ou plus) ; après une resynchronisation du venv, le
   réinstaller à la main par la commande ci-dessus. Il ne vient jamais de
   PyPI : `erplibre-mail-core` figure dans
-  `requirement/ignore_requirements.odoo18.0_python3.12.10.txt`.
+  `requirement/ignore_requirements.odoo18.0_python3.12.16.txt`.
 - Le mot de passe du compte est chiffré par une clé publique dès son
   enregistrement, et n'est plus jamais affiché. Seul le worker détient la
   clé privée, hors de la base (un fichier, une variable d'environnement ou

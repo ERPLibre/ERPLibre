@@ -1883,7 +1883,7 @@ below, opens it to portal users.
   (Python 3.12 or later); after a resynchronization of the venv, install it
   again by hand with the command above. It never comes from PyPI:
   `erplibre-mail-core` is listed in
-  `requirement/ignore_requirements.odoo18.0_python3.12.10.txt`.
+  `requirement/ignore_requirements.odoo18.0_python3.12.16.txt`.
 - The account password is encrypted with a public key as soon as it is
   saved, and never shown again. Only the worker holds the private key,
   outside the database (a file, an environment variable or a systemd
