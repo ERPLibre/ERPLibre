@@ -2146,6 +2146,10 @@ TRANSLATIONS = {
         "fr": "🔄 Synchroniser un seul dépôt",
         "en": "🔄 Synchronise one repository",
     },
+    "🧊 Freeze one repository on a commit": {
+        "fr": "🧊 Geler un seul dépôt sur un commit",
+        "en": "🧊 Freeze one repository on a commit",
+    },
     "Remove from the manifest": {
         "fr": "Retirer du manifeste",
         "en": "Remove from the manifest",
@@ -2166,6 +2170,27 @@ TRANSLATIONS = {
     "Commit manifest/.": {
         "fr": "Committez manifest/.",
         "en": "Commit manifest/.",
+    },
+    "Commit to freeze (Enter: HEAD of the clone): ": {
+        "fr": "Commit à geler (Entrée : HEAD du clone) : ",
+        "en": "Commit to freeze (Enter: HEAD of the clone): ",
+    },
+    "upstream base": {
+        "fr": "base amont",
+        "en": "upstream base",
+    },
+    (
+        "No remote of the clone holds this commit: push it before committing "
+        "manifest/."
+    ): {
+        "fr": (
+            "Aucun remote du clone ne porte ce commit : poussez-le avant de "
+            "committer manifest/."
+        ),
+        "en": (
+            "No remote of the clone holds this commit: push it before "
+            "committing manifest/."
+        ),
     },
     "📋 List the pull requests of an organisation": {
         "fr": "📋 Lister les pull requests d'une organisation",

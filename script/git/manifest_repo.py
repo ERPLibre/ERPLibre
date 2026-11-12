@@ -17,6 +17,7 @@ sans menu :
     manifest_repo.py upstream CHEMIN [--version 18.0]
     manifest_repo.py remove CHEMIN [--version 18.0] [--apply]
     manifest_repo.py sync CHEMIN [--version 18.0]
+    manifest_repo.py refreeze CHEMIN [--commit SHA] [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -673,6 +674,50 @@ def executer(commandes, racine):
     return 0
 
 
+def regeler(version, chemin, racine, sha=None, dossier=None):
+    """Pose le commit gelé du projet `chemin` sur `sha` (HEAD de son clone
+    par défaut) et, pour un fork à l'amont déclaré, recalcule sa base
+    amont. Rend {fichier, sha, base, motif, pousse} : `pousse` faux quand
+    aucun remote du clone ne porte ce commit — un gel que personne d'autre
+    ne pourrait récupérer."""
+    from script.git import git_freeze_manifest
+
+    remotes, projet = trouver_projet(version, chemin, dossier)
+    clone = os.path.join(racine, projet["path"])
+    code, sortie = git(
+        clone, "rev-parse", "--verify", f"{sha or 'HEAD'}^{{commit}}"
+    )
+    if code:
+        raise ValueError(
+            f"{sha or 'HEAD'} : commit introuvable dans {projet['path']}"
+        )
+    sha = sortie.split()[-1]
+    _c, distantes = git(clone, "branch", "-r", "--contains", sha)
+    amont = repo_upgrade.resoudre_amont(projet, remotes)
+    base, motif = None, None
+    if amont:
+        constat = git_freeze_manifest.base_amont(clone, sha, amont)
+        base, motif = constat.get("base"), constat.get("motif")
+    fichier = fichier_du_projet(
+        version, projet["name"], projet["path"], dossier
+    )
+    with open(fichier, encoding="utf-8") as fh:
+        texte = fh.read()
+    cle = manifest_freeze.project_key(projet["name"], projet["path"])
+    neuf, _changees = manifest_freeze.rewrite(
+        texte, freeze={cle: sha}, upstream={cle: base}
+    )
+    with open(fichier, "w", encoding="utf-8") as fh:
+        fh.write(neuf)
+    return {
+        "fichier": fichier,
+        "sha": sha,
+        "base": base,
+        "motif": motif,
+        "pousse": bool(distantes.strip()),
+    }
+
+
 # ── Ligne de commande ──────────────────────────────────────────────────
 
 
@@ -743,6 +788,10 @@ def main(argv=None):
     )
     p.add_argument("chemin")
     p.add_argument("--version")
+    p = sous.add_parser("refreeze", help="freeze one repository on a commit")
+    p.add_argument("chemin")
+    p.add_argument("--commit", help="default: HEAD of the clone")
+    p.add_argument("--version")
     p = sous.add_parser("pulls", help="list the open pull requests")
     p.add_argument("--organisation", required=True)
     p.add_argument("--version")
@@ -803,6 +852,15 @@ def main(argv=None):
         chemin = os.path.join(racine, projet["path"])
         if args.commande == "sync":
             return executer(commandes_synchro(racine, projet["path"]), racine)
+        if args.commande == "refreeze":
+            res = regeler(version, args.chemin, racine, args.commit)
+            print(
+                f"{os.path.relpath(res['fichier'], racine)} : {res['sha'][:12]}"
+                f" · base {res['base'][:12] if res['base'] else res['motif'] or '-'}"
+            )
+            if not res["pousse"]:
+                print("warning: no remote of the clone holds this commit")
+            return 0
         if args.commande == "pr":
             cibles = cibles_pull_request(projet, remotes)
             if args.target not in cibles:
