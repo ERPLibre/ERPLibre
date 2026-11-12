@@ -21,6 +21,7 @@ sans menu :
     manifest_repo.py refreeze CHEMIN [--commit SHA] [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py mine [--author LOGIN] [--all-repos]
+    manifest_repo.py prune CHEMIN [--fetch] [--github] [--apply] [--remote]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
 
@@ -489,6 +490,219 @@ def ajouter_amont(chemin, projet, remotes):
     )
 
 
+# ── Branches fusionnées ────────────────────────────────────────────────
+
+# Les branches de version et les branches principales ne sont jamais
+# proposées au nettoyage, fusionnées ou non.
+PROTEGEES = re.compile(r"^(\d+\.\d+|master|main|develop|HEAD)$")
+
+
+def bases_du_clone(chemin, projet, remotes):
+    """Les références distantes où une branche du clone est fusionnée :
+    la branche du manifeste sur le remote du projet, et la branche amont
+    d'un fork quand son remote est posé. Seules celles que le clone
+    connaît sont rendues."""
+    refs = []
+    branche = branche_du_projet(projet)
+    if branche and projet.get("remote"):
+        refs.append(f"{projet['remote']}/{branche}")
+    amont = repo_upgrade.resoudre_amont(projet, remotes)
+    remote = repo_upgrade.remote_amont(amont)
+    if remote and amont.get("branche"):
+        refs.append(f"{remote}/{amont['branche']}")
+    return [
+        r
+        for r in dict.fromkeys(refs)
+        if git(chemin, "rev-parse", "--verify", "-q", f"refs/remotes/{r}")[0]
+        == 0
+    ]
+
+
+def remotes_de_fork(chemin, projet, remotes):
+    """Les remotes du clone où l'on pousse ses branches : tous, sauf le
+    remote d'un projet qui n'est pas un fork et l'amont déclaré d'un fork,
+    dont les branches appartiennent à d'autres."""
+    exclus = set()
+    if not repo_upgrade.est_fork(projet):
+        exclus.add(projet.get("remote"))
+    amont = repo_upgrade.remote_amont(
+        repo_upgrade.resoudre_amont(projet, remotes)
+    )
+    if amont:
+        exclus.add(amont)
+    return [r for r in remotes_du_clone(chemin) if r not in exclus]
+
+
+def _fusionnees(chemin, bases, *args):
+    """Les noms courts des références que `git branch <args> --merged`
+    rend pour au moins une des `bases`."""
+    noms = set()
+    for base in bases:
+        code, sortie = git(
+            chemin,
+            "branch",
+            *args,
+            "--merged",
+            base,
+            "--format=%(refname:short)",
+        )
+        if code:
+            raise ValueError(sortie)
+        noms.update(sortie.split())
+    return noms
+
+
+def branches_du_clone(chemin, forks):
+    """({branche locale}, {remote: {branche}}) du clone, hors branches
+    protégées et branche courante ; les remotes sont ceux de `forks`."""
+    _code, courante = git(chemin, "branch", "--show-current")
+
+    def garder(nom):
+        return nom != courante and not PROTEGEES.match(nom)
+
+    _code, sortie = git(chemin, "branch", "--format=%(refname:short)")
+    locales = {b for b in sortie.split() if garder(b)}
+    distantes = {}
+    for remote in forks:
+        _code, sortie = git(
+            chemin,
+            "branch",
+            "-r",
+            "--list",
+            f"{remote}/*",
+            "--format=%(refname:short)",
+        )
+        distantes[remote] = {
+            b.split("/", 1)[1]
+            for b in sortie.split()
+            if "/" in b and garder(b.split("/", 1)[1])
+        }
+    return locales, distantes
+
+
+def branches_a_nettoyer(chemin, bases, forks, fusion_github=None):
+    """Les branches à proposer au nettoyage : {"locales": {nom: motif},
+    "distantes": {remote: {nom: motif}}}. Le motif vaut « fusion » quand
+    la branche est contenue dans une des `bases`, ou celui que rend
+    `fusion_github(nom)` (une PR fusionnée par squash, que git ne voit
+    pas) ; une branche sans motif n'est pas proposée."""
+    locales, distantes = branches_du_clone(chemin, forks)
+    fusion_locale = _fusionnees(chemin, bases)
+    fusion_distante = _fusionnees(chemin, bases, "-r")
+    motifs = {}
+
+    def motif(nom, fusionnee):
+        if fusionnee:
+            return "fusion"
+        if fusion_github is None:
+            return None
+        if nom not in motifs:
+            motifs[nom] = fusion_github(nom)
+        return motifs[nom]
+
+    res = {"locales": {}, "distantes": {}}
+    for nom in sorted(locales):
+        m = motif(nom, nom in fusion_locale)
+        if m:
+            res["locales"][nom] = m
+    for remote, noms in distantes.items():
+        trouves = {}
+        for nom in sorted(noms):
+            m = motif(nom, f"{remote}/{nom}" in fusion_distante)
+            if m:
+                trouves[nom] = m
+        if trouves:
+            res["distantes"][remote] = trouves
+    return res
+
+
+def fusion_par_github(client, tetes, cibles):
+    """La fonction `fusion_github` de branches_a_nettoyer() : pour une
+    branche, « PR #n » si une pull request fermée de l'un des
+    propriétaires `tetes` vers l'un des dépôts `cibles` a été fusionnée,
+    sinon None. Un dépôt invisible ne compte pas."""
+
+    def chercher(nom):
+        for cible in cibles:
+            for proprietaire in tetes:
+                for pr in client.pull_requests_de(
+                    cible, f"{proprietaire}:{nom}"
+                ):
+                    if pr.get("merged_at"):
+                        return f"PR #{pr.get('number')}"
+        return None
+
+    return chercher
+
+
+def supprimer_branches(chemin, locales=(), distantes=None):
+    """Supprime les branches locales `locales` et, pour chaque remote de
+    `distantes`, ses branches sur le serveur. La suppression locale est
+    forcée (-D) : `git branch -d` juge la fusion contre HEAD ou la branche
+    suivie, pas contre la base du manifeste que branches_a_nettoyer() a
+    vérifiée, ni contre une PR fusionnée par squash.
+    Rend [(remote ou None, nom, code, sortie)]."""
+    res = []
+    for nom in locales:
+        res.append((None, nom, *git(chemin, "branch", "-D", nom)))
+    for remote, noms in (distantes or {}).items():
+        for nom in noms:
+            res.append(
+                (remote, nom, *git(chemin, "push", remote, "--delete", nom))
+            )
+    return res
+
+
+def plan_nettoyage(chemin, projet, remotes, client=None, fetch=False):
+    """(bases, forks, candidats) du clone `chemin` : voir bases_du_clone,
+    remotes_de_fork et branches_a_nettoyer. `fetch` rafraîchit d'abord
+    les remotes en jeu ; `client` ajoute la recherche des pull requests
+    fusionnées par squash, des propriétaires des forks vers le dépôt du
+    manifeste, l'amont déclaré et les forks eux-mêmes."""
+    forks = remotes_de_fork(chemin, projet, remotes)
+    if fetch:
+        amont = repo_upgrade.remote_amont(
+            repo_upgrade.resoudre_amont(projet, remotes)
+        )
+        presents = remotes_du_clone(chemin)
+        rafraichir(
+            chemin,
+            [
+                r
+                for r in dict.fromkeys([projet.get("remote"), amont, *forks])
+                if r in presents
+            ],
+        )
+    bases = bases_du_clone(chemin, projet, remotes)
+    if not bases:
+        return bases, forks, {"locales": {}, "distantes": {}}
+    fusion_github = None
+    if client is not None:
+        tetes, cibles = [], [
+            n for n, _b in cibles_pull_request(projet, remotes).values()
+        ]
+        for remote in forks:
+            code, url = git(chemin, "remote", "get-url", remote)
+            depot = github_fork.depot_github(url) if not code else None
+            if depot:
+                tetes.append(depot[0])
+                cibles.append("/".join(depot))
+        fusion_github = fusion_par_github(
+            client, list(dict.fromkeys(tetes)), list(dict.fromkeys(cibles))
+        )
+    return (
+        bases,
+        forks,
+        branches_a_nettoyer(chemin, bases, forks, fusion_github),
+    )
+
+
+def rafraichir(chemin, remotes):
+    """`git fetch --prune` de chaque remote : une branche supprimée sur le
+    serveur ne reste pas proposée. Rend [(remote, code, sortie)]."""
+    return [(r, *git(chemin, "fetch", "--prune", r)) for r in remotes]
+
+
 # ── Pull requests ──────────────────────────────────────────────────────
 
 
@@ -941,6 +1155,25 @@ def main(argv=None):
     )
     p.add_argument("--version")
     p = sous.add_parser(
+        "prune", help="list, then delete, the merged branches of a clone"
+    )
+    p.add_argument("chemin")
+    p.add_argument("--fetch", action="store_true", help="fetch --prune first")
+    p.add_argument(
+        "--github",
+        action="store_true",
+        help="also ask GitHub for pull requests merged by squash",
+    )
+    p.add_argument(
+        "--apply", action="store_true", help="delete the local branches"
+    )
+    p.add_argument(
+        "--remote",
+        action="store_true",
+        help="with --apply, also delete them on the fork remotes",
+    )
+    p.add_argument("--version")
+    p = sous.add_parser(
         "pr", help="open a pull request from the current branch"
     )
     p.add_argument("chemin")
@@ -984,6 +1217,39 @@ def main(argv=None):
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
             return 0
+        if args.commande == "prune":
+            remotes, projet = trouver_projet(version, args.chemin)
+            chemin = os.path.join(racine, projet["path"])
+            client = _client(racine) if args.github else None
+            if args.github and not client:
+                return 2
+            bases, _forks, plan = plan_nettoyage(
+                chemin, projet, remotes, client, args.fetch
+            )
+            if not bases:
+                print(f"{projet['path']}: no base branch known to the clone")
+                return 1
+            print(f"base: {', '.join(bases)}")
+            for nom, motif in plan["locales"].items():
+                print(f"local  {nom} ({motif})")
+            for remote, noms in plan["distantes"].items():
+                for nom, motif in noms.items():
+                    print(f"{remote}  {nom} ({motif})")
+            if not args.apply:
+                return 0
+            code_final = 0
+            for remote, nom, code, sortie in supprimer_branches(
+                chemin,
+                plan["locales"],
+                plan["distantes"] if args.remote else None,
+            ):
+                print(
+                    f"{'✓' if code == 0 else '❌'} {remote or 'local'} {nom}"
+                )
+                if code:
+                    print(f"  {sortie}")
+                    code_final = 1
+            return code_final
         if args.commande == "mine":
             client = _client(racine)
             if not client:

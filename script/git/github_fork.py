@@ -235,6 +235,18 @@ class ClientGitHub:
         ).json()
         return statut, checks.get("check_runs", [])
 
+    def pull_requests_de(self, nom_complet, tete):
+        """Les pull requests fermées de `nom_complet` dont la tête est
+        `tete` (« propriétaire:branche ») ; [] si le dépôt n'est pas
+        visible. `merged_at` y dit si elle a été fusionnée."""
+        rep = self._appel(
+            "GET",
+            f"/repos/{nom_complet}/pulls",
+            ok=(200, 404),
+            params={"state": "closed", "head": tete, "per_page": 100},
+        )
+        return [] if rep.status_code == 404 else rep.json()
+
     def creer_pull_request(
         self, nom_complet, tete, base, titre, corps="", brouillon=False
     ):
