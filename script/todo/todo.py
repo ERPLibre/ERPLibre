@@ -3859,7 +3859,7 @@ class TODO(
             print(f"{t('Hooks directory is missing: ')}{absolu}")
             return
         actuel = self._git_hooks_path(racine)
-        if actuel and actuel != self._GIT_HOOKS_PATH:
+        if actuel and not todo_etat.chemin_hooks_du_depot(racine, actuel):
             print(f"{t('Another hooks path is already set: ')}{actuel}")
             if not self._is_yes(input(t("Replace it? (y/Y): "))):
                 print(t("Nothing to do."))

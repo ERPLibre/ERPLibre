@@ -2496,9 +2496,9 @@ TRANSLATIONS = {
         "fr": "Hooks git installés",
         "en": "Git hooks installed",
     },
-    "Git hooks missing: Execute › Git repository › Settings": {
-        "fr": "Hooks git manquants : Exécution › Répertoire git › Configuration",
-        "en": "Git hooks missing: Execute › Git repository › Settings",
+    "Git hooks missing": {
+        "fr": "Hooks git manquants",
+        "en": "Git hooks missing",
     },
     "Git hooks point elsewhere: ": {
         "fr": "Les hooks git pointent ailleurs : ",
