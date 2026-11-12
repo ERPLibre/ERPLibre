@@ -2435,15 +2435,18 @@ TRANSLATIONS = {
     },
     (
         "Fine-grained token: GitHub does not announce its rights, a missing "
-        "one shows only when the action is refused."
+        "one shows only when the action is refused; the token assistant is "
+        "then offered."
     ): {
         "fr": (
             "Jeton à granularité fine : GitHub n'en annonce pas les droits, "
-            "un droit manquant ne se voit qu'au refus de l'action."
+            "un droit manquant ne se voit qu'au refus de l'action ; "
+            "l'assistant du jeton est alors proposé."
         ),
         "en": (
             "Fine-grained token: GitHub does not announce its rights, a "
-            "missing one shows only when the action is refused."
+            "missing one shows only when the action is refused; the token "
+            "assistant is then offered."
         ),
     },
     (
@@ -2458,6 +2461,98 @@ TRANSLATIONS = {
             "Membership of the organisation unreadable: the token lacks the "
             "read:org scope."
         ),
+    },
+    "GitHub token for ERPLibre: two kinds.": {
+        "fr": "Jeton GitHub pour ERPLibre : deux sortes.",
+        "en": "GitHub token for ERPLibre: two kinds.",
+    },
+    (
+        "Classic: its scopes are checked, so problems are named precisely. "
+        "Pre-filled page (repo, workflow, read:org):"
+    ): {
+        "fr": (
+            "Classique : ses portées se vérifient, les problèmes sont donc "
+            "nommés précisément. Page préremplie (repo, workflow, read:org) :"
+        ),
+        "en": (
+            "Classic: its scopes are checked, so problems are named "
+            "precisely. Pre-filled page (repo, workflow, read:org):"
+        ),
+    },
+    (
+        "Fine-grained: narrower, but GitHub does not announce its rights. "
+        "Page and rights to tick:"
+    ): {
+        "fr": (
+            "À granularité fine : plus restreint, mais GitHub n'en annonce "
+            "pas les droits. Page et droits à cocher :"
+        ),
+        "en": (
+            "Fine-grained: narrower, but GitHub does not announce its rights. "
+            "Page and rights to tick:"
+        ),
+    },
+    "Resource owner: the organisation that receives the forks.": {
+        "fr": "Resource owner : l'organisation qui reçoit les forks.",
+        "en": "Resource owner: the organisation that receives the forks.",
+    },
+    "Repository access: All repositories.": {
+        "fr": "Repository access : All repositories.",
+        "en": "Repository access: All repositories.",
+    },
+    (
+        "Repository permissions: Administration, Contents, Pull requests and "
+        "Workflows in Read and write; Metadata in Read-only."
+    ): {
+        "fr": (
+            "Repository permissions : Administration, Contents, Pull requests "
+            "et Workflows en Read and write ; Metadata en Read-only."
+        ),
+        "en": (
+            "Repository permissions: Administration, Contents, Pull requests "
+            "and Workflows in Read and write; Metadata in Read-only."
+        ),
+    },
+    "Organisation permissions: Members in Read-only.": {
+        "fr": "Organization permissions : Members en Read-only.",
+        "en": "Organisation permissions: Members in Read-only.",
+    },
+    "Paste the token (hidden, Enter to cancel): ": {
+        "fr": "Collez le jeton (masqué, Entrée pour annuler) : ",
+        "en": "Paste the token (hidden, Enter to cancel): ",
+    },
+    "Store it in the ERPLibre KeePass vault? (Y/n): ": {
+        "fr": "Le ranger dans le coffre KeePass d'ERPLibre ? (O/n) : ",
+        "en": "Store it in the ERPLibre KeePass vault? (Y/n): ",
+    },
+    "Stored in the vault:": {
+        "fr": "Rangé dans le coffre :",
+        "en": "Stored in the vault:",
+    },
+    (
+        "No KeePass vault configured (kdbx.path): the token stays for this "
+        "session only; export EL_GITHUB_TOKEN to keep it."
+    ): {
+        "fr": (
+            "Aucun coffre KeePass configuré (kdbx.path) : le jeton ne vaut "
+            "que pour cette session ; exportez EL_GITHUB_TOKEN pour le garder."
+        ),
+        "en": (
+            "No KeePass vault configured (kdbx.path): the token stays for "
+            "this session only; export EL_GITHUB_TOKEN to keep it."
+        ),
+    },
+    "The token may lack a right for this action.": {
+        "fr": "Il manque peut-être au jeton un droit pour cette action.",
+        "en": "The token may lack a right for this action.",
+    },
+    "Configure a GitHub token now? (y/N): ": {
+        "fr": "Configurer un jeton GitHub maintenant ? (o/N) : ",
+        "en": "Configure a GitHub token now? (y/N): ",
+    },
+    "Configure another GitHub token? (y/N): ": {
+        "fr": "Configurer un autre jeton GitHub ? (o/N) : ",
+        "en": "Configure another GitHub token? (y/N): ",
     },
     "Only the repositories of the manifests? (Y/n): ": {
         "fr": "Seulement les dépôts des manifestes ? (O/n) : ",

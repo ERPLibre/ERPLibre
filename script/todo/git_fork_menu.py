@@ -45,6 +45,33 @@ MESSAGE_JETON = (
     " (env_var.sh is versioned)."
 )
 
+# Le jeton rangé dans le coffre KeePass d'ERPLibre : un groupe à part pour
+# que KeePassXC reste lisible, un TITRE unique dans tout le coffre, car les
+# lecteurs du dépôt cherchent par titre. Le titre se change par
+# kdbx_config.github.kdbx_key, comme kdbx_config.openai.kdbx_key.
+GROUPE_COFFRE = "ERPLibre GitHub"
+TITRE_COFFRE = "GitHub token"
+
+# Les pages de création, préremplies quand GitHub le permet : un jeton
+# classique reçoit ses portées et sa description par l'URL.
+URL_JETON_CLASSIQUE = (
+    "https://github.com/settings/tokens/new"
+    "?scopes=repo,workflow,read:org&description=ERPLibre"
+)
+URL_JETON_FIN = "https://github.com/settings/personal-access-tokens/new"
+
+# Ce qu'un jeton à granularité fine doit recevoir pour chaque action du
+# menu : forker et archiver demandent Administration, merge-upstream et la
+# suppression de branches Contents, ouvrir une PR Pull requests, fusionner
+# un amont qui touche .github/workflows Workflows, lire l'adhésion Members.
+DROITS_JETON_FIN = (
+    "Resource owner: the organisation that receives the forks.",
+    "Repository access: All repositories.",
+    "Repository permissions: Administration, Contents, Pull requests and"
+    " Workflows in Read and write; Metadata in Read-only.",
+    "Organisation permissions: Members in Read-only.",
+)
+
 
 def clones(version, racine=RACINE):
     """(remotes, [projet]) des projets de `version` dont le clone existe,
@@ -158,7 +185,7 @@ class GitForkMenuMixin:
                 client, proprietaire, depot, organisation, toutes, projet
             )
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return 2
         libelle = t("Fork created:") if cree else t("Fork already present:")
         print(f"  ✓ {libelle} {fork.get('html_url')}")
@@ -522,7 +549,10 @@ class GitForkMenuMixin:
                 chemin, projet, remotes, client, fetch
             )
         except (ValueError, github_fork.ErreurGitHub) as exc:
-            print(f"❌ {exc}")
+            if isinstance(exc, github_fork.ErreurGitHub):
+                self._git_erreur_github(exc)
+            else:
+                print(f"❌ {exc}")
             return None
         if not bases:
             print(f"⚠ {t('The clone knows no base branch: fetch it first.')}")
@@ -627,7 +657,7 @@ class GitForkMenuMixin:
         try:
             res = manifest_repo.forks_orphelins(client, organisation)
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return None
         if res is None:
             print(f"⚠ {organisation} : {t('not found on GitHub.')}")
@@ -681,17 +711,150 @@ class GitForkMenuMixin:
 
     # ── Pull requests ────────────────────────────────────────────────
 
-    def _git_client(self, organisation=None):
-        """Le client GitHub du jeton exporté, ou None (et le dit).
+    # ── Jeton GitHub ─────────────────────────────────────────────────
 
-        Le jeton est vérifié avant la première action, une fois par
-        organisation dans la session : un problème certain (jeton refusé,
-        portée repo absente, compte hors de l'organisation) est montré et
-        demande confirmation ; un jeton refusé arrête là."""
-        jeton = github_fork.jeton(RACINE)
+    def _git_jeton(self):
+        """Le jeton de la session : celui que l'assistant vient de poser,
+        sinon EL_GITHUB_TOKEN, le coffre KeePass, env_var.sh ; ou ""."""
+        return self.__dict__.get("_git_jeton_session") or github_fork.jeton(
+            RACINE, coffre=self._git_jeton_du_coffre
+        )
+
+    def _git_coffre(self):
+        """Le coffre KeePass ouvert, ou None. Un coffre sans chemin dans la
+        configuration n'est pas ouvert : il ferait surgir un sélecteur de
+        fichier graphique au milieu du terminal."""
+        config = getattr(self, "config_file", None)
+        manager = getattr(self, "kdbx_manager", None)
+        if not (
+            config and manager and config.get_config_value(["kdbx", "path"])
+        ):
+            return None
+        return manager.get_kdbx()
+
+    def _git_titre_coffre(self):
+        config = getattr(self, "config_file", None)
+        titre = config and config.get_config_value(
+            ["kdbx_config", "github", "kdbx_key"]
+        )
+        return titre or TITRE_COFFRE
+
+    def _git_jeton_du_coffre(self):
+        """Le jeton rangé dans le coffre, ou "" sans coffre ou sans
+        entrée."""
+        kp = self._git_coffre()
+        if not kp:
+            return ""
+        entree = kp.find_entries_by_title(self._git_titre_coffre(), first=True)
+        return getattr(entree, "password", "") or ""
+
+    def _git_ranger_jeton(self, jeton):
+        """Range `jeton` dans le coffre, entrée créée ou remplacée, groupe
+        GROUPE_COFFRE. Rend False sans coffre configuré."""
+        kp = self._git_coffre()
+        if not kp:
+            return False
+        titre = self._git_titre_coffre()
+        entree = kp.find_entries_by_title(titre, first=True)
+        if entree is None:
+            groupe = next(
+                (
+                    g
+                    for g in kp.root_group.subgroups
+                    if g.name == GROUPE_COFFRE
+                ),
+                None,
+            ) or kp.add_group(kp.root_group, GROUPE_COFFRE)
+            entree = kp.add_entry(groupe, titre, "", jeton)
+        else:
+            entree.password = jeton
+        kp.save()
+        return True
+
+    def _git_assistant_jeton(self):
+        """Guide la création d'un jeton, classique ou à granularité fine,
+        le lit sans écho, le vérifie, puis propose de le ranger dans le
+        coffre. Le jeton vaut pour la session dès qu'il est accepté. Rend
+        le jeton, ou None."""
+        import getpass
+
+        print(f"🔑 {t('GitHub token for ERPLibre: two kinds.')}")
+        print(
+            f"  [1] {t('Classic: its scopes are checked, so problems are named precisely. Pre-filled page (repo, workflow, read:org):')}"
+        )
+        print(f"      {URL_JETON_CLASSIQUE}")
+        print(
+            f"  [2] {t('Fine-grained: narrower, but GitHub does not announce its rights. Page and rights to tick:')}"
+        )
+        print(f"      {URL_JETON_FIN}")
+        for droit in DROITS_JETON_FIN:
+            print(f"      · {t(droit)}")
+        jeton = getpass.getpass(
+            t("Paste the token (hidden, Enter to cancel): ")
+        ).strip()
+        if not jeton:
+            return None
+        try:
+            rapport = github_fork.verifier_jeton(
+                github_fork.ClientGitHub(jeton)
+            )
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        self._git_afficher_jeton(rapport)
+        if "jeton_refuse" in rapport["codes"]:
+            return None
+        self._git_jeton_session = jeton
+        self.__dict__.pop("_git_jetons_verifies", None)
+        if self._is_yes_default_yes(
+            input(t("Store it in the ERPLibre KeePass vault? (Y/n): "))
+        ):
+            if self._git_ranger_jeton(jeton):
+                print(
+                    f"  ✓ {t('Stored in the vault:')} {GROUPE_COFFRE} ›"
+                    f" {self._git_titre_coffre()}"
+                )
+            else:
+                print(
+                    f"⚠ {t('No KeePass vault configured (kdbx.path): the token stays for this session only; export EL_GITHUB_TOKEN to keep it.')}"
+                )
+        return jeton
+
+    def _git_proposer_assistant(self, question):
+        """Pose `question` (o/N) et lance l'assistant sur un oui. Rend le
+        jeton qu'il a posé, ou None."""
+        if not self._is_yes(input(t(question))):
+            return None
+        return self._git_assistant_jeton()
+
+    def _git_erreur_github(self, exc):
+        """Montre un refus de l'API ; un 401 ou un 403 — jeton refusé ou
+        droit manquant, seule façon de le savoir pour un jeton à
+        granularité fine — propose l'assistant du jeton."""
+        print(f"❌ GitHub : {exc}")
+        if getattr(exc, "statut", None) in (401, 403):
+            print(f"  {t('The token may lack a right for this action.')}")
+            self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+
+    def _git_client(self, organisation=None):
+        """Le client GitHub du jeton de la session, ou None (et le dit).
+
+        Sans jeton, l'assistant est proposé. Le jeton est vérifié avant la
+        première action, une fois par organisation dans la session : un
+        problème certain (jeton refusé, portée repo absente, compte hors de
+        l'organisation) est montré et propose l'assistant, puis demande
+        confirmation ; un jeton refusé arrête là, faute d'en poser un
+        autre."""
+        jeton = self._git_jeton()
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
-            return None
+            jeton = self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+            if not jeton:
+                return None
         client = github_fork.ClientGitHub(jeton)
         verifies = self.__dict__.setdefault("_git_jetons_verifies", set())
         cle = (organisation or "").lower()
@@ -703,6 +866,10 @@ class GitForkMenuMixin:
             print(f"❌ GitHub : {exc}")
             return None
         problemes = self._git_afficher_jeton(rapport, silencieux=True)
+        if problemes and self._git_proposer_assistant(
+            "Configure another GitHub token? (y/N): "
+        ):
+            return self._git_client(organisation)
         if "jeton_refuse" in rapport["codes"]:
             return None
         if problemes and not self._is_yes(
@@ -739,12 +906,17 @@ class GitForkMenuMixin:
 
     def _git_verifier_jeton(self):
         """Le compte, les portées et, si une organisation est tapée,
-        l'adhésion du jeton exporté. Rend le nombre de problèmes, ou
-        None sans jeton."""
-        jeton = github_fork.jeton(RACINE)
+        l'adhésion du jeton de la session ; l'assistant est proposé sans
+        jeton, ou après un rapport qui porte un problème. Rend le nombre de
+        problèmes, ou None sans jeton."""
+        jeton = self._git_jeton()
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
-            return None
+            jeton = self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+            if not jeton:
+                return None
         organisation = input(
             t("Organisation to check (Enter: none): ")
         ).strip()
@@ -755,7 +927,12 @@ class GitForkMenuMixin:
         except github_fork.ErreurGitHub as exc:
             print(f"❌ GitHub : {exc}")
             return None
-        return self._git_afficher_jeton(rapport)
+        problemes = self._git_afficher_jeton(rapport)
+        if problemes:
+            self._git_proposer_assistant(
+                "Configure another GitHub token? (y/N): "
+            )
+        return problemes
 
     def _git_lister_pull_requests(self):
         """Les pull requests ouvertes, dans une organisation, des dépôts du
@@ -776,7 +953,7 @@ class GitForkMenuMixin:
                 client, organisation, version
             )
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return None
         print("\n".join(lignes_pull_requests(resultats)))
         return sum(len(lot) for _c, _n, lot in resultats if lot)
@@ -804,7 +981,7 @@ class GitForkMenuMixin:
             )
             prs = manifest_repo.statut_pull_requests(client, auteur, depots)
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return None
         print("\n".join(lignes_statut(auteur, prs)))
         return len(prs)
@@ -872,7 +1049,10 @@ class GitForkMenuMixin:
                 client, chemin, depot, base, titre, corps, brouillon
             )
         except (github_fork.ErreurGitHub, ValueError) as exc:
-            print(f"❌ {exc}")
+            if isinstance(exc, github_fork.ErreurGitHub):
+                self._git_erreur_github(exc)
+            else:
+                print(f"❌ {exc}")
             return None
         print(f"  ✓ {t('Pull request opened:')} {pr.get('html_url')}")
         return pr.get("html_url")

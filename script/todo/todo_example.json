@@ -6,6 +6,9 @@
     "kdbx_config": {
         "openai": {
             "kdbx_key": "OpenAI api"
+        },
+        "github": {
+            "kdbx_key": "GitHub token"
         }
     },
     "vpn": [
