@@ -12,7 +12,8 @@ portant 2 × 4 points : aucune bibliothèque de tracé n'est requise, et le
 venv d'ERPLibre n'en installe pas. Une courbe par version d'Odoo, et une
 courbe des modules UNIQUES, toutes versions confondues, tracée en dernier
 pour rester visible là où elle croise les autres. Le tableau sous le
-graphique donne les nombres exacts que le tracé arrondit.
+graphique donne les nombres exacts que le tracé arrondit ; « d » y ajoute
+le détail par dépôt de la dernière année, quand la passe l'a enregistré.
 
 Lecture seule : l'écran ne lance aucune passe et n'écrit rien.
 """
@@ -264,6 +265,32 @@ def lignes_tableau(donnees):
     return entetes, rangees
 
 
+def lignes_par_depot(donnees):
+    """(date, en-têtes, rangées) du détail par dépôt de la DERNIÈRE année :
+    une rangée par dépôt, ses modules par version puis leur somme, le plus
+    gros dépôt d'abord. Rangées vides pour une passe qui n'a pas enregistré
+    ce détail."""
+    annees = donnees.get("annees") or []
+    if not annees:
+        return "", [], []
+    derniere = annees[-1]
+    par_depot = derniere.get("par_depot") or {}
+    versions = sorted(
+        {v for d in par_depot.values() for v in d}, key=lambda v: float(v)
+    )
+    rangees = sorted(
+        (
+            [depot]
+            + [str(par_depot[depot].get(v, "")) for v in versions]
+            + [str(sum(par_depot[depot].values()))]
+            for depot in par_depot
+        ),
+        key=lambda r: (-int(r[-1]), r[0]),
+    )
+    entetes = [t("Repository")] + versions + [t("Total")]
+    return (derniere.get("date") or "")[:10], entetes, rangees
+
+
 def build_app(jeux):
     """L'application Textual sur `jeux` (rendu de lire_jeux, non vide).
     Une touche par jeu, et « b » pour les montrer tous l'un sous l'autre.
@@ -292,12 +319,14 @@ def build_app(jeux):
         .graphique { height: 22; padding: 0 1; }
         .legende { padding: 0 1; }
         DataTable { height: auto; max-height: 16; margin: 0 1 1 1; }
+        DataTable.detail { max-height: 30; }
         #courbes { width: 22; border-right: solid $accent; }
         """
         BINDINGS = [
             ("q,escape", "quit", t("Quit")),
             ("b", "tous", t("Both")),
             ("a", "toutes_les_courbes", t("Every curve")),
+            ("d", "detail", t("Per repository")),
         ] + [
             (str(i + 1), f"jeu({i})", nom_du_jeu(d)[:20])
             for i, (_c, d) in enumerate(jeux[:9])
@@ -307,6 +336,7 @@ def build_app(jeux):
             super().__init__()
             self.affiches = list(range(min(len(jeux), 1)))
             self.cachees = set()
+            self.detail = False
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -342,6 +372,10 @@ def build_app(jeux):
             self.affiches = [i]
             self.redessiner()
 
+        def action_detail(self):
+            self.detail = not self.detail
+            self.redessiner()
+
         def action_tous(self):
             self.affiches = list(range(len(jeux)))
             self.redessiner()
@@ -368,6 +402,30 @@ def build_app(jeux):
                 )
                 table = DataTable(zebra_stripes=True)
                 entetes, rangees = lignes_tableau(donnees)
+                corps.mount(table)
+                table.add_columns(*entetes)
+                table.add_rows(rangees)
+                if not self.detail:
+                    continue
+                date, entetes, rangees = lignes_par_depot(donnees)
+                if not rangees:
+                    corps.mount(
+                        Static(
+                            t(
+                                "No per-repository detail: run the statistics again."
+                            ),
+                            classes="legende",
+                        )
+                    )
+                    continue
+                corps.mount(
+                    Static(
+                        f"{t('Per repository')} · {date} · {len(rangees)}"
+                        f" {t('repositories')}",
+                        classes="titre",
+                    )
+                )
+                table = DataTable(zebra_stripes=True, classes="detail")
                 corps.mount(table)
                 table.add_columns(*entetes)
                 table.add_rows(rangees)

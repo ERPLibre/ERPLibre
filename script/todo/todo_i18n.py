@@ -144,6 +144,25 @@ TRANSLATIONS = {
         "fr": "📊 Graphique de l'évolution des modules (TUI, d'après 3 et 4)",
         "en": "📊 Chart of the module evolution (TUI, from entries 3 and 4)",
     },
+    "📄 Export the module statistics to CSV (from entries 3 and 4)": {
+        "fr": (
+            "📄 Exporter les statistiques de modules en CSV (des entrées 3 et "
+            "4)"
+        ),
+        "en": "📄 Export the module statistics to CSV (from entries 3 and 4)",
+    },
+    "Repository": {
+        "fr": "Dépôt",
+        "en": "Repository",
+    },
+    "Per repository": {
+        "fr": "Par dépôt",
+        "en": "Per repository",
+    },
+    "No per-repository detail: run the statistics again.": {
+        "fr": "Pas de détail par dépôt : relancez la statistique.",
+        "en": "No per-repository detail: run the statistics again.",
+    },
     "No module statistics yet: run entry 3 or 4 first.": {
         "fr": (
             "Aucune statistique de modules : lancez d'abord l'entrée 3 ou 4."
