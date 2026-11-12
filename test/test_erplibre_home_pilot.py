@@ -20,35 +20,48 @@ Ce que ces tests gardent :
 - avant d'écrire une clé que l'Odoo pilote verrouille, chaque entrée du
   menu le dit en une ligne qui nomme la destination, puis écrit quand
   même ; une clé libre, ou une valeur inchangée, ne dit rien. L'installation
-  Stream Deck, qui change DECK_PROGRAM par --deck-program, fait de même.
+  Stream Deck, qui change DECK_PROGRAM par --deck-program, fait de même ;
+- le format de keymap.json que pose le contrat égale les constantes de
+  keymap.py, --catalog rend la forme qu'il énonce, et le chargeur du deck
+  donne à chaque fixture partagée de keymap.json le verdict qu'elle porte :
+  il ne saute rien de ce que l'extension écrit.
 
 Ce qui lit le clone est sauté quand il manque (SANS_EXTENSION), ou quand
-son contrat précède la version qui pose le tableau : une MINEURE en
-retard reste compatible, repo sync l'amène.
+son contrat précède la version qui pose le tableau ou le format : une
+MINEURE en retard reste compatible, repo sync l'amène.
 """
 
 import contextlib
+import dataclasses
 import io
 import json
 import os
 import re
 import sys
 import tempfile
+import types
+import unicodedata
 import unittest
 from pathlib import Path
 from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
+sys.path.insert(0, str(RACINE / "script/stream_deck"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.argv = ["todo.py"]
 
 from erplibre_home_extension import (  # noqa: E402
     SANS_EXTENSION,
+    fixtures_de_dispositions,
     fixtures_de_reglages,
     reglages_du_contrat,
+    valeur_du_contrat,
     version_du_contrat,
 )
+from erplibre_streamdeck import keymap, paths  # noqa: E402
+from erplibre_streamdeck.plugin import Geometry  # noqa: E402
+from erplibre_streamdeck.ui import icons  # noqa: E402
 
 from script.todo import erplibre_home_service as service  # noqa: E402
 from script.todo import streamdeck_menu  # noqa: E402
@@ -57,6 +70,9 @@ from script.todo.todo import TODO  # noqa: E402
 
 # La version du contrat qui pose le tableau des réglages pilotés.
 CONTRAT_DU_PILOTE = (1, 3)
+# La version du contrat qui pose keymap.json et --catalog.
+CONTRAT_DES_DISPOSITIONS = (1, 4)
+CONTRAT_INSCRIT = RACINE / "script/gnome-extension/erplibre_home_contract"
 UNITE = "erplibre-home-streamdeck.service"
 DESTINATION = "Odoo de test"
 AVERTISSEMENT = (
@@ -203,6 +219,225 @@ class LesIdentifiantsDePlugin(unittest.TestCase):
         self.assertTrue(all(motif.fullmatch(i) for i in ids))
 
 
+def forme_du_contrat(motif):
+    """L'objet JSON que le contrat écrit avec des espaces réservés : la
+    valeur que donne `motif` (groupe 1), chaque « <nom> » devenu la
+    chaîne "nom", lue par json.loads. Ses clés et leur ordre sont ce que
+    le contrat promet."""
+    texte = valeur_du_contrat(motif)
+    return json.loads(re.sub(r"<(\w+)>", r'"\1"', texte))
+
+
+def plugins_nommes(disposition):
+    """Les identifiants des actions « plugin:<id> » d'une disposition
+    telle que le fichier la porte, quelle que soit sa forme."""
+    cles = disposition.get("keys") if isinstance(disposition, dict) else None
+    return {
+        entree["action"][len("plugin:") :]
+        for entree in (cles if isinstance(cles, list) else ())
+        if isinstance(entree, dict)
+        and isinstance(entree.get("action"), str)
+        and entree["action"].startswith("plugin:")
+    }
+
+
+def verdict_du_chargeur(cas):
+    """Ce que le chargeur du deck fait d'un keymap.json qui porte les
+    `layouts` d'une fixture, comme l'article 11 du contrat le calcule :
+    load, puis layout_for sur chaque modèle du catalogue, chargés avec un
+    bouton d'accueil les plugins que la disposition nomme, sauf ceux que
+    le catalogue n'offre pas ou que `plugins_off` éteint. Rend (verdict,
+    problèmes) : « problem » au premier problème, sinon « as_sent » quand
+    une disposition au moins est posée, sinon « automatic »."""
+    catalogue = cas["catalog"]
+    with tempfile.TemporaryDirectory() as dossier:
+        chemin = Path(dossier, "keymap.json")
+        chemin.write_text(
+            json.dumps(
+                {"format": 1, "revision": 0, "layouts": cas["layouts"]}
+            ),
+            encoding="utf-8",
+        )
+        with contextlib.redirect_stderr(io.StringIO()):
+            donnees = keymap.load(chemin)
+    offerts = {
+        action[len("plugin:") :]
+        for action in catalogue["actions"]
+        if action.startswith("plugin:")
+    } - set(cas["plugins_off"])
+    dispositions = donnees.get("layouts", {}) if donnees else {}
+    problemes, posee = [], False
+    for modele, geo in sorted(catalogue["models"].items()):
+        entrees, trouves = keymap.layout_for(
+            donnees,
+            modele,
+            Geometry(geo["cols"], geo["rows"], geo["keys"]),
+            offerts & plugins_nommes(dispositions.get(modele)),
+            set(catalogue["icons"]),
+        )
+        problemes += trouves
+        posee = posee or entrees is not None
+    if problemes:
+        return "problem", problemes
+    return ("as_sent" if posee else "automatic"), problemes
+
+
+def un_par_categorie():
+    """{catégorie Unicode: premier point de code de cette catégorie}, sur
+    tout l'espace Unicode : chaque catégorie a son représentant."""
+    exemples = {}
+    for point in range(sys.maxunicode + 1):
+        exemples.setdefault(unicodedata.category(chr(point)), chr(point))
+    return exemples
+
+
+class LaVersionInscrite(unittest.TestCase):
+    def test_the_recorded_contract_covers_the_key_layouts(self):
+        """keymap.py lit keymap.json et --catalog sort le catalogue que
+        pose le contrat 1.4 : ERPLibre inscrit au moins cette version, et
+        un clone plus ancien se dit en retard."""
+        texte = CONTRAT_INSCRIT.read_text(encoding="utf-8").strip()
+        self.assertRegex(texte, r"^\d+\.\d+$")
+        inscrite = tuple(int(n) for n in texte.split("."))
+        self.assertGreaterEqual(inscrite, CONTRAT_DES_DISPOSITIONS)
+
+
+@SANS_EXTENSION
+class LeContratDesDispositions(unittest.TestCase):
+    def setUp(self):
+        version = version_du_contrat()
+        if version < CONTRAT_DES_DISPOSITIONS:
+            self.skipTest(
+                "contrat du clone %d.%d, keymap.json en %d.%d : repo sync"
+                % (version + CONTRAT_DES_DISPOSITIONS)
+            )
+
+    def test_the_keymap_format_matches_the_loader_constants(self):
+        fichier = forme_du_contrat(r'`(\{"format": \d+, "revision": [^`]*)`')
+        self.assertEqual(keymap.FORMAT, fichier["format"])
+        self.assertEqual(
+            "~/" + str(paths.KEYMAP_FILE.relative_to(Path.home())),
+            valeur_du_contrat(r"`(~/[^`]*keymap\.json)`"),
+        )
+        entree = forme_du_contrat(r'`(\{"key": [^`]*)`')
+        self.assertEqual(
+            [champ.name for champ in dataclasses.fields(keymap.Entry)],
+            list(entree),
+        )
+        self.assertEqual(
+            str(keymap.MAX_MODELS),
+            valeur_du_contrat(r"4 lowercase hex digits, (\d+) models at most"),
+        )
+        self.assertEqual(
+            str(keymap.LABEL_MAX),
+            valeur_du_contrat(
+                r"`label` at most (\d+) characters, counted by code point"
+            ),
+        )
+        self.assertEqual(
+            keymap.PLUGIN_ID,
+            valeur_du_contrat(r"`<id>` of the pattern `([^`]+)`"),
+        )
+        self.assertEqual(
+            set(keymap.FIXED_ACTIONS),
+            {
+                valeur_du_contrat(r"`(\w+)` \(a key of the dashboard\)"),
+                valeur_du_contrat(r"`(\w+)` \(a black key\)"),
+            },
+        )
+
+    def test_the_loader_refuses_no_label_the_contract_admits(self):
+        """Un libellé que layout_for saute doit être un libellé que le
+        contrat interdit : sinon le deck perdrait une touche que
+        l'extension a écrite. Le chargeur peut être plus large."""
+        interdites = set(
+            re.findall(
+                r"\b(C[a-z])\b",
+                valeur_du_contrat(
+                    r"none of the Unicode categories ([A-Za-z ,]+?)\. "
+                ),
+            )
+        )
+        self.assertIn("Cc", interdites)
+        sautees = set()
+        for categorie, caractere in un_par_categorie().items():
+            donnees = {
+                "format": 1,
+                "layouts": {
+                    "0084": {
+                        "keys": [
+                            {"key": 0, "action": "tiles", "label": caractere}
+                        ]
+                    }
+                },
+            }
+            _entrees, problemes = keymap.layout_for(
+                donnees, "0084", Geometry(4, 2, 8), set(), set()
+            )
+            if problemes:
+                sautees.add(categorie)
+        self.assertTrue(sautees)
+        self.assertLessEqual(sautees, interdites)
+
+    def test_the_catalog_has_the_shape_the_contract_states(self):
+        forme = forme_du_contrat(
+            r'deck lock: `(\{"format": \d+, "actions": [^`]*)`'
+        )
+        avec = types.SimpleNamespace(home_button=object())
+        sans = types.SimpleNamespace(home_button=None)
+        charges = [
+            types.SimpleNamespace(id="timers", plugin=avec),
+            types.SimpleNamespace(id="tiling", plugin=sans),
+        ]
+        modeles = {"0084": {"cols": 4, "rows": 2, "keys": 8}}
+        with mock.patch.object(keymap, "models", return_value=modeles):
+            catalogue = keymap.catalog(charges, off=("sound",))
+        self.assertEqual(list(forme), list(catalogue))
+        self.assertEqual(forme["format"], catalogue["format"])
+        (modele,) = forme["models"].values()
+        self.assertEqual(list(modele), list(catalogue["models"]["0084"]))
+        fixes = valeur_du_contrat(
+            r"that have a home key, then (`\w+` and `\w+`)"
+        )
+        self.assertEqual(
+            re.findall(r"`(\w+)`", fixes), catalogue["actions"][-2:]
+        )
+        self.assertEqual(
+            ["plugin:sound", "plugin:timers"], catalogue["actions"][:-2]
+        )
+        motif_icone = valeur_du_contrat(
+            r"the icon names of the pattern `([^`]+)`"
+        )
+        self.assertEqual(sorted(icons.ICONS), catalogue["icons"])
+        for nom in catalogue["icons"]:
+            with self.subTest(icone=nom):
+                self.assertRegex(nom, r"\A(?:%s)\Z" % motif_icone)
+
+    def test_the_loader_gives_each_keymap_fixture_its_stated_verdict(self):
+        fixtures = fixtures_de_dispositions()
+        self.assertTrue(fixtures)
+        for nom, cas in fixtures:
+            with self.subTest(fixture=nom):
+                verdict, problemes = verdict_du_chargeur(cas)
+                self.assertEqual(cas["loader"], verdict, problemes)
+
+    def test_the_deck_skips_nothing_the_extension_writes(self):
+        """Revue 4 vue du deck : une disposition que l'extension écrit
+        (valid) n'a aucune entrée sautée ni vidée par le chargeur."""
+        valides = [
+            (nom, cas)
+            for nom, cas in fixtures_de_dispositions()
+            if cas["valid"]
+        ]
+        self.assertTrue(valides)
+        for nom, cas in valides:
+            with self.subTest(fixture=nom):
+                self.assertNotEqual("problem", cas["loader"])
+                verdict, problemes = verdict_du_chargeur(cas)
+                self.assertEqual([], problemes)
+                self.assertIn(verdict, ("as_sent", "automatic"))
+
+
 def ecrire_pilote(dossier, contenu):
     """Pose `contenu` (texte, octets, ou objet sérialisé en JSON) dans
     <dossier>/erplibre-home/pilot.json ; rend son chemin."""
@@ -266,16 +501,18 @@ class LeFichierPilote(unittest.TestCase):
                 self.assertIsNone(service.read_pilot(environ))
 
     def test_unknown_keys_drop_and_the_label_cannot_steer_the_terminal(self):
-        """Une clé que cet ERPLibre ne connaît pas (MINEURE plus récente)
-        est ignorée ; un caractère de contrôle du libellé, qui piloterait
-        le terminal où TODO l'affiche, devient « ? »."""
+        """Une clé qu'aucune entrée de TODO n'écrit (key_layouts, dans
+        keymap.json et non dans streamdeck.conf) ou que cet ERPLibre ne
+        connaît pas (MINEURE plus récente) est ignorée ; un caractère de
+        contrôle du libellé, qui piloterait le terminal où TODO l'affiche,
+        devient « ? »."""
         with tempfile.TemporaryDirectory() as dossier:
             ecrire_pilote(
                 dossier,
                 {
                     "destination": "Odoo\x1b[2J\nde test",
                     "revision": 2,
-                    "locked": ["key_layouts", "games", "games"],
+                    "locked": ["key_layouts", "games", "games", "later"],
                     "extra": True,
                 },
             )

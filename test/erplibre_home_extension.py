@@ -14,9 +14,9 @@ erplibre_home_settings.sh. L'extension elle-même se teste dans son dépôt.
 Ce qu'un test lit du clone passe par CONTRACT.md : les fonctions
 ci-dessous en tirent sa version, le tableau D-Bus, l'objet et l'interface,
 le tableau des enregistrements et celui des réglages que pilote Odoo. Les
-fixtures partagées de streamdeck.conf, que le contrat décrit, sont les
-seuls autres fichiers lus : des données, que les tests des deux dépôts
-passent chacun à leur propre code.
+fixtures partagées de streamdeck.conf et de keymap.json, que le contrat
+décrit, sont les seuls autres fichiers lus : des données, que les tests
+des deux dépôts passent chacun à leur propre code.
 
 Sans le préfixe test_, le lanceur unitaire ne prend pas ce module pour un
 fichier de tests.
@@ -161,4 +161,35 @@ def fixtures_de_reglages():
                 reecrit.read_bytes(),
             )
         )
+    return fixtures
+
+
+# Les clés de chaque fixture de keymap.json que l'article 11 du contrat
+# énonce ; une MINEURE peut en ajouter, aucune ne peut manquer.
+CLES_DES_DISPOSITIONS = (
+    "catalog",
+    "plugins_off",
+    "layouts",
+    "valid",
+    "loader",
+)
+
+
+def fixtures_de_dispositions():
+    """[(nom, cas)] des fixtures partagées de test/fixtures/keymap/ du
+    clone, triées par nom, sous la forme que décrit le contrat : chaque
+    <nom>.json porte `catalog` (une sortie de --catalog), `plugins_off`,
+    `layouts` (les key_layouts d'une réponse), `valid`, ce que l'extension
+    en écrit, et `loader`, ce que le chargeur d'ERPLibre en fait. Une
+    fixture à laquelle manque l'une de ces clés lève AssertionError."""
+    dossier = EXTENSION / "test/fixtures/keymap"
+    fixtures = []
+    for chemin in sorted(dossier.glob("*.json")):
+        cas = json.loads(chemin.read_text(encoding="utf-8"))
+        if not isinstance(cas, dict):
+            raise AssertionError("fixture %s : pas un objet" % chemin)
+        manque = [c for c in CLES_DES_DISPOSITIONS if c not in cas]
+        if manque:
+            raise AssertionError("fixture %s : manque %s" % (chemin, manque))
+        fixtures.append((chemin.stem, cas))
     return fixtures
