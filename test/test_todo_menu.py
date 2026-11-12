@@ -683,6 +683,9 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install opencode": "_shell_install_opencode",
         "🔃 Update git repo": "prompt_execute_git_repo",
         "🍴 Fork a repository for an organisation": "_git_fork_organisation",
+        "➕ Add a repository to a manifest": "_git_ajouter_depot",
+        "🌿 Create a branch in a repository": "_git_creer_branche",
+        "🔭 Add the upstream remote of a repository": "_git_ajouter_amont",
         "Kill git daemon server process": "process_kill_git_daemon",
     }
 
@@ -773,6 +776,12 @@ class TestGitMenuSections(unittest.TestCase):
                     t("Repositories"),
                     t("🍴 Fork a repository for an organisation"),
                 ),
+                (t("Repositories"), t("➕ Add a repository to a manifest")),
+                (t("Repositories"), t("🌿 Create a branch in a repository")),
+                (
+                    t("Repositories"),
+                    t("🔭 Add the upstream remote of a repository"),
+                ),
                 (
                     t("Settings"),
                     t("Install git hooks (commit-msg, pre-commit)"),
@@ -800,7 +809,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[7] est l'éditeur vim, après six entrées et deux sections."""
+        """[10] est l'éditeur vim, après neuf entrées et deux sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -809,7 +818,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["7", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["10", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,

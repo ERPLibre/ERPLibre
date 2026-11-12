@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Répertoire git › Forker un dépôt pour une organisation.
+"""Répertoire git › les dépôts des manifestes : forker pour une
+organisation, ajouter un dépôt, créer une branche, poser le remote amont.
 
-On choisit un projet des manifestes de la version active, on nomme
-l'organisation, et le fork se fait par l'API GitHub (github_fork). Puis,
-sur demande, les manifestes choisis prennent ce fork (manifest_fork) :
-remote de l'organisation, provenance fork-upstream-*, même branche et
-même gel.
+Ce fichier pose les questions ; le travail se fait dans
+script/git/manifest_repo.py, qui se lance aussi seul en ligne de commande.
 
-Trois questions décident du résultat, chacune avec un défaut :
+Le fork décide de trois choses, chacune avec un défaut :
 - l'amont d'un projet DÉJÀ forké : celui d'origine (OCA) ou l'ancien fork
   (ERPLibre) — deux usages, aucun n'est le bon partout ;
 - les branches copiées : la branche active seule, posée par une ref sur le
@@ -21,7 +19,6 @@ celles des autres fichiers, elles s'appellent donc par « self. ».
 """
 
 import os
-import re
 import sys
 
 new_path = os.path.normpath(
@@ -29,89 +26,107 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import github_fork, manifest_fork  # noqa: E402
-from script.git import manifest_freeze, repo_upgrade  # noqa: E402
+from script.git import github_fork, manifest_fork, manifest_repo  # noqa: E402
+from script.git import repo_upgrade  # noqa: E402
+from script.git.manifest_repo import (  # noqa: E402,F401
+    branche_du_projet,
+    fichier_du_projet,
+    projets_github,
+    url_du_projet,
+    versions_des_manifestes,
+    versions_du_depot,
+)
 from script.todo.todo_i18n import t  # noqa: E402
 
 RACINE = new_path
-MANIFESTE = re.compile(r"git_manifest_odoo(\d+\.\d+)\.xml$")
+
+MESSAGE_JETON = (
+    "No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO"
+    " (env_var.sh is versioned)."
+)
 
 
-def versions_des_manifestes(dossier=None):
-    """Les versions d'Odoo qui ont un manifeste, triées."""
-    try:
-        noms = os.listdir(dossier or repo_upgrade.DOSSIER)
-    except OSError:
-        return []
-    trouvees = {m.group(1) for n in noms if (m := MANIFESTE.match(n))}
-    return sorted(trouvees, key=lambda v: [int(x) for x in v.split(".")])
-
-
-def url_du_projet(projet, remotes):
-    """L'URL d'où le projet se clone : fetch de son remote + son nom."""
-    return repo_upgrade.url_amont(
-        remotes.get(projet.get("remote")), projet.get("name")
-    )
-
-
-def projets_github(version, dossier=None):
-    """(remotes, [(projet, propriétaire, dépôt)]) des projets de `version`
-    hébergés sur GitHub, triés par chemin."""
-    remotes, projets = repo_upgrade.lire_manifestes(
-        version, dossier or repo_upgrade.DOSSIER
-    )
-    res = []
-    for projet in projets.values():
-        depot = github_fork.depot_github(url_du_projet(projet, remotes))
-        if depot:
-            res.append((projet, *depot))
-    res.sort(key=lambda r: r[0].get("path", ""))
-    return remotes, res
-
-
-def versions_du_depot(proprietaire, depot, dossier=None):
-    """{version: (remotes, projet)} des versions dont un manifeste clone
-    proprietaire/depot. Le premier projet trouvé par version compte."""
-    res = {}
-    for version in versions_des_manifestes(dossier):
-        remotes, liste = projets_github(version, dossier)
-        for projet, p, d in liste:
-            if (p.lower(), d.lower()) == (proprietaire.lower(), depot.lower()):
-                res[version] = (remotes, projet)
-                break
-    return res
-
-
-def fichier_du_projet(version, name, path, dossier=None):
-    """Le fichier de manifeste de `version` qui déclare name+path, ou None."""
-    for chemin in repo_upgrade.fichiers_manifeste(
-        version, dossier or repo_upgrade.DOSSIER
-    ):
-        with open(chemin, encoding="utf-8") as fh:
-            texte = fh.read()
-        for _d, _f, attrs in manifest_freeze.iter_projects(texte):
-            if attrs.get("name") == name and attrs.get("path") == path:
-                return chemin
-    return None
-
-
-def branche_du_projet(projet):
-    return manifest_freeze.manifest_branch(
-        projet.get("revision"),
-        projet.get("upstream"),
-        projet.get("dest-branch"),
-    )
+def clones(version, racine=RACINE):
+    """(remotes, [projet]) des projets de `version` dont le clone existe,
+    triés par chemin."""
+    remotes, projets = repo_upgrade.lire_manifestes(version)
+    liste = [
+        p
+        for p in projets.values()
+        if p.get("path") and os.path.isdir(os.path.join(racine, p["path"]))
+    ]
+    return remotes, sorted(liste, key=lambda p: p["path"])
 
 
 class GitForkMenuMixin:
-    def _git_fork_organisation(self):
-        """Le parcours complet ; rend 0, ou 2 sur un refus ou une erreur."""
+    # ── Choisir ──────────────────────────────────────────────────────
+
+    def _git_filtrer(self, elements, texte):
+        """Les `elements` dont `texte(e)` contient le filtre tapé, numérotés
+        et affichés ; rend celui qu'on choisit, ou None."""
+        filtre = (
+            input(
+                t(
+                    "Filter (part of the path or of the repository), Enter for all: "
+                )
+            )
+            .strip()
+            .lower()
+        )
+        retenus = [e for e in elements if filtre in texte(e).lower()]
+        if not retenus:
+            print(f"  {t('No repository matches.')}")
+            return None
+        for i, e in enumerate(retenus, 1):
+            print(f"  [{i}] {texte(e)}")
+        saisie = input(t("Repository number, Enter for none: ")).strip()
+        if not (saisie.isdigit() and 1 <= int(saisie) <= len(retenus)):
+            return None
+        return retenus[int(saisie) - 1]
+
+    def _git_fork_choisir_projet(self, liste):
+        """(projet, propriétaire, dépôt) choisi, ou None."""
+        return self._git_filtrer(
+            liste, lambda r: f"{r[0].get('path')}  ({r[1]}/{r[2]})"
+        )
+
+    def _git_choisir_clone(self):
+        """(remotes, projet, chemin du clone) choisi parmi les clones de la
+        version active, ou None."""
         version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        remotes, liste = clones(version)
+        projet = self._git_filtrer(liste, lambda p: p.get("path", ""))
+        if projet is None:
+            return None
+        return remotes, projet, os.path.join(RACINE, projet["path"])
+
+    def _git_choisir_version(self, defaut):
+        """La version d'Odoo tapée parmi celles qui ont un manifeste, ou
+        `defaut` sur Entrée ; None pour une version sans manifeste."""
+        versions = versions_des_manifestes()
+        saisie = input(
+            f"{t('Odoo version')} ({', '.join(versions)}) [{defaut}] : "
+        ).strip()
+        version = saisie or defaut
+        if version not in versions:
+            print(f"⚠ {version} : {t('no manifest for this version.')}")
+            return None
+        return version
+
+    # ── Forker ───────────────────────────────────────────────────────
+
+    def _git_fork_organisation(self, version=None, preselection=None):
+        """Le parcours complet ; rend 0, ou 2 sur un refus ou une erreur.
+        `preselection` saute le choix du projet, dans `version`."""
+        version = version or repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
             return 2
         remotes, liste = projets_github(version)
-        choix = self._git_fork_choisir_projet(liste)
+        choix = preselection or self._git_fork_choisir_projet(liste)
         if choix is None:
             return 0
         projet, proprietaire, depot = choix
@@ -130,9 +145,7 @@ class GitForkMenuMixin:
         toutes = self._git_fork_choisir_branches(branche)
         jeton = github_fork.jeton(RACINE)
         if not jeton:
-            print(
-                f"⚠ {t('No GitHub token: export EL_GITHUB_TOKEN in the shell that opens TODO (env_var.sh is versioned).')}"
-            )
+            print(f"⚠ {t(MESSAGE_JETON)}")
             return 2
         print(
             f"  {proprietaire}/{depot} → {organisation}/{depot}"
@@ -141,73 +154,64 @@ class GitForkMenuMixin:
         if not self._is_yes(input(t("Fork it? (y/N): "))):
             return 0
         client = github_fork.ClientGitHub(jeton)
+        print(f"  {t('Waiting for GitHub to create the fork…')}")
         try:
-            fork, cree = client.forker(
-                proprietaire, depot, organisation, toutes
+            fork, cree, posee = manifest_repo.forker(
+                client, proprietaire, depot, organisation, toutes, projet
             )
-            nom_complet = fork["full_name"]
-            if cree:
-                print(f"  {t('Waiting for GitHub to create the fork…')}")
-                if not client.attendre(nom_complet):
-                    print(
-                        f"⚠ {t('The fork is still not ready; try again later.')}"
-                    )
-                    return 2
-                print(f"  ✓ {t('Fork created:')} {fork.get('html_url')}")
-            else:
-                print(
-                    f"  ✓ {t('Fork already present:')} {fork.get('html_url')}"
-                )
-            if not toutes:
-                self._git_fork_branche(
-                    client, nom_complet, proprietaire, depot, projet
-                )
         except github_fork.ErreurGitHub as exc:
             print(f"❌ GitHub : {exc}")
             return 2
+        libelle = t("Fork created:") if cree else t("Fork already present:")
+        print(f"  ✓ {libelle} {fork.get('html_url')}")
+        if posee:
+            print(
+                f"  ✓ {t('Branch created in the fork:')}"
+                f" {posee[0]} @ {posee[1][:12]}"
+            )
         if not self._is_yes(
             input(t("Change the manifest to take this fork? (y/N): "))
         ):
             return 0
-        return self._git_fork_manifestes(
+        par_version = versions_du_depot(proprietaire, depot)
+        print(
+            f"  {t('Versions whose manifest clones this repository:')}"
+            f" {', '.join(par_version) or '-'}"
+        )
+        saisie = input(
+            f"{t('Versions to change, separated by commas (Enter: the active one)')}"
+            f" [{version}] : "
+        ).strip()
+        voulues = [v.strip() for v in saisie.split(",") if v.strip()] or [
+            version
+        ]
+        resultats = manifest_repo.prendre_le_fork(
             client,
-            nom_complet,
+            fork,
             proprietaire,
             depot,
             organisation,
             mode,
-            version,
+            voulues,
             toutes,
-            fork.get("name"),
         )
-
-    def _git_fork_choisir_projet(self, liste):
-        """(projet, propriétaire, dépôt) choisi, ou None."""
-        filtre = (
-            input(
-                t(
-                    "Filter (part of the path or of the repository), Enter for all: "
-                )
-            )
-            .strip()
-            .lower()
+        changees = []
+        for v, fichier, erreur in resultats:
+            if erreur:
+                print(f"❌ {v} : {erreur}")
+            elif fichier:
+                changees.append(v)
+                print(f"  ✓ {os.path.relpath(fichier, RACINE)}")
+        if not changees:
+            return 0
+        print(
+            f"  {t('Commit manifest/, then synchronise the repositories so the clone follows the fork.')}"
         )
-        retenus = [
-            r
-            for r in liste
-            if not filtre
-            or filtre in r[0].get("path", "").lower()
-            or filtre in f"{r[1]}/{r[2]}".lower()
-        ]
-        if not retenus:
-            print(f"  {t('No repository matches.')}")
-            return None
-        for i, (projet, proprietaire, depot) in enumerate(retenus, 1):
-            print(f"  [{i}] {projet.get('path')}  ({proprietaire}/{depot})")
-        saisie = input(t("Repository number, Enter for none: ")).strip()
-        if not (saisie.isdigit() and 1 <= int(saisie) <= len(retenus)):
-            return None
-        return retenus[int(saisie) - 1]
+        if version in changees and self._is_yes(
+            input(t("Add the upstream remote to the local clone now? (y/N): "))
+        ):
+            self._git_amont_de(version, projet.get("path"))
+        return 0
 
     def _git_fork_choisir_mode(self, projet, remotes):
         """AMONT_ORIGINE ou AMONT_FORK. Un projet qui n'est pas un fork n'a
@@ -236,91 +240,120 @@ class GitForkMenuMixin:
         print(f"  [2] {t('every branch of the source')}")
         return input("  : ").strip() == "2"
 
-    def _git_fork_branche(
-        self, client, nom_complet, proprietaire, depot, projet
-    ):
-        """Pose dans le fork la branche que suit `projet`, sur son commit
-        gelé, ou sur la tête de la source s'il n'est pas gelé."""
-        branche = branche_du_projet(projet)
-        if not branche or client.branche(nom_complet, branche):
-            return
-        sha = projet.get(manifest_freeze.FREEZE_ATTR) or client.branche(
-            f"{proprietaire}/{depot}", branche
-        )
-        if not sha:
-            print(f"⚠ {t('Branch missing at the source:')} {branche}")
-            return
-        client.creer_branche(nom_complet, branche, sha)
-        print(f"  ✓ {t('Branch created in the fork:')} {branche} @ {sha[:12]}")
+    # ── Ajouter un dépôt ─────────────────────────────────────────────
 
-    def _git_fork_manifestes(
-        self,
-        client,
-        nom_complet,
-        proprietaire,
-        depot,
-        organisation,
-        mode,
-        version_active,
-        toutes,
-        nom_fork,
-    ):
-        par_version = versions_du_depot(proprietaire, depot)
-        print(
-            f"  {t('Versions whose manifest clones this repository:')}"
-            f" {', '.join(par_version) or '-'}"
+    def _git_ajouter_depot(self):
+        """Ajoute un dépôt GitHub au manifeste de la version choisie, puis
+        propose de le forker. Rend 0, ou 2 sur un refus."""
+        url = input(t("GitHub URL of the repository to add: ")).strip()
+        if not url:
+            return 0
+        if not github_fork.depot_github(url):
+            print(f"⚠ {t('Not a GitHub repository URL.')}")
+            return 2
+        actif = repo_upgrade.version_active(RACINE)
+        version = self._git_choisir_version(actif)
+        if not version:
+            return 2
+        branche = (
+            input(f"{t('Branch to follow')} [{version}] : ").strip() or version
         )
-        saisie = input(
-            f"{t('Versions to change, separated by commas (Enter: the active one)')}"
-            f" [{version_active}] : "
-        ).strip()
-        voulues = [v.strip() for v in saisie.split(",") if v.strip()] or [
-            version_active
-        ]
-        changees = []
-        for version in voulues:
-            if version not in par_version:
-                print(
-                    f"⚠ {version} : {t('this repository is not in its manifest.')}"
-                )
-                continue
-            remotes, projet = par_version[version]
-            try:
-                if not toutes:
-                    self._git_fork_branche(
-                        client, nom_complet, proprietaire, depot, projet
-                    )
-                changement = manifest_fork.plan(
-                    projet, remotes, organisation, mode, nom_fork
-                )
-            except (github_fork.ErreurGitHub, ValueError) as exc:
-                print(f"❌ {version} : {exc}")
-                continue
-            chemin = fichier_du_projet(
-                version, projet.get("name"), projet.get("path")
+        fichier = os.path.join(
+            manifest_repo.dossier_manifestes(),
+            f"git_manifest_odoo{version}.xml",
+        )
+        with open(fichier, encoding="utf-8") as fh:
+            gele = manifest_repo.est_gele(fh.read())
+        invite = "Freeze it on the head of the branch? (Y/n): "
+        if not gele:
+            invite = "Freeze it on the head of the branch? (y/N): "
+        reponse = input(t(invite)).strip()
+        geler = self._is_yes(reponse) if reponse else gele
+        print(f"  {t('Checking the branch on GitHub…')}")
+        try:
+            fichier, plan, gel = manifest_repo.ajouter_depot(
+                url, version, branche, geler
             )
-            if not chemin:
-                print(f"⚠ {version} : {t('project not found in the files.')}")
-                continue
-            with open(chemin, encoding="utf-8") as fh:
-                texte = fh.read()
-            try:
-                neuf, trouve = manifest_fork.appliquer(
-                    texte, projet.get("name"), projet.get("path"), changement
-                )
-            except ValueError as exc:
-                print(f"❌ {version} : {exc}")
-                continue
-            if trouve and neuf != texte:
-                with open(chemin, "w", encoding="utf-8") as fh:
-                    fh.write(neuf)
-                changees.append(os.path.relpath(chemin, RACINE))
-                print(
-                    f"  ✓ {os.path.relpath(chemin, RACINE)} :"
-                    f" remote {changement['remote']}"
-                )
-        if changees:
-            print(
-                f"  {t('Commit manifest/, then synchronise the repositories so the clone follows the fork.')}"
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        print(
+            f"  ✓ {os.path.relpath(fichier, RACINE)} : {plan['path']}"
+            f" ({plan['remote']}, {plan['revision']}"
+            f"{' @ ' + gel[:12] if gel else ''})"
+        )
+        print(
+            f"  {t('Commit manifest/, then synchronise the repositories to clone it.')}"
+        )
+        if self._is_yes(input(t("Fork it for an organisation now? (y/N): "))):
+            _remotes, liste = projets_github(version)
+            choix = next(
+                (r for r in liste if r[0].get("path") == plan["path"]), None
             )
+            if choix:
+                return self._git_fork_organisation(version, choix)
         return 0
+
+    # ── Branche et remote amont d'un clone ───────────────────────────
+
+    def _git_creer_branche(self):
+        """Crée une branche dans le clone choisi, s'y place, et la pousse
+        vers le remote tapé, si un est tapé. Rend 0, ou 2 sur un échec."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return 0
+        _remotes, projet, chemin = choix
+        nom = input(t("Name of the new branch: ")).strip()
+        if not nom:
+            return 0
+        depart = input(t("Start from (Enter: the current commit): ")).strip()
+        remotes = manifest_repo.remotes_du_clone(chemin)
+        pousser = input(
+            f"{t('Push it to the remote (Enter: no push)')}"
+            f" ({', '.join(remotes) or '-'}) : "
+        ).strip()
+        if pousser and pousser not in remotes:
+            print(f"⚠ {pousser} : {t('no such remote in this clone.')}")
+            return 2
+        etapes = manifest_repo.brancher(chemin, nom, depart or None, pousser)
+        for etape, code, sortie in etapes:
+            marque = "✓" if not code else "❌"
+            print(
+                f"  {marque} {etape} : {sortie.splitlines()[-1] if sortie else ''}"
+            )
+        return 2 if any(code for _e, code, _s in etapes) else 0
+
+    def _git_ajouter_amont(self):
+        """Pose et récupère le remote amont du clone choisi. Rend 0, ou 2."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return 0
+        remotes, projet, chemin = choix
+        return self._git_amont(chemin, projet, remotes)
+
+    def _git_amont_de(self, version, chemin_projet):
+        """Le remote amont du clone de `chemin_projet`, relu dans le
+        manifeste de `version` que le fork vient de changer."""
+        try:
+            remotes, projet = manifest_repo.trouver_projet(
+                version, chemin_projet
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        chemin = os.path.join(RACINE, projet["path"])
+        if not os.path.isdir(chemin):
+            print(f"⚠ {t('The repository is not cloned yet.')}")
+            return 2
+        return self._git_amont(chemin, projet, remotes)
+
+    def _git_amont(self, chemin, projet, remotes):
+        etat, detail = manifest_repo.ajouter_amont(chemin, projet, remotes)
+        if etat in ("ajoute", "present"):
+            print(f"  ✓ {t('Upstream remote ready and fetched:')} {detail}")
+            return 0
+        if etat is None:
+            print(f"⚠ {t('No upstream remote:')} {detail}")
+        else:
+            print(f"⚠ {detail}")
+        return 2

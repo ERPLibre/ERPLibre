@@ -117,8 +117,25 @@ To show differences between actual code and manifest
 
 ## Add repo
 
-To access a new repository, add its `<project>`, and its `<remote>` if the organisation is new, to
-`./manifest/git_manifest_odoo<version>.xml`. To push code to it, fork it as above.
+TODO › Execute › Git repository › Add a repository to a manifest asks for the GitHub URL, the Odoo version (the active
+one by default) and the branch (the version by default). It checks that the branch exists on GitHub, declares the
+project in `./manifest/git_manifest_odoo<version>.xml` with its organisation's remote, at
+`odoo<version>/addons/<organisation>_<repository>`, frozen on the head of the branch when the manifest is frozen, then
+offers to fork it. A repository already in the manifest is refused. Commit `manifest/`, then synchronise the
+repositories to clone it.
+
+The same tools run without the menu:
+
+```bash
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/OCA/l10n-switzerland --version 18.0
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MyOrg
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py branch OCA_l10n-switzerland 18.0_my_feature --push origin
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py upstream OCA_l10n-switzerland
+```
+
+`branch` creates a branch in the clone and switches to it, then pushes it with tracking when `--push` names a remote;
+`upstream` adds the upstream remote the manifest declares for a fork, and fetches its branch. Both are also in TODO ›
+Execute › Git repository.
 
 ## Remove auto_install from an addons repository
 

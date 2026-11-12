@@ -3746,6 +3746,20 @@ class TODO(
                 ),
                 "method": "_git_fork_organisation",
             },
+            {
+                "prompt_description": t("➕ Add a repository to a manifest"),
+                "method": "_git_ajouter_depot",
+            },
+            {
+                "prompt_description": t("🌿 Create a branch in a repository"),
+                "method": "_git_creer_branche",
+            },
+            {
+                "prompt_description": t(
+                    "🔭 Add the upstream remote of a repository"
+                ),
+                "method": "_git_ajouter_amont",
+            },
             {"section": t("Settings")},
             {
                 "prompt_description": t(

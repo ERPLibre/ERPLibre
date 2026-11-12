@@ -412,7 +412,7 @@ class TestLeParcours(Manifestes):
         # filtre, numéro, organisation, amont [1], branche active [1],
         # confirmation, manifeste oui, versions (Entrée).
         code, client, _ = self.lancer(
-            ["ai", "1", "MonOrg", "", "", "o", "o", ""]
+            ["ai", "1", "MonOrg", "", "", "o", "o", "", "n"]
         )
         self.assertEqual(code, 0)
         client.forker.assert_called_once_with(
@@ -424,7 +424,7 @@ class TestLeParcours(Manifestes):
 
     def test_every_version_asked_and_all_branches(self):
         code, client, _ = self.lancer(
-            ["ai", "1", "MonOrg", "2", "2", "o", "o", "17.0,18.0"]
+            ["ai", "1", "MonOrg", "2", "2", "o", "o", "17.0,18.0", "n"]
         )
         client.forker.assert_called_once_with("ERPLibre", "ai", "MonOrg", True)
         client.creer_branche.assert_not_called()

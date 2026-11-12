@@ -2122,6 +2122,94 @@ TRANSLATIONS = {
         "fr": "🍴 Forker un dépôt pour une organisation",
         "en": "🍴 Fork a repository for an organisation",
     },
+    "➕ Add a repository to a manifest": {
+        "fr": "➕ Ajouter un dépôt à un manifeste",
+        "en": "➕ Add a repository to a manifest",
+    },
+    "🌿 Create a branch in a repository": {
+        "fr": "🌿 Créer une branche dans un dépôt",
+        "en": "🌿 Create a branch in a repository",
+    },
+    "🔭 Add the upstream remote of a repository": {
+        "fr": "🔭 Ajouter le remote amont d'un dépôt",
+        "en": "🔭 Add the upstream remote of a repository",
+    },
+    "Fork it for an organisation now? (y/N): ": {
+        "fr": "Le forker pour une organisation maintenant ? (o/N) : ",
+        "en": "Fork it for an organisation now? (y/N): ",
+    },
+    "Add the upstream remote to the local clone now? (y/N): ": {
+        "fr": "Ajouter le remote amont au clone local maintenant ? (o/N) : ",
+        "en": "Add the upstream remote to the local clone now? (y/N): ",
+    },
+    "GitHub URL of the repository to add: ": {
+        "fr": "URL GitHub du dépôt à ajouter : ",
+        "en": "GitHub URL of the repository to add: ",
+    },
+    "Checking the branch on GitHub…": {
+        "fr": "Vérification de la branche sur GitHub…",
+        "en": "Checking the branch on GitHub…",
+    },
+    "Commit manifest/, then synchronise the repositories to clone it.": {
+        "fr": (
+            "Committez manifest/, puis synchronisez les dépôts pour le cloner."
+        ),
+        "en": (
+            "Commit manifest/, then synchronise the repositories to clone it."
+        ),
+    },
+    "Name of the new branch: ": {
+        "fr": "Nom de la nouvelle branche : ",
+        "en": "Name of the new branch: ",
+    },
+    "Start from (Enter: the current commit): ": {
+        "fr": "Partir de (Entrée : le commit courant) : ",
+        "en": "Start from (Enter: the current commit): ",
+    },
+    "No upstream remote:": {
+        "fr": "Aucun remote amont :",
+        "en": "No upstream remote:",
+    },
+    "no manifest for this version.": {
+        "fr": "aucun manifeste pour cette version.",
+        "en": "no manifest for this version.",
+    },
+    "Not a GitHub repository URL.": {
+        "fr": "Ce n'est pas l'URL d'un dépôt GitHub.",
+        "en": "Not a GitHub repository URL.",
+    },
+    "no such remote in this clone.": {
+        "fr": "ce remote n'existe pas dans ce clone.",
+        "en": "no such remote in this clone.",
+    },
+    "The repository is not cloned yet.": {
+        "fr": "Le dépôt n'est pas encore cloné.",
+        "en": "The repository is not cloned yet.",
+    },
+    "Upstream remote ready and fetched:": {
+        "fr": "Remote amont en place et récupéré :",
+        "en": "Upstream remote ready and fetched:",
+    },
+    "Odoo version": {
+        "fr": "Version d'Odoo",
+        "en": "Odoo version",
+    },
+    "Push it to the remote (Enter: no push)": {
+        "fr": "La pousser vers le remote (Entrée : pas de push)",
+        "en": "Push it to the remote (Enter: no push)",
+    },
+    "Branch to follow": {
+        "fr": "Branche à suivre",
+        "en": "Branch to follow",
+    },
+    "Freeze it on the head of the branch? (Y/n): ": {
+        "fr": "Le geler sur la tête de la branche ? (O/n) : ",
+        "en": "Freeze it on the head of the branch? (Y/n): ",
+    },
+    "Freeze it on the head of the branch? (y/N): ": {
+        "fr": "Le geler sur la tête de la branche ? (o/N) : ",
+        "en": "Freeze it on the head of the branch? (y/N): ",
+    },
     "Filter (part of the path or of the repository), Enter for all: ": {
         "fr": "Filtre (partie du chemin ou du dépôt), Entrée pour tout : ",
         "en": (
