@@ -1022,6 +1022,113 @@ class TestHooks(DepotJetable):
         self.assertEqual(self.hooks_path(), "script/git/hooks")
 
 
+class TestCommandesClaude(unittest.TestCase):
+    """Les commandes Claude manquantes ou périmées : offertes au
+    déploiement, sans jamais écrire dans le vrai ~/.claude."""
+
+    COMMANDES = {"commit": "gabarit_commit.md", "autre": "gabarit_autre.md"}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = os.path.join(tmp.name, "home")
+        os.makedirs(self.home)
+        env = mock.patch.dict(os.environ, {"HOME": self.home})
+        env.start()
+        self.addCleanup(env.stop)
+        sans_claude = mock.patch.object(h.shutil, "which", return_value=None)
+        sans_claude.start()
+        self.addCleanup(sans_claude.stop)
+        self.racine = os.path.join(tmp.name, "depot")
+        for gabarit in self.COMMANDES.values():
+            ecrire(self.racine, f"conf/{gabarit}", gabarit)
+
+    def ctx(self):
+        def etat(deploye, gabarit):
+            if not os.path.isfile(deploye):
+                return t("missing")
+            with open(deploye) as a, open(gabarit) as b:
+                return (
+                    t("up to date")
+                    if a.read() == b.read()
+                    else t("redeploy needed")
+                )
+
+        return h.Contexte(
+            self.racine,
+            etat_commande_claude=etat,
+            commandes_claude=self.COMMANDES,
+        )
+
+    def test_without_claude_code_the_check_is_skipped(self):
+        self.assertEqual(
+            h.verifier_commandes_claude(self.ctx()).statut, h.SAUTE
+        )
+
+    def test_claude_code_without_its_commands_offers_them_all(self):
+        os.makedirs(os.path.join(self.home, ".claude"))
+        resultat = h.verifier_commandes_claude(self.ctx())
+        self.assertEqual(resultat.statut, h.ALERTE)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.CLAUDE)
+        self.assertEqual(
+            sorted(c["commande"] for c in resolution.depots),
+            ["autre", "commit"],
+        )
+
+    def test_only_the_stale_command_is_offered(self):
+        commandes = os.path.join(self.home, ".claude", "commands")
+        ecrire(commandes, "commit.md", "gabarit_commit.md")
+        ecrire(commandes, "autre.md", "ancienne copie")
+        (resolution,) = h.verifier_commandes_claude(self.ctx()).resolutions
+        self.assertEqual(
+            [(c["commande"], c["etat"]) for c in resolution.depots],
+            [("autre", t("redeploy needed"))],
+        )
+
+    def test_every_command_up_to_date_offers_nothing(self):
+        commandes = os.path.join(self.home, ".claude", "commands")
+        for commande, gabarit in self.COMMANDES.items():
+            ecrire(commandes, f"{commande}.md", gabarit)
+        resultat = h.verifier_commandes_claude(self.ctx())
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+
+    def test_the_resolution_deploys_the_chosen_commands_only(self):
+        os.makedirs(os.path.join(self.home, ".claude"))
+        (resolution,) = h.verifier_commandes_claude(self.ctx()).resolutions
+        deployees = []
+
+        def deployer(commande, gabarit):
+            deployees.append((commande, gabarit))
+            return True
+
+        with mock.patch("builtins.print"):
+            self.assertFalse(
+                h.executer_resolution(
+                    self.ctx(),
+                    resolution,
+                    lambda _q: "0",
+                    print,
+                    deployer_commande_claude=deployer,
+                )
+            )
+            self.assertEqual(deployees, [])
+            self.assertTrue(
+                h.executer_resolution(
+                    self.ctx(),
+                    resolution,
+                    lambda _q: "a",
+                    print,
+                    deployer_commande_claude=deployer,
+                )
+            )
+        self.assertEqual(
+            sorted(deployees),
+            [("autre", "gabarit_autre.md"), ("commit", "gabarit_commit.md")],
+        )
+
+
 class TestTraductions(unittest.TestCase):
     """Chaque libellé du healthcheck a sa traduction : une clé absente
     s'afficherait en anglais dans un TODO en français."""

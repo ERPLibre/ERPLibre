@@ -512,6 +512,57 @@ class TestSetupClaudeCommit(unittest.TestCase):
         mock_makedirs.assert_called_once()
 
 
+class TestDeployerCommandeClaude(unittest.TestCase):
+    """Le déploiement que la résolution du Healthcheck délègue au TODO,
+    dans un HOME jetable : jamais le vrai ~/.claude."""
+
+    GABARIT = "template_claude_commands_commit.md"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = patch.dict(os.environ, {"HOME": tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
+        self.dest = os.path.join(tmp.name, ".claude", "commands", "commit.md")
+
+    def test_a_missing_commit_asks_for_the_identity(self):
+        todo = TODO()
+        with (
+            patch(
+                "builtins.input",
+                side_effect=["Nom Essai", "essai@exemple.invalid"],
+            ),
+            patch("builtins.print"),
+        ):
+            self.assertTrue(
+                todo.deployer_commande_claude("commit", self.GABARIT)
+            )
+        with open(self.dest) as fh:
+            texte = fh.read()
+        self.assertIn('user.name="Nom Essai"', texte)
+        self.assertIn('user.email="essai@exemple.invalid"', texte)
+
+    def test_an_existing_copy_keeps_its_identity_without_a_question(self):
+        os.makedirs(os.path.dirname(self.dest))
+        with open(self.dest, "w") as fh:
+            fh.write(
+                '-c user.name="Nom Essai" -c user.email="essai@exemple.invalid"\nancien\n'
+            )
+        todo = TODO()
+        with (
+            patch("builtins.input", side_effect=AssertionError("question")),
+            patch("builtins.print"),
+        ):
+            self.assertTrue(
+                todo.deployer_commande_claude("commit", self.GABARIT)
+            )
+        with open(self.dest) as fh:
+            texte = fh.read()
+        self.assertNotIn("ancien", texte)
+        self.assertIn('user.email="essai@exemple.invalid"', texte)
+
+
 class TestClaudeCommandTemplates(unittest.TestCase):
     """Chaque commande proposée par le menu doit avoir son gabarit.
 

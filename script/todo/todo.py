@@ -1515,7 +1515,10 @@ class TODO(
                     numero - premiere_resolution
                 ]
                 healthcheck.executer_resolution(
-                    ctx, resolution, mettre_a_jour_venv=self.mettre_a_jour_venv
+                    ctx,
+                    resolution,
+                    mettre_a_jour_venv=self.mettre_a_jour_venv,
+                    deployer_commande_claude=self.deployer_commande_claude,
                 )
                 print()
                 # La vérification repasse : ses résolutions suivent l'état.
@@ -4367,6 +4370,22 @@ class TODO(
             return False
         print(f"{t('File created successfully: ')}{dest_file}")
         return True
+
+    def deployer_commande_claude(self, commande, gabarit):
+        """Déploie la commande `commande` depuis `gabarit`, pour la
+        résolution du Healthcheck qui l'a fait choisir. Une copie présente
+        est réécrite sans question, son identité git gardée ; une copie
+        absente est posée, /commit demandant le nom et le courriel. Rend
+        True si le fichier est écrit."""
+        dest = os.path.join(
+            os.path.expanduser(self._CLAUDE_COMMANDS_DIR), f"{commande}.md"
+        )
+        if os.path.isfile(dest):
+            return self._redeploy_claude_command(commande, gabarit)
+        self._setup_claude_command(
+            commande, gabarit, personalize=commande == "commit"
+        )
+        return os.path.isfile(dest)
 
     def _list_claude_commands(self):
         """Les commandes `/…` : installées ou non, à jour ou à redéployer.

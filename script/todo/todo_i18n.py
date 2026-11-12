@@ -2625,6 +2625,22 @@ TRANSLATIONS = {
         "fr": "Hooks git non installés.",
         "en": "Git hooks not installed.",
     },
+    "Deploy the Claude commands:": {
+        "fr": "Déployer les commandes Claude :",
+        "en": "Deploy the Claude commands:",
+    },
+    "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one.": {
+        "fr": "Chaque commande choisie est copiée de son gabarit de conf/ vers ~/.claude/commands : une copie périmée garde son identité git, un /commit manquant en demande une.",
+        "en": "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one.",
+    },
+    "Claude commands to deploy:": {
+        "fr": "Commandes Claude à déployer :",
+        "en": "Claude commands to deploy:",
+    },
+    "All commands": {
+        "fr": "Toutes les commandes",
+        "en": "All commands",
+    },
     "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
         "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",
         "en": "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.",

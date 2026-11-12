@@ -1593,35 +1593,74 @@ def verifier_odoo(ctx):
     return Resultat(nom, INFO, t("not running"))
 
 
+def claude_code_present():
+    """Vrai si Claude Code est installé pour ce compte : son exécutable sur
+    le PATH, ou son dossier ~/.claude, que sa première ouverture crée."""
+    return bool(shutil.which("claude")) or os.path.isdir(
+        os.path.expanduser("~/.claude")
+    )
+
+
 def verifier_commandes_claude(ctx):
-    """Les commandes Claude déployées suivent-elles leur gabarit ?"""
+    """Les commandes Claude déployées suivent-elles leur gabarit ?
+
+    Une commande manquante ou périmée est offerte à la résolution « Déployer
+    les commandes Claude ». Quand Claude Code est installé sans
+    ~/.claude/commands, chaque commande est manquante ; sans Claude Code, la
+    vérification est sautée."""
     nom = titre(verifier_commandes_claude)
     if not ctx.etat_commande_claude or not ctx.commandes_claude:
         return Resultat(nom, SAUTE, t("not available"))
     dossier = os.path.expanduser("~/.claude/commands")
-    if not os.path.isdir(dossier):
+    if not os.path.isdir(dossier) and not claude_code_present():
         return Resultat(nom, SAUTE, t("Claude Code is not set up"))
     a_jour = t("up to date")
-    details, fautives = [], 0
+    hors_depot = t("not in the repository")
+    details, a_deployer, fautives = [], [], 0
+    ctx.noter(
+        f"diff ~/.claude/commands/<{t('name')}>.md conf/<{t('template')}>"
+    )
     for commande, gabarit in sorted(ctx.commandes_claude.items()):
         deploye = os.path.join(dossier, f"{commande}.md")
         source = os.path.join(ctx.racine, "conf", gabarit)
-        ctx.noter(
-            f"diff ~/.claude/commands/<{t('name')}>.md conf/<{t('template')}>"
-        )
         etat = ctx.etat_commande_claude(deploye, source)
-        if etat != a_jour:
-            fautives += 1
-            details.append(f"/{commande} : {etat}")
-    if fautives:
-        details.append(t("Redeploy: Execute › GPT code › Claude configs"))
+        if etat == a_jour:
+            continue
+        fautives += 1
+        details.append(f"/{commande} : {etat}")
+        if etat != hors_depot:
+            a_deployer.append(
+                {"commande": commande, "gabarit": gabarit, "etat": etat}
+            )
+    if not fautives:
         return Resultat(
-            nom,
-            ALERTE,
-            f"{fautives} / {len(ctx.commandes_claude)}",
-            details,
+            nom, OK, f"{len(ctx.commandes_claude)} {t('up to date')}"
         )
-    return Resultat(nom, OK, f"{len(ctx.commandes_claude)} {t('up to date')}")
+    resolutions = []
+    if a_deployer:
+        resolutions.append(
+            Resolution(
+                CLAUDE,
+                f"🤖 {t('Deploy the Claude commands:')} {len(a_deployer)}",
+                [
+                    t(
+                        "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one."
+                    )
+                ]
+                + [f"   /{c['commande']} — {c['etat']}" for c in a_deployer],
+                a_deployer,
+            )
+        )
+    return Resultat(
+        nom,
+        ALERTE,
+        f"{fautives} / {len(ctx.commandes_claude)}",
+        details,
+        resolutions=resolutions,
+    )
+
+
+CLAUDE = "commandes_claude"
 
 
 def _poids(octets):
@@ -1872,15 +1911,26 @@ def _afficher_commande(sortie):
 
 
 def executer_resolution(
-    ctx, resolution, demander=None, sortie=print, mettre_a_jour_venv=None
+    ctx,
+    resolution,
+    demander=None,
+    sortie=print,
+    mettre_a_jour_venv=None,
+    deployer_commande_claude=None,
 ):
     """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
     True si quelque chose a changé. `demander` vaut `input` par défaut, lu
     à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
-    TODO, qui sait installer un lock et faire le rapport."""
+    TODO, qui sait installer un lock et faire le rapport.
+    `deployer_commande_claude(commande, gabarit)` déploie une commande
+    Claude : celle du TODO, qui sait garder ou demander l'identité git."""
     demander = demander or input
     if resolution.cle == HOOKS_GIT:
         return _installer_hooks(ctx, demander, sortie)
+    if resolution.cle == CLAUDE:
+        return _deployer_commandes_claude(
+            resolution.depots, demander, sortie, deployer_commande_claude
+        )
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
@@ -1927,6 +1977,30 @@ def _installer_hooks(ctx, demander, sortie):
         else f"❌ {t('Git hooks not installed.')}"
     )
     return reussi
+
+
+def _deployer_commandes_claude(commandes, demander, sortie, deployer):
+    sortie(t("Claude commands to deploy:"))
+    choisies = choisir_depots(
+        commandes,
+        demander,
+        sortie,
+        decrire=lambda c: f"/{c['commande']} — {c['etat']}",
+        tous=t("All commands"),
+    )
+    if not choisies or deployer is None:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for commande in choisies:
+        sortie(
+            f"   $ cp conf/{commande['gabarit']}"
+            f" ~/.claude/commands/{commande['commande']}.md"
+        )
+        change = (
+            bool(deployer(commande["commande"], commande["gabarit"])) or change
+        )
+    return change
 
 
 def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
