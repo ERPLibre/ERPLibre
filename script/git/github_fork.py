@@ -247,6 +247,23 @@ class ClientGitHub:
         )
         return [] if rep.status_code == 404 else rep.json()
 
+    def synchroniser_fork(self, nom_complet, branche):
+        """POST merge-upstream : avance `branche` du fork `nom_complet` sur
+        la branche du même nom de son parent GitHub. Rend (code HTTP,
+        corps) : 200 porte `merge_type` (« fast-forward », « merge » ou
+        « none »), 409 un conflit, 422 une branche que GitHub refuse."""
+        rep = self._appel(
+            "POST",
+            f"/repos/{nom_complet}/merge-upstream",
+            ok=(200, 409, 422),
+            json={"branch": branche},
+        )
+        try:
+            corps = rep.json()
+        except ValueError:
+            corps = {}
+        return rep.status_code, corps
+
     def creer_pull_request(
         self, nom_complet, tete, base, titre, corps="", brouillon=False
     ):

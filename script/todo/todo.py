@@ -3795,6 +3795,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "⏩ Update forks from their upstream on GitHub"
+                ),
+                "method": "_git_mettre_forks_a_jour",
+            },
+            {
+                "prompt_description": t(
                     "➖ Remove a repository from a manifest"
                 ),
                 "method": "_git_retirer_depot",

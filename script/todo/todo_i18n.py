@@ -2146,6 +2146,55 @@ TRANSLATIONS = {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
         "en": "🔭 Add the upstream remote of a repository",
     },
+    "⏩ Update forks from their upstream on GitHub": {
+        "fr": "⏩ Mettre les forks à jour depuis leur amont sur GitHub",
+        "en": "⏩ Update forks from their upstream on GitHub",
+    },
+    "No fork in the manifests of this version.": {
+        "fr": "Aucun fork dans les manifestes de cette version.",
+        "en": "No fork in the manifests of this version.",
+    },
+    "forks, in parallel…": {
+        "fr": "forks, en parallèle…",
+        "en": "forks, in parallel…",
+    },
+    "merged": {
+        "fr": "fusionné",
+        "en": "merged",
+    },
+    "already up to date": {
+        "fr": "déjà à jour",
+        "en": "already up to date",
+    },
+    "conflict: to merge by hand": {
+        "fr": "conflit : à fusionner à la main",
+        "en": "conflict: to merge by hand",
+    },
+    "refused by GitHub": {
+        "fr": "refusé par GitHub",
+        "en": "refused by GitHub",
+    },
+    "GitHub error": {
+        "fr": "erreur GitHub",
+        "en": "GitHub error",
+    },
+    "not updated": {
+        "fr": "non mis à jour",
+        "en": "not updated",
+    },
+    (
+        "The checkout is frozen: synchronise then freeze each updated "
+        "repository to take it."
+    ): {
+        "fr": (
+            "Le checkout est gelé : synchronisez puis gelez chaque dépôt mis "
+            "à jour pour le prendre."
+        ),
+        "en": (
+            "The checkout is frozen: synchronise then freeze each updated "
+            "repository to take it."
+        ),
+    },
     "➖ Remove a repository from a manifest": {
         "fr": "➖ Retirer un dépôt d'un manifeste",
         "en": "➖ Remove a repository from a manifest",

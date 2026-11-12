@@ -561,6 +561,59 @@ class GitForkMenuMixin:
                     print(f"  ❌ {nom} : {sortie}")
         return supprimees
 
+    def _git_mettre_forks_a_jour(self):
+        """Avance sur GitHub, par merge-upstream, la branche des forks
+        cochés parmi ceux du manifeste de la version active. Rend le nombre
+        de forks en conflit, refusés ou en erreur, ou None si rien n'a été
+        lancé."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        forks = manifest_repo.forks_du_manifeste(version)
+        if not forks:
+            print(f"  {t('No fork in the manifests of this version.')}")
+            return None
+        for i, (chemin, fork, branche, amont, b_amont) in enumerate(forks, 1):
+            source = f"{amont}:{b_amont}" if amont and b_amont else "-"
+            print(f"  [{i}] {chemin} · {fork}:{branche} ← {source}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        choisis = choix_numeros(saisie, forks) if saisie else None
+        if not choisis:
+            return None
+        client = self._git_client()
+        if client is None:
+            return None
+        print(f"  {len(choisis)} {t('forks, in parallel…')}")
+        icones = {
+            "avance": "⏩",
+            "fusion": "🔀",
+            "a_jour": "✓",
+            "ignore": "⏭",
+        }
+        echecs = avances = 0
+        for entree, etat, detail in manifest_repo.synchroniser_forks(
+            client, choisis
+        ):
+            echecs += etat in ("conflit", "refus", "erreur")
+            avances += etat in ("avance", "fusion")
+            print(
+                f"  {icones.get(etat, '❌')} {entree[1]}:{entree[2]}"
+                f" · {t(LIBELLES_SYNCHRO[etat])}"
+                + (f" — {detail}" if detail else "")
+            )
+        if avances and manifest_repo.mode_gele(RACINE):
+            print(
+                f"⚠ {t('The checkout is frozen: synchronise then freeze each updated repository to take it.')}"
+            )
+        return echecs
+
     def _git_lancer(self, commandes):
         """Montre puis lance `commandes` à la racine, sortie au terminal."""
         import shlex
@@ -721,6 +774,15 @@ def ref_de_base(chemin, projet, remotes, cle, base):
     return "HEAD"
 
 
+LIBELLES_SYNCHRO = {
+    "avance": "fast-forward",
+    "fusion": "merged",
+    "a_jour": "already up to date",
+    "conflit": "conflict: to merge by hand",
+    "refus": "refused by GitHub",
+    "ignore": "not updated",
+    "erreur": "GitHub error",
+}
 ICONES_ETAT = {
     "ouverte": "🟢",
     "brouillon": "📝",
