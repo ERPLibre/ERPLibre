@@ -180,6 +180,61 @@ class ClientGitHub:
                 break
         return res
 
+    def mes_pull_requests(self, auteur, pages=3):
+        """Les pull requests de `auteur`, tous dépôts et tous états, les
+        plus récemment mises à jour d'abord, jusqu'à `pages` pages de 100.
+        Ce sont des résultats de recherche : `repository_url` nomme le
+        dépôt, `pull_request.merged_at` dit si elle est fusionnée."""
+        res = []
+        for page in range(1, pages + 1):
+            lot = (
+                self._appel(
+                    "GET",
+                    "/search/issues",
+                    params={
+                        "q": f"is:pr author:{auteur}",
+                        "sort": "updated",
+                        "order": "desc",
+                        "per_page": 100,
+                        "page": page,
+                    },
+                )
+                .json()
+                .get("items", [])
+            )
+            res.extend(lot)
+            if len(lot) < 100:
+                break
+        return res
+
+    def pull_request(self, nom_complet, numero):
+        """Le détail d'une pull request : sa tête (`head.sha`), `draft`."""
+        return self._appel(
+            "GET", f"/repos/{nom_complet}/pulls/{numero}"
+        ).json()
+
+    def avis(self, nom_complet, numero):
+        """Les revues d'une pull request, dans l'ordre où elles ont été
+        données."""
+        return self._appel(
+            "GET",
+            f"/repos/{nom_complet}/pulls/{numero}/reviews",
+            params={"per_page": 100},
+        ).json()
+
+    def verifications(self, nom_complet, sha):
+        """(statut combiné, check-runs) du commit `sha` : les deux systèmes
+        de CI de GitHub, que les dépôts emploient l'un ou l'autre."""
+        statut = self._appel(
+            "GET", f"/repos/{nom_complet}/commits/{sha}/status"
+        ).json()
+        checks = self._appel(
+            "GET",
+            f"/repos/{nom_complet}/commits/{sha}/check-runs",
+            params={"per_page": 100},
+        ).json()
+        return statut, checks.get("check_runs", [])
+
     def creer_pull_request(
         self, nom_complet, tete, base, titre, corps="", brouillon=False
     ):

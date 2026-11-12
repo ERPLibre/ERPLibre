@@ -20,6 +20,7 @@ sans menu :
     manifest_repo.py sync CHEMIN [--version 18.0]
     manifest_repo.py refreeze CHEMIN [--commit SHA] [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
+    manifest_repo.py mine [--author LOGIN] [--all-repos]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
 
@@ -510,6 +511,111 @@ def lister_pull_requests(client, organisation, version, dossier=None, jobs=8):
     return [(chemin, nom, lot) for (chemin, nom), lot in zip(cibles, prs)]
 
 
+ECHECS_CI = {
+    "failure",
+    "error",
+    "cancelled",
+    "timed_out",
+    "action_required",
+    "startup_failure",
+}
+
+
+def etat_ci(statut, checks):
+    """« echec », « en_cours », « succes » ou None (aucune CI) à partir du
+    statut combiné et des check-runs d'un commit. Un seul échec l'emporte,
+    puis une vérification non terminée ; un statut combiné sans aucun
+    statut déclaré ne compte pas."""
+    etats = []
+    if statut and statut.get("total_count"):
+        etats.append(statut.get("state"))
+    for check in checks or []:
+        if check.get("status") != "completed":
+            etats.append("pending")
+        else:
+            etats.append(check.get("conclusion"))
+    if any(e in ECHECS_CI for e in etats):
+        return "echec"
+    if "pending" in etats:
+        return "en_cours"
+    return "succes" if etats else None
+
+
+def etat_revue(avis):
+    """« changements », « approuvee » ou None d'après la DERNIÈRE revue
+    décisive de chaque relecteur : un commentaire ne retire pas une
+    approbation, une approbation retire une demande de changements."""
+    dernier = {}
+    for revue in avis or []:
+        etat = revue.get("state")
+        if etat in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            dernier[(revue.get("user") or {}).get("login")] = etat
+    if "CHANGES_REQUESTED" in dernier.values():
+        return "changements"
+    if "APPROVED" in dernier.values():
+        return "approuvee"
+    return None
+
+
+def depots_des_manifestes(version, dossier=None):
+    """Les « propriétaire/dépôt », en minuscules, que les manifestes de
+    `version` clonent, avec l'amont déclaré de chaque fork : c'est là
+    qu'une pull request sur ces dépôts est ouverte."""
+    remotes, liste = projets_github(version, dossier)
+    res = set()
+    for projet, proprietaire, depot in liste:
+        res.add(f"{proprietaire}/{depot}".lower())
+        for nom, _base in cibles_pull_request(projet, remotes).values():
+            res.add(nom.lower())
+    return res
+
+
+def statut_pull_requests(client, auteur, depots=None, jobs=8):
+    """L'état des pull requests de `auteur`, restreintes aux dépôts de
+    l'ensemble `depots` (minuscules) s'il est donné. Rend une liste de
+    dicts {depot, numero, titre, url, etat, revue, ci} ; `etat` vaut
+    « fusionnee », « fermee », « brouillon » ou « ouverte ». Revue et CI
+    ne sont lues que pour une pull request ouverte, en parallèle."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    res = []
+    for item in client.mes_pull_requests(auteur):
+        depot = item.get("repository_url", "").split("/repos/", 1)[-1]
+        if depots is not None and depot.lower() not in depots:
+            continue
+        if (item.get("pull_request") or {}).get("merged_at"):
+            etat = "fusionnee"
+        elif item.get("state") == "closed":
+            etat = "fermee"
+        else:
+            etat = "brouillon" if item.get("draft") else "ouverte"
+        res.append(
+            {
+                "depot": depot,
+                "numero": item.get("number"),
+                "titre": item.get("title", ""),
+                "url": item.get("html_url", ""),
+                "etat": etat,
+                "revue": None,
+                "ci": None,
+            }
+        )
+
+    def detail(pr):
+        numero = pr["numero"]
+        sha = (client.pull_request(pr["depot"], numero).get("head") or {}).get(
+            "sha"
+        )
+        pr["revue"] = etat_revue(client.avis(pr["depot"], numero))
+        if sha:
+            pr["ci"] = etat_ci(*client.verifications(pr["depot"], sha))
+
+    ouvertes = [p for p in res if p["etat"] in ("ouverte", "brouillon")]
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        list(ex.map(detail, ouvertes))
+    return res
+
+
 def branche_poussee(chemin):
     """(branche courante, remote suivi, branche distante) du clone, ou
     None hors branche ou sans branche suivie."""
@@ -825,6 +931,16 @@ def main(argv=None):
     p.add_argument("--organisation", required=True)
     p.add_argument("--version")
     p = sous.add_parser(
+        "mine", help="status of my pull requests: review, CI, merged"
+    )
+    p.add_argument("--author", help="default: the account of the token")
+    p.add_argument(
+        "--all-repos",
+        action="store_true",
+        help="do not restrict to the repositories of the manifests",
+    )
+    p.add_argument("--version")
+    p = sous.add_parser(
         "pr", help="open a pull request from the current branch"
     )
     p.add_argument("chemin")
@@ -867,6 +983,22 @@ def main(argv=None):
                         f"{nom}#{pr.get('number')} {pr.get('title')} — {pr.get('html_url')}"
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
+            return 0
+        if args.commande == "mine":
+            client = _client(racine)
+            if not client:
+                return 2
+            depots = None if args.all_repos else depots_des_manifestes(version)
+            for pr in statut_pull_requests(
+                client, args.author or client.utilisateur(), depots
+            ):
+                details = " ".join(
+                    f"{cle}={pr[cle]}" for cle in ("revue", "ci") if pr[cle]
+                )
+                print(
+                    f"{pr['etat']:<10} {pr['depot']}#{pr['numero']}"
+                    f" {pr['titre']} {details} — {pr['url']}"
+                )
             return 0
         if args.commande == "branches":
             depots = []

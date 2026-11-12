@@ -544,6 +544,34 @@ class GitForkMenuMixin:
         print("\n".join(lignes_pull_requests(resultats)))
         return sum(len(lot) for _c, _n, lot in resultats if lot)
 
+    def _git_statut_mes_pull_requests(self):
+        """L'état des pull requests du compte du jeton : ouvertes avec leur
+        revue et leur CI, puis fusionnées et fermées. Restreint par défaut
+        aux dépôts des manifestes de la version active. Rend le nombre de
+        pull requests montrées, ou None."""
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        tous = input(
+            t("Only the repositories of the manifests? (Y/n): ")
+        ).strip().lower() in ("n", "no", "non")
+        client = self._git_client()
+        if client is None:
+            return None
+        print(f"  {t('Querying GitHub for each pull request…')}")
+        try:
+            auteur = client.utilisateur()
+            depots = (
+                None if tous else manifest_repo.depots_des_manifestes(version)
+            )
+            prs = manifest_repo.statut_pull_requests(client, auteur, depots)
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        print("\n".join(lignes_statut(auteur, prs)))
+        return len(prs)
+
     def _git_creer_pull_request(self):
         """Ouvre une pull request depuis la branche courante, déjà poussée,
         du clone choisi, vers le dépôt du manifeste ou l'amont déclaré.
@@ -630,6 +658,45 @@ def ref_de_base(chemin, projet, remotes, cle, base):
     ):
         return ref
     return "HEAD"
+
+
+ICONES_ETAT = {
+    "ouverte": "🟢",
+    "brouillon": "📝",
+    "fusionnee": "🟣",
+    "fermee": "⚫",
+}
+LIBELLES_REVUE = {
+    "approuvee": "👍 approved",
+    "changements": "✋ changes requested",
+    None: "👀 awaiting review",
+}
+LIBELLES_CI = {
+    "succes": "✅ CI passed",
+    "echec": "❌ CI failed",
+    "en_cours": "⏳ CI running",
+}
+
+
+def lignes_statut(auteur, prs):
+    """Le rapport de statut_pull_requests() : les ouvertes et brouillons
+    d'abord, avec revue et CI, puis les fusionnées et fermées ; le total
+    par état pour finir."""
+    ordre = ("ouverte", "brouillon", "fusionnee", "fermee")
+    lignes = [f"── {t('Pull requests of')} {auteur}"]
+    for pr in sorted(prs, key=lambda p: ordre.index(p["etat"])):
+        details = ""
+        if pr["etat"] in ("ouverte", "brouillon"):
+            details = " · " + t(LIBELLES_REVUE[pr["revue"]])
+            if pr["ci"]:
+                details += " · " + t(LIBELLES_CI[pr["ci"]])
+        lignes.append(
+            f"  {ICONES_ETAT[pr['etat']]} {pr['depot']}#{pr['numero']}"
+            f" {pr['titre']}{details} — {pr['url']}"
+        )
+    compte = {e: sum(p["etat"] == e for p in prs) for e in ordre}
+    lignes.append(" · ".join(f"{ICONES_ETAT[e]} {compte[e]}" for e in ordre))
+    return lignes
 
 
 def lignes_pull_requests(resultats):
