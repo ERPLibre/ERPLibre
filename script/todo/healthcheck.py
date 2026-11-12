@@ -1402,6 +1402,7 @@ def _ecarts_venv(ctx, choix):
         "ecarts": [],
         "info": [],
         "erreur": None,
+        "de_trop": [],
         "obsolete": False,
         "remplacant": None,
     }
@@ -1437,6 +1438,7 @@ def _ecarts_venv(ctx, choix):
             f" ({t('installed')} {e['installee']})"
             for e in etat["hors_bornes"]
         ]
+        rendu["de_trop"] = [tuple(paire) for paire in etat["de_trop"]]
         if etat["de_trop"]:
             rendu["info"].append(
                 f"{len(etat['de_trop'])}"
@@ -1496,8 +1498,9 @@ def verifier_dependances_venvs(ctx):
     exigences. Un venv qui s'en écarte est offert à la résolution « Mettre
     à jour les venvs », qui ne retire rien. Un venv d'Odoo dont la clé n'est
     plus au catalogue est obsolète : sans lock, il est offert au
-    remplacement. Un paquet hors du lock, ou que rien ne demande, est une
-    information : la mise à jour ne le retire pas."""
+    remplacement. Un paquet de l'outillage que rien ne demande est offert au
+    retrait ; un paquet hors du lock d'un venv d'Odoo reste une
+    information."""
     nom = titre(verifier_dependances_venvs)
     active = todo_etat._lire(os.path.join(ctx.racine, ".erplibre-version"))
     candidats = drift.venvs(ctx.racine, active=active)
@@ -1506,13 +1509,17 @@ def verifier_dependances_venvs(ctx):
     rendus = ctx.en_parallele(
         lambda c: _ecarts_venv(ctx, c), candidats, max_workers=4
     )
-    details, a_jour, obsoletes = [], [], []
+    details, a_jour, obsoletes, de_trop = [], [], [], []
     for choix, rendu in zip(candidats, rendus):
         if rendu["erreur"]:
             details.append(f"{choix['venv']} : ❌ {rendu['erreur']}")
             if rendu["obsolete"]:
                 obsoletes.append(dict(choix, remplacant=rendu["remplacant"]))
             continue
+        de_trop += [
+            {"venv": choix["venv"], "paquet": paquet, "version": numero}
+            for paquet, numero in rendu["de_trop"]
+        ]
         if rendu["ecarts"]:
             details.append(
                 f"{choix['venv']} : {len(rendu['ecarts'])}"
@@ -1565,11 +1572,32 @@ def verifier_dependances_venvs(ctx):
                 obsoletes,
             )
         )
-    statut = ALERTE if (a_jour or erreurs or obsoletes) else OK
+    if de_trop:
+        resolutions.append(
+            Resolution(
+                PAQUETS_DE_TROP,
+                f"🧹 {t('Remove the packages nothing requires:')} {len(de_trop)}",
+                [
+                    t(
+                        "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip."
+                    ),
+                    "   "
+                    + ", ".join(
+                        f"{p['paquet']} {p['version']}" for p in de_trop
+                    ),
+                ],
+                de_trop,
+            )
+        )
+    if a_jour or erreurs or obsoletes:
+        statut = ALERTE
+    else:
+        statut = INFO if de_trop else OK
     return Resultat(nom, statut, resume, details, resolutions=resolutions)
 
 
 VENVS_OBSOLETES = "venvs_obsoletes"
+PAQUETS_DE_TROP = "paquets_de_trop"
 
 
 def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
@@ -2008,6 +2036,8 @@ def executer_resolution(
         return _remplacer_venvs_obsoletes(
             ctx, resolution.depots, demander, sortie
         )
+    if resolution.cle == PAQUETS_DE_TROP:
+        return _retirer_paquets(ctx, resolution.depots, demander, sortie)
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
@@ -2142,6 +2172,41 @@ def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
             continue
         sortie(f"✅ {t('Deleted:')} {choix['venv']}")
         change = True
+    return change
+
+
+def _retirer_paquets(ctx, paquets, demander, sortie, lancer=None):
+    """Désinstalle de leur venv les paquets choisis, d'un seul pip."""
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(t("Packages nothing requires:"))
+    choisis = choisir_depots(
+        paquets,
+        demander,
+        sortie,
+        decrire=lambda p: f"{p['paquet']} {p['version']} — {p['venv']}",
+        tous=t("All packages"),
+    )
+    if not choisis:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for venv in dict.fromkeys(p["venv"] for p in choisis):
+        noms = [p["paquet"] for p in choisis if p["venv"] == venv]
+        commande = [
+            os.path.join(venv, "bin", "python"),
+            "-m",
+            "pip",
+            "uninstall",
+            "-y",
+            *noms,
+        ]
+        sortie(f"   $ {shlex.join(commande)}")
+        code = lancer(commande)
+        if code:
+            sortie(f"❌ pip uninstall : {t('failure, code')} {code}")
+        else:
+            sortie(f"✅ {t('Uninstalled:')} {', '.join(noms)}")
+            change = True
     return change
 
 

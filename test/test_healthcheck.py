@@ -889,6 +889,56 @@ class TestDependancesVenvs(unittest.TestCase):
         )
         self.assertIsNone(h.remplacant("odoo11.0_python3.7.17", cles))
 
+    def test_packages_nothing_requires_are_offered_for_removal(self):
+        analyse = dict(self.ANALYSE_OK, de_trop=[["agithub", "2.2.2"]])
+        resultat = self.verifier(self.simulation(""), analyse)
+        self.assertEqual(resultat.statut, h.INFO)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.PAQUETS_DE_TROP)
+        self.assertEqual(
+            resolution.depots,
+            [
+                {
+                    "venv": ".venv.erplibre",
+                    "paquet": "agithub",
+                    "version": "2.2.2",
+                }
+            ],
+        )
+
+    def test_removing_packages_runs_one_pip_for_the_chosen_ones(self):
+        paquets = [
+            {"venv": ".venv.erplibre", "paquet": p, "version": "1"}
+            for p in ("agithub", "cssselect", "giturlparse")
+        ]
+        lances, lignes = [], []
+        change = h._retirer_paquets(
+            h.Contexte(self.racine),
+            paquets,
+            lambda _q: "1 3",
+            lignes.append,
+            lancer=lambda c: lances.append(c) or 0,
+        )
+        self.assertTrue(change)
+        self.assertEqual(
+            lances,
+            [
+                [
+                    ".venv.erplibre/bin/python",
+                    "-m",
+                    "pip",
+                    "uninstall",
+                    "-y",
+                    "agithub",
+                    "giturlparse",
+                ]
+            ],
+        )
+        self.assertIn(
+            "   $ .venv.erplibre/bin/python -m pip uninstall -y agithub giturlparse",
+            lignes,
+        )
+
     def obsolete(self):
         ancien = f"{self.racine}/.venv.odoo18.0_python3.12.10"
         os.makedirs(os.path.join(ancien, "bin"))

@@ -2665,6 +2665,14 @@ TRANSLATIONS = {
         "fr": "plus aucune version d'Odoo au catalogue",
         "en": "no Odoo version left in the catalogue",
     },
+    "Remove the packages nothing requires:": {
+        "fr": "Retirer les paquets que rien ne demande :",
+        "en": "Remove the packages nothing requires:",
+    },
+    "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip.": {
+        "fr": "Installés dans le venv de l'outillage, demandés par aucune exigence ni par leurs dépendances : une installation ne les retire jamais. Ceux qu'on choisit sont désinstallés par pip.",
+        "en": "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip.",
+    },
     "Obsolete Odoo venvs:": {
         "fr": "Venvs d'Odoo obsolètes :",
         "en": "Obsolete Odoo venvs:",
@@ -2684,6 +2692,18 @@ TRANSLATIONS = {
     "Deleted:": {
         "fr": "Supprimé :",
         "en": "Deleted:",
+    },
+    "Packages nothing requires:": {
+        "fr": "Paquets que rien ne demande :",
+        "en": "Packages nothing requires:",
+    },
+    "All packages": {
+        "fr": "Tous les paquets",
+        "en": "All packages",
+    },
+    "Uninstalled:": {
+        "fr": "Désinstallés :",
+        "en": "Uninstalled:",
     },
     "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
         "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",
