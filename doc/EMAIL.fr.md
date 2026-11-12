@@ -2127,6 +2127,24 @@ Ajouter ou retirer une image enregistre d'abord les changements saisis
 dans le formulaire de la règle.
 Détails : le `README.md` du module.
 
+### L'API courriel erplibre_mail_rule_api
+
+Le module Odoo 18 `erplibre_mail_rule_api` publie `/api/mail/v1`, l'API
+JSON de l'application séparée « ERPLibre mail » : tout ce qu'un utilisateur
+fait sur `/my/mail` — comptes, règles, images, essai, journal,
+confirmation des adresses, statistiques — avec ses droits et ses limites,
+par le même code que le portail. L'utilisateur se connecte avec son
+identifiant et son mot de passe Odoo, et le code de son application
+d'authentification quand la double authentification est active. L'API rend
+un jeton d'accès de 15 minutes et un jeton de renouvellement tourné à
+chaque usage ; la déconnexion, un changement de mot de passe ou le retrait
+du service courriel révoquent la session aussitôt. Le secret de signature
+se lit dans un fichier des instances web, jamais en base. Une création
+(compte, règle, image) renvoyée avec le même en-tête `Idempotency-Key` rend
+la ressource déjà créée au lieu d'un doublon. La documentation OpenAPI est
+à `/api/mail/v1/docs` et peut être masquée ; CORS est fermé par défaut.
+Détails : le `README.md` du module.
+
 ## Gérer les dossiers
 
 `F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime,

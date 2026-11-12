@@ -2780,6 +2780,23 @@ that serves only a checked PNG, JPEG or GIF. Adding or removing an image
 first saves the changes typed in the rule form. Details: the module's
 `README.md`.
 
+### The mail API erplibre_mail_rule_api
+
+The Odoo 18 module `erplibre_mail_rule_api` publishes `/api/mail/v1`, the
+JSON API of the separate "ERPLibre mail" application: everything a user
+does at `/my/mail` — accounts, rules, images, trial, journal, address
+confirmations, statistics — with that user's rights and limits, through
+the same code as the portal. The user signs in with the Odoo login and
+password, plus the code of the authentication app when two-factor
+authentication is on. The API returns a 15-minute access token and a
+refresh token rotated at each use; logout, a password change or the loss
+of the mail service revoke the session at once. The signing secret is read
+from a file of the web instances, never from the database. A creation
+(account, rule, image) sent again with the same `Idempotency-Key` header
+returns the resource already created instead of a duplicate. The OpenAPI
+documentation is at `/api/mail/v1/docs` and can be hidden; CORS is closed
+by default. Details: the module's `README.md`.
+
 <!-- [fr] -->
 ## Règles du courrier entrant
 
@@ -4135,6 +4152,24 @@ en tout par défaut), au plus 30 ajouts par heure, et voit chacune par une
 route d'aperçu qui ne sert qu'un PNG, un JPEG ou un GIF contrôlé.
 Ajouter ou retirer une image enregistre d'abord les changements saisis
 dans le formulaire de la règle.
+Détails : le `README.md` du module.
+
+### L'API courriel erplibre_mail_rule_api
+
+Le module Odoo 18 `erplibre_mail_rule_api` publie `/api/mail/v1`, l'API
+JSON de l'application séparée « ERPLibre mail » : tout ce qu'un utilisateur
+fait sur `/my/mail` — comptes, règles, images, essai, journal,
+confirmation des adresses, statistiques — avec ses droits et ses limites,
+par le même code que le portail. L'utilisateur se connecte avec son
+identifiant et son mot de passe Odoo, et le code de son application
+d'authentification quand la double authentification est active. L'API rend
+un jeton d'accès de 15 minutes et un jeton de renouvellement tourné à
+chaque usage ; la déconnexion, un changement de mot de passe ou le retrait
+du service courriel révoquent la session aussitôt. Le secret de signature
+se lit dans un fichier des instances web, jamais en base. Une création
+(compte, règle, image) renvoyée avec le même en-tête `Idempotency-Key` rend
+la ressource déjà créée au lieu d'un doublon. La documentation OpenAPI est
+à `/api/mail/v1/docs` et peut être masquée ; CORS est fermé par défaut.
 Détails : le `README.md` du module.
 
 <!-- [en] -->

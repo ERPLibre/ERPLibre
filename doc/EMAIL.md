@@ -1980,6 +1980,23 @@ that serves only a checked PNG, JPEG or GIF. Adding or removing an image
 first saves the changes typed in the rule form. Details: the module's
 `README.md`.
 
+### The mail API erplibre_mail_rule_api
+
+The Odoo 18 module `erplibre_mail_rule_api` publishes `/api/mail/v1`, the
+JSON API of the separate "ERPLibre mail" application: everything a user
+does at `/my/mail` — accounts, rules, images, trial, journal, address
+confirmations, statistics — with that user's rights and limits, through
+the same code as the portal. The user signs in with the Odoo login and
+password, plus the code of the authentication app when two-factor
+authentication is on. The API returns a 15-minute access token and a
+refresh token rotated at each use; logout, a password change or the loss
+of the mail service revoke the session at once. The signing secret is read
+from a file of the web instances, never from the database. A creation
+(account, rule, image) sent again with the same `Idempotency-Key` header
+returns the resource already created instead of a duplicate. The OpenAPI
+documentation is at `/api/mail/v1/docs` and can be hidden; CORS is closed
+by default. Details: the module's `README.md`.
+
 ## Managing folders
 
 `F` opens the folder screen: `n` creates, `r` renames, `d` deletes,
