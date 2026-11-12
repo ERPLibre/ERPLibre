@@ -103,6 +103,12 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
 
+Debian ships two cloud image variants. `genericcloud` runs a kernel built
+without any display driver, so a graphical VM (`--desktop`) downloads
+`generic`, whose kernel drives the virtual screen. Debian 13 publishes only
+`generic`; Debian 12 keeps `genericcloud` for servers. Each variant has its
+own cache file.
+
 `proxmox` is Proxmox VE, and it deserves a word: it publishes **no cloud
 image** — its ISO is an installer that formats the disk. So the deployment
 does what upstream itself documents for every other case, *Proxmox VE on

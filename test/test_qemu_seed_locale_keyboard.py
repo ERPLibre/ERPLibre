@@ -11,7 +11,7 @@ imprime — un mot qui, s'il s'affiche à chaque fois, n'avertit plus de rien.
   pas généré, et un locale ne se génère qu'à partir de /etc/locale.gen. La VM
   restait en C.UTF-8 ;
 - le CLAVIER : le module de cloud-init finit par « systemctl restart
-  console-setup », service absent de l'image genericcloud. Le réglage est
+  console-setup », service absent des images cloud Debian. Le réglage est
   écrit AVANT cet échec, dans /etc/default/keyboard — c'est le fichier que
   localed et X relisent —, donc le poser nous-mêmes ne perd rien d'autre que
   la disposition de la console texte, qui demande ce paquet.
@@ -103,7 +103,7 @@ class LeClavier(unittest.TestCase):
         self.assertIn("XKBVARIANT=multix", fichiers[0][2])
 
     def test_proxmox_shares_the_debian_image_and_its_fix(self):
-        """La VM Proxmox démarre sur l'image genericcloud de Debian, sans
+        """La VM Proxmox démarre sur l'image cloud de Debian, sans
         console-setup : le bloc cloud-init y échoue de la même façon."""
         self.assertEqual([], DQ.keyboard_lines("proxmox", "ca", "multix"))
         self.assertEqual(

@@ -109,6 +109,12 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 Fedora ne construit s390x que pour la version courante, et sur une
 arborescence à part (`fedora-secondary`) — d'où la version unique.
 
+Debian publie deux variantes d'image cloud. `genericcloud` porte un noyau
+compilé sans aucun pilote d'affichage : une VM graphique (`--desktop`)
+télécharge donc `generic`, dont le noyau pilote l'écran virtuel. Debian 13 ne
+publie que `generic` ; Debian 12 garde `genericcloud` pour les serveurs.
+Chaque variante a son propre fichier en cache.
+
 `opensuse` recouvre deux produits distincts, pas deux versions du même. Leap
 `16.0` est numérotée et stable (base SLE) : c'est le défaut. `tumbleweed` est
 la rolling, gardée comme banc d'essai des ruptures à venir — sa dérive

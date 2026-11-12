@@ -69,20 +69,26 @@ class TestCatalogue(unittest.TestCase):
 
     def test_the_base_is_the_debian_trixie_cloud_image(self):
         """C'est bien l'image DEBIAN qu'on télécharge : Proxmox n'en publie
-        aucune."""
+        aucune. Variante « generic », la seule que trixie publie."""
         for arch in ("amd64", "arm64"):
             url = DQ.image_url("proxmox", "trixie", arch, "9")
             self.assertIn("trixie", url)
-            self.assertIn(f"debian-13-genericcloud-{arch}.qcow2", url)
+            self.assertIn(f"debian-13-generic-{arch}.qcow2", url)
 
     def test_the_cache_name_is_debians_so_the_download_is_shared(self):
-        """Un déploiement Debian 13 et un Proxmox visent le MÊME fichier : le
-        repli de fin nommait l'image « fedora-cloud-9 », et 325 Mio se
-        retéléchargeaient."""
-        pve = DQ.default_image_name("proxmox", "trixie", "amd64", "9")
-        deb = DQ.default_image_name("debian", "trixie", "amd64", "13")
-        self.assertEqual(deb, pve)
-        self.assertNotIn("fedora", pve)
+        """Un déploiement Debian 13 et un Proxmox visent le MÊME fichier,
+        avec ou sans bureau : sans cela, le repli de fin nommerait l'image
+        « fedora-cloud-9 », et la téléchargerait une seconde fois."""
+        for bureau in (False, True):
+            with self.subTest(bureau=bureau):
+                pve = DQ.default_image_name(
+                    "proxmox", "trixie", "amd64", "9", bureau
+                )
+                deb = DQ.default_image_name(
+                    "debian", "trixie", "amd64", "13", bureau
+                )
+                self.assertEqual(deb, pve)
+                self.assertEqual("debian-13-generic-amd64.qcow2", pve)
 
     def test_s390x_does_not_exist_and_is_refused(self):
         """Le dépôt amont n'a pas d'index s390x (404). Le refus vaut mieux

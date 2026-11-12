@@ -191,6 +191,12 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
 
+Debian ships two cloud image variants. `genericcloud` runs a kernel built
+without any display driver, so a graphical VM (`--desktop`) downloads
+`generic`, whose kernel drives the virtual screen. Debian 13 publishes only
+`generic`; Debian 12 keeps `genericcloud` for servers. Each variant has its
+own cache file.
+
 `proxmox` is Proxmox VE, and it deserves a word: it publishes **no cloud
 image** — its ISO is an installer that formats the disk. So the deployment
 does what upstream itself documents for every other case, *Proxmox VE on
@@ -238,6 +244,12 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 
 Fedora ne construit s390x que pour la version courante, et sur une
 arborescence à part (`fedora-secondary`) — d'où la version unique.
+
+Debian publie deux variantes d'image cloud. `genericcloud` porte un noyau
+compilé sans aucun pilote d'affichage : une VM graphique (`--desktop`)
+télécharge donc `generic`, dont le noyau pilote l'écran virtuel. Debian 13 ne
+publie que `generic` ; Debian 12 garde `genericcloud` pour les serveurs.
+Chaque variante a son propre fichier en cache.
 
 `opensuse` recouvre deux produits distincts, pas deux versions du même. Leap
 `16.0` est numérotée et stable (base SLE) : c'est le défaut. `tumbleweed` est

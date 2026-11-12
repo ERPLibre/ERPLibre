@@ -1425,9 +1425,14 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         code, _v = mod.DISTROS[vm["distro"]][0][vm["version"]][:2]
-        url = mod.image_url(vm["distro"], code, vm["arch"], vm["version"])
+        # Le bureau choisit l'image Debian : la variante cloud n'a pas de
+        # pilote d'affichage. Même lecture que _pve_disk_with_margin.
+        bureau = bool(vm.get("desktop", spec.get("desktop")))
+        url = mod.image_url(
+            vm["distro"], code, vm["arch"], vm["version"], bureau
+        )
         image = mod.default_image_name(
-            vm["distro"], code, vm["arch"], vm["version"]
+            vm["distro"], code, vm["arch"], vm["version"], bureau
         )
         detail = {
             "name": vm["name"],
@@ -2867,7 +2872,7 @@ class ProxmoxMenuMixin:
             "disk": "32G",
             "storage": "local-lvm",
             "bridge": "vmbr0",
-            "image": "debian-13-genericcloud-amd64.qcow2",
+            "image": "debian-13-generic-amd64.qcow2",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
         }
         print(f"\n── {t('Example: demo-vm, Debian 13, on a Proxmox host')} ──")
