@@ -224,13 +224,13 @@ class TestLeMenu(Depots):
         self.lancer("").assert_not_called()
         self.lancer("9").assert_not_called()
 
-    def test_entry_6_opens_it(self):
+    def test_entry_7_opens_it(self):
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
         with (
             mock.patch.object(TODO, "_module_auto_install") as action,
-            mock.patch("click.prompt", side_effect=["6", "0"]),
+            mock.patch("click.prompt", side_effect=["7", "0"]),
             mock.patch("builtins.print"),
         ):
             todo.prompt_execute_module_analysis()
