@@ -500,6 +500,67 @@ class GitForkMenuMixin:
             )
         return 0
 
+    def _git_nettoyer_branches(self):
+        """Les branches fusionnées d'un clone, dans la base du manifeste ou
+        par une pull request fusionnée : supprimées en local, puis sur
+        chaque remote de fork, chacun après sa propre confirmation. Rend
+        le nombre de branches supprimées, ou None."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return None
+        remotes, projet, chemin = choix
+        fetch = self._is_yes_default_yes(
+            input(t("Fetch the remotes first, with prune? (Y/n): "))
+        )
+        client = None
+        if self._is_yes(
+            input(t("Also ask GitHub for branches merged by squash? (y/N): "))
+        ):
+            client = self._git_client()
+            if client is None:
+                return None
+        try:
+            bases, _forks, plan = manifest_repo.plan_nettoyage(
+                chemin, projet, remotes, client, fetch
+            )
+        except (ValueError, github_fork.ErreurGitHub) as exc:
+            print(f"❌ {exc}")
+            return None
+        if not bases:
+            print(f"⚠ {t('The clone knows no base branch: fetch it first.')}")
+            return None
+        print(f"  {t('Base')} : {', '.join(bases)}")
+        if not plan["locales"] and not plan["distantes"]:
+            print(f"  ✓ {t('No merged branch to clean.')}")
+            return 0
+        supprimees = 0
+        groupes = [(None, plan["locales"])] + list(plan["distantes"].items())
+        for remote, noms in groupes:
+            if not noms:
+                continue
+            print(f"── {remote or t('local')}")
+            for nom, motif in noms.items():
+                print(f"  {nom} ({motif})")
+            question = (
+                t("Delete these local branches? (y/N): ")
+                if remote is None
+                else f"{t('Delete these branches on the server')} {remote} ? (y/N) : "
+            )
+            if not self._is_yes(input(question)):
+                continue
+            resultats = manifest_repo.supprimer_branches(
+                chemin,
+                noms if remote is None else (),
+                {remote: list(noms)} if remote else None,
+            )
+            for _r, nom, code, sortie in resultats:
+                if code == 0:
+                    supprimees += 1
+                    print(f"  ✓ {nom}")
+                else:
+                    print(f"  ❌ {nom} : {sortie}")
+        return supprimees
+
     def _git_lancer(self, commandes):
         """Montre puis lance `commandes` à la racine, sortie au terminal."""
         import shlex

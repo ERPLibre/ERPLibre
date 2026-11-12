@@ -3811,6 +3811,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "🧹 Clean the merged branches of a repository"
+                ),
+                "method": "_git_nettoyer_branches",
+            },
+            {
+                "prompt_description": t(
                     "📋 List the pull requests of an organisation"
                 ),
                 "method": "_git_lister_pull_requests",

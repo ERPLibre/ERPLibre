@@ -2158,6 +2158,48 @@ TRANSLATIONS = {
         "fr": "🧊 Geler un seul dépôt sur un commit",
         "en": "🧊 Freeze one repository on a commit",
     },
+    "🧹 Clean the merged branches of a repository": {
+        "fr": "🧹 Nettoyer les branches fusionnées d'un dépôt",
+        "en": "🧹 Clean the merged branches of a repository",
+    },
+    "Fetch the remotes first, with prune? (Y/n): ": {
+        "fr": "Récupérer d'abord les remotes, avec prune ? (O/n) : ",
+        "en": "Fetch the remotes first, with prune? (Y/n): ",
+    },
+    "Also ask GitHub for branches merged by squash? (y/N): ": {
+        "fr": (
+            "Demander aussi à GitHub les branches fusionnées par squash ? "
+            "(o/N) : "
+        ),
+        "en": "Also ask GitHub for branches merged by squash? (y/N): ",
+    },
+    "The clone knows no base branch: fetch it first.": {
+        "fr": (
+            "Le clone ne connaît aucune branche de base : récupérez-la "
+            "d'abord."
+        ),
+        "en": "The clone knows no base branch: fetch it first.",
+    },
+    "Base": {
+        "fr": "Base",
+        "en": "Base",
+    },
+    "No merged branch to clean.": {
+        "fr": "Aucune branche fusionnée à nettoyer.",
+        "en": "No merged branch to clean.",
+    },
+    "local": {
+        "fr": "local",
+        "en": "local",
+    },
+    "Delete these local branches? (y/N): ": {
+        "fr": "Supprimer ces branches locales ? (o/N) : ",
+        "en": "Delete these local branches? (y/N): ",
+    },
+    "Delete these branches on the server": {
+        "fr": "Supprimer ces branches sur le serveur",
+        "en": "Delete these branches on the server",
+    },
     "Remove from the manifest": {
         "fr": "Retirer du manifeste",
         "en": "Remove from the manifest",
