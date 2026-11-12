@@ -6,6 +6,7 @@ import argparse
 import ast
 import csv
 import datetime
+import json
 import logging
 import os
 import re
@@ -343,6 +344,19 @@ def main():
         )
     print("end of stat")
 
+    chemin = fichier_donnees(config.filter)
+    ecrire_donnees(
+        chemin,
+        donnees_evolution(
+            dct_result,
+            dct_result_unique,
+            config.filter,
+            len(lst_repo_path),
+            datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        ),
+    )
+    _logger.info(f"Data written to {chemin}")
+
     if config.compare_csv:
         index_header = -1
         lst_unique_module_csv = set()
@@ -372,6 +386,60 @@ def main():
         print(lst_missing_module_repo)
         print(f"Module missing into CSV '{len(lst_missing_module_csv)}':")
         print(lst_missing_module_csv)
+
+
+# Les données d'une passe, à la racine des clones : une par filtre, pour
+# qu'une passe « tous les dépôts » et une passe « /OCA/ » se lisent côte à
+# côte dans l'écran de statistique (script/statistic/evolution_tui.py).
+PREFIXE_DONNEES = "evolution_modules"
+
+
+def fichier_donnees(filtre, dossier=None):
+    """Le fichier de données de la passe filtrée par `filtre` : sans
+    filtre « evolution_modules.json », sinon le filtre réduit à ses lettres
+    et chiffres, « /OCA/ » donnant « evolution_modules_OCA.json »."""
+    nom = re.sub(r"[^A-Za-z0-9]+", "_", filtre or "").strip("_")
+    fichier = (
+        f"{PREFIXE_DONNEES}_{nom}.json" if nom else f"{PREFIXE_DONNEES}.json"
+    )
+    return os.path.join(dossier or CACHE_CLONE_PATH, fichier)
+
+
+def donnees_evolution(dct_result, dct_result_unique, filtre, nb_depots, quand):
+    """Le contenu du fichier : pour chaque date de coupe, le nombre de
+    modules par version d'Odoo et le nombre de modules UNIQUES, toutes
+    versions confondues, triés par date."""
+    annees = []
+    for date in sorted(dct_result, key=lambda d: (d is None, str(d))):
+        par_version = {
+            branche: nombre
+            for branche, nombre in sorted(
+                dct_result[date].items(), key=lambda b: float(b[0])
+            )
+        }
+        annees.append(
+            {
+                "date": date.isoformat() if date else None,
+                "par_version": par_version,
+                "uniques": len(dct_result_unique.get(date, ())),
+            }
+        )
+    return {
+        "genere": quand,
+        "filtre": filtre or "",
+        "depots": nb_depots,
+        "annees": annees,
+    }
+
+
+def ecrire_donnees(chemin, donnees):
+    """Écrit `donnees` en JSON par un fichier provisoire renommé : l'écran
+    qui le lit pendant une passe ne voit jamais un fichier à moitié écrit."""
+    provisoire = f"{chemin}.{os.getpid()}.tmp"
+    with open(provisoire, "w", encoding="utf-8") as fh:
+        json.dump(donnees, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(provisoire, chemin)
 
 
 def die(cond, message, code=1):

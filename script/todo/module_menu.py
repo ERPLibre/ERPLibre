@@ -12,7 +12,8 @@ va pas sur le réseau.
 La section Statistique lance `script/statistic/show_evolution_module.py`,
 qui CLONE l'amont de chaque dépôt des manifestes sous
 .venv.erplibre/stat_repo : réseau, gigaoctets et durée, d'où la
-confirmation qui la précède.
+confirmation qui la précède. Chaque passe y laisse un fichier de données,
+que l'écran de l'entrée 5 (`script/statistic/evolution_tui.py`) trace.
 """
 
 import datetime
@@ -45,6 +46,8 @@ RACINE = new_path
 # aujourd'hui : il compte l'état actuel des branches, la version sortie
 # cette année comprise.
 STAT_DEPUIS = "2016-01-01"
+# Les clones et les fichiers de données de show_evolution_module.py.
+STAT_DOSSIER = os.path.join(RACINE, ".venv.erplibre", "stat_repo")
 
 
 def stat_annees(aujourdhui=None):
@@ -80,6 +83,11 @@ class ModuleMenuMixin:
                     "📈 Module evolution per year, OCA repositories"
                 )
             },
+            {
+                "prompt_description": t(
+                    "📊 Chart of the module evolution (TUI, from entries 3 and 4)"
+                )
+            },
             {"section": t("Modification")},
             {
                 "prompt_description": t(
@@ -102,6 +110,8 @@ class ModuleMenuMixin:
             elif status == "4":
                 self._module_statistique(filtre="/OCA/")
             elif status == "5":
+                self._module_graphique()
+            elif status == "6":
                 self._module_auto_install()
             else:
                 print(t("Command not found !"))
@@ -132,6 +142,22 @@ class ModuleMenuMixin:
         return self.execute.exec_command_live(
             shlex.join(commande), source_erplibre=False
         )
+
+    def _module_graphique(self):
+        """L'écran des statistiques que 3 et 4 ont écrites. Sans fichier de
+        données, le dit et n'ouvre rien. Rend le nombre de jeux montrés."""
+        from script.statistic import evolution_tui
+
+        if not evolution_tui.lire_jeux(STAT_DOSSIER):
+            print(
+                f"  {t('No module statistics yet: run entry 3 or 4 first.')}"
+            )
+            return 0
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return 0
+        return evolution_tui.run(STAT_DOSSIER)
 
     def _module_auto_install(self):
         """Désactive auto_install dans les dépôts cochés parmi ceux du

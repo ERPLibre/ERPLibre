@@ -140,6 +140,32 @@ TRANSLATIONS = {
         "fr": "Continuer ?",
         "en": "Continue?",
     },
+    "📊 Chart of the module evolution (TUI, from entries 3 and 4)": {
+        "fr": "📊 Graphique de l'évolution des modules (TUI, d'après 3 et 4)",
+        "en": "📊 Chart of the module evolution (TUI, from entries 3 and 4)",
+    },
+    "No module statistics yet: run entry 3 or 4 first.": {
+        "fr": (
+            "Aucune statistique de modules : lancez d'abord l'entrée 3 ou 4."
+        ),
+        "en": "No module statistics yet: run entry 3 or 4 first.",
+    },
+    "unique modules": {
+        "fr": "modules uniques",
+        "en": "unique modules",
+    },
+    "Year": {
+        "fr": "Année",
+        "en": "Year",
+    },
+    "Odoo module evolution per year": {
+        "fr": "Évolution des modules Odoo par année",
+        "en": "Odoo module evolution per year",
+    },
+    "Both": {
+        "fr": "Les deux",
+        "en": "Both",
+    },
     "Modification": {
         "fr": "Modification",
         "en": "Modification",
