@@ -3081,10 +3081,6 @@ TRANSLATIONS = {
         "fr": "Claude Code n'est pas configuré",
         "en": "Claude Code is not set up",
     },
-    "Redeploy: Execute › GPT code › Claude configs": {
-        "fr": "Redéployer : Exécution › GPT code › Claude configs",
-        "en": "Redeploy: Execute › GPT code › Claude configs",
-    },
     "repositories": {
         "fr": "dépôts",
         "en": "repositories",
