@@ -34,6 +34,16 @@ class Context:
         """Plugin id -> its home button key, -1 when it has none."""
         return dict(self._kernel.home.home_keys)
 
+    @property
+    def fixture_keys(self):
+        """The home screen keys this plugin's fixtures hold, sorted: a
+        place a home button or a keymap.json layout took is not one."""
+        return sorted(
+            key
+            for key, (pid, _, _) in self._kernel.home.fixtures.items()
+            if pid == self.plugin_id
+        )
+
     def t(self, label):
         return i18n.t(label)
 

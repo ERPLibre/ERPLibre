@@ -345,11 +345,11 @@ def _page_shown(ctx):
 
 
 def _mic_shown(ctx):
-    """The home screen ("idle") shows and the mic key has its place.
-    Its fixture has the lowest order and its key is on the last row,
-    below every home button, so the place it asks for is the key it
-    gets."""
-    return ctx.page == "idle" and bool(_mic_place(ctx.geo, ctx.home_keys))
+    """The home screen ("idle") shows and the mic fixture holds a key.
+    The place it asks for is not enough: a keymap.json layout that
+    names that key, or a deck of one row, leaves it none, and the poll
+    then reads nothing no key would show."""
+    return ctx.page == "idle" and bool(ctx.fixture_keys)
 
 
 PLUGIN = Plugin(

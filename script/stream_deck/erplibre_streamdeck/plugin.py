@@ -61,7 +61,9 @@ class Fixture:
     """Keys a plugin places itself on the home screen.
     `place(geo, home_keys)` returns the keys, given each plugin's home
     button key (-1 when it has none); face(ctx, key, index) returns a
-    KeyFace or None (painted empty); press(ctx, key, index)."""
+    KeyFace or None (painted empty); press(ctx, key, index). A key
+    already taken is skipped: ctx.fixture_keys are the keys the
+    plugin's fixtures got."""
 
     order: int
     place: Callable

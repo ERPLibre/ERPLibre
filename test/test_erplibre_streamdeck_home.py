@@ -473,6 +473,39 @@ class LayoutAllocationTest(unittest.TestCase):
         self.assertNotIn(5, alloc.fixtures)
         self.assertNotIn("timers", alloc.home_keys)
 
+    def test_the_mic_poll_runs_only_while_its_fixture_holds_a_key(self):
+        """On a 4x2 deck the mic asks for key 4. A layout naming key 4
+        leaves the fixture no key: its 2 s poll stays off. Without a
+        layout, or one leaving key 4 free, it runs on the home screen."""
+        from erplibre_streamdeck.plugins import sound
+
+        mic_poll = sound.PLUGIN.polls[1]
+        self.assertIs(sound._mic_shown, mic_poll.active)
+        other = Plugin(api=PLUGIN_API, fixtures=[Fixture(
+            30, lambda geo, hk: [5], lambda ctx, key, i: None,
+            lambda ctx, key, i: None,
+        )])
+        loaded = [
+            LoadedPlugin("sound", sound.PLUGIN, "repo", Path("sound.py")),
+            LoadedPlugin("other", other, "user", Path("other.py")),
+        ]
+        for layout, shown in (
+            (None, True),
+            ([entry(0, "plugin:sound")], True),
+            ([entry(4, "plugin:sound")], False),
+            ([entry(4, "empty")], False),
+        ):
+            with mock.patch.object(
+                K, "dbus_mod", mock.Mock(available=bool)
+            ):
+                k = K.Kernel(S.FakeDeck(4, 2), loaded, layout=layout)
+            ctx = k.ctx("sound")
+            self.assertEqual(shown, 4 in k.home.fixtures, layout)
+            self.assertEqual(shown, mic_poll.active(ctx), layout)
+            self.assertEqual([4] if shown else [], ctx.fixture_keys)
+            k.goto("sound")
+            self.assertFalse(mic_poll.active(ctx), layout)
+
     def test_icon_and_label_replace_the_home_face_only(self):
         with mock.patch.object(render, "set_key", S.recorder()):
             deck = S.FakeDeck(4, 2)
