@@ -8,10 +8,11 @@ une fonction qui n'en prenait aucun a pu être livré : le choix « console de
 l'hyperviseur » levait un TypeError au lieu d'ouvrir quoi que ce soit. Chaque
 choix est donc atteint ici pour de vrai, jusqu'à la commande imprimée.
 
-La ligne de partage est celle du dernier saut : xrdp et TigerVNC écoutent sur
-toutes les interfaces de l'invité, donc l'hyperviseur les atteint par l'IP de
-la VM ; l'émulateur Android, lui, n'écoute que sur son 127.0.0.1, ce qui exige
-un saut de plus. Les deux formes coexistent, et ce n'est pas une incohérence.
+La ligne de partage est celle du dernier saut : GNOME Remote Desktop, xrdp et
+TigerVNC écoutent sur toutes les interfaces de l'invité, donc l'hyperviseur les
+atteint par l'IP de la VM ; l'émulateur Android, lui, n'écoute que sur son
+127.0.0.1, ce qui exige un saut de plus. Les deux formes coexistent, et ce
+n'est pas une incohérence.
 """
 
 import io
@@ -76,6 +77,15 @@ class TestTunnelMenuChoices(_MenuCase):
     def test_rdp_is_the_default_and_vnc_the_second(self):
         self.assertIn("3389", self._play(["1", ""]))
         self.assertIn("5901", self._play(["1", "2"]))
+
+    def test_the_labels_name_the_server_behind_each_port(self):
+        """GNOME sans session X11 ne se sert qu'en RDP : le choix VNC ne vaut
+        que pour Cinnamon sur Arch, et l'étiquette doit le dire pour qu'une VM
+        Arch GNOME ne soit pas envoyée vers un port où rien n'écoute."""
+        out = self._play(["1", ""])
+        self.assertIn("RDP 3389 (GNOME Remote Desktop / xrdp)", out)
+        self.assertIn("VNC 5901 (TigerVNC, Cinnamon on Arch)", out)
+        self.assertNotIn("(TigerVNC, Arch)", out)
 
     def test_a_configured_host_rides_its_proxyjump_for_rdp(self):
         out = self._play(["1", "1"])

@@ -371,11 +371,10 @@ class TestInstallerGuideNames(unittest.TestCase):
 class TestDesktopBlock(unittest.TestCase):
     """Le bloc « Bureau » : présent seulement là où un bureau existe.
 
-    Vécu : une VM graphique restait sur une console texte, GNOME installé et
-    gdm3 installé — graphical.target était déjà atteinte quand le paquet est
-    arrivé. La commande qui répare tient sur une ligne, encore faut-il la lire
-    quelque part. Sur un serveur, elle ne mènerait à aucune unité : le bloc
-    n'y apparaît pas.
+    Un gestionnaire de connexion posé après que graphical.target est atteinte
+    ne démarre pas seul, et la console reste en mode texte. La commande qui
+    répare tient sur une ligne, encore faut-il la lire quelque part. Sur un
+    serveur, elle ne mènerait à aucune unité : le bloc n'y apparaît pas.
     """
 
     def _motd(self, desktop):
@@ -397,14 +396,38 @@ class TestDesktopBlock(unittest.TestCase):
         self.assertIn("Bureau", self._motd(True))
 
     def test_it_carries_the_command_that_repairs(self):
-        """« --now » et non « enable » seul : sur Debian et Ubuntu, l'unité n'a
-        pas de WantedBy, et « enable » rend 0 sans rien faire."""
+        """« restart » sur l'alias, et non « enable » seul : sur Debian et
+        Ubuntu, l'unité n'a pas de WantedBy, et « enable » rend 0 sans rien
+        démarrer."""
         motd = self._motd(True)
-        self.assertIn("systemctl enable --now gdm", motd)
+        self.assertIn("sudo systemctl restart display-manager", motd)
         self.assertIn("systemctl status display-manager", motd)
 
-    def test_it_says_why_now_matters(self):
-        self.assertIn("--now", self._motd(True))
+    def test_it_names_no_display_manager(self):
+        """GDM pour GNOME, LightDM pour Cinnamon : le guide ne sait pas lequel
+        a été posé, l'alias display-manager vaut pour les deux."""
+        motd = self._motd(True)
+        self.assertNotIn("gdm", motd)
+        self.assertNotIn("lightdm", motd)
+
+    def test_it_says_how_to_reach_the_desktop_remotely(self):
+        """RDP 3389, à travers l'hôte libvirt, avec le compte de la VM ; la
+        même ligne nomme VNC sur 5901, que Cinnamon sur Arch sert à la place.
+        Le guide ne sait pas quelle saveur a été posée."""
+        for lang, compte, vnc in (
+            ("fr", "compte et mot de", "Arch : VNC, 5901 au lieu de 3389"),
+            ("en", "user", "Arch: VNC, 5901 instead of 3389"),
+        ):
+            with self.subTest(lang=lang):
+                motd = dq.build_motd(
+                    "debian", "13", "amd64", lang, desktop=True
+                )
+                self.assertIn("ssh -L 3390:<ip>:3389 <hote-libvirt>", motd)
+                self.assertIn("localhost:3390", motd)
+                self.assertIn(compte, motd)
+                # La glose se replie sur plusieurs lignes : on la relit
+                # d'un seul tenant.
+                self.assertIn(vnc, " ".join(motd.split()))
 
     def test_it_stays_inside_the_frame(self):
         """Le guide est encadré : une ligne trop longue casse la boîte."""
@@ -597,6 +620,30 @@ class LesOutilsPosesSAnnoncent(unittest.TestCase):
             tools=tools,
             **kw,
         )
+
+    def test_the_extension_manager_is_the_one_installed(self):
+        """Fedora n'empaquette pas « extension-manager » : sa liste pose
+        gnome-extensions-app, et le guide doit nommer celle-là."""
+        for distro, version, attendu, absent in (
+            ("fedora", "44", "gnome-extensions-app", "extension-manager"),
+            ("debian", "13", "extension-manager", "gnome-extensions-app"),
+            ("ubuntu", "24.04", "extension-manager", "gnome-extensions-app"),
+            ("arch", "latest", "extension-manager", "gnome-extensions-app"),
+        ):
+            with self.subTest(distro=distro):
+                motd = dq.build_motd(
+                    distro,
+                    version,
+                    "amd64",
+                    el_dir="~/git/erplibre",
+                    desktop=True,
+                    tools=("gnome_ext",),
+                )
+                lignes = [ligne.split() for ligne in motd.splitlines()]
+                commandes = {mots[0] for mots in lignes if mots}
+                self.assertIn(attendu, commandes)
+                self.assertNotIn(absent, commandes)
+                self.assertNotIn("{ext_app}", motd)
 
     def test_only_what_was_installed_is_announced(self):
         motd = self._motd(("pycharm",))

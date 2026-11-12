@@ -2918,7 +2918,7 @@ TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
         "Extensions GNOME",
         (
             (
-                "extension-manager",
+                "{ext_app}",
                 "le gestionnaire d'extensions, sur le bureau",
                 "the extension manager, on the desktop",
             ),
@@ -2958,14 +2958,31 @@ TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
 }
 
 
-def tool_rows(cle: str, el_dir: str) -> tuple[str, tuple]:
-    """(libellé, lignes) d'un outil, sa racine d'installation substituée."""
+# Gestionnaire d'extensions GNOME posé par chaque famille de paquets. Fedora
+# n'empaquette pas « extension-manager » : sa liste installe
+# gnome-extensions-app, et le guide doit nommer la commande présente.
+GNOME_EXT_APP: dict[str, str] = {"dnf": "gnome-extensions-app"}
+
+
+def tool_rows(cle: str, el_dir: str, mgr: str = "") -> tuple[str, tuple]:
+    """(libellé, lignes) d'un outil, ses gabarits substitués.
+
+    « {el_dir} » devient la racine d'installation ; « {ext_app} », le
+    gestionnaire d'extensions que la famille `mgr` (apt, dnf…) installe.
+    """
     entree = TOOL_GUIDE.get(cle)
     if not entree:
         return "", ()
     libelle, lignes = entree
+    ext_app = GNOME_EXT_APP.get(mgr, "extension-manager")
     return libelle, tuple(
-        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        (
+            cmd.replace("{el_dir}", el_dir or "~/git/erplibre").replace(
+                "{ext_app}", ext_app
+            ),
+            fr,
+            en,
+        )
         for cmd, fr, en in lignes
     )
 
@@ -3022,12 +3039,19 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
-# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
-# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
-# d'où le « --now », qui démarre.
+# N'apparaît que sur une VM déployée AVEC un bureau. Un gestionnaire de
+# connexion installé après que graphical.target est atteinte ne démarre pas de
+# lui-même : une cible active ne rattrape pas un service ajouté après coup, et
+# « enable » seul ne démarre rien. « display-manager » est l'alias que GDM et
+# LightDM posent tous deux, d'où une seule ligne pour GNOME comme pour
+# Cinnamon ; « restart » démarre aussi une unité arrêtée.
+#
+# L'accès distant passe par RDP sur 3389 — GNOME Remote Desktop, ou xrdp —
+# sauf Cinnamon sur Arch, servi par TigerVNC sur 5901 (_QEMU_DESKTOP_REMOTE,
+# dans script/todo/qemu_install.py). Le guide ne sait pas quelle saveur a été
+# posée, d'où une seule ligne qui nomme les deux. L'adresse de la VM n'est
+# routée que depuis l'hôte libvirt : le tunnel part donc du poste de travail,
+# à travers cet hôte.
 DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
         "systemctl status display-manager",
@@ -3035,9 +3059,16 @@ DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
         "graphical desktop state",
     ),
     (
-        "sudo systemctl enable --now gdm",
-        "le démarrer (« --now » : enable seul ne suffit pas)",
-        'start it ("--now": enable alone does nothing)',
+        "sudo systemctl restart display-manager",
+        "(re)démarrer l'écran de connexion",
+        "(re)start the login screen",
+    ),
+    (
+        "ssh -L 3390:<ip>:3389 <hote-libvirt>",
+        "depuis le poste : client RDP sur localhost:3390, compte et mot de "
+        "passe de la VM (Cinnamon sur Arch : VNC, 5901 au lieu de 3389)",
+        "from the workstation: RDP client on localhost:3390, the VM's user "
+        "and password (Cinnamon on Arch: VNC, 5901 instead of 3389)",
     ),
 )
 
@@ -3235,7 +3266,7 @@ def build_motd(
     for cle in TOOL_GUIDE:
         if cle not in (tools or ()):
             continue
-        libelle, lignes = tool_rows(cle, el_dir)
+        libelle, lignes = tool_rows(cle, el_dir, mgr)
         if not lignes:
             continue
         body.append("")
