@@ -3,15 +3,11 @@ packaging
 toml
 
 # ERPLibre script
-giturlparse
-agithub
 GitPython>=3.2.1
 retrying
 xmltodict
-openupgradelib
 unidiff
 colorama
-wheel
 selenium
 uvloop
 python-randomword-fr
@@ -24,7 +20,6 @@ cryptography
 keyring
 click
 aioshutil
-python-magic
 openai
 humanize
 requests
@@ -37,8 +32,8 @@ textual>=8,<9
 # transitive, c'est dépendre du jour où Textual changera la sienne.
 rich
 # Dépendance directe : les outils d'analyse comparent des arbres XML avec lxml.
-# Il n'arrivait que par pykeepass / openupgradelib / odoo-module-migrator, donc
-# un jour où l'un d'eux s'en passe, il disparaît sans que rien ne le réclame.
+# Il n'arrivait que par pykeepass, donc le jour où pykeepass s'en passe, il
+# disparaît sans que rien ne le réclame.
 lxml
 # Classeurs Excel de « Transform data », et les tests qui les éprouvent. Le
 # moteur garde son venv dédié (script/todo/transform_setup.py) : un
@@ -47,7 +42,6 @@ lxml
 openpyxl
 python-dotenv
 python-dateutil
-unidecode
 cloudflare
 psutil
 mmg
@@ -78,7 +72,6 @@ pre-commit
 aiosmtpd
 twisted
 
-odoo-module-migrator
 
 # Planchers de sécurité des dépendances transitives (base OSV) : pip installe
 # la version du moment et ne met jamais à jour un venv existant, le plancher
