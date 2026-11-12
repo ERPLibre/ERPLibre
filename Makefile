@@ -414,11 +414,11 @@ clean:
 ###############
 .PHONY: stat_module_evolution_per_year
 stat_module_evolution_per_year:
-	./script/statistic/show_evolution_module.py --before_date "2016-01-01" --more_year 7
+	./script/statistic/show_evolution_module.py --before_date "2016-01-01" --more_year $$(( $$(date +%Y) + 1 - 2016 ))
 
 .PHONY: stat_module_evolution_per_year_OCA
 stat_module_evolution_per_year_OCA:
-	./script/statistic/show_evolution_module.py --filter "/OCA/" --before_date "2016-01-01" --more_year 7
+	./script/statistic/show_evolution_module.py --filter "/OCA/" --before_date "2016-01-01" --more_year $$(( $$(date +%Y) + 1 - 2016 ))
 
 # Cache
 .PHONY: clear_cache

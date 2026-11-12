@@ -64,7 +64,15 @@ DCT_VERSION_RELEASE = {
     "16.0": datetime.datetime.strptime("2022-10-01", "%Y-%m-%d").date(),
     "17.0": datetime.datetime.strptime("2023-10-01", "%Y-%m-%d").date(),
     "18.0": datetime.datetime.strptime("2024-10-01", "%Y-%m-%d").date(),
+    "19.0": datetime.datetime.strptime("2025-09-01", "%Y-%m-%d").date(),
+    "20.0": datetime.datetime.strptime("2026-09-01", "%Y-%m-%d").date(),
 }
+# Les branches analysées par défaut : chaque version de la table à partir de
+# la 6.1. Une version ajoutée à la table entre dans la statistique sans
+# autre changement.
+BRANCHES_PAR_DEFAUT = ",".join(
+    v for v in DCT_VERSION_RELEASE if float(v) >= 6.1
+)
 CSV_HEADER_MODULE_NAME = "Nom technique"
 # TODO use rich progress bar when clone
 # TODO support conflict repo name
@@ -155,7 +163,7 @@ def get_config():
     parser.add_argument(
         "-b",
         "--branches",
-        default="6.1,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0",
+        default=BRANCHES_PAR_DEFAUT,
         help="Branch to analyse, separate by ','",
     )
     parser.add_argument(

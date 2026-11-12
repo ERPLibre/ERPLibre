@@ -58,8 +58,24 @@ class TestLaStatistique(unittest.TestCase):
         _, appels = self.menu(["3", "0"])
         self.assertEqual(len(appels), 1)
         self.assertIn("script/statistic/show_evolution_module.py", appels[0])
-        self.assertIn("--before_date 2016-01-01 --more_year 7", appels[0])
+        attendu = (
+            f"--before_date 2016-01-01 --more_year {module_menu.stat_annees()}"
+        )
+        self.assertIn(attendu, appels[0])
         self.assertNotIn("--filter", appels[0])
+
+    def test_the_window_reaches_the_january_after_today(self):
+        """Le dernier relevé, STAT_DEPUIS plus « --more_year » années, est le
+        1er janvier de l'année qui suit : il compte l'état actuel, la version
+        sortie dans l'année comprise."""
+        import datetime
+
+        for jour, annees in (
+            (datetime.date(2026, 11, 11), "11"),
+            (datetime.date(2027, 1, 1), "12"),
+        ):
+            with self.subTest(jour=jour):
+                self.assertEqual(module_menu.stat_annees(jour), annees)
 
     def test_entry_4_keeps_oca_only(self):
         _, appels = self.menu(["4", "0"])

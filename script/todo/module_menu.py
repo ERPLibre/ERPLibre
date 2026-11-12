@@ -15,6 +15,7 @@ qui CLONE l'amont de chaque dépôt des manifestes sous
 confirmation qui la précède.
 """
 
+import datetime
 import os
 import shlex
 import sys
@@ -36,10 +37,19 @@ from script.todo.todo_i18n import t  # noqa: E402
 
 RACINE = new_path
 
-# La fenêtre des cibles Makefile stat_module_evolution_per_year : une
-# année de départ et le nombre d'années comptées après elle.
+# La fenêtre des cibles Makefile stat_module_evolution_per_year : un
+# relevé au 1er janvier de chaque année depuis STAT_DEPUIS, jusqu'au 1er
+# janvier de l'année qui suit la courante. Ce dernier relevé tombe après
+# aujourd'hui : il compte l'état actuel des branches, la version sortie
+# cette année comprise.
 STAT_DEPUIS = "2016-01-01"
-STAT_ANNEES = "7"
+
+
+def stat_annees(aujourdhui=None):
+    """Le nombre d'années après STAT_DEPUIS (« --more_year ») pour que le
+    dernier relevé soit le 1er janvier de l'année suivant `aujourdhui`."""
+    aujourdhui = aujourdhui or datetime.date.today()
+    return str(aujourdhui.year + 1 - int(STAT_DEPUIS[:4]))
 
 
 class ModuleMenuMixin:
@@ -87,17 +97,18 @@ class ModuleMenuMixin:
                 print(t("Command not found !"))
 
     def _module_statistique(self, filtre=""):
-        """L'évolution du nombre de modules par année depuis 2016, sur les
-        dépôts des manifestes, ceux dont l'URL contient `filtre` s'il est
-        donné. Rien ne se lance sans confirmation : la statistique clone
-        chaque dépôt amont. Rend le statut de la commande, ou None."""
+        """L'évolution du nombre de modules par année depuis 2016 jusqu'à
+        aujourd'hui, sur les dépôts des manifestes, ceux dont l'URL contient
+        `filtre` s'il est donné. Rien ne se lance sans confirmation : la
+        statistique clone chaque dépôt amont. Rend le statut de la commande,
+        ou None."""
         commande = [
             ".venv.erplibre/bin/python",
             "script/statistic/show_evolution_module.py",
             "--before_date",
             STAT_DEPUIS,
             "--more_year",
-            STAT_ANNEES,
+            stat_annees(),
         ]
         if filtre:
             commande += ["--filter", filtre]

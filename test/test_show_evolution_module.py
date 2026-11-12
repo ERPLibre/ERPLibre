@@ -8,6 +8,7 @@ Les manifestes sont fabriqués dans un répertoire jetable : le test ne lit
 ni le réseau ni les manifestes du dépôt.
 """
 
+import datetime
 import importlib.util
 import os
 import sys
@@ -72,12 +73,15 @@ class TestLesDepotsDesManifestes(unittest.TestCase):
             filter = "/OCA/"
 
         urls = sem.urls_des_manifestes(self.tmp.name)
-        with unittest.mock.patch.object(
-            sem, "urls_des_manifestes", return_value=urls
-        ), unittest.mock.patch.object(
-            sem,
-            "IGNORE_REPO_LIST",
-            ("https://github.com/Exemple/addons-exemple.git",),
+        with (
+            unittest.mock.patch.object(
+                sem, "urls_des_manifestes", return_value=urls
+            ),
+            unittest.mock.patch.object(
+                sem,
+                "IGNORE_REPO_LIST",
+                ("https://github.com/Exemple/addons-exemple.git",),
+            ),
         ):
             self.assertEqual(
                 sem.get_OCA_repo_list(Config),
@@ -88,6 +92,29 @@ class TestLesDepotsDesManifestes(unittest.TestCase):
                 "https://github.com/Exemple/addons-exemple.git",
                 sem.get_OCA_repo_list(Config),
             )
+
+
+class TestLesVersionsComptees(unittest.TestCase):
+    """Un relevé compte les branches des versions sorties avant sa date."""
+
+    def branches_au(self, date):
+        return sem.get_branches_supported_date(
+            sem.BRANCHES_PAR_DEFAUT.split(","), date
+        )
+
+    def test_default_branches_follow_the_release_table(self):
+        branches = sem.BRANCHES_PAR_DEFAUT.split(",")
+        self.assertEqual(branches[0], "6.1")
+        self.assertEqual(branches[-1], list(sem.DCT_VERSION_RELEASE)[-1])
+        self.assertIn("20.0", branches)
+
+    def test_the_last_snapshot_counts_every_released_version(self):
+        self.assertEqual(
+            self.branches_au(datetime.date(2023, 1, 1))[-1], "16.0"
+        )
+        self.assertEqual(
+            self.branches_au(datetime.date(2027, 1, 1))[-1], "20.0"
+        )
 
 
 if __name__ == "__main__":
