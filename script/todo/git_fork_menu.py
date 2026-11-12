@@ -45,6 +45,33 @@ MESSAGE_JETON = (
     " (env_var.sh is versioned)."
 )
 
+# Le jeton rangé dans le coffre KeePass d'ERPLibre : un groupe à part pour
+# que KeePassXC reste lisible, un TITRE unique dans tout le coffre, car les
+# lecteurs du dépôt cherchent par titre. Le titre se change par
+# kdbx_config.github.kdbx_key, comme kdbx_config.openai.kdbx_key.
+GROUPE_COFFRE = "ERPLibre GitHub"
+TITRE_COFFRE = "GitHub token"
+
+# Les pages de création, préremplies quand GitHub le permet : un jeton
+# classique reçoit ses portées et sa description par l'URL.
+URL_JETON_CLASSIQUE = (
+    "https://github.com/settings/tokens/new"
+    "?scopes=repo,workflow,read:org&description=ERPLibre"
+)
+URL_JETON_FIN = "https://github.com/settings/personal-access-tokens/new"
+
+# Ce qu'un jeton à granularité fine doit recevoir pour chaque action du
+# menu : forker et archiver demandent Administration, merge-upstream et la
+# suppression de branches Contents, ouvrir une PR Pull requests, fusionner
+# un amont qui touche .github/workflows Workflows, lire l'adhésion Members.
+DROITS_JETON_FIN = (
+    "Resource owner: the organisation that receives the forks.",
+    "Repository access: All repositories.",
+    "Repository permissions: Administration, Contents, Pull requests and"
+    " Workflows in Read and write; Metadata in Read-only.",
+    "Organisation permissions: Members in Read-only.",
+)
+
 
 def clones(version, racine=RACINE):
     """(remotes, [projet]) des projets de `version` dont le clone existe,
@@ -143,9 +170,8 @@ class GitForkMenuMixin:
         mode = self._git_fork_choisir_mode(projet, remotes)
         branche = branche_du_projet(projet)
         toutes = self._git_fork_choisir_branches(branche)
-        jeton = github_fork.jeton(RACINE)
-        if not jeton:
-            print(f"⚠ {t(MESSAGE_JETON)}")
+        client = self._git_client(organisation)
+        if client is None:
             return 2
         print(
             f"  {proprietaire}/{depot} → {organisation}/{depot}"
@@ -153,14 +179,13 @@ class GitForkMenuMixin:
         )
         if not self._is_yes(input(t("Fork it? (y/N): "))):
             return 0
-        client = github_fork.ClientGitHub(jeton)
         print(f"  {t('Waiting for GitHub to create the fork…')}")
         try:
             fork, cree, posee = manifest_repo.forker(
                 client, proprietaire, depot, organisation, toutes, projet
             )
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return 2
         libelle = t("Fork created:") if cree else t("Fork already present:")
         print(f"  ✓ {libelle} {fork.get('html_url')}")
@@ -323,6 +348,59 @@ class GitForkMenuMixin:
             )
         return 2 if any(code for _e, code, _s in etapes) else 0
 
+    def _git_creer_branche_plusieurs(self):
+        """Crée la même branche dans les clones cochés, en parallèle, et la
+        pousse vers le remote de chaque projet si demandé. Rend le nombre
+        de dépôts en échec, ou None si rien n'a été lancé."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        _remotes, liste = clones(version)
+        if not liste:
+            print(f"  {t('No repository matches.')}")
+            return None
+        for i, projet in enumerate(liste, 1):
+            print(f"  [{i}] {projet['path']}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        choisis = choix_numeros(saisie, liste) if saisie else None
+        if not choisis:
+            return None
+        nom = input(t("Name of the new branch: ")).strip()
+        if not nom:
+            return None
+        depart = input(t("Start from (Enter: the current commit): ")).strip()
+        pousser = self._is_yes(
+            input(t("Push it to each project's remote? (y/N): "))
+        )
+        print(f"  {len(choisis)} {t('repositories, in parallel…')}")
+        resultats = manifest_repo.brancher_plusieurs(
+            [
+                (os.path.join(RACINE, p["path"]), p.get("remote"))
+                for p in choisis
+            ],
+            nom,
+            depart or None,
+            pousser,
+        )
+        echecs = 0
+        for chemin, etapes in resultats:
+            rate = next((e for e in etapes if e[1]), None)
+            echecs += bool(rate)
+            marque = (
+                f"❌ {rate[0]} : {rate[2].splitlines()[-1] if rate[2] else rate[1]}"
+                if rate
+                else "✓"
+            )
+            print(f"  {marque} {os.path.relpath(chemin, RACINE)}")
+        return echecs
+
     def _git_ajouter_amont(self):
         """Pose et récupère le remote amont du clone choisi. Rend 0, ou 2."""
         choix = self._git_choisir_clone()
@@ -358,15 +436,503 @@ class GitForkMenuMixin:
             print(f"⚠ {detail}")
         return 2
 
+    # ── Retirer, synchroniser, regeler ───────────────────────────────
+
+    def _git_choisir_projet_version(self):
+        """(version, projet) choisi parmi les projets du manifeste de la
+        version tapée (l'active par défaut), ou None."""
+        version = self._git_choisir_version(
+            repo_upgrade.version_active(RACINE)
+        )
+        if not version:
+            return None
+        _remotes, projets = repo_upgrade.lire_manifestes(version)
+        liste = sorted(projets.values(), key=lambda p: p.get("path", ""))
+        projet = self._git_filtrer(liste, lambda p: p.get("path", ""))
+        return (version, projet) if projet else None
+
+    def _git_retirer_depot(self):
+        """Retire un projet du manifeste de la version choisie, puis
+        propose de retirer son clone. Rend 0, ou 2 sur un refus."""
+        choix = self._git_choisir_projet_version()
+        if choix is None:
+            return 0
+        version, projet = choix
+        if not self._is_yes(
+            input(
+                f"{t('Remove from the manifest')} {version} : {projet['path']} ? (y/N): "
+            )
+        ):
+            return 0
+        try:
+            fichier, _p, remote = manifest_repo.retirer_depot(
+                version, projet["path"]
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        print(
+            f"  ✓ {os.path.relpath(fichier, RACINE)}{' · remote ' + remote if remote else ''}"
+        )
+        if version == repo_upgrade.version_active(RACINE) and self._is_yes(
+            input(
+                t(
+                    "Remove the local clone too? repo keeps it if it holds uncommitted work. (y/N): "
+                )
+            )
+        ):
+            return self._git_lancer(
+                manifest_repo.commandes_synchro(RACINE, local=True)
+            )
+        print(f"  {t('Commit manifest/.')}")
+        return 0
+
+    def _git_synchroniser_depot(self):
+        """Régénère le manifeste local, puis synchronise le seul clone
+        choisi. Rend le code de sortie."""
+        choix = self._git_choisir_projet_version()
+        if choix is None:
+            return 0
+        _version, projet = choix
+        return self._git_lancer(
+            manifest_repo.commandes_synchro(RACINE, projet["path"])
+        )
+
+    def _git_regeler_depot(self):
+        """Pose le commit gelé d'un projet sur la tête de son clone, ou sur
+        le commit tapé. Rend 0, ou 2 sur un refus."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return 0
+        _remotes, projet, _chemin = choix
+        sha = input(t("Commit to freeze (Enter: HEAD of the clone): ")).strip()
+        version = repo_upgrade.version_active(RACINE)
+        try:
+            res = manifest_repo.regeler(
+                version, projet["path"], RACINE, sha or None
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        base = res["base"][:12] if res["base"] else (res["motif"] or "-")
+        print(
+            f"  ✓ {os.path.relpath(res['fichier'], RACINE)} :"
+            f" {res['sha'][:12]} · {t('upstream base')} {base}"
+        )
+        if not res["pousse"]:
+            print(
+                f"⚠ {t('No remote of the clone holds this commit: push it before committing manifest/.')}"
+            )
+        return 0
+
+    def _git_nettoyer_branches(self):
+        """Les branches fusionnées d'un clone, dans la base du manifeste ou
+        par une pull request fusionnée : supprimées en local, puis sur
+        chaque remote de fork, chacun après sa propre confirmation. Rend
+        le nombre de branches supprimées, ou None."""
+        choix = self._git_choisir_clone()
+        if choix is None:
+            return None
+        remotes, projet, chemin = choix
+        fetch = self._is_yes_default_yes(
+            input(t("Fetch the remotes first, with prune? (Y/n): "))
+        )
+        client = None
+        if self._is_yes(
+            input(t("Also ask GitHub for branches merged by squash? (y/N): "))
+        ):
+            client = self._git_client()
+            if client is None:
+                return None
+        try:
+            bases, _forks, plan = manifest_repo.plan_nettoyage(
+                chemin, projet, remotes, client, fetch
+            )
+        except (ValueError, github_fork.ErreurGitHub) as exc:
+            if isinstance(exc, github_fork.ErreurGitHub):
+                self._git_erreur_github(exc)
+            else:
+                print(f"❌ {exc}")
+            return None
+        if not bases:
+            print(f"⚠ {t('The clone knows no base branch: fetch it first.')}")
+            return None
+        print(f"  {t('Base')} : {', '.join(bases)}")
+        if not plan["locales"] and not plan["distantes"]:
+            print(f"  ✓ {t('No merged branch to clean.')}")
+            return 0
+        supprimees = 0
+        groupes = [(None, plan["locales"])] + list(plan["distantes"].items())
+        for remote, noms in groupes:
+            if not noms:
+                continue
+            print(f"── {remote or t('local')}")
+            for nom, motif in noms.items():
+                print(f"  {nom} ({motif})")
+            question = (
+                t("Delete these local branches? (y/N): ")
+                if remote is None
+                else f"{t('Delete these branches on the server')} {remote} ? (y/N) : "
+            )
+            if not self._is_yes(input(question)):
+                continue
+            resultats = manifest_repo.supprimer_branches(
+                chemin,
+                noms if remote is None else (),
+                {remote: list(noms)} if remote else None,
+            )
+            for _r, nom, code, sortie in resultats:
+                if code == 0:
+                    supprimees += 1
+                    print(f"  ✓ {nom}")
+                else:
+                    print(f"  ❌ {nom} : {sortie}")
+        return supprimees
+
+    def _git_mettre_forks_a_jour(self):
+        """Avance sur GitHub, par merge-upstream, la branche des forks
+        cochés parmi ceux du manifeste de la version active. Rend le nombre
+        de forks en conflit, refusés ou en erreur, ou None si rien n'a été
+        lancé."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        forks = manifest_repo.forks_du_manifeste(version)
+        if not forks:
+            print(f"  {t('No fork in the manifests of this version.')}")
+            return None
+        for i, (chemin, fork, branche, amont, b_amont) in enumerate(forks, 1):
+            source = f"{amont}:{b_amont}" if amont and b_amont else "-"
+            print(f"  [{i}] {chemin} · {fork}:{branche} ← {source}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        choisis = choix_numeros(saisie, forks) if saisie else None
+        if not choisis:
+            return None
+        client = self._git_client()
+        if client is None:
+            return None
+        print(f"  {len(choisis)} {t('forks, in parallel…')}")
+        icones = {
+            "avance": "⏩",
+            "fusion": "🔀",
+            "a_jour": "✓",
+            "ignore": "⏭",
+        }
+        echecs = avances = 0
+        for entree, etat, detail in manifest_repo.synchroniser_forks(
+            client, choisis
+        ):
+            echecs += etat in ("conflit", "refus", "erreur")
+            avances += etat in ("avance", "fusion")
+            print(
+                f"  {icones.get(etat, '❌')} {entree[1]}:{entree[2]}"
+                f" · {t(LIBELLES_SYNCHRO[etat])}"
+                + (f" — {detail}" if detail else "")
+            )
+        if avances and manifest_repo.mode_gele(RACINE):
+            print(
+                f"⚠ {t('The checkout is frozen: synchronise then freeze each updated repository to take it.')}"
+            )
+        return echecs
+
+    def _git_forks_orphelins(self):
+        """Les forks d'une organisation qu'aucun manifeste ne clone plus,
+        puis, sur demande, l'archivage de ceux qu'on coche, après une
+        dernière confirmation. Rend le nombre archivé, ou None."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        organisation = input(t("Organisation (or GitHub account): ")).strip()
+        if not organisation:
+            return None
+        client = self._git_client(organisation)
+        if client is None:
+            return None
+        try:
+            res = manifest_repo.forks_orphelins(client, organisation)
+        except github_fork.ErreurGitHub as exc:
+            self._git_erreur_github(exc)
+            return None
+        if res is None:
+            print(f"⚠ {organisation} : {t('not found on GitHub.')}")
+            return None
+        orphelins, archives = res
+        for i, depot in enumerate(orphelins, 1):
+            print(
+                f"  [{i}] {depot.get('full_name')}"
+                f" · {t('last push')} {(depot.get('pushed_at') or '-')[:10]}"
+                f" — {depot.get('html_url')}"
+            )
+        print(
+            f"  {len(orphelins)} {t('orphan forks')} · {archives}"
+            f" {t('already archived')}"
+        )
+        if not orphelins:
+            return 0
+        saisie = input(
+            t("Numbers to archive, all for every one, Enter for none: ")
+        ).strip()
+        choisis = choix_numeros(saisie, orphelins) if saisie else None
+        if not choisis:
+            return 0
+        if not self._is_yes(
+            input(
+                f"{t('Archive these repositories on GitHub')}"
+                f" ({len(choisis)}) ? (y/N) : "
+            )
+        ):
+            return 0
+        archives = 0
+        for depot in choisis:
+            try:
+                client.archiver(depot["full_name"])
+            except github_fork.ErreurGitHub as exc:
+                print(f"  ❌ {depot['full_name']} : {exc}")
+                continue
+            archives += 1
+            print(f"  ✓ {depot['full_name']}")
+        return archives
+
+    def _git_lancer(self, commandes):
+        """Montre puis lance `commandes` à la racine, sortie au terminal."""
+        import shlex
+
+        for args in commandes:
+            print(f"  {t('Will execute:')} {shlex.join(args)}")
+        code = manifest_repo.executer(commandes, RACINE)
+        print(f"  {'✓' if not code else '❌'} {code}")
+        return code
+
     # ── Pull requests ────────────────────────────────────────────────
 
-    def _git_client(self):
-        """Le client GitHub du jeton exporté, ou None (et le dit)."""
-        jeton = github_fork.jeton(RACINE)
+    # ── Jeton GitHub ─────────────────────────────────────────────────
+
+    def _git_jeton(self):
+        """Le jeton de la session : celui que l'assistant vient de poser,
+        sinon EL_GITHUB_TOKEN, le coffre KeePass, env_var.sh ; ou ""."""
+        return self.__dict__.get("_git_jeton_session") or github_fork.jeton(
+            RACINE, coffre=self._git_jeton_du_coffre
+        )
+
+    def _git_coffre(self):
+        """Le coffre KeePass ouvert, ou None. Un coffre sans chemin dans la
+        configuration n'est pas ouvert : il ferait surgir un sélecteur de
+        fichier graphique au milieu du terminal."""
+        config = getattr(self, "config_file", None)
+        manager = getattr(self, "kdbx_manager", None)
+        if not (
+            config and manager and config.get_config_value(["kdbx", "path"])
+        ):
+            return None
+        return manager.get_kdbx()
+
+    def _git_titre_coffre(self):
+        config = getattr(self, "config_file", None)
+        titre = config and config.get_config_value(
+            ["kdbx_config", "github", "kdbx_key"]
+        )
+        return titre or TITRE_COFFRE
+
+    def _git_jeton_du_coffre(self):
+        """Le jeton rangé dans le coffre, ou "" sans coffre ou sans
+        entrée."""
+        kp = self._git_coffre()
+        if not kp:
+            return ""
+        entree = kp.find_entries_by_title(self._git_titre_coffre(), first=True)
+        return getattr(entree, "password", "") or ""
+
+    def _git_ranger_jeton(self, jeton):
+        """Range `jeton` dans le coffre, entrée créée ou remplacée, groupe
+        GROUPE_COFFRE. Rend False sans coffre configuré."""
+        kp = self._git_coffre()
+        if not kp:
+            return False
+        titre = self._git_titre_coffre()
+        entree = kp.find_entries_by_title(titre, first=True)
+        if entree is None:
+            groupe = next(
+                (
+                    g
+                    for g in kp.root_group.subgroups
+                    if g.name == GROUPE_COFFRE
+                ),
+                None,
+            ) or kp.add_group(kp.root_group, GROUPE_COFFRE)
+            entree = kp.add_entry(groupe, titre, "", jeton)
+        else:
+            entree.password = jeton
+        kp.save()
+        return True
+
+    def _git_assistant_jeton(self):
+        """Guide la création d'un jeton, classique ou à granularité fine,
+        le lit sans écho, le vérifie, puis propose de le ranger dans le
+        coffre. Le jeton vaut pour la session dès qu'il est accepté. Rend
+        le jeton, ou None."""
+        import getpass
+
+        print(f"🔑 {t('GitHub token for ERPLibre: two kinds.')}")
+        print(
+            f"  [1] {t('Classic: its scopes are checked, so problems are named precisely. Pre-filled page (repo, workflow, read:org):')}"
+        )
+        print(f"      {URL_JETON_CLASSIQUE}")
+        print(
+            f"  [2] {t('Fine-grained: narrower, but GitHub does not announce its rights. Page and rights to tick:')}"
+        )
+        print(f"      {URL_JETON_FIN}")
+        for droit in DROITS_JETON_FIN:
+            print(f"      · {t(droit)}")
+        jeton = getpass.getpass(
+            t("Paste the token (hidden, Enter to cancel): ")
+        ).strip()
+        if not jeton:
+            return None
+        try:
+            rapport = github_fork.verifier_jeton(
+                github_fork.ClientGitHub(jeton)
+            )
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        self._git_afficher_jeton(rapport)
+        if "jeton_refuse" in rapport["codes"]:
+            return None
+        self._git_jeton_session = jeton
+        self.__dict__.pop("_git_jetons_verifies", None)
+        if self._is_yes_default_yes(
+            input(t("Store it in the ERPLibre KeePass vault? (Y/n): "))
+        ):
+            if self._git_ranger_jeton(jeton):
+                print(
+                    f"  ✓ {t('Stored in the vault:')} {GROUPE_COFFRE} ›"
+                    f" {self._git_titre_coffre()}"
+                )
+            else:
+                print(
+                    f"⚠ {t('No KeePass vault configured (kdbx.path): the token stays for this session only; export EL_GITHUB_TOKEN to keep it.')}"
+                )
+        return jeton
+
+    def _git_proposer_assistant(self, question):
+        """Pose `question` (o/N) et lance l'assistant sur un oui. Rend le
+        jeton qu'il a posé, ou None."""
+        if not self._is_yes(input(t(question))):
+            return None
+        return self._git_assistant_jeton()
+
+    def _git_erreur_github(self, exc):
+        """Montre un refus de l'API ; un 401 ou un 403 — jeton refusé ou
+        droit manquant, seule façon de le savoir pour un jeton à
+        granularité fine — propose l'assistant du jeton."""
+        print(f"❌ GitHub : {exc}")
+        if getattr(exc, "statut", None) in (401, 403):
+            print(f"  {t('The token may lack a right for this action.')}")
+            self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+
+    def _git_client(self, organisation=None):
+        """Le client GitHub du jeton de la session, ou None (et le dit).
+
+        Sans jeton, l'assistant est proposé. Le jeton est vérifié avant la
+        première action, une fois par organisation dans la session : un
+        problème certain (jeton refusé, portée repo absente, compte hors de
+        l'organisation) est montré et propose l'assistant, puis demande
+        confirmation ; un jeton refusé arrête là, faute d'en poser un
+        autre."""
+        jeton = self._git_jeton()
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
+            jeton = self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+            if not jeton:
+                return None
+        client = github_fork.ClientGitHub(jeton)
+        verifies = self.__dict__.setdefault("_git_jetons_verifies", set())
+        cle = (organisation or "").lower()
+        if cle in verifies:
+            return client
+        try:
+            rapport = github_fork.verifier_jeton(client, organisation)
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
             return None
-        return github_fork.ClientGitHub(jeton)
+        problemes = self._git_afficher_jeton(rapport, silencieux=True)
+        if problemes and self._git_proposer_assistant(
+            "Configure another GitHub token? (y/N): "
+        ):
+            return self._git_client(organisation)
+        if "jeton_refuse" in rapport["codes"]:
+            return None
+        if problemes and not self._is_yes(
+            input(t("Continue anyway? (y/N): "))
+        ):
+            return None
+        verifies.add(cle)
+        return client
+
+    def _git_afficher_jeton(self, rapport, silencieux=False):
+        """Imprime le rapport de verifier_jeton() ; `silencieux` tait le
+        compte et ce qui va bien. Rend le nombre de problèmes."""
+        if not silencieux and rapport["login"]:
+            portees = rapport["portees"]
+            print(
+                f"  {t('Account')} : {rapport['login']} · {t('scopes')} :"
+                f" {', '.join(portees) if portees is not None else '-'}"
+                + (
+                    f" · {t('role')} : {rapport['role']}"
+                    if rapport["role"]
+                    else ""
+                )
+            )
+        problemes = 0
+        for code in rapport["codes"]:
+            grave = code in github_fork.PROBLEMES_JETON
+            problemes += grave
+            print(
+                f"{'❌' if grave else '⚠'} {t(github_fork.TEXTES_JETON[code])}"
+            )
+        if not silencieux and not rapport["codes"]:
+            print(f"  ✓ {t('The token allows every action of this menu.')}")
+        return problemes
+
+    def _git_verifier_jeton(self):
+        """Le compte, les portées et, si une organisation est tapée,
+        l'adhésion du jeton de la session ; l'assistant est proposé sans
+        jeton, ou après un rapport qui porte un problème. Rend le nombre de
+        problèmes, ou None sans jeton."""
+        jeton = self._git_jeton()
+        if not jeton:
+            print(f"⚠ {t(MESSAGE_JETON)}")
+            jeton = self._git_proposer_assistant(
+                "Configure a GitHub token now? (y/N): "
+            )
+            if not jeton:
+                return None
+        organisation = input(
+            t("Organisation to check (Enter: none): ")
+        ).strip()
+        try:
+            rapport = github_fork.verifier_jeton(
+                github_fork.ClientGitHub(jeton), organisation or None
+            )
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        problemes = self._git_afficher_jeton(rapport)
+        if problemes:
+            self._git_proposer_assistant(
+                "Configure another GitHub token? (y/N): "
+            )
+        return problemes
 
     def _git_lister_pull_requests(self):
         """Les pull requests ouvertes, dans une organisation, des dépôts du
@@ -387,10 +953,38 @@ class GitForkMenuMixin:
                 client, organisation, version
             )
         except github_fork.ErreurGitHub as exc:
-            print(f"❌ GitHub : {exc}")
+            self._git_erreur_github(exc)
             return None
         print("\n".join(lignes_pull_requests(resultats)))
         return sum(len(lot) for _c, _n, lot in resultats if lot)
+
+    def _git_statut_mes_pull_requests(self):
+        """L'état des pull requests du compte du jeton : ouvertes avec leur
+        revue et leur CI, puis fusionnées et fermées. Restreint par défaut
+        aux dépôts des manifestes de la version active. Rend le nombre de
+        pull requests montrées, ou None."""
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        tous = input(
+            t("Only the repositories of the manifests? (Y/n): ")
+        ).strip().lower() in ("n", "no", "non")
+        client = self._git_client()
+        if client is None:
+            return None
+        print(f"  {t('Querying GitHub for each pull request…')}")
+        try:
+            auteur = client.utilisateur()
+            depots = (
+                None if tous else manifest_repo.depots_des_manifestes(version)
+            )
+            prs = manifest_repo.statut_pull_requests(client, auteur, depots)
+        except github_fork.ErreurGitHub as exc:
+            self._git_erreur_github(exc)
+            return None
+        print("\n".join(lignes_statut(auteur, prs)))
+        return len(prs)
 
     def _git_creer_pull_request(self):
         """Ouvre une pull request depuis la branche courante, déjà poussée,
@@ -455,7 +1049,10 @@ class GitForkMenuMixin:
                 client, chemin, depot, base, titre, corps, brouillon
             )
         except (github_fork.ErreurGitHub, ValueError) as exc:
-            print(f"❌ {exc}")
+            if isinstance(exc, github_fork.ErreurGitHub):
+                self._git_erreur_github(exc)
+            else:
+                print(f"❌ {exc}")
             return None
         print(f"  ✓ {t('Pull request opened:')} {pr.get('html_url')}")
         return pr.get("html_url")
@@ -478,6 +1075,54 @@ def ref_de_base(chemin, projet, remotes, cle, base):
     ):
         return ref
     return "HEAD"
+
+
+LIBELLES_SYNCHRO = {
+    "avance": "fast-forward",
+    "fusion": "merged",
+    "a_jour": "already up to date",
+    "conflit": "conflict: to merge by hand",
+    "refus": "refused by GitHub",
+    "ignore": "not updated",
+    "erreur": "GitHub error",
+}
+ICONES_ETAT = {
+    "ouverte": "🟢",
+    "brouillon": "📝",
+    "fusionnee": "🟣",
+    "fermee": "⚫",
+}
+LIBELLES_REVUE = {
+    "approuvee": "👍 approved",
+    "changements": "✋ changes requested",
+    None: "👀 awaiting review",
+}
+LIBELLES_CI = {
+    "succes": "✅ CI passed",
+    "echec": "❌ CI failed",
+    "en_cours": "⏳ CI running",
+}
+
+
+def lignes_statut(auteur, prs):
+    """Le rapport de statut_pull_requests() : les ouvertes et brouillons
+    d'abord, avec revue et CI, puis les fusionnées et fermées ; le total
+    par état pour finir."""
+    ordre = ("ouverte", "brouillon", "fusionnee", "fermee")
+    lignes = [f"── {t('Pull requests of')} {auteur}"]
+    for pr in sorted(prs, key=lambda p: ordre.index(p["etat"])):
+        details = ""
+        if pr["etat"] in ("ouverte", "brouillon"):
+            details = " · " + t(LIBELLES_REVUE[pr["revue"]])
+            if pr["ci"]:
+                details += " · " + t(LIBELLES_CI[pr["ci"]])
+        lignes.append(
+            f"  {ICONES_ETAT[pr['etat']]} {pr['depot']}#{pr['numero']}"
+            f" {pr['titre']}{details} — {pr['url']}"
+        )
+    compte = {e: sum(p["etat"] == e for p in prs) for e in ordre}
+    lignes.append(" · ".join(f"{ICONES_ETAT[e]} {compte[e]}" for e in ordre))
+    return lignes
 
 
 def lignes_pull_requests(resultats):

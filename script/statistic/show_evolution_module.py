@@ -305,6 +305,7 @@ def main():
     _logger.info("Analyse information")
     dct_result = defaultdict(lambda: defaultdict(int))
     dct_result_unique = defaultdict(set)
+    dct_par_depot = defaultdict(lambda: defaultdict(dict))
     for lst_result_stack in tpl_result:
         for dct_result_module in lst_result_stack:
             # lst_module, branch, path, repo, before_date
@@ -315,8 +316,10 @@ def main():
             )
             branch = dct_result_module.get("branch")
             # path = dct_result_module.get("path")
-            # repo = dct_result_module.get("repo")
+            repo = dct_result_module.get("repo")
             dct_result[before_date][branch] += len(lst_module)
+            if lst_module:
+                dct_par_depot[before_date][repo][branch] = len(lst_module)
             dct_result_unique[before_date].update(lst_module)
             lst_unique_module.update(lst_module)
             lst_unique_uninstallable_module.update(lst_uninstallable_module)
@@ -353,6 +356,7 @@ def main():
             config.filter,
             len(lst_repo_path),
             datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+            dct_par_depot,
         ),
     )
     _logger.info(f"Data written to {chemin}")
@@ -405,10 +409,14 @@ def fichier_donnees(filtre, dossier=None):
     return os.path.join(dossier or CACHE_CLONE_PATH, fichier)
 
 
-def donnees_evolution(dct_result, dct_result_unique, filtre, nb_depots, quand):
+def donnees_evolution(
+    dct_result, dct_result_unique, filtre, nb_depots, quand, par_depot=None
+):
     """Le contenu du fichier : pour chaque date de coupe, le nombre de
     modules par version d'Odoo et le nombre de modules UNIQUES, toutes
-    versions confondues, triés par date."""
+    versions confondues, triés par date. `par_depot`, {date: {dépôt:
+    {version: nombre}}}, ajoute à chaque année le détail par dépôt, trié
+    par nom ; un dépôt sans module cette année-là n'y figure pas."""
     annees = []
     for date in sorted(dct_result, key=lambda d: (d is None, str(d))):
         par_version = {
@@ -417,13 +425,21 @@ def donnees_evolution(dct_result, dct_result_unique, filtre, nb_depots, quand):
                 dct_result[date].items(), key=lambda b: float(b[0])
             )
         }
-        annees.append(
-            {
-                "date": date.isoformat() if date else None,
-                "par_version": par_version,
-                "uniques": len(dct_result_unique.get(date, ())),
+        annee = {
+            "date": date.isoformat() if date else None,
+            "par_version": par_version,
+            "uniques": len(dct_result_unique.get(date, ())),
+        }
+        if par_depot is not None:
+            annee["par_depot"] = {
+                depot: dict(
+                    sorted(versions.items(), key=lambda b: float(b[0]))
+                )
+                for depot, versions in sorted(
+                    (par_depot.get(date) or {}).items()
+                )
             }
-        )
+        annees.append(annee)
     return {
         "genere": quand,
         "filtre": filtre or "",

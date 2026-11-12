@@ -144,6 +144,25 @@ TRANSLATIONS = {
         "fr": "📊 Graphique de l'évolution des modules (TUI, d'après 3 et 4)",
         "en": "📊 Chart of the module evolution (TUI, from entries 3 and 4)",
     },
+    "📄 Export the module statistics to CSV (from entries 3 and 4)": {
+        "fr": (
+            "📄 Exporter les statistiques de modules en CSV (des entrées 3 et "
+            "4)"
+        ),
+        "en": "📄 Export the module statistics to CSV (from entries 3 and 4)",
+    },
+    "Repository": {
+        "fr": "Dépôt",
+        "en": "Repository",
+    },
+    "Per repository": {
+        "fr": "Par dépôt",
+        "en": "Per repository",
+    },
+    "No per-repository detail: run the statistics again.": {
+        "fr": "Pas de détail par dépôt : relancez la statistique.",
+        "en": "No per-repository detail: run the statistics again.",
+    },
     "No module statistics yet: run entry 3 or 4 first.": {
         "fr": (
             "Aucune statistique de modules : lancez d'abord l'entrée 3 ou 4."
@@ -2134,9 +2153,190 @@ TRANSLATIONS = {
         "fr": "🌿 Créer une branche dans un dépôt",
         "en": "🌿 Create a branch in a repository",
     },
+    "🌳 Create the same branch in several repositories": {
+        "fr": "🌳 Créer la même branche dans plusieurs dépôts",
+        "en": "🌳 Create the same branch in several repositories",
+    },
+    "Push it to each project's remote? (y/N): ": {
+        "fr": "La pousser vers le remote de chaque projet ? (o/N) : ",
+        "en": "Push it to each project's remote? (y/N): ",
+    },
     "🔭 Add the upstream remote of a repository": {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
         "en": "🔭 Add the upstream remote of a repository",
+    },
+    "⏩ Update forks from their upstream on GitHub": {
+        "fr": "⏩ Mettre les forks à jour depuis leur amont sur GitHub",
+        "en": "⏩ Update forks from their upstream on GitHub",
+    },
+    "🪦 List the orphan forks of an organisation": {
+        "fr": "🪦 Lister les forks orphelins d'une organisation",
+        "en": "🪦 List the orphan forks of an organisation",
+    },
+    "not found on GitHub.": {
+        "fr": "introuvable sur GitHub.",
+        "en": "not found on GitHub.",
+    },
+    "last push": {
+        "fr": "dernier push",
+        "en": "last push",
+    },
+    "orphan forks": {
+        "fr": "forks orphelins",
+        "en": "orphan forks",
+    },
+    "already archived": {
+        "fr": "déjà archivés",
+        "en": "already archived",
+    },
+    "Numbers to archive, all for every one, Enter for none: ": {
+        "fr": "Numéros à archiver, all pour tous, Entrée pour aucun : ",
+        "en": "Numbers to archive, all for every one, Enter for none: ",
+    },
+    "Archive these repositories on GitHub": {
+        "fr": "Archiver ces dépôts sur GitHub",
+        "en": "Archive these repositories on GitHub",
+    },
+    "No fork in the manifests of this version.": {
+        "fr": "Aucun fork dans les manifestes de cette version.",
+        "en": "No fork in the manifests of this version.",
+    },
+    "forks, in parallel…": {
+        "fr": "forks, en parallèle…",
+        "en": "forks, in parallel…",
+    },
+    "merged": {
+        "fr": "fusionné",
+        "en": "merged",
+    },
+    "already up to date": {
+        "fr": "déjà à jour",
+        "en": "already up to date",
+    },
+    "conflict: to merge by hand": {
+        "fr": "conflit : à fusionner à la main",
+        "en": "conflict: to merge by hand",
+    },
+    "refused by GitHub": {
+        "fr": "refusé par GitHub",
+        "en": "refused by GitHub",
+    },
+    "GitHub error": {
+        "fr": "erreur GitHub",
+        "en": "GitHub error",
+    },
+    "not updated": {
+        "fr": "non mis à jour",
+        "en": "not updated",
+    },
+    (
+        "The checkout is frozen: synchronise then freeze each updated "
+        "repository to take it."
+    ): {
+        "fr": (
+            "Le checkout est gelé : synchronisez puis gelez chaque dépôt mis "
+            "à jour pour le prendre."
+        ),
+        "en": (
+            "The checkout is frozen: synchronise then freeze each updated "
+            "repository to take it."
+        ),
+    },
+    "➖ Remove a repository from a manifest": {
+        "fr": "➖ Retirer un dépôt d'un manifeste",
+        "en": "➖ Remove a repository from a manifest",
+    },
+    "🔄 Synchronise one repository": {
+        "fr": "🔄 Synchroniser un seul dépôt",
+        "en": "🔄 Synchronise one repository",
+    },
+    "🧊 Freeze one repository on a commit": {
+        "fr": "🧊 Geler un seul dépôt sur un commit",
+        "en": "🧊 Freeze one repository on a commit",
+    },
+    "🧹 Clean the merged branches of a repository": {
+        "fr": "🧹 Nettoyer les branches fusionnées d'un dépôt",
+        "en": "🧹 Clean the merged branches of a repository",
+    },
+    "Fetch the remotes first, with prune? (Y/n): ": {
+        "fr": "Récupérer d'abord les remotes, avec prune ? (O/n) : ",
+        "en": "Fetch the remotes first, with prune? (Y/n): ",
+    },
+    "Also ask GitHub for branches merged by squash? (y/N): ": {
+        "fr": (
+            "Demander aussi à GitHub les branches fusionnées par squash ? "
+            "(o/N) : "
+        ),
+        "en": "Also ask GitHub for branches merged by squash? (y/N): ",
+    },
+    "The clone knows no base branch: fetch it first.": {
+        "fr": (
+            "Le clone ne connaît aucune branche de base : récupérez-la "
+            "d'abord."
+        ),
+        "en": "The clone knows no base branch: fetch it first.",
+    },
+    "Base": {
+        "fr": "Base",
+        "en": "Base",
+    },
+    "No merged branch to clean.": {
+        "fr": "Aucune branche fusionnée à nettoyer.",
+        "en": "No merged branch to clean.",
+    },
+    "local": {
+        "fr": "local",
+        "en": "local",
+    },
+    "Delete these local branches? (y/N): ": {
+        "fr": "Supprimer ces branches locales ? (o/N) : ",
+        "en": "Delete these local branches? (y/N): ",
+    },
+    "Delete these branches on the server": {
+        "fr": "Supprimer ces branches sur le serveur",
+        "en": "Delete these branches on the server",
+    },
+    "Remove from the manifest": {
+        "fr": "Retirer du manifeste",
+        "en": "Remove from the manifest",
+    },
+    (
+        "Remove the local clone too? repo keeps it if it holds uncommitted "
+        "work. (y/N): "
+    ): {
+        "fr": (
+            "Retirer aussi le clone local ? repo le garde s'il porte du "
+            "travail non committé. (o/N) : "
+        ),
+        "en": (
+            "Remove the local clone too? repo keeps it if it holds "
+            "uncommitted work. (y/N): "
+        ),
+    },
+    "Commit manifest/.": {
+        "fr": "Committez manifest/.",
+        "en": "Commit manifest/.",
+    },
+    "Commit to freeze (Enter: HEAD of the clone): ": {
+        "fr": "Commit à geler (Entrée : HEAD du clone) : ",
+        "en": "Commit to freeze (Enter: HEAD of the clone): ",
+    },
+    "upstream base": {
+        "fr": "base amont",
+        "en": "upstream base",
+    },
+    (
+        "No remote of the clone holds this commit: push it before committing "
+        "manifest/."
+    ): {
+        "fr": (
+            "Aucun remote du clone ne porte ce commit : poussez-le avant de "
+            "committer manifest/."
+        ),
+        "en": (
+            "No remote of the clone holds this commit: push it before "
+            "committing manifest/."
+        ),
     },
     "📋 List the pull requests of an organisation": {
         "fr": "📋 Lister les pull requests d'une organisation",
@@ -2145,6 +2345,250 @@ TRANSLATIONS = {
     "📬 Open a pull request from the current branch": {
         "fr": "📬 Ouvrir une pull request depuis la branche courante",
         "en": "📬 Open a pull request from the current branch",
+    },
+    "🚦 Status of my pull requests (review, CI, merged)": {
+        "fr": "🚦 État de mes pull requests (revue, CI, fusion)",
+        "en": "🚦 Status of my pull requests (review, CI, merged)",
+    },
+    "🔑 Check the GitHub token (scopes, organisation)": {
+        "fr": "🔑 Vérifier le jeton GitHub (portées, organisation)",
+        "en": "🔑 Check the GitHub token (scopes, organisation)",
+    },
+    "scopes": {
+        "fr": "portées",
+        "en": "scopes",
+    },
+    "role": {
+        "fr": "rôle",
+        "en": "role",
+    },
+    "The token allows every action of this menu.": {
+        "fr": "Le jeton permet toutes les actions de ce menu.",
+        "en": "The token allows every action of this menu.",
+    },
+    "Organisation to check (Enter: none): ": {
+        "fr": "Organisation à vérifier (Entrée : aucune) : ",
+        "en": "Organisation to check (Enter: none): ",
+    },
+    "GitHub refuses the token: expired, revoked or mistyped.": {
+        "fr": "GitHub refuse le jeton : expiré, révoqué ou mal tapé.",
+        "en": "GitHub refuses the token: expired, revoked or mistyped.",
+    },
+    (
+        "The token has neither the repo nor the public_repo scope: forks, "
+        "pull requests and branch deletion will be refused."
+    ): {
+        "fr": (
+            "Le jeton n'a ni la portée repo ni public_repo : forks, pull "
+            "requests et suppression de branches seront refusés."
+        ),
+        "en": (
+            "The token has neither the repo nor the public_repo scope: forks, "
+            "pull requests and branch deletion will be refused."
+        ),
+    },
+    (
+        "The account of the token is not a member of the organisation: a fork "
+        "into it will be refused."
+    ): {
+        "fr": (
+            "Le compte du jeton n'est pas membre de l'organisation : un fork "
+            "vers elle sera refusé."
+        ),
+        "en": (
+            "The account of the token is not a member of the organisation: a "
+            "fork into it will be refused."
+        ),
+    },
+    (
+        "The invitation to the organisation is not accepted yet: accept it on "
+        "GitHub first."
+    ): {
+        "fr": (
+            "L'invitation à l'organisation n'est pas encore acceptée : "
+            "acceptez-la d'abord sur GitHub."
+        ),
+        "en": (
+            "The invitation to the organisation is not accepted yet: accept "
+            "it on GitHub first."
+        ),
+    },
+    "public_repo scope only: private repositories are out of reach.": {
+        "fr": (
+            "Portée public_repo seulement : les dépôts privés sont hors "
+            "d'atteinte."
+        ),
+        "en": "public_repo scope only: private repositories are out of reach.",
+    },
+    (
+        "No workflow scope: GitHub refuses to merge an upstream whose commits "
+        "change .github/workflows."
+    ): {
+        "fr": (
+            "Pas de portée workflow : GitHub refuse de fusionner un amont "
+            "dont les commits modifient .github/workflows."
+        ),
+        "en": (
+            "No workflow scope: GitHub refuses to merge an upstream whose "
+            "commits change .github/workflows."
+        ),
+    },
+    (
+        "Fine-grained token: GitHub does not announce its rights, a missing "
+        "one shows only when the action is refused; the token assistant is "
+        "then offered."
+    ): {
+        "fr": (
+            "Jeton à granularité fine : GitHub n'en annonce pas les droits, "
+            "un droit manquant ne se voit qu'au refus de l'action ; "
+            "l'assistant du jeton est alors proposé."
+        ),
+        "en": (
+            "Fine-grained token: GitHub does not announce its rights, a "
+            "missing one shows only when the action is refused; the token "
+            "assistant is then offered."
+        ),
+    },
+    (
+        "Membership of the organisation unreadable: the token lacks the "
+        "read:org scope."
+    ): {
+        "fr": (
+            "Adhésion à l'organisation illisible : il manque au jeton la "
+            "portée read:org."
+        ),
+        "en": (
+            "Membership of the organisation unreadable: the token lacks the "
+            "read:org scope."
+        ),
+    },
+    "GitHub token for ERPLibre: two kinds.": {
+        "fr": "Jeton GitHub pour ERPLibre : deux sortes.",
+        "en": "GitHub token for ERPLibre: two kinds.",
+    },
+    (
+        "Classic: its scopes are checked, so problems are named precisely. "
+        "Pre-filled page (repo, workflow, read:org):"
+    ): {
+        "fr": (
+            "Classique : ses portées se vérifient, les problèmes sont donc "
+            "nommés précisément. Page préremplie (repo, workflow, read:org) :"
+        ),
+        "en": (
+            "Classic: its scopes are checked, so problems are named "
+            "precisely. Pre-filled page (repo, workflow, read:org):"
+        ),
+    },
+    (
+        "Fine-grained: narrower, but GitHub does not announce its rights. "
+        "Page and rights to tick:"
+    ): {
+        "fr": (
+            "À granularité fine : plus restreint, mais GitHub n'en annonce "
+            "pas les droits. Page et droits à cocher :"
+        ),
+        "en": (
+            "Fine-grained: narrower, but GitHub does not announce its rights. "
+            "Page and rights to tick:"
+        ),
+    },
+    "Resource owner: the organisation that receives the forks.": {
+        "fr": "Resource owner : l'organisation qui reçoit les forks.",
+        "en": "Resource owner: the organisation that receives the forks.",
+    },
+    "Repository access: All repositories.": {
+        "fr": "Repository access : All repositories.",
+        "en": "Repository access: All repositories.",
+    },
+    (
+        "Repository permissions: Administration, Contents, Pull requests and "
+        "Workflows in Read and write; Metadata in Read-only."
+    ): {
+        "fr": (
+            "Repository permissions : Administration, Contents, Pull requests "
+            "et Workflows en Read and write ; Metadata en Read-only."
+        ),
+        "en": (
+            "Repository permissions: Administration, Contents, Pull requests "
+            "and Workflows in Read and write; Metadata in Read-only."
+        ),
+    },
+    "Organisation permissions: Members in Read-only.": {
+        "fr": "Organization permissions : Members en Read-only.",
+        "en": "Organisation permissions: Members in Read-only.",
+    },
+    "Paste the token (hidden, Enter to cancel): ": {
+        "fr": "Collez le jeton (masqué, Entrée pour annuler) : ",
+        "en": "Paste the token (hidden, Enter to cancel): ",
+    },
+    "Store it in the ERPLibre KeePass vault? (Y/n): ": {
+        "fr": "Le ranger dans le coffre KeePass d'ERPLibre ? (O/n) : ",
+        "en": "Store it in the ERPLibre KeePass vault? (Y/n): ",
+    },
+    "Stored in the vault:": {
+        "fr": "Rangé dans le coffre :",
+        "en": "Stored in the vault:",
+    },
+    (
+        "No KeePass vault configured (kdbx.path): the token stays for this "
+        "session only; export EL_GITHUB_TOKEN to keep it."
+    ): {
+        "fr": (
+            "Aucun coffre KeePass configuré (kdbx.path) : le jeton ne vaut "
+            "que pour cette session ; exportez EL_GITHUB_TOKEN pour le garder."
+        ),
+        "en": (
+            "No KeePass vault configured (kdbx.path): the token stays for "
+            "this session only; export EL_GITHUB_TOKEN to keep it."
+        ),
+    },
+    "The token may lack a right for this action.": {
+        "fr": "Il manque peut-être au jeton un droit pour cette action.",
+        "en": "The token may lack a right for this action.",
+    },
+    "Configure a GitHub token now? (y/N): ": {
+        "fr": "Configurer un jeton GitHub maintenant ? (o/N) : ",
+        "en": "Configure a GitHub token now? (y/N): ",
+    },
+    "Configure another GitHub token? (y/N): ": {
+        "fr": "Configurer un autre jeton GitHub ? (o/N) : ",
+        "en": "Configure another GitHub token? (y/N): ",
+    },
+    "Only the repositories of the manifests? (Y/n): ": {
+        "fr": "Seulement les dépôts des manifestes ? (O/n) : ",
+        "en": "Only the repositories of the manifests? (Y/n): ",
+    },
+    "Querying GitHub for each pull request…": {
+        "fr": "Interrogation de GitHub pour chaque pull request…",
+        "en": "Querying GitHub for each pull request…",
+    },
+    "Pull requests of": {
+        "fr": "Pull requests de",
+        "en": "Pull requests of",
+    },
+    "👍 approved": {
+        "fr": "👍 approuvée",
+        "en": "👍 approved",
+    },
+    "✋ changes requested": {
+        "fr": "✋ changements demandés",
+        "en": "✋ changes requested",
+    },
+    "👀 awaiting review": {
+        "fr": "👀 en attente de revue",
+        "en": "👀 awaiting review",
+    },
+    "✅ CI passed": {
+        "fr": "✅ CI réussie",
+        "en": "✅ CI passed",
+    },
+    "❌ CI failed": {
+        "fr": "❌ CI en échec",
+        "en": "❌ CI failed",
+    },
+    "⏳ CI running": {
+        "fr": "⏳ CI en cours",
+        "en": "⏳ CI running",
     },
     "declared upstream": {
         "fr": "amont déclaré",

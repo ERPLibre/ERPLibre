@@ -685,9 +685,18 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "🍴 Fork a repository for an organisation": "_git_fork_organisation",
         "➕ Add a repository to a manifest": "_git_ajouter_depot",
         "🌿 Create a branch in a repository": "_git_creer_branche",
+        "🌳 Create the same branch in several repositories": "_git_creer_branche_plusieurs",
         "🔭 Add the upstream remote of a repository": "_git_ajouter_amont",
+        "⏩ Update forks from their upstream on GitHub": "_git_mettre_forks_a_jour",
+        "🪦 List the orphan forks of an organisation": "_git_forks_orphelins",
+        "➖ Remove a repository from a manifest": "_git_retirer_depot",
+        "🔄 Synchronise one repository": "_git_synchroniser_depot",
+        "🧊 Freeze one repository on a commit": "_git_regeler_depot",
+        "🧹 Clean the merged branches of a repository": "_git_nettoyer_branches",
         "📋 List the pull requests of an organisation": "_git_lister_pull_requests",
         "📬 Open a pull request from the current branch": "_git_creer_pull_request",
+        "🚦 Status of my pull requests (review, CI, merged)": "_git_statut_mes_pull_requests",
+        "🔑 Check the GitHub token (scopes, organisation)": "_git_verifier_jeton",
         "Kill git daemon server process": "process_kill_git_daemon",
     }
 
@@ -782,7 +791,29 @@ class TestGitMenuSections(unittest.TestCase):
                 (t("Repositories"), t("🌿 Create a branch in a repository")),
                 (
                     t("Repositories"),
+                    t("🌳 Create the same branch in several repositories"),
+                ),
+                (
+                    t("Repositories"),
                     t("🔭 Add the upstream remote of a repository"),
+                ),
+                (
+                    t("Repositories"),
+                    t("⏩ Update forks from their upstream on GitHub"),
+                ),
+                (
+                    t("Repositories"),
+                    t("🪦 List the orphan forks of an organisation"),
+                ),
+                (
+                    t("Repositories"),
+                    t("➖ Remove a repository from a manifest"),
+                ),
+                (t("Repositories"), t("🔄 Synchronise one repository")),
+                (t("Repositories"), t("🧊 Freeze one repository on a commit")),
+                (
+                    t("Repositories"),
+                    t("🧹 Clean the merged branches of a repository"),
                 ),
                 (
                     t("Repositories"),
@@ -791,6 +822,14 @@ class TestGitMenuSections(unittest.TestCase):
                 (
                     t("Repositories"),
                     t("📬 Open a pull request from the current branch"),
+                ),
+                (
+                    t("Repositories"),
+                    t("🚦 Status of my pull requests (review, CI, merged)"),
+                ),
+                (
+                    t("Repositories"),
+                    t("🔑 Check the GitHub token (scopes, organisation)"),
                 ),
                 (
                     t("Settings"),
@@ -819,7 +858,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[12] est l'éditeur vim, après onze entrées et deux sections."""
+        """[21] est l'éditeur vim, après vingt entrées et deux sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -828,7 +867,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["12", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["21", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,

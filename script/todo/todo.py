@@ -3783,9 +3783,49 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "🌳 Create the same branch in several repositories"
+                ),
+                "method": "_git_creer_branche_plusieurs",
+            },
+            {
+                "prompt_description": t(
                     "🔭 Add the upstream remote of a repository"
                 ),
                 "method": "_git_ajouter_amont",
+            },
+            {
+                "prompt_description": t(
+                    "⏩ Update forks from their upstream on GitHub"
+                ),
+                "method": "_git_mettre_forks_a_jour",
+            },
+            {
+                "prompt_description": t(
+                    "🪦 List the orphan forks of an organisation"
+                ),
+                "method": "_git_forks_orphelins",
+            },
+            {
+                "prompt_description": t(
+                    "➖ Remove a repository from a manifest"
+                ),
+                "method": "_git_retirer_depot",
+            },
+            {
+                "prompt_description": t("🔄 Synchronise one repository"),
+                "method": "_git_synchroniser_depot",
+            },
+            {
+                "prompt_description": t(
+                    "🧊 Freeze one repository on a commit"
+                ),
+                "method": "_git_regeler_depot",
+            },
+            {
+                "prompt_description": t(
+                    "🧹 Clean the merged branches of a repository"
+                ),
+                "method": "_git_nettoyer_branches",
             },
             {
                 "prompt_description": t(
@@ -3798,6 +3838,18 @@ class TODO(
                     "📬 Open a pull request from the current branch"
                 ),
                 "method": "_git_creer_pull_request",
+            },
+            {
+                "prompt_description": t(
+                    "🚦 Status of my pull requests (review, CI, merged)"
+                ),
+                "method": "_git_statut_mes_pull_requests",
+            },
+            {
+                "prompt_description": t(
+                    "🔑 Check the GitHub token (scopes, organisation)"
+                ),
+                "method": "_git_verifier_jeton",
             },
             {"section": t("Settings")},
             {

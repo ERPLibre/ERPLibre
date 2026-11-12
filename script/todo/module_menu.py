@@ -13,7 +13,8 @@ La section Statistique lance `script/statistic/show_evolution_module.py`,
 qui CLONE l'amont de chaque dépôt des manifestes sous
 .venv.erplibre/stat_repo : réseau, gigaoctets et durée, d'où la
 confirmation qui la précède. Chaque passe y laisse un fichier de données,
-que l'écran de l'entrée 5 (`script/statistic/evolution_tui.py`) trace.
+que l'écran de l'entrée 5 (`script/statistic/evolution_tui.py`) trace et
+que l'entrée 6 exporte en CSV (`script/statistic/evolution_csv.py`).
 """
 
 import datetime
@@ -88,6 +89,11 @@ class ModuleMenuMixin:
                     "📊 Chart of the module evolution (TUI, from entries 3 and 4)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "📄 Export the module statistics to CSV (from entries 3 and 4)"
+                )
+            },
             {"section": t("Modification")},
             {
                 "prompt_description": t(
@@ -112,6 +118,8 @@ class ModuleMenuMixin:
             elif status == "5":
                 self._module_graphique()
             elif status == "6":
+                self._module_export_csv()
+            elif status == "7":
                 self._module_auto_install()
             else:
                 print(t("Command not found !"))
@@ -158,6 +166,21 @@ class ModuleMenuMixin:
         if not textual_setup.ensure():
             return 0
         return evolution_tui.run(STAT_DOSSIER)
+
+    def _module_export_csv(self):
+        """Écrit, à côté de chaque fichier de données que 3 et 4 ont laissé,
+        son CSV (script/statistic/evolution_csv.py). Rend les chemins
+        écrits ; sans données, le dit et n'écrit rien."""
+        from script.statistic import evolution_csv
+
+        chemins = evolution_csv.exporter(STAT_DOSSIER)
+        if not chemins:
+            print(
+                f"  {t('No module statistics yet: run entry 3 or 4 first.')}"
+            )
+        for chemin in chemins:
+            print(f"  ✓ {os.path.relpath(chemin, RACINE)}")
+        return chemins
 
     def _module_auto_install(self):
         """Désactive auto_install dans les dépôts cochés parmi ceux du

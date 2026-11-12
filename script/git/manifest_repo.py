@@ -14,8 +14,17 @@ sans menu :
                      [--upstream origine|fork] [--all-branches]
                      [--manifest 17.0,18.0 | --no-manifest]
     manifest_repo.py branch CHEMIN NOM [--from REF] [--push REMOTE]
+    manifest_repo.py branches NOM CHEMIN... [--from REF] [--push]
     manifest_repo.py upstream CHEMIN [--version 18.0]
+    manifest_repo.py remove CHEMIN [--version 18.0] [--apply]
+    manifest_repo.py sync CHEMIN [--version 18.0]
+    manifest_repo.py refreeze CHEMIN [--commit SHA] [--version 18.0]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
+    manifest_repo.py mine [--author LOGIN] [--all-repos]
+    manifest_repo.py fork-sync [CHEMIN...] [--version 18.0]
+    manifest_repo.py token [--organisation ORG]
+    manifest_repo.py orphans ORGANISATION
+    manifest_repo.py prune CHEMIN [--fetch] [--github] [--apply] [--remote]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
 
@@ -428,6 +437,24 @@ def brancher(chemin, nom, depart=None, pousser=None):
     return etapes
 
 
+def brancher_plusieurs(depots, nom, depart=None, pousser=False, jobs=None):
+    """Crée la branche `nom` dans chaque clone de `depots` ([(chemin,
+    remote)]), en parallèle ; la pousse vers ce remote — celui que git-repo
+    donne au projet — si `pousser`. Rend, dans l'ordre de `depots`,
+    [(chemin, étapes de brancher())]. Un échec dans un clone n'arrête pas
+    les autres."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def un(depot):
+        chemin, remote = depot
+        return chemin, brancher(
+            chemin, nom, depart, remote if pousser else None
+        )
+
+    with ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 4) as ex:
+        return list(ex.map(un, depots))
+
+
 def ajouter_amont(chemin, projet, remotes):
     """Pose dans le clone le remote amont que le manifeste déclare pour
     `projet`, puis récupère sa branche. Rend (état, détail) : état vaut
@@ -466,6 +493,332 @@ def ajouter_amont(chemin, projet, remotes):
     )
 
 
+# ── Branches fusionnées ────────────────────────────────────────────────
+
+# Les branches de version et les branches principales ne sont jamais
+# proposées au nettoyage, fusionnées ou non.
+PROTEGEES = re.compile(r"^(\d+\.\d+|master|main|develop|HEAD)$")
+
+
+def bases_du_clone(chemin, projet, remotes):
+    """Les références distantes où une branche du clone est fusionnée :
+    la branche du manifeste sur le remote du projet, et la branche amont
+    d'un fork quand son remote est posé. Seules celles que le clone
+    connaît sont rendues."""
+    refs = []
+    branche = branche_du_projet(projet)
+    if branche and projet.get("remote"):
+        refs.append(f"{projet['remote']}/{branche}")
+    amont = repo_upgrade.resoudre_amont(projet, remotes)
+    remote = repo_upgrade.remote_amont(amont)
+    if remote and amont.get("branche"):
+        refs.append(f"{remote}/{amont['branche']}")
+    return [
+        r
+        for r in dict.fromkeys(refs)
+        if git(chemin, "rev-parse", "--verify", "-q", f"refs/remotes/{r}")[0]
+        == 0
+    ]
+
+
+def remotes_de_fork(chemin, projet, remotes):
+    """Les remotes du clone où l'on pousse ses branches : tous, sauf le
+    remote d'un projet qui n'est pas un fork et l'amont déclaré d'un fork,
+    dont les branches appartiennent à d'autres."""
+    exclus = set()
+    if not repo_upgrade.est_fork(projet):
+        exclus.add(projet.get("remote"))
+    amont = repo_upgrade.remote_amont(
+        repo_upgrade.resoudre_amont(projet, remotes)
+    )
+    if amont:
+        exclus.add(amont)
+    return [r for r in remotes_du_clone(chemin) if r not in exclus]
+
+
+def _fusionnees(chemin, bases, *args):
+    """Les noms courts des références que `git branch <args> --merged`
+    rend pour au moins une des `bases`."""
+    noms = set()
+    for base in bases:
+        code, sortie = git(
+            chemin,
+            "branch",
+            *args,
+            "--merged",
+            base,
+            "--format=%(refname:short)",
+        )
+        if code:
+            raise ValueError(sortie)
+        noms.update(sortie.split())
+    return noms
+
+
+def branches_du_clone(chemin, forks):
+    """({branche locale}, {remote: {branche}}) du clone, hors branches
+    protégées et branche courante ; les remotes sont ceux de `forks`."""
+    _code, courante = git(chemin, "branch", "--show-current")
+
+    def garder(nom):
+        return nom != courante and not PROTEGEES.match(nom)
+
+    _code, sortie = git(chemin, "branch", "--format=%(refname:short)")
+    locales = {b for b in sortie.split() if garder(b)}
+    distantes = {}
+    for remote in forks:
+        _code, sortie = git(
+            chemin,
+            "branch",
+            "-r",
+            "--list",
+            f"{remote}/*",
+            "--format=%(refname:short)",
+        )
+        distantes[remote] = {
+            b.split("/", 1)[1]
+            for b in sortie.split()
+            if "/" in b and garder(b.split("/", 1)[1])
+        }
+    return locales, distantes
+
+
+def branches_a_nettoyer(chemin, bases, forks, fusion_github=None):
+    """Les branches à proposer au nettoyage : {"locales": {nom: motif},
+    "distantes": {remote: {nom: motif}}}. Le motif vaut « fusion » quand
+    la branche est contenue dans une des `bases`, ou celui que rend
+    `fusion_github(nom)` (une PR fusionnée par squash, que git ne voit
+    pas) ; une branche sans motif n'est pas proposée."""
+    locales, distantes = branches_du_clone(chemin, forks)
+    fusion_locale = _fusionnees(chemin, bases)
+    fusion_distante = _fusionnees(chemin, bases, "-r")
+    motifs = {}
+
+    def motif(nom, fusionnee):
+        if fusionnee:
+            return "fusion"
+        if fusion_github is None:
+            return None
+        if nom not in motifs:
+            motifs[nom] = fusion_github(nom)
+        return motifs[nom]
+
+    res = {"locales": {}, "distantes": {}}
+    for nom in sorted(locales):
+        m = motif(nom, nom in fusion_locale)
+        if m:
+            res["locales"][nom] = m
+    for remote, noms in distantes.items():
+        trouves = {}
+        for nom in sorted(noms):
+            m = motif(nom, f"{remote}/{nom}" in fusion_distante)
+            if m:
+                trouves[nom] = m
+        if trouves:
+            res["distantes"][remote] = trouves
+    return res
+
+
+def fusion_par_github(client, tetes, cibles):
+    """La fonction `fusion_github` de branches_a_nettoyer() : pour une
+    branche, « PR #n » si une pull request fermée de l'un des
+    propriétaires `tetes` vers l'un des dépôts `cibles` a été fusionnée,
+    sinon None. Un dépôt invisible ne compte pas."""
+
+    def chercher(nom):
+        for cible in cibles:
+            for proprietaire in tetes:
+                for pr in client.pull_requests_de(
+                    cible, f"{proprietaire}:{nom}"
+                ):
+                    if pr.get("merged_at"):
+                        return f"PR #{pr.get('number')}"
+        return None
+
+    return chercher
+
+
+def supprimer_branches(chemin, locales=(), distantes=None):
+    """Supprime les branches locales `locales` et, pour chaque remote de
+    `distantes`, ses branches sur le serveur. La suppression locale est
+    forcée (-D) : `git branch -d` juge la fusion contre HEAD ou la branche
+    suivie, pas contre la base du manifeste que branches_a_nettoyer() a
+    vérifiée, ni contre une PR fusionnée par squash.
+    Rend [(remote ou None, nom, code, sortie)]."""
+    res = []
+    for nom in locales:
+        res.append((None, nom, *git(chemin, "branch", "-D", nom)))
+    for remote, noms in (distantes or {}).items():
+        for nom in noms:
+            res.append(
+                (remote, nom, *git(chemin, "push", remote, "--delete", nom))
+            )
+    return res
+
+
+def plan_nettoyage(chemin, projet, remotes, client=None, fetch=False):
+    """(bases, forks, candidats) du clone `chemin` : voir bases_du_clone,
+    remotes_de_fork et branches_a_nettoyer. `fetch` rafraîchit d'abord
+    les remotes en jeu ; `client` ajoute la recherche des pull requests
+    fusionnées par squash, des propriétaires des forks vers le dépôt du
+    manifeste, l'amont déclaré et les forks eux-mêmes."""
+    forks = remotes_de_fork(chemin, projet, remotes)
+    if fetch:
+        amont = repo_upgrade.remote_amont(
+            repo_upgrade.resoudre_amont(projet, remotes)
+        )
+        presents = remotes_du_clone(chemin)
+        rafraichir(
+            chemin,
+            [
+                r
+                for r in dict.fromkeys([projet.get("remote"), amont, *forks])
+                if r in presents
+            ],
+        )
+    bases = bases_du_clone(chemin, projet, remotes)
+    if not bases:
+        return bases, forks, {"locales": {}, "distantes": {}}
+    fusion_github = None
+    if client is not None:
+        tetes, cibles = [], [
+            n for n, _b in cibles_pull_request(projet, remotes).values()
+        ]
+        for remote in forks:
+            code, url = git(chemin, "remote", "get-url", remote)
+            depot = github_fork.depot_github(url) if not code else None
+            if depot:
+                tetes.append(depot[0])
+                cibles.append("/".join(depot))
+        fusion_github = fusion_par_github(
+            client, list(dict.fromkeys(tetes)), list(dict.fromkeys(cibles))
+        )
+    return (
+        bases,
+        forks,
+        branches_a_nettoyer(chemin, bases, forks, fusion_github),
+    )
+
+
+def rafraichir(chemin, remotes):
+    """`git fetch --prune` de chaque remote : une branche supprimée sur le
+    serveur ne reste pas proposée. Rend [(remote, code, sortie)]."""
+    return [(r, *git(chemin, "fetch", "--prune", r)) for r in remotes]
+
+
+# ── Mettre un fork à jour depuis son amont ─────────────────────────────
+
+
+def forks_du_manifeste(version, dossier=None):
+    """Les forks GitHub que les manifestes de `version` clonent :
+    [(chemin, fork « propriétaire/dépôt », branche, amont « propriétaire/
+    dépôt » ou None, branche amont ou None)], triés par chemin."""
+    remotes, liste = projets_github(version, dossier)
+    res = []
+    for projet, proprietaire, depot in liste:
+        if not repo_upgrade.est_fork(projet):
+            continue
+        amont = repo_upgrade.resoudre_amont(projet, remotes) or {}
+        depot_amont = github_fork.depot_github(amont.get("url"))
+        res.append(
+            (
+                projet.get("path"),
+                f"{proprietaire}/{depot}",
+                branche_du_projet(projet),
+                "/".join(depot_amont) if depot_amont else None,
+                amont.get("branche"),
+            )
+        )
+    return res
+
+
+ETATS_SYNCHRO = {
+    "fast-forward": "avance",
+    "merge": "fusion",
+    "none": "a_jour",
+}
+
+
+def synchroniser_un_fork(client, fork, branche, amont, branche_amont):
+    """Met la `branche` du `fork` à jour depuis son parent GitHub. GitHub
+    fusionne la branche du MÊME nom chez le PARENT du fork : l'appel n'est
+    fait que si ce parent est l'amont déclaré et sa branche la même, sans
+    quoi le fork recevrait un autre code que celui que le manifeste dit
+    suivre. Rend (état, détail) ; état parmi « avance », « fusion »,
+    « a_jour », « conflit », « refus », « ignore »."""
+    if not branche:
+        return "ignore", "pas de branche dans le manifeste"
+    if not amont or not branche_amont:
+        return "ignore", "pas d'amont déclaré pour cette version"
+    if branche_amont != branche:
+        return "ignore", f"branche amont {branche_amont} ≠ {branche}"
+    infos = client.depot(*fork.split("/", 1))
+    if infos is None:
+        return "ignore", "fork introuvable sur GitHub"
+    parent = (infos.get("parent") or {}).get("full_name", "")
+    if parent.lower() != amont.lower():
+        return "ignore", f"parent GitHub {parent or '-'} ≠ amont {amont}"
+    code, corps = client.synchroniser_fork(fork, branche)
+    message = corps.get("message", "")
+    if code == 409:
+        return "conflit", message
+    if code == 422:
+        return "refus", message
+    return ETATS_SYNCHRO.get(corps.get("merge_type"), "avance"), message
+
+
+def synchroniser_forks(client, forks, jobs=8):
+    """synchroniser_un_fork() sur chaque entrée de forks_du_manifeste(), en
+    parallèle. Une erreur d'API sur un fork devient son état « erreur » et
+    n'arrête pas les autres. Rend [(entrée, état, détail)] dans l'ordre."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def un(entree):
+        try:
+            return (entree, *synchroniser_un_fork(client, *entree[1:]))
+        except github_fork.ErreurGitHub as exc:
+            return entree, "erreur", str(exc)
+
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        return list(ex.map(un, forks))
+
+
+# ── Forks orphelins ────────────────────────────────────────────────────
+
+
+def depots_de_tous_les_manifestes(dossier=None):
+    """Les « propriétaire/dépôt », en minuscules, qu'un manifeste d'une
+    version quelconque clone."""
+    res = set()
+    for version in versions_des_manifestes(dossier):
+        _remotes, liste = projets_github(version, dossier)
+        res.update(f"{p}/{d}".lower() for _projet, p, d in liste)
+    return res
+
+
+def forks_orphelins(client, organisation, dossier=None):
+    """Les forks de `organisation` qu'aucun manifeste, toutes versions
+    confondues, ne clone plus : ([dépôt GitHub], nombre d'archivés). Un
+    fork déjà archivé n'est pas proposé, seulement compté. None si
+    l'organisation n'existe pas."""
+    depots = client.depots_du_compte(organisation)
+    if depots is None:
+        return None
+    clones = depots_de_tous_les_manifestes(dossier)
+    orphelins, archives = [], 0
+    for depot in depots:
+        if not depot.get("fork"):
+            continue
+        if depot.get("full_name", "").lower() in clones:
+            continue
+        if depot.get("archived"):
+            archives += 1
+            continue
+        orphelins.append(depot)
+    orphelins.sort(key=lambda d: d.get("full_name", "").lower())
+    return orphelins, archives
+
+
 # ── Pull requests ──────────────────────────────────────────────────────
 
 
@@ -486,6 +839,111 @@ def lister_pull_requests(client, organisation, version, dossier=None, jobs=8):
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         prs = list(ex.map(lambda c: client.pull_requests(c[1]), cibles))
     return [(chemin, nom, lot) for (chemin, nom), lot in zip(cibles, prs)]
+
+
+ECHECS_CI = {
+    "failure",
+    "error",
+    "cancelled",
+    "timed_out",
+    "action_required",
+    "startup_failure",
+}
+
+
+def etat_ci(statut, checks):
+    """« echec », « en_cours », « succes » ou None (aucune CI) à partir du
+    statut combiné et des check-runs d'un commit. Un seul échec l'emporte,
+    puis une vérification non terminée ; un statut combiné sans aucun
+    statut déclaré ne compte pas."""
+    etats = []
+    if statut and statut.get("total_count"):
+        etats.append(statut.get("state"))
+    for check in checks or []:
+        if check.get("status") != "completed":
+            etats.append("pending")
+        else:
+            etats.append(check.get("conclusion"))
+    if any(e in ECHECS_CI for e in etats):
+        return "echec"
+    if "pending" in etats:
+        return "en_cours"
+    return "succes" if etats else None
+
+
+def etat_revue(avis):
+    """« changements », « approuvee » ou None d'après la DERNIÈRE revue
+    décisive de chaque relecteur : un commentaire ne retire pas une
+    approbation, une approbation retire une demande de changements."""
+    dernier = {}
+    for revue in avis or []:
+        etat = revue.get("state")
+        if etat in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            dernier[(revue.get("user") or {}).get("login")] = etat
+    if "CHANGES_REQUESTED" in dernier.values():
+        return "changements"
+    if "APPROVED" in dernier.values():
+        return "approuvee"
+    return None
+
+
+def depots_des_manifestes(version, dossier=None):
+    """Les « propriétaire/dépôt », en minuscules, que les manifestes de
+    `version` clonent, avec l'amont déclaré de chaque fork : c'est là
+    qu'une pull request sur ces dépôts est ouverte."""
+    remotes, liste = projets_github(version, dossier)
+    res = set()
+    for projet, proprietaire, depot in liste:
+        res.add(f"{proprietaire}/{depot}".lower())
+        for nom, _base in cibles_pull_request(projet, remotes).values():
+            res.add(nom.lower())
+    return res
+
+
+def statut_pull_requests(client, auteur, depots=None, jobs=8):
+    """L'état des pull requests de `auteur`, restreintes aux dépôts de
+    l'ensemble `depots` (minuscules) s'il est donné. Rend une liste de
+    dicts {depot, numero, titre, url, etat, revue, ci} ; `etat` vaut
+    « fusionnee », « fermee », « brouillon » ou « ouverte ». Revue et CI
+    ne sont lues que pour une pull request ouverte, en parallèle."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    res = []
+    for item in client.mes_pull_requests(auteur):
+        depot = item.get("repository_url", "").split("/repos/", 1)[-1]
+        if depots is not None and depot.lower() not in depots:
+            continue
+        if (item.get("pull_request") or {}).get("merged_at"):
+            etat = "fusionnee"
+        elif item.get("state") == "closed":
+            etat = "fermee"
+        else:
+            etat = "brouillon" if item.get("draft") else "ouverte"
+        res.append(
+            {
+                "depot": depot,
+                "numero": item.get("number"),
+                "titre": item.get("title", ""),
+                "url": item.get("html_url", ""),
+                "etat": etat,
+                "revue": None,
+                "ci": None,
+            }
+        )
+
+    def detail(pr):
+        numero = pr["numero"]
+        sha = (client.pull_request(pr["depot"], numero).get("head") or {}).get(
+            "sha"
+        )
+        pr["revue"] = etat_revue(client.avis(pr["depot"], numero))
+        if sha:
+            pr["ci"] = etat_ci(*client.verifications(pr["depot"], sha))
+
+    ouvertes = [p for p in res if p["etat"] in ("ouverte", "brouillon")]
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        list(ex.map(detail, ouvertes))
+    return res
 
 
 def branche_poussee(chemin):
@@ -557,6 +1015,164 @@ def resume_commits(chemin, base_ref, limite=20):
     return sujet, (sujets if not code else "")
 
 
+# ── Retirer, synchroniser, regeler ─────────────────────────────────────
+
+
+MANIFESTE_LOCAL = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
+
+
+def _bloc(texte, debut, fin):
+    """Les bornes de la ligne entière d'une balise : de son retrait au saut
+    de ligne qui la suit."""
+    a = texte.rfind("\n", 0, debut) + 1
+    b = texte.find("\n", fin)
+    return a, (len(texte) if b < 0 else b + 1)
+
+
+def remote_utilise(texte, nom):
+    """Vrai si un projet du fichier clone par `nom`, le nomme comme amont,
+    ou si le <default> le désigne."""
+    for _d, _f, attrs in manifest_freeze.iter_projects(texte):
+        if nom in (attrs.get("remote"), attrs.get("fork-upstream-remote")):
+            return True
+    defaut = re.search(r"<default\b[^>]*\bremote=\"([^\"]*)\"", texte)
+    return bool(defaut and defaut.group(1) == nom)
+
+
+def retirer_remote(texte, nom):
+    """Le texte sans la déclaration du remote `nom` (ligne entière)."""
+    for m in manifest_fork._hors_commentaires(texte, manifest_fork._REMOTE):
+        if dict(manifest_fork._ATTRS.findall(m.group(0))).get("name") == nom:
+            a, b = _bloc(texte, m.start(), m.end())
+            return texte[:a] + texte[b:]
+    return texte
+
+
+def retirer_projet(texte, name, path):
+    """(texte sans le <project> name+path, remote retiré ou None). Le
+    remote part avec lui quand plus rien du fichier ne l'emploie."""
+    for debut, fin, attrs in manifest_freeze.iter_projects(texte):
+        if attrs.get("name") != name or attrs.get("path") != path:
+            continue
+        a, b = _bloc(texte, debut, fin)
+        texte = texte[:a] + texte[b:]
+        remote = attrs.get("remote")
+        if remote and not remote_utilise(texte, remote):
+            return retirer_remote(texte, remote), remote
+        return texte, None
+    raise ValueError(f"{path} absent du fichier")
+
+
+def retirer_depot(version, chemin, dossier=None):
+    """Retire le projet `chemin` du manifeste de `version` qui le déclare.
+    Rend (fichier, projet, remote retiré ou None)."""
+    _remotes, projet = trouver_projet(version, chemin, dossier)
+    fichier = fichier_du_projet(
+        version, projet.get("name"), projet.get("path"), dossier
+    )
+    if not fichier:
+        raise ValueError(f"{chemin} : projet introuvable dans les fichiers")
+    with open(fichier, encoding="utf-8") as fh:
+        texte = fh.read()
+    neuf, remote = retirer_projet(texte, projet["name"], projet["path"])
+    with open(fichier, "w", encoding="utf-8") as fh:
+        fh.write(neuf)
+    return fichier, projet, remote
+
+
+def mode_gele(racine):
+    """Vrai si la dernière reconfiguration a posé les commits gelés : le
+    manifeste local porte alors des commits dans « revision »."""
+    try:
+        with open(
+            os.path.join(racine, MANIFESTE_LOCAL), encoding="utf-8"
+        ) as fh:
+            texte = fh.read()
+    except OSError:
+        return False
+    return any(
+        manifest_freeze.is_sha(a.get("revision"))
+        for _d, _f, a in manifest_freeze.iter_projects(texte)
+    )
+
+
+def commandes_synchro(racine, chemin=None, gel=None, local=False):
+    """Les commandes qui régénèrent le manifeste local, dans le mode du
+    checkout (gelé ou non, sauf `gel` donné), puis synchronisent `chemin`
+    seul, ou tout le checkout sans `chemin`. `local` synchronise sans
+    réseau : c'est ce qui suffit à retirer le clone d'un projet ôté du
+    manifeste, repo effaçant lui-même un clone obsolète resté propre."""
+    gel = mode_gele(racine) if gel is None else gel
+    fusion = [
+        ".venv.erplibre/bin/python",
+        "script/git/git_merge_repo_manifest.py",
+        "--output",
+        MANIFESTE_LOCAL,
+        "--with_OCA",
+    ] + (["--freeze"] if gel else [])
+    synchro = [".venv.erplibre/bin/repo", "sync", "-c"]
+    if local:
+        synchro.append("-l")
+    synchro += [chemin] if chemin else [f"-j{os.cpu_count() or 4}"]
+    return [fusion, synchro]
+
+
+def executer(commandes, racine):
+    """Lance `commandes` dans `racine`, sortie au terminal ; s'arrête au
+    premier échec. Rend le code de sortie."""
+    for args in commandes:
+        code = subprocess.call(args, cwd=racine)
+        if code:
+            return code
+    return 0
+
+
+def regeler(version, chemin, racine, sha=None, dossier=None):
+    """Pose le commit gelé du projet `chemin` sur `sha` (HEAD de son clone
+    par défaut) et, pour un fork à l'amont déclaré, recalcule sa base
+    amont. Rend {fichier, sha, base, motif, pousse} : `pousse` faux quand
+    aucun remote du clone ne porte ce commit — un gel que personne d'autre
+    ne pourrait récupérer."""
+    from script.git import git_freeze_manifest
+
+    remotes, projet = trouver_projet(version, chemin, dossier)
+    clone = os.path.join(racine, projet["path"])
+    code, sortie = git(
+        clone, "rev-parse", "--verify", f"{sha or 'HEAD'}^{{commit}}"
+    )
+    if code:
+        raise ValueError(
+            f"{sha or 'HEAD'} : commit introuvable dans {projet['path']}"
+        )
+    sha = sortie.split()[-1]
+    _c, distantes = git(clone, "branch", "-r", "--contains", sha)
+    amont = repo_upgrade.resoudre_amont(projet, remotes)
+    base, motif = None, None
+    if amont:
+        constat = git_freeze_manifest.base_amont(clone, sha, amont)
+        base, motif = constat.get("base"), constat.get("motif")
+    fichier = fichier_du_projet(
+        version, projet["name"], projet["path"], dossier
+    )
+    with open(fichier, encoding="utf-8") as fh:
+        texte = fh.read()
+    cle = manifest_freeze.project_key(projet["name"], projet["path"])
+    neuf, _changees = manifest_freeze.rewrite(
+        texte, freeze={cle: sha}, upstream={cle: base}
+    )
+    with open(fichier, "w", encoding="utf-8") as fh:
+        fh.write(neuf)
+    return {
+        "fichier": fichier,
+        "sha": sha,
+        "base": base,
+        "motif": motif,
+        "pousse": bool(distantes.strip()),
+    }
+
+
 # ── Ligne de commande ──────────────────────────────────────────────────
 
 
@@ -611,11 +1227,81 @@ def main(argv=None):
     p.add_argument("--from", dest="depart")
     p.add_argument("--push", metavar="REMOTE")
     p.add_argument("--version")
+    p = sous.add_parser(
+        "branches", help="create one branch in several cloned repositories"
+    )
+    p.add_argument("nom")
+    p.add_argument("chemins", nargs="+")
+    p.add_argument("--from", dest="depart")
+    p.add_argument(
+        "--push", action="store_true", help="push to the project's remote"
+    )
+    p.add_argument("--version")
     p = sous.add_parser("upstream", help="add and fetch the upstream remote")
     p.add_argument("chemin")
     p.add_argument("--version")
+    p = sous.add_parser("remove", help="remove a repository from a manifest")
+    p.add_argument("chemin")
+    p.add_argument("--version")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="regenerate the local manifest; repo then deletes a clean clone",
+    )
+    p = sous.add_parser(
+        "sync", help="regenerate the local manifest, sync one repo"
+    )
+    p.add_argument("chemin")
+    p.add_argument("--version")
+    p = sous.add_parser("refreeze", help="freeze one repository on a commit")
+    p.add_argument("chemin")
+    p.add_argument("--commit", help="default: HEAD of the clone")
+    p.add_argument("--version")
     p = sous.add_parser("pulls", help="list the open pull requests")
     p.add_argument("--organisation", required=True)
+    p.add_argument("--version")
+    p = sous.add_parser(
+        "mine", help="status of my pull requests: review, CI, merged"
+    )
+    p.add_argument("--author", help="default: the account of the token")
+    p.add_argument(
+        "--all-repos",
+        action="store_true",
+        help="do not restrict to the repositories of the manifests",
+    )
+    p.add_argument("--version")
+    p = sous.add_parser(
+        "orphans", help="forks of an organisation no manifest clones"
+    )
+    p.add_argument("organisation")
+    p.add_argument("--version")
+    p = sous.add_parser("token", help="check the scopes of the GitHub token")
+    p.add_argument("--organisation", help="also check the membership")
+    p.add_argument("--version")
+    p = sous.add_parser(
+        "fork-sync",
+        help="update forks from their upstream on GitHub (merge-upstream)",
+    )
+    p.add_argument("chemins", nargs="*", help="default: every fork")
+    p.add_argument("--version")
+    p = sous.add_parser(
+        "prune", help="list, then delete, the merged branches of a clone"
+    )
+    p.add_argument("chemin")
+    p.add_argument("--fetch", action="store_true", help="fetch --prune first")
+    p.add_argument(
+        "--github",
+        action="store_true",
+        help="also ask GitHub for pull requests merged by squash",
+    )
+    p.add_argument(
+        "--apply", action="store_true", help="delete the local branches"
+    )
+    p.add_argument(
+        "--remote",
+        action="store_true",
+        help="with --apply, also delete them on the fork remotes",
+    )
     p.add_argument("--version")
     p = sous.add_parser(
         "pr", help="open a pull request from the current branch"
@@ -661,8 +1347,147 @@ def main(argv=None):
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
             return 0
+        if args.commande == "orphans":
+            client = _client(racine)
+            if not client:
+                return 2
+            res = forks_orphelins(client, args.organisation)
+            if res is None:
+                print(f"{args.organisation}: not found", file=sys.stderr)
+                return 1
+            orphelins, archives = res
+            for depot in orphelins:
+                print(
+                    f"{depot.get('full_name')}"
+                    f" · pushed {(depot.get('pushed_at') or '-')[:10]}"
+                    f" — {depot.get('html_url')}"
+                )
+            print(f"{len(orphelins)} orphan fork(s); {archives} archived")
+            return 0
+        if args.commande == "token":
+            client = _client(racine)
+            if not client:
+                return 2
+            rapport = github_fork.verifier_jeton(client, args.organisation)
+            portees = rapport["portees"]
+            print(
+                f"account: {rapport['login'] or '-'} · scopes:"
+                f" {', '.join(portees) if portees is not None else '-'}"
+                f" · role: {rapport['role'] or '-'}"
+            )
+            for code in rapport["codes"]:
+                grave = code in github_fork.PROBLEMES_JETON
+                print(
+                    f"{'error' if grave else 'warning'}:"
+                    f" {github_fork.TEXTES_JETON[code]}"
+                )
+            return int(
+                bool(set(rapport["codes"]) & github_fork.PROBLEMES_JETON)
+            )
+        if args.commande == "fork-sync":
+            client = _client(racine)
+            if not client:
+                return 2
+            forks = forks_du_manifeste(version)
+            if args.chemins:
+                voulus = {
+                    trouver_projet(version, c)[1]["path"] for c in args.chemins
+                }
+                forks = [f for f in forks if f[0] in voulus]
+            code_final = 0
+            for entree, etat, detail in synchroniser_forks(client, forks):
+                print(f"{etat:<8} {entree[1]} {entree[2]} {detail}")
+                if etat in ("conflit", "refus", "erreur"):
+                    code_final = 1
+            return code_final
+        if args.commande == "prune":
+            remotes, projet = trouver_projet(version, args.chemin)
+            chemin = os.path.join(racine, projet["path"])
+            client = _client(racine) if args.github else None
+            if args.github and not client:
+                return 2
+            bases, _forks, plan = plan_nettoyage(
+                chemin, projet, remotes, client, args.fetch
+            )
+            if not bases:
+                print(f"{projet['path']}: no base branch known to the clone")
+                return 1
+            print(f"base: {', '.join(bases)}")
+            for nom, motif in plan["locales"].items():
+                print(f"local  {nom} ({motif})")
+            for remote, noms in plan["distantes"].items():
+                for nom, motif in noms.items():
+                    print(f"{remote}  {nom} ({motif})")
+            if not args.apply:
+                return 0
+            code_final = 0
+            for remote, nom, code, sortie in supprimer_branches(
+                chemin,
+                plan["locales"],
+                plan["distantes"] if args.remote else None,
+            ):
+                print(
+                    f"{'✓' if code == 0 else '❌'} {remote or 'local'} {nom}"
+                )
+                if code:
+                    print(f"  {sortie}")
+                    code_final = 1
+            return code_final
+        if args.commande == "mine":
+            client = _client(racine)
+            if not client:
+                return 2
+            depots = None if args.all_repos else depots_des_manifestes(version)
+            for pr in statut_pull_requests(
+                client, args.author or client.utilisateur(), depots
+            ):
+                details = " ".join(
+                    f"{cle}={pr[cle]}" for cle in ("revue", "ci") if pr[cle]
+                )
+                print(
+                    f"{pr['etat']:<10} {pr['depot']}#{pr['numero']}"
+                    f" {pr['titre']} {details} — {pr['url']}"
+                )
+            return 0
+        if args.commande == "branches":
+            depots = []
+            for c in args.chemins:
+                _r, p = trouver_projet(version, c)
+                depots.append(
+                    (os.path.join(racine, p["path"]), p.get("remote"))
+                )
+            code = 0
+            for chemin_c, etapes in brancher_plusieurs(
+                depots, args.nom, args.depart, args.push
+            ):
+                for etape, c, sortie in etapes:
+                    code = code or c
+                    print(
+                        f"{os.path.relpath(chemin_c, racine)} · {etape} : {'ok' if not c else sortie}"
+                    )
+            return 1 if code else 0
+        if args.commande == "remove":
+            fichier, projet, remote = retirer_depot(version, args.chemin)
+            print(
+                f"{os.path.relpath(fichier, racine)} : {projet['path']}"
+                f"{' + remote ' + remote if remote else ''}"
+            )
+            if args.apply:
+                return executer(commandes_synchro(racine, local=True), racine)
+            return 0
         remotes, projet = trouver_projet(version, args.chemin)
         chemin = os.path.join(racine, projet["path"])
+        if args.commande == "sync":
+            return executer(commandes_synchro(racine, projet["path"]), racine)
+        if args.commande == "refreeze":
+            res = regeler(version, args.chemin, racine, args.commit)
+            print(
+                f"{os.path.relpath(res['fichier'], racine)} : {res['sha'][:12]}"
+                f" · base {res['base'][:12] if res['base'] else res['motif'] or '-'}"
+            )
+            if not res["pousse"]:
+                print("warning: no remote of the clone holds this commit")
+            return 0
         if args.commande == "pr":
             cibles = cibles_pull_request(projet, remotes)
             if args.target not in cibles:
