@@ -370,17 +370,48 @@ class QemuInstallMixin:
     # Côté dnf on installe un ENVIRONNEMENT, pas un groupe : le groupe
     # « gnome-desktop » d'AlmaLinux apporte gdm et gnome-shell mais PAS
     # « base-x », donc aucun serveur X — vérifié dans son comps.xml. Les
-    # environnements diffèrent selon la famille (RHEL / Fedora), d'où la
-    # cascade : le premier qui existe gagne.
+    # environnements diffèrent selon la famille (RHEL / Fedora) : « dnf_env »
+    # est la cascade des RHEL-likes, le premier qui existe gagne, et
+    # « dnf_fedora » ce que Fedora installe à la place. Sans « dnf_fedora »,
+    # Fedora suit la cascade.
+    #
+    # « remote » choisit l'accès distant. « grd » : GNOME Remote Desktop en
+    # mode système, le seul serveur RDP qui ouvre une session GNOME sans X11 —
+    # xrdp et TigerVNC lancent une session X11 que GNOME 49 et suivants ne
+    # livrent plus. Ses paquets sont donc nommés avec le bureau, sur chaque
+    # famille. « x11 » : la table _QEMU_DESKTOP_REMOTE, par famille.
+    #
+    # « families » borne la saveur aux gestionnaires que la commande distante
+    # sait conduire : ailleurs, elle s'arrête sur « gestionnaire inconnu ».
     _QEMU_DESKTOP = {
         "gnome": {
             "label": "GNOME",
-            "apt": "gnome-core dbus-x11",
+            "apt": "gnome-core dbus-x11 gnome-remote-desktop openssl",
             "dnf_env": "graphical-server-environment "
             "workstation-product-environment gnome-desktop",
-            "pacman": "gnome gdm",
-            "zypper": "patterns-gnome-gnome_basic gdm",
+            "dnf_fedora": "workstation-product-environment",
+            # Paquet exclu (« -x ») de l'installation Fedora : l'image cloud
+            # n'a pas de pare-feu, et le groupe « core » de l'environnement
+            # de poste de travail en apporte un, activé au prochain
+            # démarrage, qui fermerait 3389. Propre à GNOME : le groupe
+            # cinnamon-desktop exige firewall-config, qui requiert firewalld,
+            # et l'exclure y ferait échouer toute l'installation.
+            "dnf_fedora_exclude": "firewalld",
+            # Posés après l'environnement, en étape gardée : le groupe
+            # gnome-desktop les apporte déjà, et leur absence ne coûte que
+            # l'accès distant, pas le bureau.
+            "dnf_remote": "gnome-remote-desktop openssl",
+            "pacman": "gnome gdm gnome-remote-desktop openssl",
+            "zypper": "patterns-gnome-gnome_basic gdm "
+            "gnome-remote-desktop openssl",
             "service": "gdm",
+            # Fichier témoin, sous le $HOME de l'utilisateur de la VM, qui
+            # dit l'assistant de premier démarrage déjà passé : sans lui, il
+            # s'ouvre à la première connexion, console comme RDP, et le
+            # groupe gnome-desktop de Fedora le rend obligatoire.
+            "first_login_done": ".config/gnome-initial-setup-done",
+            "remote": "grd",
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
             # graphique se reconnaît alors d'un « virsh list », et deux VM de
             # même distribution mais de types différents ne se marchent plus
@@ -398,6 +429,8 @@ class QemuInstallMixin:
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
             "zypper": "cinnamon lightdm",
             "service": "lightdm",
+            "remote": "x11",
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
             # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
             # de la distribution et non ceux de Mint.
@@ -511,20 +544,42 @@ class QemuInstallMixin:
         return {k: v["suffix"] for k, v in cls._QEMU_DESKTOP.items()}
 
     @classmethod
-    def _qemu_apt_store_pkgs(cls, app_store):
-        """Paquets apt à ajouter au bureau selon le magasin retenu."""
+    def _qemu_desktops_for(cls, distro):
+        """[clé de saveur] installable sur `distro`, dans l'ordre de la table.
+
+        Une distribution inconnue reçoit toutes les saveurs : le filtre
+        écarte ce que la commande distante ne sait pas conduire, il ne
+        devine pas. NixOS, de famille « nix », n'en reçoit aucune."""
+        family = cls._QEMU_DISTRO_FAMILY.get(distro)
+        return [
+            k
+            for k, v in cls._QEMU_DESKTOP.items()
+            if family is None or family in v["families"]
+        ]
+
+    @classmethod
+    def _qemu_apt_store_pkgs(cls, app_store, distro=""):
+        """Paquets apt à ajouter au bureau selon le magasin retenu.
+
+        La liste anti-snap ne vaut que pour les distributions à snap : sur
+        Debian, elle installerait epiphany-browser et evolution à côté du
+        firefox-esr que gnome-core recommande déjà. Une distribution vide
+        (inconnue) la garde, c'est le choix prudent."""
         if app_store == "snap":
             # On ne retire rien : Firefox arrivera en snap, comme sur une
             # Ubuntu ordinaire, et snapd est resté actif pour le servir.
             return ""
-        pkgs = cls._QEMU_APT_NO_SNAP
+        pkgs = ""
+        if not distro or distro in cls.QEMU_SNAP_DISTROS:
+            pkgs = cls._QEMU_APT_NO_SNAP
         if app_store == "flatpak":
             # Le greffon donne à GNOME Logiciels la gestion des Flatpak.
             # Aucun « remote-add » ici : le dépôt reste un choix explicite.
             pkgs += " flatpak gnome-software-plugin-flatpak"
-        return pkgs
+        return pkgs.strip()
 
-    # Accès distant, indépendant du bureau choisi.
+    # Accès distant des saveurs « x11 », par famille. Les saveurs « grd »
+    # n'y passent qu'en repli, quand grdctl n'a pas de mode système.
     _QEMU_DESKTOP_REMOTE = {
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
@@ -532,9 +587,23 @@ class QemuInstallMixin:
         "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
     }
 
+    # Mot de passe RDP de GNOME Remote Desktop, avec l'utilisateur de la VM.
+    # C'est celui que le déploiement par todo.py donne à cet utilisateur
+    # (« --password ») : RDP et SSH s'ouvrent alors avec les mêmes
+    # identifiants. Il reste distinct du mot de passe système, que GDM
+    # demande ensuite : la ligne d'annonce nomme celui de RDP.
+    QEMU_DESKTOP_RDP_PASSWORD = "erplibre"
+
     # Place que prend un bureau complet, annoncée dans le plan : sur une image
     # cloud de 40 G, l'oublier remplit le disque en pleine installation.
     QEMU_DESKTOP_EXTRA_DISK_GB = 6
+
+    # Mémoire minimale d'une VM qui reçoit un bureau. Une session GNOME, son
+    # écran de connexion et le rendu logiciel d'une carte virtio sans
+    # accélération ne tiennent pas dans les 1 à 2 Gio du minimum catalogue de
+    # Debian, Arch et Fedora : la session s'arrête faute de mémoire avant
+    # d'afficher quoi que ce soit.
+    QEMU_DESKTOP_MIN_RAM_MB = 4096
 
     @staticmethod
     def _qemu_ca_exports():
@@ -659,10 +728,9 @@ class QemuInstallMixin:
     def _qemu_no_auto_upgrade(prod, app_store="deb"):
         """Coupe les mises à jour automatiques sur une VM de DÉVELOPPEMENT.
 
-        Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
-        pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
-        (« received fast shutdown request » x3) -> OpenUpgrade a perdu sa
-        connexion et la base intermédiaire est restée à moitié migrée. Effet
+        unattended-upgrades, déclenché en pleine migration Odoo, redémarre le
+        cluster PostgreSQL (« received fast shutdown request ») : OpenUpgrade
+        perd sa connexion et la base intermédiaire reste à moitié migrée. Effet
         secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
         apt pendant l'installation. En PROD on ne touche à rien : les
         correctifs de sécurité automatiques doivent rester actifs."""
@@ -765,30 +833,65 @@ class QemuInstallMixin:
         )
 
     def _qemu_pacman_prepare_cmd(self):
-        """Préparation Arch : verrou, miroirs proches, mise à jour COMPLÈTE.
+        """Préparation Arch : verrou, trousseau, mise à niveau COMPLÈTE,
+        miroirs proches.
 
-        Les trois sont indissociables, et il faut les faire AVANT la moindre
-        installation. Une image cloud Arch est un instantané dont la base de
-        paquets pointe des versions déjà retirées des miroirs : « pacman -S »
-        s'y arrête sur « failed retrieving file … 404 » — vécu sur llvm-libs
-        et perl. Arch ne supporte pas la mise à jour partielle.
+        Tout cela précède la moindre installation. Une image cloud Arch est
+        un instantané dont la base de paquets pointe des versions déjà
+        retirées des miroirs : « pacman -S » s'y arrête sur « failed
+        retrieving file … 404 ». Arch ne supporte pas la mise à jour
+        partielle.
 
-        Ce bloc ne vivait QUE dans le chemin ERPLibre. Or le bureau s'installe
-        AVANT lui : une VM graphique échouait donc toujours, sans jamais
-        atteindre le code qui l'aurait sauvée."""
+        Le bureau l'appelle, puis l'installation ERPLibre : le second passage
+        ne trouve plus rien à faire. Un échec définitif sort en 1 avec un
+        message nommé, sur les deux chemins, au lieu de laisser la suite
+        installer sur un système à moitié mis à niveau."""
+        # « {sync} » vaut « -Sy » au premier essai, « -Syy » à la reprise.
+        up = (
+            "if ! {{ sudo pacman {sync} --needed --noconfirm "
+            "archlinux-keyring && sudo pacman -Su --needed --noconfirm "
+            "reflector; }}; then "
+        )
+        retry = t(
+            "pacman full upgrade failed, retrying after a forced refresh"
+        )
+        stop = t(
+            "pacman full upgrade failed: system not upgraded, install stopped"
+        )
+        fail = f'echo "   ❌ {stop}"; exit 1; '
         return (
             "if command -v pacman >/dev/null 2>&1; then "
             # Verrou périmé (cloud-init interrompu) : le retirer SEULEMENT si
             # aucun pacman ne tourne, sinon on attend qu'il se libère.
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
+            # Le trousseau d'abord, puis la mise à niveau COMPLÈTE, reflector
+            # compris dans la même transaction : installé seul après un
+            # « -Sy », il tirerait python contre un système resté ancien,
+            # exactement la mise à jour partielle à éviter. Un trousseau
+            # périmé fait refuser les signatures des paquets récents, d'où
+            # son passage en tête.
+            #
+            # Un échec est REPRIS une fois après « -Syy », qui force la
+            # relecture des index : un miroir en cours de synchronisation sert
+            # un index qui pointe des fichiers absents. Un second échec
+            # ARRÊTE l'installation : la suite, bureau ou ERPLibre, poserait
+            # des paquets neufs sur un système ancien.
+            + up.format(sync="-Sy")
+            + f'echo "   ⚠ {retry}"; '
+            + up.format(sync="-Syy")
+            + fail
+            + "fi; fi; "
             # reflector d'abord, nos miroirs ensuite : « --save » écrase le
             # fichier, écrire avant lui ne servirait à rien.
-            "sudo pacman -Sy --needed --noconfirm reflector || true; "
             "sudo reflector --latest 20 --protocol https --sort rate "
             "--save /etc/pacman.d/mirrorlist || true; "
             + self._qemu_pacman_mirror_cmd()
-            + "sudo pacman -Syu --noconfirm || true; "
+            # Peu coûteux après la mise à niveau : relit les index des
+            # nouveaux miroirs, qui servent les mêmes versions. Sans
+            # « || true » : un échec ici laisserait des index que le système
+            # ne suit pas.
+            + "sudo pacman -Syu --noconfirm || { " + fail + "}; "
             "fi; "
         )
 
@@ -863,15 +966,221 @@ class QemuInstallMixin:
             f'localhost:{local}  ({kind})"; '
         )
 
-    def _qemu_desktop_remote_cmd(self, flavour="gnome", app_store="deb"):
+    # Dossier de l'utilisateur système de GNOME Remote Desktop où vivent sa
+    # clé et son certificat TLS, sous son propre $HOME : c'est là que la
+    # documentation amont (docs/configuration.md) les fait générer, et le
+    # démon, qui tourne sous cet utilisateur, doit pouvoir les lire.
+    _QEMU_GRD_USER = "gnome-remote-desktop"
+
+    def _qemu_grd_remote_cmd(self):
+        """Bloc shell : GNOME Remote Desktop en mode SYSTÈME, RDP sur 3389.
+
+        Le mode système (« remote login ») ouvre l'écran de connexion de GDM
+        à distance, sans session déjà ouverte ni X11 : c'est le seul chemin
+        RDP vers un GNOME 49 ou plus récent, qui n'a plus de session X11.
+
+        Rend `EL_REM` à « grd » quand l'état RELU le confirme, à « off »
+        sinon, après un avertissement. Le tout est la condition d'un « if » :
+        sous « set -e », un échec ne fait jamais tomber le bureau, dont la
+        console reste l'accès premier.
+
+        « grdctl --system » rend 0 quoi qu'il arrive : il relance la commande
+        sous l'utilisateur du démon (pkexec) et ne lit pas le statut de cet
+        enfant. Une clé introuvable, des identifiants refusés, tout passe. Ses
+        codes de retour ne servent donc de garde à rien, et c'est la relecture
+        par « status --show-credentials » qui décide : identifiants, clé et
+        état activé, puis l'unité active.
+
+        Identifiants en ARGUMENTS : la forme sur l'entrée standard, que décrit
+        la documentation amont, n'écrit rien dans un pipe (grdctl 46 ne la
+        connaît pas, les suivants perdent la seconde ligne), là où la forme en
+        arguments est acceptée de la 46 à aujourd'hui.
+
+        Rejouable : la clé et le certificat existants sont gardés, et
+        grdctl réécrit ses réglages à l'identique."""
+        u = self._QEMU_GRD_USER
+        pw = shlex.quote(self.QEMU_DESKTOP_RDP_PASSWORD)
+        own = f"sudo install -d -o {u} -g {u} -m 700"
+        grd = "sudo grdctl --system"
+        echec = t(
+            "GNOME Remote Desktop not configured;"
+            " the VM console remains available"
+        )
+        return (
+            f"EL_GRD_H=$(getent passwd {u} | cut -d: -f6); "
+            'EL_GRD_D="$EL_GRD_H/.local/share/gnome-remote-desktop"; '
+            # xrdp, posé par un passage précédent, tient 3389 : les deux
+            # serveurs ne peuvent pas écouter sur le même port, et xrdp n'a
+            # aucune session GNOME à ouvrir. Une unité absente n'est pas une
+            # erreur, d'où la boucle plutôt qu'un seul « disable » à deux
+            # unités, qui s'arrêterait sur la première inconnue.
+            "if command -v xrdp >/dev/null 2>&1; then "
+            "for u in xrdp xrdp-sesman; do "
+            'sudo systemctl disable --now "$u" >/dev/null 2>&1 || true; '
+            "done; fi; "
+            'if [ -n "$EL_GRD_H" ] && [ "$EL_GRD_H" != / ] '
+            # Chaque niveau nommé : « install -d » ne donne propriétaire et
+            # mode qu'au dernier composant, les parents créés en route
+            # resteraient à root et fermeraient le chemin au démon.
+            f'&& {{ [ -d "$EL_GRD_H" ] || {own} "$EL_GRD_H"; }} '
+            f'&& {own} "$EL_GRD_H/.local" "$EL_GRD_H/.local/share" '
+            '"$EL_GRD_D" '
+            # Générés SOUS l'utilisateur du démon, qui doit les lire. 3072
+            # bits : le niveau de 128 bits que vise TLS, pour une génération
+            # bien plus courte que 4096 sur une architecture émulée. Dix ans,
+            # pour qu'une VM de développement ne voie jamais son accès
+            # expirer. « sudo test » : le dossier est en 700, l'utilisateur
+            # de la VM n'y voit rien.
+            '&& { { sudo test -s "$EL_GRD_D/tls.key" '
+            '&& sudo test -s "$EL_GRD_D/tls.crt"; } '
+            f"|| sudo -u {u} openssl req -new -x509 -newkey rsa:3072 "
+            '-nodes -days 3650 -subj "/CN=$(hostname)" '
+            '-keyout "$EL_GRD_D/tls.key" -out "$EL_GRD_D/tls.crt" '
+            ">/dev/null 2>&1; } "
+            # Sans garde entre eux : leur code de retour ne dit rien.
+            f'&& {{ {grd} rdp set-tls-key "$EL_GRD_D/tls.key"; '
+            f'{grd} rdp set-tls-cert "$EL_GRD_D/tls.crt"; '
+            f'{grd} rdp set-credentials "$(id -un)" {pw}; '
+            f"{grd} rdp enable; }} >/dev/null 2>&1 "
+            # Un démon déjà lancé, par le paquet ou un passage précédent, ne
+            # relit pas ses réglages : le redémarrer les applique.
+            "&& sudo systemctl enable --now gnome-remote-desktop.service "
+            "&& sudo systemctl restart gnome-remote-desktop.service "
+            # La relecture : une ligne par réglage, préfixée d'une
+            # tabulation. Sans identifiants, le serveur écoute mais refuse
+            # toute connexion ; sans clé, il refuse la poignée TLS.
+            f"&& EL_GRD_S=$({grd} status --show-credentials 2>/dev/null) "
+            '&& printf "%s\\n" "$EL_GRD_S" | grep -q "Username: $(id -un)$" '
+            '&& printf "%s\\n" "$EL_GRD_S" '
+            '| grep -qF "TLS key: $EL_GRD_D/tls.key" '
+            '&& printf "%s\\n" "$EL_GRD_S" | grep -q "Status: enabled" '
+            "&& systemctl is-active --quiet gnome-remote-desktop.service; "
+            "then EL_REM=grd; "
+            f'else EL_REM=off; echo "   ⚠ {echec}"; fi; '
+        )
+
+    def _qemu_xrdp_fallback_cmd(self):
+        """Bloc shell : pose xrdp, pour un GNOME dont grdctl n'a pas de mode
+        système (GNOME 45 et plus anciens), qui garde une session X11.
+
+        Gardé : un xrdp absent des dépôts coûte l'accès distant, pas le
+        bureau. pacman n'a pas de branche, xrdp n'y étant que dans l'AUR."""
+        rem = self._QEMU_DESKTOP_REMOTE
+        rate = t("xrdp not installed; the VM console remains available")
+        poses = (
+            (
+                "apt-get",
+                "sudo DEBIAN_FRONTEND=noninteractive "
+                "apt-get -o DPkg::Lock::Timeout=600 install -y",
+                "apt",
+            ),
+            ("dnf", "sudo dnf install -y", "dnf"),
+            (
+                "zypper",
+                "sudo zypper --non-interactive install "
+                "--auto-agree-with-licenses",
+                "zypper",
+            ),
+        )
+        # « el » entre deux branches : « if …; elif …; elif …; fi ».
+        branches = "el".join(
+            f"if command -v {cmd} >/dev/null 2>&1; then "
+            f"{pose} {rem[fam]['packages']} "
+            f'|| echo "   ⚠ {rate}"; '
+            for cmd, pose, fam in poses
+        )
+        return (
+            f'echo "   {t("grdctl has no system mode: xrdp instead")}"; '
+            + branches
+            + "fi; "
+        )
+
+    @staticmethod
+    def _qemu_firewall_rdp_cmd():
+        """Bloc shell : ouvre le service « rdp » dans firewalld, s'il existe.
+
+        Une image cloud n'a pas de pare-feu, mais un environnement graphique
+        peut en apporter un, activé au prochain démarrage par les presets :
+        3389 répond alors jusqu'au premier redémarrage, puis plus du tout.
+
+        « firewall-offline-cmd » écrit la configuration permanente, démon
+        arrêté ou non ; « firewall-cmd », qui exige le démon, n'est appelé
+        que s'il tourne, pour ouvrir le port tout de suite. Rien ici ne fait
+        échouer l'installation."""
+        ok = t("firewalld: rdp service opened")
+        ko = t("firewalld: rdp service not opened, 3389 may be blocked")
+        return (
+            "if command -v firewall-cmd >/dev/null 2>&1; then "
+            "EL_FW=0; "
+            "if sudo firewall-offline-cmd --add-service=rdp "
+            ">/dev/null 2>&1; then EL_FW=1; fi; "
+            "if systemctl is-active --quiet firewalld 2>/dev/null; then "
+            "if sudo firewall-cmd --permanent --add-service=rdp "
+            ">/dev/null 2>&1 && sudo firewall-cmd --reload >/dev/null 2>&1; "
+            "then EL_FW=1; else EL_FW=0; fi; fi; "
+            f'if [ "$EL_FW" = 1 ]; then echo "   {ok}"; '
+            f'else echo "   ⚠ {ko}"; fi; '
+            "fi; "
+        )
+
+    def _qemu_desktop_remote_cmd(
+        self, flavour="gnome", app_store="deb", distro=""
+    ):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
         et même traitement du verrou apt : cette étape passe par la commande
         distante et non par cloud-init, où ses 1 à 2 Go allongeraient un
-        démarrage déjà long sans laisser la moindre trace dans le suivi."""
+        démarrage déjà long sans laisser la moindre trace dans le suivi.
+
+        `distro` (clé du catalogue) borne la liste anti-snap d'apt aux
+        distributions à snap ; vide, la liste anti-snap s'applique sans
+        condition.
+
+        Un bureau qui ne s'installe pas fait échouer la commande ; un accès
+        distant qui ne se configure pas n'est qu'un avertissement."""
         de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
         rem = self._QEMU_DESKTOP_REMOTE
         label = de["label"]
+        grd = de.get("remote") == "grd"
+
+        def x11(family):
+            """Paquets d'accès distant à poser avec le bureau : ceux de la
+            table par famille pour une saveur X11, aucun pour « grd », dont
+            les paquets sont déjà dans la ligne du bureau."""
+            return "" if grd else " " + rem[family]["packages"]
+
+        apt_pkgs = " ".join(
+            p
+            for p in (
+                de["apt"] + x11("apt"),
+                self._qemu_apt_store_pkgs(app_store, distro),
+            )
+            if p
+        )
+        fedora_envs = de.get("dnf_fedora", de["dnf_env"])
+        fedora_x = (
+            f"-x {de['dnf_fedora_exclude']}"
+            if de.get("dnf_fedora_exclude")
+            else ""
+        )
+        # Posé par l'utilisateur de la VM, qui ouvrira la session : la
+        # commande distante tourne sous son compte.
+        done = de.get("first_login_done")
+        done_cmd = (
+            f'mkdir -p "$(dirname "$HOME/{done}")" '
+            f'&& touch "$HOME/{done}" || true; '
+            if done
+            else ""
+        )
+        no_env = t("No dnf graphical environment could be installed for")
+        if grd:
+            sans = t("GNOME Remote Desktop packages not installed")
+            dnf_remote = (
+                f"sudo dnf install -y {de['dnf_remote']} "
+                f'|| echo "   ⚠ {sans}"; '
+            )
+        else:
+            dnf_remote = f"sudo dnf install -y {rem['dnf']['packages']}; "
         return (
             f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
@@ -896,73 +1205,115 @@ class QemuInstallMixin:
             "break; }; sleep 2; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
-            f"{de['apt']} {rem['apt']['packages']} "
-            f"{self._qemu_apt_store_pkgs(app_store)}; "
+            f"{apt_pkgs}; "
             "elif command -v dnf >/dev/null 2>&1; then "
-            # Cascade d'environnements : le premier qui existe gagne. Un
-            # environnement absent fait rendre 1 à dnf sans rien installer,
-            # d'où le « || » plutôt qu'une détection préalable.
+            # Fedora d'un côté, les RHEL-likes de l'autre, lus dans
+            # os-release (dans un sous-shell, pour ne pas semer ses variables
+            # dans la suite de la commande).
+            #
+            # Fedora : son environnement propre, moins les paquets que la
+            # saveur exclut (« dnf_fedora_exclude », « -x » de dnf).
+            #
+            # RHEL-likes : cascade d'environnements, le premier qui existe
+            # gagne. Un environnement absent fait rendre 1 à dnf sans rien
+            # installer, d'où le « || » plutôt qu'une détection préalable.
+            'EL_OS=$(. /etc/os-release 2>/dev/null; echo "${ID:-}"); '
+            'if [ "$EL_OS" = fedora ]; then '
+            f'EL_ENVS="{fedora_envs}"; EL_X="{fedora_x}"; '
+            f'else EL_ENVS="{de["dnf_env"]}"; EL_X=""; fi; '
             "de_ok=0; "
-            f"for e in {de['dnf_env']}; do "
-            'sudo dnf -y group install "$e" && { de_ok=1; break; }; done; '
-            '[ "$de_ok" = 1 ] || echo "Aucun environnement graphique dnf '
-            "trouve pour " + label + '"; '
-            f"sudo dnf install -y {rem['dnf']['packages']}; "
-            "elif command -v pacman >/dev/null 2>&1; then "
-            "pgrep -x pacman >/dev/null 2>&1 "
-            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            "for e in $EL_ENVS; do "
+            'sudo dnf -y $EL_X group install "$e" '
+            "&& { de_ok=1; break; }; done; "
+            # Sans bureau, rien de ce qui suit n'a de sens : la commande
+            # échoue, comme la branche apt quand son installation échoue.
+            f'[ "$de_ok" = 1 ] || {{ echo "   ❌ {no_env} {label}"; '
+            "exit 1; }; " + dnf_remote + "elif command -v pacman "
+            ">/dev/null 2>&1; then "
+            # Le verrou périmé est retiré par la préparation, qui fait
+            # ensuite la mise à niveau complète : le bureau s'installe sur
+            # un système à jour, jamais en mise à jour partielle.
             + self._qemu_pacman_prepare_cmd()
-            + f"sudo pacman -S --needed --noconfirm {de['pacman']} "
-            f"{rem['pacman']['packages']}; "
+            + f"sudo pacman -S --needed --noconfirm {de['pacman']}"
+            f"{x11('pacman')}; "
             "elif command -v zypper >/dev/null 2>&1; then "
             "sudo zypper --non-interactive refresh || true; "
             # « --auto-agree-with-licenses » appartient à la SOUS-COMMANDE
             # install, pas aux options globales : placé avant, zypper répond
             # « The flag --auto-agree-with-licenses is not known ».
             "sudo zypper --non-interactive install "
-            f"--auto-agree-with-licenses {de['zypper']} "
-            f"{rem['zypper']['packages']}; "
+            f"--auto-agree-with-licenses {de['zypper']}{x11('zypper')}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
+            + done_cmd
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
-            "sudo systemctl set-default graphical.target || true; "
+            + "sudo systemctl set-default graphical.target || true; "
             f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
-            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons,
-            # toutes deux mesurées sur erplibre-ubuntu-2604-gnome :
+            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons :
             #
-            #   - graphical.target était DÉJÀ atteinte quand le paquet est
-            #     arrivé, et une cible active ne rattrape pas un service ajouté
-            #     après coup : display-manager.service est resté inactif ;
+            #   - graphical.target est DÉJÀ atteinte quand le paquet arrive,
+            #     et une cible active ne rattrape pas un service ajouté après
+            #     coup : display-manager.service reste inactif ;
             #   - sur Debian et Ubuntu, « systemctl enable gdm » rend 0 sans
             #     rien faire — l'unité n'a pas de « WantedBy », seulement
             #     « Alias=display-manager.service » que le paquet a déjà posé.
             #
-            # Résultat : GNOME installé, gdm3 installé, cible graphique par
-            # défaut… et la console de la VM restait en mode texte jusqu'au
-            # premier redémarrage. L'écran, c'est justement ce qu'on est venu
-            # chercher sur une VM graphique.
+            # Sans ce démarrage, la console de la VM reste en mode texte
+            # jusqu'au premier redémarrage, alors que l'écran est justement ce
+            # qu'on vient chercher sur une VM graphique.
             "if sudo systemctl start display-manager.service 2>/dev/null || "
             f"sudo systemctl start {de['service']} 2>/dev/null; then "
             f'echo "   {t("graphical session started")}"; '
             f'else echo "   ⚠ {t("graphical session not started; reboot the VM")}"; '
             "fi; "
-            # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
-            # par utilisateur et n'a pas de service à activer d'office.
-            "if command -v xrdp >/dev/null 2>&1; then "
-            "sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
-            f'echo "   {t("Remote desktop:")} RDP 3389"; '
-            # L'IP est sur le reseau PRIVE de libvirt : annoncer le port sans
-            # dire comment l'atteindre ne sert a rien. La VM connait sa propre
-            # adresse ; seul le nom de l'hote libvirt manque, et c'est le
-            # lecteur qui l'a. La console SPICE, elle, est en « listen=none »
-            # et suppose virt-viewer SUR l'hote — inutilisable quand cet hote
-            # est lui-meme une VM sans interface graphique.
+            # Accès distant. Une saveur « grd » le choisit à l'EXÉCUTION, sur
+            # la capacité de grdctl et non sur un numéro de version : le mode
+            # système existe ou non, quelle que soit la distribution. Le
+            # « || true » rend la sonde indépendante de « pipefail » : grep
+            # -q peut refermer le tube avant la fin de l'aide, et grdctl,
+            # coupé, rendrait alors un échec qui ne dit rien de sa capacité.
+            + (
+                "EL_REM=; "
+                "if { grdctl --help 2>&1 || true; } "
+                "| grep -q -- --system; then "
+                + self._qemu_grd_remote_cmd()
+                + "else "
+                + self._qemu_xrdp_fallback_cmd()
+                + "fi; "
+                if grd
+                else "EL_REM=; "
+            )
+            + 'if [ "$EL_REM" = grd ]; then '
+            f'echo "   {t("Remote desktop:")} RDP 3389 '
+            '(GNOME Remote Desktop)"; '
+            f'echo "     {t("RDP credentials:")} $(id -un) / '
+            f'{self.QEMU_DESKTOP_RDP_PASSWORD}"; '
             + self._qemu_tunnel_hint(3389, "RDP")
-            + "elif command -v vncserver >/dev/null 2>&1; then "
-            f'echo "   {t("Remote desktop:")} VNC 5901 '
-            '(vncpasswd puis vncserver :1)"; '
-            + self._qemu_tunnel_hint(5901, "VNC")
+            # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
+            # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
+            # sans session à ouvrir, ne le remplacerait pas.
+            + 'elif [ "$EL_REM" != off ] && command -v xrdp >/dev/null 2>&1; '
+            "then sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
+            f'echo "   {t("Remote desktop:")} RDP 3389"; '
+            # L'IP est sur le réseau PRIVÉ de libvirt : annoncer le port sans
+            # dire comment l'atteindre ne sert à rien. La VM connaît sa propre
+            # adresse ; seul le nom de l'hôte libvirt manque, et c'est le
+            # lecteur qui l'a. La console de l'hyperviseur, elle, n'écoute
+            # que sur la boucle locale de cet hôte.
+            + self._qemu_tunnel_hint(3389, "RDP")
+            # TigerVNC sur Arch, pour une saveur X11 seulement : il se
+            # configure par utilisateur et n'a pas de service à activer
+            # d'office. Il ouvre une session X11, que GNOME n'a plus.
+            + (
+                ""
+                if grd
+                else "elif command -v vncserver >/dev/null 2>&1; then "
+                f'echo "   {t("Remote desktop:")} VNC 5901 '
+                '(vncpasswd puis vncserver :1)"; '
+                + self._qemu_tunnel_hint(5901, "VNC")
+            )
             + "fi; "
+            + self._qemu_firewall_rdp_cmd()
         )
 
     # ------------------------------------------------------------------ #
@@ -1040,6 +1391,11 @@ class QemuInstallMixin:
         # « sudo apt install openjdk-17-jdk ». Ailleurs il s'arrête là. Lever
         # cette limite se fait dans CE script-là, pas ici.
         #
+        # « distros_excluded » écarte Debian dans la famille : les noms de JDK
+        # sont ceux d'Ubuntu. Debian 12 n'a pas openjdk-21-jdk, que le
+        # prérequis du SDK installe, ni en principal ni en rétroportages ;
+        # Debian 13 n'a plus openjdk-17-jdk, qu'exige install-android.sh.
+        #
         # Disque : ~1,5 Go de SDK et plateformes, ~2,5 Go de NDK, whisper.cpp
         # et sentencepiece clonés, node_modules, et les artefacts Gradle.
         "mobile": {
@@ -1054,6 +1410,7 @@ class QemuInstallMixin:
             "desktops": (),
             "needs_desktop": False,
             "families": ("apt",),
+            "distros_excluded": ("debian",),
             # APRÈS l'installation : le build a besoin du dépôt mobile, que le
             # manifeste ajoute, et du venv d'outils pour le synchroniser.
             "phase": "after",
@@ -1183,6 +1540,9 @@ class QemuInstallMixin:
             "desktops": (),
             "needs_desktop": False,
             "families": ("apt",),
+            # Même SDK et même JDK que la compilation mobile : mêmes
+            # distributions écartées.
+            "distros_excluded": ("debian",),
             "phase": "after",
         },
     }
@@ -1213,8 +1573,15 @@ class QemuInstallMixin:
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
             ],
+            # {distribution: [clé de saveur]} : les saveurs que la commande
+            # distante sait installer sur chacune. Une distribution absente
+            # de cette table les reçoit toutes (_qemu_desktops_for).
+            "desktops_by_distro": {
+                d: self._qemu_desktops_for(d) for d in self._QEMU_DISTRO_FAMILY
+            },
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
+            "desktop_min_ram_mb": self.QEMU_DESKTOP_MIN_RAM_MB,
             "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
             "snap_distros": self.QEMU_SNAP_DISTROS,
             "timezone": self._qemu_host_timezone(),
@@ -1243,6 +1610,9 @@ class QemuInstallMixin:
                 k: v["needs_desktop"] for k, v in outils.items()
             },
             "vm_tool_families": {k: v["families"] for k, v in outils.items()},
+            "vm_tool_distros_excluded": {
+                k: v.get("distros_excluded", ()) for k, v in outils.items()
+            },
             "distro_family": dict(self._QEMU_DISTRO_FAMILY),
             "defaults": {
                 "install": True,
@@ -1289,7 +1659,8 @@ class QemuInstallMixin:
         Un outil demandé pour tout le parc ne convient pas forcément à chaque
         machine : Android Studio n'existe qu'en x86_64, les extensions GNOME
         n'ont pas de sens sous Cinnamon, et la compilation mobile ne sait
-        s'installer que sur les distributions apt. Filtrer ici plutôt que dans
+        s'installer que sur les distributions apt, Debian exceptée
+        (« distros_excluded »). Filtrer ici plutôt que dans
         la commande distante évite d'annoncer une installation qui ne se fera
         pas.
 
@@ -1308,6 +1679,8 @@ class QemuInstallMixin:
                 continue
             family = cls._QEMU_DISTRO_FAMILY.get(distro, "")
             if spec["families"] and distro and family not in spec["families"]:
+                continue
+            if distro and distro in spec.get("distros_excluded", ()):
                 continue
             if phase and spec["phase"] != phase:
                 continue
