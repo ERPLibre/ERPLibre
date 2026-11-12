@@ -1364,6 +1364,32 @@ def verifier_venv(ctx):
 MAJ_VENVS = "maj_venvs"
 
 
+def cles_du_catalogue(racine):
+    """Les clés de version (« odoo18.0_python3.12.16 ») du catalogue
+    conf/supported_version_erplibre.json, ou un ensemble vide s'il est
+    illisible : rien n'est alors déclaré obsolète."""
+    try:
+        with open(os.path.join(racine, todo_etat.CATALOGUE)) as fh:
+            return set(json.load(fh))
+    except (OSError, ValueError):
+        return set()
+
+
+def remplacant(version, cles):
+    """La clé du catalogue pour la même version d'Odoo que `version`, ou
+    None : « odoo18.0_python3.12.10 » donne « odoo18.0_python3.12.16 »."""
+    odoo = version.split("_python", 1)[0]
+
+    def python(cle):
+        return tuple(
+            int(n) if n.isdigit() else 0
+            for n in cle.split("_python", 1)[-1].split(".")
+        )
+
+    candidates = [c for c in cles if c.split("_python", 1)[0] == odoo]
+    return max(candidates, key=python) if candidates else None
+
+
 def _ecarts_venv(ctx, choix):
     """L'écart d'un venv (une entrée de `drift.venvs`) à ce qu'il doit
     porter : {"venv", "ecarts": [lignes], "info": [lignes], "erreur"}.
@@ -1371,7 +1397,14 @@ def _ecarts_venv(ctx, choix):
     racine pour la version active et contre son propre lock, depuis un
     dossier temporaire, pour une autre ; le venv de l'outillage par
     venv_requirements_drift.py. Rien n'est installé."""
-    rendu = {"venv": choix["venv"], "ecarts": [], "info": [], "erreur": None}
+    rendu = {
+        "venv": choix["venv"],
+        "ecarts": [],
+        "info": [],
+        "erreur": None,
+        "obsolete": False,
+        "remplacant": None,
+    }
 
     def noter_et_lancer(commande, **options):
         ctx.noter(f"{ctx.relatif(commande[0])} {shlex.join(commande[1:])}")
@@ -1412,6 +1445,18 @@ def _ecarts_venv(ctx, choix):
         return rendu
 
     version = choix["version"]
+    cles = cles_du_catalogue(ctx.racine)
+    if cles and version not in cles:
+        # Un venv bâti avec un Python que le catalogue ne nomme plus n'a
+        # pas de lock : il se remplace, il ne se compare pas.
+        rendu["obsolete"] = True
+        rendu["remplacant"] = remplacant(version, cles)
+        rendu["erreur"] = t("obsolete, not in the catalogue") + (
+            f" — {t('Odoo uses')} {rendu['remplacant']}"
+            if rendu["remplacant"]
+            else ""
+        )
+        return rendu
     c = drift.chemins(version)
     for fichier in (c["poetry"], c["lock"]):
         if not os.path.isfile(os.path.join(ctx.racine, fichier)):
@@ -1449,8 +1494,10 @@ def verifier_dependances_venvs(ctx):
     """Chaque venv du checkout face à ce qu'il doit porter : un venv
     d'Odoo face à son poetry.lock, le venv de l'outillage face à ses
     exigences. Un venv qui s'en écarte est offert à la résolution « Mettre
-    à jour les venvs ». Un paquet hors du lock, ou que rien ne demande, est
-    une information : la mise à jour ne le retire pas."""
+    à jour les venvs », qui ne retire rien. Un venv d'Odoo dont la clé n'est
+    plus au catalogue est obsolète : sans lock, il est offert au
+    remplacement. Un paquet hors du lock, ou que rien ne demande, est une
+    information : la mise à jour ne le retire pas."""
     nom = titre(verifier_dependances_venvs)
     active = todo_etat._lire(os.path.join(ctx.racine, ".erplibre-version"))
     candidats = drift.venvs(ctx.racine, active=active)
@@ -1459,10 +1506,12 @@ def verifier_dependances_venvs(ctx):
     rendus = ctx.en_parallele(
         lambda c: _ecarts_venv(ctx, c), candidats, max_workers=4
     )
-    details, a_jour = [], []
+    details, a_jour, obsoletes = [], [], []
     for choix, rendu in zip(candidats, rendus):
         if rendu["erreur"]:
             details.append(f"{choix['venv']} : ❌ {rendu['erreur']}")
+            if rendu["obsolete"]:
+                obsoletes.append(dict(choix, remplacant=rendu["remplacant"]))
             continue
         if rendu["ecarts"]:
             details.append(
@@ -1474,10 +1523,12 @@ def verifier_dependances_venvs(ctx):
             a_jour.append(choix)
         for info in rendu["info"]:
             details.append(f"{choix['venv']} : ℹ️  {info}")
-    erreurs = sum(1 for r in rendus if r["erreur"])
+    erreurs = sum(1 for r in rendus if r["erreur"]) - len(obsoletes)
     resume = f"{len(candidats)} venvs"
     if a_jour:
         resume += f" · {len(a_jour)} {t('to update')}"
+    if obsoletes:
+        resume += f" · {len(obsoletes)} {t('obsolete')}"
     if erreurs:
         resume += f" · {erreurs} {t('unreadable')}"
     resolutions = []
@@ -1495,8 +1546,30 @@ def verifier_dependances_venvs(ctx):
                 a_jour,
             )
         )
-    statut = ALERTE if (a_jour or erreurs) else OK
+    if obsoletes:
+        resolutions.append(
+            Resolution(
+                VENVS_OBSOLETES,
+                f"🐍 {t('Replace the obsolete Odoo venvs:')} {len(obsoletes)}",
+                [
+                    t(
+                        "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes."
+                    )
+                ]
+                + [
+                    f"   {c['venv']} → .venv.{c['remplacant']}"
+                    if c["remplacant"]
+                    else f"   {c['venv']} → {t('no Odoo version left in the catalogue')}"
+                    for c in obsoletes
+                ],
+                obsoletes,
+            )
+        )
+    statut = ALERTE if (a_jour or erreurs or obsoletes) else OK
     return Resultat(nom, statut, resume, details, resolutions=resolutions)
+
+
+VENVS_OBSOLETES = "venvs_obsoletes"
 
 
 def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
@@ -1931,6 +2004,10 @@ def executer_resolution(
         return _deployer_commandes_claude(
             resolution.depots, demander, sortie, deployer_commande_claude
         )
+    if resolution.cle == VENVS_OBSOLETES:
+        return _remplacer_venvs_obsoletes(
+            ctx, resolution.depots, demander, sortie
+        )
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
@@ -2000,6 +2077,71 @@ def _deployer_commandes_claude(commandes, demander, sortie, deployer):
         change = (
             bool(deployer(commande["commande"], commande["gabarit"])) or change
         )
+    return change
+
+
+def _lancer_dans_le_terminal(ctx):
+    """`lancer(commande)` par défaut des résolutions : la commande tourne
+    depuis la racine, dans le terminal, et rend son code de sortie."""
+    return lambda commande: subprocess.run(commande, cwd=ctx.racine).returncode
+
+
+def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
+    """Installe la version du catalogue qui remplace chaque venv choisi si
+    son venv manque, puis supprime le venv obsolète : chaque étape sur un
+    oui. L'installation rend sa version active ; une installation ratée
+    garde le venv obsolète."""
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(t("Obsolete Odoo venvs:"))
+    choisis = choisir_depots(
+        venvs,
+        demander,
+        sortie,
+        decrire=lambda c: f"{c['venv']} → {c['remplacant'] or '—'}",
+        tous=t("All venvs"),
+    )
+    if not choisis:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for choix in choisis:
+        sortie(f"── {choix['venv']} ──")
+        cle = choix["remplacant"]
+        if cle and not os.path.isdir(os.path.join(ctx.racine, f".venv.{cle}")):
+            commande = [
+                "./script/version/update_env_version.py",
+                "--erplibre_version",
+                cle,
+                "--install_dev",
+            ]
+            question = (
+                t(
+                    "Install %s? It becomes the active version, and takes a while (y/N): "
+                )
+                % cle
+            )
+            if not _oui(demander, f"💬 {question}"):
+                sortie(t("Nothing changed."))
+                continue
+            sortie(f"   $ {shlex.join(commande)}")
+            code = lancer(commande)
+            if code:
+                sortie(
+                    f"❌ {shlex.join(commande)} : {t('failure, code')} {code}"
+                )
+                continue
+            change = True
+        chemin = os.path.join(ctx.racine, choix["venv"])
+        question = t("Delete the obsolete venv %s? (y/N): ") % choix["venv"]
+        if not _oui(demander, f"💬 {question}"):
+            continue
+        sortie(f"   $ rm -rf {choix['venv']}")
+        shutil.rmtree(chemin, ignore_errors=True)
+        if os.path.isdir(chemin):
+            sortie(f"❌ {t('Could not delete')} {choix['venv']}")
+            continue
+        sortie(f"✅ {t('Deleted:')} {choix['venv']}")
+        change = True
     return change
 
 

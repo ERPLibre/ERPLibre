@@ -2641,6 +2641,50 @@ TRANSLATIONS = {
         "fr": "Toutes les commandes",
         "en": "All commands",
     },
+    "obsolete, not in the catalogue": {
+        "fr": "obsolète, absent du catalogue",
+        "en": "obsolete, not in the catalogue",
+    },
+    "Odoo uses": {
+        "fr": "Odoo utilise",
+        "en": "Odoo uses",
+    },
+    "obsolete": {
+        "fr": "obsolète",
+        "en": "obsolete",
+    },
+    "Replace the obsolete Odoo venvs:": {
+        "fr": "Remplacer les venvs d'Odoo obsolètes :",
+        "en": "Replace the obsolete Odoo venvs:",
+    },
+    "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes.": {
+        "fr": "Un venv bâti avec un Python que le catalogue ne nomme plus n'a pas de lock. La version du catalogue est installée si son venv manque, ce qui la rend active, puis le venv obsolète est supprimé, chaque étape sur un oui.",
+        "en": "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes.",
+    },
+    "no Odoo version left in the catalogue": {
+        "fr": "plus aucune version d'Odoo au catalogue",
+        "en": "no Odoo version left in the catalogue",
+    },
+    "Obsolete Odoo venvs:": {
+        "fr": "Venvs d'Odoo obsolètes :",
+        "en": "Obsolete Odoo venvs:",
+    },
+    "Install %s? It becomes the active version, and takes a while (y/N): ": {
+        "fr": "Installer %s ? Elle devient la version active, et c'est long (o/N) : ",
+        "en": "Install %s? It becomes the active version, and takes a while (y/N): ",
+    },
+    "Delete the obsolete venv %s? (y/N): ": {
+        "fr": "Supprimer le venv obsolète %s ? (o/N) : ",
+        "en": "Delete the obsolete venv %s? (y/N): ",
+    },
+    "Could not delete": {
+        "fr": "Suppression impossible :",
+        "en": "Could not delete",
+    },
+    "Deleted:": {
+        "fr": "Supprimé :",
+        "en": "Deleted:",
+    },
     "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
         "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",
         "en": "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.",

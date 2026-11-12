@@ -859,6 +859,107 @@ class TestDependancesVenvs(unittest.TestCase):
         self.assertTrue(change)
         self.assertEqual(mis_a_jour, [choix[1]])
 
+    def test_a_venv_missing_from_the_catalogue_is_obsolete(self):
+        ecrire(
+            self.racine,
+            "conf/supported_version_erplibre.json",
+            json.dumps({self.version: {}}),
+        )
+        ancien = "odoo18.0_python3.12.10"
+        self.venvs[0] = dict(
+            self.venvs[0], venv=f".venv.{ancien}", version=ancien
+        )
+        resultat = self.verifier(self.simulation(""), self.ANALYSE_OK)
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"1 {t('obsolete')}", resultat.resume)
+        self.assertNotIn(t("unreadable"), resultat.resume)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.VENVS_OBSOLETES)
+        self.assertEqual(resolution.depots[0]["remplacant"], self.version)
+
+    def test_the_replacement_is_the_newest_python_of_that_odoo(self):
+        cles = {
+            "odoo18.0_python3.12.9",
+            "odoo18.0_python3.12.16",
+            "odoo17.0_python3.10.18",
+        }
+        self.assertEqual(
+            h.remplacant("odoo18.0_python3.12.10", cles),
+            "odoo18.0_python3.12.16",
+        )
+        self.assertIsNone(h.remplacant("odoo11.0_python3.7.17", cles))
+
+    def obsolete(self):
+        ancien = f"{self.racine}/.venv.odoo18.0_python3.12.10"
+        os.makedirs(os.path.join(ancien, "bin"))
+        return ancien, [
+            {
+                "venv": ".venv.odoo18.0_python3.12.10",
+                "remplacant": self.version,
+            }
+        ]
+
+    def test_a_missing_replacement_is_installed_then_the_old_venv_deleted(
+        self,
+    ):
+        shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
+        ancien, venvs = self.obsolete()
+        reponses = iter(["a", "o", "o"])
+        lances = []
+        change = h._remplacer_venvs_obsoletes(
+            h.Contexte(self.racine),
+            venvs,
+            lambda _q: next(reponses),
+            lambda _l: None,
+            lancer=lambda c: lances.append(c) or 0,
+        )
+        self.assertTrue(change)
+        self.assertEqual(
+            lances,
+            [
+                [
+                    "./script/version/update_env_version.py",
+                    "--erplibre_version",
+                    self.version,
+                    "--install_dev",
+                ]
+            ],
+        )
+        self.assertFalse(os.path.isdir(ancien))
+
+    def test_a_refused_installation_keeps_the_obsolete_venv(self):
+        shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
+        ancien, venvs = self.obsolete()
+        reponses = iter(["a", ""])
+        lances = []
+        self.assertFalse(
+            h._remplacer_venvs_obsoletes(
+                h.Contexte(self.racine),
+                venvs,
+                lambda _q: next(reponses),
+                lambda _l: None,
+                lancer=lambda c: lances.append(c) or 0,
+            )
+        )
+        self.assertEqual(lances, [])
+        self.assertTrue(os.path.isdir(ancien))
+
+    def test_an_existing_replacement_only_asks_to_delete(self):
+        ancien, venvs = self.obsolete()
+        reponses = iter(["1", "o"])
+        lances = []
+        self.assertTrue(
+            h._remplacer_venvs_obsoletes(
+                h.Contexte(self.racine),
+                venvs,
+                lambda _q: next(reponses),
+                lambda _l: None,
+                lancer=lambda c: lances.append(c) or 0,
+            )
+        )
+        self.assertEqual(lances, [])
+        self.assertFalse(os.path.isdir(ancien))
+
 
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
