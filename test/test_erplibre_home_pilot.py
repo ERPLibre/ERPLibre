@@ -24,7 +24,8 @@ Ce que ces tests gardent :
 - le format de keymap.json que pose le contrat égale les constantes de
   keymap.py, --catalog rend la forme qu'il énonce, et le chargeur du deck
   donne à chaque fixture partagée de keymap.json le verdict qu'elle porte :
-  il ne saute rien de ce que l'extension écrit.
+  il ne saute rien de ce que l'extension écrit, et pose telles qu'envoyées
+  les entrées qu'il dit poser.
 
 Ce qui lit le clone est sauté quand il manque (SANS_EXTENSION), ou quand
 son contrat précède la version qui pose le tableau ou le format : une
@@ -247,8 +248,12 @@ def verdict_du_chargeur(cas):
     load, puis layout_for sur chaque modèle du catalogue, chargés avec un
     bouton d'accueil les plugins que la disposition nomme, sauf ceux que
     le catalogue n'offre pas ou que `plugins_off` éteint. Rend (verdict,
-    problèmes) : « problem » au premier problème, sinon « as_sent » quand
-    une disposition au moins est posée, sinon « automatic »."""
+    lignes) : « problem » et les problèmes au premier problème ; sinon
+    « altered » et les écarts quand une disposition posée diffère de ses
+    entrées envoyées, lues en Entry(key, action, icon, label) (un champ
+    inconnu ne compte pas) ; sinon « as_sent » quand une disposition au
+    moins est posée, sinon « automatic ». « altered » n'est pas un verdict
+    du contrat : aucune fixture ne le porte."""
     catalogue = cas["catalog"]
     with tempfile.TemporaryDirectory() as dossier:
         chemin = Path(dossier, "keymap.json")
@@ -266,7 +271,7 @@ def verdict_du_chargeur(cas):
         if action.startswith("plugin:")
     } - set(cas["plugins_off"])
     dispositions = donnees.get("layouts", {}) if donnees else {}
-    problemes, posee = [], False
+    problemes, ecarts, posee = [], [], False
     for modele, geo in sorted(catalogue["models"].items()):
         entrees, trouves = keymap.layout_for(
             donnees,
@@ -276,10 +281,97 @@ def verdict_du_chargeur(cas):
             set(catalogue["icons"]),
         )
         problemes += trouves
-        posee = posee or entrees is not None
+        if entrees is None:
+            continue
+        posee = True
+        if trouves:
+            # Une entrée sautée peut n'avoir aucune forme : rien à comparer.
+            continue
+        envoyees = entrees_envoyees(dispositions[modele])
+        if entrees != envoyees:
+            ecarts.append(f"{modele}: {envoyees} posées en {entrees}")
     if problemes:
         return "problem", problemes
-    return ("as_sent" if posee else "automatic"), problemes
+    if ecarts:
+        return "altered", ecarts
+    return ("as_sent" if posee else "automatic"), []
+
+
+def entrees_envoyees(disposition):
+    """Les entrées d'une disposition telles que le fichier les porte, en
+    Entry : les quatre champs du format, les autres laissés de côté."""
+    return [
+        keymap.Entry(
+            entree["key"],
+            entree["action"],
+            entree.get("icon"),
+            entree.get("label"),
+        )
+        for entree in disposition["keys"]
+    ]
+
+
+ICONE = sorted(icons.ICONS)[0]
+CAS_POSE = {
+    "catalog": {
+        "format": 1,
+        "actions": ["plugin:timers", "tiles", "empty"],
+        "icons": [ICONE],
+        "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}},
+    },
+    "plugins_off": [],
+    "layouts": {
+        "0084": {
+            "keys": [
+                {
+                    "key": 0,
+                    "action": "plugin:timers",
+                    "icon": ICONE,
+                    "label": "Minuteries",
+                },
+                {"key": 1, "action": "tiles"},
+                {"key": 2, "action": "empty"},
+            ]
+        }
+    },
+}
+
+
+class LeVerdictDuChargeur(unittest.TestCase):
+    """verdict_du_chargeur ne dit « as_sent » que si le chargeur pose les
+    entrées envoyées, et non une disposition seulement."""
+
+    def test_the_loader_lays_out_the_entries_as_sent(self):
+        self.assertEqual(("as_sent", []), verdict_du_chargeur(CAS_POSE))
+
+    def test_a_loader_that_changes_an_entry_is_not_as_sent(self):
+        reel = keymap.layout_for
+        alterations = {
+            "icon and label dropped": lambda entrees: [
+                keymap.Entry(e.key, e.action) for e in entrees
+            ],
+            "tiles skipped": lambda entrees: [
+                e for e in entrees if e.action != "tiles"
+            ],
+            "keys shifted": lambda entrees: [
+                keymap.Entry((e.key + 1) % 8, e.action, e.icon, e.label)
+                for e in entrees
+            ],
+        }
+        for nom, alterer in alterations.items():
+
+            def altere(*args, alterer=alterer):
+                entrees, problemes = reel(*args)
+                if entrees is not None:
+                    entrees = alterer(entrees)
+                return entrees, problemes
+
+            with self.subTest(alteration=nom), mock.patch.object(
+                keymap, "layout_for", altere
+            ):
+                verdict, ecarts = verdict_du_chargeur(CAS_POSE)
+                self.assertNotEqual("as_sent", verdict)
+                self.assertTrue(ecarts)
 
 
 def un_par_categorie():
