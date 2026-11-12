@@ -14,6 +14,7 @@ sans menu :
                      [--upstream origine|fork] [--all-branches]
                      [--manifest 17.0,18.0 | --no-manifest]
     manifest_repo.py branch CHEMIN NOM [--from REF] [--push REMOTE]
+    manifest_repo.py branches NOM CHEMIN... [--from REF] [--push]
     manifest_repo.py upstream CHEMIN [--version 18.0]
     manifest_repo.py remove CHEMIN [--version 18.0] [--apply]
     manifest_repo.py sync CHEMIN [--version 18.0]
@@ -431,6 +432,24 @@ def brancher(chemin, nom, depart=None, pousser=None):
     return etapes
 
 
+def brancher_plusieurs(depots, nom, depart=None, pousser=False, jobs=None):
+    """Crée la branche `nom` dans chaque clone de `depots` ([(chemin,
+    remote)]), en parallèle ; la pousse vers ce remote — celui que git-repo
+    donne au projet — si `pousser`. Rend, dans l'ordre de `depots`,
+    [(chemin, étapes de brancher())]. Un échec dans un clone n'arrête pas
+    les autres."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def un(depot):
+        chemin, remote = depot
+        return chemin, brancher(
+            chemin, nom, depart, remote if pousser else None
+        )
+
+    with ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 4) as ex:
+        return list(ex.map(un, depots))
+
+
 def ajouter_amont(chemin, projet, remotes):
     """Pose dans le clone le remote amont que le manifeste déclare pour
     `projet`, puis récupère sa branche. Rend (état, détail) : état vaut
@@ -772,6 +791,16 @@ def main(argv=None):
     p.add_argument("--from", dest="depart")
     p.add_argument("--push", metavar="REMOTE")
     p.add_argument("--version")
+    p = sous.add_parser(
+        "branches", help="create one branch in several cloned repositories"
+    )
+    p.add_argument("nom")
+    p.add_argument("chemins", nargs="+")
+    p.add_argument("--from", dest="depart")
+    p.add_argument(
+        "--push", action="store_true", help="push to the project's remote"
+    )
+    p.add_argument("--version")
     p = sous.add_parser("upstream", help="add and fetch the upstream remote")
     p.add_argument("chemin")
     p.add_argument("--version")
@@ -839,6 +868,23 @@ def main(argv=None):
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
             return 0
+        if args.commande == "branches":
+            depots = []
+            for c in args.chemins:
+                _r, p = trouver_projet(version, c)
+                depots.append(
+                    (os.path.join(racine, p["path"]), p.get("remote"))
+                )
+            code = 0
+            for chemin_c, etapes in brancher_plusieurs(
+                depots, args.nom, args.depart, args.push
+            ):
+                for etape, c, sortie in etapes:
+                    code = code or c
+                    print(
+                        f"{os.path.relpath(chemin_c, racine)} · {etape} : {'ok' if not c else sortie}"
+                    )
+            return 1 if code else 0
         if args.commande == "remove":
             fichier, projet, remote = retirer_depot(version, args.chemin)
             print(

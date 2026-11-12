@@ -323,6 +323,59 @@ class GitForkMenuMixin:
             )
         return 2 if any(code for _e, code, _s in etapes) else 0
 
+    def _git_creer_branche_plusieurs(self):
+        """Crée la même branche dans les clones cochés, en parallèle, et la
+        pousse vers le remote de chaque projet si demandé. Rend le nombre
+        de dépôts en échec, ou None si rien n'a été lancé."""
+        from script.todo.git_repo_menu import choix_numeros
+
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        _remotes, liste = clones(version)
+        if not liste:
+            print(f"  {t('No repository matches.')}")
+            return None
+        for i, projet in enumerate(liste, 1):
+            print(f"  [{i}] {projet['path']}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        choisis = choix_numeros(saisie, liste) if saisie else None
+        if not choisis:
+            return None
+        nom = input(t("Name of the new branch: ")).strip()
+        if not nom:
+            return None
+        depart = input(t("Start from (Enter: the current commit): ")).strip()
+        pousser = self._is_yes(
+            input(t("Push it to each project's remote? (y/N): "))
+        )
+        print(f"  {len(choisis)} {t('repositories, in parallel…')}")
+        resultats = manifest_repo.brancher_plusieurs(
+            [
+                (os.path.join(RACINE, p["path"]), p.get("remote"))
+                for p in choisis
+            ],
+            nom,
+            depart or None,
+            pousser,
+        )
+        echecs = 0
+        for chemin, etapes in resultats:
+            rate = next((e for e in etapes if e[1]), None)
+            echecs += bool(rate)
+            marque = (
+                f"❌ {rate[0]} : {rate[2].splitlines()[-1] if rate[2] else rate[1]}"
+                if rate
+                else "✓"
+            )
+            print(f"  {marque} {os.path.relpath(chemin, RACINE)}")
+        return echecs
+
     def _git_ajouter_amont(self):
         """Pose et récupère le remote amont du clone choisi. Rend 0, ou 2."""
         choix = self._git_choisir_clone()
