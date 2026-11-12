@@ -176,16 +176,33 @@ def tracer(courbes, largeur, hauteur, ymax=None):
     return lignes, ymax
 
 
-def graphique(donnees, largeur, hauteur):
+def noms_des_courbes(jeux):
+    """Les courbes de tous les jeux : versions d'Odoo dans leur ordre, puis
+    celle des uniques. C'est la liste qu'on coche pour afficher ou cacher."""
+    versions = {
+        nom
+        for _c, donnees in jeux
+        for nom in series(donnees)[1]
+        if nom != UNIQUES
+    }
+    return sorted(versions, key=float) + [UNIQUES]
+
+
+def graphique(donnees, largeur, hauteur, cachees=frozenset()):
     """Le graphique de `donnees` en rich.text.Text : axe des y gradué à
-    gauche, années sous l'axe des x, une couleur par courbe."""
+    gauche, années sous l'axe des x, une couleur par courbe.
+
+    Les courbes de `cachees` ne sont pas tracées, et l'axe des y se règle
+    sur celles qui restent : cacher la courbe des uniques, la plus haute,
+    agrandit les autres. Chaque courbe garde sa couleur quoi qu'on cache."""
     from rich.text import Text
 
     etiquettes, courbes = series(donnees)
     styles = couleurs(courbes)
+    montrees = {n: v for n, v in courbes.items() if n not in cachees}
     marge = 7
     zone = max(largeur - marge, 10)
-    lignes, ymax = tracer(courbes, zone, max(hauteur - 2, 4))
+    lignes, ymax = tracer(montrees, zone, max(hauteur - 2, 4))
     texte = Text()
     for r, ligne in enumerate(lignes):
         if r == 0:
@@ -212,8 +229,9 @@ def graphique(donnees, largeur, hauteur):
     return texte
 
 
-def legende(donnees):
-    """Les courbes et leur couleur, sur une ligne."""
+def legende(donnees, cachees=frozenset()):
+    """Les courbes et leur couleur, sur une ligne ; une courbe cachée y
+    reste, estompée et barrée, pour qu'on sache qu'elle existe."""
     from rich.text import Text
 
     _, courbes = series(donnees)
@@ -221,6 +239,9 @@ def legende(donnees):
     texte = Text()
     for nom in courbes:
         libelle = t("unique modules") if nom == UNIQUES else nom
+        if nom in cachees:
+            texte.append(f"── {libelle}   ", style="dim strike")
+            continue
         texte.append("━━ ", style=styles[nom])
         texte.append(f"{libelle}   ")
     return texte
@@ -245,10 +266,24 @@ def lignes_tableau(donnees):
 
 def build_app(jeux):
     """L'application Textual sur `jeux` (rendu de lire_jeux, non vide).
-    Une touche par jeu, et « b » pour les montrer tous l'un sous l'autre."""
+    Une touche par jeu, et « b » pour les montrer tous l'un sous l'autre.
+
+    La colonne de gauche coche les courbes à tracer — chaque version d'Odoo
+    et les modules uniques — dans tous les jeux à la fois ; « a » les
+    remet toutes. Le tableau garde toutes les colonnes : il donne les
+    chiffres exacts, ce que le graphique montre ou non."""
     from textual.app import App, ComposeResult
-    from textual.containers import VerticalScroll
-    from textual.widgets import DataTable, Footer, Header, Static
+    from textual.containers import Horizontal, VerticalScroll
+    from textual.widgets import (
+        DataTable,
+        Footer,
+        Header,
+        SelectionList,
+        Static,
+    )
+    from textual.widgets.selection_list import Selection
+
+    noms = noms_des_courbes(jeux)
 
     class EvolutionApp(App):
         TITLE = t("Odoo module evolution per year")
@@ -257,10 +292,12 @@ def build_app(jeux):
         .graphique { height: 22; padding: 0 1; }
         .legende { padding: 0 1; }
         DataTable { height: auto; max-height: 16; margin: 0 1 1 1; }
+        #courbes { width: 22; border-right: solid $accent; }
         """
         BINDINGS = [
             ("q,escape", "quit", t("Quit")),
             ("b", "tous", t("Both")),
+            ("a", "toutes_les_courbes", t("Every curve")),
         ] + [
             (str(i + 1), f"jeu({i})", nom_du_jeu(d)[:20])
             for i, (_c, d) in enumerate(jeux[:9])
@@ -269,11 +306,31 @@ def build_app(jeux):
         def __init__(self):
             super().__init__()
             self.affiches = list(range(min(len(jeux), 1)))
+            self.cachees = set()
 
         def compose(self) -> ComposeResult:
             yield Header()
-            yield VerticalScroll(id="corps")
+            with Horizontal():
+                yield SelectionList(
+                    *[
+                        Selection(
+                            t("unique modules") if nom == UNIQUES else nom,
+                            nom,
+                            True,
+                        )
+                        for nom in noms
+                    ],
+                    id="courbes",
+                )
+                yield VerticalScroll(id="corps")
             yield Footer()
+
+        def on_selection_list_selected_changed(self, event):
+            self.cachees = set(noms) - set(event.selection_list.selected)
+            self.redessiner()
+
+        def action_toutes_les_courbes(self):
+            self.query_one("#courbes", SelectionList).select_all()
 
         def on_mount(self):
             self.redessiner()
@@ -292,7 +349,7 @@ def build_app(jeux):
         def redessiner(self):
             corps = self.query_one("#corps", VerticalScroll)
             corps.remove_children()
-            largeur = max(self.size.width - 4, 30)
+            largeur = max(self.size.width - 22 - 4, 30)
             for i in self.affiches:
                 chemin, donnees = jeux[i]
                 titre = (
@@ -302,10 +359,13 @@ def build_app(jeux):
                 corps.mount(Static(titre, classes="titre"))
                 corps.mount(
                     Static(
-                        graphique(donnees, largeur, 20), classes="graphique"
+                        graphique(donnees, largeur, 20, self.cachees),
+                        classes="graphique",
                     )
                 )
-                corps.mount(Static(legende(donnees), classes="legende"))
+                corps.mount(
+                    Static(legende(donnees, self.cachees), classes="legende")
+                )
                 table = DataTable(zebra_stripes=True)
                 entetes, rangees = lignes_tableau(donnees)
                 corps.mount(table)

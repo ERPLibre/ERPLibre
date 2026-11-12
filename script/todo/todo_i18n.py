@@ -162,6 +162,10 @@ TRANSLATIONS = {
         "fr": "Évolution des modules Odoo par année",
         "en": "Odoo module evolution per year",
     },
+    "Every curve": {
+        "fr": "Toutes les courbes",
+        "en": "Every curve",
+    },
     "Both": {
         "fr": "Les deux",
         "en": "Both",

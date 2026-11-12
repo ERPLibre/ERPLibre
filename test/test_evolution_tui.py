@@ -132,6 +132,60 @@ class TestLeTrace(unittest.TestCase):
         self.assertIn("     6 ", texte)
 
 
+class TestCacherDesVersions(unittest.TestCase):
+    def test_the_list_holds_every_version_then_the_uniques(self):
+        jeux = [("/a", donnees()), ("/b", donnees())]
+        self.assertEqual(
+            ev.noms_des_courbes(jeux), ["9.0", "10.0", "11.0", ev.UNIQUES]
+        )
+
+    def test_a_hidden_curve_is_not_drawn_and_the_scale_follows(self):
+        etiquettes, courbes = ev.series(donnees())
+        tout = ev.graphique(donnees(), 60, 12).plain
+        self.assertIn("     6 ", tout)
+        # Sans les uniques (6 au plus), la plus haute courbe vaut 6 aussi :
+        # on cache aussi 10.0 pour voir l'axe suivre la plus haute restante.
+        sans = ev.graphique(
+            donnees(), 60, 12, frozenset({ev.UNIQUES, "10.0"})
+        ).plain
+        self.assertIn("     3 ", sans)
+
+    def test_colours_do_not_move_when_a_curve_is_hidden(self):
+        texte = ev.graphique(donnees(), 60, 12, frozenset({"9.0"}))
+        styles = {str(span.style) for span in texte.spans}
+        self.assertNotIn(
+            ev.couleurs(["9.0", "10.0", "11.0", ev.UNIQUES])["9.0"], styles
+        )
+        self.assertIn(
+            ev.couleurs(["9.0", "10.0", "11.0", ev.UNIQUES])["10.0"], styles
+        )
+
+    def test_the_legend_keeps_a_hidden_curve_struck(self):
+        texte = ev.legende(donnees(), frozenset({"9.0"}))
+        barres = [
+            texte.plain[span.start : span.end]
+            for span in texte.spans
+            if "strike" in str(span.style)
+        ]
+        self.assertEqual(barres, ["── 9.0   "])
+
+    def test_unticking_hides_and_a_shows_all_again(self):
+        app = ev.build_app([("/a", donnees())])
+
+        async def scenario():
+            async with app.run_test(size=(120, 60)) as pilote:
+                await pilote.pause()
+                liste = app.query_one("#courbes")
+                liste.deselect("10.0")
+                await pilote.pause()
+                self.assertEqual(app.cachees, {"10.0"})
+                await pilote.press("a")
+                await pilote.pause()
+                self.assertEqual(app.cachees, set())
+
+        asyncio.run(scenario())
+
+
 class TestLEcran(unittest.TestCase):
     def test_one_set_then_both(self):
         jeux = [("/a.json", donnees()), ("/b.json", donnees("/OCA/"))]
