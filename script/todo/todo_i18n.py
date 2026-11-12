@@ -2134,6 +2134,14 @@ TRANSLATIONS = {
         "fr": "🌿 Créer une branche dans un dépôt",
         "en": "🌿 Create a branch in a repository",
     },
+    "🌳 Create the same branch in several repositories": {
+        "fr": "🌳 Créer la même branche dans plusieurs dépôts",
+        "en": "🌳 Create the same branch in several repositories",
+    },
+    "Push it to each project's remote? (y/N): ": {
+        "fr": "La pousser vers le remote de chaque projet ? (o/N) : ",
+        "en": "Push it to each project's remote? (y/N): ",
+    },
     "🔭 Add the upstream remote of a repository": {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
         "en": "🔭 Add the upstream remote of a repository",

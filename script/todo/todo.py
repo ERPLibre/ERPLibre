@@ -3783,6 +3783,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "🌳 Create the same branch in several repositories"
+                ),
+                "method": "_git_creer_branche_plusieurs",
+            },
+            {
+                "prompt_description": t(
                     "🔭 Add the upstream remote of a repository"
                 ),
                 "method": "_git_ajouter_amont",
