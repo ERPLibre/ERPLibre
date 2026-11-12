@@ -2496,9 +2496,9 @@ TRANSLATIONS = {
         "fr": "Hooks git installés",
         "en": "Git hooks installed",
     },
-    "Git hooks missing: Execute › Git › Settings": {
-        "fr": "Hooks git manquants : Exécution › Git › Configuration",
-        "en": "Git hooks missing: Execute › Git › Settings",
+    "Git hooks missing: Execute › Git repository › Settings": {
+        "fr": "Hooks git manquants : Exécution › Répertoire git › Configuration",
+        "en": "Git hooks missing: Execute › Git repository › Settings",
     },
     "Git hooks point elsewhere: ": {
         "fr": "Les hooks git pointent ailleurs : ",
@@ -2612,6 +2612,182 @@ TRANSLATIONS = {
     "Update the venvs:": {
         "fr": "Mettre à jour les venvs :",
         "en": "Update the venvs:",
+    },
+    "Install the git hooks": {
+        "fr": "Installer les hooks git",
+        "en": "Install the git hooks",
+    },
+    "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does.": {
+        "fr": "core.hooksPath pointe sur script/git/hooks et chaque hook reçoit son bit d'exécution, comme le fait Exécution › Répertoire git › Configuration.",
+        "en": "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does.",
+    },
+    "Git hooks not installed.": {
+        "fr": "Hooks git non installés.",
+        "en": "Git hooks not installed.",
+    },
+    "Deploy the Claude commands:": {
+        "fr": "Déployer les commandes Claude :",
+        "en": "Deploy the Claude commands:",
+    },
+    "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one.": {
+        "fr": "Chaque commande choisie est copiée de son gabarit de conf/ vers ~/.claude/commands : une copie périmée garde son identité git, un /commit manquant en demande une.",
+        "en": "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one.",
+    },
+    "Claude commands to deploy:": {
+        "fr": "Commandes Claude à déployer :",
+        "en": "Claude commands to deploy:",
+    },
+    "All commands": {
+        "fr": "Toutes les commandes",
+        "en": "All commands",
+    },
+    "Attention": {
+        "fr": "Attention",
+        "en": "Attention",
+    },
+    "Repository settings": {
+        "fr": "Réglages du dépôt",
+        "en": "Repository settings",
+    },
+    "on": {
+        "fr": "activé",
+        "en": "on",
+    },
+    "off": {
+        "fr": "désactivé",
+        "en": "off",
+    },
+    "session message:": {
+        "fr": "message de session :",
+        "en": "session message:",
+    },
+    "Turn ultracode off by default": {
+        "fr": "Désactiver ultracode par défaut",
+        "en": "Turn ultracode off by default",
+    },
+    "Turn ultracode on by default": {
+        "fr": "Activer ultracode par défaut",
+        "en": "Turn ultracode on by default",
+    },
+    "Remove the session message": {
+        "fr": "Retirer le message de session",
+        "en": "Remove the session message",
+    },
+    "Install the session message": {
+        "fr": "Installer le message de session",
+        "en": "Install the session message",
+    },
+    "Preview the session message": {
+        "fr": "Aperçu du message de session",
+        "en": "Preview the session message",
+    },
+    "The session message could not be built.": {
+        "fr": "Le message de session n'a pas pu être construit.",
+        "en": "The session message could not be built.",
+    },
+    "Will write": {
+        "fr": "Va écrire",
+        "en": "Will write",
+    },
+    "This file is versioned: the change applies to every clone once committed.": {
+        "fr": "Ce fichier est versionné : le changement vaut pour chaque clone une fois commité.",
+        "en": "This file is versioned: the change applies to every clone once committed.",
+    },
+    "Write it? (y/Y): ": {
+        "fr": "L'écrire ? (o/O) : ",
+        "en": "Write it? (y/Y): ",
+    },
+    "File written.": {
+        "fr": "Fichier écrit.",
+        "en": "File written.",
+    },
+    "⚙️ Repository settings: ultracode and session message": {
+        "fr": "⚙️ Réglages du dépôt : ultracode et message de session",
+        "en": "⚙️ Repository settings: ultracode and session message",
+    },
+    "uncommitted files": {
+        "fr": "fichiers non commités",
+        "en": "uncommitted files",
+    },
+    "unpushed commits": {
+        "fr": "commits non poussés",
+        "en": "unpushed commits",
+    },
+    "Plan in progress": {
+        "fr": "Plan en cours",
+        "en": "Plan in progress",
+    },
+    "ERPLibre — session resumed": {
+        "fr": "ERPLibre — reprise de session",
+        "en": "ERPLibre — session resumed",
+    },
+    "ERPLibre — new session": {
+        "fr": "ERPLibre — nouvelle session",
+        "en": "ERPLibre — new session",
+    },
+    "obsolete, not in the catalogue": {
+        "fr": "obsolète, absent du catalogue",
+        "en": "obsolete, not in the catalogue",
+    },
+    "Odoo uses": {
+        "fr": "Odoo utilise",
+        "en": "Odoo uses",
+    },
+    "obsolete": {
+        "fr": "obsolète",
+        "en": "obsolete",
+    },
+    "Replace the obsolete Odoo venvs:": {
+        "fr": "Remplacer les venvs d'Odoo obsolètes :",
+        "en": "Replace the obsolete Odoo venvs:",
+    },
+    "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes.": {
+        "fr": "Un venv bâti avec un Python que le catalogue ne nomme plus n'a pas de lock. La version du catalogue est installée si son venv manque, ce qui la rend active, puis le venv obsolète est supprimé, chaque étape sur un oui.",
+        "en": "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes.",
+    },
+    "no Odoo version left in the catalogue": {
+        "fr": "plus aucune version d'Odoo au catalogue",
+        "en": "no Odoo version left in the catalogue",
+    },
+    "Remove the packages nothing requires:": {
+        "fr": "Retirer les paquets que rien ne demande :",
+        "en": "Remove the packages nothing requires:",
+    },
+    "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip.": {
+        "fr": "Installés dans le venv de l'outillage, demandés par aucune exigence ni par leurs dépendances : une installation ne les retire jamais. Ceux qu'on choisit sont désinstallés par pip.",
+        "en": "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip.",
+    },
+    "Obsolete Odoo venvs:": {
+        "fr": "Venvs d'Odoo obsolètes :",
+        "en": "Obsolete Odoo venvs:",
+    },
+    "Install %s? It becomes the active version, and takes a while (y/N): ": {
+        "fr": "Installer %s ? Elle devient la version active, et c'est long (o/N) : ",
+        "en": "Install %s? It becomes the active version, and takes a while (y/N): ",
+    },
+    "Delete the obsolete venv %s? (y/N): ": {
+        "fr": "Supprimer le venv obsolète %s ? (o/N) : ",
+        "en": "Delete the obsolete venv %s? (y/N): ",
+    },
+    "Could not delete": {
+        "fr": "Suppression impossible :",
+        "en": "Could not delete",
+    },
+    "Deleted:": {
+        "fr": "Supprimé :",
+        "en": "Deleted:",
+    },
+    "Packages nothing requires:": {
+        "fr": "Paquets que rien ne demande :",
+        "en": "Packages nothing requires:",
+    },
+    "All packages": {
+        "fr": "Tous les paquets",
+        "en": "All packages",
+    },
+    "Uninstalled:": {
+        "fr": "Désinstallés :",
+        "en": "Uninstalled:",
     },
     "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
         "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",

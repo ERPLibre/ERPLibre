@@ -1,0 +1,13 @@
+Commandes Claude Code à faire en début de session :
+/remote-control : rendre la session pilotable depuis claude.ai, sur un autre appareil
+/rate-limit-options : que faire quand la limite d'usage bloque, attendre et reprendre ou ajouter du crédit
+/rename : nommer la session, affiché sur la barre de saisie
+/effort : régler l'effort, ou ultracode on|off pour la session
+/context : voir l'occupation du contexte, avec des suggestions pour l'alléger
+Commandes ERPLibre (déployées par TODO › Exécution › GPT code › Claude configs) :
+/commit : commit OCA bilingue, trailer Assisted-by
+/git_prepare_merge : entrée du changelog et message de fusion de la branche
+/todo_plan_max : planifier une commande todo.py, questions d'abord
+/todo_add_command : ajouter une commande au menu de todo.py
+/todo_generate_code : coder selon les règles du dépôt
+Commandes du dépôt : /feature (fonctionnalité de bout en bout), /mobile (application mobile)

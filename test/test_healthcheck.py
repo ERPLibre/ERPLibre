@@ -859,6 +859,157 @@ class TestDependancesVenvs(unittest.TestCase):
         self.assertTrue(change)
         self.assertEqual(mis_a_jour, [choix[1]])
 
+    def test_a_venv_missing_from_the_catalogue_is_obsolete(self):
+        ecrire(
+            self.racine,
+            "conf/supported_version_erplibre.json",
+            json.dumps({self.version: {}}),
+        )
+        ancien = "odoo18.0_python3.12.10"
+        self.venvs[0] = dict(
+            self.venvs[0], venv=f".venv.{ancien}", version=ancien
+        )
+        resultat = self.verifier(self.simulation(""), self.ANALYSE_OK)
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertIn(f"1 {t('obsolete')}", resultat.resume)
+        self.assertNotIn(t("unreadable"), resultat.resume)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.VENVS_OBSOLETES)
+        self.assertEqual(resolution.depots[0]["remplacant"], self.version)
+
+    def test_the_replacement_is_the_newest_python_of_that_odoo(self):
+        cles = {
+            "odoo18.0_python3.12.9",
+            "odoo18.0_python3.12.16",
+            "odoo17.0_python3.10.18",
+        }
+        self.assertEqual(
+            h.remplacant("odoo18.0_python3.12.10", cles),
+            "odoo18.0_python3.12.16",
+        )
+        self.assertIsNone(h.remplacant("odoo11.0_python3.7.17", cles))
+
+    def test_packages_nothing_requires_are_offered_for_removal(self):
+        analyse = dict(self.ANALYSE_OK, de_trop=[["agithub", "2.2.2"]])
+        resultat = self.verifier(self.simulation(""), analyse)
+        self.assertEqual(resultat.statut, h.INFO)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.PAQUETS_DE_TROP)
+        self.assertEqual(
+            resolution.depots,
+            [
+                {
+                    "venv": ".venv.erplibre",
+                    "paquet": "agithub",
+                    "version": "2.2.2",
+                }
+            ],
+        )
+
+    def test_removing_packages_runs_one_pip_for_the_chosen_ones(self):
+        paquets = [
+            {"venv": ".venv.erplibre", "paquet": p, "version": "1"}
+            for p in ("agithub", "cssselect", "giturlparse")
+        ]
+        lances, lignes = [], []
+        change = h._retirer_paquets(
+            h.Contexte(self.racine),
+            paquets,
+            lambda _q: "1 3",
+            lignes.append,
+            lancer=lambda c: lances.append(c) or 0,
+        )
+        self.assertTrue(change)
+        self.assertEqual(
+            lances,
+            [
+                [
+                    ".venv.erplibre/bin/python",
+                    "-m",
+                    "pip",
+                    "uninstall",
+                    "-y",
+                    "agithub",
+                    "giturlparse",
+                ]
+            ],
+        )
+        self.assertIn(
+            "   $ .venv.erplibre/bin/python -m pip uninstall -y agithub giturlparse",
+            lignes,
+        )
+
+    def obsolete(self):
+        ancien = f"{self.racine}/.venv.odoo18.0_python3.12.10"
+        os.makedirs(os.path.join(ancien, "bin"))
+        return ancien, [
+            {
+                "venv": ".venv.odoo18.0_python3.12.10",
+                "remplacant": self.version,
+            }
+        ]
+
+    def test_a_missing_replacement_is_installed_then_the_old_venv_deleted(
+        self,
+    ):
+        shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
+        ancien, venvs = self.obsolete()
+        reponses = iter(["a", "o", "o"])
+        lances = []
+        change = h._remplacer_venvs_obsoletes(
+            h.Contexte(self.racine),
+            venvs,
+            lambda _q: next(reponses),
+            lambda _l: None,
+            lancer=lambda c: lances.append(c) or 0,
+        )
+        self.assertTrue(change)
+        self.assertEqual(
+            lances,
+            [
+                [
+                    "./script/version/update_env_version.py",
+                    "--erplibre_version",
+                    self.version,
+                    "--install_dev",
+                ]
+            ],
+        )
+        self.assertFalse(os.path.isdir(ancien))
+
+    def test_a_refused_installation_keeps_the_obsolete_venv(self):
+        shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
+        ancien, venvs = self.obsolete()
+        reponses = iter(["a", ""])
+        lances = []
+        self.assertFalse(
+            h._remplacer_venvs_obsoletes(
+                h.Contexte(self.racine),
+                venvs,
+                lambda _q: next(reponses),
+                lambda _l: None,
+                lancer=lambda c: lances.append(c) or 0,
+            )
+        )
+        self.assertEqual(lances, [])
+        self.assertTrue(os.path.isdir(ancien))
+
+    def test_an_existing_replacement_only_asks_to_delete(self):
+        ancien, venvs = self.obsolete()
+        reponses = iter(["1", "o"])
+        lances = []
+        self.assertTrue(
+            h._remplacer_venvs_obsoletes(
+                h.Contexte(self.racine),
+                venvs,
+                lambda _q: next(reponses),
+                lambda _l: None,
+                lancer=lambda c: lances.append(c) or 0,
+            )
+        )
+        self.assertEqual(lances, [])
+        self.assertFalse(os.path.isdir(ancien))
+
 
 class TestRapport(unittest.TestCase):
     def test_a_crashing_check_fails_under_its_title(self):
@@ -899,6 +1050,50 @@ class TestRapport(unittest.TestCase):
 
         self.assertTrue(lignes[0].startswith(f"{t('Healthcheck')} — "))
         self.assertNotIn("🩺 🩺", lignes[0])
+
+    def test_failures_then_warnings_are_repeated_above_the_summary(self):
+        def verifier_conflits(ctx):
+            ctx.noter("git status")
+            return h.Resultat("C", h.ALERTE, "conflit", ["fichier.py"])
+
+        def verifier_disque(_ctx):
+            return h.Resultat("D", h.OK, "assez")
+
+        def verifier_odoo(_ctx):
+            return h.Resultat("O", h.ECHEC, "plantage", ["trace"])
+
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [
+                ("code", verifier_conflits),
+                ("environnement", verifier_disque),
+                ("environnement", verifier_odoo),
+            ],
+            sortie=lignes.append,
+        )
+        texte = "\n".join(lignes)
+        attention = texte.index(f"── ⚠️  {t('Attention')} ──")
+        resume = texte.index(f"── {t('Summary')} ──")
+        self.assertLess(attention, resume)
+        bloc = texte[attention:resume]
+        # Le détail est celui du rapport, commandes comprises, l'échec en
+        # premier ; une vérification qui va bien n'y figure pas.
+        self.assertLess(bloc.index("── O ──"), bloc.index("── C ──"))
+        self.assertIn("   $ git status", bloc)
+        self.assertIn("      fichier.py", bloc)
+        self.assertIn("      trace", bloc)
+        self.assertNotIn("── D ──", bloc)
+        self.assertEqual(texte.count("      fichier.py"), 2)
+
+    def test_no_attention_block_when_everything_is_fine(self):
+        lignes = []
+        h.lancer(
+            h.Contexte(tempfile.gettempdir()),
+            [("environnement", lambda _ctx: h.Resultat("D", h.OK, "assez"))],
+            sortie=lignes.append,
+        )
+        self.assertNotIn(t("Attention"), "\n".join(lignes))
 
 
 class TestParallele(unittest.TestCase):
@@ -953,6 +1148,179 @@ class TestParallele(unittest.TestCase):
         self.assertEqual(ctx.en_parallele(examiner, [0, 1, 2]), [0, 1, 2])
         self.assertEqual(
             ctx.commandes(), ["commande 0", "commande 1", "commande 2"]
+        )
+
+
+class TestHooks(DepotJetable):
+    """Des hooks git absents, inertes ou pointés ailleurs : la vérification
+    offre de les installer, la résolution les pose."""
+
+    def setUp(self):
+        super().setUp()
+        for hook in h.todo_etat.HOOKS_GIT:
+            ecrire(self.racine, f"script/git/hooks/{hook}", "#!/bin/sh\n")
+
+    def hooks_path(self):
+        return git(
+            self.racine, "config", "--get", "core.hooksPath", check=False
+        ).stdout.strip()
+
+    def test_missing_hooks_offer_their_installation(self):
+        resultat = h.verifier_hooks(self.ctx())
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual([r.cle for r in resultat.resolutions], [h.HOOKS_GIT])
+
+    def test_installed_hooks_offer_nothing(self):
+        for hook in h.todo_etat.HOOKS_GIT:
+            os.chmod(
+                os.path.join(self.racine, "script/git/hooks", hook), 0o755
+            )
+        git(self.racine, "config", "core.hooksPath", "script/git/hooks")
+        resultat = h.verifier_hooks(self.ctx())
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+
+    def test_the_resolution_sets_the_path_and_the_execution_bits(self):
+        lignes = []
+        resolution = h.verifier_hooks(self.ctx()).resolutions[0]
+        self.assertTrue(
+            h.executer_resolution(
+                self.ctx(), resolution, lambda _q: "", lignes.append
+            )
+        )
+        self.assertEqual(self.hooks_path(), "script/git/hooks")
+        for hook in h.todo_etat.HOOKS_GIT:
+            self.assertTrue(
+                os.access(
+                    os.path.join(self.racine, "script/git/hooks", hook),
+                    os.X_OK,
+                )
+            )
+        self.assertIn(
+            "   $ git -C . config core.hooksPath script/git/hooks", lignes
+        )
+        self.assertEqual(h.verifier_hooks(self.ctx()).statut, h.OK)
+
+    def test_another_hooks_path_is_replaced_only_on_a_yes(self):
+        git(self.racine, "config", "core.hooksPath", "ailleurs/hooks")
+        resolution = h.verifier_hooks(self.ctx()).resolutions[0]
+        self.assertFalse(
+            h.executer_resolution(self.ctx(), resolution, lambda _q: "", print)
+        )
+        self.assertEqual(self.hooks_path(), "ailleurs/hooks")
+        with mock.patch("builtins.print"):
+            self.assertTrue(
+                h.executer_resolution(
+                    self.ctx(), resolution, lambda _q: "o", print
+                )
+            )
+        self.assertEqual(self.hooks_path(), "script/git/hooks")
+
+
+class TestCommandesClaude(unittest.TestCase):
+    """Les commandes Claude manquantes ou périmées : offertes au
+    déploiement, sans jamais écrire dans le vrai ~/.claude."""
+
+    COMMANDES = {"commit": "gabarit_commit.md", "autre": "gabarit_autre.md"}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = os.path.join(tmp.name, "home")
+        os.makedirs(self.home)
+        env = mock.patch.dict(os.environ, {"HOME": self.home})
+        env.start()
+        self.addCleanup(env.stop)
+        sans_claude = mock.patch.object(h.shutil, "which", return_value=None)
+        sans_claude.start()
+        self.addCleanup(sans_claude.stop)
+        self.racine = os.path.join(tmp.name, "depot")
+        for gabarit in self.COMMANDES.values():
+            ecrire(self.racine, f"conf/{gabarit}", gabarit)
+
+    def ctx(self):
+        def etat(deploye, gabarit):
+            if not os.path.isfile(deploye):
+                return t("missing")
+            with open(deploye) as a, open(gabarit) as b:
+                return (
+                    t("up to date")
+                    if a.read() == b.read()
+                    else t("redeploy needed")
+                )
+
+        return h.Contexte(
+            self.racine,
+            etat_commande_claude=etat,
+            commandes_claude=self.COMMANDES,
+        )
+
+    def test_without_claude_code_the_check_is_skipped(self):
+        self.assertEqual(
+            h.verifier_commandes_claude(self.ctx()).statut, h.SAUTE
+        )
+
+    def test_claude_code_without_its_commands_offers_them_all(self):
+        os.makedirs(os.path.join(self.home, ".claude"))
+        resultat = h.verifier_commandes_claude(self.ctx())
+        self.assertEqual(resultat.statut, h.ALERTE)
+        (resolution,) = resultat.resolutions
+        self.assertEqual(resolution.cle, h.CLAUDE)
+        self.assertEqual(
+            sorted(c["commande"] for c in resolution.depots),
+            ["autre", "commit"],
+        )
+
+    def test_only_the_stale_command_is_offered(self):
+        commandes = os.path.join(self.home, ".claude", "commands")
+        ecrire(commandes, "commit.md", "gabarit_commit.md")
+        ecrire(commandes, "autre.md", "ancienne copie")
+        (resolution,) = h.verifier_commandes_claude(self.ctx()).resolutions
+        self.assertEqual(
+            [(c["commande"], c["etat"]) for c in resolution.depots],
+            [("autre", t("redeploy needed"))],
+        )
+
+    def test_every_command_up_to_date_offers_nothing(self):
+        commandes = os.path.join(self.home, ".claude", "commands")
+        for commande, gabarit in self.COMMANDES.items():
+            ecrire(commandes, f"{commande}.md", gabarit)
+        resultat = h.verifier_commandes_claude(self.ctx())
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+
+    def test_the_resolution_deploys_the_chosen_commands_only(self):
+        os.makedirs(os.path.join(self.home, ".claude"))
+        (resolution,) = h.verifier_commandes_claude(self.ctx()).resolutions
+        deployees = []
+
+        def deployer(commande, gabarit):
+            deployees.append((commande, gabarit))
+            return True
+
+        with mock.patch("builtins.print"):
+            self.assertFalse(
+                h.executer_resolution(
+                    self.ctx(),
+                    resolution,
+                    lambda _q: "0",
+                    print,
+                    deployer_commande_claude=deployer,
+                )
+            )
+            self.assertEqual(deployees, [])
+            self.assertTrue(
+                h.executer_resolution(
+                    self.ctx(),
+                    resolution,
+                    lambda _q: "a",
+                    print,
+                    deployer_commande_claude=deployer,
+                )
+            )
+        self.assertEqual(
+            sorted(deployees),
+            [("autre", "gabarit_autre.md"), ("commit", "gabarit_commit.md")],
         )
 
 
@@ -1021,8 +1389,8 @@ class TestMenu(unittest.TestCase):
                 )
             ]
 
-        # Juste après les vérifications seules.
-        entree = str(4 + len(h.VERIFICATIONS))
+        # Juste après l'entrée « Une seule vérification ».
+        entree = "5"
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
@@ -1038,6 +1406,26 @@ class TestMenu(unittest.TestCase):
         # La vérification repasse ; sans résolution, l'entrée disparaît.
         self.assertEqual(appels, [None, [manifeste]])
 
+    def test_one_check_lists_every_check_in_its_own_menu(self):
+        obj = self.TODO.__new__(self.TODO)
+        menus = []
+        with (
+            mock.patch.object(
+                self.TODO,
+                "fill_help_info",
+                side_effect=lambda choix: menus.append(choix) or "",
+            ),
+            mock.patch("script.todo.todo.click.prompt", side_effect=["0"]),
+            mock.patch("builtins.print"),
+        ):
+            self.assertIsNone(
+                obj._healthcheck_une_verification(list(h.VERIFICATIONS))
+            )
+        self.assertEqual(
+            [c["prompt_description"] for c in menus[0]],
+            [h.titre(v) for _s, v in h.VERIFICATIONS],
+        )
+
     def test_scopes_cycle_and_one_check_runs_alone(self):
         obj = self.TODO.__new__(self.TODO)
         appels = []
@@ -1045,7 +1433,22 @@ class TestMenu(unittest.TestCase):
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
                 "script.todo.todo.click.prompt",
-                side_effect=["2", "3", "1", "4", "2", "2", "1", "0"],
+                # 3 et 4 font tourner les portées ; 2 ouvre la liste des
+                # vérifications, 1 y choisit la première, 0 revient sans
+                # rien lancer.
+                side_effect=[
+                    "3",
+                    "4",
+                    "1",
+                    "2",
+                    "1",
+                    "2",
+                    "0",
+                    "3",
+                    "3",
+                    "1",
+                    "0",
+                ],
             ),
             mock.patch.object(
                 h,

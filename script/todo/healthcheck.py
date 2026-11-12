@@ -1312,9 +1312,27 @@ def verifier_hooks(ctx):
     if not ligne:
         return Resultat(nom, SAUTE, t("not a git checkout"))
     icone, _, texte = ligne.partition(" ")
+    if icone == todo_etat.OK:
+        return Resultat(nom, OK, texte.strip())
     return Resultat(
-        nom, OK if icone == todo_etat.OK else ALERTE, texte.strip()
+        nom,
+        ALERTE,
+        texte.strip(),
+        resolutions=[
+            Resolution(
+                HOOKS_GIT,
+                f"🪝 {t('Install the git hooks')}",
+                [
+                    t(
+                        "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does."
+                    )
+                ],
+            )
+        ],
     )
+
+
+HOOKS_GIT = "hooks_git"
 
 
 # ── Environnement ───────────────────────────────────────────────────────
@@ -1346,6 +1364,32 @@ def verifier_venv(ctx):
 MAJ_VENVS = "maj_venvs"
 
 
+def cles_du_catalogue(racine):
+    """Les clés de version (« odoo18.0_python3.12.16 ») du catalogue
+    conf/supported_version_erplibre.json, ou un ensemble vide s'il est
+    illisible : rien n'est alors déclaré obsolète."""
+    try:
+        with open(os.path.join(racine, todo_etat.CATALOGUE)) as fh:
+            return set(json.load(fh))
+    except (OSError, ValueError):
+        return set()
+
+
+def remplacant(version, cles):
+    """La clé du catalogue pour la même version d'Odoo que `version`, ou
+    None : « odoo18.0_python3.12.10 » donne « odoo18.0_python3.12.16 »."""
+    odoo = version.split("_python", 1)[0]
+
+    def python(cle):
+        return tuple(
+            int(n) if n.isdigit() else 0
+            for n in cle.split("_python", 1)[-1].split(".")
+        )
+
+    candidates = [c for c in cles if c.split("_python", 1)[0] == odoo]
+    return max(candidates, key=python) if candidates else None
+
+
 def _ecarts_venv(ctx, choix):
     """L'écart d'un venv (une entrée de `drift.venvs`) à ce qu'il doit
     porter : {"venv", "ecarts": [lignes], "info": [lignes], "erreur"}.
@@ -1353,7 +1397,15 @@ def _ecarts_venv(ctx, choix):
     racine pour la version active et contre son propre lock, depuis un
     dossier temporaire, pour une autre ; le venv de l'outillage par
     venv_requirements_drift.py. Rien n'est installé."""
-    rendu = {"venv": choix["venv"], "ecarts": [], "info": [], "erreur": None}
+    rendu = {
+        "venv": choix["venv"],
+        "ecarts": [],
+        "info": [],
+        "erreur": None,
+        "de_trop": [],
+        "obsolete": False,
+        "remplacant": None,
+    }
 
     def noter_et_lancer(commande, **options):
         ctx.noter(f"{ctx.relatif(commande[0])} {shlex.join(commande[1:])}")
@@ -1386,6 +1438,7 @@ def _ecarts_venv(ctx, choix):
             f" ({t('installed')} {e['installee']})"
             for e in etat["hors_bornes"]
         ]
+        rendu["de_trop"] = [tuple(paire) for paire in etat["de_trop"]]
         if etat["de_trop"]:
             rendu["info"].append(
                 f"{len(etat['de_trop'])}"
@@ -1394,6 +1447,18 @@ def _ecarts_venv(ctx, choix):
         return rendu
 
     version = choix["version"]
+    cles = cles_du_catalogue(ctx.racine)
+    if cles and version not in cles:
+        # Un venv bâti avec un Python que le catalogue ne nomme plus n'a
+        # pas de lock : il se remplace, il ne se compare pas.
+        rendu["obsolete"] = True
+        rendu["remplacant"] = remplacant(version, cles)
+        rendu["erreur"] = t("obsolete, not in the catalogue") + (
+            f" — {t('Odoo uses')} {rendu['remplacant']}"
+            if rendu["remplacant"]
+            else ""
+        )
+        return rendu
     c = drift.chemins(version)
     for fichier in (c["poetry"], c["lock"]):
         if not os.path.isfile(os.path.join(ctx.racine, fichier)):
@@ -1431,8 +1496,11 @@ def verifier_dependances_venvs(ctx):
     """Chaque venv du checkout face à ce qu'il doit porter : un venv
     d'Odoo face à son poetry.lock, le venv de l'outillage face à ses
     exigences. Un venv qui s'en écarte est offert à la résolution « Mettre
-    à jour les venvs ». Un paquet hors du lock, ou que rien ne demande, est
-    une information : la mise à jour ne le retire pas."""
+    à jour les venvs », qui ne retire rien. Un venv d'Odoo dont la clé n'est
+    plus au catalogue est obsolète : sans lock, il est offert au
+    remplacement. Un paquet de l'outillage que rien ne demande est offert au
+    retrait ; un paquet hors du lock d'un venv d'Odoo reste une
+    information."""
     nom = titre(verifier_dependances_venvs)
     active = todo_etat._lire(os.path.join(ctx.racine, ".erplibre-version"))
     candidats = drift.venvs(ctx.racine, active=active)
@@ -1441,11 +1509,17 @@ def verifier_dependances_venvs(ctx):
     rendus = ctx.en_parallele(
         lambda c: _ecarts_venv(ctx, c), candidats, max_workers=4
     )
-    details, a_jour = [], []
+    details, a_jour, obsoletes, de_trop = [], [], [], []
     for choix, rendu in zip(candidats, rendus):
         if rendu["erreur"]:
             details.append(f"{choix['venv']} : ❌ {rendu['erreur']}")
+            if rendu["obsolete"]:
+                obsoletes.append(dict(choix, remplacant=rendu["remplacant"]))
             continue
+        de_trop += [
+            {"venv": choix["venv"], "paquet": paquet, "version": numero}
+            for paquet, numero in rendu["de_trop"]
+        ]
         if rendu["ecarts"]:
             details.append(
                 f"{choix['venv']} : {len(rendu['ecarts'])}"
@@ -1456,10 +1530,12 @@ def verifier_dependances_venvs(ctx):
             a_jour.append(choix)
         for info in rendu["info"]:
             details.append(f"{choix['venv']} : ℹ️  {info}")
-    erreurs = sum(1 for r in rendus if r["erreur"])
+    erreurs = sum(1 for r in rendus if r["erreur"]) - len(obsoletes)
     resume = f"{len(candidats)} venvs"
     if a_jour:
         resume += f" · {len(a_jour)} {t('to update')}"
+    if obsoletes:
+        resume += f" · {len(obsoletes)} {t('obsolete')}"
     if erreurs:
         resume += f" · {erreurs} {t('unreadable')}"
     resolutions = []
@@ -1477,8 +1553,51 @@ def verifier_dependances_venvs(ctx):
                 a_jour,
             )
         )
-    statut = ALERTE if (a_jour or erreurs) else OK
+    if obsoletes:
+        resolutions.append(
+            Resolution(
+                VENVS_OBSOLETES,
+                f"🐍 {t('Replace the obsolete Odoo venvs:')} {len(obsoletes)}",
+                [
+                    t(
+                        "A venv built with a Python the catalogue no longer names has no lock. The catalogue's version is installed if its venv is missing, which makes it the active one, then the obsolete venv is deleted, each step on a yes."
+                    )
+                ]
+                + [
+                    f"   {c['venv']} → .venv.{c['remplacant']}"
+                    if c["remplacant"]
+                    else f"   {c['venv']} → {t('no Odoo version left in the catalogue')}"
+                    for c in obsoletes
+                ],
+                obsoletes,
+            )
+        )
+    if de_trop:
+        resolutions.append(
+            Resolution(
+                PAQUETS_DE_TROP,
+                f"🧹 {t('Remove the packages nothing requires:')} {len(de_trop)}",
+                [
+                    t(
+                        "Installed in the tooling venv, required by no requirement nor by their dependencies: an installation never removes them. The chosen ones are uninstalled with pip."
+                    ),
+                    "   "
+                    + ", ".join(
+                        f"{p['paquet']} {p['version']}" for p in de_trop
+                    ),
+                ],
+                de_trop,
+            )
+        )
+    if a_jour or erreurs or obsoletes:
+        statut = ALERTE
+    else:
+        statut = INFO if de_trop else OK
     return Resultat(nom, statut, resume, details, resolutions=resolutions)
+
+
+VENVS_OBSOLETES = "venvs_obsoletes"
+PAQUETS_DE_TROP = "paquets_de_trop"
 
 
 def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
@@ -1575,35 +1694,74 @@ def verifier_odoo(ctx):
     return Resultat(nom, INFO, t("not running"))
 
 
+def claude_code_present():
+    """Vrai si Claude Code est installé pour ce compte : son exécutable sur
+    le PATH, ou son dossier ~/.claude, que sa première ouverture crée."""
+    return bool(shutil.which("claude")) or os.path.isdir(
+        os.path.expanduser("~/.claude")
+    )
+
+
 def verifier_commandes_claude(ctx):
-    """Les commandes Claude déployées suivent-elles leur gabarit ?"""
+    """Les commandes Claude déployées suivent-elles leur gabarit ?
+
+    Une commande manquante ou périmée est offerte à la résolution « Déployer
+    les commandes Claude ». Quand Claude Code est installé sans
+    ~/.claude/commands, chaque commande est manquante ; sans Claude Code, la
+    vérification est sautée."""
     nom = titre(verifier_commandes_claude)
     if not ctx.etat_commande_claude or not ctx.commandes_claude:
         return Resultat(nom, SAUTE, t("not available"))
     dossier = os.path.expanduser("~/.claude/commands")
-    if not os.path.isdir(dossier):
+    if not os.path.isdir(dossier) and not claude_code_present():
         return Resultat(nom, SAUTE, t("Claude Code is not set up"))
     a_jour = t("up to date")
-    details, fautives = [], 0
+    hors_depot = t("not in the repository")
+    details, a_deployer, fautives = [], [], 0
+    ctx.noter(
+        f"diff ~/.claude/commands/<{t('name')}>.md conf/<{t('template')}>"
+    )
     for commande, gabarit in sorted(ctx.commandes_claude.items()):
         deploye = os.path.join(dossier, f"{commande}.md")
         source = os.path.join(ctx.racine, "conf", gabarit)
-        ctx.noter(
-            f"diff ~/.claude/commands/<{t('name')}>.md conf/<{t('template')}>"
-        )
         etat = ctx.etat_commande_claude(deploye, source)
-        if etat != a_jour:
-            fautives += 1
-            details.append(f"/{commande} : {etat}")
-    if fautives:
-        details.append(t("Redeploy: Execute › GPT code › Claude configs"))
+        if etat == a_jour:
+            continue
+        fautives += 1
+        details.append(f"/{commande} : {etat}")
+        if etat != hors_depot:
+            a_deployer.append(
+                {"commande": commande, "gabarit": gabarit, "etat": etat}
+            )
+    if not fautives:
         return Resultat(
-            nom,
-            ALERTE,
-            f"{fautives} / {len(ctx.commandes_claude)}",
-            details,
+            nom, OK, f"{len(ctx.commandes_claude)} {t('up to date')}"
         )
-    return Resultat(nom, OK, f"{len(ctx.commandes_claude)} {t('up to date')}")
+    resolutions = []
+    if a_deployer:
+        resolutions.append(
+            Resolution(
+                CLAUDE,
+                f"🤖 {t('Deploy the Claude commands:')} {len(a_deployer)}",
+                [
+                    t(
+                        "Each chosen command is copied from its template in conf/ to ~/.claude/commands: a stale copy keeps its git identity, a missing /commit asks for one."
+                    )
+                ]
+                + [f"   /{c['commande']} — {c['etat']}" for c in a_deployer],
+                a_deployer,
+            )
+        )
+    return Resultat(
+        nom,
+        ALERTE,
+        f"{fautives} / {len(ctx.commandes_claude)}",
+        details,
+        resolutions=resolutions,
+    )
+
+
+CLAUDE = "commandes_claude"
 
 
 def _poids(octets):
@@ -1732,6 +1890,24 @@ def rendre(resultat):
     return "\n".join(lignes)
 
 
+def rendre_attention(resultats):
+    """Le bloc « Attention », juste avant le sommaire : le bloc complet de
+    chaque vérification en échec, puis de chaque avertissement, dans
+    l'ordre du rapport. Le détail est répété exprès : il se lit au-dessus
+    du sommaire sans remonter un long rapport. "" quand tout va."""
+    retenus = [
+        r
+        for statut in (ECHEC, ALERTE)
+        for r in resultats
+        if r.statut == statut
+    ]
+    if not retenus:
+        return ""
+    lignes = [f"── ⚠️  {t('Attention')} ──"]
+    lignes += [rendre(r) for r in retenus]
+    return "\n".join(lignes)
+
+
 def sommaire(resultats, duree):
     """Le sommaire : une ligne par vérification, puis le décompte."""
     largeur = max((len(r.titre) for r in resultats), default=0)
@@ -1790,6 +1966,10 @@ def lancer(ctx, verifications=None, sortie=print):
             resultat = futur.result()
             resultats.append(resultat)
             sortie(rendre(resultat))
+    attention = rendre_attention(resultats)
+    if attention:
+        sortie("")
+        sortie(attention)
     sortie("")
     sortie(sommaire(resultats, time.monotonic() - debut))
     resolutions = [r for x in resultats for r in x.resolutions]
@@ -1854,13 +2034,32 @@ def _afficher_commande(sortie):
 
 
 def executer_resolution(
-    ctx, resolution, demander=None, sortie=print, mettre_a_jour_venv=None
+    ctx,
+    resolution,
+    demander=None,
+    sortie=print,
+    mettre_a_jour_venv=None,
+    deployer_commande_claude=None,
 ):
     """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
     True si quelque chose a changé. `demander` vaut `input` par défaut, lu
     à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
-    TODO, qui sait installer un lock et faire le rapport."""
+    TODO, qui sait installer un lock et faire le rapport.
+    `deployer_commande_claude(commande, gabarit)` déploie une commande
+    Claude : celle du TODO, qui sait garder ou demander l'identité git."""
     demander = demander or input
+    if resolution.cle == HOOKS_GIT:
+        return _installer_hooks(ctx, demander, sortie)
+    if resolution.cle == CLAUDE:
+        return _deployer_commandes_claude(
+            resolution.depots, demander, sortie, deployer_commande_claude
+        )
+    if resolution.cle == VENVS_OBSOLETES:
+        return _remplacer_venvs_obsoletes(
+            ctx, resolution.depots, demander, sortie
+        )
+    if resolution.cle == PAQUETS_DE_TROP:
+        return _retirer_paquets(ctx, resolution.depots, demander, sortie)
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
@@ -1872,6 +2071,165 @@ def executer_resolution(
     if resolution.cle == freeze_resolution.MAJ_GEL:
         return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
     return False
+
+
+def _oui(demander, question):
+    """Vrai sur un oui explicite à `question` ; Entrée et Ctrl+D valent
+    non."""
+    try:
+        reponse = demander(question)
+    except EOFError:
+        return False
+    return reponse.strip().lower() in ("y", "yes", "o", "oui")
+
+
+def _installer_hooks(ctx, demander, sortie):
+    """Pose les hooks git par todo_etat.installer_hooks_git. Une autre
+    valeur de core.hooksPath n'est remplacée que sur un oui."""
+    actuel = todo_etat._git(ctx.racine, "config", "--get", "core.hooksPath")
+    if actuel and os.path.normpath(actuel) != todo_etat.CHEMIN_HOOKS_GIT:
+        sortie(f"{t('Another hooks path is already set: ')}{actuel}")
+        if not _oui(demander, f"💬 {t('Replace it? (y/N): ')}"):
+            sortie(t("Nothing changed."))
+            return False
+    reussi, lignes = todo_etat.installer_hooks_git(
+        ctx.racine,
+        noter=lambda commande: sortie(
+            f"   $ {commande.replace(ctx.racine, '.')}"
+        ),
+    )
+    for ligne in lignes:
+        sortie(f"   {ligne}")
+    sortie(
+        f"✅ {t('Git hooks installed!')}"
+        if reussi
+        else f"❌ {t('Git hooks not installed.')}"
+    )
+    return reussi
+
+
+def _deployer_commandes_claude(commandes, demander, sortie, deployer):
+    sortie(t("Claude commands to deploy:"))
+    choisies = choisir_depots(
+        commandes,
+        demander,
+        sortie,
+        decrire=lambda c: f"/{c['commande']} — {c['etat']}",
+        tous=t("All commands"),
+    )
+    if not choisies or deployer is None:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for commande in choisies:
+        sortie(
+            f"   $ cp conf/{commande['gabarit']}"
+            f" ~/.claude/commands/{commande['commande']}.md"
+        )
+        change = (
+            bool(deployer(commande["commande"], commande["gabarit"])) or change
+        )
+    return change
+
+
+def _lancer_dans_le_terminal(ctx):
+    """`lancer(commande)` par défaut des résolutions : la commande tourne
+    depuis la racine, dans le terminal, et rend son code de sortie."""
+    return lambda commande: subprocess.run(commande, cwd=ctx.racine).returncode
+
+
+def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
+    """Installe la version du catalogue qui remplace chaque venv choisi si
+    son venv manque, puis supprime le venv obsolète : chaque étape sur un
+    oui. L'installation rend sa version active ; une installation ratée
+    garde le venv obsolète."""
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(t("Obsolete Odoo venvs:"))
+    choisis = choisir_depots(
+        venvs,
+        demander,
+        sortie,
+        decrire=lambda c: f"{c['venv']} → {c['remplacant'] or '—'}",
+        tous=t("All venvs"),
+    )
+    if not choisis:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for choix in choisis:
+        sortie(f"── {choix['venv']} ──")
+        cle = choix["remplacant"]
+        if cle and not os.path.isdir(os.path.join(ctx.racine, f".venv.{cle}")):
+            commande = [
+                "./script/version/update_env_version.py",
+                "--erplibre_version",
+                cle,
+                "--install_dev",
+            ]
+            question = (
+                t(
+                    "Install %s? It becomes the active version, and takes a while (y/N): "
+                )
+                % cle
+            )
+            if not _oui(demander, f"💬 {question}"):
+                sortie(t("Nothing changed."))
+                continue
+            sortie(f"   $ {shlex.join(commande)}")
+            code = lancer(commande)
+            if code:
+                sortie(
+                    f"❌ {shlex.join(commande)} : {t('failure, code')} {code}"
+                )
+                continue
+            change = True
+        chemin = os.path.join(ctx.racine, choix["venv"])
+        question = t("Delete the obsolete venv %s? (y/N): ") % choix["venv"]
+        if not _oui(demander, f"💬 {question}"):
+            continue
+        sortie(f"   $ rm -rf {choix['venv']}")
+        shutil.rmtree(chemin, ignore_errors=True)
+        if os.path.isdir(chemin):
+            sortie(f"❌ {t('Could not delete')} {choix['venv']}")
+            continue
+        sortie(f"✅ {t('Deleted:')} {choix['venv']}")
+        change = True
+    return change
+
+
+def _retirer_paquets(ctx, paquets, demander, sortie, lancer=None):
+    """Désinstalle de leur venv les paquets choisis, d'un seul pip."""
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(t("Packages nothing requires:"))
+    choisis = choisir_depots(
+        paquets,
+        demander,
+        sortie,
+        decrire=lambda p: f"{p['paquet']} {p['version']} — {p['venv']}",
+        tous=t("All packages"),
+    )
+    if not choisis:
+        sortie(t("Nothing changed."))
+        return False
+    change = False
+    for venv in dict.fromkeys(p["venv"] for p in choisis):
+        noms = [p["paquet"] for p in choisis if p["venv"] == venv]
+        commande = [
+            os.path.join(venv, "bin", "python"),
+            "-m",
+            "pip",
+            "uninstall",
+            "-y",
+            *noms,
+        ]
+        sortie(f"   $ {shlex.join(commande)}")
+        code = lancer(commande)
+        if code:
+            sortie(f"❌ pip uninstall : {t('failure, code')} {code}")
+        else:
+            sortie(f"✅ {t('Uninstalled:')} {', '.join(noms)}")
+            change = True
+    return change
 
 
 def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):

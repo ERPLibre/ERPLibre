@@ -61,7 +61,9 @@ class TestBilan(unittest.TestCase):
     def test_hooks_missing_warns_and_points_to_the_menu(self):
         ligne = todo_etat.ligne_hooks_git(self.racine)
         self.assertTrue(ligne.startswith(todo_etat.ALERTE))
-        self.assertIn(t("Git hooks missing: Execute › Git › Settings"), ligne)
+        self.assertIn(
+            t("Git hooks missing: Execute › Git repository › Settings"), ligne
+        )
 
     def test_hooks_installed_get_the_check_mark(self):
         git(self.racine, "config", "core.hooksPath", "script/git/hooks")
@@ -83,6 +85,31 @@ class TestBilan(unittest.TestCase):
         ligne = todo_etat.ligne_hooks_git(self.racine)
         self.assertTrue(ligne.startswith(todo_etat.ALERTE))
         self.assertTrue(ligne.endswith("ailleurs/hooks"))
+
+    def test_installing_sets_the_path_and_restores_an_execution_bit(self):
+        os.chmod(os.path.join(self.hooks, "commit-msg"), 0o644)
+        notees = []
+        reussi, lignes = todo_etat.installer_hooks_git(
+            self.racine, noter=notees.append
+        )
+        self.assertTrue(reussi)
+        self.assertEqual(
+            todo_etat.ligne_hooks_git(self.racine),
+            f"{todo_etat.OK} {t('Git hooks installed')}",
+        )
+        self.assertEqual(notees[0], "chmod +x script/git/hooks/commit-msg")
+        self.assertTrue(
+            notees[-1].endswith("config core.hooksPath script/git/hooks")
+        )
+        self.assertEqual(lignes, [f"{t('Execution bit added: ')}commit-msg"])
+
+    def test_installing_without_the_hooks_directory_fails(self):
+        shutil.rmtree(self.hooks)
+        reussi, lignes = todo_etat.installer_hooks_git(self.racine)
+        self.assertFalse(reussi)
+        self.assertTrue(
+            lignes[-1].startswith(t("Hooks directory is missing: "))
+        )
 
     def test_outside_a_checkout_the_hook_line_is_omitted(self):
         dehors = tempfile.mkdtemp(prefix="todo_etat_dehors_")

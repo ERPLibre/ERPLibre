@@ -512,6 +512,57 @@ class TestSetupClaudeCommit(unittest.TestCase):
         mock_makedirs.assert_called_once()
 
 
+class TestDeployerCommandeClaude(unittest.TestCase):
+    """Le déploiement que la résolution du Healthcheck délègue au TODO,
+    dans un HOME jetable : jamais le vrai ~/.claude."""
+
+    GABARIT = "template_claude_commands_commit.md"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = patch.dict(os.environ, {"HOME": tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
+        self.dest = os.path.join(tmp.name, ".claude", "commands", "commit.md")
+
+    def test_a_missing_commit_asks_for_the_identity(self):
+        todo = TODO()
+        with (
+            patch(
+                "builtins.input",
+                side_effect=["Nom Essai", "essai@exemple.invalid"],
+            ),
+            patch("builtins.print"),
+        ):
+            self.assertTrue(
+                todo.deployer_commande_claude("commit", self.GABARIT)
+            )
+        with open(self.dest) as fh:
+            texte = fh.read()
+        self.assertIn('user.name="Nom Essai"', texte)
+        self.assertIn('user.email="essai@exemple.invalid"', texte)
+
+    def test_an_existing_copy_keeps_its_identity_without_a_question(self):
+        os.makedirs(os.path.dirname(self.dest))
+        with open(self.dest, "w") as fh:
+            fh.write(
+                '-c user.name="Nom Essai" -c user.email="essai@exemple.invalid"\nancien\n'
+            )
+        todo = TODO()
+        with (
+            patch("builtins.input", side_effect=AssertionError("question")),
+            patch("builtins.print"),
+        ):
+            self.assertTrue(
+                todo.deployer_commande_claude("commit", self.GABARIT)
+            )
+        with open(self.dest) as fh:
+            texte = fh.read()
+        self.assertNotIn("ancien", texte)
+        self.assertIn('user.email="essai@exemple.invalid"', texte)
+
+
 class TestClaudeCommandTemplates(unittest.TestCase):
     """Chaque commande proposée par le menu doit avoir son gabarit.
 
@@ -1583,9 +1634,10 @@ class TestModeInstallation(unittest.TestCase):
         import script.todo.todo as module
 
         suite = iter(reponses)
-        with patch.object(
-            module, "gel_des_sources", return_value=etat
-        ) as gel, patch("builtins.input", lambda _: next(suite)):
+        with (
+            patch.object(module, "gel_des_sources", return_value=etat) as gel,
+            patch("builtins.input", lambda _: next(suite)),
+        ):
             mode = self.todo._choisir_mode_installation("X.0")
         gel.assert_called_once_with(odoo_version="X.0")
         return mode
@@ -1620,9 +1672,10 @@ class TestModeInstallation(unittest.TestCase):
             invites.append(texte)
             return "1"
 
-        with patch.object(
-            module, "gel_des_sources", return_value=(5, 9)
-        ), patch("builtins.input", saisir):
+        with (
+            patch.object(module, "gel_des_sources", return_value=(5, 9)),
+            patch("builtins.input", saisir),
+        ):
             self.todo._choisir_mode_installation("X.0")
         self.assertIn(f"5/9 {todo_i18n.t('projects frozen')}", invites[0])
 

@@ -144,6 +144,7 @@ if __name__ == "__main__":
 from script.config import config_file
 from script.execute import execute
 from script.todo import (
+    claude_reglages,
     dev_tools,
     healthcheck,
     install_non_interactif,
@@ -1251,6 +1252,8 @@ class TODO(
         "_prompt_git_server_actions": "Actions",
         "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
+        "_claude_reglages_depot": "Repository settings",
+        "_healthcheck_une_verification": "One check",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
@@ -1429,10 +1432,12 @@ class TODO(
         ERPLibre seul — et chaque entrée de portée passe à la suivante. Elles
         valent pour la durée du menu.
 
-        Les résolutions qu'une vérification propose deviennent des entrées
-        de la section « Résolution », sous les vérifications seules. Chaque
-        vérification garde les siennes jusqu'à sa prochaine passe ; une
-        résolution lancée repasse sa vérification.
+        « Une seule vérification » ouvre la liste des vérifications ; celle
+        qu'on choisit tourne seule, puis le menu revient. Les résolutions
+        qu'une vérification propose deviennent des entrées de la section
+        « Résolution », juste après. Chaque vérification garde les siennes
+        jusqu'à sa prochaine passe ; une résolution lancée repasse sa
+        vérification.
         """
         portee_fichiers = 0
         portee_depots = 0
@@ -1455,6 +1460,7 @@ class TODO(
             )
             choices = [
                 {"prompt_description": t("Run every check")},
+                {"prompt_description": f"🔎 {t('One check')}"},
                 {"section": t("Scope")},
                 {
                     "prompt_description": (
@@ -1468,14 +1474,9 @@ class TODO(
                         f"{t(healthcheck.LIBELLES_DEPOTS[ctx.portee_depots])}"
                     )
                 },
-                {"section": t("One check")},
             ]
             seules = list(healthcheck.VERIFICATIONS)
-            for _section, verification in seules:
-                choices.append(
-                    {"prompt_description": healthcheck.titre(verification)}
-                )
-            premiere_resolution = 4 + len(seules)
+            premiere_resolution = 5
             # Dans l'ordre des vérifications qui les ont proposées.
             offertes = [
                 (verification, r)
@@ -1497,15 +1498,17 @@ class TODO(
             elif numero == 1:
                 retenir(healthcheck.lancer(ctx))
             elif numero == 2:
+                choisie = self._healthcheck_une_verification(seules)
+                if choisie:
+                    retenir(healthcheck.lancer(ctx, [choisie]))
+            elif numero == 3:
                 portee_fichiers = (portee_fichiers + 1) % len(
                     healthcheck.PORTEES_FICHIERS
                 )
-            elif numero == 3:
+            elif numero == 4:
                 portee_depots = (portee_depots + 1) % len(
                     healthcheck.PORTEES_DEPOTS
                 )
-            elif 4 <= numero < 4 + len(seules):
-                retenir(healthcheck.lancer(ctx, [seules[numero - 4]]))
             elif (
                 premiere_resolution
                 <= numero
@@ -1515,7 +1518,10 @@ class TODO(
                     numero - premiere_resolution
                 ]
                 healthcheck.executer_resolution(
-                    ctx, resolution, mettre_a_jour_venv=self.mettre_a_jour_venv
+                    ctx,
+                    resolution,
+                    mettre_a_jour_venv=self.mettre_a_jour_venv,
+                    deployer_commande_claude=self.deployer_commande_claude,
                 )
                 print()
                 # La vérification repasse : ses résolutions suivent l'état.
@@ -1534,6 +1540,27 @@ class TODO(
                 )
             else:
                 print(t("Command not found !"))
+
+    def _healthcheck_une_verification(self, verifications):
+        """Le sous-menu des vérifications du bilan. Rend le couple (section,
+        vérification) choisi, ou None pour revenir sans rien lancer."""
+        print(f"🔎 {t('One check')}")
+        choices = [
+            {"prompt_description": healthcheck.titre(verification)}
+            for _section, verification in verifications
+        ]
+        while True:
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            try:
+                numero = int(status)
+            except ValueError:
+                numero = -1
+            if numero == 0:
+                return None
+            if 1 <= numero <= len(verifications):
+                return verifications[numero - 1]
+            print(t("Command not found !"))
 
     def prompt_configuration(self):
         """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).
@@ -3823,12 +3850,9 @@ class TODO(
             print(f"{t('Error adding remote: ')}{e}")
 
     def _git_install_hooks(self):
-        """Pointer core.hooksPath sur les hooks du dépôt.
-
-        Le bit d'exécution fait partie de l'installation : sans lui git
-        ignore le hook sans rien dire, et le garde-fou du message de commit
-        passe inaperçu.
-        """
+        """Pointer core.hooksPath sur les hooks du dépôt, par
+        todo_etat.installer_hooks_git, que le Healthcheck partage. Une autre
+        valeur déjà posée n'est remplacée que sur un oui."""
         racine = self._claude_context_root()
         absolu = os.path.join(racine, self._GIT_HOOKS_PATH)
         if not os.path.isdir(absolu):
@@ -3840,26 +3864,13 @@ class TODO(
             if not self._is_yes(input(t("Replace it? (y/Y): "))):
                 print(t("Nothing to do."))
                 return
-        for hook in self._GIT_HOOKS:
-            chemin = os.path.join(absolu, hook)
-            if os.path.isfile(chemin) and not os.access(chemin, os.X_OK):
-                os.chmod(chemin, os.stat(chemin).st_mode | 0o111)
-                print(f"{t('Execution bit added: ')}{hook}")
-        # « -C racine » et non le cwd : lancé depuis un dépôt imbriqué
-        # (odoo18.0/addons/…), git écrirait core.hooksPath là-bas et la
-        # racine resterait sans garde-fou, sans le moindre message.
-        cmd = (
-            f"git -C {shlex.quote(racine)} config"
-            f" core.hooksPath {self._GIT_HOOKS_PATH}"
+        reussi, lignes = todo_etat.installer_hooks_git(
+            racine,
+            noter=lambda commande: print(f"{t('Will execute:')} {commande}"),
         )
-        print(f"{t('Will execute:')} {cmd}")
-        # exec_command_live RETOURNE le code de sortie, il ne lève rien : sans
-        # ce test, un « fatal: not in a git directory » annonçait quand même
-        # « Hooks git installés! ». Le rapport qui suit ne rattrape pas, il
-        # relit le bit d'exécution et non core.hooksPath.
-        status = self.execute.exec_command_live(cmd, source_erplibre=False)
-        if status:
-            print(f"{t('Error installing hooks: ')}{status}")
+        for ligne in lignes:
+            print(ligne)
+        if not reussi:
             return
         print(t("Git hooks installed!"))
         for hook in self._GIT_HOOKS:
@@ -4253,6 +4264,11 @@ class TODO(
                 )
             },
             {"prompt_description": t("Show installed custom commands")},
+            {
+                "prompt_description": t(
+                    "⚙️ Repository settings: ultracode and session message"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -4291,8 +4307,93 @@ class TODO(
                 )
             elif status == "5":
                 self._list_claude_commands()
+            elif status == "6":
+                self._claude_reglages_depot()
             else:
                 print(t("Command not found !"))
+
+    def _claude_reglages_depot(self):
+        """Ultracode et le message de session dans .claude/settings.json,
+        le fichier versionné du dépôt : chaque bascule montre la clé qui
+        change et demande un oui avant d'écrire."""
+        racine = self._claude_context_root()
+        while True:
+            try:
+                reglages = claude_reglages.lire(racine)
+            except ValueError as e:
+                print(f"❌ {e}")
+                return
+            ultracode = claude_reglages.ultracode_actif(reglages)
+            hook = claude_reglages.hook_installe(reglages)
+            print(f"⚙️ {claude_reglages.FICHIER}")
+            print(
+                f"   ultracode : {t('on') if ultracode else t('off')}"
+                f" · {t('session message:')}"
+                f" {t('installed') if hook else t('not installed')}"
+            )
+            choices = [
+                {
+                    "prompt_description": (
+                        t("Turn ultracode off by default")
+                        if ultracode
+                        else t("Turn ultracode on by default")
+                    )
+                },
+                {
+                    "prompt_description": (
+                        t("Remove the session message")
+                        if hook
+                        else t("Install the session message")
+                    )
+                },
+                {"prompt_description": t("Preview the session message")},
+            ]
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                neuf = claude_reglages.avec_ultracode(reglages, not ultracode)
+            elif status == "2":
+                neuf = claude_reglages.avec_hook(reglages, not hook)
+            elif status == "3":
+                commande = ["python3", "script/claude/session_start.py"]
+                print(f"{t('Will execute:')} {shlex.join(commande)}")
+                try:
+                    fait = subprocess.run(
+                        commande,
+                        cwd=racine,
+                        stdin=subprocess.DEVNULL,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    print(json.loads(fait.stdout)["systemMessage"])
+                except (
+                    OSError,
+                    subprocess.SubprocessError,
+                    ValueError,
+                    KeyError,
+                ):
+                    print(f"❌ {t('The session message could not be built.')}")
+                print()
+                continue
+            else:
+                print(t("Command not found !"))
+                continue
+            print(f"{t('Will write')} {claude_reglages.FICHIER} :")
+            print(json.dumps(neuf, indent=2, ensure_ascii=False))
+            print(
+                t(
+                    "This file is versioned: the change applies to every clone once committed."
+                )
+            )
+            if self._is_yes(input(t("Write it? (y/Y): "))):
+                claude_reglages.ecrire(racine, neuf)
+                print(t("File written."))
+            else:
+                print(t("Nothing to do."))
+            print()
 
     # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
     # chacune est la copie. La liste et l'écran de contexte en dérivent l'état
@@ -4383,6 +4484,22 @@ class TODO(
             return False
         print(f"{t('File created successfully: ')}{dest_file}")
         return True
+
+    def deployer_commande_claude(self, commande, gabarit):
+        """Déploie la commande `commande` depuis `gabarit`, pour la
+        résolution du Healthcheck qui l'a fait choisir. Une copie présente
+        est réécrite sans question, son identité git gardée ; une copie
+        absente est posée, /commit demandant le nom et le courriel. Rend
+        True si le fichier est écrit."""
+        dest = os.path.join(
+            os.path.expanduser(self._CLAUDE_COMMANDS_DIR), f"{commande}.md"
+        )
+        if os.path.isfile(dest):
+            return self._redeploy_claude_command(commande, gabarit)
+        self._setup_claude_command(
+            commande, gabarit, personalize=commande == "commit"
+        )
+        return os.path.isfile(dest)
 
     def _list_claude_commands(self):
         """Les commandes `/…` : installées ou non, à jour ou à redéployer.
