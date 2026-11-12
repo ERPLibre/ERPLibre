@@ -6,10 +6,17 @@
 
 Ici on DEMANDE (quels dépôts, faut-il `addons/addons`) et on affiche ; la
 comparaison elle-même vit dans `script/git/git_module_diff.py`, qui se lance
-aussi seul en ligne de commande. Rien n'y écrit, rien n'y va sur le réseau.
+aussi seul en ligne de commande. La section Mise à jour n'écrit rien et ne
+va pas sur le réseau.
+
+La section Statistique lance `script/statistic/show_evolution_module.py`,
+qui CLONE l'amont de chaque dépôt des manifestes sous
+.venv.erplibre/stat_repo : réseau, gigaoctets et durée, d'où la
+confirmation qui la précède.
 """
 
 import os
+import shlex
 import sys
 
 import click
@@ -29,6 +36,11 @@ from script.todo.todo_i18n import t  # noqa: E402
 
 RACINE = new_path
 
+# La fenêtre des cibles Makefile stat_module_evolution_per_year : une
+# année de départ et le nombre d'années comptées après elle.
+STAT_DEPUIS = "2016-01-01"
+STAT_ANNEES = "7"
+
 
 class ModuleMenuMixin:
     def prompt_execute_module_analysis(self):
@@ -45,6 +57,17 @@ class ModuleMenuMixin:
                     "🔁 Modules a freeze comparison changed (old → new)"
                 )
             },
+            {"section": t("Statistic")},
+            {
+                "prompt_description": t(
+                    "📈 Module evolution per year, every repository"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "📈 Module evolution per year, OCA repositories"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -56,8 +79,38 @@ class ModuleMenuMixin:
                 self._module_analysis_diff(git_module_diff.MODE_BRANCHE)
             elif status == "2":
                 self._module_analysis_diff(git_module_diff.MODE_GEL)
+            elif status == "3":
+                self._module_statistique()
+            elif status == "4":
+                self._module_statistique(filtre="/OCA/")
             else:
                 print(t("Command not found !"))
+
+    def _module_statistique(self, filtre=""):
+        """L'évolution du nombre de modules par année depuis 2016, sur les
+        dépôts des manifestes, ceux dont l'URL contient `filtre` s'il est
+        donné. Rien ne se lance sans confirmation : la statistique clone
+        chaque dépôt amont. Rend le statut de la commande, ou None."""
+        commande = [
+            ".venv.erplibre/bin/python",
+            "script/statistic/show_evolution_module.py",
+            "--before_date",
+            STAT_DEPUIS,
+            "--more_year",
+            STAT_ANNEES,
+        ]
+        if filtre:
+            commande += ["--filter", filtre]
+        print(
+            f"📈 {t('Clones the upstream of every repository of the manifests into')}"
+            f" .venv.erplibre/stat_repo — {t('network, several GB, long the first time.')}"
+        )
+        print(f"  {t('Will execute:')} {shlex.join(commande)}")
+        if not click.confirm(f"  {t('Continue?')}", default=False):
+            return None
+        return self.execute.exec_command_live(
+            shlex.join(commande), source_erplibre=False
+        )
 
     def _module_analysis_choisir(self):
         """(gauche, droite) de la comparaison de gels qui désigne les

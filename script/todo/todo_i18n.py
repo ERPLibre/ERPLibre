@@ -116,6 +116,30 @@ TRANSLATIONS = {
         "fr": "Analyser les modules Odoo du checkout",
         "en": "Analyse the Odoo modules of the checkout",
     },
+    "Statistic": {
+        "fr": "Statistique",
+        "en": "Statistic",
+    },
+    "📈 Module evolution per year, every repository": {
+        "fr": "📈 Évolution des modules par année, tous les dépôts",
+        "en": "📈 Module evolution per year, every repository",
+    },
+    "📈 Module evolution per year, OCA repositories": {
+        "fr": "📈 Évolution des modules par année, dépôts OCA",
+        "en": "📈 Module evolution per year, OCA repositories",
+    },
+    "Clones the upstream of every repository of the manifests into": {
+        "fr": "Clone l'amont de chaque dépôt des manifestes dans",
+        "en": "Clones the upstream of every repository of the manifests into",
+    },
+    "network, several GB, long the first time.": {
+        "fr": "réseau, plusieurs Go, long la première fois.",
+        "en": "network, several GB, long the first time.",
+    },
+    "Continue?": {
+        "fr": "Continuer ?",
+        "en": "Continue?",
+    },
     "🔀 Modules that differ from the version branch": {
         "fr": "🔀 Modules différents de la branche de la version",
         "en": "🔀 Modules that differ from the version branch",

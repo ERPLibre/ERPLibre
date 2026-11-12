@@ -28,7 +28,9 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"), format=FORMAT)
 _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
-VENV_PATH = "./.venv"
+# Les clones vivent sous le venv d'ERPLibre, ignoré par git comme tout
+# « .venv* », et que l'installation crée toujours.
+VENV_PATH = "./.venv.erplibre"
 CACHE_CLONE_PATH = os.path.join(VENV_PATH, "stat_repo")
 MAX_COROUTINE = 300
 IGNORE_REPO_LIST = (
