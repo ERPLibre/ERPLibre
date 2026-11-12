@@ -5,6 +5,7 @@
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
   },
+  "ultracode": true,
   "hooks": {
     "SessionStart": [
       {

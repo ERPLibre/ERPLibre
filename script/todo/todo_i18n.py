@@ -2645,6 +2645,66 @@ TRANSLATIONS = {
         "fr": "Attention",
         "en": "Attention",
     },
+    "Repository settings": {
+        "fr": "Réglages du dépôt",
+        "en": "Repository settings",
+    },
+    "on": {
+        "fr": "activé",
+        "en": "on",
+    },
+    "off": {
+        "fr": "désactivé",
+        "en": "off",
+    },
+    "session message:": {
+        "fr": "message de session :",
+        "en": "session message:",
+    },
+    "Turn ultracode off by default": {
+        "fr": "Désactiver ultracode par défaut",
+        "en": "Turn ultracode off by default",
+    },
+    "Turn ultracode on by default": {
+        "fr": "Activer ultracode par défaut",
+        "en": "Turn ultracode on by default",
+    },
+    "Remove the session message": {
+        "fr": "Retirer le message de session",
+        "en": "Remove the session message",
+    },
+    "Install the session message": {
+        "fr": "Installer le message de session",
+        "en": "Install the session message",
+    },
+    "Preview the session message": {
+        "fr": "Aperçu du message de session",
+        "en": "Preview the session message",
+    },
+    "The session message could not be built.": {
+        "fr": "Le message de session n'a pas pu être construit.",
+        "en": "The session message could not be built.",
+    },
+    "Will write": {
+        "fr": "Va écrire",
+        "en": "Will write",
+    },
+    "This file is versioned: the change applies to every clone once committed.": {
+        "fr": "Ce fichier est versionné : le changement vaut pour chaque clone une fois commité.",
+        "en": "This file is versioned: the change applies to every clone once committed.",
+    },
+    "Write it? (y/Y): ": {
+        "fr": "L'écrire ? (o/O) : ",
+        "en": "Write it? (y/Y): ",
+    },
+    "File written.": {
+        "fr": "Fichier écrit.",
+        "en": "File written.",
+    },
+    "⚙️ Repository settings: ultracode and session message": {
+        "fr": "⚙️ Réglages du dépôt : ultracode et message de session",
+        "en": "⚙️ Repository settings: ultracode and session message",
+    },
     "uncommitted files": {
         "fr": "fichiers non commités",
         "en": "uncommitted files",

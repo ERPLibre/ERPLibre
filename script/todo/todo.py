@@ -144,6 +144,7 @@ if __name__ == "__main__":
 from script.config import config_file
 from script.execute import execute
 from script.todo import (
+    claude_reglages,
     dev_tools,
     healthcheck,
     install_non_interactif,
@@ -1251,6 +1252,7 @@ class TODO(
         "_prompt_git_server_actions": "Actions",
         "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
+        "_claude_reglages_depot": "Repository settings",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
@@ -4240,6 +4242,11 @@ class TODO(
                 )
             },
             {"prompt_description": t("Show installed custom commands")},
+            {
+                "prompt_description": t(
+                    "⚙️ Repository settings: ultracode and session message"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -4278,8 +4285,93 @@ class TODO(
                 )
             elif status == "5":
                 self._list_claude_commands()
+            elif status == "6":
+                self._claude_reglages_depot()
             else:
                 print(t("Command not found !"))
+
+    def _claude_reglages_depot(self):
+        """Ultracode et le message de session dans .claude/settings.json,
+        le fichier versionné du dépôt : chaque bascule montre la clé qui
+        change et demande un oui avant d'écrire."""
+        racine = self._claude_context_root()
+        while True:
+            try:
+                reglages = claude_reglages.lire(racine)
+            except ValueError as e:
+                print(f"❌ {e}")
+                return
+            ultracode = claude_reglages.ultracode_actif(reglages)
+            hook = claude_reglages.hook_installe(reglages)
+            print(f"⚙️ {claude_reglages.FICHIER}")
+            print(
+                f"   ultracode : {t('on') if ultracode else t('off')}"
+                f" · {t('session message:')}"
+                f" {t('installed') if hook else t('not installed')}"
+            )
+            choices = [
+                {
+                    "prompt_description": (
+                        t("Turn ultracode off by default")
+                        if ultracode
+                        else t("Turn ultracode on by default")
+                    )
+                },
+                {
+                    "prompt_description": (
+                        t("Remove the session message")
+                        if hook
+                        else t("Install the session message")
+                    )
+                },
+                {"prompt_description": t("Preview the session message")},
+            ]
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                neuf = claude_reglages.avec_ultracode(reglages, not ultracode)
+            elif status == "2":
+                neuf = claude_reglages.avec_hook(reglages, not hook)
+            elif status == "3":
+                commande = ["python3", "script/claude/session_start.py"]
+                print(f"{t('Will execute:')} {shlex.join(commande)}")
+                try:
+                    fait = subprocess.run(
+                        commande,
+                        cwd=racine,
+                        stdin=subprocess.DEVNULL,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    print(json.loads(fait.stdout)["systemMessage"])
+                except (
+                    OSError,
+                    subprocess.SubprocessError,
+                    ValueError,
+                    KeyError,
+                ):
+                    print(f"❌ {t('The session message could not be built.')}")
+                print()
+                continue
+            else:
+                print(t("Command not found !"))
+                continue
+            print(f"{t('Will write')} {claude_reglages.FICHIER} :")
+            print(json.dumps(neuf, indent=2, ensure_ascii=False))
+            print(
+                t(
+                    "This file is versioned: the change applies to every clone once committed."
+                )
+            )
+            if self._is_yes(input(t("Write it? (y/Y): "))):
+                claude_reglages.ecrire(racine, neuf)
+                print(t("File written."))
+            else:
+                print(t("Nothing to do."))
+            print()
 
     # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
     # chacune est la copie. La liste et l'écran de contexte en dérivent l'état
