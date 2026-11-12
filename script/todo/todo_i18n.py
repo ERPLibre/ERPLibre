@@ -2303,6 +2303,115 @@ TRANSLATIONS = {
         "fr": "🚦 État de mes pull requests (revue, CI, fusion)",
         "en": "🚦 Status of my pull requests (review, CI, merged)",
     },
+    "🔑 Check the GitHub token (scopes, organisation)": {
+        "fr": "🔑 Vérifier le jeton GitHub (portées, organisation)",
+        "en": "🔑 Check the GitHub token (scopes, organisation)",
+    },
+    "scopes": {
+        "fr": "portées",
+        "en": "scopes",
+    },
+    "role": {
+        "fr": "rôle",
+        "en": "role",
+    },
+    "The token allows every action of this menu.": {
+        "fr": "Le jeton permet toutes les actions de ce menu.",
+        "en": "The token allows every action of this menu.",
+    },
+    "Organisation to check (Enter: none): ": {
+        "fr": "Organisation à vérifier (Entrée : aucune) : ",
+        "en": "Organisation to check (Enter: none): ",
+    },
+    "GitHub refuses the token: expired, revoked or mistyped.": {
+        "fr": "GitHub refuse le jeton : expiré, révoqué ou mal tapé.",
+        "en": "GitHub refuses the token: expired, revoked or mistyped.",
+    },
+    (
+        "The token has neither the repo nor the public_repo scope: forks, "
+        "pull requests and branch deletion will be refused."
+    ): {
+        "fr": (
+            "Le jeton n'a ni la portée repo ni public_repo : forks, pull "
+            "requests et suppression de branches seront refusés."
+        ),
+        "en": (
+            "The token has neither the repo nor the public_repo scope: forks, "
+            "pull requests and branch deletion will be refused."
+        ),
+    },
+    (
+        "The account of the token is not a member of the organisation: a fork "
+        "into it will be refused."
+    ): {
+        "fr": (
+            "Le compte du jeton n'est pas membre de l'organisation : un fork "
+            "vers elle sera refusé."
+        ),
+        "en": (
+            "The account of the token is not a member of the organisation: a "
+            "fork into it will be refused."
+        ),
+    },
+    (
+        "The invitation to the organisation is not accepted yet: accept it on "
+        "GitHub first."
+    ): {
+        "fr": (
+            "L'invitation à l'organisation n'est pas encore acceptée : "
+            "acceptez-la d'abord sur GitHub."
+        ),
+        "en": (
+            "The invitation to the organisation is not accepted yet: accept "
+            "it on GitHub first."
+        ),
+    },
+    "public_repo scope only: private repositories are out of reach.": {
+        "fr": (
+            "Portée public_repo seulement : les dépôts privés sont hors "
+            "d'atteinte."
+        ),
+        "en": "public_repo scope only: private repositories are out of reach.",
+    },
+    (
+        "No workflow scope: GitHub refuses to merge an upstream whose commits "
+        "change .github/workflows."
+    ): {
+        "fr": (
+            "Pas de portée workflow : GitHub refuse de fusionner un amont "
+            "dont les commits modifient .github/workflows."
+        ),
+        "en": (
+            "No workflow scope: GitHub refuses to merge an upstream whose "
+            "commits change .github/workflows."
+        ),
+    },
+    (
+        "Fine-grained token: GitHub does not announce its rights, a missing "
+        "one shows only when the action is refused."
+    ): {
+        "fr": (
+            "Jeton à granularité fine : GitHub n'en annonce pas les droits, "
+            "un droit manquant ne se voit qu'au refus de l'action."
+        ),
+        "en": (
+            "Fine-grained token: GitHub does not announce its rights, a "
+            "missing one shows only when the action is refused."
+        ),
+    },
+    (
+        "Membership of the organisation unreadable: the token lacks the "
+        "read:org scope."
+    ): {
+        "fr": (
+            "Adhésion à l'organisation illisible : il manque au jeton la "
+            "portée read:org."
+        ),
+        "en": (
+            "Membership of the organisation unreadable: the token lacks the "
+            "read:org scope."
+        ),
+    },
     "Only the repositories of the manifests? (Y/n): ": {
         "fr": "Seulement les dépôts des manifestes ? (O/n) : ",
         "en": "Only the repositories of the manifests? (Y/n): ",

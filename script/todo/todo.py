@@ -3839,6 +3839,12 @@ class TODO(
                 ),
                 "method": "_git_statut_mes_pull_requests",
             },
+            {
+                "prompt_description": t(
+                    "🔑 Check the GitHub token (scopes, organisation)"
+                ),
+                "method": "_git_verifier_jeton",
+            },
             {"section": t("Settings")},
             {
                 "prompt_description": t(

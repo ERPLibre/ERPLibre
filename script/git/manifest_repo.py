@@ -22,6 +22,7 @@ sans menu :
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py mine [--author LOGIN] [--all-repos]
     manifest_repo.py fork-sync [CHEMIN...] [--version 18.0]
+    manifest_repo.py token [--organisation ORG]
     manifest_repo.py prune CHEMIN [--fetch] [--github] [--apply] [--remote]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -1232,6 +1233,9 @@ def main(argv=None):
         help="do not restrict to the repositories of the manifests",
     )
     p.add_argument("--version")
+    p = sous.add_parser("token", help="check the scopes of the GitHub token")
+    p.add_argument("--organisation", help="also check the membership")
+    p.add_argument("--version")
     p = sous.add_parser(
         "fork-sync",
         help="update forks from their upstream on GitHub (merge-upstream)",
@@ -1301,6 +1305,26 @@ def main(argv=None):
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
             return 0
+        if args.commande == "token":
+            client = _client(racine)
+            if not client:
+                return 2
+            rapport = github_fork.verifier_jeton(client, args.organisation)
+            portees = rapport["portees"]
+            print(
+                f"account: {rapport['login'] or '-'} · scopes:"
+                f" {', '.join(portees) if portees is not None else '-'}"
+                f" · role: {rapport['role'] or '-'}"
+            )
+            for code in rapport["codes"]:
+                grave = code in github_fork.PROBLEMES_JETON
+                print(
+                    f"{'error' if grave else 'warning'}:"
+                    f" {github_fork.TEXTES_JETON[code]}"
+                )
+            return int(
+                bool(set(rapport["codes"]) & github_fork.PROBLEMES_JETON)
+            )
         if args.commande == "fork-sync":
             client = _client(racine)
             if not client:

@@ -36,7 +36,12 @@ _URL = re.compile(
 
 
 class ErreurGitHub(Exception):
-    """Un refus de l'API, avec son statut et le message de GitHub."""
+    """Un refus de l'API, avec son statut et le message de GitHub.
+    `statut` porte le code HTTP quand la réponse en avait un."""
+
+    def __init__(self, message, statut=None):
+        super().__init__(message)
+        self.statut = statut
 
 
 def depot_github(url):
@@ -60,6 +65,76 @@ def jeton(racine=".", environ=None):
     except OSError:
         pass
     return ""
+
+
+# Ce que verifier_jeton() peut signaler. Les PROBLÈMES font échouer
+# l'action à coup sûr ; les AVERTISSEMENTS la font échouer dans certains
+# cas seulement.
+TEXTES_JETON = {
+    "jeton_refuse": "GitHub refuses the token: expired, revoked or mistyped.",
+    "sans_repo": (
+        "The token has neither the repo nor the public_repo scope: forks,"
+        " pull requests and branch deletion will be refused."
+    ),
+    "pas_membre": (
+        "The account of the token is not a member of the organisation:"
+        " a fork into it will be refused."
+    ),
+    "invitation": (
+        "The invitation to the organisation is not accepted yet:"
+        " accept it on GitHub first."
+    ),
+    "public_seulement": (
+        "public_repo scope only: private repositories are out of reach."
+    ),
+    "sans_workflow": (
+        "No workflow scope: GitHub refuses to merge an upstream whose"
+        " commits change .github/workflows."
+    ),
+    "jeton_fin": (
+        "Fine-grained token: GitHub does not announce its rights, a missing"
+        " one shows only when the action is refused."
+    ),
+    "adhesion_illisible": (
+        "Membership of the organisation unreadable: the token lacks the"
+        " read:org scope."
+    ),
+}
+PROBLEMES_JETON = {"jeton_refuse", "sans_repo", "pas_membre", "invitation"}
+
+
+def verifier_jeton(client, organisation=None):
+    """Ce que le jeton du `client` permet, avant d'agir : {login, portees,
+    role, codes}. `codes` liste des clés de TEXTES_JETON, problèmes et
+    avertissements mêlés (PROBLEMES_JETON les distingue). `organisation`,
+    si donnée et autre que le compte, fait vérifier l'adhésion."""
+    res = {"login": None, "portees": None, "role": None, "codes": []}
+    try:
+        res["login"], res["portees"] = client.identite()
+    except ErreurGitHub as exc:
+        if exc.statut == 401:
+            res["codes"].append("jeton_refuse")
+            return res
+        raise
+    portees = res["portees"]
+    if portees is None:
+        res["codes"].append("jeton_fin")
+    else:
+        if "repo" not in portees and "public_repo" not in portees:
+            res["codes"].append("sans_repo")
+        elif "repo" not in portees:
+            res["codes"].append("public_seulement")
+        if "workflow" not in portees:
+            res["codes"].append("sans_workflow")
+    if organisation and organisation.lower() != (res["login"] or "").lower():
+        etat, res["role"] = client.adhesion(organisation)
+        if etat == "absent":
+            res["codes"].append("pas_membre")
+        elif etat == "invitation":
+            res["codes"].append("invitation")
+        elif etat == "illisible":
+            res["codes"].append("adhesion_illisible")
+    return res
 
 
 class ClientGitHub:
@@ -101,7 +176,8 @@ class ClientGitHub:
             except (ValueError, AttributeError):
                 message = ""
             raise ErreurGitHub(
-                f"{methode} {chemin} : {rep.status_code} {message}"
+                f"{methode} {chemin} : {rep.status_code} {message}",
+                rep.status_code,
             )
         return rep
 
@@ -109,6 +185,38 @@ class ClientGitHub:
         """Le dépôt, ou None s'il n'existe pas (ou n'est pas visible)."""
         rep = self._appel("GET", f"/repos/{proprietaire}/{nom}", ok=(200, 404))
         return rep.json() if rep.status_code == 200 else None
+
+    def identite(self):
+        """(compte du jeton, portées) ; portées vaut None quand GitHub
+        n'en annonce pas (jeton à granularité fine ou d'application), une
+        liste sinon (jeton classique, en-tête X-OAuth-Scopes)."""
+        rep = self._appel("GET", "/user")
+        entete = (getattr(rep, "headers", None) or {}).get("X-OAuth-Scopes")
+        portees = (
+            None
+            if entete is None
+            else [p.strip() for p in entete.split(",") if p.strip()]
+        )
+        return rep.json().get("login", ""), portees
+
+    def adhesion(self, organisation):
+        """L'adhésion du compte du jeton à `organisation` : (« membre »,
+        rôle), (« invitation », None) tant qu'elle n'est pas acceptée,
+        (« absent », None), ou (« illisible », None) quand le jeton n'a pas
+        le droit de la lire (portée read:org)."""
+        rep = self._appel(
+            "GET",
+            f"/user/memberships/orgs/{organisation}",
+            ok=(200, 403, 404),
+        )
+        if rep.status_code == 404:
+            return "absent", None
+        if rep.status_code == 403:
+            return "illisible", None
+        corps = rep.json()
+        if corps.get("state") != "active":
+            return "invitation", None
+        return "membre", corps.get("role")
 
     def utilisateur(self):
         """Le compte du jeton."""

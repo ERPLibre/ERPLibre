@@ -143,9 +143,8 @@ class GitForkMenuMixin:
         mode = self._git_fork_choisir_mode(projet, remotes)
         branche = branche_du_projet(projet)
         toutes = self._git_fork_choisir_branches(branche)
-        jeton = github_fork.jeton(RACINE)
-        if not jeton:
-            print(f"⚠ {t(MESSAGE_JETON)}")
+        client = self._git_client(organisation)
+        if client is None:
             return 2
         print(
             f"  {proprietaire}/{depot} → {organisation}/{depot}"
@@ -153,7 +152,6 @@ class GitForkMenuMixin:
         )
         if not self._is_yes(input(t("Fork it? (y/N): "))):
             return 0
-        client = github_fork.ClientGitHub(jeton)
         print(f"  {t('Waiting for GitHub to create the fork…')}")
         try:
             fork, cree, posee = manifest_repo.forker(
@@ -626,13 +624,81 @@ class GitForkMenuMixin:
 
     # ── Pull requests ────────────────────────────────────────────────
 
-    def _git_client(self):
-        """Le client GitHub du jeton exporté, ou None (et le dit)."""
+    def _git_client(self, organisation=None):
+        """Le client GitHub du jeton exporté, ou None (et le dit).
+
+        Le jeton est vérifié avant la première action, une fois par
+        organisation dans la session : un problème certain (jeton refusé,
+        portée repo absente, compte hors de l'organisation) est montré et
+        demande confirmation ; un jeton refusé arrête là."""
         jeton = github_fork.jeton(RACINE)
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
             return None
-        return github_fork.ClientGitHub(jeton)
+        client = github_fork.ClientGitHub(jeton)
+        verifies = self.__dict__.setdefault("_git_jetons_verifies", set())
+        cle = (organisation or "").lower()
+        if cle in verifies:
+            return client
+        try:
+            rapport = github_fork.verifier_jeton(client, organisation)
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        problemes = self._git_afficher_jeton(rapport, silencieux=True)
+        if "jeton_refuse" in rapport["codes"]:
+            return None
+        if problemes and not self._is_yes(
+            input(t("Continue anyway? (y/N): "))
+        ):
+            return None
+        verifies.add(cle)
+        return client
+
+    def _git_afficher_jeton(self, rapport, silencieux=False):
+        """Imprime le rapport de verifier_jeton() ; `silencieux` tait le
+        compte et ce qui va bien. Rend le nombre de problèmes."""
+        if not silencieux and rapport["login"]:
+            portees = rapport["portees"]
+            print(
+                f"  {t('Account')} : {rapport['login']} · {t('scopes')} :"
+                f" {', '.join(portees) if portees is not None else '-'}"
+                + (
+                    f" · {t('role')} : {rapport['role']}"
+                    if rapport["role"]
+                    else ""
+                )
+            )
+        problemes = 0
+        for code in rapport["codes"]:
+            grave = code in github_fork.PROBLEMES_JETON
+            problemes += grave
+            print(
+                f"{'❌' if grave else '⚠'} {t(github_fork.TEXTES_JETON[code])}"
+            )
+        if not silencieux and not rapport["codes"]:
+            print(f"  ✓ {t('The token allows every action of this menu.')}")
+        return problemes
+
+    def _git_verifier_jeton(self):
+        """Le compte, les portées et, si une organisation est tapée,
+        l'adhésion du jeton exporté. Rend le nombre de problèmes, ou
+        None sans jeton."""
+        jeton = github_fork.jeton(RACINE)
+        if not jeton:
+            print(f"⚠ {t(MESSAGE_JETON)}")
+            return None
+        organisation = input(
+            t("Organisation to check (Enter: none): ")
+        ).strip()
+        try:
+            rapport = github_fork.verifier_jeton(
+                github_fork.ClientGitHub(jeton), organisation or None
+            )
+        except github_fork.ErreurGitHub as exc:
+            print(f"❌ GitHub : {exc}")
+            return None
+        return self._git_afficher_jeton(rapport)
 
     def _git_lister_pull_requests(self):
         """Les pull requests ouvertes, dans une organisation, des dépôts du
