@@ -1583,9 +1583,10 @@ class TestModeInstallation(unittest.TestCase):
         import script.todo.todo as module
 
         suite = iter(reponses)
-        with patch.object(
-            module, "gel_des_sources", return_value=etat
-        ) as gel, patch("builtins.input", lambda _: next(suite)):
+        with (
+            patch.object(module, "gel_des_sources", return_value=etat) as gel,
+            patch("builtins.input", lambda _: next(suite)),
+        ):
             mode = self.todo._choisir_mode_installation("X.0")
         gel.assert_called_once_with(odoo_version="X.0")
         return mode
@@ -1620,9 +1621,10 @@ class TestModeInstallation(unittest.TestCase):
             invites.append(texte)
             return "1"
 
-        with patch.object(
-            module, "gel_des_sources", return_value=(5, 9)
-        ), patch("builtins.input", saisir):
+        with (
+            patch.object(module, "gel_des_sources", return_value=(5, 9)),
+            patch("builtins.input", saisir),
+        ):
             self.todo._choisir_mode_installation("X.0")
         self.assertIn(f"5/9 {todo_i18n.t('projects frozen')}", invites[0])
 

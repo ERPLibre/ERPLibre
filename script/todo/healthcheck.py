@@ -1312,9 +1312,27 @@ def verifier_hooks(ctx):
     if not ligne:
         return Resultat(nom, SAUTE, t("not a git checkout"))
     icone, _, texte = ligne.partition(" ")
+    if icone == todo_etat.OK:
+        return Resultat(nom, OK, texte.strip())
     return Resultat(
-        nom, OK if icone == todo_etat.OK else ALERTE, texte.strip()
+        nom,
+        ALERTE,
+        texte.strip(),
+        resolutions=[
+            Resolution(
+                HOOKS_GIT,
+                f"🪝 {t('Install the git hooks')}",
+                [
+                    t(
+                        "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does."
+                    )
+                ],
+            )
+        ],
     )
+
+
+HOOKS_GIT = "hooks_git"
 
 
 # ── Environnement ───────────────────────────────────────────────────────
@@ -1861,6 +1879,8 @@ def executer_resolution(
     à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
     TODO, qui sait installer un lock et faire le rapport."""
     demander = demander or input
+    if resolution.cle == HOOKS_GIT:
+        return _installer_hooks(ctx, demander, sortie)
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
@@ -1872,6 +1892,41 @@ def executer_resolution(
     if resolution.cle == freeze_resolution.MAJ_GEL:
         return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
     return False
+
+
+def _oui(demander, question):
+    """Vrai sur un oui explicite à `question` ; Entrée et Ctrl+D valent
+    non."""
+    try:
+        reponse = demander(question)
+    except EOFError:
+        return False
+    return reponse.strip().lower() in ("y", "yes", "o", "oui")
+
+
+def _installer_hooks(ctx, demander, sortie):
+    """Pose les hooks git par todo_etat.installer_hooks_git. Une autre
+    valeur de core.hooksPath n'est remplacée que sur un oui."""
+    actuel = todo_etat._git(ctx.racine, "config", "--get", "core.hooksPath")
+    if actuel and os.path.normpath(actuel) != todo_etat.CHEMIN_HOOKS_GIT:
+        sortie(f"{t('Another hooks path is already set: ')}{actuel}")
+        if not _oui(demander, f"💬 {t('Replace it? (y/N): ')}"):
+            sortie(t("Nothing changed."))
+            return False
+    reussi, lignes = todo_etat.installer_hooks_git(
+        ctx.racine,
+        noter=lambda commande: sortie(
+            f"   $ {commande.replace(ctx.racine, '.')}"
+        ),
+    )
+    for ligne in lignes:
+        sortie(f"   {ligne}")
+    sortie(
+        f"✅ {t('Git hooks installed!')}"
+        if reussi
+        else f"❌ {t('Git hooks not installed.')}"
+    )
+    return reussi
 
 
 def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):

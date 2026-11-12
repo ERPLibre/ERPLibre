@@ -3823,12 +3823,9 @@ class TODO(
             print(f"{t('Error adding remote: ')}{e}")
 
     def _git_install_hooks(self):
-        """Pointer core.hooksPath sur les hooks du dépôt.
-
-        Le bit d'exécution fait partie de l'installation : sans lui git
-        ignore le hook sans rien dire, et le garde-fou du message de commit
-        passe inaperçu.
-        """
+        """Pointer core.hooksPath sur les hooks du dépôt, par
+        todo_etat.installer_hooks_git, que le Healthcheck partage. Une autre
+        valeur déjà posée n'est remplacée que sur un oui."""
         racine = self._claude_context_root()
         absolu = os.path.join(racine, self._GIT_HOOKS_PATH)
         if not os.path.isdir(absolu):
@@ -3840,26 +3837,13 @@ class TODO(
             if not self._is_yes(input(t("Replace it? (y/Y): "))):
                 print(t("Nothing to do."))
                 return
-        for hook in self._GIT_HOOKS:
-            chemin = os.path.join(absolu, hook)
-            if os.path.isfile(chemin) and not os.access(chemin, os.X_OK):
-                os.chmod(chemin, os.stat(chemin).st_mode | 0o111)
-                print(f"{t('Execution bit added: ')}{hook}")
-        # « -C racine » et non le cwd : lancé depuis un dépôt imbriqué
-        # (odoo18.0/addons/…), git écrirait core.hooksPath là-bas et la
-        # racine resterait sans garde-fou, sans le moindre message.
-        cmd = (
-            f"git -C {shlex.quote(racine)} config"
-            f" core.hooksPath {self._GIT_HOOKS_PATH}"
+        reussi, lignes = todo_etat.installer_hooks_git(
+            racine,
+            noter=lambda commande: print(f"{t('Will execute:')} {commande}"),
         )
-        print(f"{t('Will execute:')} {cmd}")
-        # exec_command_live RETOURNE le code de sortie, il ne lève rien : sans
-        # ce test, un « fatal: not in a git directory » annonçait quand même
-        # « Hooks git installés! ». Le rapport qui suit ne rattrape pas, il
-        # relit le bit d'exécution et non core.hooksPath.
-        status = self.execute.exec_command_live(cmd, source_erplibre=False)
-        if status:
-            print(f"{t('Error installing hooks: ')}{status}")
+        for ligne in lignes:
+            print(ligne)
+        if not reussi:
             return
         print(t("Git hooks installed!"))
         for hook in self._GIT_HOOKS:

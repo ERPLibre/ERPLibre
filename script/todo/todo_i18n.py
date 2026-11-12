@@ -2496,9 +2496,9 @@ TRANSLATIONS = {
         "fr": "Hooks git installés",
         "en": "Git hooks installed",
     },
-    "Git hooks missing: Execute › Git › Settings": {
-        "fr": "Hooks git manquants : Exécution › Git › Configuration",
-        "en": "Git hooks missing: Execute › Git › Settings",
+    "Git hooks missing: Execute › Git repository › Settings": {
+        "fr": "Hooks git manquants : Exécution › Répertoire git › Configuration",
+        "en": "Git hooks missing: Execute › Git repository › Settings",
     },
     "Git hooks point elsewhere: ": {
         "fr": "Les hooks git pointent ailleurs : ",
@@ -2612,6 +2612,18 @@ TRANSLATIONS = {
     "Update the venvs:": {
         "fr": "Mettre à jour les venvs :",
         "en": "Update the venvs:",
+    },
+    "Install the git hooks": {
+        "fr": "Installer les hooks git",
+        "en": "Install the git hooks",
+    },
+    "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does.": {
+        "fr": "core.hooksPath pointe sur script/git/hooks et chaque hook reçoit son bit d'exécution, comme le fait Exécution › Répertoire git › Configuration.",
+        "en": "core.hooksPath points at script/git/hooks and each hook gets its execution bit, as Execute › Git repository › Settings does.",
+    },
+    "Git hooks not installed.": {
+        "fr": "Hooks git non installés.",
+        "en": "Git hooks not installed.",
     },
     "An Odoo venv gets its lock installed, the active one by the installation, another one from its own lock; the tooling venv gets its missing requirements. A package outside the lock, or required by nothing, stays.": {
         "fr": "Un venv d'Odoo reçoit son lock, l'actif par l'installation, un autre depuis son propre lock ; le venv de l'outillage reçoit ses exigences manquantes. Un paquet hors du lock, ou que rien ne demande, reste.",

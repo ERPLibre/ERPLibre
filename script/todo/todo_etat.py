@@ -180,7 +180,7 @@ def ligne_hooks_git(racine):
         return ""
     chemin = _git(racine, "config", "--get", "core.hooksPath")
     if not chemin:
-        return f"{ALERTE} {t('Git hooks missing: Execute › Git › Settings')}"
+        return f"{ALERTE} {t('Git hooks missing: Execute › Git repository › Settings')}"
     if os.path.normpath(chemin) != CHEMIN_HOOKS_GIT:
         return f"{ALERTE} {t('Git hooks point elsewhere: ')}{chemin}"
     absolu = os.path.join(racine, CHEMIN_HOOKS_GIT)
@@ -194,6 +194,38 @@ def ligne_hooks_git(racine):
             f"{ALERTE} {t('Git hooks not executable: ')}{', '.join(inertes)}"
         )
     return f"{OK} {t('Git hooks installed')}"
+
+
+def installer_hooks_git(racine, noter=None):
+    """Pose les hooks du dépôt dans le checkout `racine`. Rend (réussi,
+    [lignes à afficher]).
+
+    Le bit d'exécution fait partie de l'installation : git saute sans rien
+    dire un hook qui ne l'a pas. core.hooksPath s'écrit par « git -C
+    racine » : lancé depuis un dépôt imbriqué (odoo18.0/addons/…), git
+    l'écrirait dans ce dépôt-là et la racine resterait sans garde-fou. Une
+    valeur qui pointait ailleurs est remplacée : c'est à l'appelant de
+    demander avant. `noter(commande)` reçoit chaque commande avant qu'elle
+    tourne. Réussi veut dire que ligne_hooks_git dit ensuite les hooks
+    installés ; sinon la dernière ligne dit pourquoi."""
+    noter = noter or (lambda commande: None)
+    absolu = os.path.join(racine, CHEMIN_HOOKS_GIT)
+    if not os.path.isdir(absolu):
+        return False, [f"{t('Hooks directory is missing: ')}{absolu}"]
+    lignes = []
+    for hook in HOOKS_GIT:
+        chemin = os.path.join(absolu, hook)
+        if os.path.isfile(chemin) and not os.access(chemin, os.X_OK):
+            noter(f"chmod +x {os.path.join(CHEMIN_HOOKS_GIT, hook)}")
+            os.chmod(chemin, os.stat(chemin).st_mode | 0o111)
+            lignes.append(f"{t('Execution bit added: ')}{hook}")
+    noter(f"git -C {racine} config core.hooksPath {CHEMIN_HOOKS_GIT}")
+    if _git(racine, "config", "core.hooksPath", CHEMIN_HOOKS_GIT) is None:
+        return False, lignes + [f"{t('Error installing hooks: ')}git config"]
+    etat = ligne_hooks_git(racine)
+    if not etat.startswith(OK):
+        return False, lignes + [etat]
+    return True, lignes
 
 
 def bilan(racine):

@@ -956,6 +956,72 @@ class TestParallele(unittest.TestCase):
         )
 
 
+class TestHooks(DepotJetable):
+    """Des hooks git absents, inertes ou pointés ailleurs : la vérification
+    offre de les installer, la résolution les pose."""
+
+    def setUp(self):
+        super().setUp()
+        for hook in h.todo_etat.HOOKS_GIT:
+            ecrire(self.racine, f"script/git/hooks/{hook}", "#!/bin/sh\n")
+
+    def hooks_path(self):
+        return git(
+            self.racine, "config", "--get", "core.hooksPath", check=False
+        ).stdout.strip()
+
+    def test_missing_hooks_offer_their_installation(self):
+        resultat = h.verifier_hooks(self.ctx())
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual([r.cle for r in resultat.resolutions], [h.HOOKS_GIT])
+
+    def test_installed_hooks_offer_nothing(self):
+        for hook in h.todo_etat.HOOKS_GIT:
+            os.chmod(
+                os.path.join(self.racine, "script/git/hooks", hook), 0o755
+            )
+        git(self.racine, "config", "core.hooksPath", "script/git/hooks")
+        resultat = h.verifier_hooks(self.ctx())
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+
+    def test_the_resolution_sets_the_path_and_the_execution_bits(self):
+        lignes = []
+        resolution = h.verifier_hooks(self.ctx()).resolutions[0]
+        self.assertTrue(
+            h.executer_resolution(
+                self.ctx(), resolution, lambda _q: "", lignes.append
+            )
+        )
+        self.assertEqual(self.hooks_path(), "script/git/hooks")
+        for hook in h.todo_etat.HOOKS_GIT:
+            self.assertTrue(
+                os.access(
+                    os.path.join(self.racine, "script/git/hooks", hook),
+                    os.X_OK,
+                )
+            )
+        self.assertIn(
+            "   $ git -C . config core.hooksPath script/git/hooks", lignes
+        )
+        self.assertEqual(h.verifier_hooks(self.ctx()).statut, h.OK)
+
+    def test_another_hooks_path_is_replaced_only_on_a_yes(self):
+        git(self.racine, "config", "core.hooksPath", "ailleurs/hooks")
+        resolution = h.verifier_hooks(self.ctx()).resolutions[0]
+        self.assertFalse(
+            h.executer_resolution(self.ctx(), resolution, lambda _q: "", print)
+        )
+        self.assertEqual(self.hooks_path(), "ailleurs/hooks")
+        with mock.patch("builtins.print"):
+            self.assertTrue(
+                h.executer_resolution(
+                    self.ctx(), resolution, lambda _q: "o", print
+                )
+            )
+        self.assertEqual(self.hooks_path(), "script/git/hooks")
+
+
 class TestTraductions(unittest.TestCase):
     """Chaque libellé du healthcheck a sa traduction : une clé absente
     s'afficherait en anglais dans un TODO en français."""
