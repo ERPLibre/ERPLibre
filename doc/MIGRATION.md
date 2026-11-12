@@ -49,11 +49,12 @@ First, be sure all addons is updated with script.
 ./script/addons/update_addons_all.sh BD
 ```
 
-Execute migration with OpenUpgrade.
+Execute migration with OpenUpgrade, from its clone of the target version and in the Odoo 13.0 venv, whose
+name is the `odoo13.0_…` key of `conf/supported_version_erplibre.json`.
 
 ```bash
 make config_gen_migration
-./.venv.erplibre/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --no-http --update all --stop-after-init -d BD
+./.venv.odoo13.0_python3.7.17/bin/python ./odoo13.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --no-http --update all --stop-after-init -d BD
 ```
 
 ## Migration Odoo 13 to Odoo 14
@@ -62,5 +63,5 @@ Replace BD to your database name.
 
 ```bash
 make config_gen_migration
-./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --no-http --stop-after-init --load=base,web,openupgrade_framework -d BD
+./run.sh --upgrade-path=./odoo14.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --no-http --stop-after-init --load=base,web,openupgrade_framework -d BD
 ```
