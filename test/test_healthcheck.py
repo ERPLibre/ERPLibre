@@ -1201,6 +1201,21 @@ class TestHooks(DepotJetable):
         )
         self.assertEqual(h.verifier_hooks(self.ctx()).statut, h.OK)
 
+    def test_an_absolute_path_to_the_same_hooks_needs_no_resolution(self):
+        for hook in h.todo_etat.HOOKS_GIT:
+            os.chmod(
+                os.path.join(self.racine, "script/git/hooks", hook), 0o755
+            )
+        git(
+            self.racine,
+            "config",
+            "core.hooksPath",
+            os.path.join(self.racine, "script/git/hooks"),
+        )
+        resultat = h.verifier_hooks(self.ctx())
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+
     def test_another_hooks_path_is_replaced_only_on_a_yes(self):
         git(self.racine, "config", "core.hooksPath", "ailleurs/hooks")
         resolution = h.verifier_hooks(self.ctx()).resolutions[0]

@@ -151,6 +151,15 @@ class TestMessage(unittest.TestCase):
         self.assertEqual(lignes[-1], "   … +2")
         self.assertNotIn("faite", "\n".join(lignes))
 
+    def test_a_forked_session_has_its_own_title(self):
+        from script.todo.todo_i18n import t as traduire
+
+        self.assertTrue(
+            session.message(self.racine, "fork").startswith(
+                traduire("ERPLibre — session forked")
+            )
+        )
+
     def test_the_reminder_and_the_resume_title(self):
         self.ecrire(".claude/session_start_message.txt", "Fait /context\n\n")
         texte = session.message(self.racine, "resume")

@@ -61,9 +61,7 @@ class TestBilan(unittest.TestCase):
     def test_hooks_missing_warns_and_points_to_the_menu(self):
         ligne = todo_etat.ligne_hooks_git(self.racine)
         self.assertTrue(ligne.startswith(todo_etat.ALERTE))
-        self.assertIn(
-            t("Git hooks missing: Execute › Git repository › Settings"), ligne
-        )
+        self.assertIn(t("Git hooks missing"), ligne)
 
     def test_hooks_installed_get_the_check_mark(self):
         git(self.racine, "config", "core.hooksPath", "script/git/hooks")
@@ -79,6 +77,52 @@ class TestBilan(unittest.TestCase):
         ligne = todo_etat.ligne_hooks_git(self.racine)
         self.assertTrue(ligne.startswith(todo_etat.ALERTE))
         self.assertTrue(ligne.endswith("commit-msg"))
+
+    def test_an_absolute_path_to_the_same_hooks_is_installed(self):
+        """Une installation par chemin complet écrit core.hooksPath en
+        absolu : c'est le même dossier, pas un autre."""
+        git(self.racine, "config", "core.hooksPath", self.hooks)
+        self.assertEqual(
+            todo_etat.ligne_hooks_git(self.racine),
+            f"{todo_etat.OK} {t('Git hooks installed')}",
+        )
+        self.assertTrue(
+            todo_etat.chemin_hooks_du_depot(self.racine, "script/git/hooks")
+        )
+        self.assertFalse(
+            todo_etat.chemin_hooks_du_depot(self.racine, "ailleurs/hooks")
+        )
+
+    def test_a_home_relative_path_to_the_same_hooks_is_installed(self):
+        """git développe un « ~ » en tête de core.hooksPath ; git config
+        --get le rend brut, la comparaison doit le développer aussi."""
+        maison = os.path.dirname(self.racine)
+        relatif = os.path.join(
+            "~", os.path.basename(self.racine), "script", "git", "hooks"
+        )
+        with mock.patch.dict(os.environ, {"HOME": maison}):
+            self.assertTrue(
+                todo_etat.chemin_hooks_du_depot(self.racine, relatif)
+            )
+            git(self.racine, "config", "core.hooksPath", relatif)
+            self.assertEqual(
+                todo_etat.ligne_hooks_git(self.racine),
+                f"{todo_etat.OK} {t('Git hooks installed')}",
+            )
+
+    def test_the_opening_summary_names_the_healthcheck_fix(self):
+        ligne = next(
+            x
+            for x in todo_etat.bilan(self.racine)
+            if t("Git hooks missing") in x
+        )
+        self.assertTrue(
+            ligne.endswith(
+                f"→ {t('Healthcheck')} › {t('Install the git hooks')}"
+            )
+        )
+        git(self.racine, "config", "core.hooksPath", "script/git/hooks")
+        self.assertNotIn("→", " ".join(todo_etat.bilan(self.racine)))
 
     def test_hooks_pointing_elsewhere_warn(self):
         git(self.racine, "config", "core.hooksPath", "ailleurs/hooks")

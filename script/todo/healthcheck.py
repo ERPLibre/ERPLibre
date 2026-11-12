@@ -2087,7 +2087,7 @@ def _installer_hooks(ctx, demander, sortie):
     """Pose les hooks git par todo_etat.installer_hooks_git. Une autre
     valeur de core.hooksPath n'est remplacée que sur un oui."""
     actuel = todo_etat._git(ctx.racine, "config", "--get", "core.hooksPath")
-    if actuel and os.path.normpath(actuel) != todo_etat.CHEMIN_HOOKS_GIT:
+    if actuel and not todo_etat.chemin_hooks_du_depot(ctx.racine, actuel):
         sortie(f"{t('Another hooks path is already set: ')}{actuel}")
         if not _oui(demander, f"💬 {t('Replace it? (y/N): ')}"):
             sortie(t("Nothing changed."))

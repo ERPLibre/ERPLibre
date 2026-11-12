@@ -2496,9 +2496,9 @@ TRANSLATIONS = {
         "fr": "Hooks git installés",
         "en": "Git hooks installed",
     },
-    "Git hooks missing: Execute › Git repository › Settings": {
-        "fr": "Hooks git manquants : Exécution › Répertoire git › Configuration",
-        "en": "Git hooks missing: Execute › Git repository › Settings",
+    "Git hooks missing": {
+        "fr": "Hooks git manquants",
+        "en": "Git hooks missing",
     },
     "Git hooks point elsewhere: ": {
         "fr": "Les hooks git pointent ailleurs : ",
@@ -2724,6 +2724,10 @@ TRANSLATIONS = {
     "ERPLibre — new session": {
         "fr": "ERPLibre — nouvelle session",
         "en": "ERPLibre — new session",
+    },
+    "ERPLibre — session forked": {
+        "fr": "ERPLibre — session fourchée",
+        "en": "ERPLibre — session forked",
     },
     "obsolete, not in the catalogue": {
         "fr": "obsolète, absent du catalogue",
@@ -3076,10 +3080,6 @@ TRANSLATIONS = {
     "Claude Code is not set up": {
         "fr": "Claude Code n'est pas configuré",
         "en": "Claude Code is not set up",
-    },
-    "Redeploy: Execute › GPT code › Claude configs": {
-        "fr": "Redéployer : Exécution › GPT code › Claude configs",
-        "en": "Redeploy: Execute › GPT code › Claude configs",
     },
     "repositories": {
         "fr": "dépôts",

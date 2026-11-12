@@ -168,6 +168,19 @@ def lignes_versions(racine):
     return lignes
 
 
+def chemin_hooks_du_depot(racine, chemin):
+    """Vrai si `chemin`, la valeur de core.hooksPath, désigne le dossier
+    script/git/hooks du checkout `racine`. Un chemin relatif se lit depuis
+    la racine, comme git le lit pour un dépôt non nu ; un chemin absolu vers
+    le même dossier, qu'écrit par exemple une installation par un chemin
+    complet, est le même réglage. Un « ~ » en tête se développe comme git le
+    fait, alors que `git config --get` le rend tel quel."""
+    chemin = os.path.expanduser(chemin)
+    return os.path.realpath(os.path.join(racine, chemin)) == os.path.realpath(
+        os.path.join(racine, CHEMIN_HOOKS_GIT)
+    )
+
+
 def ligne_hooks_git(racine):
     """L'état des hooks git du checkout, une ligne avec son icône.
 
@@ -180,8 +193,8 @@ def ligne_hooks_git(racine):
         return ""
     chemin = _git(racine, "config", "--get", "core.hooksPath")
     if not chemin:
-        return f"{ALERTE} {t('Git hooks missing: Execute › Git repository › Settings')}"
-    if os.path.normpath(chemin) != CHEMIN_HOOKS_GIT:
+        return f"{ALERTE} {t('Git hooks missing')}"
+    if not chemin_hooks_du_depot(racine, chemin):
         return f"{ALERTE} {t('Git hooks point elsewhere: ')}{chemin}"
     absolu = os.path.join(racine, CHEMIN_HOOKS_GIT)
     inertes = [
@@ -229,7 +242,9 @@ def installer_hooks_git(racine, noter=None):
 
 
 def bilan(racine):
-    """Les lignes du bilan d'ouverture, dans l'ordre d'affichage."""
+    """Les lignes du bilan d'ouverture, dans l'ordre d'affichage. Une
+    alerte des hooks nomme la résolution du bilan de santé, qui les
+    installe d'un choix, que le chemin soit absent, autre ou inerte."""
     lignes = []
     for verification in (lignes_versions, ligne_hooks_git):
         try:
@@ -238,6 +253,13 @@ def bilan(racine):
             sortie = ""
         if isinstance(sortie, str):
             sortie = [sortie]
+        if verification is ligne_hooks_git:
+            sortie = [
+                f"{ligne} → {t('Healthcheck')} › {t('Install the git hooks')}"
+                if ligne.startswith(ALERTE)
+                else ligne
+                for ligne in sortie
+            ]
         lignes.extend(ligne for ligne in sortie if ligne)
     return lignes
 
