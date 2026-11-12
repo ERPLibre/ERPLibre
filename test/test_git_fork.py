@@ -51,6 +51,10 @@ MANIFESTE = """<?xml version="1.0" encoding="UTF-8" ?>
 """
 
 
+# Le rapport de verifier_jeton() d'un jeton qui permet tout.
+JETON_SAIN = {"login": "moi", "portees": ["repo"], "role": None, "codes": []}
+
+
 class Reponse:
     def __init__(self, statut, corps=None):
         self.status_code = statut
@@ -399,6 +403,9 @@ class TestLeParcours(Manifestes):
             ),
             mock.patch.object(gm.repo_upgrade, "DOSSIER", self.tmp.name),
             mock.patch.object(gm.github_fork, "jeton", return_value=jeton),
+            mock.patch.object(
+                gm.github_fork, "verifier_jeton", return_value=JETON_SAIN
+            ),
             mock.patch.object(
                 gm.github_fork, "ClientGitHub", return_value=client
             ) as fabrique,

@@ -30,6 +30,10 @@ IDENTITE = {
 }
 
 
+# Le rapport de verifier_jeton() d'un jeton qui permet tout.
+JETON_SAIN = {"login": "moi", "portees": ["repo"], "role": None, "codes": []}
+
+
 class Reponse:
     def __init__(self, statut, corps=None):
         self.status_code = statut
@@ -252,6 +256,9 @@ class TestLeMenu(Clone):
                 return_value=(remotes, projet, self.clone),
             ),
             mock.patch.object(gm.github_fork, "jeton", return_value="x"),
+            mock.patch.object(
+                gm.github_fork, "verifier_jeton", return_value=JETON_SAIN
+            ),
             mock.patch.object(
                 gm.github_fork, "ClientGitHub", return_value=client
             ),
