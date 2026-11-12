@@ -15,6 +15,7 @@ sans menu :
                      [--manifest 17.0,18.0 | --no-manifest]
     manifest_repo.py branch CHEMIN NOM [--from REF] [--push REMOTE]
     manifest_repo.py upstream CHEMIN [--version 18.0]
+    manifest_repo.py remove CHEMIN [--version 18.0] [--apply]
     manifest_repo.py pulls --organisation ORG [--version 18.0]
     manifest_repo.py pr CHEMIN --title T [--body B] [--target amont|manifeste]
                      [--draft]
@@ -557,6 +558,120 @@ def resume_commits(chemin, base_ref, limite=20):
     return sujet, (sujets if not code else "")
 
 
+# ── Retirer, synchroniser, regeler ─────────────────────────────────────
+
+
+MANIFESTE_LOCAL = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
+
+
+def _bloc(texte, debut, fin):
+    """Les bornes de la ligne entière d'une balise : de son retrait au saut
+    de ligne qui la suit."""
+    a = texte.rfind("\n", 0, debut) + 1
+    b = texte.find("\n", fin)
+    return a, (len(texte) if b < 0 else b + 1)
+
+
+def remote_utilise(texte, nom):
+    """Vrai si un projet du fichier clone par `nom`, le nomme comme amont,
+    ou si le <default> le désigne."""
+    for _d, _f, attrs in manifest_freeze.iter_projects(texte):
+        if nom in (attrs.get("remote"), attrs.get("fork-upstream-remote")):
+            return True
+    defaut = re.search(r"<default\b[^>]*\bremote=\"([^\"]*)\"", texte)
+    return bool(defaut and defaut.group(1) == nom)
+
+
+def retirer_remote(texte, nom):
+    """Le texte sans la déclaration du remote `nom` (ligne entière)."""
+    for m in manifest_fork._hors_commentaires(texte, manifest_fork._REMOTE):
+        if dict(manifest_fork._ATTRS.findall(m.group(0))).get("name") == nom:
+            a, b = _bloc(texte, m.start(), m.end())
+            return texte[:a] + texte[b:]
+    return texte
+
+
+def retirer_projet(texte, name, path):
+    """(texte sans le <project> name+path, remote retiré ou None). Le
+    remote part avec lui quand plus rien du fichier ne l'emploie."""
+    for debut, fin, attrs in manifest_freeze.iter_projects(texte):
+        if attrs.get("name") != name or attrs.get("path") != path:
+            continue
+        a, b = _bloc(texte, debut, fin)
+        texte = texte[:a] + texte[b:]
+        remote = attrs.get("remote")
+        if remote and not remote_utilise(texte, remote):
+            return retirer_remote(texte, remote), remote
+        return texte, None
+    raise ValueError(f"{path} absent du fichier")
+
+
+def retirer_depot(version, chemin, dossier=None):
+    """Retire le projet `chemin` du manifeste de `version` qui le déclare.
+    Rend (fichier, projet, remote retiré ou None)."""
+    _remotes, projet = trouver_projet(version, chemin, dossier)
+    fichier = fichier_du_projet(
+        version, projet.get("name"), projet.get("path"), dossier
+    )
+    if not fichier:
+        raise ValueError(f"{chemin} : projet introuvable dans les fichiers")
+    with open(fichier, encoding="utf-8") as fh:
+        texte = fh.read()
+    neuf, remote = retirer_projet(texte, projet["name"], projet["path"])
+    with open(fichier, "w", encoding="utf-8") as fh:
+        fh.write(neuf)
+    return fichier, projet, remote
+
+
+def mode_gele(racine):
+    """Vrai si la dernière reconfiguration a posé les commits gelés : le
+    manifeste local porte alors des commits dans « revision »."""
+    try:
+        with open(
+            os.path.join(racine, MANIFESTE_LOCAL), encoding="utf-8"
+        ) as fh:
+            texte = fh.read()
+    except OSError:
+        return False
+    return any(
+        manifest_freeze.is_sha(a.get("revision"))
+        for _d, _f, a in manifest_freeze.iter_projects(texte)
+    )
+
+
+def commandes_synchro(racine, chemin=None, gel=None, local=False):
+    """Les commandes qui régénèrent le manifeste local, dans le mode du
+    checkout (gelé ou non, sauf `gel` donné), puis synchronisent `chemin`
+    seul, ou tout le checkout sans `chemin`. `local` synchronise sans
+    réseau : c'est ce qui suffit à retirer le clone d'un projet ôté du
+    manifeste, repo effaçant lui-même un clone obsolète resté propre."""
+    gel = mode_gele(racine) if gel is None else gel
+    fusion = [
+        ".venv.erplibre/bin/python",
+        "script/git/git_merge_repo_manifest.py",
+        "--output",
+        MANIFESTE_LOCAL,
+        "--with_OCA",
+    ] + (["--freeze"] if gel else [])
+    synchro = [".venv.erplibre/bin/repo", "sync", "-c"]
+    if local:
+        synchro.append("-l")
+    synchro += [chemin] if chemin else [f"-j{os.cpu_count() or 4}"]
+    return [fusion, synchro]
+
+
+def executer(commandes, racine):
+    """Lance `commandes` dans `racine`, sortie au terminal ; s'arrête au
+    premier échec. Rend le code de sortie."""
+    for args in commandes:
+        code = subprocess.call(args, cwd=racine)
+        if code:
+            return code
+    return 0
+
+
 # ── Ligne de commande ──────────────────────────────────────────────────
 
 
@@ -614,6 +729,14 @@ def main(argv=None):
     p = sous.add_parser("upstream", help="add and fetch the upstream remote")
     p.add_argument("chemin")
     p.add_argument("--version")
+    p = sous.add_parser("remove", help="remove a repository from a manifest")
+    p.add_argument("chemin")
+    p.add_argument("--version")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="regenerate the local manifest; repo then deletes a clean clone",
+    )
     p = sous.add_parser("pulls", help="list the open pull requests")
     p.add_argument("--organisation", required=True)
     p.add_argument("--version")
@@ -660,6 +783,15 @@ def main(argv=None):
                         f"{nom}#{pr.get('number')} {pr.get('title')} — {pr.get('html_url')}"
                     )
             print(f"{total} pull request(s); {absents} repositories not found")
+            return 0
+        if args.commande == "remove":
+            fichier, projet, remote = retirer_depot(version, args.chemin)
+            print(
+                f"{os.path.relpath(fichier, racine)} : {projet['path']}"
+                f"{' + remote ' + remote if remote else ''}"
+            )
+            if args.apply:
+                return executer(commandes_synchro(racine, local=True), racine)
             return 0
         remotes, projet = trouver_projet(version, args.chemin)
         chemin = os.path.join(racine, projet["path"])

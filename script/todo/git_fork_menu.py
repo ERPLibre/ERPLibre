@@ -358,6 +358,67 @@ class GitForkMenuMixin:
             print(f"⚠ {detail}")
         return 2
 
+    # ── Retirer, synchroniser, regeler ───────────────────────────────
+
+    def _git_choisir_projet_version(self):
+        """(version, projet) choisi parmi les projets du manifeste de la
+        version tapée (l'active par défaut), ou None."""
+        version = self._git_choisir_version(
+            repo_upgrade.version_active(RACINE)
+        )
+        if not version:
+            return None
+        _remotes, projets = repo_upgrade.lire_manifestes(version)
+        liste = sorted(projets.values(), key=lambda p: p.get("path", ""))
+        projet = self._git_filtrer(liste, lambda p: p.get("path", ""))
+        return (version, projet) if projet else None
+
+    def _git_retirer_depot(self):
+        """Retire un projet du manifeste de la version choisie, puis
+        propose de retirer son clone. Rend 0, ou 2 sur un refus."""
+        choix = self._git_choisir_projet_version()
+        if choix is None:
+            return 0
+        version, projet = choix
+        if not self._is_yes(
+            input(
+                f"{t('Remove from the manifest')} {version} : {projet['path']} ? (y/N): "
+            )
+        ):
+            return 0
+        try:
+            fichier, _p, remote = manifest_repo.retirer_depot(
+                version, projet["path"]
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        print(
+            f"  ✓ {os.path.relpath(fichier, RACINE)}{' · remote ' + remote if remote else ''}"
+        )
+        if version == repo_upgrade.version_active(RACINE) and self._is_yes(
+            input(
+                t(
+                    "Remove the local clone too? repo keeps it if it holds uncommitted work. (y/N): "
+                )
+            )
+        ):
+            return self._git_lancer(
+                manifest_repo.commandes_synchro(RACINE, local=True)
+            )
+        print(f"  {t('Commit manifest/.')}")
+        return 0
+
+    def _git_lancer(self, commandes):
+        """Montre puis lance `commandes` à la racine, sortie au terminal."""
+        import shlex
+
+        for args in commandes:
+            print(f"  {t('Will execute:')} {shlex.join(args)}")
+        code = manifest_repo.executer(commandes, RACINE)
+        print(f"  {'✓' if not code else '❌'} {code}")
+        return code
+
     # ── Pull requests ────────────────────────────────────────────────
 
     def _git_client(self):
