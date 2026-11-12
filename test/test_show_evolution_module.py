@@ -117,5 +117,55 @@ class TestLesVersionsComptees(unittest.TestCase):
         )
 
 
+class TestLeClonage(unittest.TestCase):
+    """Un clone qui échoue sort du comptage au lieu d'arrêter l'extraction.
+
+    Des dépôts locaux jetables tiennent lieu d'amont : aucun réseau."""
+
+    def setUp(self):
+        import subprocess
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.cache = os.path.join(tmp.name, "stat_repo")
+        os.mkdir(self.cache)
+        patch = unittest.mock.patch.object(sem, "CACHE_CLONE_PATH", self.cache)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.amont = os.path.join(tmp.name, "Exemple", "depot.git")
+        os.makedirs(self.amont)
+        subprocess.run(["git", "init", "-q", "--bare", self.amont], check=True)
+
+    def cloner(self, url, fetch=False):
+        import asyncio
+
+        with self.assertLogs(sem._logger, "INFO") as journal:
+            resultat = asyncio.run(sem.clone_repo(0, url, fetch))
+        return resultat, "\n".join(journal.output)
+
+    def test_a_failed_clone_is_reported_and_not_counted(self):
+        url = os.path.join(os.path.dirname(self.amont), "absent.git")
+        (nom, chemin, ok), journal = self.cloner(url)
+        self.assertFalse(ok)
+        self.assertFalse(os.path.isdir(chemin))
+        self.assertIn("Clone failed", journal)
+        self.assertIn("not counted", journal)
+
+    def test_a_clone_that_succeeds_is_counted(self):
+        (nom, chemin, ok), _ = self.cloner(self.amont)
+        self.assertTrue(ok)
+        self.assertEqual(nom, "Exemple_depot")
+        self.assertTrue(os.path.isdir(os.path.join(chemin, ".git")))
+
+    def test_a_failed_fetch_keeps_the_existing_clone(self):
+        import shutil
+
+        self.cloner(self.amont)
+        shutil.rmtree(self.amont)
+        (_nom, _chemin, ok), journal = self.cloner(self.amont, fetch=True)
+        self.assertTrue(ok)
+        self.assertIn("Fetch failed", journal)
+
+
 if __name__ == "__main__":
     unittest.main()

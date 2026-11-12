@@ -40,6 +40,7 @@ IGNORE_REPO_LIST = (
     "https://github.com/itpp-labs/odoo-port-docs.git",
     "https://github.com/itpp-labs/odoo-test-docs.git",
     "https://github.com/odoo/documentation.git",
+    "https://github.com/odoo/documentation-user.git",
     "https://github.com/ERPLibre/ERPLibre_image_db.git",
     "https://github.com/muk-it/muk_docs.git",
 )
@@ -246,9 +247,13 @@ def main():
         clone_repo(i, repo_url, config.force_git_fetch)
         for i, repo_url in enumerate(lst_repo_url)
     ]
-    lst_repo_path, has_asyncio_error = lib_asyncio.execute(
+    lst_clone, has_asyncio_error = lib_asyncio.execute(
         config, lst_task_clone, use_uvloop=True
     )
+    # Un clone qui a échoué n'est pas analysé : lancer git dans un dossier
+    # absent lèverait FileNotFoundError et arrêterait toute l'extraction.
+    lst_repo_path = [(nom, chemin) for nom, chemin, ok in lst_clone if ok]
+    lst_repo_absent = [nom for nom, _chemin, ok in lst_clone if not ok]
 
     # Extract module list
     _logger.info("Extract module")
@@ -329,6 +334,11 @@ def main():
         if before_date:
             str_extra = f" before {before_date}"
         print(f"Diff nb unique module{str_extra}, length {len(set_result)}")
+    if lst_repo_absent:
+        print(
+            f"Not counted, {len(lst_repo_absent)} repository not cloned:"
+            f" {', '.join(sorted(lst_repo_absent))}"
+        )
     print("end of stat")
 
     if config.compare_csv:
@@ -489,22 +499,54 @@ async def extract_module(lst_branch, repo, path, before_date):
     return lst_result
 
 
+def derniere_ligne(texte):
+    """La dernière ligne non vide de `texte`, là où git dit pourquoi."""
+    lignes = [ligne for ligne in texte.splitlines() if ligne.strip()]
+    return lignes[-1].strip() if lignes else ""
+
+
 async def clone_repo(i, repo_url, force_fetch):
+    """(nom, chemin, cloné) pour `repo_url` dans CACHE_CLONE_PATH.
+
+    Un clone qui échoue — disque plein, dépôt disparu, réseau — rend
+    cloné=False, avec l'erreur de git au journal : git retire le clone
+    partiel, et le dépôt reste hors du comptage. Un fetch qui échoue garde
+    le clone tel qu'il était."""
     split_repo_url = repo_url.split("/")
     repo_name = f"{split_repo_url[-2]}_{split_repo_url[-1][:-4]}"
     repo_path = os.path.join(CACHE_CLONE_PATH, repo_name)
     if not os.path.isdir(repo_path):
-        await lib_asyncio.run_command_get_output(
+        (
+            _out,
+            err,
+            status,
+        ) = await lib_asyncio.run_command_get_output_and_status(
             "git", "clone", repo_url, repo_name, cwd=CACHE_CLONE_PATH
         )
+        if status or not os.path.isdir(repo_path):
+            _logger.error(
+                f"[{i}]Clone failed {repo_url}, not counted:"
+                f" {derniere_ligne(err) or f'exit {status}'}"
+            )
+            return repo_name, repo_path, False
         _logger.info(f"[{i}]New clone {repo_path} with {repo_url}")
     elif force_fetch:
-        await lib_asyncio.run_command_get_output(
-            "git", "fetch", "--all", cwd=CACHE_CLONE_PATH
+        (
+            _out,
+            err,
+            status,
+        ) = await lib_asyncio.run_command_get_output_and_status(
+            "git", "fetch", "--all", cwd=repo_path
         )
-        _logger.info(f"[{i}]Fetch {repo_path} with {repo_url}")
+        if status:
+            _logger.warning(
+                f"[{i}]Fetch failed {repo_url}, counted as cloned:"
+                f" {derniere_ligne(err)}"
+            )
+        else:
+            _logger.info(f"[{i}]Fetch {repo_path} with {repo_url}")
 
-    return repo_name, repo_path
+    return repo_name, repo_path, True
 
 
 def urls_des_manifestes(dossier=repo_upgrade.DOSSIER):
