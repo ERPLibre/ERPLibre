@@ -242,16 +242,24 @@ Pour accéder à un nouveau dépôt, ajoutez son `<project>`, et son `<remote>` 
 <!-- [en] -->
 ## Remove auto_install from an addons repository
 
-Check if manifest contains "auto_install" and change the value to False.
+Set every `auto_install` to False in the modules of addons repositories. TODO › Execute › Analyse module › Disable
+auto_install in repositories of the manifest lists the cloned repositories of the active version's manifest; check
+several and they are handled in parallel, with an optional commit of the changed manifests only, on the current
+branch, and an optional push. The script does the same for the repositories given, repeating `--addons_dir`; it
+commits and pushes unless `--ignore_commit` or `--ignore_push`.
 
 <!-- [fr] -->
 ## Retirer auto_install d'un dépôt d'addons
 
-Vérifier si le manifeste contient "auto_install" et changer la valeur à False.
+Passer à False chaque `auto_install` des modules de dépôts d'addons. TODO › Exécution › Analyse module › Désactiver
+auto_install dans des dépôts du manifeste liste les dépôts clonés du manifeste de la version active ; cochez-en
+plusieurs et ils sont traités en parallèle, avec un commit facultatif des seuls manifestes modifiés, sur la branche
+courante, et un push facultatif. Le script fait de même pour les dépôts donnés, en répétant `--addons_dir` ; il
+committe et pousse sauf `--ignore_commit` ou `--ignore_push`.
 
 <!-- [common] -->
 ```bash
-./script/git/repo_remove_auto_install.py --addons_dir PATH
+./script/git/repo_remove_auto_install.py --addons_dir PATH1 --addons_dir PATH2 --ignore_push
 ```
 
 <!-- [en] -->

@@ -140,6 +140,48 @@ TRANSLATIONS = {
         "fr": "Continuer ?",
         "en": "Continue?",
     },
+    "Modification": {
+        "fr": "Modification",
+        "en": "Modification",
+    },
+    "🚫 Disable auto_install in repositories of the manifest": {
+        "fr": "🚫 Désactiver auto_install dans des dépôts du manifeste",
+        "en": "🚫 Disable auto_install in repositories of the manifest",
+    },
+    "No addons repository cloned for this version.": {
+        "fr": "Aucun dépôt d'addons cloné pour cette version.",
+        "en": "No addons repository cloned for this version.",
+    },
+    "Numbers separated by commas, all for every one, Enter for none: ": {
+        "fr": (
+            "Numéros séparés par des virgules, all pour tous, Entrée pour "
+            "aucun : "
+        ),
+        "en": (
+            "Numbers separated by commas, all for every one, Enter for none: "
+        ),
+    },
+    "Commit the changed manifests in each repository (current branch)?": {
+        "fr": (
+            "Committer les manifestes modifiés dans chaque dépôt (branche "
+            "courante) ?"
+        ),
+        "en": (
+            "Commit the changed manifests in each repository (current branch)?"
+        ),
+    },
+    "Push each commit to its tracked branch?": {
+        "fr": "Pousser chaque commit vers sa branche suivie ?",
+        "en": "Push each commit to its tracked branch?",
+    },
+    "repositories, in parallel…": {
+        "fr": "dépôts, en parallèle…",
+        "en": "repositories, in parallel…",
+    },
+    "manifests changed": {
+        "fr": "manifestes modifiés",
+        "en": "manifests changed",
+    },
     "🔀 Modules that differ from the version branch": {
         "fr": "🔀 Modules différents de la branche de la version",
         "en": "🔀 Modules that differ from the version branch",

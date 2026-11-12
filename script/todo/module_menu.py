@@ -30,8 +30,10 @@ sys.path.append(new_path)
 from script.git import (  # noqa: E402
     git_freeze_diff,
     git_module_diff,
+    repo_remove_auto_install,
     repo_upgrade,
 )
+from script.todo.git_repo_menu import choix_numeros  # noqa: E402
 from script.todo.todo_couleur import retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -78,6 +80,12 @@ class ModuleMenuMixin:
                     "📈 Module evolution per year, OCA repositories"
                 )
             },
+            {"section": t("Modification")},
+            {
+                "prompt_description": t(
+                    "🚫 Disable auto_install in repositories of the manifest"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -93,6 +101,8 @@ class ModuleMenuMixin:
                 self._module_statistique()
             elif status == "4":
                 self._module_statistique(filtre="/OCA/")
+            elif status == "5":
+                self._module_auto_install()
             else:
                 print(t("Command not found !"))
 
@@ -122,6 +132,48 @@ class ModuleMenuMixin:
         return self.execute.exec_command_live(
             shlex.join(commande), source_erplibre=False
         )
+
+    def _module_auto_install(self):
+        """Désactive auto_install dans les dépôts cochés parmi ceux du
+        manifeste de la version active, en parallèle ; committe et pousse
+        seulement si on le demande. Rend le nombre de dépôts traités, ou
+        None si rien n'a été lancé."""
+        version = repo_upgrade.version_active(RACINE)
+        if not version:
+            print(f"❌ {t('No Odoo version found')}")
+            return None
+        depots = depots_d_addons(version)
+        if not depots:
+            print(f"  {t('No addons repository cloned for this version.')}")
+            return None
+        for i, chemin in enumerate(depots, 1):
+            print(f"  [{i}] {chemin}")
+        saisie = input(
+            t(
+                "Numbers separated by commas, all for every one, Enter for none: "
+            )
+        ).strip()
+        if not saisie:
+            return None
+        choisis = choix_numeros(saisie, depots)
+        if not choisis:
+            print(t("Command not found !"))
+            return None
+        commit = click.confirm(
+            f"  {t('Commit the changed manifests in each repository (current branch)?')}",
+            default=False,
+        )
+        push = commit and click.confirm(
+            f"  {t('Push each commit to its tracked branch?')}", default=False
+        )
+        print(f"  {len(choisis)} {t('repositories, in parallel…')}")
+        resultats = repo_remove_auto_install.traiter(
+            [os.path.join(RACINE, c) for c in choisis],
+            commit=commit,
+            push=push,
+        )
+        print("\n".join(rendre_auto_install(resultats)))
+        return len(resultats)
 
     def _module_analysis_choisir(self):
         """(gauche, droite) de la comparaison de gels qui désigne les
@@ -185,6 +237,45 @@ class ModuleMenuMixin:
         resultat = git_module_diff.analyser(RACINE, version, depots, mode)
         print("\n".join(rendre(resultat, len(depots), version, mode)))
         return 0
+
+
+def depots_d_addons(version, racine=RACINE):
+    """Les chemins, relatifs à `racine`, des projets du manifeste de
+    `version` dont le clone existe, triés. Le cœur d'Odoo n'en fait pas
+    partie : ses auto_install font partie de son fonctionnement."""
+    _remotes, projets = repo_upgrade.lire_manifestes(version)
+    chemins = set()
+    for projet in projets.values():
+        chemin = projet.get("path") or ""
+        if not chemin or os.path.basename(chemin) == "odoo":
+            continue
+        if os.path.isdir(os.path.join(racine, chemin)):
+            chemins.add(chemin)
+    return sorted(chemins)
+
+
+def rendre_auto_install(resultats, racine=RACINE):
+    """Une ligne par dépôt : manifestes changés, commit et push s'ils ont
+    été tentés, et l'échec quand il y en a un."""
+    lignes = []
+    for res in resultats:
+        chemin = os.path.relpath(res["depot"], racine)
+        if res["erreur"]:
+            lignes.append(f"❌ {chemin} : {res['erreur']}")
+            continue
+        ligne = f"{'✓' if res['fichiers'] else '·'} {chemin} : {len(res['fichiers'])}"
+        for etape in ("commit", "push"):
+            if res[etape] is not None:
+                code, sortie = res[etape]
+                ligne += f" · {etape} {'✓' if not code else '❌'}"
+                if code:
+                    ligne += (
+                        f" ({sortie.splitlines()[-1] if sortie else code})"
+                    )
+        lignes.append(ligne)
+    total = sum(len(r["fichiers"]) for r in resultats)
+    lignes.append(f"📋 {total} {t('manifests changed')}")
+    return lignes
 
 
 def rendre(resultat, nb_depots, version, mode=git_module_diff.MODE_BRANCHE):

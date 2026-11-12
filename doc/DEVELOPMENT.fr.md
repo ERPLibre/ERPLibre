@@ -122,10 +122,14 @@ Pour accéder à un nouveau dépôt, ajoutez son `<project>`, et son `<remote>` 
 
 ## Retirer auto_install d'un dépôt d'addons
 
-Vérifier si le manifeste contient "auto_install" et changer la valeur à False.
+Passer à False chaque `auto_install` des modules de dépôts d'addons. TODO › Exécution › Analyse module › Désactiver
+auto_install dans des dépôts du manifeste liste les dépôts clonés du manifeste de la version active ; cochez-en
+plusieurs et ils sont traités en parallèle, avec un commit facultatif des seuls manifestes modifiés, sur la branche
+courante, et un push facultatif. Le script fait de même pour les dépôts donnés, en répétant `--addons_dir` ; il
+committe et pousse sauf `--ignore_commit` ou `--ignore_push`.
 
 ```bash
-./script/git/repo_remove_auto_install.py --addons_dir PATH
+./script/git/repo_remove_auto_install.py --addons_dir PATH1 --addons_dir PATH2 --ignore_push
 ```
 
 ## Filtrer les dépôts par groupe

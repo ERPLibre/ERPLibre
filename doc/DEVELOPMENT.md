@@ -122,10 +122,14 @@ To access a new repository, add its `<project>`, and its `<remote>` if the organ
 
 ## Remove auto_install from an addons repository
 
-Check if manifest contains "auto_install" and change the value to False.
+Set every `auto_install` to False in the modules of addons repositories. TODO › Execute › Analyse module › Disable
+auto_install in repositories of the manifest lists the cloned repositories of the active version's manifest; check
+several and they are handled in parallel, with an optional commit of the changed manifests only, on the current
+branch, and an optional push. The script does the same for the repositories given, repeating `--addons_dir`; it
+commits and pushes unless `--ignore_commit` or `--ignore_push`.
 
 ```bash
-./script/git/repo_remove_auto_install.py --addons_dir PATH
+./script/git/repo_remove_auto_install.py --addons_dir PATH1 --addons_dir PATH2 --ignore_push
 ```
 
 ## Filter repo by group
