@@ -125,7 +125,7 @@ Without a layout, the home buttons take row 0 in their order (and row 1 on a dec
 - A missing or unreadable file, another `format`, more than 16 models, a model absent, a layout without a `keys` list or with more entries than keys: the automatic layout. An invalid entry is skipped; a `plugin:<id>` of a plugin turned off or absent leaves its key black. Each case is one journal line, ten at most per start, then one line counting the rest.
 - Dials and the touch screen of the Stream Deck + are outside format 1; the controller (`DECK_PROGRAM=controller`) ignores the file.
 
-`--catalog` gives what a layout may name on this checkout: `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. The actions are the plugins present with a home button, turned off ones included, then `tiles` and `empty`; the models are every deck with a screen the Stream Deck library knows.
+`--catalog` gives what a layout may name on this checkout: `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. The actions are, sorted, the loaded plugins with a home button and the plugins turned off by `DECK_PLUGINS_OFF` (listed from their file name without being imported, so offered whether or not they have a home button), then `tiles` and `empty`; an id of more than 64 characters, which a layout cannot name, is left out; the models are every deck with a screen the Stream Deck library knows.
 
 
 ### Writing a plugin

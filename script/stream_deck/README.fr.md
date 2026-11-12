@@ -111,7 +111,7 @@ Sans disposition, les boutons d'accueil prennent la rangée 0 dans leur ordre (e
 - Fichier absent ou illisible, autre `format`, plus de 16 modèles, modèle absent, disposition sans liste `keys` ou avec plus d'entrées que de touches : la disposition automatique. Une entrée invalide est sautée ; un `plugin:<id>` d'un plugin coupé ou absent laisse sa touche noire. Chaque cas fait une ligne de journal, dix au plus par démarrage, puis une ligne qui compte le reste.
 - Les molettes et l'écran tactile du Stream Deck + sont hors du format 1 ; le contrôleur (`DECK_PROGRAM=controller`) ignore le fichier.
 
-`--catalog` donne ce qu'une disposition peut nommer sur ce checkout : `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. Les actions sont les plugins présents à bouton d'accueil, coupés compris, puis `tiles` et `empty` ; les modèles sont tous les decks à écran que connaît la bibliothèque Stream Deck.
+`--catalog` donne ce qu'une disposition peut nommer sur ce checkout : `{"format": 1, "actions": [...], "icons": [...], "models": {"0084": {"cols": 4, "rows": 2, "keys": 8}, ...}}`. Les actions sont, triés, les plugins chargés à bouton d'accueil et les plugins coupés par `DECK_PLUGINS_OFF` (listés d'après leur nom de fichier sans être importés, donc proposés qu'ils aient ou non un bouton d'accueil), puis `tiles` et `empty` ; un identifiant de plus de 64 caractères, qu'une disposition ne peut nommer, est laissé de côté ; les modèles sont tous les decks à écran que connaît la bibliothèque Stream Deck.
 
 
 ### Écrire un plugin

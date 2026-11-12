@@ -239,14 +239,18 @@ def models():
     return dict(sorted(found.items()))
 
 
-def catalog(plugins):
-    """The --catalog output for the loaded `plugins`: format, the
-    actions ("plugin:<id>" of each plugin with a home button, sorted,
-    then "tiles" and "empty"), the icon names, and models()."""
+def catalog(plugins, off=()):
+    """The --catalog output: format, the actions, the icon names, and
+    models(). The actions are "plugin:<id>" of each loaded plugin of
+    `plugins` with a home button and of each id of `off` (plugins
+    present but turned off, never imported, so offered whether or not
+    they have one), sorted, then "tiles" and "empty". An id longer than
+    PLUGIN_ID admits is left out: layout_for would refuse it."""
+    ids = {lp.id for lp in plugins if lp.plugin.home_button is not None}
     actions = sorted(
-        f"plugin:{lp.id}"
-        for lp in plugins
-        if lp.plugin.home_button is not None
+        action
+        for action in (f"plugin:{pid}" for pid in ids | set(off))
+        if PLUGIN_ACTION_RE.match(action)
     )
     return {
         "format": FORMAT,

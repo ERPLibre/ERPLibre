@@ -105,16 +105,22 @@ def list_plugins():
 def catalog():
     """Every plugin present, off ones included: a layout may name a
     plugin this workstation turns off, and the deck leaves its key
-    empty. A plugin printing at import goes to stderr, not into the
-    JSON."""
+    empty. An off plugin is listed from its file name and not imported,
+    as DECK_PLUGINS_OFF promises. A plugin printing at import goes to
+    stderr, not into the JSON."""
     import contextlib
     import json
 
     from erplibre_streamdeck import keymap, loader
 
     with contextlib.redirect_stdout(sys.stderr):
-        plugins, _ = loader.load()
-        data = keymap.catalog(plugins)
+        from erplibre_streamdeck import app
+
+        plugins, report = loader.load(
+            off=app.read_deck_settings()["plugins_off"]
+        )
+        off = [pid for pid, status, _ in report.entries if status == "off"]
+        data = keymap.catalog(plugins, off)
     print(json.dumps(data, separators=(",", ":")))
     return 0
 

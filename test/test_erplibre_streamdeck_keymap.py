@@ -22,7 +22,13 @@ import streamdeck_stubs as S  # noqa: E402
 app = S.load_package()
 from erplibre_streamdeck import keymap  # noqa: E402
 from erplibre_streamdeck import paths  # noqa: E402
-from erplibre_streamdeck.plugin import Geometry  # noqa: E402
+from erplibre_streamdeck.plugin import (  # noqa: E402
+    Geometry,
+    HomeButton,
+    LoadedPlugin,
+    Plugin,
+    PLUGIN_API,
+)
 from erplibre_streamdeck.ui import icons  # noqa: E402
 
 GEO = Geometry(4, 2, 8)
@@ -380,8 +386,64 @@ class CatalogTest(unittest.TestCase):
             data["models"],
         )
 
+    def test_an_off_plugin_is_listed_by_its_file_without_being_imported(self):
+        """DECK_PLUGINS_OFF keeps its promise under --catalog: the off
+        plugin's file is not run, and its id is offered from its name."""
+        directory = S.CONFIG / "erplibre-home" / "deck-plugins"
+        directory.mkdir(parents=True, exist_ok=True)
+        marker = S.CONFIG / "heavy-was-imported"
+        (directory / "heavy.py").write_text(
+            f"open({str(marker)!r}, 'w').close()\n"
+            "from erplibre_streamdeck.plugin import *\n"
+            "PLUGIN = Plugin(api=PLUGIN_API,"
+            " home_button=HomeButton(5, print, print))\n",
+            encoding="utf-8",
+        )
+        self.addCleanup(
+            sys.modules.pop, "erplibre_streamdeck_user.heavy", None
+        )
+        (S.CONFIG / "erplibre-home" / "streamdeck.conf").write_text(
+            "DECK_PLUGINS_OFF=heavy\n", encoding="utf-8"
+        )
+        code, out = self.run_catalog()
+        self.assertEqual(0, code)
+        self.assertFalse(marker.exists())
+        self.assertIn("plugin:heavy", json.loads(out)["actions"])
+
+    def test_an_id_the_format_cannot_name_is_left_out(self):
+        """The loader takes any [a-z][a-z0-9_]* stem; a layout names at
+        most 64 characters. The catalog offers only what layout_for
+        accepts, whether the plugin is loaded or off."""
+        button = Plugin(
+            api=PLUGIN_API, home_button=HomeButton(1, print, print)
+        )
+        ok, long = "b" * 64, "c" * 65
+        loaded = [
+            LoadedPlugin(pid, button, "user", Path(f"{pid}.py"))
+            for pid in (ok, long)
+        ]
+        with mock.patch.object(keymap, "models", dict):
+            data = keymap.catalog(loaded, off=("d" * 64, "e" * 65))
+        self.assertEqual(
+            [f"plugin:{ok}", f"plugin:{'d' * 64}", "tiles", "empty"],
+            data["actions"],
+        )
+
     def test_the_catalog_is_valid_for_its_own_layouts(self):
-        """Every action and icon of the catalog passes layout_for."""
+        """Every action and icon of the catalog passes layout_for, with
+        a user plugin whose id is longer than a layout may name."""
+        directory = S.CONFIG / "erplibre-home" / "deck-plugins"
+        directory.mkdir(parents=True, exist_ok=True)
+        long = "f" * 65
+        (directory / f"{long}.py").write_text(
+            "from erplibre_streamdeck.plugin import *\n"
+            "PLUGIN = Plugin(api=PLUGIN_API,"
+            " home_button=HomeButton(5, print, print))\n",
+            encoding="utf-8",
+        )
+        self.addCleanup(
+            sys.modules.pop, f"erplibre_streamdeck_user.{long}", None
+        )
         _, out = self.run_catalog()
         data = json.loads(out)
         plugins = {a[7:] for a in data["actions"] if a.startswith("plugin:")}
