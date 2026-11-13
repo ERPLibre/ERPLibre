@@ -439,6 +439,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **TODO › Installation** est traduit — les entrées q, w et m, les étiquettes de version, les questions système et PyCharm — et ses questions oui/non affichent `(o/N)`, Entrée valant non, là où elles affichaient `(Y/N)`
 - `./todo.sh` et `make` ne s'arrêtent plus sur un traceback de GitPython quand git manque : `install.sh` propose de l'installer par le gestionnaire de paquets du système — apt, dnf, pacman, zypper ou Homebrew, Entrée valant oui —, puis continue ; sans terminal, il affiche la commande, et en mode non interactif il installe git sans demander. Sur NixOS, ou sans gestionnaire connu, il dit comment ajouter git
 - `doc/MIGRATION.fr.md` lance les migrations d'Odoo 12 vers 13 et 13 vers 14 depuis `odoo13.0/OCA_OpenUpgrade` et `odoo14.0/OCA_OpenUpgrade` avec le venv d'Odoo 13.0, comme `todo_upgrade.py` : ses commandes visaient `script/OCA_OpenUpgrade`, que les manifestes ne clonent plus, et lançaient `odoo-bin` avec le venv d'outillage, qui n'a aucune dépendance d'Odoo
+- Le client courriel abandonne un lien IMAP dès qu'une lecture dépasse son délai : toute commande suivante y échoue aussitôt par `lien IMAP abandonné après une lecture ou une écriture en échec (…)` et n'atteint plus le serveur, alors qu'elle partait et que le serveur l'exécutait sans que sa réponse puisse encore être lue
 
 ## Retiré
 

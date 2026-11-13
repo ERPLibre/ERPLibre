@@ -451,16 +451,23 @@ La synchronisation a lieu :
   synchronise en arrière-plan ensuite.
 
 Un lien qui meurt est remplacé, pas traîné. Chaque lecture IMAP est bornée
-par `mail_timeout_sec` secondes (défaut 30) ; passé ce délai, Python marque
-la socket pour de bon et toute lecture suivante échoue aussitôt par
-`cannot read from timed out object`, sans rien demander au serveur. Un seul
-`LIST` lent — ce qu'une grande boîte chez un gros fournisseur produit —
-condamnait le compte pour le reste de la session, chaque passe échouant en
-quelques millisecondes sur un lien déjà mort, relancer le client étant le
-seul remède et rien ne le disant. Tout échange rouvre désormais le lien
+par `mail_timeout_sec` secondes (défaut 30) ; passé ce délai, ou quand
+une lecture ou une écriture lève une erreur, le client abandonne ce lien
+pour de bon : toute commande suivante y échoue aussitôt par
+`lien IMAP abandonné après une lecture ou une écriture en échec (…)` —
+la parenthèse nomme la cause, `TimeoutError` pour un délai dépassé, et
+une passe de synchronisation la fait précéder du dossier —, sans rien
+envoyer au serveur, de sorte qu'une réponse arrivée en retard n'est
+jamais prise pour celle de la commande suivante. Un seul `LIST` lent — ce
+qu'une grande boîte chez un gros fournisseur produit — condamnait le
+compte pour le reste de la session, chaque passe échouant en quelques
+millisecondes sur un lien déjà mort, relancer le client étant le seul
+remède et rien ne le disant. Un échange qui trouve son lien mort le rouvre
 une fois et recommence — la passe comme le rangement, le vidage de la
-corbeille, le marquage d'un dossier, une recherche serveur ou la copie
-déposée dans *Envoyés*. Monter `mail_timeout_sec` évite la coupure plutôt
+corbeille, le marquage d'un dossier ou une recherche serveur. Un lien qui
+meurt au milieu d'une passe fait échouer les dossiers qui y restaient, et
+la passe suivante en ouvre un neuf ; la copie déposée dans *Envoyés*
+n'est pas réessayée. Monter `mail_timeout_sec` évite la coupure plutôt
 que de la réparer ; un serveur qui répond *non* n'est pas un lien mort et
 n'est jamais réessayé.
 

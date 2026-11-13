@@ -424,16 +424,22 @@ Sync happens:
 
 A link that dies is replaced rather than carried. Each IMAP read is
 bounded by `mail_timeout_sec` seconds (default 30); when one is exceeded,
-Python marks that socket for good and every later read fails instantly
-with `cannot read from timed out object`, without asking the server
-anything. One slow `LIST` — which a large mailbox at a big provider does
-produce — used to condemn the account for the rest of the session, every
-pass failing in milliseconds on a link already dead, with restarting the
-client as the only cure and nothing saying so. Every exchange now reopens
-the link once and runs again — the sync pass as much as filing, emptying
-the trash, marking a folder read, a server-side search or the copy dropped
-in *Sent*. Raising `mail_timeout_sec` avoids the cut rather than repairing
-it; a server that answers *no* is not a dead link and is never retried.
+or a read or a write raises an error, the client abandons that link for
+good: every later command on it fails instantly with
+`IMAP link abandoned after a failed read or write (…)` — the parenthesis
+names the cause, `TimeoutError` for a timeout, and a sync pass prefixes
+the folder — without sending anything to the server, so an answer that
+comes late is never taken for the answer to the next command. One slow
+`LIST` — which a large mailbox at a big provider does produce — used to
+condemn the account for the rest of the session, every pass failing in
+milliseconds on a link already dead, with restarting the client as the
+only cure and nothing saying so. An exchange that finds its link dead
+reopens it once and runs again — the sync pass as much as filing, emptying
+the trash, marking a folder read or a server-side search. A link that dies
+in the middle of a pass fails the folders left in it, and the next pass
+opens a new one; the copy dropped in *Sent* is not retried. Raising
+`mail_timeout_sec` avoids the cut rather than repairing it; a server that
+answers *no* is not a dead link and is never retried.
 
 If the server reports a changed `UIDVALIDITY` for a folder (its UIDs no
 longer mean what they used to — typically after a server-side migration),

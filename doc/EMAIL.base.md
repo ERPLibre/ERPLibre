@@ -868,16 +868,22 @@ Sync happens:
 
 A link that dies is replaced rather than carried. Each IMAP read is
 bounded by `mail_timeout_sec` seconds (default 30); when one is exceeded,
-Python marks that socket for good and every later read fails instantly
-with `cannot read from timed out object`, without asking the server
-anything. One slow `LIST` — which a large mailbox at a big provider does
-produce — used to condemn the account for the rest of the session, every
-pass failing in milliseconds on a link already dead, with restarting the
-client as the only cure and nothing saying so. Every exchange now reopens
-the link once and runs again — the sync pass as much as filing, emptying
-the trash, marking a folder read, a server-side search or the copy dropped
-in *Sent*. Raising `mail_timeout_sec` avoids the cut rather than repairing
-it; a server that answers *no* is not a dead link and is never retried.
+or a read or a write raises an error, the client abandons that link for
+good: every later command on it fails instantly with
+`IMAP link abandoned after a failed read or write (…)` — the parenthesis
+names the cause, `TimeoutError` for a timeout, and a sync pass prefixes
+the folder — without sending anything to the server, so an answer that
+comes late is never taken for the answer to the next command. One slow
+`LIST` — which a large mailbox at a big provider does produce — used to
+condemn the account for the rest of the session, every pass failing in
+milliseconds on a link already dead, with restarting the client as the
+only cure and nothing saying so. An exchange that finds its link dead
+reopens it once and runs again — the sync pass as much as filing, emptying
+the trash, marking a folder read or a server-side search. A link that dies
+in the middle of a pass fails the folders left in it, and the next pass
+opens a new one; the copy dropped in *Sent* is not retried. Raising
+`mail_timeout_sec` avoids the cut rather than repairing it; a server that
+answers *no* is not a dead link and is never retried.
 
 If the server reports a changed `UIDVALIDITY` for a folder (its UIDs no
 longer mean what they used to — typically after a server-side migration),
@@ -934,16 +940,23 @@ La synchronisation a lieu :
   synchronise en arrière-plan ensuite.
 
 Un lien qui meurt est remplacé, pas traîné. Chaque lecture IMAP est bornée
-par `mail_timeout_sec` secondes (défaut 30) ; passé ce délai, Python marque
-la socket pour de bon et toute lecture suivante échoue aussitôt par
-`cannot read from timed out object`, sans rien demander au serveur. Un seul
-`LIST` lent — ce qu'une grande boîte chez un gros fournisseur produit —
-condamnait le compte pour le reste de la session, chaque passe échouant en
-quelques millisecondes sur un lien déjà mort, relancer le client étant le
-seul remède et rien ne le disant. Tout échange rouvre désormais le lien
+par `mail_timeout_sec` secondes (défaut 30) ; passé ce délai, ou quand
+une lecture ou une écriture lève une erreur, le client abandonne ce lien
+pour de bon : toute commande suivante y échoue aussitôt par
+`lien IMAP abandonné après une lecture ou une écriture en échec (…)` —
+la parenthèse nomme la cause, `TimeoutError` pour un délai dépassé, et
+une passe de synchronisation la fait précéder du dossier —, sans rien
+envoyer au serveur, de sorte qu'une réponse arrivée en retard n'est
+jamais prise pour celle de la commande suivante. Un seul `LIST` lent — ce
+qu'une grande boîte chez un gros fournisseur produit — condamnait le
+compte pour le reste de la session, chaque passe échouant en quelques
+millisecondes sur un lien déjà mort, relancer le client étant le seul
+remède et rien ne le disant. Un échange qui trouve son lien mort le rouvre
 une fois et recommence — la passe comme le rangement, le vidage de la
-corbeille, le marquage d'un dossier, une recherche serveur ou la copie
-déposée dans *Envoyés*. Monter `mail_timeout_sec` évite la coupure plutôt
+corbeille, le marquage d'un dossier ou une recherche serveur. Un lien qui
+meurt au milieu d'une passe fait échouer les dossiers qui y restaient, et
+la passe suivante en ouvre un neuf ; la copie déposée dans *Envoyés*
+n'est pas réessayée. Monter `mail_timeout_sec` évite la coupure plutôt
 que de la réparer ; un serveur qui répond *non* n'est pas un lien mort et
 n'est jamais réessayé.
 
