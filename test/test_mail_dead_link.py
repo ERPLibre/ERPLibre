@@ -3,9 +3,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Un lien IMAP mort se remplace, il ne se traîne pas.
 
-Une lecture qui dépasse le délai marque l'objet socket de Python pour de
-bon : toute lecture suivante lève aussitôt « cannot read from timed out
-object », sans rien demander au serveur. Un seul LIST lent condamnait donc
+Une lecture qui dépasse le délai abandonne le lien
+(`erplibre_mail_core.imap.fail_fast`) : toute commande suivante y lève
+aussitôt, sans rien envoyer au serveur. Un seul LIST lent condamnait donc
 le compte pour toute la durée du client — chaque passe échouant en
 quelques millisecondes sur un lien déjà mort — et relancer le client était
 le seul remède, que rien n'annonçait.
@@ -14,6 +14,7 @@ Ce que ces tests séparent : une SOCKET morte, qui se répare en ouvrant un
 autre lien, et un SERVEUR qui répond non, où rouvrir ne changerait rien et
 où insister ferait tourner le client sans fin.
 """
+
 import imaplib
 import tempfile
 import unittest
@@ -24,6 +25,7 @@ from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.imap_transport import ImapAuthError, ImapError
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session
+from script.todo.todo_i18n import t
 
 
 class FauxTransport:
@@ -116,9 +118,22 @@ class TestASocketThatDied(LienCase):
 
     def test_a_plain_timeout_counts_too(self):
         """`TimeoutError` est ce que lève la PREMIÈRE lecture trop longue,
-        avant que la socket ne soit marquée."""
+        avant que le lien ne soit abandonné."""
         session = self._session([TimeoutError("read operation timed out")])
         self.assertEqual(session.sync(), "rapport")
+
+    def test_an_abandoned_link_counts_too(self):
+        """L'`abort` d'un lien abandonné par `fail_fast` se répare comme
+        une socket morte."""
+        session = self._session(
+            [
+                imaplib.IMAP4.abort(
+                    f"{t('mail_err_link_abandoned')} (TimeoutError)"
+                )
+            ]
+        )
+        self.assertEqual(session.sync(), "rapport")
+        self.assertEqual(len(self.ouvertures), 1)
 
     def test_a_broken_dialogue_counts_too(self):
         """`IMAP4.abort` : le dialogue est rompu en cours de commande."""

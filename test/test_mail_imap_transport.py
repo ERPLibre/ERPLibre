@@ -3,10 +3,16 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import calendar
+import imaplib
 import os
+import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import mail_tls
+from mail_imap_wire import PASSWORD, USER, WireCase
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.imap_transport import (
@@ -390,7 +396,19 @@ class TestTransport(unittest.TestCase):
 
     def test_logout_is_forgiving(self):
         self.client.logout.side_effect = OSError("déjà fermé")
+        self.client.shutdown.side_effect = OSError("déjà fermée")
         self.transport.logout()  # ne doit pas lever
+
+    def test_a_failed_logout_closes_the_socket(self):
+        """`imaplib` ne ferme la socket qu'après un LOGOUT réussi."""
+        self.client.logout.side_effect = imaplib.IMAP4.abort("x")
+        self.transport.logout()
+        self.client.shutdown.assert_called_once_with()
+
+    def test_a_polite_logout_does_not_close_twice(self):
+        self.transport.logout()
+        self.client.logout.assert_called_once_with()
+        self.client.shutdown.assert_not_called()
 
 
 class TestFetchFlags(unittest.TestCase):
@@ -663,6 +681,183 @@ class TestConnect(unittest.TestCase):
             connect(self._account("ssl"), "hunter2")
         client.logout.assert_not_called()
         client.shutdown.assert_not_called()
+
+    def test_the_link_is_abandoned_at_its_first_failure(self):
+        """`fail_fast` garde le client avant tout échange : STARTTLS et
+        LOGIN passent déjà par lui."""
+        for security, classe in (("ssl", "IMAP4_SSL"), ("starttls", "IMAP4")):
+            with self.subTest(security=security):
+                ordre = []
+                client = MagicMock()
+                client.login.side_effect = lambda *a: ordre.append("login")
+                client.starttls.side_effect = lambda *a, **k: ordre.append(
+                    "starttls"
+                )
+                vus = []
+
+                def garde(c):
+                    vus.append(c)
+                    ordre.append("fail_fast")
+                    return c
+
+                with (
+                    patch(f"imaplib.{classe}", return_value=client),
+                    patch(
+                        "script.todo.mail.imap_transport.fail_fast",
+                        side_effect=garde,
+                    ),
+                ):
+                    connect(self._account(security), "hunter2")
+                self.assertEqual(vus, [client])
+                attendu = ["fail_fast", "login"]
+                if security == "starttls":
+                    attendu.insert(1, "starttls")
+                self.assertEqual(ordre, attendu)
+
+    def test_starttls_goes_through_the_plaintext_guard(self):
+        from script.todo.mail.imap_transport import tls
+
+        temoin = object()
+        notes = []
+
+        def garde(client, contexte):
+            notes.append((client, contexte))
+            return temoin
+
+        client = MagicMock()
+        contexte = tls.context_for(None)
+        with (
+            patch("imaplib.IMAP4", return_value=client),
+            patch(
+                "script.todo.mail.imap_transport.tls.context_for",
+                return_value=contexte,
+            ),
+            patch(
+                "script.todo.mail.imap_transport.starttls_context",
+                side_effect=garde,
+            ),
+        ):
+            connect(self._account("starttls"), "hunter2")
+        client.starttls.assert_called_once_with(ssl_context=temoin)
+        self.assertEqual(notes, [(client, contexte)])
+
+    def test_an_abort_during_authenticate_is_not_a_refused_token(self):
+        """Un dialogue rompu pendant AUTHENTICATE est une panne de
+        connexion : le jeton n'est pas en cause."""
+        from script.todo.mail import errors
+        from script.todo.mail.imap_transport import ImapAuthError
+
+        account = self._account("ssl")
+        account.auth = "oauth"
+        client = MagicMock()
+        client.authenticate.side_effect = imaplib.IMAP4.abort(
+            "socket error: EOF"
+        )
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapError) as ctx:
+                connect(account, "jeton")
+        self.assertNotIsInstance(ctx.exception, ImapAuthError)
+        self.assertEqual(errors.classify(ctx.exception), "network")
+
+        client = MagicMock()
+        client.authenticate.side_effect = imaplib.IMAP4.error(
+            "AUTHENTICATIONFAILED"
+        )
+        with patch("imaplib.IMAP4_SSL", return_value=client):
+            with self.assertRaises(ImapAuthError):
+                connect(account, "jeton")
+
+
+class TestConnectOnTheWire(WireCase):
+    """Le vrai `connect`, le vrai `imaplib`, contre le serveur scripté de
+    `mail_imap_wire`, sur `127.0.0.1` et sans TLS."""
+
+    def setUp(self):
+        super().setUp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for correctif in (
+            patch.dict(os.environ, {"HOME": tmp.name}),
+            patch(
+                "script.todo.mail.imap_transport._delai_lecture",
+                return_value=0.3,
+            ),
+        ):
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        self.compte = SimpleNamespace(
+            imap=SimpleNamespace(
+                host="127.0.0.1",
+                port=self.server.port,
+                security="none",
+                user=USER,
+            ),
+            auth="login",
+        )
+
+    def test_a_link_that_timed_out_is_abandoned_end_to_end(self):
+        transport = connect(self.compte, PASSWORD)
+        self.addCleanup(transport.logout)
+        transport.select("INBOX")
+        self.server.hold("UID FETCH")
+        with self.assertRaises(OSError):
+            transport.fetch_flags([1])
+        repere = len(self.server.received)
+        with self.assertRaises(imaplib.IMAP4.abort):
+            transport.fetch_flags([2])
+        self.assertFalse(self.server.wait_received(repere + 1, timeout=0.3))
+        debut = time.monotonic()
+        transport.logout()
+        self.assertLess(time.monotonic() - debut, 0.3)
+        self.assertNotIn("LOGOUT", self.server.verbs())
+        self.assertEqual(transport.client.sock.fileno(), -1)
+
+
+class TestStarttlsOnTheWire(unittest.TestCase):
+    """Le vrai `connect` en STARTTLS, le vrai `imaplib`, contre
+    `mail_tls.MiniServer` sur `127.0.0.1`, l'autorité de test acceptée."""
+
+    @classmethod
+    def setUpClass(cls):
+        mail_tls.require_crypto()
+        cls.pki = mail_tls.shared_pki()
+
+    def setUp(self):
+        mail_tls.quiet_tls_log(self)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for correctif in (
+            patch.dict(os.environ, {"HOME": tmp.name}),
+            mail_tls.trusting(self.pki.ca_path),
+        ):
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        self.server = mail_tls.MiniServer(
+            "imap", "starttls", self.pki.leaf("ok")
+        )
+        self.addCleanup(self.server.stop)
+        self.server.start()
+        self.compte = SimpleNamespace(
+            imap=SimpleNamespace(
+                host="127.0.0.1",
+                port=self.server.port,
+                security="starttls",
+                user="moi@example.org",
+            ),
+            auth="login",
+        )
+
+    def test_a_folder_injected_before_the_upgrade_is_not_listed(self):
+        """Un dossier « Envoyés » glissé en clair avant la réponse `OK` de
+        STARTTLS n'apparaît pas dans la première liste des dossiers."""
+        self.server.starttls_preamble = (
+            b'* LIST (\\HasNoChildren \\Sent) "/" "Forged"\r\n'
+        )
+        transport = connect(self.compte, "secret")
+        self.addCleanup(transport.logout)
+        dossiers = transport.list_folders()
+        self.assertEqual([d.name for d in dossiers], ["INBOX"])
+        self.assertNotIn("sent", [d.role for d in dossiers])
 
 
 class TestRulesHeaders(unittest.TestCase):

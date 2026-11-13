@@ -414,9 +414,10 @@ class Session:
         Tout ce qui parle au serveur passe par ici — la passe de
         synchronisation comme le rangement, la corbeille, le marquage ou la
         recherche serveur. Réserver la reprise à la synchronisation laissait
-        les autres gestes cassés jusqu'à la passe suivante : une socket
-        marquée morte par Python fait échouer toute lecture ultérieure en
-        quelques millisecondes, sans rien demander au serveur.
+        les autres gestes cassés jusqu'à la passe suivante : un lien
+        abandonné après un délai dépassé fait échouer toute commande
+        ultérieure en quelques millisecondes, sans rien envoyer au serveur
+        (`fail_fast`).
 
         Deux façons pour un lien de cesser de servir, et les deux se
         réparent en en ouvrant un autre : le SECRET a expiré — un jeton

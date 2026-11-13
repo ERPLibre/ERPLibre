@@ -44,9 +44,11 @@ from erplibre_mail_core.imap import (  # noqa: F401
     decode_header_value,
     decode_mailbox,
     extra_headers,
+    fail_fast,
     internaldate_epoch,
     parse_fetch_headers,
     parse_list_line,
+    starttls_context,
     xoauth2_chain,
 )
 
@@ -386,21 +388,32 @@ class ImaplibTransport(ImapConnection):
         return bool((data[0] or b"").split())
 
     def logout(self) -> None:
-        """Fermer proprement est souhaitable, pas indispensable : on n'échoue
-        jamais sur la sortie."""
+        """LOGOUT poli, puis la socket fermée quoi qu'il arrive ; ne lève
+        jamais.
+
+        `imaplib` ne ferme la socket qu'après un LOGOUT réussi. Sur un lien
+        abandonné ou coupé, LOGOUT lève : seule la socket se ferme, sans
+        attendre de réponse.
+        """
         try:
             self.client.logout()
+            return
         except Exception:
-            # Best-effort : la connexion peut déjà être fermée par le serveur.
+            # Lien abandonné ou coupé : la fermeture de la socket suffit.
+            pass
+        try:
+            self.client.shutdown()
+        except Exception:
+            # Déjà fermée : rien à rendre.
             pass
 
 
 def _delai_lecture() -> int:
     """Le délai d'une lecture IMAP, en secondes.
 
-    Il borne CHAQUE lecture, pas la passe : un LIST qui dépasse marque la
-    socket comme morte pour Python, et toute lecture suivante échoue
-    aussitôt sans rien demander au serveur. Réglable parce que 30 secondes
+    Il borne CHAQUE lecture, pas la passe : un LIST qui dépasse abandonne
+    le lien (`fail_fast`) : toute commande suivante y échoue aussitôt sans
+    rien envoyer au serveur. Réglable parce que 30 secondes
     suffisent partout sauf sur les boîtes les plus chargées.
 
     Une préférence illisible ne doit pas empêcher de se connecter : toute
@@ -449,7 +462,8 @@ def connect(account, secret: str) -> ImaplibTransport:
     coffre lui a rendu. Tout échec après l'ouverture ferme la connexion
     (`_abandon`) avant que l'erreur ne sorte, sans la remplacer ; une
     ouverture qui échoue ferme elle-même ce qu'elle a ouvert
-    (`IMAP4.__init__`).
+    (`IMAP4.__init__`). Le lien s'abandonne à la première lecture ou
+    écriture qui lève (`fail_fast`) : l'appelant en ouvre un autre.
 
     En `ssl` comme en `starttls`, le certificat est vérifié (chaîne et
     nom), sauf si le compte épingle une empreinte pour ce point d'accès
@@ -457,7 +471,10 @@ def connect(account, secret: str) -> ImaplibTransport:
     est vérifié) ; l'empreinte présentée est alors comparée à l'épingle
     avant toute authentification. Un refus sort en
     `tls.TlsCertificateError`, empreinte comprise, jamais en `ImapError`,
-    et la socket se ferme sans LOGOUT.
+    et la socket se ferme sans LOGOUT. En `starttls`, des octets reçus en
+    clair avec la réponse `OK`, avant la poignée de main, font refuser le
+    lien, et les réponses non étiquetées reçues en clair avant elle sont
+    oubliées (`starttls_context`).
     """
     import imaplib
 
@@ -479,9 +496,10 @@ def connect(account, secret: str) -> ImaplibTransport:
             )
         else:
             client = imaplib.IMAP4(conf.host, conf.port, timeout=delai)
+        fail_fast(client)
         try:
             if conf.security == "starttls":
-                client.starttls(ssl_context=contexte)
+                client.starttls(ssl_context=starttls_context(client, contexte))
             if pin:
                 tls.check_pin(
                     client.sock,
@@ -494,6 +512,11 @@ def connect(account, secret: str) -> ImaplibTransport:
                 chaine = xoauth2_chain(conf.user, secret)
                 try:
                     client.authenticate("XOAUTH2", lambda _: chaine)
+                except imaplib.IMAP4.abort:
+                    # Un dialogue rompu (coupure, fin de flux, BYE), pas un
+                    # refus du jeton : le rattrapage général en fait une
+                    # panne de connexion.
+                    raise
                 except imaplib.IMAP4.error as exc:
                     # Le serveur a parlé, et c'était un refus. Le distinguer
                     # ici, pendant qu'on sait encore que la socket était
