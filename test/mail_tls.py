@@ -457,6 +457,12 @@ class MiniServer:
     Un fil par connexion. `commands` porte le verbe, en majuscules, de
     chaque ligne reçue, avant et après TLS. Une poignée de main refusée par
     le client ferme la connexion sans lever dans le fil.
+
+    `starttls_preamble` part EN CLAIR, dans un envoi à part, AVANT la
+    réponse `OK` de STARTTLS, et `starttls_trailer` dans le même envoi que
+    cette réponse, après elle (IMAP seulement) : ce qu'un tiers sur le
+    chemin glisserait avant la poignée de main. LIST rend le seul dossier
+    `INBOX`.
     """
 
     def __init__(self, protocol: str, security: str, leaf: Leaf):
@@ -468,6 +474,8 @@ class MiniServer:
         self.security = security
         self._context = server_context(leaf)
         self.commands: list[str] = []
+        self.starttls_preamble = b""
+        self.starttls_trailer = b""
         self.port = 0
         self._listen = None
         self._threads: list[threading.Thread] = []
@@ -594,12 +602,22 @@ class MiniServer:
                 conn.sendall(b"* CAPABILITY " + caps() + b"\r\n")
                 conn.sendall(tag + b" OK done\r\n")
             elif verbe == b"STARTTLS" and en_clair:
-                conn.sendall(tag + b" OK Begin TLS\r\n")
+                if self.starttls_preamble:
+                    conn.sendall(self.starttls_preamble)
+                conn.sendall(
+                    tag + b" OK Begin TLS\r\n" + self.starttls_trailer
+                )
                 conn = self._wrap(conn)
                 lignes = _Lines(conn)
                 en_clair = False
             elif verbe == b"LOGIN":
                 conn.sendall(tag + b" OK logged in\r\n")
+            elif verbe == b"LIST":
+                conn.sendall(
+                    b'* LIST (\\HasNoChildren) "/" "INBOX"\r\n'
+                    + tag
+                    + b" OK done\r\n"
+                )
             elif verbe == b"LOGOUT":
                 conn.sendall(b"* BYE bye\r\n" + tag + b" OK done\r\n")
                 return

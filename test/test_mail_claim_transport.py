@@ -8,7 +8,9 @@
 bac à sable (avec et sans CONDSTORE, PERMANENTFLAGS restreint, boîte en
 lecture seule, mots-clés jetés) ; les lignes FETCH que le bac à sable ne
 produit pas (plusieurs lignes d'un même UID, BAD à MODSEQ) se jouent
-contre un double du client `imaplib`.
+contre un double du client `imaplib`. Le double applique l'arité d'`uid()`
+des versions récentes d'`imaplib` : un STORE à plus de trois arguments y
+lève, quel que soit l'interpréteur.
 """
 
 import imaplib
@@ -56,9 +58,19 @@ def brut(uid):
     ).encode()
 
 
+# L'arité qu'`uid()` impose à ses arguments après la commande, selon les
+# versions récentes d'`imaplib`.
+ARITE_UID = {"STORE": 3, "FETCH": 2, "COPY": 2}
+
+
 class ClientDouble:
-    """Un client `imaplib` réduit : chaque `uid()` rend la réponse suivante
-    de `reponses` (ou lève l'exception qui s'y trouve)."""
+    """Un client `imaplib` réduit : chaque `uid()` ou `xatom()` rend la
+    réponse suivante de `reponses` (ou lève l'exception qui s'y trouve).
+
+    `uid()` refuse, comme `imaplib`, un STORE qui n'a pas exactement trois
+    arguments, un FETCH ou un COPY qui n'en a pas deux. `xatom()` range les
+    lignes d'une réponse OK parmi les FETCH non étiquetés, comme le vrai
+    client ; toute autre réponse est rendue telle quelle."""
 
     def __init__(self, reponses=(), capacites=b"IMAP4rev1"):
         self.reponses = list(reponses)
@@ -77,12 +89,28 @@ class ClientDouble:
     def capability(self):
         return "OK", [self.capacites]
 
-    def uid(self, command, *args):
-        self.appels.append((command, args))
+    def _suivante(self):
         reponse = self.reponses.pop(0)
         if isinstance(reponse, BaseException):
             raise reponse
         return reponse
+
+    def uid(self, command, *args):
+        attendu = ARITE_UID.get(command.upper())
+        if attendu is not None and len(args) != attendu:
+            raise ValueError(f"{command} : {len(args)} arguments")
+        self.appels.append((command, args))
+        return self._suivante()
+
+    def xatom(self, name, *args):
+        self.appels.append((name, args))
+        typ, lignes = self._suivante()
+        if typ != "OK":
+            return typ, lignes
+        recues = [ligne for ligne in lignes if ligne is not None]
+        if recues:
+            self.untagged_responses.setdefault("FETCH", []).extend(recues)
+        return "OK", [b"done"]
 
 
 class TestClaimHelpers(unittest.TestCase):
@@ -137,6 +165,32 @@ class TestClaimHelpers(unittest.TestCase):
         )
         self.assertEqual(
             ImaplibTransport(client).fetch_flags([1, 2]), [(1, "\\Seen")]
+        )
+
+    def test_the_conditional_store_goes_out_through_xatom(self):
+        client = ClientDouble(
+            [
+                ("OK", [b"1 (UID 1 FLAGS (\\Seen) MODSEQ (7))"]),
+                ("OK", [b"1 (UID 1 FLAGS (\\Seen $ErpLibreRule) MODSEQ (8))"]),
+            ],
+            capacites=b"IMAP4rev1 CONDSTORE",
+        )
+        transport = ImaplibTransport(client)
+        sonde = transport.claim_probe("INBOX", 1, uidvalidity=42)
+        self.assertEqual(sonde, ClaimProbe("free", "atomic", 7))
+        self.assertEqual(transport.claim_store(1, sonde), "stored")
+        self.assertEqual(
+            client.appels[-1],
+            (
+                "UID",
+                (
+                    "STORE",
+                    "1",
+                    "(UNCHANGEDSINCE 7)",
+                    "+FLAGS",
+                    "($ErpLibreRule)",
+                ),
+            ),
         )
 
     def sonde(self, lignes):
@@ -346,6 +400,20 @@ class TestClaimCondstoreAfterLogin(SandboxClaimCase):
 
     def test_condstore_announced_after_login_is_seen(self):
         transport = self.transport()
+        sonde = self.sonde(transport)
+        self.assertEqual((sonde.status, sonde.mode), ("free", "atomic"))
+        self.assertEqual(transport.claim_store(1, sonde), "stored")
+
+    def test_condstore_after_login_is_seen_even_if_imaplib_keeps_the_old_list(
+        self,
+    ):
+        """Un `imaplib` qui ne relit pas les capacités après LOGIN y laisse
+        la liste d'avant connexion, sans CONDSTORE : la sonde le voit
+        quand même."""
+        transport = self.transport()
+        transport.client.capabilities = tuple(
+            c for c in transport.client.capabilities if c != "CONDSTORE"
+        )
         self.assertNotIn("CONDSTORE", transport.client.capabilities)
         sonde = self.sonde(transport)
         self.assertEqual((sonde.status, sonde.mode), ("free", "atomic"))
@@ -460,10 +528,16 @@ class TestSandboxCondstore(MailSandboxCase):
         client.login(USER, PASSWORD)
         client.select("INBOX")
         vieux = self.inbox.by_uid(1).modseq - 1
-        typ, data = client.uid(
-            "STORE", "1", f"(UNCHANGEDSINCE {vieux})", "+FLAGS", "(\\Seen)"
+        typ, _ = client.xatom(
+            "UID",
+            "STORE",
+            "1",
+            f"(UNCHANGEDSINCE {vieux})",
+            "+FLAGS",
+            "(\\Seen)",
         )
-        self.assertEqual((typ, data), ("OK", [None]))
+        self.assertEqual(typ, "OK")
+        self.assertEqual(client.response("FETCH")[1], [None])
         self.assertEqual(client.response("MODIFIED")[1], [b"1"])
         self.assertEqual(self.inbox.by_uid(1).flags, [])
 
@@ -472,7 +546,8 @@ class TestSandboxCondstore(MailSandboxCase):
         client.login(USER, PASSWORD)
         client.select("INBOX")
         actuel = self.inbox.by_uid(1).modseq
-        typ, data = client.uid(
+        typ, _ = client.xatom(
+            "UID",
             "STORE",
             "1",
             f"(UNCHANGEDSINCE {actuel})",
@@ -480,7 +555,10 @@ class TestSandboxCondstore(MailSandboxCase):
             "(\\Seen)",
         )
         self.assertEqual(typ, "OK")
-        self.assertEqual(data, [f"1 (UID 1 MODSEQ ({actuel + 1}))".encode()])
+        self.assertEqual(
+            client.response("FETCH")[1],
+            [f"1 (UID 1 MODSEQ ({actuel + 1}))".encode()],
+        )
         self.assertEqual(self.inbox.by_uid(1).flags, ["\\Seen"])
 
     def test_condstore_after_login_is_absent_before_login(self):

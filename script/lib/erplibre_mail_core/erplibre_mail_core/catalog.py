@@ -25,6 +25,14 @@ CATALOG: dict[str, dict[str, str]] = {
         "fr": "boîte de réception en lecture seule : revendication impossible pour l'instant",
         "en": "inbox is read-only: claim impossible for now",
     },
+    "mail_err_link_abandoned": {
+        "fr": "lien IMAP abandonné après une lecture ou une écriture en échec",
+        "en": "IMAP link abandoned after a failed read or write",
+    },
+    "mail_err_starttls_plaintext": {
+        "fr": "données en clair reçues avant la poignée de main STARTTLS : lien refusé",
+        "en": "plaintext data received before the STARTTLS handshake: link refused",
+    },
     "mail_err_smtp_connection_prefix": {
         "fr": "connexion SMTP à",
         "en": "SMTP connection to",

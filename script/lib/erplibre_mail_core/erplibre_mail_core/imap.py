@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import email
 import email.utils
+import functools
 import imaplib
 import re
 import time
@@ -414,6 +415,102 @@ def _uid_set(text) -> set[int]:
     return out
 
 
+def fail_fast(client):
+    """Rend `client`, un `imaplib.IMAP4` ouvert, inutilisable dès sa
+    première entrée-sortie en échec, et le rend.
+
+    `read`, `readline` et `send`, les points que `imaplib` destine à la
+    surcharge, sont remplacés sur l'instance. Une exception levée par l'un
+    d'eux (délai dépassé, écriture sur un lien coupé, interruption)
+    traverse telle quelle et abandonne le lien : ensuite, chacun lève
+    `imaplib.IMAP4.abort` sans appeler l'original, donc sans rien lire ni
+    envoyer.
+
+    Selon sa version, `imaplib` rend une ligne vide sur une fin de flux ou
+    une coupure en lecture, et lève lui-même `abort` : le lien n'est pas
+    marqué, mais le pair est parti et rien n'y reste à lire en retard.
+
+    Selon sa version, `imaplib` garde une socket lisible après un délai
+    dépassé : la réponse en retard d'une commande serait lue comme celle
+    de la suivante, et un LOGOUT attendrait un délai de plus. Abandonner
+    le lien rend la même conduite dans toutes les versions ; l'appelant en
+    ouvre un autre.
+
+    Incompatible avec `imaplib.IMAP4.idle()`, qui se sert d'un délai
+    dépassé comme d'une attente normale.
+    """
+    cause: list[str] = []
+
+    def garder(methode):
+        @functools.wraps(methode)
+        def gardee(*args):
+            if cause:
+                raise imaplib.IMAP4.abort(
+                    f"{t('mail_err_link_abandoned')} ({cause[0]})"
+                )
+            try:
+                return methode(*args)
+            except BaseException as exc:
+                cause.append(type(exc).__name__)
+                raise
+
+        return gardee
+
+    client.read = garder(client.read)
+    client.readline = garder(client.readline)
+    client.send = garder(client.send)
+    return client
+
+
+class _ContexteStarttls:
+    """Mandataire d'un `ssl.SSLContext` pour `starttls_context`."""
+
+    def __init__(self, client, contexte) -> None:
+        self._client = client
+        self._contexte = contexte
+
+    def wrap_socket(self, sock, *args, **kwargs):
+        # Seule lecture d'un attribut privé d'`imaplib` dans le noyau : son
+        # tampon de lecture, absent des versions qui lisent par `makefile`.
+        if any(getattr(self._client, "_readbuf", None) or ()):
+            raise imaplib.IMAP4.abort(t("mail_err_starttls_plaintext"))
+        # Les réponses non étiquetées lues en clair, avant la réponse `OK`,
+        # dorment dans `untagged_responses` jusqu'à la commande qui les
+        # réclame : la première liste des dossiers les rendrait avec les
+        # siennes. `imaplib` ne les jette dans aucune version.
+        self._client.untagged_responses.clear()
+        return self._contexte.wrap_socket(sock, *args, **kwargs)
+
+    def __getattr__(self, nom):
+        return getattr(self._contexte, nom)
+
+
+def starttls_context(client, contexte):
+    """Rend, pour `client.starttls(ssl_context=…)`, un mandataire de
+    `contexte` qui refuse la poignée de main quand des octets reçus EN
+    CLAIR attendent encore d'être lus, et qui oublie, juste avant, toute
+    réponse non étiquetée reçue en clair (RFC 3501 §6.2.1).
+
+    Selon sa version, `imaplib` garde dans son tampon de lecture ce qui
+    est arrivé avec la réponse `OK` de STARTTLS, et le lit après la
+    poignée de main comme s'il venait du canal chiffré : un tiers sur le
+    chemin y glisserait des réponses que le certificat ne couvre pas. Un
+    serveur conforme n'envoie rien avant la poignée de main. Le tampon
+    n'est visible qu'à cet instant, dans `starttls`, d'où le mandataire.
+
+    Les lignes non étiquetées qui PRÉCÈDENT la réponse `OK` sont déjà
+    analysées et rangées dans `client.untagged_responses`, où une commande
+    d'après la poignée de main (LIST avant le premier SELECT) les lirait
+    avec les siennes : elles y sont effacées. Rien n'y sert après TLS, les
+    capacités étant relues sur le canal chiffré.
+
+    `wrap_socket` lève `imaplib.IMAP4.abort` sans rien envoyer ; un
+    `imaplib` sans ce tampon jette lui-même ce qui suit la réponse `OK`, et
+    seul l'effacement agit. Tout autre attribut est celui de `contexte`.
+    """
+    return _ContexteStarttls(client, contexte)
+
+
 class ImapConnection:
     """Une connexion `imaplib` déjà authentifiée : SELECT, lecture des
     drapeaux et revendication d'un message.
@@ -424,9 +521,12 @@ class ImapConnection:
 
     def __init__(self, client) -> None:
         self.client = client
-        # Les capacités lues APRÈS l'authentification, à la première sonde
-        # de revendication ; `imaplib` ne remplit `capabilities` qu'avant,
-        # et bien des serveurs n'y annoncent pas encore CONDSTORE.
+        # Les capacités lues par `CAPABILITY` une fois authentifié, à la
+        # première sonde de revendication. Selon sa version, `imaplib`
+        # laisse dans `capabilities` la liste d'avant connexion, où
+        # des serveurs n'annoncent pas encore CONDSTORE, ou la relit après
+        # LOGIN : la commande explicite rend la même liste dans les deux
+        # cas.
         self._capacites: frozenset[str] | None = None
         # Vrai quand le serveur annonce CONDSTORE mais en refuse la
         # syntaxe (BAD) : la connexion revendique alors en mode simple.
@@ -486,6 +586,10 @@ class ImapConnection:
     def _capacites_auth(self) -> frozenset[str]:
         """Les capacités du serveur lues par `CAPABILITY` une fois
         authentifié, en majuscules, gardées pour la connexion.
+
+        La commande part même quand `client.capabilities` porte déjà la
+        liste d'après connexion : la lire dépendrait de la version
+        d'`imaplib`.
 
         Un échec de la commande retombe sur la liste d'avant connexion
         (`self.client.capabilities`), sans la garder : la sonde suivante
@@ -595,6 +699,29 @@ class ImapConnection:
             return ClaimProbe("present", mode, modseq)
         return ClaimProbe("free", mode, modseq)
 
+    def _store_keyword(
+        self, uid: int, unchangedsince: int | None
+    ) -> tuple[str, list]:
+        """`UID STORE <uid> [(UNCHANGEDSINCE m)] +FLAGS (<mot-clé>)` ; rend
+        le statut de la réponse étiquetée et les lignes FETCH reçues,
+        `[None]` quand il n'en vient aucune.
+
+        La commande part par `xatom`, qui transmet ses arguments tels
+        quels : selon sa version, `imaplib` n'accepte à `uid("STORE", …)`
+        qu'un ensemble, une opération et une liste de drapeaux, sans place
+        pour le modificateur de RFC 7162. `response("FETCH")` relève les
+        lignes FETCH comme `uid()` le fait : aucune ne reste pour la
+        commande suivante. Un BAD lève `imaplib.IMAP4.error`, une panne du
+        lien `imaplib.IMAP4.abort` ou `OSError`.
+        """
+        args = [str(int(uid))]
+        if unchangedsince is not None:
+            args.append(f"(UNCHANGEDSINCE {int(unchangedsince)})")
+        args += ["+FLAGS", f"({CLAIM_KEYWORD})"]
+        typ, _ = self.client.xatom("UID", "STORE", *args)
+        _, lignes = self.client.response("FETCH")
+        return typ, lignes
+
     def claim_store(self, uid: int, probe: ClaimProbe) -> str:
         """Pose le mot-clé sur `uid` dans le dossier que la sonde vient de
         sélectionner, et rend l'un de `claim.STORE_RESULTS`.
@@ -603,7 +730,8 @@ class ImapConnection:
         `UNCHANGEDSINCE <modseq de la sonde>`. Un message changé depuis
         n'est pas modifié, et le serveur le nomme dans un code
         `[MODIFIED …]` de sa réponse étiquetée, qu'`imaplib` range dans
-        `untagged_responses` comme un code non étiqueté : `modified`. Un
+        `untagged_responses` comme un code non étiqueté ; la commande part
+        par `_store_keyword` : `modified`. Un
         BAD à cette syntaxe (serveur qui annonce CONDSTORE et le gère mal)
         fait passer la connexion en mode simple et rend `retry`, rien
         n'ayant été appliqué. Un NO, ou un BAD en mode simple, lève
@@ -625,12 +753,10 @@ class ImapConnection:
         # vide que OK, NO et BAD avant chaque commande.
         self.client.response("MODIFIED")
         atomique = probe.mode == "atomic" and probe.modseq is not None
-        args = [str(uid)]
-        if atomique:
-            args.append(f"(UNCHANGEDSINCE {int(probe.modseq)})")
-        args += ["+FLAGS", f"({CLAIM_KEYWORD})"]
         try:
-            typ, data = self.client.uid("STORE", *args)
+            typ, data = self._store_keyword(
+                uid, int(probe.modseq) if atomique else None
+            )
         except imaplib.IMAP4.abort:
             raise
         except imaplib.IMAP4.error as exc:

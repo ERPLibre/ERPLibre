@@ -33,7 +33,7 @@ if str(RACINE / "test") not in sys.path:
     sys.path.insert(0, str(RACINE / "test"))
 
 import mail_tls  # noqa: E402
-from erplibre_mail_core import i18n, smtp, tls  # noqa: E402
+from erplibre_mail_core import i18n, imap, smtp, tls  # noqa: E402
 from erplibre_mail_core.catalog import CATALOG  # noqa: E402
 
 TLS_PY = NOYAU / "erplibre_mail_core" / "tls.py"
@@ -751,6 +751,90 @@ class TestSmtpConnect(CryptoCase):
         ctor.assert_called_once_with("127.0.0.1", 25, timeout=30)
         client.starttls.assert_not_called()
         client.login.assert_called_once_with("moi", "secret")
+
+
+class TestStarttlsPlaintext(CryptoCase):
+    """Des octets reçus en clair avant ou avec la réponse `OK` de STARTTLS
+    ne sont jamais lus comme venus du canal chiffré, quel que soit
+    `imaplib`."""
+
+    FORGEE = b'* LIST (\\HasNoChildren \\Sent) "/" "Forged"\r\n'
+
+    def test_untagged_lines_before_the_starttls_answer_are_forgotten(self):
+        """Une ligne LIST glissée en clair avant la réponse `OK` n'est pas
+        rendue par la première liste des dossiers, faite avant tout
+        SELECT."""
+        srv = self.serveur("imap", "starttls", "ok")
+        srv.starttls_preamble = self.FORGEE
+        client = imaplib.IMAP4("127.0.0.1", srv.port, timeout=5)
+        self.addCleanup(client.shutdown)
+        with mail_tls.trusting(self.pki.ca_path):
+            contexte = tls.context_for(None)
+            client.starttls(
+                ssl_context=imap.starttls_context(client, contexte)
+            )
+        self.assertEqual(client.login("moi", "secret")[0], "OK")
+        statut, lignes = client.list()
+        self.assertEqual(statut, "OK")
+        self.assertEqual(lignes, [b'(\\HasNoChildren) "/" "INBOX"'])
+
+    def test_plaintext_after_the_starttls_answer_is_never_read(self):
+        srv = self.serveur("imap", "starttls", "ok")
+        srv.starttls_trailer = b"* 1 FETCH (UID 9 FLAGS (\\Seen))\r\n"
+        client = imaplib.IMAP4("127.0.0.1", srv.port, timeout=5)
+        self.addCleanup(client.shutdown)
+        lues = []
+        lire = client.readline
+
+        def espion():
+            ligne = lire()
+            lues.append(ligne)
+            return ligne
+
+        client.readline = espion
+        with mail_tls.trusting(self.pki.ca_path):
+            contexte = tls.context_for(None)
+            try:
+                client.starttls(
+                    ssl_context=imap.starttls_context(client, contexte)
+                )
+            except imaplib.IMAP4.abort as exc:
+                self.assertIn(i18n.t("mail_err_starttls_plaintext"), str(exc))
+        self.assertNotIn("FETCH", client.untagged_responses)
+        self.assertFalse([ligne for ligne in lues if b"UID 9" in ligne])
+
+    def test_a_clean_starttls_is_unchanged(self):
+        srv = self.serveur("imap", "starttls", "ok")
+        client = imaplib.IMAP4("127.0.0.1", srv.port, timeout=5)
+        self.addCleanup(client.shutdown)
+        with mail_tls.trusting(self.pki.ca_path):
+            contexte = tls.context_for(None)
+            client.starttls(
+                ssl_context=imap.starttls_context(client, contexte)
+            )
+        self.assertIsInstance(client.sock, ssl.SSLSocket)
+        self.assertEqual(client.login("moi", "secret")[0], "OK")
+
+    def test_the_guard_delegates_everything_else(self):
+        contexte = mock.MagicMock()
+        client = SimpleNamespace(
+            _readbuf=[b""], untagged_responses={"LIST": [b"x"]}
+        )
+        garde = imap.starttls_context(client, contexte)
+        sock = object()
+        rendu = garde.wrap_socket(sock, server_hostname="h")
+        contexte.wrap_socket.assert_called_once_with(sock, server_hostname="h")
+        self.assertIs(rendu, contexte.wrap_socket.return_value)
+        self.assertIs(garde.check_hostname, contexte.check_hostname)
+        self.assertEqual(client.untagged_responses, {})
+
+        contexte = mock.MagicMock()
+        garde = imap.starttls_context(
+            SimpleNamespace(_readbuf=[b"x"], untagged_responses={}), contexte
+        )
+        with self.assertRaises(imaplib.IMAP4.abort):
+            garde.wrap_socket(object(), server_hostname="h")
+        contexte.wrap_socket.assert_not_called()
 
 
 class TestProductionSource(unittest.TestCase):
