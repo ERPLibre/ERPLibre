@@ -595,22 +595,22 @@ class TODO(
 
     def _choisir_suite(self):
         """Demande comment se déroule la suite de l'installation ; rend True
-        pour « sans interaction ». Entrée choisit l'interactif : les
-        questions suivantes (identité git, mise, PyCharm) sont posées.
-        Sans interaction, chacune prend sa valeur par défaut, et personne
-        n'a plus à rester devant l'installation."""
+        pour « sans interaction ». Entrée choisit le sans interaction :
+        chaque question suivante (identité git, mise, PyCharm) prend sa
+        valeur par défaut, et personne n'a plus à rester devant
+        l'installation. L'interactif les pose."""
         choix = {
-            "1": f"1: {t('Interactive: the next questions are asked (default)')}",
-            "2": f"2: {t('Unattended: each next question takes its default answer')}",
+            "1": f"1: {t('Interactive: the next questions are asked')}",
+            "2": f"2: {t('Unattended: each next question takes its default answer (default)')}",
         }
         while True:
             saisie = (
                 input(
                     f"💬 {t('Rest of the installation:')}\n\t"
                     + "\n\t".join(choix.values())
-                    + f"\n{t('Select [1]: ')}"
+                    + f"\n{t('Select [2]: ')}"
                 ).strip()
-                or "1"
+                or "2"
             )
             if saisie in choix:
                 return saisie == "2"
@@ -799,8 +799,8 @@ class TODO(
 
         L'ordre : la cible, l'environnement et le type pour une version
         d'Odoo, l'étape système, puis, hors du mode `non_interactif`, la
-        suite : interactive par défaut, ou sans interaction, ses valeurs
-        par défaut prises (_choisir_suite). La cible « m » n'offre pas ce
+        suite : sans interaction par défaut, ses valeurs par défaut
+        prises, ou interactive (_choisir_suite). La cible « m » n'offre pas ce
         choix : sa dernière étape fait choisir un appareil Android au
         clavier."""
         depuis_cli = reponses is not None

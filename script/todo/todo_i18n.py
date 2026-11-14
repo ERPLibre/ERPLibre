@@ -1677,13 +1677,13 @@ TRANSLATIONS = {
         "fr": "Suite de l'installation :",
         "en": "Rest of the installation:",
     },
-    "Interactive: the next questions are asked (default)": {
-        "fr": "Interactive : les questions suivantes sont posées (défaut)",
-        "en": "Interactive: the next questions are asked (default)",
+    "Interactive: the next questions are asked": {
+        "fr": "Interactive : les questions suivantes sont posées",
+        "en": "Interactive: the next questions are asked",
     },
-    "Unattended: each next question takes its default answer": {
-        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut",
-        "en": "Unattended: each next question takes its default answer",
+    "Unattended: each next question takes its default answer (default)": {
+        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut (défaut)",
+        "en": "Unattended: each next question takes its default answer (default)",
     },
     "Select [1]: ": {
         "fr": "Sélection [1] : ",
