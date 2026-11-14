@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 
@@ -38,6 +39,12 @@ from script.todo.todo_i18n import t
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
 CATALOGUE = "conf/supported_version_erplibre.json"
+
+# Les lectures de plateformes menées à la fois. Chacune est une requête
+# anonyme au registre d'images, sans SSH ni écriture : le plafond couvre
+# toutes les versions du catalogue en un seul tour, et borne le nombre de
+# connexions simultanées au registre.
+PARALLELE_REGISTRE = 8
 
 # Les codes que rend container_runtime, et la phrase à montrer. La phrase vit
 # ICI et non dans le module : lui rend des faits, et une phrase choisit une
@@ -716,9 +723,18 @@ class ContainerMenuMixin:
         vide garde l'architecture de l'hôte, la seule qui se construise sans
         émulation.
         """
+        # Les lectures se chevauchent, chacune attendant le registre ; map
+        # rend les résultats dans l'ordre de cibles, et les avertissements
+        # s'impriment ensuite, dans ce même ordre.
+        with ThreadPoolExecutor(max_workers=PARALLELE_REGISTRE) as pool:
+            lues = list(
+                pool.map(
+                    lambda v: self._container_plateformes_publiees(prefixe, v),
+                    cibles,
+                )
+            )
         publiees = {}
-        for version in cibles:
-            archs = self._container_plateformes_publiees(prefixe, version)
+        for version, archs in zip(cibles, lues):
             if not archs:
                 print(f"⚠ {t('Unreadable platforms for Odoo %s.') % version}")
                 archs = [hote]

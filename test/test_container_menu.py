@@ -21,6 +21,7 @@ import contextlib
 import io
 import re
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -755,6 +756,57 @@ class TestPlateformes(Banc):
         todo = self.todo()
         todo._container_sortie = lambda prefixe, cmd: None
         self.assertEqual([], todo._container_plateformes_publiees("", "18.0"))
+
+    def _todo_chevauche(self, publiees):
+        """Un TODO dont chaque lecture attend les autres à une barrière :
+        seules des lectures menées EN MÊME TEMPS la franchissent, une suite
+        en série la casse au bout du délai. Passé la barrière, elles
+        rendent à rebours de cibles, la dernière d'abord."""
+        cibles = list(publiees)
+        barriere = threading.Barrier(len(cibles), timeout=5)
+        rendues = {v: threading.Event() for v in cibles}
+
+        def lecture(prefixe, version):
+            barriere.wait()
+            rang = cibles.index(version)
+            if rang + 1 < len(cibles):
+                rendues[cibles[rang + 1]].wait(timeout=5)
+            rendues[version].set()
+            return publiees[version]
+
+        todo = self.todo()
+        todo._container_plateformes_publiees = lecture
+        return todo, cibles
+
+    def test_les_versions_se_lisent_en_meme_temps_et_dans_l_ordre(self):
+        todo, cibles = self._todo_chevauche(
+            {"18.0": ["amd64", "arm64"], "17.0": ["arm64"], "12.0": ["amd64"]}
+        )
+        with self.reponses(entrees=["1 2"]) as sortie:
+            plan = todo._container_choix_architectures("", cibles, "amd64")
+        self.assertEqual(
+            {"18.0": ["amd64", "arm64"], "17.0": ["arm64"], "12.0": ["amd64"]},
+            plan,
+        )
+        self.assertEqual(list(plan), cibles)
+        rendu = sortie.getvalue()
+        self.assertLess(rendu.index("[1] amd64"), rendu.index("[2] arm64"))
+
+    def test_les_illisibles_se_nomment_dans_l_ordre_des_versions(self):
+        """Une version au registre muet se replie sur l'hôte, sans priver
+        les autres de leur lecture."""
+        todo, cibles = self._todo_chevauche(
+            {"18.0": ["amd64", "arm64"], "17.0": [], "12.0": []}
+        )
+        with self.reponses(entrees=[""]) as sortie:
+            plan = todo._container_choix_architectures("", cibles, "amd64")
+        self.assertEqual(
+            {"18.0": ["amd64"], "17.0": ["amd64"], "12.0": ["amd64"]}, plan
+        )
+        rendu = sortie.getvalue()
+        avis = todo_i18n.t("Unreadable platforms for Odoo %s.")
+        self.assertNotIn(avis % "18.0", rendu)
+        self.assertLess(rendu.index(avis % "17.0"), rendu.index(avis % "12.0"))
 
 
 class TestVersionsOdoo(Banc):
