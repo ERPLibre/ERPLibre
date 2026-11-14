@@ -281,6 +281,51 @@ where nix already is the system, and outside amd64/arm64.
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
 
+### VM account
+
+One account serves the whole deployment: every VM created by it gets the same
+user and password. The defaults are `erplibre` / `erplibre`, a public
+password, which suits a disposable development VM and nothing else.
+
+The **VM account** section of the form (QEMU/KVM and Proxmox alike) holds:
+
+- the user — lowercase, `^[a-z_][a-z0-9_-]{0,31}$`, and not a name an
+  account or a group of the images already holds (`root`, `ubuntu`, `gdm`,
+  `git`, `sudo`, `wheel`…);
+- the password, masked, with three buttons: **Generate** (16 characters, no
+  `0 O 1 l I`, a letter first), **Copy** (to the clipboard, through OSC 52)
+  and **Show/Hide**;
+- **Keep the password in the VM**, off by default.
+
+The QEMU/KVM command-line prompts ask the same: Enter keeps `erplibre`, `g`
+generates a password and prints it once, anything else asks for it twice
+without echo. The Proxmox command-line path asks nothing and uses the
+defaults.
+
+The clear password is kept nowhere. The VM receives its SHA-512 crypt hash
+(`--password-hash`); the spec, `session.json`, the form history, the logs and
+the preview hold none of it. A GNOME desktop needs the clear value for its RDP
+login: the host sends it over ssh's standard input to a root-only file,
+GNOME Remote Desktop reads it, and the file is deleted once the RDP login is
+checked. An install that stops before that point leaves the file for its
+relaunch. A server VM never receives it. With **Keep the password in the
+VM**, the file stays, and the form shows how to read it:
+
+```bash
+sudo cat /etc/erplibre/vm-password
+```
+
+A VM created earlier keeps the account it was created with. The menu finds it
+in the install monitor's `session.json`, then in `~/.ssh/config`, and falls
+back to `erplibre`. A VM recreated from its kept spec gets the same account
+back from the stored hash. Once todo has been restarted the clear password is
+gone, so recreating a GNOME desktop asks for it again and accepts it only if it
+matches the stored hash. Leaving it out recreates the VM without RDP.
+
+GNOME Remote Desktop 47 and later read the password on their standard input.
+`grdctl` 46 only takes it as an argument, and `pkexec`, which `grdctl
+--system` goes through, logs that command line in the VM's journal.
+
 ## Main options
 
 - `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,

@@ -447,6 +447,51 @@ where nix already is the system, and outside amd64/arm64.
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
 
+### VM account
+
+One account serves the whole deployment: every VM created by it gets the same
+user and password. The defaults are `erplibre` / `erplibre`, a public
+password, which suits a disposable development VM and nothing else.
+
+The **VM account** section of the form (QEMU/KVM and Proxmox alike) holds:
+
+- the user — lowercase, `^[a-z_][a-z0-9_-]{0,31}$`, and not a name an
+  account or a group of the images already holds (`root`, `ubuntu`, `gdm`,
+  `git`, `sudo`, `wheel`…);
+- the password, masked, with three buttons: **Generate** (16 characters, no
+  `0 O 1 l I`, a letter first), **Copy** (to the clipboard, through OSC 52)
+  and **Show/Hide**;
+- **Keep the password in the VM**, off by default.
+
+The QEMU/KVM command-line prompts ask the same: Enter keeps `erplibre`, `g`
+generates a password and prints it once, anything else asks for it twice
+without echo. The Proxmox command-line path asks nothing and uses the
+defaults.
+
+The clear password is kept nowhere. The VM receives its SHA-512 crypt hash
+(`--password-hash`); the spec, `session.json`, the form history, the logs and
+the preview hold none of it. A GNOME desktop needs the clear value for its RDP
+login: the host sends it over ssh's standard input to a root-only file,
+GNOME Remote Desktop reads it, and the file is deleted once the RDP login is
+checked. An install that stops before that point leaves the file for its
+relaunch. A server VM never receives it. With **Keep the password in the
+VM**, the file stays, and the form shows how to read it:
+
+```bash
+sudo cat /etc/erplibre/vm-password
+```
+
+A VM created earlier keeps the account it was created with. The menu finds it
+in the install monitor's `session.json`, then in `~/.ssh/config`, and falls
+back to `erplibre`. A VM recreated from its kept spec gets the same account
+back from the stored hash. Once todo has been restarted the clear password is
+gone, so recreating a GNOME desktop asks for it again and accepts it only if it
+matches the stored hash. Leaving it out recreates the VM without RDP.
+
+GNOME Remote Desktop 47 and later read the password on their standard input.
+`grdctl` 46 only takes it as an argument, and `pkexec`, which `grdctl
+--system` goes through, logs that command line in the VM's journal.
+
 ## Main options
 
 - `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,
@@ -649,6 +694,53 @@ amd64/arm64.
 
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.
+
+### Compte de la VM
+
+Un seul compte sert tout le déploiement : chaque VM qu'il crée reçoit le même
+utilisateur et le même mot de passe. Les défauts sont `erplibre` /
+`erplibre`, un mot de passe public, qui convient à une VM de développement
+jetable et à rien d'autre.
+
+La section **Compte de la VM** du formulaire (QEMU/KVM comme Proxmox) porte :
+
+- l'utilisateur — en minuscules, `^[a-z_][a-z0-9_-]{0,31}$`, et pas un nom
+  que porte déjà un compte ou un groupe des images (`root`, `ubuntu`, `gdm`,
+  `git`, `sudo`, `wheel`…) ;
+- le mot de passe, masqué, avec trois boutons : **Générer** (16 caractères,
+  sans `0 O 1 l I`, une lettre en tête), **Copier** (dans le presse-papier,
+  par OSC 52) et **Afficher/Masquer** ;
+- **Garder le mot de passe dans la VM**, décoché par défaut.
+
+Les invites en ligne de QEMU/KVM demandent la même chose : Entrée garde
+`erplibre`, `g` génère un mot de passe et l'affiche une fois, toute autre
+réponse le fait taper deux fois sans écho. La voie en ligne de Proxmox ne
+demande rien et prend les défauts.
+
+Le mot de passe en clair n'est gardé nulle part. La VM reçoit son empreinte
+SHA-512 crypt (`--password-hash`) ; la spec, `session.json`, l'historique du
+formulaire, les journaux et l'aperçu n'en portent rien. Un bureau GNOME a
+besoin du clair pour sa connexion RDP : l'hôte l'envoie par l'entrée standard
+de ssh dans un fichier lisible par root seul, GNOME Remote Desktop le lit, et
+le fichier est supprimé une fois la connexion RDP vérifiée. Une installation
+qui s'arrête avant laisse le fichier pour sa relance. Une VM serveur ne le
+reçoit jamais. Avec **Garder le mot de passe dans la VM**, le fichier reste,
+et le formulaire dit comment le lire :
+
+```bash
+sudo cat /etc/erplibre/vm-password
+```
+
+Une VM créée auparavant garde le compte de sa création. Le menu le retrouve
+dans le `session.json` du suivi d'installation, puis dans `~/.ssh/config`, et
+retombe sur `erplibre`. Une VM recréée d'après sa spec gardée retrouve le
+même compte grâce à l'empreinte conservée. Une fois todo relancé, le clair
+n'existe plus : la recréation d'un bureau GNOME le redemande, et ne l'accepte
+que s'il correspond à l'empreinte. S'en passer recrée la VM sans RDP.
+
+GNOME Remote Desktop 47 et suivants lisent le mot de passe sur leur entrée
+standard. `grdctl` 46 ne le prend qu'en argument, et `pkexec`, par lequel
+passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 
 ## Principales options
 
