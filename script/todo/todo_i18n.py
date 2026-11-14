@@ -745,10 +745,12 @@ TRANSLATIONS = {
         "fr": "Pour quitter la console, appuyez sur Ctrl+] (puis Entrée).",
         "en": "To leave the console, press Ctrl+] (then Enter).",
     },
-    "Default login (if set at deploy): erplibre / erplibre": {
-        "fr": "Login par défaut (si défini au déploiement) : "
-        "erplibre / erplibre",
-        "en": "Default login (if set at deploy): erplibre / erplibre",
+    "Login: {user} / the password chosen at deployment"
+    " ({default} by default)": {
+        "fr": "Connexion : {user} / le mot de passe choisi au déploiement"
+        " ({default} par défaut)",
+        "en": "Login: {user} / the password chosen at deployment"
+        " ({default} by default)",
     },
     "Console password for 'erplibre' (default: erplibre): ": {
         "fr": "Mot de passe console pour « erplibre » (défaut : erplibre) : ",
@@ -7092,6 +7094,201 @@ TRANSLATIONS = {
     "RDP credentials:": {
         "fr": "Identifiants RDP :",
         "en": "RDP credentials:",
+    },
+    "password chosen at deployment": {
+        "fr": "mot de passe choisi au déploiement",
+        "en": "password chosen at deployment",
+    },
+    "Password kept in the VM, read it with:": {
+        "fr": "Mot de passe gardé dans la VM, à lire avec :",
+        "en": "Password kept in the VM, read it with:",
+    },
+    "VM password file absent: RDP credentials left unchanged": {
+        "fr": "Fichier du mot de passe de la VM absent : identifiants RDP"
+        " laissés tels quels",
+        "en": "VM password file absent: RDP credentials left unchanged",
+    },
+    "The VM password is no longer in memory: it is asked"
+    " next, to give the new VM its RDP login.": {
+        "fr": "Le mot de passe de la VM n'est plus en mémoire : il est"
+        " demandé ensuite, pour rendre à la VM neuve sa connexion RDP.",
+        "en": "The VM password is no longer in memory: it is asked"
+        " next, to give the new VM its RDP login.",
+    },
+    "Recreated without the VM password: no RDP login"
+    " and no kept password file.": {
+        "fr": "Recréée sans le mot de passe de la VM : ni connexion RDP ni"
+        " fichier du mot de passe gardé.",
+        "en": "Recreated without the VM password: no RDP login"
+        " and no kept password file.",
+    },
+    "Password of {user} in {name}": {
+        "fr": "Mot de passe de {user} dans {name}",
+        "en": "Password of {user} in {name}",
+    },
+    "The one chosen when the VM was deployed;"
+    " it becomes its RDP login again.": {
+        "fr": "Celui choisi au déploiement de la VM ; il redevient sa"
+        " connexion RDP.",
+        "en": "The one chosen when the VM was deployed;"
+        " it becomes its RDP login again.",
+    },
+    "Recreate without it": {
+        "fr": "Recréer sans",
+        "en": "Recreate without it",
+    },
+    "This is not the password of this VM.": {
+        "fr": "Ce n'est pas le mot de passe de cette VM.",
+        "en": "This is not the password of this VM.",
+    },
+    "Cannot compute the VM password hash: {reason}": {
+        "fr": "Empreinte du mot de passe de la VM incalculable : {reason}",
+        "en": "Cannot compute the VM password hash: {reason}",
+    },
+    "VM password not delivered; remote desktop login may fail": {
+        "fr": "Mot de passe de la VM non remis ; la connexion au bureau"
+        " distant risque d'échouer",
+        "en": "VM password not delivered; remote desktop login may fail",
+    },
+    "VM login:": {
+        "fr": "Connexion à la VM :",
+        "en": "VM login:",
+    },
+    "The VM user cannot be empty.": {
+        "fr": "L'utilisateur de la VM ne peut pas être vide.",
+        "en": "The VM user cannot be empty.",
+    },
+    "Invalid VM user: lowercase letters, digits, '_' and '-',"
+    " starting with a letter or '_', 32 characters at most.": {
+        "fr": "Utilisateur de la VM invalide : minuscules, chiffres, « _ » et"
+        " « - », commençant par une lettre ou « _ », 32 caractères au plus.",
+        "en": "Invalid VM user: lowercase letters, digits, '_' and '-',"
+        " starting with a letter or '_', 32 characters at most.",
+    },
+    "This name is already taken by an account or a group"
+    " of the images: {name}": {
+        "fr": "Ce nom est déjà pris par un compte ou un groupe des images :"
+        " {name}",
+        "en": "This name is already taken by an account or a group"
+        " of the images: {name}",
+    },
+    "VM account": {
+        "fr": "Compte de la VM",
+        "en": "VM account",
+    },
+    "VM user": {
+        "fr": "Utilisateur de la VM",
+        "en": "VM user",
+    },
+    "VM password": {
+        "fr": "Mot de passe de la VM",
+        "en": "VM password",
+    },
+    "Generate password": {
+        "fr": "Générer",
+        "en": "Generate",
+    },
+    "Show": {
+        "fr": "Afficher",
+        "en": "Show",
+    },
+    "Hide": {
+        "fr": "Masquer",
+        "en": "Hide",
+    },
+    "Keep the password in the VM": {
+        "fr": "Garder le mot de passe dans la VM",
+        "en": "Keep the password in the VM",
+    },
+    "Root-only file in the VM:": {
+        "fr": "Fichier réservé à root dans la VM :",
+        "en": "Root-only file in the VM:",
+    },
+    "Read it with:": {
+        "fr": "À lire avec :",
+        "en": "Read it with:",
+    },
+    "Password generated: copy it or show it before deploying.": {
+        "fr": "Mot de passe généré : le copier ou l'afficher avant de"
+        " déployer.",
+        "en": "Password generated: copy it or show it before deploying.",
+    },
+    "Password copied.": {
+        "fr": "Mot de passe copié.",
+        "en": "Password copied.",
+    },
+    "The VM password cannot be empty.": {
+        "fr": "Le mot de passe de la VM ne peut pas être vide.",
+        "en": "The VM password cannot be empty.",
+    },
+    "The VM password cannot contain control characters.": {
+        "fr": "Le mot de passe de la VM ne peut pas contenir de caractère de"
+        " contrôle.",
+        "en": "The VM password cannot contain control characters.",
+    },
+    "The VM password cannot start with '-'.": {
+        "fr": "Le mot de passe de la VM ne peut pas commencer par « - ».",
+        "en": "The VM password cannot start with '-'.",
+    },
+    "VM password: Enter = {default} (public), g = generate, t = type it: ": {
+        "fr": "Mot de passe de la VM : Entrée = {default} (public), g ="
+        " générer, t = le taper : ",
+        "en": "VM password: Enter = {default} (public), g = generate, t ="
+        " type it: ",
+    },
+    "Generated password, note it now:": {
+        "fr": "Mot de passe généré, à noter maintenant :",
+        "en": "Generated password, note it now:",
+    },
+    "Keep the password in the VM? (y/N): ": {
+        "fr": "Garder le mot de passe dans la VM ? (o/N) : ",
+        "en": "Keep the password in the VM? (y/N): ",
+    },
+    "Empty: the default password is kept.": {
+        "fr": "Vide : le mot de passe par défaut est gardé.",
+        "en": "Empty: the default password is kept.",
+    },
+    "Confirm the password": {
+        "fr": "Confirmer le mot de passe",
+        "en": "Confirm the password",
+    },
+    "The passwords do not match.": {
+        "fr": "Les mots de passe ne correspondent pas.",
+        "en": "The passwords do not match.",
+    },
+    "one account for every VM of the deployment, with sudo": {
+        "fr": "un seul compte pour toutes les VM du déploiement, avec sudo",
+        "en": "one account for every VM of the deployment, with sudo",
+    },
+    "default erplibre / erplibre: public, change it on an exposed VM": {
+        "fr": "défaut erplibre / erplibre : public, à changer sur une VM"
+        " exposée",
+        "en": "default erplibre / erplibre: public, change it on an exposed"
+        " VM",
+    },
+    "only its SHA-512 hash reaches the VM creation command": {
+        "fr": "seule son empreinte SHA-512 atteint la commande de création",
+        "en": "only its SHA-512 hash reaches the VM creation command",
+    },
+    "a GNOME desktop reads it once for its RDP login": {
+        "fr": "un bureau GNOME le lit une fois pour sa connexion RDP",
+        "en": "a GNOME desktop reads it once for its RDP login",
+    },
+    "kept in the VM: a root-only file, read with": {
+        "fr": "gardé dans la VM : un fichier réservé à root, à lire avec",
+        "en": "kept in the VM: a root-only file, read with",
+    },
+    "not kept: a server VM never receives it,": {
+        "fr": "non gardé : une VM serveur ne le reçoit jamais,",
+        "en": "not kept: a server VM never receives it,",
+    },
+    "a GNOME VM deletes it once its RDP login is checked,": {
+        "fr": "une VM GNOME l'efface une fois sa connexion RDP vérifiée,",
+        "en": "a GNOME VM deletes it once its RDP login is checked,",
+    },
+    "or keeps it for a relaunch if the install stops before": {
+        "fr": "ou le garde pour une relance si l'installation s'arrête avant",
+        "en": "or keeps it for a relaunch if the install stops before",
     },
     "RAM raised to the desktop minimum": {
         "fr": "RAM portée au minimum d'un bureau",

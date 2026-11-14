@@ -7,6 +7,7 @@ import re
 import shlex
 
 from script.todo import dev_tools
+from script.todo.deploy_form_lib import VM_LOGIN_FILE, VM_LOGIN_READ_CMD
 from script.todo.todo_i18n import t
 
 # Première adresse IPv4 globale de l'invité, à placer dans « $( … ) ».
@@ -595,13 +596,6 @@ class QemuInstallMixin:
         "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
     }
 
-    # Mot de passe RDP de GNOME Remote Desktop, avec l'utilisateur de la VM.
-    # C'est celui que le déploiement par todo.py donne à cet utilisateur
-    # (« --password ») : RDP et SSH s'ouvrent alors avec les mêmes
-    # identifiants. Il reste distinct du mot de passe système, que GDM
-    # demande ensuite : la ligne d'annonce nomme celui de RDP.
-    QEMU_DESKTOP_RDP_PASSWORD = "erplibre"
-
     # Place que prend un bureau complet, annoncée dans le plan : sur une image
     # cloud de 40 G, l'oublier remplit le disque en pleine installation.
     QEMU_DESKTOP_EXTRA_DISK_GB = 6
@@ -980,7 +974,7 @@ class QemuInstallMixin:
     # démon, qui tourne sous cet utilisateur, doit pouvoir les lire.
     _QEMU_GRD_USER = "gnome-remote-desktop"
 
-    def _qemu_grd_remote_cmd(self):
+    def _qemu_grd_remote_cmd(self, keep_login=False):
         """Bloc shell : GNOME Remote Desktop en mode SYSTÈME, RDP sur 3389.
 
         Le mode système (« remote login ») ouvre l'écran de connexion de GDM
@@ -999,22 +993,69 @@ class QemuInstallMixin:
         par « status --show-credentials » qui décide : identifiants, clé et
         état activé, puis l'unité active.
 
-        Identifiants en ARGUMENTS : la forme sur l'entrée standard, que décrit
-        la documentation amont, n'écrit rien dans un pipe (grdctl 46 ne la
-        connaît pas, les suivants perdent la seconde ligne), là où la forme en
-        arguments est acceptée de la 46 à aujourd'hui.
+        Le mot de passe RDP est celui du compte de la VM, lu dans
+        VM_LOGIN_FILE (root 0600), que l'hôte dépose par l'entrée standard
+        de ssh avant cette commande. La commande ne porte donc aucun secret,
+        et sudo ne journalise que le texte littéral du script root qui lit
+        le fichier.
+
+        Le compte en argument, le mot de passe sur l'ENTRÉE STANDARD de
+        grdctl, redirigée depuis le fichier. « grdctl --system » se relance
+        par pkexec avec ses propres arguments, et pkexec journalise cette
+        ligne de commande dans l'invité : un mot de passe en argument y
+        resterait. grdctl 47 et suivants lisent la valeur absente sur leur
+        entrée standard, une ligne par valeur manquante ; une seule manque
+        ici, celle que deux lectures successives perdraient ne se pose pas.
+        grdctl 46 n'a que la forme en arguments, que son aide trahit
+        (« set-credentials <username> <password> ») : il la reçoit, et le
+        clair passe alors par le journal de pkexec dans l'invité.
+
+        La relecture compare le mot de passe que rend « status
+        --show-credentials » au contenu du fichier, dans un shell root qui
+        les lit tous deux : une valeur perdue en route ne s'annonce pas.
+        Fichier absent (relance d'un suivi rouvert, VM recréée sans le clair
+        en mémoire) : un avertissement, et les identifiants déjà posés ne
+        changent pas ; sans eux, la relecture échoue et EL_REM passe à
+        « off ».
+
+        `keep_login` : faux, le fichier est retiré une fois la relecture
+        réussie ; un échec le laisse pour qu'une relance le relise. Vrai, il
+        reste, et l'annonce dit comment le lire.
 
         Rejouable : la clé et le certificat existants sont gardés, et
         grdctl réécrit ses réglages à l'identique."""
         u = self._QEMU_GRD_USER
-        pw = shlex.quote(self.QEMU_DESKTOP_RDP_PASSWORD)
+        pw_file = shlex.quote(VM_LOGIN_FILE)
         own = f"sudo install -d -o {u} -g {u} -m 700"
         grd = "sudo grdctl --system"
         echec = t(
             "GNOME Remote Desktop not configured;"
             " the VM console remains available"
         )
+        absent = t("VM password file absent: RDP credentials left unchanged")
+        # « $1 » plutôt que « $(id -un) » dans le script : celui-ci tourne
+        # sous root, et c'est le compte de la VM qui doit être nommé.
+        credentials = (
+            "if grdctl --help 2>/dev/null "
+            "| grep -qF '[<username> [<password>]]'; then "
+            "sudo sh -c 'grdctl --system rdp set-credentials "
+            f'"$1" < {pw_file}\' sh "$(id -un)"; '
+            "else sudo sh -c 'grdctl --system rdp set-credentials "
+            f'"$1" "$(cat {pw_file})"\' sh "$(id -un)"; fi'
+        )
+        # Le mot de passe relu contre le fichier. « printf » est interne au
+        # shell ; le shell root lit l'un sur son entrée, l'autre par « cat ».
+        # En mode système, « status » n'a que la section RDP, donc une seule
+        # ligne « Password: ».
+        relu = (
+            'printf "%s\\n" "$EL_GRD_S" '
+            "| sed -n 's/^[[:space:]]*Password: //p' "
+            f'| sudo sh -c \'[ "$(cat)" = "$(cat {pw_file})" ]\''
+        )
+        retire = "" if keep_login else f"sudo rm -f {pw_file} || true; "
         return (
+            f"if sudo test -s {pw_file}; then EL_PW_F=1; "
+            f"else EL_PW_F=0; echo {shlex.quote('   ⚠ ' + absent)}; fi; "
             f"EL_GRD_H=$(getent passwd {u} | cut -d: -f6); "
             'EL_GRD_D="$EL_GRD_H/.local/share/gnome-remote-desktop"; '
             # xrdp, posé par un passage précédent, tient 3389 : les deux
@@ -1048,7 +1089,7 @@ class QemuInstallMixin:
             # Sans garde entre eux : leur code de retour ne dit rien.
             f'&& {{ {grd} rdp set-tls-key "$EL_GRD_D/tls.key"; '
             f'{grd} rdp set-tls-cert "$EL_GRD_D/tls.crt"; '
-            f'{grd} rdp set-credentials "$(id -un)" {pw}; '
+            f'{{ [ "$EL_PW_F" = 0 ] || {credentials}; }}; '
             f"{grd} rdp enable; }} >/dev/null 2>&1 "
             # Un démon déjà lancé, par le paquet ou un passage précédent, ne
             # relit pas ses réglages : le redémarrer les applique.
@@ -1062,8 +1103,9 @@ class QemuInstallMixin:
             '&& printf "%s\\n" "$EL_GRD_S" '
             '| grep -qF "TLS key: $EL_GRD_D/tls.key" '
             '&& printf "%s\\n" "$EL_GRD_S" | grep -q "Status: enabled" '
+            f'&& {{ [ "$EL_PW_F" = 0 ] || {relu}; }} '
             "&& systemctl is-active --quiet gnome-remote-desktop.service; "
-            "then EL_REM=grd; "
+            f"then EL_REM=grd; {retire}"
             f'else EL_REM=off; echo "   ⚠ {echec}"; fi; '
         )
 
@@ -1172,7 +1214,7 @@ class QemuInstallMixin:
         )
 
     def _qemu_desktop_remote_cmd(
-        self, flavour="gnome", app_store="deb", distro=""
+        self, flavour="gnome", app_store="deb", distro="", keep_login=False
     ):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -1185,11 +1227,17 @@ class QemuInstallMixin:
         condition.
 
         Un bureau qui ne s'installe pas fait échouer la commande ; un accès
-        distant qui ne se configure pas n'est qu'un avertissement."""
+        distant qui ne se configure pas n'est qu'un avertissement.
+
+        `keep_login` : le fichier du mot de passe du compte reste dans la
+        VM (voir _qemu_grd_remote_cmd). Faux, le repli xrdp le retire aussi :
+        xrdp passe par PAM et n'en a pas l'usage."""
         de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
         rem = self._QEMU_DESKTOP_REMOTE
         label = de["label"]
         grd = de.get("remote") == "grd"
+        pw_file = shlex.quote(VM_LOGIN_FILE)
+        retire_pw = "" if keep_login else f"sudo rm -f {pw_file} || true; "
 
         def x11(family):
             """Paquets d'accès distant à poser avec le bureau : ceux de la
@@ -1326,8 +1374,9 @@ class QemuInstallMixin:
                 "EL_REM=; "
                 "if { grdctl --help 2>&1 || true; } "
                 "| grep -q -- --system; then "
-                + self._qemu_grd_remote_cmd()
+                + self._qemu_grd_remote_cmd(keep_login)
                 + "else "
+                + retire_pw
                 + self._qemu_xrdp_fallback_cmd()
                 + "fi; "
                 if grd
@@ -1336,9 +1385,19 @@ class QemuInstallMixin:
             + 'if [ "$EL_REM" = grd ]; then '
             f'echo "   {t("Remote desktop:")} RDP 3389 '
             '(GNOME Remote Desktop)"; '
-            f'echo "     {t("RDP credentials:")} $(id -un) / '
-            f'{self.QEMU_DESKTOP_RDP_PASSWORD}"; '
-            + self._qemu_tunnel_hint(3389, "RDP")
+            # Le défaut public se nomme, d'après le mot de passe que GNOME
+            # Remote Desktop a relu (EL_GRD_S) ; un mot de passe choisi ne
+            # s'écrit jamais.
+            "if printf '%s\\n' \"$EL_GRD_S\" "
+            "| grep -qx '[[:space:]]*Password: erplibre'; "
+            "then EL_PW_SAY=erplibre; "
+            f"else EL_PW_SAY={shlex.quote(t('password chosen at deployment'))}"
+            "; fi; "
+            f'echo "     {t("RDP credentials:")} $(id -un) / $EL_PW_SAY"; '
+            # Le chemin, jamais la valeur : le journal est lisible de tous.
+            f"if sudo test -s {pw_file}; then "
+            f'echo "     {t("Password kept in the VM, read it with:")} '
+            f'{VM_LOGIN_READ_CMD}"; fi; ' + self._qemu_tunnel_hint(3389, "RDP")
             # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
             # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
             # sans session à ouvrir, ne le remplacerait pas.
@@ -1664,6 +1723,9 @@ class QemuInstallMixin:
                 k: v.get("distros_excluded", ()) for k, v in outils.items()
             },
             "distro_family": dict(self._QEMU_DISTRO_FAMILY),
+            # Le mot de passe du compte de la VM quitte l'écran par ce rappel,
+            # jamais par la spec : il le pose en mémoire de CE processus.
+            "vm_secret_sink": self._qemu_set_vm_secret,
             "defaults": {
                 "install": True,
                 "add_ssh_config": True,
@@ -2745,13 +2807,14 @@ class QemuInstallMixin:
             # écran distant. Les autres drapeaux viennent de la même autorité
             # que le lancement du menu : écran réduit, densité qui va avec, et
             # pas d'instantané en attente si on tue l'émulateur.
-            'ssh -XC erplibre@$ip \\"$HOME/android/emulator/emulator '
+            'ssh -XC $(id -un)@$ip \\"$HOME/android/emulator/emulator '
             f'-avd erplibre {self._QEMU_EMULATOR_FLAGS}\\""; '
             f'echo "   {t("then install the APK:")} '
             # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
             # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».
             # Mesuré sur l'émulateur.
-            'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r -t '
+            "ssh $(id -un)@$ip "
+            '\\"$HOME/android/platform-tools/adb install -r -t '
             f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
             '/outputs/apk/debug/app-debug.apk\\""; '
             # La voie scrcpy, nommée ici parce que c'est la première

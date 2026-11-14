@@ -30,6 +30,7 @@ from script.todo.deploy_form_lib import (
     FREE,
     RES_FIELDS,
     SELECT_TO_FIELD,
+    VM_USER_DEFAULT,
     branch_default,
     branch_order,
     build_vms,
@@ -98,7 +99,13 @@ def build_spec(vms, existants, form):
         "vms": [vm for vm in vms if vm["name"] not in connus],
         "existing": [vm["name"] for vm in vms if vm["name"] in connus],
         "ssh_key": form["ssh_key"],
-        "user": form.get("user") or "erplibre",
+        # Le compte de la VM, le même contrat que la spec libvirt : le nom,
+        # l'empreinte du mot de passe, jamais le clair (voir
+        # deploy_form_lib.build_spec).
+        "user": form.get("user") or VM_USER_DEFAULT,
+        "password_hash": form.get("password_hash", ""),
+        "login_default": form.get("login_default", True),
+        "keep_login_in_vm": form.get("keep_login_in_vm", False),
         "start": form["start"],
         "add_ssh_config": form["add_ssh_config"],
         "install": form["install"],
@@ -391,6 +398,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         value=True,
                         id="f_sshcfg",
                     )
+                    yield from self.compose_credentials()
                     yield from self.compose_vm_type()
                     # La case commande TOUTE installation — ERPLibre, Odoo,
                     # mais aussi l'hyperviseur Proxmox VE d'une VM imbriquée.
@@ -598,6 +606,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._reload_catalog()
             self._sync_install_deps()
             self._sync_offline()
+            self._sync_credentials()
             # L'origine de l'historique : prise au premier silence, une fois
             # passés les échos du montage.
             self._hist_touch()
@@ -770,6 +779,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 saisie.display = fuseau.value is FREE
                 saisie.disabled = fuseau.value is not FREE
             self._sync_install_deps()
+            self._sync_credentials()
             # _sync_offline réécrit le suivi et sa mémoire depuis l'état
             # qu'elle quitte : ceux de l'instantané l'emportent.
             self._sync_offline()
@@ -968,6 +978,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._refresh_after(remonter=True)
 
         def on_checkbox_changed(self, event) -> None:
+            if self.credentials_on_checkbox(event):
+                return
             if event.checkbox.id == "f_install":
                 # Le disque d'ERPLibre entre — ou sort — du total.
                 self._sync_install_deps()
@@ -1206,6 +1218,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not spec["vms"]:
                 self.notify(t("Nothing to deploy."), severity="warning")
                 return
+            if not self.credentials_check():
+                return
             # Hors ligne : ce que le cache ne détient pas, aucune VM ne
             # pourra le lire, et une VM Proxmox échoue aussi loin de son
             # lancement qu'une VM libvirt — à la pose du bureau, une heure
@@ -1231,6 +1245,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not spec["bridge"]:
                 self.notify(t("No bridge on the host."), severity="error")
                 return
+            self.hand_over_vm_secret()
             self.result = spec
             self.exit()
 
@@ -1241,9 +1256,17 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not build:
                 return
             spec = build_spec(self.vms, noms_pris, self._form_values())
-            lignes = ["\n".join(build(vm, spec)) for vm in spec["vms"]] or [
-                t("Nothing selected.")
-            ]
+            # Les commandes portent l'empreinte du mot de passe, calculée sur
+            # le clair en mémoire.
+            self.hand_over_vm_secret()
+            try:
+                lignes = [
+                    "\n".join(build(vm, spec)) for vm in spec["vms"]
+                ] or [t("Nothing selected.")]
+            except RuntimeError as exc:
+                # Empreinte incalculable : l'écran le dit et reste ouvert.
+                self.notify(str(exc), severity="error", markup=False)
+                return
             self.push_screen(preview_screen()(lignes))
 
         def action_clear_vm(self) -> None:
@@ -1267,6 +1290,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._hist_gesture(f"F4 {t('Reset VM')}", remettre)
 
         def action_cancel(self) -> None:
+            self.drop_vm_secret()
             self.result = None
             self.exit()
 

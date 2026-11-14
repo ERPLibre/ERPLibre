@@ -289,7 +289,10 @@ class TestLeSystemeAtteintLeBureau(unittest.TestCase):
         cmd = todo._qemu_erplibre_remote_cmd(
             None, desktop="gnome", distro="fedora"
         )
-        self.assertEqual([("gnome", "deb", {"distro": "fedora"})], appels)
+        self.assertEqual(
+            [("gnome", "deb", {"distro": "fedora", "keep_login": False})],
+            appels,
+        )
         subprocess.run(["bash", "-n", "-c", cmd], check=True)
 
     def test_with_erplibre(self):
@@ -297,7 +300,10 @@ class TestLeSystemeAtteintLeBureau(unittest.TestCase):
         cmd = todo._qemu_erplibre_remote_cmd(
             "develop", desktop="gnome", distro="arch"
         )
-        self.assertEqual([("gnome", "deb", {"distro": "arch"})], appels)
+        self.assertEqual(
+            [("gnome", "deb", {"distro": "arch", "keep_login": False})],
+            appels,
+        )
         subprocess.run(["bash", "-n", "-c", cmd], check=True)
 
     def test_the_per_vm_loop_passes_each_vms_distro(self):

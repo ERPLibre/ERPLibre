@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 import click
 
 from script.todo import qemu_privilege, todo_journal, todo_prefs
+from script.todo.deploy_form_lib import VM_LOGIN_READ_CMD, VM_USER_DEFAULT
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
 
@@ -585,7 +586,12 @@ class ProxmoxMenuMixin:
         ip = self._pve_guest_ip(vm["vmid"], attente=20)
         if ip:
             print(f"\n  {vm['name']} : {ip}")
-            print(f"  ssh erplibre@{ip}")
+            hote = self._pve_host(ask=False) or {}
+            compte = self._qemu_vm_user(
+                vm["name"],
+                {"target": hote.get("target"), "vmid": vm.get("vmid")},
+            )
+            print(f"  ssh {compte}@{ip}")
             return
         print(f"\n  ⚠ {t('No address for this VM.')}")
         print(f"  → {t('Is qemu-guest-agent installed and the VM started?')}")
@@ -713,7 +719,9 @@ class ProxmoxMenuMixin:
                 return ""
             time.sleep(5)
 
-    def _pve_user_data(self, mod, distro, nom, cle_locale):
+    def _pve_user_data(
+        self, mod, distro, nom, cle_locale, user="", password_hash=""
+    ):
         """Le user-data du DÉPÔT pour une VM Proxmox, ou "".
 
         Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
@@ -726,6 +734,10 @@ class ProxmoxMenuMixin:
         Rend "" quand la clé publique est illisible : mieux vaut retomber sur
         la forme d'avant, qui pose au moins un compte, que d'écrire un
         user-data sans aucun moyen d'entrer.
+
+        `user` : le compte ; vide, VM_USER_DEFAULT. `password_hash` : son
+        empreinte SHA-512 crypt. Vide, le compte n'a pas de mot de passe et
+        n'ouvre que par la clé : ni GDM ni xrdp ne l'acceptent alors.
         """
         try:
             with open(os.path.expanduser(cle_locale), encoding="utf-8") as fh:
@@ -736,9 +748,16 @@ class ProxmoxMenuMixin:
         if not cle:
             return ""
         args = mod.build_parser().parse_args(
-            ["--distro", distro, "--hostname", nom, "--user", "erplibre"]
+            [
+                "--distro",
+                distro,
+                "--hostname",
+                nom,
+                "--user",
+                user or VM_USER_DEFAULT,
+            ]
         )
-        return mod.build_cloud_config(args, None, [cle])
+        return mod.build_cloud_config(args, password_hash or None, [cle])
 
     def _pve_push_key(self, chemin_local):
         """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
@@ -1482,7 +1501,10 @@ class ProxmoxMenuMixin:
             # L'image qui n'a pas de secteur d'amorçage BIOS : le catalogue le
             # sait, ce menu le transmet, et « qm create » en tire l'OVMF.
             "uefi": mod.requiert_uefi(vm.get("distro") or ""),
-            "user": spec.get("user") or "erplibre",
+            "user": spec.get("user") or VM_USER_DEFAULT,
+            # L'empreinte, jamais le clair : « --cipassword » l'accepte telle
+            # quelle sur la forme sans user-data.
+            "password_hash": self._qemu_vm_password_hash(spec),
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
             # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
@@ -1501,7 +1523,12 @@ class ProxmoxMenuMixin:
         cle_locale = spec.get("ssh_key_local") or self._qemu_default_ssh_key()
         if cle_locale:
             detail["user_data"] = self._pve_user_data(
-                mod, vm.get("distro") or "", vm.get("name") or "", cle_locale
+                mod,
+                vm.get("distro") or "",
+                vm.get("name") or "",
+                cle_locale,
+                user=detail["user"],
+                password_hash=detail["password_hash"],
             )
         # La somme que le dépôt porte pour cette image, quand il en a une :
         # c'est la seule chose qui distingue une image tierce revue de
@@ -1565,6 +1592,8 @@ class ProxmoxMenuMixin:
             and not session
             and not self._pve_confirm_spec(host, spec)
         ):
+            # Le clair posé par l'écran ne survit pas au refus.
+            self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
             return
         cle_locale = spec.get("ssh_key") or self._qemu_default_ssh_key()
@@ -1573,6 +1602,9 @@ class ProxmoxMenuMixin:
                 spec["sshkey_path"] = "/root/.ssh/erplibre-deploy.pub"
             else:
                 print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
+        # L'empreinte du mot de passe entre dans la spec avant les commandes
+        # et avant les specs par VM : une VM recréée retrouve le même compte.
+        spec["password_hash"] = self._qemu_vm_password_hash(spec)
         travaux, commandes = [], {}
         for vm in spec["vms"]:
             cmds = self._pve_vm_commands(mod, vm, spec)
@@ -1617,7 +1649,7 @@ class ProxmoxMenuMixin:
         for vm in spec["vms"]:
             ip = pve.ip_from_ipconfig(vm.get("ipconfig") or "")
             if ip:
-                compte = (spec.get("user") or "erplibre") + "@" + ip
+                compte = (spec.get("user") or VM_USER_DEFAULT) + "@" + ip
                 cibles_ssh[vm["name"]] = (
                     f"ssh -J {shlex.quote(host['target'])} "
                     f"{shlex.quote(compte)}"
@@ -2155,7 +2187,7 @@ class ProxmoxMenuMixin:
                 )
             ),
             no_git_identity=False,
-            user=spec.get("user") or "erplibre",
+            user=spec.get("user") or VM_USER_DEFAULT,
         )
         try:
             fichiers = mod.guide_files(args)
@@ -2285,6 +2317,12 @@ class ProxmoxMenuMixin:
                 f"{vm['vcpus']} vCPU  {vm['ram']} Mo  {vm['disk']}   "
                 f"{(vm.get('ipconfig') or '').replace('ip=', '')}"
             )
+        print(f"  {self._qemu_login_line(spec)}")
+        if spec.get("keep_login_in_vm"):
+            print(
+                f"  {t('Password kept in the VM, read it with:')} "
+                f"{VM_LOGIN_READ_CMD}"
+            )
         if spec.get("install"):
             print(
                 f"  ERPLibre : {spec['install'].get('label') or ''}"
@@ -2400,7 +2438,7 @@ class ProxmoxMenuMixin:
             if spec.get("add_ssh_config") or besoin:
                 self._write_ssh_config_entry(
                     noms_alias,
-                    spec.get("user") or "erplibre",
+                    spec.get("user") or VM_USER_DEFAULT,
                     ip,
                     identity_file=self._ssh_private_key(cle_locale),
                     proxy_jump=host["target"],
@@ -2453,7 +2491,7 @@ class ProxmoxMenuMixin:
                 if spec.get("gpu3d"):
                     self._pve_set_gpu_groups(
                         vm["alias"],
-                        spec.get("user") or "erplibre",
+                        spec.get("user") or VM_USER_DEFAULT,
                         mod_qemu,
                     )
             joignables.append(vm)
@@ -2496,6 +2534,11 @@ class ProxmoxMenuMixin:
         }
         if self._qemu_per_vm(bureaux, bureau):
             bureau = bureaux
+        # Le compte du déploiement : toutes ces VM viennent d'être créées
+        # avec lui. Le clair ne vient que de la mémoire du processus.
+        compte = spec.get("user") or VM_USER_DEFAULT
+        garder = bool(spec.get("keep_login_in_vm"))
+        secret = self._qemu_vm_password(spec)
         if suivi:
             # Rien à installer ? La commande distante regarde alors la VM
             # ARRIVER (cloud-init, puis relevé système) : c'est ce que le
@@ -2558,6 +2601,10 @@ class ProxmoxMenuMixin:
                 session=session,
                 specs=specs,
                 remplace=remplace,
+                users=dict.fromkeys(noms, compte),
+                created=set(noms),
+                keep_login=garder,
+                vm_password=secret,
             )
             if entrees is not None and session:
                 entrees.extend(lancees or [])
@@ -2578,6 +2625,9 @@ class ProxmoxMenuMixin:
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
+                user=compte,
+                keep_login=garder,
+                vm_password=secret,
             )
         return resultat
 
@@ -2713,6 +2763,9 @@ class ProxmoxMenuMixin:
         print(f"  VMID    : {vmid}")
 
         cle_locale = self._qemu_default_ssh_key()
+        # Cette voie ne pose pas la question du mot de passe : le défaut
+        # public, par son empreinte.
+        empreinte = self._qemu_vm_password_hash({})
         spec = {
             "name": nom,
             "memory": memoire,
@@ -2722,11 +2775,19 @@ class ProxmoxMenuMixin:
             "bridge": pont,
             "image": image,
             "uefi": mod.requiert_uefi(distro),
-            "user": "erplibre",
+            "user": VM_USER_DEFAULT,
+            "password_hash": empreinte,
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
             # Le user-data du dépôt, pour TOUTES les distributions : un seul
             # cloud-init à comprendre, et celui-là est déjà éprouvé.
-            "user_data": self._pve_user_data(mod, distro, nom, cle_locale),
+            "user_data": self._pve_user_data(
+                mod,
+                distro,
+                nom,
+                cle_locale,
+                user=VM_USER_DEFAULT,
+                password_hash=empreinte,
+            ),
             "start": True,
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
@@ -2804,7 +2865,7 @@ class ProxmoxMenuMixin:
                 }
             ],
             "existing": [],
-            "user": "erplibre",
+            "user": VM_USER_DEFAULT,
             "ssh_key": cle_locale or "",
             "add_ssh_config": True,
             "install": install,
@@ -2862,9 +2923,22 @@ class ProxmoxMenuMixin:
                     f"  ⚠ {t('This name is already taken by')} {vole} :"
                     f" {t('the alias goes to')} {noms[0]}"
                 )
+            # Ces VM existent déjà : leur compte vient de ce que le suivi ou
+            # ~/.ssh/config ont noté pour elles, le défaut sinon.
+            compte = (
+                self._qemu_session_user(
+                    vm["name"],
+                    {"target": host["target"], "vmid": vm.get("vmid")},
+                )
+                or next(
+                    filter(None, map(self._qemu_ssh_config_host_user, noms)),
+                    "",
+                )
+                or self.QEMU_VM_USER
+            )
             self._write_ssh_config_entry(
                 noms,
-                "erplibre",
+                compte,
                 ip,
                 identity_file=cle,
                 proxy_jump=host["target"],

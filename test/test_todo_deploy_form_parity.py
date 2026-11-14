@@ -32,7 +32,19 @@ except Exception:  # pragma: no cover - dépend de l'environnement
 
 # Ce que porte le socle partagé. Les identifiants, parce qu'ils sont le
 # contrat : c'est par eux que la spec est lue.
-REGLAGES = ("f_type", "f_prod", "f_store", "f_tools", "f_tz", "f_python")
+REGLAGES = (
+    "f_type",
+    "f_prod",
+    "f_store",
+    "f_tools",
+    "f_tz",
+    "f_python",
+    # Le compte de la VM : un seul pour tout le déploiement, sur les deux
+    # hyperviseurs.
+    "f_vm_user",
+    "f_password",
+    "f_keep_pw",
+)
 
 CATALOGUE = [
     {

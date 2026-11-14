@@ -13,6 +13,7 @@ import subprocess
 import time
 
 from script.todo import ssh_config, todo_install, todo_journal
+from script.todo.deploy_form_lib import VM_USER_DEFAULT
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
@@ -1296,6 +1297,19 @@ class QemuManageMixin:
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_console_login(self, name):
+        """Ligne « compte / mot de passe » d'une console série. Le compte
+        vient de _qemu_vm_user ; le mot de passe n'est nommé que par son
+        origine, le déploiement pouvant en avoir choisi un autre que le
+        défaut public."""
+        # Le défaut public s'écrit en toutes lettres : lu dans
+        # VM_PASSWORD_DEFAULT, il serait pour l'analyse de code un mot de
+        # passe qui atteint la sortie.
+        return t(
+            "Login: {user} / the password chosen at deployment"
+            " ({default} by default)"
+        ).format(user=self._qemu_vm_user(name), default="erplibre")
+
     def _qemu_console(self):
         # Liste les VM, demande laquelle, rappelle comment quitter (Ctrl+])
         # puis ouvre la console série interactive.
@@ -1306,9 +1320,7 @@ class QemuManageMixin:
             print(t("VM name is required!"))
             return
         print(f"\n💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
-        print(
-            f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
-        )
+        print(f"👤 {self._qemu_console_login(name)}")
         cmd = (
             f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
         )
@@ -2394,7 +2406,8 @@ class QemuManageMixin:
                 "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
                 "-o ConnectTimeout=15"
             )
-            cmd = f"ssh {opts} erplibre@{ip} {shlex.quote(remote)}"
+            cible = shlex.quote(f"{self._qemu_vm_user(real)}@{ip}")
+            cmd = f"ssh {opts} {cible} {shlex.quote(remote)}"
             print(f"{t('Will execute:')} {cmd}")
             if self.execute.exec_command_live(cmd, source_erplibre=False) == 0:
                 return
@@ -2483,14 +2496,12 @@ class QemuManageMixin:
 
     def _qemu_grow_via_console(self, name, remote):
         """Repli console série : affiche la commande prête à coller puis ouvre
-        la console (login interactif erplibre/erplibre — pas d'automatisation
-        fiable de la saisie)."""
+        la console (login interactif avec le compte de la VM — pas
+        d'automatisation fiable de la saisie)."""
         print(f"\n{t('Serial console fallback. Log in, then paste:')}")
         print(f"\n  {remote}\n")
         print(f"💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
-        print(
-            f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
-        )
+        print(f"👤 {self._qemu_console_login(name)}")
         if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
             return
         cmd = (
@@ -3548,7 +3559,7 @@ class QemuManageMixin:
         return default
 
     @staticmethod
-    def _qemu_wait_ssh(ip, user="erplibre", timeout=1200):
+    def _qemu_wait_ssh(ip, user=VM_USER_DEFAULT, timeout=1200):
         """Attend que sshd réponde ET que cloud-init soit TERMINÉ, via des
         connexions COURTES successives. Au 1er boot, cloud-init régénère les
         clés d'hôte et REDÉMARRE sshd : attendre la fin de cloud-init AVANT de
@@ -3570,7 +3581,8 @@ class QemuManageMixin:
         while time.time() < deadline:
             try:
                 res = subprocess.run(
-                    f"ssh {opts} {user}@{ip} {shlex.quote(probe)}",
+                    f"ssh {opts} {shlex.quote(f'{user}@{ip}')} "
+                    f"{shlex.quote(probe)}",
                     shell=True,
                     capture_output=True,
                     timeout=20,

@@ -36,15 +36,23 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 sys.argv = ["todo.py"]
 
+from script.todo.deploy_form_lib import (  # noqa: E402
+    VM_LOGIN_FILE,
+    VM_LOGIN_READ_CMD,
+)
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 DISTROS = ("", "ubuntu", "debian", "fedora", "almalinux", "arch", "opensuse")
 
+# Mot de passe inventé que l'invité simulé trouve dans son fichier : il doit
+# atteindre grdctl sans jamais paraître dans la commande ni dans sa sortie.
+SONDE = "Zq7sondeXv"
 
-def _cmd(flavour="gnome", app_store="deb", distro=""):
+
+def _cmd(flavour="gnome", app_store="deb", distro="", keep_login=False):
     return TODO.__new__(TODO)._qemu_desktop_remote_cmd(
-        flavour, app_store, distro=distro
+        flavour, app_store, distro=distro, keep_login=keep_login
     )
 
 
@@ -89,7 +97,9 @@ class _Invite:
         "grep",
         "id",
         "mkdir",
+        "rm",
         "sed",
+        "sh",
         "sleep",
         "tail",
         "test",
@@ -104,6 +114,11 @@ class _Invite:
         self.home.mkdir()
         self.log = self.tmp / "log"
         self.log.write_text("")
+        # Le fichier que l'hôte dépose avant la commande : VM_LOGIN_FILE
+        # y est réécrit par run(). Présent par défaut, comme après un
+        # premier lancement.
+        self.pw_file = self.tmp / "vm-password"
+        self.pw_file.write_text(SONDE + "\n")
         for nom in self.REELS:
             vrai = shutil.which(nom)
             if vrai:
@@ -138,17 +153,41 @@ class _Invite:
         chemin.write_text(f"#!/bin/bash\n{trace}{corps}\n")
         chemin.chmod(0o755)
 
-    def grdctl(self, systeme=True, ignore=""):
+    def grdctl(self, systeme=True, ignore="", deja="", stdin=True):
         """grdctl : son aide nomme « --system » ou non.
 
         Comme le vrai en mode système, il rend 0 à TOUTES les sous-commandes,
         qu'il ait pris le réglage ou non. Il garde un état, que relit
         « status --show-credentials » avec les lignes du vrai :
-        identifiants, chemin de la clé, état activé. `ignore` nomme la
-        sous-commande qu'il rend 0 SANS l'appliquer (« set-credentials »,
-        « set-tls-key », « enable »)."""
+        identifiants, mot de passe, chemin de la clé, état activé. `ignore`
+        nomme la sous-commande qu'il rend 0 SANS l'appliquer
+        (« set-credentials », « set-tls-key », « enable »). `deja` : compte
+        dont les identifiants sont déjà posés, par un passage précédent, avec
+        SONDE pour mot de passe.
+
+        `stdin` : grdctl 47 et suivants, dont l'aide écrit
+        « [<username> [<password>]] » et qui lisent un mot de passe absent
+        sur leur entrée standard. Faux : grdctl 46, qui ne prend que les deux
+        arguments et ignore un appel qui n'en a qu'un."""
         aide = "--system   Configure system daemon" if systeme else "rdp"
+        aide += (
+            "\\n    set-credentials [<username> [<password>]]"
+            if stdin
+            else "\\n    set-credentials <username> <password>"
+        )
         etat = self.tmp / "grd-etat"
+        if deja:
+            etat.write_text(f"user={deja}\npass={SONDE}\n")
+        if stdin:
+            pose_id = (
+                "if [ $# -ge 5 ]; then p=$5; else IFS= read -r p; fi; "
+                'echo "user=$4" >> "$E"; echo "pass=$p" >> "$E"'
+            )
+        else:
+            pose_id = (
+                '[ $# -ge 5 ] && { echo "user=$4" >> "$E"; '
+                'echo "pass=$5" >> "$E"; }'
+            )
 
         def pose(sous, action):
             return "true" if sous == ignore else action
@@ -157,9 +196,9 @@ class _Invite:
             "grdctl",
             f'E={etat}; touch "$E"\n'
             'case "$*" in\n'
-            f'  --help) echo "  {aide}";;\n'
+            f'  --help) printf "  {aide}\\n";;\n'
             '  "--system rdp set-credentials "*) '
-            + pose("set-credentials", 'echo "user=$4" >> "$E"')
+            + pose("set-credentials", pose_id)
             + ";;\n"
             '  "--system rdp set-tls-key "*) '
             + pose("set-tls-key", 'echo "key=$4" >> "$E"')
@@ -170,14 +209,17 @@ class _Invite:
             '  "--system status --show-credentials")\n'
             '    u=$(sed -n "s/^user=//p" "$E" | tail -1)\n'
             '    k=$(sed -n "s/^key=//p" "$E" | tail -1)\n'
+            '    w=$(sed -n "s/^pass=//p" "$E" | tail -1)\n'
             '    s=disabled; grep -qx enabled "$E" && s=enabled\n'
             '    printf "RDP:\\n\\tStatus: %s\\n\\tTLS key: %s\\n'
-            '\\tUsername: %s\\n" "$s" "${k:-(null)}" "${u:-(null)}";;\n'
+            '\\tUsername: %s\\n\\tPassword: %s\\n" "$s" "${k:-(null)}"'
+            ' "${u:-(null)}" "${w:-(null)}";;\n'
             "esac\n"
             "exit 0",
         )
 
     def run(self, cmd, os_id=""):
+        cmd = cmd.replace(VM_LOGIN_FILE, str(self.pw_file))
         if os_id:
             release = self.tmp / "os-release"
             release.write_text(f"ID={os_id}\n")
@@ -459,10 +501,27 @@ class TestItRuns(unittest.TestCase):
         )
         self.assertFalse(any("xrdp" in ligne for ligne in log), log)
         self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
-        self.assertIn("erplibre", out)
+        self.assertIn(t("password chosen at deployment"), out)
         self.assertTrue(
             (self.vm.home / ".config/gnome-initial-setup-done").exists()
         )
+
+    def test_the_public_default_is_named_a_chosen_one_never(self):
+        """L'annonce nomme le défaut public d'après le mot de passe que
+        grdctl a relu ; un mot de passe choisi reste « choisi »."""
+        for nom, clair, attendu in (
+            ("defaut", "erplibre", "/ erplibre"),
+            ("choisi", SONDE, f"/ {t('password chosen at deployment')}"),
+        ):
+            with self.subTest(nom):
+                self.vm = _Invite(self._tmp_for(nom))
+                self.vm.pw_file.write_text(clair + "\n")
+                self.vm.stub("dnf")
+                self.vm.grdctl()
+                rc, out, _log = self.vm.run(_cmd("gnome"), "fedora")
+                self.assertEqual(0, rc, out)
+                self.assertIn(attendu, out)
+                self.assertNotIn(SONDE, out)
 
     def test_the_grd_steps_run_in_order(self):
         self.vm.stub("dnf")
@@ -485,23 +544,49 @@ class TestItRuns(unittest.TestCase):
             ["id", "-un"], capture_output=True, text=True
         ).stdout.strip()
 
-    def test_the_credentials_go_as_arguments(self):
-        """La forme en arguments, la seule qu'un pipe ne perd pas, puis la
-        relecture de l'état par « status --show-credentials »."""
+    def test_the_password_goes_through_grdctl_stdin(self):
+        """grdctl 47 et suivants : le compte en argument, le mot de passe sur
+        l'entrée standard, jamais sur la ligne de commande que pkexec
+        journalise. Puis la relecture par « status --show-credentials »."""
         self.vm.stub("dnf")
         self.vm.grdctl()
         rc, out, log = self.vm.run(_cmd("gnome"), "fedora")
         self.assertEqual(0, rc, out)
         self.assertIn(
-            f"grdctl --system rdp set-credentials {self._user()} erplibre",
-            log,
+            f"grdctl --system rdp set-credentials {self._user()}", log
         )
-        self.assertNotIn("grdctl --system rdp set-credentials", log)
+        self.assertFalse(any(SONDE in ligne for ligne in log), log)
+        self.assertIn(f"pass={SONDE}", (self.vm.tmp / "grd-etat").read_text())
         self.assertGreater(
             _indice(log, "grdctl --system status --show-credentials"),
             _indice(log, "grdctl --system rdp enable"),
         )
         self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
+
+    def test_grdctl_46_takes_the_password_as_an_argument(self):
+        """grdctl 46 ne lit rien sur son entrée : son aide le dit, et il
+        reçoit les deux arguments."""
+        self.vm.stub("dnf")
+        self.vm.grdctl(stdin=False)
+        rc, out, log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            f"grdctl --system rdp set-credentials {self._user()} {SONDE}",
+            log,
+        )
+        self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
+
+    def test_a_password_other_than_the_file_is_not_announced(self):
+        """La relecture compare le mot de passe de grdctl au fichier : un
+        mot de passe perdu ou ancien laisse l'accès non annoncé, et le
+        fichier en place pour une relance."""
+        self.vm.pw_file.write_text("Autre7essaiQ\n")
+        self.vm.stub("dnf")
+        self.vm.grdctl(ignore="set-credentials", deja=self._user())
+        rc, out, _log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self._non_annonce(out)
+        self.assertTrue(self.vm.pw_file.exists())
 
     def _non_annonce(self, out):
         self.assertNotIn("RDP 3389", out)
@@ -570,6 +655,88 @@ class TestItRuns(unittest.TestCase):
             _indice(log, "systemctl disable --now xrdp"),
             _indice(log, "systemctl restart gnome-remote-desktop"),
         )
+
+    # --- mot de passe du compte ---------------------------------------- #
+
+    def test_the_command_carries_no_password(self):
+        """Ni le défaut public ni aucune valeur : la commande se garde dans
+        session.json et passe sur la ligne de commande de sudo."""
+        for keep in (False, True):
+            cmd = _cmd("gnome", keep_login=keep)
+            self.assertNotIn('set-credentials "$(id -un)" ', cmd)
+            self.assertNotIn("/ erplibre", cmd)
+            self.assertNotIn(SONDE, cmd)
+            self.assertIn(f"$(cat {VM_LOGIN_FILE})", cmd)
+
+    def test_the_file_is_removed_once_reread(self):
+        self.vm.stub("dnf")
+        self.vm.grdctl()
+        rc, out, _log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
+        self.assertFalse(self.vm.pw_file.exists())
+        self.assertNotIn(SONDE, out)
+        self.assertNotIn(str(self.vm.pw_file), out)
+
+    def test_a_kept_file_stays_and_is_named(self):
+        """« Garder dans la VM » : le fichier reste, et l'annonce donne la
+        commande pour le lire — jamais sa valeur."""
+        self.vm.stub("dnf")
+        self.vm.grdctl()
+        rc, out, _log = self.vm.run(_cmd("gnome", keep_login=True), "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertTrue(self.vm.pw_file.exists())
+        lire = VM_LOGIN_READ_CMD.replace(VM_LOGIN_FILE, str(self.vm.pw_file))
+        self.assertIn(lire, out)
+        self.assertNotIn(SONDE, out)
+
+    def test_a_failed_reread_keeps_the_file_for_a_relaunch(self):
+        self.vm.stub("dnf")
+        self.vm.grdctl(ignore="enable")
+        rc, out, _log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self._non_annonce(out)
+        self.assertTrue(self.vm.pw_file.exists())
+
+    def test_without_the_file_and_credentials_rdp_is_off(self):
+        self.vm.pw_file.unlink()
+        self.vm.stub("dnf")
+        self.vm.grdctl()
+        rc, out, log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            t("VM password file absent: RDP credentials left unchanged"), out
+        )
+        self.assertFalse(any("set-credentials" in ligne for ligne in log))
+        self._non_annonce(out)
+
+    def test_without_the_file_existing_credentials_are_kept(self):
+        """Suivi rouvert : le fichier a été lu et retiré au premier passage,
+        les identifiants de grdctl tiennent toujours."""
+        self.vm.pw_file.unlink()
+        self.vm.stub("dnf")
+        self.vm.grdctl(deja=self._user())
+        rc, out, log = self.vm.run(_cmd("gnome"), "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertFalse(any("set-credentials" in ligne for ligne in log))
+        self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
+
+    def test_the_xrdp_fallback_removes_the_file(self):
+        """xrdp passe par PAM : le clair ne lui sert à rien."""
+        self._apt()
+        self.vm.grdctl(systeme=False)
+        rc, out, _log = self.vm.run(_cmd("gnome", distro="debian"))
+        self.assertEqual(0, rc, out)
+        self.assertFalse(self.vm.pw_file.exists())
+
+    def test_the_xrdp_fallback_keeps_a_kept_file(self):
+        self._apt()
+        self.vm.grdctl(systeme=False)
+        rc, out, _log = self.vm.run(
+            _cmd("gnome", distro="debian", keep_login=True)
+        )
+        self.assertEqual(0, rc, out)
+        self.assertTrue(self.vm.pw_file.exists())
 
     # --- repli xrdp ---------------------------------------------------- #
 

@@ -54,6 +54,7 @@ import getpass
 import grp
 import gzip
 import hashlib
+import hmac
 import http.client
 import ipaddress
 import os
@@ -2200,6 +2201,37 @@ def hash_password(plain: str) -> str:
             check=True,
         )
         return out.stdout.strip()
+
+
+def password_matches_hash(plain: str, digest: str) -> bool:
+    """Vrai si `plain` est le mot de passe de l'empreinte SHA-512 crypt
+    `digest` ($6$sel$…), recalculée avec le même sel.
+
+    Mêmes moyens que hash_password : crypt, ou openssl en repli. Une
+    empreinte d'une autre forme, dont « rounds= » qu'openssl ne sait pas
+    rejouer, rend faux. La comparaison est à temps constant."""
+    if not plain or not digest.startswith("$6$"):
+        return False
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            import crypt
+
+        calcul = crypt.crypt(plain, digest)
+    except (ImportError, AttributeError):
+        parts = digest.split("$")
+        if len(parts) != 4 or parts[2].startswith("rounds="):
+            return False
+        need_tool("openssl")
+        out = subprocess.run(
+            ["openssl", "passwd", "-6", "-salt", parts[2], "-stdin"],
+            input=plain + "\n",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        calcul = out.stdout.strip() if out.returncode == 0 else ""
+    return bool(calcul) and hmac.compare_digest(calcul, digest)
 
 
 # Miroirs apt, du plus rapide au dernier recours. cloud-init prend le PREMIER
