@@ -1879,8 +1879,8 @@ TRANSLATIONS = {
         "en": "🔍 Show code status",
     },
     "Stash all code": {
-        "fr": "📦 Remiser tout le code",
-        "en": "📦 Stash all code",
+        "fr": "📦 Remiser tout le code : git stash dans chaque dépôt du manifeste, hors ERPLibre",
+        "en": "📦 Stash all code: git stash in every manifest repository, ERPLibre excluded",
     },
     "Format modified code": {
         "fr": "🎨 Formater le code modifié",
