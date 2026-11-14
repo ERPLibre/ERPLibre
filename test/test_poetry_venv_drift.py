@@ -196,6 +196,46 @@ class TestSimuler(unittest.TestCase):
         self.assertTrue(res["ok"], res["sortie"])
         self.assertEqual(5, len(res["operations"]))
 
+    def test_racine_relative_depuis_un_projet_temporaire(self):
+        """La racine « . » et un dossier de projet ailleurs, comme le menu
+        le fait pour un venv qui n'est pas l'actif : Poetry se lance quand
+        même, et le venv activé est le bon."""
+        tmp = tempfile.mkdtemp(prefix="el_drift_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        tmp = os.path.realpath(tmp)
+        bin_dir = Path(tmp, f".venv.{VERSION}", "bin")
+        bin_dir.mkdir(parents=True)
+        poetry = bin_dir / "poetry"
+        poetry.write_text(
+            "#!/bin/sh\n"
+            f'[ "$VIRTUAL_ENV" = "{tmp}/.venv.{VERSION}" ] || exit 9\n'
+            f"cat <<'FIN'\n{SORTIE}FIN\n",
+            encoding="utf-8",
+        )
+        poetry.chmod(0o755)
+        avant = os.getcwd()
+        os.chdir(tmp)
+        self.addCleanup(os.chdir, avant)
+        projet = tempfile.mkdtemp(prefix="el_projet_")
+        self.addCleanup(shutil.rmtree, projet, True)
+        res = drift.simuler(".", VERSION, projet=projet)
+        self.assertTrue(res["ok"], res["sortie"])
+        self.assertEqual(5, len(res["operations"]))
+
+    def test_un_poetry_introuvable_rend_un_refus(self):
+        """Un Poetry qui ne se lance pas ne lève pas : le menu affiche la
+        raison au lieu de s'arrêter."""
+
+        def executer(commande, **_kwargs):
+            raise FileNotFoundError(
+                2, "No such file or directory", commande[0]
+            )
+
+        res = drift.simuler("/depot", VERSION, executer=executer)
+        self.assertFalse(res["ok"])
+        self.assertEqual([], res["operations"])
+        self.assertIn("No such file or directory", res["sortie"])
+
 
 class TestReleverEtComparer(unittest.TestCase):
     def test_relever_lit_le_json_de_l_interpreteur(self):

@@ -109,9 +109,11 @@ def environnement(racine, venv):
     poetry.toml porte « virtualenvs.create = false » : sans VIRTUAL_ENV,
     Poetry compare le lock à l'interpréteur de BASE, pas au venv. Le
     trousseau est coupé, comme dans install_locally.sh : sans bureau, il
-    bloque Poetry sur une invite que personne ne voit.
+    bloque Poetry sur une invite que personne ne voit. Le chemin du venv
+    est absolu : Poetry peut tourner depuis un autre dossier (voir
+    `projet_temporaire`), où une racine relative ne désigne plus rien.
     """
-    chemin_venv = os.path.join(racine, venv)
+    chemin_venv = os.path.abspath(os.path.join(racine, venv))
     env = dict(os.environ)
     env["VIRTUAL_ENV"] = chemin_venv
     env["PATH"] = (
@@ -210,16 +212,27 @@ def simuler(racine, version_erplibre, executer=subprocess.run, projet=None):
     Poetry refuse — Python du venv hors des bornes du projet, lock
     désaccordé du pyproject — et « sortie » dit alors pourquoi. Rien n'est
     installé : seule la simulation tourne. Poetry tourne dans `projet`
-    quand il est donné (voir `projet_temporaire`), sinon à la racine.
+    quand il est donné (voir `projet_temporaire`), sinon à la racine :
+    son exécutable est donc désigné par un chemin absolu, qu'un dossier
+    courant différent ne déplace pas. Un Poetry qui ne se lance pas rend
+    « ok » faux, avec l'erreur du système dans « sortie ».
     """
     c = chemins(version_erplibre)
     env = environnement(racine, c["venv"])
-    poetry = os.path.join(racine, c["poetry"])
+    poetry = os.path.abspath(os.path.join(racine, c["poetry"]))
     commande = [poetry, "sync", "--dry-run", "--no-root", "--no-ansi"]
     dossier = projet or racine
-    fini = executer(
-        commande, cwd=dossier, env=env, capture_output=True, text=True
-    )
+
+    def lancer(commande):
+        try:
+            fini = executer(
+                commande, cwd=dossier, env=env, capture_output=True, text=True
+            )
+        except OSError as exc:
+            return subprocess.CompletedProcess(commande, 127, "", str(exc))
+        return fini
+
+    fini = lancer(commande)
     sortie = (fini.stdout or "") + (fini.stderr or "")
     # Poetry 1 n'a pas « sync » : son équivalent est « install --sync ».
     if fini.returncode and '"sync" does not exist' in sortie:
@@ -231,9 +244,7 @@ def simuler(racine, version_erplibre, executer=subprocess.run, projet=None):
             "--no-root",
             "--no-ansi",
         ]
-        fini = executer(
-            commande, cwd=dossier, env=env, capture_output=True, text=True
-        )
+        fini = lancer(commande)
         sortie = (fini.stdout or "") + (fini.stderr or "")
     return {
         "ok": fini.returncode == 0,
