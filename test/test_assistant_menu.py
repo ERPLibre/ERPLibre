@@ -356,6 +356,88 @@ class Balayage(unittest.TestCase):
             t("Only part of that network was swept."), sortie.getvalue()
         )
 
+    def _probe_simule(self, touches, collect):
+        """La sortie et les trouvailles de `_llm_probe_and_keep` quand le
+        balayage rend `touches` et que `collect` répond à la place du réseau.
+
+        `identify` est remplacé par un double qui reconnaît tout port sauf
+        9 : la ligne « non identifié » s'intercale ainsi entre deux lignes
+        « → » et l'ordre se lit dans la sortie."""
+        import io
+        import types
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import discover as llm_disc
+        from script.todo.assistant import fingerprint as llm_fp
+
+        def identifier(corps, port, host):
+            logiciel = "" if port == 9 else f"logiciel-{port}"
+            return types.SimpleNamespace(
+                software=logiciel, version="1", models=[]
+            )
+
+        todo = self._todo()
+        gardes = []
+        sortie = io.StringIO()
+        with (
+            patch.object(llm_disc, "sweep", return_value=touches),
+            patch.object(llm_fp, "collect", side_effect=collect),
+            patch.object(llm_fp, "identify", side_effect=identifier),
+            patch.object(todo, "_llm_keep", side_effect=gardes.append),
+            redirect_stdout(sortie),
+        ):
+            todo._llm_probe_and_keep(["198.51.100.1"])
+        return sortie.getvalue(), gardes
+
+    def test_les_collectes_se_chevauchent_et_s_affichent_dans_l_ordre(self):
+        """La barrière ne s'ouvre que si les trois collectes attendent EN
+        MÊME TEMPS, ce qu'une boucle en série ne fait jamais. La première
+        touche finit la dernière : la sortie suit pourtant l'ordre des
+        touches."""
+        import threading
+
+        touches = [
+            ("198.51.100.1", 1),
+            ("198.51.100.1", 9),
+            ("198.51.100.2", 3),
+        ]
+        barriere = threading.Barrier(len(touches), timeout=5)
+        autres_finies = threading.Semaphore(0)
+
+        def collect(adresse, port, budget):
+            barriere.wait()
+            if port == 1:
+                for _ in range(len(touches) - 1):
+                    self.assertTrue(autres_finies.acquire(timeout=5))
+            else:
+                autres_finies.release()
+            return {"port": port}
+
+        texte, gardes = self._probe_simule(touches, collect)
+        lignes = [
+            ligne
+            for ligne in texte.splitlines()
+            if ligne.startswith(("  →", "  ⚠"))
+        ]
+        self.assertEqual(len(lignes), 3)
+        self.assertIn("198.51.100.1:1 · logiciel-1", lignes[0])
+        self.assertIn("198.51.100.1:9", lignes[1])
+        self.assertIn("198.51.100.2:3 · logiciel-3", lignes[2])
+        self.assertEqual(
+            [(a, p) for a, p, _e in gardes[0]],
+            [("198.51.100.1", 1), ("198.51.100.2", 3)],
+        )
+
+    def test_ctrl_c_pendant_la_collecte_interrompt_sans_proposer(self):
+        """Un Ctrl+C reçu pendant la collecte ramène au menu : rien n'est
+        proposé à garder, et la fin s'annonce comme une interruption."""
+        touches = [("198.51.100.1", 1), ("198.51.100.1", 3)]
+        texte, gardes = self._probe_simule(
+            touches, lambda *a, **k: (_ for _ in ()).throw(KeyboardInterrupt)
+        )
+        self.assertIn(t("answer interrupted"), texte)
+        self.assertEqual(gardes, [])
+
     def test_plus_large_qu_un_slash24_est_refuse(self):
         from script.todo.assistant import discover as llm_disc
 
