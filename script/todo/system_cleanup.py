@@ -42,11 +42,14 @@ Ce module ne rend que des faits ; les phrases appartiennent au menu.
 """
 
 import os
+import pickle
 import re
 import shutil
 import stat
 import subprocess
 import time
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 
 CACHE = "cache"
@@ -103,6 +106,17 @@ RECENT = 86400
 # Ce que le parcours du dépôt n'ouvre pas : ce qui n'est pas un résidu, ou
 # ce qui ne se touche jamais.
 ELAGUES_DEPOT = {".git", ".repo", "private", "tasks", "node_modules"}
+
+# Plafond des processus de mesurer_tous(). mesurer() fait travailler
+# l'interpréteur — une boucle de lstat —, il n'attend pas : des fils s'y
+# disputent le GIL et vont moins vite que la série, d'où des processus, pas
+# plus qu'il n'y a de processeurs. Au-delà de quelques parcours simultanés,
+# un disque rotatif à cache froid passe son temps à déplacer sa tête.
+MESUREURS_MAX = 8
+
+# En deçà de ce nombre de chemins, la série : démarrer des processus coûte
+# plus que ce qu'ils font gagner.
+MESURES_EN_PARALLELE = 3
 
 
 @dataclass
@@ -223,11 +237,33 @@ def reel(home, rel):
     )
 
 
-def _candidat(categorie, nom, chemins, maintenant, **kw):
+def mesurer_tous(chemins, executeur=ProcessPoolExecutor):
+    """[mesurer(c) for c in chemins], dans l'ordre de `chemins`, les
+    chemins répartis entre `MESUREURS_MAX` processus au plus.
+
+    Les processus réimportent ce module pour y trouver mesurer() : elle
+    reste une fonction de module, sans fermeture. Un groupe de processus
+    qui ne démarre pas ou se rompt laisse la place à la série, qui rend le
+    même résultat. `executeur` est la classe du groupe."""
+    chemins = list(chemins)
+    nombre = min(MESUREURS_MAX, os.cpu_count() or 1, len(chemins))
+    if len(chemins) < MESURES_EN_PARALLELE or nombre < 2:
+        return [mesurer(c) for c in chemins]
+    try:
+        with executeur(max_workers=nombre) as groupe:
+            return list(groupe.map(mesurer, chemins))
+    except (OSError, BrokenProcessPool, pickle.PicklingError):
+        return [mesurer(c) for c in chemins]
+
+
+def _candidat(categorie, nom, chemins, maintenant, mesures=None, **kw):
+    """Un Candidat de `chemins`. `mesures` : leurs mesurer(), déjà faites
+    dans le même ordre ; faites ici, une à une, si elles manquent."""
+    if mesures is None:
+        mesures = [mesurer(c) for c in chemins]
     taille = 0
     recent = 0.0
-    for c in chemins:
-        octets, date = mesurer(c)
+    for octets, date in mesures:
         taille += octets
         recent = max(recent, date)
     return Candidat(
@@ -643,7 +679,7 @@ def venvs_voisins(racine, utilises):
     """Les venvs des autres checkouts ERPLibre, décochés ; jamais un venv
     qu'un processus emploie — un Odoo lancé de ce checkout-là."""
     maintenant = time.time()
-    trouves = []
+    retenus = []
     for depot in depots_voisins(racine):
         try:
             noms = sorted(os.listdir(depot))
@@ -657,16 +693,21 @@ def venvs_voisins(racine, utilises):
                 continue
             if en_usage(chemin, utilises):
                 continue
-            trouves.append(
-                _candidat(
-                    VENV_AUTRE,
-                    f"{os.path.basename(depot)}/{nom}",
-                    [chemin],
-                    maintenant,
-                    mise_en_garde="reinstall-checkout",
-                )
-            )
-    return trouves
+            retenus.append((f"{os.path.basename(depot)}/{nom}", chemin))
+    # Une seule passe pour tous les venvs : c'est la mesure la plus lourde
+    # de candidats(), et ses parcours sont indépendants.
+    mesures = mesurer_tous(chemin for _nom, chemin in retenus)
+    return [
+        _candidat(
+            VENV_AUTRE,
+            nom,
+            [chemin],
+            maintenant,
+            mesures=[mesure],
+            mise_en_garde="reinstall-checkout",
+        )
+        for (nom, chemin), mesure in zip(retenus, mesures)
+    ]
 
 
 def racines_permises(racine, home, tmp, data_dir):

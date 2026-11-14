@@ -222,7 +222,10 @@ except ModuleNotFoundError as e:
     ENABLE_CRASH = True
     CRASH_E = e
 
-if not ENABLE_CRASH:
+# Seulement pour le programme lancé : un groupe de processus (forkserver)
+# réimporte ce fichier sous « __mp_main__ », et la ligne s'afficherait une
+# seconde fois au milieu d'un menu.
+if not ENABLE_CRASH and __name__ == "__main__":
     print(t("Importation success!"))
 
 logging.basicConfig(

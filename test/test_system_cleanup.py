@@ -13,8 +13,10 @@ fabrique.
 import os
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
+from concurrent import futures
 from unittest import mock
 
 from script.todo import system_cleanup as sc
@@ -379,6 +381,95 @@ class TestLesDepotsVoisins(Arbre):
         )
         venv = os.path.join(self.voisin, ".venv.erplibre")
         self.assertIsNone(sc.refus(venv, self.depot, racines, self.uid))
+
+
+class TestLaMesureEnParallele(Arbre):
+    def arbres(self, nombre):
+        chemins = []
+        for i in range(nombre):
+            chemin = os.path.join(self.home, f"v{i}")
+            ecrire(os.path.join(chemin, "f"), octets=4096 * (i + 1))
+            chemins.append(chemin)
+        return chemins
+
+    def test_measures_overlap_and_come_back_in_order(self):
+        """La barrière ne s'ouvre que si les trois mesures attendent en
+        même temps : en série, la première y expire."""
+        barriere = threading.Barrier(3, timeout=10)
+
+        def mesure(chemin):
+            barriere.wait()
+            return len(chemin), 0.0
+
+        chemins = ["/a", "/bb", "/ccc"]
+        with mock.patch.object(sc, "mesurer", side_effect=mesure), mock.patch(
+            "os.cpu_count", return_value=8
+        ):
+            mesures = sc.mesurer_tous(
+                chemins, executeur=futures.ThreadPoolExecutor
+            )
+        self.assertEqual(mesures, [(2, 0.0), (3, 0.0), (4, 0.0)])
+
+    def test_processes_give_the_same_measures_as_the_series(self):
+        """De vrais processus : le groupe rend lui-même ses mesures, sans
+        retomber sur la série."""
+        rendus = []
+
+        class Groupe(futures.ProcessPoolExecutor):
+            def map(self, *args, **kw):
+                mesures = list(super().map(*args, **kw))
+                rendus.append(mesures)
+                return mesures
+
+        chemins = self.arbres(3)
+        attendu = [sc.mesurer(c) for c in chemins]
+        self.assertEqual(sc.mesurer_tous(chemins, executeur=Groupe), attendu)
+        self.assertEqual(rendus, [attendu])
+
+    def test_a_broken_pool_falls_back_to_the_series(self):
+        chemins = self.arbres(3)
+
+        class Casse(futures.ThreadPoolExecutor):
+            def map(self, *args, **kw):
+                raise sc.BrokenProcessPool("rompu")
+
+        self.assertEqual(
+            sc.mesurer_tous(chemins, executeur=Casse),
+            [sc.mesurer(c) for c in chemins],
+        )
+
+    def test_one_cpu_starts_no_process(self):
+        """Un seul processeur : la série, sans groupe d'un seul processus
+        qui coûterait son démarrage pour rien."""
+        executeur = mock.MagicMock()
+        chemins = self.arbres(3)
+        with mock.patch("os.cpu_count", return_value=1):
+            mesures = sc.mesurer_tous(chemins, executeur=executeur)
+        executeur.assert_not_called()
+        self.assertEqual(mesures, [sc.mesurer(c) for c in chemins])
+
+    def test_few_paths_start_no_process(self):
+        executeur = mock.MagicMock()
+        chemins = self.arbres(2)
+        mesures = sc.mesurer_tous(chemins, executeur=executeur)
+        executeur.assert_not_called()
+        self.assertEqual(mesures, [sc.mesurer(c) for c in chemins])
+
+    def test_neighbour_venvs_keep_their_own_measure(self):
+        voisin = os.path.join(os.path.dirname(self.depot), "voisin")
+        ecrire(os.path.join(voisin, ".erplibre-version"), octets=5)
+        for i, nom in enumerate((".venv.a", ".venv.b", ".venv.c")):
+            ecrire(os.path.join(voisin, nom, "f"), octets=4096 * (i + 1))
+        trouves = sc.venvs_voisins(self.depot, AUCUN_USAGE)
+        self.assertEqual(
+            [(c.nom, c.taille) for c in trouves],
+            [(c.nom, sc.mesurer(c.chemins[0])[0]) for c in trouves],
+        )
+        self.assertEqual(
+            [c.nom for c in trouves],
+            ["voisin/.venv.a", "voisin/.venv.b", "voisin/.venv.c"],
+        )
+        self.assertEqual(len({c.taille for c in trouves}), 3)
 
 
 class Reponse:
