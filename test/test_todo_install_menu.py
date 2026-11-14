@@ -132,8 +132,8 @@ class TestOrdreDesQuestions(Banc):
 
     def test_an_odoo_version_asks_system_then_the_rest(self):
         # La version, le développement, l'installation standard, la
-        # question système, puis la suite, Entrée : interactive.
-        questions, commandes = self.jouer(["1", "1", "1", "y", ""])
+        # question système, puis la suite : interactive.
+        questions, commandes = self.jouer(["1", "1", "1", "y", "1"])
         self.assertEqual(len(questions), 5)
         for question in questions[:3]:
             self.assertNotIn(QUESTION_SYSTEME, question)
@@ -147,12 +147,22 @@ class TestOrdreDesQuestions(Banc):
             any("--install_dev" in c for c in commandes), commandes
         )
 
+    def test_enter_at_the_rest_picks_unattended(self):
+        """Entrée à « Suite de l'installation » choisit le sans
+        interaction : la commande porte EL_NON_INTERACTIVE=1."""
+        questions, commandes = self.jouer(["1", "1", "1", "n", ""])
+        self.assertIn(QUESTION_SUITE, questions[4])
+        self.assertIn(todo_module.t("Select [2]: "), questions[4])
+        self.assertTrue(
+            any(SANS_INTERACTION in c for c in commandes), commandes
+        )
+
     def test_enter_picks_production_then_standard(self):
         # La version, puis Entrée à l'environnement et au type.
         with mock.patch.object(
             todo_module, "gel_des_sources", lambda **_: (5, 5)
         ):
-            questions, commandes = self.jouer(["1", "", "", "n", ""])
+            questions, commandes = self.jouer(["1", "", "", "n", "1"])
         self.assertIn("[2]", questions[1])
         self.assertIn("[1]", questions[2])
         principale = commandes[-1]
@@ -163,21 +173,21 @@ class TestOrdreDesQuestions(Banc):
         with mock.patch.object(
             todo_module, "gel_des_sources", lambda **_: (0, 5)
         ):
-            _, commandes = self.jouer(["1", "", "", "n", ""])
+            _, commandes = self.jouer(["1", "", "", "n", "1"])
         self.assertTrue(commandes[-1].startswith("EL_FREEZE=0 "), commandes)
 
     def test_enter_installs_the_system_when_something_is_missing(self):
         with mock.patch.object(
             TODO, "_systeme_manquant", staticmethod(lambda: ["psql", "node"])
         ):
-            questions, commandes = self.jouer(["1", "1", "1", "", ""])
+            questions, commandes = self.jouer(["1", "1", "1", "", "1"])
         self.assertIn(QUESTION_SYSTEME_OUI, questions[3])
         self.assertIn(
             "./script/version/update_env_version.py --install", commandes
         )
 
     def test_enter_skips_the_system_when_nothing_is_missing(self):
-        questions, commandes = self.jouer(["1", "1", "1", "", ""])
+        questions, commandes = self.jouer(["1", "1", "1", "", "1"])
         self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertNotIn(
             "./script/version/update_env_version.py --install", commandes
@@ -200,7 +210,7 @@ class TestOrdreDesQuestions(Banc):
         self.assertEqual(commandes, [])
 
     def test_erplibre_only_keeps_the_system_question(self):
-        questions, commandes = self.jouer(["q", "n", ""])
+        questions, commandes = self.jouer(["q", "n", "1"])
         self.assertIn(QUESTION_SYSTEME, questions[1])
         self.assertIn(QUESTION_SUITE, questions[2])
         self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
@@ -308,12 +318,12 @@ class TestIdentiteGit(Banc):
 
     def test_identite_presente_aucune_question(self):
         self.prete = True
-        questions, _ = self.jouer(["1", "1", "1", "n", ""])
+        questions, _ = self.jouer(["1", "1", "1", "n", "1"])
         self.assertEqual(len(questions), 5)
         self.assertIn(QUESTION_SYSTEME, questions[3])
 
     def test_refus_rien_n_est_ecrit(self):
-        questions, commandes = self.jouer(["1", "1", "1", "n", "", "n"])
+        questions, commandes = self.jouer(["1", "1", "1", "n", "1", "n"])
         self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertIn(QUESTION_SUITE, questions[4])
         self.assertIn(todo_module.t("Configure it now? (Y/n): "), questions[5])
@@ -327,7 +337,7 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "n",
-                "",
+                "1",
                 "y",
                 "Nom Fictif",
                 "fictif@example.invalid",
@@ -347,7 +357,7 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "n",
-                "",
+                "1",
                 "y",
                 "Nom Fictif",
                 "sans-arobase",
@@ -367,7 +377,7 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "n",
-                "",
+                "1",
                 "y",
                 "Nom Fictif",
                 "fictif@example.invalid",
@@ -390,7 +400,7 @@ class TestIdentiteGit(Banc):
                 "1",
                 "1",
                 "n",
-                "",
+                "1",
                 "",
                 "Nom Fictif",
                 "fictif@example.invalid",
@@ -673,7 +683,7 @@ class TestInstallCli(unittest.TestCase):
     def test_sans_mode_les_reponses_absentes_sont_demandees(self):
         # La cible est donnée, l'environnement et le reste sont demandés.
         code, _, questions, _ = self.lancer(
-            ["--target", "18.0"], reponses=["1", "1", "n", "", "n"]
+            ["--target", "18.0"], reponses=["1", "1", "n", "1", "n"]
         )
         self.assertEqual(code, 0)
         self.assertEqual(len(questions), 5)
@@ -747,7 +757,7 @@ class TestPycharmFerme(unittest.TestCase):
         todo.execute = Execute()
         # Version, environnement, type, système non, suite interactive,
         # PyCharm oui, Entrée.
-        suite = iter(["1", "1", "1", "n", "", "y", ""])
+        suite = iter(["1", "1", "1", "n", "1", "y", ""])
 
         def repondre(prompt=""):
             evenements.append(("question", prompt))

@@ -1677,13 +1677,13 @@ TRANSLATIONS = {
         "fr": "Suite de l'installation :",
         "en": "Rest of the installation:",
     },
-    "Interactive: the next questions are asked (default)": {
-        "fr": "Interactive : les questions suivantes sont posées (défaut)",
-        "en": "Interactive: the next questions are asked (default)",
+    "Interactive: the next questions are asked": {
+        "fr": "Interactive : les questions suivantes sont posées",
+        "en": "Interactive: the next questions are asked",
     },
-    "Unattended: each next question takes its default answer": {
-        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut",
-        "en": "Unattended: each next question takes its default answer",
+    "Unattended: each next question takes its default answer (default)": {
+        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut (défaut)",
+        "en": "Unattended: each next question takes its default answer (default)",
     },
     "Select [1]: ": {
         "fr": "Sélection [1] : ",
@@ -1879,8 +1879,8 @@ TRANSLATIONS = {
         "en": "🔍 Show code status",
     },
     "Stash all code": {
-        "fr": "📦 Remiser tout le code",
-        "en": "📦 Stash all code",
+        "fr": "📦 Remiser tout le code : git stash dans chaque dépôt du manifeste, hors ERPLibre",
+        "en": "📦 Stash all code: git stash in every manifest repository, ERPLibre excluded",
     },
     "Format modified code": {
         "fr": "🎨 Formater le code modifié",
@@ -21755,9 +21755,9 @@ TRANSLATIONS = {
         "fr": "🔄 Synchroniser les dépôts",
         "en": "🔄 Synchronize the repositories",
     },
-    "🔁 Reconfigure and synchronize": {
-        "fr": "🔁 Reconfigurer et synchroniser",
-        "en": "🔁 Reconfigure and synchronize",
+    "🔁 Switch to development: each repository follows its branch": {
+        "fr": "🔁 Passer en développement : chaque dépôt suit sa branche",
+        "en": "🔁 Switch to development: each repository follows its branch",
     },
     "🔍 Upgrade — dry run": {
         "fr": "🔍 Mise à niveau — à sec",
@@ -22123,9 +22123,9 @@ TRANSLATIONS = {
         "fr": "🧊 Geler les versions",
         "en": "🧊 Freeze the versions",
     },
-    "📌 Reconfigure on the frozen commits": {
-        "fr": "📌 Reconfigurer sur les commits gelés",
-        "en": "📌 Reconfigure on the frozen commits",
+    "📌 Switch to production: each repository on its frozen commit": {
+        "fr": "📌 Passer en production : chaque dépôt sur son commit gelé",
+        "en": "📌 Switch to production: each repository on its frozen commit",
     },
     "🫗 Unfreeze the versions": {
         "fr": "🫗 Dégeler les versions",
@@ -22191,13 +22191,13 @@ TRANSLATIONS = {
         "fr": "Fichiers de manifeste écrits ; à committer pour les partager.",
         "en": "Manifest files written; commit them to share them.",
     },
-    "Apply with: Reconfigure and synchronize.": {
-        "fr": "Appliquer par : Reconfigurer et synchroniser.",
-        "en": "Apply with: Reconfigure and synchronize.",
+    "Apply with: Switch to development.": {
+        "fr": "Appliquer par : Passer en développement.",
+        "en": "Apply with: Switch to development.",
     },
-    "Apply with: Reconfigure on the frozen commits.": {
-        "fr": "Appliquer par : Reconfigurer sur les commits gelés.",
-        "en": "Apply with: Reconfigure on the frozen commits.",
+    "Apply with: Switch to production.": {
+        "fr": "Appliquer par : Passer en production.",
+        "en": "Apply with: Switch to production.",
     },
     "🔀 Compare two freezes": {
         "fr": "🔀 Comparer deux gels",

@@ -179,7 +179,7 @@ git identity, `repo init` runs without asking for one.
 
 Someone who starts from the menu can also leave once the first questions are
 answered: after the system question, **Rest of the installation** offers
-*Interactive* (default, Enter) or *Unattended*; the target `m` does not offer
+*Unattended* (default, Enter) or *Interactive*; the target `m` does not offer
 it. Unattended, each following question takes its default answer — no git
 identity is written, mise is installed when absent unless `--mise no` or
 `EL_INSTALL_MISE=0` says otherwise, PyCharm is not offered — and, when the

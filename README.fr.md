@@ -184,7 +184,7 @@ init` tourne sans en demander.
 
 Qui part du menu peut aussi s'en aller une fois les premières questions
 répondues : après la question système, **Suite de l'installation** offre
-*Interactive* (défaut, Entrée) ou *Sans interaction* ; la cible `m` ne l'offre
+*Sans interaction* (défaut, Entrée) ou *Interactive* ; la cible `m` ne l'offre
 pas. Sans interaction, chaque question suivante prend sa réponse par défaut
 — aucune identité git n'est écrite, mise est posé s'il manque sauf
 `--mise no` ou `EL_INSTALL_MISE=0`, PyCharm n'est pas proposé — et, si

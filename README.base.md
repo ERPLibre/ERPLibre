@@ -335,7 +335,7 @@ git identity, `repo init` runs without asking for one.
 
 Someone who starts from the menu can also leave once the first questions are
 answered: after the system question, **Rest of the installation** offers
-*Interactive* (default, Enter) or *Unattended*; the target `m` does not offer
+*Unattended* (default, Enter) or *Interactive*; the target `m` does not offer
 it. Unattended, each following question takes its default answer — no git
 identity is written, mise is installed when absent unless `--mise no` or
 `EL_INSTALL_MISE=0` says otherwise, PyCharm is not offered — and, when the
@@ -375,7 +375,7 @@ init` tourne sans en demander.
 
 Qui part du menu peut aussi s'en aller une fois les premières questions
 répondues : après la question système, **Suite de l'installation** offre
-*Interactive* (défaut, Entrée) ou *Sans interaction* ; la cible `m` ne l'offre
+*Sans interaction* (défaut, Entrée) ou *Interactive* ; la cible `m` ne l'offre
 pas. Sans interaction, chaque question suivante prend sa réponse par défaut
 — aucune identité git n'est écrite, mise est posé s'il manque sauf
 `--mise no` ou `EL_INSTALL_MISE=0`, PyCharm n'est pas proposé — et, si

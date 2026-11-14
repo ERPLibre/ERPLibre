@@ -1867,6 +1867,13 @@ VERIFICATIONS = (
     ("environnement", verifier_journaux),
 )
 
+# Les vérifications que le menu du bilan passe à son ouverture, sans rien
+# afficher, pour offrir leurs résolutions avant toute passe. Chacune lit un
+# réglage git ou des fichiers locaux, sans réseau ni outil lent : l'ouverture
+# du menu n'attend pas. Une vérification qui lance un outil (poetry, ruff) ou
+# balaie les dépôts n'a pas sa place ici.
+VERIFICATIONS_IMMEDIATES = (verifier_hooks, verifier_commandes_claude)
+
 
 def executer(ctx, verification):
     """Le Resultat d'une vérification, commandes comprises ; ne lève pas."""
@@ -1879,6 +1886,13 @@ def executer(ctx, verification):
         )
     resultat.commandes = ctx.commandes()
     return resultat
+
+
+def verifier_en_silence(ctx, verifications=VERIFICATIONS_IMMEDIATES):
+    """Les Resultat des `verifications`, sans rien afficher ; ne lève pas.
+    Une vérification qui lève rend un échec sans résolution, comme dans
+    `executer`."""
+    return [executer(ctx.pour_verification(), v) for v in verifications]
 
 
 def rendre(resultat):
@@ -2264,6 +2278,35 @@ def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
     return code == 0
 
 
+# Les dépôts qu'une résolution du gel traite à la fois : chacun attend son
+# serveur (ls-remote, fetch), pas le processeur. Sous les 10 connexions en
+# attente où un serveur OpenSSH par défaut (MaxStartups) commence à en couper.
+PARALLELE_RESEAU = 8
+
+
+def _par_depot(depots, fonction, sortie):
+    """Les couples (dépôt, fonction(dépôt, noter)), dans l'ordre des
+    `depots`, calculés PARALLELE_RESEAU à la fois.
+
+    Les commandes que chaque appel passe à `noter` s'affichent juste avant
+    que son couple soit rendu : l'appelant affiche le verdict d'un dépôt
+    sous ses commandes, et le rapport suit l'ordre des dépôts quel que soit
+    celui qui finit le premier."""
+    afficher = _afficher_commande(sortie)
+
+    def appeler(depot):
+        notees = []
+        return fonction(depot, notees.append), notees
+
+    with ThreadPoolExecutor(max_workers=PARALLELE_RESEAU) as pool:
+        futurs = [pool.submit(appeler, depot) for depot in depots]
+        for depot, futur in zip(depots, futurs):
+            rendu, notees = futur.result()
+            for commande in notees:
+                afficher(commande)
+            yield depot, rendu
+
+
 def _remettre_au_gel(ctx, depots, demander, sortie):
     sortie(t("Repositories to put back on their freeze:"))
     depots = choisir_depots(depots, demander, sortie)
@@ -2271,10 +2314,13 @@ def _remettre_au_gel(ctx, depots, demander, sortie):
         sortie(t("Nothing changed."))
         return False
     change = False
-    for depot in depots:
-        reussi, message = freeze_resolution.remettre_au_gel(
-            ctx.racine, depot, noter=_afficher_commande(sortie)
-        )
+    for depot, (reussi, message) in _par_depot(
+        depots,
+        lambda d, noter: freeze_resolution.remettre_au_gel(
+            ctx.racine, d, noter=noter
+        ),
+        sortie,
+    ):
         change = change or reussi
         sortie(f"   {'✅' if reussi else '❌'} {depot['path']} — {message}")
     return change
@@ -2288,10 +2334,13 @@ def _mettre_a_jour_gel(ctx, depots, demander, sortie):
         return False
     sortie(t("Checking that each HEAD is pushed…"))
     publies = []
-    for depot in depots:
-        publie, detail = freeze_resolution.publication(
-            ctx.racine, depot, noter=_afficher_commande(sortie)
-        )
+    for depot, (publie, detail) in _par_depot(
+        depots,
+        lambda d, noter: freeze_resolution.publication(
+            ctx.racine, d, noter=noter
+        ),
+        sortie,
+    ):
         if publie:
             publies.append(depot)
             sortie(f"   ✅ {depot['path']} — {t('pushed on')} {detail}")

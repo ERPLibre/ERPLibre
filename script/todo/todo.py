@@ -595,22 +595,22 @@ class TODO(
 
     def _choisir_suite(self):
         """Demande comment se déroule la suite de l'installation ; rend True
-        pour « sans interaction ». Entrée choisit l'interactif : les
-        questions suivantes (identité git, mise, PyCharm) sont posées.
-        Sans interaction, chacune prend sa valeur par défaut, et personne
-        n'a plus à rester devant l'installation."""
+        pour « sans interaction ». Entrée choisit le sans interaction :
+        chaque question suivante (identité git, mise, PyCharm) prend sa
+        valeur par défaut, et personne n'a plus à rester devant
+        l'installation. L'interactif les pose."""
         choix = {
-            "1": f"1: {t('Interactive: the next questions are asked (default)')}",
-            "2": f"2: {t('Unattended: each next question takes its default answer')}",
+            "1": f"1: {t('Interactive: the next questions are asked')}",
+            "2": f"2: {t('Unattended: each next question takes its default answer (default)')}",
         }
         while True:
             saisie = (
                 input(
                     f"💬 {t('Rest of the installation:')}\n\t"
                     + "\n\t".join(choix.values())
-                    + f"\n{t('Select [1]: ')}"
+                    + f"\n{t('Select [2]: ')}"
                 ).strip()
-                or "1"
+                or "2"
             )
             if saisie in choix:
                 return saisie == "2"
@@ -799,8 +799,8 @@ class TODO(
 
         L'ordre : la cible, l'environnement et le type pour une version
         d'Odoo, l'étape système, puis, hors du mode `non_interactif`, la
-        suite : interactive par défaut, ou sans interaction, ses valeurs
-        par défaut prises (_choisir_suite). La cible « m » n'offre pas ce
+        suite : sans interaction par défaut, ses valeurs par défaut
+        prises, ou interactive (_choisir_suite). La cible « m » n'offre pas ce
         choix : sa dernière étape fait choisir un appareil Android au
         clavier."""
         depuis_cli = reponses is not None
@@ -1438,11 +1438,26 @@ class TODO(
         « Résolution », juste après. Chaque vérification garde les siennes
         jusqu'à sa prochaine passe ; une résolution lancée repasse sa
         vérification.
+
+        À l'ouverture, les vérifications immédiates du bilan
+        (`healthcheck.VERIFICATIONS_IMMEDIATES`) passent sans rien afficher :
+        un écart qu'elles trouvent, comme les hooks git que le bilan
+        d'ouverture du TODO dit manquants, est offert en résolution sans
+        lancer de passe.
         """
         portee_fichiers = 0
         portee_depots = 0
         # {titre de vérification: [Resolution actionnables]}
         resolutions = {}
+
+        def contexte(fichiers, depots):
+            return healthcheck.Contexte(
+                self._claude_context_root(),
+                fichiers=fichiers,
+                depots=depots,
+                etat_commande_claude=self._claude_command_state,
+                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+            )
 
         def retenir(resultats):
             for resultat in resultats or []:
@@ -1450,13 +1465,18 @@ class TODO(
                     r for r in resultat.resolutions if r.actionnable
                 ]
 
+        retenir(
+            healthcheck.verifier_en_silence(
+                contexte(
+                    healthcheck.PORTEES_FICHIERS[portee_fichiers],
+                    healthcheck.PORTEES_DEPOTS[portee_depots],
+                )
+            )
+        )
         while True:
-            ctx = healthcheck.Contexte(
-                self._claude_context_root(),
-                fichiers=healthcheck.PORTEES_FICHIERS[portee_fichiers],
-                depots=healthcheck.PORTEES_DEPOTS[portee_depots],
-                etat_commande_claude=self._claude_command_state,
-                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+            ctx = contexte(
+                healthcheck.PORTEES_FICHIERS[portee_fichiers],
+                healthcheck.PORTEES_DEPOTS[portee_depots],
             )
             choices = [
                 {"prompt_description": t("Run every check")},
@@ -1528,13 +1548,7 @@ class TODO(
                 section = next(s for s, v in seules if v is verification)
                 retenir(
                     healthcheck.lancer(
-                        healthcheck.Contexte(
-                            self._claude_context_root(),
-                            fichiers=ctx.portee_fichiers,
-                            depots=ctx.portee_depots,
-                            etat_commande_claude=self._claude_command_state,
-                            commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
-                        ),
+                        contexte(ctx.portee_fichiers, ctx.portee_depots),
                         [(section, verification)],
                     )
                 )
