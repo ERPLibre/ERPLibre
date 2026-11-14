@@ -20,6 +20,7 @@ import shlex
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 
@@ -44,6 +45,11 @@ class ProxmoxMenuMixin:
     # Le script qui transforme une Debian en hyperviseur. Autonome : il se
     # laisse exécuter par un tube, sans être copié d'abord.
     PVE_INSTALL_SCRIPT = "script/proxmox/install_proxmox.sh"
+    # Plafond des ssh simultanés vers UN hôte Proxmox. sshd écarte au hasard
+    # les connexions non encore authentifiées au-delà de 10 (MaxStartups
+    # 10:30:100 par défaut d'OpenSSH), et un rebond « -J » en ouvre autant
+    # vers lui : 4 laisse de la marge aux autres sessions de l'opérateur.
+    _PVE_PARALLELE = 4
 
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
@@ -348,23 +354,29 @@ class ProxmoxMenuMixin:
         if not host:
             return 255, ""
         if not quiet:
-            # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
-            # compris. Sans « -J », la ligne copiée rendait « no route to
-            # host » — et c'est justement quand une étape échoue au milieu
-            # d'une réparation qu'on a besoin de la rejouer à la main.
-            argv = pve.ssh_argv(
-                host, pve.wrap_privilege(remote, host.get("sudo") or "")
-            )
-            print(
-                f"\n{t('Will execute:')} "
-                + " ".join(shlex.quote(a) for a in argv)
-            )
+            self._pve_print_command(host, remote)
         code, out = pve.run(host, remote, timeout)
         if out.strip() and not quiet:
             print(out.rstrip())
         if code and not quiet:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
+
+    @staticmethod
+    def _pve_print_command(host, remote):
+        """Affiche « Will execute: » suivi de la commande ssh complète."""
+        from script.proxmox import proxmox_deploy as pve
+
+        # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
+        # compris. Sans « -J », la ligne copiée rend « no route to host » —
+        # et c'est quand une étape échoue au milieu d'une réparation qu'on a
+        # besoin de la rejouer à la main.
+        argv = pve.ssh_argv(
+            host, pve.wrap_privilege(remote, host.get("sudo") or "")
+        )
+        print(
+            f"\n{t('Will execute:')} " + " ".join(shlex.quote(a) for a in argv)
+        )
 
     # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
     # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
@@ -526,10 +538,30 @@ class ProxmoxMenuMixin:
         if not self._is_yes(input(t("Confirm? (y/N): "))):
             print(t("Cancelled."))
             return
-        for vm in choisies:
-            code, _o = self._pve_show(f"qm {verbe} {vm['vmid']}", timeout=300)
-            marque = "✓" if code == 0 else "✗"
-            print(f"  {marque} {vm['name']}")
+        # Un ssh par VM, _PVE_PARALLELE à la fois : Proxmox verrouille
+        # chaque VMID à part, et « qm shutdown » attend l'arrêt de l'invité,
+        # si bien que l'attente totale est celle de la VM la plus lente.
+        # L'hôte est résolu AVANT les fils, car _pve_host peut poser une
+        # question ; les sorties, tamponnées, s'affichent dans l'ordre de la
+        # sélection, chacune dès que sa VM et celles qui la précèdent ont
+        # fini.
+        host = self._pve_host()
+        if not host:
+            return
+        commandes = [f"qm {verbe} {vm['vmid']}" for vm in choisies]
+        for remote in commandes:
+            self._pve_print_command(host, remote)
+        with ThreadPoolExecutor(max_workers=self._PVE_PARALLELE) as pool:
+            resultats = pool.map(
+                lambda remote: pve.run(host, remote, 300), commandes
+            )
+            for vm, (code, out) in zip(choisies, resultats):
+                if out.strip():
+                    print(out.rstrip())
+                if code:
+                    print(f"  ⚠ {t('exit code')} {code}")
+                marque = "✓" if code == 0 else "✗"
+                print(f"  {marque} {vm['name']}")
         # L'état APRÈS : c'est la seule preuve que le geste a porté.
         _c, out = self._pve_show("qm list", quiet=True)
         for vm in pve.parse_qm_list(out):
@@ -2805,8 +2837,17 @@ class ProxmoxMenuMixin:
         locaux = set(self._qemu_list_domains())
         hote_court = (host.get("target") or "").split("@")[-1]
         hote_court = re.sub(r"[^A-Za-z0-9._-]", "-", hote_court) or "pve"
-        for vm in vms:
-            ip = self._pve_guest_ip(vm["vmid"], attente=0)
+        # Seule la recherche des adresses part en fils, _PVE_PARALLELE à la
+        # fois : elle ne fait que des ssh muets (quiet=True) vers l'hôte déjà
+        # résolu. L'écriture de ~/.ssh/config reste en série, dans l'ordre de
+        # `vms` : _pve_alias_perime relit ce que l'entrée d'avant a écrit.
+        with ThreadPoolExecutor(max_workers=self._PVE_PARALLELE) as pool:
+            ips = list(
+                pool.map(
+                    lambda vm: self._pve_guest_ip(vm["vmid"], attente=0), vms
+                )
+            )
+        for vm, ip in zip(vms, ips):
             if not ip:
                 print(f"  ⚠ {vm['name']} : {t('no address, skipped')}")
                 continue

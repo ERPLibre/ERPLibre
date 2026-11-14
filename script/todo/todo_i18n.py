@@ -10748,6 +10748,10 @@ TRANSLATIONS = {
         "fr": "Tout ce qui a manqué est désormais détenu.",
         "en": "Everything that was missed is held now.",
     },
+    "Replay interrupted: queued addresses not sent.": {
+        "fr": "Rejeu interrompu : les adresses en attente ne sont pas parties.",
+        "en": "Replay interrupted: queued addresses not sent.",
+    },
     "according to the log: a purge can make it wrong": {
         "fr": "selon le journal : une purge peut le rendre faux",
         "en": "according to the log: a purge can make it wrong",

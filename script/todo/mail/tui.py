@@ -436,6 +436,30 @@ def open_session(
     if connect_fn is None:
         from script.todo.mail.imap_transport import connect as connect_fn
 
+    store, password, error = _open_cache_and_secret(
+        account, secrets, base, config_get
+    )
+    return _build_session(
+        account,
+        store,
+        password,
+        error,
+        lambda: connect_fn(account, password),
+        secrets,
+        config_get,
+        connect_fn,
+    )
+
+
+def _open_cache_and_secret(account, secrets, base, config_get):
+    """Partie LOCALE de l'ouverture d'un compte : le cache, puis le secret.
+
+    Rend `(store, password, error)`. `store` vaut None quand le cache
+    n'a pas pu s'ouvrir ; `error` est non vide dès que le réseau ne doit
+    pas être tenté. Cette partie s'exécute dans le fil principal : la clé
+    du cache peut se lire dans le coffre, et le rafraîchissement d'un
+    jeton l'écrit.
+    """
     store = Store(account, secrets=secrets, base=base)
     try:
         store.open()
@@ -444,27 +468,43 @@ def open_session(
         # doivent pas empêcher les AUTRES comptes de s'ouvrir. On garde la
         # session, sans cache, avec son erreur affichable — c'est le même
         # principe que pour une panne réseau, appliqué au disque.
-        return Session(account, None, None, str(exc), "")
-
-    syncer, error, password = None, "", ""
+        return None, "", str(exc)
     try:
         # Le secret dépend du genre du compte : mot de passe, ou jeton
         # d'accès rafraîchi au besoin. Le rafraîchissement a lieu ICI, dans
-        # le fil principal et avant toute passe — `SecretStore.set` réécrit
-        # le coffre entier, et deux fils de synchronisation qui y
-        # écriraient ensemble le corrompraient.
+        # le fil principal et avant toute connexion — `SecretStore.set`
+        # réécrit le coffre entier, et deux fils qui y écriraient ensemble
+        # le corrompraient.
         from script.todo.mail.oauth import secret_for
 
         password = secret_for(account, secrets, config_get=config_get)
-        if not password:
-            raise ValueError(t("mail_no_password_stored"))
-        syncer = Syncer(
-            store,
-            connect_fn(account, password),
-            parallele=SYNC_DOSSIERS_PARALLELE,
-        )
     except Exception as exc:
-        error = str(exc)
+        return store, "", str(exc)
+    if not password:
+        return store, "", t("mail_no_password_stored")
+    return store, password, ""
+
+
+def _build_session(
+    account, store, password, error, connect, secrets, config_get, connect_fn
+) -> Session:
+    """Assemble la `Session` d'un compte dont la partie locale est faite.
+
+    `connect` est un appelable sans argument qui rend le transport ou lève
+    l'erreur de connexion : l'appel direct à `connect_fn`, ou le
+    `result` d'un futur déjà soumis. Il n'est appelé que si `error` est
+    vide.
+    """
+    if store is None:
+        return Session(account, None, None, error, "")
+    syncer = None
+    if not error:
+        try:
+            syncer = Syncer(
+                store, connect(), parallele=SYNC_DOSSIERS_PARALLELE
+            )
+        except Exception as exc:
+            error = str(exc)
     session = Session(
         account,
         store,
@@ -494,22 +534,66 @@ def open_sessions(
 
     L'ordre compte : un mot de passe absent ou un serveur muet ne doit pas
     priver l'utilisateur de ce qu'il a déjà téléchargé.
+
+    Seules les connexions partent de front, jusqu'à `SYNC_PARALLELE` à la
+    fois : un serveur muet coûte alors un délai de lecture en tout, et non
+    un par compte. Caches et secrets s'ouvrent avant, en série, parce que
+    le coffre n'accepte qu'un écrivain ; les sessions s'assemblent après,
+    dans l'ordre des comptes.
     """
     if connect_fn is None:
         from script.todo.mail.imap_transport import connect as connect_fn
 
     sweep_orphan_ephemeral()
-    sessions = [
-        open_session(
-            account,
-            secrets,
-            base=base,
-            connect_fn=connect_fn,
-            config_get=config_get,
-        )
-        for account in accounts
-        if account.enabled
-    ]
+    actifs = [account for account in accounts if account.enabled]
+    if len(actifs) <= 1:
+        sessions = [
+            open_session(
+                account,
+                secrets,
+                base=base,
+                connect_fn=connect_fn,
+                config_get=config_get,
+            )
+            for account in actifs
+        ]
+    else:
+        locaux = [
+            _open_cache_and_secret(account, secrets, base, config_get)
+            for account in actifs
+        ]
+        with ThreadPoolExecutor(
+            max_workers=min(SYNC_PARALLELE, len(actifs))
+        ) as pool:
+            futurs = [
+                (
+                    pool.submit(connect_fn, account, password)
+                    if store is not None and not error
+                    else None
+                )
+                for account, (store, password, error) in zip(actifs, locaux)
+            ]
+            try:
+                sessions = [
+                    _build_session(
+                        account,
+                        store,
+                        password,
+                        error,
+                        futur.result if futur is not None else None,
+                        secrets,
+                        config_get,
+                        connect_fn,
+                    )
+                    for account, (store, password, error), futur in zip(
+                        actifs, locaux, futurs
+                    )
+                ]
+            except BaseException:
+                # Ctrl+C : les connexions encore en file ne partent pas ;
+                # la sortie du bloc attend seulement celles déjà ouvertes.
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
     _register_ephemeral_cleanup(sessions)
     return sessions
 

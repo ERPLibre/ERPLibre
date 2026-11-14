@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 
@@ -76,6 +77,12 @@ MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 # largeur du terminal ; soixante-dix caractères tiennent partout, indentation
 # comprise.
 LARGEUR = 70
+
+# Les répondants dont on collecte l'empreinte à la fois. Chaque collecte
+# attend le réseau, jusqu'à son budget de 2 s quand l'écouteur accepte sans
+# parler HTTP : k écouteurs muets coûtent ceil(k / 8) × 2 s au lieu de k × 2 s.
+# Le plafond évite de frapper tous les ports d'un même hôte en même temps.
+PARALLELE_EMPREINTES = 8
 
 # Le serveur distant que le coffre sait déjà servir. Il porte une poignée comme
 # les autres : c'est elle, et non son adresse, qui a le droit de circuler.
@@ -718,9 +725,25 @@ class AssistantMenuMixin:
             print(f"\n⏹ {t('answer interrupted')}")
             return
         duree = time.monotonic() - debut
+        # Les collectes partent ensemble ; `map` rend les corps dans l'ordre
+        # des touches, et l'affichage reste sur ce fil, donc les lignes
+        # suivent cet ordre quel que soit le répondant qui finit le premier.
+        with ThreadPoolExecutor(max_workers=PARALLELE_EMPREINTES) as pool:
+            try:
+                corps_recus = list(
+                    pool.map(
+                        lambda touche: llm_fp.collect(*touche, budget=2.0),
+                        touches,
+                    )
+                )
+            except KeyboardInterrupt:
+                # Les collectes en cours finissent dans leur budget ; celles
+                # qui attendent encore leur tour ne partent pas.
+                pool.shutdown(cancel_futures=True)
+                print(f"\n⏹ {t('answer interrupted')}")
+                return
         trouves = []
-        for adresse, port in touches:
-            corps = llm_fp.collect(adresse, port, budget=2.0)
+        for (adresse, port), corps in zip(touches, corps_recus):
             empreinte = llm_fp.identify(corps, port=port, host=adresse)
             if not empreinte.software:
                 print(f"  ⚠ {adresse}:{port} {t('Answered, not identified')}")
