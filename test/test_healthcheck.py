@@ -760,55 +760,73 @@ class TestResolutions(unittest.TestCase):
         self.assertEqual(maj.call_args_list[-1].args[1], [publie])
         self.assertIn("git push x", "\n".join(lignes))
 
-    def test_freeze_update_checks_repositories_in_parallel_in_order(self):
-        """Les dépôts s'interrogent à la fois : la barrière ne s'ouvre que
-        si les deux appels sont en cours ensemble. Le second finit d'abord,
-        et l'affichage suit quand même l'ordre des dépôts, chaque commande
-        avec son verdict."""
+    def en_parallele_dans_l_ordre(self, cle, fonction, rendu, verdict):
+        """Lance la résolution `cle` sur deux dépôts, `fonction` de
+        freeze_resolution remplacée. La barrière ne s'ouvre que si les deux
+        appels sont en cours ensemble ; le second finit d'abord. Vérifie
+        que l'affichage suit quand même l'ordre des dépôts, chaque commande
+        avec son verdict, `verdict(chemin)` donnant la ligne attendue."""
         premier = {"path": "A/premier", "freeze": {"alignment": "en_avance"}}
         second = {"path": "A/second", "freeze": {"alignment": "en_avance"}}
-        res = self.resolution(h.freeze_resolution.MAJ_GEL, [premier, second])
+        res = self.resolution(cle, [premier, second])
         barriere = threading.Barrier(2, timeout=5)
         second_fini = threading.Event()
 
-        def publication(_racine, depot, noter=None):
-            noter(f"git -C {depot['path']} ls-remote")
+        def appel(_racine, depot, noter=None):
+            noter(f"git -C {depot['path']} fetch")
             barriere.wait()
             if depot is premier:
                 second_fini.wait(5)
             else:
                 second_fini.set()
-            return True, "18.0"
+            return rendu
 
         lignes = []
         with (
             mock.patch.object(
-                h.freeze_resolution, "publication", side_effect=publication
+                h.freeze_resolution, fonction, side_effect=appel
             ),
             mock.patch.object(
                 h.freeze_resolution,
                 "mettre_a_jour_gel",
                 return_value=({"manifest/m.xml": ["k"]}, []),
-            ) as maj,
+            ),
         ):
-            h.executer_resolution(
-                h.Contexte(tempfile.gettempdir()),
-                res,
-                demander=lambda _q: "a",
-                sortie=lignes.append,
+            self.assertTrue(
+                h.executer_resolution(
+                    h.Contexte(tempfile.gettempdir()),
+                    res,
+                    demander=lambda _q: "a",
+                    sortie=lignes.append,
+                )
             )
-        self.assertEqual(maj.call_args_list[-1].args[1], [premier, second])
         rapport = [
             ligne for ligne in lignes if ligne.startswith(("   $", "   ✅"))
         ]
         self.assertEqual(
             rapport,
             [
-                "   $ git -C A/premier ls-remote",
-                f"   ✅ A/premier — {t('pushed on')} 18.0",
-                "   $ git -C A/second ls-remote",
-                f"   ✅ A/second — {t('pushed on')} 18.0",
+                "   $ git -C A/premier fetch",
+                verdict("A/premier"),
+                "   $ git -C A/second fetch",
+                verdict("A/second"),
             ],
+        )
+
+    def test_freeze_update_checks_repositories_in_parallel_in_order(self):
+        self.en_parallele_dans_l_ordre(
+            h.freeze_resolution.MAJ_GEL,
+            "publication",
+            (True, "18.0"),
+            lambda chemin: f"   ✅ {chemin} — {t('pushed on')} 18.0",
+        )
+
+    def test_put_back_runs_repositories_in_parallel_in_order(self):
+        self.en_parallele_dans_l_ordre(
+            h.freeze_resolution.REMETTRE,
+            "remettre_au_gel",
+            (True, "abc"),
+            lambda chemin: f"   ✅ {chemin} — abc",
         )
 
 
