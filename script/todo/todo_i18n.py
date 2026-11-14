@@ -7105,6 +7105,14 @@ TRANSLATIONS = {
         "fr": "session graphique démarrée",
         "en": "graphical session started",
     },
+    "connection guide kept out of the graphical login": {
+        "fr": "guide de connexion tenu hors de l'ouverture de session graphique",
+        "en": "connection guide kept out of the graphical login",
+    },
+    "pam_motd left in the graphical login; it delays it": {
+        "fr": "pam_motd laissé dans l'ouverture de session graphique ; il la retarde",
+        "en": "pam_motd left in the graphical login; it delays it",
+    },
     "graphical session not started; reboot the VM": {
         "fr": "session graphique non démarrée ; redémarrer la VM",
         "en": "graphical session not started; reboot the VM",

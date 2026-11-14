@@ -1103,6 +1103,46 @@ class QemuInstallMixin:
             + "fi; "
         )
 
+    # Services PAM des gestionnaires d'affichage, qui n'ont aucun terminal où
+    # montrer un MOTD.
+    _QEMU_DM_PAM_SERVICES = (
+        "gdm-password",
+        "gdm-autologin",
+        "gdm-fingerprint",
+        "gdm-smartcard",
+        "lightdm",
+        "lightdm-autologin",
+    )
+
+    def _qemu_dm_motd_skip_cmd(self):
+        """Bloc shell : retire pam_motd de l'ouverture de session graphique.
+
+        Là où pam_motd est dans la pile commune des connexions
+        (/etc/pam.d/system-login, que GDM et LightDM incluent sur Arch), le
+        guide de /etc/motd arrive au greeter comme un message PAM. Le greeter
+        GNOME tient chaque message un temps proportionnel à sa longueur avant
+        de lancer la session : le guide la retarde d'environ une minute.
+
+        Une règle pam_succeed_if posée juste avant pam_motd le saute pour ces
+        seuls services ; ssh et la console texte gardent le guide. Idempotent,
+        et sans effet là où le fichier ou la ligne n'existe pas. Le fichier
+        est une configuration du paquet : une mise à jour le laisse en place et
+        dépose sa version à côté."""
+        pl = "/etc/pam.d/system-login"
+        motd = "^session[[:space:]].*pam_motd\\.so"
+        regle = (
+            "session    [success=1 default=ignore] pam_succeed_if.so "
+            f"service in {':'.join(self._QEMU_DM_PAM_SERVICES)} quiet"
+        )
+        ok = t("connection guide kept out of the graphical login")
+        ko = t("pam_motd left in the graphical login; it delays it")
+        return (
+            f"if [ -f {pl} ] && grep -q '{motd}' {pl} "
+            f"&& ! grep -qF 'pam_succeed_if.so service in gdm-' {pl}; then "
+            f"if sudo sed -i '/{motd}/i {regle}' {pl}; "
+            f'then echo "   {ok}"; else echo "   ⚠ {ko}"; fi; fi; '
+        )
+
     @staticmethod
     def _qemu_firewall_rdp_cmd():
         """Bloc shell : ouvre le service « rdp » dans firewalld, s'il existe.
@@ -1253,6 +1293,8 @@ class QemuInstallMixin:
             f"--auto-agree-with-licenses {de['zypper']}{x11('zypper')}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             + done_cmd
+            # Avant le démarrage du greeter : la première connexion compte.
+            + self._qemu_dm_motd_skip_cmd()
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
             + "sudo systemctl set-default graphical.target || true; "
