@@ -863,7 +863,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
 
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
-        "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
+        "🔁 Switch to development: each repository follows its branch": "_git_repo_reconfigurer",
         "⬇️ Pull the repositories": "_git_repo_tirer",
         "🌐 Add the upstream remotes": "_git_repo_ajouter_remotes",
         "🔍 Upgrade — dry run": "_git_repo_a_sec",
@@ -874,7 +874,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🖥️ Browse the upgrade on screen": "_git_repo_ecran",
         "🔗 Fork and upstream status": "_git_repo_etat_forks",
         "🧊 Freeze the versions": "_git_repo_geler",
-        "📌 Reconfigure on the frozen commits": "_git_repo_reconfigurer",
+        "📌 Switch to production: each repository on its frozen commit": "_git_repo_reconfigurer",
         "🫗 Unfreeze the versions": "_git_repo_geler",
         "🔀 Compare two freezes": "_git_repo_comparer",
     }

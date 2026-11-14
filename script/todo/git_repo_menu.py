@@ -213,7 +213,11 @@ class GitRepoMenuMixin:
         choices = [
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
-            {"prompt_description": t("🔁 Reconfigure and synchronize")},
+            {
+                "prompt_description": t(
+                    "🔁 Switch to development: each repository follows its branch"
+                )
+            },
             {"prompt_description": t("⬇️ Pull the repositories")},
             {"section": t("Upgrade")},
             {"prompt_description": t("🌐 Add the upstream remotes")},
@@ -227,7 +231,11 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🔗 Fork and upstream status")},
             {"section": t("Versions")},
             {"prompt_description": t("🧊 Freeze the versions")},
-            {"prompt_description": t("📌 Reconfigure on the frozen commits")},
+            {
+                "prompt_description": t(
+                    "📌 Switch to production: each repository on its frozen commit"
+                )
+            },
             {"prompt_description": t("🫗 Unfreeze the versions")},
             {"prompt_description": t("🔀 Compare two freezes")},
         ]
@@ -1185,9 +1193,9 @@ class GitRepoMenuMixin:
             return status
         print(f"✅ {t('Manifest files written; commit them to share them.')}")
         if unfreeze:
-            print(f"   {t('Apply with: Reconfigure and synchronize.')}")
+            print(f"   {t('Apply with: Switch to development.')}")
         else:
-            print(f"   {t('Apply with: Reconfigure on the frozen commits.')}")
+            print(f"   {t('Apply with: Switch to production.')}")
         return 0
 
     def _git_repo_comparer(self):
