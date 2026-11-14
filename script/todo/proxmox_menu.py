@@ -1412,7 +1412,7 @@ class ProxmoxMenuMixin:
         # plan les additionne déjà à l'écran ; sans eux ici, la VM naissait
         # avec le disque d'un serveur nu et GNOME le remplissait.
         marge += extras_disk_gb(
-            dict(vm, desktop=vm.get("desktop") or spec.get("desktop") or ""),
+            dict(vm, desktop=vm.get("desktop", spec.get("desktop")) or ""),
             spec.get("vm_tools") or (),
             extras_tables(self._qemu_guest_context()),
         )
@@ -1425,9 +1425,14 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         code, _v = mod.DISTROS[vm["distro"]][0][vm["version"]][:2]
-        url = mod.image_url(vm["distro"], code, vm["arch"], vm["version"])
+        # Le bureau choisit l'image Debian : la variante cloud n'a pas de
+        # pilote d'affichage. Même lecture que _pve_disk_with_margin.
+        bureau = bool(vm.get("desktop", spec.get("desktop")))
+        url = mod.image_url(
+            vm["distro"], code, vm["arch"], vm["version"], bureau
+        )
         image = mod.default_image_name(
-            vm["distro"], code, vm["arch"], vm["version"]
+            vm["distro"], code, vm["arch"], vm["version"], bureau
         )
         detail = {
             "name": vm["name"],
@@ -2455,7 +2460,7 @@ class ProxmoxMenuMixin:
             branche = branches_vm
         bureau = spec.get("desktop") or ""
         bureaux = {
-            vm["name"]: (vm.get("desktop") or bureau) for vm in joignables
+            vm["name"]: vm.get("desktop", bureau) or "" for vm in joignables
         }
         if self._qemu_per_vm(bureaux, bureau):
             bureau = bureaux
@@ -2867,7 +2872,7 @@ class ProxmoxMenuMixin:
             "disk": "32G",
             "storage": "local-lvm",
             "bridge": "vmbr0",
-            "image": "debian-13-genericcloud-amd64.qcow2",
+            "image": "debian-13-generic-amd64.qcow2",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
         }
         print(f"\n── {t('Example: demo-vm, Debian 13, on a Proxmox host')} ──")

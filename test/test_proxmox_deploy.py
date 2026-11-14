@@ -340,7 +340,7 @@ class TestLesCommandes(unittest.TestCase):
             "disk": "12G",
             "storage": "local",
             "bridge": "vmbr0",
-            "image": "debian-13-genericcloud-amd64.qcow2",
+            "image": "debian-13-generic-amd64.qcow2",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
             "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
         }

@@ -24,7 +24,13 @@ Chaque accès aux widgets est gardé : un formulaire n'est pas tenu de poser
 tous les fragments, et lire un widget absent ne doit pas casser l'écran.
 """
 
-from script.todo.deploy_form_lib import FREE, t
+from script.todo.deploy_form_lib import (
+    FREE,
+    desktop_ram,
+    desktops_for,
+    desktops_for_fleet,
+    t,
+)
 
 # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
 # rendrait indistinguable de la sentinelle « rien de sélectionné ».
@@ -36,6 +42,11 @@ SERVER = "__server__"
 _TABLES = (
     ("desktops", list, "desktops"),
     ("desktop_disk", int, "desktop_disk_gb"),
+    # {système: [saveurs installables]} : vide, toutes les saveurs restent
+    # offertes partout (desktops_for).
+    ("desktops_by_distro", dict, "desktops_by_distro"),
+    # Plancher de RAM d'une VM graphique, en Mo ; 0 n'en impose aucun.
+    ("desktop_min_ram", int, "desktop_min_ram_mb"),
     ("app_stores", list, "app_stores"),
     ("snap_distros", set, "snap_distros"),
     ("timezones", list, "timezones"),
@@ -48,6 +59,9 @@ _TABLES = (
     ("tool_desktops", dict, "vm_tool_desktops"),
     ("tool_needs_desktop", dict, "vm_tool_needs_desktop"),
     ("tool_families", dict, "vm_tool_families"),
+    # {outil: systèmes exclus} : la famille de paquets ne suffit pas quand
+    # un outil dépend d'un paquet absent d'une distribution de la famille.
+    ("tool_distros_excluded", dict, "vm_tool_distros_excluded"),
     ("distro_family", dict, "distro_family"),
     ("mise_arches", set, "mise_arches"),
     ("defaults", dict, "defaults"),
@@ -153,6 +167,8 @@ def tools_for_vm(vm, tools, tab) -> list:
             continue
         if fams and tab["distro_family"].get(vm.get("distro"), "") not in fams:
             continue
+        if vm.get("distro") in (tab["tool_distros_excluded"].get(key) or ()):
+            continue
         out.append(key)
     return out
 
@@ -202,6 +218,20 @@ class ExtrasMixin:
         self._extras["distro_profiles"] = dict(
             ctx.get("distro_profiles") or {}
         )
+        # Le type commun n'offre que les saveurs qu'au moins un système du
+        # catalogue installe. Filtré ICI, dans la table même, et non au
+        # dessin : `_default_desktop` lit la saveur par son RANG dans cette
+        # liste, et un bouton retiré à l'affichage seul décalerait le rang.
+        tab = self._extras
+        if tab["desktops_by_distro"]:
+            cles = desktops_for_fleet(
+                tab["desktops_by_distro"],
+                [k for k, _lbl in tab["desktops"]],
+                tab["desktops_by_distro"],
+            )
+            tab["desktops"] = [
+                (k, lbl) for k, lbl in tab["desktops"] if k in cles
+            ]
 
     # ------------------------------------------------------------------ #
     # Les widgets
@@ -507,9 +537,18 @@ class ExtrasMixin:
                 return k
         return 0
 
-    def _type_options(self):
+    def _type_options(self, distro=None):
+        """Choix du type d'UNE rangée : serveur, puis les saveurs que son
+        système installe. Une saveur offerte à une VM NixOS y ferait
+        échouer l'installation, faute de gestionnaire de paquets connu."""
+        tab = self._extras
+        cles = desktops_for(
+            distro,
+            [k for k, _lbl in tab["desktops"]],
+            tab["desktops_by_distro"],
+        )
         return [(t("Server"), SERVER)] + [
-            (label, key) for key, label in self._extras["desktops"]
+            (label, key) for key, label in tab["desktops"] if key in cles
         ]
 
     def install_row_widgets(self, i, null=None):
@@ -551,10 +590,14 @@ class ExtrasMixin:
             ),
         ]
         if tab["desktops"]:
+            options = self._type_options(vm.get("distro"))
+            valeur = vm.get("desktop") or SERVER
+            if valeur not in [v for _lbl, v in options]:
+                valeur = SERVER
             widgets.append(
                 Select(
-                    self._type_options(),
-                    value=vm.get("desktop") or SERVER,
+                    options,
+                    value=valeur,
                     allow_blank=False,
                     id=f"v{i}_type",
                 )
@@ -612,6 +655,15 @@ class ExtrasMixin:
         if nouveau == (vm_now.get("desktop") or ""):
             return True
         self._set_override(index, "desktop", nouveau)
+        # Devenue graphique, la VM monte au plancher de RAM d'un bureau, et
+        # le relèvement est écrit en SURCHARGE : revenir au serveur ne le
+        # retire pas, une valeur ne baisse jamais d'elle-même sous les yeux de
+        # l'utilisateur. Une valeur déjà au-dessus du plancher reste.
+        plancher = desktop_ram(
+            vm_now.get("ram"), nouveau, self._extras["desktop_min_ram"]
+        )
+        if plancher != vm_now.get("ram"):
+            self._set_override(index, "ram", plancher)
         # « Serveur » est un choix légitime, pas un retrait : on le note
         # explicitement pour qu'il tienne face au défaut.
         if event.value == SERVER:

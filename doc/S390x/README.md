@@ -19,7 +19,7 @@ packages, more memory, more time, and a few features left out.
 |---|---|---|---|
 | Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 builds qpdf from source |
 | Debian | 12, 13 | debian-installer (no s390x cloud image) | 12 builds qpdf and PROJ from source |
-| Fedora | 43 only | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture: only the current release is built |
+| Fedora | 44, 45 | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture, published on a separate tree: a release is offered once its s390x Cloud image is published there |
 | AlmaLinux | 9, 10 | cloud image | Rust below 1.95 (1.92 on 10) → completed by rustup; qpdf built from source (EL9 ships 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | cloud image | same as AlmaLinux |
 | openSUSE | Leap 16.0, Tumbleweed | cloud image | Leap 16.0 builds qpdf (11.10 shipped); Tumbleweed's qpdf is recent enough; distribution Python used |

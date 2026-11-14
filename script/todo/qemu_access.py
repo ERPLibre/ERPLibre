@@ -154,15 +154,6 @@ class QemuAccessMixin:
             roots.append({"alias": name, "ip": ip})
         return roots
 
-    # Ports du bureau distant, par gestionnaire de paquets de la VM. Ils
-    # viennent de _QEMU_DESKTOP_REMOTE, seule source : xrdp sur 3389 partout,
-    # sauf Arch qui reçoit TigerVNC sur 5901.
-    @classmethod
-    def _qemu_desktop_port(cls, distro):
-        if distro == "arch":
-            return cls._QEMU_DESKTOP_REMOTE["pacman"]["port"], "VNC"
-        return cls._QEMU_DESKTOP_REMOTE["apt"]["port"], "RDP"
-
     @staticmethod
     def _qemu_self_address():
         """Adresse par laquelle l'utilisateur a JOINT cet hôte.
@@ -184,7 +175,7 @@ class QemuAccessMixin:
         graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
         VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
         poste ne voit alors que l'orchestrateur, et proposer sa liste menait
-        droit a la mauvaise machine — vecu.
+        droit a la mauvaise machine.
 
         ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
         seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
@@ -212,9 +203,13 @@ class QemuAccessMixin:
 
         # Le port ne se devine pas pour un hote de ssh_config : on ne connait
         # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
+        # Le serveur est choisi a l'installation selon la famille ET le
+        # bureau (qemu_install.py) : RDP 3389 sert GNOME, par GNOME Remote
+        # Desktop ou xrdp ; seul Cinnamon sur Arch ecoute en VNC 5901, une
+        # session X11 que GNOME sans X11 ne peut plus fournir.
         print(f"\n  {t('Remote desktop kind:')}")
-        print(f"  [1] RDP 3389 (xrdp) *")
-        print(f"  [2] VNC 5901 (TigerVNC, Arch)")
+        print("  [1] RDP 3389 (GNOME Remote Desktop / xrdp) *")
+        print("  [2] VNC 5901 (TigerVNC, Cinnamon on Arch)")
         print(
             f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
         )
@@ -710,9 +705,10 @@ class QemuAccessMixin:
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
 
         Les deux autres choix du menu supposent un service DANS l'invité —
-        xrdp, TigerVNC — donc une session de bureau déjà ouverte et un mot de
-        passe posé. La console de l'hyperviseur, elle, existe dès l'amorçage et
-        ne demande rien à l'invité : c'est ce que montre virt-manager.
+        GNOME Remote Desktop, xrdp, TigerVNC — donc une session de bureau déjà
+        ouverte et un mot de passe posé. La console de l'hyperviseur, elle,
+        existe dès l'amorçage et ne demande rien à l'invité : c'est ce que
+        montre virt-manager.
 
         Le port n'est pas devinable : libvirt l'attribue au démarrage. On le
         lit donc, et l'absence de port est un diagnostic à part entière — avec

@@ -7053,9 +7053,65 @@ TRANSLATIONS = {
         "fr": "transfert des dépôts dans l'application",
         "en": "repo transfer into the app",
     },
+    "pacman full upgrade failed, retrying after a forced refresh": {
+        "fr": "mise à niveau complète pacman échouée, nouvel essai après un rafraîchissement forcé",
+        "en": "pacman full upgrade failed, retrying after a forced refresh",
+    },
+    "pacman full upgrade failed: system not upgraded, install stopped": {
+        "fr": "mise à niveau complète pacman échouée : système non mis à niveau, installation arrêtée",
+        "en": "pacman full upgrade failed: system not upgraded, install stopped",
+    },
+    "GNOME Remote Desktop not configured; the VM console remains available": {
+        "fr": "GNOME Remote Desktop non configuré ; la console de la VM reste disponible",
+        "en": "GNOME Remote Desktop not configured; the VM console remains available",
+    },
+    "xrdp not installed; the VM console remains available": {
+        "fr": "xrdp non installé ; la console de la VM reste disponible",
+        "en": "xrdp not installed; the VM console remains available",
+    },
+    "grdctl has no system mode: xrdp instead": {
+        "fr": "grdctl n'a pas de mode système : xrdp à la place",
+        "en": "grdctl has no system mode: xrdp instead",
+    },
+    "firewalld: rdp service opened": {
+        "fr": "firewalld : service rdp ouvert",
+        "en": "firewalld: rdp service opened",
+    },
+    "firewalld: rdp service not opened, 3389 may be blocked": {
+        "fr": "firewalld : service rdp non ouvert, 3389 peut être bloqué",
+        "en": "firewalld: rdp service not opened, 3389 may be blocked",
+    },
+    "No dnf graphical environment could be installed for": {
+        "fr": "Aucun environnement graphique dnf n'a pu être installé pour",
+        "en": "No dnf graphical environment could be installed for",
+    },
+    "GNOME Remote Desktop packages not installed": {
+        "fr": "paquets de GNOME Remote Desktop non installés",
+        "en": "GNOME Remote Desktop packages not installed",
+    },
+    "RDP credentials:": {
+        "fr": "Identifiants RDP :",
+        "en": "RDP credentials:",
+    },
+    "RAM raised to the desktop minimum": {
+        "fr": "RAM portée au minimum d'un bureau",
+        "en": "RAM raised to the desktop minimum",
+    },
+    "No such desktop for their system, kept as servers:": {
+        "fr": "Bureau absent pour leur système, gardées en serveur :",
+        "en": "No such desktop for their system, kept as servers:",
+    },
     "graphical session started": {
         "fr": "session graphique démarrée",
         "en": "graphical session started",
+    },
+    "connection guide kept out of the graphical login": {
+        "fr": "guide de connexion tenu hors de l'ouverture de session graphique",
+        "en": "connection guide kept out of the graphical login",
+    },
+    "pam_motd left in the graphical login; it delays it": {
+        "fr": "pam_motd laissé dans l'ouverture de session graphique ; il la retarde",
+        "en": "pam_motd left in the graphical login; it delays it",
     },
     "graphical session not started; reboot the VM": {
         "fr": "session graphique non démarrée ; redémarrer la VM",

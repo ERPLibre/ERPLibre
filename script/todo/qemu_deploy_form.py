@@ -660,6 +660,11 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.overrides,
                 self._default_desktop(),
                 desktop_suffixes,
+                # Un bureau que le système de la VM n'installe pas la laisse
+                # serveur, et une VM graphique reçoit le plancher de RAM d'un
+                # bureau : les totaux et la spec lisent alors la vraie valeur.
+                by_distro=self._extras["desktops_by_distro"],
+                min_ram=self._extras["desktop_min_ram"],
             )
             # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE et pas
             # seulement à l'écran : le déploiement lit « install_cmd » VM par

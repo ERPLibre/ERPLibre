@@ -99,15 +99,21 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
 | debian | `12` (défaut), `13` | ✔ | ✔ | ✔ (debian-installer) |
-| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
+| fedora | `44` (défaut), `45` | ✔ | ✔ | ✔ |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 | proxmox | `9` | ✔ | ✔ | — |
 
-Fedora ne construit s390x que pour la version courante, et sur une
-arborescence à part (`fedora-secondary`) — d'où la version unique.
+Fedora publie s390x sur une arborescence à part (`fedora-secondary`) :
+ses versions s390x sont donc tenues à la main dans `ARCH_ONLY_VERSIONS`.
+
+Debian publie deux variantes d'image cloud. `genericcloud` porte un noyau
+compilé sans aucun pilote d'affichage : une VM graphique (`--desktop`)
+télécharge donc `generic`, dont le noyau pilote l'écran virtuel. Debian 13 ne
+publie que `generic` ; Debian 12 garde `genericcloud` pour les serveurs.
+Chaque variante a son propre fichier en cache.
 
 `opensuse` recouvre deux produits distincts, pas deux versions du même. Leap
 `16.0` est numérotée et stable (base SLE) : c'est le défaut. `tumbleweed` est

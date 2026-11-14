@@ -217,9 +217,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
         ]
         # Le socle porte la mise en page et les modales ; ne reste ici que ce
         # qui nomme les widgets propres à Proxmox.
-        CSS = (
-            CSS_BASE
-            + """
+        CSS = CSS_BASE + """
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
         /* Ces deux règles portent « .vmrow Select » EN PLUS de leur
@@ -232,7 +230,6 @@ def run_proxmox_form(ctx, run_app: bool = True):
         .vmrow Select.vmprof { width: 40; }
         #hostline { height: 1; color: $accent; padding: 0 1; }
         """
-        )
 
         def __init__(self):
             super().__init__()
@@ -643,6 +640,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.overrides,
                 self._default_desktop(),
                 desktop_suffixes,
+                by_distro=self._extras["desktops_by_distro"],
+                min_ram=self._extras["desktop_min_ram"],
             )
             # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE : le
             # déploiement lit « install_cmd » VM par VM.
@@ -958,9 +957,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.profile = choix
                 sur_mesure = choix == "custom"
                 for champ in RES_FIELDS:
-                    self.query_one(
-                        RES_FIELDS[champ][0], Select
-                    ).disabled = not sur_mesure
+                    self.query_one(RES_FIELDS[champ][0], Select).disabled = (
+                        not sur_mesure
+                    )
                     if not sur_mesure:
                         self._show_free(champ, False)
                 # Un réglage commun reprend la main sur les VM non figées :

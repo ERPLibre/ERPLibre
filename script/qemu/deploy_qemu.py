@@ -18,11 +18,11 @@ Exemples
     sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
         --ssh-key ~/.ssh/id_ed25519.pub
 
-    # Debian 12 / Fedora 42 (mêmes options, --distro change la source d'image)
+    # Debian 12 / Fedora 44 (mêmes options, --distro change la source d'image)
     sudo ./script/qemu/deploy_qemu.py --distro debian --version 12 \\
         --name deb12 --ssh-key ~/.ssh/id_ed25519.pub
-    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 42 \\
-        --name fed42 --ssh-key ~/.ssh/id_ed25519.pub
+    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 44 \\
+        --name fed44 --ssh-key ~/.ssh/id_ed25519.pub
 
     # Voir tout le catalogue (distros, versions, specs minimales)
     ./script/qemu/deploy_qemu.py --list-images
@@ -108,11 +108,15 @@ DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "12": ("bookworm", "debian12", 1024, "20G"),
     "13": ("trixie", "debian13", 1024, "20G"),
 }
+# Fedora : les versions encore maintenues. Une version en fin de vie quitte
+# releases/ pour archive/ sur le serveur maître, et resolve_fedora_url ne lit
+# que releases/ : la garder au catalogue la rendrait introuvable.
+# osinfo : un id absent d'un osinfo-db plus ancien (« fedora45 ») replie sur le
+# dernier id connu de cette table, d'où l'ordre croissant, puis sur
+# « fedora-unknown » quand la base n'en connaît aucun.
 FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "41": ("41", "fedora41", 2048, "20G"),
-    "42": ("42", "fedora42", 2048, "20G"),
-    "43": ("43", "fedora43", 2048, "20G"),
     "44": ("44", "fedora44", 2048, "20G"),
+    "45": ("45", "fedora45", 2048, "20G"),
 }
 # Dérivés RHEL. Le second champ est l'identifiant libosinfo : « almalinux9 » et
 # « almalinux10 » figurent dans osinfo-db, « rocky10 » n'y est pas encore sur
@@ -189,7 +193,7 @@ NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
-    "fedora": (FEDORA_VERSIONS, "42"),
+    "fedora": (FEDORA_VERSIONS, "44"),
     "almalinux": (ALMALINUX_VERSIONS, "9"),
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
@@ -237,14 +241,13 @@ S390X_DISTROS: tuple[str, ...] = (
 # architecture. Déclaration POSITIVE : hors de cette table, toutes les versions
 # du catalogue sont réputées disponibles.
 #
-# Fedora ne construit s390x que pour la version courante, et sur une
-# arborescence à part (« fedora-secondary ») : la 41 et la 42 y sont retirées
-# (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
-# miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
+# Fedora publie s390x sur une arborescence à part (« fedora-secondary »),
+# d'où une liste tenue à la main : une version ajoutée au catalogue n'y est
+# proposée qu'une fois son image Cloud s390x constatée sur le serveur maître.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
     # Debian sur s390x passe par debian-installer, dont les images sont
     # publiées pour bookworm et trixie — vérifié.
-    "s390x": {"fedora": ("43",), "debian": ("12", "13")},
+    "s390x": {"fedora": ("44", "45"), "debian": ("12", "13")},
 }
 
 # Distros installées par debian-installer plutôt que depuis une image cloud.
@@ -510,16 +513,49 @@ def distro_arch(distro: str, arch: str) -> str:
     return ARCH_ALIASES.get(distro, {}).get(arch, arch)
 
 
-def image_url(distro: str, code: str, arch: str, version: str) -> str:
+# Versions Debian dont l'image « genericcloud » reste servie à côté de
+# « generic ». Déclaration POSITIVE : une version absente d'ici, présente ou
+# future, prend « generic », la seule variante que toutes publient.
+DEBIAN_GENERICCLOUD_VERSIONS: tuple[str, ...] = ("12",)
+
+
+def debian_variant(version: str, desktop: bool = False) -> str:
+    """Variante d'image Debian : « generic » ou « genericcloud ».
+
+    « genericcloud » embarque le noyau cloud, compilé sans DRM : ni
+    virtio-gpu, ni aucun autre pilote d'affichage. Une VM graphique y démarre
+    sur un écran que GDM et LightDM ne savent pas ouvrir. « generic » porte le
+    noyau standard, avec le même cloud-init et le même fichier SHA512SUMS dans
+    le même répertoire. « genericcloud », plus léger, ne sert donc qu'à un
+    serveur, et seulement là où il est encore publié.
+    """
+    if desktop or version not in DEBIAN_GENERICCLOUD_VERSIONS:
+        return "generic"
+    return "genericcloud"
+
+
+def image_url(
+    distro: str, code: str, arch: str, version: str, desktop: bool = False
+) -> str:
     """URL directe (primaire) de l'image cloud (Ubuntu/Debian)."""
-    return image_candidates(distro, code, arch, version, dry_run=True)[0]
+    return image_candidates(
+        distro, code, arch, version, dry_run=True, desktop=desktop
+    )[0]
 
 
 def image_candidates(
-    distro: str, code: str, arch: str, version: str, dry_run: bool = False
+    distro: str,
+    code: str,
+    arch: str,
+    version: str,
+    dry_run: bool = False,
+    desktop: bool = False,
 ) -> list[str]:
     """Liste ordonnée d'URL candidates pour l'image cloud. Plusieurs miroirs
-    pour Debian ; une seule URL pour Ubuntu/Fedora."""
+    pour Debian ; une seule URL pour Ubuntu/Fedora.
+
+    `desktop` ne change que l'image Debian (voir debian_variant) : les autres
+    distributions publient une seule image, qui sait déjà afficher."""
     a = distro_arch(distro, arch)
     if distro == "ubuntu":
         # /releases/<version>/release/ : présent pour toutes les versions
@@ -530,8 +566,9 @@ def image_candidates(
             f"ubuntu-{version}-server-cloudimg-{a}.img"
         ]
     if distro == "debian":
+        variante = debian_variant(version, desktop)
         return [
-            f"{base}/{code}/latest/debian-{version}-genericcloud-{a}.qcow2"
+            f"{base}/{code}/latest/debian-{version}-{variante}-{a}.qcow2"
             for base in DEBIAN_CLOUD_BASES
         ]
     if distro == "proxmox":
@@ -539,7 +576,12 @@ def image_candidates(
         # dessus, en fait l'hyperviseur. Le miroir ne connaît que le numéro de
         # Debian, jamais celui de Proxmox.
         return image_candidates(
-            "debian", code, arch, PROXMOX_DEBIAN_BASE[version], dry_run
+            "debian",
+            code,
+            arch,
+            PROXMOX_DEBIAN_BASE[version],
+            dry_run,
+            desktop,
         )
     if distro == "fedora":
         return [resolve_fedora_url(version, arch, dry_run)]
@@ -653,19 +695,28 @@ def image_source_note(distro: str) -> tuple[str, str] | None:
     )
 
 
-def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
-    """Nom de fichier local pour le cache d'image."""
+def default_image_name(
+    distro: str, code: str, arch: str, version: str, desktop: bool = False
+) -> str:
+    """Nom de fichier local pour le cache d'image.
+
+    Le nom Debian porte sa variante, comme l'URL : deux variantes sous un même
+    nom feraient réutiliser l'image sans écran pour une VM graphique, et la
+    somme publiée ne correspondrait plus au fichier en cache."""
     a = distro_arch(distro, arch)
     if distro == "ubuntu":
         return f"ubuntu-{version}-server-cloudimg-{a}.img"
     if distro == "debian":
-        return f"debian-{version}-genericcloud-{a}.qcow2"
+        return f"debian-{version}-{debian_variant(version, desktop)}-{a}.qcow2"
     if distro == "proxmox":
         # Le fichier téléchargé EST celui de Debian : lui donner le même nom
         # de cache fait qu'un déploiement Debian 13 et un Proxmox se
-        # PARTAGENT le téléchargement (325 Mio) au lieu d'en faire deux. Sans
-        # cette branche, le repli de fin nommait l'image « fedora-cloud-9 ».
-        return f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
+        # PARTAGENT le téléchargement au lieu d'en faire deux. Sans cette
+        # branche, le repli de fin la nommerait « fedora-cloud-9 » et la
+        # téléchargerait une seconde fois.
+        return default_image_name(
+            "debian", code, arch, PROXMOX_DEBIAN_BASE[version], desktop
+        )
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
     if distro == "nixos":
@@ -711,9 +762,11 @@ def osinfo_known(short_id: str) -> bool:
 def osinfo_arg(osinfo: str, distro: str = "") -> str:
     """Valeur --osinfo résiliente à un osinfo-db périmé. Si l'id est connu on
     l'utilise ; sinon on retombe sur le DERNIER osinfo connu de la même distro
-    (meilleures perfs que « generic », pas d'avertissement) ; en dernier
-    recours, détection best-effort. Utile pour une version plus récente que la
-    base locale (ex. ubuntu26.04, fedora43+)."""
+    (meilleures perfs que « generic », pas d'avertissement) ; puis sur l'id de
+    famille « <distro>-unknown » (fedora, rocky, opensuse, nixos en ont un),
+    qui couvre un catalogue dont TOUTES les versions sont plus récentes que
+    la base locale ; en dernier recours, détection best-effort. Utile pour une
+    version plus récente que la base locale (ex. ubuntu26.04, fedora45)."""
     if "=" in osinfo or "," in osinfo:
         return osinfo  # forme avancée déjà fournie par l'utilisateur
     if osinfo_known(osinfo):
@@ -729,7 +782,16 @@ def osinfo_arg(osinfo: str, distro: str = "") -> str:
             "l'entrée exacte."
         )
         return fallback
-    # Repli 2 : détection best-effort (évite l'échec, peut donner generic).
+    # Repli 2 : l'id de famille, sans version.
+    famille = f"{distro}-unknown" if distro else ""
+    if famille and osinfo_known(famille):
+        print(
+            f"  osinfo « {osinfo} » inconnu (osinfo-db) — repli sur "
+            f"« {famille} » (famille). « sudo apt upgrade osinfo-db » pour "
+            "l'entrée exacte."
+        )
+        return famille
+    # Repli 3 : détection best-effort (évite l'échec, peut donner generic).
     print(
         f"  osinfo « {osinfo} » inconnu de la base locale (osinfo-db) — repli "
         "sur la détection auto (detect=on,require=off).\n"
@@ -2856,7 +2918,7 @@ TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
         "Extensions GNOME",
         (
             (
-                "extension-manager",
+                "{ext_app}",
                 "le gestionnaire d'extensions, sur le bureau",
                 "the extension manager, on the desktop",
             ),
@@ -2896,14 +2958,31 @@ TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
 }
 
 
-def tool_rows(cle: str, el_dir: str) -> tuple[str, tuple]:
-    """(libellé, lignes) d'un outil, sa racine d'installation substituée."""
+# Gestionnaire d'extensions GNOME posé par chaque famille de paquets. Fedora
+# n'empaquette pas « extension-manager » : sa liste installe
+# gnome-extensions-app, et le guide doit nommer la commande présente.
+GNOME_EXT_APP: dict[str, str] = {"dnf": "gnome-extensions-app"}
+
+
+def tool_rows(cle: str, el_dir: str, mgr: str = "") -> tuple[str, tuple]:
+    """(libellé, lignes) d'un outil, ses gabarits substitués.
+
+    « {el_dir} » devient la racine d'installation ; « {ext_app} », le
+    gestionnaire d'extensions que la famille `mgr` (apt, dnf…) installe.
+    """
     entree = TOOL_GUIDE.get(cle)
     if not entree:
         return "", ()
     libelle, lignes = entree
+    ext_app = GNOME_EXT_APP.get(mgr, "extension-manager")
     return libelle, tuple(
-        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        (
+            cmd.replace("{el_dir}", el_dir or "~/git/erplibre").replace(
+                "{ext_app}", ext_app
+            ),
+            fr,
+            en,
+        )
         for cmd, fr, en in lignes
     )
 
@@ -2960,12 +3039,19 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
-# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
-# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
-# d'où le « --now », qui démarre.
+# N'apparaît que sur une VM déployée AVEC un bureau. Un gestionnaire de
+# connexion installé après que graphical.target est atteinte ne démarre pas de
+# lui-même : une cible active ne rattrape pas un service ajouté après coup, et
+# « enable » seul ne démarre rien. « display-manager » est l'alias que GDM et
+# LightDM posent tous deux, d'où une seule ligne pour GNOME comme pour
+# Cinnamon ; « restart » démarre aussi une unité arrêtée.
+#
+# L'accès distant passe par RDP sur 3389 — GNOME Remote Desktop, ou xrdp —
+# sauf Cinnamon sur Arch, servi par TigerVNC sur 5901 (_QEMU_DESKTOP_REMOTE,
+# dans script/todo/qemu_install.py). Le guide ne sait pas quelle saveur a été
+# posée, d'où une seule ligne qui nomme les deux. L'adresse de la VM n'est
+# routée que depuis l'hôte libvirt : le tunnel part donc du poste de travail,
+# à travers cet hôte.
 DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
         "systemctl status display-manager",
@@ -2973,9 +3059,16 @@ DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
         "graphical desktop state",
     ),
     (
-        "sudo systemctl enable --now gdm",
-        "le démarrer (« --now » : enable seul ne suffit pas)",
-        'start it ("--now": enable alone does nothing)',
+        "sudo systemctl restart display-manager",
+        "(re)démarrer l'écran de connexion",
+        "(re)start the login screen",
+    ),
+    (
+        "ssh -L 3390:<ip>:3389 <hote-libvirt>",
+        "depuis le poste : client RDP sur localhost:3390, compte et mot de "
+        "passe de la VM (Cinnamon sur Arch : VNC, 5901 au lieu de 3389)",
+        "from the workstation: RDP client on localhost:3390, the VM's user "
+        "and password (Cinnamon on Arch: VNC, 5901 instead of 3389)",
     ),
 )
 
@@ -3173,7 +3266,7 @@ def build_motd(
     for cle in TOOL_GUIDE:
         if cle not in (tools or ()):
             continue
-        libelle, lignes = tool_rows(cle, el_dir)
+        libelle, lignes = tool_rows(cle, el_dir, mgr)
         if not lignes:
             continue
         body.append("")
@@ -3343,8 +3436,8 @@ def build_gitconfig(name: str, email: str, editor: str) -> str:
 
 # Les images cloud dont le module « keyboard » de cloud-init ne peut pas
 # aboutir : il finit par « systemctl restart console-setup », service qui
-# n'existe que si le paquet console-setup est installé, et l'image
-# genericcloud de Debian ne le porte pas. Le réglage EST écrit avant cet
+# n'existe que si le paquet console-setup est installé, et les images
+# cloud de Debian ne le portent pas. Le réglage EST écrit avant cet
 # échec — dans /etc/default/keyboard, que localed et X relisent — mais
 # cloud-init se déclare en erreur, et ce mot masque les vraies pannes dans le
 # compte-rendu de déploiement. « proxmox » part de la même image Debian
@@ -4287,7 +4380,7 @@ def build_cloud_config(
 
 
 # network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
-# Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
+# cloud Debian ne configurent pas toujours le réseau sans ça (le NIC
 # reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
 # La clé n'est pas partout un nom d'interface. Les renderers netplan et ENI
 # (Ubuntu, Debian) la tiennent pour une étiquette et désignent l'interface par
@@ -5705,9 +5798,10 @@ def build_parser() -> argparse.ArgumentParser:
     g_vm.add_argument(
         "--desktop",
         action="store_true",
-        help="VM graphique : écran virtuel SPICE là où l'architecture le "
-        "permet. Les paquets GNOME sont posés par la commande d'installation, "
-        "pas ici.",
+        help="VM graphique : écran virtio-gpu servi en VNC sur 127.0.0.1 "
+        "(tunnel SSH), là où l'architecture le permet ; sur Debian, image "
+        "« generic » au noyau capable d'afficher. Les paquets du bureau sont "
+        "posés par la commande d'installation, pas ici.",
     )
     g_vm.add_argument(
         "--vm-tools",
@@ -6052,7 +6146,12 @@ def main() -> None:
     if re.fullmatch(r"\d+", str(args.disk_size)):
         args.disk_size = f"{args.disk_size}G"
     urls = image_candidates(
-        args.distro, code, args.arch, args.version, args.dry_run
+        args.distro,
+        code,
+        args.arch,
+        args.version,
+        args.dry_run,
+        bool(args.desktop),
     )
     url = urls[0]
     # PAR DÉFAUT, et pour toute distribution qui publie ses sommes. C'était
@@ -6070,7 +6169,7 @@ def main() -> None:
     # Chemin de l'image : déduit automatiquement si non fourni.
     if args.image_path is None:
         args.image_path = args.image_dir / default_image_name(
-            args.distro, code, args.arch, args.version
+            args.distro, code, args.arch, args.version, bool(args.desktop)
         )
 
     runner = Runner(

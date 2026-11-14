@@ -64,7 +64,12 @@ class TestLaCommandeDistante(unittest.TestCase):
 
     def test_it_reports_what_says_the_vm_is_up(self):
         cmd = self._sans_rien()
-        for morceau in ("/etc/os-release", "uname -r", "hostname -I", "df -h"):
+        for morceau in (
+            "/etc/os-release",
+            "uname -r",
+            "ip -4 -o addr",
+            "df -h",
+        ):
             self.assertIn(morceau, cmd, morceau)
 
     def test_it_runs_and_says_something(self):
@@ -84,7 +89,9 @@ class TestLaCommandeDistante(unittest.TestCase):
 
     def test_a_desktop_only_vm_still_installs_its_desktop(self):
         """Le chemin qui marchait déjà ne doit pas changer de sens."""
-        self.todo._qemu_desktop_remote_cmd = lambda d, s: "INSTALLE_BUREAU; "
+        self.todo._qemu_desktop_remote_cmd = (
+            lambda d, s, **k: "INSTALLE_BUREAU; "
+        )
         self.todo._qemu_tools_remote_cmd = lambda *a, **k: ""
         self.todo._qemu_no_auto_upgrade = lambda *a, **k: ""
         cmd = self.todo._qemu_erplibre_remote_cmd(None, desktop="gnome")

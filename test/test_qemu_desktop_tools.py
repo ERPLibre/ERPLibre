@@ -311,8 +311,33 @@ class TestMobileBuild(unittest.TestCase):
             )
         self.assertIn(
             "mobile",
-            self.todo._qemu_tools_for(self.all, "amd64", "gnome", "debian"),
+            self.todo._qemu_tools_for(self.all, "amd64", "gnome", "ubuntu"),
         )
+
+    def test_debian_is_excluded_inside_the_apt_family(self):
+        """Les noms de JDK sont ceux d'Ubuntu : Debian 12 n'a pas
+        openjdk-21-jdk, Debian 13 n'a plus openjdk-17-jdk. L'émulateur
+        partage le même SDK, donc le même sort."""
+        for key in ("mobile", "avd"):
+            self.assertNotIn(
+                key,
+                self.todo._qemu_tools_for(self.all, "amd64", "", "debian"),
+            )
+            self.assertIn(
+                key,
+                self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu"),
+            )
+
+    def test_the_exclusion_reaches_the_form(self):
+        """Le formulaire filtre de son côté, sur le contexte : sans la
+        table, il annoncerait une compilation qui ne se fera pas."""
+        with mock.patch.object(TODO, "_qemu_host_timezone", lambda s: ""):
+            with mock.patch.object(TODO, "_qemu_host_git", lambda s, c: ""):
+                ctx = self.todo._qemu_guest_context()
+        self.assertEqual(
+            ("debian",), ctx["vm_tool_distros_excluded"]["mobile"]
+        )
+        self.assertEqual((), ctx["vm_tool_distros_excluded"]["pycharm"])
 
     def test_it_coexists_with_android_studio(self):
         """Combinaison croisée : la VM graphique reçoit les deux, et un seul

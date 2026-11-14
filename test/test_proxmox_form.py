@@ -302,6 +302,24 @@ class TestLeDisquePromis(unittest.TestCase):
             "20G",
         )
 
+    def test_a_server_row_takes_no_desktop_margin(self):
+        """Un « desktop » vide sur la rangée dit serveur : il l'emporte sur
+        le bureau du parc, comme dans la voie QEMU/KVM. Seule une rangée
+        SANS la clé hérite du bureau commun."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        parc = {"desktop": "gnome"}
+        herite = todo._pve_disk_with_margin({"disk": "20G"}, parc)
+        self.assertNotEqual(herite, "20G")
+        self.assertEqual(
+            todo._pve_disk_with_margin({"disk": "20G", "desktop": ""}, parc),
+            "20G",
+        )
+
 
 class TestDeuxVmDuMemeNom(unittest.TestCase):
     """Sur Proxmox, seul le VMID est unique : deux VM du même hôte peuvent
@@ -496,6 +514,41 @@ class TestLeHorsLigneSurProxmox(unittest.TestCase):
         self.assertTrue(vu["guet_hors_ligne"])
         self.assertTrue(vu["hors_ligne"])
         self.assertEqual(vu["deploy_started"], 1789000000.0)
+
+    def test_a_server_row_keeps_no_desktop(self):
+        """Une rangée « desktop » vide reste serveur, même quand le parc
+        porte un bureau ; une rangée sans la clé hérite de celui du parc."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: vu.update(k)
+        todo._qemu_list_domains = lambda: []
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "desktop": "",
+                },
+                {
+                    "name": "vm-b",
+                    "vmid": 101,
+                    "ipconfig": "ip=10.10.10.151/24,gw=10.10.10.1",
+                },
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make", "label": "X"},
+            "monitor": True,
+            "desktop": "gnome",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a", "vm-b"], "")
+        self.assertEqual(vu["desktop"], {"vm-a": "", "vm-b": "gnome"})
 
     def test_sans_coupure_rien_nest_promis(self):
         vu = self._capture()
