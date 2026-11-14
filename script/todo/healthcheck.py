@@ -2294,6 +2294,11 @@ def _remettre_au_gel(ctx, depots, demander, sortie):
     return change
 
 
+# Les dépôts que la vérification de publication interroge à la fois : chacun
+# attend son serveur (ls-remote, fetch), pas le processeur.
+PARALLELE_RESEAU = 8
+
+
 def _mettre_a_jour_gel(ctx, depots, demander, sortie):
     sortie(t("Repositories whose freeze moves to HEAD:"))
     depots = choisir_depots(depots, demander, sortie)
@@ -2301,21 +2306,35 @@ def _mettre_a_jour_gel(ctx, depots, demander, sortie):
         sortie(t("Nothing changed."))
         return False
     sortie(t("Checking that each HEAD is pushed…"))
-    publies = []
-    for depot in depots:
+    afficher = _afficher_commande(sortie)
+
+    def verifier(depot):
+        notees = []
         publie, detail = freeze_resolution.publication(
-            ctx.racine, depot, noter=_afficher_commande(sortie)
+            ctx.racine, depot, noter=notees.append
         )
-        if publie:
-            publies.append(depot)
-            sortie(f"   ✅ {depot['path']} — {t('pushed on')} {detail}")
-        elif publie is False:
-            sortie(
-                f"   ⚠️  {depot['path']} — {t('not pushed, push it first:')}"
-                f" {detail}"
-            )
-        else:
-            sortie(f"   ❌ {depot['path']} — {detail}")
+        return publie, detail, notees
+
+    publies = []
+    # Chaque dépôt interroge son URL (ls-remote, fetch) en parallèle des
+    # autres ; ses commandes et son verdict s'affichent ensemble, dans
+    # l'ordre des dépôts, dès que lui et ceux qui le précèdent sont finis.
+    with ThreadPoolExecutor(max_workers=PARALLELE_RESEAU) as pool:
+        futurs = [pool.submit(verifier, depot) for depot in depots]
+        for depot, futur in zip(depots, futurs):
+            publie, detail, notees = futur.result()
+            for commande in notees:
+                afficher(commande)
+            if publie:
+                publies.append(depot)
+                sortie(f"   ✅ {depot['path']} — {t('pushed on')} {detail}")
+            elif publie is False:
+                sortie(
+                    f"   ⚠️  {depot['path']} —"
+                    f" {t('not pushed, push it first:')} {detail}"
+                )
+            else:
+                sortie(f"   ❌ {depot['path']} — {detail}")
     if not publies:
         sortie(t("Nothing changed."))
         return False

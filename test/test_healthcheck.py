@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -741,7 +742,10 @@ class TestResolutions(unittest.TestCase):
             mock.patch.object(
                 h.freeze_resolution,
                 "publication",
-                side_effect=[(True, "18.0"), (False, "git push x")],
+                side_effect=lambda _r, d, noter=None: {
+                    "A/publie": (True, "18.0"),
+                    "A/local": (False, "git push x"),
+                }[d["path"]],
             ),
             mock.patch.object(
                 h.freeze_resolution,
@@ -755,6 +759,57 @@ class TestResolutions(unittest.TestCase):
         self.assertTrue(change)
         self.assertEqual(maj.call_args_list[-1].args[1], [publie])
         self.assertIn("git push x", "\n".join(lignes))
+
+    def test_freeze_update_checks_repositories_in_parallel_in_order(self):
+        """Les dépôts s'interrogent à la fois : la barrière ne s'ouvre que
+        si les deux appels sont en cours ensemble. Le second finit d'abord,
+        et l'affichage suit quand même l'ordre des dépôts, chaque commande
+        avec son verdict."""
+        premier = {"path": "A/premier", "freeze": {"alignment": "en_avance"}}
+        second = {"path": "A/second", "freeze": {"alignment": "en_avance"}}
+        res = self.resolution(h.freeze_resolution.MAJ_GEL, [premier, second])
+        barriere = threading.Barrier(2, timeout=5)
+        second_fini = threading.Event()
+
+        def publication(_racine, depot, noter=None):
+            noter(f"git -C {depot['path']} ls-remote")
+            barriere.wait()
+            if depot is premier:
+                second_fini.wait(5)
+            else:
+                second_fini.set()
+            return True, "18.0"
+
+        lignes = []
+        with (
+            mock.patch.object(
+                h.freeze_resolution, "publication", side_effect=publication
+            ),
+            mock.patch.object(
+                h.freeze_resolution,
+                "mettre_a_jour_gel",
+                return_value=({"manifest/m.xml": ["k"]}, []),
+            ) as maj,
+        ):
+            h.executer_resolution(
+                h.Contexte(tempfile.gettempdir()),
+                res,
+                demander=lambda _q: "a",
+                sortie=lignes.append,
+            )
+        self.assertEqual(maj.call_args_list[-1].args[1], [premier, second])
+        rapport = [
+            ligne for ligne in lignes if ligne.startswith(("   $", "   ✅"))
+        ]
+        self.assertEqual(
+            rapport,
+            [
+                "   $ git -C A/premier ls-remote",
+                f"   ✅ A/premier — {t('pushed on')} 18.0",
+                "   $ git -C A/second ls-remote",
+                f"   ✅ A/second — {t('pushed on')} 18.0",
+            ],
+        )
 
 
 class TestDependancesVenvs(unittest.TestCase):
