@@ -1867,6 +1867,13 @@ VERIFICATIONS = (
     ("environnement", verifier_journaux),
 )
 
+# Les vérifications que le menu du bilan passe à son ouverture, sans rien
+# afficher, pour offrir leurs résolutions avant toute passe. Chacune lit un
+# réglage git ou des fichiers locaux, sans réseau ni outil lent : l'ouverture
+# du menu n'attend pas. Une vérification qui lance un outil (poetry, ruff) ou
+# balaie les dépôts n'a pas sa place ici.
+VERIFICATIONS_IMMEDIATES = (verifier_hooks, verifier_commandes_claude)
+
 
 def executer(ctx, verification):
     """Le Resultat d'une vérification, commandes comprises ; ne lève pas."""
@@ -1879,6 +1886,13 @@ def executer(ctx, verification):
         )
     resultat.commandes = ctx.commandes()
     return resultat
+
+
+def verifier_en_silence(ctx, verifications=VERIFICATIONS_IMMEDIATES):
+    """Les Resultat des `verifications`, sans rien afficher ; ne lève pas.
+    Une vérification qui lève rend un échec sans résolution, comme dans
+    `executer`."""
+    return [executer(ctx.pour_verification(), v) for v in verifications]
 
 
 def rendre(resultat):

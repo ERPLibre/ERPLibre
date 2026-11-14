@@ -1438,11 +1438,26 @@ class TODO(
         « Résolution », juste après. Chaque vérification garde les siennes
         jusqu'à sa prochaine passe ; une résolution lancée repasse sa
         vérification.
+
+        À l'ouverture, les vérifications immédiates du bilan
+        (`healthcheck.VERIFICATIONS_IMMEDIATES`) passent sans rien afficher :
+        un écart qu'elles trouvent, comme les hooks git que le bilan
+        d'ouverture du TODO dit manquants, est offert en résolution sans
+        lancer de passe.
         """
         portee_fichiers = 0
         portee_depots = 0
         # {titre de vérification: [Resolution actionnables]}
         resolutions = {}
+
+        def contexte(fichiers, depots):
+            return healthcheck.Contexte(
+                self._claude_context_root(),
+                fichiers=fichiers,
+                depots=depots,
+                etat_commande_claude=self._claude_command_state,
+                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+            )
 
         def retenir(resultats):
             for resultat in resultats or []:
@@ -1450,13 +1465,18 @@ class TODO(
                     r for r in resultat.resolutions if r.actionnable
                 ]
 
+        retenir(
+            healthcheck.verifier_en_silence(
+                contexte(
+                    healthcheck.PORTEES_FICHIERS[portee_fichiers],
+                    healthcheck.PORTEES_DEPOTS[portee_depots],
+                )
+            )
+        )
         while True:
-            ctx = healthcheck.Contexte(
-                self._claude_context_root(),
-                fichiers=healthcheck.PORTEES_FICHIERS[portee_fichiers],
-                depots=healthcheck.PORTEES_DEPOTS[portee_depots],
-                etat_commande_claude=self._claude_command_state,
-                commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
+            ctx = contexte(
+                healthcheck.PORTEES_FICHIERS[portee_fichiers],
+                healthcheck.PORTEES_DEPOTS[portee_depots],
             )
             choices = [
                 {"prompt_description": t("Run every check")},
@@ -1528,13 +1548,7 @@ class TODO(
                 section = next(s for s, v in seules if v is verification)
                 retenir(
                     healthcheck.lancer(
-                        healthcheck.Contexte(
-                            self._claude_context_root(),
-                            fichiers=ctx.portee_fichiers,
-                            depots=ctx.portee_depots,
-                            etat_commande_claude=self._claude_command_state,
-                            commandes_claude=self._CLAUDE_COMMAND_TEMPLATES,
-                        ),
+                        contexte(ctx.portee_fichiers, ctx.portee_depots),
                         [(section, verification)],
                     )
                 )

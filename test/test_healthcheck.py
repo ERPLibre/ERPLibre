@@ -1170,6 +1170,17 @@ class TestHooks(DepotJetable):
         self.assertEqual(resultat.statut, h.ALERTE)
         self.assertEqual([r.cle for r in resultat.resolutions], [h.HOOKS_GIT])
 
+    def test_missing_hooks_are_found_silently_at_menu_opening(self):
+        """La passe d'ouverture du menu trouve les hooks manquants sans
+        rien afficher."""
+        self.assertIn(h.verifier_hooks, h.VERIFICATIONS_IMMEDIATES)
+        with mock.patch("builtins.print") as imprime:
+            resultats = h.verifier_en_silence(self.ctx(), [h.verifier_hooks])
+        imprime.assert_not_called()
+        self.assertEqual(
+            [r.cle for r in resultats[0].resolutions], [h.HOOKS_GIT]
+        )
+
     def test_installed_hooks_offer_nothing(self):
         for hook in h.todo_etat.HOOKS_GIT:
             os.chmod(
@@ -1374,6 +1385,26 @@ class TestTraductions(unittest.TestCase):
             self.assertTrue(h.titre(verification).startswith(f"{icone} "))
 
 
+class TestImmediates(unittest.TestCase):
+    def test_immediate_checks_belong_to_the_healthcheck(self):
+        """Une vérification immédiate est aussi une vérification du
+        bilan : sa résolution repasse par elle, et une passe la remplace."""
+        toutes = {v for _s, v in h.VERIFICATIONS}
+        for verification in h.VERIFICATIONS_IMMEDIATES:
+            self.assertIn(verification, toutes)
+
+    def test_a_failing_immediate_check_does_not_raise(self):
+        def casse(ctx):
+            raise RuntimeError("boom")
+
+        casse.__name__ = "verifier_hooks"
+        resultats = h.verifier_en_silence(
+            h.Contexte(tempfile.gettempdir()), [casse]
+        )
+        self.assertEqual(resultats[0].statut, h.ECHEC)
+        self.assertEqual(resultats[0].resolutions, [])
+
+
 class TestMenu(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1413,6 +1444,7 @@ class TestMenu(unittest.TestCase):
                 side_effect=["1", entree, entree, "0"],
             ),
             mock.patch.object(h, "lancer", side_effect=lancer),
+            mock.patch.object(h, "verifier_en_silence", return_value=[]),
             mock.patch.object(h, "executer_resolution") as executer,
         ):
             obj.prompt_healthcheck()
@@ -1420,6 +1452,49 @@ class TestMenu(unittest.TestCase):
         self.assertIs(executer.call_args.args[1], res)
         # La vérification repasse ; sans résolution, l'entrée disparaît.
         self.assertEqual(appels, [None, [manifeste]])
+
+    def test_an_immediate_check_offers_its_resolution_without_a_pass(self):
+        """Un écart qu'une vérification immédiate trouve à l'ouverture
+        du menu est une entrée dès le premier choix : aucune passe ne
+        tourne avant qu'on la lance, puis sa vérification repasse."""
+        obj = self.TODO.__new__(self.TODO)
+        obj._claude_context_root = lambda: tempfile.gettempdir()
+        res = h.Resolution(h.HOOKS_GIT, "🪝 X", [], [])
+        hooks = next(
+            (s, v) for s, v in h.VERIFICATIONS if v is h.verifier_hooks
+        )
+        appels = []
+        with (
+            mock.patch.object(self.TODO, "fill_help_info", return_value=""),
+            mock.patch(
+                "script.todo.todo.click.prompt", side_effect=["5", "5", "0"]
+            ),
+            mock.patch.object(
+                h,
+                "verifier_en_silence",
+                return_value=[
+                    h.Resultat(
+                        h.titre(h.verifier_hooks),
+                        h.ALERTE,
+                        "",
+                        resolutions=[res],
+                    )
+                ],
+            ),
+            mock.patch.object(
+                h,
+                "lancer",
+                side_effect=lambda ctx, v=None: appels.append(v)
+                or [h.Resultat(h.titre(h.verifier_hooks), h.OK, "")],
+            ),
+            mock.patch.object(h, "executer_resolution") as executer,
+            mock.patch("builtins.print"),
+        ):
+            obj.prompt_healthcheck()
+        executer.assert_called_once()
+        self.assertIs(executer.call_args.args[1], res)
+        # Le second « 5 » ne trouve plus d'entrée : les hooks sont posés.
+        self.assertEqual(appels, [[hooks]])
 
     def test_one_check_lists_every_check_in_its_own_menu(self):
         obj = self.TODO.__new__(self.TODO)
@@ -1472,6 +1547,7 @@ class TestMenu(unittest.TestCase):
                     (ctx.portee_fichiers, ctx.portee_depots, v)
                 ),
             ),
+            mock.patch.object(h, "verifier_en_silence", return_value=[]),
         ):
             obj.prompt_healthcheck()
         self.assertEqual(
