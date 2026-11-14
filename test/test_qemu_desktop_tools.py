@@ -588,8 +588,8 @@ class TestAndroidEmulator(unittest.TestCase):
 
     def test_the_printed_command_compresses_the_display(self):
         """« -XC » plutôt que « -X » sur un écran distant."""
-        self.assertIn("ssh -XC erplibre@$ip", self.cmd)
-        self.assertNotIn("ssh -X erplibre@$ip", self.cmd.replace("-XC", ""))
+        self.assertIn("ssh -XC $(id -un)@$ip", self.cmd)
+        self.assertNotIn("ssh -X $(id -un)@$ip", self.cmd.replace("-XC", ""))
 
     def test_software_rendering_is_written_into_the_avd(self):
         """Par « ssh -X » il n'y a pas de GLX direct : en « auto »,
@@ -625,7 +625,7 @@ class TestAndroidEmulator(unittest.TestCase):
 
     def test_it_prints_the_command_to_open_it(self):
         """Un émulateur dont on ignore comment l'ouvrir ne sert à personne."""
-        self.assertIn("ssh -XC erplibre@$ip", self.cmd)
+        self.assertIn("ssh -XC $(id -un)@$ip", self.cmd)
         self.assertIn("adb install -r", self.cmd)
 
     def test_the_printed_commands_use_absolute_paths(self):

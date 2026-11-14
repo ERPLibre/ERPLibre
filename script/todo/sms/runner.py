@@ -58,7 +58,8 @@ def module_path(spec: DemoSpec):
 
 
 def ssh_target(todo, spec: DemoSpec, state=None) -> str:
-    """`erplibre@<ip>`, ou une chaîne vide si la VM n'a pas d'adresse.
+    """`<compte>@<ip>`, ou une chaîne vide si la VM n'a pas d'adresse. Le
+    compte est celui que rend `_qemu_vm_user`.
 
     On REUTILISE l'adresse deja decouverte quand on l'a. Sans cela, chaque
     commande SSH rappelle `_qemu_ssh_target`, qui re-resout l'adresse par
@@ -68,7 +69,7 @@ def ssh_target(todo, spec: DemoSpec, state=None) -> str:
     passe que ce module est cense avoir supprimee.
     """
     if state is not None and getattr(state, "vm_ip", ""):
-        return f"erplibre@{state.vm_ip}"
+        return f"{todo._qemu_vm_user(spec.vm_name)}@{state.vm_ip}"
     return todo._qemu_ssh_target(spec.vm_name, "libvirt")
 
 

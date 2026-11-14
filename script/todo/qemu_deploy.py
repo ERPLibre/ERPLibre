@@ -13,10 +13,17 @@ import re
 import shlex
 import signal
 import subprocess
+import sys
 import threading
 import time
 
 from script.todo import todo_prefs
+from script.todo.deploy_form_lib import (
+    VM_PASSWORD_DEFAULT,
+    VM_LOGIN_READ_CMD,
+    VM_USER_DEFAULT,
+    VmSecret,
+)
 from script.todo.qemu_privilege import (
     needs_sudo,
     sudo_non_interactif,
@@ -48,6 +55,7 @@ class QemuDeployMixin:
         tools=(),
         ai_agent="",
         distro="",
+        keep_login=False,
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -62,7 +70,10 @@ class QemuDeployMixin:
         posés APRÈS ERPLibre — PyCharm a besoin du venv du dépôt pour écrire la
         configuration du projet. `distro` : système de la VM, transmis au bloc
         du bureau, dont les paquets et l'accès distant en dépendent au-delà
-        du seul gestionnaire de paquets ; « » quand l'appelant l'ignore."""
+        du seul gestionnaire de paquets ; « » quand l'appelant l'ignore.
+        `keep_login` : le bloc GNOME Remote Desktop laisse en place le
+        fichier du mot de passe après l'avoir relu (voir
+        _qemu_grd_remote_cmd)."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
@@ -103,7 +114,10 @@ class QemuDeployMixin:
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(
-                    desktop, app_store, distro=distro
+                    desktop,
+                    app_store,
+                    distro=distro,
+                    keep_login=keep_login,
                 )
                 + self._qemu_tools_remote_cmd(tools, prod, ai_agent=ai_agent)
                 + note
@@ -180,7 +194,10 @@ class QemuDeployMixin:
             # voit donc tôt plutôt qu'après une heure.
             + (
                 self._qemu_desktop_remote_cmd(
-                    desktop, app_store, distro=distro
+                    desktop,
+                    app_store,
+                    distro=distro,
+                    keep_login=keep_login,
                 )
                 if desktop
                 else ""
@@ -377,6 +394,10 @@ class QemuDeployMixin:
         session=None,
         specs=None,
         remplace=False,
+        users=None,
+        created=(),
+        keep_login=False,
+        vm_password=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -408,7 +429,14 @@ class QemuDeployMixin:
         `specs` : {nom: spec réduite à cette VM}, gardée à côté de son journal
         pour que le suivi puisse la RECRÉER à l'identique.
         `remplace` : avec `session`, une VM déjà suivie voit son entrée
-        remplacée au lieu d'être refusée — la recréation d'une VM du suivi."""
+        remplacée au lieu d'être refusée — la recréation d'une VM du suivi.
+        `users` : {nom: compte de la VM} ; absent, VM_USER_DEFAULT.
+        `created` : noms des VM que CE déploiement crée. Elles seules
+        reçoivent `vm_password`, le mot de passe en clair du compte, et
+        suivent `keep_login` (« garder dans la VM ») : une VM existante
+        garde le compte de sa création, et le fichier qu'elle porterait
+        n'est jamais retiré. Le clair n'est remis qu'à celles qui en ont
+        besoin (_qemu_vm_login_file_needed)."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -435,6 +463,7 @@ class QemuDeployMixin:
             python_provider,
             app_store,
             ai_agent=ai_agent,
+            keep_login=keep_login,
         )
         try:
             mod = self._qemu_import_module()
@@ -457,13 +486,28 @@ class QemuDeployMixin:
                     if mod
                     else (None, None, None)
                 )
+                # Le bureau de CETTE VM : sa saveur propre si la carte en
+                # donne une, sinon celle du parc. Prendre « rien » quand la
+                # carte est vide privait de bureau toute VM dont seule la
+                # branche ou le profil différait — la commande par défaut,
+                # elle, l'a toujours porté.
+                vm_desktop = desk_map.get(name, "" if desk_map else desktop)
+                cree = name in created
+                vm_keep = keep_login if cree else True
                 entry = {
                     "name": name,
                     "ip": ip,
                     "distro": d,
                     "version": v,
                     "arch": a,
+                    "user": (users or {}).get(name) or VM_USER_DEFAULT,
                 }
+                if (
+                    cree
+                    and vm_password
+                    and self._qemu_vm_login_file_needed(vm_desktop, vm_keep)
+                ):
+                    entry["push_login"] = True
                 # {nom: {target, sudo, vmid}} quand la VM vit sur un hôte
                 # Proxmox : le suivi lui demandera son état, virsh ne le
                 # connaît pas.
@@ -482,14 +526,6 @@ class QemuDeployMixin:
                 # connaît. Le bureau aussi : son bloc dépend du système de la
                 # VM, que la commande commune ignore.
                 if desk_map or branch_map or cmd_map or vm_tools or desktop:
-                    # Le bureau de CETTE VM : sa saveur propre si la carte en
-                    # donne une, sinon celle du parc. Prendre « rien » quand la
-                    # carte est vide privait de bureau toute VM dont seule la
-                    # branche ou le profil différait — la commande par défaut,
-                    # elle, l'a toujours porté.
-                    vm_desktop = desk_map.get(
-                        name, "" if desk_map else desktop
-                    )
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
                         branch_map.get(name, branch_def),
                         cmd_map.get(name, cmd_def),
@@ -500,6 +536,7 @@ class QemuDeployMixin:
                         self._qemu_tools_for(vm_tools, a, vm_desktop, d),
                         ai_agent,
                         distro=d or "",
+                        keep_login=vm_keep,
                     )
                 vms.append(entry)
             else:
@@ -520,6 +557,8 @@ class QemuDeployMixin:
             debut["session"] = session
             if remplace:
                 debut["replace"] = True
+        if any(v.get("push_login") for v in vms):
+            debut["secret"] = vm_password
         manifest = launch_installs(
             vms,
             branch_def or next(iter(branch_map.values()), ""),
@@ -574,11 +613,29 @@ class QemuDeployMixin:
         app_store="deb",
         vm_tools=(),
         ai_agent="",
+        user="",
+        keep_login=False,
+        vm_password=None,
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
         `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné ;
-        `vm_tools` : outils de développement cochés."""
+        `vm_tools` : outils de développement cochés. `user` : compte de la
+        VM ; vide, VM_USER_DEFAULT.
+
+        `vm_password` : mot de passe en clair du compte, déposé dans
+        l'invité avant l'installation quand elle en a besoin
+        (_qemu_vm_login_file_needed) ; None, rien n'est déposé. Il ne passe
+        que par l'environnement de la commande (new_env) et l'entrée
+        standard de ssh : la commande affichée et journalisée ne porte que
+        le nom de la variable. `keep_login` : voir
+        _qemu_erplibre_remote_cmd."""
+        from script.todo.qemu_install_monitor import (
+            VM_LOGIN_ENV,
+            vm_login_push_cmd,
+        )
+
+        user = user or VM_USER_DEFAULT
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -589,7 +646,7 @@ class QemuDeployMixin:
         # Attend que le SSH soit prêt (évite « Connection refused » quand
         # l'install démarre avant le sshd de la VM).
         print(f"  {name} ({ip}): {t('waiting for SSH...')}")
-        if not self._qemu_wait_ssh(ip):
+        if not self._qemu_wait_ssh(ip, user=user):
             print(
                 f"  {name} ({ip}): "
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
@@ -616,12 +673,22 @@ class QemuDeployMixin:
             ),
             ai_agent,
             distro=vm_distro or "",
+            keep_login=keep_login,
         )
+        cible = shlex.quote(f"{user}@{ip}")
+        if vm_password and self._qemu_vm_login_file_needed(
+            desktop, keep_login
+        ):
+            self.execute.exec_command_live(
+                vm_login_push_cmd(cible),
+                source_erplibre=False,
+                new_env={VM_LOGIN_ENV: vm_password},
+            )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
         )
-        cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
+        cmd = f"ssh {ssh_opts} {cible} {shlex.quote(remote)}"
         print(f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} ({branch})")
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -1125,6 +1192,12 @@ class QemuDeployMixin:
         if prov:
             print(f"  {t('Python interpreter:')} {prov}")
         print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
+        print(f"  {self._qemu_login_line(spec)}")
+        if spec.get("keep_login_in_vm"):
+            print(
+                f"  {t('Password kept in the VM, read it with:')} "
+                f"{VM_LOGIN_READ_CMD}"
+            )
         cfg = (
             t("one entry per VM") if spec["add_ssh_config"] else t("untouched")
         )
@@ -1239,9 +1312,17 @@ class QemuDeployMixin:
         cache_ca="",
         cache_bypass=False,
         offline=False,
+        user="",
+        password_hash="",
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
-        dry-run ET le déploiement réel)."""
+        dry-run ET le déploiement réel).
+
+        `user` : compte créé par cloud-init ; vide, VM_USER_DEFAULT.
+        `password_hash` : empreinte SHA-512 crypt de son mot de passe, passée
+        en « --password-hash ». Le clair n'est jamais dans la commande : elle
+        s'affiche en aperçu et sudo la journalise. Vide, aucune option de mot
+        de passe : le compte n'ouvre que par la clé SSH."""
         from script.todo.deploy_form_lib import desktop_ram
 
         # Dernier rempart du plancher de RAM d'un bureau : toute interface
@@ -1260,9 +1341,11 @@ class QemuDeployMixin:
             str(eram),
             "--vcpus",
             str(evcpus),
-            "--password",
-            "erplibre",
+            "--user",
+            user or VM_USER_DEFAULT,
         ]
+        if password_hash:
+            parts += ["--password-hash", password_hash]
         if not dry_run:
             # --no-wait-ip : ne bloque pas 90s/VM, l'IP est collectée après.
             parts.append("--no-wait-ip")
@@ -1407,10 +1490,148 @@ class QemuDeployMixin:
             ),
             cache_bypass=bool(spec.get("cache_bypass")),
             offline=bool(spec.get("offline")),
+            user=spec.get("user") or "",
+            password_hash=self._qemu_vm_password_hash(spec),
         )
         if sudo_n and parts[:1] == ["sudo"]:
             parts.insert(1, "-n")
         return parts
+
+    # Le mot de passe du compte de la VM, en clair, n'existe qu'ici : dans
+    # l'attribut d'instance `_qemu_vm_secret`, posé par l'interface (TUI ou
+    # invites) quand l'utilisateur en choisit un autre que le défaut. Il ne
+    # va jamais dans la spec, un fichier, un journal ou une commande : la
+    # création reçoit son empreinte, l'invité le reçoit par l'entrée
+    # standard de ssh (_qemu_vm_login_push_cmd).
+    _qemu_vm_secret = None
+
+    def _qemu_set_vm_secret(self, secret):
+        """Pose (ou retire, avec None ou "") le mot de passe en clair choisi
+        à l'écran ou aux invites. Rappel « vm_secret_sink » des formulaires.
+
+        Gardé en VmSecret : chaque variable qui le reçoit ensuite (mémo de
+        l'empreinte, relance, enveloppe du suivi) reste masquée dans une
+        trace qui affiche les variables locales."""
+        self._qemu_vm_secret = VmSecret(secret) if secret else None
+
+    def _qemu_vm_secret_restore(self, spec, secret):
+        """Remet en mémoire le clair d'une spec gardée, s'il en est bien le
+        mot de passe. Rend vrai quand il l'est.
+
+        La spec d'une VM à recréer ne porte que l'empreinte : le clair saisi
+        est recalculé avec son sel (deploy_qemu.password_matches_hash), puis
+        posé dans `_qemu_vm_secret` et `_qemu_vm_hash_memo`, ce qui le rend à
+        _qemu_vm_password pour cette spec. Un autre mot de passe ne touche à
+        rien. Un calcul impossible rend faux."""
+        empreinte = spec.get("password_hash") or ""
+        if not secret or not empreinte:
+            return False
+        try:
+            verifier = getattr(
+                self._qemu_import_module(), "password_matches_hash"
+            )
+            ok = verifier(secret, empreinte)
+        except (Exception, SystemExit):
+            return False
+        if not ok:
+            return False
+        self._qemu_set_vm_secret(secret)
+        self._qemu_vm_hash_memo = (self._qemu_vm_secret, empreinte)
+        return True
+
+    def _qemu_vm_password(self, spec):
+        """Le mot de passe en clair du compte de `spec`, ou None.
+
+        « login_default » vrai (ou absent) : le défaut public. Sinon le
+        clair en mémoire, `_qemu_vm_secret` ; None s'il manque, ou si la
+        spec porte déjà l'empreinte d'un AUTRE mot de passe — la spec d'une
+        VM recréée, dont le clair a quitté la mémoire. La vérification passe
+        par la mémo de _qemu_vm_password_hash, sans recalcul."""
+        if spec.get("login_default", True):
+            return VM_PASSWORD_DEFAULT
+        secret = self._qemu_vm_secret
+        if not secret:
+            return None
+        empreinte = spec.get("password_hash")
+        if empreinte and getattr(self, "_qemu_vm_hash_memo", None) != (
+            secret,
+            empreinte,
+        ):
+            return None
+        return secret
+
+    def _qemu_vm_password_hash(self, spec):
+        """Empreinte SHA-512 crypt du compte de `spec`, ou "".
+
+        Celle de la spec d'abord : une VM recréée retrouve le mot de passe de
+        sa création. Sinon calculée sur l'hôte par deploy_qemu.hash_password
+        à partir de _qemu_vm_password, et mémorisée avec son clair dans
+        `_qemu_vm_hash_memo` : l'aperçu et chaque VM d'un même déploiement
+        reçoivent la même, sans relancer le calcul. "" quand aucun clair
+        n'est connu, ou quand deploy_qemu.py ne se charge pas : sans lui,
+        aucune VM ne se crée de toute façon.
+
+        Un calcul impossible lève RuntimeError, au message sans le clair :
+        openssl absent (le SystemExit de deploy_qemu.need_tool, qui fermerait
+        todo), introuvable au lancement ou en échec. L'exception d'origine
+        n'y est pas chaînée : ses cadres, dont celui de subprocess.run qui
+        tient le clair en « input », sortiraient avec elle dans une trace."""
+        empreinte = spec.get("password_hash")
+        if empreinte:
+            return empreinte
+        secret = self._qemu_vm_password(spec)
+        if not secret:
+            return ""
+        memo = getattr(self, "_qemu_vm_hash_memo", None)
+        if memo and memo[0] == secret:
+            return memo[1]
+        try:
+            hacher = getattr(self._qemu_import_module(), "hash_password")
+        except Exception:
+            return ""
+        try:
+            empreinte = hacher(secret)
+        except SystemExit as exc:
+            raison = str(exc)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raison = type(exc).__name__
+        else:
+            raison = ""
+        if raison:
+            raise RuntimeError(
+                t("Cannot compute the VM password hash: {reason}").format(
+                    reason=raison
+                )
+            )
+        self._qemu_vm_hash_memo = (secret, empreinte)
+        return empreinte
+
+    @staticmethod
+    def _qemu_login_line(spec):
+        """Ligne « compte / mot de passe » du sommaire. Le défaut public se
+        nomme ; un mot de passe choisi ne s'écrit jamais."""
+        user = spec.get("user") or VM_USER_DEFAULT
+        if spec.get("login_default", True):
+            # Le défaut public en toutes lettres : lu dans VM_PASSWORD_DEFAULT,
+            # il serait pour l'analyse de code un mot de passe qui atteint la
+            # sortie.
+            return f"{t('Default login:')} {user} / erplibre"
+        return (
+            f"{t('VM login:')} {user} / {t('password chosen at deployment')}"
+        )
+
+    def _qemu_vm_login_file_needed(self, flavour, keep):
+        """Vrai si l'invité doit recevoir le mot de passe en clair : un
+        bureau servi par GNOME Remote Desktop, dont grdctl veut le clair, ou
+        l'option « garder dans la VM »."""
+        if keep:
+            return True
+        if not flavour:
+            return False
+        # Même repli que _qemu_desktop_remote_cmd : une saveur inconnue est
+        # installée comme GNOME.
+        de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
+        return de.get("remote") == "grd"
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
     # valeur au défaut du script d'installation : les deux séparées, la case
@@ -1802,6 +2023,8 @@ class QemuDeployMixin:
             return None
         self._qemu_print_recap(spec, spec.get("existing") or [])
         if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+            # Le clair posé par le formulaire ne survit pas au refus.
+            self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
             return None
         return spec
@@ -2198,6 +2421,80 @@ class QemuDeployMixin:
                     picked.append(key)
         return tuple(picked)
 
+    def _qemu_ask_vm_account(self):
+        """Le compte de la VM, aux invites. Rend (utilisateur, mot de passe
+        par défaut ?, garder dans la VM ?).
+
+        Le clair choisi part à _qemu_set_vm_secret, jamais dans la valeur
+        rendue. Un mot de passe généré s'écrit sur sys.__stdout__ : le
+        sys.stdout de todo (todo_journal.Duplicateur) recopie au journal ce
+        qu'il affiche, le flux d'origine non. Un mot de passe tapé passe par
+        getpass, qui ne l'affiche pas, puis se confirme."""
+        from script.todo.deploy_form_lib import (
+            generate_vm_password,
+            validate_vm_user,
+        )
+
+        print(f"\n{t('VM account')}")
+        while True:
+            user = (
+                input(f"  {t('VM user')} [{VM_USER_DEFAULT}] : ").strip()
+                or VM_USER_DEFAULT
+            )
+            erreur = validate_vm_user(user)
+            if not erreur:
+                break
+            print(f"  ⚠ {erreur}")
+        choix = (
+            input(
+                "  "
+                + t(
+                    "VM password: Enter = {default} (public),"
+                    " g = generate, t = type it: "
+                ).format(default="erplibre")
+            )
+            .strip()
+            .lower()
+        )
+        secret = None
+        if choix == "g":
+            secret = generate_vm_password()
+            sys.__stdout__.write(
+                f"  {t('Generated password, note it now:')} {secret}\n"
+            )
+            sys.__stdout__.flush()
+        elif choix:
+            secret = self._qemu_type_vm_password()
+        keep = self._is_yes(
+            input(f"  {t('Keep the password in the VM? (y/N): ')}")
+        )
+        if keep:
+            print(f"    {t('Read it with:')} {VM_LOGIN_READ_CMD}")
+        self._qemu_set_vm_secret(secret)
+        return user, secret is None, keep
+
+    @staticmethod
+    def _qemu_type_vm_password():
+        """Mot de passe tapé deux fois par getpass, ou None pour garder le
+        défaut public : une première saisie vide, ou le défaut lui-même. Une
+        saisie refusée par vm_login_value_error, ou deux saisies qui
+        diffèrent, reposent la question."""
+        from script.todo.deploy_form_lib import vm_login_value_error
+
+        while True:
+            premier = getpass.getpass(f"  {t('VM password')} : ")
+            if not premier:
+                print(f"  {t('Empty: the default password is kept.')}")
+                return None
+            erreur = vm_login_value_error(premier)
+            if erreur:
+                print(f"  ⚠ {erreur}")
+                continue
+            if getpass.getpass(f"  {t('Confirm the password')} : ") != premier:
+                print(f"  ⚠ {t('The passwords do not match.')}")
+                continue
+            return None if premier == VM_PASSWORD_DEFAULT else premier
+
     def _qemu_ask_ai_tools(self, vm_tools):
         """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché.
 
@@ -2414,6 +2711,9 @@ class QemuDeployMixin:
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
         )
+        # Posé après le type de VM : un bureau GNOME ouvre sa session RDP
+        # avec ce mot de passe.
+        vm_user, login_default, keep_login = self._qemu_ask_vm_account()
 
         # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
         # parallélisme : on connaît alors le vrai nombre à déployer (affiché
@@ -2480,6 +2780,10 @@ class QemuDeployMixin:
             "git_email": git_email,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
+            # Le compte, sans le clair : il est dans _qemu_vm_secret.
+            "user": vm_user,
+            "login_default": login_default,
+            "keep_login_in_vm": keep_login,
         }
 
         # 6) Récapitulatif final, puis confirmation. Toutes les réponses
@@ -2487,6 +2791,7 @@ class QemuDeployMixin:
         # une erreur de saisie se rattrape sans avoir rien créé.
         self._qemu_print_recap(spec, existing)
         if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+            self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
             return None
         return spec
@@ -3119,6 +3424,11 @@ class QemuDeployMixin:
 
     def _qemu_deploie_spec_corps(self, spec, coupee, session):
         """Corps de _qemu_deploie_spec ; voir sa documentation."""
+        # L'empreinte du mot de passe entre dans la spec AVANT les specs par
+        # VM : une VM recréée d'après sa spec retrouve le même compte. Une
+        # copie, la spec de l'appelant reste telle qu'il l'a donnée.
+        spec = dict(spec)
+        spec["password_hash"] = self._qemu_vm_password_hash(spec)
         pending = spec["vms"]
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
@@ -3158,6 +3468,19 @@ class QemuDeployMixin:
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
         n_jobs = len(pending)
+        # Le compte : celui de la spec pour les VM créées ici ; une VM
+        # existante garde celui de sa création (_qemu_vm_user).
+        created = {vm["name"] for vm in pending}
+        users = {
+            n: self._qemu_vm_user(n)
+            for n in spec.get("existing") or []
+            if n not in created
+        }
+        users.update(
+            dict.fromkeys(created, spec.get("user") or VM_USER_DEFAULT)
+        )
+        keep_login = bool(spec.get("keep_login_in_vm"))
+        vm_password = self._qemu_vm_password(spec)
 
         # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
         # si les résultats reviennent dans le désordre (exécution parallèle).
@@ -3221,7 +3544,10 @@ class QemuDeployMixin:
                 ip = ip_map.get(name)
                 if ip:
                     self._write_ssh_config_entry(
-                        name, "erplibre", ip, identity_file=identity
+                        name,
+                        users.get(name) or VM_USER_DEFAULT,
+                        ip,
+                        identity_file=identity,
                     )
 
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
@@ -3265,6 +3591,10 @@ class QemuDeployMixin:
                     session=session,
                     specs=specs,
                     remplace=bool(spec.get("recreate")),
+                    users=users,
+                    created=created,
+                    keep_login=keep_login,
+                    vm_password=vm_password,
                 )
             elif install:
                 print(
@@ -3284,6 +3614,9 @@ class QemuDeployMixin:
                         app_store=app_store,
                         vm_tools=vm_tools,
                         ai_agent=ai_agent,
+                        user=users.get(name) or VM_USER_DEFAULT,
+                        keep_login=keep_login or name not in created,
+                        vm_password=vm_password if name in created else None,
                     )
 
         if session:
@@ -3306,5 +3639,5 @@ class QemuDeployMixin:
         )
         print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
-        print(f"   {t('Default login:')} erplibre / erplibre")
+        print(f"   {self._qemu_login_line(spec)}")
         print(f"   {t('Manage with:')} {sudo_prefix()}virsh list --all")

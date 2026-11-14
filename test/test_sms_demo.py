@@ -1026,9 +1026,29 @@ class TestSudoEtAdresse(SmsDemoBase):
             def _qemu_ssh_target(self, *a, **k):
                 raise AssertionError("ne doit PAS etre appele")
 
+            def _qemu_vm_user(self, nom):
+                return "erplibre"
+
         self.assertEqual(
             runner.ssh_target(TodoQuiExplose(), etat.spec, etat),
             "erplibre@192.168.122.7",
+        )
+
+    def test_ladresse_connue_garde_le_compte_de_la_vm(self):
+        """Le compte vient de la VM, pas d'une constante : une VM créée
+        avec un autre compte que le défaut se joint par celui-là."""
+        from script.todo.sms import runner
+
+        etat = self.spec_mod.load()
+        etat.vm_ip = "192.168.122.7"
+
+        class TodoAutreCompte:
+            def _qemu_vm_user(self, nom):
+                return "essai"
+
+        self.assertEqual(
+            runner.ssh_target(TodoAutreCompte(), etat.spec, etat),
+            "essai@192.168.122.7",
         )
 
     def test_sans_adresse_connue_on_interroge(self):

@@ -267,6 +267,30 @@ class FauxTodo:
         return self.res
 
 
+class FauxTodoCompte(FauxTodo):
+    """Le même, avec le compte de la VM : un bureau GNOME qui veut le
+    clair, un clair absent de la mémoire, et « bon » pour seul mot de passe
+    que l'empreinte accepte."""
+
+    def __init__(self, res=None):
+        super().__init__(res)
+        self.secret = None
+        self.essais = []
+
+    def _qemu_vm_login_file_needed(self, flavour, keep):
+        return flavour == "gnome" or keep
+
+    def _qemu_vm_password(self, spec):
+        return self.secret
+
+    def _qemu_vm_secret_restore(self, spec, secret):
+        self.essais.append(secret)
+        if secret != "bon":
+            return False
+        self.secret = secret
+        return True
+
+
 class FauxTodoPve(FauxTodo):
     """Le même, avec la voie Proxmox : chaque appel note par où il passe."""
 
@@ -480,6 +504,79 @@ class TestLeSuivi(AsyncCase):
             self.assertEqual("10.0.0.7", app._vm_by_name("vm-a")["ip"])
             table = app.query_one("#vms", DataTable)
             self.assertEqual(1, table.row_count)
+
+    async def _recree_avec_mot_de_passe(self, gestes):
+        """Recrée vm-a, dont la spec garde l'empreinte d'un mot de passe
+        choisi et un bureau GNOME, avec un todo qui n'a plus le clair ;
+        `gestes(app, pilot)` répond à l'écran du mot de passe."""
+        neuve = {
+            "name": "vm-a",
+            "ip": "10.0.0.7",
+            "log": str(self.base / "vm-a.log"),
+            "uuid": "uuid-neuf",
+            "started": time.time(),
+        }
+        todo = FauxTodoCompte({"added": [neuve], "failed": [], "no_ip": []})
+        spec = json.loads(json.dumps(SPEC))
+        spec.update(login_default=False, password_hash="$6$sel$garde")
+        spec["vms"][0]["desktop"] = "gnome"
+        app = self.app(todo=todo, spec=spec)
+        efface = mock.Mock(return_value=True)
+        async with app.run_test(size=(150, 30)) as pilot:
+            await self.ouvre(app, pilot)
+            with mock.patch.object(app, "_delete_for_recreate", efface):
+                await pilot.press("n")
+                await pilot.pause()
+                await pilot.click("#c_yes")
+                await pilot.pause()
+                self.assertEqual("VmPasswordScreen", type(app.screen).__name__)
+                await gestes(app, pilot)
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+        return todo, efface
+
+    async def test_le_bon_mot_de_passe_revient_avant_la_recreation(self):
+        from textual.widgets import Input
+
+        async def gestes(app, pilot):
+            champ = app.screen.query_one("#pw_value", Input)
+            champ.value = "faux"
+            await pilot.press("enter")
+            await pilot.pause()
+            # Refusé : l'écran reste, rien n'est effacé.
+            self.assertEqual("VmPasswordScreen", type(app.screen).__name__)
+            self.assertEqual("", champ.value)
+            champ.value = "bon"
+            await pilot.press("enter")
+            await pilot.pause()
+
+        todo, efface = await self._recree_avec_mot_de_passe(gestes)
+        self.assertEqual(["faux", "bon"], todo.essais)
+        self.assertEqual("bon", todo.secret)
+        self.assertEqual(1, efface.call_count)
+        self.assertTrue(todo.appels[0][0]["recreate"])
+        # Le clair ne passe pas par la spec.
+        self.assertNotIn("bon", json.dumps(todo.appels[0][0]))
+
+    async def test_recreer_sans_le_mot_de_passe(self):
+        async def gestes(app, pilot):
+            await pilot.click("#pw_skip")
+            await pilot.pause()
+
+        todo, efface = await self._recree_avec_mot_de_passe(gestes)
+        self.assertEqual([], todo.essais)
+        self.assertIsNone(todo.secret)
+        self.assertEqual(1, efface.call_count)
+        self.assertEqual(1, len(todo.appels))
+
+    async def test_echap_n_efface_rien(self):
+        async def gestes(app, pilot):
+            await pilot.press("escape")
+            await pilot.pause()
+
+        todo, efface = await self._recree_avec_mot_de_passe(gestes)
+        self.assertEqual(0, efface.call_count)
+        self.assertEqual([], todo.appels)
 
     async def test_sans_adresse_l_uuid_du_domaine_neuf_est_garde(self):
         """Création réussie, aucune IP : pas d'installation, mais l'entrée

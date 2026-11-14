@@ -32,6 +32,10 @@ import threading
 import time
 from pathlib import Path
 
+from script.todo.deploy_form_lib import (
+    VM_LOGIN_FILE,
+    VM_USER_DEFAULT,
+)
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 
@@ -102,6 +106,69 @@ SSH_OPTS = (
 # Jamais pour un ssh interactif (touche « s »), qui doit garder le clavier.
 SSH_OPTS_BATCH = f"{SSH_OPTS} -n"
 
+# Variable d'environnement qui porte le mot de passe en clair du compte de la
+# VM jusqu'à l'enveloppe détachée : l'environnement d'un processus n'est
+# lisible que par son propriétaire et root, là où sa ligne de commande l'est
+# de tous.
+VM_LOGIN_ENV = "EL_VM_PW"
+# Variable de SHELL, non exportée, où l'enveloppe recopie le clair dès son
+# premier pas avant de retirer VM_LOGIN_ENV de son environnement : les
+# commandes qu'elle lance ensuite (ssh, virsh, sleep) n'en héritent pas.
+VM_LOGIN_SHELL_VAR = "el_vm_pw"
+
+
+def vm_user(vm) -> str:
+    """Compte de la VM d'une entrée du manifeste. Une session écrite avant
+    la clé « user » ne connaissait que VM_USER_DEFAULT."""
+    return (vm or {}).get("user") or VM_USER_DEFAULT
+
+
+def vm_login_push_cmd(
+    dest: str,
+    log_q: str = "",
+    var: str = VM_LOGIN_ENV,
+    guard: str = "",
+) -> str:
+    """Shell de l'hôte qui dépose le mot de passe de la variable `var`
+    (VM_LOGIN_ENV par défaut) dans VM_LOGIN_FILE de l'invité `dest`
+    (« compte@adresse », déjà cité ou sous forme de variables shell), root
+    0600.
+
+    Le clair voyage par l'entrée standard de ssh : « printf » est une
+    commande interne, il n'apparaît sur aucune ligne de commande, ni de
+    l'hôte ni de l'invité. D'où SSH_OPTS et non SSH_OPTS_BATCH, dont le
+    « -n » brancherait cette entrée sur /dev/null. Le dossier n'est créé
+    qu'absent : un /etc/erplibre existant garde son mode. Rien n'est fait
+    quand la variable est vide, et elle est retirée ensuite des variables
+    du shell et de l'environnement de ses commandes à venir. Le
+    /proc/<pid>/environ du shell, lui, garde jusqu'à sa fin la valeur
+    reçue au lancement : le noyau ne le réécrit pas.
+
+    `guard` : shell exécuté dans l'invité avant l'écriture, qui sort en
+    erreur pour l'empêcher (RELAUNCH_GUARD). Une installation qui tourne
+    encore a déjà relu, et peut-être retiré, le fichier : le réécrire le
+    laisserait dans l'invité. `log_q` : journal (déjà cité) qui reçoit la
+    sortie et l'avertissement d'échec ; vide, ils vont sur la sortie
+    courante."""
+    dossier = shlex.quote(os.path.dirname(VM_LOGIN_FILE))
+    fichier = shlex.quote(VM_LOGIN_FILE)
+    distant = (
+        f"{guard}"
+        f"[ -d {dossier} ] || sudo -n install -d -m 700 {dossier}; "
+        f"sudo -n sh -c 'umask 077; cat > {fichier}'"
+    )
+    redir = f" >> {log_q} 2>&1" if log_q else ""
+    echec = t("VM password not delivered; remote desktop login may fail")
+    avert = (
+        f"echo {shlex.quote('   ⚠ ' + echec)}{' >> ' + log_q if log_q else ''}"
+    )
+    return (
+        f'if [ -n "${{{var}-}}" ]; then '
+        f"printf '%s\\n' \"${var}\" "
+        f"| ssh {SSH_OPTS} -o BatchMode=yes {dest} {shlex.quote(distant)}"
+        f"{redir} || {avert}; fi; unset {var}; "
+    )
+
 
 def session_dir() -> Path:
     """Répertoire des logs/manifestes d'installation (créé au besoin)."""
@@ -151,6 +218,9 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
     croyant avoir la réponse. On attend que « uname -r » porte le motif ; tant
     qu'il porte l'ancien, la machine n'est pas revenue.
 
+    Le compte et l'adresse sont les variables « u » et « ip » de
+    l'enveloppe de _launch_one.
+
     `tours` est un paramètre pour que ce shell soit ÉPROUVABLE : un garde
     qu'on ne sait pas exécuter s'ouvre le jour où il casse.
 
@@ -166,7 +236,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('== ' + msg_reboot + ' ==')} >> {log_q}; "
         # « || true » : la session MEURT avec le redémarrage, et son code 255
         # ne dit rien de l'ordre lui-même.
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        f'ssh {SSH_OPTS_BATCH} "$u@$ip" '
         # « sudo -n » : cette enveloppe tourne DÉTACHÉE, sans terminal. Un
         # sudo qui demande son mot de passe échoue alors tout de suite au lieu
         # d'attendre une frappe que personne ne fera.
@@ -175,7 +245,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('   ' + msg_wait)} >> {log_q}; "
         "krn=''; "
         f"for i in $(seq 1 {tours}); do sleep ${{ERPLIBRE_REBOOT_SLEEP:-5}}; "
-        f'k=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        f'k=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "$u@$ip" '
         "'uname -r' 2>/dev/null); "
         f'case "$k" in *{motif}*) krn="$k"; break;; esac; '
         "if [ $((i % 6)) -eq 0 ]; then "
@@ -221,6 +291,8 @@ def _launch_one(
     reboot: str = "",
     emulated: bool = True,
     identity: str = "",
+    user: str = "",
+    secret: str | None = None,
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie.
@@ -239,6 +311,19 @@ def _launch_one(
     installation, redémarrage. Une fonction « ssh » posée en tête l'impose,
     y compris pour une clé dont le nom n'est pas de ceux que ssh essaie de
     lui-même. Vide, ssh garde son choix par défaut.
+
+    `user` : compte de la VM que joint chaque ssh ; vide, VM_USER_DEFAULT.
+
+    `secret` : mot de passe en clair du compte, à déposer dans
+    VM_LOGIN_FILE de l'invité une fois la VM prête et AVANT la commande
+    distante, qui le lit (bloc GNOME Remote Desktop). Il n'atteint le
+    processus détaché que par son environnement (VM_LOGIN_ENV), qu'il
+    recopie aussitôt dans une variable non exportée, et l'invité que par
+    l'entrée standard de ssh (vm_login_push_cmd) : ni la ligne de
+    commande, ni le journal, ni le manifeste ne le portent. Le
+    /proc/<pid>/environ de l'enveloppe le garde jusqu'à sa fin, lisible
+    par son propriétaire et root seuls. None : rien n'est déposé, et la
+    commande distante fait avec le fichier déjà là.
 
     `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
     adresse par virsh — et c'est vital. Une VM Proxmox peut porter le nom d'un
@@ -375,16 +460,39 @@ def _launch_one(
         if identity
         else ""
     )
+    # Le clair passe de l'environnement à une variable non exportée dès le
+    # premier pas : seul le dépôt le lit, aucune commande lancée n'en hérite.
+    # Le dépôt est gardé par RELAUNCH_GUARD : une relance qui part pendant
+    # que l'installation précédente tourne encore n'écrit pas le fichier.
+    capture = (
+        f'{VM_LOGIN_SHELL_VAR}="${VM_LOGIN_ENV}"; ' f"unset {VM_LOGIN_ENV}; "
+        if secret
+        else ""
+    )
+    push = (
+        vm_login_push_cmd(
+            '"$u@$ip"',
+            log_q,
+            var=VM_LOGIN_SHELL_VAR,
+            guard=RELAUNCH_GUARD.format(
+                msg=t("An install is already running in this VM.")
+            ),
+        )
+        if secret
+        else ""
+    )
     wrapper = (
+        f"{capture}"
         f"{ssh_fn}"
         f"ip={shlex.quote(ip)}; "
+        f"u={shlex.quote(user or VM_USER_DEFAULT)}; "
         f"{vsh if name and not pve else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"{slow}"
         "seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
-        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "$u@$ip" '
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
@@ -400,9 +508,10 @@ def _launch_one(
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
         f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
+        f"{push}"
         # Marquée en TÊTE (voir INSTALL_TAG) : c'est ce qui fait reconnaître
         # cette installation par RELAUNCH_GUARD, dans la VM.
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        f'ssh {SSH_OPTS_BATCH} "$u@$ip" '
         f"{shlex.quote(f': {INSTALL_TAG}; ' + remote_cmd)} "
         f">> {log_q} 2>&1; rc=$?; "
         + (_reboot_steps(log_q, reboot) if reboot else "")
@@ -417,12 +526,16 @@ def _launch_one(
     # appuyer plusieurs fois pour qu'une lettre arrive. Le symptôme survit à
     # todo.py, puisque l'installation continue une demi-heure après sa
     # fermeture — d'où un terminal qui « bogue » sans cause visible.
+    #
+    # Le mot de passe, quand il y en a un, ne passe que par l'environnement.
+    env = {**os.environ, VM_LOGIN_ENV: secret} if secret else None
     subprocess.Popen(
         ["setsid", "-f", "bash", "-c", wrapper],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        env=env,
     )
 
 
@@ -475,8 +588,10 @@ def launch_installs(
     identity: str = "",
     session: str | None = None,
     replace: bool = False,
+    secret: str | None = None,
 ) -> str:
-    """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
+    """vms : [{name, ip, distro?, version?, arch?, user?, push_login?}].
+    Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
     exécuté dans chaque VM.
 
@@ -493,6 +608,11 @@ def launch_installs(
 
     `identity` : clé privée que présente chaque ssh lancé ici ; « » laisse
     ssh choisir.
+
+    « user » d'une VM : son compte, recopié dans son entrée ; absent,
+    VM_USER_DEFAULT. « push_login » vrai : `secret`, le mot de passe en
+    clair du compte, est déposé dans l'invité (voir _launch_one) ; l'entrée
+    ne garde que ce booléen, que relaunch_install relit.
 
     `session` : chemin d'un session.json existant. Les journaux vont alors
     dans SON dossier, et les nouvelles entrées s'ajoutent à ses « vms » ;
@@ -562,6 +682,8 @@ def launch_installs(
             reboot=reboot_expected(cmd_vm),
             emulated=is_emulated(vm.get("arch")),
             identity=identity,
+            user=vm_user(vm),
+            secret=secret if vm.get("push_login") else None,
         )
         entree = {
             "name": vm["name"],
@@ -570,11 +692,14 @@ def launch_installs(
             "version": vm.get("version"),
             "arch": vm.get("arch"),
             "log": log_path,
-            "ssh": f"ssh erplibre@{vm['ip']}",
+            "ssh": f"ssh {vm_user(vm)}@{vm['ip']}",
+            "user": vm_user(vm),
             # Ce que relaunch_install rejoue à l'identique. La commande ne
             # porte aucun secret — le cache, son autorité et la coupure hors
-            # ligne sont des arguments de la CRÉATION, pas de l'installation —
-            # et l'identité est le CHEMIN d'une clé, non son contenu.
+            # ligne sont des arguments de la CRÉATION, pas de l'installation ;
+            # le mot de passe du compte arrive dans l'invité par un fichier,
+            # que la commande relit — et l'identité est le CHEMIN d'une clé,
+            # non son contenu.
             "remote_cmd": cmd_vm,
             # Début propre à la VM : une VM ajoutée ou relancée en cours de
             # session ne part pas à l'heure de la session.
@@ -582,6 +707,8 @@ def launch_installs(
         }
         if identity:
             entree["identity"] = identity
+        if vm.get("push_login"):
+            entree["push_login"] = True
         # Les décisions de l'hôte (cache, exception, miroir) : l'en-tête d'un
         # journal relancé les redit. Les mêmes lignes que le journal, aucun
         # secret.
@@ -753,7 +880,9 @@ def _next_rotation(log_path: str) -> str:
     return f"{log_path}.{n}"
 
 
-def relaunch_install(session: str, name: str, ip: str = "") -> dict:
+def relaunch_install(
+    session: str, name: str, ip: str = "", secret: str | None = None
+) -> dict:
     """Relance l'installation de la VM `name`, dont la dernière a échoué.
 
     Sous le verrou de la session : relit le manifeste et l'état du journal
@@ -775,6 +904,11 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
     du manifeste, qu'il ne réécrit pas. Vide, celle du manifeste. Une VM
     Proxmox garde toujours la sienne : c'est l'alias ssh qui porte le rebond
     par l'hôte.
+
+    `secret` : mot de passe en clair du compte, que le processus qui relance
+    connaît encore. Redéposé seulement pour une entrée « push_login » ;
+    None, la relance s'en passe et la commande distante relit le fichier
+    déposé au premier lancement.
 
     Une VM locale dont l'UUID est connu doit être ENCORE ce domaine : le
     lanceur résout l'adresse par le NOM, et un nom repris par un déploiement
@@ -817,7 +951,7 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
                 )
         if ip and not vm.get("pve"):
             vm["ip"] = ip
-            vm["ssh"] = f"ssh erplibre@{ip}"
+            vm["ssh"] = f"ssh {vm_user(vm)}@{ip}"
         ancien = _next_rotation(vm["log"])
         os.replace(vm["log"], ancien)
         try:
@@ -842,6 +976,8 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
                 reboot=reboot_expected(vm["remote_cmd"]),
                 emulated=is_emulated(vm.get("arch")),
                 identity=vm.get("identity") or "",
+                user=vm_user(vm),
+                secret=secret if vm.get("push_login") else None,
             )
         except OSError as exc:
             os.replace(ancien, vm["log"])
@@ -851,6 +987,47 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
         vm["previous_logs"] = list(vm.get("previous_logs") or []) + [ancien]
         _write_session(session, manifest)
     return vm
+
+
+def relaunch_secret(todo, vm) -> str | None:
+    """Mot de passe en clair que `todo` connaît encore pour le compte de
+    `vm`, à redéposer par relaunch_install, ou None.
+
+    Seulement pour une entrée « push_login », et d'après la spec gardée
+    à côté du journal : TODO._qemu_vm_password ne rend le clair en mémoire
+    que s'il correspond à l'empreinte de cette spec. Sans `todo` (suivi
+    rouvert seul), sans spec ou sans correspondance : None."""
+    if todo is None or not (vm or {}).get("push_login"):
+        return None
+    lire = getattr(todo, "_qemu_vm_password", None)
+    spec = read_vm_spec(vm)
+    if lire is None or spec is None:
+        return None
+    return lire(spec)
+
+
+def recreate_login_lost(todo, spec) -> bool:
+    """Vrai si recréer la VM de `spec` la priverait du mot de passe en
+    clair qu'elle doit recevoir.
+
+    La spec gardée ne porte que l'empreinte : la VM neuve retrouve son
+    compte, mais le clair ne vient que de la mémoire de `todo`
+    (TODO._qemu_vm_password), vide après un redémarrage de todo ou quand
+    un autre déploiement l'a remplacé. Il ne manque que s'il servait : un
+    mot de passe autre que le défaut public, et un bureau GNOME Remote
+    Desktop ou l'option « garder dans la VM »
+    (TODO._qemu_vm_login_file_needed)."""
+    if todo is None or not spec or spec.get("login_default", True):
+        return False
+    besoin = getattr(todo, "_qemu_vm_login_file_needed", None)
+    lire = getattr(todo, "_qemu_vm_password", None)
+    if besoin is None or lire is None:
+        return False
+    cible = (spec.get("vms") or [{}])[0]
+    bureau = cible.get("desktop", spec.get("desktop") or "") or ""
+    if not besoin(bureau, bool(spec.get("keep_login_in_vm"))):
+        return False
+    return lire(spec) is None
 
 
 def local_uuid(name: str) -> str:
@@ -2169,8 +2346,11 @@ def vm_ssh_prefix(vm, tty=False) -> str:
         # UNE option -J, les rebonds séparés par des virgules : ssh refuse
         # une seconde option -J et s'arrête avant même de se connecter.
         chaine = ",".join(h for h in (info.get("jump"), info["target"]) if h)
-        return f"{ssh} {SSH_OPTS} -J {shlex.quote(chaine)} erplibre@{adresse}"
-    return f"{ssh} {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
+        return (
+            f"{ssh} {SSH_OPTS} -J {shlex.quote(chaine)} "
+            f"{vm_user(vm)}@{adresse}"
+        )
+    return f"{ssh} {SSH_OPTS} {vm_user(vm)}@{(vm or {}).get('ip')}"
 
 
 def pve_host_cmd(info, remote, tty=False) -> str:
@@ -3091,6 +3271,63 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
         def action_cancel(self) -> None:
             self.dismiss(False)
 
+    class VmPasswordScreen(ModalScreen):
+        """Saisie masquée du mot de passe d'un compte de VM, contrôlé par
+        `check` avant de fermer.
+
+        Rend la valeur acceptée par `check`, "" pour continuer sans mot de
+        passe, None pour annuler. Une valeur refusée garde l'écran ouvert,
+        le champ vidé : rien ne part avec un mot de passe que l'empreinte
+        dément."""
+
+        BINDINGS = [("escape", "cancel", t("Cancel"))]
+
+        def __init__(self, title, lines, check, skip_label):
+            super().__init__()
+            self._title = title
+            self._lines = lines
+            self._check = check
+            self._skip = skip_label
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="confbox"):
+                yield Static(self._title, id="conftitle")
+                for line in self._lines:
+                    yield Static(line)
+                yield Input(password=True, id="pw_value")
+                with Horizontal(id="confbtns"):
+                    yield Button(t("Cancel"), id="pw_cancel")
+                    yield Button(self._skip, variant="warning", id="pw_skip")
+                    yield Button(t("Confirm"), variant="primary", id="pw_ok")
+
+        def _submit(self) -> None:
+            champ = self.query_one("#pw_value", Input)
+            valeur = champ.value
+            if not valeur:
+                return
+            if self._check(valeur):
+                self.dismiss(valeur)
+                return
+            champ.value = ""
+            self.notify(
+                t("This is not the password of this VM."),
+                severity="error",
+            )
+
+        def on_input_submitted(self, event) -> None:
+            self._submit()
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id == "pw_ok":
+                self._submit()
+            elif event.button.id == "pw_skip":
+                self.dismiss("")
+            else:
+                self.dismiss(None)
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
     class VmActionsScreen(ModalScreen):
         """Les opérations d'une VM, rassemblées en un seul endroit.
 
@@ -3936,7 +4173,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):
                     vm["ip"] = ip
-                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    vm["ssh"] = f"ssh {vm_user(vm)}@{ip}"
                     changed = True
             if changed:
                 self._refresh_ssh()
@@ -4408,7 +4645,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     ).format(name=nom)
                 if ip != vm.get("ip"):
                     vm["ip"] = ip
-                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    vm["ssh"] = f"ssh {vm_user(vm)}@{ip}"
                     self._refresh_ssh()
             return ""
 
@@ -4614,6 +4851,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         manifest_path,
                         nom,
                         (vm or {}).get("ip") or "",
+                        relaunch_secret(todo, vm),
                     )
                 except RelaunchRefused as exc:
                     refus.append(f"{nom} : {exc}")
@@ -4730,6 +4968,14 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 f"{cible.get('vcpus', '?')} vCPU · {cible.get('disk', '?')}",
                 t("The current log is kept as <log>.N."),
             ]
+            redemande = recreate_login_lost(todo, spec)
+            if redemande:
+                lignes.append(
+                    t(
+                        "The VM password is no longer in memory: it is asked"
+                        " next, to give the new VM its RDP login."
+                    )
+                )
             if vm.get("pve"):
                 lignes.append(t("On a DHCP bridge its address may change."))
                 if cible.get("distro") == "proxmox":
@@ -4742,12 +4988,10 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                         )
                     )
 
-            def confirmed(yes):
-                if not yes:
-                    return
-                # Redit APRÈS la question : elle a pu rester ouverte pendant
-                # qu'une relance adoptée, un ajout ou une coupure changeaient
-                # l'état que le premier contrôle avait vu.
+            def recree():
+                # Redit APRÈS les questions : elles ont pu rester ouvertes
+                # pendant qu'une relance adoptée, un ajout ou une coupure
+                # changeaient l'état que le premier contrôle avait vu.
                 refus = self._recreate_refusal(vm)
                 if refus:
                     self.notify(refus, severity="warning")
@@ -4762,6 +5006,46 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     return
                 spec["recreate"] = True
                 self._start_add(spec)
+
+            def mot_de_passe(valeur):
+                if valeur is None:
+                    self.notify(t("Cancelled."))
+                    return
+                if not valeur:
+                    self.notify(
+                        t(
+                            "Recreated without the VM password: no RDP login"
+                            " and no kept password file."
+                        ),
+                        severity="warning",
+                    )
+                recree()
+
+            def confirmed(yes):
+                if not yes:
+                    return
+                if not redemande:
+                    recree()
+                    return
+                # La spec ne garde que l'empreinte : le clair saisi n'est
+                # accepté que s'il la reproduit, puis remis en mémoire pour
+                # la création (TODO._qemu_vm_secret_restore).
+                self.push_screen(
+                    VmPasswordScreen(
+                        t("Password of {user} in {name}").format(
+                            user=spec.get("user") or "?", name=vm["name"]
+                        ),
+                        [
+                            t(
+                                "The one chosen when the VM was deployed;"
+                                " it becomes its RDP login again."
+                            )
+                        ],
+                        lambda pw: todo._qemu_vm_secret_restore(spec, pw),
+                        t("Recreate without it"),
+                    ),
+                    mot_de_passe,
+                )
 
             self.push_screen(
                 ConfirmScreen(

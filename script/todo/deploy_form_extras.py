@@ -22,14 +22,27 @@ pont, ni domaine libvirt.
 
 Chaque accès aux widgets est gardé : un formulaire n'est pas tenu de poser
 tous les fragments, et lire un widget absent ne doit pas casser l'écran.
+
+Le compte de la VM (`compose_credentials`) vit ici pour la même raison : UN
+compte pour tout le déploiement, le même sur les deux hyperviseurs. Son mot
+de passe en clair ne passe ni par la spec ni par l'historique : il quitte
+l'écran par le rappel `vm_secret_sink` du contexte, qui le pose en mémoire
+du processus todo.
 """
 
 from script.todo.deploy_form_lib import (
     FREE,
+    VM_PASSWORD_DEFAULT,
+    VM_LOGIN_FILE,
+    VM_LOGIN_READ_CMD,
+    VM_USER_DEFAULT,
     desktop_ram,
     desktops_for,
     desktops_for_fleet,
+    generate_vm_password,
     t,
+    vm_login_value_error,
+    validate_vm_user,
 )
 
 # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
@@ -117,6 +130,22 @@ INSTALL_HELP = (
         (
             "IANA name written by cloud-init at first boot",
             "a misspelled name is IGNORED: the VM stays in UTC",
+        ),
+    ),
+    (
+        None,
+        "VM account",
+        (
+            "one account for every VM of the deployment, with sudo",
+            "default erplibre / erplibre: public, change it on an exposed VM",
+            "only its SHA-512 hash reaches the VM creation command",
+            "a GNOME desktop reads it once for its RDP login",
+            "kept in the VM: a root-only file, read with",
+            # Une commande, pas un texte : t() la rend telle quelle.
+            "  " + VM_LOGIN_READ_CMD,
+            "not kept: a server VM never receives it,",
+            "a GNOME VM deletes it once its RDP login is checked,",
+            "or keeps it for a relaunch if the install stops before",
         ),
     ),
     (
@@ -218,6 +247,10 @@ class ExtrasMixin:
         self._extras["distro_profiles"] = dict(
             ctx.get("distro_profiles") or {}
         )
+        # Rappel qui reçoit le mot de passe en clair (None pour le défaut
+        # public) : la seule sortie du clair hors de l'écran. Absent, le clair
+        # reste dans le champ et la spec dit seulement s'il est le défaut.
+        self._vm_secret_sink = ctx.get("vm_secret_sink")
         # Le type commun n'offre que les saveurs qu'au moins un système du
         # catalogue installe. Filtré ICI, dans la table même, et non au
         # dessin : `_default_desktop` lit la saveur par son RANG dans cette
@@ -331,6 +364,65 @@ class ExtrasMixin:
             yield RadioButton(t("mise (precompiled, faster)"), value=True)
             yield RadioButton(t("pyenv (compiles from source)"))
         yield Static("", id="miswarn")
+
+    def compose_credentials(self):
+        """Le compte de la VM : utilisateur, mot de passe, et l'option qui
+        garde le mot de passe dans la VM.
+
+        Les boutons portent une action (`Button(action=...)`) : Textual la
+        joue sans émettre de Button.Pressed, donc sans passer par le
+        `on_button_pressed` des formulaires, qui lit le rang d'une VM dans
+        l'id du bouton. Le mot de passe s'affiche masqué ; « Afficher » le
+        montre, « Copier » l'envoie au presse-papiers par OSC 52."""
+        from textual.containers import Horizontal
+        from textual.widgets import Button, Checkbox, Input, Static
+
+        defaut = self._extras["defaults"].get("user") or VM_USER_DEFAULT
+        yield Static(t("VM account"), id="t_account", classes="grouptitle")
+        yield Static(f"  {t('VM user')}")
+        yield Input(
+            value=defaut,
+            placeholder=t("VM user"),
+            id="f_vm_user",
+            restrict=r"[a-z0-9_-]*",
+            max_length=32,
+        )
+        yield Static(f"  {t('VM password')}")
+        yield Input(
+            value=VM_PASSWORD_DEFAULT,
+            placeholder=t("VM password"),
+            password=True,
+            id="f_password",
+        )
+        with Horizontal(classes="pwbar"):
+            yield Button(
+                t("Generate password"),
+                id="f_pw_gen",
+                action="app.vm_password_generate",
+                compact=True,
+            )
+            yield Button(
+                t("Copy"),
+                id="f_pw_copy",
+                action="app.vm_password_copy",
+                compact=True,
+            )
+            yield Button(
+                t("Show"),
+                id="f_pw_show",
+                action="app.vm_password_toggle",
+                compact=True,
+            )
+        yield Checkbox(
+            t("Keep the password in the VM"),
+            value=False,
+            id="f_keep_pw",
+        )
+        yield Static(
+            f"  {t('Root-only file in the VM:')} {VM_LOGIN_FILE}\n"
+            f"  {t('Read it with:')} {VM_LOGIN_READ_CMD}",
+            id="keepnote",
+        )
 
     # ------------------------------------------------------------------ #
     # L'aide
@@ -491,6 +583,130 @@ class ExtrasMixin:
 
     def _extras_disk_gb(self, vm, tools) -> int:
         return extras_disk_gb(vm, tools, self._extras)
+
+    # ------------------------------------------------------------------ #
+    # Le compte de la VM
+    # ------------------------------------------------------------------ #
+    def _vm_user(self) -> str:
+        """L'utilisateur saisi ; un champ vide ou absent vaut le défaut."""
+        widget = self._widget("#f_vm_user")
+        saisi = widget.value.strip() if widget is not None else ""
+        return saisi or VM_USER_DEFAULT
+
+    def _vm_password(self) -> str:
+        """Le mot de passe du champ, ou le défaut public sans champ. Lu au
+        moment de s'en servir : aucun attribut n'en garde copie."""
+        widget = self._widget("#f_password")
+        return widget.value if widget is not None else VM_PASSWORD_DEFAULT
+
+    def _keep_login(self) -> bool:
+        widget = self._widget("#f_keep_pw")
+        return bool(widget is not None and widget.value)
+
+    def credentials_values(self) -> dict:
+        """Le fragment de spec du compte. Il dit SI le mot de passe est le
+        défaut public, jamais lequel il est."""
+        return {
+            "user": self._vm_user(),
+            "login_default": self._vm_password() == VM_PASSWORD_DEFAULT,
+            "keep_login_in_vm": self._keep_login(),
+        }
+
+    def credentials_error(self):
+        """(message, sélecteur du champ fautif), ou None si le compte est
+        valide. Le message est déjà traduit."""
+        widget = self._widget("#f_vm_user")
+        if widget is not None:
+            erreur = validate_vm_user(widget.value.strip())
+            if erreur:
+                return erreur, "#f_vm_user"
+        erreur = vm_login_value_error(self._vm_password())
+        if erreur:
+            return erreur, "#f_password"
+        return None
+
+    def credentials_check(self) -> bool:
+        """Vrai si le compte est valide. Sinon le dit, met le focus sur le
+        champ fautif et rend False : F5 s'arrête là."""
+        faute = self.credentials_error()
+        if faute is None:
+            return True
+        message, cible = faute
+        self.notify(message, severity="error", markup=False)
+        widget = self._widget(cible)
+        if widget is not None:
+            widget.focus()
+        return False
+
+    def hand_over_vm_secret(self) -> None:
+        """Passe le mot de passe au rappel `vm_secret_sink` : None pour le
+        défaut public, le clair sinon. Appelée avant l'aperçu et au
+        déploiement, qui calculent l'empreinte de ce clair."""
+        sink = getattr(self, "_vm_secret_sink", None)
+        if not callable(sink):
+            return
+        clair = self._vm_password()
+        sink(None if clair == VM_PASSWORD_DEFAULT else clair)
+
+    def drop_vm_secret(self) -> None:
+        """Retire du rappel un clair qu'un aperçu y aurait posé : appelée
+        quand le formulaire est abandonné."""
+        sink = getattr(self, "_vm_secret_sink", None)
+        if callable(sink):
+            sink(None)
+
+    def _sync_credentials(self) -> None:
+        """Montre le chemin du fichier et la commande qui le lit quand
+        l'option « garder » est cochée, les cache sinon."""
+        note = self._widget("#keepnote")
+        if note is not None:
+            note.display = self._keep_login()
+
+    def credentials_on_checkbox(self, event) -> bool:
+        """Traite la case « garder dans la VM ». True quand c'est fait."""
+        if getattr(event.checkbox, "id", "") != "f_keep_pw":
+            return False
+        self._sync_credentials()
+        return True
+
+    def action_vm_password_generate(self) -> None:
+        """Remplace le mot de passe par un tirage de generate_vm_password.
+        Le masque reste tel quel : la valeur ne s'affiche qu'à la demande."""
+        widget = self._widget("#f_password")
+        if widget is None:
+            return
+        widget.value = generate_vm_password()
+        widget.cursor_position = len(widget.value)
+        self.notify(
+            t("Password generated: copy it or show it before deploying."),
+            markup=False,
+        )
+
+    def action_vm_password_copy(self) -> None:
+        """Copie le mot de passe par OSC 52 (App.copy_to_clipboard). La
+        notification ne le cite pas : elle reste à l'écran plusieurs
+        secondes."""
+        clair = self._vm_password()
+        if not clair:
+            self.notify(t("Nothing to copy."), severity="warning")
+            return
+        self.copy_to_clipboard(clair)
+        self.notify(
+            f"{t('Password copied.')}\n"
+            f"{t('Needs an OSC 52 capable terminal.')}",
+            title=t("Clipboard"),
+            markup=False,
+        )
+
+    def action_vm_password_toggle(self) -> None:
+        """Bascule le masque du champ ; le bouton dit l'action suivante."""
+        widget = self._widget("#f_password")
+        if widget is None:
+            return
+        widget.password = not widget.password
+        bouton = self._widget("#f_pw_show")
+        if bouton is not None:
+            bouton.label = t("Show") if widget.password else t("Hide")
 
     # ------------------------------------------------------------------ #
     # Une rangée du plan : branche, profil, type — par VM
@@ -840,4 +1056,5 @@ class ExtrasMixin:
             "vm_tools": self._vm_tools(),
             "python_provider": self._python_provider(),
             "app_store": self._app_store(),
+            **self.credentials_values(),
         }

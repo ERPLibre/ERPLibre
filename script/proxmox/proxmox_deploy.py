@@ -1146,8 +1146,10 @@ def create_cmds(vmid: int, spec: dict) -> list:
         )
         if spec.get("sshkey_path"):
             ci += f" --sshkeys {shlex.quote(spec['sshkey_path'])}"
-        if spec.get("password"):
-            ci += f" --cipassword {shlex.quote(spec['password'])}"
+        # L'empreinte SHA-512 crypt, jamais le clair : « qm set » la prend
+        # telle quelle, et la commande s'affiche et se journalise.
+        if spec.get("password_hash"):
+            ci += f" --cipassword {shlex.quote(spec['password_hash'])}"
     ci += f" --ipconfig0 {spec.get('ipconfig') or 'ip=dhcp'}"
     # « --ipconfig0 » ne porte PAS le DNS : une VM en adresse fixe n'a alors
     # aucun résolveur, et rien ne le dit. En DHCP le bail s'en charge.

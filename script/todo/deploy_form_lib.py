@@ -235,6 +235,150 @@ def clean_hostname(value):
     return txt
 
 
+# Compte de la VM : UN pour tout le déploiement. Le mot de passe par défaut
+# est public ; un autre ne vit qu'en mémoire du processus todo, et seule son
+# empreinte SHA-512 crypt atteint la spec et la commande de création.
+VM_USER_DEFAULT = "erplibre"
+VM_PASSWORD_DEFAULT = "erplibre"
+# Fichier root 0600 de l'invité où arrive le mot de passe en clair, par
+# l'entrée standard de ssh. Le bloc GNOME Remote Desktop le relit, puis le
+# retire sauf si l'option « garder dans la VM » est cochée.
+VM_LOGIN_FILE = "/etc/erplibre/vm-password"
+VM_LOGIN_READ_CMD = f"sudo cat {VM_LOGIN_FILE}"
+
+# Noms déjà pris dans l'invité. Un COMPTE que l'image, le système ou un
+# service déclarent : cloud-init le reprendrait au lieu d'en créer un, avec
+# ses groupes et son shell, et un service qui crée le sien au besoin (« git »
+# de Forgejo) tournerait sous le compte de connexion. Un GROUPE qui existe
+# déjà, dont ceux que la création donne au compte (deploy_qemu.user_groups,
+# GPU_GROUPS) : useradd refuse un compte qui porterait son nom, et la VM
+# démarre sans compte, donc injoignable.
+VM_USER_RESERVED = frozenset(
+    (
+        "root",
+        "nixos",
+        "ubuntu",
+        "debian",
+        "fedora",
+        "arch",
+        "admin",
+        "postgres",
+        "gnome-remote-desktop",
+        "cloud-user",
+        "almalinux",
+        "rocky",
+        "opensuse",
+        "daemon",
+        "bin",
+        "sys",
+        "nobody",
+        "sshd",
+        "gdm",
+        "lightdm",
+        # Comptes de service que posent les scripts d'installation.
+        "git",
+        "ntfy",
+        "asterisk",
+        "elqcache",
+        # Groupes présents sur les images, ou créés pour le compte.
+        "adm",
+        "audio",
+        "cdrom",
+        "dialout",
+        "disk",
+        "input",
+        "kvm",
+        "libvirt",
+        "plugdev",
+        "render",
+        "sudo",
+        "tty",
+        "users",
+        "video",
+        "wheel",
+    )
+)
+
+# Alphabet du générateur : lettres et chiffres sans les caractères qui se
+# confondent à la lecture (0 O 1 l I). Ni guillemet, ni « $ », ni espace : la
+# valeur traverse un shell et se tape dans un client RDP.
+_VM_PASSWORD_LETTERS = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+VM_PASSWORD_ALPHABET = _VM_PASSWORD_LETTERS + "23456789"
+VM_PASSWORD_LENGTH = 16
+
+
+def validate_vm_user(name):
+    """Message d'erreur (traduit) pour un nom de compte refusé, ou None.
+
+    Le nom atteint le YAML de cloud-init, le preseed et une ligne sudoers
+    sans guillemets : seule la forme POSIX courte passe, première lettre
+    minuscule ou « _ », 32 caractères au plus. Un nom de compte ou de
+    groupe déjà pris dans l'invité est refusé (VM_USER_RESERVED)."""
+    txt = str(name or "")
+    if not txt:
+        return t("The VM user cannot be empty.")
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", txt):
+        return t(
+            "Invalid VM user: lowercase letters, digits, '_' and '-',"
+            " starting with a letter or '_', 32 characters at most."
+        )
+    if txt in VM_USER_RESERVED:
+        return t(
+            "This name is already taken by an account or a group"
+            " of the images: {name}"
+        ).format(name=txt)
+    return None
+
+
+def vm_login_value_error(password):
+    """Message d'erreur (traduit) pour un mot de passe refusé, ou None.
+
+    Le clair voyage sur une ligne (printf '%s\\n' vers l'entrée standard de
+    ssh) et grdctl le reçoit en argument : un caractère de contrôle couperait
+    la ligne, un « - » en tête se lirait comme une option. L'empreinte, elle,
+    accepte tout."""
+    txt = str(password or "")
+    if not txt:
+        return t("The VM password cannot be empty.")
+    if any(ord(c) < 32 or ord(c) == 127 for c in txt):
+        return t("The VM password cannot contain control characters.")
+    if txt.startswith("-"):
+        return t("The VM password cannot start with '-'.")
+    return None
+
+
+class VmSecret(str):
+    """Mot de passe en clair dont repr() ne montre rien.
+
+    Une trace qui affiche les variables locales de chaque cadre (celle de
+    Textual, rich.traceback avec show_locals) passe par repr() ; une
+    tranche aussi, quand la valeur dépasse la longueur qu'elle affiche, d'où
+    __getitem__ qui rend encore un VmSecret. Toute autre opération (f-string,
+    concaténation, encodage, str()) rend une str ordinaire : le masque ne
+    protège que l'objet tenu en mémoire, pas ce qu'on en tire."""
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return "'<VM password>'"
+
+    def __getitem__(self, key):
+        return VmSecret(str.__getitem__(self, key))
+
+
+def generate_vm_password(length=VM_PASSWORD_LENGTH):
+    """Mot de passe aléatoire de `length` caractères tirés par `secrets`
+    dans VM_PASSWORD_ALPHABET. Le premier est une lettre : une valeur qui
+    commence par « - » se lirait comme une option sur une ligne de
+    commande."""
+    import secrets
+
+    length = max(int(length), 1)
+    return secrets.choice(_VM_PASSWORD_LETTERS) + "".join(
+        secrets.choice(VM_PASSWORD_ALPHABET) for _ in range(length - 1)
+    )
+
+
 def vm_name(base, desktop, suffixes):
     """Nom de VM, suffixé du bureau quand il y en a un.
 
@@ -660,6 +804,14 @@ def build_spec(vms, domains, form):
         "ai_agent": form.get("ai_agent", ""),
         "git_name": form.get("git_name", ""),
         "git_email": form.get("git_email", ""),
+        # Au niveau du déploiement : un seul compte pour tout le parc. La
+        # spec ne porte que l'empreinte du mot de passe, jamais le clair,
+        # qui reste en mémoire du processus (TODO._qemu_vm_secret).
+        # « login_default » dit si le mot de passe est le défaut public.
+        "user": form.get("user") or VM_USER_DEFAULT,
+        "password_hash": form.get("password_hash", ""),
+        "login_default": form.get("login_default", True),
+        "keep_login_in_vm": form.get("keep_login_in_vm", False),
         # Au niveau du déploiement : soustraire une VM au cache se décide
         # avant sa création, l'exception portant sur son adresse MAC.
         "cache_bypass": form.get("cache_bypass", False),
@@ -719,6 +871,10 @@ CSS_BASE = """
 ses champs, pour qu'elle se lise inactive d'un coup d'œil. */
 .grouptitle.off { color: $text-muted; text-style: none; }
 .freeval { display: none; width: 9; }
+/* La rangée de boutons du mot de passe de la VM (deploy_form_extras). */
+.pwbar { height: auto; }
+.pwbar Button { margin: 0 1 0 0; }
+#keepnote { color: $text-muted; }
 /* « width: auto » sur la CARTE, pas seulement sur la rangée. Un conteneur
 Textual vaut « width: 1fr » par défaut : la carte se bornait donc au panneau,
 et c'est ELLE que « #plan » mesure pour sa largeur virtuelle. La rangée avait

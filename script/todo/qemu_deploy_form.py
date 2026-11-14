@@ -357,6 +357,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("add_ssh_config", True),
                         id="f_sshcfg",
                     )
+                    yield from self.compose_credentials()
                     yield from self.compose_python()
                     # Hors de la section « Installation » : le suivi
                     # regarde la VM ARRIVER, même quand rien ne s'installe.
@@ -559,6 +560,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._sync_install_deps()
             self._sync_ai()
             self._sync_offline()
+            self._sync_credentials()
             # L'origine de l'historique : prise au premier silence, une fois
             # passés les échos du montage.
             self._hist_touch()
@@ -782,6 +784,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 saisie.disabled = fuseau.value is not FREE
             self._sync_install_deps()
             self._sync_ai()
+            self._sync_credentials()
             # _sync_offline réécrit le suivi et sa mémoire depuis l'état
             # qu'elle quitte : ceux de l'instantané l'emportent.
             self._sync_offline()
@@ -1187,6 +1190,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 )
 
         def on_checkbox_changed(self, event) -> None:
+            if self.credentials_on_checkbox(event):
+                return
             if event.checkbox.id == "f_install":
                 self._sync_install_deps()
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
@@ -1297,7 +1302,15 @@ def run_deploy_form(ctx, run_app: bool = True):
             build = ctx.get("build_command")
             if not build:
                 return
-            lines = [build(vm, spec, True) for vm in spec["vms"]]
+            # L'aperçu passe par le constructeur du déploiement, qui calcule
+            # l'empreinte du mot de passe : le clair doit être en mémoire.
+            self.hand_over_vm_secret()
+            try:
+                lines = [build(vm, spec, True) for vm in spec["vms"]]
+            except RuntimeError as exc:
+                # Empreinte incalculable : l'écran le dit et reste ouvert.
+                self.notify(str(exc), severity="error", markup=False)
+                return
             self.push_screen(
                 preview_screen()(lines or [t("Nothing selected.")])
             )
@@ -1353,6 +1366,13 @@ def run_deploy_form(ctx, run_app: bool = True):
                     f"disk={vm['disk']}"
                 )
             out.append(f"    ignorees (existent deja) = {spec['existing']}")
+            # Le compte sans son mot de passe : la spec ne dit que s'il est
+            # le défaut public.
+            out.append(
+                f"    compte={spec['user']} "
+                f"mdp_defaut={spec['login_default']} "
+                f"garder_dans_vm={spec['keep_login_in_vm']}"
+            )
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write("\n".join(out) + "\n")
             self.notify(f"{t('State written to')} {path}")
@@ -1363,6 +1383,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             if not self.vms:
                 self.notify(t("Nothing selected."), severity="warning")
+                return
+            if not self.credentials_check():
                 return
             spec = build_spec(self.vms, domains, self._form_values())
             if not spec["vms"]:
@@ -1401,10 +1423,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                     timeout=10,
                 )
                 return
+            self.hand_over_vm_secret()
             result["spec"] = spec
             self.exit()
 
         def action_cancel(self) -> None:
+            self.drop_vm_secret()
             self.exit()
 
     app = DeployForm()

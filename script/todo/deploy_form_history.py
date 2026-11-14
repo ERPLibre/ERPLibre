@@ -82,6 +82,7 @@ FIELD_NAMES = {
     "f_vmid": "First VMID",
     "f_git_name": "Name for git",
     "f_git_email": "Email for git",
+    "f_vm_user": "VM user",
 }
 
 # Les champs d'une surcharge, tels que la liste les nomme.
@@ -405,6 +406,10 @@ class HistoryMixin:
     # Champs dont le texte n'agit qu'une fois validé : un brouillon n'est pas
     # un état. Le formulaire en reporte la valeur appliquée à la restauration.
     HIST_DRAFT_WIDGETS = ()
+    # Champs qu'aucun instantané ne lit : leur valeur n'entre ni dans la
+    # liste (describe), ni dans ce qu'une annulation repose. Une frappe dans
+    # l'un d'eux laisse l'instantané égal au précédent, donc sans entrée.
+    HIST_SECRET_WIDGETS = ("f_password",)
     _HIST_QUERY = (
         "#fields Input, #fields Checkbox, #fields Select, #fields RadioSet"
     )
@@ -436,6 +441,7 @@ class HistoryMixin:
                 not widget.id
                 or widget.id in self.HIST_MODEL_WIDGETS
                 or widget.id in self.HIST_DRAFT_WIDGETS
+                or widget.id in self.HIST_SECRET_WIDGETS
             ):
                 continue
             widgets[widget.id] = self._hist_widget(

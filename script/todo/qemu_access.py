@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : atteindre une VM \u2014 SSH, tunnels, consoles, \u00e9mulateur.\n\nTout ce qui relie l'humain \u00e0 une machine d\u00e9j\u00e0 d\u00e9ploy\u00e9e : ~/.ssh/config et ses\nProxyJump, la d\u00e9couverte des VM imbriqu\u00e9es, les tunnels de bureau distant, la\nconsole s\u00e9rie et graphique (virt-viewer), et l'\u00e9mulateur Android d'une VM\ngraphique avec son tunnel adb.\n\nS\u00e9par\u00e9 du reste parce que c'est le seul bloc qui parle de R\u00c9SEAU et de\nsessions interactives, jamais de cr\u00e9ation ni de destruction de VM."""
 
+import json
 import os
 import shutil
 import socket
@@ -11,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from script.todo import todo_install
+from script.todo.deploy_form_lib import VM_USER_DEFAULT
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
@@ -19,9 +21,10 @@ from script.todo.todo_i18n import t
 class QemuAccessMixin:
     """Menu QEMU/KVM : atteindre une VM \u2014 SSH, tunnels, consoles, \u00e9mulateur.\n\nTout ce qui relie l'humain \u00e0 une machine d\u00e9j\u00e0 d\u00e9ploy\u00e9e : ~/.ssh/config et ses\nProxyJump, la d\u00e9couverte des VM imbriqu\u00e9es, les tunnels de bureau distant, la\nconsole s\u00e9rie et graphique (virt-viewer), et l'\u00e9mulateur Android d'une VM\ngraphique avec son tunnel adb.\n\nS\u00e9par\u00e9 du reste parce que c'est le seul bloc qui parle de R\u00c9SEAU et de\nsessions interactives, jamais de cr\u00e9ation ni de destruction de VM."""
 
-    # Compte créé par cloud-init dans les VM déployées ici. Sert de défaut
-    # quand ~/.ssh/config ne déclare aucun `User` pour l'hôte adopté.
-    QEMU_VM_USER = "erplibre"
+    # Compte créé par cloud-init dans les VM déployées ici quand le
+    # déploiement n'en nomme pas d'autre. Sert de défaut quand ni le suivi ni
+    # ~/.ssh/config ne déclarent de compte pour la machine.
+    QEMU_VM_USER = VM_USER_DEFAULT
 
     # Profondeur d'exploration par défaut : hôte -> VM -> VM imbriquée. Le
     # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
@@ -159,8 +162,113 @@ class QemuAccessMixin:
             if not ip:
                 print(f"  ⏭  {name}: {t('no IP')}")
                 continue
-            roots.append({"alias": name, "ip": ip})
+            roots.append(
+                {"alias": name, "ip": ip, "user": self._qemu_vm_user(name)}
+            )
         return roots
+
+    @staticmethod
+    def _qemu_session_user(name, pve=None):
+        """Compte que le suivi d'installation a noté pour la VM `name` (clé
+        « user » de son entrée dans session.json), ou "".
+
+        `pve` : None pour un domaine libvirt local, sinon {target?, vmid?}
+        de la VM Proxmox. Une entrée de l'autre sorte ne compte pas : un même
+        nom peut désigner une VM locale et une VM Proxmox. Pour une VM
+        Proxmox, une cible ou un VMID connus des deux côtés doivent
+        concorder. Pour un domaine local, une entrée dont l'UUID diffère de
+        celui du domaine qui porte ce nom aujourd'hui (local_uuid, lu
+        seulement si une entrée en a un) décrit une VM effacée depuis.
+
+        Parmi les entrées qui restent, la plus récemment LANCÉE l'emporte
+        (« started » de l'entrée, l'heure du fichier à défaut) : un nom repris
+        par un déploiement plus récent désigne la nouvelle VM, quel que soit
+        le session.json réécrit en dernier. Une entrée écrite avant la clé
+        « user » ne dit rien. Lecture seule : aucun dossier n'est créé."""
+        base = os.path.expanduser("~/.erplibre/qemu-install")
+        candidats = []
+        try:
+            runs = os.listdir(base)
+        except OSError:
+            return ""
+        for run in runs:
+            chemin = os.path.join(base, run, "session.json")
+            try:
+                mtime = os.path.getmtime(chemin)
+                with open(chemin, encoding="utf-8") as fh:
+                    entrees = json.load(fh).get("vms") or []
+            except (OSError, ValueError, AttributeError):
+                continue
+            for vm in entrees:
+                if not isinstance(vm, dict) or vm.get("name") != name:
+                    continue
+                if not vm.get("user") or bool(vm.get("pve")) != bool(pve):
+                    continue
+                if pve:
+                    info = vm["pve"] if isinstance(vm["pve"], dict) else {}
+                    if any(
+                        pve.get(k)
+                        and info.get(k)
+                        and str(pve[k]) != str(info[k])
+                        for k in ("target", "vmid")
+                    ):
+                        continue
+                try:
+                    debut = float(vm.get("started") or mtime)
+                except (TypeError, ValueError):
+                    debut = mtime
+                candidats.append((debut, vm))
+        if not pve and any(vm.get("uuid") for _d, vm in candidats):
+            from script.todo.qemu_install_monitor import local_uuid
+
+            actuel = local_uuid(name)
+            if actuel:
+                candidats = [
+                    (d, vm)
+                    for d, vm in candidats
+                    if not vm.get("uuid") or vm["uuid"] == actuel
+                ]
+        if not candidats:
+            return ""
+        return max(candidats, key=lambda c: c[0])[1]["user"]
+
+    @staticmethod
+    def _qemu_ssh_config_host_user(host):
+        """`User` du bloc ~/.ssh/config dont la ligne « Host » nomme `host`
+        tel quel, ou "".
+
+        Un motif (« Host * », « Host vm-? ») ne compte pas : ce bloc décrit
+        des machines quelconques, pas le compte de CETTE VM, que l'on joint
+        par son adresse."""
+        path = os.path.expanduser("~/.ssh/config")
+        dedans = False
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    mots = line.split()
+                    if not mots:
+                        continue
+                    cle = mots[0].lower()
+                    if cle in ("host", "match"):
+                        dedans = cle == "host" and host in mots[1:]
+                    elif dedans and cle == "user" and len(mots) > 1:
+                        return mots[1]
+        except OSError:
+            pass
+        return ""
+
+    def _qemu_vm_user(self, name, pve=None):
+        """Compte de connexion de la VM `name` : un domaine libvirt local,
+        ou la VM Proxmox que décrit `pve` (voir _qemu_session_user).
+
+        Dans l'ordre : l'entrée du suivi d'installation qui l'a créée
+        (_qemu_session_user), puis le bloc ~/.ssh/config écrit pour elle
+        (_qemu_ssh_config_host_user), puis QEMU_VM_USER."""
+        return (
+            self._qemu_session_user(name, pve)
+            or self._qemu_ssh_config_host_user(name)
+            or self.QEMU_VM_USER
+        )
 
     @staticmethod
     def _qemu_self_address():
@@ -291,12 +399,12 @@ class QemuAccessMixin:
 
         Un hôte de ~/.ssh/config se nomme tel quel — c'est lui qui porte le
         ProxyJump, et le réécrire à la main reviendrait à le deviner. Un domaine
-        libvirt local, lui, n'a qu'une IP, et l'utilisateur des VM ERPLibre est
-        « erplibre ». Renvoie une chaîne vide quand l'IP manque."""
+        libvirt local, lui, n'a qu'une IP, et son compte vient de
+        _qemu_vm_user. Renvoie une chaîne vide quand l'IP manque."""
         if src == "ssh_config":
             return name
         ip = self._qemu_resolve_ips([name]).get(name)
-        return f"erplibre@{ip}" if ip else ""
+        return f"{self._qemu_vm_user(name)}@{ip}" if ip else ""
 
     # Commande de l'émulateur dans la VM. Le chemin est ABSOLU : un
     # « ssh hôte 'commande' » ne lit ni ~/.profile ni ~/.bashrc.
@@ -548,7 +656,6 @@ class QemuAccessMixin:
         else:
             host, from_ssh = self._qemu_self_address()
             user = os.environ.get("USER", "user")
-            vm_ip = target.split("@")[-1]
             if not from_ssh:
                 print(
                     f"  ⚠ {t('Not in an SSH session: check the host address.')}"
@@ -560,7 +667,7 @@ class QemuAccessMixin:
             # dernier saut, l'hyperviseur n'étant que le relais (-J).
             print(
                 f"\n    ssh -N -L {port}:localhost:{port}"
-                f" -J {user}@{host} erplibre@{vm_ip}\n"
+                f" -J {user}@{host} {target}\n"
             )
             print(
                 f"  {t('(the hypervisor only relays; -J puts the VM last)')}"
