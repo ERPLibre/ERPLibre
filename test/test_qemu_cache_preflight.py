@@ -27,6 +27,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -945,6 +946,8 @@ class TestLeComblement(SansSysteme):
         self.guet = False
         self.actif = True
         self.rejoue = False
+        self.barriere = None
+        self.parti = None
         for cible, valeur in (
             ("CACHE_BIN", str(self.binaire)),
             ("CACHE_CONF", str(conf)),
@@ -975,10 +978,31 @@ class TestLeComblement(SansSysteme):
             return 0, "\n".join(lignes) + "\n"
         if texte.startswith("curl "):
             self.rejoue = True
+            if self.parti is not None:
+                # Le temps que l'interruption annule ce qui attend son tour.
+                self.parti.set()
+                time.sleep(0.3)
+            if self.barriere is not None:
+                self.croiser(texte)
             if texte.endswith(" " + URL_A):
                 return 0, f"HTTP/1.1 302 Found\r\nLocation: {URL_A2}\r\n\r\n"
             return 0, "HTTP/1.1 200 OK\r\n\r\n"
         return 0, ""
+
+    def croiser(self, texte):
+        """Le premier saut de URL_A et celui de URL_B s'attendent à la
+        barrière, que seuls deux rejeux EN MÊME TEMPS ouvrent. URL_B, la
+        première des rejouables, ne rend qu'après le second saut de URL_A :
+        elle finit la dernière."""
+        if texte.endswith(" " + URL_A2):
+            self.a2_rejoue.set()
+            return
+        try:
+            self.barriere.wait(timeout=5)
+        except threading.BrokenBarrierError:
+            self.chevauchement = False
+        if texte.endswith(" " + URL_B):
+            self.a2_rejoue.wait(timeout=5)
 
     def combler(self, confirmer=True):
         sortie = io.StringIO()
@@ -1071,9 +1095,9 @@ class TestLeComblement(SansSysteme):
             texte, _c, _f = self.combler()
         curls = self.curls()
         cibles = [c.rsplit(" ", 1)[-1] for c, _kw in curls]
-        # Le manque le plus récent d'abord ; une redirection est suivie
-        # aussitôt, avant l'adresse suivante.
-        self.assertEqual(cibles, [URL_B, URL_A, URL_A2])
+        # Les adresses partent ensemble ; une redirection suit la sienne.
+        self.assertEqual(sorted(cibles), sorted([URL_B, URL_A, URL_A2]))
+        self.assertLess(cibles.index(URL_A), cibles.index(URL_A2))
         for c, kw in curls:
             argv = c.split()
             self.assertTrue(
@@ -1103,6 +1127,57 @@ class TestLeComblement(SansSysteme):
             t("User-Agent or Accept may keep another answer than the VM's."),
             texte,
         )
+
+    def test_les_adresses_se_rejouent_ensemble_et_se_rapportent_dans_l_ordre(
+        self,
+    ):
+        self.barriere = threading.Barrier(2)
+        self.a2_rejoue = threading.Event()
+        self.chevauchement = True
+        texte, _c, _f = self.combler()
+        self.assertTrue(
+            self.chevauchement, "les deux adresses ne se sont pas croisées"
+        )
+        # La progression compte les adresses à mesure qu'elles finissent ;
+        # leur ordre d'arrivée appartient à l'ordonnanceur des fils.
+        progression = sorted(
+            ligne.strip()
+            for ligne in texte.splitlines()
+            if ligne.strip().endswith((f"/2 {URL_A}", f"/2 {URL_B}"))
+        )
+        self.assertEqual(len(progression), 2, progression)
+        self.assertEqual(
+            sorted(ligne.split(" ", 1)[0] for ligne in progression),
+            ["1/2", "2/2"],
+        )
+        # Le rapport suit l'ordre des rejouables, quel que soit celui où
+        # elles finissent.
+        self.assertLess(
+            texte.index(f"GET  {URL_B}\n"), texte.index(f"GET  {URL_A}\n")
+        )
+        self.assertLess(
+            texte.index(f"GET  {URL_A}\n"), texte.index(f"→ {URL_A2}\n")
+        )
+
+    def test_ctrl_c_ne_lance_pas_les_adresses_en_attente(self):
+        """Un Ctrl+C pendant le rejeu laisse finir les curl en cours et
+        n'envoie pas ceux qui attendent leur tour : sortir du « with » sans
+        les annuler les rejouerait tous avant que l'interruption remonte."""
+        self.parti = threading.Event()
+
+        def interrompre(_futurs):
+            self.parti.wait(timeout=5)
+            raise KeyboardInterrupt
+            yield
+
+        with (
+            mock.patch.object(menu, "REJEU_PARALLELE", 1),
+            mock.patch.object(menu, "as_completed", interrompre),
+        ):
+            texte, _c, _f = self.combler()
+        cibles = [c.rsplit(" ", 1)[-1] for c, _kw in self.curls()]
+        self.assertEqual(cibles, [URL_B], "une adresse en attente est partie")
+        self.assertNotIn(t("held"), texte, "le rapport a suivi l'arrêt")
 
 
 class TestLesMotifsPartagesParLesDeuxFormulaires(SansSysteme):

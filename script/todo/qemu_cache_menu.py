@@ -29,6 +29,7 @@ import re
 import shlex
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlsplit
 
 import click
@@ -100,6 +101,12 @@ CACHE_UNITE = f"/etc/systemd/system/{CACHE_SERVICE}"
 JOURS_RECENTS = 7
 REJEU_DELAI = 60
 SAUTS_MAX = 5
+# Les adresses rejouées à la fois. Chacune attend l'amont, pas le processeur,
+# mais les corps se partagent le lien sous le « --max-time » fixe de chaque
+# curl : un gros objet qui descend avec d'autres peut dépasser REJEU_DELAI,
+# et curl le coupe avant que le cache ne le garde. Plusieurs adresses visent
+# aussi souvent le même hôte de paquets.
+REJEU_PARALLELE = 4
 REDIRECTIONS = (301, 302, 303, 307, 308)
 # Les points de négociation git : la liste vit dans cache_offline, que le
 # pré-vol du formulaire lit aussi ; un test la compare au Go.
@@ -2074,10 +2081,29 @@ class QemuCacheMenuMixin:
         ):
             return
 
-        resultats = [
-            (m, self._cache_rejouer(m["methode"], m["url"], ports, exclus))
-            for m in rejouables
-        ]
+        # Les adresses se rejouent REJEU_PARALLELE à la fois ; les sauts d'une
+        # même adresse restent en série, chacun dépend du précédent. Une
+        # ligne « k/N » nomme chaque adresse qui finit, puis le rapport suit
+        # l'ordre des rejouables.
+        print()
+        with ThreadPoolExecutor(max_workers=REJEU_PARALLELE) as pool:
+            futurs = {
+                pool.submit(
+                    self._cache_rejouer, m["methode"], m["url"], ports, exclus
+                ): m
+                for m in rejouables
+            }
+            try:
+                for k, futur in enumerate(as_completed(futurs), 1):
+                    print(f"  {k}/{len(futurs)} {futurs[futur]['url']}")
+            except KeyboardInterrupt:
+                # Les rejeux en cours finissent dans leur --max-time ; ceux
+                # qui attendent encore leur tour ne partent pas.
+                pool.shutdown(cancel_futures=True)
+                arret = t("Replay interrupted: queued addresses not sent.")
+                print(f"\n⏹ {arret}")
+                return
+        resultats = [(m, futur.result()) for futur, m in futurs.items()]
         # Revérifié au MAGASIN : un 200 reçu par curl ne prouve pas que
         # l'objet a été gardé.
         verification = cache_offline.detient_interroger(
