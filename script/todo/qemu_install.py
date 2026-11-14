@@ -9,6 +9,14 @@ import shlex
 from script.todo import dev_tools
 from script.todo.todo_i18n import t
 
+# Première adresse IPv4 globale de l'invité, à placer dans « $( … ) ».
+# « ip » (iproute2) est dans toutes les images du catalogue ; « hostname »
+# manque à l'image cloud d'Arch, et son « -I » n'existe que dans net-tools.
+QEMU_GUEST_IP_SH = (
+    "ip -4 -o addr show scope global 2>/dev/null "
+    "| awk '{print $4; exit}' | cut -d/ -f1"
+)
+
 
 class QemuInstallMixin:
     """Menu QEMU/KVM : ce qui s'installe DANS la VM.\n\nCe fichier ne cr\u00e9e aucune VM : il fabrique les commandes distantes qu'on y\nex\u00e9cutera. Profils ERPLibre et service Odoo, bureau GNOME et ses saveurs,\nmagasins d'applications, fuseaux, miroirs de paquets, et les outils de\nd\u00e9veloppement (PyCharm, Android Studio, extensions GNOME, compilation mobile,\nAVD, Forgejo).\n\nFronti\u00e8re claire : ici on \u00e9crit du shell destin\u00e9 \u00e0 l'invit\u00e9 ; dans\nqemu_deploy.py on d\u00e9cide QUELLES VM le recevront."""
@@ -715,7 +723,7 @@ class QemuInstallMixin:
             f'echo "   {t("system:")} ${{PRETTY_NAME:-?}}"; '
             f'echo "   {t("kernel:")} $(uname -r) ($(uname -m))"; '
             f'echo "   {t("address:")} '
-            "$(hostname -I 2>/dev/null | awk '{print $1}')\"; "
+            f'$({QEMU_GUEST_IP_SH})"; '
             f'echo "   {t("disk:")} '
             '$(df -h / | awk \'NR==2 {print $3"/"$2" ("$5")"}\')"; '
             f'echo "   {t("memory:")} '
@@ -959,7 +967,7 @@ class QemuInstallMixin:
         libvirt n'est pas route depuis l'exterieur de son hote."""
         local = port + 1
         return (
-            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            f"ip=$({QEMU_GUEST_IP_SH}); "
             f'echo "     {t("From your workstation:")} '
             f'ssh -L {local}:$ip:{port} <user>@<hote-libvirt>"; '
             f'echo "     {t("then point your client at")} '
@@ -1034,7 +1042,7 @@ class QemuInstallMixin:
             '&& { { sudo test -s "$EL_GRD_D/tls.key" '
             '&& sudo test -s "$EL_GRD_D/tls.crt"; } '
             f"|| sudo -u {u} openssl req -new -x509 -newkey rsa:3072 "
-            '-nodes -days 3650 -subj "/CN=$(hostname)" '
+            '-nodes -days 3650 -subj "/CN=$(uname -n)" '
             '-keyout "$EL_GRD_D/tls.key" -out "$EL_GRD_D/tls.crt" '
             ">/dev/null 2>&1; } "
             # Sans garde entre eux : leur code de retour ne dit rien.
@@ -2683,7 +2691,7 @@ class QemuInstallMixin:
             '$(cat $HOME/.erplibre-avd-image)"; '
             # La commande à copier, avec l'adresse déjà remplie : un émulateur
             # dont on ignore comment l'ouvrir ne sert à personne.
-            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            f"ip=$({QEMU_GUEST_IP_SH}); "
             # Chemins ABSOLUS, et c'est le point : « ssh hôte 'commande' »
             # ne lit NI ~/.profile NI ~/.bashrc — Ubuntu place même un
             # « return » en tête du second pour les shells non interactifs.

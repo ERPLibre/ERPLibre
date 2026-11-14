@@ -64,7 +64,12 @@ class TestLaCommandeDistante(unittest.TestCase):
 
     def test_it_reports_what_says_the_vm_is_up(self):
         cmd = self._sans_rien()
-        for morceau in ("/etc/os-release", "uname -r", "hostname -I", "df -h"):
+        for morceau in (
+            "/etc/os-release",
+            "uname -r",
+            "ip -4 -o addr",
+            "df -h",
+        ):
             self.assertIn(morceau, cmd, morceau)
 
     def test_it_runs_and_says_something(self):
