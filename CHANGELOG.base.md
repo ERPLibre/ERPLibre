@@ -487,6 +487,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In **TODO › Install**, Enter picks production in the environment menu — development when the Odoo version has no frozen commit, as before — and the standard install in the install-type menu; each menu marks its default and shows it in its prompt. The system-step question defaults to yes when something it installs is missing — git, make, a C compiler, psql, node, npm, or the account's PostgreSQL role — and names it, to no when all of it is there. Enter now accepts to enter a missing git identity
 - **TODO › Execute** gains **[10] Git repository**, which gathers the git tools: the repository update, the code status and stash moved from Code, the git hooks, `merge.conflictStyle`, the remote and patch tools, the local git server and the git daemon kill, still also in Process. The former **[13] Git** becomes **[14] Shell**, with Starship, Claude Code and opencode; the entries from Database on move down by one, Database to `[11]` and System to `[22]`, and the Update menu no longer carries the repository update
 - The QEMU Fedora catalogue is 44 and 45, 44 by default, on x86_64, aarch64 and s390x: 41 and 42 have moved to the archive tree of Fedora's server, which the download does not read, so the default version (42) could no longer be fetched, and 43 leaves with them. A libvirt whose osinfo-db predates a release falls back to `fedora-unknown`
+- **TODO › 🩺 Healthcheck** offers, as soon as its menu opens, the resolutions of the checks that
+  only read a git setting or local files — git hooks, Claude commands — without a pass first, so
+  the git hooks the opening banner reports missing install in one choice. Moving the freeze to HEAD
+  and putting repositories back on their freeze now handle 8 repositories at a time, below the 10
+  pending connections where a default OpenSSH server starts dropping some: 16 `ls-remote` take
+  0.4 s instead of 2.5 s, with the output still in repository order
+- **TODO › Execute › Git repository**: the update menu names its switches **Switch to development**
+  (each repository follows its branch) and **Switch to production** (each repository on its
+  `freeze-revision`), which change environment without a new installation; **Stash all code** says
+  it runs `git stash` in every manifest repository, the ERPLibre checkout excluded
 
 <!-- [fr] -->
 
@@ -570,6 +580,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans **TODO › Installation**, Entrée choisit la production au menu de l'environnement — le développement quand la version d'Odoo n'a aucun commit gelé, comme avant — et l'installation standard au menu du type ; chaque menu marque son défaut et l'affiche dans son invite. La question de l'étape système vaut oui par défaut quand quelque chose qu'elle pose manque — git, make, un compilateur C, psql, node, npm, ou le rôle PostgreSQL du compte — et le nomme, non quand tout est là. Entrée accepte désormais de saisir une identité git absente
 - **TODO › Exécution** gagne **[10] Répertoire git**, qui rassemble les outils git : la mise à jour des dépôts, l'état et le stash du code venus de Code, les hooks git, `merge.conflictStyle`, l'ajout de remote et le patch, le serveur git local et l'arrêt du git daemon, encore aussi dans Process. L'ancien **[13] Git** devient **[14] Shell**, avec Starship, Claude Code et opencode ; les entrées à partir de Base descendent d'un rang, Base en `[11]` et Système en `[22]`, et le menu Mise à jour ne porte plus la mise à jour des dépôts
 - Le catalogue Fedora de QEMU est 44 et 45, 44 par défaut, sur x86_64, aarch64 et s390x : 41 et 42 sont passées à l'arborescence d'archive du serveur Fedora, que le téléchargement ne lit pas, si bien que la version par défaut (42) ne se téléchargeait plus, et 43 part avec elles. Un libvirt dont l'osinfo-db précède une version se rabat sur `fedora-unknown`
+- **TODO › 🩺 Bilan de santé** offre, dès l'ouverture de son menu, les résolutions des
+  vérifications qui ne lisent qu'un réglage git ou des fichiers locaux — hooks git, commandes
+  Claude — sans passe préalable : les hooks git que le bilan d'ouverture dit manquants s'installent
+  d'un choix. Passer le gel sur HEAD et remettre des dépôts au gel traitent désormais 8 dépôts à la
+  fois, sous les 10 connexions en attente où un serveur OpenSSH par défaut commence à en couper :
+  16 `ls-remote` prennent 0,4 s au lieu de 2,5 s, l'affichage restant dans l'ordre des dépôts
+- **TODO › Exécution › Répertoire git** : le menu de mise à jour nomme ses bascules **Passer en
+  développement** (chaque dépôt suit sa branche) et **Passer en production** (chaque dépôt sur son
+  `freeze-revision`), qui changent d'environnement sans nouvelle installation ; **Remiser tout le
+  code** dit lancer `git stash` dans chaque dépôt du manifeste, hors du checkout ERPLibre
 
 <!-- [en] -->
 ## Fixed

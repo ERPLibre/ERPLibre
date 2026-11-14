@@ -275,6 +275,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In **TODO › Install**, Enter picks production in the environment menu — development when the Odoo version has no frozen commit, as before — and the standard install in the install-type menu; each menu marks its default and shows it in its prompt. The system-step question defaults to yes when something it installs is missing — git, make, a C compiler, psql, node, npm, or the account's PostgreSQL role — and names it, to no when all of it is there. Enter now accepts to enter a missing git identity
 - **TODO › Execute** gains **[10] Git repository**, which gathers the git tools: the repository update, the code status and stash moved from Code, the git hooks, `merge.conflictStyle`, the remote and patch tools, the local git server and the git daemon kill, still also in Process. The former **[13] Git** becomes **[14] Shell**, with Starship, Claude Code and opencode; the entries from Database on move down by one, Database to `[11]` and System to `[22]`, and the Update menu no longer carries the repository update
 - The QEMU Fedora catalogue is 44 and 45, 44 by default, on x86_64, aarch64 and s390x: 41 and 42 have moved to the archive tree of Fedora's server, which the download does not read, so the default version (42) could no longer be fetched, and 43 leaves with them. A libvirt whose osinfo-db predates a release falls back to `fedora-unknown`
+- **TODO › 🩺 Healthcheck** offers, as soon as its menu opens, the resolutions of the checks that
+  only read a git setting or local files — git hooks, Claude commands — without a pass first, so
+  the git hooks the opening banner reports missing install in one choice. Moving the freeze to HEAD
+  and putting repositories back on their freeze now handle 8 repositories at a time, below the 10
+  pending connections where a default OpenSSH server starts dropping some: 16 `ls-remote` take
+  0.4 s instead of 2.5 s, with the output still in repository order
+- **TODO › Execute › Git repository**: the update menu names its switches **Switch to development**
+  (each repository follows its branch) and **Switch to production** (each repository on its
+  `freeze-revision`), which change environment without a new installation; **Stash all code** says
+  it runs `git stash` in every manifest repository, the ERPLibre checkout excluded
 
 ## Fixed
 

@@ -279,6 +279,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans **TODO › Installation**, Entrée choisit la production au menu de l'environnement — le développement quand la version d'Odoo n'a aucun commit gelé, comme avant — et l'installation standard au menu du type ; chaque menu marque son défaut et l'affiche dans son invite. La question de l'étape système vaut oui par défaut quand quelque chose qu'elle pose manque — git, make, un compilateur C, psql, node, npm, ou le rôle PostgreSQL du compte — et le nomme, non quand tout est là. Entrée accepte désormais de saisir une identité git absente
 - **TODO › Exécution** gagne **[10] Répertoire git**, qui rassemble les outils git : la mise à jour des dépôts, l'état et le stash du code venus de Code, les hooks git, `merge.conflictStyle`, l'ajout de remote et le patch, le serveur git local et l'arrêt du git daemon, encore aussi dans Process. L'ancien **[13] Git** devient **[14] Shell**, avec Starship, Claude Code et opencode ; les entrées à partir de Base descendent d'un rang, Base en `[11]` et Système en `[22]`, et le menu Mise à jour ne porte plus la mise à jour des dépôts
 - Le catalogue Fedora de QEMU est 44 et 45, 44 par défaut, sur x86_64, aarch64 et s390x : 41 et 42 sont passées à l'arborescence d'archive du serveur Fedora, que le téléchargement ne lit pas, si bien que la version par défaut (42) ne se téléchargeait plus, et 43 part avec elles. Un libvirt dont l'osinfo-db précède une version se rabat sur `fedora-unknown`
+- **TODO › 🩺 Bilan de santé** offre, dès l'ouverture de son menu, les résolutions des
+  vérifications qui ne lisent qu'un réglage git ou des fichiers locaux — hooks git, commandes
+  Claude — sans passe préalable : les hooks git que le bilan d'ouverture dit manquants s'installent
+  d'un choix. Passer le gel sur HEAD et remettre des dépôts au gel traitent désormais 8 dépôts à la
+  fois, sous les 10 connexions en attente où un serveur OpenSSH par défaut commence à en couper :
+  16 `ls-remote` prennent 0,4 s au lieu de 2,5 s, l'affichage restant dans l'ordre des dépôts
+- **TODO › Exécution › Répertoire git** : le menu de mise à jour nomme ses bascules **Passer en
+  développement** (chaque dépôt suit sa branche) et **Passer en production** (chaque dépôt sur son
+  `freeze-revision`), qui changent d'environnement sans nouvelle installation ; **Remiser tout le
+  code** dit lancer `git stash` dans chaque dépôt du manifeste, hors du checkout ERPLibre
 
 ## Corrigé
 
