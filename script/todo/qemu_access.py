@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from script.todo import todo_install
 from script.todo.qemu_privilege import sudo_prefix
@@ -26,6 +27,13 @@ class QemuAccessMixin:
     # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
     # donc un parc à deux niveaux est le cas courant.
     _QEMU_SSH_DEPTH = 2
+
+    # Sondes d'un même niveau lancées à la fois : chacune attend le réseau,
+    # pas le processeur. Au-delà du premier niveau, les sondes des invitées
+    # d'un même parent le traversent toutes en ProxyJump, chacune avec sa
+    # propre connexion : rester sous les 10 connexions non authentifiées où
+    # un sshd par défaut (MaxStartups 10:30:100) commence à en couper.
+    _QEMU_SSH_PARALLEL = 8
 
     # Sonde exécutée SUR une machine. Première ligne « LIBVIRT<TAB>yes|no »,
     # puis un couple « nom<TAB>ip » par VM. Une seule connexion SSH par
@@ -933,6 +941,9 @@ class QemuAccessMixin:
         d'écrire : le ProxyJump du parent s'applique tout seul et la même
         sonde marche à n'importe quelle profondeur.
 
+        Ne questionne jamais l'utilisateur, même au saut d'un ProxyJump : ce
+        qui demanderait une réponse échoue et revient en « auth » ou « net ».
+
         « libvirt présent » et « a des VM » sont deux choses distinctes : une
         machine avec QEMU mais sans VM mérite quand même sa connexion
         virt-manager, une machine sans QEMU n'en veut aucune."""
@@ -946,8 +957,26 @@ class QemuAccessMixin:
             self._QEMU_SSH_PROBE,
         ]
         try:
+            # Aucune sonde ne peut questionner l'utilisateur. BatchMode ne
+            # couvre que ce ssh : le ssh qu'OpenSSH lance pour un ProxyJump
+            # ne le reçoit pas, et pose ses questions (mot de passe, clé
+            # d'hôte inconnue) en ouvrant /dev/tty, pas stdin. Une nouvelle
+            # session n'a pas de terminal de contrôle : ce ssh-là échoue
+            # comme BatchMode le ferait, au lieu que plusieurs sondes
+            # simultanées se disputent le clavier. SSH_ASKPASS_REQUIRE=never
+            # lui interdit le repli graphique ssh-askpass, que DISPLAY
+            # déclencherait faute de terminal. stdin détaché : ssh lirait
+            # sinon les touches tapées pour une question du fil principal.
+            # Contrepartie : Ctrl+C n'atteint plus ces ssh, il attend la fin
+            # des sondes déjà lancées (ConnectTimeout pour un hôte muet).
             res = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=90
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                start_new_session=True,
+                env={**os.environ, "SSH_ASKPASS_REQUIRE": "never"},
             )
         except subprocess.TimeoutExpired:
             return "net", t("timed out")
@@ -973,6 +1002,19 @@ class QemuAccessMixin:
         # interactif, ou utilisateur hors du groupe libvirt. Le confondre avec
         # « pas de QEMU » envoyait chercher un problème qui n'existe pas.
         return ("denied" if libvirt == "denied" else "nolibvirt"), found
+
+    def _qemu_ssh_probe_level(self, aliases):
+        """Les couples (alias, résultat de _qemu_ssh_probe_remote), dans
+        l'ordre de `aliases`, sondés _QEMU_SSH_PARALLEL à la fois.
+
+        Chaque couple est rendu dès que sa sonde et celles qui le précèdent
+        ont abouti : l'appelant affiche la progression dans un ordre stable,
+        et tout ce qu'il fait d'un résultat (question, écriture de
+        ~/.ssh/config) reste dans son propre fil, en série."""
+        with ThreadPoolExecutor(max_workers=self._QEMU_SSH_PARALLEL) as pool:
+            yield from zip(
+                aliases, pool.map(self._qemu_ssh_probe_remote, aliases)
+            )
 
     def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
@@ -1027,8 +1069,11 @@ class QemuAccessMixin:
                 f"{len(frontier)} {t('machines to probe')}"
             )
             next_frontier = []
-            for parent in frontier:
-                status, found = self._qemu_ssh_probe_remote(parent)
+            # Les sondes partent ensemble ; le repli sur la clé, qui pose une
+            # question, et l'écriture des entrées suivent l'ordre de
+            # `frontier`, dans ce fil-ci.
+            probes = self._qemu_ssh_probe_level(frontier)
+            for parent, (status, found) in probes:
                 if status == "auth":
                     # C'EST ici qu'une clé manquante se manifeste, pas avant :
                     # on ne parle d'identité qu'une fois l'identité refusée.
