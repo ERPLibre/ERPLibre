@@ -497,6 +497,15 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (each repository follows its branch) and **Switch to production** (each repository on its
   `freeze-revision`), which change environment without a new installation; **Stash all code** says
   it runs `git stash` in every manifest repository, the ERPLibre checkout excluded
+- TODO's loops that each wait on a remote run several at a time, output still in the order of the
+  list: Proxmox start, shutdown and stop of VMs and the gathering of their SSH addresses (4), the
+  QEMU SSH walk, where a host that is off cost 10 s each (8), the QEMU cache fill (4), the opening
+  of the IMAP accounts in the mail TUI, where a silent server cost 30 s each (4), the fingerprinting
+  of LLM responders (8) and the registry platforms read before an all-versions container build (8).
+  The SSH caps stay below the 10 pending connections where a default OpenSSH server drops some; a
+  `ctrl+C` leaves queued addresses and connections unsent. **Space to reclaim** measures the
+  neighbour checkouts' venvs in up to 8 processes, never more than CPUs: 18 venvs in 0.46 s instead
+  of 2.9 s
 
 <!-- [fr] -->
 
@@ -590,6 +599,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   développement** (chaque dépôt suit sa branche) et **Passer en production** (chaque dépôt sur son
   `freeze-revision`), qui changent d'environnement sans nouvelle installation ; **Remiser tout le
   code** dit lancer `git stash` dans chaque dépôt du manifeste, hors du checkout ERPLibre
+- Les boucles de TODO qui attendent chacune un distant tournent à plusieurs, l'affichage restant
+  dans l'ordre de la liste : démarrer, éteindre et couper des VM Proxmox et rassembler leurs adresses
+  SSH (4), le parcours SSH de QEMU, où un hôte éteint coûtait 10 s chacun (8), le remplissage du
+  cache QEMU (4), l'ouverture des comptes IMAP du TUI mail, où un serveur muet coûtait 30 s chacun
+  (4), l'identification des LLM qui répondent (8) et la lecture des plateformes au registre avant la
+  construction d'un conteneur pour toutes les versions (8). Les plafonds SSH restent sous les 10
+  connexions en attente où un serveur OpenSSH par défaut commence à en couper ; un `ctrl+C` ne laisse
+  partir ni les adresses ni les connexions en attente. **Espace à récupérer** mesure les venvs des
+  checkouts voisins dans jusqu'à 8 processus, jamais plus que de processeurs : 18 venvs en 0,46 s au
+  lieu de 2,9 s
 
 <!-- [en] -->
 ## Fixed
@@ -743,6 +762,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A GNOME desktop (`--desktop`, or the desktop column of the deployment forms) installs and opens a session on Debian, Fedora and Arch, as on Ubuntu, from the VM's QEMU console. GNOME 49 and later is Wayland-only and no longer runs under xrdp or TigerVNC: a GNOME VM gets GNOME Remote Desktop on RDP 3389, with the account's login and password, and xrdp only where GNOME predates its system mode (Debian 12); Cinnamon keeps xrdp and TigerVNC. RDP is announced only once its state is read back, `grdctl --system` answering 0 whatever happens; otherwise the deployment says so and the console stays the way in. Fedora installs its Workstation environment without firewalld, which closed 3389 at the next boot, and stops when no environment installs; Arch upgrades fully before installing, or stops; the mobile tools are no longer offered on Debian, which has no matching JDK
 - A desktop VM gets at least 4096 MB of RAM, in the command line, the deployment form and the Proxmox VE form, and the plan shows it: the catalogue minimum, 1 GiB on Debian and Arch, 2 GiB on Fedora, does not hold GDM, a software-rendered GNOME Shell and the ERPLibre build. A desktop is offered only on a distribution that installs one: a NixOS VM stays a server instead of failing
 - The connection guide restarts the desktop with `sudo systemctl restart display-manager`, right for GDM and LightDM alike, where `enable --now gdm` did nothing on Debian and was wrong for Cinnamon. It says how to reach the desktop — RDP 3389 through an SSH tunnel, VNC 5901 for Cinnamon on Arch — and names `gnome-extensions-app` on Fedora, which has no Extension Manager. The tunnel menu no longer labels VNC 5901 as Arch's port: Arch GNOME answers on RDP 3389
+- Updating the venv of an Odoo version that is not the active one, from **TODO › 🩺 Healthcheck** or
+  the Python menu, no longer stops TODO on `FileNotFoundError` for `.venv.<version>/bin/poetry`:
+  Poetry and the venv are given by absolute path to the temporary project it runs from, and a Poetry
+  that cannot start is reported with the system error
 
 <!-- [fr] -->
 
@@ -893,6 +916,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un bureau GNOME (`--desktop`, ou la colonne bureau des formulaires de déploiement) s'installe et ouvre une session sur Debian, Fedora et Arch, comme sur Ubuntu, depuis la console QEMU de la VM. GNOME 49 et suivants n'ont plus que Wayland et ne tournent plus sous xrdp ni TigerVNC : une VM GNOME reçoit GNOME Remote Desktop sur RDP 3389, avec l'identifiant et le mot de passe du compte, et xrdp seulement là où GNOME précède son mode système (Debian 12) ; Cinnamon garde xrdp et TigerVNC. RDP n'est annoncé qu'une fois son état relu, `grdctl --system` répondant 0 quoi qu'il arrive ; sinon le déploiement le dit et la console reste la voie d'accès. Fedora installe son environnement Workstation sans firewalld, qui fermait 3389 au démarrage suivant, et s'arrête quand aucun environnement ne s'installe ; Arch se met entièrement à jour avant d'installer, ou s'arrête ; les outils mobiles ne sont plus proposés sur Debian, qui n'a pas le JDK voulu
 - Une VM de bureau reçoit au moins 4096 Mo de RAM, en ligne de commande, au formulaire de déploiement et à celui de Proxmox VE, et le plan l'affiche : le minimum du catalogue, 1 Gio sur Debian et Arch, 2 Gio sur Fedora, ne tient pas GDM, un GNOME Shell rendu en logiciel et la construction d'ERPLibre. Un bureau n'est proposé que sur une distribution qui en installe un : une VM NixOS reste un serveur au lieu d'échouer
 - Le guide de connexion redémarre le bureau par `sudo systemctl restart display-manager`, juste pour GDM comme pour LightDM, là où `enable --now gdm` ne faisait rien sur Debian et se trompait pour Cinnamon. Il dit comment joindre le bureau — RDP 3389 par un tunnel SSH, VNC 5901 pour Cinnamon sur Arch — et nomme `gnome-extensions-app` sur Fedora, qui n'a pas Extension Manager. Le menu des tunnels n'étiquette plus VNC 5901 comme le port d'Arch : Arch GNOME répond sur RDP 3389
+- Mettre à jour le venv d'une version d'Odoo qui n'est pas l'active, depuis **TODO › 🩺 Bilan de
+  santé** ou le menu Python, n'arrête plus TODO sur `FileNotFoundError` pour
+  `.venv.<version>/bin/poetry` : Poetry et le venv sont donnés par chemin absolu au projet temporaire
+  d'où il tourne, et un Poetry qui ne démarre pas est signalé avec l'erreur du système
 
 <!-- [en] -->
 ## Removed

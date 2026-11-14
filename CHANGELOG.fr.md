@@ -289,6 +289,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   développement** (chaque dépôt suit sa branche) et **Passer en production** (chaque dépôt sur son
   `freeze-revision`), qui changent d'environnement sans nouvelle installation ; **Remiser tout le
   code** dit lancer `git stash` dans chaque dépôt du manifeste, hors du checkout ERPLibre
+- Les boucles de TODO qui attendent chacune un distant tournent à plusieurs, l'affichage restant
+  dans l'ordre de la liste : démarrer, éteindre et couper des VM Proxmox et rassembler leurs adresses
+  SSH (4), le parcours SSH de QEMU, où un hôte éteint coûtait 10 s chacun (8), le remplissage du
+  cache QEMU (4), l'ouverture des comptes IMAP du TUI mail, où un serveur muet coûtait 30 s chacun
+  (4), l'identification des LLM qui répondent (8) et la lecture des plateformes au registre avant la
+  construction d'un conteneur pour toutes les versions (8). Les plafonds SSH restent sous les 10
+  connexions en attente où un serveur OpenSSH par défaut commence à en couper ; un `ctrl+C` ne laisse
+  partir ni les adresses ni les connexions en attente. **Espace à récupérer** mesure les venvs des
+  checkouts voisins dans jusqu'à 8 processus, jamais plus que de processeurs : 18 venvs en 0,46 s au
+  lieu de 2,9 s
 
 ## Corrigé
 
@@ -439,6 +449,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un bureau GNOME (`--desktop`, ou la colonne bureau des formulaires de déploiement) s'installe et ouvre une session sur Debian, Fedora et Arch, comme sur Ubuntu, depuis la console QEMU de la VM. GNOME 49 et suivants n'ont plus que Wayland et ne tournent plus sous xrdp ni TigerVNC : une VM GNOME reçoit GNOME Remote Desktop sur RDP 3389, avec l'identifiant et le mot de passe du compte, et xrdp seulement là où GNOME précède son mode système (Debian 12) ; Cinnamon garde xrdp et TigerVNC. RDP n'est annoncé qu'une fois son état relu, `grdctl --system` répondant 0 quoi qu'il arrive ; sinon le déploiement le dit et la console reste la voie d'accès. Fedora installe son environnement Workstation sans firewalld, qui fermait 3389 au démarrage suivant, et s'arrête quand aucun environnement ne s'installe ; Arch se met entièrement à jour avant d'installer, ou s'arrête ; les outils mobiles ne sont plus proposés sur Debian, qui n'a pas le JDK voulu
 - Une VM de bureau reçoit au moins 4096 Mo de RAM, en ligne de commande, au formulaire de déploiement et à celui de Proxmox VE, et le plan l'affiche : le minimum du catalogue, 1 Gio sur Debian et Arch, 2 Gio sur Fedora, ne tient pas GDM, un GNOME Shell rendu en logiciel et la construction d'ERPLibre. Un bureau n'est proposé que sur une distribution qui en installe un : une VM NixOS reste un serveur au lieu d'échouer
 - Le guide de connexion redémarre le bureau par `sudo systemctl restart display-manager`, juste pour GDM comme pour LightDM, là où `enable --now gdm` ne faisait rien sur Debian et se trompait pour Cinnamon. Il dit comment joindre le bureau — RDP 3389 par un tunnel SSH, VNC 5901 pour Cinnamon sur Arch — et nomme `gnome-extensions-app` sur Fedora, qui n'a pas Extension Manager. Le menu des tunnels n'étiquette plus VNC 5901 comme le port d'Arch : Arch GNOME répond sur RDP 3389
+- Mettre à jour le venv d'une version d'Odoo qui n'est pas l'active, depuis **TODO › 🩺 Bilan de
+  santé** ou le menu Python, n'arrête plus TODO sur `FileNotFoundError` pour
+  `.venv.<version>/bin/poetry` : Poetry et le venv sont donnés par chemin absolu au projet temporaire
+  d'où il tourne, et un Poetry qui ne démarre pas est signalé avec l'erreur du système
 
 ## Retiré
 
