@@ -3,8 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.tui import (
@@ -132,6 +134,136 @@ class TestOpenSessions(SessionCase):
             connect_fn=lambda a, p: FakeTransport(),
         )
         self.assertTrue(all(s.online for s in sessions))
+        for s in sessions:
+            s.close()
+
+
+class TestOpenSessionsParallel(SessionCase):
+    """Les connexions des comptes partent de front, les sessions sortent
+    dans l'ordre des comptes, et le coffre reste lu dans le fil principal.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.accounts.append(
+            account_from_preset("asso", "moi@z.ca", "generic")
+        )
+        self.accounts[-1].cache_mode = "clear"
+
+    def test_connections_overlap_and_sessions_keep_account_order(self):
+        # La barrière ne s'ouvre que si les trois connexions attendent en
+        # même temps : en série, la première attendrait seule jusqu'au
+        # délai et lèverait `BrokenBarrierError`.
+        barriere = threading.Barrier(len(self.accounts), timeout=10)
+        dernier_parti = threading.Event()
+        fini = []
+
+        def connect(account, password):
+            barriere.wait()
+            # Le premier compte termine en DERNIER : l'ordre rendu ne
+            # peut donc pas venir de l'ordre d'achèvement.
+            if account.name == "perso":
+                dernier_parti.wait(timeout=10)
+            else:
+                fini.append(account.name)
+                if len(fini) == 2:
+                    dernier_parti.set()
+            return FakeTransport()
+
+        sessions = open_sessions(
+            self.accounts, FakeSecrets(), base=self.base, connect_fn=connect
+        )
+        self.assertEqual(
+            [s.account.name for s in sessions], ["perso", "travail", "asso"]
+        )
+        self.assertTrue(all(s.online for s in sessions))
+        for s in sessions:
+            s.close()
+
+    def test_ctrl_c_leaves_queued_connections_unsent(self):
+        """Ctrl+C pendant l'ouverture : les connexions encore en file ne
+        partent pas. Une seule à la fois, et la première tient son fil
+        pendant que le fil principal reçoit l'interruption."""
+        import script.todo.mail.tui as tui
+
+        appels = []
+        libere = threading.Event()
+
+        def connect(account, password):
+            appels.append(account.name)
+            libere.wait(timeout=0.5)
+            return FakeTransport()
+
+        def interrompre(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        with (
+            mock.patch.object(tui, "SYNC_PARALLELE", 1),
+            mock.patch.object(tui, "_build_session", interrompre),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                open_sessions(
+                    self.accounts,
+                    FakeSecrets(),
+                    base=self.base,
+                    connect_fn=connect,
+                )
+        self.assertEqual(appels, ["perso"])
+
+    def test_one_failed_connection_stays_on_its_own_session(self):
+        barriere = threading.Barrier(len(self.accounts), timeout=10)
+
+        def connect(account, password):
+            barriere.wait()
+            if account.name == "travail":
+                raise OSError("serveur muet")
+            return FakeTransport()
+
+        sessions = open_sessions(
+            self.accounts, FakeSecrets(), base=self.base, connect_fn=connect
+        )
+        self.assertEqual([s.online for s in sessions], [True, False, True])
+        self.assertIn("serveur muet", sessions[1].error)
+        self.assertEqual(sessions[0].error, "")
+        self.assertIsNotNone(sessions[1].store)
+        for s in sessions:
+            s.close()
+
+    def test_vault_is_read_from_the_main_thread_only(self):
+        fils = []
+
+        class TracingSecrets(FakeSecrets):
+            def get(self, ref):
+                fils.append(threading.current_thread())
+                return super().get(ref)
+
+        sessions = open_sessions(
+            self.accounts,
+            TracingSecrets(),
+            base=self.base,
+            connect_fn=lambda a, p: FakeTransport(),
+        )
+        self.assertTrue(fils)
+        self.assertTrue(all(f is threading.main_thread() for f in fils))
+        for s in sessions:
+            s.close()
+
+    def test_account_without_secret_is_not_connected(self):
+        appels = []
+
+        class PartialSecrets(FakeSecrets):
+            def get(self, ref):
+                return None if ref.endswith("/travail") else self.password
+
+        def connect(account, password):
+            appels.append(account.name)
+            return FakeTransport()
+
+        sessions = open_sessions(
+            self.accounts, PartialSecrets(), base=self.base, connect_fn=connect
+        )
+        self.assertEqual(sorted(appels), ["asso", "perso"])
+        self.assertEqual([s.online for s in sessions], [True, False, True])
         for s in sessions:
             s.close()
 
