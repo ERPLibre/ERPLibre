@@ -267,37 +267,103 @@ class GitForkMenuMixin:
 
     # ── Ajouter un dépôt ─────────────────────────────────────────────
 
+    def _git_choisir_version_installee(self):
+        """La version d'Odoo où ajouter un dépôt, parmi les versions
+        INSTALLÉES qui ont un manifeste : sans question quand il n'y en a
+        qu'une, sinon tapée, l'active par défaut. None sur un refus."""
+        versions = manifest_repo.versions_installees(RACINE)
+        if len(versions) == 1:
+            print(f"  {t('Odoo version')} : {versions[0]}")
+            return versions[0]
+        actif = repo_upgrade.version_active(RACINE)
+        defaut = actif if actif in versions else versions[-1]
+        saisie = input(
+            f"{t('Odoo version')} ({', '.join(versions)}) [{defaut}] : "
+        ).strip()
+        version = saisie or defaut
+        if version not in versions:
+            print(
+                f"⚠ {version} : {t('not an installed version with a manifest.')}"
+            )
+            return None
+        return version
+
+    def _git_choisir_visibilite(self):
+        """Vrai pour le manifeste privé, faux pour le public, None pour
+        annuler. Aucun défaut : un dépôt de client déclaré par réflexe dans
+        le manifeste public partirait avec ERPLibre."""
+        print(f"  [1] {t('Public: manifest/, published with ERPLibre.')}")
+        print(
+            f"  [2] {t('Private: private/manifest/, only in a private repository.')}"
+        )
+        choix = input(t("Public or private? (1/2, Enter: cancel): ")).strip()
+        if choix not in ("1", "2"):
+            return None
+        return choix == "2"
+
+    def _git_question_gel(self, defaut):
+        """La réponse à « le geler ? », `defaut` sur Entrée."""
+        invite = (
+            "Freeze it on the head of the branch? (Y/n): "
+            if defaut
+            else "Freeze it on the head of the branch? (y/N): "
+        )
+        reponse = input(t(invite)).strip()
+        return self._is_yes(reponse) if reponse else defaut
+
     def _git_ajouter_depot(self):
-        """Ajoute un dépôt GitHub au manifeste de la version choisie, puis
-        propose de le forker. Rend 0, ou 2 sur un refus."""
-        url = input(t("GitHub URL of the repository to add: ")).strip()
+        """Ajoute un dépôt au manifeste public ou privé de la version
+        choisie, sur la branche que l'hôte annonce, puis propose de forker
+        un dépôt GitHub public. Rend 0, ou 2 sur un refus."""
+        url = input(t("URL of the repository to add: ")).strip()
         if not url:
             return 0
-        if not github_fork.depot_github(url):
-            print(f"⚠ {t('Not a GitHub repository URL.')}")
+        if not manifest_repo.depot_de_l_url(url):
+            print(f"⚠ {t('Not a repository URL.')}")
             return 2
-        actif = repo_upgrade.version_active(RACINE)
-        version = self._git_choisir_version(actif)
+        version = self._git_choisir_version_installee()
         if not version:
             return 2
+        prive = self._git_choisir_visibilite()
+        if prive is None:
+            return 0
+        print(f"  {t('Reading the branches on the host, without cloning…')}")
+        lu = repo_upgrade.branches_et_defaut(url)
+        verifier = lu is not None
+        disponibles, defaut = lu if lu else (None, None)
+        if not verifier:
+            print(
+                f"⚠ {t('Host unreachable, or a private repository git cannot read without credentials.')}"
+            )
+            if not self._is_yes(
+                input(t("Add it without checking the branch? (y/N): "))
+            ):
+                return 2
+        else:
+            print(
+                f"  {len(disponibles)} {t('branches')}"
+                f" · {t('default branch')} : {defaut or '-'}"
+            )
+        proposee = manifest_repo.branche_proposee(version, disponibles, defaut)
         branche = (
-            input(f"{t('Branch to follow')} [{version}] : ").strip() or version
+            input(f"{t('Branch to follow')} [{proposee}] : ").strip()
+            or proposee
         )
-        fichier = os.path.join(
-            manifest_repo.dossier_manifestes(),
-            f"git_manifest_odoo{version}.xml",
-        )
-        with open(fichier, encoding="utf-8") as fh:
-            gele = manifest_repo.est_gele(fh.read())
-        invite = "Freeze it on the head of the branch? (Y/n): "
-        if not gele:
-            invite = "Freeze it on the head of the branch? (y/N): "
-        reponse = input(t(invite)).strip()
-        geler = self._is_yes(reponse) if reponse else gele
-        print(f"  {t('Checking the branch on GitHub…')}")
+        geler = False
+        if verifier:
+            geler = self._git_question_gel(
+                manifest_repo.gel_par_defaut(version)
+            )
         try:
             fichier, plan, gel = manifest_repo.ajouter_depot(
-                url, version, branche, geler
+                url,
+                version,
+                branche,
+                geler,
+                prive=prive,
+                racine=RACINE,
+                disponibles=disponibles,
+                verifier=verifier,
             )
         except ValueError as exc:
             print(f"❌ {exc}")
@@ -308,8 +374,15 @@ class GitForkMenuMixin:
             f"{' @ ' + gel[:12] if gel else ''})"
         )
         print(
-            f"  {t('Commit manifest/, then synchronise the repositories to clone it.')}"
+            "  "
+            + t(
+                "Commit private/, then synchronise the repositories to clone it."
+                if prive
+                else "Commit manifest/, then synchronise the repositories to clone it."
+            )
         )
+        if prive or not github_fork.depot_github(url):
+            return 0
         if self._is_yes(input(t("Fork it for an organisation now? (y/N): "))):
             _remotes, liste = projets_github(version)
             choix = next(

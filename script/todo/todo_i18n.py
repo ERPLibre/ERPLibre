@@ -2268,6 +2268,63 @@ TRANSLATIONS = {
         "fr": "➕ Ajouter un dépôt à un manifeste",
         "en": "➕ Add a repository to a manifest",
     },
+    "Add it without checking the branch? (y/N): ": {
+        "fr": "L'ajouter sans vérifier la branche ? (o/N) : ",
+        "en": "Add it without checking the branch? (y/N): ",
+    },
+    "Commit private/, then synchronise the repositories to clone it.": {
+        "fr": (
+            "Committez private/, puis synchronisez les dépôts pour le cloner."
+        ),
+        "en": (
+            "Commit private/, then synchronise the repositories to clone it."
+        ),
+    },
+    (
+        "Host unreachable, or a private repository git cannot read without "
+        "credentials."
+    ): {
+        "fr": (
+            "Hôte injoignable, ou dépôt privé que git ne sait pas lire sans "
+            "identifiants."
+        ),
+        "en": (
+            "Host unreachable, or a private repository git cannot read "
+            "without credentials."
+        ),
+    },
+    "Not a repository URL.": {
+        "fr": "Pas une URL de dépôt.",
+        "en": "Not a repository URL.",
+    },
+    "Private: private/manifest/, only in a private repository.": {
+        "fr": "Privé : private/manifest/, seulement dans un dépôt privé.",
+        "en": "Private: private/manifest/, only in a private repository.",
+    },
+    "Public or private? (1/2, Enter: cancel): ": {
+        "fr": "Public ou privé ? (1/2, Entrée : annuler) : ",
+        "en": "Public or private? (1/2, Enter: cancel): ",
+    },
+    "Public: manifest/, published with ERPLibre.": {
+        "fr": "Public : manifest/, publié avec ERPLibre.",
+        "en": "Public: manifest/, published with ERPLibre.",
+    },
+    "Reading the branches on the host, without cloning…": {
+        "fr": "Lecture des branches sur l'hôte, sans cloner…",
+        "en": "Reading the branches on the host, without cloning…",
+    },
+    "URL of the repository to add: ": {
+        "fr": "URL du dépôt à ajouter : ",
+        "en": "URL of the repository to add: ",
+    },
+    "default branch": {
+        "fr": "branche par défaut",
+        "en": "default branch",
+    },
+    "not an installed version with a manifest.": {
+        "fr": "pas une version installée avec un manifeste.",
+        "en": "not an installed version with a manifest.",
+    },
     "🌿 Create a branch in a repository": {
         "fr": "🌿 Créer une branche dans un dépôt",
         "en": "🌿 Create a branch in a repository",

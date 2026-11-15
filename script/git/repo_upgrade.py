@@ -273,6 +273,46 @@ def branches(url, delai=DELAI_RESEAU):
     return trouvees
 
 
+# La ligne que « ls-remote --symref » donne pour HEAD : la branche par
+# défaut de l'hôte, celle qu'un clone sans -b extrait.
+MOTIF_DEFAUT = re.compile(r"^ref: refs/heads/(\S+)\s+HEAD$")
+
+
+def branches_et_defaut(url, delai=DELAI_RESEAU):
+    """(branches publiées, branche par défaut ou None), ou None si l'hôte
+    est injoignable. Une seule requête, sans clone et sans jeton d'API :
+    `git ls-remote --symref url HEAD refs/heads/*`. Un dépôt privé
+    demande les identifiants git habituels (clé SSH, assistant
+    d'identification), jamais une invite : elle bloquerait le menu."""
+    if not url:
+        return None
+    commande = ["git", "ls-remote", "--symref", url, "HEAD", "refs/heads/*"]
+    command_echo.show(commande)
+    try:
+        done = subprocess.run(
+            commande,
+            capture_output=True,
+            text=True,
+            timeout=delai,
+            env=env_sans_invite(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode:
+        return None
+    trouvees, defaut = set(), None
+    for ligne in done.stdout.splitlines():
+        ligne = ligne.strip()
+        symref = MOTIF_DEFAUT.match(ligne)
+        if symref:
+            defaut = symref.group(1)
+            continue
+        found = MOTIF_BRANCHE.search(ligne)
+        if found:
+            trouvees.add(found.group(1))
+    return trouvees, defaut
+
+
 def etat_forks(
     version,
     dossier=DOSSIER,
