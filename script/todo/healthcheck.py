@@ -982,6 +982,7 @@ def verifier_docs(ctx):
 # `repo_state` qui n'est pas « conforme ».
 ECARTS_GEL = {
     "en_avance": "ahead of the freeze",
+    freeze_resolution.SANS_GEL: "no freeze yet",
     "en_retard": "behind the freeze",
     "decale": "diverged from the freeze",
     "introuvable": "frozen commit missing from the clone",
@@ -1203,11 +1204,28 @@ def _ligne_gel(depot):
     return f"   {depot['path']} — {t(ECARTS_GEL.get(alignement, alignement))}"
 
 
+def _gel_en_usage(depots):
+    """Vrai quand au moins un dépôt porte un « freeze-revision » : le
+    checkout se fige, et un dépôt sans gel y fait exception. Sans aucun
+    gel, chaque dépôt suit sa branche et aucun n'est signalé."""
+    return any(d.get("freeze_revision") for d in depots)
+
+
+def _a_resoudre(depot, depots):
+    """L'écart de `depot` à son gel quand une résolution s'y applique,
+    sinon None : SANS_GEL ne compte que si le gel est en usage parmi
+    `depots`."""
+    alignement = freeze_resolution.hors_gel(depot)
+    if alignement == freeze_resolution.SANS_GEL and not _gel_en_usage(depots):
+        return None
+    return alignement
+
+
 def resolutions_gel(ctx, depots):
     """Les résolutions des dépôts hors de leur gel, classés par
     `freeze_resolution.classer`. Un `git status` par dépôt hors du gel, et
     pour eux seuls, dit lesquels ont des fichiers modifiés."""
-    candidats = [d for d in depots if freeze_resolution.hors_gel(d)]
+    candidats = [d for d in depots if _a_resoudre(d, depots)]
     if not candidats:
         return []
 
@@ -1245,7 +1263,7 @@ def resolutions_gel(ctx, depots):
                 f" {t('repositories')}",
                 [
                     t(
-                        "HEAD carries commits the freeze lacks: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first."
+                        "HEAD carries commits the freeze lacks, or the repository has no freeze yet: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first."
                     )
                 ]
                 + [_ligne_gel(d) for d in maj],

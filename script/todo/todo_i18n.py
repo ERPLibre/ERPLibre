@@ -3412,9 +3412,9 @@ TRANSLATIONS = {
         "fr": "Mettre à jour le gel avec HEAD :",
         "en": "Update the freeze to HEAD:",
     },
-    "HEAD carries commits the freeze lacks: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first.": {
-        "fr": "HEAD porte des commits que le gel n'a pas : le gel passe sur HEAD dans le manifeste qui déclare le dépôt, manifest/ ou private/manifest/, pour chaque HEAD déjà poussé ; les autres sont nommés avec le push à faire d'abord.",
-        "en": "HEAD carries commits the freeze lacks: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first.",
+    "HEAD carries commits the freeze lacks, or the repository has no freeze yet: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first.": {
+        "fr": "HEAD porte des commits que le gel n'a pas, ou le dépôt n'a encore aucun gel : le gel passe sur HEAD dans le manifeste qui déclare le dépôt, manifest/ ou private/manifest/, pour chaque HEAD déjà poussé ; les autres sont nommés avec le push à faire d'abord.",
+        "en": "HEAD carries commits the freeze lacks, or the repository has no freeze yet: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first.",
     },
     "Skipped, modified files: commit or stash them, then run the check again.": {
         "fr": "Sautés, fichiers modifiés : commitez-les ou mettez-les de côté, puis relancez la vérification.",
@@ -3667,6 +3667,10 @@ TRANSLATIONS = {
     "off the freeze": {
         "fr": "hors du gel",
         "en": "off the freeze",
+    },
+    "no freeze yet": {
+        "fr": "sans gel",
+        "en": "no freeze yet",
     },
     "ahead of the freeze": {
         "fr": "en avance sur le gel",

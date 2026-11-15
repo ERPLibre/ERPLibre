@@ -379,6 +379,25 @@ class TestManifeste(unittest.TestCase):
         self.assertIn("git -C A/decale log --oneline --left-right", texte)
         self.assertNotIn("A/sale", "\n".join(remettre.lignes))
 
+    def test_a_repository_without_freeze_is_proposed_a_first_one(self):
+        """Parmi des dépôts gelés, un clone sans gel est proposé à « mettre
+        à jour le gel avec HEAD », sans changer le statut de la
+        vérification ; sans aucun gel dans le checkout, rien n'est proposé."""
+        gele = self.depot(
+            "A/gel",
+            "a" * 40,
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        sans = self.depot("A/sans_gel")
+        resultat = h.verifier_manifeste(self.ctx_snapshot([gele, sans]))
+        self.assertEqual(resultat.statut, h.OK)
+        (maj,) = resultat.resolutions
+        self.assertEqual(maj.cle, h.freeze_resolution.MAJ_GEL)
+        self.assertEqual([d["path"] for d in maj.depots], ["A/sans_gel"])
+        self.assertIn(f"   A/sans_gel — {t('no freeze yet')}", maj.lignes)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([sans]))
+        self.assertEqual(resultat.resolutions, [])
+
     def test_no_resolution_when_every_repository_is_on_its_freeze(self):
         resultat = h.verifier_manifeste(
             self.ctx_snapshot(
