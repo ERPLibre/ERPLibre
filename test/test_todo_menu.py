@@ -703,9 +703,18 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "🍴 Fork a repository for an organisation": "_git_fork_organisation",
         "➕ Add a repository to a manifest": "_git_ajouter_depot",
         "🌿 Create a branch in a repository": "_git_creer_branche",
+        "🌳 Create the same branch in several repositories": "_git_creer_branche_plusieurs",
         "🔭 Add the upstream remote of a repository": "_git_ajouter_amont",
+        "⏩ Update forks from their upstream on GitHub": "_git_mettre_forks_a_jour",
+        "🪦 List the orphan forks of an organisation": "_git_forks_orphelins",
+        "➖ Remove a repository from a manifest": "_git_retirer_depot",
+        "🔄 Synchronise one repository": "_git_synchroniser_depot",
+        "🧊 Freeze one repository on a commit": "_git_regeler_depot",
+        "🧹 Clean the merged branches of a repository": "_git_nettoyer_branches",
         "📋 List the pull requests of an organisation": "_git_lister_pull_requests",
         "📬 Open a pull request from the current branch": "_git_creer_pull_request",
+        "🚦 Status of my pull requests (review, CI, merged)": "_git_statut_mes_pull_requests",
+        "🔑 Check the GitHub token (scopes, organisation)": "_git_verifier_jeton",
         "Kill git daemon server process": "process_kill_git_daemon",
     }
 
@@ -792,23 +801,41 @@ class TestGitMenuSections(unittest.TestCase):
                 (t("Repositories"), t("🔃 Update git repo")),
                 (t("Repositories"), "Show code status"),
                 (t("Repositories"), "Stash all code"),
+                (t("Repositories"), t("🔄 Synchronise one repository")),
+                (t("Repositories"), t("🧊 Freeze one repository on a commit")),
+                (t("Manifest"), t("➕ Add a repository to a manifest")),
+                (t("Manifest"), t("➖ Remove a repository from a manifest")),
+                (t("Forks"), t("🍴 Fork a repository for an organisation")),
+                (t("Forks"), t("🔭 Add the upstream remote of a repository")),
                 (
-                    t("Repositories"),
-                    t("🍴 Fork a repository for an organisation"),
+                    t("Forks"),
+                    t("⏩ Update forks from their upstream on GitHub"),
                 ),
-                (t("Repositories"), t("➕ Add a repository to a manifest")),
-                (t("Repositories"), t("🌿 Create a branch in a repository")),
+                (t("Forks"), t("🪦 List the orphan forks of an organisation")),
                 (
-                    t("Repositories"),
-                    t("🔭 Add the upstream remote of a repository"),
+                    t("Forks"),
+                    t("🔑 Check the GitHub token (scopes, organisation)"),
+                ),
+                (t("Branches"), t("🌿 Create a branch in a repository")),
+                (
+                    t("Branches"),
+                    t("🌳 Create the same branch in several repositories"),
                 ),
                 (
-                    t("Repositories"),
+                    t("Branches"),
+                    t("🧹 Clean the merged branches of a repository"),
+                ),
+                (
+                    t("Pull requests"),
                     t("📋 List the pull requests of an organisation"),
                 ),
                 (
-                    t("Repositories"),
+                    t("Pull requests"),
                     t("📬 Open a pull request from the current branch"),
+                ),
+                (
+                    t("Pull requests"),
+                    t("🚦 Status of my pull requests (review, CI, merged)"),
                 ),
                 (
                     t("Settings"),
@@ -826,6 +853,18 @@ class TestGitMenuSections(unittest.TestCase):
             ],
         )
 
+    def test_no_section_holds_more_than_five_entries(self):
+        """Au-delà de cinq entrées, une section se lit mal : on la coupe."""
+        from collections import Counter
+
+        rangs = self.libelles(self.obj._git_menu_choices(self.config))
+        trop = {
+            section: nombre
+            for section, nombre in Counter(s for s, _l in rangs).items()
+            if nombre > 5
+        }
+        self.assertEqual(trop, {})
+
     def test_an_entry_without_group_lands_in_tools(self):
         """« Ajouter une automatisation » écrit une entrée sans groupe."""
         from script.todo.todo_i18n import t
@@ -837,7 +876,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[12] est l'éditeur vim, après onze entrées et deux sections."""
+        """[21] est l'éditeur vim, après vingt entrées et six sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -846,7 +885,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["12", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["21", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,

@@ -793,7 +793,7 @@ your own account, that receives the fork. Three questions follow, each with its 
 - Once forked, whether the manifest takes the fork, and in which versions: the active one by default, others by their
   number. `revision` and `freeze-revision` do not change, as the fork holds the same commits.
 
-The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO; `env_var.sh` is read as a fallback, but it is versioned and would carry the token into a commit. A repository of the same name already in
+The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO, or the one the token assistant stores in the ERPLibre KeePass vault; `env_var.sh` is read last, but it is versioned and would carry the token into a commit. A repository of the same name already in
 the organisation is reused when it belongs to the same fork network, and refused otherwise. Commit `manifest/`, then
 synchronise the repositories so the clone follows the fork.
 
@@ -814,7 +814,7 @@ ou votre propre compte, qui reçoit le fork. Trois questions suivent, chacune av
 - Une fois le fork fait, si le manifeste le prend, et dans quelles versions : l'active par défaut, les autres par leur
   numéro. `revision` et `freeze-revision` ne changent pas : le fork porte les mêmes commits.
 
-Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO ; `env_var.sh` est lu en repli, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
+Le jeton GitHub est `EL_GITHUB_TOKEN`, exporté dans le shell qui ouvre TODO, ou celui que l'assistant du jeton range dans le coffre KeePass d'ERPLibre ; `env_var.sh` est lu en dernier, mais il est versionné et emporterait le jeton dans un commit. Un dépôt du même nom déjà dans
 l'organisation est repris s'il appartient au même réseau de forks, et refusé sinon. Committez `manifest/`, puis
 synchronisez les dépôts pour que le clone suive le fork.
 

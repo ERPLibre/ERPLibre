@@ -410,7 +410,7 @@ your own account, that receives the fork. Three questions follow, each with its 
 - Once forked, whether the manifest takes the fork, and in which versions: the active one by default, others by their
   number. `revision` and `freeze-revision` do not change, as the fork holds the same commits.
 
-The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO; `env_var.sh` is read as a fallback, but it is versioned and would carry the token into a commit. A repository of the same name already in
+The GitHub token is `EL_GITHUB_TOKEN`, exported in the shell that opens TODO, or the one the token assistant stores in the ERPLibre KeePass vault; `env_var.sh` is read last, but it is versioned and would carry the token into a commit. A repository of the same name already in
 the organisation is reused when it belongs to the same fork network, and refused otherwise. Commit `manifest/`, then
 synchronise the repositories so the clone follows the fork.
 

@@ -36,7 +36,12 @@ _URL = re.compile(
 
 
 class ErreurGitHub(Exception):
-    """Un refus de l'API, avec son statut et le message de GitHub."""
+    """Un refus de l'API, avec son statut et le message de GitHub.
+    `statut` porte le code HTTP quand la réponse en avait un."""
+
+    def __init__(self, message, statut=None):
+        super().__init__(message)
+        self.statut = statut
 
 
 def depot_github(url):
@@ -45,11 +50,19 @@ def depot_github(url):
     return (trouve.group(1), trouve.group(2)) if trouve else None
 
 
-def jeton(racine=".", environ=None):
-    """EL_GITHUB_TOKEN de l'environnement, sinon d'env_var.sh, ou ""."""
+def jeton(racine=".", environ=None, coffre=None):
+    """Le jeton GitHub, ou "" : EL_GITHUB_TOKEN de l'environnement, sinon ce
+    que rend `coffre()` (le coffre KeePass d'ERPLibre, lu par le menu),
+    sinon EL_GITHUB_TOKEN d'env_var.sh. `coffre` n'est appelé que si
+    l'environnement n'a rien : l'ouvrir peut demander le mot de passe
+    maître."""
     environ = os.environ if environ is None else environ
     if environ.get("EL_GITHUB_TOKEN"):
         return environ["EL_GITHUB_TOKEN"]
+    if coffre is not None:
+        valeur = coffre()
+        if valeur:
+            return valeur
     chemin = os.path.join(racine, "env_var.sh")
     try:
         with open(chemin, encoding="utf-8") as fh:
@@ -60,6 +73,77 @@ def jeton(racine=".", environ=None):
     except OSError:
         pass
     return ""
+
+
+# Ce que verifier_jeton() peut signaler. Les PROBLÈMES font échouer
+# l'action à coup sûr ; les AVERTISSEMENTS la font échouer dans certains
+# cas seulement.
+TEXTES_JETON = {
+    "jeton_refuse": "GitHub refuses the token: expired, revoked or mistyped.",
+    "sans_repo": (
+        "The token has neither the repo nor the public_repo scope: forks,"
+        " pull requests and branch deletion will be refused."
+    ),
+    "pas_membre": (
+        "The account of the token is not a member of the organisation:"
+        " a fork into it will be refused."
+    ),
+    "invitation": (
+        "The invitation to the organisation is not accepted yet:"
+        " accept it on GitHub first."
+    ),
+    "public_seulement": (
+        "public_repo scope only: private repositories are out of reach."
+    ),
+    "sans_workflow": (
+        "No workflow scope: GitHub refuses to merge an upstream whose"
+        " commits change .github/workflows."
+    ),
+    "jeton_fin": (
+        "Fine-grained token: GitHub does not announce its rights, a missing"
+        " one shows only when the action is refused; the token assistant is"
+        " then offered."
+    ),
+    "adhesion_illisible": (
+        "Membership of the organisation unreadable: the token lacks the"
+        " read:org scope."
+    ),
+}
+PROBLEMES_JETON = {"jeton_refuse", "sans_repo", "pas_membre", "invitation"}
+
+
+def verifier_jeton(client, organisation=None):
+    """Ce que le jeton du `client` permet, avant d'agir : {login, portees,
+    role, codes}. `codes` liste des clés de TEXTES_JETON, problèmes et
+    avertissements mêlés (PROBLEMES_JETON les distingue). `organisation`,
+    si donnée et autre que le compte, fait vérifier l'adhésion."""
+    res = {"login": None, "portees": None, "role": None, "codes": []}
+    try:
+        res["login"], res["portees"] = client.identite()
+    except ErreurGitHub as exc:
+        if exc.statut == 401:
+            res["codes"].append("jeton_refuse")
+            return res
+        raise
+    portees = res["portees"]
+    if portees is None:
+        res["codes"].append("jeton_fin")
+    else:
+        if "repo" not in portees and "public_repo" not in portees:
+            res["codes"].append("sans_repo")
+        elif "repo" not in portees:
+            res["codes"].append("public_seulement")
+        if "workflow" not in portees:
+            res["codes"].append("sans_workflow")
+    if organisation and organisation.lower() != (res["login"] or "").lower():
+        etat, res["role"] = client.adhesion(organisation)
+        if etat == "absent":
+            res["codes"].append("pas_membre")
+        elif etat == "invitation":
+            res["codes"].append("invitation")
+        elif etat == "illisible":
+            res["codes"].append("adhesion_illisible")
+    return res
 
 
 class ClientGitHub:
@@ -101,7 +185,8 @@ class ClientGitHub:
             except (ValueError, AttributeError):
                 message = ""
             raise ErreurGitHub(
-                f"{methode} {chemin} : {rep.status_code} {message}"
+                f"{methode} {chemin} : {rep.status_code} {message}",
+                rep.status_code,
             )
         return rep
 
@@ -109,6 +194,38 @@ class ClientGitHub:
         """Le dépôt, ou None s'il n'existe pas (ou n'est pas visible)."""
         rep = self._appel("GET", f"/repos/{proprietaire}/{nom}", ok=(200, 404))
         return rep.json() if rep.status_code == 200 else None
+
+    def identite(self):
+        """(compte du jeton, portées) ; portées vaut None quand GitHub
+        n'en annonce pas (jeton à granularité fine ou d'application), une
+        liste sinon (jeton classique, en-tête X-OAuth-Scopes)."""
+        rep = self._appel("GET", "/user")
+        entete = (getattr(rep, "headers", None) or {}).get("X-OAuth-Scopes")
+        portees = (
+            None
+            if entete is None
+            else [p.strip() for p in entete.split(",") if p.strip()]
+        )
+        return rep.json().get("login", ""), portees
+
+    def adhesion(self, organisation):
+        """L'adhésion du compte du jeton à `organisation` : (« membre »,
+        rôle), (« invitation », None) tant qu'elle n'est pas acceptée,
+        (« absent », None), ou (« illisible », None) quand le jeton n'a pas
+        le droit de la lire (portée read:org)."""
+        rep = self._appel(
+            "GET",
+            f"/user/memberships/orgs/{organisation}",
+            ok=(200, 403, 404),
+        )
+        if rep.status_code == 404:
+            return "absent", None
+        if rep.status_code == 403:
+            return "illisible", None
+        corps = rep.json()
+        if corps.get("state") != "active":
+            return "invitation", None
+        return "membre", corps.get("role")
 
     def utilisateur(self):
         """Le compte du jeton."""
@@ -179,6 +296,120 @@ class ClientGitHub:
             if len(lot) < 100:
                 break
         return res
+
+    def mes_pull_requests(self, auteur, pages=3):
+        """Les pull requests de `auteur`, tous dépôts et tous états, les
+        plus récemment mises à jour d'abord, jusqu'à `pages` pages de 100.
+        Ce sont des résultats de recherche : `repository_url` nomme le
+        dépôt, `pull_request.merged_at` dit si elle est fusionnée."""
+        res = []
+        for page in range(1, pages + 1):
+            lot = (
+                self._appel(
+                    "GET",
+                    "/search/issues",
+                    params={
+                        "q": f"is:pr author:{auteur}",
+                        "sort": "updated",
+                        "order": "desc",
+                        "per_page": 100,
+                        "page": page,
+                    },
+                )
+                .json()
+                .get("items", [])
+            )
+            res.extend(lot)
+            if len(lot) < 100:
+                break
+        return res
+
+    def pull_request(self, nom_complet, numero):
+        """Le détail d'une pull request : sa tête (`head.sha`), `draft`."""
+        return self._appel(
+            "GET", f"/repos/{nom_complet}/pulls/{numero}"
+        ).json()
+
+    def avis(self, nom_complet, numero):
+        """Les revues d'une pull request, dans l'ordre où elles ont été
+        données."""
+        return self._appel(
+            "GET",
+            f"/repos/{nom_complet}/pulls/{numero}/reviews",
+            params={"per_page": 100},
+        ).json()
+
+    def verifications(self, nom_complet, sha):
+        """(statut combiné, check-runs) du commit `sha` : les deux systèmes
+        de CI de GitHub, que les dépôts emploient l'un ou l'autre."""
+        statut = self._appel(
+            "GET", f"/repos/{nom_complet}/commits/{sha}/status"
+        ).json()
+        checks = self._appel(
+            "GET",
+            f"/repos/{nom_complet}/commits/{sha}/check-runs",
+            params={"per_page": 100},
+        ).json()
+        return statut, checks.get("check_runs", [])
+
+    def pull_requests_de(self, nom_complet, tete):
+        """Les pull requests fermées de `nom_complet` dont la tête est
+        `tete` (« propriétaire:branche ») ; [] si le dépôt n'est pas
+        visible. `merged_at` y dit si elle a été fusionnée."""
+        rep = self._appel(
+            "GET",
+            f"/repos/{nom_complet}/pulls",
+            ok=(200, 404),
+            params={"state": "closed", "head": tete, "per_page": 100},
+        )
+        return [] if rep.status_code == 404 else rep.json()
+
+    def synchroniser_fork(self, nom_complet, branche):
+        """POST merge-upstream : avance `branche` du fork `nom_complet` sur
+        la branche du même nom de son parent GitHub. Rend (code HTTP,
+        corps) : 200 porte `merge_type` (« fast-forward », « merge » ou
+        « none »), 409 un conflit, 422 une branche que GitHub refuse."""
+        rep = self._appel(
+            "POST",
+            f"/repos/{nom_complet}/merge-upstream",
+            ok=(200, 409, 422),
+            json={"branch": branche},
+        )
+        try:
+            corps = rep.json()
+        except ValueError:
+            corps = {}
+        return rep.status_code, corps
+
+    def depots_du_compte(self, compte, pages=20):
+        """Les dépôts de l'organisation ou du compte `compte`, toutes pages
+        lues jusqu'à `pages` (100 par page). Un compte qui n'est pas une
+        organisation se lit par /users ; None s'il n'existe pas."""
+        for racine in (f"/orgs/{compte}/repos", f"/users/{compte}/repos"):
+            res = []
+            for page in range(1, pages + 1):
+                rep = self._appel(
+                    "GET",
+                    racine,
+                    ok=(200, 404),
+                    params={"per_page": 100, "page": page},
+                )
+                if rep.status_code == 404:
+                    break
+                lot = rep.json()
+                res.extend(lot)
+                if len(lot) < 100:
+                    return res
+            else:
+                return res
+        return None
+
+    def archiver(self, nom_complet):
+        """Archive le dépôt : il passe en lecture seule, et se désarchive
+        depuis ses réglages sur GitHub. Demande le rôle admin du dépôt."""
+        return self._appel(
+            "PATCH", f"/repos/{nom_complet}", json={"archived": True}
+        ).json()
 
     def creer_pull_request(
         self, nom_complet, tete, base, titre, corps="", brouillon=False
