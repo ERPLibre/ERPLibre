@@ -7,7 +7,8 @@
 Un CÔTÉ de la comparaison est l'un de trois états :
 
 - une révision git d'ERPLibre (HEAD, un tag, un commit) : les
-  « freeze-revision » des fichiers de `manifest/` qu'elle a committés ;
+  « freeze-revision » des fichiers de `manifest/`, et du manifeste privé de
+  la version active, qu'elle a committés ;
 - « worktree » : les mêmes fichiers sur le disque, gel écrit et peut-être
   pas encore committé ;
 - « clones » : le commit HEAD de chaque clone, l'état réel du checkout.
@@ -164,13 +165,24 @@ def merge_order(racine, fichiers):
     return sorted(presents - set(actifs)) + actifs
 
 
+def _hors_manifest_dir(racine):
+    """Les fichiers que le gel écrit hors de `manifest/` : le manifeste
+    privé de la version d'Odoo active, quand il existe."""
+    return [
+        f
+        for f in freeze_sources(racine)
+        if not f.startswith(MANIFEST_DIR + os.sep)
+    ]
+
+
 def read_worktree(racine):
-    """Le gel des fichiers de `manifest/` tels qu'ils sont sur le disque,
-    réduit aux fichiers de la version d'Odoo active (`freeze_sources`)."""
+    """Le gel des fichiers de `manifest/` et du manifeste privé de la
+    version active tels qu'ils sont sur le disque, réduit aux fichiers de la
+    version d'Odoo active (`freeze_sources`)."""
     fichiers = [
         os.path.relpath(chemin, racine)
         for chemin in glob.glob(os.path.join(racine, MANIFEST_DIR, "*.xml"))
-    ]
+    ] + _hors_manifest_dir(racine)
     textes = []
     for fichier in merge_order(racine, fichiers):
         with open(os.path.join(racine, fichier)) as fh:
@@ -187,11 +199,18 @@ def resolve_ref(racine, ref):
 
 
 def read_ref(racine, ref):
-    """Le gel des fichiers de `manifest/` tels que `ref` les a committés,
-    réduit aux fichiers de la version d'Odoo active (`freeze_sources`) : la
-    version active est celle du checkout, pas celle de `ref`."""
+    """Le gel des fichiers de `manifest/` et du manifeste privé de la
+    version active tels que `ref` les a committés, réduit aux fichiers de la
+    version d'Odoo active (`freeze_sources`) : la version active est celle
+    du checkout, pas celle de `ref`."""
     code, liste = _git(
-        racine, "ls-tree", "--name-only", ref, "--", f"{MANIFEST_DIR}/"
+        racine,
+        "ls-tree",
+        "--name-only",
+        ref,
+        "--",
+        f"{MANIFEST_DIR}/",
+        *_hors_manifest_dir(racine),
     )
     if code:
         raise ValueError(f"unknown revision: {ref}")

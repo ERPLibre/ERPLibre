@@ -982,6 +982,7 @@ def verifier_docs(ctx):
 # `repo_state` qui n'est pas « conforme ».
 ECARTS_GEL = {
     "en_avance": "ahead of the freeze",
+    freeze_resolution.SANS_GEL: "no freeze yet",
     "en_retard": "behind the freeze",
     "decale": "diverged from the freeze",
     "introuvable": "frozen commit missing from the clone",
@@ -992,6 +993,33 @@ ECARTS_GEL = {
 # écart à la cible du manifeste local, en avance compris — des commits que la
 # branche du manifeste n'a pas encore.
 ETATS_SIGNALES = ("decale", "en_avance", "absent", "erreur")
+# Les états signalés qui mesurent HEAD contre la cible. Quand la cible est
+# le commit gelé, l'écart est un écart au gel : l'état prend le suffixe
+# SUFFIXE_GEL et sa ligne nomme le commit gelé.
+ETATS_MESURES = ("decale", "en_avance")
+SUFFIXE_GEL = "_du_gel"
+
+
+def _cible_est_le_gel(depot):
+    """Vrai quand la cible du manifeste local est le « freeze-revision » de
+    `manifest/` : en checkout gelé, l'écart de HEAD à sa cible est alors
+    son écart au gel."""
+    cible = (depot.get("target") or "").lower()
+    return (
+        bool(cible) and cible == (depot.get("freeze_revision") or "").lower()
+    )
+
+
+def _etat_affiche(depot):
+    """L'état du dépôt tel que la vérification le compte et l'affiche :
+    celui de `repo_state`, suffixé de SUFFIXE_GEL pour un état de
+    ETATS_MESURES dont la cible est le commit gelé — « en_avance_du_gel »
+    dit que le gel est à refaire, là où « en_avance » laisserait croire à
+    une avance sur la branche."""
+    etat = depot.get("state")
+    if etat in ETATS_MESURES and _cible_est_le_gel(depot):
+        return etat + SUFFIXE_GEL
+    return etat
 
 
 def _ecart_gel(depot):
@@ -1003,11 +1031,7 @@ def _ecart_gel(depot):
     alignement = gel.get("alignment")
     if alignement in (None, "conforme"):
         return None
-    if (
-        depot.get("state") in ETATS_SIGNALES
-        and depot.get("target")
-        and depot.get("target") == depot.get("freeze_revision")
-    ):
+    if depot.get("state") in ETATS_SIGNALES and _cible_est_le_gel(depot):
         return None
     head = (depot.get("head") or "")[:10]
     commit = (depot.get("freeze_revision") or "")[:10]
@@ -1029,6 +1053,40 @@ def _branche_extraite(depot):
     if not branche:
         return ""
     return f" · {todo_couleur.bleu_poudre(f'HEAD {branche}')}"
+
+
+def _compter_non_pousses(ctx, depot, sha):
+    """Les commits de `sha` qu'aucune ref distante connue de `depot` n'a,
+    sans « git fetch » — la mesure de « Commits non poussés » ; 0 quand git
+    ne répond pas."""
+    sortie = ctx.lancer(
+        [
+            "git",
+            "-C",
+            depot["path"],
+            "rev-list",
+            "--count",
+            sha,
+            "--not",
+            "--remotes",
+        ],
+        forme="git -C <dépôt> rev-list --count <branche> --not --remotes",
+    )
+    try:
+        return int(sortie.stdout.strip() or 0)
+    except ValueError:
+        return 0
+
+
+def _marque_non_pousses(nombre):
+    """« · <n> commits non poussés » en orange, qui ferme la ligne d'une
+    branche dont `nombre` commits n'ont aucune ref distante connue ; "" à 0.
+    Placée en dernier, après « · HEAD <branche> », elle se repère au bout
+    de la ligne sans déplacer ce qui la précède."""
+    if not nombre:
+        return ""
+    texte = f"{nombre} {t('unpushed commits')}"
+    return f" · {todo_couleur.orange(texte)}"
 
 
 def verifier_manifeste(ctx):
@@ -1059,12 +1117,22 @@ def verifier_manifeste(ctx):
         if depot in perimes:
             continue
         etat = depot.get("state")
-        comptes[etat] = comptes.get(etat, 0) + 1
+        affiche = _etat_affiche(depot)
+        comptes[affiche] = comptes.get(affiche, 0) + 1
         if etat in ETATS_SIGNALES:
-            ligne = f"{etat} : {depot.get('path')}"
+            ligne = f"{affiche} : {depot.get('path')}"
             if depot.get("ahead") is not None:
                 ligne += f" (+{depot['ahead']} −{depot['behind']})"
+            if affiche != etat:
+                ligne += f" · {t('freeze')} {depot['freeze_revision'][:10]}"
             ligne += _branche_extraite(depot)
+            if (
+                etat in ETATS_MESURES
+                and depot.get("ahead")
+                and depot.get("head")
+            ):
+                n = _compter_non_pousses(ctx, depot, depot["head"])
+                ligne += _marque_non_pousses(n)
             if depot.get("error"):
                 ligne += f" — {depot['error']}"
             details.append(ligne)
@@ -1136,11 +1204,28 @@ def _ligne_gel(depot):
     return f"   {depot['path']} — {t(ECARTS_GEL.get(alignement, alignement))}"
 
 
+def _gel_en_usage(depots):
+    """Vrai quand au moins un dépôt porte un « freeze-revision » : le
+    checkout se fige, et un dépôt sans gel y fait exception. Sans aucun
+    gel, chaque dépôt suit sa branche et aucun n'est signalé."""
+    return any(d.get("freeze_revision") for d in depots)
+
+
+def _a_resoudre(depot, depots):
+    """L'écart de `depot` à son gel quand une résolution s'y applique,
+    sinon None : SANS_GEL ne compte que si le gel est en usage parmi
+    `depots`."""
+    alignement = freeze_resolution.hors_gel(depot)
+    if alignement == freeze_resolution.SANS_GEL and not _gel_en_usage(depots):
+        return None
+    return alignement
+
+
 def resolutions_gel(ctx, depots):
     """Les résolutions des dépôts hors de leur gel, classés par
     `freeze_resolution.classer`. Un `git status` par dépôt hors du gel, et
     pour eux seuls, dit lesquels ont des fichiers modifiés."""
-    candidats = [d for d in depots if freeze_resolution.hors_gel(d)]
+    candidats = [d for d in depots if _a_resoudre(d, depots)]
     if not candidats:
         return []
 
@@ -1178,7 +1263,7 @@ def resolutions_gel(ctx, depots):
                 f" {t('repositories')}",
                 [
                     t(
-                        "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first."
+                        "HEAD carries commits the freeze lacks, or the repository has no freeze yet: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first."
                     )
                 ]
                 + [_ligne_gel(d) for d in maj],
@@ -1225,7 +1310,9 @@ def verifier_branches(ctx):
     une synchronisation, reste en dehors de ce que le checkout exécute.
     Une branche qui porte des commits absents de HEAD est signalée ; une
     branche seulement en retard sur HEAD est une information. Chaque ligne
-    nomme la branche extraite, celle à qui l'écart se mesure."""
+    nomme la branche extraite, celle à qui l'écart se mesure, et se termine
+    en orange sur le nombre de commits de la branche qu'aucune ref distante
+    connue n'a, quand il y en a."""
     nom = titre(verifier_branches)
     donnees, erreur = ctx.snapshot()
     if donnees is None:
@@ -1275,24 +1362,25 @@ def verifier_branches(ctx):
                 seul_head, seul_branche = map(int, compte.stdout.split())
             except ValueError:
                 seul_head = seul_branche = None
-            ecarts.append((branche, seul_branche, seul_head))
+            non_pousses = _compter_non_pousses(ctx, depot, sha)
+            ecarts.append((branche, seul_branche, seul_head, non_pousses))
         return ecarts
 
     rendus = ctx.en_parallele(examiner, depots)
     avec_travail, en_retard = [], []
     for depot, ecarts in zip(depots, rendus):
         extraite = _branche_extraite(depot)
-        for branche, plus, moins in ecarts:
+        for branche, plus, moins, non_pousses in ecarts:
+            fin = extraite + _marque_non_pousses(non_pousses)
             if plus is None:
-                avec_travail.append(f"{depot['path']} : {branche}{extraite}")
+                avec_travail.append(f"{depot['path']} : {branche}{fin}")
             elif plus:
                 avec_travail.append(
-                    f"{depot['path']} : {branche} (+{plus} −{moins})"
-                    f"{extraite}"
+                    f"{depot['path']} : {branche} (+{plus} −{moins}){fin}"
                 )
             else:
                 en_retard.append(
-                    f"{depot['path']} : {branche} (+0 −{moins}){extraite}"
+                    f"{depot['path']} : {branche} (+0 −{moins}){fin}"
                 )
     if not avec_travail and not en_retard:
         return Resultat(
@@ -2383,7 +2471,7 @@ def _mettre_a_jour_gel(ctx, depots, demander, sortie):
                 "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again."
             )
         )
-    sortie(t("Commit manifest/ to share the new freeze."))
+    sortie(t("Commit these manifests to share the new freeze."))
     return True
 
 

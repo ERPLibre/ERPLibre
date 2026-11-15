@@ -433,10 +433,13 @@ reconfigured.
 
 The freeze writes into the three files of the active Odoo version (`.odoo-version`), for 18.0
 `manifest/git_manifest_odoo18.0.xml`, `manifest/git_manifest_odoo18.0_dev.xml` and
-`manifest/git_manifest_extra_odoo18.0.xml`, and touches no clone. The other merged files, the common
-`git_manifest_erplibre*.xml` fragments, the other installed versions and the private manifests, are read but never
-written: their projects follow their branch. `--dry-run` shows what would change, `--source` writes only some of the
-three files and may be repeated; a file outside them is refused, since the reconfiguration would ignore its freeze:
+`manifest/git_manifest_extra_odoo18.0.xml`, then into the private manifest of that version,
+`private/manifest/git_manifest_private_odoo18.0.xml`, when it exists, and touches no clone. Each project is frozen in
+the file that declares it: a repository of the private manifest never reaches `manifest/`, and the reverse. The other
+merged files, the common `git_manifest_erplibre*.xml` fragments, the other installed versions and their private
+manifests, are read but never written: their projects follow their branch. `--dry-run` shows what would change,
+`--source` writes only some of these files and may be repeated; a file outside them is refused, since the
+reconfiguration would ignore its freeze:
 
 ```bash
 .venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
@@ -453,7 +456,8 @@ Not frozen, and listed:
 - a clone whose commit no remote branch contains, since a new installation could not fetch it: push it first.
 
 A clone with uncommitted changes is frozen on its commit, with a warning: its changes are not part of the freeze. The
-command exits with 1 when nothing was frozen.
+command exits with 1 when nothing was frozen. A freeze written into the private manifest is committed with `private/`,
+which only a private repository carries.
 
 #### Freeze the upstream base
 
@@ -525,7 +529,8 @@ projects are frozen, and falls back to development, saying so, when no manifest 
 #### Follow the branches again
 
 A reconfiguration without the argument follows the branches, whether the files carry a freeze or not: the freeze
-stays written, ready for the next `FREEZE=1`. `make repo_unfreeze` removes it from every source file:
+stays written, ready for the next `FREEZE=1`. `make repo_unfreeze` removes it from every source file, the private
+manifest of every Odoo version included:
 
 ```bash
 # follow the branches, the freeze stays written

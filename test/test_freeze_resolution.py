@@ -17,6 +17,7 @@ from pathlib import Path
 from script.git import freeze_resolution as fr
 
 CHEMIN = "odoo18.0/addons/R_test"
+CHEMIN_PRIVE = "odoo18.0/addons/R_prive"
 ENV_GIT = {
     **os.environ,
     "GIT_AUTHOR_NAME": "Test",
@@ -96,11 +97,17 @@ class TestClasser(unittest.TestCase):
             d("e", "conforme"),
             d("f", "en_retard"),
             {"path": "g", "freeze": None},
+            # Cloné, HEAD lu, aucun gel : son premier gel est à poser.
+            {"path": "h", "freeze": None, "head": "e" * 40},
+            # Pas un clone du manifeste à geler.
+            {"path": "i", "freeze": None, "head": "e" * 40, "state": "absent"},
         ]
         classes = fr.classer(depots, lambda depot: depot["path"] == "f")
         chemins = {k: [x["path"] for x in v] for k, v in classes.items()}
         self.assertEqual(chemins[fr.REMETTRE], ["a", "b"])
-        self.assertEqual(chemins[fr.MAJ_GEL], ["c"])
+        self.assertEqual(chemins[fr.MAJ_GEL], ["c", "h"])
+        self.assertEqual(fr.hors_gel(depots[7]), fr.SANS_GEL)
+        self.assertIsNone(fr.hors_gel(depots[8]))
         self.assertEqual(chemins[fr.MANUELS], ["d"])
         self.assertEqual(chemins[fr.SALES], ["f"])
 
@@ -246,6 +253,88 @@ class TestMettreAJourGel(unittest.TestCase):
         self.depot["freeze_revision"] = "d" * 40
         changes, _ = fr.mettre_a_jour_gel(self.racine, [self.depot])
         self.assertEqual(changes, {})
+
+    def test_le_manifeste_prive_de_la_version_active_est_mis_a_jour(self):
+        """Un dépôt déclaré dans le seul manifeste privé de la version
+        active y reçoit son nouveau gel ; celui d'une autre version, qui
+        porte le même ancien gel, n'est pas touché."""
+        (self.racine / ".odoo-version").write_text("18.0\n")
+        dossier = self.racine / "private" / "manifest"
+        dossier.mkdir(parents=True)
+        projet = (
+            f'<manifest>\n  <project name="R/prive" path="{CHEMIN_PRIVE}"'
+            f' revision="18.0" freeze-revision="{self.ancien}"/>\n'
+            "</manifest>\n"
+        )
+        prive = dossier / "git_manifest_private_odoo18.0.xml"
+        autre = dossier / "git_manifest_private_odoo17.0.xml"
+        prive.write_text(projet)
+        autre.write_text(projet)
+        depot = {
+            "path": CHEMIN_PRIVE,
+            "name": "R/prive",
+            "head": self.neuf,
+            "freeze_revision": self.ancien,
+        }
+        changes, _ = fr.mettre_a_jour_gel(self.racine, [depot])
+        self.assertEqual(
+            changes,
+            {
+                "private/manifest/git_manifest_private_odoo18.0.xml": [
+                    f"R/prive+{CHEMIN_PRIVE}"
+                ]
+            },
+        )
+        self.assertIn(f'freeze-revision="{self.neuf}"', prive.read_text())
+        self.assertEqual(autre.read_text(), projet)
+        self.assertEqual(
+            self.fichier.read_text().count(f'freeze-revision="{self.ancien}"'),
+            2,
+        )
+
+    def test_un_premier_gel_s_ecrit_dans_le_fichier_de_la_version(self):
+        """Un dépôt sans gel reçoit le sien dans le fichier de la version
+        active qui le déclare, privé compris ; le même projet sans gel dans
+        le manifeste d'une autre version n'est pas touché."""
+        (self.racine / ".odoo-version").write_text("18.0\n")
+        dossier = self.racine / "private" / "manifest"
+        dossier.mkdir(parents=True)
+        projet = (
+            f'<manifest>\n  <project name="R/prive" path="{CHEMIN_PRIVE}"'
+            ' revision="18.0"/>\n</manifest>\n'
+        )
+        prive = dossier / "git_manifest_private_odoo18.0.xml"
+        prive.write_text(projet)
+        autre = self.racine / "manifest" / "git_manifest_odoo17.0.xml"
+        autre.write_text(projet)
+        depot = {
+            "path": CHEMIN_PRIVE,
+            "name": "R/prive",
+            "head": self.neuf,
+            "freeze_revision": None,
+        }
+        changes, sans_base = fr.mettre_a_jour_gel(self.racine, [depot])
+        self.assertEqual(
+            changes,
+            {
+                "private/manifest/git_manifest_private_odoo18.0.xml": [
+                    f"R/prive+{CHEMIN_PRIVE}"
+                ]
+            },
+        )
+        self.assertIn(f'freeze-revision="{self.neuf}"', prive.read_text())
+        self.assertEqual(autre.read_text(), projet)
+        self.assertEqual(sans_base, [])
+
+    def test_sans_version_active_le_prive_est_ignore(self):
+        dossier = self.racine / "private" / "manifest"
+        dossier.mkdir(parents=True)
+        (dossier / "git_manifest_private_odoo18.0.xml").write_text(
+            "<manifest/>\n"
+        )
+        self.assertEqual(
+            fr.fichiers_manifeste(self.racine), [str(self.fichier)]
+        )
 
 
 if __name__ == "__main__":

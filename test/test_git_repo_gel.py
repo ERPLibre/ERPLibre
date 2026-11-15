@@ -722,6 +722,22 @@ class TestDefaultInputPaths(unittest.TestCase):
         os.remove(".odoo-version")
         self.assertEqual(gel.freeze_sources(), [])
 
+    def test_freeze_sources_ajoute_le_manifeste_prive_de_la_version(self):
+        """Le manifeste privé de la version active vient en dernier, comme
+        dans la fusion ; absent, ou d'une autre version, il n'y est pas."""
+        publics = [
+            "manifest/git_manifest_odooX.0.xml",
+            "manifest/git_manifest_odooX.0_dev.xml",
+        ]
+        self.assertEqual(gel.freeze_sources(), publics)
+        self.ecrire_prive("Y.0", ("ailleurs", None))
+        self.assertEqual(gel.freeze_sources(), publics)
+        prive = self.ecrire_prive("X.0", ("cache", None))
+        self.assertEqual(prive, gel.private_source())
+        self.assertEqual(gel.freeze_sources(), publics + [prive])
+        self.assertIn(prive, gel.honored_sources())
+        self.assertNotIn(self.chemin_prive("Y.0"), gel.honored_sources())
+
     PROJET = (
         '  <project name="{n}.git" path="odooX.0/addons/{n}"'
         ' revision="X.0"{gel}/>\n'
@@ -737,6 +753,20 @@ class TestDefaultInputPaths(unittest.TestCase):
         )
         with open(os.path.join("manifest", fichier), "w") as fh:
             fh.write(f"<manifest>\n{lignes}</manifest>\n")
+
+    def chemin_prive(self, version):
+        return os.path.join(
+            gel.PRIVATE_MANIFEST_DIR,
+            gel.PRIVATE_MANIFEST.format(version=version),
+        )
+
+    def ecrire_prive(self, version, *projets):
+        """Écrit le manifeste privé de `version` comme `ecrire` ; rend son
+        chemin relatif à la racine."""
+        chemin = self.chemin_prive(version)
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        self.ecrire(os.path.relpath(chemin, "manifest"), *projets)
+        return chemin
 
     def lire(self, fichier):
         with open(os.path.join("manifest", fichier)) as fh:
@@ -773,6 +803,106 @@ class TestDefaultInputPaths(unittest.TestCase):
             self.lire("git_manifest_odooX.0.xml"),
         )
         self.assertNotIn(mf.FREEZE_ATTR, self.lire("commun.xml"))
+
+    def test_le_gel_d_un_projet_prive_va_au_manifeste_prive_seul(self):
+        """Chaque projet est gelé dans le fichier qui le déclare : le privé
+        dans le manifeste privé, le public dans manifest/, et rien dans le
+        manifeste privé d'une autre version."""
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        prive = self.ecrire_prive("X.0", ("cache", None))
+        autre = self.ecrire_prive("Y.0", ("ailleurs", None))
+        code, sortie = self.geler()
+        self.assertEqual(code, 0)
+        self.assertIn(prive, sortie)
+        public = self.lire("git_manifest_odooX.0.xml")
+        texte_prive = self.lire(os.path.relpath(prive, "manifest"))
+        self.assertEqual(public.count(mf.FREEZE_ATTR), 1)
+        self.assertIn('name="un.git"', public)
+        self.assertEqual(texte_prive.count(mf.FREEZE_ATTR), 1)
+        self.assertIn(f'{mf.FREEZE_ATTR}="{SHA_A}"', texte_prive)
+        self.assertNotIn(
+            mf.FREEZE_ATTR, self.lire(os.path.relpath(autre, "manifest"))
+        )
+
+    def test_un_csv_en_point_slash_ne_double_pas_le_manifeste_prive(self):
+        """Le CSV privé qui cite « ./private/… » nomme le même fichier que
+        la portée du gel : son projet n'est pas défini deux fois."""
+        prive = self.ecrire_prive("X.0", ("cache", None))
+        self.csv(fusion.DEFAULT_PATH_MANIFEST_PRIVATE_CONF, [f"./{prive}"])
+        self.assertIn(prive, gel.default_sources())
+        code, sortie = self.geler()
+        self.assertEqual(code, 0, sortie)
+        self.assertNotIn("defined in several sources", sortie)
+        self.assertIn(
+            mf.FREEZE_ATTR, self.lire(os.path.relpath(prive, "manifest"))
+        )
+
+    def test_source_manifeste_prive_acceptee_seul(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        prive = self.ecrire_prive("X.0", ("cache", None))
+        code, _ = self.geler("--source", prive)
+        self.assertEqual(code, 0)
+        self.assertNotIn(mf.FREEZE_ATTR, self.lire("git_manifest_odooX.0.xml"))
+        self.assertIn(
+            mf.FREEZE_ATTR, self.lire(os.path.relpath(prive, "manifest"))
+        )
+
+    def test_un_projet_prive_aussi_public_est_refuse(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        prive = self.ecrire_prive("X.0", ("un", None))
+        code, sortie = self.geler()
+        self.assertEqual(code, 1)
+        self.assertIn("defined in several sources", sortie)
+        self.assertNotIn(
+            mf.FREEZE_ATTR, self.lire(os.path.relpath(prive, "manifest"))
+        )
+
+    def test_le_degel_vide_les_manifestes_prives(self):
+        """Le dégel couvre le manifeste privé de chaque version : un gel
+        écrit avant un changement de version se retire après."""
+        self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+        prives = [
+            self.ecrire_prive("X.0", ("cache", SHA_B)),
+            self.ecrire_prive("Y.0", ("ailleurs", SHA_C)),
+        ]
+        self.assertEqual(
+            [f for f in gel.unfreeze_sources() if f.startswith("private")],
+            sorted(prives),
+        )
+        code, _ = self.geler("--unfreeze")
+        self.assertEqual(code, 0)
+        self.assertNotIn(mf.FREEZE_ATTR, self.lire("git_manifest_odooX.0.xml"))
+        for prive in prives:
+            self.assertNotIn(
+                mf.FREEZE_ATTR, self.lire(os.path.relpath(prive, "manifest"))
+            )
+
+    def test_la_fusion_applique_le_gel_du_manifeste_prive(self):
+        """Le gel du manifeste privé de la version active s'installe ;
+        celui d'une autre version est retiré, son projet suit sa branche."""
+        self.ecrire("git_manifest_odooX.0.xml", ("un", SHA_A))
+        prive = self.ecrire_prive("X.0", ("cache", SHA_B))
+        autre = self.ecrire_prive("Y.0", ("ailleurs", SHA_C))
+        sortie = os.path.join(self.dossier, "local.xml")
+        argv = [
+            "git_merge_repo_manifest.py",
+            "--input",
+            f"manifest/git_manifest_odooX.0.xml;./{prive};{autre}",
+            "--output",
+            sortie,
+            "--freeze",
+        ]
+        with patch("sys.argv", argv), patch("builtins.print") as imprime:
+            fusion.main()
+        texte = " ".join(
+            " ".join(map(str, a.args)) for a in imprime.mock_calls
+        )
+        with open(sortie) as fh:
+            local = fh.read()
+        self.assertIn(f'revision="{SHA_A}"', local)
+        self.assertIn(f'revision="{SHA_B}"', local)
+        self.assertNotIn(SHA_C, local)
+        self.assertIn("1 freeze-revision outside", texte)
 
     def test_un_doublon_dans_un_autre_fichier_fusionne_est_refuse(self):
         self.ecrire("git_manifest_odooX.0.xml", ("un", None))
@@ -820,8 +950,9 @@ class TestDefaultInputPaths(unittest.TestCase):
         self.assertIn(f'revision="{SHA_B}"', local)
 
     def test_la_fusion_ignore_un_gel_hors_de_la_version_active(self):
-        """Le gel d'une autre version installée et celui d'un manifeste
-        privé ne s'appliquent pas : leurs projets suivent leur branche."""
+        """Le gel d'une autre version installée et celui d'un fichier privé
+        autre que le manifeste privé de la version active ne s'appliquent
+        pas : leurs projets suivent leur branche."""
         for nom, projet, sha in (
             ("git_manifest_odooY.0.xml", "deux", SHA_B),
             ("prive.xml", "trois", SHA_C),

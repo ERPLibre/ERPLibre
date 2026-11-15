@@ -101,8 +101,9 @@ To test it, you need to clean caches and install it:
 ## Generate new prod and release
 
 Freeze the repos versions of the active Odoo version: every project of `manifest/git_manifest_odoo<V>.xml`,
-`git_manifest_odoo<V>_dev.xml` and `git_manifest_extra_odoo<V>.xml` receives the commit of its clone, next to its
-branch. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
+`git_manifest_odoo<V>_dev.xml`, `git_manifest_extra_odoo<V>.xml` and, when it exists,
+`private/manifest/git_manifest_private_odoo<V>.xml` receives the commit of its clone, next to its branch, in the file
+that declares it. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
 remote branch is skipped: push it first. [GIT_REPO.md](./GIT_REPO.md#freeze-the-versions) details what is skipped.
 
 To carry the upstream changes into the release, first upgrade the forks on their upstream and publish them

@@ -7,7 +7,7 @@ Les dépôts viennent de `repo_state.py snapshot` : chaque entrée porte
 « path », « url » (celle du manifeste), « head », « branch »,
 « manifest_branch », « freeze_revision » et « freeze », l'écart de HEAD au
 commit gelé (« alignment »). Ce module ÉCRIT : il déplace des HEAD et
-réécrit `manifest/`, et chaque appelant demande d'abord.
+réécrit les fichiers du gel, et chaque appelant demande d'abord.
 
 Deux résolutions, selon le sens de l'écart :
 
@@ -18,8 +18,10 @@ Deux résolutions, selon le sens de l'écart :
   n'y est pas. Un clone tronqué le reçoit en profondeur 1. HEAD est ensuite
   détaché sur lui, comme git-repo le laisse ; une branche locale reste où
   elle était.
-- mettre à jour le gel — HEAD porte des commits que le gel n'a pas. HEAD
-  devient le gel, dans les fichiers de `manifest/` qui portaient l'ancien,
+- mettre à jour le gel — HEAD porte des commits que le gel n'a pas, ou le
+  dépôt n'a encore aucun gel (« sans_gel »). HEAD devient le gel, dans les
+  fichiers sources qui portaient l'ancien (`fichiers_manifeste`), ou, sans
+  ancien gel, dans le fichier de la version active qui déclare le dépôt ;
   mais seulement s'il est publié : un gel que personne d'autre ne peut
   rapatrier casse l'installation suivante.
 
@@ -33,10 +35,16 @@ import os
 import shlex
 import subprocess
 
-from script.git import manifest_freeze
+from script.git import git_freeze_manifest, manifest_freeze
 
 DELAI_GIT = 60
 DELAI_RESEAU = 300
+
+# L'écart d'un dépôt cloné qu'aucun « freeze-revision » ne fige encore.
+SANS_GEL = "sans_gel"
+# Les états de `repo_state` d'une entrée qui n'est pas un clone du
+# manifeste à geler.
+ETATS_NON_GELABLES = ("absent", "hors_manifeste", "erreur")
 
 REMETTRE = "remettre"
 MAJ_GEL = "maj_gel"
@@ -47,6 +55,7 @@ PAR_ALIGNEMENT = {
     "en_retard": REMETTRE,
     "introuvable": REMETTRE,
     "en_avance": MAJ_GEL,
+    SANS_GEL: MAJ_GEL,
     "decale": MANUELS,
     "indetermine": MANUELS,
     "erreur": MANUELS,
@@ -72,8 +81,18 @@ def git(clone, *args, delai=DELAI_GIT):
 
 
 def hors_gel(depot):
-    """L'alignement de `depot` à son gel quand il n'y est pas, sinon None."""
+    """L'alignement de `depot` à son gel quand il n'y est pas, sinon None.
+
+    SANS_GEL pour un clone du manifeste dont HEAD se lit et qui n'a aucun
+    « freeze-revision » : rien ne le fige, il suit sa branche."""
     alignement = (depot.get("freeze") or {}).get("alignment")
+    if (
+        alignement is None
+        and not depot.get("freeze_revision")
+        and depot.get("head")
+        and depot.get("state") not in ETATS_NON_GELABLES
+    ):
+        return SANS_GEL
     return None if alignement in (None, "conforme") else alignement
 
 
@@ -206,18 +225,50 @@ def publication(racine, depot, noter=None):
 
 
 def fichiers_manifeste(racine):
-    return sorted(glob.glob(os.path.join(racine, "manifest", "*.xml")))
+    """Les fichiers où un gel se met à jour, chemins sous `racine` : chaque
+    `manifest/*.xml`, puis le manifeste privé de la version d'Odoo active
+    quand il existe. Celui d'une autre version n'en fait pas partie : la
+    fusion n'applique pas son gel."""
+    fichiers = sorted(glob.glob(os.path.join(racine, "manifest", "*.xml")))
+    prive = git_freeze_manifest.private_source(racine=racine)
+    if prive:
+        fichiers.append(os.path.join(racine, prive))
+    return fichiers
+
+
+def sources_de_version(racine):
+    """Les fichiers où le gel de la version d'Odoo active s'écrit, chemins
+    sous `racine` : `git_manifest_odoo<V>.xml`, son `_dev` et son `extra`
+    dans `manifest/`, puis le manifeste privé de la version, ceux qui
+    existent ; aucun sans version active."""
+    version = git_freeze_manifest.active_version(racine)
+    if not version:
+        return []
+    noms = (
+        f"git_manifest_odoo{version}.xml",
+        f"git_manifest_odoo{version}_dev.xml",
+        f"git_manifest_extra_odoo{version}.xml",
+    )
+    fichiers = [os.path.join(racine, "manifest", nom) for nom in noms]
+    fichiers = [f for f in fichiers if os.path.isfile(f)]
+    prive = git_freeze_manifest.private_source(version, racine=racine)
+    if prive:
+        fichiers.append(os.path.join(racine, prive))
+    return fichiers
 
 
 def mettre_a_jour_gel(racine, depots, ecrire=True):
     """Pose le HEAD de chaque dépôt comme « freeze-revision » dans les
-    fichiers de `manifest/` qui portent son ancien gel. Rend
+    fichiers de `fichiers_manifeste` qui portent son ancien gel. Rend
     ({fichier relatif: [clés]}, [clés qui perdent leur base amont]).
 
     Seul l'élément `<project>` dont le gel vaut l'ancien commit change : un
-    même projet gelé ailleurs sur un autre commit n'est pas touché. Changer
-    le gel retire « fork-upstream-freeze-revision », qui ne vaut que pour
-    le commit à côté de lui."""
+    même projet gelé ailleurs sur un autre commit n'est pas touché. Un
+    dépôt sans ancien gel ne reçoit le sien que dans les fichiers de la
+    version d'Odoo active (`sources_de_version`) : le même projet sans gel
+    dans le manifeste d'une autre version reste tel quel. Changer le gel
+    retire « fork-upstream-freeze-revision », qui ne vaut que pour le
+    commit à côté de lui."""
     anciens = {
         manifest_freeze.project_key(d.get("name"), d["path"]): (
             d.get("freeze_revision"),
@@ -226,6 +277,7 @@ def mettre_a_jour_gel(racine, depots, ecrire=True):
         for d in depots
     }
     changes, sans_base = {}, []
+    de_version = set(sources_de_version(racine))
     for fichier in fichiers_manifeste(racine):
         with open(fichier) as fh:
             texte = fh.read()
@@ -237,6 +289,7 @@ def mettre_a_jour_gel(racine, depots, ecrire=True):
             if (
                 cle in anciens
                 and attrs.get(manifest_freeze.FREEZE_ATTR) == (anciens[cle][0])
+                and (anciens[cle][0] or fichier in de_version)
             ):
                 a_geler[cle] = anciens[cle][1]
                 if attrs.get(manifest_freeze.FORK_UPSTREAM_FREEZE_ATTR):

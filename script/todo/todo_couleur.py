@@ -19,6 +19,11 @@ from script.todo.todo_i18n import t
 # (152, #AFD7D7) pour un terminal qui n'annonce pas la couleur vraie.
 BLEU_POUDRE_VRAI = "\x1b[38;2;176;224;230m"
 BLEU_POUDRE_256 = "\x1b[38;5;152m"
+# Orange (#FFA500) en couleur vraie ; le 256 couleurs 214 (#FFAF00) en est le
+# plus proche. Il se lit sur un fond sombre comme sur un fond clair, et se
+# distingue du bleu poudre comme du rouge d'une erreur.
+ORANGE_VRAI = "\x1b[38;2;255;165;0m"
+ORANGE_256 = "\x1b[38;5;214m"
 FIN = "\x1b[0m"
 
 
@@ -34,14 +39,25 @@ def couleurs_actives(flux=None, environ=None):
         return False
 
 
-def bleu_poudre(texte, flux=None, environ=None):
-    """`texte` en bleu poudre, ou tel quel quand la couleur ne s'affiche pas."""
+def _teinter(texte, vraie, palette, flux, environ):
+    """`texte` entre la séquence `vraie` (couleur vraie, quand COLORTERM
+    l'annonce) ou `palette` (256 couleurs) et FIN ; tel quel quand la
+    couleur ne s'affiche pas."""
     environ = os.environ if environ is None else environ
     if not couleurs_actives(flux, environ):
         return texte
-    vraie = environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
-    debut = BLEU_POUDRE_VRAI if vraie else BLEU_POUDRE_256
-    return f"{debut}{texte}{FIN}"
+    annoncee = environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+    return f"{vraie if annoncee else palette}{texte}{FIN}"
+
+
+def bleu_poudre(texte, flux=None, environ=None):
+    """`texte` en bleu poudre, ou tel quel quand la couleur ne s'affiche pas."""
+    return _teinter(texte, BLEU_POUDRE_VRAI, BLEU_POUDRE_256, flux, environ)
+
+
+def orange(texte, flux=None, environ=None):
+    """`texte` en orange, ou tel quel quand la couleur ne s'affiche pas."""
+    return _teinter(texte, ORANGE_VRAI, ORANGE_256, flux, environ)
 
 
 def retour(libelle=None, flux=None, environ=None):

@@ -567,6 +567,34 @@ class TestLectureDesCotes(_Checkout):
             "delta+c/delta", fd._clone_definitions(self.racine, [gel])
         )
 
+    def test_le_manifeste_prive_de_la_version_active_est_lu(self):
+        """Le gel du manifeste privé de la version active se lit sur le
+        disque comme dans une révision, et son clone se compare ; celui
+        d'une autre version n'est pas lu."""
+        dossier = os.path.join(self.racine, "private", "manifest")
+        os.makedirs(dossier)
+        self.fichier(
+            os.path.join(dossier, "git_manifest_private_odooX.0.xml"),
+            _manifeste([("delta", "c/delta", self.beta[1])]),
+        )
+        self.fichier(
+            os.path.join(dossier, "git_manifest_private_odooY.0.xml"),
+            _manifeste([("epsilon", "c/epsilon", self.beta[0])]),
+        )
+        disque = fd.read_worktree(self.racine)
+        self.assertEqual(disque["delta+c/delta"]["sha"], self.beta[1])
+        self.assertNotIn("epsilon+c/epsilon", disque)
+        _git(self.racine, "add", "private")
+        _git(self.racine, "commit", "-q", "-m", "gel privé")
+        gel = fd.read_ref(self.racine, "HEAD")
+        self.assertEqual(gel["delta+c/delta"]["sha"], self.beta[1])
+        self.assertEqual(gel["alpha+c/alpha"]["sha"], self.alpha[2])
+        self.assertNotIn("epsilon+c/epsilon", gel)
+        self.assertIn(
+            "delta+c/delta", fd._clone_definitions(self.racine, [gel])
+        )
+        self.assertEqual(fd.uncommitted_freeze(self.racine), [])
+
     def test_les_clones_rendent_leur_head(self):
         clones = fd.read_clones(self.racine, self.definitions(), jobs=2)
         self.assertEqual(clones["alpha+c/alpha"]["sha"], self.alpha[3])

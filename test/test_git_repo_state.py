@@ -530,6 +530,39 @@ class TestSnapshot(Checkout):
         self.assertIsNone(r[WEB17]["freeze_revision"])
         self.assertIsNone(r[WEB17]["freeze"])
 
+    def test_gel_du_manifeste_prive_de_la_version_active(self):
+        """Un dépôt du seul manifeste privé de la version active voit son
+        gel ; celui du manifeste privé d'une autre version n'est pas lu."""
+        un = _git(self.ahead, "rev-parse", "refs/remotes/R/18.0")
+        prive = {
+            "name": "R_ahead.git",
+            "path": "odoo18.0/addons/R_ahead",
+            "remote": "R",
+            "revision": "18.0",
+            "freeze-revision": un,
+        }
+        _ecrire(
+            self.racine,
+            {
+                "private/manifest/git_manifest_private_odoo18.0.xml": (
+                    f"<manifest>\n{_projet(prive)}\n</manifest>\n"
+                ),
+                "private/manifest/git_manifest_private_odoo17.0.xml": (
+                    "<manifest>\n"
+                    + _projet({**self.local[WEB17], "freeze-revision": un})
+                    + "\n</manifest>\n"
+                ),
+            },
+        )
+        _code, d = self.lancer()
+        r = self.depots(d)
+        self.assertEqual(r["odoo18.0/addons/R_ahead"]["freeze_revision"], un)
+        self.assertEqual(
+            r["odoo18.0/addons/R_ahead"]["freeze"],
+            {"ahead": 1, "behind": 0, "alignment": "en_avance"},
+        )
+        self.assertIsNone(r[WEB17]["freeze_revision"])
+
     def test_ecart_au_gel_illisible(self):
         """Un gel présent dont git ne sait pas compter l'écart est une
         erreur, pas un commit absent."""

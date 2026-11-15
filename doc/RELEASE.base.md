@@ -194,8 +194,9 @@ Pour le tester, vous devez nettoyer les caches et l'installer :
 ## Generate new prod and release
 
 Freeze the repos versions of the active Odoo version: every project of `manifest/git_manifest_odoo<V>.xml`,
-`git_manifest_odoo<V>_dev.xml` and `git_manifest_extra_odoo<V>.xml` receives the commit of its clone, next to its
-branch. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
+`git_manifest_odoo<V>_dev.xml`, `git_manifest_extra_odoo<V>.xml` and, when it exists,
+`private/manifest/git_manifest_private_odoo<V>.xml` receives the commit of its clone, next to its branch, in the file
+that declares it. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
 remote branch is skipped: push it first. [GIT_REPO.md](./GIT_REPO.md#freeze-the-versions) details what is skipped.
 
 To carry the upstream changes into the release, first upgrade the forks on their upstream and publish them
@@ -207,8 +208,9 @@ every declared upstream over the network.
 ## Générer la nouvelle production et publication
 
 Geler les versions des dépôts de la version d'Odoo active : chaque projet de `manifest/git_manifest_odoo<V>.xml`,
-`git_manifest_odoo<V>_dev.xml` et `git_manifest_extra_odoo<V>.xml` reçoit le commit de son clone, à côté de sa
-branche. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
+`git_manifest_odoo<V>_dev.xml`, `git_manifest_extra_odoo<V>.xml` et, s'il existe,
+`private/manifest/git_manifest_private_odoo<V>.xml` reçoit le commit de son clone, à côté de sa branche, dans le
+fichier qui le déclare. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
 manifeste. Un clone dont le commit n'est sur aucune branche distante est écarté : le pousser d'abord.
 [GIT_REPO.fr.md](./GIT_REPO.fr.md#geler-les-versions) détaille ce qui est écarté.
 

@@ -317,6 +317,15 @@ class TestEnvironnement(unittest.TestCase):
 class TestManifeste(unittest.TestCase):
     """« Addons face au manifeste » sur une sortie de `repo_state` simulée."""
 
+    def setUp(self):
+        # Texte nu par défaut, que la suite tourne dans un terminal ou non ;
+        # un test qui veut la couleur la rallume par son propre patch.
+        sans_couleur = mock.patch.object(
+            h.todo_couleur, "couleurs_actives", return_value=False
+        )
+        sans_couleur.start()
+        self.addCleanup(sans_couleur.stop)
+
     def ctx_snapshot(self, depots, sales=()):
         """Un Contexte dont `repo_state snapshot` rend `depots` et dont
         `git status` dit modifiés les chemins de `sales`."""
@@ -369,6 +378,25 @@ class TestManifeste(unittest.TestCase):
         self.assertIn("A/sale", texte)
         self.assertIn("git -C A/decale log --oneline --left-right", texte)
         self.assertNotIn("A/sale", "\n".join(remettre.lignes))
+
+    def test_a_repository_without_freeze_is_proposed_a_first_one(self):
+        """Parmi des dépôts gelés, un clone sans gel est proposé à « mettre
+        à jour le gel avec HEAD », sans changer le statut de la
+        vérification ; sans aucun gel dans le checkout, rien n'est proposé."""
+        gele = self.depot(
+            "A/gel",
+            "a" * 40,
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        sans = self.depot("A/sans_gel")
+        resultat = h.verifier_manifeste(self.ctx_snapshot([gele, sans]))
+        self.assertEqual(resultat.statut, h.OK)
+        (maj,) = resultat.resolutions
+        self.assertEqual(maj.cle, h.freeze_resolution.MAJ_GEL)
+        self.assertEqual([d["path"] for d in maj.depots], ["A/sans_gel"])
+        self.assertIn(f"   A/sans_gel — {t('no freeze yet')}", maj.lignes)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([sans]))
+        self.assertEqual(resultat.resolutions, [])
 
     def test_no_resolution_when_every_repository_is_on_its_freeze(self):
         resultat = h.verifier_manifeste(
@@ -440,8 +468,95 @@ class TestManifeste(unittest.TestCase):
         depot.update(state="decale", target="b" * 40)
         resultat = h.verifier_manifeste(self.ctx_snapshot([depot]))
         self.assertEqual(resultat.statut, h.ALERTE)
-        self.assertEqual(resultat.details, ["decale : odoo18.0/addons/R_gele"])
+        self.assertEqual(
+            resultat.details,
+            [
+                f"decale_du_gel : odoo18.0/addons/R_gele · {t('freeze')} bbbbbbbbbb"
+            ],
+        )
         self.assertNotIn(t("off the freeze"), resultat.resume)
+
+    def test_ahead_of_a_target_that_is_the_freeze_names_the_frozen_commit(
+        self,
+    ):
+        gel = "4250511" + "4" * 33
+        depot = self.depot(
+            "odoo18.0/addons/R_gele",
+            gel,
+            {"ahead": 6, "behind": 0, "alignment": "en_avance"},
+        )
+        depot.update(
+            state="en_avance",
+            target=gel.upper(),
+            head="f" * 40,
+            ahead=6,
+            behind=0,
+            branch="18.0",
+        )
+        conforme = self.depot("odoo18.0/addons/R_conforme")
+        resultat = h.verifier_manifeste(self.ctx_snapshot([depot, conforme]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance_du_gel : odoo18.0/addons/R_gele (+6 −0)"
+                f" · {t('freeze')} 4250511444 · HEAD 18.0"
+            ],
+        )
+        self.assertEqual(resultat.resume, "1 conforme · 1 en_avance_du_gel")
+
+    def test_ahead_of_a_branch_target_keeps_its_state_name(self):
+        # Hors d'un checkout gelé, la cible est une branche : l'avance est
+        # sur elle, pas sur le gel.
+        depot = self.depot(
+            "odoo18.0/addons/R_branche",
+            "a" * 40,
+            {"ahead": 2, "behind": 0, "alignment": "en_avance"},
+        )
+        depot.update(state="en_avance", target="c" * 40, ahead=2, behind=0)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([depot]))
+        self.assertIn(
+            "en_avance : odoo18.0/addons/R_branche (+2 −0)", resultat.details
+        )
+        self.assertNotIn("du_gel", resultat.resume)
+
+    def test_an_ahead_head_with_unpushed_commits_ends_in_orange(self):
+        depot = self.depot("odoo18.0/addons/R_local")
+        depot.update(
+            state="en_avance",
+            ahead=3,
+            behind=0,
+            branch="travail",
+            head="e" * 40,
+        )
+        pousse = self.depot("odoo18.0/addons/R_pousse")
+        pousse.update(state="en_avance", ahead=1, behind=0, head="f" * 40)
+        ctx = self.ctx_snapshot([depot, pousse])
+        snapshot = ctx.lancer
+
+        def lancer(args, *a, **k):
+            if "--remotes" in args:
+                n = "3" if args[args.index("--count") + 1] == "e" * 40 else "0"
+                return subprocess.CompletedProcess(args, 0, n + "\n", "")
+            return snapshot(args, *a, **k)
+
+        ctx.lancer = lancer
+        resultat = h.verifier_manifeste(ctx)
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance : odoo18.0/addons/R_local (+3 −0) · HEAD travail"
+                f" · 3 {t('unpushed commits')}",
+                "en_avance : odoo18.0/addons/R_pousse (+1 −0)",
+            ],
+        )
+        with mock.patch.object(
+            h.todo_couleur, "couleurs_actives", return_value=True
+        ):
+            ligne = h.verifier_manifeste(ctx).details[0]
+            marque = h.todo_couleur.orange(f"3 {t('unpushed commits')}")
+        self.assertIn("\x1b[", marque)
+        self.assertTrue(ligne.endswith(f" · {marque}"))
 
     def test_ahead_and_diverged_repositories_are_named_with_their_gap(self):
         avance = self.depot("odoo18.0/addons/R_avance")
@@ -572,6 +687,13 @@ class TestBranches(unittest.TestCase):
     """« Branches des dépôts » sur un vrai dépôt jetable."""
 
     def setUp(self):
+        # Texte nu par défaut, que la suite tourne dans un terminal ou non ;
+        # un test qui veut la couleur la rallume par son propre patch.
+        sans_couleur = mock.patch.object(
+            h.todo_couleur, "couleurs_actives", return_value=False
+        )
+        sans_couleur.start()
+        self.addCleanup(sans_couleur.stop)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.racine = tmp.name
@@ -596,12 +718,74 @@ class TestBranches(unittest.TestCase):
             g("add", ".")
             g("commit", "-q", "-m", nom)
         self.head = g("rev-parse", "HEAD")
+        # Une ref distante locale tient lieu de push : HEAD et ses ancêtres
+        # comptent comme poussés, sans réseau ni dépôt distant.
+        g("update-ref", "refs/remotes/origin/18.0", "HEAD")
 
     def verifier(self, branche=None):
         ctx = h.Contexte(self.racine)
         depot = {"path": self.chemin, "head": self.head, "branch": branche}
         ctx.snapshot = lambda: ({"repos": [depot]}, "")
         return h.verifier_branches(ctx)
+
+    def branche_en_avance(self, nom="travail"):
+        """`nom` porte un commit que HEAD n'a pas ; HEAD reste détaché."""
+        self.g("checkout", "-q", "-b", nom)
+        ecrire(os.path.join(self.racine, self.chemin), "trois.txt", "trois")
+        self.g("add", ".")
+        self.g("commit", "-q", "-m", "trois")
+        self.g("checkout", "-q", "--detach", self.head)
+
+    def test_unpushed_commits_close_the_line_after_head(self):
+        self.branche_en_avance()
+        self.g("branch", "vieille", "HEAD~1")
+        resultat = self.verifier(branche="18.0")
+        self.assertEqual(
+            resultat.details,
+            [
+                f"{self.chemin} : travail (+1 −0) · HEAD 18.0"
+                f" · 1 {t('unpushed commits')}",
+                f"{self.chemin} : vieille (+0 −1) · HEAD 18.0",
+            ],
+        )
+
+    def test_a_pushed_branch_carries_no_marker(self):
+        self.branche_en_avance()
+        self.g("update-ref", "refs/remotes/origin/travail", "travail")
+        resultat = self.verifier(branche="18.0")
+        self.assertEqual(
+            resultat.details,
+            [f"{self.chemin} : travail (+1 −0) · HEAD 18.0"],
+        )
+
+    def test_the_marker_is_orange_on_a_terminal(self):
+        from script.todo import todo_couleur
+
+        self.branche_en_avance()
+        with (
+            mock.patch.object(
+                todo_couleur, "couleurs_actives", return_value=True
+            ),
+            mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}),
+        ):
+            ligne = self.verifier(branche="18.0").details[0]
+        marque = (
+            f" · {todo_couleur.ORANGE_VRAI}1 {t('unpushed commits')}"
+            f"{todo_couleur.FIN}"
+        )
+        self.assertTrue(ligne.endswith(marque))
+        self.assertIn(f"HEAD 18.0{todo_couleur.FIN}{marque}", ligne)
+
+    def test_the_marker_is_plain_off_a_terminal(self):
+        from script.todo import todo_couleur
+
+        self.branche_en_avance()
+        with mock.patch.object(
+            todo_couleur, "couleurs_actives", return_value=False
+        ):
+            ligne = self.verifier(branche="18.0").details[0]
+        self.assertNotIn("\x1b", ligne)
+        self.assertTrue(ligne.endswith(f" · 1 {t('unpushed commits')}"))
 
     def test_each_line_names_the_checked_out_branch(self):
         self.g("branch", "vieille", "HEAD~1")
@@ -625,7 +809,10 @@ class TestBranches(unittest.TestCase):
         self.g("branch", "vieille", "HEAD~1")
         resultat = self.verifier()
         self.assertEqual(resultat.statut, h.ALERTE)
-        self.assertIn(f"{self.chemin} : travail (+1 −0)", resultat.details)
+        self.assertIn(
+            f"{self.chemin} : travail (+1 −0) · 1 {t('unpushed commits')}",
+            resultat.details,
+        )
         self.assertIn(f"{self.chemin} : vieille (+0 −1)", resultat.details)
 
     def test_a_branch_only_behind_head_is_information(self):

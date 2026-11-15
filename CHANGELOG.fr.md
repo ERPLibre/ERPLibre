@@ -304,6 +304,17 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checkouts voisins dans jusqu'à 8 processus, jamais plus que de processeurs : 18 venvs en 0,46 s au
   lieu de 2,9 s
 - **Addons face au manifeste** et **Branches des dépôts**, dans le diagnostic, terminent chaque ligne par `· HEAD <branche>`, la branche extraite du dépôt, en bleu poudre : un dépôt en avance sur son gel, ou une branche à 129 commits derrière HEAD, dit désormais à quoi l'écart se mesure. Un HEAD détaché n'ajoute rien, et hors d'un terminal ou sous `NO_COLOR` le texte reste nu
+- `make repo_freeze` gèle aussi les dépôts déclarés seulement dans le manifeste privé de la version
+  d'Odoo active, `private/manifest/git_manifest_private_odoo<V>.xml` : le `freeze-revision` de
+  chaque projet va dans le fichier qui le déclare, jamais dans `manifest/`, un checkout gelé
+  l'applique, et `make repo_unfreeze` le retire. Avant, un tel dépôt suivait sa branche même en
+  checkout gelé. Les manifestes privés des autres versions d'Odoo restent ignorés
+- Le diagnostic dit quand un écart est un écart au gel : un dépôt dont la cible locale est son
+  commit gelé compte `en_avance_du_gel` ou `decale_du_gel`, avec ce commit sur sa ligne. Une ligne
+  se termine par `· <n> commits non poussés` en orange quand la branche porte des commits qu'aucune
+  ref distante connue n'a, comptés sans fetch. **Mettre à jour le gel avec HEAD** propose aussi un
+  premier gel à un dépôt cloné qui n'en a pas, dès qu'un dépôt du checkout est gelé, et ne l'écrit
+  que pour un HEAD poussé
 
 ## Corrigé
 

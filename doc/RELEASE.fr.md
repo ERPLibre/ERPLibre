@@ -101,8 +101,9 @@ Pour le tester, vous devez nettoyer les caches et l'installer :
 ## Générer la nouvelle production et publication
 
 Geler les versions des dépôts de la version d'Odoo active : chaque projet de `manifest/git_manifest_odoo<V>.xml`,
-`git_manifest_odoo<V>_dev.xml` et `git_manifest_extra_odoo<V>.xml` reçoit le commit de son clone, à côté de sa
-branche. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
+`git_manifest_odoo<V>_dev.xml`, `git_manifest_extra_odoo<V>.xml` et, s'il existe,
+`private/manifest/git_manifest_private_odoo<V>.xml` reçoit le commit de son clone, à côté de sa branche, dans le
+fichier qui le déclare. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
 manifeste. Un clone dont le commit n'est sur aucune branche distante est écarté : le pousser d'abord.
 [GIT_REPO.fr.md](./GIT_REPO.fr.md#geler-les-versions) détaille ce qui est écarté.
 
