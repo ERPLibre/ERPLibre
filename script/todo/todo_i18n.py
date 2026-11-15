@@ -544,6 +544,107 @@ TRANSLATIONS = {
         "fr": "Écarts avant la mise à jour :",
         "en": "Differences before the update:",
     },
+    # Installation › Mise à jour (install_update_menu.py)
+    "Already installed: %s. What to do?": {
+        "fr": "Déjà installé : %s. Que faire ?",
+        "en": "Already installed: %s. What to do?",
+    },
+    "Update - Python, venvs, repositories (default)": {
+        "fr": "🔄 Mise à jour - Python, venvs, dépôts (défaut)",
+        "en": "🔄 Update - Python, venvs, repositories (default)",
+    },
+    "Installation - another version, ERPLibre alone, mobile": {
+        "fr": "📦 Installation - une autre version, ERPLibre seul, mobile",
+        "en": "📦 Installation - another version, ERPLibre alone, mobile",
+    },
+    "Update what is installed!": {
+        "fr": "Mettre à jour ce qui est installé !",
+        "en": "Update what is installed!",
+    },
+    "Resynchronize the repositories with the manifests": {
+        "fr": "🔄 Resynchroniser les dépôts avec les manifestes",
+        "en": "🔄 Resynchronize the repositories with the manifests",
+    },
+    "cloned by hand at a path of the manifest, repo sync cannot adopt it and fails on it.": {
+        "fr": "cloné à la main à un chemin du manifeste, repo sync ne peut pas l'adopter et échoue dessus.",
+        "en": "cloned by hand at a path of the manifest, repo sync cannot adopt it and fails on it.",
+    },
+    "modified files": {
+        "fr": "fichiers modifiés",
+        "en": "modified files",
+    },
+    "stash entries": {
+        "fr": "entrées de stash",
+        "en": "stash entries",
+    },
+    "commits on no remote": {
+        "fr": "commits sur aucun remote",
+        "en": "commits on no remote",
+    },
+    "local branches:": {
+        "fr": "branches locales :",
+        "en": "local branches:",
+    },
+    "Move it aside to %s? (y/N): ": {
+        "fr": "Le déplacer vers %s ? (o/N) : ",
+        "en": "Move it aside to %s? (y/N): ",
+    },
+    "Kept: repo sync will fail on this repository.": {
+        "fr": "Gardé : repo sync échouera sur ce dépôt.",
+        "en": "Kept: repo sync will fail on this repository.",
+    },
+    "Could not move": {
+        "fr": "Impossible de déplacer",
+        "en": "Could not move",
+    },
+    "Moved:": {
+        "fr": "Déplacé :",
+        "en": "Moved:",
+    },
+    "Synchronize anyway? (y/N): ": {
+        "fr": "Synchroniser quand même ? (o/N) : ",
+        "en": "Synchronize anyway? (y/N): ",
+    },
+    "Checkout mode kept:": {
+        "fr": "Mode du checkout gardé :",
+        "en": "Checkout mode kept:",
+    },
+    "not cloned by repo sync, the old clone is kept:": {
+        "fr": "pas cloné par repo sync, l'ancien clone est gardé :",
+        "en": "not cloned by repo sync, the old clone is kept:",
+    },
+    "Copy the local branches of %s into the new clone? (Y/n): ": {
+        "fr": "Recopier les branches locales de %s dans le nouveau clone ? (O/n) : ",
+        "en": "Copy the local branches of %s into the new clone? (Y/n): ",
+    },
+    "Branches not copied:": {
+        "fr": "Branches non recopiées :",
+        "en": "Branches not copied:",
+    },
+    "Branches copied:": {
+        "fr": "Branches recopiées :",
+        "en": "Branches copied:",
+    },
+    "unreadable git state": {
+        "fr": "état git illisible",
+        "en": "unreadable git state",
+    },
+    "commits found only in the old clone:": {
+        "fr": "commits présents seulement dans l'ancien clone :",
+        "en": "commits found only in the old clone:",
+    },
+    "Put back, repo sync did not clone it:": {
+        "fr": "Remis en place, repo sync ne l'a pas cloné :",
+        "en": "Put back, repo sync did not clone it:",
+    },
+    "Old clone kept, deleting it would lose:": {
+        "fr": "Ancien clone gardé, le supprimer perdrait :",
+        "en": "Old clone kept, deleting it would lose:",
+    },
+    "Delete the old clone %s? (y/N): ": {
+        "fr": "Supprimer l'ancien clone %s ? (o/N) : ",
+        "en": "Delete the old clone %s? (y/N): ",
+    },
     "Python versions - Install or update the venvs, without the git repos": {
         "fr": "🔄 Versions Python - Installer ou mettre à jour les venvs, sans les dépôts git",
         "en": "🔄 Python versions - Install or update the venvs, without the git repos",

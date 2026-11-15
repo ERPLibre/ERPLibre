@@ -159,6 +159,7 @@ from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.git_fork_menu import GitForkMenuMixin
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
+from script.todo.install_update_menu import InstallUpdateMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
@@ -264,6 +265,7 @@ class TODO(
     ContainerMenuMixin,
     GitRepoMenuMixin,
     GitForkMenuMixin,
+    InstallUpdateMenuMixin,
     ModuleMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
@@ -800,6 +802,12 @@ class TODO(
         (`reponses` à None), un échec relance TODO au lieu de rendre son
         code.
 
+        Lancé du menu avec une version d'Odoo installée et présente sur
+        disque, il demande d'abord s'il faut la mettre à jour, ce qui mène
+        à `prompt_install_update` et rend None, ou installer
+        (_choisir_maj_ou_installation). La ligne de commande, qui passe
+        `reponses`, ne voit jamais cette question.
+
         L'ordre : la cible, l'environnement et le type pour une version
         d'Odoo, l'étape système, puis, hors du mode `non_interactif`, la
         suite : sans interaction par défaut, ses valeurs par défaut
@@ -834,6 +842,15 @@ class TODO(
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
+
+        if not depuis_cli:
+            presentes = self._versions_installees_presentes(installed_versions)
+            if presentes:
+                choix = self._choisir_maj_ou_installation(presentes)
+                if choix != "installation":
+                    if choix == "maj":
+                        self.prompt_install_update()
+                    return None
 
         version_par_cle = {}
         for version_info in versions[::-1]:
@@ -1002,6 +1019,47 @@ class TODO(
             self.restart_script(str(e))
             return e.returncode
         return 0
+
+    @staticmethod
+    def _versions_installees_presentes(installed_versions):
+        """Les versions de `installed_versions` (« odoo18.0 ») dont les
+        sources sont encore sur disque. La liste installée n'est qu'un
+        fichier : une version retirée à la main y reste, et la proposer à
+        la mise à jour ne mènerait à rien."""
+        return [
+            version
+            for version in installed_versions
+            if os.path.isfile(os.path.join(version, "odoo", "odoo-bin"))
+        ]
+
+    def _choisir_maj_ou_installation(self, presentes):
+        """Demande, quand une version d'Odoo est déjà installée, s'il faut
+        la mettre à jour ou installer. Entrée choisit la mise à jour. Rend
+        « maj », « installation » ou None pour quitter."""
+        noms = ", ".join(f"Odoo {v[len('odoo'):]}" for v in presentes)
+        choix = {
+            "1": (
+                "maj",
+                f"1: {t('Update - Python, venvs, repositories (default)')}",
+            ),
+            "2": (
+                "installation",
+                f"2: {t('Installation - another version, ERPLibre alone, mobile')}",
+            ),
+            "0": (None, bleu_poudre(f"0: {t('Quit')}")),
+        }
+        while True:
+            saisie = (
+                input(
+                    f"💬 {t('Already installed: %s. What to do?') % noms}\n\t"
+                    + "\n\t".join(libelle for _, libelle in choix.values())
+                    + f"\n{t('Select [1]: ')}"
+                ).strip()
+                or "1"
+            )
+            if saisie in choix:
+                return choix[saisie][0]
+            print(f"{t('Error, cannot understand value')} '{saisie}'")
 
     @staticmethod
     def _cle_de_cible(cible, version_par_cle):
@@ -1241,6 +1299,7 @@ class TODO(
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
         "prompt_install": "Install",
+        "prompt_install_update": "Update",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
         "prompt_execute_config": "Config",

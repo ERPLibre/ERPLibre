@@ -21,6 +21,7 @@ import io
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -43,6 +44,7 @@ QUESTION_SUITE = todo_module.t("Rest of the installation:")
 
 # La vraie sonde, gardée avant que setUpModule la remplace.
 SONDE_REELLE = TODO.__dict__["_systeme_manquant"].__func__
+PRESENTES_REELLE = TODO.__dict__["_versions_installees_presentes"].__func__
 
 
 def setUpModule():
@@ -50,6 +52,13 @@ def setUpModule():
     # tests qui disent le contraire.
     patch = mock.patch.object(
         TODO, "_systeme_manquant", staticmethod(lambda: [])
+    )
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+    # Aucune version installée sur disque, quoi que l'hôte ait : la question
+    # « Mise à jour ou Installation » a ses propres tests.
+    patch = mock.patch.object(
+        TODO, "_versions_installees_presentes", staticmethod(lambda _v: [])
     )
     patch.start()
     unittest.addModuleCleanup(patch.stop)
@@ -121,6 +130,88 @@ class Banc(unittest.TestCase):
             c for c in lances if isinstance(c, str)
         ]
         return questions, commandes
+
+
+QUESTION_MAJ = todo_module.t("Already installed: %s. What to do?") % (
+    "Odoo 18.0"
+)
+
+
+class TestMiseAJourOuInstallation(Banc):
+    """Une version installée et présente sur disque : le menu demande
+    d'abord s'il faut la mettre à jour ou installer."""
+
+    def jouer_installe(self, reponses):
+        maj = mock.Mock(return_value=False)
+        with (
+            mock.patch.object(
+                TODO,
+                "_versions_installees_presentes",
+                staticmethod(lambda _v: ["odoo18.0"]),
+            ),
+            mock.patch.object(TODO, "prompt_install_update", maj),
+        ):
+            questions, commandes = self.jouer(reponses)
+        return questions, commandes, maj
+
+    def test_enter_chooses_the_update(self):
+        questions, commandes, maj = self.jouer_installe([""])
+        self.assertEqual(len(questions), 1)
+        self.assertIn(QUESTION_MAJ, questions[0])
+        maj.assert_called_once_with()
+        self.assertIsNone(self.code)
+        self.assertEqual(commandes, [])
+
+    def test_installation_goes_on_with_the_version_menu(self):
+        questions, commandes, maj = self.jouer_installe(["2", "0"])
+        self.assertEqual(len(questions), 2)
+        self.assertIn(todo_module.t("Choose a version:"), questions[1])
+        maj.assert_not_called()
+
+    def test_zero_quits_without_anything(self):
+        questions, commandes, maj = self.jouer_installe(["0"])
+        self.assertEqual(len(questions), 1)
+        maj.assert_not_called()
+        self.assertEqual(commandes, [])
+
+    def test_an_unknown_answer_is_asked_again(self):
+        questions, _, maj = self.jouer_installe(["9", "1"])
+        self.assertEqual(len(questions), 2)
+        maj.assert_called_once_with()
+
+    def test_the_command_line_never_sees_the_question(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(
+                TODO,
+                "_versions_installees_presentes",
+                staticmethod(lambda _v: ["odoo18.0"]),
+            ),
+            mock.patch.object(
+                builtins,
+                "input",
+                side_effect=AssertionError("question posée"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            code = todo.prompt_install(reponses={"cible": "inconnue"})
+        self.assertEqual(code, 2)
+
+    def test_present_versions_need_their_sources(self):
+        with tempfile.TemporaryDirectory() as racine:
+            for dossier in ("odoo18.0/odoo", "odoo17.0/odoo", "odoo16.0"):
+                os.makedirs(os.path.join(racine, dossier))
+            Path(racine, "odoo18.0/odoo/odoo-bin").touch()
+            os.makedirs(os.path.join(racine, "odoo15.0/odoo/odoo-bin"))
+            avant = os.getcwd()
+            os.chdir(racine)
+            self.addCleanup(os.chdir, avant)
+            self.assertEqual(
+                PRESENTES_REELLE(
+                    ["odoo15.0", "odoo16.0", "odoo17.0", "odoo18.0"]
+                ),
+                ["odoo18.0"],
+            )
 
 
 class TestOrdreDesQuestions(Banc):
