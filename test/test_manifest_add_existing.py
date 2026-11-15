@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ajouter un dépôt : au manifeste public ou privé, parmi les versions
-installées, sur la branche par défaut que l'hôte annonce.
+installées, sur la branche par défaut que l'hôte annonce, ou depuis un
+clone qui existe déjà, puis remis à repo.
 
 Une racine ERPLibre jetable par test : manifest/, private/, .repo/ et de
 vrais dépôts git, avec des remotes nus locaux. Rien ne va sur le réseau.
@@ -10,9 +11,11 @@ vrais dépôts git, avec des remotes nus locaux. Rien ne va sur le réseau.
 
 import csv
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -218,6 +221,109 @@ class TestLePrive(Racine):
             )
 
 
+class TestLeClone(Racine):
+    def test_read_without_network_tracked_branch_and_pushed(self):
+        chemin = self.clone("odoo18.0/addons/addons")
+        infos = mr.lire_clone(chemin)
+        self.assertEqual(
+            (infos["remote"], infos["branche"], infos["pousse"]),
+            ("origin", "main", True),
+        )
+        git(chemin, "commit", "-q", "--allow-empty", "-m", "deux")
+        self.assertFalse(mr.lire_clone(chemin)["pousse"])
+        git(chemin, "checkout", "-q", "--detach")
+        with self.assertRaises(ValueError):
+            mr.lire_clone(chemin)
+        with self.assertRaises(ValueError):
+            mr.lire_clone(os.path.join(chemin, "sous"))
+
+    def test_declared_at_its_path_on_its_branch_frozen_on_head(self):
+        chemin = self.clone("odoo18.0/addons/addons")
+        fichier, plan, gel, infos = mr.ajouter_existant(
+            "odoo18.0/addons/addons", "18.0", racine=self.racine
+        )
+        self.assertEqual(plan["path"], "odoo18.0/addons/addons")
+        self.assertEqual(plan["revision"], "main")
+        self.assertEqual(gel, git(chemin, "rev-parse", "HEAD"))
+        self.assertTrue(fichier.endswith("manifest/git_manifest_odoo18.0.xml"))
+        self.assertEqual(
+            plan["fetch"],
+            os.path.join(self.racine, "nus") + "/",
+            "un remote hors GitHub garde son préfixe",
+        )
+        with self.assertRaises(ValueError):
+            mr.ajouter_existant(
+                "odoo18.0/addons/addons", "18.0", racine=self.racine
+            )
+
+    def test_an_unpushed_head_is_added_unfrozen_never_frozen(self):
+        chemin = self.clone("odoo18.0/addons/addons")
+        git(chemin, "commit", "-q", "--allow-empty", "-m", "deux")
+        with self.assertRaises(ValueError):
+            mr.ajouter_existant(
+                "odoo18.0/addons/addons",
+                "18.0",
+                geler=True,
+                racine=self.racine,
+            )
+        _f, _p, gel, _i = mr.ajouter_existant(
+            "odoo18.0/addons/addons", "18.0", prive=True, racine=self.racine
+        )
+        self.assertIsNone(gel)
+
+    def test_undeclared_clones_only_hidden_and_declared_left_out(self):
+        self.clone("odoo18.0/addons/addons")
+        self.clone("odoo18.0/addons/OCA_web")
+        self.clone("odoo18.0/addons/.cache_x")
+        os.makedirs(os.path.join(self.racine, "odoo18.0/addons/vide"))
+        self.assertEqual(
+            mr.clones_non_declares(self.racine),
+            [("18.0", "odoo18.0/addons/addons")],
+        )
+        mr.ajouter_existant(
+            "odoo18.0/addons/addons", "18.0", prive=True, racine=self.racine
+        )
+        self.assertEqual(mr.clones_non_declares(self.racine), [])
+
+
+class TestLaMiseDeCote(Racine):
+    def test_renamed_kept_and_suffixed(self):
+        self.clone("odoo18.0/addons/addons")
+        self.assertEqual(
+            mr.mettre_de_cote("odoo18.0/addons/addons", self.racine),
+            "odoo18.0/addons/.addons.avant_repo",
+        )
+        self.assertTrue(
+            os.path.isdir(
+                os.path.join(
+                    self.racine, "odoo18.0/addons/.addons.avant_repo/.git"
+                )
+            )
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.racine, "odoo18.0/addons/addons"))
+        )
+        os.makedirs(os.path.join(self.racine, "odoo18.0/addons/addons"))
+        os.rmdir(os.path.join(self.racine, "odoo18.0/addons/addons"))
+        self.clone("odoo18.0/addons/addons")
+        self.assertEqual(
+            mr.mettre_de_cote("odoo18.0/addons/addons", self.racine),
+            "odoo18.0/addons/.addons.avant_repo-2",
+        )
+
+    def test_dirty_or_unpushed_work_is_never_moved(self):
+        chemin = self.clone("odoo18.0/addons/addons")
+        with open(os.path.join(chemin, "x.py"), "w") as fh:
+            fh.write("")
+        with self.assertRaises(ValueError):
+            mr.mettre_de_cote("odoo18.0/addons/addons", self.racine)
+        os.remove(os.path.join(chemin, "x.py"))
+        git(chemin, "commit", "-q", "--allow-empty", "-m", "deux")
+        with self.assertRaises(ValueError):
+            mr.mettre_de_cote("odoo18.0/addons/addons", self.racine)
+        self.assertTrue(os.path.isdir(chemin))
+
+
 class TestLeMenu(Racine):
     def setUp(self):
         super().setUp()
@@ -233,13 +339,125 @@ class TestLeMenu(Racine):
 
     def lancer(self, methode, reponses):
         with (
-            mock.patch("builtins.input", side_effect=reponses),
+            mock.patch("builtins.input", side_effect=reponses) as entree,
             mock.patch("builtins.print") as sortie,
         ):
             code = getattr(self.todo, methode)()
+        self.invites = [c.args[0] for c in entree.call_args_list if c.args]
         return code, "\n".join(
             str(c.args[0]) for c in sortie.call_args_list if c.args
         )
+
+    def test_existing_clone_private_frozen_then_set_aside_and_synced(self):
+        self.clone("odoo18.0/addons/addons")
+        with mock.patch.object(
+            gm.manifest_repo, "executer", return_value=0
+        ) as executer:
+            code, texte = self.lancer(
+                "_git_ajouter_existant", ["1", "2", "", "o"]
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("[1] odoo18.0/addons/addons (Odoo 18.0)", texte)
+        self.assertIn(
+            'freeze-revision="',
+            self.lire("private/manifest/git_manifest_private_odoo18.0.xml"),
+        )
+        self.assertTrue(
+            os.path.isdir(
+                os.path.join(self.racine, "odoo18.0/addons/.addons.avant_repo")
+            )
+        )
+        commandes = executer.call_args.args[0]
+        self.assertEqual(commandes[-1][-1], "odoo18.0/addons/addons")
+        self.assertIn("Committez private/.", texte)
+
+    def test_declining_the_set_aside_warns_that_repo_sync_fails(self):
+        self.clone("odoo18.0/addons/addons")
+        code, texte = self.lancer(
+            "_git_ajouter_existant", ["odoo18.0/addons/addons", "1", "n", "n"]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("D'ici là, repo sync échoue", texte)
+        bloc = re.search(
+            r"<project[^>]*?path=\"odoo18\.0/addons/addons\"[^>]*?/>",
+            self.lire("manifest/git_manifest_odoo18.0.xml"),
+            re.S,
+        ).group(0)
+        self.assertNotIn("freeze-revision", bloc)
+        self.assertTrue(
+            os.path.isdir(
+                os.path.join(self.racine, "odoo18.0/addons/addons/.git")
+            )
+        )
+
+    def navigateur(self, choix):
+        """Un faux navigateur : retient où il s'ouvre et en quel mode, puis
+        rend `choix` au rappel, ou rien quand `choix` est None (q)."""
+        ouvertures = []
+
+        class Faux:
+            def __init__(self, depart, rappel, open_dir=False):
+                ouvertures.append((depart, open_dir))
+                self.rappel = rappel
+
+            def run_main_frame(self):
+                if choix is not None:
+                    self.rappel(choix)
+
+        module = types.SimpleNamespace(FileBrowser=Faux)
+        p = mock.patch.object(gm, "todo_file_browser", module)
+        p.start()
+        self.addCleanup(p.stop)
+        return ouvertures
+
+    def test_enter_opens_the_browser_on_the_installed_version(self):
+        self.clone("odoo18.0/addons/addons")
+        ouvertures = self.navigateur(
+            os.path.join(self.racine, "odoo18.0/addons/addons")
+        )
+        code, texte = self.lancer("_git_ajouter_existant", ["", "1", "n", "n"])
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            ouvertures, [(os.path.join(self.racine, "odoo18.0"), True)]
+        )
+        self.assertIn("(Entrée : parcourir)", self.invites[0])
+        self.assertIn("choisissez « . »", texte)
+        self.assertIn(
+            'path="odoo18.0/addons/addons"',
+            self.lire("manifest/git_manifest_odoo18.0.xml"),
+        )
+
+    def test_cancelling_the_browser_writes_nothing(self):
+        self.clone("odoo18.0/addons/addons")
+        public = self.lire("manifest/git_manifest_odoo18.0.xml")
+        self.navigateur(None)
+        code, _texte = self.lancer("_git_ajouter_existant", [""])
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            self.lire("manifest/git_manifest_odoo18.0.xml"), public
+        )
+
+    def test_a_directory_outside_the_root_is_refused(self):
+        self.navigateur(os.path.dirname(self.racine))
+        code, texte = self.lancer("_git_ajouter_existant", [""])
+        self.assertEqual(code, 0)
+        self.assertIn("Hors de la racine d'ERPLibre", texte)
+
+    def test_without_urwid_enter_cancels(self):
+        with mock.patch.object(gm, "todo_file_browser", None):
+            code, _texte = self.lancer("_git_ajouter_existant", [""])
+        self.assertEqual(code, 0)
+        self.assertIn("(Entrée : annuler)", self.invites[0])
+
+    def test_no_visibility_chosen_writes_nothing(self):
+        self.clone("odoo18.0/addons/addons")
+        public = self.lire("manifest/git_manifest_odoo18.0.xml")
+        code, _texte = self.lancer("_git_ajouter_existant", ["1", ""])
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            self.lire("manifest/git_manifest_odoo18.0.xml"), public
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.racine, "private")))
 
     def test_add_by_url_proposes_the_host_default_branch(self):
         with (
@@ -274,6 +492,30 @@ class TestLeMenu(Racine):
         texte = self.lire("private/manifest/git_manifest_private_odoo18.0.xml")
         self.assertIn('revision="18.0"', texte)
         self.assertNotIn("freeze-revision", texte)
+
+
+class TestLaLigneDeCommande(Racine):
+    def test_add_local_without_set_aside_warns(self):
+        self.clone("odoo18.0/addons/addons")
+        with (
+            mock.patch.object(mr, "_racine", return_value=self.racine),
+            mock.patch("builtins.print") as sortie,
+        ):
+            code = mr.main(
+                [
+                    "add-local",
+                    "odoo18.0/addons/addons",
+                    "--private",
+                    "--no-freeze",
+                ]
+            )
+        self.assertEqual(code, 0)
+        texte = "\n".join(str(c.args[0]) for c in sortie.call_args_list)
+        self.assertIn("--set-aside", texte)
+        self.assertNotIn(
+            "freeze-revision",
+            self.lire("private/manifest/git_manifest_private_odoo18.0.xml"),
+        )
 
 
 if __name__ == "__main__":

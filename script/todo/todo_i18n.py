@@ -2268,6 +2268,10 @@ TRANSLATIONS = {
         "fr": "➕ Ajouter un dépôt à un manifeste",
         "en": "➕ Add a repository to a manifest",
     },
+    "📁 Add a repository from an existing directory": {
+        "fr": "📁 Ajouter un dépôt depuis un répertoire existant",
+        "en": "📁 Add a repository from an existing directory",
+    },
     "Add it without checking the branch? (y/N): ": {
         "fr": "L'ajouter sans vérifier la branche ? (o/N) : ",
         "en": "Add it without checking the branch? (y/N): ",
@@ -2279,6 +2283,14 @@ TRANSLATIONS = {
         "en": (
             "Commit private/, then synchronise the repositories to clone it."
         ),
+    },
+    "Commit private/.": {
+        "fr": "Committez private/.",
+        "en": "Commit private/.",
+    },
+    "HEAD is not pushed: the repository is added without a freeze.": {
+        "fr": "HEAD n'est pas poussé : le dépôt est ajouté sans gel.",
+        "en": "HEAD is not pushed: the repository is added without a freeze.",
     },
     (
         "Host unreachable, or a private repository git cannot read without "
@@ -2293,9 +2305,43 @@ TRANSLATIONS = {
             "without credentials."
         ),
     },
+    "Kept as": {
+        "fr": "Gardé sous",
+        "en": "Kept as",
+    },
+    "NOT pushed": {
+        "fr": "NON poussé",
+        "en": "NOT pushed",
+    },
+    "No undeclared git clone under the installed versions.": {
+        "fr": "Aucun clone git non déclaré sous les versions installées.",
+        "en": "No undeclared git clone under the installed versions.",
+    },
     "Not a repository URL.": {
         "fr": "Pas une URL de dépôt.",
         "en": "Not a repository URL.",
+    },
+    "Number, or a path from the ERPLibre root (Enter: cancel): ": {
+        "fr": (
+            "Numéro, ou chemin depuis la racine d'ERPLibre (Entrée : annuler) "
+            ": "
+        ),
+        "en": "Number, or a path from the ERPLibre root (Enter: cancel): ",
+    },
+    "Number, or a path from the ERPLibre root (Enter: browse): ": {
+        "fr": (
+            "Numéro, ou chemin depuis la racine d'ERPLibre (Entrée : "
+            "parcourir) : "
+        ),
+        "en": "Number, or a path from the ERPLibre root (Enter: browse): ",
+    },
+    "Enter the clone, then choose « . »; q cancels.": {
+        "fr": "Entrez dans le clone, puis choisissez « . » ; q annule.",
+        "en": "Enter the clone, then choose « . »; q cancels.",
+    },
+    "Not under the ERPLibre root:": {
+        "fr": "Hors de la racine d'ERPLibre :",
+        "en": "Not under the ERPLibre root:",
     },
     "Private: private/manifest/, only in a private repository.": {
         "fr": "Privé : private/manifest/, seulement dans un dépôt privé.",
@@ -2313,9 +2359,22 @@ TRANSLATIONS = {
         "fr": "Lecture des branches sur l'hôte, sans cloner…",
         "en": "Reading the branches on the host, without cloning…",
     },
+    "Set it aside (renamed, kept) and let repo clone it now? (y/N): ": {
+        "fr": (
+            "Le mettre de côté (renommé, gardé) et laisser repo le cloner "
+            "maintenant ? (o/N) : "
+        ),
+        "en": (
+            "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
+        ),
+    },
     "URL of the repository to add: ": {
         "fr": "URL du dépôt à ajouter : ",
         "en": "URL of the repository to add: ",
+    },
+    "Until then, repo sync fails on this path.": {
+        "fr": "D'ici là, repo sync échoue sur ce chemin.",
+        "en": "Until then, repo sync fails on this path.",
     },
     "default branch": {
         "fr": "branche par défaut",
@@ -2324,6 +2383,23 @@ TRANSLATIONS = {
     "not an installed version with a manifest.": {
         "fr": "pas une version installée avec un manifeste.",
         "en": "not an installed version with a manifest.",
+    },
+    "pushed": {
+        "fr": "poussé",
+        "en": "pushed",
+    },
+    (
+        "repo sync refuses a clone it did not make: it must be set aside and "
+        "cloned again by repo."
+    ): {
+        "fr": (
+            "repo sync refuse un clone qu'il n'a pas fait : il faut le mettre "
+            "de côté et le laisser recloner par repo."
+        ),
+        "en": (
+            "repo sync refuses a clone it did not make: it must be set aside "
+            "and cloned again by repo."
+        ),
     },
     "🌿 Create a branch in a repository": {
         "fr": "🌿 Créer une branche dans un dépôt",

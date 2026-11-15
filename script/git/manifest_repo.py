@@ -11,6 +11,8 @@ sans menu :
 
     manifest_repo.py add URL --version 18.0 [--branch B] [--freeze|--no-freeze]
                      [--private]
+    manifest_repo.py add-local CHEMIN [--version 18.0] [--freeze|--no-freeze]
+                     [--private] [--set-aside]
     manifest_repo.py fork CHEMIN --organisation ORG [--version 18.0]
                      [--upstream origine|fork] [--all-branches]
                      [--manifest 17.0,18.0 | --no-manifest]
@@ -474,6 +476,147 @@ def branche_proposee(version, disponibles, defaut):
     if disponibles and version in disponibles:
         return version
     return defaut or version
+
+
+def lire_clone(chemin):
+    """Ce qu'il faut pour déclarer un clone existant, lu dans le clone
+    seul, sans réseau : {remote, url, branche, sha, pousse}. `branche` est
+    la branche distante suivie, sinon la branche courante ; `pousse` dit si
+    HEAD est déjà dans cette branche telle que le clone la connaît.
+    ValueError hors d'un dépôt git, en HEAD détachée, ou sans remote."""
+    code, top = git(chemin, "rev-parse", "--show-toplevel")
+    if code or os.path.realpath(top) != os.path.realpath(chemin):
+        raise ValueError(f"{chemin} : pas la racine d'un dépôt git")
+    code, courante = git(chemin, "branch", "--show-current")
+    if code or not courante:
+        raise ValueError(f"{chemin} : HEAD détachée, aucune branche à suivre")
+    code, suivie = git(chemin, "rev-parse", "--abbrev-ref", "@{u}")
+    remotes = remotes_du_clone(chemin)
+    if not code and "/" in suivie:
+        remote, branche = suivie.split("/", 1)
+    elif len(remotes) == 1 or "origin" in remotes:
+        remote = remotes[0] if len(remotes) == 1 else "origin"
+        branche = courante
+    else:
+        raise ValueError(f"{chemin} : aucun remote, ou aucun suivi")
+    code, url = git(chemin, "remote", "get-url", remote)
+    if code or not url:
+        raise ValueError(f"{chemin} : remote {remote} sans URL")
+    _code, sha = git(chemin, "rev-parse", "HEAD")
+    pousse = (
+        git(
+            chemin,
+            "merge-base",
+            "--is-ancestor",
+            "HEAD",
+            f"refs/remotes/{remote}/{branche}",
+        )[0]
+        == 0
+    )
+    return {
+        "remote": remote,
+        "url": url,
+        "branche": branche,
+        "sha": sha,
+        "pousse": pousse,
+    }
+
+
+def ajouter_existant(
+    chemin, version, prive=False, geler=None, dossier=None, racine=None
+):
+    """Déclare dans le manifeste de `version`, principal ou privé, le
+    clone qui existe déjà à `chemin` (relatif à `racine`), sous ce chemin,
+    sur la branche qu'il suit et, gelé, sur son HEAD. Rend (fichier, plan,
+    gel, infos de lire_clone). Refuse un chemin ou un dépôt déjà déclaré,
+    et un gel sur un HEAD que le clone ne sait pas poussé : personne
+    d'autre ne pourrait le récupérer."""
+    racine = racine or _racine()
+    chemin = os.path.normpath(chemin)
+    infos = lire_clone(os.path.join(racine, chemin))
+    fichier = fichier_cible(version, prive, dossier, racine)
+    remotes, projets = lire_avec_prive(version, dossier, racine)
+    if any(p.get("path") == chemin for p in projets.values()):
+        raise ValueError(f"{chemin} est déjà dans le manifeste {version}")
+    depot = github_fork.depot_github(infos["url"])
+    if depot and depot_deja_present(depot, version, dossier, racine):
+        raise ValueError(
+            f"{depot[0]}/{depot[1]} est déjà dans le manifeste {version}"
+        )
+    plan = plan_ajout(infos["url"], version, infos["branche"], remotes, chemin)
+    if geler is None:
+        geler = gel_par_defaut(version, dossier) and infos["pousse"]
+    if geler and not infos["pousse"]:
+        raise ValueError(
+            f"HEAD {infos['sha'][:12]} n'est pas dans"
+            f" {infos['remote']}/{infos['branche']} : poussez-le avant de geler"
+        )
+    gel = infos["sha"] if geler else None
+    ecrire_projet(fichier, prive, plan, gel, racine)
+    return fichier, plan, gel, infos
+
+
+def mettre_de_cote(chemin, racine=None):
+    """Renomme le clone ordinaire `chemin` (relatif à `racine`) en
+    « .<nom>.avant_repo » à côté de lui, pour que repo le reclone sous son
+    contrôle : repo sync refuse un clone qu'il n'a pas fait (« unsupported
+    checkout state ») et ne sait pas l'adopter. Rien n'est supprimé. Refuse
+    un clone au travail non commité ou au HEAD non poussé, qui ne vivrait
+    plus que dans la copie mise de côté. Rend le chemin de la copie."""
+    racine = racine or _racine()
+    absolu = os.path.join(racine, chemin)
+    if os.path.islink(os.path.join(absolu, ".git")):
+        raise ValueError(f"{chemin} : déjà un clone de repo")
+    code, sale = git(absolu, "status", "--porcelain")
+    if code or sale:
+        raise ValueError(
+            f"{chemin} : du travail non commité, rien n'est déplacé"
+        )
+    infos = lire_clone(absolu)
+    if not infos["pousse"]:
+        raise ValueError(
+            f"{chemin} : HEAD {infos['sha'][:12]} non poussé vers"
+            f" {infos['remote']}/{infos['branche']}, rien n'est déplacé"
+        )
+    parent, nom = os.path.split(absolu.rstrip(os.sep))
+    cible = os.path.join(parent, f".{nom}.avant_repo")
+    rang = 2
+    while os.path.exists(cible):
+        cible = os.path.join(parent, f".{nom}.avant_repo-{rang}")
+        rang += 1
+    os.rename(absolu, cible)
+    return os.path.relpath(cible, racine)
+
+
+def clones_non_declares(racine=None, versions=None, dossier=None):
+    """[(version, chemin relatif)] des clones git sous odoo<V>/ qu'aucun
+    manifeste de V, privé compris, ne déclare ; triés. La recherche
+    descend trois niveaux et s'arrête à chaque clone trouvé : un dépôt
+    n'en contient pas d'autre à déclarer."""
+    racine = racine or _racine()
+    res = []
+    for version in versions or versions_installees(racine, dossier):
+        base = os.path.join(racine, f"odoo{version}")
+        if not os.path.isdir(base):
+            continue
+        _r, projets = lire_avec_prive(version, dossier, racine)
+        declares = {
+            os.path.normpath(p.get("path", "")) for p in projets.values()
+        }
+        for dossier_courant, sous, _f in os.walk(base):
+            relatif = os.path.relpath(dossier_courant, racine)
+            profondeur = relatif.count(os.sep)
+            if dossier_courant != base and os.path.exists(
+                os.path.join(dossier_courant, ".git")
+            ):
+                if relatif not in declares:
+                    res.append((version, relatif))
+                sous[:] = []
+                continue
+            sous[:] = sorted(
+                d for d in sous if not d.startswith(".") and profondeur < 3
+            )
+    return sorted(res)
 
 
 # ── Forker pour une organisation ───────────────────────────────────────
@@ -1381,6 +1524,26 @@ def main(argv=None):
         action="store_true",
         help="declare it in private/manifest/ instead of manifest/",
     )
+    p = sous.add_parser(
+        "add-local", help="declare a git clone that already exists"
+    )
+    p.add_argument("chemin", help="path from the ERPLibre root")
+    p.add_argument("--version")
+    gel = p.add_mutually_exclusive_group()
+    gel.add_argument(
+        "--freeze", dest="geler", action="store_true", default=None
+    )
+    gel.add_argument("--no-freeze", dest="geler", action="store_false")
+    p.add_argument(
+        "--private",
+        action="store_true",
+        help="declare it in private/manifest/ instead of manifest/",
+    )
+    p.add_argument(
+        "--set-aside",
+        action="store_true",
+        help="rename the clone aside and let repo clone it again",
+    )
     p = sous.add_parser("fork", help="fork a manifest repository")
     p.add_argument("chemin")
     p.add_argument("--organisation", required=True)
@@ -1515,6 +1678,25 @@ def main(argv=None):
                 f"{', ' + gel[:12] if gel else ''})"
             )
             return 0
+        if args.commande == "add-local":
+            fichier, plan, gel, infos = ajouter_existant(
+                args.chemin, version, args.private, args.geler, racine=racine
+            )
+            print(
+                f"{os.path.relpath(fichier, racine)} : {plan['path']}"
+                f" ({plan['remote']}, {plan['revision']}"
+                f"{', ' + gel[:12] if gel else ''})"
+            )
+            if not infos["pousse"]:
+                print("warning: HEAD is not pushed, no freeze")
+            if not args.set_aside:
+                print(
+                    "warning: repo sync refuses this clone until it is set"
+                    " aside (--set-aside)"
+                )
+                return 0
+            print(f"kept as {mettre_de_cote(plan['path'], racine)}")
+            return executer(commandes_synchro(racine, plan["path"]), racine)
         if args.commande == "pulls":
             client = _client(racine)
             if not client:

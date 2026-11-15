@@ -38,6 +38,13 @@ from script.git.manifest_repo import (  # noqa: E402,F401
 )
 from script.todo.todo_i18n import t  # noqa: E402
 
+try:
+    from script.todo import todo_file_browser
+except Exception:
+    # urwid peut manquer : le parcours devient indisponible, la saisie
+    # directe d'un chemin reste, et Entrée annule.
+    todo_file_browser = None
+
 RACINE = new_path
 
 MESSAGE_JETON = (
@@ -390,6 +397,130 @@ class GitForkMenuMixin:
             )
             if choix:
                 return self._git_fork_organisation(version, choix)
+        return 0
+
+    def _git_parcourir_clone(self):
+        """Ouvre le navigateur de fichiers en mode répertoire, sur odoo<V>/
+        de la première version installée qui a son dossier, sinon sur la
+        racine. Rend le répertoire choisi relatif à la racine d'ERPLibre, ou
+        "" quand on annule (q), quand urwid manque ou quand le choix sort de
+        la racine : un manifeste ne déclare que des chemins sous elle."""
+        if todo_file_browser is None:
+            return ""
+        depart = RACINE
+        for version in manifest_repo.versions_installees(RACINE):
+            dossier = os.path.join(RACINE, f"odoo{version}")
+            if os.path.isdir(dossier):
+                depart = dossier
+                break
+        print(f"  {t('Enter the clone, then choose « . »; q cancels.')}")
+        choix = []
+        todo_file_browser.FileBrowser(
+            depart, choix.append, open_dir=True
+        ).run_main_frame()
+        if not choix:
+            return ""
+        relatif = os.path.relpath(choix[-1], RACINE)
+        if relatif == os.curdir or relatif.split(os.sep, 1)[0] == os.pardir:
+            print(f"❌ {t('Not under the ERPLibre root:')} {choix[-1]}")
+            return ""
+        print(f"  {relatif}")
+        return relatif
+
+    def _git_ajouter_existant(self):
+        """Déclare un clone qui existe déjà sous odoo<V>/, à son chemin et
+        sur la branche qu'il suit, sans réseau ; puis propose de le remettre
+        à repo, qui ne sait pas reprendre un clone qu'il n'a pas fait.
+        Rend 0, ou 2 sur un refus."""
+        candidats = manifest_repo.clones_non_declares(RACINE)
+        for i, (version, chemin) in enumerate(candidats, 1):
+            print(f"  [{i}] {chemin} (Odoo {version})")
+        if not candidats:
+            print(
+                f"  {t('No undeclared git clone under the installed versions.')}"
+            )
+        if todo_file_browser is None:
+            invite = t(
+                "Number, or a path from the ERPLibre root (Enter: cancel): "
+            )
+        else:
+            invite = t(
+                "Number, or a path from the ERPLibre root (Enter: browse): "
+            )
+        saisie = input(invite).strip()
+        if not saisie:
+            saisie = self._git_parcourir_clone()
+            if not saisie:
+                return 0
+        if saisie.isdigit() and 1 <= int(saisie) <= len(candidats):
+            version, chemin = candidats[int(saisie) - 1]
+        else:
+            chemin = os.path.normpath(saisie)
+            prefixe = chemin.split(os.sep, 1)[0]
+            versions = manifest_repo.versions_installees(RACINE)
+            version = prefixe.removeprefix("odoo")
+            if not (prefixe.startswith("odoo") and version in versions):
+                version = self._git_choisir_version_installee()
+                if not version:
+                    return 2
+        try:
+            infos = manifest_repo.lire_clone(os.path.join(RACINE, chemin))
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        etat = t("pushed") if infos["pousse"] else t("NOT pushed")
+        print(
+            f"  {infos['url']} · {infos['remote']}/{infos['branche']}"
+            f" · HEAD {infos['sha'][:12]} ({etat})"
+        )
+        prive = self._git_choisir_visibilite()
+        if prive is None:
+            return 0
+        geler = False
+        if infos["pousse"]:
+            geler = self._git_question_gel(
+                manifest_repo.gel_par_defaut(version)
+            )
+        else:
+            print(
+                f"⚠ {t('HEAD is not pushed: the repository is added without a freeze.')}"
+            )
+        try:
+            fichier, plan, gel, _i = manifest_repo.ajouter_existant(
+                chemin, version, prive, geler, racine=RACINE
+            )
+        except ValueError as exc:
+            print(f"❌ {exc}")
+            return 2
+        print(
+            f"  ✓ {os.path.relpath(fichier, RACINE)} : {plan['path']}"
+            f" ({plan['remote']}, {plan['revision']}"
+            f"{' @ ' + gel[:12] if gel else ''})"
+        )
+        print(
+            f"  {t('repo sync refuses a clone it did not make: it must be set aside and cloned again by repo.')}"
+        )
+        if self._is_yes(
+            input(
+                t(
+                    "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
+                )
+            )
+        ):
+            try:
+                copie = manifest_repo.mettre_de_cote(chemin, RACINE)
+            except ValueError as exc:
+                print(f"❌ {exc}")
+                return 2
+            print(f"  ✓ {t('Kept as')} {copie}")
+            code = self._git_lancer(
+                manifest_repo.commandes_synchro(RACINE, chemin)
+            )
+            if code:
+                return 2
+        else:
+            print(f"⚠ {t('Until then, repo sync fails on this path.')}")
+        print(f"  {t('Commit private/.' if prive else 'Commit manifest/.')}")
         return 0
 
     # ── Branche et remote amont d'un clone ───────────────────────────

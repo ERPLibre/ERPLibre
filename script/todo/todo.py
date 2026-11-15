@@ -3860,6 +3860,12 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "📁 Add a repository from an existing directory"
+                ),
+                "method": "_git_ajouter_existant",
+            },
+            {
+                "prompt_description": t(
                     "➖ Remove a repository from a manifest"
                 ),
                 "method": "_git_retirer_depot",
