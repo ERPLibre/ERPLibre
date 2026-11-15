@@ -590,6 +590,24 @@ class TestSealMenuNumbering(MenuCoherence, unittest.TestCase):
         )
 
 
+class TestInstallUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Installation › Mise à jour, dans install_update_menu.py :
+    chaque entrée mène à la méthode du menu Python ou des dépôts qui fait
+    déjà le travail."""
+
+    SOURCE = TODO_DIR / "install_update_menu.py"
+    ENTRY = "def prompt_install_update(self):"
+    END = "def execute_update_repos("
+    MINIMUM = 3
+
+    EXPECTED = {
+        "Python versions": "execute_python_versions",
+        "Lock drift": "execute_poetry_drift",
+        "Resynchronize the repositories": "execute_update_repos",
+        "⬇️ Pull the repositories": "_git_repo_tirer",
+    }
+
+
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 
