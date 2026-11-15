@@ -2244,6 +2244,22 @@ TRANSLATIONS = {
         "fr": "Dépôts",
         "en": "Repositories",
     },
+    "Manifest": {
+        "fr": "Manifeste",
+        "en": "Manifest",
+    },
+    "Forks": {
+        "fr": "Forks",
+        "en": "Forks",
+    },
+    "Branches": {
+        "fr": "Branches",
+        "en": "Branches",
+    },
+    "Pull requests": {
+        "fr": "Pull requests",
+        "en": "Pull requests",
+    },
     "🍴 Fork a repository for an organisation": {
         "fr": "🍴 Forker un dépôt pour une organisation",
         "en": "🍴 Fork a repository for an organisation",

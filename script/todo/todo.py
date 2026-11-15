@@ -3844,24 +3844,32 @@ class TODO(
             },
             *groupes["repositories"],
             {
-                "prompt_description": t(
-                    "🍴 Fork a repository for an organisation"
-                ),
-                "method": "_git_fork_organisation",
+                "prompt_description": t("🔄 Synchronise one repository"),
+                "method": "_git_synchroniser_depot",
             },
+            {
+                "prompt_description": t(
+                    "🧊 Freeze one repository on a commit"
+                ),
+                "method": "_git_regeler_depot",
+            },
+            {"section": t("Manifest")},
             {
                 "prompt_description": t("➕ Add a repository to a manifest"),
                 "method": "_git_ajouter_depot",
             },
             {
-                "prompt_description": t("🌿 Create a branch in a repository"),
-                "method": "_git_creer_branche",
+                "prompt_description": t(
+                    "➖ Remove a repository from a manifest"
+                ),
+                "method": "_git_retirer_depot",
             },
+            {"section": t("Forks")},
             {
                 "prompt_description": t(
-                    "🌳 Create the same branch in several repositories"
+                    "🍴 Fork a repository for an organisation"
                 ),
-                "method": "_git_creer_branche_plusieurs",
+                "method": "_git_fork_organisation",
             },
             {
                 "prompt_description": t(
@@ -3883,19 +3891,20 @@ class TODO(
             },
             {
                 "prompt_description": t(
-                    "➖ Remove a repository from a manifest"
+                    "🔑 Check the GitHub token (scopes, organisation)"
                 ),
-                "method": "_git_retirer_depot",
+                "method": "_git_verifier_jeton",
             },
+            {"section": t("Branches")},
             {
-                "prompt_description": t("🔄 Synchronise one repository"),
-                "method": "_git_synchroniser_depot",
+                "prompt_description": t("🌿 Create a branch in a repository"),
+                "method": "_git_creer_branche",
             },
             {
                 "prompt_description": t(
-                    "🧊 Freeze one repository on a commit"
+                    "🌳 Create the same branch in several repositories"
                 ),
-                "method": "_git_regeler_depot",
+                "method": "_git_creer_branche_plusieurs",
             },
             {
                 "prompt_description": t(
@@ -3903,6 +3912,7 @@ class TODO(
                 ),
                 "method": "_git_nettoyer_branches",
             },
+            {"section": t("Pull requests")},
             {
                 "prompt_description": t(
                     "📋 List the pull requests of an organisation"
@@ -3920,12 +3930,6 @@ class TODO(
                     "🚦 Status of my pull requests (review, CI, merged)"
                 ),
                 "method": "_git_statut_mes_pull_requests",
-            },
-            {
-                "prompt_description": t(
-                    "🔑 Check the GitHub token (scopes, organisation)"
-                ),
-                "method": "_git_verifier_jeton",
             },
             {"section": t("Settings")},
             {
