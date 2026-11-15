@@ -440,8 +440,57 @@ class TestManifeste(unittest.TestCase):
         depot.update(state="decale", target="b" * 40)
         resultat = h.verifier_manifeste(self.ctx_snapshot([depot]))
         self.assertEqual(resultat.statut, h.ALERTE)
-        self.assertEqual(resultat.details, ["decale : odoo18.0/addons/R_gele"])
+        self.assertEqual(
+            resultat.details,
+            [
+                f"decale_du_gel : odoo18.0/addons/R_gele · {t('freeze')} bbbbbbbbbb"
+            ],
+        )
         self.assertNotIn(t("off the freeze"), resultat.resume)
+
+    def test_ahead_of_a_target_that_is_the_freeze_names_the_frozen_commit(
+        self,
+    ):
+        gel = "4250511" + "4" * 33
+        depot = self.depot(
+            "odoo18.0/addons/R_gele",
+            gel,
+            {"ahead": 6, "behind": 0, "alignment": "en_avance"},
+        )
+        depot.update(
+            state="en_avance",
+            target=gel.upper(),
+            head="f" * 40,
+            ahead=6,
+            behind=0,
+            branch="18.0",
+        )
+        conforme = self.depot("odoo18.0/addons/R_conforme")
+        resultat = h.verifier_manifeste(self.ctx_snapshot([depot, conforme]))
+        self.assertEqual(resultat.statut, h.ALERTE)
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance_du_gel : odoo18.0/addons/R_gele (+6 −0)"
+                f" · {t('freeze')} 4250511444 · HEAD 18.0"
+            ],
+        )
+        self.assertEqual(resultat.resume, "1 conforme · 1 en_avance_du_gel")
+
+    def test_ahead_of_a_branch_target_keeps_its_state_name(self):
+        # Hors d'un checkout gelé, la cible est une branche : l'avance est
+        # sur elle, pas sur le gel.
+        depot = self.depot(
+            "odoo18.0/addons/R_branche",
+            "a" * 40,
+            {"ahead": 2, "behind": 0, "alignment": "en_avance"},
+        )
+        depot.update(state="en_avance", target="c" * 40, ahead=2, behind=0)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([depot]))
+        self.assertIn(
+            "en_avance : odoo18.0/addons/R_branche (+2 −0)", resultat.details
+        )
+        self.assertNotIn("du_gel", resultat.resume)
 
     def test_ahead_and_diverged_repositories_are_named_with_their_gap(self):
         avance = self.depot("odoo18.0/addons/R_avance")

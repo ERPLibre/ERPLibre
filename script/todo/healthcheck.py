@@ -992,6 +992,33 @@ ECARTS_GEL = {
 # écart à la cible du manifeste local, en avance compris — des commits que la
 # branche du manifeste n'a pas encore.
 ETATS_SIGNALES = ("decale", "en_avance", "absent", "erreur")
+# Les états signalés qui mesurent HEAD contre la cible. Quand la cible est
+# le commit gelé, l'écart est un écart au gel : l'état prend le suffixe
+# SUFFIXE_GEL et sa ligne nomme le commit gelé.
+ETATS_MESURES = ("decale", "en_avance")
+SUFFIXE_GEL = "_du_gel"
+
+
+def _cible_est_le_gel(depot):
+    """Vrai quand la cible du manifeste local est le « freeze-revision » de
+    `manifest/` : en checkout gelé, l'écart de HEAD à sa cible est alors
+    son écart au gel."""
+    cible = (depot.get("target") or "").lower()
+    return (
+        bool(cible) and cible == (depot.get("freeze_revision") or "").lower()
+    )
+
+
+def _etat_affiche(depot):
+    """L'état du dépôt tel que la vérification le compte et l'affiche :
+    celui de `repo_state`, suffixé de SUFFIXE_GEL pour un état de
+    ETATS_MESURES dont la cible est le commit gelé — « en_avance_du_gel »
+    dit que le gel est à refaire, là où « en_avance » laisserait croire à
+    une avance sur la branche."""
+    etat = depot.get("state")
+    if etat in ETATS_MESURES and _cible_est_le_gel(depot):
+        return etat + SUFFIXE_GEL
+    return etat
 
 
 def _ecart_gel(depot):
@@ -1003,11 +1030,7 @@ def _ecart_gel(depot):
     alignement = gel.get("alignment")
     if alignement in (None, "conforme"):
         return None
-    if (
-        depot.get("state") in ETATS_SIGNALES
-        and depot.get("target")
-        and depot.get("target") == depot.get("freeze_revision")
-    ):
+    if depot.get("state") in ETATS_SIGNALES and _cible_est_le_gel(depot):
         return None
     head = (depot.get("head") or "")[:10]
     commit = (depot.get("freeze_revision") or "")[:10]
@@ -1059,11 +1082,14 @@ def verifier_manifeste(ctx):
         if depot in perimes:
             continue
         etat = depot.get("state")
-        comptes[etat] = comptes.get(etat, 0) + 1
+        affiche = _etat_affiche(depot)
+        comptes[affiche] = comptes.get(affiche, 0) + 1
         if etat in ETATS_SIGNALES:
-            ligne = f"{etat} : {depot.get('path')}"
+            ligne = f"{affiche} : {depot.get('path')}"
             if depot.get("ahead") is not None:
                 ligne += f" (+{depot['ahead']} −{depot['behind']})"
+            if affiche != etat:
+                ligne += f" · {t('freeze')} {depot['freeze_revision'][:10]}"
             ligne += _branche_extraite(depot)
             if depot.get("error"):
                 ligne += f" — {depot['error']}"
