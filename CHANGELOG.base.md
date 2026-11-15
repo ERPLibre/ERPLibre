@@ -508,6 +508,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ctrl+C` leaves queued addresses and connections unsent. **Space to reclaim** measures the
   neighbour checkouts' venvs in up to 8 processes, never more than CPUs: 18 venvs in 0.46 s instead
   of 2.9 s
+- The healthcheck's **Addons against the manifest** and **Repo branches** end each line with `· HEAD <branch>`, the branch the repository has checked out, in powder blue: a repository ahead of its freeze, or a branch 129 commits behind HEAD, now says what the gap is measured against. A detached HEAD adds nothing, and outside a terminal or under `NO_COLOR` the text stays plain
 
 <!-- [fr] -->
 
@@ -611,6 +612,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   partir ni les adresses ni les connexions en attente. **Espace à récupérer** mesure les venvs des
   checkouts voisins dans jusqu'à 8 processus, jamais plus que de processeurs : 18 venvs en 0,46 s au
   lieu de 2,9 s
+- **Addons face au manifeste** et **Branches des dépôts**, dans le diagnostic, terminent chaque ligne par `· HEAD <branche>`, la branche extraite du dépôt, en bleu poudre : un dépôt en avance sur son gel, ou une branche à 129 commits derrière HEAD, dit désormais à quoi l'écart se mesure. Un HEAD détaché n'ajoute rien, et hors d'un terminal ou sous `NO_COLOR` le texte reste nu
 
 <!-- [en] -->
 ## Fixed
