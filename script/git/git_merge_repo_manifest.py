@@ -98,9 +98,9 @@ def get_config(argv=None):
         help=(
             f"Pin every project to the commit of its @{FREEZE_ATTR},"
             " keeping its branch in @upstream and @dest-branch. The"
-            " manifests of the active Odoo version and the common ones"
-            " are frozen; a project without one follows its branch, with"
-            " a warning."
+            " manifests of the active Odoo version, its private manifest"
+            " and the common ones are frozen; a project without one follows"
+            " its branch, with a warning."
         ),
     )
     parser.add_argument(
@@ -138,6 +138,9 @@ def main():
     # projet l'emporte, et un ensemble rendrait ce gagnant aléatoire.
     input_paths = list(dict.fromkeys(input_paths))
     fichiers_geles = honored_sources()
+    # Un CSV peut écrire « ./private/… » : la comparaison se fait sur le
+    # chemin normalisé.
+    geles_normalises = {os.path.normpath(f) for f in fichiers_geles}
     hors_portee = []
 
     for index, input_path in enumerate(input_paths):
@@ -153,7 +156,7 @@ def main():
         for key, value in projects_copy.items():
             new_key = f"{key}+{value.get('@path')}"
             projects[new_key] = value
-        if input_path not in fichiers_geles:
+        if os.path.normpath(input_path) not in geles_normalises:
             hors_portee += strip_freeze(projects)
 
         if len(input_paths) == 1:
@@ -200,8 +203,9 @@ def main():
         if hors_portee:
             print(
                 f"WARNING: {len(hors_portee)} {FREEZE_ATTR} outside the"
-                " manifests of the active Odoo version and the common ones"
-                " are ignored; remove them with make repo_unfreeze:"
+                " manifests of the active Odoo version, its private manifest"
+                " and the common ones are ignored; remove them with make"
+                " repo_unfreeze:"
             )
             for cle in sorted(hors_portee):
                 print(f"  - {cle}")
@@ -317,8 +321,9 @@ def strip_freeze(projects):
     projets d'un fichier. Rend les clés qui portaient l'un ou l'autre.
 
     La fusion n'applique que le gel des fichiers de `honored_sources` : la
-    version d'Odoo active et les fragments communs. Celui d'un autre
-    fichier est retiré avant la fusion, et son projet suit sa branche.
+    version d'Odoo active, son manifeste privé et les fragments communs.
+    Celui d'un autre fichier est retiré avant la fusion, et son projet suit
+    sa branche.
     """
     retires = []
     for cle, valeur in projects.items():

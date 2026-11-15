@@ -286,15 +286,17 @@ repo_pull:
 repo_pull_dry_run:
 	.venv.erplibre/bin/python script/git/repo_pull.py --dry-run --mode manifeste
 
-# write the SHA of every cloned repo of the active Odoo version into its
-# manifest/ file (git_manifest_odoo<V>.xml, _dev, extra) as freeze-revision
+# write the SHA of every cloned repo of the active Odoo version into the
+# file that declares it (manifest/git_manifest_odoo<V>.xml, _dev, extra, or
+# private/manifest/git_manifest_private_odoo<V>.xml) as freeze-revision
 # (UPSTREAM=1: also fork-upstream-freeze-revision, the upstream commit each
 # frozen fork is based on; fetches every declared upstream over the network)
 .PHONY: repo_freeze
 repo_freeze:
 	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,)
 
-# remove freeze-revision from manifest/, repos follow their branch again
+# remove freeze-revision from manifest/ and private/manifest/, repos follow
+# their branch again
 .PHONY: repo_unfreeze
 repo_unfreeze:
 	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py --unfreeze

@@ -7,7 +7,7 @@ Les dépôts viennent de `repo_state.py snapshot` : chaque entrée porte
 « path », « url » (celle du manifeste), « head », « branch »,
 « manifest_branch », « freeze_revision » et « freeze », l'écart de HEAD au
 commit gelé (« alignment »). Ce module ÉCRIT : il déplace des HEAD et
-réécrit `manifest/`, et chaque appelant demande d'abord.
+réécrit les fichiers du gel, et chaque appelant demande d'abord.
 
 Deux résolutions, selon le sens de l'écart :
 
@@ -19,9 +19,9 @@ Deux résolutions, selon le sens de l'écart :
   détaché sur lui, comme git-repo le laisse ; une branche locale reste où
   elle était.
 - mettre à jour le gel — HEAD porte des commits que le gel n'a pas. HEAD
-  devient le gel, dans les fichiers de `manifest/` qui portaient l'ancien,
-  mais seulement s'il est publié : un gel que personne d'autre ne peut
-  rapatrier casse l'installation suivante.
+  devient le gel, dans les fichiers sources qui portaient l'ancien
+  (`fichiers_manifeste`), mais seulement s'il est publié : un gel que
+  personne d'autre ne peut rapatrier casse l'installation suivante.
 
 Un dépôt aux fichiers modifiés n'est jamais touché. Un écart dans les deux
 sens (« decale »), ou que le clone tronqué ne permet pas de mesurer
@@ -33,7 +33,7 @@ import os
 import shlex
 import subprocess
 
-from script.git import manifest_freeze
+from script.git import git_freeze_manifest, manifest_freeze
 
 DELAI_GIT = 60
 DELAI_RESEAU = 300
@@ -206,12 +206,20 @@ def publication(racine, depot, noter=None):
 
 
 def fichiers_manifeste(racine):
-    return sorted(glob.glob(os.path.join(racine, "manifest", "*.xml")))
+    """Les fichiers où un gel se met à jour, chemins sous `racine` : chaque
+    `manifest/*.xml`, puis le manifeste privé de la version d'Odoo active
+    quand il existe. Celui d'une autre version n'en fait pas partie : la
+    fusion n'applique pas son gel."""
+    fichiers = sorted(glob.glob(os.path.join(racine, "manifest", "*.xml")))
+    prive = git_freeze_manifest.private_source(racine=racine)
+    if prive:
+        fichiers.append(os.path.join(racine, prive))
+    return fichiers
 
 
 def mettre_a_jour_gel(racine, depots, ecrire=True):
     """Pose le HEAD de chaque dépôt comme « freeze-revision » dans les
-    fichiers de `manifest/` qui portent son ancien gel. Rend
+    fichiers de `fichiers_manifeste` qui portent son ancien gel. Rend
     ({fichier relatif: [clés]}, [clés qui perdent leur base amont]).
 
     Seul l'élément `<project>` dont le gel vaut l'ancien commit change : un

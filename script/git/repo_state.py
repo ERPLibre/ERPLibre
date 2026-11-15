@@ -28,8 +28,9 @@ fusion que git-repo lit : sa « revision » est une branche quand le checkout
 suit les branches, un commit quand il est gelé. La CIBLE d'un dépôt est le
 commit que cette « revision » désigne dans son clone : le commit lui-même,
 ou « refs/remotes/<remote>/<branche> », la branche de suivi que git-repo
-avance à chaque synchronisation. Les fichiers de `manifest/` donnent en plus
-ce que le manifeste local ne porte pas : « freeze-revision » et
+avance à chaque synchronisation. Les fichiers de `manifest/` et le
+manifeste privé de la version active donnent en plus ce que le manifeste
+local ne porte pas : « freeze-revision » et
 « fork-upstream-freeze-revision ».
 
 L'amont d'un fork
@@ -65,9 +66,9 @@ Le gel
 ------
 « state » ne compare HEAD qu'à la « revision » du manifeste local, qui suit
 une branche hors d'un checkout gelé. « freeze » compare HEAD au
-« freeze-revision » des fichiers de `manifest/` : None sans gel déclaré ou
-sans HEAD lisible, sinon « ahead » (commits de HEAD absents du gel),
-« behind » (commits du gel absents de HEAD) et « alignment » :
+« freeze-revision » des fichiers sources (`lire_sources`) : None sans gel
+déclaré ou sans HEAD lisible, sinon « ahead » (commits de HEAD absents du
+gel), « behind » (commits du gel absents de HEAD) et « alignment » :
 
   conforme        HEAD est le commit gelé
   en_avance       le gel est un ancêtre de HEAD : le gel est à refaire
@@ -511,15 +512,19 @@ def chemin_projet(attrs):
 
 def lire_sources(racine, versions, active=None):
     """(remotes, {chemin: attributs}) des fichiers de `manifest/` de ces
-    versions, fusionnés par `repo_upgrade.lire_manifestes`, puis des
-    fragments communs à toutes les versions
-    (`git_freeze_manifest.common_sources`).
+    versions, fusionnés par `repo_upgrade.lire_manifestes`, puis du
+    manifeste privé de la version `active`
+    (`git_freeze_manifest.private_source`), puis des fragments communs à
+    toutes les versions (`git_freeze_manifest.common_sources`).
 
     Le « freeze-revision » suit ce que la fusion applique
     (`git_freeze_manifest.honored_sources`) : celui des fichiers de la
-    version `active` et des fragments communs ; celui d'une autre version
-    est retiré. Un projet que nomment à la fois un fichier de version et un
-    fragment commun garde les attributs du fichier de version.
+    version `active`, de son manifeste privé et des fragments communs ;
+    celui d'une autre version est retiré, et son manifeste privé n'est pas
+    lu. Le manifeste privé l'emporte sur un fichier de version, comme dans
+    la fusion qui le lit en dernier ; un projet que nomment à la fois un
+    fichier de version et un fragment commun garde les attributs du
+    fichier de version.
 
     Un fichier illisible est sauté : le manifeste local suffit à décrire
     ses dépôts, il n'y manquera que les gels.
@@ -539,7 +544,13 @@ def lire_sources(racine, versions, active=None):
             if version != active:
                 attrs.pop(manifest_freeze.FREEZE_ATTR, None)
             par_chemin[chemin_projet(attrs)] = attrs
-    for fichier in git_freeze_manifest.common_sources(racine):
+    # (fichier, remplace) : le manifeste privé remplace une définition
+    # antérieure, un fragment commun ne fait que compléter.
+    fichiers = [(f, False) for f in git_freeze_manifest.common_sources(racine)]
+    prive = active and git_freeze_manifest.private_source(active, racine)
+    if prive:
+        fichiers.insert(0, (prive, True))
+    for fichier, remplace in fichiers:
         try:
             arbre = ET.parse(os.path.join(racine, fichier)).getroot()
         except (OSError, ET.ParseError):
@@ -547,7 +558,10 @@ def lire_sources(racine, versions, active=None):
         for e in arbre.findall("remote"):
             remotes.setdefault(e.get("name"), e.get("fetch"))
         for p in arbre.findall("project"):
-            par_chemin.setdefault(chemin_projet(p.attrib), dict(p.attrib))
+            if remplace:
+                par_chemin[chemin_projet(p.attrib)] = dict(p.attrib)
+            else:
+                par_chemin.setdefault(chemin_projet(p.attrib), dict(p.attrib))
     return remotes, par_chemin
 
 
@@ -565,12 +579,12 @@ def definitions(racine):
     """(projets, remotes, présent) — ce que le checkout déclare.
 
     `projets` est {chemin: attributs} : les attributs du manifeste local,
-    complétés par ceux des fichiers de `manifest/` qu'il ne porte pas
-    (« freeze-revision », « fork-upstream-freeze-revision »). Le manifeste
-    local l'emporte sur le reste : c'est lui que git-repo a appliqué.
-    `présent` est False quand le manifeste local manque ; les projets sont
-    alors ceux des fichiers de `manifest/` de la version active et des
-    fragments communs.
+    complétés par ceux des fichiers sources (`lire_sources`) qu'il ne porte
+    pas (« freeze-revision », « fork-upstream-freeze-revision »). Le
+    manifeste local l'emporte sur le reste : c'est lui que git-repo a
+    appliqué. `présent` est False quand le manifeste local manque ; les
+    projets sont alors ceux des fichiers de `manifest/` de la version
+    active, de son manifeste privé et des fragments communs.
     """
     local = lire_manifeste_local(racine)
     if local is None:

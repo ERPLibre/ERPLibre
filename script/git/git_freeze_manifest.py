@@ -6,11 +6,14 @@
 
 Le gel porte sur les fichiers de la version d'Odoo active :
 `git_manifest_odoo<V>.xml`, `git_manifest_odoo<V>_dev.xml` et
-`git_manifest_extra_odoo<V>.xml`. Il pose le commit courant de chacun de
-leurs clones dans « freeze-revision », à côté de la branche que « revision »
-garde. Les autres fichiers de la fusion sont lus sans être écrits, et la
-fusion n'applique que le gel de ces trois fichiers : les projets des autres
-suivent leur branche. Le dégel retire l'attribut de tous les fichiers.
+`git_manifest_extra_odoo<V>.xml` dans `manifest/`, puis, s'il existe, le
+manifeste privé `private/manifest/git_manifest_private_odoo<V>.xml`. Il
+pose le commit courant de chacun de leurs clones dans « freeze-revision »,
+à côté de la branche que « revision » garde, dans le fichier qui déclare
+le projet et nul autre. Les autres fichiers de la fusion sont lus sans être
+écrits, et la fusion n'applique que le gel de ces fichiers et des fragments
+communs : les projets des autres suivent leur branche. Le dégel retire
+l'attribut de tous les fichiers.
 
 Avec `--upstream`, chaque fork gelé dont l'amont est DÉCLARÉ reçoit aussi,
 dans « fork-upstream-freeze-revision », la base de fusion de son commit gelé
@@ -101,10 +104,13 @@ def get_config(argv=None):
         help=(
             "Source manifest file to write, repeatable. Default: the"
             " manifests of the active Odoo version, git_manifest_odoo<V>.xml,"
-            " git_manifest_odoo<V>_dev.xml and git_manifest_extra_odoo<V>.xml;"
-            " a freeze accepts only those, and still reads every merged file"
-            " to find duplicates. With --unfreeze: any file, by default every"
-            " manifest/*.xml and the merged files."
+            " git_manifest_odoo<V>_dev.xml and git_manifest_extra_odoo<V>.xml,"
+            " and its private manifest"
+            " private/manifest/git_manifest_private_odoo<V>.xml when it"
+            " exists; a freeze accepts only those, and still reads every"
+            " merged file to find duplicates. With --unfreeze: any file, by"
+            " default every manifest/*.xml, every private manifest of an Odoo"
+            " version and the merged files."
         ),
     )
     return parser.parse_args(argv)
@@ -178,27 +184,67 @@ def read_sources(sources):
 
 
 def default_sources():
-    """Les fichiers sources que la fusion lit, dans le même ordre."""
+    """Les fichiers sources que la fusion lit, dans le même ordre, chemins
+    normalisés : un CSV qui écrit « ./private/… » nomme le même fichier que
+    `freeze_sources`, et ne le fait pas lire deux fois."""
     from script.git.git_merge_repo_manifest import default_input_paths
 
-    return [p for p in default_input_paths() if p.endswith(".xml")]
+    chemins = [
+        os.path.normpath(p)
+        for p in default_input_paths()
+        if p.endswith(".xml")
+    ]
+    return list(dict.fromkeys(chemins))
+
+
+# Le dossier des manifestes privés, et le nom de celui d'une version
+# d'Odoo : ses dépôts ne figurent dans aucun fichier de manifest/, il est le
+# seul fichier où les geler.
+PRIVATE_MANIFEST_DIR = os.path.join("private", "manifest")
+PRIVATE_MANIFEST = "git_manifest_private_odoo{version}.xml"
+
+
+def active_version(racine=""):
+    """La version d'Odoo active (« 18.0 »), première ligne de
+    `.odoo-version` sous `racine` (le dossier courant par défaut) ; "" sans
+    fichier lisible."""
+    try:
+        with open(os.path.join(racine, ".odoo-version")) as fh:
+            return fh.readline().strip()
+    except OSError:
+        return ""
+
+
+def private_source(odoo_version=None, racine=""):
+    """Le manifeste privé de `odoo_version`, relatif à `racine`, ou None.
+
+    `private/manifest/git_manifest_private_odoo<V>.xml`, quand il existe
+    sous `racine` (le dossier courant par défaut). `odoo_version` vient par
+    défaut de `.odoo-version` ; sans version, None.
+    """
+    if odoo_version is None:
+        odoo_version = active_version(racine)
+    if not odoo_version:
+        return None
+    chemin = os.path.join(
+        PRIVATE_MANIFEST_DIR, PRIVATE_MANIFEST.format(version=odoo_version)
+    )
+    return chemin if os.path.isfile(os.path.join(racine, chemin)) else None
 
 
 def freeze_sources(odoo_version=None):
     """Les fichiers que le gel écrit : ceux de la version d'Odoo active.
 
     `git_manifest_odoo<V>.xml`, `git_manifest_odoo<V>_dev.xml` et
-    `git_manifest_extra_odoo<V>.xml`, dans l'ordre de la fusion, ceux qui
-    existent. `odoo_version` (« 18.0 ») vient par défaut de `.odoo-version` ;
-    sans version, la liste est vide. Les fragments communs, les autres
-    versions installées et les manifestes privés n'en font pas partie.
+    `git_manifest_extra_odoo<V>.xml` de `manifest/`, puis le manifeste privé
+    de la version (`private_source`) : l'ordre de la fusion, qui lit les
+    manifestes privés en dernier. Seuls ceux qui existent sont rendus.
+    `odoo_version` (« 18.0 ») vient par défaut de `.odoo-version` ; sans
+    version, la liste est vide. Les fragments communs, les autres versions
+    installées et leurs manifestes privés n'en font pas partie.
     """
     if odoo_version is None:
-        try:
-            with open(".odoo-version") as fh:
-                odoo_version = fh.readline().strip()
-        except OSError:
-            odoo_version = ""
+        odoo_version = active_version()
     if not odoo_version:
         return []
     noms = (
@@ -207,7 +253,9 @@ def freeze_sources(odoo_version=None):
         f"git_manifest_extra_odoo{odoo_version}.xml",
     )
     chemins = [os.path.join("manifest", nom) for nom in noms]
-    return [c for c in chemins if os.path.isfile(c)]
+    chemins = [c for c in chemins if os.path.isfile(c)]
+    prive = private_source(odoo_version)
+    return chemins + [prive] if prive else chemins
 
 
 # Le nom d'un manifeste propre à une version d'Odoo : le principal, son
@@ -233,11 +281,13 @@ def common_sources(racine=""):
 def honored_sources(odoo_version=None):
     """Les fichiers dont la fusion applique les freeze-revision.
 
-    Ceux que le gel écrit (`freeze_sources`), puis les fragments communs à
-    toutes les versions d'Odoo, ceux que listent les CSV de conf/ : un
-    projet commun, image_db ou un outil, n'a pas d'autre fichier où être
-    gelé, et son commit vaut pour chaque version. Le gel d'une autre
-    version installée et celui d'un manifeste privé restent ignorés.
+    Ceux que le gel écrit (`freeze_sources`), manifeste privé de la
+    version active compris, puis les fragments communs à toutes les
+    versions d'Odoo, ceux que listent les CSV de conf/ : un projet commun,
+    image_db ou un outil, n'a pas d'autre fichier où être gelé, et son
+    commit vaut pour chaque version. Le gel d'une autre version installée,
+    manifeste privé compris, et celui de tout autre fichier privé restent
+    ignorés.
     """
     return list(dict.fromkeys(freeze_sources(odoo_version) + common_sources()))
 
@@ -246,10 +296,20 @@ def unfreeze_sources():
     """Tous les fichiers où un gel a pu être écrit.
 
     Plus large que `default_sources` : un fichier gelé quand les modules
-    extra étaient actifs doit pouvoir être dégelé après leur retrait.
+    extra étaient actifs, ou le manifeste privé d'une version qui ne l'est
+    plus, doit pouvoir être dégelé après coup.
     """
+    prives = glob.glob(
+        os.path.join(
+            PRIVATE_MANIFEST_DIR, PRIVATE_MANIFEST.format(version="*")
+        )
+    )
     return list(
-        dict.fromkeys(sorted(glob.glob("manifest/*.xml")) + default_sources())
+        dict.fromkeys(
+            sorted(glob.glob("manifest/*.xml"))
+            + sorted(prives)
+            + default_sources()
+        )
     )
 
 

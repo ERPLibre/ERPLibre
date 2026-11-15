@@ -442,10 +442,13 @@ reconfiguré.
 
 Le gel écrit dans les trois fichiers de la version d'Odoo active (`.odoo-version`), pour 18.0
 `manifest/git_manifest_odoo18.0.xml`, `manifest/git_manifest_odoo18.0_dev.xml` et
-`manifest/git_manifest_extra_odoo18.0.xml`, et ne touche aucun clone. Les autres fichiers fusionnés, les fragments
-communs `git_manifest_erplibre*.xml`, les autres versions installées et les manifestes privés, sont lus mais jamais
-écrits : leurs projets suivent leur branche. `--dry-run` montre ce qui changerait, `--source` n'écrit qu'une partie
-des trois fichiers et se répète ; un fichier hors d'eux est refusé, puisque la reconfiguration ignorerait son gel :
+`manifest/git_manifest_extra_odoo18.0.xml`, puis dans le manifeste privé de cette version,
+`private/manifest/git_manifest_private_odoo18.0.xml`, s'il existe, et ne touche aucun clone. Chaque projet est gelé
+dans le fichier qui le déclare : un dépôt du manifeste privé n'atteint jamais `manifest/`, et l'inverse. Les autres
+fichiers fusionnés, les fragments communs `git_manifest_erplibre*.xml`, les autres versions installées et leurs
+manifestes privés, sont lus mais jamais écrits : leurs projets suivent leur branche. `--dry-run` montre ce qui
+changerait, `--source` n'écrit qu'une partie de ces fichiers et se répète ; un fichier hors d'eux est refusé, puisque
+la reconfiguration ignorerait son gel :
 
 ```bash
 .venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
@@ -463,7 +466,8 @@ Ne sont pas gelés, et sont listés :
   chercher : le pousser d'abord.
 
 Un clone aux modifications non commitées est gelé sur son commit, avec un avertissement : ses modifications ne font pas
-partie du gel. La commande sort avec 1 quand rien n'a été gelé.
+partie du gel. La commande sort avec 1 quand rien n'a été gelé. Un gel écrit dans le manifeste privé se commite avec
+`private/`, que seul un dépôt privé porte.
 
 #### Geler la base amont
 
@@ -538,7 +542,8 @@ gel.
 #### Suivre de nouveau les branches
 
 Une reconfiguration sans l'argument suit les branches, que les fichiers portent un gel ou non : le gel reste écrit,
-prêt pour le prochain `FREEZE=1`. `make repo_unfreeze` le retire de tous les fichiers sources :
+prêt pour le prochain `FREEZE=1`. `make repo_unfreeze` le retire de tous les fichiers sources, manifeste privé de
+chaque version d'Odoo compris :
 
 ```bash
 # follow the branches, the freeze stays written

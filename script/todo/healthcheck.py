@@ -1204,7 +1204,7 @@ def resolutions_gel(ctx, depots):
                 f" {t('repositories')}",
                 [
                     t(
-                        "HEAD carries commits the freeze lacks: the freeze in manifest/ moves to HEAD, for each HEAD already pushed; the others are named with the push to make first."
+                        "HEAD carries commits the freeze lacks: the freeze moves to HEAD in the manifest that declares the repository, manifest/ or private/manifest/, for each HEAD already pushed; the others are named with the push to make first."
                     )
                 ]
                 + [_ligne_gel(d) for d in maj],
@@ -2409,7 +2409,7 @@ def _mettre_a_jour_gel(ctx, depots, demander, sortie):
                 "Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again."
             )
         )
-    sortie(t("Commit manifest/ to share the new freeze."))
+    sortie(t("Commit these manifests to share the new freeze."))
     return True
 
 
