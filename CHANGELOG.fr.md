@@ -300,6 +300,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   partir ni les adresses ni les connexions en attente. **Espace à récupérer** mesure les venvs des
   checkouts voisins dans jusqu'à 8 processus, jamais plus que de processeurs : 18 venvs en 0,46 s au
   lieu de 2,9 s
+- **Addons face au manifeste** et **Branches des dépôts**, dans le diagnostic, terminent chaque ligne par `· HEAD <branche>`, la branche extraite du dépôt, en bleu poudre : un dépôt en avance sur son gel, ou une branche à 129 commits derrière HEAD, dit désormais à quoi l'écart se mesure. Un HEAD détaché n'ajoute rien, et hors d'un terminal ou sous `NO_COLOR` le texte reste nu
 
 ## Corrigé
 

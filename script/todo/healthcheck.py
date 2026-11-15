@@ -1018,7 +1018,17 @@ def _ecart_gel(depot):
     )
     if gel.get("ahead") is not None:
         ligne += f" (+{gel['ahead']} −{gel['behind']})"
-    return ligne
+    return ligne + _branche_extraite(depot)
+
+
+def _branche_extraite(depot):
+    """« · HEAD <branche> », la branche extraite du dépôt en bleu poudre, à
+    la suite d'une ligne qui la décrit ; "" sur un HEAD détaché. La teinte
+    distingue la branche qui tourne des branches seulement nommées."""
+    branche = depot.get("branch")
+    if not branche:
+        return ""
+    return f" · {todo_couleur.bleu_poudre(f'HEAD {branche}')}"
 
 
 def verifier_manifeste(ctx):
@@ -1054,6 +1064,7 @@ def verifier_manifeste(ctx):
             ligne = f"{etat} : {depot.get('path')}"
             if depot.get("ahead") is not None:
                 ligne += f" (+{depot['ahead']} −{depot['behind']})"
+            ligne += _branche_extraite(depot)
             if depot.get("error"):
                 ligne += f" — {depot['error']}"
             details.append(ligne)
@@ -1213,7 +1224,8 @@ def verifier_branches(ctx):
     « repo start », ou un travail commité sur une branche puis quitté par
     une synchronisation, reste en dehors de ce que le checkout exécute.
     Une branche qui porte des commits absents de HEAD est signalée ; une
-    branche seulement en retard sur HEAD est une information."""
+    branche seulement en retard sur HEAD est une information. Chaque ligne
+    nomme la branche extraite, celle à qui l'écart se mesure."""
     nom = titre(verifier_branches)
     donnees, erreur = ctx.snapshot()
     if donnees is None:
@@ -1269,15 +1281,19 @@ def verifier_branches(ctx):
     rendus = ctx.en_parallele(examiner, depots)
     avec_travail, en_retard = [], []
     for depot, ecarts in zip(depots, rendus):
+        extraite = _branche_extraite(depot)
         for branche, plus, moins in ecarts:
             if plus is None:
-                avec_travail.append(f"{depot['path']} : {branche}")
+                avec_travail.append(f"{depot['path']} : {branche}{extraite}")
             elif plus:
                 avec_travail.append(
                     f"{depot['path']} : {branche} (+{plus} −{moins})"
+                    f"{extraite}"
                 )
             else:
-                en_retard.append(f"{depot['path']} : {branche} (+0 −{moins})")
+                en_retard.append(
+                    f"{depot['path']} : {branche} (+0 −{moins}){extraite}"
+                )
     if not avec_travail and not en_retard:
         return Resultat(
             nom,

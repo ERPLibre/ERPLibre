@@ -458,6 +458,27 @@ class TestManifeste(unittest.TestCase):
             ],
         )
 
+    def test_the_checked_out_branch_follows_the_line_in_powder_blue(self):
+        avance = self.depot("odoo18.0/addons/R_avance")
+        avance.update(state="en_avance", ahead=2, behind=0, branch="travail")
+        detache = self.depot("odoo18.0/addons/R_detache")
+        detache.update(state="en_avance", ahead=1, behind=0, branch=None)
+        resultat = h.verifier_manifeste(self.ctx_snapshot([avance, detache]))
+        self.assertEqual(
+            resultat.details,
+            [
+                "en_avance : odoo18.0/addons/R_avance (+2 −0) · HEAD travail",
+                "en_avance : odoo18.0/addons/R_detache (+1 −0)",
+            ],
+        )
+        with mock.patch.object(
+            h.todo_couleur, "couleurs_actives", return_value=True
+        ):
+            resultat = h.verifier_manifeste(self.ctx_snapshot([avance]))
+        (ligne,) = resultat.details
+        self.assertIn(h.todo_couleur.bleu_poudre("HEAD travail"), ligne)
+        self.assertIn("\x1b[", ligne)
+
     def ctx_gele(self, depots, mode="frozen"):
         ctx = h.Contexte(tempfile.gettempdir())
         ctx.snapshot = lambda: (
@@ -576,13 +597,19 @@ class TestBranches(unittest.TestCase):
             g("commit", "-q", "-m", nom)
         self.head = g("rev-parse", "HEAD")
 
-    def verifier(self):
+    def verifier(self, branche=None):
         ctx = h.Contexte(self.racine)
-        ctx.snapshot = lambda: (
-            {"repos": [{"path": self.chemin, "head": self.head}]},
-            "",
-        )
+        depot = {"path": self.chemin, "head": self.head, "branch": branche}
+        ctx.snapshot = lambda: ({"repos": [depot]}, "")
         return h.verifier_branches(ctx)
+
+    def test_each_line_names_the_checked_out_branch(self):
+        self.g("branch", "vieille", "HEAD~1")
+        resultat = self.verifier(branche="18.0")
+        self.assertEqual(
+            resultat.details,
+            [f"{self.chemin} : vieille (+0 −1) · HEAD 18.0"],
+        )
 
     def test_branch_on_head_is_fine(self):
         resultat = self.verifier()

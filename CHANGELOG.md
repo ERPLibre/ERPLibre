@@ -295,6 +295,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ctrl+C` leaves queued addresses and connections unsent. **Space to reclaim** measures the
   neighbour checkouts' venvs in up to 8 processes, never more than CPUs: 18 venvs in 0.46 s instead
   of 2.9 s
+- The healthcheck's **Addons against the manifest** and **Repo branches** end each line with `· HEAD <branch>`, the branch the repository has checked out, in powder blue: a repository ahead of its freeze, or a branch 129 commits behind HEAD, now says what the gap is measured against. A detached HEAD adds nothing, and outside a terminal or under `NO_COLOR` the text stays plain
 
 ## Fixed
 
