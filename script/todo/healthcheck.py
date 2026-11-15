@@ -1054,6 +1054,40 @@ def _branche_extraite(depot):
     return f" · {todo_couleur.bleu_poudre(f'HEAD {branche}')}"
 
 
+def _compter_non_pousses(ctx, depot, sha):
+    """Les commits de `sha` qu'aucune ref distante connue de `depot` n'a,
+    sans « git fetch » — la mesure de « Commits non poussés » ; 0 quand git
+    ne répond pas."""
+    sortie = ctx.lancer(
+        [
+            "git",
+            "-C",
+            depot["path"],
+            "rev-list",
+            "--count",
+            sha,
+            "--not",
+            "--remotes",
+        ],
+        forme="git -C <dépôt> rev-list --count <branche> --not --remotes",
+    )
+    try:
+        return int(sortie.stdout.strip() or 0)
+    except ValueError:
+        return 0
+
+
+def _marque_non_pousses(nombre):
+    """« · <n> commits non poussés » en orange, qui ferme la ligne d'une
+    branche dont `nombre` commits n'ont aucune ref distante connue ; "" à 0.
+    Placée en dernier, après « · HEAD <branche> », elle se repère au bout
+    de la ligne sans déplacer ce qui la précède."""
+    if not nombre:
+        return ""
+    texte = f"{nombre} {t('unpushed commits')}"
+    return f" · {todo_couleur.orange(texte)}"
+
+
 def verifier_manifeste(ctx):
     """L'écart de chaque dépôt d'addons à ce que le manifeste local demande,
     et de son HEAD au « freeze-revision » de `manifest/`, lus par
@@ -1091,6 +1125,13 @@ def verifier_manifeste(ctx):
             if affiche != etat:
                 ligne += f" · {t('freeze')} {depot['freeze_revision'][:10]}"
             ligne += _branche_extraite(depot)
+            if (
+                etat in ETATS_MESURES
+                and depot.get("ahead")
+                and depot.get("head")
+            ):
+                n = _compter_non_pousses(ctx, depot, depot["head"])
+                ligne += _marque_non_pousses(n)
             if depot.get("error"):
                 ligne += f" — {depot['error']}"
             details.append(ligne)
@@ -1251,7 +1292,9 @@ def verifier_branches(ctx):
     une synchronisation, reste en dehors de ce que le checkout exécute.
     Une branche qui porte des commits absents de HEAD est signalée ; une
     branche seulement en retard sur HEAD est une information. Chaque ligne
-    nomme la branche extraite, celle à qui l'écart se mesure."""
+    nomme la branche extraite, celle à qui l'écart se mesure, et se termine
+    en orange sur le nombre de commits de la branche qu'aucune ref distante
+    connue n'a, quand il y en a."""
     nom = titre(verifier_branches)
     donnees, erreur = ctx.snapshot()
     if donnees is None:
@@ -1301,24 +1344,25 @@ def verifier_branches(ctx):
                 seul_head, seul_branche = map(int, compte.stdout.split())
             except ValueError:
                 seul_head = seul_branche = None
-            ecarts.append((branche, seul_branche, seul_head))
+            non_pousses = _compter_non_pousses(ctx, depot, sha)
+            ecarts.append((branche, seul_branche, seul_head, non_pousses))
         return ecarts
 
     rendus = ctx.en_parallele(examiner, depots)
     avec_travail, en_retard = [], []
     for depot, ecarts in zip(depots, rendus):
         extraite = _branche_extraite(depot)
-        for branche, plus, moins in ecarts:
+        for branche, plus, moins, non_pousses in ecarts:
+            fin = extraite + _marque_non_pousses(non_pousses)
             if plus is None:
-                avec_travail.append(f"{depot['path']} : {branche}{extraite}")
+                avec_travail.append(f"{depot['path']} : {branche}{fin}")
             elif plus:
                 avec_travail.append(
-                    f"{depot['path']} : {branche} (+{plus} −{moins})"
-                    f"{extraite}"
+                    f"{depot['path']} : {branche} (+{plus} −{moins}){fin}"
                 )
             else:
                 en_retard.append(
-                    f"{depot['path']} : {branche} (+0 −{moins}){extraite}"
+                    f"{depot['path']} : {branche} (+0 −{moins}){fin}"
                 )
     if not avec_travail and not en_retard:
         return Resultat(

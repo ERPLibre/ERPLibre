@@ -65,6 +65,25 @@ class TestQuitter(unittest.TestCase):
         )
 
 
+class TestOrange(unittest.TestCase):
+    def test_orange_en_couleur_vraie(self):
+        self.assertEqual(
+            todo_couleur.orange("x", Terminal(), {"COLORTERM": "24bit"}),
+            "\x1b[38;2;255;165;0mx\x1b[0m",
+        )
+
+    def test_repli_sur_256_couleurs(self):
+        self.assertEqual(
+            todo_couleur.orange("x", Terminal(), {}), "\x1b[38;5;214mx\x1b[0m"
+        )
+
+    def test_pas_de_couleur_hors_terminal(self):
+        self.assertEqual(todo_couleur.orange("x", io.StringIO(), {}), "x")
+        self.assertEqual(
+            todo_couleur.orange("x", Terminal(), {"NO_COLOR": ""}), "x"
+        )
+
+
 class TestMenus(unittest.TestCase):
     def test_le_menu_type_porte_l_entree_retour(self):
         """fill_help_info, par où passe la plupart des menus."""
