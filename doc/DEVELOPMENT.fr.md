@@ -124,18 +124,37 @@ Pour afficher les différences entre le code actuel et le manifeste
 
 ## Ajouter un dépôt
 
-TODO › Exécution › Répertoire git › Ajouter un dépôt à un manifeste demande l'URL GitHub, la version d'Odoo (l'active
-par défaut) et la branche (la version par défaut). Il vérifie que la branche existe sur GitHub, déclare le projet dans
-`./manifest/git_manifest_odoo<version>.xml` avec le remote de son organisation, à
-`odoo<version>/addons/<organisation>_<dépôt>`, gelé sur la tête de la branche quand le manifeste est gelé, puis propose
-de le forker. Un dépôt déjà dans le manifeste est refusé. Committez `manifest/`, puis synchronisez les dépôts pour le
-cloner.
+TODO › Exécution › Répertoire git › Ajouter un dépôt à un manifeste demande l'URL du dépôt, puis la version d'Odoo
+seulement quand plusieurs sont installées (`.repo/installed_odoo_version.txt`) : une seule version installée est prise
+sans question, et une version non installée n'est jamais proposée. Il demande ensuite, sans défaut, si le dépôt va au
+manifeste public, `./manifest/git_manifest_odoo<version>.xml`, publié avec ERPLibre, ou au privé,
+`./private/manifest/git_manifest_private_odoo<version>.xml`, créé s'il manque et inscrit dans
+`./private/default_git_manifest.csv` pour que la fusion le lise. Un seul `git ls-remote --symref <url> HEAD
+'refs/heads/*'`, sans clone ni jeton GitHub, lit les branches et la branche par défaut de l'hôte : la branche proposée est
+la version quand l'hôte l'a, sinon sa branche par défaut (`main`, par exemple). Un dépôt privé que git ne sait pas lire
+sans identifiants s'ajoute quand même, sans vérification ni gel. Le projet est déclaré avec le remote de son
+organisation, à `odoo<version>/addons/<organisation>_<dépôt>`, gelé sur la tête de la branche quand le manifeste est
+gelé ; un dépôt GitHub public se voit ensuite proposer un fork. Un dépôt déjà dans l'un ou l'autre manifeste est refusé.
+Committez `manifest/` ou `private/`, puis synchronisez les dépôts pour le cloner.
+
+Ajouter un dépôt depuis un répertoire existant liste les clones git sous les `odoo<version>/` installés qu'aucun
+manifeste ne déclare, prend un chemin tapé, ou ouvre le navigateur de fichiers sur Entrée. Sans réseau, il lit dans le clone son URL, la branche qu'il suit et son
+HEAD, demande public ou privé, et le déclare à son propre chemin, gelé sur HEAD seulement quand HEAD est poussé. `repo
+sync` refuse un clone qu'il n'a pas fait (`unsupported checkout state`) : l'outil propose de le renommer de côté, en
+`.<nom>.avant_repo`, gardé et jamais supprimé, puis laisse repo le recloner. Il refuse de déplacer un clone au travail
+non commité ou au HEAD non poussé.
 
 Les mêmes outils tournent sans le menu :
 
 ```bash
 # Déclarer un dépôt GitHub dans le manifeste d'une version d'Odoo, gelé sur la tête de branche si le manifeste l'est
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/OCA/l10n-switzerland --version 18.0
+
+# Pareil, dans le manifeste privé ; sans --branch, la version si l'hôte l'a, sinon sa branche par défaut
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/MonOrg/mes-addons --private
+
+# Déclarer un clone qui existe déjà, à son chemin et sur sa branche suivie, puis le mettre de côté pour que repo le reclone
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add-local odoo18.0/addons/addons --private --set-aside
 
 # Forker le dépôt dans une organisation par l'API, puis faire prendre le fork au manifeste de la version active
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MonOrg

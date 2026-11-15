@@ -124,18 +124,37 @@ To show differences between actual code and manifest
 
 ## Add repo
 
-TODO › Execute › Git repository › Add a repository to a manifest asks for the GitHub URL, the Odoo version (the active
-one by default) and the branch (the version by default). It checks that the branch exists on GitHub, declares the
-project in `./manifest/git_manifest_odoo<version>.xml` with its organisation's remote, at
-`odoo<version>/addons/<organisation>_<repository>`, frozen on the head of the branch when the manifest is frozen, then
-offers to fork it. A repository already in the manifest is refused. Commit `manifest/`, then synchronise the
-repositories to clone it.
+TODO › Execute › Git repository › Add a repository to a manifest asks for the repository URL, then the Odoo version
+only when several are installed (`.repo/installed_odoo_version.txt`): a single installed version is taken without a
+question, and versions that are not installed are never offered. It then asks, with no default, whether the repository
+goes to the public manifest, `./manifest/git_manifest_odoo<version>.xml`, published with ERPLibre, or to the private
+one, `./private/manifest/git_manifest_private_odoo<version>.xml`, created when missing and listed in
+`./private/default_git_manifest.csv` so the merge reads it. One `git ls-remote --symref <url> HEAD 'refs/heads/*'`, with
+no clone and no GitHub token, reads the branches and the host's default branch: the branch offered is the version when
+the host has it, its default branch otherwise (`main`, for instance). A private repository git cannot read without
+credentials can still be added, unchecked and unfrozen. The project is declared with its organisation's remote, at
+`odoo<version>/addons/<organisation>_<repository>`, frozen on the head of the branch when the manifest is frozen; a
+public GitHub repository is then offered for a fork. A repository already in either manifest is refused. Commit
+`manifest/` or `private/`, then synchronise the repositories to clone it.
+
+Add a repository from an existing directory lists the git clones under the installed `odoo<version>/` that no manifest
+declares, takes a typed path, or opens the file browser on Enter. Without network, it reads in the clone its URL, the branch it tracks and its HEAD,
+asks public or private, and declares it at its own path, frozen on HEAD only when HEAD is pushed. `repo sync` refuses a
+clone it did not make (`unsupported checkout state`): the tool offers to rename it aside, as
+`.<name>.avant_repo`, kept and never deleted, then lets repo clone it again. It refuses to move a clone with
+uncommitted work or an unpushed HEAD.
 
 The same tools run without the menu:
 
 ```bash
 # Declare a GitHub repository in the manifest of an Odoo version, frozen on the branch head if the manifest is frozen
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/OCA/l10n-switzerland --version 18.0
+
+# Same, in the private manifest; without --branch, the version if the host has it, else its default branch
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add https://github.com/MyOrg/my-addons --private
+
+# Declare a clone that already exists, at its path and on its tracked branch, then set it aside for repo to reclone
+./.venv.erplibre/bin/python ./script/git/manifest_repo.py add-local odoo18.0/addons/addons --private --set-aside
 
 # Fork the repository into an organisation through the API, then make the active version's manifest take the fork
 ./.venv.erplibre/bin/python ./script/git/manifest_repo.py fork OCA_l10n-switzerland --organisation MyOrg
