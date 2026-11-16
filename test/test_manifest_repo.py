@@ -139,7 +139,7 @@ class TestLAjout(Dossier):
             ("https://github.com/OCA/web", ("18.0",)),
             ("https://github.com/Exemple/outils", ("16.0",)),
             ("https://github.com/Exemple/outils", None),
-            ("https://gitlab.com/Exemple/outils", ("18.0",)),
+            ("pas-une-url", ("18.0",)),
         ):
             with self.subTest(url=url, branches=branches):
                 with self.assertRaises(ValueError):
@@ -311,7 +311,9 @@ class TestLaLigneDeCommande(Dossier):
         with (
             mock.patch.object(mr.repo_upgrade, "DOSSIER", self.manifestes),
             mock.patch.object(
-                mr.repo_upgrade, "branches", return_value={"18.0"}
+                mr.repo_upgrade,
+                "branches_et_defaut",
+                return_value=({"18.0", "main"}, "main"),
             ),
             mock.patch.object(mr, "tete", return_value=GEL),
             mock.patch(
@@ -494,22 +496,25 @@ class TestLeMenu(Dossier):
 
         return TODO.__new__(TODO)
 
-    def test_add_asks_url_version_branch_freeze_then_offers_the_fork(self):
+    def test_add_asks_url_visibility_branch_freeze_then_offers_the_fork(self):
+        """Une seule version installée : elle n'est pas demandée."""
         todo = self.todo()
         with (
             mock.patch.object(gm.repo_upgrade, "DOSSIER", self.manifestes),
             mock.patch.object(
-                gm.repo_upgrade, "version_active", return_value="18.0"
+                gm.manifest_repo, "versions_installees", return_value=["18.0"]
             ),
             mock.patch.object(
-                mr.repo_upgrade, "branches", return_value={"18.0"}
+                mr.repo_upgrade,
+                "branches_et_defaut",
+                return_value=({"18.0", "main"}, "main"),
             ),
             mock.patch.object(mr, "tete", return_value=GEL),
             mock.patch(
                 "builtins.input",
                 side_effect=[
                     "https://github.com/Exemple/outils",
-                    "",
+                    "1",
                     "",
                     "",
                     "o",

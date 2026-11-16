@@ -10,6 +10,9 @@ TODO pose les questions et l'appelle, et la ligne de commande fait de même
 sans menu :
 
     manifest_repo.py add URL --version 18.0 [--branch B] [--freeze|--no-freeze]
+                     [--private]
+    manifest_repo.py add-local CHEMIN [--version 18.0] [--freeze|--no-freeze]
+                     [--private] [--set-aside]
     manifest_repo.py fork CHEMIN --organisation ORG [--version 18.0]
                      [--upstream origine|fork] [--all-branches]
                      [--manifest 17.0,18.0 | --no-manifest]
@@ -171,19 +174,37 @@ def est_gele(texte):
     return bool(attrs) and geles * 2 > len(attrs)
 
 
-def plan_ajout(url, version, branche, remotes):
+def depot_de_l_url(url):
+    """(propriétaire, dépôt, fetch) de `url`, ou None. Une URL GitHub, en
+    HTTPS comme en SSH, prend le fetch HTTPS de son organisation ; une
+    autre garde son préfixe tel quel, « git@hôte:groupe/ » compris, car
+    repo colle le nom du projet derrière le fetch."""
+    depot = github_fork.depot_github(url)
+    if depot:
+        return (*depot, manifest_fork.fetch_github(depot[0]))
+    propre = (url or "").strip().rstrip("/")
+    propre = propre[:-4] if propre.endswith(".git") else propre
+    trouve = re.match(r"^(.*[/:])([^/:]+)[/:]([^/:]+)$", propre)
+    if not trouve or not trouve.group(3):
+        return None
+    prefixe, proprietaire, nom = trouve.groups()
+    return proprietaire, nom, f"{prefixe}{proprietaire}/"
+
+
+def plan_ajout(url, version, branche, remotes, chemin=None):
     """Le projet à déclarer pour `url` : {name, path, remote, fetch,
-    nouveau_remote, revision, groups}. ValueError hors de GitHub.
+    nouveau_remote, revision, groups}. ValueError pour une URL illisible.
 
     Le remote repris est un remote simple vers la même organisation — la
     casse du propriétaire ne compte pas chez GitHub —, celui qui porte son
     nom d'abord ; jamais un remote « _origin_ », qui ferait passer le dépôt
-    pour le fork d'un autre. Le chemin prend la casse de ce remote."""
-    depot = github_fork.depot_github(url)
+    pour le fork d'un autre. Le chemin, `odoo<version>/addons/<org>_<dépôt>`
+    à la casse de ce remote, est `chemin` quand il est imposé : celui d'un
+    clone qui existe déjà."""
+    depot = depot_de_l_url(url)
     if not depot:
-        raise ValueError(f"{url} : pas une URL GitHub")
-    proprietaire, nom = depot
-    fetch = manifest_fork.fetch_github(proprietaire)
+        raise ValueError(f"{url} : URL de dépôt illisible")
+    proprietaire, nom, fetch = depot
     candidats = [
         n
         for n, f in remotes.items()
@@ -205,7 +226,7 @@ def plan_ajout(url, version, branche, remotes):
         )
     return {
         "name": f"{nom}.git",
-        "path": f"odoo{version}/addons/{proprietaire}_{nom}",
+        "path": chemin or f"odoo{version}/addons/{proprietaire}_{nom}",
         "remote": remote,
         "fetch": fetch,
         "nouveau_remote": existant is None,
@@ -247,13 +268,12 @@ def inserer_projet(texte, plan, gel=None):
     return texte[:position] + bloc + texte[position:]
 
 
-def depot_deja_present(depot, version, dossier=None):
-    """Vrai si un projet de `version` clone proprietaire/dépôt, ou en est
-    un fork : son amont déclaré ou deviné vise ce dépôt."""
+def depot_deja_present(depot, version, dossier=None, racine=None):
+    """Vrai si un projet de `version`, manifeste privé compris quand
+    `racine` est donnée, clone proprietaire/dépôt, ou en est un fork : son
+    amont déclaré ou deviné vise ce dépôt."""
     cible = (depot[0].lower(), depot[1].lower())
-    remotes, projets = repo_upgrade.lire_manifestes(
-        version, dossier_manifestes(dossier)
-    )
+    remotes, projets = lire_avec_prive(version, dossier, racine)
     for projet in projets.values():
         urls = [url_du_projet(projet, remotes)]
         amont = repo_upgrade.resoudre_amont(projet, remotes)
@@ -266,44 +286,337 @@ def depot_deja_present(depot, version, dossier=None):
     return False
 
 
-def ajouter_depot(url, version, branche=None, geler=None, dossier=None):
-    """Ajoute `url` au manifeste principal de `version`. Rend (fichier,
-    plan, gel). Refuse, sans rien écrire, un dépôt déjà présent, une
-    branche absente de l'hôte ou un hôte injoignable."""
-    dossier = dossier_manifestes(dossier)
+def ajouter_depot(
+    url,
+    version,
+    branche=None,
+    geler=None,
+    dossier=None,
+    prive=False,
+    racine=None,
+    disponibles=None,
+    verifier=True,
+):
+    """Ajoute `url` au manifeste de `version` : le principal, ou le
+    manifeste privé avec `prive`. Rend (fichier, plan, gel). Refuse, sans
+    rien écrire, un dépôt déjà présent, une branche absente de l'hôte ou un
+    hôte injoignable. `disponibles`, les branches déjà lues, évite une
+    seconde requête ; `verifier` faux ajoute sans interroger l'hôte — un
+    dépôt privé que git ne sait pas lire sans identifiants —, donc sans
+    gel possible."""
     branche = branche or version
-    fichier = os.path.join(dossier, f"git_manifest_odoo{version}.xml")
-    if not os.path.isfile(fichier):
-        raise ValueError(f"pas de manifeste pour Odoo {version}")
-    remotes, liste = projets_github(version, dossier)
+    racine = racine or _racine()
+    fichier = fichier_cible(version, prive, dossier, racine)
+    remotes, projets = lire_avec_prive(version, dossier, racine)
     depot = github_fork.depot_github(url)
-    if depot and depot_deja_present(depot, version, dossier):
+    if depot and depot_deja_present(depot, version, dossier, racine):
         raise ValueError(
             f"{depot[0]}/{depot[1]} est déjà dans le manifeste {version}"
         )
     plan = plan_ajout(url, version, branche, remotes)
-    _r, projets = repo_upgrade.lire_manifestes(version, dossier)
     if any(p.get("path") == plan["path"] for p in projets.values()):
         raise ValueError(
             f"{plan['path']} est déjà dans le manifeste {version}"
         )
-    disponibles = repo_upgrade.branches(url)
-    if disponibles is None:
-        raise ValueError(f"{url} injoignable")
-    if branche not in disponibles:
-        proches = ", ".join(sorted(disponibles)[:12]) or "-"
-        raise ValueError(f"branche {branche} absente ; présentes : {proches}")
-    with open(fichier, encoding="utf-8") as fh:
-        texte = fh.read()
+    if verifier:
+        if disponibles is None:
+            disponibles = repo_upgrade.branches(url)
+        if disponibles is None:
+            raise ValueError(f"{url} injoignable")
+        if branche not in disponibles:
+            proches = ", ".join(sorted(disponibles)[:12]) or "-"
+            raise ValueError(
+                f"branche {branche} absente ; présentes : {proches}"
+            )
+    elif geler:
+        raise ValueError("un gel demande de lire la tête sur l'hôte")
     if geler is None:
-        geler = est_gele(texte)
+        geler = gel_par_defaut(version, dossier) if verifier else False
     gel = tete(url, branche) if geler else None
     if geler and not gel:
         raise ValueError(f"tête de {branche} illisible sur {url}")
+    ecrire_projet(fichier, prive, plan, gel, racine)
+    return fichier, plan, gel
+
+
+# ── Manifeste privé, versions installées, clone existant ───────────────
+
+# Le squelette d'un manifeste privé qui n'existe pas encore.
+MANIFESTE_VIDE = (
+    '<?xml version="1.0" encoding="UTF-8" ?>\n<manifest>\n</manifest>\n'
+)
+# La liste des fichiers privés que la fusion lit, colonne « filepath » :
+# un manifeste privé qui n'y figure pas n'entre pas dans le checkout.
+CSV_PRIVE = os.path.join("private", "default_git_manifest.csv")
+VERSIONS_INSTALLEES = os.path.join(".repo", "installed_odoo_version.txt")
+
+
+def chemin_prive(version):
+    """Le manifeste privé de `version`, relatif à la racine du dépôt."""
+    from script.git import git_freeze_manifest
+
+    return os.path.join(
+        git_freeze_manifest.PRIVATE_MANIFEST_DIR,
+        git_freeze_manifest.PRIVATE_MANIFEST.format(version=version),
+    )
+
+
+def fichier_cible(version, prive, dossier=None, racine=None):
+    """Le fichier où déclarer un projet de `version` : le manifeste
+    principal, qui doit exister, ou le manifeste privé, créé à l'écriture
+    s'il manque."""
+    if prive:
+        return os.path.join(racine or _racine(), chemin_prive(version))
+    fichier = os.path.join(
+        dossier_manifestes(dossier), f"git_manifest_odoo{version}.xml"
+    )
+    if not os.path.isfile(fichier):
+        raise ValueError(f"pas de manifeste pour Odoo {version}")
+    return fichier
+
+
+def lire_avec_prive(version, dossier=None, racine=None):
+    """(remotes, projets) des manifestes de `version` et, quand `racine`
+    est donnée et qu'il existe, de son manifeste privé : un dépôt déclaré
+    dans l'un ne se déclare pas une seconde fois dans l'autre."""
+    import xml.etree.ElementTree as ET
+
+    remotes, projets = repo_upgrade.lire_manifestes(
+        version, dossier_manifestes(dossier)
+    )
+    if racine:
+        chemin = os.path.join(racine, chemin_prive(version))
+        if os.path.isfile(chemin):
+            arbre = ET.parse(chemin).getroot()
+            for e in arbre.findall("remote"):
+                remotes.setdefault(e.get("name"), e.get("fetch"))
+            for e in arbre.findall("project"):
+                projets[repo_upgrade.cle(e)] = dict(
+                    e.attrib, _fichier=os.path.basename(chemin)
+                )
+    return remotes, projets
+
+
+def gel_par_defaut(version, dossier=None):
+    """Vrai si le manifeste principal de `version` est gelé : un ajout,
+    public comme privé, suit la convention du checkout."""
+    fichier = os.path.join(
+        dossier_manifestes(dossier), f"git_manifest_odoo{version}.xml"
+    )
+    try:
+        with open(fichier, encoding="utf-8") as fh:
+            return est_gele(fh.read())
+    except OSError:
+        return False
+
+
+def inscrire_prive(racine, chemin):
+    """Inscrit `chemin` dans private/default_git_manifest.csv, créé au
+    besoin avec son en-tête ; sans effet s'il y figure. Rend vrai s'il a
+    fallu l'ajouter."""
+    import csv
+
+    csv_prive = os.path.join(racine, CSV_PRIVE)
+    deja = []
+    if os.path.isfile(csv_prive):
+        with open(csv_prive, encoding="utf-8", newline="") as fh:
+            deja = [r.get("filepath", "") for r in csv.DictReader(fh)]
+    if any(os.path.normpath(d) == os.path.normpath(chemin) for d in deja):
+        return False
+    os.makedirs(os.path.dirname(csv_prive), exist_ok=True)
+    nouveau = not os.path.isfile(csv_prive)
+    with open(csv_prive, "a", encoding="utf-8", newline="") as fh:
+        if nouveau:
+            fh.write('"filepath"\n')
+        fh.write(f"{chemin}\n")
+    return True
+
+
+def ecrire_projet(fichier, prive, plan, gel, racine):
+    """Écrit le projet de `plan` dans `fichier`. Un manifeste privé est
+    créé s'il manque, et inscrit dans la liste que la fusion lit."""
+    if os.path.isfile(fichier):
+        with open(fichier, encoding="utf-8") as fh:
+            texte = fh.read()
+    else:
+        texte = MANIFESTE_VIDE
+        os.makedirs(os.path.dirname(fichier), exist_ok=True)
     neuf = inserer_projet(texte, plan, gel)
     with open(fichier, "w", encoding="utf-8") as fh:
         fh.write(neuf)
-    return fichier, plan, gel
+    if prive:
+        inscrire_prive(racine, os.path.relpath(fichier, racine))
+
+
+def versions_installees(racine=None, dossier=None):
+    """Les versions d'Odoo installées qui ont un manifeste, triées : celles
+    de .repo/installed_odoo_version.txt (« odoo18.0 »), plus la version
+    active. Sans ce fichier, la version active seule, ou toutes."""
+    racine = racine or _racine()
+    connues = versions_des_manifestes(dossier)
+    trouvees = set()
+    try:
+        with open(os.path.join(racine, VERSIONS_INSTALLEES)) as fh:
+            for ligne in fh:
+                ligne = ligne.strip()
+                if ligne:
+                    trouvees.add(ligne.removeprefix("odoo"))
+    except OSError:
+        pass
+    active = repo_upgrade.version_active(racine)
+    if active:
+        trouvees.add(active)
+    res = [v for v in connues if v in trouvees]
+    return res or connues
+
+
+def branche_proposee(version, disponibles, defaut):
+    """La branche à proposer : celle qui porte le nom de la version quand
+    l'hôte l'a, sinon sa branche par défaut, sinon la version."""
+    if disponibles and version in disponibles:
+        return version
+    return defaut or version
+
+
+def lire_clone(chemin):
+    """Ce qu'il faut pour déclarer un clone existant, lu dans le clone
+    seul, sans réseau : {remote, url, branche, sha, pousse}. `branche` est
+    la branche distante suivie, sinon la branche courante ; `pousse` dit si
+    HEAD est déjà dans cette branche telle que le clone la connaît.
+    ValueError hors d'un dépôt git, en HEAD détachée, ou sans remote."""
+    code, top = git(chemin, "rev-parse", "--show-toplevel")
+    if code or os.path.realpath(top) != os.path.realpath(chemin):
+        raise ValueError(f"{chemin} : pas la racine d'un dépôt git")
+    code, courante = git(chemin, "branch", "--show-current")
+    if code or not courante:
+        raise ValueError(f"{chemin} : HEAD détachée, aucune branche à suivre")
+    code, suivie = git(chemin, "rev-parse", "--abbrev-ref", "@{u}")
+    remotes = remotes_du_clone(chemin)
+    if not code and "/" in suivie:
+        remote, branche = suivie.split("/", 1)
+    elif len(remotes) == 1 or "origin" in remotes:
+        remote = remotes[0] if len(remotes) == 1 else "origin"
+        branche = courante
+    else:
+        raise ValueError(f"{chemin} : aucun remote, ou aucun suivi")
+    code, url = git(chemin, "remote", "get-url", remote)
+    if code or not url:
+        raise ValueError(f"{chemin} : remote {remote} sans URL")
+    _code, sha = git(chemin, "rev-parse", "HEAD")
+    pousse = (
+        git(
+            chemin,
+            "merge-base",
+            "--is-ancestor",
+            "HEAD",
+            f"refs/remotes/{remote}/{branche}",
+        )[0]
+        == 0
+    )
+    return {
+        "remote": remote,
+        "url": url,
+        "branche": branche,
+        "sha": sha,
+        "pousse": pousse,
+    }
+
+
+def ajouter_existant(
+    chemin, version, prive=False, geler=None, dossier=None, racine=None
+):
+    """Déclare dans le manifeste de `version`, principal ou privé, le
+    clone qui existe déjà à `chemin` (relatif à `racine`), sous ce chemin,
+    sur la branche qu'il suit et, gelé, sur son HEAD. Rend (fichier, plan,
+    gel, infos de lire_clone). Refuse un chemin ou un dépôt déjà déclaré,
+    et un gel sur un HEAD que le clone ne sait pas poussé : personne
+    d'autre ne pourrait le récupérer."""
+    racine = racine or _racine()
+    chemin = os.path.normpath(chemin)
+    infos = lire_clone(os.path.join(racine, chemin))
+    fichier = fichier_cible(version, prive, dossier, racine)
+    remotes, projets = lire_avec_prive(version, dossier, racine)
+    if any(p.get("path") == chemin for p in projets.values()):
+        raise ValueError(f"{chemin} est déjà dans le manifeste {version}")
+    depot = github_fork.depot_github(infos["url"])
+    if depot and depot_deja_present(depot, version, dossier, racine):
+        raise ValueError(
+            f"{depot[0]}/{depot[1]} est déjà dans le manifeste {version}"
+        )
+    plan = plan_ajout(infos["url"], version, infos["branche"], remotes, chemin)
+    if geler is None:
+        geler = gel_par_defaut(version, dossier) and infos["pousse"]
+    if geler and not infos["pousse"]:
+        raise ValueError(
+            f"HEAD {infos['sha'][:12]} n'est pas dans"
+            f" {infos['remote']}/{infos['branche']} : poussez-le avant de geler"
+        )
+    gel = infos["sha"] if geler else None
+    ecrire_projet(fichier, prive, plan, gel, racine)
+    return fichier, plan, gel, infos
+
+
+def mettre_de_cote(chemin, racine=None):
+    """Renomme le clone ordinaire `chemin` (relatif à `racine`) en
+    « .<nom>.avant_repo » à côté de lui, pour que repo le reclone sous son
+    contrôle : repo sync refuse un clone qu'il n'a pas fait (« unsupported
+    checkout state ») et ne sait pas l'adopter. Rien n'est supprimé. Refuse
+    un clone au travail non commité ou au HEAD non poussé, qui ne vivrait
+    plus que dans la copie mise de côté. Rend le chemin de la copie."""
+    racine = racine or _racine()
+    absolu = os.path.join(racine, chemin)
+    if os.path.islink(os.path.join(absolu, ".git")):
+        raise ValueError(f"{chemin} : déjà un clone de repo")
+    code, sale = git(absolu, "status", "--porcelain")
+    if code or sale:
+        raise ValueError(
+            f"{chemin} : du travail non commité, rien n'est déplacé"
+        )
+    infos = lire_clone(absolu)
+    if not infos["pousse"]:
+        raise ValueError(
+            f"{chemin} : HEAD {infos['sha'][:12]} non poussé vers"
+            f" {infos['remote']}/{infos['branche']}, rien n'est déplacé"
+        )
+    parent, nom = os.path.split(absolu.rstrip(os.sep))
+    cible = os.path.join(parent, f".{nom}.avant_repo")
+    rang = 2
+    while os.path.exists(cible):
+        cible = os.path.join(parent, f".{nom}.avant_repo-{rang}")
+        rang += 1
+    os.rename(absolu, cible)
+    return os.path.relpath(cible, racine)
+
+
+def clones_non_declares(racine=None, versions=None, dossier=None):
+    """[(version, chemin relatif)] des clones git sous odoo<V>/ qu'aucun
+    manifeste de V, privé compris, ne déclare ; triés. La recherche
+    descend trois niveaux et s'arrête à chaque clone trouvé : un dépôt
+    n'en contient pas d'autre à déclarer."""
+    racine = racine or _racine()
+    res = []
+    for version in versions or versions_installees(racine, dossier):
+        base = os.path.join(racine, f"odoo{version}")
+        if not os.path.isdir(base):
+            continue
+        _r, projets = lire_avec_prive(version, dossier, racine)
+        declares = {
+            os.path.normpath(p.get("path", "")) for p in projets.values()
+        }
+        for dossier_courant, sous, _f in os.walk(base):
+            relatif = os.path.relpath(dossier_courant, racine)
+            profondeur = relatif.count(os.sep)
+            if dossier_courant != base and os.path.exists(
+                os.path.join(dossier_courant, ".git")
+            ):
+                if relatif not in declares:
+                    res.append((version, relatif))
+                sous[:] = []
+                continue
+            sous[:] = sorted(
+                d for d in sous if not d.startswith(".") and profondeur < 3
+            )
+    return sorted(res)
 
 
 # ── Forker pour une organisation ───────────────────────────────────────
@@ -1206,6 +1519,31 @@ def main(argv=None):
         "--freeze", dest="geler", action="store_true", default=None
     )
     gel.add_argument("--no-freeze", dest="geler", action="store_false")
+    p.add_argument(
+        "--private",
+        action="store_true",
+        help="declare it in private/manifest/ instead of manifest/",
+    )
+    p = sous.add_parser(
+        "add-local", help="declare a git clone that already exists"
+    )
+    p.add_argument("chemin", help="path from the ERPLibre root")
+    p.add_argument("--version")
+    gel = p.add_mutually_exclusive_group()
+    gel.add_argument(
+        "--freeze", dest="geler", action="store_true", default=None
+    )
+    gel.add_argument("--no-freeze", dest="geler", action="store_false")
+    p.add_argument(
+        "--private",
+        action="store_true",
+        help="declare it in private/manifest/ instead of manifest/",
+    )
+    p.add_argument(
+        "--set-aside",
+        action="store_true",
+        help="rename the clone aside and let repo clone it again",
+    )
     p = sous.add_parser("fork", help="fork a manifest repository")
     p.add_argument("chemin")
     p.add_argument("--organisation", required=True)
@@ -1320,8 +1658,19 @@ def main(argv=None):
         return 2
     try:
         if args.commande == "add":
+            lu = repo_upgrade.branches_et_defaut(args.url)
+            if lu is None:
+                print(f"{args.url}: unreachable", file=sys.stderr)
+                return 1
+            branche = args.branch or branche_proposee(version, *lu)
             fichier, plan, gel = ajouter_depot(
-                args.url, version, args.branch, args.geler
+                args.url,
+                version,
+                branche,
+                args.geler,
+                prive=args.private,
+                racine=racine,
+                disponibles=lu[0],
             )
             print(
                 f"{os.path.relpath(fichier, racine)} : {plan['path']}"
@@ -1329,6 +1678,25 @@ def main(argv=None):
                 f"{', ' + gel[:12] if gel else ''})"
             )
             return 0
+        if args.commande == "add-local":
+            fichier, plan, gel, infos = ajouter_existant(
+                args.chemin, version, args.private, args.geler, racine=racine
+            )
+            print(
+                f"{os.path.relpath(fichier, racine)} : {plan['path']}"
+                f" ({plan['remote']}, {plan['revision']}"
+                f"{', ' + gel[:12] if gel else ''})"
+            )
+            if not infos["pousse"]:
+                print("warning: HEAD is not pushed, no freeze")
+            if not args.set_aside:
+                print(
+                    "warning: repo sync refuses this clone until it is set"
+                    " aside (--set-aside)"
+                )
+                return 0
+            print(f"kept as {mettre_de_cote(plan['path'], racine)}")
+            return executer(commandes_synchro(racine, plan["path"]), racine)
         if args.commande == "pulls":
             client = _client(racine)
             if not client:
