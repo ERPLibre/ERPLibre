@@ -3,10 +3,13 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : atteindre une VM \u2014 SSH, tunnels, consoles, \u00e9mulateur.\n\nTout ce qui relie l'humain \u00e0 une machine d\u00e9j\u00e0 d\u00e9ploy\u00e9e : ~/.ssh/config et ses\nProxyJump, la d\u00e9couverte des VM imbriqu\u00e9es, les tunnels de bureau distant, la\nconsole s\u00e9rie et graphique (virt-viewer), et l'\u00e9mulateur Android d'une VM\ngraphique avec son tunnel adb.\n\nS\u00e9par\u00e9 du reste parce que c'est le seul bloc qui parle de R\u00c9SEAU et de\nsessions interactives, jamais de cr\u00e9ation ni de destruction de VM."""
 
+import contextlib
 import os
 import shutil
+import signal
 import socket
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,6 +17,50 @@ from script.todo import todo_install
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
+
+
+class _SondesEnCours:
+    """Les sondes ssh d'un niveau, chacune chef de son groupe de processus.
+
+    Une sonde tourne dans sa propre session, hors du groupe du terminal :
+    Ctrl+C ne l'atteint pas. `arreter` tue le groupe entier de chaque sonde
+    en cours (le ssh et celui de son ProxyJump), et `lancer` refuse ensuite
+    toute nouvelle sonde. Le verrou couvre la création du processus : une
+    sonde qui démarre pendant l'arrêt est soit tuée, soit jamais lancée."""
+
+    def __init__(self):
+        self._verrou = threading.Lock()
+        self._actives = set()
+        self._arretees = False
+
+    def lancer(self, cmd, **kwargs):
+        """Le Popen de `cmd` dans une nouvelle session, ou None après
+        `arreter`."""
+        with self._verrou:
+            if self._arretees:
+                return None
+            proc = subprocess.Popen(cmd, start_new_session=True, **kwargs)
+            self._actives.add(proc)
+            return proc
+
+    def terminee(self, proc):
+        with self._verrou:
+            self._actives.discard(proc)
+
+    def arreter(self):
+        with self._verrou:
+            self._arretees = True
+            for proc in self._actives:
+                tuer_groupe(proc)
+
+
+def tuer_groupe(proc):
+    """SIGKILL au groupe dont `proc` est le chef (start_new_session), tant
+    qu'il n'est pas récolté : après, son numéro peut être réattribué."""
+    if proc.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 class QemuAccessMixin:
@@ -929,7 +976,7 @@ class QemuAccessMixin:
         self._ssh_deploy_keys([alias])
         return self._qemu_ssh_probe_remote(alias)
 
-    def _qemu_ssh_probe_remote(self, alias):
+    def _qemu_ssh_probe_remote(self, alias, sondes=None):
         """Sonde `alias`. Renvoie (statut, données) :
 
             ("ok", [(nom, ip)])   libvirt répond, voici ses VM
@@ -946,7 +993,10 @@ class QemuAccessMixin:
 
         « libvirt présent » et « a des VM » sont deux choses distinctes : une
         machine avec QEMU mais sans VM mérite quand même sa connexion
-        virt-manager, une machine sans QEMU n'en veut aucune."""
+        virt-manager, une machine sans QEMU n'en veut aucune.
+
+        `sondes` (_SondesEnCours) recense le processus pour qu'un arrêt du
+        niveau le tue ; une sonde refusée après l'arrêt rend « net »."""
         cmd = [
             "ssh",
             "-o",
@@ -967,28 +1017,41 @@ class QemuAccessMixin:
             # lui interdit le repli graphique ssh-askpass, que DISPLAY
             # déclencherait faute de terminal. stdin détaché : ssh lirait
             # sinon les touches tapées pour une question du fil principal.
-            # Contrepartie : Ctrl+C n'atteint plus ces ssh, il attend la fin
-            # des sondes déjà lancées (ConnectTimeout pour un hôte muet).
-            res = subprocess.run(
+            # Contrepartie : Ctrl+C n'atteint plus ces ssh. Le fil qui
+            # l'attend tue donc lui-même le groupe de la sonde, ProxyJump
+            # compris, comme `_SondesEnCours.arreter` pour un niveau.
+            proc = (sondes or _SondesEnCours()).lancer(
                 cmd,
                 stdin=subprocess.DEVNULL,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=90,
-                start_new_session=True,
                 env={**os.environ, "SSH_ASKPASS_REQUIRE": "never"},
             )
-        except subprocess.TimeoutExpired:
-            return "net", t("timed out")
         except (OSError, subprocess.SubprocessError) as exc:
             return "net", str(exc)
-        if res.returncode != 0:
-            detail = (res.stderr or "").strip().splitlines()
-            message = detail[-1] if detail else f"exit {res.returncode}"
-            return self._ssh_error_kind(res.stderr), message
+        if proc is None:
+            return "net", t("interrupted")
+        try:
+            stdout, stderr = proc.communicate(timeout=90)
+        except subprocess.TimeoutExpired:
+            tuer_groupe(proc)
+            proc.communicate()
+            return "net", t("timed out")
+        except BaseException:
+            tuer_groupe(proc)
+            proc.communicate()
+            raise
+        finally:
+            if sondes is not None:
+                sondes.terminee(proc)
+        if proc.returncode != 0:
+            detail = (stderr or "").strip().splitlines()
+            message = detail[-1] if detail else f"exit {proc.returncode}"
+            return self._ssh_error_kind(stderr), message
         libvirt = "no"
         found = []
-        for line in res.stdout.splitlines():
+        for line in stdout.splitlines():
             parts = line.strip().split("\t")
             if len(parts) != 2 or not parts[0]:
                 continue
@@ -1010,11 +1073,21 @@ class QemuAccessMixin:
         Chaque couple est rendu dès que sa sonde et celles qui le précèdent
         ont abouti : l'appelant affiche la progression dans un ordre stable,
         et tout ce qu'il fait d'un résultat (question, écriture de
-        ~/.ssh/config) reste dans son propre fil, en série."""
+        ~/.ssh/config) reste dans son propre fil, en série.
+
+        Fermé avant la fin — Ctrl+C, exception de l'appelant — il tue les
+        sondes en cours et n'en lance plus : la sortie du `with`, qui attend
+        les fils, ne dure plus le ConnectTimeout d'un hôte muet."""
+        sondes = _SondesEnCours()
+
+        def sonder(alias):
+            return self._qemu_ssh_probe_remote(alias, sondes)
+
         with ThreadPoolExecutor(max_workers=self._QEMU_SSH_PARALLEL) as pool:
-            yield from zip(
-                aliases, pool.map(self._qemu_ssh_probe_remote, aliases)
-            )
+            try:
+                yield from zip(aliases, pool.map(sonder, aliases))
+            finally:
+                sondes.arreter()
 
     def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
@@ -1072,79 +1145,84 @@ class QemuAccessMixin:
             # Les sondes partent ensemble ; le repli sur la clé, qui pose une
             # question, et l'écriture des entrées suivent l'ordre de
             # `frontier`, dans ce fil-ci.
-            probes = self._qemu_ssh_probe_level(frontier)
-            for parent, (status, found) in probes:
-                if status == "auth":
-                    # C'EST ici qu'une clé manquante se manifeste, pas avant :
-                    # on ne parle d'identité qu'une fois l'identité refusée.
-                    status, found = self._qemu_ssh_retry_with_key(
-                        parent, found
-                    )
-                    # Une clé a pu naître de cet échange : les entrées
-                    # écrites ensuite doivent la nommer.
-                    identity = (
-                        self._ssh_private_key(self._qemu_default_ssh_key())
-                        or identity
-                    )
-                if status in ("auth", "net"):
-                    label = (
-                        t("access refused")
-                        if status == "auth"
-                        else t("unreachable")
-                    )
-                    print(f"  ⏭  {parent}: {label} — {found}")
-                    continue
-                if status == "denied":
-                    # virsh est là mais ne répond pas : c'est un DROIT qui
-                    # manque, pas un logiciel. Le dire, et donner le geste.
-                    print(
-                        f"  🔒 {parent}: "
-                        f"{t('virsh present but not accessible')}"
-                    )
-                    print(
-                        f"       {t('Add the user to the libvirt group there:')}"
-                    )
-                    continue
-                if status != "ok":
-                    print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
-                    continue
-                # Une machine avec QEMU vaut sa connexion virt-manager, même
-                # sans VM : c'est là qu'on pourra en créer.
-                hosts_libvirt.append(parent)
-                if not found:
-                    print(f"  ·  {parent}: {t('QEMU present, no VM')}")
-                    continue
-                for child, ip in found:
-                    if not ip:
-                        print(f"  ⏭  {parent} › {child}: {t('no IP')}")
+            # closing : une exception levée ICI, pendant la question du
+            # repli, ferme le générateur sur-le-champ et tue ses sondes, au
+            # lieu d'attendre que la trace de l'exception le libère.
+            with contextlib.closing(
+                self._qemu_ssh_probe_level(frontier)
+            ) as probes:
+                for parent, (status, found) in probes:
+                    if status == "auth":
+                        # C'EST ici qu'une clé manquante se manifeste, pas
+                        # avant : on ne parle d'identité qu'une fois
+                        # l'identité refusée.
+                        status, found = self._qemu_ssh_retry_with_key(
+                            parent, found
+                        )
+                        # Une clé a pu naître de cet échange : les entrées
+                        # écrites ensuite doivent la nommer.
+                        identity = (
+                            self._ssh_private_key(self._qemu_default_ssh_key())
+                            or identity
+                        )
+                    if status in ("auth", "net"):
+                        label = (
+                            t("access refused")
+                            if status == "auth"
+                            else t("unreachable")
+                        )
+                        print(f"  ⏭  {parent}: {label} — {found}")
                         continue
-                    # UN SEUL nom, le nom CHAÎNÉ : il dit où vit la VM et ne
-                    # peut heurter aucune autre machine. Y ajouter le nom
-                    # court ne ferait que répéter la fin de la chaîne.
-                    chain = f"{chain_of[parent]}+{child}"
-                    if chain in taken:
-                        continue  # déjà vu (cycle)
-                    # L'invitée hérite du compte de son parent : elle a été
-                    # créée par lui, avec la même convention.
-                    user_of[chain] = user_of[parent]
-                    self._write_ssh_config_entry(
-                        chain,
-                        user_of[chain],
-                        ip,
-                        proxy_jump=parent,
-                        identity_file=identity,
-                    )
-                    entries.append(
-                        {
-                            "names": [chain],
-                            "ip": ip,
-                            "parent": parent,
-                            "user": user_of[chain],
-                        }
-                    )
-                    taken.add(chain)
-                    chain_of[chain] = chain
-                    next_frontier.append(chain)
+                    if status == "denied":
+                        # virsh est là mais ne répond pas : c'est un DROIT qui
+                        # manque, pas un logiciel. Le dire, et donner le geste.
+                        print(
+                            f"  🔒 {parent}: "
+                            f"{t('virsh present but not accessible')}"
+                        )
+                        geste = t("Add the user to the libvirt group there:")
+                        print(f"       {geste}")
+                        continue
+                    if status != "ok":
+                        print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
+                        continue
+                    # Une machine avec QEMU vaut sa connexion virt-manager, même
+                    # sans VM : c'est là qu'on pourra en créer.
+                    hosts_libvirt.append(parent)
+                    if not found:
+                        print(f"  ·  {parent}: {t('QEMU present, no VM')}")
+                        continue
+                    for child, ip in found:
+                        if not ip:
+                            print(f"  ⏭  {parent} › {child}: {t('no IP')}")
+                            continue
+                        # UN SEUL nom, le nom CHAÎNÉ : il dit où vit la VM et ne
+                        # peut heurter aucune autre machine. Y ajouter le nom
+                        # court ne ferait que répéter la fin de la chaîne.
+                        chain = f"{chain_of[parent]}+{child}"
+                        if chain in taken:
+                            continue  # déjà vu (cycle)
+                        # L'invitée hérite du compte de son parent : elle a été
+                        # créée par lui, avec la même convention.
+                        user_of[chain] = user_of[parent]
+                        self._write_ssh_config_entry(
+                            chain,
+                            user_of[chain],
+                            ip,
+                            proxy_jump=parent,
+                            identity_file=identity,
+                        )
+                        entries.append(
+                            {
+                                "names": [chain],
+                                "ip": ip,
+                                "parent": parent,
+                                "user": user_of[chain],
+                            }
+                        )
+                        taken.add(chain)
+                        chain_of[chain] = chain
+                        next_frontier.append(chain)
             frontier = next_frontier
 
         print(f"\n── {t('SSH hosts written')} ──")
