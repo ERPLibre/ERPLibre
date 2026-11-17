@@ -394,6 +394,14 @@ class GitTool:
         else:
             repos = all_repos
         results = []
+        # Each path enters addons_path once. The header line already holds
+        # addons/addons, unless ignore_odoo_path empties it: a manifest that
+        # declares that path would otherwise write it a second time.
+        # generate_config.sh defines EL_HOME_ODOO_PROJECT as
+        # ${EL_HOME}/odoo${EL_ODOO_VERSION}, the prefix of the header line.
+        deja = set()
+        if not ignore_odoo_path:
+            deja.add("${EL_HOME_ODOO_PROJECT}/addons/addons")
         if not repos:
             print(
                 f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: List of repo is empty when write generate_config."
@@ -410,6 +418,9 @@ class GitTool:
             ):
                 path_parts = update_repo.split("/", 1)
                 update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + path_parts[1]
+                if update_repo in deja:
+                    continue
+                deja.add(update_repo)
                 # str_repo = (
                 #     f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 #     '"${EL_CONFIG_FILE}"\n'
@@ -423,6 +434,9 @@ class GitTool:
                 results.append(str_repo)
         if extra_path:
             for each_extra_path in extra_path.strip().split(","):
+                if each_extra_path in deja:
+                    continue
+                deja.add(each_extra_path)
                 str_repo = (
                     f'    printf "{each_extra_path}," >> '
                     '"${EL_CONFIG_FILE}"\n'
