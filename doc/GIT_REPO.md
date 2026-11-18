@@ -120,7 +120,7 @@ Maybe, some version diverge from your manifest. Simply clean all and relaunch yo
 ## Update or upgrade
 
 Two gestures the word "update" used to cover. TODO › Execute › Git repository › Repo
-separates them, and Execute › Code › Update leads to the same screen.
+separates them.
 
 An **update** moves every project to the tip of the branch its manifest gives
 it. It asks nothing, cannot conflict, and runs every morning.
@@ -593,7 +593,7 @@ make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
 make repo_freeze_diff ARGS="--graph 1"
 ```
 
-In TODO › Git repo, entry 15 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+In TODO › Execute › Git repository › Repo, entry 15 offers the usual comparisons, a choice of two revisions among the freeze commits and the
 ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
 `b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
 `w` the command that opens an old commit in a git worktree beside the clone, without moving it.
