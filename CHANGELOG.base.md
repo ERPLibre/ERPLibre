@@ -529,6 +529,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository with none, once any repository of the checkout is frozen, and writes it only for a
   pushed HEAD
 - The Odoo 18 manifest freezes `erplibre_addons` on the head of its `18.0` branch, 5 commits further: it brings the DevOps requirement tracker and guide modules, and the bilingual README generator of the modules. A checkout synchronised before needs `repo sync` for that project
+- **TODO › 🩺 Healthcheck** names its resolution for a stale local manifest **📌 Switch to production: each repository on its frozen commit**, as in Git repository › Repo, which runs the same `make repo_configure_all FREEZE=1`, and says that every repository of the checkout goes to its frozen commit, not only the stale ones
 
 <!-- [fr] -->
 
@@ -645,6 +646,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   premier gel à un dépôt cloné qui n'en a pas, dès qu'un dépôt du checkout est gelé, et ne l'écrit
   que pour un HEAD poussé
 - Le manifeste d'Odoo 18 gèle `erplibre_addons` sur la tête de sa branche `18.0`, 5 commits plus loin : il apporte les modules de suivi d'exigences et de guide DevOps, et le générateur de README bilingue des modules. Un checkout synchronisé avant demande `repo sync` pour ce projet
+- **TODO › 🩺 Bilan de santé** nomme sa résolution d'un manifeste local périmé **📌 Passer en production : chaque dépôt sur son commit gelé**, comme Répertoire git › Repo, qui lance la même `make repo_configure_all FREEZE=1`, et dit que chaque dépôt du checkout va sur son commit gelé, pas seulement les périmés
 
 <!-- [en] -->
 ## Fixed

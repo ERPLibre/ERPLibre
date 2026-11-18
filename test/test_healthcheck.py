@@ -634,6 +634,29 @@ class TestManifeste(unittest.TestCase):
         (resolution,) = resultat.resolutions
         self.assertEqual(resolution.cle, h.REGENERER)
         self.assertIn(h.COMMANDE_REGENERER, resolution.libelle)
+        self.assertIn(
+            t("📌 Switch to production: each repository on its frozen commit"),
+            resolution.libelle,
+        )
+
+    def test_the_command_is_the_one_of_switch_to_production(self):
+        # Le libellé promet la commande de Repo › Passer en production : les
+        # deux ne doivent pas diverger.
+        from script.todo import git_repo_menu
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+        todo.execute.exec_command_live.return_value = 0
+        with (
+            mock.patch.object(
+                git_repo_menu, "gel_des_sources", lambda: (1, 1)
+            ),
+            mock.patch("builtins.print"),
+        ):
+            todo._git_repo_reconfigurer(freeze=True)
+        (appel,) = todo.execute.exec_command_live.call_args_list
+        self.assertTrue(appel.args[0].endswith(f"&& {h.COMMANDE_REGENERER}"))
 
     def test_a_branch_checkout_is_never_stale(self):
         depot = self.depot_perime()

@@ -1157,11 +1157,11 @@ def verifier_manifeste(ctx):
             0,
             Resolution(
                 REGENERER,
-                f"🧾 {t('Regenerate the local manifest')}"
+                f"{t('📌 Switch to production: each repository on its frozen commit')}"
                 f" ({COMMANDE_REGENERER})",
                 [
                     t(
-                        "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. It is written again from manifest/, then repo sync puts each repository on its freeze; a repository with modified files makes the sync fail without being overwritten."
+                        "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. The same command as Git repository › Repo › Switch to production writes it again from manifest/, then repo sync puts each repository of the checkout on its frozen commit, not only those below; a repository with modified files makes the sync fail without being overwritten."
                     )
                 ]
                 + [f"   {d.get('path')}" for d in perimes],
@@ -1668,9 +1668,11 @@ def verifier_dependances_venvs(ctx):
                     )
                 ]
                 + [
-                    f"   {c['venv']} → .venv.{c['remplacant']}"
-                    if c["remplacant"]
-                    else f"   {c['venv']} → {t('no Odoo version left in the catalogue')}"
+                    (
+                        f"   {c['venv']} → .venv.{c['remplacant']}"
+                        if c["remplacant"]
+                        else f"   {c['venv']} → {t('no Odoo version left in the catalogue')}"
+                    )
                     for c in obsoletes
                 ],
                 obsoletes,
@@ -2360,7 +2362,7 @@ def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
     )
     try:
         reponse = demander(
-            f"💬 {t('Regenerate the local manifest and sync? (y/N): ')}"
+            f"💬 {t('Switch to production: regenerate the local manifest and sync? (y/N): ')}"
         )
     except EOFError:
         reponse = ""
