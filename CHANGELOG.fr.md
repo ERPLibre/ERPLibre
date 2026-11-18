@@ -316,6 +316,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ref distante connue n'a, comptés sans fetch. **Mettre à jour le gel avec HEAD** propose aussi un
   premier gel à un dépôt cloné qui n'en a pas, dès qu'un dépôt du checkout est gelé, et ne l'écrit
   que pour un HEAD poussé
+- Le manifeste d'Odoo 18 gèle `erplibre_addons` sur la tête de sa branche `18.0`, 5 commits plus loin : il apporte les modules de suivi d'exigences et de guide DevOps, et le générateur de README bilingue des modules. Un checkout synchronisé avant demande `repo sync` pour ce projet
 
 ## Corrigé
 
@@ -470,6 +471,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   santé** ou le menu Python, n'arrête plus TODO sur `FileNotFoundError` pour
   `.venv.<version>/bin/poetry` : Poetry et le venv sont donnés par chemin absolu au projet temporaire
   d'où il tourne, et un Poetry qui ne démarre pas est signalé avec l'erreur du système
+- `addons_path` du `config.conf` généré porte chaque chemin une seule fois : un manifeste qui déclare `odoo<version>/addons/addons`, que l'en-tête de `generate_config.sh` écrit toujours, ne le fait plus lister deux fois dans chaque configuration régénérée, et un dépôt ou un chemin extra donné deux fois s'écrit une fois. Avec `ignore_odoo_path`, qui vide l'en-tête, le chemin déclaré est gardé
 
 ## Retiré
 

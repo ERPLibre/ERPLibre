@@ -311,6 +311,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   counted without fetch. **Update the freeze to HEAD** also offers a first freeze to a cloned
   repository with none, once any repository of the checkout is frozen, and writes it only for a
   pushed HEAD
+- The Odoo 18 manifest freezes `erplibre_addons` on the head of its `18.0` branch, 5 commits further: it brings the DevOps requirement tracker and guide modules, and the bilingual README generator of the modules. A checkout synchronised before needs `repo sync` for that project
 
 ## Fixed
 
@@ -464,6 +465,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the Python menu, no longer stops TODO on `FileNotFoundError` for `.venv.<version>/bin/poetry`:
   Poetry and the venv are given by absolute path to the temporary project it runs from, and a Poetry
   that cannot start is reported with the system error
+- `addons_path` in the generated `config.conf` holds each path once: a manifest that declares `odoo<version>/addons/addons`, which the header of `generate_config.sh` always writes, no longer lists it twice in every regenerated configuration, and a repository or an extra path given twice is written once. With `ignore_odoo_path`, which empties the header, the declared path is kept
 
 ## Removed
 
