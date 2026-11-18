@@ -3509,21 +3509,39 @@ TRANSLATIONS = {
         "fr": "cible locale",
         "en": "local target",
     },
-    "Regenerate the local manifest": {
-        "fr": "Régénérer le manifeste local",
-        "en": "Regenerate the local manifest",
-    },
-    "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. It is written again from manifest/, then repo sync puts each repository on its freeze; a repository with modified files makes the sync fail without being overwritten.": {
-        "fr": "En checkout gelé, le manifeste local vise encore un gel plus ancien que manifest/ : il a été généré avant le dernier gel. Il est réécrit depuis manifest/, puis repo sync pose chaque dépôt sur son gel ; un dépôt aux fichiers modifiés fait échouer la synchronisation sans être écrasé.",
-        "en": "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. It is written again from manifest/, then repo sync puts each repository on its freeze; a repository with modified files makes the sync fail without being overwritten.",
-    },
     "repositories target an older freeze in the local manifest.": {
         "fr": "dépôts visent un gel plus ancien dans le manifeste local.",
         "en": "repositories target an older freeze in the local manifest.",
     },
-    "Regenerate the local manifest and sync? (y/N): ": {
-        "fr": "Régénérer le manifeste local et synchroniser ? (o/N) : ",
-        "en": "Regenerate the local manifest and sync? (y/N): ",
+    "In a frozen checkout, the local manifest still targets an older freeze than manifest/: it was generated before the last freeze. The same command as Git repository › Repo › Switch to production writes it again from manifest/, then repo sync puts each repository of the checkout on its frozen commit, not only those below; a repository with modified files makes the sync fail without being overwritten.": {
+        "fr": (
+            "En checkout gelé, le manifeste local vise encore un gel plus ancien"
+            " que manifest/ : il a été généré avant le dernier gel. La même"
+            " commande que Répertoire git › Repo › Passer en production le"
+            " réécrit depuis manifest/, puis repo sync pose chaque dépôt du"
+            " checkout sur son commit gelé, pas seulement ceux ci-dessous ; un"
+            " dépôt aux fichiers modifiés fait échouer la synchronisation sans"
+            " être écrasé."
+        ),
+        "en": (
+            "In a frozen checkout, the local manifest still targets an older"
+            " freeze than manifest/: it was generated before the last freeze."
+            " The same command as Git repository › Repo › Switch to production"
+            " writes it again from manifest/, then repo sync puts each"
+            " repository of the checkout on its frozen commit, not only those"
+            " below; a repository with modified files makes the sync fail"
+            " without being overwritten."
+        ),
+    },
+    "Switch to production: regenerate the local manifest and sync? (y/N): ": {
+        "fr": (
+            "Passer en production : régénérer le manifeste local et"
+            " synchroniser ? (o/N) : "
+        ),
+        "en": (
+            "Switch to production: regenerate the local manifest and sync?"
+            " (y/N): "
+        ),
     },
     "Local manifest regenerated.": {
         "fr": "Manifeste local régénéré.",

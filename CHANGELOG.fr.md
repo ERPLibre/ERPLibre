@@ -317,6 +317,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   premier gel à un dépôt cloné qui n'en a pas, dès qu'un dépôt du checkout est gelé, et ne l'écrit
   que pour un HEAD poussé
 - Le manifeste d'Odoo 18 gèle `erplibre_addons` sur la tête de sa branche `18.0`, 5 commits plus loin : il apporte les modules de suivi d'exigences et de guide DevOps, et le générateur de README bilingue des modules. Un checkout synchronisé avant demande `repo sync` pour ce projet
+- **TODO › 🩺 Bilan de santé** nomme sa résolution d'un manifeste local périmé **📌 Passer en production : chaque dépôt sur son commit gelé**, comme Répertoire git › Repo, qui lance la même `make repo_configure_all FREEZE=1`, et dit que chaque dépôt du checkout va sur son commit gelé, pas seulement les périmés
 
 ## Corrigé
 

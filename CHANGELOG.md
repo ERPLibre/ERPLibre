@@ -312,6 +312,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository with none, once any repository of the checkout is frozen, and writes it only for a
   pushed HEAD
 - The Odoo 18 manifest freezes `erplibre_addons` on the head of its `18.0` branch, 5 commits further: it brings the DevOps requirement tracker and guide modules, and the bilingual README generator of the modules. A checkout synchronised before needs `repo sync` for that project
+- **TODO › 🩺 Healthcheck** names its resolution for a stale local manifest **📌 Switch to production: each repository on its frozen commit**, as in Git repository › Repo, which runs the same `make repo_configure_all FREEZE=1`, and says that every repository of the checkout goes to its frozen commit, not only the stale ones
 
 ## Fixed
 
