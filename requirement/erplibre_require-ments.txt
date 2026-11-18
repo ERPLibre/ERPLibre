@@ -80,7 +80,7 @@ twisted
 # versions qu'ils remplacent. twisted, pour les tests du client courriel,
 # n'a de correctif qu'en version candidate (26.10.0rc1).
 filelock>=4.2.1
-tornado>=6.6
+tornado>=6.6.1
 certifi>=2026.10.18
 nbconvert>=7.17.2
 
