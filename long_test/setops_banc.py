@@ -61,11 +61,19 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # épreuves de ce dossier. 0 : elle est allée jusqu'au bout. OUTILLAGE : de quoi
 # la mener manque, et RIEN n'a été tenté. NON_CONCLUANTE : quelque chose l'a
 # arrêtée AVANT qu'elle mesure. Confondre 0 et NON_CONCLUANTE ferait lire
-# « concluant » sur une épreuve qui n'a rien éprouvé.
+# « concluant » sur une épreuve qui n'a rien éprouvé. RECETTE : la boucle est
+# allée au bout — bâtir, déployer, raser — mais la recette d'acceptation du
+# moteur n'a pas tenu. Ni un succès, ni une épreuve qui n'a rien mesuré.
 SORTIE_OK = 0
 SORTIE_OUTILLAGE = 20
 SORTIE_NON_CONCLUANTE = 30
-SORTIES = (SORTIE_OK, SORTIE_OUTILLAGE, SORTIE_NON_CONCLUANTE)
+SORTIE_RECETTE = 40
+SORTIES = (SORTIE_OK, SORTIE_OUTILLAGE, SORTIE_NON_CONCLUANTE, SORTIE_RECETTE)
+
+# LA MARQUE QUE LE MOTEUR IMPRIME en entrant dans sa recette d'acceptation, à la
+# fin de la construction. Ses étapes s'arrêtent à la première en échec : un
+# échec qui SUIT cette marque dit donc que tout ce qui la précède a tenu.
+MARQUE_RECETTE = "=== ETAPE valider"
 
 # Les deux passes, dans l'ORDRE où elles ont un sens : valider la grappe avant
 # de valider le chemin qui s'appuie sur elle. Inversées, un échec de la voûte
@@ -3555,7 +3563,9 @@ def chemin_inventaire(moteur):
     )
 
 
-def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
+def joue_une_passe(
+    moteur, mesures, chantier, passe, secret, dire=print, recettes=None
+):
     """Joue les cibles du moteur pour une passe. Rend le souci, ou « ».
 
     L'INVENTAIRE D'ABORD, LES ZONES ENSUITE, LA CONSTRUCTION APRÈS. Le générateur
@@ -3607,7 +3617,9 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
         return souci
 
     for etape in (e for e in etapes if e.confirmer):
-        souci = joue_une_etape(moteur, env, etape, passe, secret, dire)
+        souci = joue_une_etape(
+            moteur, env, etape, passe, secret, dire, recettes
+        )
         if souci:
             return souci
     return ""
@@ -3734,12 +3746,32 @@ def ecrit_le_journal(chemin, texte, secret=""):
     return ""
 
 
-def joue_une_etape(moteur, env, etape, passe="", secret="", dire=print):
+def recette_seule(sortie):
+    """L'échec dont `sortie` témoigne est-il celui de la SEULE recette ?
+
+    Vrai quand une ligne s'ouvre sur `MARQUE_RECETTE` : le moteur ne l'imprime
+    qu'après avoir bâti et déployé sans faute, puisqu'il s'arrête à la première
+    étape en échec. Sans la marque, l'échec est celui de la construction.
+    """
+    return any(
+        ligne.lstrip().startswith(MARQUE_RECETTE)
+        for ligne in (sortie or "").splitlines()
+    )
+
+
+def joue_une_etape(
+    moteur, env, etape, passe="", secret="", dire=print, recettes=None
+):
     """Joue une cible du moteur et LIT son verdict. Rend le souci, ou « ».
 
     LE VERDICT SE LIT, code ET sortie : plusieurs gestes du moteur rendent zéro
     en ayant trouvé un écart, et un appelant qui ne lirait que le code
     annoncerait une réussite qui n'a pas eu lieu.
+
+    UNE RECETTE NON TENUE N'ARRÊTE PAS LA BOUCLE quand l'appelant tend
+    `recettes` : la flotte est bâtie et déployée, et la raser reste dû. La cause
+    y est ajoutée, l'étape rend « », et c'est à l'appelant de rendre le verdict
+    qui la nomme. Sans `recettes`, tout échec reste un souci.
     """
     argv = runner_du_banc().cible(
         moteur, etape.cible, etape.variables, confirmer=etape.confirmer
@@ -3758,7 +3790,12 @@ def joue_une_etape(moteur, env, etape, passe="", secret="", dire=print):
     if souci:
         dire(f"      journal non déposé : {souci}")
     if vu.code != 0:
-        return f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
+        souci = f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
+        if recettes is not None and recette_seule(vu.sortie):
+            recettes.append(souci)
+            dire(f"      recette non tenue — {souci}")
+            return ""
+        return souci
     return ""
 
 
@@ -3953,9 +3990,12 @@ def principal(argv=None):
     # pendant qu'elle tourne vaut mieux que l'apprendre une fois finie.
     print(f"  · sorties du moteur : {dossier_journal()}")
 
+    recettes = []
     for passe in passes:
         print(f"\n── passe « {passe} » ──")
-        souci = joue_une_passe(moteur, mesures, chantier, passe, secret)
+        souci = joue_une_passe(
+            moteur, mesures, chantier, passe, secret, recettes=recettes
+        )
         if souci:
             print(f"\n  ⛔ {expurge(souci, secret)}")
             print(f"     ce qui est posé est nommé dans {chantier.chemin}")
@@ -3963,7 +4003,23 @@ def principal(argv=None):
 
     print(f"\n  ✓ le banc est allé au bout des {len(passes)} passe(s).")
     print(f"     défaire : {os.path.basename(__file__)} --detruire")
-    return SORTIE_OK
+    return verdict_des_recettes(recettes, secret)
+
+
+def verdict_des_recettes(recettes, secret="", dire=print):
+    """Le code de sortie que les recettes non tenues commandent.
+
+    NOMMÉES, PAS COMPTÉES : « la recette n'a pas tenu » sans dire laquelle
+    renvoie au journal, alors que la cause est déjà là.
+    """
+    if not recettes:
+        return SORTIE_OK
+    dire(
+        "\n  ⚠ bâtie, déployée et rasée — mais la recette du moteur n'a pas tenu :"
+    )
+    for recette in recettes:
+        dire(f"     · {expurge(recette, secret)}")
+    return SORTIE_RECETTE
 
 
 def terrain_deduit():

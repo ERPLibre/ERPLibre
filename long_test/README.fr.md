@@ -359,7 +359,10 @@ l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
 
 Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
 `20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
-avant qu'elle mesure.
+avant qu'elle mesure, `40` la boucle est allée au bout — bâtie, déployée,
+rasée — mais la recette d'acceptation du moteur, qui clôt sa reconstruction,
+n'a pas tenu. La recette en échec est nommée ; un échec qui précède la marque
+`=== ETAPE valider` du moteur est celui de la construction, et reste `30`.
 
 **Un refus porte la CAUSE, et non la pile.** Quand un geste du moteur échoue,
 chaque niveau de `make` empile son erreur par-dessus ; garder la fin de sa

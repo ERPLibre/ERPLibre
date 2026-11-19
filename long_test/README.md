@@ -345,7 +345,10 @@ runner deliberately passes no `PROXMOX_*`.
 
 Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
 the tooling is missing and nothing was attempted, `30` something stopped it
-before it measured.
+before it measured, `40` the loop went all the way — built, deployed, razed —
+but the engine's own acceptance recipe, which closes its rebuild, did not hold.
+The recipe that failed is named; a failure that comes before the engine's
+`=== ETAPE valider` mark is a build failure and stays `30`.
 
 **A refusal carries the CAUSE, not the stack.** When a gesture of the engine
 fails, each level of `make` piles its own error on top; keeping the end of its

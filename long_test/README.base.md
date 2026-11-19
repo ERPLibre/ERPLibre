@@ -350,7 +350,10 @@ runner deliberately passes no `PROXMOX_*`.
 
 Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
 the tooling is missing and nothing was attempted, `30` something stopped it
-before it measured.
+before it measured, `40` the loop went all the way — built, deployed, razed —
+but the engine's own acceptance recipe, which closes its rebuild, did not hold.
+The recipe that failed is named; a failure that comes before the engine's
+`=== ETAPE valider` mark is a build failure and stays `30`.
 
 **A refusal carries the CAUSE, not the stack.** When a gesture of the engine
 fails, each level of `make` piles its own error on top; keeping the end of its
@@ -894,7 +897,10 @@ l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
 
 Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
 `20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
-avant qu'elle mesure.
+avant qu'elle mesure, `40` la boucle est allée au bout — bâtie, déployée,
+rasée — mais la recette d'acceptation du moteur, qui clôt sa reconstruction,
+n'a pas tenu. La recette en échec est nommée ; un échec qui précède la marque
+`=== ETAPE valider` du moteur est celui de la construction, et reste `30`.
 
 **Un refus porte la CAUSE, et non la pile.** Quand un geste du moteur échoue,
 chaque niveau de `make` empile son erreur par-dessus ; garder la fin de sa

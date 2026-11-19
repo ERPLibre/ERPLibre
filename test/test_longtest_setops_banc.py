@@ -76,10 +76,12 @@ class TestLesPrealablesSeDisentAvant(unittest.TestCase):
             with self.subTest(cas=cas):
                 self.assertIn(B.juge(cas), B.SORTIES)
 
-    def test_the_three_codes_do_not_read_alike(self):
+    def test_the_codes_do_not_read_alike(self):
         """Confondre 0 et 30 ferait lire « concluant » sur une épreuve qui n'a
-        rien éprouvé."""
-        self.assertEqual(3, len(set(B.SORTIES)))
+        rien éprouvé ; confondre 40 et 0, une recette ratée pour un succès."""
+        self.assertEqual(len(B.SORTIES), len(set(B.SORTIES)))
+        self.assertIn(B.SORTIE_RECETTE, B.SORTIES)
+        self.assertNotEqual(B.SORTIE_OK, B.SORTIE_RECETTE)
 
 
 class TestLeTerrainSeDeduitSansSEnfoncer(unittest.TestCase):
@@ -4052,6 +4054,47 @@ class TestUnSuccesSInspecte(unittest.TestCase):
         )
 
 
+# Une sortie de `reconstruire` dont la recette a échoué : le moteur a imprimé sa
+# marque d'étape, puis la recette a refusé.
+APRES_RECETTE = (
+    "=== ETAPE deployer-tout 22:00:00\n...\n"
+    f"{B.MARQUE_RECETTE} 23:19:57\n"
+    'fatal: [infra-fictif-01]: FAILED! => {"msg": "ÉCHEC — recette fictive"}\n'
+)
+AVANT_RECETTE = (
+    "=== ETAPE deployer-tout 22:00:00\n"
+    'fatal: [infra-fictif-01]: FAILED! => {"msg": "ÉCHEC — déploiement"}\n'
+)
+
+
+class TestLaRecetteSeJugeAPart(unittest.TestCase):
+    """La recette d'acceptation du moteur clôt désormais la construction. Son
+    échec ne dit pas que la flotte n'a pas été bâtie : la boucle doit aller au
+    rasage, et le verdict doit nommer la recette au lieu de rendre 30."""
+
+    def test_the_mark_tells_a_recipe_failure(self):
+        self.assertTrue(B.recette_seule(APRES_RECETTE))
+
+    def test_without_the_mark_it_is_the_build_that_failed(self):
+        """Contrôle positif : une détection qui dirait toujours « recette »
+        laisserait passer une construction cassée."""
+        self.assertFalse(B.recette_seule(AVANT_RECETTE))
+        self.assertFalse(B.recette_seule(""))
+
+    def test_no_recipe_failure_is_a_success(self):
+        self.assertEqual(
+            B.SORTIE_OK, B.verdict_des_recettes([], dire=lambda *a: None)
+        )
+
+    def test_a_recipe_failure_has_its_own_code_and_is_named(self):
+        dits = []
+        code = B.verdict_des_recettes(
+            ["make reconstruire : recette fictive"], dire=dits.append
+        )
+        self.assertEqual(B.SORTIE_RECETTE, code)
+        self.assertIn("recette fictive", "\n".join(dits))
+
+
 class TestLEtapeDeposeSaSortie(unittest.TestCase):
     """Le journal se dépose que l'étape passe ou non — c'est l'étape VERTE qui
     en avait le plus besoin."""
@@ -4099,6 +4142,38 @@ class TestLEtapeDeposeSaSortie(unittest.TestCase):
             "/f/moteur", {}, etape, "env", "", dire=lambda *a: None
         )
         return souci, os.path.join(d, "journal", "env-une-cible.log")
+
+    def test_a_recipe_failure_is_collected_and_the_loop_goes_on(self):
+        self.atelier(2, APRES_RECETTE)
+        recettes = []
+        etape = B.Etape("reconstruire", (), "~45 min", True, False)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", lambda *a: None, recettes
+        )
+        self.assertEqual("", souci)
+        self.assertEqual(1, len(recettes))
+        self.assertIn("recette fictive", recettes[0])
+
+    def test_a_build_failure_still_stops_the_loop(self):
+        self.atelier(2, AVANT_RECETTE)
+        recettes = []
+        etape = B.Etape("reconstruire", (), "~45 min", True, False)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", lambda *a: None, recettes
+        )
+        self.assertIn("déploiement", souci)
+        self.assertEqual([], recettes)
+
+    def test_without_a_collector_a_recipe_failure_stays_a_failure(self):
+        """Seul l'appelant qui s'engage à rendre le verdict reçoit le droit de
+        continuer : un appelant qui ignorerait la liste lirait « » comme un
+        succès."""
+        self.atelier(2, APRES_RECETTE)
+        etape = B.Etape("reconstruire", (), "~45 min", True, False)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", dire=lambda *a: None
+        )
+        self.assertIn("recette fictive", souci)
 
     def test_a_green_step_leaves_its_output(self):
         """LA PROPRIÉTÉ, et c'est celle qui manquait : sans elle, répondre à
