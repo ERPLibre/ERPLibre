@@ -507,7 +507,10 @@ courriel écrit — le seul compte de personne que le moteur crée. La restaurat
 d'une incarnation précédente reste coupée : la flotte du banc naît toujours
 neuve. Le rapport que la cible de sauvegarde envoie à la supervision l'est
 aussi, le banc n'en posant pas : la recette rejouée restaure elle-même un
-instantané, ce qui est plus fort que relire des métadonnées.
+instantané, ce qui est plus fort que relire des métadonnées. Enfin, le banc
+active le TLS de la remise interne du côté de l'émetteur, comme le pose un
+locataire dans ses `group_vars` : le magasin l'exige sur son port LMTP, le
+modèle livré ne le pose pas, et sans lui aucun message n'atteint une boîte.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

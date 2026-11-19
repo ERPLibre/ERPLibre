@@ -1510,6 +1510,14 @@ RESTAURATION_ACTIVE = "client_backup_restauration_active"
 # L'interrupteur de la vérification que le dépôt rapporte à la supervision.
 VERIFICATION_DEPOT = "serveur_backup_verification_locale"
 
+# LES DEUX MOITIÉS DE LA REMISE INTERNE DU COURRIEL. Le magasin écoute en TLS
+# implicite sur son port LMTP par défaut ; l'émetteur ne s'y met que si
+# l'instance le demande. L'une sans l'autre, l'émetteur attend un accueil que le
+# magasin ne donne qu'après la poignée de main, et chaque message est différé
+# en silence au bout de son délai.
+TLS_LMTP_EMETTEUR = "serveur_postfix_lmtp_tls_verify"
+TLS_LMTP_MAGASIN = "serveur_dovecot_lmtp_tls"
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1572,6 +1580,11 @@ def texte_intrants_du_banc(resolveur):
     `amorcage_acces_uid` PREND LE NOM DE `COMPTE_RECETTE` : la recette du
     courriel remet un message à ce compte et le cherche dans sa boîte, et c'est
     le seul compte de personne que le moteur sache poser.
+
+    `TLS_LMTP_EMETTEUR` À VRAI, comme le pose un locataire dans ses
+    `group_vars` : il accorde l'émetteur au magasin, qui exige TLS sur son port
+    LMTP. Le modèle livré ne le pose pas, et sans lui aucun message n'atteint
+    une boîte.
     """
     if not (resolveur or "").strip():
         return ""
@@ -1583,6 +1596,7 @@ amorcage_acces_courriel: "{COURRIEL_RECOURS}"
 amorcage_acces_uid: "{COMPTE_RECETTE}"
 {RESTAURATION_ACTIVE}: false
 {VERIFICATION_DEPOT}: false
+{TLS_LMTP_EMETTEUR}: true
 """
 
 

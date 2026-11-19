@@ -4706,6 +4706,26 @@ class TestUnDepotSansSupervision(unittest.TestCase):
         self.assertIn(B.VERIFICATION_DEPOT, defauts)
 
 
+class TestLaRemiseInterneEstChiffreeDesDeuxCotes(unittest.TestCase):
+    """Le magasin exige TLS sur son port LMTP ; un émetteur en clair attend un
+    accueil qui ne vient pas, et la recette du courriel échoue."""
+
+    def test_the_sender_agrees_with_the_engine_s_mail_store(self):
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        magasin = lu_au_moteur(
+            "roles", "serveur_dovecot", "defaults", "main.yml"
+        )
+        self.assertIs(
+            bool(magasin[B.TLS_LMTP_MAGASIN]), lu[B.TLS_LMTP_EMETTEUR]
+        )
+
+    def test_the_sender_switch_is_one_the_engine_declares(self):
+        defauts = lu_au_moteur(
+            "roles", "serveur_postfix", "defaults", "main.yml"
+        )
+        self.assertIn(B.TLS_LMTP_EMETTEUR, defauts)
+
+
 class TestLaClePubliqueDeSauvegarde(unittest.TestCase):
     """La cible refuse sans clé publique ; une clé forgée à part ne formerait
     pas une paire avec celle que les clients présentent."""

@@ -488,7 +488,10 @@ the mailbox the mail recipe writes to — the only person account the engine
 creates. Restoring a previous incarnation stays switched off: the bench's fleet
 is always born new. So does the report the backup target sends to monitoring,
 which the bench does not lay down: the replayed recipe restores a snapshot
-itself, which is stronger than reading metadata.
+itself, which is stronger than reading metadata. Finally, the bench turns on
+TLS for internal delivery on the sender side, as a tenant does in its
+`group_vars`: the mail store requires it on its LMTP port, the shipped model
+does not set it, and without it no message reaches a mailbox.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
