@@ -486,7 +486,9 @@ adds a backup target (`backup-01`, the host `client_backup` aims at) and the
 public half of the backup key it forges, and names its bootstrap account after
 the mailbox the mail recipe writes to — the only person account the engine
 creates. Restoring a previous incarnation stays switched off: the bench's fleet
-is always born new.
+is always born new. So does the report the backup target sends to monitoring,
+which the bench does not lay down: the replayed recipe restores a snapshot
+itself, which is stronger than reading metadata.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the

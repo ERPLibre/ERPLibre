@@ -1507,6 +1507,9 @@ COMPTE_RECETTE = "testmail"
 # le déclarent toujours.
 RESTAURATION_ACTIVE = "client_backup_restauration_active"
 
+# L'interrupteur de la vérification que le dépôt rapporte à la supervision.
+VERIFICATION_DEPOT = "serveur_backup_verification_locale"
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1560,6 +1563,12 @@ def texte_intrants_du_banc(resolveur):
     moteur documente pour « ne jamais restaurer » ; la sauvegarde n'en est pas
     bloquée. La restauration n'est donc PAS éprouvée par ce banc.
 
+    `VERIFICATION_DEPOT` À FAUX : le dépôt de sauvegarde vérifie ses instantanés
+    et le RAPPORTE à la supervision, que le banc ne pose pas — son rôle refuse
+    alors de se déployer. La constatation a lieu quand même : la recette rejouée
+    restaure un instantané de chaque hôte sauvegardé, ce qui est plus fort que
+    relire des métadonnées. Le rapport périodique n'est PAS éprouvé.
+
     `amorcage_acces_uid` PREND LE NOM DE `COMPTE_RECETTE` : la recette du
     courriel remet un message à ce compte et le cherche dans sa boîte, et c'est
     le seul compte de personne que le moteur sache poser.
@@ -1573,6 +1582,7 @@ dns_amorcage: "{resolveur.strip()}"
 amorcage_acces_courriel: "{COURRIEL_RECOURS}"
 amorcage_acces_uid: "{COMPTE_RECETTE}"
 {RESTAURATION_ACTIVE}: false
+{VERIFICATION_DEPOT}: false
 """
 
 

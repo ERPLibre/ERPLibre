@@ -505,7 +505,9 @@ que `client_backup` vise) et la moitié publique de la clé de sauvegarde qu'il
 forge, et donne à son compte d'amorçage le nom de la boîte où la recette du
 courriel écrit — le seul compte de personne que le moteur crée. La restauration
 d'une incarnation précédente reste coupée : la flotte du banc naît toujours
-neuve.
+neuve. Le rapport que la cible de sauvegarde envoie à la supervision l'est
+aussi, le banc n'en posant pas : la recette rejouée restaure elle-même un
+instantané, ce qui est plus fort que relire des métadonnées.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

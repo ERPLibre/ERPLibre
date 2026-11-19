@@ -491,7 +491,9 @@ adds a backup target (`backup-01`, the host `client_backup` aims at) and the
 public half of the backup key it forges, and names its bootstrap account after
 the mailbox the mail recipe writes to — the only person account the engine
 creates. Restoring a previous incarnation stays switched off: the bench's fleet
-is always born new.
+is always born new. So does the report the backup target sends to monitoring,
+which the bench does not lay down: the replayed recipe restores a snapshot
+itself, which is stronger than reading metadata.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
@@ -1056,7 +1058,9 @@ que `client_backup` vise) et la moitié publique de la clé de sauvegarde qu'il
 forge, et donne à son compte d'amorçage le nom de la boîte où la recette du
 courriel écrit — le seul compte de personne que le moteur crée. La restauration
 d'une incarnation précédente reste coupée : la flotte du banc naît toujours
-neuve.
+neuve. Le rapport que la cible de sauvegarde envoie à la supervision l'est
+aussi, le banc n'en posant pas : la recette rejouée restaure elle-même un
+instantané, ce qui est plus fort que relire des métadonnées.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

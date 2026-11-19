@@ -4651,6 +4651,22 @@ class TestLaCibleDesSauvegardes(unittest.TestCase):
         self.assertEqual("", B.pose_la_sauvegarde(eco, "infra-pki-01"))
 
 
+class TestUnDepotSansSupervision(unittest.TestCase):
+    """Le dépôt rapporte ses vérifications à la supervision, et son rôle refuse
+    de se déployer sans elle. Le banc n'en pose pas ; sa recette rejouée
+    restaure elle-même un instantané."""
+
+    def test_the_bench_turns_the_report_off(self):
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertIs(False, lu[B.VERIFICATION_DEPOT])
+
+    def test_the_switch_is_one_the_engine_declares(self):
+        defauts = lu_au_moteur(
+            "roles", "serveur_backup", "defaults", "main.yml"
+        )
+        self.assertIn(B.VERIFICATION_DEPOT, defauts)
+
+
 class TestLaClePubliqueDeSauvegarde(unittest.TestCase):
     """La cible refuse sans clé publique ; une clé forgée à part ne formerait
     pas une paire avec celle que les clients présentent."""
