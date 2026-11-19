@@ -136,6 +136,67 @@ class TestCeQuIlRefuse(unittest.TestCase):
         self.assertIsNone(E.lit_instances(None))
 
 
+# Le tableau tel que le moteur l'imprime quand un site réserve un INDEX DE
+# REPRISE : le nom du locataire, puis le mot accolé, en sixième champ.
+AVEC_REPRISE = TABLEAU.replace(
+    "* OPS-Fictif-Ankerite       12  —           LOCAL   non  \n",
+    "* OPS-Fictif-Ankerite       12  —           LOCAL   non  \n"
+    "  OPS-Fictif-Dolomie (reprise)     41  —           oui     non  \n",
+)
+
+
+class TestLesIndexDeReprise(unittest.TestCase):
+    """Une ligne de reprise rendait TOUT le tableau illisible : six champs au
+    lieu de cinq. Elle se lit désormais, et ne se confond pas avec ce qui se
+    monte."""
+
+    def test_the_table_still_reads_with_a_recovery_row(self):
+        """Le défaut d'origine : une seule ligne de reprise et plus rien ne se
+        lisait, pas même les écosystèmes qui se montent."""
+        lus = E.lit_instances(AVEC_REPRISE)
+        self.assertIsNotNone(lus)
+        self.assertEqual(3, len(lus))
+
+    def test_the_recovery_row_names_the_tenant_and_holds_its_index(self):
+        reprise = E.lit_instances(AVEC_REPRISE)[2]
+        self.assertTrue(reprise.reprise)
+        self.assertEqual("OPS-Fictif-Dolomie", reprise.nom)
+        self.assertEqual(41, reprise.index)
+        self.assertFalse(reprise.actif)
+
+    def test_an_ordinary_row_is_not_a_recovery(self):
+        self.assertEqual(
+            [False, False, True],
+            [e.reprise for e in E.lit_instances(AVEC_REPRISE)],
+        )
+
+    def test_a_recovery_is_never_offered_to_mount(self):
+        """Sans dépôt frère, la monter ferait refuser le moteur sur un nom
+        pris dans sa propre liste."""
+        self.assertEqual(
+            ["OPS-Fictif-Dolomie", "OPS-Fictif-Ankerite"],
+            [e.nom for e in E.montables(E.lit_instances(AVEC_REPRISE))],
+        )
+
+    def test_another_sixth_word_is_still_unknown(self):
+        """Seul le mot que le moteur écrit ouvre le sixième champ : un autre
+        est une forme que ce lecteur ne connaît pas."""
+        autre = AVEC_REPRISE.replace("(reprise)", "(ailleurs)")
+        self.assertIsNone(E.lit_instances(autre))
+
+    def test_a_recovery_marked_active_is_unknown(self):
+        """Rien ne la porte à monter : la lire active ferait croire monté un
+        dossier qui n'existe pas."""
+        active = AVEC_REPRISE.replace(
+            "  OPS-Fictif-Dolomie (reprise)", "* OPS-Fictif-Dolomie (reprise)"
+        )
+        self.assertIsNone(E.lit_instances(active))
+
+    def test_a_recovery_with_a_missing_field_is_unknown(self):
+        ampute = AVEC_REPRISE.replace("41  —  ", "41  ")
+        self.assertIsNone(E.lit_instances(ampute))
+
+
 class TestLEcosystemeMonte(unittest.TestCase):
     def test_a_mounted_one_gives_the_name_the_switch_expects(self):
         """Le moteur écrit un chemin ; `instance-utiliser` attend un nom."""

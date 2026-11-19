@@ -402,6 +402,46 @@ class TestLaBascule(CasDEcosysteme):
         self.assertIn(todo_i18n.t("the gesture could not run at all"), vu)
 
 
+class TestUneRepriseSeMontreSansSeMonter(CasDEcosysteme):
+    """Un index de reprise tient son index : il se MONTRE, parce que c'est ce
+    qu'on vient vérifier avant d'en créer un. Il ne porte pas de numéro, faute
+    de quoi on le choisirait et le moteur refuserait de le monter."""
+
+    REPRISE = (
+        "  OPS-Fictif-Dolomie (reprise)     41  —           oui     non  \n"
+    )
+
+    def setUp(self):
+        super().setUp()
+        avec = self.TABLEAU.replace(
+            "LOCAL   non  \n", "LOCAL   non  \n" + self.REPRISE
+        )
+        self.assertNotEqual(avec, self.TABLEAU)
+        self.reponses["instances"] = runner.Verdict(0, avec)
+
+    def test_the_list_still_shows_and_names_the_recovery(self):
+        vu = self._ecran("_setops_ecosystems")
+        self.assertIn("[1] OPS-Fictif-Dolomie", vu)
+        self.assertIn("* [2] OPS-Fictif-Ankerite", vu)
+        self.assertIn(
+            "OPS-Fictif-Dolomie  index 41  "
+            + todo_i18n.t("recovery index, reserved by a site"),
+            vu,
+        )
+        self.assertNotIn("[3]", vu)
+
+    def test_the_recovery_cannot_be_chosen_to_mount(self):
+        self._ecran("_setops_ecosystem_use", ["3"])
+        self.assertEqual(["instances"], self.cibles())
+
+    def test_the_numbers_still_send_the_names_they_show(self):
+        self._ecran("_setops_ecosystem_use", ["2"])
+        self.assertEqual(
+            ("instance-utiliser", (("NOM", "OPS-Fictif-Ankerite"),), True),
+            self.lances[-1],
+        )
+
+
 class TestLaCreation(CasDEcosysteme):
     def setUp(self):
         super().setUp()
@@ -454,8 +494,9 @@ class TestLesRunbooks(CasDEcosysteme):
     """Le navigateur de séquences : RIEN N'EST MASQUÉ.
 
     Une séquence dont on retirerait ce que todo ne lance pas mentirait par
-    omission — et le pire cas n'est pas théorique : huit des dix-sept
-    séquences réelles ont des trous, et l'une commencerait à son étape 2.
+    omission — et le pire cas n'est pas théorique : la plupart des
+    séquences réelles ont des trous, et certaines commenceraient à leur
+    étape 2.
     """
 
     def setUp(self):
@@ -1558,6 +1599,104 @@ class TestLaPorteDecritCeQueLeRegistreDit(CasDePorte):
             vu = self._ecran("_setops_runbooks")
         self.assertIsNone(registre.lit_registre(trace))
         self.assertIn("ImportError: yaml", vu)
+
+
+# Une cible que DEUX séquences déclarent chacune à sa manière : l'une demande
+# le groupe, l'autre le fixe et porte sur le poste. La troisième étape fixe un
+# interrupteur qui fait écrire au lieu de simuler.
+REGISTRE_DIVERGENT = """[
+  {"id": "banc-fictif-deployer", "titre": "Deployer", "portee": "tenant",
+   "but": "Eprouver le choix.", "etapes": [
+    {"cible": "appliquer", "libelle": "Applique un groupe",
+     "portee": "tenant", "nature": "ecriture", "pourquoi": "Pour la flotte.",
+     "duree": "", "fixes": {},
+     "variables": [{"nom": "GROUPE", "invite": "Le groupe",
+                    "facultatif": false}]}
+   ]},
+  {"id": "banc-fictif-integrer", "titre": "Integrer", "portee": "poste",
+   "but": "Eprouver le choix.", "etapes": [
+    {"cible": "appliquer", "libelle": "Applique un groupe",
+     "portee": "poste", "nature": "ecriture", "pourquoi": "Pour le dorsal.",
+     "duree": "", "variables": [],
+     "fixes": {"GROUPE": "serveur_fictif_quartz"}},
+    {"cible": "banc-publier", "libelle": "Publie", "portee": "poste",
+     "nature": "ecriture", "pourquoi": "Pour basculer.", "duree": "",
+     "variables": [], "fixes": {"APPLIQUER": "1"}}
+   ]}
+]
+"""
+
+
+class TestUneCibleQueDeuxSequencesDeclarent(CasDePorte):
+    """La porte refusait toute cible déclarée différemment par deux séquences :
+    trois portes ne menaient plus nulle part. Elle fait désormais CHOISIR la
+    séquence, qui seule dit sur quoi le geste porte."""
+
+    def setUp(self):
+        super().setUp()
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_DIVERGENT
+        )
+
+    def test_both_sequences_are_offered_with_their_scope(self):
+        vu = self.porte("appliquer", [""])
+        self.assertIn("[1] banc-fictif-deployer  [tenant]", vu)
+        self.assertIn(
+            "[2] banc-fictif-integrer  [poste]  GROUPE=serveur_fictif_quartz",
+            vu,
+        )
+
+    def test_the_sequence_that_fixes_the_group_sends_it(self):
+        """Le défaut d'origine, l'autre moitié : un groupe fixé et tu laissait
+        le moteur refuser faute de groupe."""
+        self.porte("appliquer", ["2", "o"])
+        self.assertEqual(
+            [("appliquer", (("GROUPE", "serveur_fictif_quartz"),), False)],
+            self.lances,
+        )
+
+    def test_the_sequence_that_asks_for_the_group_asks_for_it(self):
+        self.porte("appliquer", ["1", "serveur_fictif_mica", "o"])
+        self.assertEqual(
+            [("appliquer", (("GROUPE", "serveur_fictif_mica"),), False)],
+            self.lances,
+        )
+
+    def test_leaving_the_choice_runs_nothing(self):
+        for reponse in ("", "3", "x"):
+            with self.subTest(reponse=reponse):
+                self.lances = []
+                self.porte("appliquer", [reponse])
+                self.assertEqual([], self.lances)
+
+    def test_a_single_declaration_asks_no_choice(self):
+        """Contrôle : la question n'est posée que là où il y a un choix."""
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_PORTES
+        )
+        vu = self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertNotIn(
+            todo_i18n.t("Which sequence? (number, empty to leave): "), vu
+        )
+        self.assertEqual("deployer", self.cibles()[0])
+
+
+class TestLeNavigateurPasseCeQueLeRegistreFixe(CasDEcosysteme):
+    """Un interrupteur fixé par le registre et tu par todo fait SIMULER le
+    geste, et le moteur rend zéro : un succès qui n'a rien fait."""
+
+    def setUp(self):
+        super().setUp()
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_DIVERGENT
+        )
+
+    def test_the_fixed_switch_reaches_the_line_and_is_shown(self):
+        vu = self._ecran("_setops_runbooks", ["2", "2", "o"])
+        self.assertEqual(
+            [("banc-publier", (("APPLIQUER", "1"),), False)], self.lances
+        )
+        self.assertIn("APPLIQUER=1", vu)
 
 
 class TestLaPorteDuPalier(CasDEcosysteme):

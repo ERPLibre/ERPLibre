@@ -362,6 +362,97 @@ class TestLesPortes(unittest.TestCase):
         self.assertEqual(2, len(lus))
         self.assertIsNone(R.trouve(lus, "banc-ecrire"))
 
+    def test_the_declarations_that_disagree_are_all_given_in_order(self):
+        """Ce que la porte offre au choix : chaque séquence, avec SA
+        déclaration. Une seule rendue cacherait la portée de l'autre."""
+        autre = REGISTRE.replace("banc-fictif-sequence", "banc-fictif-bis")
+        autre = autre.replace('"libelle": "Ecrit"', '"libelle": "Autre chose"')
+        lus = R.lit_registre(REGISTRE[:-2] + "," + autre[1:])
+        vues = R.declarations(lus, "banc-ecrire")
+        self.assertEqual(
+            ["banc-fictif-sequence", "banc-fictif-bis"],
+            [runbook.id for runbook, _e in vues],
+        )
+        self.assertEqual(
+            ["Ecrit", "Autre chose"], [e.libelle for _r, e in vues]
+        )
+
+    def test_declarations_alike_count_once(self):
+        deux = REGISTRE.replace("banc-fictif-sequence", "banc-fictif-bis")
+        lus = R.lit_registre(REGISTRE[:-2] + "," + deux[1:])
+        self.assertEqual(1, len(R.declarations(lus, "banc-ecrire")))
+
+    def test_a_target_nobody_declares_has_no_declaration(self):
+        lus = R.lit_registre(REGISTRE)
+        self.assertEqual((), R.declarations(lus, "banc-fictif-jamais"))
+        self.assertEqual((), R.declarations(None, "banc-ecrire"))
+
+
+# Une étape dont le registre FIXE des variables, comme il le fait pour le
+# groupe qu'une séquence applique ou l'interrupteur qui fait écrire.
+FIXEE = REGISTRE.replace(
+    '"variables": [], "fixes": {"CONFIRMER": "true"}}\n    ]',
+    '"variables": [], "fixes": {"CONFIRMER": "true",'
+    ' "GROUPE": "serveur_fictif_quartz", "APPLIQUER": 1}}\n    ]',
+)
+
+
+class TestLesVariablesFixees(unittest.TestCase):
+    """Le registre fixe ce sans quoi le geste ne fait pas ce que la séquence
+    attend. Seul CONFIRMER était lu : un groupe fixé se perdait, et un
+    interrupteur tu faisait SIMULER une étape en rendant zéro."""
+
+    def garde(self, texte=FIXEE):
+        lus = R.lit_registre(texte)
+        self.assertIsNotNone(lus)
+        return lus[0].etapes[-1]
+
+    def test_the_fixture_does_fix_something(self):
+        """Contrôle positif : un remplacement qui n'aurait rien changé ferait
+        passer toutes les épreuves ci-dessous sur une étape sans fixes."""
+        self.assertNotEqual(FIXEE, REGISTRE)
+
+    def test_every_fixed_variable_is_read_sorted_by_name(self):
+        self.assertEqual(
+            (
+                ("APPLIQUER", "1"),
+                ("CONFIRMER", "true"),
+                ("GROUPE", "serveur_fictif_quartz"),
+            ),
+            self.garde().fixes,
+        )
+
+    def test_confirmer_stays_with_the_executor(self):
+        """L'exécuteur l'écrit lui-même, à false pour l'essai et à true après
+        le palier : le passer aussi ferait deux CONFIRMER sur une ligne."""
+        self.assertEqual(
+            (("APPLIQUER", "1"), ("GROUPE", "serveur_fictif_quartz")),
+            R.fixes_a_passer(self.garde()),
+        )
+        self.assertTrue(self.garde().exige_confirmation)
+
+    def test_a_step_with_nothing_fixed_passes_nothing(self):
+        self.assertEqual(
+            (), R.fixes_a_passer(R.lit_registre(REGISTRE)[0].etapes[0])
+        )
+        self.assertEqual((), R.fixes_a_passer(None))
+
+    def test_a_value_that_is_not_text_refuses_the_registry(self):
+        """« True » ou « {…} » sur la ligne de make se liraient comme une
+        valeur choisie."""
+        for valeur in ("true", "{}", "[1]", "null"):
+            with self.subTest(valeur=valeur):
+                texte = FIXEE.replace(
+                    '"APPLIQUER": 1', f'"APPLIQUER": {valeur}'
+                )
+                self.assertIsNone(R.lit_registre(texte))
+
+    def test_a_name_make_would_not_take_bare_refuses_the_registry(self):
+        for nom in ("groupe", "A B", "1GROUPE", ""):
+            with self.subTest(nom=nom):
+                texte = FIXEE.replace('"GROUPE"', f'"{nom}"')
+                self.assertIsNone(R.lit_registre(texte))
+
 
 class TestLesEcarts(unittest.TestCase):
     """Ce que todo sait et que le registre ne dit pas ENCORE."""
@@ -412,15 +503,16 @@ class TestContreLeRegistreReel(unittest.TestCase):
 
     def test_every_door_names_a_target_the_engine_declares(self):
         """Une porte dont la cible a disparu du registre mène à un écran qui
-        refuse, et le menu l'annonce quand même."""
+        refuse, et le menu l'annonce quand même. Plusieurs déclarations ne
+        sont pas un défaut : la porte fait choisir la séquence."""
         for cible in R.PORTES:
             with self.subTest(cible=cible):
-                self.assertIsNotNone(R.trouve(REEL, cible), cible)
+                self.assertTrue(R.declarations(REEL, cible), cible)
 
     def test_every_divergence_names_a_target_the_engine_declares(self):
         for cible in R.ECARTS:
             with self.subTest(cible=cible):
-                self.assertIsNotNone(R.trouve(REEL, cible), cible)
+                self.assertTrue(R.declarations(REEL, cible), cible)
 
     def test_the_write_divergence_is_still_one(self):
         """LE JOUR OÙ LE REGISTRE LE DIT LUI-MÊME, cette épreuve rougit et
@@ -429,8 +521,9 @@ class TestContreLeRegistreReel(unittest.TestCase):
         for cible, vu in R.ECARTS.items():
             if not vu.ecrit:
                 continue
-            with self.subTest(cible=cible):
-                self.assertEqual(R.MESURE, R.trouve(REEL, cible).nature, cible)
+            for runbook, vue in R.declarations(REEL, cible):
+                with self.subTest(cible=cible, sequence=runbook.id):
+                    self.assertEqual(R.MESURE, vue.nature, cible)
 
     def test_every_handed_over_target_demands_the_variable_we_name(self):
         """LA TAUTOLOGIE LEVÉE. Le garde d'avant comparait la table à
@@ -450,8 +543,11 @@ class TestContreLeRegistreReel(unittest.TestCase):
                 exigees = set(re.findall(r"relancer avec ([A-Z]+)=", recette))
                 self.assertEqual({variable}, exigees, cible)
 
-    # Ce que le moteur écrit dans une recette qu'il réserve à un humain.
-    RESERVEE = "A LANCER SOI-MEME"
+    # Ce que le moteur écrit dans une recette qu'il réserve à un humain. LA
+    # CASSE ET L'ACCENT NE COMPTENT PAS : le moteur a déjà récrit sa mention en
+    # minuscules, et une recherche à l'identique a cessé d'en trouver une seule
+    # sans que rien d'autre ne le dise que le contrôle positif ci-dessous.
+    RESERVEE = re.compile(r"\bA LANCER SOI-M[EÊ]ME\b", re.IGNORECASE)
 
     def cibles_reservees(self):
         """Les cibles que le Makefile du moteur réserve à un humain.
@@ -471,7 +567,7 @@ class TestContreLeRegistreReel(unittest.TestCase):
                 courante = entete.group(1)
             elif ligne[:1] not in ("\t", " ", "#", ""):
                 courante = ""
-            if self.RESERVEE in ligne and courante:
+            if self.RESERVEE.search(ligne) and courante:
                 trouvees.add(courante)
         return trouvees
 
@@ -493,7 +589,7 @@ class TestContreLeRegistreReel(unittest.TestCase):
     def test_every_handed_over_target_exists_in_the_engine(self):
         for cible in R.remises():
             with self.subTest(cible=cible):
-                self.assertIsNotNone(R.trouve(REEL, cible), cible)
+                self.assertTrue(R.declarations(REEL, cible), cible)
 
     def test_the_switch_divergence_is_still_one(self):
         """Même chose : si le registre déclare enfin ce drapeau comme une
@@ -501,9 +597,11 @@ class TestContreLeRegistreReel(unittest.TestCase):
         for cible, vu in R.ECARTS.items():
             if not vu.drapeau:
                 continue
-            with self.subTest(cible=cible):
-                declarees = {v.nom for v in R.trouve(REEL, cible).variables}
-                self.assertNotIn(vu.drapeau, declarees)
+            for runbook, vue in R.declarations(REEL, cible):
+                with self.subTest(cible=cible, sequence=runbook.id):
+                    declarees = {v.nom for v in vue.variables}
+                    declarees |= {nom for nom, _v in vue.fixes}
+                    self.assertNotIn(vu.drapeau, declarees)
 
 
 def etape_palier(**change):

@@ -405,8 +405,15 @@ class SetopsMenuMixin:
 
     @staticmethod
     def _setops_montrer(ecosystemes):
-        """Les écosystèmes, numérotés, le monté marqué."""
-        for rang, vu in enumerate(ecosystemes, 1):
+        """Les écosystèmes, numérotés, le monté marqué ; puis les reprises.
+
+        SEUL CE QUI SE MONTE PORTE UN NUMÉRO, et dans l'ordre que lit
+        `_setops_choisir` : une reprise numérotée se choisirait, et le moteur
+        refuserait de monter un dossier qui n'existe pas. Elle reste MONTRÉE,
+        parce que son index est pris et que c'est ce qu'on vient vérifier avant
+        d'en créer un.
+        """
+        for rang, vu in enumerate(ecosystems.montables(ecosystemes), 1):
             marque = "*" if vu.actif else " "
             etat = (
                 t("production")
@@ -418,6 +425,12 @@ class SetopsMenuMixin:
                 f"  {marque} [{rang}] {vu.nom}  "
                 f"index {vu.index}  VLAN {vu.vlans}  {portee}  {etat}"
             )
+        for vu in ecosystemes:
+            if vu.reprise:
+                print(
+                    f"  ↺     {vu.nom}  index {vu.index}  "
+                    f"{t('recovery index, reserved by a site')}"
+                )
 
     def _setops_ecosystems(self):
         """Les écosystèmes que le moteur découvre à côté de lui."""
@@ -452,7 +465,11 @@ class SetopsMenuMixin:
                 print(f"  {t('no ecosystem beside the engine yet')}")
             return
         self._setops_montrer(lus)
-        choisi = self._setops_choisir(lus)
+        montables = ecosystems.montables(lus)
+        if not montables:
+            print(f"  {t('no ecosystem beside the engine yet')}")
+            return
+        choisi = self._setops_choisir(montables)
         if choisi is None:
             print(t("Cancelled."))
             return
@@ -615,7 +632,7 @@ class SetopsMenuMixin:
         """Les séquences du moteur, dans leur ordre. RIEN N'EST MASQUÉ.
 
         Une séquence dont on retirerait ce que todo ne lance pas mentirait
-        par omission : huit des dix-sept en ont, et l'une commencerait à son
+        par omission : la plupart en ont, et certaines commenceraient à leur
         étape 2. Chaque étape est donc là, et ce qui ne part pas d'ici porte
         sa raison — comme l'écran d'état montre ses dix lignes plutôt que la
         seule liste de ce qui est prêt.
@@ -740,6 +757,16 @@ class SetopsMenuMixin:
                     print(f"  ⛔ {manque.format(name=attendue.nom)}")
                     return
                 variables.append((attendue.nom, valeur))
+        fixes = registre.fixes_a_passer(etape)
+        if fixes:
+            # LE REGISTRE LES FIXE, todo ne les demande pas : la séquence n'a de
+            # sens qu'avec elles. Elles sont MONTRÉES, puisqu'elles partent sur
+            # la ligne affichée et qu'une valeur imposée sans être dite
+            # surprendrait celui qui la relit.
+            print(f"\n  {t('Fixed by the registry:')}")
+            for nom, valeur in fixes:
+                print(f"    {nom}={valeur}")
+            variables.extend(fixes)
         interrupteur = registre.drapeau(etape)
         if interrupteur and self._setops_demander_interrupteur(interrupteur):
             variables.append((interrupteur, "1"))
@@ -1330,10 +1357,8 @@ class SetopsMenuMixin:
         lus = self._setops_registre(moteur)
         if lus is None:
             return
-        etape = registre.trouve(lus, cible)
+        etape = self._setops_choisir_declaration(lus, cible)
         if etape is None:
-            manque = t("the registry declares no single « {cible} »")
-            print(f"  ✗ {manque.format(cible=cible)}")
             return
         self._setops_dire_geste(etape)
         barriere = registre.barriere(
@@ -1346,6 +1371,41 @@ class SetopsMenuMixin:
             print(f"  ⛔ {t(self.BARRIERES[barriere])}")
             return
         self._setops_jouer_etape(moteur, etape)
+
+    @staticmethod
+    def _setops_choisir_declaration(runbooks, cible):
+        """L'étape que la porte de `cible` ouvre, ou None en ayant dit pourquoi.
+
+        UNE SEULE DÉCLARATION s'ouvre sans question. Plusieurs séquences qui la
+        déclarent DIFFÉREMMENT — une autre portée, un groupe fixé ici et demandé
+        là — font choisir la séquence par son numéro : c'est elle qui dit sur
+        quoi le geste porte, et la porte ne peut pas le deviner à la place de
+        l'opérateur.
+        """
+        vues = registre.declarations(runbooks, cible)
+        if not vues:
+            manque = t("the registry does not declare « {cible} »")
+            print(f"  ✗ {manque.format(cible=cible)}")
+            return None
+        if len(vues) == 1:
+            return vues[0][1]
+        plusieurs = t("« {cible} » is declared by {n} sequences, differently:")
+        print(f"\n  {plusieurs.format(cible=cible, n=len(vues))}")
+        for rang, (runbook, etape) in enumerate(vues, 1):
+            fixes = " ".join(
+                f"{nom}={val}" for nom, val in registre.fixes_a_passer(etape)
+            )
+            print(
+                f"    [{rang}] {runbook.id}  [{etape.portee}]"
+                + (f"  {fixes}" if fixes else "")
+            )
+            if etape.pourquoi:
+                print(f"        {etape.pourquoi}")
+        brut = saisir(t("Which sequence? (number, empty to leave): ")).strip()
+        if not brut.isdigit() or not 0 < int(brut) <= len(vues):
+            print(t("Cancelled."))
+            return None
+        return vues[int(brut) - 1][1]
 
     def _setops_dire_geste(self, etape):
         """Ce que le registre dit de ce geste, avec ses mots.

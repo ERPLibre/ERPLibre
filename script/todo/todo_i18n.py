@@ -27060,9 +27060,21 @@ TRANSLATIONS = {
         "fr": "dure",
         "en": "takes",
     },
-    "the registry declares no single « {cible} »": {
-        "fr": "le registre ne déclare pas un seul « {cible} »",
-        "en": "the registry declares no single « {cible} »",
+    "the registry does not declare « {cible} »": {
+        "fr": "le registre ne déclare pas « {cible} »",
+        "en": "the registry does not declare « {cible} »",
+    },
+    "« {cible} » is declared by {n} sequences, differently:": {
+        "fr": "« {cible} » est déclarée par {n} séquences, chacune à sa manière :",
+        "en": "« {cible} » is declared by {n} sequences, differently:",
+    },
+    "recovery index, reserved by a site": {
+        "fr": "index de reprise, réservé par un site",
+        "en": "recovery index, reserved by a site",
+    },
+    "Fixed by the registry:": {
+        "fr": "Fixé par le registre :",
+        "en": "Fixed by the registry:",
     },
 }
 

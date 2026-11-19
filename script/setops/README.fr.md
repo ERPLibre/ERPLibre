@@ -257,7 +257,11 @@ main.
 
 - `lit_instances(sortie)` : les écosystèmes découverts. La première colonne
   porte le marqueur du monté et se lit par sa POSITION ; le reste par ses
-  blancs, cinq champs exactement ;
+  blancs, cinq champs exactement — ou six quand le deuxième est `(reprise)` :
+  un index de REPRISE qu'un site réserve à un locataire, lu avec `reprise` posé
+  et jamais actif ;
+- `montables(ecosystemes)` : ce qu'`instance-utiliser` peut monter — tout, sauf
+  les reprises, qui n'ont pas de dépôt frère ;
 - `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
   segment — ce que `instance-utiliser` attend en retour ;
 - `lit_serveurs(sortie)` : les couples (nom, état) que le plan déclare, ou
@@ -318,14 +322,14 @@ tomber AVANT un déploiement, pas pendant.
 
 ## `runbooks` — les séquences du moteur, et rien de masqué
 
-Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
-NULLE PART dans quel ordre les jouer. Le registre le dit : il les range en
-dix-sept séquences, chacune avec son but, et donne à chaque étape un
-« pourquoi » qui n'a de sens qu'à sa place dans la suite.
+Le Makefile du moteur porte plus d'une centaine de cibles documentées et ne
+dit NULLE PART dans quel ordre les jouer. Le registre le dit : il les range en
+séquences, chacune avec son but, et donne à chaque étape un « pourquoi » qui
+n'a de sens qu'à sa place dans la suite.
 
 **Rien n'est masqué.** Une séquence dont on retirerait les étapes que todo ne
-lance pas mentirait par omission — huit des dix-sept en ont, et l'une
-commencerait à son étape 2. Chaque étape est affichée, et ce qui ne part pas
+lance pas mentirait par omission — la plupart en ont, et certaines
+commenceraient à leur étape 2. Chaque étape est affichée, et ce qui ne part pas
 d'ici porte la RAISON pour laquelle il ne part pas. C'est le parti de l'écran
 d'état, qui montre ses dix lignes avec trois marques plutôt que la seule liste
 de ce qui est prêt.
@@ -384,11 +388,18 @@ tôt ou tard deux choses différentes.
 
 - `methode(cible)` : le nom de la méthode qui ouvre la porte d'une cible,
   DÉRIVÉ de la cible pour qu'aucune table n'ait à suivre ;
-- `trouve(runbooks, cible)` : l'étape que le registre déclare pour cette cible,
-  ou `None`. Une cible peut figurer dans plusieurs séquences ; tant que ces
-  déclarations sont identiques la porte en ouvre une sans ambiguïté, et si elles
-  divergent elle n'en ouvre aucune — une porte qui trancherait au hasard
-  lancerait parfois l'autre geste.
+- `declarations(runbooks, cible)` : chaque (runbook, étape) qui déclare cette
+  cible, chaque déclaration distincte une fois, dans l'ordre du registre.
+  Plusieurs séquences peuvent déclarer une cible chacune à sa manière — une
+  autre portée, un groupe fixé ici et demandé là — et la porte fait alors
+  CHOISIR la séquence par son numéro : c'est elle qui dit sur quoi le geste
+  porte, et une porte qui trancherait au hasard lancerait parfois l'autre geste ;
+- `trouve(runbooks, cible)` : cette étape quand il n'y en a qu'une, sinon
+  `None` ;
+- `fixes_a_passer(etape)` : les couples (nom, valeur) que le registre FIXE pour
+  l'étape, `CONFIRMER` excepté — l'exécuteur l'écrit lui-même. Ils partent sur
+  la ligne et sont montrés : tus, le moteur refuse faute de groupe, ou SIMULE en
+  rendant zéro, ce qui se lit comme un succès.
 
 `ECARTS` nomme ce que todo sait et que le registre ne dit PAS encore. Une
 épreuve rougit le jour où le registre le dit lui-même, et l'entrée doit alors

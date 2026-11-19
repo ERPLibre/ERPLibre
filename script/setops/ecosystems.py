@@ -42,6 +42,12 @@ PIED = "* = instance active"
 # Le marqueur de l'écosystème monté, en première colonne.
 ACTIF = "*"
 
+# Le mot que le moteur accole au nom d'un INDEX DE REPRISE : un site qui peut
+# reprendre un locataire le loge sous un index distinct de sa production, et le
+# tableau compte cet index comme un écosystème de plus. Aucun dépôt frère ne le
+# porte, si bien qu'il ne se monte pas : il ne fait que tenir son index.
+REPRISE = "(reprise)"
+
 # Ce que le moteur écrit dans la colonne FEDERE, et dans PROD.
 FEDERE = {"oui": True, "LOCAL": False}
 PRODUCTION = {"oui": True, "non": False, "?": None}
@@ -68,6 +74,9 @@ class Ecosysteme(NamedTuple):
     federe: bool
     production: bool | None
     actif: bool
+    # Un index de REPRISE, réservé par un site : il se montre, il ne se monte
+    # pas. `nom` est alors celui du locataire, sans le mot accolé.
+    reprise: bool = False
 
 
 def _ligne(texte):
@@ -75,11 +84,21 @@ def _ligne(texte):
 
     La première colonne porte le marqueur et n'est pas séparée du reste par
     un blanc quand elle est vide : elle se lit par sa POSITION, le reste par
-    ses blancs. Cinq champs exactement, sinon la forme a changé.
+    ses blancs. Cinq champs exactement, sinon la forme a changé — ou six, quand
+    le deuxième est le mot `REPRISE`, et lui seul.
+
+    UNE REPRISE MARQUÉE ACTIVE N'EST PAS UNE FORME CONNUE. Rien ne la porte à
+    monter ; la lire quand même ferait basculer vers un dossier qui n'existe
+    pas.
     """
     if not texte or texte[0] not in (ACTIF, " "):
         return None
     champs = texte[1:].split()
+    reprise = len(champs) == len(ENTETE) + 1 and champs[1] == REPRISE
+    if reprise:
+        if texte[0] == ACTIF:
+            return None
+        champs = champs[:1] + champs[2:]
     if len(champs) != len(ENTETE):
         return None
     nom, index, vlans, federe, production = champs
@@ -96,6 +115,7 @@ def _ligne(texte):
         federe=FEDERE[federe],
         production=PRODUCTION[production],
         actif=texte[0] == ACTIF,
+        reprise=reprise,
     )
 
 
@@ -131,6 +151,15 @@ def lit_instances(sortie):
     # Un en-tête sans une seule ligne est une forme inattendue : le moteur
     # dit « aucune instance » par une phrase, jamais par un tableau vide.
     return tuple(trouves) or None
+
+
+def montables(ecosystemes):
+    """Ceux qu'`instance-utiliser` peut monter : tout, sauf les reprises.
+
+    Une reprise n'a pas de dépôt frère ; la proposer au choix ferait refuser
+    le moteur sur un nom qu'on aurait pourtant pris dans sa propre liste.
+    """
+    return tuple(vu for vu in ecosystemes or () if not vu.reprise)
 
 
 def lit_courante(sortie):

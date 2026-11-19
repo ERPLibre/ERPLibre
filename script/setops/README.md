@@ -253,7 +253,10 @@ read". A caller given `None` says so and names the line to replay by hand.
 
 - `lit_instances(sortie)`: the discovered ecosystems. The first column holds
   the mounted marker and is read by POSITION; the rest by its blanks, five
-  fields exactly;
+  fields exactly — or six when the second is `(reprise)`: a RECOVERY index a
+  site reserves for a tenant, read with `reprise` set and never active;
+- `montables(ecosystemes)`: what `instance-utiliser` can mount — everything
+  but the recovery rows, which have no sibling repository;
 - `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
   segment — what `instance-utiliser` expects back;
 - `lit_serveurs(sortie)`: the (name, state) pairs the plan declares, or `None`.
@@ -312,14 +315,14 @@ deployment, not during one.
 
 ## `runbooks` — the engine's sequences, and nothing masked
 
-The engine's Makefile carries more than a hundred and thirty documented
-targets and says NOWHERE in which order to play them. The registry does: it
-arranges them into seventeen sequences, each with its purpose, and gives every
-step a "why" that only means something at its place in the suite.
+The engine's Makefile carries more than a hundred documented targets and says
+NOWHERE in which order to play them. The registry does: it arranges them into
+sequences, each with its purpose, and gives every step a "why" that only means
+something at its place in the suite.
 
 **Nothing is masked.** A sequence stripped of the steps TODO will not launch
-would lie by omission — eight of the seventeen have such steps, and one would
-begin at its step 2. Every step is shown, and what will not run from here
+would lie by omission — most have such steps, and some would begin at their
+step 2. Every step is shown, and what will not run from here
 carries the REASON why. That is the same stance as the state screen, which
 shows its ten lines with three marks rather than the bare list of what is
 ready.
@@ -376,10 +379,17 @@ same gesture would sooner or later say two different things.
 
 - `methode(cible)`: the name of the method that opens a target's door, DERIVED
   from the target so no table has to be kept in step;
-- `trouve(runbooks, cible)`: the step the registry declares for that target, or
-  `None`. A target may appear in several sequences; while those declarations are
-  identical the door opens one without ambiguity, and if they disagree it opens
-  none — a door choosing at random would sometimes launch the other gesture.
+- `declarations(runbooks, cible)`: every (runbook, step) declaring that target,
+  each distinct declaration once, in registry order. Several sequences may
+  declare one target each in its own way — another scope, a group fixed here
+  and asked there — and the door then makes the operator CHOOSE the sequence by
+  its number: the sequence says what the gesture bears on, and a door choosing
+  at random would sometimes launch the other gesture;
+- `trouve(runbooks, cible)`: that step when there is exactly one, else `None`;
+- `fixes_a_passer(etape)`: the (name, value) pairs the registry FIXES for the
+  step, `CONFIRMER` excepted — the runner writes that one itself. They go on
+  the line and are shown: left out, the engine refuses for want of a group, or
+  SIMULATES and returns zero, which reads as a success.
 
 `ECARTS` names what TODO knows and the registry does NOT say yet. A test reddens
 the day the registry says it itself, so the entry must then go: a table of

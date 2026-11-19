@@ -3,14 +3,14 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Les séquences du moteur, lues dans son registre, et ce que todo en conduit.
 
-Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
-NULLE PART dans quel ordre les jouer. Le registre des runbooks le dit : il
-range les cibles en dix-sept séquences, chacune avec son but, et donne à
-chaque étape son « pourquoi », qui n'a de sens qu'à sa place dans la suite.
+Le Makefile du moteur porte plus d'une centaine de cibles documentées et ne
+dit NULLE PART dans quel ordre les jouer. Le registre des runbooks le dit : il
+range les cibles en séquences, chacune avec son but, et donne à chaque étape
+son « pourquoi », qui n'a de sens qu'à sa place dans la suite.
 
 **RIEN N'EST MASQUÉ.** Une séquence dont on retirerait les étapes que todo ne
-lance pas mentirait par omission : huit des dix-sept en ont, et l'une
-commencerait à son étape 2. Chaque étape est donc affichée, et ce qui ne se
+lance pas mentirait par omission : la plupart en ont, et certaines
+commenceraient à leur étape 2. Chaque étape est donc affichée, et ce qui ne se
 lance pas d'ici porte la RAISON pour laquelle il ne se lance pas. C'est le
 même parti que l'écran d'état, qui montre ses dix lignes avec trois marques
 plutôt que la seule liste de ce qui est prêt.
@@ -24,6 +24,7 @@ Rien ici ne lance quoi que ce soit : le texte arrive de l'exécuteur.
 from __future__ import annotations
 
 import json
+import re
 from typing import NamedTuple
 
 # La commande qui rend le registre assemblé. Le moteur l'expose depuis la
@@ -71,6 +72,11 @@ BARRIERES = (
 # La variable que les applicateurs du moteur lisent pour écrire au lieu de
 # simuler. Une étape qui l'exige est réservée aux phases d'écriture assumée.
 CONFIRMER = "CONFIRMER"
+
+# Le nom d'une variable que le registre FIXE, sous la forme qu'accepte `make`
+# sur sa ligne. Un nom hors de cette forme ne se pose pas sans citation, et un
+# registre qui en écrirait un n'est plus celui que ce lecteur connaît.
+NOM_FIXE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 class Ecart(NamedTuple):
@@ -192,24 +198,53 @@ def methode(cible) -> str:
     return "_setops_geste_" + (cible or "").strip().replace("-", "_")
 
 
+def declarations(runbooks, cible):
+    """Les (runbook, étape) qui déclarent `cible`, chaque déclaration UNE fois.
+
+    Une cible peut figurer dans plusieurs séquences, et chacune la déclare À SA
+    MANIÈRE : une autre portée, un autre « pourquoi », une variable que l'une
+    demande et que l'autre fixe. Ces déclarations sont rendues toutes, dans
+    l'ordre du registre, parce que c'est la séquence qui donne son sens à
+    l'étape. Deux déclarations identiques n'en font qu'une : le choix
+    n'existerait que de nom.
+    """
+    cible = (cible or "").strip()
+    vues, rendues = set(), []
+    for runbook in runbooks or ():
+        for etape in runbook.etapes:
+            if etape.cible != cible or etape in vues:
+                continue
+            vues.add(etape)
+            rendues.append((runbook, etape))
+    return tuple(rendues)
+
+
 def trouve(runbooks, cible):
     """L'`Etape` que le registre déclare pour `cible`, ou None.
 
-    Une cible peut figurer dans plusieurs séquences. Tant que ces déclarations
-    sont IDENTIQUES, la porte en ouvre une sans ambiguïté. Si elles divergent,
-    la porte ne peut pas choisir à la place de l'opérateur et rend None : une
-    porte qui trancherait au hasard lancerait parfois l'autre geste.
+    None quand la cible est absente, et aussi quand plusieurs séquences la
+    déclarent DIFFÉREMMENT : choisir entre elles revient à l'opérateur, par
+    `declarations`, et une fonction qui trancherait au hasard lancerait parfois
+    l'autre geste.
     """
-    cible = (cible or "").strip()
-    vues = [
-        etape
-        for runbook in runbooks or ()
-        for etape in runbook.etapes
-        if etape.cible == cible
-    ]
-    if not vues or len(set(vues)) > 1:
-        return None
-    return vues[0]
+    vues = declarations(runbooks, cible)
+    return vues[0][1] if len(vues) == 1 else None
+
+
+def fixes_a_passer(etape):
+    """Les (nom, valeur) que le registre FIXE pour `etape`, CONFIRMER excepté.
+
+    Le registre fixe ce sans quoi le geste ne fait pas ce que la séquence
+    attend : le groupe qu'une étape applique, l'interrupteur qui fait écrire au
+    lieu de simuler. Les taire laisse le moteur refuser faute de groupe, ou
+    SIMULER en rendant zéro, ce qui se lit comme un succès.
+
+    CONFIRMER n'en fait pas partie : l'exécuteur l'écrit toujours lui-même, à
+    « false » pour l'essai et à « true » après le palier.
+    """
+    if etape is None:
+        return ()
+    return tuple((nom, val) for nom, val in etape.fixes if nom != CONFIRMER)
 
 
 def ecart(cible):
@@ -243,6 +278,9 @@ class Etape(NamedTuple):
     variables: tuple
     exige_confirmation: bool
     facultative: bool
+    # Les (nom, valeur) que le registre fixe, triés par nom. CONFIRMER y
+    # figure quand l'étape l'exige ; `fixes_a_passer` rend le reste.
+    fixes: tuple = ()
 
 
 class Runbook(NamedTuple):
@@ -301,6 +339,16 @@ def _etape(brut):
     fixes = brut.get("fixes")
     if fixes is not None and not isinstance(fixes, dict):
         return None
+    # UNE VALEUR FIXÉE SE LIT COMME UN TEXTE, ou toute l'étape est refusée. Un
+    # booléen ou une table posés sur la ligne de `make` y deviendraient
+    # « True » ou « {…} », que la recette lirait comme une valeur choisie.
+    poses = []
+    for nom, valeur in (fixes or {}).items():
+        if not isinstance(nom, str) or not NOM_FIXE.match(nom):
+            return None
+        if isinstance(valeur, bool) or not isinstance(valeur, (str, int)):
+            return None
+        poses.append((nom, str(valeur)))
     return Etape(
         cible=cible.strip(),
         libelle=str(brut.get("libelle") or ""),
@@ -311,6 +359,7 @@ def _etape(brut):
         variables=tuple(attendues),
         exige_confirmation=CONFIRMER in (fixes or {}),
         facultative=bool(brut.get("facultative")),
+        fixes=tuple(sorted(poses)),
     )
 
 

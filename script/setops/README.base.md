@@ -258,7 +258,10 @@ read". A caller given `None` says so and names the line to replay by hand.
 
 - `lit_instances(sortie)`: the discovered ecosystems. The first column holds
   the mounted marker and is read by POSITION; the rest by its blanks, five
-  fields exactly;
+  fields exactly — or six when the second is `(reprise)`: a RECOVERY index a
+  site reserves for a tenant, read with `reprise` set and never active;
+- `montables(ecosystemes)`: what `instance-utiliser` can mount — everything
+  but the recovery rows, which have no sibling repository;
 - `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
   segment — what `instance-utiliser` expects back;
 - `lit_serveurs(sortie)`: the (name, state) pairs the plan declares, or `None`.
@@ -317,14 +320,14 @@ deployment, not during one.
 
 ## `runbooks` — the engine's sequences, and nothing masked
 
-The engine's Makefile carries more than a hundred and thirty documented
-targets and says NOWHERE in which order to play them. The registry does: it
-arranges them into seventeen sequences, each with its purpose, and gives every
-step a "why" that only means something at its place in the suite.
+The engine's Makefile carries more than a hundred documented targets and says
+NOWHERE in which order to play them. The registry does: it arranges them into
+sequences, each with its purpose, and gives every step a "why" that only means
+something at its place in the suite.
 
 **Nothing is masked.** A sequence stripped of the steps TODO will not launch
-would lie by omission — eight of the seventeen have such steps, and one would
-begin at its step 2. Every step is shown, and what will not run from here
+would lie by omission — most have such steps, and some would begin at their
+step 2. Every step is shown, and what will not run from here
 carries the REASON why. That is the same stance as the state screen, which
 shows its ten lines with three marks rather than the bare list of what is
 ready.
@@ -381,10 +384,17 @@ same gesture would sooner or later say two different things.
 
 - `methode(cible)`: the name of the method that opens a target's door, DERIVED
   from the target so no table has to be kept in step;
-- `trouve(runbooks, cible)`: the step the registry declares for that target, or
-  `None`. A target may appear in several sequences; while those declarations are
-  identical the door opens one without ambiguity, and if they disagree it opens
-  none — a door choosing at random would sometimes launch the other gesture.
+- `declarations(runbooks, cible)`: every (runbook, step) declaring that target,
+  each distinct declaration once, in registry order. Several sequences may
+  declare one target each in its own way — another scope, a group fixed here
+  and asked there — and the door then makes the operator CHOOSE the sequence by
+  its number: the sequence says what the gesture bears on, and a door choosing
+  at random would sometimes launch the other gesture;
+- `trouve(runbooks, cible)`: that step when there is exactly one, else `None`;
+- `fixes_a_passer(etape)`: the (name, value) pairs the registry FIXES for the
+  step, `CONFIRMER` excepted — the runner writes that one itself. They go on
+  the line and are shown: left out, the engine refuses for want of a group, or
+  SIMULATES and returns zero, which reads as a success.
 
 `ECARTS` names what TODO knows and the registry does NOT say yet. A test reddens
 the day the registry says it itself, so the entry must then go: a table of
@@ -748,7 +758,11 @@ main.
 
 - `lit_instances(sortie)` : les écosystèmes découverts. La première colonne
   porte le marqueur du monté et se lit par sa POSITION ; le reste par ses
-  blancs, cinq champs exactement ;
+  blancs, cinq champs exactement — ou six quand le deuxième est `(reprise)` :
+  un index de REPRISE qu'un site réserve à un locataire, lu avec `reprise` posé
+  et jamais actif ;
+- `montables(ecosystemes)` : ce qu'`instance-utiliser` peut monter — tout, sauf
+  les reprises, qui n'ont pas de dépôt frère ;
 - `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
   segment — ce que `instance-utiliser` attend en retour ;
 - `lit_serveurs(sortie)` : les couples (nom, état) que le plan déclare, ou
@@ -809,14 +823,14 @@ tomber AVANT un déploiement, pas pendant.
 
 ## `runbooks` — les séquences du moteur, et rien de masqué
 
-Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
-NULLE PART dans quel ordre les jouer. Le registre le dit : il les range en
-dix-sept séquences, chacune avec son but, et donne à chaque étape un
-« pourquoi » qui n'a de sens qu'à sa place dans la suite.
+Le Makefile du moteur porte plus d'une centaine de cibles documentées et ne
+dit NULLE PART dans quel ordre les jouer. Le registre le dit : il les range en
+séquences, chacune avec son but, et donne à chaque étape un « pourquoi » qui
+n'a de sens qu'à sa place dans la suite.
 
 **Rien n'est masqué.** Une séquence dont on retirerait les étapes que todo ne
-lance pas mentirait par omission — huit des dix-sept en ont, et l'une
-commencerait à son étape 2. Chaque étape est affichée, et ce qui ne part pas
+lance pas mentirait par omission — la plupart en ont, et certaines
+commenceraient à leur étape 2. Chaque étape est affichée, et ce qui ne part pas
 d'ici porte la RAISON pour laquelle il ne part pas. C'est le parti de l'écran
 d'état, qui montre ses dix lignes avec trois marques plutôt que la seule liste
 de ce qui est prêt.
@@ -875,11 +889,18 @@ tôt ou tard deux choses différentes.
 
 - `methode(cible)` : le nom de la méthode qui ouvre la porte d'une cible,
   DÉRIVÉ de la cible pour qu'aucune table n'ait à suivre ;
-- `trouve(runbooks, cible)` : l'étape que le registre déclare pour cette cible,
-  ou `None`. Une cible peut figurer dans plusieurs séquences ; tant que ces
-  déclarations sont identiques la porte en ouvre une sans ambiguïté, et si elles
-  divergent elle n'en ouvre aucune — une porte qui trancherait au hasard
-  lancerait parfois l'autre geste.
+- `declarations(runbooks, cible)` : chaque (runbook, étape) qui déclare cette
+  cible, chaque déclaration distincte une fois, dans l'ordre du registre.
+  Plusieurs séquences peuvent déclarer une cible chacune à sa manière — une
+  autre portée, un groupe fixé ici et demandé là — et la porte fait alors
+  CHOISIR la séquence par son numéro : c'est elle qui dit sur quoi le geste
+  porte, et une porte qui trancherait au hasard lancerait parfois l'autre geste ;
+- `trouve(runbooks, cible)` : cette étape quand il n'y en a qu'une, sinon
+  `None` ;
+- `fixes_a_passer(etape)` : les couples (nom, valeur) que le registre FIXE pour
+  l'étape, `CONFIRMER` excepté — l'exécuteur l'écrit lui-même. Ils partent sur
+  la ligne et sont montrés : tus, le moteur refuse faute de groupe, ou SIMULE en
+  rendant zéro, ce qui se lit comme un succès.
 
 `ECARTS` nomme ce que todo sait et que le registre ne dit PAS encore. Une
 épreuve rougit le jour où le registre le dit lui-même, et l'entrée doit alors
