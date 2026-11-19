@@ -336,7 +336,14 @@ def mesure_le_gabarit(terrain, elevation):
 
 
 def ecrit_le_placement(moteur, mesures, vmid_modele):
-    """Écrit OÙ le locataire se pose. Rend le souci, ou « ».
+    """Écrit OÙ le site place son locataire, et quel gabarit il clone. Rend le
+    souci, ou « ».
+
+    DEUX FICHIERS, DEUX PROPRIÉTAIRES. Le nœud, le stockage et le gabarit sont
+    des objets du SITE : il les déclare dans son plan, et le moteur refuse un
+    locataire qui les redit. Le locataire ne garde que ce que le site ne fournit
+    pas — le pont de repli d'un clonage manuel — et le VMID du gabarit, qu'il
+    reprend quand le site se tait.
 
     APRÈS LA PORTE DU GABARIT, et c'est tout le sujet : ce fichier nomme le
     VMID du gabarit, et le clonage du moteur cherche ce nœud-là. Un VMID pris
@@ -352,12 +359,23 @@ def ecrit_le_placement(moteur, mesures, vmid_modele):
     chemins = chemins_du_banc(moteur)
     if chemins is None:
         return "le moteur n'a pas de dossier frère"
-    _freres, _site, eco = chemins
+    _freres, site, eco = chemins
     groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars")
-    try:
-        os.makedirs(groupe, exist_ok=True)
-    except OSError as souci:
-        return f"{INVENTAIRE_BANC} : {souci.strerror}"
+    plan_site = os.path.join(site, "plan")
+    for dossier, nom in (
+        (groupe, INVENTAIRE_BANC),
+        (plan_site, UNDERLAY_BANC),
+    ):
+        try:
+            os.makedirs(dossier, exist_ok=True)
+        except OSError as souci:
+            return f"{nom} : {souci.strerror}"
+    souci = _ecrit(
+        os.path.join(plan_site, INTRANTS_SITE),
+        texte_intrants_site(mesures.noeud, mesures.stockage, vmid_modele),
+    )
+    if souci:
+        return souci
     return _ecrit(
         os.path.join(groupe, "proxmox.yml"),
         texte_placement(
@@ -1032,14 +1050,63 @@ def cmds_vmids():
     return ["pvesh get /cluster/resources --type vm --output-format json"]
 
 
-def texte_placement(noeud, stockage, pont, vmid_modele, gabarit=GABARIT):
-    """Le `group_vars/proxmox.yml` du locataire : OÙ il se pose. Ou « ».
+# Le fichier du plan du SITE qui déclare son gabarit et où il place ses
+# locataires. Le moteur le lit à côté de l'underlay monté, sous `plan/`.
+INTRANTS_SITE = "10-intrants.yml"
 
-    TROIS CLÉS APPARTIENNENT AU LOCATAIRE et non à l'hébergeur — le nœud, le
-    stockage et le VMID du gabarit — parce que c'est lui qui choisit où se
-    poser, même si les trois NOMMENT des objets de l'hébergeur. Le reste de son
-    adressage dérive de son seul index, ce qui est ce qui le rend portable
-    d'une fabric à l'autre.
+# CE QUE LE SITE DÉCIDE, et que le plan d'un locataire ne porte plus : le moteur
+# refuse un locataire qui redit l'un de ces deux, et ne lit que ceux du site.
+CLES_DU_SITE = ("proxmox_clone_noeud", "proxmox_clone_stockage")
+
+
+def _placement_lisible(noeud, stockage, pont, vmid_modele, gabarit):
+    """Le VMID entier si toutes les pièces sont là, ou None."""
+    if not all((vu or "").strip() for vu in (noeud, stockage, pont, gabarit)):
+        return None
+    try:
+        vmid = int(vmid_modele)
+    except (TypeError, ValueError):
+        return None
+    return vmid if vmid >= 1 else None
+
+
+def texte_intrants_site(noeud, stockage, vmid_modele, gabarit=GABARIT):
+    """Le `plan/10-intrants.yml` du site du banc : son gabarit et le nœud où il
+    place ses locataires. Ou « ».
+
+    LE SITE PLACE, LE LOCATAIRE REÇOIT. Le clonage prend le VMID, le nœud et le
+    stockage du gabarit que le site déclare, par-dessus ce que dirait le
+    locataire ; un site muet laisse le moteur retomber sur le premier nœud
+    qu'il connaît, qui n'est pas forcément celui du banc. Le matériel est celui
+    que le banc exige du gabarit, déclaré pour que le site dise ce qu'il clone.
+    """
+    vmid = _placement_lisible(noeud, stockage, "-", vmid_modele, gabarit)
+    if vmid is None:
+        return ""
+    materiel = "".join(f"  {cle}: {val}\n" for cle, val in MATERIEL_GABARIT)
+    return f"""---
+# Le gabarit et le placement que le SITE du banc décide pour ses locataires.
+gabarit:
+  vmid: {vmid}
+  nom: {gabarit.strip()}
+  noeud: {noeud.strip()}
+  stockage: {stockage.strip()}
+{materiel}placement_locataires:
+  noeud: {noeud.strip()}
+"""
+
+
+def texte_placement(noeud, stockage, pont, vmid_modele, gabarit=GABARIT):
+    """Le `group_vars/proxmox.yml` du locataire : ce que le site ne dit pas.
+    Ou « ».
+
+    NI NŒUD NI STOCKAGE : ce sont des objets du site, déclarés dans son plan
+    (`texte_intrants_site`), et le moteur refuse un locataire qui les redit.
+    Ils restent EXIGÉS en argument, parce qu'un placement dont le site ne
+    saurait rien n'a rien à écrire ici non plus. Le VMID et le nom du gabarit
+    sont le repli que le moteur reprend quand le site se tait. Le reste de
+    l'adressage dérive du seul index, ce qui rend le locataire portable d'une
+    fabric à l'autre.
 
     LE PONT EN EST, ICI, ET C'EST UN REPLI. Le générateur d'inventaire pose un
     pont par hôte quand la fabric a une SDN, dérivé du réseau virtuel de sa
@@ -1048,19 +1115,12 @@ def texte_placement(noeud, stockage, pont, vmid_modele, gabarit=GABARIT):
     conscient des VLAN démarre et reste injoignable, et la panne ne se voit ni
     à la création, ni dans un code de retour : le banc nomme donc SON pont.
     """
-    if not all((vu or "").strip() for vu in (noeud, stockage, pont, gabarit)):
-        return ""
-    try:
-        vmid = int(vmid_modele)
-    except (TypeError, ValueError):
-        return ""
-    if vmid < 1:
+    vmid = _placement_lisible(noeud, stockage, pont, vmid_modele, gabarit)
+    if vmid is None:
         return ""
     return f"""---
-# Le placement du locataire du BANC. L'adressage n'est PAS ici : il dérive de
-# l'index du plan.
-proxmox_clone_noeud: {noeud.strip()}
-proxmox_clone_stockage: {stockage.strip()}
+# Ce que le locataire du BANC garde de son placement ; le nœud et le stockage
+# sont au plan du site. L'adressage n'est PAS ici : il dérive de l'index.
 proxmox_clone_vmid_modele: {vmid}
 proxmox_clone_source_nom: {gabarit.strip()}
 proxmox_clone_pont: {pont.strip()}
@@ -2612,7 +2672,7 @@ MATERIEL_GABARIT = (("machine", "q35"), ("bios", "ovmf"))
 
 # Où la procédure du moteur se lit, cité au refus : sans elle, « gabarit non
 # conforme » laisse chercher quoi corriger.
-PROCEDURE_GABARIT = "docs/procedure-template-debian13-proxmox.md"
+PROCEDURE_GABARIT = "docs/exploitation/procedure-template-debian13-proxmox.md"
 
 
 # Ce qu'un stockage doit savoir porter pour accueillir un clone : des IMAGES de

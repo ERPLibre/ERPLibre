@@ -1415,6 +1415,53 @@ class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
         self.assertIn("proxmox_clone_vmid_modele: 9000", texte)
         self.assertNotIn("9001", texte)
 
+    def site(self):
+        chemin = os.path.join(self.d, B.UNDERLAY_BANC, "plan", B.INTRANTS_SITE)
+        with open(chemin, encoding="utf-8") as fh:
+            return yaml.safe_load(fh.read())
+
+    def test_the_site_declares_the_template_and_the_placement(self):
+        """Le site place, le locataire reçoit : le clonage lit le gabarit et
+        le nœud au plan du SITE, et ce sont ceux que la grappe a montrés."""
+        mesures = B.Mesures(
+            terrain="un-terrain",
+            elevation=B.ELEVE,
+            liens=(B.A_POSER, B.NOTRE),
+            index_libre=True,
+            pont="vmbr9",
+            noeud="un-noeud",
+            stockage="un-stockage",
+            uplink="une-sortie",
+            adresse_api="192.0.2.10",
+        )
+        self.assertEqual("", B.ecrit_le_placement(self.moteur, mesures, 9000))
+        lu = self.site()
+        self.assertEqual(9000, lu["gabarit"]["vmid"])
+        self.assertEqual("un-noeud", lu["gabarit"]["noeud"])
+        self.assertEqual("un-stockage", lu["gabarit"]["stockage"])
+        self.assertEqual("un-noeud", lu["placement_locataires"]["noeud"])
+        for cle in B.CLES_DU_SITE:
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, self.placement())
+
+    def test_a_site_file_that_cannot_be_written_is_said(self):
+        """Tu, l'échec laisserait le locataire sans placement que le site
+        déclare : le clonage retomberait sur le premier nœud venu."""
+        bloque = os.path.join(self.d, B.UNDERLAY_BANC, "plan", B.INTRANTS_SITE)
+        os.makedirs(bloque)
+        mesures = B.Mesures(
+            terrain="t",
+            elevation=B.ELEVE,
+            liens=(),
+            index_libre=True,
+            pont="vmbr9",
+            noeud="n",
+            stockage="s",
+            uplink="u",
+            adresse_api="192.0.2.10",
+        )
+        self.assertTrue(B.ecrit_le_placement(self.moteur, mesures, 9000))
+
     def test_an_engine_with_no_sibling_refuses_rather_than_write(self):
         """La fédération se découvre par les dossiers FRÈRES du moteur : un
         chemin qui n'en a pas — vide, ou la racine — ne dit pas où écrire, et
@@ -2041,17 +2088,21 @@ class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
         pont passerait l'épreuve ci-dessus."""
         self.assertNotEqual("vmbr0", self.lu()["proxmox_clone_pont"])
 
-    def test_the_three_placement_keys_are_there(self):
-        """Elles NOMMENT des objets de l'hébergeur mais appartiennent au
-        locataire, parce que c'est lui qui choisit où se poser."""
+    def test_the_template_fallback_stays_with_the_tenant(self):
+        """Le moteur reprend le VMID et le nom du gabarit du locataire quand
+        le site se tait."""
         lu = self.lu()
-        for cle in (
-            "proxmox_clone_noeud",
-            "proxmox_clone_stockage",
-            "proxmox_clone_vmid_modele",
-        ):
+        self.assertEqual(9001, lu["proxmox_clone_vmid_modele"])
+        self.assertIn("proxmox_clone_source_nom", lu)
+
+    def test_the_site_s_keys_are_never_written_for_the_tenant(self):
+        """Le défaut d'origine : le moteur refuse un locataire qui redit le
+        nœud ou le stockage, objets du site."""
+        lu = self.lu()
+        self.assertTrue(lu, "contrôle positif : le fichier se lit")
+        for cle in B.CLES_DU_SITE:
             with self.subTest(cle=cle):
-                self.assertIn(cle, lu)
+                self.assertNotIn(cle, lu)
 
     def test_no_addressing_is_written_here(self):
         """Tout l'adressage dérive du seul index du plan : l'écrire ici le
@@ -2088,6 +2139,72 @@ class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
     def test_a_valid_set_still_writes(self):
         """Le contrôle positif des refus ci-dessus."""
         self.assertNotEqual("", B.texte_placement("n", "s", "p", 9001))
+
+
+class TestLesIntrantsDuSite(unittest.TestCase):
+    """Le gabarit et le placement vivent au plan du SITE : c'est là que le
+    moteur les lit, et il refuse un locataire qui les redit."""
+
+    def lu(self, **change):
+        champs = dict(
+            noeud="un-noeud", stockage="un-stockage", vmid_modele=9001
+        )
+        champs.update(change)
+        return yaml.safe_load(B.texte_intrants_site(**champs) or "") or {}
+
+    def test_the_template_is_the_one_the_bench_builds(self):
+        gabarit = self.lu()["gabarit"]
+        self.assertEqual(9001, gabarit["vmid"])
+        self.assertEqual(B.GABARIT, gabarit["nom"])
+        self.assertEqual(
+            dict(B.MATERIEL_GABARIT),
+            {cle: gabarit[cle] for cle, _v in B.MATERIEL_GABARIT},
+        )
+
+    def test_tenants_are_placed_where_the_template_lives(self):
+        lu = self.lu()
+        self.assertEqual(
+            lu["gabarit"]["noeud"], lu["placement_locataires"]["noeud"]
+        )
+        self.assertEqual("un-stockage", lu["gabarit"]["stockage"])
+
+    def test_it_refuses_a_missing_piece(self):
+        for change in (
+            {"noeud": ""},
+            {"stockage": ""},
+            {"gabarit": ""},
+            {"vmid_modele": 0},
+            {"vmid_modele": None},
+        ):
+            with self.subTest(**change):
+                champs = dict(noeud="n", stockage="s", vmid_modele=9001)
+                champs.update(change)
+                self.assertEqual("", B.texte_intrants_site(**champs))
+
+    def test_the_site_s_keys_are_the_engine_s(self):
+        """Le moteur DÉCLARE ce que le site décide ; une liste recopiée ici
+        laisserait passer la clé qu'il ajouterait demain."""
+        import ast
+
+        chemin = os.path.join(
+            RACINE,
+            "private",
+            "repo",
+            "Set-OPS-Public",
+            "scripts",
+            "devis_placement.py",
+        )
+        if not os.path.isfile(chemin):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(chemin, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        declares = [
+            ast.literal_eval(n.value)
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Assign)
+            and any(getattr(c, "id", "") == "CLES_DU_SITE" for c in n.targets)
+        ]
+        self.assertEqual([tuple(B.CLES_DU_SITE)], [tuple(d) for d in declares])
 
     def test_the_bench_fills_only_one_inventory(self):
         """Le moteur prend le PREMIER qui existe parmi lab, principal,
