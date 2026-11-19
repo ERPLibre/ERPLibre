@@ -5553,9 +5553,15 @@ def virt_install(
         ]
     else:
         cmd.append("--import")
+    # discard=unmap : un bloc que l'invité libère (fstrim, ou un système de
+    # fichiers monté en discard) redevient un trou du qcow2, donc de l'espace
+    # rendu à l'hôte. Sans lui, le qcow2 creux ne fait que croître jusqu'à sa
+    # taille virtuelle : un invité qui crée et détruit des disques à la
+    # chaîne remplit l'hôte avec des blocs qu'il ne lit plus, et qemu met la
+    # VM en pause dès qu'une écriture rencontre un disque hôte plein.
     cmd += [
         "--disk",
-        f"path={disk},format=qcow2,bus=virtio",
+        f"path={disk},format=qcow2,bus=virtio,discard=unmap",
     ]
     # Le seed n'existe QUE sur la voie image cloud. Sous debian-installer, le
     # preseed voyage dans l'initrd et un second disque ne ferait qu'ajouter un
