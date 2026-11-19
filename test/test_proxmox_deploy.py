@@ -1141,7 +1141,10 @@ class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
             -1
         ]
         self.assertIn("ifup vmbr0 ||", derniere)
-        self.assertIn("ip link add vmbr0 type bridge", derniere)
+        self.assertIn(
+            f"ip link add vmbr0 address {pve.mac_du_pont('vmbr0')} type bridge",
+            derniere,
+        )
         self.assertIn("ip addr add 10.10.20.1/24 dev vmbr0", derniere)
         self.assertIn("ip link set vmbr0 up", derniere)
 
@@ -1164,19 +1167,108 @@ class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
         derniere = pve.bridge_setup_cmds(cidr="10.10.20.1/24", uplink="eth0")[
             -1
         ]
-        bouchons = (
-            'ip() { [ "$1 $2" = "link show" ] && return 1; return 0; }\n'
-            "iptables() { return 1; }\n"
-            "ifup() { return 1; }\n"
-            "mkdir() { :; }\n"
-        )
         res = subprocess.run(
-            ["bash", "-c", bouchons + derniere],
+            ["bash", "-c", BOUCHONS_IP + "ifup() { return 1; }\n" + derniere],
             capture_output=True,
             text=True,
             timeout=30,
         )
         self.assertEqual(res.stderr, "", res.stderr)
+        self.assertEqual(0, res.returncode)
+
+
+# UN `ip` À ÉTAT : l'interface est absente, puis créée éteinte, puis montée,
+# selon ce que la commande lui demande. `ip -o link show` imprime les drapeaux
+# comme le vrai ; c'est eux que le constat lit.
+BOUCHONS_IP = (
+    "etat=absent\n"
+    "ip() {\n"
+    '  case "$*" in\n'
+    '    "link show "*) [ "$etat" != absent ] ;;\n'
+    '    "-o link show "*) [ "$etat" = absent ] && return 1;'
+    ' [ "$etat" = up ] && f=BROADCAST,UP,LOWER_UP || f=BROADCAST;'
+    ' echo "7: x: <$f> mtu 1500" ;;\n'
+    '    "link add "*) etat=eteinte ;;\n'
+    '    "link set "*" up") [ "$ip_refuse_up" = 1 ] && return 2; etat=up ;;\n'
+    "    *) return 0 ;;\n"
+    "  esac\n"
+    "}\n"
+    "iptables() { return 1; }\n"
+    "mkdir() { :; }\n"
+)
+
+
+class TestLeMontageSeConstate(unittest.TestCase):
+    """ifup rendait 0 en laissant une interface de VLAN ÉTEINTE, quand son
+    pont n'avait plus d'adresse MAC : la passerelle d'une flotte était dite
+    posée, et la flotte restait injoignable sans que rien ne nomme
+    l'interface."""
+
+    def joue(self, derniere, avant):
+        import subprocess
+
+        return subprocess.run(
+            ["bash", "-c", BOUCHONS_IP + avant + derniere],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def lignes(self):
+        return {
+            "pont": pve.bridge_setup_cmds(cidr="10.10.20.1/24")[-1],
+            "vlan": pve.svi_setup_cmds("vmbr9", 3114, "10.211.19.1/24")[-1],
+        }
+
+    def test_an_ifup_that_leaves_it_down_fails_and_names_it(self):
+        """Le défaut d'origine : ifup rend 0, l'interface reste éteinte."""
+        for sorte, derniere in self.lignes().items():
+            with self.subTest(sorte=sorte):
+                vu = self.joue(
+                    derniere, "etat=eteinte\nifup() { return 0; }\n"
+                )
+                self.assertNotEqual(0, vu.returncode)
+                self.assertIn("pas montée", vu.stderr)
+
+    def test_an_interface_that_came_up_passes(self):
+        """Contrôle positif : un constat qui refuse tout passerait l'épreuve
+        ci-dessus."""
+        for sorte, derniere in self.lignes().items():
+            with self.subTest(sorte=sorte):
+                vu = self.joue(derniere, "etat=up\nifup() { return 0; }\n")
+                self.assertEqual(0, vu.returncode, vu.stderr)
+
+    def test_a_fallback_the_kernel_refuses_to_raise_fails_too(self):
+        """Le repli manuel est jugé de la même façon : « ip link set up »
+        refusé — ce que fait le noyau sur une MAC nulle — ne passe pas."""
+        vu = self.joue(
+            self.lignes()["vlan"],
+            "ip_refuse_up=1\nifup() { return 1; }\n",
+        )
+        self.assertNotEqual(0, vu.returncode)
+
+
+class TestLaMacDuPontInterne(unittest.TestCase):
+    """Un pont sans port physique prend la MAC de ses VM ; la dernière partie,
+    la sienne tombe à zéro, et ses interfaces de VLAN ne montent plus."""
+
+    def test_the_stanza_declares_it(self):
+        texte = "\n".join(pve.bridge_setup_cmds(nom="vmbr9", vlan_aware=True))
+        self.assertIn(f"hwaddress {pve.mac_du_pont('vmbr9')}", texte)
+
+    def test_it_is_locally_administered_and_unicast(self):
+        premier = int(pve.mac_du_pont("vmbr9").split(":")[0], 16)
+        self.assertTrue(premier & 0x02)
+        self.assertFalse(premier & 0x01)
+
+    def test_it_is_the_same_at_every_pose_and_differs_per_bridge(self):
+        self.assertEqual(pve.mac_du_pont("vmbr9"), pve.mac_du_pont("vmbr9"))
+        self.assertNotEqual(pve.mac_du_pont("vmbr9"), pve.mac_du_pont("vmbr8"))
+
+    def test_it_has_the_form_ifupdown2_takes(self):
+        self.assertRegex(
+            pve.mac_du_pont("vmbr9"), r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$"
+        )
 
 
 class TestPourquoiAucunStockage(unittest.TestCase):

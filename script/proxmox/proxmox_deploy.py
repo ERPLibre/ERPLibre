@@ -21,6 +21,7 @@ fonction PURE, vérifiable sans hôte Proxmox. Seul `run()` parle au réseau.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import re
@@ -798,11 +799,18 @@ def bridge_setup_cmds(
     if not (nom or "").strip():
         return []
     reseau = str(interface.network)
+    mac = mac_du_pont(nom)
     bloc = [
         "",
         f"auto {nom}",
         f"iface {nom} inet static",
         f"    address {cidr}",
+        # UNE MAC FIXE, parce que le pont n'a aucun port physique. Le noyau
+        # donne à un pont l'adresse de ses ports ; quand le dernier part — la
+        # dernière VM s'arrête —, la sienne tombe à 00:00:00:00:00:00, et une
+        # interface de VLAN créée à ce moment refuse de monter (« Cannot assign
+        # requested address ») pendant qu'ifup rend 0.
+        f"    hwaddress {mac}",
         "    bridge-ports none",
         "    bridge-stp off",
         "    bridge-fd 0",
@@ -814,8 +822,26 @@ def bridge_setup_cmds(
         ]
     bloc += _lignes_masquage(reseau, uplink)
     return _poser_interface(
-        nom, bloc, cidr, reseau, uplink, f"ip link add {nom} type bridge"
+        nom,
+        bloc,
+        cidr,
+        reseau,
+        uplink,
+        f"ip link add {nom} address {mac} type bridge",
     )
+
+
+def mac_du_pont(nom: str) -> str:
+    """La MAC fixe d'un pont interne, dérivée de son nom.
+
+    ADMINISTRÉE LOCALEMENT ET UNICAST : premier octet à `02`, bit de groupe
+    éteint, si bien qu'elle ne peut ni prendre l'adresse d'une carte réelle ni
+    passer pour une diffusion. Dérivée du nom, elle est la même à chaque pose
+    du même pont, et deux ponts d'un même hôte en ont deux différentes ; le
+    pont n'ayant aucun port physique, elle ne sort jamais de l'hôte.
+    """
+    empreinte = hashlib.sha256((nom or "").strip().encode()).digest()[:5]
+    return ":".join(["02"] + [f"{octet:02x}" for octet in empreinte])
 
 
 def _lignes_masquage(reseau, uplink):
@@ -993,8 +1019,20 @@ def _poser_interface(nom, bloc, cidr, reseau, uplink, creer):
             f"iptables -t nat -C {regle} 2>/dev/null"
             f" || iptables -t nat -A {regle}"
         )
+    # LE MONTAGE SE CONSTATE, IL NE SE CROIT PAS. ifup rend 0 en laissant une
+    # interface de VLAN éteinte quand son pont n'a pas d'adresse MAC : la ligne
+    # qui pose la passerelle d'une flotte réussissait, et la flotte restait
+    # injoignable dix minutes plus loin, sans que rien ne nomme l'interface.
+    # Le drapeau UP de `ip -o link` est l'état ADMINISTRATIF : il ne dépend
+    # pas d'un port branché, qu'un pont sans VM n'a pas.
+    constat = (
+        f"ip -o link show {nom} | grep -qE '[<,]UP[,>]'"
+        f" || {{ echo '{nom} : posée mais pas montée' >&2; false; }}"
+    )
     cmds.append(
-        f"mkdir -p /run/network; ifup {nom} || {{ " + "; ".join(manuel) + "; }"
+        f"mkdir -p /run/network; {{ ifup {nom} || {{ "
+        + "; ".join(manuel)
+        + f"; }}; }}; {constat}"
     )
     return cmds
 
