@@ -27,6 +27,8 @@ sys.path.append(
 
 from script.setops import ansible_env as A  # noqa: E402
 
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
 PLAGE = "ansible-core>=2.18,<2.19"
 
 REQUIREMENTS_PY = """# Un commentaire, puis deux épingles et une non-épingle.
@@ -106,6 +108,43 @@ class TestCeQueLeMoteurExige(CasDeBanc):
             ),
             A.collections_epinglees(self.moteur),
         )
+
+
+class TestLePythonQueLaCiblePorte(CasDeBanc):
+    """Le moteur déclare le Python pour lequel ses roues sont faites. Un
+    contrôleur d'un autre mineur se fait refuser par `serveur_ops`."""
+
+    def test_the_engine_s_lock_is_read(self):
+        ecrire(
+            os.path.join(self.moteur, A.VERROU_RUNNER),
+            '# un commentaire\npython_cible: "3.17"\npython:\n  - nom: x\n',
+        )
+        self.assertEqual("3.17", A.python_cible(self.moteur))
+
+    def test_no_lock_says_nothing(self):
+        self.assertIsNone(A.python_cible(self.moteur))
+
+    def test_a_repeated_key_says_nothing(self):
+        ecrire(
+            os.path.join(self.moteur, A.VERROU_RUNNER),
+            'python_cible: "3.13"\npython_cible: "3.14"\n',
+        )
+        self.assertIsNone(A.python_cible(self.moteur))
+
+    def test_the_constant_is_the_one_the_pinned_engine_declares(self):
+        """LE JOUR OÙ LE MOTEUR MONTE DE PYTHON, cette épreuve rougit : sans
+        elle, le venv se poserait sur un mineur que la cible refuse."""
+        sys.path.insert(0, RACINE)
+        from script.setops import engine
+
+        decl = engine.declaration(RACINE)
+        if decl is None or not decl.path:
+            self.skipTest("aucun moteur déclaré")
+        moteur = os.path.join(RACINE, decl.path)
+        declare = A.python_cible(moteur)
+        if declare is None:
+            self.skipTest("le moteur rapatrié ne déclare pas sa cible")
+        self.assertEqual(declare, A.MINEUR_CIBLE)
 
 
 class TestLisibleNestPasVide(CasDeBanc):

@@ -42,10 +42,14 @@ VENV = ".venv.todo.setops"
 
 # Le major.minor que la cible porte. Debian 13 livre `python3` en 3.13, et
 # `serveur_ops` refuse un contrôleur dont le mineur diffère de celui de la
-# cible. RIEN DANS LE MOTEUR NE LE DÉCLARE : il tient au système du gabarit,
-# d'où une constante plutôt qu'une lecture. Une flotte sur un autre gabarit
-# change cette ligne, et l'écran affiche toujours ce qui est posé.
+# cible. Le moteur le DÉCLARE dans `VERROU_RUNNER`, sous `CLE_PYTHON_CIBLE` :
+# c'est le Python pour lequel ses roues sont faites. La valeur reste une
+# constante parce qu'elle sert de défaut là où aucun moteur n'est encore
+# rapatrié ; une épreuve la confronte au verrou du moteur épinglé, et rougit le
+# jour où il monte de version.
 MINEUR_CIBLE = "3.13"
+VERROU_RUNNER = "verrou-runner.yml"
+CLE_PYTHON_CIBLE = "python_cible"
 
 # Les fichiers du moteur qui déclarent ses exigences.
 DEFAULTS_ANSIBLE = os.path.join("roles", "serveur_ops", "defaults", "main.yml")
@@ -104,6 +108,22 @@ def montre(etape) -> str:
 # ---------------------------------------------------------------------------
 # Ce que le moteur exige
 # ---------------------------------------------------------------------------
+
+
+def python_cible(moteur):
+    """Le major.minor que le verrou du moteur déclare pour sa cible, ou None.
+
+    None quand le fichier manque ou que la clé ne se lit pas : un moteur qui ne
+    le dit pas laisse `MINEUR_CIBLE` décider, il ne fait rien deviner.
+    """
+    try:
+        with open(
+            os.path.join(moteur, VERROU_RUNNER), encoding="utf-8"
+        ) as tenu:
+            texte = tenu.read()
+    except OSError:
+        return None
+    return _valeur_de_premier_niveau(texte, CLE_PYTHON_CIBLE)
 
 
 def _valeur_de_premier_niveau(texte, cle):
