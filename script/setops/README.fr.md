@@ -420,7 +420,12 @@ correction en amont.
 - `drapeau(etape)` : le nom d'un drapeau qui est un INTERRUPTEUR et non une
   valeur. La recette le lit par `$(if $(NOM),…)` et GNU make tient toute chaîne
   non vide pour vraie : « 0 » l'active aussi sûrement que « 1 ». Sa valeur ne se
-  demande jamais : la question est fermée, et « non » ne passe rien du tout.
+  demande jamais : la question est fermée, et « non » ne passe rien du tout ;
+- `DERIVES_A_LA_DEMANDE` : les cibles que le registre déclare encore `mesure`
+  alors que le moteur régénère d'abord l'inventaire et les flux du locataire —
+  elles écrivent sur disque, journalisent, et peuvent refuser. Todo les tient
+  pour des écritures et pose sa propre confirmation. Une épreuve confronte la
+  liste, dans les deux sens, à celle que le moteur calcule dans son Makefile.
 
 ## `vaults` — une clé absente n'est pas une faute
 

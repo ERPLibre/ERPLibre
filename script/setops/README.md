@@ -408,7 +408,12 @@ exemptions that nobody retires ends up hiding the fix upstream.
 - `drapeau(etape)`: the name of a flag that is a SWITCH, not a value. The recipe
   reads it through `$(if $(NOM),…)` and GNU make holds any non-empty string
   true, so "0" turns it on as surely as "1". Its value is never asked for: the
-  question is closed, and no is nothing at all.
+  question is closed, and no is nothing at all;
+- `DERIVES_A_LA_DEMANDE`: the targets the registry still declares `mesure`
+  although the engine first regenerates the tenant's inventory and flows — it
+  writes to disk, journals, and may refuse. TODO holds them for writes and asks
+  its own confirmation. A test compares the list both ways with the one the
+  engine computes from its own Makefile.
 
 ## `vaults` — a missing key is not a fault
 

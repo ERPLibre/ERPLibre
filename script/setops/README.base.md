@@ -413,7 +413,12 @@ exemptions that nobody retires ends up hiding the fix upstream.
 - `drapeau(etape)`: the name of a flag that is a SWITCH, not a value. The recipe
   reads it through `$(if $(NOM),…)` and GNU make holds any non-empty string
   true, so "0" turns it on as surely as "1". Its value is never asked for: the
-  question is closed, and no is nothing at all.
+  question is closed, and no is nothing at all;
+- `DERIVES_A_LA_DEMANDE`: the targets the registry still declares `mesure`
+  although the engine first regenerates the tenant's inventory and flows — it
+  writes to disk, journals, and may refuse. TODO holds them for writes and asks
+  its own confirmation. A test compares the list both ways with the one the
+  engine computes from its own Makefile.
 
 ## `vaults` — a missing key is not a fault
 
@@ -921,7 +926,12 @@ correction en amont.
 - `drapeau(etape)` : le nom d'un drapeau qui est un INTERRUPTEUR et non une
   valeur. La recette le lit par `$(if $(NOM),…)` et GNU make tient toute chaîne
   non vide pour vraie : « 0 » l'active aussi sûrement que « 1 ». Sa valeur ne se
-  demande jamais : la question est fermée, et « non » ne passe rien du tout.
+  demande jamais : la question est fermée, et « non » ne passe rien du tout ;
+- `DERIVES_A_LA_DEMANDE` : les cibles que le registre déclare encore `mesure`
+  alors que le moteur régénère d'abord l'inventaire et les flux du locataire —
+  elles écrivent sur disque, journalisent, et peuvent refuser. Todo les tient
+  pour des écritures et pose sa propre confirmation. Une épreuve confronte la
+  liste, dans les deux sens, à celle que le moteur calcule dans son Makefile.
 
 ## `vaults` — une clé absente n'est pas une faute
 

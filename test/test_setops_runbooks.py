@@ -55,6 +55,35 @@ def registre_reel():
 
 
 REEL = registre_reel()
+
+
+def cibles_qui_regenerent():
+    """Les cibles dont le moteur régénère les dérivés avant de les jouer, telles
+    qu'il les calcule dans SON Makefile ; None s'il ne sait pas le dire."""
+    import json
+
+    decl = engine.declaration(RACINE)
+    if decl is None or not decl.path:
+        return None
+    moteur = os.path.join(RACINE, decl.path)
+    vu = runner.jouer(
+        (
+            "python3",
+            "-B",
+            "-c",
+            "import json, sys; sys.path.insert(0, 'scripts'); import derives;"
+            " print(json.dumps(sorted(derives.cibles_qui_lisent())))",
+        ),
+        env=ansible_env.environnement(RACINE, moteur, runner.base()),
+        cwd=moteur,
+    )
+    try:
+        lu = json.loads(vu.sortie) if vu.reussi else None
+    except ValueError:
+        return None
+    return set(lu) if isinstance(lu, list) and lu else None
+
+
 AVEC_MOTEUR = unittest.skipUnless(
     REEL is not None, "registre du moteur illisible"
 )
@@ -477,6 +506,12 @@ class TestLesEcarts(unittest.TestCase):
         self.assertTrue(R.ecrit(etape))
         self.assertTrue(R.remis(etape))
 
+    def test_a_measure_that_regenerates_is_a_write(self):
+        """Le moteur régénère l'inventaire avant de la jouer : todo pose sa
+        propre confirmation, quoi que dise la nature déclarée."""
+        self.assertTrue(R.ecrit(etape(cible="valider", nature=R.MESURE)))
+        self.assertFalse(R.remis(etape(cible="valider", nature=R.MESURE)))
+
     def test_a_plain_measure_stays_a_measure(self):
         self.assertFalse(R.ecrit(etape(nature=R.MESURE)))
         self.assertFalse(R.remis(etape(nature=R.MESURE)))
@@ -521,9 +556,28 @@ class TestContreLeRegistreReel(unittest.TestCase):
         for cible, vu in R.ECARTS.items():
             if not vu.ecrit:
                 continue
-            for runbook, vue in R.declarations(REEL, cible):
-                with self.subTest(cible=cible, sequence=runbook.id):
-                    self.assertEqual(R.MESURE, vue.nature, cible)
+            with self.subTest(cible=cible):
+                # Une séquence qui la déclare `ecriture` ne lève pas l'écart :
+                # c'est celle qui la déclare `mesure` qui ment.
+                natures = {v.nature for _r, v in R.declarations(REEL, cible)}
+                self.assertIn(R.MESURE, natures, cible)
+
+    def test_the_measures_that_regenerate_are_exactly_the_engine_s(self):
+        """LES DEUX SENS. Une cible que le moteur fait régénérer et que todo
+        tient pour une mesure se conduirait sans confirmation ; une cible qui a
+        cessé de régénérer garderait une confirmation que rien ne justifie."""
+        lisent = cibles_qui_regenerent()
+        if lisent is None:
+            self.skipTest("le moteur ne dit pas quelles cibles régénèrent")
+        mesures = {
+            etape.cible
+            for runbook in REEL
+            for etape in runbook.etapes
+            if etape.nature == R.MESURE
+        }
+        self.assertEqual(
+            sorted(mesures & lisent), sorted(R.DERIVES_A_LA_DEMANDE)
+        )
 
     def test_every_handed_over_target_demands_the_variable_we_name(self):
         """LA TAUTOLOGIE LEVÉE. Le garde d'avant comparait la table à

@@ -153,6 +153,47 @@ ECARTS = {
 }
 
 
+# LES MESURES QUI ÉCRIVENT. Le moteur régénère l'inventaire et les flux d'un
+# locataire avant toute cible qui les lit (ses « dérivés à la demande ») : la
+# cible écrit donc sur disque, ajoute une ligne à son journal, et peut REFUSER
+# si la fiche du site ne se rafraîchit pas ou si une machine active manque de
+# règles. Le registre les déclare encore `mesure`. Todo les tient pour des
+# écritures et pose sa propre confirmation.
+#
+# La liste est NOMMÉE, et une épreuve la confronte dans les deux sens à celle
+# que le moteur calcule lui-même dans son Makefile : une cible de plus chez lui
+# rougit, une cible qui cesse de régénérer aussi.
+DERIVES_A_LA_DEMANDE = (
+    "contenu",
+    "faits",
+    "hote-afficher",
+    "inventaire-graphe",
+    "inventaire-hote",
+    "inventaire-lab",
+    "inventaire-lister",
+    "inventaire-production",
+    "inventaire-verifier",
+    "mises-a-jour",
+    "restauration-etat",
+    "temoins-etat",
+    "valider",
+    "verifier-deploiement",
+    "verifier-hote",
+)
+assert not set(DERIVES_A_LA_DEMANDE) & set(ECARTS), "écart déjà nommé"
+ECARTS.update(
+    {
+        cible: Ecart(
+            ecrit=True,
+            pourquoi=(
+                "déclarée mesure, elle régénère d'abord l'inventaire et les"
+                " flux du locataire, et peut refuser"
+            ),
+        )
+        for cible in DERIVES_A_LA_DEMANDE
+    }
+)
+
 # LES ONZE PORTES des gestes d'écriture, et le nom de chacune à l'écran. Le
 # libellé de la PORTE appartient à todo — court, stable, traduit, il doit tenir
 # sur une ligne de menu ; TOUT ce qui décrit le geste vient du registre, relu à
