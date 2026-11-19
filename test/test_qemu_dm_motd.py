@@ -108,8 +108,16 @@ class TestMotdSkippedForDisplayManagers(unittest.TestCase):
         self.f.joue()
         regle = next(l for l in self.f.lignes() if "pam_succeed_if" in l)
         services = re.search(r"service in (\S+)", regle).group(1).split(":")
-        self.assertIn("gdm-password", services)
-        self.assertIn("lightdm", services)
+        # Un service par gestionnaire d'affichage qu'une saveur installe.
+        for dm in (
+            "gdm-password",
+            "lightdm",
+            "sddm",
+            "plasmalogin",
+            "greetd",
+            "cosmic-greeter",
+        ):
+            self.assertIn(dm, services)
         for garde in ("sshd", "login", "su", "sudo", "systemd-user"):
             self.assertNotIn(garde, services)
 
@@ -163,8 +171,10 @@ class TestWiredIntoTheDesktop(unittest.TestCase):
     def test_every_flavour_carries_it_before_the_greeter_starts(self):
         todo = _todo()
         bloc = todo._qemu_dm_motd_skip_cmd()
-        for flavour in ("gnome", "cinnamon"):
-            cmd = todo._qemu_desktop_remote_cmd(flavour, "deb", distro="arch")
+        for flavour in todo._QEMU_DESKTOP:
+            cmd = todo._qemu_desktop_remote_cmd(
+                flavour, "deb", distro="arch", version="latest"
+            )
             self.assertIn(bloc, cmd, flavour)
             self.assertLess(
                 cmd.index(bloc),

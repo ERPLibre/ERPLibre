@@ -26,6 +26,7 @@ survivraient pas à la reconstruction suivante.
 
 import importlib.util
 import sys
+import io
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -279,17 +280,24 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                     TODO._qemu_tools_for(tous, "amd64", "gnome", distro)
                 )
 
-    def test_an_existing_nixos_vm_gets_no_fleet_desktop(self):
-        """Une VM existante n'a pas de rangée : le bureau du parc ne
-        l'atteint que si son système sait l'installer. Sa distribution se
-        déduit de son nom ; inconnue, le bureau reste."""
+    @staticmethod
+    def _todo_meta(systemes):
+        """TODO dont _qemu_vm_meta lit `systemes` ({nom: (distro,
+        version)}) au lieu de virsh."""
         todo = TODO.__new__(TODO)
         todo._qemu_import_module = lambda: object()
-        distros = {"vm-nix": "nixos", "vm-deb": "debian"}
         todo._qemu_vm_meta = lambda nom, mod: (
-            distros.get(nom),
-            None,
+            *(systemes.get(nom) or (None, None)),
             "amd64",
+        )
+        return todo
+
+    def test_an_existing_nixos_vm_gets_no_fleet_desktop(self):
+        """Une VM existante n'a pas de rangée : le bureau du parc ne
+        l'atteint que si son couple (système, version) sait l'installer.
+        Il se déduit de son nom ; inconnu, elle n'en reçoit aucun."""
+        todo = self._todo_meta(
+            {"vm-nix": ("nixos", "25.11"), "vm-deb": ("debian", "13")}
         )
         spec = {
             "desktop": "gnome",
@@ -302,10 +310,49 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                 "vm-srv": "",
                 "vm-nix": "",
                 "vm-deb": "gnome",
-                "vm-autre": "gnome",
+                "vm-autre": "",
             },
             todo._qemu_desktop_map(spec),
         )
+
+    def test_an_existing_vm_left_without_the_fleet_desktop_is_named(self):
+        """La VM existante qui ne reçoit pas le bureau du parc est nommée :
+        sinon elle reste un serveur sans que rien ne l'annonce."""
+        todo = self._todo_meta({"vm-deb": ("debian", "13")})
+        spec = {"desktop": "gnome", "vms": [], "existing": ["vm-deb", "poste"]}
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            todo._qemu_desktop_map(spec)
+        lignes = out.getvalue().splitlines()
+        self.assertEqual(1, len(lignes), lignes)
+        self.assertIn("poste", lignes[0])
+        self.assertIn("gnome", lignes[0])
+
+    def test_an_existing_vm_keeps_its_own_flavour(self):
+        """Le suffixe du nom dit la saveur d'une VM existante : la saveur
+        du parc n'y est pas posée par-dessus."""
+        todo = self._todo_meta(
+            {
+                "vm-zeta-xfce": ("debian", "13"),
+                "vm-eta-i3": ("fedora", "44"),
+                "vm-iota": ("fedora", "44"),
+            }
+        )
+        spec = {
+            "desktop": "gnome",
+            "vms": [],
+            "existing": ["vm-zeta-xfce", "vm-eta-i3", "vm-iota"],
+        }
+        self.assertEqual(
+            {"vm-zeta-xfce": "xfce", "vm-eta-i3": "i3", "vm-iota": "gnome"},
+            todo._qemu_desktop_map(spec),
+        )
+
+    def test_an_existing_vm_whose_release_lacks_its_flavour_gets_none(self):
+        """La saveur lue au nom passe par la même porte que celle du parc :
+        un couple qui ne l'installe pas n'en reçoit aucune."""
+        todo = self._todo_meta({"vm-theta-plasma": ("debian", "12")})
+        spec = {"desktop": "gnome", "vms": [], "existing": ["vm-theta-plasma"]}
+        self.assertEqual({"vm-theta-plasma": ""}, todo._qemu_desktop_map(spec))
 
     def test_without_fleet_desktop_no_vm_is_read(self):
         """Sans bureau à offrir, aucune VM existante n'est interrogée."""

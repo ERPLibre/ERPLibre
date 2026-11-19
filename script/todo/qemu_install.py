@@ -390,8 +390,31 @@ class QemuInstallMixin:
     # livrent plus. Ses paquets sont donc nommés avec le bureau, sur chaque
     # famille. « x11 » : la table _QEMU_DESKTOP_REMOTE, par famille.
     #
-    # « families » borne la saveur aux gestionnaires que la commande distante
-    # sait conduire : ailleurs, elle s'arrête sur « gestionnaire inconnu ».
+    # Les systèmes qui reçoivent chaque saveur sont dans
+    # _QEMU_DESKTOP_RELEASES, par version : une famille de paquets ne suffit
+    # pas à le dire.
+    #
+    # Une ligne de paquets est une chaîne, ou un dict résolu par
+    # _qemu_desktop_value : « distro:version », puis « distro », puis « * ».
+    # Une ligne absente pour le système fait échouer la commande sur ce
+    # gestionnaire.
+    #
+    # Champs des saveurs ajoutées après GNOME et Cinnamon :
+    #   dnf          ligne « dnf install » (@environnements et paquets) ; à
+    #                défaut, la cascade dnf_env des deux premières saveurs ;
+    #   dnf_exclude  paquets écartés (« -x ») de cette ligne, retentée sans
+    #                eux si dnf refuse : un groupe peut en exiger un ;
+    #   probe        binaire du bureau, cherché une fois les paquets posés
+    #                (comme pour GNOME et Cinnamon) ;
+    #   dm_force     « systemctl enable --force » : plusieurs gestionnaires
+    #                d'affichage déclarent display-manager.service, et le
+    #                premier installé garde l'alias sans --force ;
+    #   apt_dm       (paquet, binaire) du gestionnaire sur apt : la réponse
+    #                debconf shared/default-x-display-manager, et le contenu
+    #                de /etc/X11/default-display-manager, que l'unité sddm
+    #                de Debian vérifie avant de démarrer ;
+    #   suse_dm      l'alternative default-displaymanager d'openSUSE ;
+    #   system_done  témoin système d'un assistant de premier démarrage.
     _QEMU_DESKTOP = {
         "gnome": {
             "label": "GNOME",
@@ -424,7 +447,6 @@ class QemuInstallMixin:
             # bureau sans son shell n'est pas un bureau.
             "probe": "gnome-shell",
             "remote": "grd",
-            "families": ("apt", "dnf", "pacman", "zypper"),
             # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
             # graphique se reconnaît alors d'un « virsh list », et deux VM de
             # même distribution mais de types différents ne se marchent plus
@@ -439,18 +461,233 @@ class QemuInstallMixin:
             # publie que i386/amd64, ce qui exclurait arm64 et s390x.
             "apt": "cinnamon-desktop-environment dbus-x11",
             "dnf_env": "cinnamon-desktop",
+            # EPEL 9 livre Cinnamon sans groupe comps : une liste de paquets,
+            # et le serveur X du groupe base-x, absent d'une image cloud.
+            "dnf": {
+                "almalinux": "@base-x cinnamon lightdm lightdm-gtk dbus-x11",
+                "rocky": "@base-x cinnamon lightdm lightdm-gtk dbus-x11",
+            },
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
             "zypper": "cinnamon lightdm",
             "service": "lightdm",
             "probe": "cinnamon",
             "remote": "x11",
-            "families": ("apt", "dnf", "pacman", "zypper"),
             # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
             # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
             # de la distribution et non ceux de Mint.
             "suffix": "mint",
         },
+        # Plasma 6 seulement : Ubuntu 24.04, Debian 12 et EPEL 9 n'ont que la
+        # 5.27, et la saveur n'y est pas offerte. Le gestionnaire est
+        # plasma-login-manager là où l'environnement l'impose (Fedora, EPEL
+        # 10, plasma-meta d'Arch), SDDM ailleurs ; sddm-qt6 sur openSUSE, où
+        # le paquet « sddm » est la version Qt5, en conflit.
+        "plasma": {
+            "label": "KDE Plasma 6",
+            "probe": "plasmashell",
+            "apt": "kde-plasma-desktop sddm",
+            "dnf": "@kde-desktop-environment",
+            "dnf_exclude": "firewalld firewall-config",
+            "pacman": "plasma-meta ttf-dejavu",
+            "zypper": "patterns-kde-kde_plasma sddm-qt6",
+            "service": {
+                "*": "sddm",
+                "fedora": "plasmalogin",
+                "almalinux": "plasmalogin",
+                "rocky": "plasmalogin",
+                "arch": "plasmalogin",
+            },
+            "dm_force": True,
+            "apt_dm": ("sddm", "/usr/bin/sddm"),
+            "suse_dm": "sddm",
+            # plasma-setup, l'assistant de Fedora, tourne avant le
+            # gestionnaire d'affichage tant que ce fichier manque.
+            "system_done": "/etc/plasma-setup-done",
+            "remote": "krdp",
+            "suffix": "plasma",
+        },
+        "xfce": {
+            "label": "Xfce",
+            "probe": "xfce4-session",
+            "apt": "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter dbus-x11",
+            # EPEL 9 n'a que le groupe xfce-desktop, qui nomme gdm par défaut.
+            "dnf": {
+                "*": "@xfce-desktop-environment",
+                "almalinux": "@base-x @xfce-desktop lightdm lightdm-gtk "
+                "xfce4-terminal dbus-x11",
+                "rocky": "@base-x @xfce-desktop lightdm lightdm-gtk "
+                "xfce4-terminal dbus-x11",
+            },
+            "dnf_exclude": {
+                "*": "firewalld firewall-config",
+                "almalinux": "gdm",
+                "rocky": "gdm",
+            },
+            "pacman": "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter "
+            "ttf-dejavu",
+            # Le motif ne fait que RECOMMANDER le gestionnaire : il est nommé.
+            "zypper": "patterns-xfce-xfce lightdm lightdm-gtk-greeter "
+            "xorg-x11-server",
+            "service": "lightdm",
+            "dm_force": True,
+            "apt_dm": ("lightdm", "/usr/sbin/lightdm"),
+            "suse_dm": "lightdm",
+            "remote": "x11",
+            "suffix": "xfce",
+        },
+        # COSMIC n'existe que sur Fedora, Tumbleweed et Arch. Sur Arch,
+        # cosmic-session plutôt que le groupe « cosmic », qui ajoute
+        # l'assistant de premier démarrage ; vulkan-swrast est nommé, sans
+        # quoi --noconfirm prend le premier fournisseur de vulkan-driver,
+        # celui de NVIDIA. Tumbleweed n'a ni motif ni méta-paquet.
+        "cosmic": {
+            "label": "COSMIC",
+            "probe": "cosmic-session",
+            "dnf": "@cosmic-desktop-environment",
+            "dnf_exclude": "firewalld firewall-config",
+            "pacman": "cosmic-session vulkan-swrast",
+            "zypper": "cosmic-session cosmic-comp cosmic-greeter "
+            "cosmic-panel cosmic-applets cosmic-app-library cosmic-bg "
+            "cosmic-files cosmic-icons cosmic-idle cosmic-launcher "
+            "cosmic-notifications cosmic-osd cosmic-randr cosmic-screenshot "
+            "cosmic-settings cosmic-settings-daemon cosmic-term "
+            "cosmic-workspaces xdg-desktop-portal-cosmic greetd "
+            "greetd-branding-upstream",
+            "service": "cosmic-greeter",
+            "dm_force": True,
+            "first_login_done": ".config/cosmic-initial-setup-done",
+            "remote": "console",
+            "suffix": "cosmic",
+        },
+        # greetd et tuigreet en gestionnaire, configurés par
+        # _qemu_desktop_post_cmd. openSUSE exige un fournisseur de
+        # greetd-branding, et en choisirait un seul parmi plusieurs qui
+        # s'excluent : il est nommé. Arch n'a aucune police dans son image
+        # cloud, et kitty ne démarre pas sans.
+        "hyprland": {
+            "label": "Hyprland",
+            "probe": "Hyprland",
+            "apt": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
+            "greetd tuigreet",
+            "pacman": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
+            "greetd greetd-tuigreet ttf-dejavu",
+            "zypper": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
+            "greetd greetd-branding-upstream tuigreet",
+            "service": "greetd",
+            "dm_force": True,
+            "apt_dm": ("greetd", ""),
+            "remote": "wayvnc",
+            "suffix": "hyprland",
+        },
+        # dmenu n'est sur apt qu'un paquet virtuel de suckless-tools. Le
+        # groupe i3 de Fedora ne contient aucun terminal. Leap 16.0 n'a pas
+        # i3status, seulement i3status-rust, qui exige sa propre
+        # configuration : la barre y est laissée sans état.
+        "i3": {
+            "label": "i3",
+            "probe": "i3",
+            "apt": "i3-wm i3status i3lock suckless-tools xterm lightdm "
+            "lightdm-gtk-greeter dbus-x11",
+            "dnf": {
+                "*": "@i3-desktop-environment xterm",
+                "almalinux": "@base-x i3 i3status i3lock dmenu xterm "
+                "lightdm lightdm-gtk dbus-x11",
+                "rocky": "@base-x i3 i3status i3lock dmenu xterm "
+                "lightdm lightdm-gtk dbus-x11",
+            },
+            "dnf_exclude": {"*": "firewalld firewall-config"},
+            "pacman": "i3-wm i3status i3lock dmenu xterm ttf-dejavu lightdm "
+            "lightdm-gtk-greeter",
+            "zypper": {
+                "*": "i3 i3status i3lock dmenu xterm xorg-x11-server "
+                "lightdm lightdm-gtk-greeter",
+                "opensuse:16.0": "i3 i3lock dmenu xterm xorg-x11-server "
+                "lightdm lightdm-gtk-greeter",
+            },
+            "service": "lightdm",
+            "dm_force": True,
+            "apt_dm": ("lightdm", "/usr/sbin/lightdm"),
+            "suse_dm": "lightdm",
+            "remote": "x11",
+            "suffix": "i3",
+        },
     }
+
+    # Systèmes qui reçoivent chaque saveur : {saveur: {distribution:
+    # (versions…)}}, aux clés de version de deploy_qemu.DISTROS. Ce qui n'y
+    # figure pas n'en reçoit AUCUNE — Proxmox VE, NixOS, une distribution
+    # inconnue, une version ajoutée au catalogue sans y être inscrite ici.
+    #
+    # Ubuntu 25.10, en fin de vie, garde GNOME et Cinnamon sans en recevoir
+    # d'autre. EL10 n'a pas de serveur X : ni Cinnamon, ni Xfce, ni i3 ;
+    # EPEL 10 n'a pas Cinnamon. Plasma 6 manque à Ubuntu 24.04, Debian 12 et
+    # EL9 ; COSMIC à tout ce qui n'est ni Fedora, ni Tumbleweed, ni Arch ;
+    # Hyprland à Fedora, EL, Leap et Debian 12. Debian 13 ne le trouve que
+    # dans trixie-backports et ne le reçoit pas.
+    _QEMU_DESKTOP_RELEASES = {
+        "gnome": {
+            "ubuntu": ("24.04", "25.10", "26.04"),
+            "debian": ("12", "13"),
+            "fedora": ("44", "45"),
+            "almalinux": ("9", "10"),
+            "rocky": ("9", "10"),
+            "opensuse": ("16.0", "tumbleweed"),
+            "arch": ("latest",),
+        },
+        "cinnamon": {
+            "ubuntu": ("24.04", "25.10", "26.04"),
+            "debian": ("12", "13"),
+            "fedora": ("44", "45"),
+            "almalinux": ("9",),
+            "rocky": ("9",),
+            "opensuse": ("16.0", "tumbleweed"),
+            "arch": ("latest",),
+        },
+        "plasma": {
+            "ubuntu": ("26.04",),
+            "debian": ("13",),
+            "fedora": ("44", "45"),
+            "almalinux": ("10",),
+            "rocky": ("10",),
+            "opensuse": ("16.0", "tumbleweed"),
+            "arch": ("latest",),
+        },
+        "xfce": {
+            "ubuntu": ("24.04", "26.04"),
+            "debian": ("12", "13"),
+            "fedora": ("44", "45"),
+            "almalinux": ("9",),
+            "rocky": ("9",),
+            "opensuse": ("16.0", "tumbleweed"),
+            "arch": ("latest",),
+        },
+        "cosmic": {
+            "fedora": ("44", "45"),
+            "opensuse": ("tumbleweed",),
+            "arch": ("latest",),
+        },
+        "hyprland": {
+            "ubuntu": ("26.04",),
+            "opensuse": ("tumbleweed",),
+            "arch": ("latest",),
+        },
+        "i3": {
+            "ubuntu": ("24.04", "26.04"),
+            "debian": ("12", "13"),
+            "fedora": ("44", "45"),
+            "almalinux": ("9",),
+            "rocky": ("9",),
+            "opensuse": ("16.0", "tumbleweed"),
+            "arch": ("latest",),
+        },
+    }
+
+    # Accès distants qui ont besoin du mot de passe en clair dans l'invité.
+    _QEMU_REMOTE_NEEDS_LOGIN = ("grd",)
+
+    # Hyprland lit sa configuration en Lua à partir de la 0.55, en hyprlang
+    # avant. Les deux systèmes qui suivent la version courante l'ont en Lua.
+    _QEMU_HYPRLAND_LUA = (("arch", "latest"), ("opensuse", "tumbleweed"))
 
     # Ubuntu remplace trois applications par des paquets de TRANSITION dont le
     # postinst lance « snap install ». Or snapd est coupé juste avant, pour
@@ -558,27 +795,78 @@ class QemuInstallMixin:
         return {k: v["suffix"] for k, v in cls._QEMU_DESKTOP.items()}
 
     @classmethod
-    def _qemu_desktops_for(cls, distro):
-        """[clé de saveur] installable sur `distro`, dans l'ordre de la table.
+    def _qemu_split_desktop_suffix(cls, name):
+        """(nom sans suffixe, saveur) d'un nom de VM, ou (nom, None).
 
-        Une distribution inconnue reçoit toutes les saveurs : le filtre
-        écarte ce que la commande distante ne sait pas conduire, il ne
-        devine pas. NixOS, de famille « nix », n'en reçoit aucune."""
-        family = cls._QEMU_DISTRO_FAMILY.get(distro)
+        Inverse de deploy_form_lib.vm_name, qui ajoute « -<suffixe> » en
+        DERNIER, après l'architecture : c'est ce qui permet de retrouver le
+        système d'une VM graphique à partir de son nom."""
+        for key, de in cls._QEMU_DESKTOP.items():
+            tail = f"-{de['suffix']}"
+            if name and name.endswith(tail) and len(name) > len(tail):
+                return name[: -len(tail)], key
+        return name, None
+
+    @classmethod
+    def _qemu_desktops_for(cls, distro, version):
+        """[clé de saveur] installable sur (`distro`, `version`), dans
+        l'ordre de _QEMU_DESKTOP.
+
+        Fermé : un couple absent de _QEMU_DESKTOP_RELEASES, une distribution
+        vide ou inconnue, ne reçoit rien. Offrir une saveur que la commande
+        distante ne sait pas installer coûte une heure de déploiement qui
+        échoue à la fin."""
         return [
             k
-            for k, v in cls._QEMU_DESKTOP.items()
-            if family is None or family in v["families"]
+            for k in cls._QEMU_DESKTOP
+            if version
+            and version
+            in cls._QEMU_DESKTOP_RELEASES.get(k, {}).get(distro, ())
         ]
 
     @classmethod
-    def _qemu_apt_store_pkgs(cls, app_store, distro=""):
-        """Paquets apt à ajouter au bureau selon le magasin retenu.
+    def _qemu_desktops_by_release(cls):
+        """{distribution: {version: [saveurs]}} pour chaque couple qui reçoit
+        au moins une saveur : la table des formulaires, tirée de la même
+        fonction que la CLI. Un couple absent n'en reçoit aucune
+        (deploy_form_lib.desktops_for). Des clés imbriquées plutôt qu'un
+        couple : le contexte passe en JSON."""
+        table = {}
+        for par_distro in cls._QEMU_DESKTOP_RELEASES.values():
+            for d, versions in par_distro.items():
+                for v in versions:
+                    table.setdefault(d, {})[v] = cls._qemu_desktops_for(d, v)
+        return table
+
+    @staticmethod
+    def _qemu_desktop_value(de, key, distro="", version=""):
+        """Valeur d'un champ de saveur pour (`distro`, `version`).
+
+        Une chaîne vaut partout. Un dict se lit à la clé la plus précise :
+        « distro:version », puis « distro », puis « * ». None quand rien ne
+        s'applique."""
+        val = de.get(key)
+        if not isinstance(val, dict):
+            return val
+        for k in (f"{distro}:{version}", distro, "*"):
+            if k in val:
+                return val[k]
+        return None
+
+    @classmethod
+    def _qemu_apt_store_pkgs(cls, app_store, distro="", flavour="gnome"):
+        """Paquets apt à ajouter au bureau `flavour` selon le magasin retenu.
 
         La liste anti-snap ne vaut que pour les distributions à snap : sur
         Debian, elle installerait epiphany-browser et evolution à côté du
         firefox-esr que gnome-core recommande déjà. Une distribution vide
-        (inconnue) la garde, c'est le choix prudent."""
+        (inconnue) la garde, c'est le choix prudent.
+
+        evolution ne remplace thunderbird que pour GNOME et Cinnamon, dont
+        les paquets le recommandent ; Plasma écarte en plus le greffon snap
+        de Discover. Le greffon Flatpak est celui du magasin de la saveur :
+        GNOME Logiciels, Discover, ou aucun pour une saveur qui n'a pas de
+        magasin graphique."""
         if app_store == "snap":
             # On ne retire rien : Firefox arrivera en snap, comme sur une
             # Ubuntu ordinaire, et snapd est resté actif pour le servir.
@@ -586,10 +874,17 @@ class QemuInstallMixin:
         pkgs = ""
         if not distro or distro in cls.QEMU_SNAP_DISTROS:
             pkgs = cls._QEMU_APT_NO_SNAP
+            if flavour not in ("gnome", "cinnamon"):
+                pkgs = pkgs.replace(" evolution", "")
+            if flavour == "plasma":
+                pkgs += " plasma-discover-backend-snap-"
         if app_store == "flatpak":
-            # Le greffon donne à GNOME Logiciels la gestion des Flatpak.
             # Aucun « remote-add » ici : le dépôt reste un choix explicite.
-            pkgs += " flatpak gnome-software-plugin-flatpak"
+            pkgs += {
+                "gnome": " flatpak gnome-software-plugin-flatpak",
+                "cinnamon": " flatpak gnome-software-plugin-flatpak",
+                "plasma": " flatpak plasma-discover-backend-flatpak",
+            }.get(flavour, " flatpak")
         return pkgs.strip()
 
     # Accès distant des saveurs « x11 », par famille. Les saveurs « grd »
@@ -690,12 +985,10 @@ class QemuInstallMixin:
             # ERREUR, alors que son étape finale écrit encore l'autorité, les
             # variables et le sudoers : attendre l'unité, faute de quoi elles
             # arrivent après cette session, qui vivra sans elles.
-            + attente_cloud_final()
-            + "; "
+            + attente_cloud_final() + "; "
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
-            + cache_env_reload()
-            + "; "
+            + cache_env_reload() + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
             # est écrit par cloud-init lui aussi : mesuré sur une VM, la
             # session ssh est acceptée une seconde avant qu'il existe, donc
@@ -1151,7 +1444,8 @@ class QemuInstallMixin:
         )
 
     # Services PAM des gestionnaires d'affichage, qui n'ont aucun terminal où
-    # montrer un MOTD.
+    # montrer un MOTD. GDM en tête : la garde d'idempotence de
+    # _qemu_dm_motd_skip_cmd reconnaît la règle à « service in gdm- ».
     _QEMU_DM_PAM_SERVICES = (
         "gdm-password",
         "gdm-autologin",
@@ -1159,6 +1453,12 @@ class QemuInstallMixin:
         "gdm-smartcard",
         "lightdm",
         "lightdm-autologin",
+        "sddm",
+        "sddm-autologin",
+        "plasmalogin",
+        "plasmalogin-autologin",
+        "greetd",
+        "cosmic-greeter",
     )
 
     def _qemu_dm_motd_skip_cmd(self):
@@ -1246,7 +1546,12 @@ class QemuInstallMixin:
         )
 
     def _qemu_desktop_remote_cmd(
-        self, flavour="gnome", app_store="deb", distro="", keep_login=False
+        self,
+        flavour="gnome",
+        app_store="deb",
+        distro="",
+        version="",
+        keep_login=False,
     ):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -1254,38 +1559,71 @@ class QemuInstallMixin:
         distante et non par cloud-init, où ses 1 à 2 Go allongeraient un
         démarrage déjà long sans laisser la moindre trace dans le suivi.
 
-        `distro` (clé du catalogue) borne la liste anti-snap d'apt aux
-        distributions à snap ; vide, la liste anti-snap s'applique sans
-        condition.
+        `distro` et `version` (clés du catalogue) choisissent les lignes de
+        paquets de la saveur (_qemu_desktop_value) et bornent la liste
+        anti-snap d'apt aux distributions à snap ; vide, la liste anti-snap
+        s'applique sans condition. L'aiguillage par gestionnaire de paquets
+        reste fait dans l'invité.
 
         Un bureau qui ne s'installe pas fait échouer la commande ; un accès
-        distant qui ne se configure pas n'est qu'un avertissement.
+        distant qui ne se configure pas n'est qu'un avertissement. Une saveur
+        inconnue lève ValueError : elle n'est jamais remplacée par une autre.
 
         `keep_login` : le fichier du mot de passe du compte reste dans la
         VM (voir _qemu_grd_remote_cmd). Faux, le repli xrdp le retire aussi :
         xrdp passe par PAM et n'en a pas l'usage."""
-        de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
+        de = self._QEMU_DESKTOP.get(flavour) if flavour else None
+        if de is None:
+            raise ValueError(f"unknown desktop flavour: {flavour!r}")
         rem = self._QEMU_DESKTOP_REMOTE
         label = de["label"]
-        grd = de.get("remote") == "grd"
+        remote = de.get("remote")
+        grd = remote == "grd"
+        x11_remote = remote == "x11"
         pw_file = shlex.quote(VM_LOGIN_FILE)
         retire_pw = "" if keep_login else f"sudo rm -f {pw_file} || true; "
 
+        def line(key):
+            return self._qemu_desktop_value(de, key, distro, version)
+
         def x11(family):
             """Paquets d'accès distant à poser avec le bureau : ceux de la
-            table par famille pour une saveur X11, aucun pour « grd », dont
-            les paquets sont déjà dans la ligne du bureau."""
-            return "" if grd else " " + rem[family]["packages"]
+            table par famille pour une saveur X11, aucun ailleurs — les
+            paquets de « grd » sont déjà dans la ligne du bureau."""
+            return " " + rem[family]["packages"] if x11_remote else ""
 
+        def absent(gestionnaire):
+            """Branche d'un gestionnaire qui n'a pas de ligne pour la saveur :
+            la commande échoue en le disant."""
+            pas = t("no package line for this system")
+            return f'echo "   ❌ {label} ({gestionnaire}) : {pas}"; exit 1; '
+
+        service = line("service")
+        apt_line = line("apt")
+        apt_dm = de.get("apt_dm")
+        apt_pre = (
+            "echo 'shared/default-x-display-manager select "
+            f"{apt_dm[0]}' | sudo debconf-set-selections "
+            ">/dev/null 2>&1 || true; "
+            if apt_dm
+            else ""
+        )
+        apt_post = (
+            f"echo {apt_dm[1]} | sudo tee /etc/X11/default-display-manager "
+            ">/dev/null || true; "
+            if apt_dm and apt_dm[1]
+            else ""
+        )
         apt_pkgs = " ".join(
             p
             for p in (
-                de["apt"] + x11("apt"),
-                self._qemu_apt_store_pkgs(app_store, distro),
+                (apt_line or "") + x11("apt"),
+                self._qemu_apt_store_pkgs(app_store, distro, flavour),
             )
-            if p
+            if p.strip()
         )
-        fedora_envs = de.get("dnf_fedora", de["dnf_env"])
+        dnf_line = line("dnf")
+        fedora_envs = de.get("dnf_fedora", de.get("dnf_env", ""))
         fedora_x = (
             f"-x {de['dnf_fedora_exclude']}"
             if de.get("dnf_fedora_exclude")
@@ -1300,11 +1638,13 @@ class QemuInstallMixin:
             if done
             else ""
         )
+        if de.get("system_done"):
+            done_cmd += f"sudo touch {de['system_done']} || true; "
         no_env = t("No dnf graphical environment could be installed for")
         probe = de["probe"]
         # Une seule ligne, et un code non nul : la commande distante rend
         # alors l'échec au lieu d'annoncer un bureau qui n'existe pas.
-        absent = (
+        sonde_ko = (
             f'{{ echo "   ✗ {t("desktop not installed:")} {label}'
             f' ({probe} {t("missing")})"; exit 1; }}; '
         )
@@ -1314,12 +1654,62 @@ class QemuInstallMixin:
                 f"sudo dnf install -y {de['dnf_remote']} "
                 f'|| echo "   ⚠ {sans}"; '
             )
-        else:
+        elif x11_remote:
             sans = t("xrdp not installed; the VM console remains available")
             dnf_remote = (
                 f"sudo dnf install -y {rem['dnf']['packages']} "
                 f'|| echo "   ⚠ {sans}"; '
             )
+        else:
+            dnf_remote = ""
+        dnf_branch = (
+            self._qemu_dnf_line_cmd(
+                dnf_line, line("dnf_exclude"), label
+            )
+            if dnf_line
+            else (
+                (
+                    # Fedora d'un côté, les RHEL-likes de l'autre, lus dans
+                    # os-release.
+                    #
+                    # Fedora : son environnement propre, moins les paquets que
+                    # la saveur exclut (« dnf_fedora_exclude », « -x » de dnf).
+                    #
+                    # RHEL-likes : cascade d'environnements, le premier qui
+                    # existe gagne. Un environnement absent fait rendre 1 à dnf
+                    # sans rien installer, d'où le « || » plutôt qu'une
+                    # détection préalable.
+                    'if [ "$EL_OS" = fedora ]; then '
+                    f'EL_ENVS="{fedora_envs}"; EL_X="{fedora_x}"; '
+                    f'else EL_ENVS="{de["dnf_env"]}"; EL_X=""; fi; '
+                    "de_ok=0; "
+                    "for e in $EL_ENVS; do "
+                    'sudo dnf -y $EL_X group install "$e" '
+                    "&& { de_ok=1; break; }; done; "
+                    # Sans bureau, rien de ce qui suit n'a de sens : la commande
+                    # échoue, comme la branche apt quand son installation échoue.
+                    f'[ "$de_ok" = 1 ] || {{ echo "   ❌ {no_env} {label}"; '
+                    "exit 1; }; "
+                )
+                if de.get("dnf_env")
+                else absent("dnf")
+            )
+        )
+        pacman_line = line("pacman")
+        zypper_line = line("zypper")
+        suse_dm = (
+            "sudo update-alternatives --set default-displaymanager "
+            f"/usr/lib/X11/displaymanagers/{de['suse_dm']} "
+            ">/dev/null 2>&1 || true; "
+            if de.get("suse_dm")
+            else ""
+        )
+        enable = (
+            f"sudo systemctl enable --force {service} >/dev/null 2>&1 "
+            "|| true; "
+            if de.get("dm_force")
+            else f"sudo systemctl enable {service} >/dev/null 2>&1 || true; "
+        )
         return (
             f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
@@ -1342,58 +1732,56 @@ class QemuInstallMixin:
             # trouver le paquet », qui accuse le dépôt et non le verrou.
             f'{{ echo "   ⚠ {t("apt-get update never succeeded in 5 min (lock held, or nothing served)")}"; '
             "break; }; sleep 2; done; "
-            "sudo DEBIAN_FRONTEND=noninteractive "
-            "apt-get -o DPkg::Lock::Timeout=600 install -y "
-            f"{apt_pkgs}; "
-            "elif command -v dnf >/dev/null 2>&1; then "
+            + (
+                apt_pre + "sudo DEBIAN_FRONTEND=noninteractive "
+                "apt-get -o DPkg::Lock::Timeout=600 install -y "
+                f"{apt_pkgs}; " + apt_post
+                if apt_line
+                else absent("apt")
+            )
+            + "elif command -v dnf >/dev/null 2>&1; then "
             + self._qemu_epel_cmd()
-            # Fedora d'un côté, les RHEL-likes de l'autre, lus dans
-            # os-release (dans un sous-shell, pour ne pas semer ses variables
-            # dans la suite de la commande).
-            #
-            # Fedora : son environnement propre, moins les paquets que la
-            # saveur exclut (« dnf_fedora_exclude », « -x » de dnf).
-            #
-            # RHEL-likes : cascade d'environnements, le premier qui existe
-            # gagne. Un environnement absent fait rendre 1 à dnf sans rien
-            # installer, d'où le « || » plutôt qu'une détection préalable.
+            # Fedora ou RHEL-like, lu dans os-release (dans un sous-shell,
+            # pour ne pas semer ses variables dans la suite de la commande).
             + 'EL_OS=$(. /etc/os-release 2>/dev/null; echo "${ID:-}"); '
-            'if [ "$EL_OS" = fedora ]; then '
-            f'EL_ENVS="{fedora_envs}"; EL_X="{fedora_x}"; '
-            f'else EL_ENVS="{de["dnf_env"]}"; EL_X=""; fi; '
-            "de_ok=0; "
-            "for e in $EL_ENVS; do "
-            'sudo dnf -y $EL_X group install "$e" '
-            "&& { de_ok=1; break; }; done; "
-            # Sans bureau, rien de ce qui suit n'a de sens : la commande
-            # échoue, comme la branche apt quand son installation échoue.
-            f'[ "$de_ok" = 1 ] || {{ echo "   ❌ {no_env} {label}"; '
-            "exit 1; }; " + dnf_remote + "elif command -v pacman "
-            ">/dev/null 2>&1; then "
+            + dnf_branch
+            + dnf_remote
+            + "elif command -v pacman >/dev/null 2>&1; then "
             # Le verrou périmé est retiré par la préparation, qui fait
             # ensuite la mise à niveau complète : le bureau s'installe sur
             # un système à jour, jamais en mise à jour partielle.
-            + self._qemu_pacman_prepare_cmd()
-            + f"sudo pacman -S --needed --noconfirm {de['pacman']}"
-            f"{x11('pacman')}; "
-            "elif command -v zypper >/dev/null 2>&1; then "
-            "sudo zypper --non-interactive refresh || true; "
-            # « --auto-agree-with-licenses » appartient à la SOUS-COMMANDE
-            # install, pas aux options globales : placé avant, zypper répond
-            # « The flag --auto-agree-with-licenses is not known ».
-            "sudo zypper --non-interactive install "
-            f"--auto-agree-with-licenses {de['zypper']}{x11('zypper')}; "
-            "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
+            + (
+                self._qemu_pacman_prepare_cmd()
+                + f"sudo pacman -S --needed --noconfirm {pacman_line}"
+                f"{x11('pacman')}; "
+                if pacman_line
+                else absent("pacman")
+            )
+            + "elif command -v zypper >/dev/null 2>&1; then "
+            + (
+                "sudo zypper --non-interactive refresh || true; "
+                # « --auto-agree-with-licenses » appartient à la
+                # SOUS-COMMANDE install, pas aux options globales : placé
+                # avant, zypper répond « The flag --auto-agree-with-licenses
+                # is not known ».
+                "sudo zypper --non-interactive install "
+                f"--auto-agree-with-licenses {zypper_line}{x11('zypper')}; "
+                + suse_dm
+                if zypper_line
+                else absent("zypper")
+            )
+            + "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             # Le gestionnaire a pu rendre 0 sans poser le bureau : le binaire
             # du bureau tranche, pour toutes les familles, avant tout ce qui
             # suppose un bureau.
-            f"command -v {probe} >/dev/null 2>&1 || {absent}" + done_cmd
+            + f"command -v {probe} >/dev/null 2>&1 || {sonde_ko}"
+            + done_cmd
+            + self._qemu_desktop_post_cmd(flavour, distro, version)
             # Avant le démarrage du greeter : la première connexion compte.
             + self._qemu_dm_motd_skip_cmd()
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
-            + "sudo systemctl set-default graphical.target || true; "
-            f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
+            + "sudo systemctl set-default graphical.target || true; " + enable
             # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons :
             #
             #   - graphical.target est DÉJÀ atteinte quand le paquet arrive,
@@ -1406,8 +1794,8 @@ class QemuInstallMixin:
             # Sans ce démarrage, la console de la VM reste en mode texte
             # jusqu'au premier redémarrage, alors que l'écran est justement ce
             # qu'on vient chercher sur une VM graphique.
-            "if sudo systemctl start display-manager.service 2>/dev/null || "
-            f"sudo systemctl start {de['service']} 2>/dev/null; then "
+            + "if sudo systemctl start display-manager.service 2>/dev/null || "
+            f"sudo systemctl start {service} 2>/dev/null; then "
             f'echo "   {t("graphical session started")}"; '
             f'else echo "   ⚠ {t("graphical session not started; reboot the VM")}"; '
             "fi; "
@@ -1427,7 +1815,15 @@ class QemuInstallMixin:
                 + self._qemu_xrdp_fallback_cmd()
                 + "fi; "
                 if grd
-                else "EL_REM=; "
+                else (
+                    "EL_REM=; "
+                    if x11_remote
+                    # Une saveur Wayland sans serveur d'accès posé : la console
+                    # de l'hyperviseur est son seul écran.
+                    else "EL_REM=off; "
+                    f'echo "   {t("Remote desktop:")} '
+                    f'{t("none, the hypervisor console only")}"; '
+                )
             )
             + 'if [ "$EL_REM" = grd ]; then '
             f'echo "   {t("Remote desktop:")} RDP 3389 '
@@ -1464,16 +1860,133 @@ class QemuInstallMixin:
             # configure par utilisateur et n'a pas de service à activer
             # d'office. Il ouvre une session X11, que GNOME n'a plus.
             + (
-                ""
-                if grd
-                else "elif command -v vncserver >/dev/null 2>&1; then "
+                "elif command -v vncserver >/dev/null 2>&1; then "
                 f'echo "   {t("Remote desktop:")} VNC 5901 '
                 '(vncpasswd puis vncserver :1)"; '
                 + self._qemu_tunnel_hint(5901, "VNC")
+                if x11_remote
+                else ""
             )
             + "fi; "
-            + self._qemu_firewall_rdp_cmd()
+            + (self._qemu_firewall_rdp_cmd() if grd or x11_remote else "")
         )
+
+    def _qemu_dnf_line_cmd(self, pkgs, exclude, label):
+        """Bloc shell de la branche dnf d'une saveur à ligne « dnf ».
+
+        `pkgs` : environnements (« @… ») et paquets, en un seul
+        « dnf install ». `exclude` : paquets écartés par « -x » ; si dnf
+        refuse la transaction ainsi bornée — un groupe peut exiger un paquet
+        exclu —, elle est retentée sans eux. EPEL et CRB sont déjà activés,
+        pour toute la famille RHEL, par _qemu_epel_cmd en tête de la branche
+        dnf.
+
+        Un bureau qui ne s'installe pas fait échouer la commande."""
+        ko = t("No dnf graphical environment could be installed for")
+        x = " ".join(f"-x {p}" for p in (exclude or "").split())
+        retente = f"elif sudo dnf -y install {pkgs}; then :; " if x else ""
+        return (
+            f"if sudo dnf -y {x + ' ' if x else ''}install {pkgs}; "
+            "then :; "
+            + retente
+            + f'else echo "   ❌ {ko} {label}"; exit 1; fi; '
+        )
+
+    def _qemu_desktop_post_cmd(self, flavour, distro="", version=""):
+        """Bloc shell posé après les paquets d'une saveur, avant le
+        démarrage du gestionnaire d'affichage : ce que ses paquets ne
+        configurent pas seuls. Vide pour une saveur qui n'a besoin de rien.
+
+        i3 : ~/.config/i3/config copié de /etc/i3/config. L'assistant
+        i3-config-wizard, que la configuration système lance, s'arrête alors
+        sans rien demander ; sur Leap 16.0, qui n'a pas i3status, la barre
+        perd sa ligne status_command.
+
+        Hyprland : greetd lance tuigreet, qui ouvre start-hyprland (Hyprland
+        quand le lanceur manque). L'utilisateur et le terminal virtuel du
+        greeter sont relus dans la configuration livrée, qui diffère d'une
+        distribution à l'autre. La configuration de l'utilisateur, écrite
+        d'avance, évite celle qu'Hyprland génère avec son bandeau, désactive
+        le curseur matériel — invisible sur une carte virtio sans
+        accélération — et lie Super+Entrée à kitty. Hyprlang (.conf) ou Lua
+        (.lua) selon _QEMU_HYPRLAND_LUA.
+
+        Rejoué sur une VM qui a déjà la saveur, le bloc ne touche ni à une
+        configuration existante, ni à un greetd qui lance déjà tuigreet."""
+        if flavour == "i3":
+            cfg = '"$HOME/.config/i3/config"'
+            leap = (
+                f"sed -i '/^[[:space:]]*status_command/d' {cfg} "
+                "2>/dev/null || true; "
+                if (distro, version) == ("opensuse", "16.0")
+                else ""
+            )
+            return (
+                'mkdir -p "$HOME/.config/i3"; '
+                f"if [ ! -f {cfg} ] && [ -r /etc/i3/config ]; then "
+                f"cp /etc/i3/config {cfg}; fi; " + leap
+            )
+        if flavour == "hyprland":
+            lua = (distro, version) in self._QEMU_HYPRLAND_LUA
+            if lua:
+                nom = "hyprland.lua"
+                corps = (
+                    "hl.config({\n"
+                    "    cursor = { no_hardware_cursors = true },\n"
+                    "    misc = { force_default_wallpaper = 0, "
+                    "disable_hyprland_logo = true, "
+                    "disable_splash_rendering = true },\n"
+                    "    ecosystem = { no_update_news = true, "
+                    "no_donation_nag = true },\n"
+                    "})\n"
+                    'hl.bind("SUPER + Return", hl.dsp.exec_cmd("kitty"))\n'
+                )
+            else:
+                nom = "hyprland.conf"
+                corps = (
+                    "cursor {\n    no_hardware_cursors = true\n}\n"
+                    "misc {\n    disable_hyprland_logo = true\n"
+                    "    disable_splash_rendering = true\n}\n"
+                    "ecosystem {\n    no_update_news = true\n"
+                    "    no_donation_nag = true\n}\n"
+                    "$mod = SUPER\n"
+                    "bind = $mod, Return, exec, kitty\n"
+                    "bind = $mod SHIFT, E, exit,\n"
+                )
+            gc = "/etc/greetd/config.toml"
+
+            def cle(nom, valeur):
+                """Expression sed qui rend la valeur de la clé `nom` d'un
+                fichier TOML, captée par `valeur`."""
+                blanc = "[[:space:]]*"
+                return f"'s/^{blanc}{nom}{blanc}={blanc}{valeur}.*/\\1/p'"
+
+            sed_user = cle("user", '"\\(.*\\)"')
+            sed_vt = cle("vt", "\\([^[:space:]]*\\)")
+            greetd = (
+                "[terminal]\\nvt = %s\\n\\n[default_session]\\n"
+                'command = \\"tuigreet --time --cmd %s\\"\\n'
+                'user = \\"%s\\"\\n'
+            )
+            # Une ligne par argument : la commande distante reste sur une
+            # seule ligne, comme tout le reste du bloc.
+            lignes = " ".join(shlex.quote(x) for x in corps.splitlines())
+            return (
+                'mkdir -p "$HOME/.config/hypr"; '
+                f'[ -f "$HOME/.config/hypr/{nom}" ] || '
+                f"printf '%s\\n' {lignes} > \"$HOME/.config/hypr/{nom}\"; "
+                f"EL_GU=$(sed -n {sed_user} {gc} 2>/dev/null | sed -n 1p); "
+                f"EL_VT=$(sed -n {sed_vt} {gc} 2>/dev/null | sed -n 1p); "
+                # Une configuration qui lance déjà tuigreet a été écrite
+                # ici, ou par l'administrateur : elle reste telle quelle.
+                f"if ! grep -q tuigreet {gc} 2>/dev/null; then "
+                "EL_HS=start-hyprland; "
+                "command -v start-hyprland >/dev/null 2>&1 || EL_HS=Hyprland; "
+                f'printf "{greetd}" "${{EL_VT:-1}}" "$EL_HS" '
+                f'"${{EL_GU:-greeter}}" | sudo tee {gc} >/dev/null '
+                f'|| echo "   ⚠ {t("greetd not configured")}"; fi; '
+            )
+        return ""
 
     # ------------------------------------------------------------------ #
     # Outils de développement d'une VM graphique
@@ -1732,12 +2245,10 @@ class QemuInstallMixin:
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
             ],
-            # {distribution: [clé de saveur]} : les saveurs que la commande
-            # distante sait installer sur chacune. Une distribution absente
-            # de cette table les reçoit toutes (_qemu_desktops_for).
-            "desktops_by_distro": {
-                d: self._qemu_desktops_for(d) for d in self._QEMU_DISTRO_FAMILY
-            },
+            # {distribution: {version: [clé de saveur]}} : les saveurs que la
+            # commande distante sait installer sur chaque version. Un couple
+            # absent n'en reçoit aucune.
+            "desktops_by_release": self._qemu_desktops_by_release(),
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
             "desktop_min_ram_mb": self.QEMU_DESKTOP_MIN_RAM_MB,

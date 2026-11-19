@@ -1885,6 +1885,64 @@ class TestLeGuideDeConnexion(unittest.TestCase):
         )["remote"]
         self.assertIn("git/erplibre", avec)
 
+    def _outils_annonces(self, vm_desktop, spec_desktop=None):
+        """Outils que le guide annonce pour une VM Debian 13 x86_64 à qui le
+        parc demande les extensions GNOME et PyCharm. `vm_desktop` à None :
+        la VM ne porte pas la clé, la saveur du parc vaut pour elle."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._pve_ssh = lambda *a, **k: (0, "")
+        mod = todo._qemu_import_module()
+        vus = {}
+
+        def guide_files(args):
+            vus["args"] = args
+            return []
+
+        vm = {
+            "name": "vm-a",
+            "distro": "debian",
+            "version": "13",
+            "arch": "amd64",
+            "install_cmd": "",
+        }
+        if vm_desktop is not None:
+            vm["desktop"] = vm_desktop
+        spec = {"user": "erplibre", "vm_tools": ["gnome_ext", "pycharm"]}
+        if spec_desktop is not None:
+            spec["desktop"] = spec_desktop
+        with (
+            mock.patch.object(mod, "guide_files", guide_files),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._pve_write_guide("x", vm, spec, mod)
+        return vus["args"]
+
+    def test_the_tools_are_filtered_on_the_flavour_itself(self):
+        """Les extensions GNOME ne valent que sous GNOME : le filtre reçoit
+        la saveur, pas seulement « graphique ou non »."""
+        gnome = self._outils_annonces("gnome")
+        self.assertTrue(gnome.desktop)
+        self.assertEqual(["gnome_ext", "pycharm"], gnome.vm_tools.split(","))
+        xfce = self._outils_annonces("xfce")
+        self.assertEqual(["pycharm"], xfce.vm_tools.split(","))
+        self.assertEqual("", self._outils_annonces("").vm_tools)
+
+    def test_a_vm_without_its_own_flavour_takes_the_fleet_one(self):
+        args = self._outils_annonces(None, spec_desktop="gnome")
+        self.assertTrue(args.desktop)
+        self.assertEqual(["gnome_ext", "pycharm"], args.vm_tools.split(","))
+        # Une VM qui porte « » reste serveur malgré le parc.
+        serveur = self._outils_annonces("", spec_desktop="gnome")
+        self.assertFalse(serveur.desktop)
+        self.assertEqual("", serveur.vm_tools)
+
     def test_a_failure_is_said_not_swallowed(self):
         import contextlib
         import io
@@ -1919,8 +1977,9 @@ class TestLeSuivi(unittest.TestCase):
     côté QEMU/KVM après le même rapport.
     """
 
-    def _apres_creation(self, install, monitor):
-        """Rejoue l'épilogue du déploiement et dit quelle voie a été prise."""
+    def _apres_creation(self, install, monitor, vm_extra=None):
+        """Rejoue l'épilogue du déploiement et dit quelle voie a été prise.
+        `vm_extra` complète la VM de la spec."""
         import sys
 
         sys.argv = ["todo.py"]
@@ -1931,9 +1990,12 @@ class TestLeSuivi(unittest.TestCase):
         todo._qemu_install_erplibre_monitored = lambda *a, **k: vus.setdefault(
             "tableau", a
         )
-        todo._qemu_install_erplibre_vm = lambda *a, **k: vus.setdefault(
-            "serie", a
-        )
+
+        def serie(*a, **k):
+            vus.setdefault("serie", a)
+            vus.setdefault("serie_kw", k)
+
+        todo._qemu_install_erplibre_vm = serie
         todo._write_ssh_config_entry = lambda *a, **k: None
         todo._ssh_private_key = lambda k: None
         todo._pve_guest_ip = lambda vmid, attente=120: ""
@@ -1952,6 +2014,7 @@ class TestLeSuivi(unittest.TestCase):
                     "vmid": 100,
                     "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
                     "install_cmd": "",
+                    **(vm_extra or {}),
                 }
             ],
             "add_ssh_config": False,
@@ -1980,6 +2043,23 @@ class TestLeSuivi(unittest.TestCase):
         )
         self.assertIn("serie", vus)
         self.assertNotIn("tableau", vus)
+
+    def test_the_serial_path_knows_the_vm_from_the_spec(self):
+        """Sans suivi, l'installation reçoit (distro, version, arch) de la
+        spec : virsh ne connaît pas un domaine posé sur un Proxmox, et le
+        bloc du bureau dépend de la version."""
+        vus = self._apres_creation(
+            install={"branch": "develop", "cmd": "make x", "label": "X"},
+            monitor=False,
+            vm_extra={
+                "distro": "debian",
+                "version": "13",
+                "arch": "arm64",
+                "desktop": "plasma",
+            },
+        )
+        self.assertEqual(("debian", "13", "arm64"), vus["serie_kw"]["meta"])
+        self.assertEqual("plasma", vus["serie_kw"]["desktop"])
 
     def test_unticked_and_nothing_to_install_does_nothing(self):
         self.assertEqual(self._apres_creation(install=None, monitor=False), {})

@@ -39,6 +39,7 @@ sys.argv = ["todo.py"]
 from script.todo.deploy_form_lib import (  # noqa: E402
     VM_LOGIN_FILE,
     VM_LOGIN_READ_CMD,
+    vm_name,
 )
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -50,9 +51,15 @@ DISTROS = ("", "ubuntu", "debian", "fedora", "almalinux", "arch", "opensuse")
 SONDE = "Zq7sondeXv"
 
 
-def _cmd(flavour="gnome", app_store="deb", distro="", keep_login=False):
+def _cmd(
+    flavour="gnome", app_store="deb", distro="", keep_login=False, version=""
+):
     return TODO.__new__(TODO)._qemu_desktop_remote_cmd(
-        flavour, app_store, distro=distro, keep_login=keep_login
+        flavour,
+        app_store,
+        distro=distro,
+        version=version,
+        keep_login=keep_login,
     )
 
 
@@ -91,6 +98,7 @@ class _Invite:
         "awk",
         "cat",
         "chmod",
+        "cp",
         "cut",
         "date",
         "dirname",
@@ -102,6 +110,7 @@ class _Invite:
         "sh",
         "sleep",
         "tail",
+        "tee",
         "test",
         "touch",
     )
@@ -140,6 +149,10 @@ class _Invite:
         self.stub("install")
         self.stub("openssl")
         self.stub("reflector")
+        # Le binaire de chaque bureau, que la commande cherche une fois les
+        # paquets posés : les faux gestionnaires ne l'apportent pas.
+        for sonde in {d["probe"] for d in TODO._QEMU_DESKTOP.values()}:
+            self.stub(sonde, log=False)
         self.stub("systemctl")
         # Les binaires que le bloc sonde après l'installation : les
         # doublures des gestionnaires de paquets ne posent rien, l'invité
@@ -223,11 +236,36 @@ class _Invite:
             "exit 0",
         )
 
+    # Fichiers système que le bloc écrit : redirigés sous le dossier du
+    # test, où chaque test peut les relire. Sans cela, un lancement en root
+    # écrirait le /etc de la machine qui exécute les tests.
+    ETC = (
+        "/etc/X11/default-display-manager",
+        "/etc/plasma-setup-done",
+        "/etc/greetd/config.toml",
+        "/etc/i3/config",
+        "/etc/pam.d/system-login",
+    )
+
+    def etc(self, chemin):
+        """Chemin, sous le dossier du test, qui remplace `chemin`."""
+        return self.tmp / "etc" / chemin.removeprefix("/etc/")
+
     def run(self, cmd, os_id=""):
         cmd = cmd.replace(VM_LOGIN_FILE, str(self.pw_file))
+        for chemin in self.ETC:
+            self.etc(chemin).parent.mkdir(parents=True, exist_ok=True)
+            cmd = cmd.replace(chemin, str(self.etc(chemin)))
         if os_id:
             release = self.tmp / "os-release"
-            release.write_text(f"ID={os_id}\n")
+            # ID_LIKE comme les vraies AlmaLinux et Rocky : la famille RHEL
+            # s'y reconnaît (_qemu_epel_cmd).
+            like = (
+                'ID_LIKE="rhel centos fedora"\n'
+                if os_id in ("almalinux", "rocky")
+                else ""
+            )
+            release.write_text(f"ID={os_id}\n{like}")
             cmd = cmd.replace("/etc/os-release", str(release))
         res = subprocess.run(
             ["/bin/bash", "-c", "set -e; " + cmd],
@@ -347,26 +385,178 @@ class TestAntiSnapList(unittest.TestCase):
     def test_snap_adds_nothing(self):
         self.assertEqual("", TODO._qemu_apt_store_pkgs("snap", "ubuntu"))
 
+    def test_evolution_only_where_thunderbird_is_recommended(self):
+        for flavour in ("gnome", "cinnamon"):
+            self.assertIn(
+                "evolution",
+                TODO._qemu_apt_store_pkgs("deb", "ubuntu", flavour).split(),
+            )
+        for flavour in ("plasma", "xfce", "hyprland", "i3"):
+            pkgs = TODO._qemu_apt_store_pkgs("deb", "ubuntu", flavour).split()
+            self.assertNotIn("evolution", pkgs, flavour)
+            self.assertIn("firefox-", pkgs, flavour)
+            self.assertIn("epiphany-browser", pkgs, flavour)
+
+    def test_plasma_keeps_discover_away_from_snap(self):
+        self.assertIn(
+            "plasma-discover-backend-snap-",
+            TODO._qemu_apt_store_pkgs("deb", "ubuntu", "plasma").split(),
+        )
+
+    def test_the_flatpak_plugin_is_the_flavour_store(self):
+        par_saveur = {
+            "gnome": "flatpak gnome-software-plugin-flatpak",
+            "plasma": "flatpak plasma-discover-backend-flatpak",
+            "i3": "flatpak",
+        }
+        for flavour, attendu in par_saveur.items():
+            self.assertEqual(
+                attendu,
+                TODO._qemu_apt_store_pkgs("flatpak", "debian", flavour),
+            )
+
     def test_the_old_call_is_unchanged(self):
         self.assertEqual(
             TODO._QEMU_APT_NO_SNAP, TODO._qemu_apt_store_pkgs("deb")
         )
 
 
-class TestDesktopsForDistro(unittest.TestCase):
-    def test_nixos_gets_none(self):
-        self.assertEqual([], TODO._qemu_desktops_for("nixos"))
+class TestDesktopsForRelease(unittest.TestCase):
+    """Les saveurs offertes, par couple (distribution, version)."""
 
-    def test_the_four_families_get_both(self):
-        for distro in ("ubuntu", "debian", "fedora", "arch", "opensuse"):
+    def test_what_is_not_listed_gets_nothing(self):
+        for distro, version in (
+            ("nixos", "26.05"),
+            ("proxmox", "9"),
+            ("inconnue", "1"),
+            ("ubuntu", ""),
+            ("", ""),
+            ("ubuntu", "99.04"),
+        ):
             self.assertEqual(
-                ["gnome", "cinnamon"], TODO._qemu_desktops_for(distro), distro
+                [], TODO._qemu_desktops_for(distro, version), (distro, version)
             )
 
-    def test_an_unknown_distro_gets_all(self):
+    def test_an_end_of_life_release_keeps_only_the_first_two(self):
         self.assertEqual(
-            list(TODO._QEMU_DESKTOP), TODO._qemu_desktops_for("inconnue")
+            ["gnome", "cinnamon"], TODO._qemu_desktops_for("ubuntu", "25.10")
         )
+
+    def test_el10_has_no_x_server_desktop(self):
+        for distro in ("almalinux", "rocky"):
+            self.assertEqual(
+                ["gnome", "plasma"], TODO._qemu_desktops_for(distro, "10")
+            )
+            self.assertEqual(
+                ["gnome", "cinnamon", "xfce", "i3"],
+                TODO._qemu_desktops_for(distro, "9"),
+            )
+
+    def test_the_rolling_releases_get_every_flavour(self):
+        tout = list(TODO._QEMU_DESKTOP)
+        self.assertEqual(tout, TODO._qemu_desktops_for("arch", "latest"))
+        self.assertEqual(
+            tout, TODO._qemu_desktops_for("opensuse", "tumbleweed")
+        )
+
+    def test_the_order_is_the_table_order(self):
+        self.assertEqual(
+            ["gnome", "cinnamon", "plasma", "xfce", "hyprland", "i3"],
+            TODO._qemu_desktops_for("ubuntu", "26.04"),
+        )
+
+    def test_every_listed_release_exists_in_the_catalogue(self):
+        """Une version mal orthographiée dans la table masquerait la saveur
+        sans erreur : chaque version doit être une clé de DISTROS."""
+        from script.qemu import deploy_qemu
+
+        self.assertEqual(
+            set(TODO._QEMU_DESKTOP), set(TODO._QEMU_DESKTOP_RELEASES)
+        )
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            for distro, versions in par_distro.items():
+                for v in versions:
+                    self.assertIn(
+                        v, deploy_qemu.DISTROS[distro][0], (flavour, distro)
+                    )
+
+    def test_the_form_table_says_the_same_as_the_cli(self):
+        table = TODO._qemu_desktops_by_release()
+        for distro, par_version in table.items():
+            for version, saveurs in par_version.items():
+                self.assertEqual(
+                    TODO._qemu_desktops_for(distro, version), saveurs
+                )
+        self.assertNotIn("nixos", table)
+        self.assertNotIn("proxmox", table)
+
+    def test_every_offered_pair_has_a_package_line(self):
+        """Ce qui est offert sait s'installer : une ligne de paquets pour le
+        gestionnaire de la distribution."""
+        o = TODO.__new__(TODO)
+        cle = {"apt": "apt", "pacman": "pacman", "zypper": "zypper"}
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            de = TODO._QEMU_DESKTOP[flavour]
+            for distro, versions in par_distro.items():
+                fam = TODO._QEMU_DISTRO_FAMILY[distro]
+                for v in versions:
+                    with self.subTest(f=flavour, d=distro, v=v):
+                        if fam == "dnf":
+                            self.assertTrue(
+                                o._qemu_desktop_value(de, "dnf", distro, v)
+                                or de.get("dnf_env")
+                            )
+                        else:
+                            self.assertTrue(
+                                o._qemu_desktop_value(de, cle[fam], distro, v)
+                            )
+
+
+class TestFlavourField(unittest.TestCase):
+    def test_the_most_precise_key_wins(self):
+        de = {"k": {"*": "a", "opensuse": "b", "opensuse:16.0": "c"}}
+        val = TODO._qemu_desktop_value
+        self.assertEqual("c", val(de, "k", "opensuse", "16.0"))
+        self.assertEqual("b", val(de, "k", "opensuse", "tumbleweed"))
+        self.assertEqual("a", val(de, "k", "arch", "latest"))
+        self.assertEqual("a", val(de, "k"))
+
+    def test_a_string_holds_everywhere_and_nothing_is_none(self):
+        self.assertEqual("x", TODO._qemu_desktop_value({"k": "x"}, "k", "a"))
+        self.assertIsNone(TODO._qemu_desktop_value({}, "k", "a"))
+        self.assertIsNone(
+            TODO._qemu_desktop_value({"k": {"fedora": "x"}}, "k", "arch")
+        )
+
+
+class TestNameSuffix(unittest.TestCase):
+    def test_every_flavour_round_trips(self):
+        for flavour, de in TODO._QEMU_DESKTOP.items():
+            nom = vm_name(
+                "erplibre-ubuntu-2604", flavour, TODO._qemu_desktop_suffixes()
+            )
+            self.assertEqual(
+                ("erplibre-ubuntu-2604", flavour),
+                TODO._qemu_split_desktop_suffix(nom),
+            )
+
+    def test_a_server_name_has_no_flavour(self):
+        self.assertEqual(
+            ("erplibre-debian-13", None),
+            TODO._qemu_split_desktop_suffix("erplibre-debian-13"),
+        )
+        self.assertEqual(("", None), TODO._qemu_split_desktop_suffix(""))
+
+    def test_the_suffixes_are_distinct(self):
+        suffixes = list(TODO._qemu_desktop_suffixes().values())
+        self.assertEqual(len(suffixes), len(set(suffixes)))
+
+
+class TestUnknownFlavour(unittest.TestCase):
+    def test_it_is_refused_not_replaced_by_gnome(self):
+        for flavour in ("kde", "", None, True):
+            with self.assertRaises(ValueError, msg=repr(flavour)):
+                _cmd(flavour)
 
 
 class TestRemoteAccessText(unittest.TestCase):
@@ -446,6 +636,21 @@ class TestArchUpgrade(unittest.TestCase):
 
 
 class TestValidShell(unittest.TestCase):
+    def test_every_offered_release_is_valid_shell(self):
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            for distro, versions in par_distro.items():
+                for version in versions:
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        res = subprocess.run(
+                            ["bash", "-n"],
+                            input=_cmd(
+                                flavour, "deb", distro, version=version
+                            ),
+                            capture_output=True,
+                            text=True,
+                        )
+                        self.assertEqual(0, res.returncode, res.stderr)
+
     def test_every_flavour_and_distro_is_valid_shell(self):
         for flavour in TODO._QEMU_DESKTOP:
             for distro in DISTROS:
@@ -900,6 +1105,393 @@ class TestItRuns(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertIn("VNC 5901", out)
         self.assertFalse(any("grdctl" in ligne for ligne in log))
+
+
+class TestNewFlavoursRun(unittest.TestCase):
+    """Les saveurs ajoutées à GNOME et Cinnamon, exécutées sur un invité
+    simulé : ce que chaque gestionnaire installe, le gestionnaire
+    d'affichage retenu et ce que la saveur configure avant son démarrage."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vm = _Invite(self._tmp.name)
+
+    def _xrdp_apt(self):
+        self.vm.stub(
+            "apt-get",
+            f'case " $* " in *" xrdp "*) printf "#!/bin/bash\\nexit 0\\n" '
+            f"> {self.vm.bin}/xrdp; chmod +x {self.vm.bin}/xrdp;; esac",
+        )
+
+    # --- dnf ----------------------------------------------------------- #
+
+    def test_fedora_plasma_line_dm_and_first_run_marker(self):
+        self.vm.stub("dnf")
+        cmd = _cmd("plasma", distro="fedora", version="44")
+        rc, out, log = self.vm.run(cmd, "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "dnf -y -x firewalld -x firewall-config install "
+            "@kde-desktop-environment",
+            log,
+        )
+        self.assertFalse(any("epel-release" in l for l in log), log)
+        self.assertIn("systemctl enable --force plasmalogin", log)
+        self.assertTrue(self.vm.etc("/etc/plasma-setup-done").exists())
+        # touch est un vrai outil de l'invité simulé : l'ordre se lit dans
+        # la commande.
+        self.assertLess(
+            cmd.index("sudo touch /etc/plasma-setup-done"),
+            cmd.index("systemctl start display-manager"),
+        )
+
+    def test_el_enables_epel_and_crb_before_the_desktop(self):
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y epel-release"),
+            _indice(log, "crb enable"),
+        )
+        self.assertLess(
+            _indice(log, "crb enable"),
+            _indice(log, "install @kde-desktop-environment"),
+        )
+
+    def test_a_refused_exclusion_is_retried_without_it(self):
+        self.vm.stub("dnf", 'case "$*" in *" -x "*) exit 1;; esac')
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="45"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf -y install @xfce-desktop-environment", log)
+
+    def test_a_desktop_dnf_cannot_install_fails_the_command(self):
+        self.vm.stub("dnf", 'case "$*" in *@*) exit 1;; esac')
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(1, rc, out)
+        self.assertIn("❌", out)
+        self.assertFalse(any("set-default" in l for l in log), log)
+
+    def test_el9_cinnamon_is_a_package_list_and_xrdp_only_warns(self):
+        self.vm.stub("dnf", 'case "$*" in *xrdp*) exit 1;; esac')
+        self.vm.stub("crb")
+        cmd = _cmd("cinnamon", distro="rocky", version="9").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "rocky")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "dnf -y install @base-x cinnamon lightdm lightdm-gtk dbus-x11", log
+        )
+        self.assertFalse(any("group install" in l for l in log), log)
+        self.assertIn("⚠", out)
+
+    def test_every_el_pair_runs_its_own_line_after_epel(self):
+        """Chaque saveur offerte sur AlmaLinux et Rocky, exécutée : EPEL et
+        CRB d'abord, puis la ligne propre à EL — jamais l'environnement de
+        Fedora ni la cascade de groupes, absents d'EPEL."""
+        attendus = {
+            ("cinnamon", "9"): "-y install @base-x cinnamon lightdm",
+            ("xfce", "9"): "-y -x gdm install @base-x @xfce-desktop lightdm",
+            ("i3", "9"): "-y -x firewalld -x firewall-config install "
+            "@base-x i3 i3status",
+            ("plasma", "10"): "-y -x firewalld -x firewall-config install "
+            "@kde-desktop-environment",
+        }
+        for distro in ("almalinux", "rocky"):
+            for version in ("9", "10"):
+                offertes = TODO._qemu_desktops_for(distro, version)
+                for flavour in offertes:
+                    if flavour == "gnome":
+                        continue
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        self.vm = _Invite(
+                            self._tmp_for(f"{flavour}-{distro}-{version}")
+                        )
+                        self.vm.stub("dnf")
+                        self.vm.stub("crb")
+                        cmd = _cmd(
+                            flavour, distro=distro, version=version
+                        ).replace("/usr/bin/crb", "crb")
+                        rc, out, log = self.vm.run(cmd, distro)
+                        self.assertEqual(0, rc, out)
+                        ligne = attendus[(flavour, version)]
+                        self.assertLess(
+                            _indice(log, "install -y epel-release"),
+                            _indice(log, ligne),
+                        )
+                        self.assertFalse(
+                            any("group install" in l for l in log), log
+                        )
+
+    def test_each_flavour_enables_its_own_display_manager(self):
+        """Le gestionnaire d'affichage activé, pour chaque couple offert :
+        plasma-login-manager là où l'environnement de Plasma l'impose."""
+        plasmalogin = ("fedora", "almalinux", "rocky", "arch")
+        attendu = {
+            "xfce": lambda d: "lightdm",
+            "i3": lambda d: "lightdm",
+            "cosmic": lambda d: "cosmic-greeter",
+            "hyprland": lambda d: "greetd",
+            "plasma": lambda d: "plasmalogin" if d in plasmalogin else "sddm",
+        }
+        for flavour, dm in attendu.items():
+            for distro, versions in TODO._QEMU_DESKTOP_RELEASES[
+                flavour
+            ].items():
+                for version in versions:
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        cmd = _cmd(flavour, distro=distro, version=version)
+                        self.assertIn(
+                            f"systemctl enable --force {dm(distro)} ", cmd
+                        )
+
+    def test_fedora_cinnamon_keeps_its_group(self):
+        self.vm.stub("dnf")
+        rc, out, log = self.vm.run(
+            _cmd("cinnamon", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf -y group install cinnamon-desktop", log)
+        self.assertFalse(any("epel-release" in l for l in log), log)
+
+    # --- apt ----------------------------------------------------------- #
+
+    def test_apt_plasma_preselects_sddm(self):
+        self.vm.stub("debconf-set-selections", 'cat >> "$LOG"')
+        self._xrdp_apt()
+        cmd = _cmd("plasma", distro="ubuntu", version="26.04")
+        rc, out, log = self.vm.run(cmd)
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "shared/default-x-display-manager select sddm"),
+            _indice(log, "install -y kde-plasma-desktop sddm"),
+        )
+        self.assertEqual(
+            "/usr/bin/sddm\n",
+            self.vm.etc("/etc/X11/default-display-manager").read_text(),
+        )
+        self.assertIn("systemctl enable --force sddm", log)
+
+    def test_a_flavour_apt_cannot_install_fails_the_command(self):
+        self.vm.stub("apt-get")
+        rc, out, log = self.vm.run(_cmd("cosmic", distro="fedora"))
+        self.assertEqual(1, rc, out)
+        self.assertIn("❌", out)
+        self.assertFalse(any("install -y" in l for l in log), log)
+
+    def test_xfce_gets_xrdp_and_announces_rdp(self):
+        self._xrdp_apt()
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "install -y xfce4 xfce4-goodies lightdm lightdm-gtk-greeter "
+            "dbus-x11 xrdp",
+            " ".join(log),
+        )
+        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("RDP 3389", out)
+        self.assertEqual(
+            "/usr/sbin/lightdm\n",
+            self.vm.etc("/etc/X11/default-display-manager").read_text(),
+        )
+
+    def test_hyprland_on_apt_leaves_the_display_manager_file_alone(self):
+        self.vm.stub("apt-get")
+        rc, out, _log = self.vm.run(
+            _cmd("hyprland", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(
+            self.vm.etc("/etc/X11/default-display-manager").exists()
+        )
+
+    def test_gnome_keeps_a_plain_enable(self):
+        self.vm.stub("apt-get")
+        self.vm.grdctl()
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("systemctl enable gdm", log)
+        self.assertFalse(any("enable --force" in l for l in log), log)
+
+    # --- pacman et zypper ---------------------------------------------- #
+
+    def test_arch_cosmic_names_its_vulkan_driver(self):
+        self.vm.stub("pacman")
+        rc, out, log = self.vm.run(
+            _cmd("cosmic", distro="arch", version="latest")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "pacman -S --needed --noconfirm cosmic-session vulkan-swrast", log
+        )
+        self.assertIn("systemctl enable --force cosmic-greeter", log)
+        self.assertTrue(
+            (self.vm.home / ".config/cosmic-initial-setup-done").exists()
+        )
+
+    def test_zypper_plasma_sets_the_display_manager_alternative(self):
+        self.vm.stub("zypper")
+        self.vm.stub("update-alternatives")
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro="opensuse", version="tumbleweed")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "patterns-kde-kde_plasma sddm-qt6"),
+            _indice(
+                log,
+                "update-alternatives --set default-displaymanager "
+                "/usr/lib/X11/displaymanagers/sddm",
+            ),
+        )
+
+    def test_leap_i3_has_no_i3status(self):
+        self.vm.stub("zypper")
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        ligne = log[_indice(log, "zypper --non-interactive install")]
+        self.assertNotIn("i3status", ligne)
+        self.assertIn(" i3 ", ligne)
+
+    # --- configuration propre à la saveur ------------------------------ #
+
+    def _i3(self, distro, version, existant=None):
+        etc = self.vm.etc("/etc/i3/config")
+        etc.parent.mkdir(parents=True, exist_ok=True)
+        etc.write_text("bar {\n    status_command i3status\n}\n")
+        cfg = self.vm.home / ".config/i3/config"
+        if existant is not None:
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(existant)
+        self.vm.stub("zypper")
+        self.vm.stub("pacman")
+        rc, out, _log = self.vm.run(_cmd("i3", distro=distro, version=version))
+        self.assertEqual(0, rc, out)
+        return cfg.read_text()
+
+    def test_i3_gets_a_user_config_so_the_wizard_stays_quiet(self):
+        self.assertIn("status_command i3status", self._i3("arch", "latest"))
+
+    def test_leap_i3_config_drops_the_status_line(self):
+        self.assertNotIn("status_command", self._i3("opensuse", "16.0"))
+
+    def test_an_existing_i3_config_is_kept(self):
+        self.assertEqual("mien\n", self._i3("arch", "latest", "mien\n"))
+
+    GESTIONNAIRE = {
+        "ubuntu": "apt-get",
+        "arch": "pacman",
+        "opensuse": "zypper",
+    }
+
+    def _hyprland(self, distro, version, lanceur=True, greetd=None):
+        """Hyprland sur un invité qui n'a QUE le gestionnaire de paquets de
+        `distro` : c'est sa branche, et sa ligne de paquets, qui tournent."""
+        gc = self.vm.etc("/etc/greetd/config.toml")
+        gc.parent.mkdir(parents=True, exist_ok=True)
+        gc.write_text(
+            greetd
+            or "[terminal]\nvt = 7\n\n[default_session]\n"
+            'command = "agreety --cmd /bin/sh"\nuser = "_greetd"\n'
+        )
+        self.vm.stub(self.GESTIONNAIRE[distro])
+        if lanceur:
+            self.vm.stub("start-hyprland")
+        rc, out, log = self.vm.run(
+            _cmd("hyprland", distro=distro, version=version)
+        )
+        self.assertEqual(0, rc, out)
+        return gc.read_text(), out, log
+
+    def test_hyprland_installs_its_greeter_on_each_system(self):
+        attendus = {
+            ("ubuntu", "26.04"): ("apt-get", "greetd tuigreet"),
+            ("arch", "latest"): ("pacman", "greetd greetd-tuigreet"),
+            ("opensuse", "tumbleweed"): (
+                "zypper",
+                "greetd greetd-branding-upstream tuigreet",
+            ),
+        }
+        for (distro, version), (pm, paquets) in attendus.items():
+            with self.subTest(distro):
+                self.vm = _Invite(self._tmp_for(distro))
+                _conf, _out, log = self._hyprland(distro, version)
+                ligne = " ".join(l for l in log if l.startswith(pm))
+                self.assertIn(paquets, ligne)
+                self.assertIn("hyprland xdg-desktop-portal-hyprland", ligne)
+
+    def test_a_rerun_keeps_the_existing_configurations(self):
+        mien = (
+            '[terminal]\nvt = 1\n\n[initial_session]\nuser = "x"\n'
+            '[default_session]\ncommand = "tuigreet --cmd sway"\n'
+        )
+        hypr = self.vm.home / ".config/hypr/hyprland.lua"
+        hypr.parent.mkdir(parents=True)
+        hypr.write_text("-- mien\n")
+        conf, _out, _log = self._hyprland("arch", "latest", greetd=mien)
+        self.assertEqual(mien, conf)
+        self.assertEqual("-- mien\n", hypr.read_text())
+
+    def test_hyprland_greetd_keeps_the_shipped_user_and_vt(self):
+        conf, _out, log = self._hyprland("ubuntu", "26.04")
+        self.assertIn('user = "_greetd"', conf)
+        self.assertIn("vt = 7", conf)
+        self.assertIn('command = "tuigreet --time --cmd start-hyprland"', conf)
+        self.assertIn("systemctl enable --force greetd", log)
+
+    def test_hyprland_without_its_launcher_starts_the_compositor(self):
+        conf, _out, _log = self._hyprland("ubuntu", "26.04", lanceur=False)
+        self.assertIn('--cmd Hyprland"', conf)
+
+    def test_hyprland_config_format_follows_the_release(self):
+        self._hyprland("ubuntu", "26.04")
+        hypr = self.vm.home / ".config/hypr"
+        conf = (hypr / "hyprland.conf").read_text()
+        self.assertIn("no_hardware_cursors = true", conf)
+        self.assertIn("bind = $mod, Return, exec, kitty", conf)
+        self.assertFalse((hypr / "hyprland.lua").exists())
+
+        self.vm = _Invite(self._tmp_for("arch"))
+        self._hyprland("arch", "latest")
+        hypr = self.vm.home / ".config/hypr"
+        lua = (hypr / "hyprland.lua").read_text()
+        self.assertIn("no_hardware_cursors = true", lua)
+        self.assertIn('hl.dsp.exec_cmd("kitty")', lua)
+        self.assertFalse((hypr / "hyprland.conf").exists())
+
+    def _tmp_for(self, nom):
+        d = Path(self._tmp.name) / f"cas-{nom}"
+        d.mkdir()
+        return d
+
+    def test_wayland_flavours_announce_the_console_only(self):
+        """Ni xrdp ni pare-feu pour une saveur dont l'accès distant n'est pas
+        posé, même quand un xrdp traîne sur le système."""
+        self.vm.stub("pacman")
+        self.vm.stub("xrdp")
+        self.vm.stub("firewall-cmd")
+        for flavour in ("plasma", "cosmic", "hyprland"):
+            with self.subTest(flavour):
+                rc, out, log = self.vm.run(
+                    _cmd(flavour, distro="arch", version="latest")
+                )
+                self.assertEqual(0, rc, out)
+                self.assertIn(t("none, the hypervisor console only"), out)
+                self.assertFalse(any("xrdp" in l for l in log), log)
+                self.assertFalse(any("firewall" in l for l in log), log)
 
 
 if __name__ == "__main__":

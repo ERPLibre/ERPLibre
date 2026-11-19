@@ -724,9 +724,9 @@ class LAutoriteEstExporteeApresQueCloudInitLAEcrite(unittest.TestCase):
         installation complète — passent tous par l'attente."""
         todo = self._todo()
         for cas in (
-            {"branch": None, "desktop": False},
-            {"branch": None, "desktop": True},
-            {"branch": "master", "desktop": False},
+            {"branch": None, "desktop": ""},
+            {"branch": None, "desktop": "gnome"},
+            {"branch": "master", "desktop": ""},
         ):
             with self.subTest(**cas):
                 cmd = todo._qemu_erplibre_remote_cmd(**cas)

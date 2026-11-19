@@ -2190,6 +2190,10 @@ class ProxmoxMenuMixin:
 
         install = spec.get("install") or {}
         cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        # La saveur de CETTE VM, celle du parc à défaut : même lecture que
+        # _pve_disk_with_margin. Les outils se filtrent sur la saveur
+        # elle-même — les extensions GNOME n'ont pas de sens sous Xfce.
+        bureau = vm.get("desktop", spec.get("desktop")) or ""
         args = types.SimpleNamespace(
             distro=vm.get("distro") or "",
             version=vm.get("version") or "",
@@ -2205,7 +2209,7 @@ class ProxmoxMenuMixin:
                 else ""
             ),
             erplibre_make=self._qemu_make_target(cmd_install),
-            desktop=bool(vm.get("desktop")),
+            desktop=bool(bureau),
             # Les outils que le guide annoncera, FILTRÉS par cette machine
             # comme la voie libvirt le fait : en annoncer un que l'
             # architecture ou l'absence de bureau écarte enverrait chercher
@@ -2214,7 +2218,7 @@ class ProxmoxMenuMixin:
                 self._qemu_tools_for(
                     spec.get("vm_tools") or (),
                     vm.get("arch") or "amd64",
-                    bool(vm.get("desktop")),
+                    bureau,
                     vm.get("distro") or "",
                 )
             ),
@@ -2660,6 +2664,13 @@ class ProxmoxMenuMixin:
                 user=compte,
                 keep_login=garder,
                 vm_password=secret,
+                # Ce qu'est cette VM, pris de la SPEC comme pour le suivi :
+                # virsh ne connaît pas un domaine posé sur un Proxmox.
+                meta=(
+                    vm.get("distro"),
+                    vm.get("version"),
+                    vm.get("arch") or "amd64",
+                ),
             )
         return resultat
 

@@ -95,6 +95,33 @@ class TestNameRoundTrip(unittest.TestCase):
                 ("arch", "latest", "amd64"),
             )
 
+    def test_a_desktop_suffix_resolves_back_to_its_release(self):
+        """Une VM graphique porte le suffixe de sa saveur après le nom
+        d'infra ; _qemu_vm_meta le retire avant de rejouer le catalogue."""
+        todo = TODO()
+        with (
+            patch.object(TODO, "_qemu_vm_arch", lambda self, name: "amd64"),
+            patch.object(TODO, "_native_arch", staticmethod(lambda: "amd64")),
+        ):
+
+            class Catalogue:
+                DISTROS = {
+                    "debian": (["12", "13"], "13"),
+                    "arch": (["latest"], "latest"),
+                }
+
+            for nom, attendu in (
+                ("erplibre-debian-13-gnome", ("debian", "13", "amd64")),
+                ("erplibre-debian-12-mint", ("debian", "12", "amd64")),
+                ("erplibre-arch-hyprland", ("arch", "latest", "amd64")),
+                ("erplibre-debian-13", ("debian", "13", "amd64")),
+                ("erplibre-debian-14-gnome", (None, None, "amd64")),
+            ):
+                with self.subTest(nom=nom):
+                    self.assertEqual(
+                        attendu, todo._qemu_vm_meta(nom, Catalogue())
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

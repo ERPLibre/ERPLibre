@@ -7819,6 +7819,26 @@ TRANSLATIONS = {
         "fr": "epel-release indisponible",
         "en": "epel-release unavailable",
     },
+    "no package line for this system": {
+        "fr": "aucune ligne de paquets pour ce système",
+        "en": "no package line for this system",
+    },
+    "none, the hypervisor console only": {
+        "fr": "aucun, la console de l'hyperviseur seulement",
+        "en": "none, the hypervisor console only",
+    },
+    "no desktop installed, its system or version": {
+        "fr": "aucun bureau installé, son système ou sa version",
+        "en": "no desktop installed, its system or version",
+    },
+    "does not offer": {
+        "fr": "n'offre pas",
+        "en": "does not offer",
+    },
+    "greetd not configured": {
+        "fr": "greetd non configuré",
+        "en": "greetd not configured",
+    },
     "grdctl has no system mode: xrdp instead": {
         "fr": "grdctl n'a pas de mode système : xrdp à la place",
         "en": "grdctl has no system mode: xrdp instead",

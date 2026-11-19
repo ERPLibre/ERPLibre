@@ -1014,18 +1014,22 @@ def recreate_login_lost(todo, spec) -> bool:
     compte, mais le clair ne vient que de la mémoire de `todo`
     (TODO._qemu_vm_password), vide après un redémarrage de todo ou quand
     un autre déploiement l'a remplacé. Il ne manque que s'il servait : un
-    mot de passe autre que le défaut public, et un bureau GNOME Remote
-    Desktop ou l'option « garder dans la VM »
-    (TODO._qemu_vm_login_file_needed)."""
+    mot de passe autre que le défaut public, et au moins une VM de la spec
+    dont le bureau le lit, ou l'option « garder dans la VM »
+    (TODO._qemu_vm_login_file_needed). Une VM sans saveur propre prend
+    celle du parc ; une spec sans VM se lit à cette seule saveur."""
     if todo is None or not spec or spec.get("login_default", True):
         return False
     besoin = getattr(todo, "_qemu_vm_login_file_needed", None)
     lire = getattr(todo, "_qemu_vm_password", None)
     if besoin is None or lire is None:
         return False
-    cible = (spec.get("vms") or [{}])[0]
-    bureau = cible.get("desktop", spec.get("desktop") or "") or ""
-    if not besoin(bureau, bool(spec.get("keep_login_in_vm"))):
+    garder = bool(spec.get("keep_login_in_vm"))
+    commun = spec.get("desktop") or ""
+    if not any(
+        besoin(vm.get("desktop", commun) or "", garder)
+        for vm in spec.get("vms") or [{}]
+    ):
         return False
     return lire(spec) is None
 
