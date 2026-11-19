@@ -104,6 +104,7 @@ class _Invite:
         "dirname",
         "grep",
         "id",
+        "ln",
         "mkdir",
         "rm",
         "sed",
@@ -245,11 +246,15 @@ class _Invite:
         "/etc/greetd/config.toml",
         "/etc/i3/config",
         "/etc/pam.d/system-login",
+        "/etc/pam.d/wayvnc",
+        "/etc/plasmalogin.conf.d",
+        "/etc/sddm.conf.d",
+        "/usr/lib/systemd/user",
     )
 
     def etc(self, chemin):
         """Chemin, sous le dossier du test, qui remplace `chemin`."""
-        return self.tmp / "etc" / chemin.removeprefix("/etc/")
+        return self.tmp / "sys" / chemin.lstrip("/")
 
     def run(self, cmd, os_id=""):
         cmd = cmd.replace(VM_LOGIN_FILE, str(self.pw_file))
@@ -1133,7 +1138,7 @@ class TestNewFlavoursRun(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertIn(
             "dnf -y -x firewalld -x firewall-config install "
-            "@kde-desktop-environment",
+            "@kde-desktop-environment krdp openssl",
             log,
         )
         self.assertFalse(any("epel-release" in l for l in log), log)
@@ -1477,21 +1482,273 @@ class TestNewFlavoursRun(unittest.TestCase):
         d.mkdir()
         return d
 
-    def test_wayland_flavours_announce_the_console_only(self):
-        """Ni xrdp ni pare-feu pour une saveur dont l'accès distant n'est pas
-        posé, même quand un xrdp traîne sur le système."""
-        self.vm.stub("pacman")
-        self.vm.stub("xrdp")
-        self.vm.stub("firewall-cmd")
-        for flavour in ("plasma", "cosmic", "hyprland"):
+    def test_flavours_without_a_server_announce_the_console_only(self):
+        """Ni xrdp ni pare-feu pour une saveur dont l'accès distant n'est
+        pas posé, même quand un xrdp traîne sur le système : COSMIC, et
+        Plasma sur Leap 16.0."""
+        for flavour, distro, version, pm in (
+            ("cosmic", "arch", "latest", "pacman"),
+            ("plasma", "opensuse", "16.0", "zypper"),
+        ):
             with self.subTest(flavour):
+                self.vm = _Invite(self._tmp_for(f"{flavour}-{distro}"))
+                self.vm.stub(pm)
+                self.vm.stub("xrdp")
+                self.vm.stub("firewall-cmd")
+                self.vm.stub("busctl")
                 rc, out, log = self.vm.run(
-                    _cmd(flavour, distro="arch", version="latest")
+                    _cmd(flavour, distro=distro, version=version)
                 )
                 self.assertEqual(0, rc, out)
                 self.assertIn(t("none, the hypervisor console only"), out)
                 self.assertFalse(any("xrdp" in l for l in log), log)
                 self.assertFalse(any("firewall" in l for l in log), log)
+                self.assertFalse(any("busctl" in l for l in log), log)
+                self.assertFalse(
+                    (self.vm.home / ".config/krdpserverrc").exists()
+                )
+
+
+class TestRemoteAccessPerRelease(unittest.TestCase):
+    """L'accès distant choisi par (saveur, distribution, version), exécuté
+    sur un invité simulé : KRdp, wayvnc, ou xrdp et TigerVNC sur la
+    session X de la saveur."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vm = _Invite(self._tmp.name)
+        self.vm.stub("busctl")
+        self.vm.stub("firewall-cmd")
+        self.vm.stub("firewall-offline-cmd")
+        # ssh-keygen et openssl créent les fichiers demandés, comme les
+        # vrais : c'est ce qui permet de vérifier leurs droits.
+        self.vm.stub(
+            "ssh-keygen",
+            'while [ $# -gt 0 ]; do [ "$1" = -f ] && { touch "$2"; '
+            "break; }; shift; done",
+        )
+        self.vm.stub(
+            "openssl",
+            'while [ $# -gt 0 ]; do case "$1" in -keyout|-out) touch "$2"; '
+            "shift;; esac; shift; done",
+        )
+        self.compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+
+    def _krdp_unit(self):
+        unite = self.vm.etc("/usr/lib/systemd/user") / (
+            "app-org.kde.krdpserver.service"
+        )
+        unite.parent.mkdir(parents=True, exist_ok=True)
+        unite.write_text("[Service]\nExecStart=krdpserver\n")
+        return unite
+
+    def _plasma(self, distro, version, pm):
+        self.vm.stub(pm)
+        self._krdp_unit()
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro=distro, version=version), distro
+        )
+        self.assertEqual(0, rc, out)
+        return out, log
+
+    # --- KRdp ----------------------------------------------------------- #
+
+    def test_krdp_authenticates_the_session_account_with_pam(self):
+        out, log = self._plasma("fedora", "44", "dnf")
+        rc = (self.vm.home / ".config/krdpserverrc").read_text()
+        self.assertIn("SystemUserEnabled=true", rc)
+        self.assertIn("ListenPort=3389", rc)
+        self.assertNotIn("Users=", rc)
+        cle = self.vm.home / ".local/share/krdpserver/krdp.key"
+        self.assertIn(f"CertificateKey={cle}", rc)
+        self.assertEqual(0o600, cle.stat().st_mode & 0o777)
+        self.assertIn("RDP 3389 (KRdp", out)
+        self.assertIn("firewall-cmd --permanent --add-service=rdp", log)
+
+    def test_krdp_is_enabled_for_the_account_only_without_h264(self):
+        self._plasma("arch", "latest", "pacman")
+        uu = self.vm.home / ".config/systemd/user"
+        lien = (
+            uu / "plasma-workspace.target.wants/app-org.kde.krdpserver.service"
+        )
+        self.assertTrue(lien.is_symlink())
+        self.assertIn(
+            "Environment=KRDP_DISABLE_H264=1",
+            (
+                uu / "app-org.kde.krdpserver.service.d/erplibre.conf"
+            ).read_text(),
+        )
+
+    def test_krdp_pre_authorises_its_portal(self):
+        _out, log = self._plasma("fedora", "45", "dnf")
+        self.assertIn(
+            "busctl --user call org.freedesktop.impl.portal.PermissionStore "
+            "/org/freedesktop/impl/portal/PermissionStore "
+            "org.freedesktop.impl.portal.PermissionStore SetPermission sbssas "
+            "kde-authorized true remote-desktop org.kde.krdpserver 1 yes",
+            log,
+        )
+
+    def test_the_session_opens_by_itself_then_locks(self):
+        """Autologin dans le gestionnaire d'affichage de la distribution,
+        verrou au démarrage de la session."""
+        for distro, version, pm, dm in (
+            ("fedora", "44", "dnf", "plasmalogin"),
+            ("opensuse", "tumbleweed", "zypper", "sddm"),
+        ):
+            with self.subTest(distro):
+                self.setUp()
+                self._plasma(distro, version, pm)
+                conf = self.vm.etc(f"/etc/{dm}.conf.d") / (
+                    "erplibre-autologin.conf"
+                )
+                self.assertEqual(
+                    f"[Autologin]\nUser={self.compte}\n"
+                    "Session=plasma.desktop\n",
+                    conf.read_text(),
+                )
+                verrou = (
+                    self.vm.home / ".config/autostart/erplibre-lock.desktop"
+                )
+                self.assertIn("Exec=loginctl lock-session", verrou.read_text())
+
+    def test_krdp_writes_no_password_anywhere(self):
+        self._plasma("fedora", "44", "dnf")
+        for f in self.vm.home.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(SONDE, f.read_text(errors="ignore"), f)
+        self.assertNotIn(SONDE, " ".join(self.vm.journal()))
+
+    def test_a_rerun_keeps_an_edited_krdp_config(self):
+        rc = self.vm.home / ".config/krdpserverrc"
+        rc.parent.mkdir(parents=True)
+        rc.write_text("[General]\nListenPort=3390\n")
+        self._plasma("arch", "latest", "pacman")
+        self.assertEqual("[General]\nListenPort=3390\n", rc.read_text())
+
+    def test_a_missing_krdp_unit_only_warns(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            t("krdpserver user unit not found; KRdp not enabled"), out
+        )
+
+    def test_ubuntu_plasma_goes_through_xrdp_on_x11(self):
+        self.vm.stub(
+            "apt-get",
+            f'case " $* " in *" xrdp "*) printf "#!/bin/bash\\nexit 0\\n" '
+            f"> {self.vm.bin}/xrdp; chmod +x {self.vm.bin}/xrdp;; esac",
+        )
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        ligne = log[_indice(log, "install -y kde-plasma-desktop")]
+        self.assertIn("plasma-session-x11 kwin-x11", ligne)
+        self.assertIn(" xrdp", ligne)
+        self.assertIn(
+            "exec startplasma-x11", (self.vm.home / ".xsession").read_text()
+        )
+        self.assertFalse((self.vm.home / ".config/krdpserverrc").exists())
+        self.assertIn("systemctl enable --now xrdp", log)
+
+    # --- wayvnc --------------------------------------------------------- #
+
+    def _hyprland(self, distro, version, pm):
+        self.vm.stub(pm)
+        self.vm.stub("start-hyprland")
+        gc = self.vm.etc("/etc/greetd/config.toml")
+        gc.parent.mkdir(parents=True, exist_ok=True)
+        gc.write_text(
+            '[terminal]\nvt = 1\n[default_session]\nuser = "greeter"\n'
+        )
+        rc, out, log = self.vm.run(
+            _cmd("hyprland", distro=distro, version=version)
+        )
+        self.assertEqual(0, rc, out)
+        return out, log, gc.read_text()
+
+    def test_wayvnc_authenticates_through_its_own_pam_service(self):
+        out, log, _gc = self._hyprland("arch", "latest", "pacman")
+        self.assertEqual(
+            "auth    required pam_unix.so\naccount required pam_unix.so\n",
+            self.vm.etc("/etc/pam.d/wayvnc").read_text(),
+        )
+        w = self.vm.home / ".config/wayvnc"
+        conf = (w / "config").read_text()
+        for cle in (
+            "enable_auth=true",
+            "enable_pam=true",
+            "address=0.0.0.0",
+            "port=5900",
+            "rsa_private_key_file=rsa_key.pem",
+        ):
+            self.assertIn(cle, conf)
+        for nom in ("config", "rsa_key.pem", "tls_key.pem"):
+            self.assertEqual(0o600, (w / nom).stat().st_mode & 0o777, nom)
+        self.assertEqual(0o700, w.stat().st_mode & 0o777)
+        self.assertIn("VNC 5900 (wayvnc", out)
+        self.assertIn("firewall-cmd --permanent --add-service=vnc-server", log)
+
+    def test_hyprland_opens_by_itself_locks_and_starts_wayvnc(self):
+        _out, _log, gc = self._hyprland("arch", "latest", "pacman")
+        self.assertIn(
+            f'[initial_session]\ncommand = "start-hyprland"\n'
+            f'user = "{self.compte}"',
+            gc,
+        )
+        self.assertIn('user = "greeter"', gc)
+        lua = (self.vm.home / ".config/hypr/hyprland.lua").read_text()
+        self.assertLess(lua.index('"hyprlock"'), lua.index("wayvnc.service"))
+        self.assertNotIn("--immediate", lua)
+        unite = self.vm.home / ".config/systemd/user/wayvnc.service"
+        self.assertIn("ExecStart=/usr/bin/wayvnc", unite.read_text())
+        self.assertTrue((self.vm.home / ".config/hypr/hyprlock.conf").exists())
+
+    def test_hyprlang_config_also_locks_and_starts_wayvnc(self):
+        self._hyprland("ubuntu", "26.04", "apt-get")
+        conf = (self.vm.home / ".config/hypr/hyprland.conf").read_text()
+        self.assertIn("exec-once = hyprlock\n", conf)
+        self.assertIn("systemctl --user start wayvnc.service", conf)
+
+    # --- sessions X ----------------------------------------------------- #
+
+    def test_xrdp_opens_the_flavour_session(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        for nom in (".xsession", ".Xclients"):
+            f = self.vm.home / nom
+            self.assertEqual("#!/bin/sh\nexec startxfce4\n", f.read_text())
+            self.assertTrue(f.stat().st_mode & 0o100, nom)
+
+    def test_tigervnc_on_arch_names_the_flavour_session(self):
+        self.vm.stub("pacman")
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="arch", version="latest")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "session=i3\n",
+            (self.vm.home / ".config/tigervnc/config").read_text(),
+        )
+
+    def test_an_existing_xsession_is_kept(self):
+        (self.vm.home / ".xsession").write_text("exec mien\n")
+        self.vm.stub("apt-get")
+        rc, out, _log = self.vm.run(_cmd("i3", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "exec mien\n", (self.vm.home / ".xsession").read_text()
+        )
 
 
 if __name__ == "__main__":

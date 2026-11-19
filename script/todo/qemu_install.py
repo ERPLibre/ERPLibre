@@ -414,7 +414,14 @@ class QemuInstallMixin:
     #                de /etc/X11/default-display-manager, que l'unité sddm
     #                de Debian vérifie avant de démarrer ;
     #   suse_dm      l'alternative default-displaymanager d'openSUSE ;
-    #   system_done  témoin système d'un assistant de premier démarrage.
+    #   system_done  témoin système d'un assistant de premier démarrage ;
+    #   x_session    commande de session que xrdp lance par ~/.xsession et
+    #                ~/.Xclients, pour une saveur à accès « x11 » ;
+    #   vnc_session  session X de TigerVNC sur Arch (nom du fichier de
+    #                /usr/share/xsessions, sans .desktop).
+    #
+    # « remote » peut dépendre du système (dict) : grd, x11 (xrdp, TigerVNC
+    # sur Arch), krdp, wayvnc, ou console (aucun serveur posé).
     _QEMU_DESKTOP = {
         "gnome": {
             "label": "GNOME",
@@ -472,6 +479,8 @@ class QemuInstallMixin:
             "service": "lightdm",
             "probe": "cinnamon",
             "remote": "x11",
+            "x_session": "cinnamon-session",
+            "vnc_session": "cinnamon",
             # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
             # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
             # de la distribution et non ceux de Mint.
@@ -485,11 +494,22 @@ class QemuInstallMixin:
         "plasma": {
             "label": "KDE Plasma 6",
             "probe": "plasmashell",
-            "apt": "kde-plasma-desktop sddm",
-            "dnf": "@kde-desktop-environment",
+            # Ubuntu et Debian gardent une session X11, que xrdp ouvre :
+            # leur KRdp est trop ancien (Debian) ou sans mode exclusif. Elle
+            # n'est installée que nommée.
+            "apt": {
+                "*": "kde-plasma-desktop sddm",
+                "ubuntu": "kde-plasma-desktop sddm plasma-session-x11 "
+                "kwin-x11",
+                "debian": "kde-plasma-desktop sddm kwin-x11",
+            },
+            "dnf": "@kde-desktop-environment krdp openssl",
             "dnf_exclude": "firewalld firewall-config",
-            "pacman": "plasma-meta ttf-dejavu",
-            "zypper": "patterns-kde-kde_plasma sddm-qt6",
+            "pacman": "plasma-meta krdp openssl ttf-dejavu",
+            "zypper": {
+                "*": "patterns-kde-kde_plasma sddm-qt6 krdp6 openssl",
+                "opensuse:16.0": "patterns-kde-kde_plasma sddm-qt6",
+            },
             "service": {
                 "*": "sddm",
                 "fedora": "plasmalogin",
@@ -503,7 +523,17 @@ class QemuInstallMixin:
             # plasma-setup, l'assistant de Fedora, tourne avant le
             # gestionnaire d'affichage tant que ce fichier manque.
             "system_done": "/etc/plasma-setup-done",
-            "remote": "krdp",
+            # KRdp (_qemu_krdp_setup_cmd) là où Plasma n'a plus que Wayland
+            # et un KRdp 6.7 ou plus ; xrdp sur la session X11 d'Ubuntu et
+            # Debian ; la console sur Leap 16.0, dont le KRdp 6.4 n'a pas
+            # d'authentification PAM et dont xrdp n'a pas xorgxrdp.
+            "remote": {
+                "*": "krdp",
+                "ubuntu": "x11",
+                "debian": "x11",
+                "opensuse:16.0": "console",
+            },
+            "x_session": "startplasma-x11",
             "suffix": "plasma",
         },
         "xfce": {
@@ -533,6 +563,8 @@ class QemuInstallMixin:
             "apt_dm": ("lightdm", "/usr/sbin/lightdm"),
             "suse_dm": "lightdm",
             "remote": "x11",
+            "x_session": "startxfce4",
+            "vnc_session": "xfce",
             "suffix": "xfce",
         },
         # COSMIC n'existe que sur Fedora, Tumbleweed et Arch. Sur Arch,
@@ -568,11 +600,11 @@ class QemuInstallMixin:
             "label": "Hyprland",
             "probe": "Hyprland",
             "apt": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
-            "greetd tuigreet",
+            "greetd tuigreet wayvnc openssl",
             "pacman": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
-            "greetd greetd-tuigreet ttf-dejavu",
+            "greetd greetd-tuigreet wayvnc openssl ttf-dejavu",
             "zypper": "hyprland xdg-desktop-portal-hyprland hyprlock kitty "
-            "greetd greetd-branding-upstream tuigreet",
+            "greetd greetd-branding-upstream tuigreet wayvnc openssl",
             "service": "greetd",
             "dm_force": True,
             "apt_dm": ("greetd", ""),
@@ -609,6 +641,8 @@ class QemuInstallMixin:
             "apt_dm": ("lightdm", "/usr/sbin/lightdm"),
             "suse_dm": "lightdm",
             "remote": "x11",
+            "x_session": "i3",
+            "vnc_session": "i3",
             "suffix": "i3",
         },
     }
@@ -1491,8 +1525,9 @@ class QemuInstallMixin:
         )
 
     @staticmethod
-    def _qemu_firewall_rdp_cmd():
-        """Bloc shell : ouvre le service « rdp » dans firewalld, s'il existe.
+    def _qemu_firewall_rdp_cmd(service="rdp"):
+        """Bloc shell : ouvre `service` (« rdp », 3389 ; « vnc-server »,
+        5900 à 5903) dans firewalld, s'il existe.
 
         Une image cloud n'a pas de pare-feu, mais un environnement graphique
         peut en apporter un, activé au prochain démarrage par les presets :
@@ -1502,15 +1537,21 @@ class QemuInstallMixin:
         arrêté ou non ; « firewall-cmd », qui exige le démon, n'est appelé
         que s'il tourne, pour ouvrir le port tout de suite. Rien ici ne fait
         échouer l'installation."""
-        ok = t("firewalld: rdp service opened")
-        ko = t("firewalld: rdp service not opened, 3389 may be blocked")
+        if service == "rdp":
+            ok = t("firewalld: rdp service opened")
+            ko = t("firewalld: rdp service not opened, 3389 may be blocked")
+        else:
+            ok = t("firewalld: vnc-server service opened")
+            ko = t(
+                "firewalld: vnc-server service not opened, 5900 may be blocked"
+            )
         return (
             "if command -v firewall-cmd >/dev/null 2>&1; then "
             "EL_FW=0; "
-            "if sudo firewall-offline-cmd --add-service=rdp "
+            f"if sudo firewall-offline-cmd --add-service={service} "
             ">/dev/null 2>&1; then EL_FW=1; fi; "
             "if systemctl is-active --quiet firewalld 2>/dev/null; then "
-            "if sudo firewall-cmd --permanent --add-service=rdp "
+            f"if sudo firewall-cmd --permanent --add-service={service} "
             ">/dev/null 2>&1 && sudo firewall-cmd --reload >/dev/null 2>&1; "
             "then EL_FW=1; else EL_FW=0; fi; fi; "
             f'if [ "$EL_FW" = 1 ]; then echo "   {ok}"; '
@@ -1577,7 +1618,7 @@ class QemuInstallMixin:
             raise ValueError(f"unknown desktop flavour: {flavour!r}")
         rem = self._QEMU_DESKTOP_REMOTE
         label = de["label"]
-        remote = de.get("remote")
+        remote = self._qemu_desktop_value(de, "remote", distro, version)
         grd = remote == "grd"
         x11_remote = remote == "x11"
         pw_file = shlex.quote(VM_LOGIN_FILE)
@@ -1818,11 +1859,11 @@ class QemuInstallMixin:
                 else (
                     "EL_REM=; "
                     if x11_remote
-                    # Une saveur Wayland sans serveur d'accès posé : la console
-                    # de l'hyperviseur est son seul écran.
-                    else "EL_REM=off; "
-                    f'echo "   {t("Remote desktop:")} '
-                    f'{t("none, the hypervisor console only")}"; '
+                    # KRdp et wayvnc sont posés avant le démarrage du
+                    # gestionnaire d'affichage (_qemu_desktop_post_cmd) et
+                    # démarrent avec la session ouverte d'office ; « off » écarte
+                    # la chaîne xrdp ci-dessous.
+                    else "EL_REM=off; " + self._qemu_wayland_remote_say(remote)
                 )
             )
             + 'if [ "$EL_REM" = grd ]; then '
@@ -1868,7 +1909,34 @@ class QemuInstallMixin:
                 else ""
             )
             + "fi; "
-            + (self._qemu_firewall_rdp_cmd() if grd or x11_remote else "")
+            + (
+                self._qemu_firewall_rdp_cmd()
+                if remote in ("grd", "x11", "krdp")
+                else (
+                    self._qemu_firewall_rdp_cmd("vnc-server")
+                    if remote == "wayvnc"
+                    else ""
+                )
+            )
+        )
+
+    def _qemu_wayland_remote_say(self, remote):
+        """Lignes d'annonce de l'accès distant d'une saveur Wayland : le port,
+        le client, le compte de la VM et le tunnel, ou la console seule."""
+        compte = t("VM account and password")
+        if remote == "krdp":
+            return (
+                f'echo "   {t("Remote desktop:")} RDP 3389 (KRdp, {compte})"; '
+                + self._qemu_tunnel_hint(3389, "RDP")
+            )
+        if remote == "wayvnc":
+            return (
+                f'echo "   {t("Remote desktop:")} VNC 5900 '
+                f'(wayvnc, {compte})"; ' + self._qemu_tunnel_hint(5900, "VNC")
+            )
+        return (
+            f'echo "   {t("Remote desktop:")} '
+            f'{t("none, the hypervisor console only")}"; '
         )
 
     def _qemu_dnf_line_cmd(self, pkgs, exclude, label):
@@ -1892,27 +1960,62 @@ class QemuInstallMixin:
             + f'else echo "   ❌ {ko} {label}"; exit 1; fi; '
         )
 
+    @staticmethod
+    def _qemu_sh_lines(texte):
+        """Arguments de « printf '%s\\n' » qui reproduisent `texte` ligne à
+        ligne : la commande distante reste sur une seule ligne."""
+        return " ".join(shlex.quote(x) for x in texte.splitlines())
+
+    def _qemu_write_if_absent(self, chemin, texte, mode=""):
+        """Bloc shell : écrit `texte` dans `chemin` (sous le compte de la
+        VM) seulement si le fichier n'existe pas, puis lui donne `mode`.
+        Rejoué, il laisse en place ce que l'administrateur a modifié."""
+        chmod = (
+            f'chmod {mode} "{chemin}" 2>/dev/null || true; ' if mode else ""
+        )
+        return (
+            f'[ -f "{chemin}" ] || '
+            f"printf '%s\\n' {self._qemu_sh_lines(texte)} > \"{chemin}\"; "
+            + chmod
+        )
+
     def _qemu_desktop_post_cmd(self, flavour, distro="", version=""):
         """Bloc shell posé après les paquets d'une saveur, avant le
         démarrage du gestionnaire d'affichage : ce que ses paquets ne
-        configurent pas seuls. Vide pour une saveur qui n'a besoin de rien.
+        configurent pas seuls. Il tourne sous le compte de la VM. Vide pour
+        une saveur qui n'a besoin de rien.
+
+        Accès « x11 » : ~/.xsession (Debian, Ubuntu, openSUSE) et
+        ~/.Xclients (Fedora, EL) lancent la session de la saveur, que xrdp
+        ouvre ; sur Arch, la configuration de TigerVNC nomme la même.
 
         i3 : ~/.config/i3/config copié de /etc/i3/config. L'assistant
         i3-config-wizard, que la configuration système lance, s'arrête alors
         sans rien demander ; sur Leap 16.0, qui n'a pas i3status, la barre
         perd sa ligne status_command.
 
-        Hyprland : greetd lance tuigreet, qui ouvre start-hyprland (Hyprland
-        quand le lanceur manque). L'utilisateur et le terminal virtuel du
-        greeter sont relus dans la configuration livrée, qui diffère d'une
-        distribution à l'autre. La configuration de l'utilisateur, écrite
-        d'avance, évite celle qu'Hyprland génère avec son bandeau, désactive
-        le curseur matériel — invisible sur une carte virtio sans
-        accélération — et lie Super+Entrée à kitty. Hyprlang (.conf) ou Lua
-        (.lua) selon _QEMU_HYPRLAND_LUA.
+        Plasma à accès KRdp : _qemu_krdp_setup_cmd.
 
-        Rejoué sur une VM qui a déjà la saveur, le bloc ne touche ni à une
-        configuration existante, ni à un greetd qui lance déjà tuigreet."""
+        Hyprland : _qemu_hyprland_setup_cmd.
+
+        Rejoué sur une VM qui a déjà la saveur, le bloc ne réécrit aucun
+        fichier de l'utilisateur qui existe déjà."""
+        de = self._QEMU_DESKTOP[flavour]
+        remote = self._qemu_desktop_value(de, "remote", distro, version)
+        out = ""
+        if remote == "x11" and de.get("x_session"):
+            session = f"exec {de['x_session']}"
+            for nom in (".xsession", ".Xclients"):
+                out += self._qemu_write_if_absent(
+                    f"$HOME/{nom}", f"#!/bin/sh\n{session}", "755"
+                )
+            if distro == "arch" and de.get("vnc_session"):
+                out += 'mkdir -p "$HOME/.config/tigervnc"; ' + (
+                    self._qemu_write_if_absent(
+                        "$HOME/.config/tigervnc/config",
+                        f"session={de['vnc_session']}",
+                    )
+                )
         if flavour == "i3":
             cfg = '"$HOME/.config/i3/config"'
             leap = (
@@ -1921,72 +2024,246 @@ class QemuInstallMixin:
                 if (distro, version) == ("opensuse", "16.0")
                 else ""
             )
-            return (
+            out += (
                 'mkdir -p "$HOME/.config/i3"; '
                 f"if [ ! -f {cfg} ] && [ -r /etc/i3/config ]; then "
                 f"cp /etc/i3/config {cfg}; fi; " + leap
             )
+        if remote == "krdp":
+            out += self._qemu_krdp_setup_cmd(
+                self._qemu_desktop_value(de, "service", distro, version)
+            )
         if flavour == "hyprland":
-            lua = (distro, version) in self._QEMU_HYPRLAND_LUA
-            if lua:
-                nom = "hyprland.lua"
-                corps = (
-                    "hl.config({\n"
-                    "    cursor = { no_hardware_cursors = true },\n"
-                    "    misc = { force_default_wallpaper = 0, "
-                    "disable_hyprland_logo = true, "
-                    "disable_splash_rendering = true },\n"
-                    "    ecosystem = { no_update_news = true, "
-                    "no_donation_nag = true },\n"
-                    "})\n"
-                    'hl.bind("SUPER + Return", hl.dsp.exec_cmd("kitty"))\n'
-                )
-            else:
-                nom = "hyprland.conf"
-                corps = (
-                    "cursor {\n    no_hardware_cursors = true\n}\n"
-                    "misc {\n    disable_hyprland_logo = true\n"
-                    "    disable_splash_rendering = true\n}\n"
-                    "ecosystem {\n    no_update_news = true\n"
-                    "    no_donation_nag = true\n}\n"
-                    "$mod = SUPER\n"
-                    "bind = $mod, Return, exec, kitty\n"
-                    "bind = $mod SHIFT, E, exit,\n"
-                )
-            gc = "/etc/greetd/config.toml"
+            out += self._qemu_hyprland_setup_cmd(distro, version)
+        return out
 
-            def cle(nom, valeur):
-                """Expression sed qui rend la valeur de la clé `nom` d'un
-                fichier TOML, captée par `valeur`."""
-                blanc = "[[:space:]]*"
-                return f"'s/^{blanc}{nom}{blanc}={blanc}{valeur}.*/\\1/p'"
+    def _qemu_autologin_cmd(self, service, session):
+        """Bloc shell : ouvre d'office la session `session` du compte de la
+        VM, par un fichier de /etc/<service>.conf.d. SDDM et
+        plasma-login-manager lisent la même section [Autologin] ; le nom de
+        session porte son « .desktop », sans lequel plasma-login-manager
+        l'ignore. Le verrou posé au démarrage de la session
+        (_qemu_krdp_setup_cmd) referme aussitôt l'écran de la console."""
+        dossier = f"/etc/{service}.conf.d"
+        texte = f"[Autologin]\\nUser=%s\\nSession={session}\\n"
+        ko = t("automatic login not configured")
+        return (
+            f"sudo mkdir -p {dossier} && "
+            f'printf "{texte}" "$(id -un)" '
+            f"| sudo tee {dossier}/erplibre-autologin.conf >/dev/null "
+            f'|| echo "   ⚠ {ko}"; '
+        )
 
-            sed_user = cle("user", '"\\(.*\\)"')
-            sed_vt = cle("vt", "\\([^[:space:]]*\\)")
-            greetd = (
-                "[terminal]\\nvt = %s\\n\\n[default_session]\\n"
-                'command = \\"tuigreet --time --cmd %s\\"\\n'
-                'user = \\"%s\\"\\n'
+    def _qemu_krdp_setup_cmd(self, service):
+        """Bloc shell : KRdp en RDP 3389 dans la session Plasma Wayland.
+
+        KRdp ne sert qu'une session ouverte, celle de son propriétaire, et
+        n'atteint pas l'écran de connexion : la session du compte de la VM
+        s'ouvre d'office (`service`, le gestionnaire d'affichage) puis se
+        verrouille au démarrage. Le client RDP arrive sur l'écran verrouillé
+        et le déverrouille avec le mot de passe du compte.
+
+        - SystemUserEnabled : authentification PAM du compte de la session,
+          contre l'empreinte de /etc/shadow ; aucun mot de passe n'est
+          écrit, Users reste vide.
+        - Certificat : krdpserver n'en génère pas et refuse de démarrer
+          sans ; openssl le crée, clé en 0600.
+        - Unité utilisateur app-org.kde.krdpserver.service, désactivée par
+          défaut : liée à plasma-workspace.target pour ce seul compte. Son
+          nom donne au portail l'identifiant org.kde.krdpserver.
+        - KRDP_DISABLE_H264=1 : RemoteFX Progressive. Sans encodeur H.264
+          réel — Fedora, EPEL et openSUSE n'installent que le stub
+          noopenh264 —, un client qui annonce H.264 n'aurait pas d'image.
+        - Portail : l'autorisation « kde-authorized » de PermissionStore
+          évite la boîte de dialogue que xdg-desktop-portal-kde ouvre sur la
+          console à la première connexion. Faute de bus de session, elle
+          manque, et la première connexion se confirme sur la console."""
+        k = "$HOME/.local/share/krdpserver"
+        unite = "app-org.kde.krdpserver.service"
+        uu = "$HOME/.config/systemd/user"
+        pas_unite = t("krdpserver user unit not found; KRdp not enabled")
+        pas_cert = t("KRdp certificate not generated")
+        pas_portail = t(
+            "portal not pre-authorised; confirm the first connection "
+            "on the VM console"
+        )
+        bus = (
+            "XDG_RUNTIME_DIR=/run/user/$(id -u) "
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus"
+        )
+        verrou = (
+            "[Desktop Entry]\nType=Application\nName=Lock at start\n"
+            "Exec=loginctl lock-session\nX-KDE-autostart-phase=2"
+        )
+        rc = (
+            "[General]\nSystemUserEnabled=true\nListenPort=3389\n"
+            f"Certificate={k}/krdp.crt\nCertificateKey={k}/krdp.key"
+        )
+        return (
+            self._qemu_autologin_cmd(service, "plasma.desktop")
+            + f'mkdir -p "{k}" "$HOME/.config/autostart" '
+            f'"{uu}/plasma-workspace.target.wants" "{uu}/{unite}.d"; '
+            f'[ -f "{k}/krdp.key" ] || openssl req -nodes -new -x509 '
+            f'-keyout "{k}/krdp.key" -out "{k}/krdp.crt" -days 3650 -batch '
+            '-subj "/CN=$(uname -n)" >/dev/null 2>&1 '
+            f'|| echo "   ⚠ {pas_cert}"; '
+            f'chmod 600 "{k}/krdp.key" 2>/dev/null || true; '
+            # Le chemin du certificat est développé ici, au moment où le
+            # fichier s'écrit : krdpserverrc ne connaît pas $HOME.
+            f'[ -f "$HOME/.config/krdpserverrc" ] || '
+            f"printf '%s\\n' {self._qemu_sh_lines(rc)} "
+            '| sed "s|\\$HOME|$HOME|" > "$HOME/.config/krdpserverrc"; '
+            "EL_KU=; for d in /usr/lib/systemd/user /usr/share/systemd/user; "
+            f'do if [ -f "$d/{unite}" ]; then '
+            f'ln -sf "$d/{unite}" "{uu}/plasma-workspace.target.wants/" '
+            "&& EL_KU=1; break; fi; done; "
+            f'[ -n "$EL_KU" ] || echo "   ⚠ {pas_unite}"; '
+            + self._qemu_write_if_absent(
+                f"{uu}/{unite}.d/erplibre.conf",
+                "[Service]\nEnvironment=KRDP_DISABLE_H264=1",
             )
-            # Une ligne par argument : la commande distante reste sur une
-            # seule ligne, comme tout le reste du bloc.
-            lignes = " ".join(shlex.quote(x) for x in corps.splitlines())
-            return (
-                'mkdir -p "$HOME/.config/hypr"; '
-                f'[ -f "$HOME/.config/hypr/{nom}" ] || '
-                f"printf '%s\\n' {lignes} > \"$HOME/.config/hypr/{nom}\"; "
-                f"EL_GU=$(sed -n {sed_user} {gc} 2>/dev/null | sed -n 1p); "
-                f"EL_VT=$(sed -n {sed_vt} {gc} 2>/dev/null | sed -n 1p); "
-                # Une configuration qui lance déjà tuigreet a été écrite
-                # ici, ou par l'administrateur : elle reste telle quelle.
-                f"if ! grep -q tuigreet {gc} 2>/dev/null; then "
-                "EL_HS=start-hyprland; "
-                "command -v start-hyprland >/dev/null 2>&1 || EL_HS=Hyprland; "
-                f'printf "{greetd}" "${{EL_VT:-1}}" "$EL_HS" '
-                f'"${{EL_GU:-greeter}}" | sudo tee {gc} >/dev/null '
-                f'|| echo "   ⚠ {t("greetd not configured")}"; fi; '
+            + self._qemu_write_if_absent(
+                "$HOME/.config/autostart/erplibre-lock.desktop", verrou
             )
-        return ""
+            + f"{bus} busctl --user call "
+            "org.freedesktop.impl.portal.PermissionStore "
+            "/org/freedesktop/impl/portal/PermissionStore "
+            "org.freedesktop.impl.portal.PermissionStore SetPermission "
+            "sbssas kde-authorized true remote-desktop org.kde.krdpserver "
+            "1 yes >/dev/null 2>&1 "
+            f'|| echo "   ⚠ {pas_portail}"; '
+        )
+
+    def _qemu_hyprland_setup_cmd(self, distro, version):
+        """Bloc shell : la session Hyprland, son verrou et wayvnc.
+
+        greetd ouvre d'office la session du compte de la VM
+        ([initial_session]) et garde tuigreet pour les suivantes ; la session
+        lance hyprlock dès son démarrage. wayvnc, en VNC 5900, ne sert que
+        cette session : le client arrive sur hyprlock et le déverrouille avec
+        le mot de passe du compte.
+
+        greetd : l'utilisateur et le terminal virtuel du greeter sont relus
+        dans la configuration livrée, qui diffère d'une distribution à
+        l'autre. start-hyprland, ou Hyprland quand le lanceur manque. Une
+        configuration qui lance déjà tuigreet reste telle quelle.
+
+        Hyprland : la configuration, écrite d'avance, évite celle qu'il
+        génère avec son bandeau, désactive le curseur matériel — invisible
+        sur une carte virtio sans accélération —, lie Super+Entrée à kitty,
+        puis lance hyprlock et l'unité wayvnc après avoir passé
+        l'environnement Wayland au gestionnaire systemd de l'utilisateur.
+        Hyprlang (.conf) ou Lua (.lua) selon _QEMU_HYPRLAND_LUA. hyprlock
+        sans option : « --immediate » n'existe plus en 0.9.7.
+
+        wayvnc : authentification PAM du compte (/etc/pam.d/wayvnc, écrit
+        ici : Ubuntu et openSUSE n'en livrent pas, et celui d'Arch, en
+        « nodelay », ne freine pas les essais), clé RSA-AES et certificat
+        TLS pour les clients VeNCrypt, configuration en 0600. Aucun paquet
+        ne livre d'unité utilisateur ; elle est écrite ici."""
+        env = (
+            "systemctl --user import-environment WAYLAND_DISPLAY "
+            "XDG_RUNTIME_DIR HYPRLAND_INSTANCE_SIGNATURE && "
+            "systemctl --user start wayvnc.service"
+        )
+        if (distro, version) in self._QEMU_HYPRLAND_LUA:
+            nom = "hyprland.lua"
+            corps = (
+                'hl.on("hyprland.start", function ()\n'
+                '    hl.exec_cmd("hyprlock")\n'
+                f'    hl.exec_cmd("{env}")\n'
+                "end)\n"
+                "hl.config({\n"
+                "    cursor = { no_hardware_cursors = true },\n"
+                "    misc = { force_default_wallpaper = 0, "
+                "disable_hyprland_logo = true, "
+                "disable_splash_rendering = true },\n"
+                "    ecosystem = { no_update_news = true, "
+                "no_donation_nag = true },\n"
+                "})\n"
+                'hl.bind("SUPER + Return", hl.dsp.exec_cmd("kitty"))'
+            )
+        else:
+            nom = "hyprland.conf"
+            corps = (
+                "exec-once = hyprlock\n"
+                f"exec-once = {env}\n"
+                "cursor {\n    no_hardware_cursors = true\n}\n"
+                "misc {\n    disable_hyprland_logo = true\n"
+                "    disable_splash_rendering = true\n}\n"
+                "ecosystem {\n    no_update_news = true\n"
+                "    no_donation_nag = true\n}\n"
+                "$mod = SUPER\n"
+                "bind = $mod, Return, exec, kitty\n"
+                "bind = $mod SHIFT, E, exit,"
+            )
+        verrou = (
+            "background {\n    color = rgb(30, 30, 46)\n}\n"
+            "input-field {\n    size = 300, 50\n    position = 0, 0\n"
+            "    halign = center\n    valign = center\n}"
+        )
+        w = "$HOME/.config/wayvnc"
+        config = (
+            "use_relative_paths=true\naddress=0.0.0.0\nport=5900\n"
+            "enable_auth=true\nenable_pam=true\n"
+            "rsa_private_key_file=rsa_key.pem\n"
+            "certificate_file=tls_cert.pem\nprivate_key_file=tls_key.pem"
+        )
+        unite = (
+            "[Unit]\nDescription=wayvnc VNC server for the Hyprland session\n"
+            "After=graphical-session.target\n[Service]\n"
+            "ExecStart=/usr/bin/wayvnc\nRestart=on-failure\nRestartSec=2"
+        )
+        pam = "auth    required pam_unix.so\naccount required pam_unix.so"
+        gc = "/etc/greetd/config.toml"
+
+        def cle(nom, valeur):
+            """Expression sed qui rend la valeur de la clé `nom` d'un
+            fichier TOML, captée par `valeur`."""
+            blanc = "[[:space:]]*"
+            return f"'s/^{blanc}{nom}{blanc}={blanc}{valeur}.*/\\1/p'"
+
+        sed_user = cle("user", '"\\(.*\\)"')
+        sed_vt = cle("vt", "\\([^[:space:]]*\\)")
+        greetd = (
+            "[terminal]\\nvt = %s\\n\\n[default_session]\\n"
+            'command = \\"tuigreet --time --cmd %s\\"\\nuser = \\"%s\\"\\n\\n'
+            '[initial_session]\\ncommand = \\"%s\\"\\nuser = \\"%s\\"\\n'
+        )
+        sans_cle = t("wayvnc keys not generated")
+        return (
+            f'mkdir -p "$HOME/.config/hypr" "{w}" "$HOME/.config/systemd/user"; '
+            f'chmod 700 "{w}"; '
+            + self._qemu_write_if_absent(f"$HOME/.config/hypr/{nom}", corps)
+            + self._qemu_write_if_absent(
+                "$HOME/.config/hypr/hyprlock.conf", verrou
+            )
+            + f"printf '%s\\n' {self._qemu_sh_lines(pam)} "
+            "| sudo tee /etc/pam.d/wayvnc >/dev/null "
+            f'|| echo "   ⚠ {t("wayvnc PAM service not written")}"; '
+            f'{{ [ -f "{w}/rsa_key.pem" ] || ssh-keygen -q -m pem -t rsa '
+            f'-N "" -f "{w}/rsa_key.pem"; }} && '
+            f'{{ [ -f "{w}/tls_key.pem" ] || openssl req -x509 '
+            f'-newkey rsa:3072 -nodes -keyout "{w}/tls_key.pem" '
+            f'-out "{w}/tls_cert.pem" -days 3650 -subj "/CN=$(uname -n)" '
+            ">/dev/null 2>&1; } "
+            f'|| echo "   ⚠ {sans_cle}"; '
+            + self._qemu_write_if_absent(f"{w}/config", config)
+            + f'chmod 600 "{w}/config" "{w}/rsa_key.pem" "{w}/tls_key.pem" '
+            "2>/dev/null || true; "
+            + self._qemu_write_if_absent(
+                "$HOME/.config/systemd/user/wayvnc.service", unite
+            )
+            + f"EL_GU=$(sed -n {sed_user} {gc} 2>/dev/null | sed -n 1p); "
+            f"EL_VT=$(sed -n {sed_vt} {gc} 2>/dev/null | sed -n 1p); "
+            f"if ! grep -q tuigreet {gc} 2>/dev/null; then "
+            "EL_HS=start-hyprland; "
+            "command -v start-hyprland >/dev/null 2>&1 || EL_HS=Hyprland; "
+            f'printf "{greetd}" "${{EL_VT:-1}}" "$EL_HS" '
+            '"${EL_GU:-greeter}" "$EL_HS" "$(id -un)" '
+            f"| sudo tee {gc} >/dev/null "
+            f'|| echo "   ⚠ {t("greetd not configured")}"; fi; '
+        )
 
     # ------------------------------------------------------------------ #
     # Outils de développement d'une VM graphique

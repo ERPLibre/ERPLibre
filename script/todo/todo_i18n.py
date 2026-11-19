@@ -7835,6 +7835,42 @@ TRANSLATIONS = {
         "fr": "n'offre pas",
         "en": "does not offer",
     },
+    "VM account and password": {
+        "fr": "compte et mot de passe de la VM",
+        "en": "VM account and password",
+    },
+    "firewalld: vnc-server service opened": {
+        "fr": "firewalld : service vnc-server ouvert",
+        "en": "firewalld: vnc-server service opened",
+    },
+    "firewalld: vnc-server service not opened, 5900 may be blocked": {
+        "fr": "firewalld : service vnc-server non ouvert, 5900 peut être bloqué",
+        "en": "firewalld: vnc-server service not opened, 5900 may be blocked",
+    },
+    "automatic login not configured": {
+        "fr": "ouverture de session automatique non configurée",
+        "en": "automatic login not configured",
+    },
+    "krdpserver user unit not found; KRdp not enabled": {
+        "fr": "unité utilisateur de krdpserver introuvable ; KRdp non activé",
+        "en": "krdpserver user unit not found; KRdp not enabled",
+    },
+    "KRdp certificate not generated": {
+        "fr": "certificat de KRdp non généré",
+        "en": "KRdp certificate not generated",
+    },
+    "portal not pre-authorised; confirm the first connection on the VM console": {
+        "fr": "portail non pré-autorisé ; confirmez la première connexion sur la console de la VM",
+        "en": "portal not pre-authorised; confirm the first connection on the VM console",
+    },
+    "wayvnc keys not generated": {
+        "fr": "clés de wayvnc non générées",
+        "en": "wayvnc keys not generated",
+    },
+    "wayvnc PAM service not written": {
+        "fr": "service PAM de wayvnc non écrit",
+        "en": "wayvnc PAM service not written",
+    },
     "greetd not configured": {
         "fr": "greetd non configuré",
         "en": "greetd not configured",
