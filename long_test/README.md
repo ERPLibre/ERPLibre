@@ -475,6 +475,19 @@ neither at creation nor in an exit code. So the bench calls the target and reads
 its verdict; it does not re-sequence the steps, which is how it would drop that
 one the day the engine adds another.
 
+**The acceptance recipe is replayed after a first backup.** `reconstruire` ends
+with the engine's acceptance recipe, which restores a snapshot of every backed-up
+host — and a fleet just born has none, its timer running at night. The bench
+therefore ADDS two engine targets after it, removing nothing:
+`sauvegarder-maintenant`, then `valider`. The replayed recipe judges the same
+fleet more completely; when it holds, it replaces the earlier recipe failure,
+which is still printed. For that recipe to have something to judge, the bench
+adds a backup target (`backup-01`, the host `client_backup` aims at) and the
+public half of the backup key it forges, and names its bootstrap account after
+the mailbox the mail recipe writes to — the only person account the engine
+creates. Restoring a previous incarnation stays switched off: the bench's fleet
+is always born new.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its

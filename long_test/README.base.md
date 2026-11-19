@@ -480,6 +480,19 @@ neither at creation nor in an exit code. So the bench calls the target and reads
 its verdict; it does not re-sequence the steps, which is how it would drop that
 one the day the engine adds another.
 
+**The acceptance recipe is replayed after a first backup.** `reconstruire` ends
+with the engine's acceptance recipe, which restores a snapshot of every backed-up
+host — and a fleet just born has none, its timer running at night. The bench
+therefore ADDS two engine targets after it, removing nothing:
+`sauvegarder-maintenant`, then `valider`. The replayed recipe judges the same
+fleet more completely; when it holds, it replaces the earlier recipe failure,
+which is still printed. For that recipe to have something to judge, the bench
+adds a backup target (`backup-01`, the host `client_backup` aims at) and the
+public half of the backup key it forges, and names its bootstrap account after
+the mailbox the mail recipe writes to — the only person account the engine
+creates. Restoring a previous incarnation stays switched off: the bench's fleet
+is always born new.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its
@@ -1030,6 +1043,20 @@ depuis l'administration, et tout le reste est mur, une panne qui ne se voit ni �
 la création ni dans un code de retour. Le banc appelle donc la cible et lit son
 verdict ; il ne réordonne pas les étapes, ce qui est la façon de laisser tomber
 celle-là le jour où le moteur en ajoute une.
+
+**La recette d'acceptation est rejouée après une première sauvegarde.**
+`reconstruire` se clôt sur la recette d'acceptation du moteur, qui restaure un
+instantané de chaque hôte sauvegardé — et une flotte qui vient de naître n'en a
+aucun, son minuteur ne passant que la nuit. Le banc AJOUTE donc deux cibles du
+moteur après elle, sans rien retirer : `sauvegarder-maintenant`, puis
+`valider`. La recette rejouée juge la même flotte plus complètement ; quand elle
+tient, elle remplace l'échec de recette d'avant, qui reste affiché. Pour qu'elle
+ait de quoi juger, le banc ajoute une cible de sauvegarde (`backup-01`, l'hôte
+que `client_backup` vise) et la moitié publique de la clé de sauvegarde qu'il
+forge, et donne à son compte d'amorçage le nom de la boîte où la recette du
+courriel écrit — le seul compte de personne que le moteur crée. La restauration
+d'une incarnation précédente reste coupée : la flotte du banc naît toujours
+neuve.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

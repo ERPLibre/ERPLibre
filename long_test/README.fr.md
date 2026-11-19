@@ -493,6 +493,20 @@ la création ni dans un code de retour. Le banc appelle donc la cible et lit son
 verdict ; il ne réordonne pas les étapes, ce qui est la façon de laisser tomber
 celle-là le jour où le moteur en ajoute une.
 
+**La recette d'acceptation est rejouée après une première sauvegarde.**
+`reconstruire` se clôt sur la recette d'acceptation du moteur, qui restaure un
+instantané de chaque hôte sauvegardé — et une flotte qui vient de naître n'en a
+aucun, son minuteur ne passant que la nuit. Le banc AJOUTE donc deux cibles du
+moteur après elle, sans rien retirer : `sauvegarder-maintenant`, puis
+`valider`. La recette rejouée juge la même flotte plus complètement ; quand elle
+tient, elle remplace l'échec de recette d'avant, qui reste affiché. Pour qu'elle
+ait de quoi juger, le banc ajoute une cible de sauvegarde (`backup-01`, l'hôte
+que `client_backup` vise) et la moitié publique de la clé de sauvegarde qu'il
+forge, et donne à son compte d'amorçage le nom de la boîte où la recette du
+courriel écrit — le seul compte de personne que le moteur crée. La restauration
+d'une incarnation précédente reste coupée : la flotte du banc naît toujours
+neuve.
+
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
 route pas : l'attente qui interroge la flotte jouerait sa borne entière puis la

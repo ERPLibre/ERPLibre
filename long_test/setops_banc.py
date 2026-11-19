@@ -193,6 +193,9 @@ class Etape(NamedTuple):
 
     `mesuree` distingue une durée RELEVÉE d'une durée annoncée. Un plan qui les
     confond promet à l'opérateur un temps que personne n'a chronométré.
+
+    `recette` dit que la cible EST la recette d'acceptation du moteur : son
+    échec se juge à part, et la boucle va quand même jusqu'au rasage.
     """
 
     cible: str
@@ -200,6 +203,7 @@ class Etape(NamedTuple):
     duree: str
     confirmer: bool
     mesuree: bool
+    recette: bool = False
 
 
 # LA BOUCLE EST CELLE DU MOTEUR, pas une recomposition de ses morceaux.
@@ -213,10 +217,19 @@ class Etape(NamedTuple):
 #
 # L'amorçage dérive SES hôtes du plan : l'autorité de certification d'abord,
 # puis ce qui s'enrôle auprès d'elle.
+#
+# LA RECETTE EST REJOUÉE APRÈS UNE PREMIÈRE SAUVEGARDE. `reconstruire` se clôt
+# sur la recette d'acceptation du moteur, qui exige d'un hôte sauvegardé un
+# instantané à restaurer — et une flotte qui vient de naître n'en a aucun, son
+# minuteur ne passant que la nuit. Le banc AJOUTE donc deux cibles du moteur
+# après la sienne, sans rien retirer : la sauvegarde immédiate, puis la recette.
+# C'est le verdict de cette dernière qui compte.
 ETAPES_BOUCLE = (
     Etape("instancier", (), "~5 s", False, True),
     Etape("instancier-appliquer", (("FORCE", "1"),), "~5 s", False, True),
     Etape("reconstruire", (), "~45 min", True, False),
+    Etape("sauvegarder-maintenant", (), "~2 min", True, False),
+    Etape("valider", (), "~2 min", False, False, True),
     Etape("raser", ((INSTANCE, NOM_MONTE),), "~2 min", True, False),
 )
 
@@ -1483,6 +1496,12 @@ INTRANTS_BANC = "15-placement-banc.yml"
 # n'a rien demandé. `.invalid` est réservé à cet usage et ne se résout nulle part.
 COURRIEL_RECOURS = "recours@banc-fictif.invalid"
 
+# LE COMPTE QUE LA RECETTE DU COURRIEL ÉCRIT. Elle envoie un message à ce compte
+# et le cherche dans sa boîte ; le moteur ne crée pourtant aucune personne de ce
+# nom. Le seul compte de personne qu'il pose est celui d'amorçage, dont le nom se
+# règle : le banc lui donne celui-là. Une épreuve le confronte à la recette.
+COMPTE_RECETTE = "testmail"
+
 # L'interrupteur par lequel le moteur renonce à restaurer l'état d'une
 # incarnation précédente, nommé une fois : une épreuve vérifie que ses défauts
 # le déclarent toujours.
@@ -1540,6 +1559,10 @@ def texte_intrants_du_banc(resolveur):
     naître neuf ce qui attend chez l'hébergeur. L'interrupteur est celui que le
     moteur documente pour « ne jamais restaurer » ; la sauvegarde n'en est pas
     bloquée. La restauration n'est donc PAS éprouvée par ce banc.
+
+    `amorcage_acces_uid` PREND LE NOM DE `COMPTE_RECETTE` : la recette du
+    courriel remet un message à ce compte et le cherche dans sa boîte, et c'est
+    le seul compte de personne que le moteur sache poser.
     """
     if not (resolveur or "").strip():
         return ""
@@ -1548,6 +1571,7 @@ def texte_intrants_du_banc(resolveur):
 # n'en réécrit aucun.
 dns_amorcage: "{resolveur.strip()}"
 amorcage_acces_courriel: "{COURRIEL_RECOURS}"
+amorcage_acces_uid: "{COMPTE_RECETTE}"
 {RESTAURATION_ACTIVE}: false
 """
 
@@ -1727,6 +1751,51 @@ def forge_cle_ssh():
 
 
 FORGES = {FORME_OPAQUE: forge_opaque, FORME_CLE_SSH: forge_cle_ssh}
+
+# La clé privée de sauvegarde, que `client_backup` présente à la cible, et le
+# fichier où le banc pose sa moitié PUBLIQUE, que `serveur_backup` autorise. Le
+# rôle de la cible refuse sans elle ; le modèle n'en déclare aucune.
+CLE_SAUVEGARDE = "vault_backup_ssh_privkey"
+CLE_SAUVEGARDE_BANC = "16-sauvegarde-banc.yml"
+
+
+def cle_publique(privee):
+    """La moitié publique d'une clé privée OpenSSH, au format d'une ligne
+    `authorized_keys`. Ou « » si elle ne se lit pas.
+
+    DÉRIVÉE, JAMAIS FORGÉE À PART : deux clés forgées séparément ne forment pas
+    une paire, et la cible refuserait la connexion sur un message qui ne dit rien
+    de la clé qu'on lui a donnée.
+    """
+    try:
+        from cryptography.hazmat.primitives import serialization
+    except ImportError:
+        return ""
+    try:
+        cle = serialization.load_ssh_private_key(
+            (privee or "").encode("ascii"), password=None
+        )
+    except (ValueError, TypeError, UnicodeEncodeError):
+        return ""
+    return (
+        cle.public_key()
+        .public_bytes(
+            serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+        )
+        .decode("ascii")
+    )
+
+
+def texte_cle_sauvegarde(publique):
+    """Le `group_vars` où le banc pose la clé publique de sauvegarde, ou « »."""
+    if not (publique or "").strip():
+        return ""
+    return (
+        "---\n"
+        "# La moitié publique de la clé de sauvegarde que le BANC a forgée. Sa\n"
+        "# moitié privée est scellée dans la voûte du locataire.\n"
+        f"serveur_backup_pubkey: {json.dumps(publique.strip())}\n"
+    )
 
 
 def forge_les_secrets(table=SECRETS_LOCATAIRE):
@@ -1955,6 +2024,9 @@ def _recrit(chemin, transforme):
 # banc nomme les siennes de la même façon, et dans les deux cas c'est le PLAN qui
 # donne l'HÔTE — élargir la couverture est un mot, jamais un nom de machine.
 #
+# LA CIBLE DES SAUVEGARDES Y EST, parce que le banc la POSE — voir
+# `pose_la_sauvegarde`.
+#
 # LE MAGASIN DE COURRIEL Y EST, parce que le banc POSE l'annuaire auquel il se
 # lie — voir `pose_l_annuaire`. Sans cet ajout il se déploierait vers une machine
 # qu'aucun plan ne nomme, et la passe serait verte sans que rien n'authentifie.
@@ -1965,6 +2037,7 @@ APPLICATIONS_COUVERTES = (
     "openldap",
     "dovecot",
     "postfix",
+    "backup",
 )
 
 
@@ -2192,6 +2265,51 @@ def modele_plus_recent(moteur, eco):
 def pose_l_annuaire(eco, hote_autorite):
     """Ajoute l'annuaire aux trois fichiers du plan. Le souci, ou « ».
 
+    `pose_un_service` fait le travail ; voir là pour ce qui le règle.
+    """
+    return pose_un_service(
+        eco,
+        hote_autorite,
+        FONCTION_ANNUAIRE,
+        APPLICATION_ANNUAIRE,
+        GROUPE_ANNUAIRE,
+        hote_de_fonction(FONCTION_ANNUAIRE),
+    )
+
+
+# LA CIBLE DES SAUVEGARDES QUE LE BANC AJOUTE AU PLAN. Le modèle attache
+# `client_backup` à des hôtes qui portent un état et ne déclare aucune cible :
+# la recette du moteur, qui restaure un instantané de chacun, ne peut alors que
+# refuser. Les noms sont ceux du modèle assemblé qui en déclare une. L'HÔTE N'EST
+# PAS DÉRIVÉ DE LA FONCTION : c'est le nom que `client_backup` vise par défaut,
+# et une épreuve le confronte à ce défaut.
+FONCTION_SAUVEGARDE = "sauvegarde"
+APPLICATION_SAUVEGARDE = "backup"
+GROUPE_SAUVEGARDE = "serveur_backup"
+HOTE_SAUVEGARDE = "backup-01"
+
+
+def pose_la_sauvegarde(eco, hote_autorite):
+    """Ajoute la cible des sauvegardes aux trois fichiers du plan. Le souci,
+    ou « »."""
+    return pose_un_service(
+        eco,
+        hote_autorite,
+        FONCTION_SAUVEGARDE,
+        APPLICATION_SAUVEGARDE,
+        GROUPE_SAUVEGARDE,
+        HOTE_SAUVEGARDE,
+    )
+
+
+# CE QUE LE BANC AJOUTE AU PLAN, dans l'ordre où il l'ajoute. Une liste et non
+# deux appels écrits à la suite : c'est elle qu'une épreuve interroge.
+SERVICES_POSES = (pose_l_annuaire, pose_la_sauvegarde)
+
+
+def pose_un_service(eco, hote_autorite, fonction, application, groupe, hote):
+    """Ajoute un service aux trois fichiers du plan. Le souci, ou « ».
+
     DÉRIVÉ, JAMAIS ÉCRIT. La zone est celle où vit déjà l'autorité de
     certification, et le rang le premier libre de cette zone. Un couple écrit ici
     poserait l'annuaire dans un réseau que personne n'a choisi — tout l'adressage
@@ -2209,7 +2327,7 @@ def pose_l_annuaire(eco, hote_autorite):
     que prévu — l'inverse exact de ce qu'on veut d'un modèle qui s'améliore.
     """
     plan = os.path.join(eco, "plan")
-    if APPLICATION_ANNUAIRE in (
+    if application in (
         lit_applications(os.path.join(plan, "applications.yml")) or {}
     ):
         return ""
@@ -2228,26 +2346,25 @@ def pose_l_annuaire(eco, hote_autorite):
     zone = categorie_de(fonctions, fonction_de(serveurs, hote_autorite))
     rang = place_libre(fonctions, zone)
     if not zone or not rang:
-        return f"aucune place au plan pour « {FONCTION_ANNUAIRE} »"
-    hote = hote_de_fonction(FONCTION_ANNUAIRE)
+        return f"aucune place au plan pour « {fonction} »"
     for fichier, cle, nom, valeur in (
         (
             "nomenclature.yml",
             "fonctions",
-            FONCTION_ANNUAIRE,
+            fonction,
             f"{{ categorie: {zone}, service: {rang} }}",
         ),
         (
             "serveurs.yml",
             "serveurs",
             hote,
-            f"{{ fonction: {FONCTION_ANNUAIRE}, etat: actif }}",
+            f"{{ fonction: {fonction}, etat: actif }}",
         ),
         (
             "applications.yml",
             "applications",
-            APPLICATION_ANNUAIRE,
-            f"{{ groupe: {GROUPE_ANNUAIRE}, hote: {hote} }}",
+            application,
+            f"{{ groupe: {groupe}, hote: {hote} }}",
         ),
     ):
         souci = _recrit(
@@ -2448,9 +2565,10 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     # L'ANNUAIRE AVANT LA LECTURE DES APPLICATIONS : posé après, il n'y serait
     # pas, et le magasin de courriel se déploierait vers une machine qu'aucun
     # plan ne nomme — en passant au vert.
-    souci = pose_l_annuaire(eco, hotes[0])
-    if souci:
-        return pose._replace(souci=souci)
+    for pose_service in SERVICES_POSES:
+        souci = pose_service(eco, hotes[0])
+        if souci:
+            return pose._replace(souci=souci)
     couverts = hotes_couverts(os.path.join(eco, "plan", "applications.yml"))
     if couverts is None:
         return pose._replace(
@@ -3526,6 +3644,19 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
     secrets, souci = forge_les_secrets()
     if souci:
         return f"les secrets du locataire : {souci}", secret
+    souci = _ecrit(
+        os.path.join(
+            eco,
+            "inventories",
+            INVENTAIRE_BANC,
+            "group_vars",
+            "all",
+            CLE_SAUVEGARDE_BANC,
+        ),
+        texte_cle_sauvegarde(cle_publique(secrets.get(CLE_SAUVEGARDE, ""))),
+    )
+    if souci:
+        return f"la clé publique de sauvegarde : {souci}", secret
     dire(f"  · les {len(secrets)} secrets du locataire scellés")
     return (
         scelle_les_secrets(
@@ -3607,7 +3738,13 @@ def joue_une_passe(
     if not etapes:
         return "le moteur n'a pas dit le nom de l'écosystème monté"
 
-    for etape in (e for e in etapes if not e.confirmer):
+    # LA PRÉPARATION EST CE QUI PRÉCÈDE LE PREMIER GESTE QUI ÉCRIT, et non
+    # tout ce qui n'écrit pas : la recette n'écrit rien et se joue APRÈS la
+    # construction, qu'elle juge.
+    premier = next(
+        (i for i, e in enumerate(etapes) if e.confirmer), len(etapes)
+    )
+    for etape in etapes[:premier]:
         souci = joue_une_etape(moteur, env, etape, passe, secret, dire)
         if souci:
             return souci
@@ -3616,12 +3753,15 @@ def joue_une_passe(
     if souci:
         return souci
 
-    for etape in (e for e in etapes if e.confirmer):
+    de_la_passe = []
+    for etape in etapes[premier:]:
         souci = joue_une_etape(
-            moteur, env, etape, passe, secret, dire, recettes
+            moteur, env, etape, passe, secret, dire, de_la_passe
         )
         if souci:
             return souci
+    if recettes is not None:
+        recettes.extend(de_la_passe)
     return ""
 
 
@@ -3771,7 +3911,8 @@ def joue_une_etape(
     UNE RECETTE NON TENUE N'ARRÊTE PAS LA BOUCLE quand l'appelant tend
     `recettes` : la flotte est bâtie et déployée, et la raser reste dû. La cause
     y est ajoutée, l'étape rend « », et c'est à l'appelant de rendre le verdict
-    qui la nomme. Sans `recettes`, tout échec reste un souci.
+    qui la nomme. Sans `recettes`, tout échec reste un souci. Est une recette
+    l'étape marquée telle, ou l'échec qui suit la marque du moteur.
     """
     argv = runner_du_banc().cible(
         moteur, etape.cible, etape.variables, confirmer=etape.confirmer
@@ -3791,11 +3932,21 @@ def joue_une_etape(
         dire(f"      journal non déposé : {souci}")
     if vu.code != 0:
         souci = f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
-        if recettes is not None and recette_seule(vu.sortie):
+        if recettes is not None and (
+            etape.recette or recette_seule(vu.sortie)
+        ):
             recettes.append(souci)
             dire(f"      recette non tenue — {souci}")
             return ""
         return souci
+    # LA RECETTE REJOUÉE QUI TIENT REMPLACE CELLES D'AVANT dans la même passe :
+    # elle juge la même flotte, et plus complètement, puisque la sauvegarde
+    # immédiate lui a donné l'instantané qui manquait. Ce qui est remplacé est
+    # DIT, jamais tu.
+    if etape.recette and recettes:
+        for ancienne in recettes:
+            dire(f"      remplacée par la recette rejouée — {ancienne}")
+        recettes.clear()
     return ""
 
 

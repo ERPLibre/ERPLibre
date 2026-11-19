@@ -1108,11 +1108,27 @@ class TestLaBoucleEstCelleDuMoteur(unittest.TestCase):
             self.rang("instancier"), self.rang("instancier-appliquer")
         )
 
-    def test_only_the_two_building_gestures_confirm(self):
+    def test_only_the_writing_gestures_confirm(self):
         """Un geste qui écrit le DIT. Confirmer une mesure la ferait écrire."""
         self.assertEqual(
-            ["reconstruire", "raser"],
+            ["reconstruire", "sauvegarder-maintenant", "raser"],
             [e.cible for e in B.ETAPES_BOUCLE if e.confirmer],
+        )
+
+    def test_the_recipe_is_replayed_after_a_first_backup(self):
+        """Une flotte qui vient de naître n'a aucun instantané : la recette
+        rejouée avant la sauvegarde immédiate échouerait sur ce manque."""
+        self.assertLess(
+            self.rang("reconstruire"), self.rang("sauvegarder-maintenant")
+        )
+        self.assertLess(
+            self.rang("sauvegarder-maintenant"), self.rang("valider")
+        )
+        self.assertLess(self.rang("valider"), self.rang("raser"))
+
+    def test_the_acceptance_recipe_is_the_only_recipe_step(self):
+        self.assertEqual(
+            ["valider"], [e.cible for e in B.ETAPES_BOUCLE if e.recette]
         )
 
     def test_razing_names_what_it_destroys(self):
@@ -4067,6 +4083,52 @@ AVANT_RECETTE = (
 )
 
 
+class TestLOrdreDeLaPasse(unittest.TestCase):
+    """La préparation est ce qui précède le PREMIER geste qui écrit. Partager
+    sur « écrit ou non » jouait la recette — qui n'écrit rien — AVANT la
+    construction qu'elle juge."""
+
+    def joue(self):
+        joues = []
+
+        def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
+            joues.append(e.cible)
+            return ""
+
+        def zones(*_a, **_k):
+            joues.append("zones")
+            return ""
+
+        for nom, valeur in (
+            ("env_ansible", lambda _m: {}),
+            ("saut_ansible", lambda _m, _t: {}),
+            ("chemins_du_banc", lambda _m: ("f", "s", "e")),
+            ("nom_monte_du_moteur", lambda _m, _e: "fictif"),
+            ("joue_une_etape", etape),
+            ("route_les_zones", zones),
+        ):
+            correctif = mock.patch.object(B, nom, valeur)
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        mesures = mock.Mock(terrain="t", adresse_api="")
+        souci = B.joue_une_passe(
+            "/f/moteur", mesures, None, B.PASSE_VOUTE, "", lambda *a: None
+        )
+        self.assertEqual("", souci)
+        return joues
+
+    def test_the_recipe_plays_after_the_build_it_judges(self):
+        joues = self.joue()
+        self.assertLess(joues.index("reconstruire"), joues.index("valider"))
+        self.assertLess(joues.index("zones"), joues.index("valider"))
+
+    def test_the_inventory_is_prepared_before_the_zones(self):
+        joues = self.joue()
+        self.assertEqual(
+            ["instancier", "instancier-appliquer", "zones"], joues[:3]
+        )
+
+
 class TestLaRecetteSeJugeAPart(unittest.TestCase):
     """La recette d'acceptation du moteur clôt désormais la construction. Son
     échec ne dit pas que la flotte n'a pas été bâtie : la boucle doit aller au
@@ -4163,6 +4225,41 @@ class TestLEtapeDeposeSaSortie(unittest.TestCase):
         )
         self.assertIn("déploiement", souci)
         self.assertEqual([], recettes)
+
+    def test_a_recipe_step_that_fails_is_collected_without_the_mark(self):
+        """La recette rejouée par le banc n'imprime pas la marque : c'est
+        l'étape elle-même qui se déclare recette."""
+        self.atelier(2, AVANT_RECETTE)
+        recettes = []
+        etape = B.Etape("valider", (), "~2 min", False, False, True)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", lambda *a: None, recettes
+        )
+        self.assertEqual("", souci)
+        self.assertEqual(1, len(recettes))
+
+    def test_a_replayed_recipe_that_holds_replaces_the_earlier_ones(self):
+        self.atelier(0, "toutes les recettes tiennent")
+        dits = []
+        recettes = ["make reconstruire : recette fictive"]
+        etape = B.Etape("valider", (), "~2 min", False, False, True)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", dits.append, recettes
+        )
+        self.assertEqual("", souci)
+        self.assertEqual([], recettes)
+        self.assertIn("recette fictive", "\n".join(dits))
+
+    def test_a_green_ordinary_step_replaces_nothing(self):
+        """Seule une RECETTE qui tient en remplace une autre : une sauvegarde
+        réussie ne dit rien de la recette."""
+        self.atelier(0, "sauvegardé")
+        recettes = ["make reconstruire : recette fictive"]
+        etape = B.Etape("sauvegarder-maintenant", (), "~2 min", True, False)
+        B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", lambda *a: None, recettes
+        )
+        self.assertEqual(1, len(recettes))
 
     def test_without_a_collector_a_recipe_failure_stays_a_failure(self):
         """Seul l'appelant qui s'engage à rendre le verdict reçoit le droit de
@@ -4448,6 +4545,139 @@ class TestLAnnuaireQueLeBancAjoute(unittest.TestCase):
                 self.assertIsNone(
                     B.pose_sous_cle(self.NOMENCLATURE, "fonctions", vide, "{}")
                 )
+
+
+MOTEUR_CLONE = os.path.join(RACINE, "private", "repo", "Set-OPS-Public")
+
+
+def lu_au_moteur(*chemin):
+    """Un YAML du moteur cloné, ou saute l'épreuve s'il n'est pas là."""
+    fichier = os.path.join(MOTEUR_CLONE, *chemin)
+    if not os.path.isfile(fichier):
+        raise unittest.SkipTest("le clone du moteur n'est pas là")
+    with open(fichier, encoding="utf-8") as fh:
+        return yaml.safe_load(fh.read())
+
+
+class TestLaRecetteDuCourrielTrouveSonCompte(unittest.TestCase):
+    """La recette du moteur remet un message à un compte qu'aucune instance ne
+    crée. Le banc donne ce nom à son compte d'amorçage, le seul compte de
+    personne que le moteur sache poser."""
+
+    def test_the_bench_names_its_bootstrap_account_so(self):
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertEqual(B.COMPTE_RECETTE, lu["amorcage_acces_uid"])
+
+    def test_it_is_the_account_the_engine_s_recipe_writes_to(self):
+        """Un nom qui ne serait plus celui de la recette passerait la pose et
+        ferait échouer la recette sur une boîte introuvable."""
+        jeux = lu_au_moteur("playbooks", "valider.yml")
+        destinataires = [
+            str((jeu.get("vars") or {}).get("recette_mail_dest"))
+            for jeu in jeux or ()
+            if isinstance(jeu, dict)
+            and "recette_mail_dest" in (jeu.get("vars") or {})
+        ]
+        self.assertEqual(1, len(destinataires))
+        self.assertEqual(B.COMPTE_RECETTE, destinataires[0].split("@")[0])
+
+    def test_the_setting_is_one_the_engine_reads(self):
+        defauts = lu_au_moteur(
+            "roles", "amorcage_acces", "defaults", "main.yml"
+        )
+        self.assertIn("amorcage_acces_uid", defauts)
+
+
+class TestLaCibleDesSauvegardes(unittest.TestCase):
+    """Le modèle attache `client_backup` à des hôtes qui portent un état et ne
+    déclare aucune cible : la recette, qui restaure un instantané de chacun, ne
+    pouvait que refuser."""
+
+    def test_the_host_is_the_one_client_backup_aims_at(self):
+        defauts = lu_au_moteur(
+            "roles", "client_backup", "defaults", "main.yml"
+        )
+        vise = str(defauts["client_backup_cible"]).split(".")[0]
+        self.assertEqual(B.HOTE_SAUVEGARDE, vise)
+
+    def test_the_group_is_a_role_of_the_engine(self):
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        self.assertTrue(
+            os.path.isdir(
+                os.path.join(MOTEUR_CLONE, "roles", B.GROUPE_SAUVEGARDE)
+            )
+        )
+
+    def test_the_bench_covers_it(self):
+        self.assertIn(B.APPLICATION_SAUVEGARDE, B.APPLICATIONS_COUVERTES)
+
+    def test_the_mounting_poses_it(self):
+        """Déclarée couverte mais jamais posée, la cible manquerait au plan et
+        la recette refuserait comme avant."""
+        self.assertIn(B.pose_la_sauvegarde, B.SERVICES_POSES)
+
+    def test_the_three_files_receive_their_entry(self):
+        source = os.path.join(MOTEUR_CLONE, "exemples", "modeles", "socle")
+        if not os.path.isdir(source):
+            self.skipTest("le moteur n'est pas cloné")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        eco = os.path.join(d, "eco")
+        shutil.copytree(source, eco)
+        self.assertEqual("", B.pose_la_sauvegarde(eco, "infra-pki-01"))
+
+        def lu(fichier, cle):
+            with open(
+                os.path.join(eco, "plan", fichier), encoding="utf-8"
+            ) as f:
+                return (yaml.safe_load(f.read()) or {}).get(cle) or {}
+
+        serveurs = lu("serveurs.yml", "serveurs")
+        self.assertEqual("actif", serveurs[B.HOTE_SAUVEGARDE]["etat"])
+        self.assertEqual(
+            B.FONCTION_SAUVEGARDE, serveurs[B.HOTE_SAUVEGARDE]["fonction"]
+        )
+        self.assertEqual(
+            {"groupe": B.GROUPE_SAUVEGARDE, "hote": B.HOTE_SAUVEGARDE},
+            lu("applications.yml", "applications")[B.APPLICATION_SAUVEGARDE],
+        )
+        fonctions = lu("nomenclature.yml", "fonctions")
+        self.assertEqual(
+            fonctions["infra-pki"]["categorie"],
+            fonctions[B.FONCTION_SAUVEGARDE]["categorie"],
+        )
+        # Une seconde pose ne double rien : l'application est déjà là.
+        self.assertEqual("", B.pose_la_sauvegarde(eco, "infra-pki-01"))
+
+
+class TestLaClePubliqueDeSauvegarde(unittest.TestCase):
+    """La cible refuse sans clé publique ; une clé forgée à part ne formerait
+    pas une paire avec celle que les clients présentent."""
+
+    def test_it_is_derived_from_the_forged_private_key(self):
+        privee = B.forge_cle_ssh()
+        if not privee:
+            self.skipTest("cryptography absent de cet interpréteur")
+        publique = B.cle_publique(privee)
+        self.assertTrue(publique.startswith("ssh-ed25519 "), publique)
+        self.assertEqual(publique, B.cle_publique(privee))
+        self.assertNotEqual(publique, B.cle_publique(B.forge_cle_ssh()))
+
+    def test_an_unreadable_key_gives_nothing(self):
+        for brut in ("", "pas une clé", None):
+            with self.subTest(brut=brut):
+                self.assertEqual("", B.cle_publique(brut))
+
+    def test_the_file_carries_it_and_refuses_empty(self):
+        lu = yaml.safe_load(B.texte_cle_sauvegarde("ssh-ed25519 AAAAfictif"))
+        self.assertEqual("ssh-ed25519 AAAAfictif", lu["serveur_backup_pubkey"])
+        self.assertEqual("", B.texte_cle_sauvegarde(""))
+
+    def test_the_private_key_is_one_the_bench_forges(self):
+        self.assertIn(
+            B.CLE_SAUVEGARDE, [nom for nom, _forme in B.SECRETS_LOCATAIRE]
+        )
 
 
 class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
