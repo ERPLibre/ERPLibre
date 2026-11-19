@@ -1475,6 +1475,11 @@ INTRANTS_BANC = "15-placement-banc.yml"
 # n'a rien demandé. `.invalid` est réservé à cet usage et ne se résout nulle part.
 COURRIEL_RECOURS = "recours@banc-fictif.invalid"
 
+# L'interrupteur par lequel le moteur renonce à restaurer l'état d'une
+# incarnation précédente, nommé une fois : une épreuve vérifie que ses défauts
+# le déclarent toujours.
+RESTAURATION_ACTIVE = "client_backup_restauration_active"
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1518,6 +1523,15 @@ def texte_intrants_du_banc(resolveur):
     aucune. Sans elle, le socle saute la tâche qui écrit `/etc/resolv.conf` —
     que la capture du gabarit a VIDÉ — et le premier `apt` échoue sur le cache,
     en ne disant rien du nom qu'il n'a pas résolu.
+
+    `RESTAURATION_ACTIVE` À FAUX, parce que la flotte du banc naît NEUVE à chaque
+    passe et qu'aucun serveur de sauvegarde n'est à son plan. Le modèle attache
+    pourtant `client_backup` à des hôtes qui portent un état, et le moteur, en
+    reconstruisant, interroge leur dépôt avant de créer cet état : un dépôt
+    injoignable le fait REFUSER, à raison — conclure « rien à restaurer » ferait
+    naître neuf ce qui attend chez l'hébergeur. L'interrupteur est celui que le
+    moteur documente pour « ne jamais restaurer » ; la sauvegarde n'en est pas
+    bloquée. La restauration n'est donc PAS éprouvée par ce banc.
     """
     if not (resolveur or "").strip():
         return ""
@@ -1526,6 +1540,7 @@ def texte_intrants_du_banc(resolveur):
 # n'en réécrit aucun.
 dns_amorcage: "{resolveur.strip()}"
 amorcage_acces_courriel: "{COURRIEL_RECOURS}"
+{RESTAURATION_ACTIVE}: false
 """
 
 

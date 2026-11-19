@@ -4561,6 +4561,42 @@ class TestLAdresseDeRecours(unittest.TestCase):
         self.assertEqual("192.0.2.1", lu["dns_amorcage"])
 
 
+class TestUneFlotteNeuveNeRestaurePas(unittest.TestCase):
+    """La flotte du banc naît neuve, sans serveur de sauvegarde au plan. Le
+    moteur interroge pourtant le dépôt des hôtes qui portent `client_backup`
+    avant de créer leur état, et refuse quand il ne le joint pas : la
+    reconstruction s'arrêtait sur l'autorité de certification."""
+
+    def test_the_bench_turns_restoration_off(self):
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertIs(False, lu[B.RESTAURATION_ACTIVE])
+
+    def test_the_resolver_and_the_address_are_still_there(self):
+        """Contrôle positif : ajouter une clé ne doit pas en perdre une."""
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertEqual("192.0.2.1", lu["dns_amorcage"])
+        self.assertEqual(B.COURRIEL_RECOURS, lu["amorcage_acces_courriel"])
+
+    def test_the_switch_is_one_the_engine_declares(self):
+        """Un nom que le moteur ne lit pas serait posé sans effet, et la
+        reconstruction refuserait comme avant sans que rien ne le dise."""
+        chemin = os.path.join(
+            RACINE,
+            "private",
+            "repo",
+            "Set-OPS-Public",
+            "roles",
+            "client_backup",
+            "defaults",
+            "main.yml",
+        )
+        if not os.path.isfile(chemin):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(chemin, encoding="utf-8") as fh:
+            defauts = yaml.safe_load(fh.read()) or {}
+        self.assertIn(B.RESTAURATION_ACTIVE, defauts)
+
+
 class TestUneCopieQuiPrecedeSonModele(unittest.TestCase):
     """Relancer sans défaire réutilise l'écosystème posé, et c'est voulu : rien
     ne doit écraser ce qui est déjà là. Mais une copie qui PRÉCÈDE une évolution
