@@ -72,7 +72,7 @@ MANIFESTE_REPO = ".repo/manifest.xml"
 # Le repère du dossier frère qui porte le `underlay.yml` d'un site, dans le
 # geste qui le monte, et le document du moteur qui dit comment l'implanter.
 REPERE_SITE = "<site>"
-DOC_SITE = "docs/implanter-un-tenant-sur-un-site.md"
+DOC_SITE = "docs/hebergement/implanter-un-tenant-sur-un-site.md"
 
 
 # Le SHA affiché sur la ligne du manifeste : douze caractères le gardent

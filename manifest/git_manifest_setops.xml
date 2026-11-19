@@ -52,7 +52,7 @@
         name="Set-OPS-Public.git"
         path="private/repo/Set-OPS-Public"
         remote="alliance-boreale"
-        revision="5f6ffda5e827adb67fba436dc5f3c1f2f8f6e51d"
+        revision="39d4cb1fdc6e75882770588dccb813ab3ae8323d"
         upstream="main"
         groups="setops"
     />

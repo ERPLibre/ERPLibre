@@ -230,7 +230,8 @@ Ligne par ligne :
   `ln -sfn ../<site>/underlay.yml private/repo/Set-OPS-Public/underlay.yml`
   — `<site>` est le dossier frère, sous `private/repo/`, qui porte le
   `underlay.yml` du site, et la cible est relative au dossier du lien. La
-  source renvoie au `docs/implanter-un-tenant-sur-un-site.md` du moteur.
+  source renvoie au `docs/hebergement/implanter-un-tenant-sur-un-site.md` du
+  moteur.
 - **Clé de voûte de l'écosystème** : code de retour `0` de
   `scripts/voutes.py etat`, portée. ◐ sur `1`, la clé manque : la ligne
   nomme la commande qui montre pourquoi, puisqu'un script qui lève sort
@@ -330,15 +331,15 @@ passage avant un déploiement.
 
 ## Les séquences du moteur
 
-Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
-nulle part dans quel ordre les jouer. Son registre le dit, en dix-sept
-séquences — et chaque étape porte un « pourquoi » qui n'a de sens qu'à sa place
-dans la suite. `Set-OPS - Runbooks` les parcourt.
+Le Makefile du moteur porte plus d'une centaine de cibles documentées et ne dit
+nulle part dans quel ordre les jouer. Son registre le dit, en séquences — et
+chaque étape porte un « pourquoi » qui n'a de sens qu'à sa place dans la suite.
+`Set-OPS - Runbooks` les parcourt.
 
 **Rien n'est caché.** Une séquence dont on retirerait les étapes que todo ne
-lance pas mentirait par omission : huit des dix-sept en ont, et l'une
-commencerait à son étape 2. Chaque étape est donc affichée, avec la raison pour
-laquelle elle ne part pas d'ici — destructive et gardée par le moteur, soumise
+lance pas mentirait par omission : la plupart en ont, et certaines
+commenceraient à leur étape 2. Chaque étape est donc affichée, avec la raison
+pour laquelle elle ne part pas d'ici — destructive et gardée par le moteur, soumise
 à la confirmation du moteur lui-même, ou en attente d'un écosystème ou d'un
 site monté. La tête de chaque séquence dit combien sur combien se conduisent,
 si bien qu'un poste nu lit « 0/9 » plutôt qu'un écran vide.

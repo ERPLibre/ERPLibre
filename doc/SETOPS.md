@@ -222,7 +222,7 @@ Line by line:
   — `<site>` is the sibling folder, under `private/repo/`, that holds the
   site's `underlay.yml`, and the target is relative to the link's folder.
   The source points to the engine's
-  `docs/implanter-un-tenant-sur-un-site.md`.
+  `docs/hebergement/implanter-un-tenant-sur-un-site.md`.
 - **Ecosystem vault key**: return code `0` of `scripts/voutes.py etat`,
   carried. ◐ on `1`, the key is missing: the line names the command that
   shows why, since a script that raises exits with `1` too. ◐ "unreadable
@@ -322,14 +322,14 @@ deployment.
 
 ## The engine's sequences
 
-The engine's Makefile carries more than a hundred and thirty documented
-targets and says nowhere in which order to play them. Its registry does, in
-seventeen sequences — and each step carries a "why" that only means something
-at its place in the suite. `Set-OPS - Runbooks` walks them.
+The engine's Makefile carries more than a hundred documented targets and says
+nowhere in which order to play them. Its registry does, in sequences — and each
+step carries a "why" that only means something at its place in the suite.
+`Set-OPS - Runbooks` walks them.
 
 **Nothing is hidden.** A sequence stripped of the steps TODO will not launch
-would lie by omission: eight of the seventeen have such steps, and one would
-begin at its step 2. Every step is therefore shown, with the reason it does
+would lie by omission: most have such steps, and some would begin at their
+step 2. Every step is therefore shown, with the reason it does
 not run from here — destructive and kept by the engine, gated by the engine's
 own confirmation, or waiting for an ecosystem or a site to be mounted. The
 head of each sequence says how many of how many can be driven, so a bare
