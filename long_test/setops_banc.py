@@ -3772,7 +3772,37 @@ def joue_une_passe(
             return souci
     if recettes is not None:
         recettes.extend(de_la_passe)
+    # Sa plainte est dite par elle-même et ne fait pas échouer la passe.
+    rend_l_espace(mesures.terrain, mesures.elevation, dire)
     return ""
+
+
+# CE QUE LE RASAGE LIBÈRE N'EST RENDU QU'À LA DEMANDE. Détruire une flotte
+# efface ses disques du système de fichiers du terrain, mais un terrain qui est
+# lui-même une VM garde ces blocs alloués dans son image tant qu'aucun TRIM ne
+# les nomme. Chaque passe bâtit des dizaines de gigaoctets : sans ce geste,
+# l'image du terrain croît de passe en passe jusqu'à remplir son hôte, et
+# l'hyperviseur de l'hôte suspend le terrain au milieu d'une construction.
+CMD_RENDRE = "fstrim -a"
+
+
+def rend_l_espace(terrain, elevation, dire=print):
+    """Demande au terrain de rendre les blocs libérés. Rend « » ou la plainte.
+
+    NE FAIT PAS ÉCHOUER LA PASSE : la boucle a été jouée et rasée, et ce qu'elle
+    prouve reste vrai. La plainte est DITE, parce qu'un terrain qui ne rend rien
+    remplira son hôte à la passe suivante.
+    """
+    fait = joue_sur(terrain, [CMD_RENDRE], elevation)
+    if fait.reussi:
+        dire("    espace libéré rendu à l'hôte du terrain")
+        return ""
+    plainte = (
+        f"l'espace libéré n'est pas rendu ({CMD_RENDRE}, code {fait.code}) :"
+        " le terrain gardera ces blocs dans son image"
+    )
+    dire(f"    ⚠ {plainte}")
+    return plainte
 
 
 # CE QUI DIT POURQUOI, et ce n'est pas la fin de la sortie. Ansible imprime sa

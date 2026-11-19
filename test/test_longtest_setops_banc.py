@@ -4106,6 +4106,7 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
             ("nom_monte_du_moteur", lambda _m, _e: "fictif"),
             ("joue_une_etape", etape),
             ("route_les_zones", zones),
+            ("rend_l_espace", lambda *_a, **_k: joues.append("rendre")),
         ):
             correctif = mock.patch.object(B, nom, valeur)
             correctif.start()
@@ -4117,6 +4118,13 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
         self.assertEqual("", souci)
         return joues
 
+    def test_the_space_is_given_back_after_the_raze(self):
+        """Rendre avant le rasage ne rendrait rien : les disques de la flotte
+        sont encore là."""
+        joues = self.joue()
+        self.assertEqual("rendre", joues[-1])
+        self.assertLess(joues.index("raser"), joues.index("rendre"))
+
     def test_the_recipe_plays_after_the_build_it_judges(self):
         joues = self.joue()
         self.assertLess(joues.index("reconstruire"), joues.index("valider"))
@@ -4127,6 +4135,37 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
         self.assertEqual(
             ["instancier", "instancier-appliquer", "zones"], joues[:3]
         )
+
+
+class TestLeTerrainRendCeQueLeRasageLibere(unittest.TestCase):
+    """Un terrain qui est une VM garde dans son image les blocs que la flotte
+    rasée a libérés, tant qu'aucun TRIM ne les nomme."""
+
+    def rend(self, code):
+        joues, dits = [], []
+
+        def faux(terrain, cmds, elevation, delai=None):
+            joues.append((terrain, list(cmds), elevation))
+            return B.Fait(code, "", 1)
+
+        with mock.patch.object(B, "joue_sur", faux):
+            plainte = B.rend_l_espace("t", B.ELEVE, dits.append)
+        return joues, dits, plainte
+
+    def test_every_mounted_filesystem_is_trimmed_with_elevation(self):
+        joues, _, plainte = self.rend(0)
+        self.assertEqual("", plainte)
+        self.assertEqual(1, len(joues))
+        terrain, cmds, elevation = joues[0]
+        self.assertEqual(("t", B.ELEVE), (terrain, elevation))
+        mots = cmds[0].split()
+        self.assertEqual("fstrim", mots[0])
+        self.assertTrue({"-a", "--all"} & set(mots), mots)
+
+    def test_a_refused_trim_is_said_not_swallowed(self):
+        _, dits, plainte = self.rend(1)
+        self.assertTrue(plainte)
+        self.assertIn(plainte, "\n".join(dits))
 
 
 class TestLaRecetteSeJugeAPart(unittest.TestCase):
