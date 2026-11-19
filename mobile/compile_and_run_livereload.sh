@@ -21,7 +21,7 @@
 #   LIVERELOAD_HOST=auto       ./mobile/compile_and_run_livereload.sh
 #       Auto-detect LAN IP via `hostname -I`. Phone connects over WiFi.
 #
-#   LIVERELOAD_HOST=10.0.0.42  ./mobile/compile_and_run_livereload.sh
+#   LIVERELOAD_HOST=<lan-ip>   ./mobile/compile_and_run_livereload.sh
 #       Explicit LAN IP. Useful when `hostname -I` returns the wrong
 #       interface (multiple NICs, VPN, etc.).
 #
