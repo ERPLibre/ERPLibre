@@ -60,7 +60,7 @@ le compile.
 - **AlmaLinux, Rocky Linux** : 9 et 10 — RHEL et CentOS Stream empruntent le même chemin
 - **openSUSE** : Leap 16.0 et Tumbleweed
 - **Arch Linux** : rolling release
-- **NixOS** : 25.11 — les dépendances y sont DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande
+- **NixOS** : 26.05 — les dépendances y sont DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande
 - **macOS** : par mise ou pyenv
 - **Windows** : par WSL ou Docker
 - **Architectures** : amd64, arm64 et s390x (mainframe IBM Z). Sur toute autre, `make install_os` et `make install` le disent et demandent s'il faut continuer ; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` répond oui sans question, comme il le faut sans terminal

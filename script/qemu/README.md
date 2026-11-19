@@ -340,7 +340,12 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
   `rocky`, `opensuse`, `arch`, `nixos` or `proxmox`. NixOS is the one
   image no distribution publishes: it is rebuilt by a third party, so the
   release is pinned and its sha256 verified at every download, and the
-  origin is printed before anything is created.
+  origin is printed before anything is created. That image carries 25.11:
+  at first boot the VM switches its root channel to the chosen version
+  (26.05) and rebuilds. Its daily automatic upgrade is kept, but it
+  rebuilds `/etc/nixos` — ERPLibre included — from the official channel,
+  without rebooting, instead of the third party's flake; the setting lives
+  in `/etc/nixos/erplibre-vm.nix`, rewritten at each deployment.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).

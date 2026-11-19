@@ -11313,6 +11313,10 @@ TRANSLATIONS = {
         "fr": "fuseau non posé",
         "en": "timezone not set",
     },
+    "NixOS not brought to its channel": {
+        "fr": "NixOS n'a pas rejoint son canal",
+        "en": "NixOS not brought to its channel",
+    },
     "No internet connection": {
         "fr": "Sans connexion internet",
         "en": "No internet connection",

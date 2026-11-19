@@ -382,7 +382,13 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   `rocky`, `opensuse`, `arch`, `nixos` ou `proxmox`. NixOS est la seule
   image qu'aucune distribution ne publie : elle est rebâtie par un tiers,
   donc la version est épinglée, sa somme sha256 vérifiée à chaque
-  téléchargement, et l'origine dite avant que rien ne soit créé.
+  téléchargement, et l'origine dite avant que rien ne soit créé. Cette
+  image porte 25.11 : au premier démarrage, la VM bascule son canal root
+  sur la version choisie (26.05) et se reconstruit. Sa mise à jour
+  automatique quotidienne est gardée, mais elle reconstruit `/etc/nixos` —
+  ERPLibre compris — depuis le canal officiel, sans redémarrer, au lieu du
+  flake du tiers ; le réglage vit dans `/etc/nixos/erplibre-vm.nix`,
+  réécrit à chaque déploiement.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut

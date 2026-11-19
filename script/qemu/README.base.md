@@ -506,7 +506,12 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
   `rocky`, `opensuse`, `arch`, `nixos` or `proxmox`. NixOS is the one
   image no distribution publishes: it is rebuilt by a third party, so the
   release is pinned and its sha256 verified at every download, and the
-  origin is printed before anything is created.
+  origin is printed before anything is created. That image carries 25.11:
+  at first boot the VM switches its root channel to the chosen version
+  (26.05) and rebuilds. Its daily automatic upgrade is kept, but it
+  rebuilds `/etc/nixos` — ERPLibre included — from the official channel,
+  without rebooting, instead of the third party's flake; the setting lives
+  in `/etc/nixos/erplibre-vm.nix`, rewritten at each deployment.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
@@ -764,7 +769,13 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   `rocky`, `opensuse`, `arch`, `nixos` ou `proxmox`. NixOS est la seule
   image qu'aucune distribution ne publie : elle est rebâtie par un tiers,
   donc la version est épinglée, sa somme sha256 vérifiée à chaque
-  téléchargement, et l'origine dite avant que rien ne soit créé.
+  téléchargement, et l'origine dite avant que rien ne soit créé. Cette
+  image porte 25.11 : au premier démarrage, la VM bascule son canal root
+  sur la version choisie (26.05) et se reconstruit. Sa mise à jour
+  automatique quotidienne est gardée, mais elle reconstruit `/etc/nixos` —
+  ERPLibre compris — depuis le canal officiel, sans redémarrer, au lieu du
+  flake du tiers ; le réglage vit dans `/etc/nixos/erplibre-vm.nix`,
+  réécrit à chaque déploiement.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut

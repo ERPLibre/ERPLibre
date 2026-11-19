@@ -187,8 +187,13 @@ PROXMOX_DEBIAN_BASE: dict[str, str] = {"9": "13"}
 #
 # 40 Go et 2 Go de RAM là où Arch demande 20 et 1 : le store Nix garde chaque
 # génération du système et ne se purge qu'à la main (nix-collect-garbage).
+#
+# La clé est le CANAL que la VM suit, pas la version de l'image : l'image
+# épinglée embarque 25.11, et nixos_vm_commands() bascule son canal root sur
+# celui de la clé puis reconstruit au premier démarrage. Changer de version
+# NixOS se fait donc ici, et nulle part ailleurs.
 NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
+    "26.05": ("26.05", "nixos-26.05", 2048, "40G"),
 }
 
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
@@ -199,7 +204,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
-    "nixos": (NIXOS_VERSIONS, "25.11"),
+    "nixos": (NIXOS_VERSIONS, "26.05"),
     "proxmox": (PROXMOX_VERSIONS, "9"),
 }
 
@@ -3754,6 +3759,114 @@ def nix_trust_commands() -> list[str]:
 
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
+# Le module qu'ERPLibre pose sur une VM NixOS qu'il crée, et le canal qu'elle
+# suit.
+#
+# L'image épinglée déclare dans sa configuration.nix une mise à jour
+# automatique quotidienne qui reconstruit le système depuis le flake de son
+# auteur — branche non épinglée — et redémarre. Elle remplacerait chaque nuit
+# la configuration de la VM, ERPLibre compris, par celle de ce dépôt tiers.
+# Le module la garde active mais la ramène sur /etc/nixos : sans flake,
+# system.autoUpgrade lance « nixos-rebuild switch --upgrade », qui met le
+# canal root à jour puis reconstruit configuration.nix et ce qu'elle importe.
+#
+# Le faisceau d'autorités n'est donné au service que s'il existe : sur une VM
+# soustraite au cache, ou née sans lui, il n'y en a pas, et la variable
+# pointerait vers un fichier absent — ce qui couperait TLS.
+NIXOS_CHANNEL_BASE = "https://channels.nixos.org"
+NIXOS_VM_MODULE = "/etc/nixos/erplibre-vm.nix"
+
+
+def nixos_vm_module(pw_auth: bool) -> str:
+    """Le texte de NIXOS_VM_MODULE.
+
+    `pw_auth` : l'authentification ssh par mot de passe, que cloud-init
+    réglerait par « ssh_pwauth » sur une autre distribution. NixOS génère
+    sshd_config depuis le store, en lecture seule : la déclarer ici est la
+    seule façon de la régler.
+    """
+    pa = "true" if pw_auth else "false"
+    return (
+        "# Posé par ERPLibre au déploiement de la VM, réécrit à chaque\n"
+        "# déploiement : déclarer ses propres réglages ailleurs.\n"
+        "{ lib, ... }:\n"
+        "let\n"
+        f'  bundle = "{NIX_CA_BUNDLE}";\n'
+        "in\n"
+        "{\n"
+        "  # Mise à jour quotidienne de CETTE configuration, sur le canal\n"
+        "  # officiel, sans redémarrage : celle de l'image suit un flake tiers.\n"
+        "  system.autoUpgrade = {\n"
+        "    enable = true;\n"
+        "    flake = lib.mkForce null;\n"
+        "    flags = lib.mkForce [ ];\n"
+        "    allowReboot = lib.mkForce false;\n"
+        '    dates = "04:40";\n'
+        '    randomizedDelaySec = "45min";\n'
+        "  };\n"
+        "  systemd.services.nixos-upgrade.environment =\n"
+        "    lib.optionalAttrs (builtins.pathExists bundle) {\n"
+        "      NIX_SSL_CERT_FILE = bundle;\n"
+        "      SSL_CERT_FILE = bundle;\n"
+        "      CURL_CA_BUNDLE = bundle;\n"
+        "    };\n"
+        f"  services.openssh.settings.PasswordAuthentication = {pa};\n"
+        "}\n"
+    )
+
+
+def nixos_vm_commands(version: str, pw_auth: bool) -> list[str]:
+    """Ce qui amène une VM NixOS fraîche au canal `version`, sous le module
+    d'ERPLibre. Des commandes SHELL, à lancer en root, dans cet ordre.
+
+    1. Le minuteur de l'image est arrêté : il est persistant, donc une
+       échéance manquée pendant que la VM était éteinte le déclenche dès le
+       démarrage, et il redémarrerait la VM en pleine installation. La
+       reconstruction finale le réarme, sur la configuration d'ERPLibre.
+    2. Le module est écrit (base64 : aucun guillemet à protéger, ni en YAML
+       ni dans « sh -c ») puis importé une fois.
+    3. Le canal root passe à `version` ; une seule reconstruction applique
+       le canal et le module.
+
+    La reconstruction rend 4 quand une unité n'a pas redémarré, alors que le
+    système est activé : c'est la version relue ensuite qui tranche, et un
+    écart s'écrit dans le journal de cloud-init sans arrêter la suite.
+
+    Idempotent : relancé sur une VM déjà à jour, il réécrit le même module,
+    n'ajoute pas un second import, et la reconstruction ne change rien.
+
+    Chaque commande commence par charger l'environnement du SYSTÈME,
+    /etc/set-environment — celui que reçoit une session ssh. Le « runcmd » de
+    cloud-init n'a que le PATH de son service, une liste de chemins du store
+    sans grep, sed, nix-channel ni nixos-rebuild, et aucun NIX_PATH : la
+    reconstruction n'y trouve pas « <nixpkgs/nixos> ». Le chargement est
+    conditionnel, et le même texte vaut sous « sudo sh -c » par ssh.
+    """
+    env = "test -r /etc/set-environment && . /etc/set-environment;"
+    module_b64 = base64.b64encode(
+        nixos_vm_module(pw_auth).encode("utf-8")
+    ).decode("ascii")
+    conf = "/etc/nixos/configuration.nix"
+    nom = NIXOS_VM_MODULE.rsplit("/", 1)[1]
+    return [
+        f"{env} systemctl stop nixos-upgrade.timer nixos-upgrade.service"
+        " 2>/dev/null || true",
+        f"{env} echo {module_b64} | base64 -d > {NIXOS_VM_MODULE}",
+        f"{env} grep -q {nom} {conf} || sed -i"
+        f" '0,/imports *= *\\[/s//imports = [\\n    .\\/{nom}/' {conf}",
+        f"{env} nix-channel --add {NIXOS_CHANNEL_BASE}/nixos-{version} nixos",
+        # Le client télécharge le canal lui-même, hors du démon : il lui faut
+        # le faisceau en variable, quand il existe.
+        f"{env} B={NIX_CA_BUNDLE}; [ -r $B ] && export NIX_SSL_CERT_FILE=$B"
+        " SSL_CERT_FILE=$B CURL_CA_BUNDLE=$B; nixos-rebuild switch --upgrade"
+        " || true",
+        # Le dernier geste rend le verdict : sous cloud-init, l'état final
+        # de runcmd ; par ssh, le code que lit l'appelant.
+        f"{env} v=$(nixos-version); case $v in {version}*) true;; *) echo"
+        f' "NixOS {version} attendu, $v en place" >&2; false;; esac',
+    ]
+
+
 # Les familles à qui AUCUN des trois gestes de CACHE_TRUST ne s'applique.
 #
 # « nix » en est une : NixOS n'a pas de dossier d'ancres inscriptible — /usr
@@ -4270,7 +4383,12 @@ def build_cloud_config(
         user_block += [f"      - {k}" for k in ssh_keys]
     lines += user_block
 
-    lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
+    # Pas sur NixOS : cloud-init l'écrit dans sshd_config, en lecture seule
+    # là-bas. L'écriture échoue, cloud-config finit en échec, et chaque
+    # « nixos-rebuild switch » ultérieur le relance et rend 4. Le module
+    # d'ERPLibre le déclare à la place (nixos_vm_module).
+    if getattr(args, "distro", "ubuntu") != "nixos":
+        lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
     # Canonicalisé ICI, au plus près de l'écriture : un fuseau passé
     # explicitement en ligne de commande mérite la même traduction que celui
@@ -4408,6 +4526,14 @@ def build_cloud_config(
         "  - systemctl restart qemu-guest-agent 2>/dev/null"
         " || systemctl restart qemu-ga 2>/dev/null || true",
     ]
+    # En DERNIER : la reconstruction télécharge, donc après l'autorité du
+    # cache posée en tête, et elle dure plusieurs minutes — sshd et l'agent
+    # invité sont déjà là pendant ce temps.
+    if distro == "nixos":
+        version = getattr(args, "version", None) or DISTROS["nixos"][1]
+        lines += [
+            f"  - {c}" for c in nixos_vm_commands(version, bool(pw_hash))
+        ]
     return "\n".join(lines) + "\n"
 
 

@@ -38,7 +38,7 @@ COMBOS = (
     ("opensuse", "16.0", "amd64"),
     ("opensuse", "tumbleweed", "amd64"),
     ("arch", "latest", "amd64"),
-    ("nixos", "25.11", "amd64"),
+    ("nixos", "26.05", "amd64"),
 )
 
 # Largeur d'un terminal standard. Au-delà, le guide se replie et devient
@@ -451,7 +451,7 @@ class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
 
     def _motd(self, distro="nixos", **kw):
         return dq.build_motd(
-            distro, "25.11", "amd64", el_dir="~/git/erplibre", **kw
+            distro, "26.05", "amd64", el_dir="~/git/erplibre", **kw
         )
 
     def test_the_file_that_gets_rewritten_is_named_as_such(self):
@@ -484,7 +484,7 @@ class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
     def test_a_vm_without_erplibre_says_nothing_of_it(self):
         """Même règle que le bloc AUR : c'est l'installation qui pose le
         module dont ces lignes parlent."""
-        nu = dq.build_motd("nixos", "25.11", "amd64")
+        nu = dq.build_motd("nixos", "26.05", "amd64")
         self.assertNotIn("conf/nixos/erplibre.nix", nu)
 
     def test_the_module_turns_the_display_on(self):
@@ -548,20 +548,19 @@ class LeCheminDuDepotEstEntierDansLeGuide(unittest.TestCase):
 class LeGuideNixosDitCeQueNixosChange(unittest.TestCase):
     """Ce que le bloc ajoute, et qui ne se devine pas.
 
-    Chaque ligne a été confrontée à une VM NixOS 25.11 vivante avant d'être
-    écrite : « nixos-version » rend bien sa version, « --rollback » est dans
-    le synopsis de nixos-rebuild, et « ls /bin » rend VIDE sur une machine où
-    /bin/bash s'exécute.
+    Chaque ligne vaut sur une VM NixOS : « nixos-version » rend sa version,
+    « --rollback » est dans le synopsis de nixos-rebuild, et « ls /bin » rend
+    VIDE sur une machine où /bin/bash s'exécute.
 
-    Une recherche de paquet a été ESSAYÉE puis écartée : « nix-env -qaP »
-    ne rend rien sur cette image, dont le canal n'est pas peuplé, et
-    « nix search » se met à tirer un canal entier. Un guide qui envoie taper
-    une commande muette coûte plus qu'un guide qui se tait.
+    Aucune recherche de paquet n'y figure : « nix-env -qaP » ne rend rien sur
+    cette image, dont le canal n'est pas peuplé, et « nix search » tire un
+    canal entier. Un guide qui envoie taper une commande muette coûte plus
+    qu'un guide qui se tait.
     """
 
     def _motd(self, **kw):
         return dq.build_motd(
-            "nixos", "25.11", "amd64", el_dir="~/git/erplibre", **kw
+            "nixos", "26.05", "amd64", el_dir="~/git/erplibre", **kw
         )
 
     def test_the_safety_net_of_editing_is_named(self):
