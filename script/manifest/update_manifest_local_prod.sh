@@ -58,6 +58,9 @@ fi
 
 . ./script/manifest/repo_init.sh
 repo_init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET}
+# Un clone ordinaire de l'extension GNOME, que repo sync refuserait, est mis
+# de côté une fois l'init fait (voir le script).
+./script/manifest/erplibre_home_extension_to_repo.sh || { kill "${DAEMON_PID}"; exit 1; }
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}
