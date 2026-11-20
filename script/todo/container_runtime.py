@@ -457,6 +457,7 @@ def _inspecter_conteneurs(fiche, lanceur=lancer):
                 or "",
                 "dossier": etiquettes.get(ETIQ_DOSSIER, ""),
                 "service": etiquettes.get(ETIQ_SERVICE, ""),
+                "etiquettes": etiquettes,
                 # Le compte que « exec » prend par défaut, « » valant root.
                 "utilisateur": config.get("User") or "",
                 "env": _environnement(config.get("Env") or []),
@@ -473,6 +474,23 @@ def _environnement(lignes):
         if egal:
             env[nom] = valeur
     return env
+
+
+def arretes_par_etiquette(fiche, etiquette, lanceur=lancer):
+    """{valeur: [noms]} des conteneurs qui portent `etiquette` et ne
+    tournent pas ; {} s'il n'y en a aucun ou si le moteur se tait.
+
+    Ce sont ceux que « system prune » efface : tout conteneur qui n'est ni
+    en marche ni en pause. Les volumes qu'ils tenaient deviennent alors
+    inutilisés : « --volumes » emporte aussi les volumes nommés chez Podman,
+    les seuls anonymes chez Docker.
+    """
+    arretes = {}
+    for conteneur in _inspecter_conteneurs(fiche, lanceur=lanceur):
+        valeur = conteneur["etiquettes"].get(etiquette)
+        if valeur and conteneur["etat"] not in ("running", "paused"):
+            arretes.setdefault(valeur, []).append(conteneur["nom"])
+    return arretes
 
 
 def lister_projets(fiche, lanceur=lancer):

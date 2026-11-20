@@ -116,7 +116,29 @@ class TestInstallation(Banc):
         self.assertEqual([], todo.execute.commandes)
 
 
-class TestEffacement(Banc):
+class SansInstanceArretee:
+    """Le nettoyage interroge le moteur sur les instances Dolibarr
+    arrêtées : la réponse est fixée ici, aucun moteur réel n'est appelé."""
+
+    ARRETEES = {}
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(
+            container_menu.container_runtime,
+            "arretes_par_etiquette",
+            side_effect=self._arretees,
+        )
+        self.etiquettes = []
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _arretees(self, fiche, etiquette, lanceur=None):
+        self.etiquettes.append(etiquette)
+        return self.ARRETEES
+
+
+class TestEffacement(SansInstanceArretee, Banc):
     FICHE = {"moteur": "docker", "sans_sudo": True}
 
     def test_il_nomme_les_volumes_avant_de_demander(self):
@@ -520,7 +542,7 @@ class TestNettoyageProjets(Banc):
         self.assertEqual([], todo.execute.commandes)
 
 
-class TestNettoyageGlobal(Banc):
+class TestNettoyageGlobal(SansInstanceArretee, Banc):
     def test_il_dit_ce_qui_reste(self):
         """« Tout » s'arrête à ce qui tourne : prune ne touche pas un
         conteneur en marche."""
@@ -532,6 +554,72 @@ class TestNettoyageGlobal(Banc):
             todo_i18n.t("Running containers, and what they use, are kept."),
             sortie.getvalue(),
         )
+
+
+class TestNettoyageDolibarr(SansInstanceArretee, Banc):
+    """Une instance Dolibarr arrêtée n'a aucun conteneur en marche : prune
+    l'efface. Elle est nommée AVANT la question, la commande restant la
+    même."""
+
+    FICHE = {"moteur": "podman", "sans_sudo": True}
+    ARRETEES = {
+        "essai": ["erplibre-dolibarr-essai-web", "erplibre-dolibarr-essai-db"]
+    }
+
+    def jouer(self, reponse):
+        todo = self.todo(self.FICHE)
+        with self.reponses(entrees=[reponse]) as sortie:
+            todo._container_nettoyage()
+        return todo, sortie.getvalue()
+
+    def test_les_instances_arretees_sont_nommees_avant_la_question(self):
+        todo, rendu = self.jouer("n")
+        self.assertEqual([], todo.execute.commandes)
+        self.assertIn(
+            todo_i18n.t("Stopped Dolibarr instances it removes:"), rendu
+        )
+        self.assertIn(
+            "essai  (erplibre-dolibarr-essai-db, erplibre-dolibarr-essai-web)",
+            rendu,
+        )
+        self.assertLess(
+            rendu.index("essai"), rendu.index(todo_i18n.t("Will execute:"))
+        )
+
+    def test_elles_se_reconnaissent_a_l_etiquette_de_container_plan(self):
+        from script.dolibarr import container_plan
+
+        self.jouer("n")
+        self.assertEqual([container_plan.LABEL], self.etiquettes)
+
+    def test_la_commande_de_prune_ne_change_pas(self):
+        todo, _rendu = self.jouer("o")
+        self.assertEqual(
+            ["podman system prune -a --volumes"], todo.execute.commandes
+        )
+
+    def test_podman_annonce_la_perte_des_volumes(self):
+        _todo, rendu = self.jouer("n")
+        self.assertIn(
+            todo_i18n.t("Podman removes their volumes too, database included."),
+            rendu,
+        )
+
+    def test_docker_garde_les_volumes_nommes(self):
+        self.FICHE = {"moteur": "docker", "sans_sudo": True}
+        _todo, rendu = self.jouer("n")
+        self.assertNotIn(
+            todo_i18n.t("Podman removes their volumes too, database included."),
+            rendu,
+        )
+        self.assertIn(
+            todo_i18n.t("Their named volumes stay, database included."), rendu
+        )
+
+    def test_rien_d_arrete_rien_d_ajoute(self):
+        self.ARRETEES = {}
+        _todo, rendu = self.jouer("n")
+        self.assertNotIn("Dolibarr", rendu)
 
 
 class TestConstructionOdoo(Banc):

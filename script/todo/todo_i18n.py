@@ -21847,6 +21847,22 @@ TRANSLATIONS = {
         "fr": "Les conteneurs en marche, et ce qu'ils emploient, restent.",
         "en": "Running containers, and what they use, are kept.",
     },
+    "Stopped Dolibarr instances it removes:": {
+        "fr": "Instances Dolibarr arrêtées qu'il efface :",
+        "en": "Stopped Dolibarr instances it removes:",
+    },
+    "Podman removes their volumes too, database included.": {
+        "fr": "Podman efface aussi leurs volumes, base de données comprise.",
+        "en": "Podman removes their volumes too, database included.",
+    },
+    "Their named volumes stay, database included.": {
+        "fr": "Leurs volumes nommés restent, base de données comprise.",
+        "en": "Their named volumes stay, database included.",
+    },
+    "Start them first to keep them: Execute › Dolibarr.": {
+        "fr": "Les démarrer d'abord pour les garder : Exécution › Dolibarr.",
+        "en": "Start them first to keep them: Execute › Dolibarr.",
+    },
     "A container still uses a refused image.": {
         "fr": "Un conteneur emploie encore une image refusée.",
         "en": "A container still uses a refused image.",

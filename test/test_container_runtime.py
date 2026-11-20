@@ -482,5 +482,47 @@ class TestMultiarch(unittest.TestCase):
         )
 
 
+class TestArretesParEtiquette(unittest.TestCase):
+    """Ce que « system prune » effacerait parmi les conteneurs étiquetés :
+    ni ceux en marche, ni ceux en pause, ni ceux sans l'étiquette."""
+
+    ETIQ = "org.exemple.instance"
+    INSPECT = """[
+      {"Name": "/a-web", "State": {"Status": "exited"},
+       "Config": {"Image": "img/web:1",
+                  "Labels": {"org.exemple.instance": "a"}}},
+      {"Name": "/a-db", "State": {"Status": "created"},
+       "Config": {"Image": "img/db:1",
+                  "Labels": {"org.exemple.instance": "a"}}},
+      {"Name": "/b-web", "State": {"Status": "running"},
+       "Config": {"Image": "img/web:1",
+                  "Labels": {"org.exemple.instance": "b"}}},
+      {"Name": "/c-web", "State": {"Status": "paused"},
+       "Config": {"Image": "img/web:1",
+                  "Labels": {"org.exemple.instance": "c"}}},
+      {"Name": "/seul", "State": {"Status": "exited"},
+       "Config": {"Image": "img/x:1", "Labels": null}}
+    ]"""
+
+    def _arretes(self, reponses):
+        return cr.arretes_par_etiquette(
+            {"moteur": "podman", "sans_sudo": True},
+            self.ETIQ,
+            lanceur=_lanceur(reponses),
+        )
+
+    def test_seuls_les_arretes_etiquetes_sont_rendus_par_valeur(self):
+        arretes = self._arretes(
+            {
+                "ps -aq": (0, "aaaaaaaaaaaa\nbbbbbbbbbbbb\n"),
+                "inspect": (0, self.INSPECT),
+            }
+        )
+        self.assertEqual({"a": ["a-web", "a-db"]}, arretes)
+
+    def test_un_moteur_qui_se_tait_ne_rend_rien(self):
+        self.assertEqual({}, self._arretes({"ps -aq": (1, "denied")}))
+
+
 if __name__ == "__main__":
     unittest.main()

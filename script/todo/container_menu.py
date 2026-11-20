@@ -942,6 +942,7 @@ class ContainerMenuMixin:
         # en marche ni ce qu'il emploie. Pour effacer un projet VIVANT, c'est
         # l'entrée par espace de travail.
         print(f"  {t('Running containers, and what they use, are kept.')}")
+        self._container_dolibarr_arretees(fiche)
         cmd = container_runtime.commande(
             fiche, ["system", "prune", "-a", "--volumes"]
         )
@@ -950,6 +951,35 @@ class ContainerMenuMixin:
             print(t("Nothing to do."))
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
+
+    def _container_dolibarr_arretees(self, fiche):
+        """Nomme les instances Dolibarr arrêtées que prune effacerait.
+
+        Une instance arrêtée garde ses conteneurs arrêtés : prune les
+        efface, et Podman ses volumes nommés avec eux — la base comprise ;
+        Docker garde les volumes nommés. Les instances se reconnaissent à
+        l'étiquette que container_plan pose sur chacun de leurs objets ; un
+        objet créé sans elle n'est pas vu. container_plan n'est importé
+        qu'ici, pour que le menu partagé ne charge rien de Dolibarr ailleurs.
+        """
+        from script.dolibarr import container_plan
+
+        arretees = container_runtime.arretes_par_etiquette(
+            fiche, container_plan.LABEL
+        )
+        if not arretees:
+            return
+        print(f"\n⚠ {t('Stopped Dolibarr instances it removes:')}")
+        for instance in sorted(arretees):
+            noms = ", ".join(sorted(arretees[instance]))
+            print(f"    {instance}  ({noms})")
+        if fiche["moteur"] == "podman":
+            print(
+                f"  {t('Podman removes their volumes too, database included.')}"
+            )
+        else:
+            print(f"  {t('Their named volumes stay, database included.')}")
+        print(f"  {t('Start them first to keep them: Execute › Dolibarr.')}")
 
     def _container_lire_selection(self, total):
         """Les rangs saisis, ou None.
