@@ -38,8 +38,6 @@ import stat
 import subprocess
 import tempfile
 
-import click
-
 from script.todo.todo_i18n import t
 
 RACINE = os.path.normpath(
@@ -543,6 +541,10 @@ class SealMenuMixin:
             },
         ]
         help_info = self.fill_help_info(choices)
+        # click se charge ici, pas en tête : chemin_commitable sert aussi aux
+        # scripts que le python3 du système lance, où click manque.
+        import click
+
         while True:
             status = click.prompt(help_info)
             print()

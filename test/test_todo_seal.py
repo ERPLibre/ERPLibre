@@ -18,6 +18,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -129,6 +130,21 @@ class TestCheminCommitable(unittest.TestCase):
         self.assertTrue(
             chemin_commitable(os.path.join(racine, "private", NOM_P12))
         )
+
+    def test_le_module_se_charge_sans_click(self):
+        """Un script lancé par le python3 du système importe
+        chemin_commitable : click n'y est pas installé."""
+        code = (
+            "import sys; sys.modules['click'] = None;"
+            " from script.todo.seal_menu import chemin_commitable"
+        )
+        sortie = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=seal_menu.RACINE,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
 
 
 class TestCommandes(unittest.TestCase):
