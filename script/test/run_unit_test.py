@@ -73,6 +73,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import requirement_report
 import unit_selection
 
 ROUGE = "\033[0;31m"
@@ -316,8 +317,15 @@ class Lanceur:
         self.debut = 0.0
         self.fin = 0.0
         self.travail = tempfile.mkdtemp(prefix="run_unit_test.")
-        self.env = dict(
-            os.environ,
+        # Les variables du registre des requis ne vont pas aux tests : aucun
+        # n'en a besoin, et un test qui affiche son environnement mettrait
+        # la clé dans son journal, donc dans le registre.
+        self.env = {
+            nom: valeur
+            for nom, valeur in os.environ.items()
+            if nom not in requirement_report.VARIABLES
+        }
+        self.env.update(
             PATH=doublures(self.travail)
             + os.pathsep
             + os.environ.get("PATH", ""),
@@ -798,9 +806,39 @@ def bilan_des_echecs(fichiers):
     return passes, echoues
 
 
-def lancer_une_fois(fichiers, args):
+def essais(lanceur):
+    """Les fichiers finis, sous la forme que le registre des requis lit.
+
+    Un fichier arrêté par Ctrl+C n'a rien prouvé et n'y figure pas. Un
+    fichier en échec ou tué par le délai sans aucun test noté porte la fin
+    de son journal comme panne : ses tests déclarés passent en erreur."""
+    return [
+        requirement_report.Essai(
+            f.chemin,
+            f.tests,
+            (
+                _lire(f.log, fin=40)
+                if not f.tests and f.etat in (ECHEC, DELAI)
+                else None
+            ),
+        )
+        for f in lanceur.fichiers
+        if f.etat in (OK, ECHEC, DELAI)
+    ]
+
+
+def lancer_une_fois(fichiers, args, surveille=False):
     """Un passage complet sur `fichiers` : exécution, bilan, rapports, et
-    mise à jour des durées et des échecs retenus. Rend le code de sortie."""
+    mise à jour des durées et des échecs retenus. Rend le code de sortie.
+
+    Avec les variables ERPLIBRE_REQUIREMENT_* (requirement_report.py),
+    chaque test est noté puis son verdict poussé au registre des requis,
+    après les rapports et les caches. Quand Ctrl+C ou SIGTERM arrête
+    l'envoi, le code rendu reste celui de la suite ; sous --watch
+    (`surveille`), c'est 130, qui met fin à la surveillance comme un
+    Ctrl+C pendant les tests. Sans ces variables, rien de cela : ni détail
+    par test, ni connexion."""
+    registre = requirement_report.depuis_environnement()
     lanceur = Lanceur(
         fichiers,
         py=sys.executable,
@@ -808,7 +846,7 @@ def lancer_une_fois(fichiers, args):
         delai=args.timeout,
         durees=lire_durees(),
         passages=args.repeat,
-        detaille=bool(args.slowest or args.junit),
+        detaille=bool(args.slowest or args.junit or registre),
     )
     try:
         code = None
@@ -824,6 +862,14 @@ def lancer_une_fois(fichiers, args):
         ecrire_durees(lanceur.fichiers)
         passes, echoues = bilan_des_echecs(lanceur.fichiers)
         unit_selection.retenir_echecs(ECHECS, passes=passes, echoues=echoues)
+        # En dernier : un envoi lent, ou interrompu, ne coûte ni les durées
+        # ni les échecs retenus. Une suite arrêtée par Ctrl+C n'envoie rien.
+        if registre and code == 130:
+            requirement_report.avertir(
+                "suite interrompue, aucun verdict envoyé."
+            )
+        elif registre and registre.pousser(essais(lanceur)) and surveille:
+            return 130
         return code
     finally:
         lanceur.arreter()
@@ -867,9 +913,13 @@ def surveiller(tests, args, pause=1.0):
                 f"{' …' if len(modifies) > 3 else ''}"
                 f" → {len(concernes)} fichier(s) de tests"
             )
-            # Un Ctrl+C pendant le passage est reçu par l'affichage, qui
-            # arrête les tests et rend 130 : c'est aussi la fin de --watch.
-            if concernes and lancer_une_fois(concernes, args) == 130:
+            # Un Ctrl+C pendant le passage — reçu par l'affichage, qui
+            # arrête les tests, ou par l'envoi au registre — rend 130 : c'est
+            # aussi la fin de --watch.
+            if (
+                concernes
+                and lancer_une_fois(concernes, args, surveille=True) == 130
+            ):
                 print("  --watch : fin.")
                 return 130
             # Un test qui écrit dans le dépôt relancerait la boucle : ce
