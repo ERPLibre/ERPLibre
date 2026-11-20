@@ -82,9 +82,10 @@ class TestToolDisk(unittest.TestCase):
 
     def test_disk_follows_the_filtering(self):
         """Une VM qui ne recevra pas un outil ne doit pas se voir gonfler son
-        disque de sa taille. En arm64 il en manque DEUX : Android Studio, que
-        Google ne publie qu'en x86_64, et la compilation mobile, qui en
-        dépend."""
+        disque de sa taille. En arm64 il en manque CINQ : Android Studio,
+        que Google ne publie qu'en x86_64, la compilation mobile et
+        l'émulateur, qui en dépendent, et les deux niveaux d'ERPLibre Home,
+        bornés à amd64."""
         full = self.todo._qemu_tools_disk_gb(
             self.all, "amd64", "gnome", "ubuntu"
         )
@@ -95,7 +96,9 @@ class TestToolDisk(unittest.TestCase):
             full - arm,
             TODO._QEMU_VM_TOOLS["android"]["disk_gb"]
             + TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"]
-            + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"],
+            + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"]
+            + TODO._QEMU_VM_TOOLS["erplibre_home"]["disk_gb"]
+            + TODO._QEMU_VM_TOOLS["erplibre_home_streamdeck"]["disk_gb"],
         )
 
     def test_a_server_only_pays_for_what_it_gets(self):
