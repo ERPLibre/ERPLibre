@@ -73,6 +73,19 @@ def is_sha(value):
     return bool(value) and bool(_SHA.match(value))
 
 
+def pinned_by_source(revision, freeze_revision=None):
+    """Vrai si la définition source d'un projet l'épingle elle-même.
+
+    `revision` et `freeze_revision` sont la « revision » et le
+    « freeze-revision » de cette définition. Un projet sans gel dont la
+    « revision » est déjà un commit garde ce commit dans les deux modes de
+    la fusion (`apply_freeze`) : il n'est ni gelé, ni en manque de gel, et
+    son commit ne dit rien du mode du checkout. La casse du commit est
+    ignorée.
+    """
+    return not freeze_revision and is_sha((revision or "").lower())
+
+
 def project_key(name, path):
     """Clé d'un projet : la même que celle de la fusion des manifestes.
 
@@ -222,7 +235,8 @@ def apply_freeze(projects, freeze):
     (`sync -c`) et pour qu'une branche ouverte par `repo start` suive la
     branche plutôt que le commit. Un projet sans commit garde sa branche et
     figure parmi les manquants, sauf si sa « revision » est déjà un commit :
-    il est alors épinglé par sa source, sans rien manquer.
+    il est alors épinglé par sa source (`pinned_by_source`), sans rien
+    manquer.
     """
     geles = []
     manquants = []
@@ -232,7 +246,7 @@ def apply_freeze(projects, freeze):
         if not freeze:
             continue
         if not sha:
-            if not is_sha(valeur.get("@revision")):
+            if not pinned_by_source(valeur.get("@revision")):
                 manquants.append(cle)
             continue
         branche = valeur.get("@revision")

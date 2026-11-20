@@ -516,6 +516,21 @@ class TestManifeste(unittest.TestCase):
         resultat = h.verifier_manifeste(self.ctx_snapshot([sans]))
         self.assertEqual(resultat.resolutions, [])
 
+    def test_a_repository_pinned_by_its_source_is_not_offered_a_freeze(self):
+        """Parmi des dépôts gelés, un dépôt dont la « revision » est déjà un
+        commit, sans gel, est épinglé par sa source : aucune résolution ne
+        lui propose de premier gel."""
+        gele = self.depot(
+            "A/gel",
+            "a" * 40,
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        epingle = {**self.depot("A/epingle"), "revision": "a" * 40}
+        resultat = h.verifier_manifeste(self.ctx_snapshot([gele, epingle]))
+        self.assertEqual(resultat.statut, h.OK)
+        self.assertEqual(resultat.resolutions, [])
+        self.assertEqual(h.resolutions_gel(None, [gele, epingle]), [])
+
     def test_no_resolution_when_every_repository_is_on_its_freeze(self):
         resultat = h.verifier_manifeste(
             self.ctx_snapshot(

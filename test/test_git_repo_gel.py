@@ -66,6 +66,20 @@ class TestIsSha(unittest.TestCase):
                 self.assertFalse(mf.is_sha(valeur))
 
 
+class TestPinnedBySource(unittest.TestCase):
+    def test_un_commit_sans_gel_epingle_par_la_source(self):
+        commit = "0123456789abcdef" * 2 + "01234567"
+        self.assertTrue(mf.pinned_by_source(commit))
+        self.assertTrue(mf.pinned_by_source(commit.upper()))
+
+    def test_une_branche_ou_un_gel_ne_l_est_pas(self):
+        commit = "0123456789abcdef" * 2 + "01234567"
+        self.assertFalse(mf.pinned_by_source("X_dev"))
+        self.assertFalse(mf.pinned_by_source(None))
+        self.assertFalse(mf.pinned_by_source("X_dev", commit))
+        self.assertFalse(mf.pinned_by_source(commit, "f" * 40))
+
+
 class TestManifestBranch(unittest.TestCase):
     def test_une_branche_se_rend_telle_quelle(self):
         self.assertEqual(mf.manifest_branch("X_dev", "Y", "Z"), "X_dev")

@@ -32,7 +32,9 @@ Module à part plutôt que méthodes de `TODO` : le fichier principal passe les
 cinq mille lignes, et chaque sujet y a désormais le sien.
 """
 
+import contextlib
 import datetime
+import io
 import os
 import sys
 
@@ -104,9 +106,12 @@ def decompte(nombre, etat):
 def etat_manifeste_local(racine=RACINE):
     """(épinglés, total) des projets du manifeste local, ou None s'il manque.
 
-    Un projet est épinglé quand sa « revision » est un commit complet. Le
-    mode du checkout se LIT ici plutôt que de s'enregistrer à part : c'est
-    la dernière reconfiguration qui l'a fixé, et ce fichier en est la trace.
+    Un projet est épinglé quand sa « revision » est un commit complet que
+    le gel y a mis : celui d'un projet épinglé par sa source
+    (`epingles_par_leur_source`) y est dans les deux modes, et ne compte
+    pas. Le mode du checkout se LIT ici plutôt que de s'enregistrer à
+    part : c'est la dernière reconfiguration qui l'a fixé, et ce fichier en
+    est la trace.
     """
     try:
         with open(os.path.join(racine, MANIFESTE_LOCAL)) as fh:
@@ -114,10 +119,54 @@ def etat_manifeste_local(racine=RACINE):
     except OSError:
         return None
     projets = [attrs for _, _, attrs in manifest_freeze.iter_projects(texte)]
+    par_la_source = epingles_par_leur_source(racine)
     epingles = [
-        p for p in projets if manifest_freeze.is_sha(p.get("revision"))
+        p
+        for p in projets
+        if manifest_freeze.is_sha(p.get("revision"))
+        and manifest_freeze.project_key(p.get("name"), p.get("path"))
+        not in par_la_source
     ]
     return len(epingles), len(projets)
+
+
+def epingles_par_leur_source(racine=RACINE):
+    """Les clés (`manifest_freeze.project_key`) des projets que leurs
+    fichiers sources épinglent eux-mêmes (`manifest_freeze.pinned_by_source`).
+
+    Les sources sont celles que la fusion lit sous `racine`
+    (`git_freeze_manifest.default_sources`), dont les chemins sont relatifs
+    à la racine : le répertoire courant y passe le temps de la lecture, puis
+    revient. Comme dans la fusion, la définition la plus tardive l'emporte,
+    et une redéfinition efface le gel d'une définition antérieure. Un
+    fichier absent est sauté ; des sources illisibles ne donnent aucun
+    projet. Ce que la recherche des sources écrit sur la sortie standard
+    (un manifeste de version manquant) est tu : la sortie appartient à
+    l'appelant, qui peut y écrire du JSON.
+    """
+    depart = os.getcwd()
+    try:
+        os.chdir(racine)
+        with contextlib.redirect_stdout(io.StringIO()):
+            sources = git_freeze_manifest.default_sources()
+        definitions = git_freeze_manifest.read_sources(
+            f for f in sources if os.path.isfile(f)
+        )
+    except OSError:
+        return set()
+    finally:
+        os.chdir(depart)
+    cles = set()
+    for cle, defs in definitions.items():
+        source = {}
+        for _, attrs in defs:
+            source.pop(manifest_freeze.FREEZE_ATTR, None)
+            source.update(attrs)
+        if manifest_freeze.pinned_by_source(
+            source.get("revision"), source.get(manifest_freeze.FREEZE_ATTR)
+        ):
+            cles.add(cle)
+    return cles
 
 
 def libelle_mode(etat):
