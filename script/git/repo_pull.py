@@ -66,7 +66,9 @@ une frontière nouvelle posée dans l'historique de HEAD est retirée du
 fichier « shallow » (ses parents sont dans le clone), et une frontière
 nouvelle de la cible, plus récente que la borne, est repoussée par
 « --deepen=1 », RACCORDS_MAX fois au plus — la fusion d'une vieille
-branche ne cache plus une avance rapide.
+branche ne cache plus une avance rapide. Ce « --deepen » repousse aussi
+la frontière de HEAD quand la cible l'atteint ; elle est remise, et
+l'essai à sec laisse l'historique de HEAD tel qu'il était.
 Quand aucune base commune sûre n'apparaît, l'essai à sec l'annonce
 (« superficiel ») et l'application n'approfondit que sur consentement
 (« --approve-deepen ») : « --deepen » par paliers doublés jusqu'à
@@ -725,6 +727,31 @@ def fetch_superficiel(args, dossier, delai=DELAI_GIT):
     return out, err, code
 
 
+def garder_frontieres(dossier, avant, visibles):
+    """Remet dans le fichier « shallow » les frontières d'avant une
+    récupération qui bornaient l'historique de HEAD et qu'elle a retirées.
+    Rend les commits remis, triés.
+
+    « --deepen » repousse toutes les frontières que la cible atteint, celle
+    de HEAD comprise quand HEAD descend de la même histoire : l'historique
+    visible de HEAD gagnerait alors des commits. Une frontière remise ne fait
+    que cacher des parents déjà présents ; celles de la cible, qui sont la
+    raison du « --deepen », restent repoussées.
+    """
+    apres = git_freeze_manifest._frontieres(dossier)
+    if apres is None:
+        return []
+    remises = sorted((avant & visibles) - apres)
+    chemin = fichier_shallow(dossier)
+    if not remises or not chemin:
+        return []
+    temporaire = chemin + ".repo_pull"
+    with open(temporaire, "w") as fh:
+        fh.writelines(f"{x}\n" for x in sorted(apres | set(remises)))
+    os.replace(temporaire, chemin)
+    return remises
+
+
 def raccorder(dossier, constat, avant, refs, date_borne, delai=DELAI_GIT):
     """Repousse par « --deepen=1 » les frontières nouvelles de la cible qui
     la séparent de HEAD. Rend le nombre de tours faits.
@@ -763,11 +790,14 @@ def raccorder(dossier, constat, avant, refs, date_borne, delai=DELAI_GIT):
         ]
         if code or not cachees:
             return tours
+        vue = instantane(dossier, delai)
         _out, _err, code = fetch_superficiel(
             ["fetch", "--quiet", "--no-tags", "--deepen=1", remote, *refs],
             dossier,
             delai,
         )
+        if vue is not None:
+            garder_frontieres(dossier, *vue)
         tours += 1
         if code:
             return tours
