@@ -900,7 +900,9 @@ class QemuInstallMixin:
         les paquets le recommandent ; Plasma écarte en plus le greffon snap
         de Discover. Le greffon Flatpak est celui du magasin de la saveur :
         GNOME Logiciels, Discover, ou aucun pour une saveur qui n'a pas de
-        magasin graphique."""
+        magasin graphique. Discover est nommé avec son greffon :
+        kde-plasma-desktop ne l'installe pas, et un greffon sans magasin ne
+        sert à rien."""
         if app_store == "snap":
             # On ne retire rien : Firefox arrivera en snap, comme sur une
             # Ubuntu ordinaire, et snapd est resté actif pour le servir.
@@ -917,7 +919,8 @@ class QemuInstallMixin:
             pkgs += {
                 "gnome": " flatpak gnome-software-plugin-flatpak",
                 "cinnamon": " flatpak gnome-software-plugin-flatpak",
-                "plasma": " flatpak plasma-discover-backend-flatpak",
+                "plasma": " flatpak plasma-discover "
+                "plasma-discover-backend-flatpak",
             }.get(flavour, " flatpak")
         return pkgs.strip()
 

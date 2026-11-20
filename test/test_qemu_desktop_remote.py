@@ -411,7 +411,7 @@ class TestAntiSnapList(unittest.TestCase):
     def test_the_flatpak_plugin_is_the_flavour_store(self):
         par_saveur = {
             "gnome": "flatpak gnome-software-plugin-flatpak",
-            "plasma": "flatpak plasma-discover-backend-flatpak",
+            "plasma": "flatpak plasma-discover plasma-discover-backend-flatpak",
             "i3": "flatpak",
         }
         for flavour, attendu in par_saveur.items():
