@@ -10,7 +10,7 @@ voir au récapitulatif. Le formulaire, lui, le fait dès qu'une rangée devient
 graphique. Une seule fonction décide pour les deux, et
 `_qemu_build_deploy_parts` la rappelle en dernier rempart.
 
-Une saveur n'est offerte qu'aux systèmes qui l'installent : NixOS n'en
+Une saveur n'est offerte qu'aux systèmes qui l'installent : Proxmox VE n'en
 installe aucune, et le bloc du bureau y échouerait sur « gestionnaire de
 paquets inconnu ». Ce bloc reçoit aussi le système de la VM, dont ses paquets
 et son accès distant dépendent au-delà du gestionnaire de paquets.
@@ -88,10 +88,10 @@ class TestLesSaveursOffertes(unittest.TestCase):
     CLES = ["gnome", "cinnamon"]
     # Table inventée : un système qui reçoit GNOME dans une seule de ses
     # versions, et un autre qui n'en reçoit aucune.
-    TABLE = {"debian": {"13": ["gnome"]}, "nixos": {}}
+    TABLE = {"debian": {"13": ["gnome"]}, "proxmox": {}}
 
-    def test_nixos_gets_no_desktop(self):
-        self.assertEqual([], TODO._qemu_desktops_for("nixos", "25.11"))
+    def test_proxmox_gets_no_desktop(self):
+        self.assertEqual([], TODO._qemu_desktops_for("proxmox", "9"))
 
     def test_the_imperative_families_get_gnome(self):
         for distro, version in (
@@ -126,25 +126,23 @@ class TestLesSaveursOffertes(unittest.TestCase):
         self.assertEqual(
             ["gnome"],
             desktops_for_fleet(
-                [("nixos", "25.11"), ("debian", "13")], self.CLES, self.TABLE
+                [("proxmox", "9"), ("debian", "13")], self.CLES, self.TABLE
             ),
         )
         self.assertEqual(
             [],
             desktops_for_fleet(
-                [("nixos", "25.11"), ("debian", "12")], self.CLES, self.TABLE
+                [("proxmox", "9"), ("debian", "12")], self.CLES, self.TABLE
             ),
         )
 
-    def test_the_cli_question_leaves_nixos_out(self):
+    def test_the_cli_question_leaves_proxmox_out(self):
         buf = io.StringIO()
         with (
             mock.patch("builtins.input", lambda *a: "2") as _i,
             mock.patch("sys.stdout", buf),
         ):
-            self.assertEqual(
-                "", _todo()._qemu_ask_desktop([("nixos", "25.11")])
-            )
+            self.assertEqual("", _todo()._qemu_ask_desktop([("proxmox", "9")]))
         # Aucune saveur : la question n'est même pas posée.
         self.assertNotIn("GNOME", buf.getvalue())
 
@@ -155,7 +153,7 @@ class TestLesSaveursOffertes(unittest.TestCase):
             mock.patch("sys.stdout", buf),
         ):
             choix = _todo()._qemu_ask_desktop(
-                [("debian", "13"), ("nixos", "25.11")]
+                [("debian", "13"), ("proxmox", "9")]
             )
         self.assertEqual("gnome", choix)
         self.assertIn("GNOME", buf.getvalue())
@@ -184,7 +182,7 @@ class TestLesSaveursOffertes(unittest.TestCase):
                 "disk": "20G",
             }
             for n, d, v in (
-                ("vm-nix", "nixos", "25.11"),
+                ("vm-pve", "proxmox", "9"),
                 ("vm-old", "debian", "12"),
                 ("vm-deb", "debian", "13"),
             )
@@ -201,11 +199,11 @@ class TestLesSaveursOffertes(unittest.TestCase):
             by_release=self.TABLE,
             min_ram=PLANCHER,
         )
-        nix, old, deb = vms
-        for vm in (nix, old):
+        pve, old, deb = vms
+        for vm in (pve, old):
             self.assertEqual("", vm["desktop"])
             self.assertEqual(1024, vm["ram"])
-        self.assertEqual("vm-nix", nix["name"])
+        self.assertEqual("vm-pve", pve["name"])
         self.assertEqual("vm-old", old["name"])
         self.assertEqual("gnome", deb["desktop"])
         self.assertEqual(PLANCHER, deb["ram"])
@@ -248,7 +246,7 @@ class TestLeTypeParRangee(unittest.TestCase):
         self.assertIn("gnome", douze)
         self.assertNotIn("plasma", douze)
         self.assertIn("plasma", treize)
-        self.assertEqual([], self._saveurs(ecran._type_options("nixos", "")))
+        self.assertEqual([], self._saveurs(ecran._type_options("proxmox", "")))
 
     def test_the_common_type_offers_what_some_release_installs(self):
         ecran = self._ecran({"debian": {"13": ["xfce"]}, "fedora": {}})
@@ -307,20 +305,20 @@ class TestLaCli(unittest.TestCase):
         self.assertEqual("", vms[0]["desktop"])
         self.assertEqual(1024, vms[0]["ram"])
 
-    def test_a_nixos_vm_of_a_mixed_fleet_stays_a_server(self):
+    def test_a_proxmox_vm_of_a_mixed_fleet_stays_a_server(self):
         vms, out = self._collecte(
             [
                 self._vm("vm-deb", "debian", 1024),
-                self._vm("vm-nix", "nixos", 1024),
+                self._vm("vm-pve", "proxmox", 1024),
             ],
             "2",
         )
-        deb, nix = vms
+        deb, pve = vms
         self.assertEqual("gnome", deb["desktop"])
-        self.assertEqual("", nix["desktop"])
-        self.assertEqual(1024, nix["ram"])
-        self.assertEqual("vm-nix", nix["name"])
-        self.assertIn("vm-nix", out)
+        self.assertEqual("", pve["desktop"])
+        self.assertEqual(1024, pve["ram"])
+        self.assertEqual("vm-pve", pve["name"])
+        self.assertIn("vm-pve", out)
 
     def test_the_recap_shows_the_raised_value(self):
         """Une spec venue d'ailleurs que la CLI garde la même lecture : le
@@ -685,11 +683,15 @@ class TestLeFormulaire(unittest.TestCase):
         vu = self._scenario("debian", ["gnome", SERVER])
         self.assertEqual([PLANCHER, PLANCHER], vu["ram"])
 
-    def test_a_nixos_row_offers_no_desktop(self):
+    def test_a_nixos_row_offers_every_desktop(self):
+        """NixOS 26.05, la version par défaut de la ligne, déclare chaque
+        saveur par son module."""
         from script.todo.deploy_form_extras import SERVER
 
         vu = self._scenario("nixos", [])
-        self.assertEqual([SERVER], [v for v in vu["options"] if v])
+        offertes = [v for v in vu["options"] if v]
+        self.assertIn(SERVER, offertes)
+        self.assertEqual(len(TODO._QEMU_DESKTOP) + 1, len(offertes))
 
 
 if __name__ == "__main__":

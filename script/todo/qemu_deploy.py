@@ -3431,7 +3431,7 @@ class QemuDeployMixin:
         du parc sans suffixe. Dans les deux cas, la saveur ne reste que si le
         couple (système, version) de la VM, déduit de son nom
         (_qemu_vm_meta), sait l'installer (_qemu_desktops_for) ; un couple
-        inconnu, une NixOS, n'en reçoivent aucune."""
+        inconnu, Proxmox VE, n'en reçoivent aucune."""
         desktop_default = spec.get("desktop") or ""
         desktop_map = {
             vm["name"]: (vm.get("desktop", desktop_default) or "")

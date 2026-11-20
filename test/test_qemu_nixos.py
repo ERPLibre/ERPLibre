@@ -25,8 +25,8 @@ survivraient pas à la reconstruction suivante.
 """
 
 import importlib.util
-import sys
 import io
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -292,10 +292,11 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
         )
         return todo
 
-    def test_an_existing_nixos_vm_gets_no_fleet_desktop(self):
+    def test_an_existing_vm_of_an_unlisted_release_gets_no_fleet_desktop(self):
         """Une VM existante n'a pas de rangée : le bureau du parc ne
         l'atteint que si son couple (système, version) sait l'installer.
-        Il se déduit de son nom ; inconnu, elle n'en reçoit aucun."""
+        Il se déduit de son nom ; inconnu, ou une NixOS d'une version que la
+        table ne liste pas, elle n'en reçoit aucun."""
         todo = self._todo_meta(
             {"vm-nix": ("nixos", "25.11"), "vm-deb": ("debian", "13")}
         )

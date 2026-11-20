@@ -3165,13 +3165,22 @@ def desktop_remote_rows(
                 "VM's user and password" + verrou[1],
             ),
         )
+    # KRdp 6.6, celui de NixOS 26.05, refuse NLA en authentification PAM.
+    tls = (
+        (
+            " ; client en sécurité TLS, pas NLA",
+            "; client in TLS security, not NLA",
+        )
+        if remote == "krdp" and mgr == "nix"
+        else ("", "")
+    )
     return (
         (
             "ssh -L 3390:<ip>:3389 <hote-libvirt>",
             "depuis le poste : client RDP sur localhost:3390, compte et mot "
-            "de passe de la VM" + verrou[0],
+            "de passe de la VM" + verrou[0] + tls[0],
             "from the workstation: RDP client on localhost:3390, the VM's "
-            "user and password" + verrou[1],
+            "user and password" + verrou[1] + tls[1],
         ),
     )
 

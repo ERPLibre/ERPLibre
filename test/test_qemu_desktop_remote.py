@@ -96,6 +96,7 @@ class _Invite:
 
     REELS = (
         "awk",
+        "base64",
         "cat",
         "chmod",
         "cp",
@@ -134,9 +135,11 @@ class _Invite:
             if vrai:
                 (self.bin / nom).symlink_to(vrai)
         # sudo laisse tomber « -u <compte> » et exporte les « VAR=valeur »
-        # qui précèdent la commande, comme le vrai.
+        # qui précèdent la commande, comme le vrai ; comme son env_reset, il
+        # ne laisse passer aucune variable d'autorité exportée par l'appelant.
         self.stub(
             "sudo",
+            "unset NIX_SSL_CERT_FILE SSL_CERT_FILE CURL_CA_BUNDLE\n"
             'while [ $# -gt 0 ]; do case "$1" in '
             '-u) shift 2;; *=*) export "$1"; shift;; *) break;; esac; done\n'
             'exec "$@"',
@@ -250,6 +253,9 @@ class _Invite:
         "/etc/plasmalogin.conf.d",
         "/etc/sddm.conf.d",
         "/usr/lib/systemd/user",
+        "/etc/nixos/configuration.nix",
+        "/etc/nixos/erplibre-desktop.nix",
+        "/var/lib/erplibre/ca-bundle.crt",
     )
 
     def etc(self, chemin):
@@ -431,7 +437,7 @@ class TestDesktopsForRelease(unittest.TestCase):
 
     def test_what_is_not_listed_gets_nothing(self):
         for distro, version in (
-            ("nixos", "26.05"),
+            ("nixos", "25.11"),
             ("proxmox", "9"),
             ("inconnue", "1"),
             ("ubuntu", ""),
@@ -492,8 +498,17 @@ class TestDesktopsForRelease(unittest.TestCase):
                 self.assertEqual(
                     TODO._qemu_desktops_for(distro, version), saveurs
                 )
-        self.assertNotIn("nixos", table)
         self.assertNotIn("proxmox", table)
+
+    def test_nixos_gets_every_flavour(self):
+        """NixOS déclare chaque saveur par son module : toutes y sont."""
+        self.assertEqual(
+            list(TODO._QEMU_DESKTOP),
+            TODO._qemu_desktops_for("nixos", "26.05"),
+        )
+        self.assertEqual(
+            set(TODO._QEMU_DESKTOP), set(TODO._QEMU_NIXOS_DESKTOP)
+        )
 
     def test_every_offered_pair_has_a_package_line(self):
         """Ce qui est offert sait s'installer : une ligne de paquets pour le
@@ -506,7 +521,9 @@ class TestDesktopsForRelease(unittest.TestCase):
                 fam = TODO._QEMU_DISTRO_FAMILY[distro]
                 for v in versions:
                     with self.subTest(f=flavour, d=distro, v=v):
-                        if fam == "dnf":
+                        if fam == "nix":
+                            self.assertTrue(TODO._QEMU_NIXOS_DESKTOP[flavour])
+                        elif fam == "dnf":
                             self.assertTrue(
                                 o._qemu_desktop_value(de, "dnf", distro, v)
                                 or de.get("dnf_env")
@@ -1252,6 +1269,9 @@ class TestNewFlavoursRun(unittest.TestCase):
             for distro, versions in TODO._QEMU_DESKTOP_RELEASES[
                 flavour
             ].items():
+                if distro == "nixos":
+                    # Déclaré par le module, jamais activé à l'exécution.
+                    continue
                 for version in versions:
                     with self.subTest(f=flavour, d=distro, v=version):
                         cmd = _cmd(flavour, distro=distro, version=version)
@@ -1507,6 +1527,293 @@ class TestNewFlavoursRun(unittest.TestCase):
                 self.assertFalse(
                     (self.vm.home / ".config/krdpserverrc").exists()
                 )
+
+
+class TestNixosDesktop(unittest.TestCase):
+    """NixOS déclare la saveur dans /etc/nixos/erplibre-desktop.nix, que
+    « nixos-rebuild switch » applique : /etc/systemd et /etc/pam.d y sont
+    produits par la construction, en lecture seule."""
+
+    def _module(self, flavour):
+        return TODO.__new__(TODO)._qemu_nixos_desktop_module(flavour)
+
+    def _nix(self, flavour):
+        return _cmd(flavour, distro="nixos", version="26.05")
+
+    def test_each_flavour_declares_its_desktop_and_display_manager(self):
+        attendu = {
+            "gnome": ("desktopManager.gnome.enable", "gdm.enable"),
+            "cinnamon": ("cinnamon.enable", "lightdm.enable"),
+            "plasma": ("plasma6.enable", "sddm.enable"),
+            "xfce": ("xfce.enable", "lightdm.enable"),
+            "cosmic": ("cosmic.enable", "cosmic-greeter.enable"),
+            "hyprland": ("programs.hyprland.enable", "greetd.enable"),
+            "i3": ("windowManager.i3.enable", "lightdm.enable"),
+        }
+        self.assertEqual(set(TODO._QEMU_DESKTOP), set(attendu))
+        for flavour, cles in attendu.items():
+            with self.subTest(flavour=flavour):
+                module = self._module(flavour)
+                for cle in cles:
+                    self.assertIn(f"{cle} = true;", module)
+                self.assertIn(
+                    "system.autoUpgrade.allowReboot = lib.mkForce false;",
+                    module,
+                )
+                self.assertTrue(module.rstrip().endswith("}"))
+                self.assertEqual(module.count("{"), module.count("}"))
+
+    def test_the_firewall_opens_the_server_port_only(self):
+        self.assertIn("allowedTCPPorts = [ 3389 ];", self._module("gnome"))
+        self.assertIn("allowedTCPPorts = [ 3389 ];", self._module("plasma"))
+        self.assertIn("allowedTCPPorts = [ 5900 ];", self._module("hyprland"))
+        self.assertNotIn("allowedTCPPorts", self._module("cosmic"))
+        self.assertNotIn("xrdp", self._module("cosmic"))
+
+    def test_x11_flavours_get_xrdp_on_their_own_session(self):
+        for flavour in ("xfce", "i3", "cinnamon"):
+            with self.subTest(flavour=flavour):
+                module = self._module(flavour)
+                session = TODO._QEMU_DESKTOP[flavour]["x_session"]
+                self.assertIn("services.xrdp.openFirewall = true;", module)
+                self.assertIn(
+                    f'services.xrdp.defaultWindowManager = "{session}";',
+                    module,
+                )
+
+    def test_the_vm_account_is_substituted_where_a_session_opens(self):
+        """Plasma et Hyprland ouvrent la session du compte d'office ; le
+        nom n'est connu que dans l'invité."""
+        for flavour in ("plasma", "hyprland"):
+            self.assertIn('"@EL_USER@"', self._module(flavour))
+            self.assertIn('sed "s/@EL_USER@/$(id -un)/g"', self._nix(flavour))
+        self.assertNotIn("@EL_USER@", self._module("xfce"))
+
+    def test_gnome_remote_desktop_is_wanted_by_the_graphical_target(self):
+        self.assertIn(
+            'systemd.services.gnome-remote-desktop.wantedBy = [ "graphical.target" ];',
+            self._module("gnome"),
+        )
+
+    def test_nothing_is_enabled_or_written_under_etc_at_runtime(self):
+        for flavour in TODO._QEMU_DESKTOP:
+            with self.subTest(flavour=flavour):
+                cmd = self._nix(flavour)
+                # Le repli xrdp de GNOME, sans mode système, garde son
+                # aiguillage ; l'installation du bureau n'en a aucun.
+                self.assertNotIn("apt-get", cmd[: cmd.index("EL_REM=")])
+                self.assertNotIn("set-default", cmd)
+                self.assertNotIn("systemctl enable --force", cmd)
+                self.assertNotIn("/etc/pam.d/wayvnc", cmd)
+                self.assertNotIn("/etc/greetd/config.toml", cmd)
+                self.assertNotIn(".conf.d/erplibre-autologin.conf", cmd)
+                self.assertNotIn("enable --now gnome-remote-desktop", cmd)
+                self.assertIn("nixos-rebuild switch", cmd)
+
+    def test_hyprland_keeps_the_account_files_but_not_the_unit(self):
+        """L'unité wayvnc est celle du module : une unité du compte, au
+        chemin /usr/bin, la masquerait."""
+        cmd = self._nix("hyprland")
+        self.assertIn(".config/wayvnc/config", cmd)
+        self.assertIn("hyprland.lua", cmd)
+        self.assertNotIn(".config/systemd/user/wayvnc.service", cmd)
+
+    def test_openssl_is_declared_for_the_server_keys(self):
+        """GNOME Remote Desktop, KRdp et wayvnc créent leurs clés par
+        openssl, absent du système de base ; une seule liste de paquets,
+        un attribut répété étant une erreur de Nix."""
+        for flavour in TODO._QEMU_DESKTOP:
+            module = self._module(flavour)
+            self.assertEqual(1, module.count("environment.systemPackages"))
+            self.assertIn("pkgs.openssl", module)
+        self.assertIn("pkgs.kitty", self._module("hyprland"))
+        self.assertIn("pkgs.xterm", self._module("i3"))
+
+    def test_networkmanager_stays_off(self):
+        """GNOME, Plasma et COSMIC l'activent ; il heurte la configuration
+        réseau de l'image."""
+        for flavour in TODO._QEMU_DESKTOP:
+            self.assertIn(
+                "networking.networkmanager.enable = lib.mkForce false;",
+                self._module(flavour),
+            )
+
+    def test_xrdp_is_found_by_its_unit(self):
+        """NixOS ne met pas xrdp dans le PATH : l'annonce lit l'unité."""
+        self.assertIn("systemctl cat xrdp.service", self._nix("xfce"))
+        self.assertNotIn(
+            "systemctl cat xrdp.service",
+            _cmd("xfce", distro="debian", version="13"),
+        )
+
+    def test_i3_reads_the_account_config_at_the_console(self):
+        """configFile lancerait « i3 -c /etc/i3/config » et la console
+        ignorerait la copie du compte ; /etc/i3/config est posé à part."""
+        module = self._module("i3")
+        self.assertIn('environment.etc."i3/config".source', module)
+        self.assertNotIn("configFile", module)
+
+    def test_the_i3_copy_is_writable(self):
+        """L'original est un fichier du store, en 0444."""
+        self.assertIn('chmod 644 "$HOME/.config/i3/config"', self._nix("i3"))
+
+    def test_krdp_asks_for_tls_security_on_nixos(self):
+        """KRdp 6.6 propose NLA sans pouvoir le mener par PAM."""
+        self.assertIn("NLA", self._nix("plasma"))
+        self.assertNotIn("NLA", _cmd("plasma", distro="fedora", version="44"))
+
+    def test_krdp_finds_the_declared_unit(self):
+        self.assertIn("/etc/systemd/user", self._nix("plasma"))
+
+    def test_every_flavour_is_valid_shell(self):
+        for flavour in TODO._QEMU_DESKTOP:
+            res = subprocess.run(
+                ["bash", "-n", "-c", self._nix(flavour)], capture_output=True
+            )
+            self.assertEqual(0, res.returncode, (flavour, res.stderr))
+
+
+class TestNixosDesktopRun(unittest.TestCase):
+    """Le bloc NixOS exécuté dans un invité simulé."""
+
+    CONF = "{ ... }:\n{\n  imports = [\n    ./hardware-configuration.nix\n  ];\n}\n"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.vm = _Invite(tmp.name)
+        self.conf = self.vm.etc("/etc/nixos/configuration.nix")
+        self.conf.parent.mkdir(parents=True, exist_ok=True)
+        self.conf.write_text(self.CONF)
+        self.vm.stub("nixos-rebuild")
+        self.vm.stub("busctl")
+        self.vm.stub("ssh-keygen")
+
+    def test_the_module_is_written_imported_once_and_applied(self):
+        cmd = _cmd("xfce", distro="nixos", version="26.05")
+        for _ in range(2):
+            rc, out, log = self.vm.run(cmd)
+            self.assertEqual(0, rc, out)
+        module = self.vm.etc("/etc/nixos/erplibre-desktop.nix").read_text()
+        self.assertEqual(
+            TODO.__new__(TODO)._qemu_nixos_desktop_module("xfce"), module
+        )
+        self.assertEqual(
+            1, self.conf.read_text().count("./erplibre-desktop.nix")
+        )
+        self.assertIn(
+            "imports = [\n    ./erplibre-desktop.nix\n"
+            "    ./hardware-configuration.nix\n",
+            self.conf.read_text(),
+        )
+        self.assertIn("nixos-rebuild switch", log)
+        self.assertLess(
+            _indice(log, "nixos-rebuild switch"),
+            _indice(log, "systemctl start display-manager.service"),
+        )
+
+    def test_the_account_name_replaces_the_placeholder(self):
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        module = self.vm.etc("/etc/nixos/erplibre-desktop.nix").read_text()
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertIn(f'autoLogin.user = "{compte}";', module)
+        self.assertNotIn("@EL_USER@", module)
+
+    def test_a_configuration_without_imports_stops_the_command(self):
+        self.conf.write_text("{ ... }:\n{\n}\n")
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertNotEqual(0, rc)
+        self.assertIn("imports", out)
+        self.assertNotIn("nixos-rebuild switch", log)
+
+    def test_a_rebuild_without_display_manager_fails(self):
+        self.vm.stub(
+            "systemctl",
+            'case "$*" in "cat display-manager.service") exit 1;; esac',
+        )
+        rc, out, _log = self.vm.run(
+            _cmd("cosmic", distro="nixos", version="26.05")
+        )
+        self.assertNotEqual(0, rc)
+        self.assertIn("❌", out)
+
+    def test_the_cache_authority_reaches_the_root_build(self):
+        """Le /etc/sudoers de NixOS n'inclut pas /etc/sudoers.d : la
+        variable passe en argument de sudo, jusqu'à la construction de
+        root qui télécharge."""
+        faisceau = self.vm.etc("/var/lib/erplibre/ca-bundle.crt")
+        faisceau.parent.mkdir(parents=True, exist_ok=True)
+        faisceau.write_text("ca\n")
+        self.vm.stub("nixos-rebuild", 'echo "ca=$NIX_SSL_CERT_FILE" >> "$LOG"')
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertEqual(0, rc, out)
+        self.assertIn(f"ca={faisceau}", log)
+
+    def test_without_authority_the_build_gets_none(self):
+        self.vm.stub(
+            "nixos-rebuild", 'echo "ca=${NIX_SSL_CERT_FILE:-}" >> "$LOG"'
+        )
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertEqual(0, rc, out)
+        self.assertIn("ca=", log)
+
+    def test_a_failed_rebuild_stops_the_command(self):
+        """Une VM qui avait déjà un bureau a déjà display-manager.service :
+        seul le code de retour dit que la nouvelle saveur n'a pas pris."""
+        self.vm.stub("nixos-rebuild", "exit 1")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="nixos", version="26.05")
+        )
+        self.assertNotEqual(0, rc)
+        self.assertIn("❌", out)
+        self.assertNotIn(
+            "systemctl start display-manager.service", "\n".join(log)
+        )
+
+    def _readlink(self, demarre, courant):
+        self.vm.stub(
+            "readlink",
+            'case "$2" in /run/booted-system/*) echo ' + demarre + ";; "
+            "*) echo " + courant + ";; esac",
+            log=False,
+        )
+
+    def test_logind_restarts_after_a_version_jump(self):
+        """Système reconstruit plus récent que celui qui a démarré : logind
+        ancien, pam_systemd neuf, l'écran de connexion de GDM ne s'ouvre
+        pas."""
+        self._readlink("/nix/store/a-systemd", "/nix/store/b-systemd")
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "systemctl cat display-manager.service"),
+            _indice(log, "systemctl restart systemd-logind"),
+        )
+
+    def test_logind_stays_when_the_versions_match(self):
+        self._readlink("/nix/store/a-systemd", "/nix/store/a-systemd")
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertNotIn("systemctl restart systemd-logind", log)
+
+    def test_a_rebuild_that_returns_4_is_not_the_verdict(self):
+        """switch-to-configuration rend 4 quand une unité n'a pas redémarré,
+        système activé quand même : le verdict est display-manager."""
+        self.vm.stub("nixos-rebuild", "exit 4")
+        rc, out, _log = self.vm.run(
+            _cmd("cosmic", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("⚠", out)
 
 
 class TestRemoteAccessPerRelease(unittest.TestCase):

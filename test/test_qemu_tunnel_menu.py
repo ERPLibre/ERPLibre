@@ -135,6 +135,24 @@ class TestTunnelMenuReadsTheFlavour(_MenuCase):
         self.assertIn("cosmic → console only", out)
         self.assertNotIn("localhost:3389", out)
 
+    def test_nixos_names_are_read_too(self):
+        """NixOS : xrdp pour les saveurs X11, KRdp pour Plasma, wayvnc pour
+        Hyprland, la console pour COSMIC."""
+        self.assertIn(
+            "-L 3390:localhost:3389",
+            self._defaut("saut+erplibre-nixos-2605-i3"),
+        )
+        self.assertIn(
+            "-L 3390:localhost:3389",
+            self._defaut("saut+erplibre-nixos-2605-plasma"),
+        )
+        out = self._defaut("saut+erplibre-nixos-2605-hyprland")
+        self.assertIn("[6] VNC 5900 (wayvnc, Hyprland) *", out)
+        self.assertIn(
+            "cosmic → console only",
+            self._defaut("saut+erplibre-nixos-2605-cosmic"),
+        )
+
     def test_an_arch_suffix_does_not_hide_the_release(self):
         flavour, remote, distro = self.todo._qemu_tunnel_desktop(
             "erplibre-arch-arm64-xfce"

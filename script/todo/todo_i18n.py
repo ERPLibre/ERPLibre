@@ -8317,6 +8317,26 @@ TRANSLATIONS = {
         "fr": "VNC 5900 (wayvnc, Hyprland)",
         "en": "VNC 5900 (wayvnc, Hyprland)",
     },
+    "no imports block in /etc/nixos/configuration.nix": {
+        "fr": "aucun bloc imports dans /etc/nixos/configuration.nix",
+        "en": "no imports block in /etc/nixos/configuration.nix",
+    },
+    "nixos-rebuild returned an error; checking the system": {
+        "fr": "nixos-rebuild rend une erreur ; vérification du système",
+        "en": "nixos-rebuild returned an error; checking the system",
+    },
+    "the rebuilt system has no display manager": {
+        "fr": "le système reconstruit n'a pas de gestionnaire d'affichage",
+        "en": "the rebuilt system has no display manager",
+    },
+    "RDP client in TLS security, not NLA": {
+        "fr": "client RDP en sécurité TLS, pas NLA",
+        "en": "RDP client in TLS security, not NLA",
+    },
+    "nixos-rebuild failed; the system is unchanged": {
+        "fr": "nixos-rebuild a échoué ; le système est inchangé",
+        "en": "nixos-rebuild failed; the system is unchanged",
+    },
     "Remote desktop kind:": {
         "fr": "Type de bureau distant :",
         "en": "Remote desktop kind:",

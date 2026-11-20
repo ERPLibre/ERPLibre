@@ -468,6 +468,11 @@ class TestDesktopBlock(unittest.TestCase):
             with self.subTest(remote=remote):
                 self.assertNotIn("verrouillée", self._acces("ubuntu", remote))
 
+    def test_krdp_on_nixos_asks_for_tls_security(self):
+        """KRdp 6.6 refuse NLA en authentification PAM."""
+        self.assertIn("pas NLA", self._acces("nixos", "krdp"))
+        self.assertNotIn("NLA", self._acces("fedora", "krdp"))
+
     def test_a_console_flavour_gets_no_tunnel(self):
         """COSMIC n'a aucun serveur : un tunnel y mènerait à un port fermé."""
         texte = self._acces("fedora", "console", desktop="cosmic")
@@ -481,7 +486,7 @@ class TestDesktopBlock(unittest.TestCase):
         self.assertIn("Desktop — i3", self._acces("arch", "x11", "en", "i3"))
 
     def test_every_remote_kind_fits_a_standard_terminal(self):
-        for distro in ("ubuntu", "arch", "fedora"):
+        for distro in ("ubuntu", "arch", "fedora", "nixos"):
             for remote in dq.DESKTOP_REMOTES:
                 for lang in ("fr", "en"):
                     motd = dq.build_motd(
