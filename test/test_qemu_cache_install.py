@@ -138,7 +138,31 @@ class TestUniteSystemd(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
-        unit = Path(cls.tmp) / "erplibre-go-qemu-cache.service"
+        cls.unite_texte = cls._generer(nft=True)
+        cls.unite_iptables = cls._generer(nft=False)
+
+    @classmethod
+    def _generer(cls, nft):
+        """L'unité qu'écrit ecrire_unite, nft présent ou non.
+
+        L'installateur choisit nft quand « command -v nft » le trouve, et il
+        tourne en root, dont le PATH porte /usr/sbin. Le test, lui, tourne
+        sous un compte dont le PATH peut ne pas l'avoir : le choix se fixe
+        donc ici, par un faux nft en tête du PATH, ou par un PATH dont les
+        répertoires qui portent un nft sont retirés."""
+        nom = "nft" if nft else "iptables"
+        unit = Path(cls.tmp) / f"erplibre-go-qemu-cache-{nom}.service"
+        chemins = [
+            d
+            for d in os.environ.get("PATH", "").split(os.pathsep)
+            if d and not os.path.exists(os.path.join(d, "nft"))
+        ]
+        if nft:
+            faux = Path(cls.tmp) / "bin-nft"
+            faux.mkdir()
+            (faux / "nft").write_text("#!/bin/sh\nexit 0\n")
+            (faux / "nft").chmod(0o755)
+            chemins.insert(0, str(faux))
         # Le script se termine par « main "$@" » : la ligne est retirée pour
         # pouvoir appeler UNE fonction sans rien installer. systemctl est
         # neutralisé, la machine de test n'ayant pas à recharger systemd.
@@ -152,13 +176,16 @@ class TestUniteSystemd(unittest.TestCase):
             "ecrire_unite\n"
         )
         r = subprocess.run(
-            ["bash", "-c", prelude], capture_output=True, text=True
+            [shutil.which("bash"), "-c", prelude],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PATH=os.pathsep.join(chemins)),
         )
         if r.returncode != 0 or not unit.is_file():
             raise AssertionError(
                 f"l'unité n'a pas pu être générée : {r.stdout}{r.stderr}"
             )
-        cls.unite_texte = unit.read_text(encoding="utf-8")
+        return unit.read_text(encoding="utf-8")
 
     @classmethod
     def tearDownClass(cls):
@@ -177,6 +204,14 @@ class TestUniteSystemd(unittest.TestCase):
             "le retrait des règles ne demande pas le privilège root",
         )
         self.assertIn("delete table ip erplibre_qemu_cache", self.unite)
+
+    def test_sans_nft_les_regles_partent_par_iptables(self):
+        """Sans nft, l'arrêt retire les règles iptables qu'il a posées, en
+        rejouant leur liste avec -D au lieu de -A."""
+        unite = self.unite_iptables
+        self.assertRegex(unite, r"ExecStartPre=\+.*--print-iptables")
+        self.assertIn("sed 's/ -A / -D /'", unite)
+        self.assertNotIn("nft ", unite)
 
     def test_les_regles_sont_posees_en_root_seulement(self):
         """« + » fait tourner CETTE commande en root, alors que le service
