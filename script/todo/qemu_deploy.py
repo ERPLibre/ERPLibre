@@ -19,8 +19,8 @@ import time
 
 from script.todo import todo_prefs
 from script.todo.deploy_form_lib import (
-    VM_PASSWORD_DEFAULT,
     VM_LOGIN_READ_CMD,
+    VM_PASSWORD_DEFAULT,
     VM_USER_DEFAULT,
     VmSecret,
 )
@@ -1378,7 +1378,16 @@ class QemuDeployMixin:
         if locale:
             parts += ["--locale", locale]
         if desktop:
-            parts.append("--desktop")
+            # « --desktop=<saveur> » collé : la forme séparée prendrait un
+            # positionnel placé après pour la saveur. Le genre d'accès se
+            # résout ici, deploy_qemu.py ne connaissant pas les saveurs.
+            if isinstance(desktop, str):
+                parts.append(f"--desktop={desktop}")
+                remote = self._qemu_remote_kind(desktop, d, v)
+                if remote:
+                    parts += ["--desktop-remote", remote]
+            else:
+                parts.append("--desktop")
         if gpu3d:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
@@ -1474,8 +1483,8 @@ class QemuDeployMixin:
             #
             # La SAVEUR, et non un booléen : les extensions GNOME n'ont pas de
             # sens sous Cinnamon, et c'est ici que se calcule la place disque
-            # des outils. « --desktop » ne regarde que la vérité de la valeur,
-            # une chaîne non vide lui va aussi bien.
+            # des outils. _qemu_build_deploy_parts en fait « --desktop=<saveur> »
+            # et en déduit le genre d'accès distant (« --desktop-remote »).
             desktop=vm.get("desktop", spec.get("desktop")) or "",
             # Les deux servent au guide de connexion : où ERPLibre sera posé, et
             # quelle cible make le remettra à jour.

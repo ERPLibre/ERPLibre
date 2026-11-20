@@ -8297,6 +8297,26 @@ TRANSLATIONS = {
         "en": "No host in ~/.ssh/config and no local VM.",
     },
     "local VM": {"fr": "VM locale", "en": "local VM"},
+    "Desktop read from the VM name:": {
+        "fr": "Bureau lu dans le nom de la VM :",
+        "en": "Desktop read from the VM name:",
+    },
+    "console only": {
+        "fr": "console seulement",
+        "en": "console only",
+    },
+    "RDP 3389 (GNOME Remote Desktop, KRdp or xrdp)": {
+        "fr": "RDP 3389 (GNOME Remote Desktop, KRdp ou xrdp)",
+        "en": "RDP 3389 (GNOME Remote Desktop, KRdp or xrdp)",
+    },
+    "VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)": {
+        "fr": "VNC 5901 (TigerVNC : Cinnamon, Xfce ou i3 sur Arch)",
+        "en": "VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)",
+    },
+    "VNC 5900 (wayvnc, Hyprland)": {
+        "fr": "VNC 5900 (wayvnc, Hyprland)",
+        "en": "VNC 5900 (wayvnc, Hyprland)",
+    },
     "Remote desktop kind:": {
         "fr": "Type de bureau distant :",
         "en": "Remote desktop kind:",

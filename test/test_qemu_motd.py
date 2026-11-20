@@ -10,8 +10,10 @@ clé SSH, donc inaccessible.
 """
 
 import importlib.util
+import io
 import os
 import unittest
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEPLOY_QEMU = os.path.join(REPO, "script", "qemu", "deploy_qemu.py")
@@ -404,20 +406,16 @@ class TestDesktopBlock(unittest.TestCase):
         self.assertIn("systemctl status display-manager", motd)
 
     def test_it_names_no_display_manager(self):
-        """GDM pour GNOME, LightDM pour Cinnamon : le guide ne sait pas lequel
-        a été posé, l'alias display-manager vaut pour les deux."""
+        """GDM, LightDM, SDDM, greetd… l'alias display-manager vaut pour
+        toutes les saveurs, le guide n'en nomme aucun."""
         motd = self._motd(True)
         self.assertNotIn("gdm", motd)
         self.assertNotIn("lightdm", motd)
 
     def test_it_says_how_to_reach_the_desktop_remotely(self):
-        """RDP 3389, à travers l'hôte libvirt, avec le compte de la VM ; la
-        même ligne nomme VNC sur 5901, que Cinnamon sur Arch sert à la place.
-        Le guide ne sait pas quelle saveur a été posée."""
-        for lang, compte, vnc in (
-            ("fr", "compte et mot de", "Arch : VNC, 5901 au lieu de 3389"),
-            ("en", "user", "Arch: VNC, 5901 instead of 3389"),
-        ):
+        """Sans genre d'accès, RDP 3389 à travers l'hôte libvirt, avec le
+        compte de la VM : l'accès de GNOME, saveur par défaut."""
+        for lang, compte in (("fr", "compte et mot de"), ("en", "user")):
             with self.subTest(lang=lang):
                 motd = dq.build_motd(
                     "debian", "13", "amd64", lang, desktop=True
@@ -425,9 +423,83 @@ class TestDesktopBlock(unittest.TestCase):
                 self.assertIn("ssh -L 3390:<ip>:3389 <hote-libvirt>", motd)
                 self.assertIn("localhost:3390", motd)
                 self.assertIn(compte, motd)
-                # La glose se replie sur plusieurs lignes : on la relit
-                # d'un seul tenant.
-                self.assertIn(vnc, " ".join(motd.split()))
+                self.assertNotIn("5901", motd)
+
+    def _acces(self, distro, remote, lang="fr", desktop="xfce"):
+        motd = dq.build_motd(
+            distro, "latest", "amd64", lang, desktop=desktop, remote=remote
+        )
+        # La glose se replie sur plusieurs lignes : on la relit d'un seul
+        # tenant.
+        return " ".join(motd.split())
+
+    def test_each_remote_kind_announces_its_own_port(self):
+        """Le tunnel suit le serveur posé : port local = port distant + 1,
+        comme l'annonce de la commande d'installation."""
+        cas = (
+            ("fedora", "grd", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("fedora", "krdp", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("ubuntu", "x11", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("arch", "x11", "ssh -L 5902:<ip>:5901", "VNC"),
+            ("arch", "wayvnc", "ssh -L 5901:<ip>:5900", "VNC"),
+        )
+        for distro, remote, tunnel, client in cas:
+            with self.subTest(distro=distro, remote=remote):
+                texte = self._acces(distro, remote)
+                self.assertIn(tunnel, texte)
+                self.assertIn(f"client {client}", texte)
+                self.assertEqual(texte.count("ssh -L"), 1)
+
+    def test_tigervnc_says_how_to_start_its_server(self):
+        """TigerVNC sous Arch n'écoute qu'après « vncserver :1 » ; sans la
+        ligne, le tunnel mène à un port fermé."""
+        texte = self._acces("arch", "x11")
+        self.assertIn("vncpasswd", texte)
+        self.assertIn("vncserver :1", texte)
+
+    def test_a_locked_session_is_announced_where_one_is_opened_at_boot(self):
+        """KRdp et wayvnc servent une session ouverte au démarrage puis
+        verrouillée ; xrdp et GNOME Remote Desktop ouvrent la leur."""
+        for remote in ("krdp", "wayvnc"):
+            with self.subTest(remote=remote):
+                self.assertIn("verrouillée", self._acces("arch", remote))
+                self.assertIn("locked", self._acces("arch", remote, lang="en"))
+        for remote in ("grd", "x11"):
+            with self.subTest(remote=remote):
+                self.assertNotIn("verrouillée", self._acces("ubuntu", remote))
+
+    def test_a_console_flavour_gets_no_tunnel(self):
+        """COSMIC n'a aucun serveur : un tunnel y mènerait à un port fermé."""
+        texte = self._acces("fedora", "console", desktop="cosmic")
+        self.assertNotIn("ssh -L", texte)
+        self.assertIn("console de l'hyperviseur", texte)
+
+    def test_the_flavour_titles_the_block(self):
+        self.assertIn(
+            "Bureau — plasma", self._acces("arch", "krdp", desktop="plasma")
+        )
+        self.assertIn("Desktop — i3", self._acces("arch", "x11", "en", "i3"))
+
+    def test_every_remote_kind_fits_a_standard_terminal(self):
+        for distro in ("ubuntu", "arch", "fedora"):
+            for remote in dq.DESKTOP_REMOTES:
+                for lang in ("fr", "en"):
+                    motd = dq.build_motd(
+                        distro,
+                        "latest",
+                        "amd64",
+                        lang,
+                        "~/git/erplibre",
+                        "install_odoo_18",
+                        "vim",
+                        desktop="hyprland",
+                        tools=tuple(dq.TOOL_GUIDE),
+                        remote=remote,
+                    )
+                    for line in motd.splitlines():
+                        self.assertLessEqual(
+                            len(line), TERM_WIDTH, f"{remote} {lang}: {line}"
+                        )
 
     def test_it_stays_inside_the_frame(self):
         """Le guide est encadré : une ligne trop longue casse la boîte."""
@@ -785,6 +857,49 @@ class LaGloseSeReplieAuLieuDeDeborder(unittest.TestCase):
         largeur ferait déborder le cadre de ce qu'il encadre."""
         self.assertEqual(dq.MOTD_TEXT_WIDTH, dq.MOTD_MAX_WIDTH - 4)
         self.assertEqual(dq.MOTD_MAX_WIDTH, TERM_WIDTH)
+
+
+class TestDesktopFlag(unittest.TestCase):
+    """« --desktop [SAVEUR] » : nu, il garde son sens d'avant, GNOME."""
+
+    def _args(self, *opts):
+        return dq.build_parser().parse_args(["--name", "vm", *opts])
+
+    def test_bare_flag_means_gnome(self):
+        self.assertEqual("gnome", self._args("--desktop").desktop)
+
+    def test_a_flavour_is_kept(self):
+        self.assertEqual("xfce", self._args("--desktop=xfce").desktop)
+
+    def test_absent_means_a_server(self):
+        args = self._args()
+        self.assertFalse(args.desktop)
+        self.assertEqual("", args.desktop_remote)
+
+    def test_an_image_path_is_not_taken_for_a_flavour(self):
+        """La forme séparée happerait le positionnel de l'image."""
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self._args("--desktop", "/var/lib/img/debian.qcow2")
+
+    def test_an_unknown_remote_kind_is_refused(self):
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self._args("--desktop", "--desktop-remote", "spice")
+
+    def test_the_guide_files_carry_the_flavour_block(self):
+        args = self._args(
+            "--desktop=hyprland",
+            "--desktop-remote",
+            "wayvnc",
+            "--distro",
+            "arch",
+            "--no-git-identity",
+        )
+        args.lang = "en"
+        motd = dict((f[0], f[2]) for f in dq.guide_files(args))["/etc/motd"]
+        self.assertIn("Desktop — hyprland", motd)
+        self.assertIn("ssh -L 5901:<ip>:5900", motd)
 
 
 if __name__ == "__main__":

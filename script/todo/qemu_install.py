@@ -888,6 +888,34 @@ class QemuInstallMixin:
         return None
 
     @classmethod
+    def _qemu_remote_kind(cls, flavour, distro="", version=""):
+        """Genre d'accès distant de `flavour` sur (`distro`, `version`) :
+        grd, x11, krdp, wayvnc ou console. "" pour une saveur vide ou
+        inconnue, que l'appelant traite comme l'absence de bureau."""
+        de = cls._QEMU_DESKTOP.get(flavour or "")
+        if de is None:
+            return ""
+        return cls._qemu_desktop_value(de, "remote", distro, version) or ""
+
+    @classmethod
+    def _qemu_remote_port(cls, remote, distro=""):
+        """(port, client) du serveur que l'accès `remote` pose sur `distro`,
+        ou None quand rien n'écoute : console, genre vide ou inconnu.
+
+        x11 suit la famille de paquets (_QEMU_DESKTOP_REMOTE) : xrdp sur
+        3389, TigerVNC sur 5901 sous pacman."""
+        if remote in ("grd", "krdp"):
+            return 3389, "RDP"
+        if remote == "wayvnc":
+            return 5900, "VNC"
+        if remote == "x11":
+            famille = cls._QEMU_DISTRO_FAMILY.get(distro, "")
+            acces = cls._QEMU_DESKTOP_REMOTE.get(famille)
+            if acces:
+                return acces["port"], acces["client"]
+        return None
+
+    @classmethod
     def _qemu_apt_store_pkgs(cls, app_store, distro="", flavour="gnome"):
         """Paquets apt à ajouter au bureau `flavour` selon le magasin retenu.
 

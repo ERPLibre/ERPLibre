@@ -21,11 +21,18 @@ import unittest
 from unittest import mock
 
 sys.argv = ["todo.py"]
+from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
 class _MenuCase(unittest.TestCase):
     def setUp(self):
+        # Les libellés en anglais, sans set_lang() : il écrirait la langue
+        # dans ./env_var.sh.
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
         self.todo = TODO.__new__(TODO)
         self.todo._ssh_config_hosts = lambda: ["saut+vm-a"]
         self.todo._qemu_list_domains = lambda: []
@@ -78,15 +85,74 @@ class TestTunnelMenuChoices(_MenuCase):
         self.assertIn("3389", self._play(["1", ""]))
         self.assertIn("5901", self._play(["1", "2"]))
 
-    def test_the_labels_name_the_server_behind_each_port(self):
-        """GNOME sans session X11 ne se sert qu'en RDP : le choix VNC ne vaut
-        que pour Cinnamon sur Arch, et l'étiquette doit le dire pour qu'une VM
-        Arch GNOME ne soit pas envoyée vers un port où rien n'écoute."""
-        out = self._play(["1", ""])
-        self.assertIn("RDP 3389 (GNOME Remote Desktop / xrdp)", out)
-        self.assertIn("VNC 5901 (TigerVNC, Cinnamon on Arch)", out)
-        self.assertNotIn("(TigerVNC, Arch)", out)
+    def test_wayvnc_has_its_own_entry(self):
+        self.assertIn("-L 5901:localhost:5900", self._play(["1", "6"]))
 
+    def test_the_labels_name_the_server_behind_each_port(self):
+        """GNOME sans session X11 ne se sert qu'en RDP : le choix VNC 5901 ne
+        vaut que pour les saveurs X11 sous Arch, et l'étiquette doit le dire
+        pour qu'une VM Arch GNOME ne soit pas envoyée vers un port fermé."""
+        out = self._play(["1", ""])
+        self.assertIn("RDP 3389 (GNOME Remote Desktop, KRdp or xrdp) *", out)
+        self.assertIn("VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)", out)
+        self.assertIn("VNC 5900 (wayvnc, Hyprland)", out)
+
+
+class TestTunnelMenuReadsTheFlavour(_MenuCase):
+    """Le nom de la VM porte sa saveur et son système : le choix par défaut
+    suit le serveur que l'installation y a posé."""
+
+    def _defaut(self, hote):
+        self.todo._ssh_config_hosts = lambda: [hote]
+        return self._play(["1", ""])
+
+    def test_hyprland_defaults_to_wayvnc(self):
+        out = self._defaut("saut+erplibre-arch-hyprland")
+        self.assertIn("[6] VNC 5900 (wayvnc, Hyprland) *", out)
+        self.assertIn("-L 5901:localhost:5900", out)
+
+    def test_xfce_on_arch_defaults_to_tigervnc(self):
+        out = self._defaut("saut+erplibre-arch-xfce")
+        self.assertIn("-L 5902:localhost:5901", out)
+
+    def test_xfce_elsewhere_defaults_to_xrdp(self):
+        out = self._defaut("saut+erplibre-debian-13-xfce")
+        self.assertIn("-L 3390:localhost:3389", out)
+
+    def test_plasma_follows_its_release(self):
+        """KRdp sur Fedora, xrdp sur Ubuntu : RDP 3389 des deux côtés ;
+        Leap 16.0 n'a aucun serveur, la console de l'hyperviseur passe
+        devant."""
+        self.assertIn(
+            "-L 3390:localhost:3389", self._defaut("erplibre-fedora-44-plasma")
+        )
+        out = self._defaut("saut+erplibre-opensuse-160-plasma")
+        self.assertIn("console only", out)
+        self.assertIn("-L 5900:127.0.0.1:5900", out)
+
+    def test_cosmic_defaults_to_the_hypervisor_console(self):
+        out = self._defaut("saut+erplibre-fedora-44-cosmic")
+        self.assertIn("cosmic → console only", out)
+        self.assertNotIn("localhost:3389", out)
+
+    def test_an_arch_suffix_does_not_hide_the_release(self):
+        flavour, remote, distro = self.todo._qemu_tunnel_desktop(
+            "erplibre-arch-arm64-xfce"
+        )
+        self.assertEqual((flavour, remote, distro), ("xfce", "x11", "arch"))
+
+    def test_a_name_without_flavour_keeps_the_manual_default(self):
+        self.assertEqual(
+            self.todo._qemu_tunnel_desktop("saut+vm-a"), (None, "", None)
+        )
+        self.assertIn("-L 3390:localhost:3389", self._defaut("saut+vm-a"))
+
+    def test_the_choice_still_overrides_the_guess(self):
+        self.todo._ssh_config_hosts = lambda: ["saut+erplibre-arch-hyprland"]
+        self.assertIn("-L 3390:localhost:3389", self._play(["1", "1"]))
+
+
+class TestTunnelMenuChoicesTail(_MenuCase):
     def test_a_configured_host_rides_its_proxyjump_for_rdp(self):
         out = self._play(["1", "1"])
         self.assertIn("-L 3390:localhost:3389 saut+vm-a", out)

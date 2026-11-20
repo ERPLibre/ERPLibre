@@ -1934,6 +1934,15 @@ class TestLeGuideDeConnexion(unittest.TestCase):
         self.assertEqual(["pycharm"], xfce.vm_tools.split(","))
         self.assertEqual("", self._outils_annonces("").vm_tools)
 
+    def test_the_guide_gets_the_flavour_and_its_remote_access(self):
+        """Le bloc « Bureau » du guide se titre de la saveur et annonce son
+        accès : Plasma sur Debian 13 passe par xrdp, un serveur par rien."""
+        plasma = self._outils_annonces("plasma")
+        self.assertEqual("plasma", plasma.desktop)
+        self.assertEqual("x11", plasma.desktop_remote)
+        serveur = self._outils_annonces("")
+        self.assertEqual("", serveur.desktop_remote)
+
     def test_a_vm_without_its_own_flavour_takes_the_fleet_one(self):
         args = self._outils_annonces(None, spec_desktop="gnome")
         self.assertTrue(args.desktop)

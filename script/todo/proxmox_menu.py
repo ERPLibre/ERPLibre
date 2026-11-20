@@ -2209,7 +2209,13 @@ class ProxmoxMenuMixin:
                 else ""
             ),
             erplibre_make=self._qemu_make_target(cmd_install),
-            desktop=bool(bureau),
+            # La saveur elle-même, et l'accès que la commande d'installation
+            # lui pose : le bloc « Bureau » du guide en tire son titre et sa
+            # ligne de connexion, comme sur la voie libvirt.
+            desktop=bureau or False,
+            desktop_remote=self._qemu_remote_kind(
+                bureau, vm.get("distro") or "", vm.get("version") or ""
+            ),
             # Les outils que le guide annoncera, FILTRÉS par cette machine
             # comme la voie libvirt le fait : en annoncer un que l'
             # architecture ou l'absence de bureau écarte enverrait chercher

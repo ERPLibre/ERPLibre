@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -284,6 +285,31 @@ class QemuAccessMixin:
             return conn[2], True
         return socket.gethostname(), False
 
+    def _qemu_tunnel_desktop(self, name):
+        """(saveur, genre d'accès, distribution) lus dans le nom `name`, ou
+        (None, "", None) quand il ne porte pas de saveur.
+
+        Le dernier segment d'un alias « parent+vm » est le domaine. Son
+        suffixe donne la saveur (_qemu_split_desktop_suffix) ; le reste,
+        suffixe d'architecture retiré, se compare aux noms du catalogue
+        (_qemu_infra_name) pour retrouver (distribution, version). Le nom
+        seul, sans virsh ni ssh : la VM vit souvent derrière plusieurs
+        sauts. Un système introuvable laisse le genre vide."""
+        domain = name.rsplit("+", 1)[-1]
+        base, flavour = self._qemu_split_desktop_suffix(domain)
+        if not flavour:
+            return None, "", None
+        base = re.sub(r"-(amd64|arm64|s390x)$", "", base)
+        try:
+            distros = self._qemu_import_module().DISTROS
+        except Exception:
+            distros = {}
+        for d, (versions, _defaut) in distros.items():
+            for v in versions:
+                if self._qemu_infra_name(d, v) == base:
+                    return flavour, self._qemu_remote_kind(flavour, d, v), d
+        return flavour, "", None
+
     def _qemu_tunnel_menu(self):
         """Commande de tunnel SSH vers le bureau distant d'une machine.
 
@@ -317,21 +343,37 @@ class QemuAccessMixin:
             return
         name, src = targets[int(answer) - 1]
 
-        # Le port ne se devine pas pour un hote de ssh_config : on ne connait
-        # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
-        # Le serveur est choisi a l'installation selon la famille ET le
-        # bureau (qemu_install.py) : RDP 3389 sert GNOME, par GNOME Remote
-        # Desktop ou xrdp ; seul Cinnamon sur Arch ecoute en VNC 5901, une
-        # session X11 que GNOME sans X11 ne peut plus fournir.
+        # Le serveur est choisi a l'installation selon la saveur, la
+        # distribution et sa version (qemu_install.py) : RDP 3389 pour GNOME
+        # Remote Desktop, KRdp et xrdp ; VNC 5901 pour TigerVNC, celui des
+        # saveurs X11 sous Arch ; VNC 5900 pour wayvnc (Hyprland) ; rien pour
+        # une saveur « console ». Le nom de la VM porte la saveur et le
+        # systeme : il fixe le choix par defaut, l'utilisateur tranche.
+        flavour, remote, distro = self._qemu_tunnel_desktop(name)
+        acces = self._qemu_remote_port(remote, distro)
+        serveurs = {"1": (3389, "RDP"), "2": (5901, "VNC"), "6": (5900, "VNC")}
+        defaut = "1"
+        if remote == "console":
+            defaut = "3"
+        elif acces in serveurs.values():
+            defaut = next(k for k, v in serveurs.items() if v == acces)
+        if flavour and remote:
+            vu = f"{acces[1]} {acces[0]}" if acces else t("console only")
+            print(
+                f"\n  {t('Desktop read from the VM name:')} {flavour} → {vu}"
+            )
+        libelles = {
+            "1": t("RDP 3389 (GNOME Remote Desktop, KRdp or xrdp)"),
+            "2": t("VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)"),
+            "3": t("Hypervisor console (QEMU screen, no guest server)"),
+            "4": t("Android emulator (adb 5555, then scrcpy)"),
+            "5": t("Graphical console (virt-viewer, built-in tunnel)"),
+            "6": t("VNC 5900 (wayvnc, Hyprland)"),
+        }
         print(f"\n  {t('Remote desktop kind:')}")
-        print("  [1] RDP 3389 (GNOME Remote Desktop / xrdp) *")
-        print("  [2] VNC 5901 (TigerVNC, Cinnamon on Arch)")
-        print(
-            f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
-        )
-        print(f"  [4] {t('Android emulator (adb 5555, then scrcpy)')}")
-        print(f"  [5] {t('Graphical console (virt-viewer, built-in tunnel)')}")
-        kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        for cle, libelle in libelles.items():
+            print(f"  [{cle}] {libelle}" + (" *" if cle == defaut else ""))
+        kind_answer = input(f"{t('Choice')} [{defaut}]: ").strip() or defaut
         if kind_answer == "3":
             self._qemu_console_tunnel(name, src)
             return
@@ -341,7 +383,7 @@ class QemuAccessMixin:
         if kind_answer == "5":
             self._qemu_virt_viewer(name, src)
             return
-        port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
+        port, kind = serveurs.get(kind_answer, serveurs["1"])
         local = port + 1
 
         print(f"\n  {t('Run this on YOUR workstation:')}")

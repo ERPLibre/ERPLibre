@@ -3079,16 +3079,9 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 # N'apparaît que sur une VM déployée AVEC un bureau. Un gestionnaire de
 # connexion installé après que graphical.target est atteinte ne démarre pas de
 # lui-même : une cible active ne rattrape pas un service ajouté après coup, et
-# « enable » seul ne démarre rien. « display-manager » est l'alias que GDM et
-# LightDM posent tous deux, d'où une seule ligne pour GNOME comme pour
-# Cinnamon ; « restart » démarre aussi une unité arrêtée.
-#
-# L'accès distant passe par RDP sur 3389 — GNOME Remote Desktop, ou xrdp —
-# sauf Cinnamon sur Arch, servi par TigerVNC sur 5901 (_QEMU_DESKTOP_REMOTE,
-# dans script/todo/qemu_install.py). Le guide ne sait pas quelle saveur a été
-# posée, d'où une seule ligne qui nomme les deux. L'adresse de la VM n'est
-# routée que depuis l'hôte libvirt : le tunnel part donc du poste de travail,
-# à travers cet hôte.
+# « enable » seul ne démarre rien. « display-manager » est l'alias que posent
+# GDM, LightDM, SDDM, plasmalogin, greetd et cosmic-greeter, d'où une seule
+# ligne pour toutes les saveurs ; « restart » démarre aussi une unité arrêtée.
 DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
         "systemctl status display-manager",
@@ -3100,14 +3093,87 @@ DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
         "(re)démarrer l'écran de connexion",
         "(re)start the login screen",
     ),
-    (
-        "ssh -L 3390:<ip>:3389 <hote-libvirt>",
-        "depuis le poste : client RDP sur localhost:3390, compte et mot de "
-        "passe de la VM (Cinnamon sur Arch : VNC, 5901 au lieu de 3389)",
-        "from the workstation: RDP client on localhost:3390, the VM's user "
-        "and password (Cinnamon on Arch: VNC, 5901 instead of 3389)",
-    ),
 )
+
+# Genres d'accès distant que reçoit `--desktop-remote`, résolus par le menu
+# TODO selon la saveur, la distribution et sa version (_QEMU_DESKTOP, dans
+# script/todo/qemu_install.py) : ce module ne connaît pas les saveurs.
+DESKTOP_REMOTES = ("grd", "x11", "krdp", "wayvnc", "console")
+
+# Session ouverte au démarrage puis verrouillée : KRdp et wayvnc ne servent
+# qu'une session en cours, que le client déverrouille par le compte de la VM.
+_SESSION_VERROUILLEE = (
+    " ; la session, ouverte au démarrage, est verrouillée",
+    "; the session, opened at boot, is locked",
+)
+
+
+def desktop_flavour_arg(valeur: str) -> str:
+    """Valeur de « --desktop=SAVEUR » : un nom de saveur, minuscules et
+    chiffres. Un chemin d'image happé par la forme séparée (« --desktop
+    image.qcow2 ») est refusé au lieu de devenir une saveur."""
+    if not re.fullmatch(r"[a-z][a-z0-9]*", valeur or ""):
+        raise argparse.ArgumentTypeError(
+            f"saveur de bureau invalide : {valeur!r}"
+        )
+    return valeur
+
+
+def desktop_remote_rows(
+    remote: str, mgr: str
+) -> tuple[tuple[str, str, str], ...]:
+    """Ligne d'accès distant du bloc « Bureau » pour le genre `remote`.
+
+    Le port suit le serveur posé : RDP 3389 pour GNOME Remote Desktop, KRdp
+    et xrdp ; VNC 5901 pour TigerVNC, le serveur des saveurs X11 sous pacman ;
+    VNC 5900 pour wayvnc. Le port local du tunnel est le port distant plus un,
+    comme dans l'annonce de la commande d'installation. Un genre vide est
+    celui d'un appel sans saveur : RDP, l'accès de GNOME.
+
+    L'adresse de la VM n'est routée que depuis l'hôte libvirt : le tunnel part
+    du poste de travail, à travers cet hôte. Une saveur sans serveur
+    (« console ») renvoie à la console de l'hyperviseur.
+    """
+    if remote == "console":
+        return (
+            (
+                "virt-viewer <vm>",
+                "sur l'hôte libvirt : aucun serveur de bureau distant, la "
+                "console de l'hyperviseur est le seul accès",
+                "on the libvirt host: no remote desktop server, the "
+                "hypervisor console is the only access",
+            ),
+        )
+    if remote == "x11" and mgr == "pacman":
+        return (
+            (
+                "ssh -L 5902:<ip>:5901 <hote-libvirt>",
+                "depuis le poste : client VNC sur localhost:5902, après "
+                "« vncpasswd » puis « vncserver :1 » sur la VM",
+                "from the workstation: VNC client on localhost:5902, after "
+                "« vncpasswd » then « vncserver :1 » on the VM",
+            ),
+        )
+    verrou = _SESSION_VERROUILLEE if remote in ("krdp", "wayvnc") else ("", "")
+    if remote == "wayvnc":
+        return (
+            (
+                "ssh -L 5901:<ip>:5900 <hote-libvirt>",
+                "depuis le poste : client VNC sur localhost:5901, compte et "
+                "mot de passe de la VM" + verrou[0],
+                "from the workstation: VNC client on localhost:5901, the "
+                "VM's user and password" + verrou[1],
+            ),
+        )
+    return (
+        (
+            "ssh -L 3390:<ip>:3389 <hote-libvirt>",
+            "depuis le poste : client RDP sur localhost:3390, compte et mot "
+            "de passe de la VM" + verrou[0],
+            "from the workstation: RDP client on localhost:3390, the VM's "
+            "user and password" + verrou[1],
+        ),
+    )
 
 
 def erplibre_guide(
@@ -3260,15 +3326,18 @@ def build_motd(
     el_dir: str = "",
     el_make: str = "",
     editor: str = "",
-    desktop: bool = False,
+    desktop: bool | str = False,
     tools: tuple = (),
+    remote: str = "",
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
     La section ERPLibre n'apparaît qu'avec `el_dir` : une VM déployée sans
     installation ne doit pas annoncer un dépôt et un service qui n'existent pas.
     Le bloc « Bureau » suit la même règle avec `desktop` : sur un serveur, ces
-    deux commandes ne mèneraient à aucune unité.
+    commandes ne mèneraient à aucune unité. Une chaîne non vide nomme la
+    saveur dans son titre ; `remote` choisit sa ligne d'accès distant
+    (desktop_remote_rows).
     """
     body: list[str] = []
     mgr = DISTRO_PKG.get(distro, "")
@@ -3320,12 +3389,11 @@ def build_motd(
         )
     if desktop:
         body.append("")
-        body += motd_block(
-            _pick(("Bureau", "Desktop"), lang),
-            DESKTOP_GUIDE,
-            lang,
-            gloss_col(DESKTOP_GUIDE),
-        )
+        bureau_rows = DESKTOP_GUIDE + desktop_remote_rows(remote, mgr)
+        bureau = _pick(("Bureau", "Desktop"), lang)
+        if isinstance(desktop, str):
+            bureau += f" — {desktop}"
+        body += motd_block(bureau, bureau_rows, lang, gloss_col(bureau_rows))
     body.append("")
     body += motd_block(
         _pick(("Système", "System"), lang), sys_rows, lang, narrow
@@ -4317,7 +4385,7 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                 args.erplibre_dir,
                 args.erplibre_make,
                 editor,
-                bool(args.desktop),
+                args.desktop or False,
                 # « getattr » et non « args.vm_tools » : la voie Proxmox
                 # bâtit ses arguments à la main, et un champ qui lui manque
                 # ferait avaler le guide par son « except Exception ».
@@ -4326,6 +4394,7 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                     for c in getattr(args, "vm_tools", "").split(",")
                     if c.strip()
                 ),
+                getattr(args, "desktop_remote", "") or "",
             ),
             "",
         )
@@ -5953,13 +6022,30 @@ def build_parser() -> argparse.ArgumentParser:
         default="none",
         help="Argument --graphics (défaut : none).",
     )
+    # « --desktop=<saveur> » dans les commandes que bâtit le menu : la forme
+    # séparée « --desktop xfce » prendrait pour saveur un chemin d'image
+    # placé juste après, l'image étant un positionnel facultatif.
     g_vm.add_argument(
         "--desktop",
-        action="store_true",
+        nargs="?",
+        const="gnome",
+        default=None,
+        type=desktop_flavour_arg,
+        metavar="SAVEUR",
         help="VM graphique : écran virtio-gpu servi en VNC sur 127.0.0.1 "
         "(tunnel SSH), là où l'architecture le permet ; sur Debian, image "
-        "« generic » au noyau capable d'afficher. Les paquets du bureau sont "
-        "posés par la commande d'installation, pas ici.",
+        "« generic » au noyau capable d'afficher. SAVEUR (gnome par défaut) "
+        "titre le bloc « Bureau » du guide de connexion. Les paquets du "
+        "bureau sont posés par la commande d'installation, pas ici.",
+    )
+    g_vm.add_argument(
+        "--desktop-remote",
+        choices=DESKTOP_REMOTES,
+        default="",
+        help="Accès distant que la commande d'installation pose pour ce "
+        "bureau, annoncé par le guide de connexion : grd, x11 (xrdp, ou "
+        "TigerVNC sous Arch), krdp, wayvnc, console (aucun serveur). Vide : "
+        "RDP 3389.",
     )
     g_vm.add_argument(
         "--vm-tools",

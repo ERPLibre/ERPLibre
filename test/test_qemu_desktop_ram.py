@@ -373,6 +373,62 @@ class TestLaCommandeDeploiement(unittest.TestCase):
     def test_memory_of_a_server_is_untouched(self):
         self.assertEqual(1024, self._memory(1024, ""))
 
+    def _parts(self, desktop, distro="arch", version="latest"):
+        return _todo()._qemu_build_deploy_parts(
+            distro,
+            version,
+            "amd64",
+            "vm",
+            8192,
+            2,
+            "20G",
+            None,
+            None,
+            True,
+            desktop=desktop,
+        )
+
+    def test_the_flavour_and_its_remote_access_reach_the_command(self):
+        """Collée, « --desktop=<saveur> » : la forme séparée prendrait un
+        positionnel suivant pour la saveur. Le genre d'accès se résout ici,
+        deploy_qemu.py ne connaissant pas les saveurs."""
+        parts = self._parts("hyprland")
+        self.assertIn("--desktop=hyprland", parts)
+        self.assertEqual("wayvnc", parts[parts.index("--desktop-remote") + 1])
+        parts = self._parts("plasma", "debian", "13")
+        self.assertEqual("x11", parts[parts.index("--desktop-remote") + 1])
+
+    def test_a_server_gets_neither_option(self):
+        parts = self._parts("")
+        self.assertNotIn("--desktop-remote", parts)
+        self.assertFalse([p for p in parts if p.startswith("--desktop")])
+
+    def test_the_command_parses_back_to_the_same_flavour(self):
+        """La commande bâtie ici, relue par l'analyseur de deploy_qemu.py."""
+        todo = _todo()
+        mod = todo._qemu_import_module()
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            for distro, versions in par_distro.items():
+                for version in versions:
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        parts = self._parts(flavour, distro, version)
+                        i = parts.index("--desktop-remote")
+                        opts = [
+                            p for p in parts if p.startswith("--desktop=")
+                        ] + parts[i : i + 2]
+                        args = mod.build_parser().parse_args(
+                            ["--name", "vm"] + opts
+                        )
+                        self.assertEqual(
+                            (
+                                flavour,
+                                todo._qemu_remote_kind(
+                                    flavour, distro, version
+                                ),
+                            ),
+                            (args.desktop, args.desktop_remote),
+                        )
+
 
 class TestLeSystemeAtteintLeBureau(unittest.TestCase):
     """Le bloc du bureau reçoit le système de la VM, sur les deux chemins."""
