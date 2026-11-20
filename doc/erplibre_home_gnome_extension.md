@@ -69,10 +69,13 @@ run one of its files: without the clone each stops on one line naming `make
 erplibre_home_install_extension`, which clones it without requiring GNOME
 Shell. `make test_full_fast` runs the extension's suites when the clone is
 there and announces them skipped otherwise. The Stream Deck program, the
-controller, the translator and the TODO menu talk to the running extension
-over D-Bus and degrade when it does not answer. The extension, in turn,
-finds the checkout from its own path and runs the deck program and the
-controller from there.
+controller and the translator, cloned at `script/stream_deck/deck/` from
+their own repository (see [the deck program in ERPLibre](erplibre_streamdeck_deck.md)),
+and the TODO menu talk to the running extension over D-Bus and degrade
+when it does not answer. The extension, in turn, finds the checkout from
+its own path and runs the deck program and the controller from the deck
+clone, or from `script/stream_deck/` in a checkout older than the clone
+(contract 1.5).
 
 ## Older ERPLibre commits
 

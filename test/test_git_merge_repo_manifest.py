@@ -20,7 +20,8 @@ Et, dans une copie de conf/ et manifest/ sans mobile/ ni .repo/ :
   version d'Odoo et sans ligne d'erreur ;
 - l'extension GNOME n'entre dans la fusion que si
   script/gnome-extension/erplibre_home existe, ou avec
-  --with_erplibre_home, comme le mobile.
+  --with_erplibre_home, comme le mobile ; le programme du deck, que si
+  script/stream_deck/deck existe, ou avec --with_streamdeck.
 """
 
 import os
@@ -131,12 +132,14 @@ def chemins(manifeste):
 
 
 class LaVersionDOdoo(unittest.TestCase):
-    def fusionner(self, contenu, options=(), extension=False):
+    def fusionner(self, contenu, deck=False, options=(), extension=False):
         with tempfile.TemporaryDirectory() as dossier:
             for nom in ("conf", "manifest"):
                 shutil.copytree(RACINE / nom, Path(dossier, nom))
             if contenu is not None:
                 Path(dossier, ".odoo-version").write_text(contenu)
+            if deck:
+                Path(dossier, "script/stream_deck/deck").mkdir(parents=True)
             if extension:
                 Path(dossier, "script/gnome-extension/erplibre_home").mkdir(
                     parents=True
@@ -162,11 +165,30 @@ class LaVersionDOdoo(unittest.TestCase):
         self.assertTrue(set(attendus) <= set(projets_avec_saut))
 
 
+class LeProgrammeDuDeck(unittest.TestCase):
+    DECK = "script/stream_deck/deck"
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_they_come_only_with_their_directory_or_the_option(self):
+        for contenu, deck, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_streamdeck",), True),
+        ):
+            with self.subTest(odoo=contenu, deck=deck, options=options):
+                _sortie, projets = self.fusionner(contenu, deck, options)
+                self.assertEqual(attendu, self.DECK in projets)
+
+
 class LExtensionGnome(unittest.TestCase):
     """Le manifeste de l'extension n'entre qu'avec son répertoire ou
-    --with_erplibre_home."""
+    --with_erplibre_home, indépendamment de celui du deck : la base
+    d'ERPLibre Home s'installe sans le Stream Deck."""
 
     EXTENSION = "script/gnome-extension/erplibre_home"
+    DECK = LeProgrammeDuDeck.DECK
     fusionner = LaVersionDOdoo.fusionner
 
     def test_it_comes_only_with_its_directory_or_the_option(self):
@@ -176,14 +198,21 @@ class LExtensionGnome(unittest.TestCase):
             (None, True, (), True),
             (VERSION, True, (), True),
             (None, False, ("--with_erplibre_home",), True),
+            (None, False, ("--with_streamdeck",), False),
         ):
             with self.subTest(
                 odoo=contenu, extension=extension, options=options
             ):
                 _sortie, projets = self.fusionner(
-                    contenu, options, extension=extension
+                    contenu, False, options, extension=extension
                 )
                 self.assertEqual(attendu, self.EXTENSION in projets)
+
+    def test_the_deck_does_not_bring_it_nor_it_the_deck(self):
+        _sortie, projets = self.fusionner(None, True, ())
+        self.assertNotIn(self.EXTENSION, projets)
+        _sortie, projets = self.fusionner(None, False, (), extension=True)
+        self.assertNotIn(self.DECK, projets)
 
 
 if __name__ == "__main__":

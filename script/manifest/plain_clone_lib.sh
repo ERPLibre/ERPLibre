@@ -1,11 +1,11 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Bibliothèque sourcée par la passation à repo sync de script/manifest/
-# (erplibre_home_extension_to_repo.sh) : ce qu'elle lit d'un dépôt à part
-# qu'un checkout reçoit soit par repo sync, soit par un « git clone »
-# ordinaire d'install_erplibre_home.sh. Elle ne pose que des fonctions et
-# ne change rien.
+# Bibliothèque sourcée par les passations à repo sync de script/manifest/
+# (streamdeck_deck_to_repo.sh, erplibre_home_extension_to_repo.sh) : ce
+# qu'elles lisent d'un dépôt à part qu'un checkout reçoit soit par repo
+# sync, soit par un « git clone » ordinaire d'install_erplibre_home.sh. Elle
+# ne pose que des fonctions et ne change rien.
 
 # plain_clone_repo_ready RACINE sort en 0 quand repo est prêt à la racine :
 # son exécutable du venv et .repo/manifests, que pose un init réussi.

@@ -27,7 +27,8 @@ Ce que ces tests gardent :
   erplibre_home ; extraite et gardée par l'init, elle est laissée à repo ;
 - sans le répertoire, sans repo prêt, ou quand repo n'extrait pas
   l'extension, rien ne change ;
-- chaque script update_manifest_*.sh le lance juste avant repo sync.
+- chaque script update_manifest_*.sh le lance après la passation du
+  programme du deck et juste avant repo sync.
 """
 
 import os
@@ -283,7 +284,7 @@ class LesScriptsDeMiseAJour(unittest.TestCase):
         "update_manifest_local_dev_code_generator.sh",
     )
 
-    def test_each_update_runs_it_just_before_repo_sync(self):
+    def test_each_update_runs_it_after_the_deck_and_before_repo_sync(self):
         for nom in self.SCRIPTS:
             with self.subTest(script=nom):
                 lignes = [
@@ -303,6 +304,9 @@ class LesScriptsDeMiseAJour(unittest.TestCase):
                     return i
 
                 appel = rang(r"erplibre_home_extension_to_repo\.sh")
+                self.assertEqual(
+                    rang(r"streamdeck_deck_to_repo\.sh") + 1, appel
+                )
                 self.assertEqual(appel + 1, rang(r"bin/repo sync"))
                 self.assertIn("exit 1", lignes[appel])
 

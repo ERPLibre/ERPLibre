@@ -49,7 +49,8 @@ MANIFEST_REV=$(manifest_revision) || exit 1
 . ./script/manifest/repo_init.sh
 # Update git-repo. Sans -m, repo init prendrait default.xml, absent du dépôt.
 repo_init -u https://github.com/ERPLibre/ERPLibre -b "${MANIFEST_REV}" -m "${EL_MANIFEST_DEV}"
-# Un clone ordinaire de l'extension GNOME, que repo sync refuserait, est mis
-# de côté une fois l'init fait (voir le script).
+# Un clone ordinaire du programme du deck ou de l'extension GNOME, que repo
+# sync refuserait, est mis de côté une fois l'init fait (voir les scripts).
+./script/manifest/streamdeck_deck_to_repo.sh || exit 1
 ./script/manifest/erplibre_home_extension_to_repo.sh || exit 1
 .venv.erplibre/bin/repo sync ${REPO_VERBOSE} -j "$JOBS"

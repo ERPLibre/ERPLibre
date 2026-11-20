@@ -11,9 +11,10 @@
 #
 # DÉPENDANCES DÉCLARÉES : les tests du transfert mobile lisent
 # mobile/erplibre_home_mobile, ceux de l'installateur et du contrat de
-# l'extension GNOME script/gnome-extension/erplibre_home. Absents, ils se
-# disent ignorés plutôt que de passer en silence — un test vert sans son
-# dépôt ne prouve rien. Ce script les annonce donc avant de commencer.
+# l'extension GNOME script/gnome-extension/erplibre_home, ceux qui lisent le
+# programme du deck script/stream_deck/deck. Absents, ils se disent
+# ignorés plutôt que de passer en silence — un test vert sans son dépôt ne
+# prouve rien. Ce script les annonce donc avant de commencer.
 #
 #   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [--failed]
 #       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [fichiers...]
@@ -77,6 +78,13 @@ if [[ -f "${EXTENSION}/metadata.json" ]]; then
 else
     echo -e "  dépendance ${EXTENSION} : ${Yellow}absente${Color_Off}"
     echo "    (les tests qui lisent l'extension s'en passeront et le diront)"
+fi
+DECK=script/stream_deck/deck
+if [[ -f "${DECK}/erplibre_streamdeck/__main__.py" ]]; then
+    echo -e "  dépendance ${DECK} : ${Green}présente${Color_Off}"
+else
+    echo -e "  dépendance ${DECK} : ${Yellow}absente${Color_Off}"
+    echo "    (les tests qui lisent le programme du deck s'en passeront et le diront)"
 fi
 
 OPTIONS=()

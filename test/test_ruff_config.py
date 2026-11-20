@@ -63,6 +63,7 @@ class TestLesExclusions(unittest.TestCase):
             "addons/invented_repo/invented_module/models.py",
             "script/OCA_maintainer-tools/invented.py",
             "script/gnome-extension/erplibre_home/invented.py",
+            "script/stream_deck/deck/invented.py",
         ):
             with self.subTest(chemin=chemin):
                 self.assertFalse(formate(chemin))

@@ -125,10 +125,13 @@ run one of its files: without the clone each stops on one line naming `make
 erplibre_home_install_extension`, which clones it without requiring GNOME
 Shell. `make test_full_fast` runs the extension's suites when the clone is
 there and announces them skipped otherwise. The Stream Deck program, the
-controller, the translator and the TODO menu talk to the running extension
-over D-Bus and degrade when it does not answer. The extension, in turn,
-finds the checkout from its own path and runs the deck program and the
-controller from there.
+controller and the translator, cloned at `script/stream_deck/deck/` from
+their own repository (see [the deck program in ERPLibre](erplibre_streamdeck_deck.md)),
+and the TODO menu talk to the running extension over D-Bus and degrade
+when it does not answer. The extension, in turn, finds the checkout from
+its own path and runs the deck program and the controller from the deck
+clone, or from `script/stream_deck/` in a checkout older than the clone
+(contract 1.5).
 
 ## Older ERPLibre commits
 
@@ -186,10 +189,14 @@ lancent un de ses fichiers : sans le clone, chacune s'arrête sur une ligne
 qui nomme `make erplibre_home_install_extension`, qui la clone sans
 demander GNOME Shell. `make test_full_fast` lance les suites de l'extension
 quand le clone est là, et les annonce sautées sinon. Le programme du Stream
-Deck, le contrôleur, le traducteur et le menu TODO parlent à l'extension en
-marche par D-Bus et se dégradent quand elle ne répond pas. L'extension,
-elle, trouve le checkout par son propre chemin et y lance le programme du
-deck et le contrôleur.
+Deck, le contrôleur et le traducteur, clonés dans `script/stream_deck/deck/`
+depuis leur propre dépôt (voir
+[le programme du deck dans ERPLibre](erplibre_streamdeck_deck.fr.md)), et le
+menu TODO parlent à l'extension en marche par D-Bus et se dégradent quand
+elle ne répond pas. L'extension, elle, trouve le checkout par son propre
+chemin et lance le programme du deck et le contrôleur depuis le clone du
+deck, ou depuis `script/stream_deck/` dans un checkout antérieur au clone
+(contrat 1.5).
 
 ## Les commits d'ERPLibre plus anciens
 

@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
 # Prépare script/gnome-extension/erplibre_home/ pour repo sync. Les scripts
-# update_manifest_*.sh le lancent après « repo init » et juste avant
-# « repo sync » :
+# update_manifest_*.sh le lancent après « repo init », après
+# streamdeck_deck_to_repo.sh, et juste avant « repo sync » :
 #
 #   ./script/manifest/erplibre_home_extension_to_repo.sh [racine]
 #
