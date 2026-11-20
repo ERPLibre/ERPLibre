@@ -1743,9 +1743,9 @@ class TestNixosDesktopRun(unittest.TestCase):
         self.assertIn("❌", out)
 
     def test_the_cache_authority_reaches_the_root_build(self):
-        """Le /etc/sudoers de NixOS n'inclut pas /etc/sudoers.d : la
-        variable passe en argument de sudo, jusqu'à la construction de
-        root qui télécharge."""
+        """Le nix de root ne lit que NIX_SSL_CERT_FILE : la variable passe
+        en argument de sudo, jusqu'à la construction de root qui
+        télécharge, quelle que soit la règle env_keep de l'invité."""
         faisceau = self.vm.etc("/var/lib/erplibre/ca-bundle.crt")
         faisceau.parent.mkdir(parents=True, exist_ok=True)
         faisceau.write_text("ca\n")

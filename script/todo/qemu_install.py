@@ -1118,6 +1118,7 @@ class QemuInstallMixin:
         """
         faisceau = "/var/lib/erplibre/ca-bundle.crt"
         variables = (
+            "NIX_SSL_CERT_FILE",
             "SSL_CERT_FILE",
             "CURL_CA_BUNDLE",
             "GIT_SSL_CAINFO",
@@ -2174,9 +2175,10 @@ class QemuInstallMixin:
             f"'0,/imports *= *\\[/s//imports = [\\n    .\\/{nom}/' {conf}; "
             f"grep -q {nom} {conf} || "
             f'{{ echo "   ❌ {label} (nix) : {sans_import}"; exit 1; }}; '
-            # En argument de sudo, et non exportée : le /etc/sudoers de NixOS
-            # n'inclut pas /etc/sudoers.d, dont la règle env_keep reste
-            # lettre morte. Une règle « ALL » emporte SETENV.
+            # En argument de sudo : le nix de root ne lit que
+            # NIX_SSL_CERT_FILE, et la règle env_keep de /etc/sudoers.d ne
+            # vaut plus une fois /etc/sudoers reconstruit, qui ne l'inclut
+            # pas. Une règle « ALL » emporte SETENV.
             "B=/var/lib/erplibre/ca-bundle.crt; "
             'if [ -r $B ]; then EL_NIXCA="NIX_SSL_CERT_FILE=$B"; '
             "else EL_NIXCA=; fi; "

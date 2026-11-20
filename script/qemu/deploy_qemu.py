@@ -3792,8 +3792,11 @@ NIX_DROPIN = "/run/systemd/system/nix-daemon.service.d/10-erplibre-cache.conf"
 # l'autorité dans le magasin du système, que tout lit sans qu'on demande, et
 # qui SURVIT à sudo puisque ce n'est pas un environnement. NixOS n'a pas ce
 # magasin — /etc/ssl/certs est un lien vers le store — donc chaque
-# consommateur doit être pointé, et sudo les efface tous.
+# consommateur doit être pointé, et sudo les efface tous. NIX_SSL_CERT_FILE
+# est celle que lit le nix de root, qui télécharge lui-même pendant
+# « sudo nixos-rebuild switch » : SSL_CERT_FILE seule ne lui suffit pas.
 NIX_CA_VARS = (
+    "NIX_SSL_CERT_FILE",
     "SSL_CERT_FILE",
     "CURL_CA_BUNDLE",
     "GIT_SSL_CAINFO",
@@ -3824,12 +3827,14 @@ def nix_trust_commands() -> list[str]:
         # la prochaine connexion.
         "systemctl stop nix-daemon 2>/dev/null || true",
         "systemctl restart nix-daemon.socket 2>/dev/null || true",
-        # ET sudo, sans quoi rien de ce que la commande exporte ne survit :
-        # « sudo nixos-rebuild switch » évalue la configuration en allant
-        # chercher des centaines de narinfo, et les demandait toutes sans
-        # l'autorité. Les autres familles n'en ont pas besoin pour la même
-        # raison qu'elles n'ont pas besoin des variables : leur magasin
-        # système n'est pas un environnement.
+        # ET sudo, sans quoi rien de ce que la commande exporte ne survit.
+        # La règle ne vaut que tant que /etc/sudoers inclut /etc/sudoers.d :
+        # celui que produit la construction ne l'inclut pas, si bien que
+        # « nixos-rebuild switch », qui va chercher des centaines de
+        # narinfo, reçoit NIX_SSL_CERT_FILE en argument de sudo. Les autres
+        # familles n'en ont pas besoin pour la même raison qu'elles n'ont
+        # pas besoin des variables : leur magasin système n'est pas un
+        # environnement.
         commande_sudoers(NIX_CA_VARS),
     ]
 
