@@ -186,6 +186,14 @@ prévisualiser un dry-run, télécharger une image, lister les VM et afficher
 l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
+L'étape du bureau se termine en cherchant le binaire du bureau, `gnome-shell`
+ou `cinnamon` : un groupe de paquets peut dire avoir réussi sans l'apporter,
+et l'étape échoue alors sur une ligne qui nomme le binaire absent, avant le
+gestionnaire d'affichage et l'accès distant. Sur AlmaLinux, Rocky Linux,
+CentOS Stream et RHEL, l'étape active EPEL et CRB avant toute installation,
+le groupe Cinnamon et xrdp venant d'EPEL ; un xrdp qui ne s'installe toujours
+pas ne coûte que l'accès distant, le bureau reste.
+
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
 d'outils de développement** : PyCharm Community (posé depuis l'archive
 officielle JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt

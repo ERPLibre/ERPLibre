@@ -7787,6 +7787,14 @@ TRANSLATIONS = {
         "fr": "xrdp non installé ; la console de la VM reste disponible",
         "en": "xrdp not installed; the VM console remains available",
     },
+    "desktop not installed:": {
+        "fr": "bureau non installé :",
+        "en": "desktop not installed:",
+    },
+    "epel-release unavailable": {
+        "fr": "epel-release indisponible",
+        "en": "epel-release unavailable",
+    },
     "grdctl has no system mode: xrdp instead": {
         "fr": "grdctl n'a pas de mode système : xrdp à la place",
         "en": "grdctl has no system mode: xrdp instead",

@@ -419,6 +419,10 @@ class QemuInstallMixin:
             # s'ouvre à la première connexion, console comme RDP, et le
             # groupe gnome-desktop de Fedora le rend obligatoire.
             "first_login_done": ".config/gnome-initial-setup-done",
+            # Le binaire du bureau, cherché une fois les paquets posés. Un
+            # groupe ou un environnement peut réussir sans l'apporter, et un
+            # bureau sans son shell n'est pas un bureau.
+            "probe": "gnome-shell",
             "remote": "grd",
             "families": ("apt", "dnf", "pacman", "zypper"),
             # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
@@ -438,6 +442,7 @@ class QemuInstallMixin:
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
             "zypper": "cinnamon lightdm",
             "service": "lightdm",
+            "probe": "cinnamon",
             "remote": "x11",
             "families": ("apt", "dnf", "pacman", "zypper"),
             # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
@@ -1063,7 +1068,7 @@ class QemuInstallMixin:
             # aucune session GNOME à ouvrir. Une unité absente n'est pas une
             # erreur, d'où la boucle plutôt qu'un seul « disable » à deux
             # unités, qui s'arrêterait sur la première inconnue.
-            "if command -v xrdp >/dev/null 2>&1; then "
+            "if [ -x /usr/sbin/xrdp ] || command -v xrdp >/dev/null 2>&1; then "
             "for u in xrdp xrdp-sesman; do "
             'sudo systemctl disable --now "$u" >/dev/null 2>&1 || true; '
             "done; fi; "
@@ -1213,6 +1218,33 @@ class QemuInstallMixin:
             "fi; "
         )
 
+    @staticmethod
+    def _qemu_epel_cmd():
+        """Bloc shell : active EPEL et CRB sur la famille RHEL (AlmaLinux,
+        Rocky, CentOS Stream, RHEL — ID ou ID_LIKE contient « rhel »), et ne
+        fait rien ailleurs, Fedora comprise, où EPEL n'existe pas.
+
+        Le groupe « cinnamon-desktop » et xrdp ne sont pas dans les dépôts de
+        base de cette famille : EPEL les porte, et demande CRB pour une
+        partie de leurs dépendances. D'où un appel AVANT la cascade des
+        environnements. Même ordre d'essais que install_fedora_dependency.sh :
+        « crb », qui vient avec epel-release, puis « config-manager » en
+        repli. « crb » se cherche dans le PATH, et non par un chemin absolu,
+        pour qu'un banc d'essai le remplace. Aucun échec ici n'arrête le
+        bloc : c'est l'installation qui suit qui dit ce qui manque.
+
+        La famille se lit dans un sous-shell : sourcer os-release dans le
+        shell courant y laisserait NAME, VERSION et les autres."""
+        return (
+            'case "$( . /etc/os-release 2>/dev/null; '
+            'echo " ${ID:-} ${ID_LIKE:-} ")" in *" rhel "*) '
+            "sudo dnf install -y epel-release || "
+            f'echo "   ⚠ {t("epel-release unavailable")}"; '
+            "sudo crb enable >/dev/null 2>&1 "
+            "|| sudo dnf config-manager --set-enabled crb >/dev/null 2>&1 "
+            "|| true;; esac; "
+        )
+
     def _qemu_desktop_remote_cmd(
         self, flavour="gnome", app_store="deb", distro="", keep_login=False
     ):
@@ -1269,6 +1301,13 @@ class QemuInstallMixin:
             else ""
         )
         no_env = t("No dnf graphical environment could be installed for")
+        probe = de["probe"]
+        # Une seule ligne, et un code non nul : la commande distante rend
+        # alors l'échec au lieu d'annoncer un bureau qui n'existe pas.
+        absent = (
+            f'{{ echo "   ✗ {t("desktop not installed:")} {label}'
+            f' ({probe} {t("missing")})"; exit 1; }}; '
+        )
         if grd:
             sans = t("GNOME Remote Desktop packages not installed")
             dnf_remote = (
@@ -1276,7 +1315,11 @@ class QemuInstallMixin:
                 f'|| echo "   ⚠ {sans}"; '
             )
         else:
-            dnf_remote = f"sudo dnf install -y {rem['dnf']['packages']}; "
+            sans = t("xrdp not installed; the VM console remains available")
+            dnf_remote = (
+                f"sudo dnf install -y {rem['dnf']['packages']} "
+                f'|| echo "   ⚠ {sans}"; '
+            )
         return (
             f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
@@ -1303,6 +1346,7 @@ class QemuInstallMixin:
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
             f"{apt_pkgs}; "
             "elif command -v dnf >/dev/null 2>&1; then "
+            + self._qemu_epel_cmd()
             # Fedora d'un côté, les RHEL-likes de l'autre, lus dans
             # os-release (dans un sous-shell, pour ne pas semer ses variables
             # dans la suite de la commande).
@@ -1313,7 +1357,7 @@ class QemuInstallMixin:
             # RHEL-likes : cascade d'environnements, le premier qui existe
             # gagne. Un environnement absent fait rendre 1 à dnf sans rien
             # installer, d'où le « || » plutôt qu'une détection préalable.
-            'EL_OS=$(. /etc/os-release 2>/dev/null; echo "${ID:-}"); '
+            + 'EL_OS=$(. /etc/os-release 2>/dev/null; echo "${ID:-}"); '
             'if [ "$EL_OS" = fedora ]; then '
             f'EL_ENVS="{fedora_envs}"; EL_X="{fedora_x}"; '
             f'else EL_ENVS="{de["dnf_env"]}"; EL_X=""; fi; '
@@ -1340,7 +1384,10 @@ class QemuInstallMixin:
             "sudo zypper --non-interactive install "
             f"--auto-agree-with-licenses {de['zypper']}{x11('zypper')}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
-            + done_cmd
+            # Le gestionnaire a pu rendre 0 sans poser le bureau : le binaire
+            # du bureau tranche, pour toutes les familles, avant tout ce qui
+            # suppose un bureau.
+            f"command -v {probe} >/dev/null 2>&1 || {absent}" + done_cmd
             # Avant le démarrage du greeter : la première connexion compte.
             + self._qemu_dm_motd_skip_cmd()
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
@@ -1401,7 +1448,10 @@ class QemuInstallMixin:
             # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
             # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
             # sans session à ouvrir, ne le remplacerait pas.
-            + 'elif [ "$EL_REM" != off ] && command -v xrdp >/dev/null 2>&1; '
+            # Debian et openSUSE posent xrdp dans /usr/sbin, absent du PATH
+            # d'un utilisateur : « command -v » seul ne l'y trouve pas.
+            + 'elif [ "$EL_REM" != off ] && { [ -x /usr/sbin/xrdp ] '
+            "|| command -v xrdp >/dev/null 2>&1; }; "
             "then sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
             f'echo "   {t("Remote desktop:")} RDP 3389"; '
             # L'IP est sur le réseau PRIVÉ de libvirt : annoncer le port sans

@@ -157,6 +157,14 @@ Ubuntu VM (libvirt)**. From there you can deploy a VM, preview a dry-run,
 download an image, list VMs and show a VM IP address — the menu asks for the
 parameters and builds the command for you.
 
+The desktop step ends by looking for the desktop binary, `gnome-shell` or
+`cinnamon`: a package group can report success without bringing it, and the
+step then fails on one line naming the missing binary, before the display
+manager and the remote access. On AlmaLinux, Rocky Linux, CentOS Stream and
+RHEL, the step enables EPEL and CRB before installing anything, since the
+Cinnamon group and xrdp come from EPEL; an xrdp that still does not install
+only costs the remote access, the desktop stays.
+
 When a VM is graphical, the menu also offers a **check list of development
 tools**: PyCharm Community (installed from the official
 JetBrains archive into `/opt/pycharm`, its launcher opening the ERPLibre
