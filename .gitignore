@@ -69,3 +69,11 @@ private/todo/todo_override_private.json
 # Binaire compile du service SIP : il se rebatit par l'installateur, et
 # pese douze megaoctets.
 /script/erplibre_sip_go/erplibre_sip_go
+
+# L'extension GNOME ERPLibre Home : un dépôt à part, posé ici par Google
+# Repo, par make ou par install_erplibre_home.sh
+# (manifest/git_manifest_erplibre_home_gnome_extension.xml).
+/script/gnome-extension/erplibre_home/
+# Ce que l'installateur met de côté avant la pose par repo
+# (erplibre_home.avant-repo-<date>).
+/script/gnome-extension/erplibre_home.*/
