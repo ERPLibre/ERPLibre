@@ -1,0 +1,499 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le menu ERPLibre Home de TODO : extension GNOME et Stream Deck.
+
+Il réunit sous une entrée d'Exécution les deux niveaux d'ERPLibre Home :
+l'extension GNOME, son installation locale, son rechargement et la
+désinstallation complète ; le Stream Deck, outil de bureau posé par-dessus
+l'extension, son installation, la désinstallation de son seul niveau, le
+service systemd --user erplibre-home-streamdeck.service et ses réglages ;
+enfin l'état du poste et son diagnostic.
+
+Les commandes longues ou interactives (systemctl, journalctl -f,
+l'installateur, make) passent par self.execute.exec_command_live, en
+direct et sans récapitulatif : l'annonce du lanceur, ou la question de
+confirmation qui la remplace, est le seul endroit où la commande
+s'affiche. Les sondes muettes passent par _streamdeck_probe, que les
+tests remplacent. L'état et le diagnostic viennent d'erplibre_home_status.
+Chaque réglage s'écrit par _streamdeck_write, et l'installation Stream
+Deck change DECK_PROGRAM par --deck-program : l'un et l'autre préviennent
+par _streamdeck_warn_locked quand l'Odoo pilote de l'extension verrouille
+la clé changée.
+"""
+
+import os
+import shlex
+
+import click
+
+from script.todo import erplibre_home_service as service
+from script.todo import erplibre_home_status as statut
+from script.todo.todo_couleur import retour
+from script.todo.todo_i18n import t
+
+# La racine du dépôt, d'où partent l'installateur et make.
+RACINE = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
+INSTALLER = "./script/install/install_erplibre_home.sh"
+EXTENSION_UUID = "erplibre-home@technolibre.ca"
+
+
+class StreamDeckMenuMixin:
+    def prompt_execute_streamdeck(self):
+        # Cinq entrées au plus par section ; une section ne consomme pas
+        # de numéro. L'extension GNOME vient d'abord, parce que le Stream
+        # Deck s'installe par-dessus elle.
+        choices = [
+            {"section": t("GNOME extension")},
+            {"prompt_description": t("Install the GNOME extension (local)")},
+            {"prompt_description": t("Extension - Reload or preferences")},
+            {
+                "prompt_description": t(
+                    "Uninstall everything (extension included)"
+                )
+            },
+            {"section": t("Stream Deck (office tool)")},
+            {
+                "prompt_description": t(
+                    "Install the Stream Deck (adds the extension if needed)"
+                )
+            },
+            {"prompt_description": t("Uninstall the Stream Deck level")},
+            {
+                "prompt_description": t(
+                    "Service - Start, stop, restart, live log"
+                )
+            },
+            {"section": t("Deck settings")},
+            {
+                "prompt_description": t(
+                    "Deck program - Tiler, controller or none"
+                )
+            },
+            {"prompt_description": t("Autostart - Enable or disable")},
+            {
+                "prompt_description": t(
+                    "Plugins on/off - Enable or disable deck plugins"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Session refresh - Period of the session pages"
+                )
+            },
+            {"section": t("State")},
+            {
+                "prompt_description": t(
+                    "Status - What is installed and what runs"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Diagnosis - What is wrong and how to fix it"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._erplibre_home_install_local()
+            elif status == "2":
+                self._streamdeck_extension()
+            elif status == "3":
+                self._erplibre_home_uninstall_all()
+            elif status == "4":
+                self._erplibre_home_streamdeck_install_local()
+            elif status == "5":
+                self._streamdeck_uninstall()
+            elif status == "6":
+                self._streamdeck_service()
+            elif status == "7":
+                self._streamdeck_program()
+            elif status == "8":
+                self._streamdeck_autostart()
+            elif status == "9":
+                self._streamdeck_plugins_setting()
+            elif status == "10":
+                self._streamdeck_session_refresh_setting()
+            elif status == "11":
+                self._streamdeck_status()
+            elif status == "12":
+                self._streamdeck_diagnosis()
+            else:
+                print(t("Command not found !"))
+
+    # -------------------------------------------------------------- #
+    # Sondes et choix
+
+    @staticmethod
+    def _streamdeck_probe(argv):
+        """(code, sortie) d'une commande muette ; les tests la remplacent."""
+        return service.run_command(argv)
+
+    @staticmethod
+    def _streamdeck_choice(question, options, defaut="1"):
+        """Affiche `question` puis `options`, des couples (valeur,
+        libellé), numérotés à partir de 1, le défaut marqué d'une étoile.
+        Rend la valeur choisie, celle du défaut sur une réponse vide, None
+        sur 0. Une réponse hors liste le dit et repose la question ; sans
+        défaut (`defaut` None), une réponse vide est hors liste."""
+        print(question)
+        for rang, (_valeur, libelle) in enumerate(options, 1):
+            marque = " *" if str(rang) == defaut else ""
+            print(f"  [{rang}] {libelle}{marque}")
+        print(f"  {retour(t('Back'))}")
+        while True:
+            reponse = input(t("Choice: ")).strip() or defaut or ""
+            if reponse == "0":
+                return None
+            if reponse.isdigit() and 1 <= int(reponse) <= len(options):
+                return options[int(reponse) - 1][0]
+            print(t("Invalid selection!"))
+
+    @staticmethod
+    def _streamdeck_programs():
+        """Les PROGRAMS en couples (valeur, libellé traduit) pour
+        _streamdeck_choice : la valeur va dans les réglages et les
+        options, le libellé seul s'affiche."""
+        libelles = {
+            "tiler": t("Tiler"),
+            "controller": t("Controller"),
+            "none": t("No program"),
+        }
+        return [(p, libelles.get(p, p)) for p in service.PROGRAMS]
+
+    @classmethod
+    def _streamdeck_program_label(cls, programme):
+        """Le libellé traduit de `programme`, ou la valeur brute suivie
+        de « (invalid) » quand elle n'est pas dans PROGRAMS."""
+        libelles = dict(cls._streamdeck_programs())
+        if programme in libelles:
+            return libelles[programme]
+        return "%s (%s)" % (programme, t("invalid"))
+
+    @staticmethod
+    def _streamdeck_program_default(programme):
+        """Le rang, compté à partir de 1, de `programme` dans PROGRAMS ;
+        None quand il n'y est pas : une valeur invalide n'a pas de défaut,
+        si bien qu'Entrée ne la remplace pas sans un choix explicite."""
+        if programme in service.PROGRAMS:
+            return str(service.PROGRAMS.index(programme) + 1)
+        return None
+
+    def _streamdeck_unit_installed(self):
+        """Vrai quand l'unité du service existe ; sinon le dit avec la
+        commande qui l'installe."""
+        if os.path.exists(service.unit_path()):
+            return True
+        print(
+            t(
+                "The Stream Deck service is not installed:"
+                " make erplibre_home_streamdeck_install"
+            )
+        )
+        return False
+
+    @staticmethod
+    def _streamdeck_warn_locked(changer):
+        """Affiche une ligne qui nomme l'Odoo pilote (pilot.json de
+        l'extension) quand une clé du fil qu'il verrouille va changer :
+        Odoo la reproposera à sa remontée suivante. `changer(verrous)`
+        reçoit les clés verrouillées et dit si l'écriture à venir en change
+        une ; il n'est appelé que s'il y a un pilote et des verrous. Rien
+        n'est bloqué : l'appelant écrit dans tous les cas."""
+        pilote = service.read_pilot()
+        if pilote and pilote["locked"] and changer(pilote["locked"]):
+            print(
+                t(
+                    "Setting locked by Odoo ({destination}):"
+                    " it will be offered again."
+                ).replace("{destination}", pilote["destination"])
+            )
+
+    @classmethod
+    def _streamdeck_write(cls, chemin, updates):
+        """write_settings(chemin, updates), précédé de l'avertissement de
+        _streamdeck_warn_locked quand le texte d'une ligne verrouillée
+        change. Rend ce que rend write_settings."""
+
+        def changer(verrous):
+            lignes = {service.CONFIG_LINES[cle] for cle in verrous}
+            return service.settings_change(
+                chemin,
+                {
+                    ligne: valeur
+                    for ligne, valeur in updates.items()
+                    if ligne in lignes
+                },
+            )
+
+        cls._streamdeck_warn_locked(changer)
+        return service.write_settings(chemin, updates)
+
+    def _streamdeck_systemctl(self, *args):
+        """systemctl --user <args> en direct, sortie affichée, avec les
+        variables du bus que user_bus_env ajoute sous su ou sudo -u."""
+        commande = "systemctl --user " + " ".join(shlex.quote(a) for a in args)
+        self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+            new_env=service.user_bus_env(),
+            recap=False,
+        )
+
+    # -------------------------------------------------------------- #
+    # Entrées
+
+    def _streamdeck_status(self):
+        faits = statut.collect(self._streamdeck_probe, RACINE)
+        for ligne in statut.status_lines(faits):
+            print(f"  {ligne}")
+
+    def _streamdeck_diagnosis(self):
+        faits = statut.collect(self._streamdeck_probe, RACINE)
+        problemes = statut.diagnosis_lines(faits)
+        if not problemes:
+            print(f"✅ {t('Nothing to fix.')}")
+            return
+        for probleme, correction in problemes:
+            print(f"❌ {probleme}")
+            print(f"   → {correction}")
+
+    def _streamdeck_service(self):
+        if not self._streamdeck_unit_installed():
+            return
+        choix = self._streamdeck_choice(
+            t("Service action:"),
+            (
+                ("start", t("Start")),
+                ("stop", t("Stop")),
+                ("restart", t("Restart")),
+                ("log", t("live log (Ctrl-C to leave)")),
+            ),
+        )
+        if choix is None:
+            return
+        if choix != "log":
+            self._streamdeck_systemctl(choix, service.UNIT_NAME)
+            return
+        try:
+            self.execute.exec_command_live(
+                f"journalctl --user -u {service.UNIT_NAME} -f",
+                source_erplibre=False,
+                recap=False,
+            )
+        except KeyboardInterrupt:
+            print()
+
+    def _streamdeck_program(self):
+        """Réécrit DECK_PROGRAM, puis redémarre l'unité si elle tournait,
+        pour qu'elle lance le nouveau programme. Le programme déjà en
+        vigueur, celui du fichier ou le défaut de DEFAULTS quand la clé
+        manque, n'écrit rien : le point d'entrée du service prend le même
+        défaut, un fichier ne se crée pas pour le redire."""
+        if not self._streamdeck_unit_installed():
+            return
+        chemin = service.settings_path()
+        actuel = service.read_settings(chemin)["DECK_PROGRAM"]
+        choix = self._streamdeck_choice(
+            f"{t('Deck program:')} {self._streamdeck_program_label(actuel)}",
+            self._streamdeck_programs(),
+            self._streamdeck_program_default(actuel),
+        )
+        if choix is None:
+            return
+        if choix == actuel or not self._streamdeck_write(
+            chemin, {"DECK_PROGRAM": choix}
+        ):
+            print(t("Unchanged."))
+            return
+        print(f"{t('Deck program:')} {self._streamdeck_program_label(choix)}")
+        code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
+        if code == 0:
+            self._streamdeck_systemctl("restart", service.UNIT_NAME)
+
+    def _streamdeck_plugins_setting(self):
+        """Bascule un plugin du deck dans DECK_PLUGINS_OFF. Les plugins
+        sont ceux que deck_plugin_ids trouve sur disque, chacun avec son
+        état. Les identifiants de la liste qui n'ont pas de fichier
+        restent là où ils sont : seul l'identifiant choisi entre ou sort,
+        à la fin de la liste quand il y entre. Le deck lit le réglage au
+        démarrage : l'unité, quand elle tourne, se relance pour le
+        prendre en compte."""
+        chemin = service.settings_path()
+        coupes = service.plugins_off(service.read_settings(chemin))
+        ids = service.deck_plugin_ids(RACINE)
+        if not ids:
+            print(t("No deck plugins found."))
+            return
+        options = [
+            (
+                identifiant,
+                "%s: %s"
+                % (
+                    identifiant,
+                    t("off") if identifiant in coupes else t("on"),
+                ),
+            )
+            for identifiant in ids
+        ]
+        choix = self._streamdeck_choice(t("Deck plugins:"), options, None)
+        if choix is None:
+            return
+        if choix in coupes:
+            coupes = [c for c in coupes if c != choix]
+        else:
+            coupes.append(choix)
+        if not self._streamdeck_write(
+            chemin, {"DECK_PLUGINS_OFF": ",".join(coupes)}
+        ):
+            print(t("Unchanged."))
+            return
+        etat = t("on") if choix not in coupes else t("off")
+        print(f"{choix}: {etat}")
+        code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
+        if code == 0:
+            self._streamdeck_systemctl("restart", service.UNIT_NAME)
+
+    def _streamdeck_session_refresh_setting(self):
+        """Réécrit DECK_SESSION_REFRESH_SEC, la période des pages de
+        session du deck. La période en vigueur se montre, celle du fichier
+        ou 1 quand la clé manque ; une valeur invalide du fichier se montre
+        comme telle, avec la période 1 que le deck lui donne. Une réponse
+        vide garde la valeur. Une réponse que parse_session_refresh refuse
+        dit les bornes et laisse le fichier intact. Le deck lit le réglage
+        au démarrage : l'unité, quand elle tourne, se relance pour le
+        prendre en compte."""
+        chemin = service.settings_path()
+        brut = service.read_settings(chemin)["DECK_SESSION_REFRESH_SEC"]
+        if service.parse_session_refresh(brut) is None:
+            affiche = "%r (%s)" % (brut, t("invalid"))
+        else:
+            affiche = brut.strip()
+        print(f"{t('Session refresh:')} {affiche} s")
+        bas, haut = service.SESSION_REFRESH_RANGE
+        reponse = input(
+            t("New period in seconds ({bas} to {haut}), Enter to keep: ")
+            .replace("{bas}", f"{bas:g}")
+            .replace("{haut}", f"{haut:g}")
+        ).strip()
+        if not reponse:
+            print(t("Unchanged."))
+            return
+        # La virgule décimale (« 0,5 », comme la documentation française
+        # l'écrit) se lit comme un point ; le fichier garde le point.
+        reponse = reponse.replace(",", ".", 1)
+        if service.parse_session_refresh(reponse) is None:
+            print(
+                t("Invalid period, expected {bas} to {haut} seconds.")
+                .replace("{bas}", f"{bas:g}")
+                .replace("{haut}", f"{haut:g}")
+            )
+            return
+        if not self._streamdeck_write(
+            chemin, {"DECK_SESSION_REFRESH_SEC": reponse}
+        ):
+            print(t("Unchanged."))
+            return
+        print(f"{t('Session refresh:')} {reponse} s")
+        code, _sortie = self._streamdeck_probe(statut.cmd_unit("is-active"))
+        if code == 0:
+            self._streamdeck_systemctl("restart", service.UNIT_NAME)
+
+    def _streamdeck_autostart(self):
+        if not self._streamdeck_unit_installed():
+            return
+        _code, sortie = self._streamdeck_probe(statut.cmd_unit("is-enabled"))
+        choix = self._streamdeck_choice(
+            f"{t('Autostart:')} {sortie.strip() or '?'}",
+            (("enable", t("Enable")), ("disable", t("Disable"))),
+        )
+        if choix is not None:
+            self._streamdeck_systemctl(choix, service.UNIT_NAME)
+
+    def _erplibre_home_uninstall_all(self):
+        """Désinstaller tout ERPLibre Home, l'extension GNOME comprise."""
+        self._erplibre_home_uninstall("--uninstall")
+
+    def _streamdeck_uninstall(self):
+        """Désinstaller le niveau Stream Deck ; l'extension reste."""
+        self._erplibre_home_uninstall("--uninstall --stream-deck")
+
+    def _erplibre_home_uninstall(self, options):
+        """Lance l'installateur avec `options` après une confirmation dont
+        la question porte la commande ; sans « oui », rien ne part."""
+        commande = f"{INSTALLER} {options}"
+        print(f"{t('Will execute:')} {commande}")
+        if not self._is_yes(input(t("Confirm? (y/N): "))):
+            return
+        self._erplibre_home_run_installer(
+            commande,
+            succes="ERPLibre Home uninstalled.",
+            echec="ERPLibre Home uninstall failed, see the output above.",
+            annoncee=True,
+        )
+
+    def _streamdeck_extension(self):
+        commande = self._streamdeck_choice(
+            t("Extension action:"),
+            (
+                ("make erplibre_home_reload", t("Reload the extension")),
+                (
+                    f"gnome-extensions prefs {EXTENSION_UUID}",
+                    t("Open its preferences"),
+                ),
+            ),
+        )
+        if commande is not None:
+            self.execute.exec_command_live(
+                commande, source_erplibre=False, recap=False
+            )
+
+    # -------------------------------------------------------------- #
+    # Questions de l'installation Stream Deck
+
+    def _erplibre_home_streamdeck_options(self):
+        """Les trois questions de l'installation Stream Deck, chacune
+        devenue une option de l'installateur. Le programme passe toujours
+        son option, défaut compris : son défaut est la valeur des réglages
+        en place, si bien qu'Entrée la réécrit telle quelle ; sans
+        réglages, c'est celle de DEFAULTS. Un programme invalide dans les réglages se montre avec
+        la question, sans défaut. Un autre programme que celui en place,
+        quand l'Odoo pilote le verrouille, s'annonce par une ligne sitôt
+        choisi, et l'option part quand même. Le démarrage automatique et
+        les outils facultatifs n'ont pas d'option négative : « non »
+        n'ajoute rien. Rend la liste des options dans l'ordre des
+        questions, ou None quand la première est abandonnée par 0."""
+        reglages = service.read_settings(service.settings_path())
+        actuel = reglages["DECK_PROGRAM"]
+        question = t("Deck program:")
+        if actuel not in service.PROGRAMS:
+            question += " " + self._streamdeck_program_label(actuel)
+        programme = self._streamdeck_choice(
+            question,
+            self._streamdeck_programs(),
+            self._streamdeck_program_default(actuel),
+        )
+        if programme is None:
+            return None
+        self._streamdeck_warn_locked(
+            lambda verrous: "deck_program" in verrous and programme != actuel
+        )
+        options = [f"--deck-program={programme}"]
+        demande = t(
+            "Start the deck program at login and when the deck is plugged in?"
+            " (y/N): "
+        )
+        if self._is_yes(input(demande)):
+            options.append("--autostart")
+        if self._is_yes(
+            input(t("Install the optional tools (--with-extras)? (y/N): "))
+        ):
+            options.append("--with-extras")
+        return options
