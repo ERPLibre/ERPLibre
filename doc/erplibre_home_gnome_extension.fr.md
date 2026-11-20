@@ -73,10 +73,14 @@ lancent un de ses fichiers : sans le checkout, chacune s'arrête sur une
 ligne qui nomme `make erplibre_home_install_extension`, qui la synchronise
 sans demander GNOME Shell. `make test_full_fast` lance les suites de
 l'extension quand le checkout est là, et les annonce sautées sinon. Le
-programme du Stream Deck, le contrôleur, le traducteur et le menu TODO
-parlent à l'extension en marche par D-Bus et se dégradent quand elle ne
-répond pas. L'extension, elle, trouve le checkout d'ERPLibre par son propre
-chemin et y lance le programme du deck et le contrôleur.
+programme du Stream Deck, le contrôleur et le traducteur, un projet Google
+Repo à part dans `script/stream_deck/deck/` (voir
+[le programme du deck dans ERPLibre](erplibre_streamdeck_deck.fr.md)), et le
+menu TODO parlent à l'extension en marche par D-Bus et se dégradent quand
+elle ne répond pas. L'extension, elle, trouve le checkout d'ERPLibre par
+son propre chemin et lance le programme du deck et le contrôleur depuis
+`script/stream_deck/deck/`, ou depuis `script/stream_deck/` dans un
+checkout d'ERPLibre antérieur au dépôt propre du deck (contrat 1.5).
 
 ## Les commits d'ERPLibre plus anciens
 

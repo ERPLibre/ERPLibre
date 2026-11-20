@@ -1,0 +1,152 @@
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Bibliothèque sourcée par l'installateur et le point d'entrée du service :
+# les noms et les chemins du service Stream Deck, et la lecture de ses
+# réglages. Elle ne lance rien et ne pose que des fonctions et les
+# constantes DECK_UNIT_NAME, DECK_REPO_DIR et ERPLIBRE_HOME_EXT_DIR.
+#
+# Les réglages sont des lignes « CLÉ=valeur » ; une ligne qui ne commence pas
+# par « CLÉ= » est ignorée, si bien qu'un commentaire « # … » est permis.
+# Rien n'est sourcé : un fichier de réglages n'exécute jamais de code.
+
+DECK_UNIT_NAME="erplibre-home-streamdeck.service"
+
+# Le programme du deck, relatif à la racine du dépôt : un dépôt à part, que
+# Google Repo amène là ; le niveau Stream Deck de l'installateur ajoute son
+# projet au manifeste local et le synchronise. Il porte
+# le paquet erplibre_streamdeck, le contrôleur, le verrou du deck, le
+# traducteur et requirements.txt, celui de .venv.streamdeck.
+DECK_REPO_DIR="script/stream_deck/deck"
+
+# L'extension GNOME, relative à la racine du dépôt : un dépôt à part, que
+# Google Repo amène là ; la base de l'installateur ajoute son projet au
+# manifeste local et le synchronise.
+ERPLIBRE_HOME_EXT_DIR="script/gnome-extension/erplibre_home"
+
+# Le répertoire de configuration de l'utilisateur : $XDG_CONFIG_HOME, ou
+# ~/.config quand il est vide ou absent, comme systemd --user le lit.
+deck_config_home() {
+    echo "${XDG_CONFIG_HOME:-${HOME}/.config}"
+}
+
+deck_settings_file() {
+    echo "$(deck_config_home)/erplibre-home/streamdeck.conf"
+}
+
+deck_unit_file() {
+    echo "$(deck_config_home)/systemd/user/${DECK_UNIT_NAME}"
+}
+
+# deck_setting CLÉ DÉFAUT rend la valeur de la dernière ligne « CLÉ=… » du
+# fichier de réglages, ou DÉFAUT quand le fichier ou la clé manque. Une
+# valeur vide est rendue vide : c'est à l'appelant de la refuser.
+# Le fichier se lit octet par octet (LC_ALL=C local) : sous une locale
+# UTF-8, le « read » de bash joint à un octet invalide le saut de ligne qui
+# le suit, et la clé de la ligne suivante disparaît dans cette valeur.
+deck_setting() {
+    local LC_ALL=C
+    local key="$1" value="$2" file line
+    file="$(deck_settings_file)"
+    if [ -f "${file}" ]; then
+        while IFS= read -r line || [ -n "${line}" ]; do
+            case "${line}" in
+                "${key}="*) value="${line#*=}" ;;
+            esac
+        done <"${file}"
+    fi
+    echo "${value}"
+}
+
+# deck_program_path PROGRAMME rend le script, relatif à la racine du dépôt,
+# que lance DECK_PROGRAM=PROGRAMME, dans le checkout du deck ; rien pour
+# « none » ; code 1 pour une valeur inconnue.
+deck_program_path() {
+    case "$1" in
+        tiler) echo "${DECK_REPO_DIR}/erplibre_streamdeck" ;;
+        controller) echo "${DECK_REPO_DIR}/erplibre_controller.py" ;;
+        none) echo "" ;;
+        *) return 1 ;;
+    esac
+}
+
+# deck_repo_present [RACINE] sort en 0 quand le programme du deck est posé
+# sous RACINE, le répertoire courant par défaut : erplibre_streamdeck/
+# __main__.py en est le témoin. Un répertoire qui ne garde que des caches
+# Python ne suffit pas.
+deck_repo_present() {
+    [ -f "${1:-.}/${DECK_REPO_DIR}/erplibre_streamdeck/__main__.py" ]
+}
+
+# deck_repo_absent_message écrit, sur une ligne, que le programme du deck
+# manque et la commande qui le pose (repo sync).
+deck_repo_absent_message() {
+    echo "[ERPLibre Home] the deck program is not installed" \
+        "(no erplibre_streamdeck/__main__.py in ${DECK_REPO_DIR}/);" \
+        "install it with make erplibre_home_streamdeck_install"
+}
+
+# erplibre_home_extension_present [RACINE] sort en 0 quand l'extension est
+# posée sous RACINE, le répertoire courant par défaut : metadata.json en
+# est le témoin. Les fichiers ignorés qu'une mise à jour d'ERPLibre laisse
+# derrière elle (locale/, schémas compilés, caches) ne suffisent pas.
+erplibre_home_extension_present() {
+    [ -f "${1:-.}/${ERPLIBRE_HOME_EXT_DIR}/metadata.json" ]
+}
+
+# erplibre_home_extension_absent_message écrit, sur une ligne, que
+# l'extension manque et la commande qui la pose (repo sync). Cette cible ne
+# demande pas GNOME Shell : un serveur de tests sans session GNOME s'en sert
+# aussi.
+erplibre_home_extension_absent_message() {
+    echo "[ERPLibre Home] the GNOME extension is not installed" \
+        "(no metadata.json in ${ERPLIBRE_HOME_EXT_DIR}/);" \
+        "install it with make erplibre_home_install_extension"
+}
+
+# deck_plugins_off écrit, un par ligne, les identifiants de plugins que
+# DECK_PLUGINS_OFF coupe : la valeur se coupe aux virgules, chaque morceau
+# perd tous ses blancs, un morceau vide est ignoré. Sort toujours en 0, clé
+# absente comprise.
+deck_plugins_off() {
+    local value part
+    local -a parts
+    value="$(deck_setting DECK_PLUGINS_OFF "")"
+    IFS=',' read -r -a parts <<<"${value}"
+    for part in "${parts[@]}"; do
+        part="${part//[[:space:]]/}"
+        [ -n "${part}" ] && echo "${part}"
+    done
+    return 0
+}
+
+# deck_session_refresh_sec écrit la période, en secondes, à laquelle les
+# pages de session du deck se rafraîchissent : DECK_SESSION_REFRESH_SEC,
+# blancs de bord retirés, quand c'est un nombre décimal de 0.5 à 60 inclus ;
+# 1 sinon (clé absente, valeur vide, hors bornes ou pas un nombre). Sort
+# toujours en 0.
+deck_session_refresh_sec() {
+    local value
+    value="$(deck_setting DECK_SESSION_REFRESH_SEC 1)"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "${value}" =~ ^([0-9]+\.?[0-9]*|\.[0-9]+)$ ]] &&
+        awk -v v="${value}" 'BEGIN { exit !(v >= 0.5 && v <= 60) }'; then
+        echo "${value}"
+    else
+        echo 1
+    fi
+    return 0
+}
+
+# Vrai quand un périphérique USB du vendeur 0fd9 (Elgato) est branché, lu
+# dans les idVendor de sysfs. ERPLIBRE_HOME_SYSFS remplace /sys, pour les
+# tests.
+deck_present() {
+    local vendor
+    for vendor in "${ERPLIBRE_HOME_SYSFS:-/sys}"/bus/usb/devices/*/idVendor; do
+        [ -r "${vendor}" ] || continue
+        [ "$(cat "${vendor}")" = "0fd9" ] && return 0
+    done
+    return 1
+}
