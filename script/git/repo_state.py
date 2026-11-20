@@ -1003,7 +1003,9 @@ def mode_du_checkout(racine):
     """(mode, détail) tel que l'en-tête du menu le déduit.
 
     « frozen » dès qu'un projet du manifeste local est épinglé sur un
-    commit, « branches » sinon, None sans manifeste local.
+    commit par le gel, « branches » sinon, None sans manifeste local. Un
+    projet que sa source épingle déjà ne compte pas : la règle vit dans
+    git_repo_menu.etat_manifeste_local.
     """
     etat = git_repo_menu.etat_manifeste_local(racine)
     if etat is None:

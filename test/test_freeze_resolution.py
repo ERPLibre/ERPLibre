@@ -111,6 +111,20 @@ class TestClasser(unittest.TestCase):
         self.assertEqual(chemins[fr.MANUELS], ["d"])
         self.assertEqual(chemins[fr.SALES], ["f"])
 
+    def test_un_depot_epingle_par_sa_source_n_attend_aucun_gel(self):
+        """Sans gel, un commit dans la « revision » du manifeste vient de la
+        source : le dépôt n'a pas de premier gel à recevoir. Une branche,
+        elle, laisse le dépôt sans gel."""
+        tete = "e" * 40
+        epingle = {"path": "p", "freeze": None, "head": tete}
+        self.assertIsNone(fr.hors_gel({**epingle, "revision": tete}))
+        self.assertIsNone(fr.hors_gel({**epingle, "revision": tete.upper()}))
+        self.assertEqual(
+            fr.hors_gel({**epingle, "revision": "18.0"}), fr.SANS_GEL
+        )
+        classes = fr.classer([{**epingle, "revision": tete}], lambda d: False)
+        self.assertEqual(classes[fr.MAJ_GEL], [])
+
 
 class TestRemettre(Banc):
     def test_en_retard_detache_sur_le_gel(self):

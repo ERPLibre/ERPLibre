@@ -84,11 +84,16 @@ def hors_gel(depot):
     """L'alignement de `depot` à son gel quand il n'y est pas, sinon None.
 
     SANS_GEL pour un clone du manifeste dont HEAD se lit et qui n'a aucun
-    « freeze-revision » : rien ne le fige, il suit sa branche."""
+    « freeze-revision » : rien ne le fige, il suit sa branche. Sans gel, et
+    tant que le manifeste local suit ses sources, sa « revision » est celle
+    de la source : un commit y
+    dit un dépôt épinglé par sa source (`manifest_freeze.pinned_by_source`),
+    qui ne suit aucune branche et n'a pas de gel à recevoir."""
     alignement = (depot.get("freeze") or {}).get("alignment")
     if (
         alignement is None
         and not depot.get("freeze_revision")
+        and not manifest_freeze.pinned_by_source(depot.get("revision"))
         and depot.get("head")
         and depot.get("state") not in ETATS_NON_GELABLES
     ):

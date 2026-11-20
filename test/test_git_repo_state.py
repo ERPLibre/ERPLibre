@@ -650,6 +650,34 @@ class TestSnapshot(Checkout):
             self.depots(d)["odoo18.0/addons/R_behind"]["state"], "conforme"
         )
 
+    def test_mode_suit_les_branches_avec_un_projet_epingle_par_sa_source(self):
+        """Un projet dont la source porte déjà un commit dans « revision »
+        le garde dans le manifeste local quel que soit le mode : le checkout
+        suit encore les branches, et le healthcheck ne lui propose aucun
+        gel. Le commit qu'un gel pose sur un autre projet fige le
+        checkout."""
+        from script.git import freeze_resolution
+
+        behind = "odoo18.0/addons/R_behind"
+        sha = self.sha_de(behind, "HEAD")
+        self.sources18[behind] = {**self.local[behind], "revision": sha}
+        self.ecrire_sources()
+        self.local[behind]["revision"] = sha
+        self.ecrire_local()
+        _code, d = self.lancer()
+        self.assertEqual(d["mode"], "branches")
+        self.assertEqual(
+            d["mode_detail"], {"pinned": 0, "total": len(self.local)}
+        )
+        self.assertIsNone(freeze_resolution.hors_gel(self.depots(d)[behind]))
+
+        ahead = "odoo18.0/addons/R_ahead"
+        self.local[ahead]["revision"] = self.sha_de(ahead, "HEAD")
+        self.ecrire_local()
+        _code, d = self.lancer()
+        self.assertEqual(d["mode"], "frozen")
+        self.assertEqual(d["mode_detail"]["pinned"], 1)
+
     def sha_de(self, chemin, ref):
         return _git(os.path.join(self.racine, chemin), "rev-parse", ref)
 

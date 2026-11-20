@@ -1385,6 +1385,57 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             self.menu.t("follows the branches"),
         )
 
+    def test_a_project_pinned_by_its_source_is_not_a_freeze(self):
+        """Un commit que la source porte déjà dans « revision » n'épingle
+        pas le checkout ; celui que le gel y a mis, si. Une redéfinition
+        plus tardive sur une branche l'emporte, comme dans la fusion."""
+        import os
+        import tempfile
+
+        autre = "fedcba9876543210fedcba9876543210fedcba98"
+        with tempfile.TemporaryDirectory() as dossier:
+            os.mkdir(os.path.join(dossier, "manifest"))
+            with open(os.path.join(dossier, ".odoo-version"), "w") as fh:
+                fh.write("X.0\n")
+            for fichier, projets in (
+                (
+                    "git_manifest_odooX.0.xml",
+                    f'<project name="a" path="x/a" revision="{self.SHA}"/>'
+                    '<project name="b" path="x/b" revision="X.0"'
+                    f' freeze-revision="{autre}"/>'
+                    f'<project name="c" path="x/c" revision="{self.SHA}"/>',
+                ),
+                (
+                    "git_manifest_odooX.0_dev.xml",
+                    '<project name="c" path="x/c" revision="X.0_dev"/>',
+                ),
+            ):
+                with open(
+                    os.path.join(dossier, "manifest", fichier), "w"
+                ) as fh:
+                    fh.write(f"<manifest>{projets}</manifest>\n")
+            self.assertEqual(
+                self.menu.epingles_par_leur_source(dossier), {"a+x/a"}
+            )
+            self._manifeste(
+                dossier,
+                "<manifest>\n"
+                f'  <project name="a" path="x/a" revision="{self.SHA}"/>\n'
+                '  <project name="b" path="x/b" revision="X.0"/>\n'
+                "</manifest>\n",
+            )
+            self.assertEqual(self.menu.etat_manifeste_local(dossier), (0, 2))
+            with open(
+                os.path.join(dossier, self.menu.MANIFESTE_LOCAL), "w"
+            ) as fh:
+                fh.write(
+                    "<manifest>\n"
+                    f'  <project name="a" path="x/a" revision="{self.SHA}"/>\n'
+                    f'  <project name="b" path="x/b" revision="{autre}"/>\n'
+                    "</manifest>\n"
+                )
+            self.assertEqual(self.menu.etat_manifeste_local(dossier), (1, 2))
+
     def test_header_counts_the_active_version_files_only(self):
         import os
         import tempfile
