@@ -545,8 +545,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
     def tearDown(self):
         if self._vrai is not None:
             os.environ["HOME"] = self._vrai
+        # Les tests bouchonnent le moteur ou le module : les deux sont repris.
         for nom, vrai in self._vrais.items():
             setattr(self.dp, nom, vrai)
+            setattr(moteur, nom, vrai)
 
     def _ecrire(self, nom, rapport):
         with open(
@@ -611,18 +613,6 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         termine celui d'un test long y tombait."""
         faux = self._argv0("/tmp/test_longtest_install_nixos.py")
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
-
-    def test_the_real_path_of_a_script_is_still_recognised(self):
-        """Le basename ne doit pas rendre le contrôle aveugle : un
-        interpréteur reçoit le CHEMIN du script, pas son nom nu."""
-        for chemin in (
-            "long_test/install_nixos.py",
-            "/home/x/long_test/deep_qemu.py",
-            "./deep_proxmox.py",
-        ):
-            with self.subTest(chemin=chemin):
-                faux = self._argv0(chemin)
-                self.assertTrue(self.dp._lance_une_descente(faux.pid))
 
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
@@ -727,6 +717,130 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertIn("descente tourne", sortie.getvalue())
 
 
+class TestUneDescenteEstUnInterpreteQuiExecuteLeScript(unittest.TestCase):
+    """Une descente est un interpréteur Python dont un argument nomme un
+    test long. Un shell, un « timeout » ou un éditeur qui nomme le script
+    n'en est pas une, et ni ce processus ni ses ancêtres ne comptent : le
+    shell qui lance « --detruire » porte le nom du script dans sa ligne de
+    commande."""
+
+    def setUp(self):
+        self.proc = tempfile.mkdtemp(prefix="longtest-proc-")
+        self.addCleanup(shutil.rmtree, self.proc, ignore_errors=True)
+
+    def _processus(self, pid, ppid, argv, comm="x"):
+        """Un faux /proc/<pid> : cmdline à arguments séparés par NUL, et un
+        stat dont le 4e champ est le parent."""
+        dossier = os.path.join(self.proc, str(pid))
+        os.makedirs(dossier)
+        with open(os.path.join(dossier, "cmdline"), "wb") as fh:
+            fh.write(b"\0".join(a.encode() for a in argv) + b"\0")
+        with open(os.path.join(dossier, "stat"), "w") as fh:
+            fh.write(f"{pid} ({comm}) S {ppid} {pid} {pid} 0 -1 4194560\n")
+        return pid
+
+    def _lance(self, argv):
+        pid = self._processus(4000 + len(os.listdir(self.proc)), 1, argv)
+        return moteur._lance_une_descente(pid, proc=self.proc)
+
+    def test_a_python_interpreter_running_a_script_is_a_descent(self):
+        for argv in (
+            ["python3", "long_test/install_erplibre_home.py", "--detruire"],
+            ["/opt/v/.venv.erplibre/bin/python", "-u", "/a/deep_qemu.py"],
+            ["python3.12", "-X", "dev", "-W", "ignore", "./deep_proxmox.py"],
+            ["python", "-Wignore", "-I", "install_nixos.py"],
+            ["python3", "-m", "long_test.qemu_cache", "--depth", "3"],
+            ["python3", "-Im", "long_test.deep_qemu"],
+            ["python3", "-mlong_test.deep_qemu"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertTrue(self._lance(argv))
+
+    def test_a_script_run_under_a_python_wrapper_is_a_descent(self):
+        """Un débogueur, un profileur ou une mesure de couverture occupent
+        la place du script : le test long n'arrive qu'en argument. Le verrou
+        protège une destruction, et une descente qu'il ne voit pas se fait
+        détruire l'arbre sous elle ; un refus de trop ne coûte qu'un
+        message. Tout argument d'un interpréteur Python compte donc, et
+        aucune liste d'enveloppes connues n'est tenue."""
+        for argv in (
+            [
+                "/v/bin/python",
+                "/opt/ide/plugins/pydev/pydevd.py",
+                "--multiprocess",
+                "--client",
+                "127.0.0.1",
+                "--port",
+                "40001",
+                "--file",
+                "/r/long_test/deep_qemu.py",
+                "--depth",
+                "3",
+            ],
+            [
+                "python3",
+                "-m",
+                "debugpy",
+                "--listen",
+                "5678",
+                "/r/long_test/deep_qemu.py",
+            ],
+            ["/v/bin/python", "/v/bin/coverage", "run", "deep_qemu.py"],
+            ["python3", "-m", "pdb", "long_test/install_nixos.py"],
+            ["python3", "-m", "cProfile", "-o", "p", "deep_proxmox.py"],
+            ["python3", "-m", "pdb", "-m", "long_test.qemu_cache"],
+            ["python3", "-c", "import runpy", "deep_qemu.py"],
+            ["python3", "-", "deep_qemu.py"],
+            ["python3.13t", "long_test/deep_qemu.py"],
+            ["/usr/bin/pypy3", "long_test/deep_qemu.py"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertTrue(self._lance(argv))
+
+    def test_a_command_that_merely_names_the_script_is_not_one(self):
+        for argv in (
+            [
+                "bash",
+                "-c",
+                "cd /a && python3 long_test/install_erplibre_home.py",
+            ],
+            ["bash", "-c", "x long_test/install_erplibre_home.py --detruire"],
+            ["timeout", "60", "python3", "long_test/deep_qemu.py"],
+            ["less", "long_test/install_erplibre_home.py"],
+            ["long_test/install_nixos.py"],
+            ["python3", "-c", "print('install_nixos.py')"],
+            ["python3", "-m", "unittest", "test.deep_qemu"],
+            ["python3", "test/test_longtest_install_nixos.py"],
+            ["python3", "-Wignore", "script/todo/todo.py"],
+            ["python3-config", "long_test/deep_qemu.py"],
+            [],
+        ):
+            with self.subTest(argv=argv):
+                self.assertFalse(self._lance(argv))
+
+    def test_this_process_and_its_ancestors_are_never_another_one(self):
+        """Le shell qui a lancé « --detruire » et un lanceur Python plus
+        haut nomment le script : exclus, comme ce processus. Une descente
+        sans lien de parenté reste vue."""
+        script = "long_test/install_erplibre_home.py"
+        self._processus(300, 1, ["python3", script])
+        self._processus(
+            400, 300, ["bash", "-c", f"python3 {script} --detruire"]
+        )
+        moi = self._processus(
+            500, 400, ["python3", script, "--detruire"], comm="a) (b"
+        )
+        self._processus(600, 1, ["python3", "long_test/deep_qemu.py"])
+        self._processus(700, 1, ["bash", "-c", f"python3 {script}"])
+        self.assertEqual(moteur.autre_descente(proc=self.proc, moi=moi), [600])
+
+    def test_a_parent_loop_or_an_unreadable_stat_ends_the_walk(self):
+        self._processus(10, 11, ["sh"])
+        self._processus(11, 10, ["sh"])
+        self.assertEqual(moteur._ascendance(10, proc=self.proc), {10, 11})
+        self.assertEqual(moteur._ascendance(99, proc=self.proc), {99})
+
+
 class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
     """« virsh undefine --remove-all-storage » efface un disque pour de bon.
 
@@ -756,13 +870,17 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         )
         self.lances = []
 
-    def _virsh(self, dominfo=0):
+    def _virsh(self, dominfo=0, erreur="error: failed to get domain 'x'"):
         import types
 
         def faux(argv, **kw):
             self.lances.append(" ".join(argv[2:]))
             code = dominfo if "dominfo" in argv else 0
-            return types.SimpleNamespace(returncode=code, stdout="", stderr="")
+            return types.SimpleNamespace(
+                returncode=code,
+                stdout="",
+                stderr=erreur if code else "",
+            )
 
         self.dp.subprocess.run = faux
 
@@ -813,6 +931,21 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             self.assertTrue(
                 self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
             )
+
+    def test_an_unreachable_libvirt_is_not_an_absent_domain(self):
+        """sudo qui refuse ou libvirtd arrêté : l'état est inconnu, la
+        machine est comptée debout et rien n'est détruit."""
+        for erreur in (
+            "sudo: a password is required",
+            "error: failed to connect to the hypervisor",
+        ):
+            self.lances = []
+            self._virsh(dominfo=1, erreur=erreur)
+            with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                res = self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
+            self.assertFalse(res)
+            self.assertIn(erreur, sortie.getvalue())
+            self.assertTrue(all("dominfo" in c for c in self.lances))
 
     def test_the_name_comes_from_the_report_not_from_the_level(self):
         """Le déduire du numéro d'étage supposait que nom_etage ne changera
@@ -1516,10 +1649,11 @@ class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
     def test_the_lock_looks_for_every_descent_script(self):
         """Deux descentes de piles différentes se disputent la RAM, le disque
         et ~/.ssh/config aussi sûrement que deux de la même."""
-        import inspect
-
-        src = inspect.getsource(moteur._lance_une_descente)
-        self.assertIn("SCRIPTS", src)
+        for script in moteur.SCRIPTS:
+            with self.subTest(script=script):
+                self.assertTrue(
+                    moteur._execute_un_script(["python3", f"a/{script}"])
+                )
         self.assertIn("deep_proxmox.py", moteur.SCRIPTS)
         self.assertIn("deep_qemu.py", moteur.SCRIPTS)
 
@@ -1748,6 +1882,224 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
             vus["drop"],
             ("deep-pve-1", self.dp.alias_etage(2, "deep-pve-1")),
         )
+
+
+class TestDetruireChaqueEtage1(unittest.TestCase):
+    """detruire défait CHAQUE machine de niveau 1 que le rapport nomme.
+
+    Un test long qui crée une VM par système en laisse plusieurs au rapport,
+    gardées par --garder ou laissées par un arrêt en route : chacune est une
+    racine, identifiée par son UUID, et une seule confirmation les couvre
+    toutes. Un rapport deep_* n'en porte qu'une, défaite seule et sous le nom
+    que le rapport lui donne.
+    """
+
+    ALPHA = {
+        "niveau": 1,
+        "nom": "essai-sd-alpha",
+        "uuid": "uuid-alpha",
+        "alias": "essai-sd-alpha",
+        "cree": True,
+    }
+    BETA = {
+        "niveau": 1,
+        "nom": "essai-sd-beta",
+        "uuid": "uuid-beta",
+        "alias": "essai-sd-beta",
+        "cree": True,
+    }
+    IMBRIQUE = {
+        "niveau": 2,
+        "identite": "uuid-imbrique",
+        "parent_alias": "essai-sd-alpha",
+        "nom": "essai-sd-2",
+    }
+
+    def setUp(self):
+        import builtins
+
+        # Tout bouchon est posé sur le MOTEUR et rendu par addCleanup : un
+        # bouchon qui fuit fausse les classes suivantes, qui inspectent la
+        # vraie fonction.
+        for nom in (
+            "autre_descente",
+            "dernier_rapport",
+            "detruire_etage1",
+            "retirer_alias",
+        ):
+            self.addCleanup(setattr, moteur, nom, getattr(moteur, nom))
+        self.addCleanup(setattr, builtins, "input", builtins.input)
+        self.addCleanup(
+            setattr, moteur.subprocess, "run", moteur.subprocess.run
+        )
+        # Le staticmethod lui-même, pas la fonction qu'il enveloppe.
+        self.addCleanup(
+            setattr,
+            moteur.Descente,
+            "uuid_libvirt",
+            moteur.Descente.__dict__["uuid_libvirt"],
+        )
+        moteur.autre_descente = lambda: []
+        moteur.retirer_alias = lambda *a, **k: None
+        self.questions = []
+        builtins.input = lambda prompt="": (
+            self.questions.append(prompt) or "OUI"
+        )
+        self.imbriques = []
+        self.famille = moteur.Famille(
+            "essai_multi",
+            "essai-sd",
+            lambda parent, identite, nom, journal: (
+                self.imbriques.append(nom) or True
+            ),
+        )
+
+    def _rapport(self, *etages):
+        moteur.dernier_rapport = lambda outil="", prefixe="": {
+            "fichier": "/essai.json",
+            "outil": "essai_multi",
+            "etages": list(etages),
+        }
+
+    def _espionner_etage1(self, debout=()):
+        """Remplace detruire_etage1 ; rend la liste (nom, attendu, cree)."""
+        appels = []
+
+        def espion(journal, nom, dry_run=False, attendu=None, cree=True):
+            appels.append((nom, attendu, cree))
+            return nom not in debout
+
+        moteur.detruire_etage1 = espion
+        return appels
+
+    def _lancer(self, dry_run=False):
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            code = moteur.detruire(self.famille, None, dry_run=dry_run)
+        return code, sortie.getvalue()
+
+    def test_every_level_one_entry_is_destroyed_by_its_uuid(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer()
+        self.assertEqual(
+            appels,
+            [
+                ("essai-sd-alpha", "uuid-alpha", True),
+                ("essai-sd-beta", "uuid-beta", True),
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("2 / 2 défait(s)", texte)
+        self.assertEqual(len(self.questions), 1)
+
+    def test_a_surviving_root_is_named_and_the_others_still_go(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1(debout=("essai-sd-alpha",))
+        code, texte = self._lancer()
+        # L'échec de la première n'arrête pas la seconde.
+        self.assertEqual(len(appels), 2)
+        self.assertEqual(code, 1)
+        self.assertIn("1 / 2 défait(s)", texte)
+        self.assertIn("l'étage 1 est DEBOUT", texte)
+        self.assertIn("essai-sd-alpha", texte.split("DEBOUT")[1])
+
+    def test_the_dry_run_lists_every_root_and_touches_nothing(self):
+        self._rapport(self.ALPHA, self.BETA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer(dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(appels, [])
+        self.assertEqual(self.questions, [])
+        self.assertIn("0 VM imbriquée(s) + 2 VM d'étage 1 :", texte)
+        self.assertIn("étage  1  essai-sd-alpha (libvirt)", texte)
+        self.assertIn("étage  1  essai-sd-beta (libvirt)", texte)
+
+    def test_virsh_undefines_each_root_after_checking_its_uuid(self):
+        """La vraie detruire_etage1, virsh bouchonné : chaque racine est
+        lue (dominfo, UUID) puis effacée sous SON nom."""
+        import types
+
+        lances = []
+
+        def faux(argv, **kw):
+            lances.append(list(argv))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        moteur.subprocess.run = faux
+        moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: {
+                "essai-sd-alpha": "uuid-alpha",
+                "essai-sd-beta": "uuid-beta",
+            }.get(nom, "")
+        )
+        self._rapport(self.ALPHA, self.BETA)
+        code, texte = self._lancer()
+        effaces = [
+            argv[3] for argv in lances if argv[1:3] == ["virsh", "undefine"]
+        ]
+        self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
+        self.assertEqual(code, 0)
+        self.assertIn("2 / 2 défait(s)", texte)
+
+    def test_a_failed_root_keeps_its_ssh_alias(self):
+        self._rapport(self.ALPHA, self.BETA)
+        self._espionner_etage1(debout=("essai-sd-alpha",))
+        retires = []
+        moteur.retirer_alias = lambda rapport, *a, **k: retires.append(
+            [e["alias"] for e in rapport["etages"]]
+        )
+        code, _texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertEqual(retires, [["essai-sd-beta"]])
+
+    def test_a_root_already_gone_does_not_hide_a_live_one(self):
+        """Un domaine absent compte défait ; un libvirt muet pour l'autre
+        racine la laisse debout, exit 1."""
+        import types
+
+        def faux(argv, **kw):
+            if "dominfo" in argv:
+                if argv[-1] == "essai-sd-alpha":
+                    return types.SimpleNamespace(
+                        returncode=1,
+                        stdout="",
+                        stderr="error: failed to get domain 'x'",
+                    )
+                return types.SimpleNamespace(
+                    returncode=1, stdout="", stderr="sudo: a password"
+                )
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        moteur.subprocess.run = faux
+        self._rapport(self.ALPHA, self.BETA)
+        code, texte = self._lancer()
+        self.assertEqual(code, 1)
+        self.assertIn("1 / 2 défait(s)", texte)
+        self.assertIn("essai-sd-beta", texte.split("DEBOUT")[1])
+
+    def test_a_single_root_report_is_undone_alone(self):
+        """La forme d'un rapport deep_* : un étage imbriqué, une racine."""
+        self._rapport(self.IMBRIQUE, self.ALPHA)
+        appels = self._espionner_etage1()
+        code, texte = self._lancer()
+        self.assertEqual(appels, [("essai-sd-alpha", "uuid-alpha", True)])
+        self.assertEqual(self.imbriques, ["essai-sd-2"])
+        self.assertIn("1 VM imbriquée(s) + l'étage 1 :", texte)
+        self.assertIn("2 / 2 défait(s)", texte)
+        self.assertEqual(code, 0)
+
+    def test_without_a_level_one_entry_the_root_is_the_base_name(self):
+        self._rapport(self.IMBRIQUE)
+        appels = self._espionner_etage1()
+        code, _texte = self._lancer()
+        self.assertEqual(appels, [("essai-sd-1", None, True)])
+        self.assertEqual(code, 0)
+
+    def test_a_borrowed_root_is_passed_as_not_created(self):
+        self._rapport(dict(self.ALPHA, uuid=None, cree=False))
+        appels = self._espionner_etage1()
+        self._lancer()
+        self.assertEqual(appels, [("essai-sd-alpha", None, False)])
 
 
 class TestLeMenu(unittest.TestCase):
