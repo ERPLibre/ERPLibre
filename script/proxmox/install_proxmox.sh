@@ -278,7 +278,14 @@ add_repo() {
     if [ ! -s "${KEYRING}" ]; then
         say "  clé du dépôt -> ${KEYRING}"
         run sudo mkdir -p "$(dirname "${KEYRING}")"
-        run sudo wget -q "${KEY_URL}" -O "${KEYRING}" \
+        # Juste après l'amorçage, le résolveur ou la route peuvent manquer
+        # encore quelques secondes. wget ne rejoue PAS un échec de résolution
+        # ni un refus de connexion, même avec --tries : les deux options qui
+        # suivent en font des pannes passagères. -nv plutôt que -q : un échec
+        # dit alors sa cause (nom, route, 404) au lieu du seul message de die.
+        run sudo wget -nv --tries=5 --waitretry=5 --timeout=30 \
+            --retry-on-host-error --retry-connrefused \
+            "${KEY_URL}" -O "${KEYRING}" \
             || die "téléchargement de la clé impossible : ${KEY_URL}"
         # Un wget qui rend 0 sans laisser de fichier — proxy captif, disque
         # plein — ferait mourir la suite sur un message de sha256sum au lieu

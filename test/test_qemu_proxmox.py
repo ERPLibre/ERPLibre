@@ -468,6 +468,31 @@ class TestLeScript(unittest.TestCase):
         ):
             self.assertIn(attendu, out, attendu)
 
+    def test_the_key_download_outlives_a_network_still_coming_up(self):
+        """Juste après l'amorçage, le nom du dépôt peut ne pas se résoudre
+        encore. wget tient un échec de résolution et un refus de connexion
+        pour DÉFINITIFS, quel que soit --tries : sans les options qui les
+        rendent passagers, la première seconde sans réseau tue l'installation.
+        """
+        res = self._lance(["--dry-run"])
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+        lignes = [
+            x
+            for x in res.stdout.splitlines()
+            if "wget" in x.split() and "proxmox-archive-keyring" in x
+        ]
+        self.assertEqual(1, len(lignes), res.stdout)
+        mots = lignes[0].split()
+        options = dict(
+            m[2:].split("=", 1) if "=" in m else (m[2:], "")
+            for m in mots
+            if m.startswith("--")
+        )
+        self.assertGreater(int(options.get("tries", "1")), 1, mots)
+        self.assertIn("retry-on-host-error", options, mots)
+        self.assertIn("retry-connrefused", options, mots)
+        self.assertNotIn("-q", mots, "un échec doit dire sa cause")
+
     def test_the_dry_run_changes_nothing_and_says_so(self):
         """La leçon du montage sshfs : ne rien annoncer qui n'ait eu lieu."""
         res = self._lance(["--dry-run"])
