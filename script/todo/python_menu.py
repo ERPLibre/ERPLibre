@@ -24,6 +24,7 @@ import subprocess
 
 import click
 
+from script.execute.execute import Execute
 from script.poetry import poetry_venv_drift as drift
 from script.todo import version_manager as vm
 from script.todo.todo_couleur import retour
@@ -237,17 +238,29 @@ class PythonMenuMixin:
         d'une cible, puis remet active la version supportée de l'Odoo de
         départ quand une autre a pris sa place.
 
+        Un échec passe à la cible suivante ; un Ctrl+C (`Execute.interrupted`)
+        arrête la cible en cours et les suivantes. Le retour se décide sur la
+        dernière cible lancée, comme après un échec : une cible jamais lancée
+        n'a rien changé, et une cible coupée dans l'Odoo de départ ne fait
+        pas activer son venv partiel. Une cible d'un autre Odoo coupée avant
+        son « --switch » déclenche le retour quand même.
+
         Une cible réussie est inscrite dans .erplibre-state.json, comme le
         fait l'installation complète : la ligne d'état du TODO lit ce
         fichier, et sans cela elle montrerait l'ancien Python.
         """
         bilan = []
+        lancees = []
         for entree in cibles:
+            lancees.append(entree)
             reussi = True
             for commande in self._python_versions_commandes(entree):
                 status = self.execute.exec_command_live(
                     commande, source_erplibre=False
                 )
+                if Execute.interrupted:
+                    reussi = False
+                    break
                 if status:
                     print(f"❌ {t('Step failed, the next ones are skipped:')}")
                     print(f"   {commande}")
@@ -256,7 +269,9 @@ class PythonMenuMixin:
             if reussi:
                 self._python_versions_enregistrer(entree)
             bilan.append((entree["cible"], reussi))
-        retour = self._python_versions_retour(active, cibles)
+            if Execute.interrupted:
+                break
+        retour = self._python_versions_retour(active, lancees)
         if retour:
             self.execute.exec_command_live(
                 self._python_versions_switch(retour), source_erplibre=False

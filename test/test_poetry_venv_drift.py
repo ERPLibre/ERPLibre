@@ -26,6 +26,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 sys.argv = ["todo.py"]
+from script.execute.execute import Execute  # noqa: E402
 from script.poetry import poetry_venv_drift as drift  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
@@ -998,6 +999,78 @@ class TestVersionsPython(BancMenu):
         texte, _ = self.jouer(["9", "1", ""])
         self.assertIn(todo_i18n.t("Error, cannot understand value"), texte)
         self.assertEqual([], self.installe())
+
+    def jouer_coupe(self, reponses, coupee):
+        """jouer, où la commande de rang `coupee` (à partir de 1) reçoit un
+        Ctrl+C. Comme Execute, chaque appel remet d'abord le drapeau à faux.
+        La commande coupée rend 0 : c'est le drapeau, et non un statut en
+        échec, qui doit arrêter la suite."""
+        appels = []
+
+        def lancer(commande, **_kwargs):
+            appels.append(commande)
+            Execute.interrupted = len(appels) == coupee
+            return 0
+
+        self.todo.execute.exec_command_live.side_effect = lancer
+        sortie = io.StringIO()
+        with (
+            patch.object(Execute, "interrupted", False),
+            patch("builtins.input", side_effect=list(reponses)),
+            patch("sys.stdout", sortie),
+        ):
+            self.todo.execute_python_versions()
+        return sortie.getvalue()
+
+    def test_un_ctrl_c_arrete_les_cibles_suivantes(self):
+        # Deux cibles : le venv d'Odoo 18 à reprendre, puis celui d'Odoo 17.
+        # Coupée à sa première commande, la reprise laisse un venv partiel :
+        # ni la cible suivante ni un « --switch » vers ce venv ne partent.
+        self.preparer(
+            [NON_SUPPORTEE],
+            sources=("18.0", "17.0"),
+            active=NON_SUPPORTEE,
+            incomplets=[VERSION],
+        )
+        texte = self.jouer_coupe(["1 2", "o"], coupee=1)
+        self.assertEqual(
+            [
+                f'./script/install/install_venv.sh "Odoo" .venv.{VERSION}'
+                " 3.12.16"
+            ],
+            self.installe(),
+        )
+        self.assertIn(f"❌ {VERSION}", texte)
+        self.assertNotIn("✅ odoo17.0_python3.10.18", texte)
+        self.assertNotIn("❌ odoo17.0_python3.10.18", texte)
+        etat_fichier = Path(".erplibre-state.json")
+        if etat_fichier.exists():
+            etat = json.loads(etat_fichier.read_text())
+            self.assertNotEqual(
+                "3.12.16",
+                etat["odoo_versions"].get("18.0", {}).get("python"),
+            )
+
+    def test_un_ctrl_c_dans_une_cible_rend_la_main_a_l_odoo_de_depart(self):
+        # Odoo 18 actif ; le « --switch » vers Odoo 17 est coupé : Poetry ne
+        # part pas, et le retour sur Odoo 18 se lance quand même.
+        self.preparer([VERSION], sources=("18.0", "17.0"), active=VERSION)
+        texte = self.jouer_coupe(["1", "o"], coupee=2)
+        self.assertEqual(
+            [
+                './script/install/install_venv.sh "Odoo"'
+                " .venv.odoo17.0_python3.10.18 3.10.18",
+                "./script/version/update_env_version.py --erplibre_version"
+                " odoo17.0_python3.10.18 --switch",
+                "./script/version/update_env_version.py --erplibre_version"
+                f" {VERSION} --switch",
+            ],
+            self.installe(),
+        )
+        self.assertIn("❌ odoo17.0_python3.10.18", texte)
+        self.assertNotIn(
+            todo_i18n.t("Step failed, the next ones are skipped:"), texte
+        )
 
 
 class TestLeMenu(unittest.TestCase):

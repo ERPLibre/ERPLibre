@@ -20,6 +20,7 @@ import time
 
 import click
 
+from script.execute.execute import Execute
 from script.todo import (
     system_cleanup,
     system_cpu,
@@ -751,7 +752,8 @@ class SystemMenuMixin:
 
     def _system_caches_sudo(self):
         """Les caches du système : leur poids et la commande, puis sudo
-        après confirmation, cache par cache."""
+        après confirmation, cache par cache. Un échec passe au cache
+        suivant ; un Ctrl+C (`Execute.interrupted`) arrête la suite."""
         caches = system_cleanup.caches_systeme()
         if not caches:
             print(f"  {t('Nothing to reclaim.')}")
@@ -783,13 +785,17 @@ class SystemMenuMixin:
                 shlex.join(c["commande"]), source_erplibre=False
             )
             apres, _ = system_cleanup.mesurer(c["chemin"])
-            # Un mot de passe refusé, un Ctrl-C ou un verrou du gestionnaire
-            # de paquets rendent un statut non nul : ne pas annoncer ✓.
-            marque = "⚠" if statut else "✓"
+            # Un mot de passe refusé ou un verrou du gestionnaire de paquets
+            # rendent un statut non nul : ne pas annoncer ✓. Un Ctrl+C donne
+            # ⚠ même sur un statut nul, puis arrête la boucle avant les
+            # caches suivants.
+            marque = "⚠" if statut or Execute.interrupted else "✓"
             print(
                 f"  {marque} {c['nom']} : {octets(c['taille'])}"
                 f" → {octets(apres)}"
             )
+            if Execute.interrupted:
+                break
 
     def _system_cache_qemu(self):
         """Le cache de téléchargement des VM : son état et son poids, puis

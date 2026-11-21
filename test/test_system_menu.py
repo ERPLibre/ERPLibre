@@ -523,5 +523,49 @@ class TestLesCachesSudoEchouent(unittest.TestCase):
         self.assertFalse(any("✓ pacman" in v for v in vus))
 
 
+class TestLesCachesSudoCtrlC(unittest.TestCase):
+    def test_a_ctrl_c_stops_the_next_caches(self):
+        # Deux caches choisis. Chaque appel reçoit un Ctrl+C et rend 0 : seul
+        # le drapeau doit arrêter la suite.
+        from script.execute.execute import Execute
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+
+        def lancer(commande, **_kwargs):
+            Execute.interrupted = True
+            return 0
+
+        todo.execute.exec_command_live.side_effect = lancer
+        caches = [
+            {
+                "nom": nom,
+                "chemin": "/nulle/part",
+                "taille": 2048,
+                "commande": ["sudo", nom, "--clean"],
+            }
+            for nom in ("alpha", "beta")
+        ]
+        vus = []
+        with (
+            mock.patch.object(Execute, "interrupted", False),
+            mock.patch.object(sc, "caches_systeme", return_value=caches),
+            mock.patch("builtins.input", side_effect=["1,2", "o"]),
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(" ".join(map(str, a))),
+            ),
+        ):
+            todo._system_caches_sudo()
+        appels = todo.execute.exec_command_live.call_args_list
+        self.assertEqual(
+            [appel.args[0] for appel in appels], ["sudo alpha --clean"]
+        )
+        self.assertTrue(any("⚠ alpha" in v for v in vus))
+        self.assertFalse(any("✓ alpha" in v for v in vus))
+        self.assertFalse(any("beta :" in v for v in vus))
+
+
 if __name__ == "__main__":
     unittest.main()

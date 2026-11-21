@@ -646,6 +646,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Code › Mise à jour de module revient sur un nom de module vide avant de demander les versions d'Odoo, là où le checkout passait à la version de départ une fois celles-ci choisies
 - Ctrl+D à une valeur tapée après une liste revient sans rien ouvrir ni lancer, là où TODO s'arrêtait sur une erreur : les ports d'Exécution › Déployer › Redirection de port SSH (ouvrir Odoo dans le navigateur) et de Configurer Proxy vers SSH, l'hôte tapé à la main de Configurer Proxy vers SSH et de Configurer sshfs, l'adresse et le rebond tapés d'un hôte Proxmox ou d'un hôte d'Exécution › Test › Tests longs - vraies VM, des heures, la profondeur de Profondeur Proxmox imbriqué et de Profondeur QEMU imbriqué, et le nom et le chemin du module d'Exécution › Code › Mise à jour de module
 - Le premier lancement, qui demande la langue, dit [0] Retour et une réponse invalide en français et en anglais, comme sa question, là où ils venaient dans la langue par défaut
+- Ctrl+C pendant une commande d'Exécution › Python › Versions Python (aussi sous Installation › Mise à jour) ou d'Exécution › Système › Caches du système (sudo) arrête la suite à cet endroit au lieu de passer à la version ou au cache suivant : la version interrompue est marquée ❌ et n'est pas inscrite comme installée, et le retour à l'Odoo de départ se lance quand même si la dernière version commencée est d'un autre Odoo, jamais vers un venv laissé à moitié
 
 ## Retiré
 
