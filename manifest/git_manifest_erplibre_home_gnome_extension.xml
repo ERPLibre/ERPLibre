@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
+
+    <!-- L'extension GNOME ERPLibre Home, sur sa branche main : repo sync et
+         la base d'install_erplibre_home.sh amènent son dernier commit.
+         CONTRACT.md, à la racine du dépôt, dit ce que l'extension et
+         ERPLibre attendent l'une de l'autre ; sa version MAJEURE est celle
+         de script/gnome-extension/erplibre_home_contract, et
+         test/test_erplibre_home_extension_repo.py échoue quand elles
+         divergent. install_erplibre_home.sh lit la révision ici pour cloner
+         sans Google Repo. Le groupe erplibre_home est à part de streamdeck :
+         la base s'installe sans le Stream Deck. -->
+    <project
+        name="erplibre-home-gnome-extension.git"
+        path="script/gnome-extension/erplibre_home"
+        remote="TechnoLibre"
+        revision="main"
+        groups="erplibre_home"
+    />
+</manifest>

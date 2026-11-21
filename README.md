@@ -345,6 +345,8 @@ Ctrl+C, which still drops the database and sends nothing.
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Git repository management |
 | [IMPROVE_ODOO](doc/improve_odoo.md) | ERPLibre's Odoo fork and its patches |
+| [erplibre_home_gnome_extension](doc/erplibre_home_gnome_extension.md) | The ERPLibre Home GNOME extension, a repository of its own |
+| [erplibre_streamdeck_deck](doc/erplibre_streamdeck_deck.md) | The Stream Deck deck program, a repository of its own |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |

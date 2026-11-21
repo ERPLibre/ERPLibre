@@ -256,3 +256,12 @@ odoo_version_remove_odoo_12:
 .PHONY: odoo_version_remove_all
 odoo_version_remove_all:
 	./.venv.erplibre/bin/python ./script/version/odoo_version_remove.py --all $(if $(filter 1,$(DRY)),--dry-run,)
+
+extension_i18n_compile: erplibre_home_extension_present
+	@for lang in en fr; do \
+		mkdir -p script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES; \
+		msgfmt -o script/gnome-extension/erplibre_home/locale/$$lang/LC_MESSAGES/erplibre-home.mo \
+		       script/gnome-extension/erplibre_home/po/$$lang.po; \
+	done
+
+.PHONY: extension_i18n_compile

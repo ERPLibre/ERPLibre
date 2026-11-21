@@ -665,6 +665,8 @@ même la base et n'envoie rien.
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Git repository management |
 | [IMPROVE_ODOO](doc/improve_odoo.md) | ERPLibre's Odoo fork and its patches |
+| [erplibre_home_gnome_extension](doc/erplibre_home_gnome_extension.md) | The ERPLibre Home GNOME extension, a repository of its own |
+| [erplibre_streamdeck_deck](doc/erplibre_streamdeck_deck.md) | The Stream Deck deck program, a repository of its own |
 | [POETRY](doc/POETRY.md) | Python dependency management |
 | [FAQ](doc/FAQ.md) | Frequently asked questions |
 | [HOWTO](doc/HOWTO.md) | How-to guides |
@@ -684,6 +686,8 @@ même la base et n'envoie rien.
 | [MIGRATION](doc/MIGRATION.md) | Migration de base de données entre versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Gestion des dépôts Git |
 | [IMPROVE_ODOO](doc/improve_odoo.fr.md) | Le fork Odoo d'ERPLibre et ses correctifs |
+| [erplibre_home_gnome_extension](doc/erplibre_home_gnome_extension.fr.md) | L'extension GNOME ERPLibre Home, un dépôt à part |
+| [erplibre_streamdeck_deck](doc/erplibre_streamdeck_deck.fr.md) | Le programme du deck Stream Deck, un dépôt à part |
 | [POETRY](doc/POETRY.md) | Gestion des dépendances Python |
 | [FAQ](doc/FAQ.md) | Foire aux questions |
 | [HOWTO](doc/HOWTO.md) | Guides pratiques |

@@ -351,6 +351,121 @@ class TestWriteFilesBlock(unittest.TestCase):
             )
 
 
+class TestGuideDelivery(unittest.TestCase):
+    """Une VM à bureau ne reçoit PAS /etc/motd : GDM affiche le texte de
+    pam_motd comme message PAM et retarde l'ouverture de session en proportion
+    de sa longueur. Le guide passe alors par profile.d, pour ssh seulement."""
+
+    GUIDE = "/etc/erplibre-login-guide"
+    SNIPPET = "/etc/profile.d/erplibre-login-guide.sh"
+
+    def _args(self, desktop):
+        import argparse
+
+        return argparse.Namespace(
+            distro="arch",
+            version="latest",
+            arch="amd64",
+            lang="en",
+            erplibre_dir="~/git/erplibre",
+            erplibre_make=False,
+            desktop=desktop,
+            no_git_identity=True,
+            vm_tools="",
+        )
+
+    def _files(self, desktop):
+        return {f[0]: f for f in dq.guide_files(self._args(desktop))}
+
+    def test_server_keeps_etc_motd_only(self):
+        files = self._files("")
+        self.assertIn("/etc/motd", files)
+        self.assertNotIn(self.GUIDE, files)
+        self.assertNotIn(self.SNIPPET, files)
+
+    def test_desktop_has_no_etc_motd(self):
+        self.assertNotIn("/etc/motd", self._files("gnome"))
+
+    def test_desktop_delivers_guide_and_snippet(self):
+        files = self._files("gnome")
+        self.assertEqual("0644", files[self.GUIDE][1])
+        self.assertEqual("0644", files[self.SNIPPET][1])
+        self.assertEqual("", files[self.GUIDE][3])
+        self.assertEqual("", files[self.SNIPPET][3])
+
+    def test_guide_text_is_what_etc_motd_would_hold(self):
+        expected = dq.build_motd(
+            "arch",
+            "latest",
+            "amd64",
+            "en",
+            "~/git/erplibre",
+            False,
+            "",
+            True,
+            (),
+        )
+        self.assertEqual(expected, self._files("gnome")[self.GUIDE][2])
+
+    def test_snippet_gates_on_interactive_ssh(self):
+        snippet = self._files("gnome")[self.SNIPPET][2]
+        self.assertIn("*i*", snippet)
+        self.assertIn("SSH_CONNECTION", snippet)
+        self.assertIn(self.GUIDE, snippet)
+        self.assertNotRegex(snippet, r"\bexit\b")
+
+    def test_snippet_status_is_zero_when_it_prints_nothing(self):
+        import subprocess
+        import tempfile
+
+        snippet = self._files("gnome")[self.SNIPPET][2]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "snippet.sh")
+            with open(path, "w") as fh:
+                fh.write(snippet)
+            for flags, env in (
+                ("-c", {"PATH": os.environ["PATH"]}),
+                ("-ic", {"PATH": os.environ["PATH"]}),
+                ("-ic", {"PATH": os.environ["PATH"], "SSH_CONNECTION": "x"}),
+            ):
+                with self.subTest(flags=flags, ssh="SSH_CONNECTION" in env):
+                    out = subprocess.run(
+                        ["sh", flags, f". {path}; echo rc=$?"],
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                    ).stdout
+                    self.assertEqual("rc=0", out.strip().splitlines()[-1])
+
+    def test_nixos_desktop_keeps_etc_motd(self):
+        """Son sshd lit /etc/motd (PrintMotd), il n'a pas de pam_motd et son
+        /etc/profile ne source pas profile.d : le guide ne s'y verrait pas."""
+        args = self._args("gnome")
+        args.distro = "nixos"
+        files = {f[0] for f in dq.guide_files(args)}
+        self.assertIn("/etc/motd", files)
+        self.assertNotIn(self.GUIDE, files)
+        self.assertNotIn(self.SNIPPET, files)
+
+    def test_installer_maps_snippet_name_to_its_target_path(self):
+        name = dq.installer_guide_name(self.SNIPPET)
+        self.assertNotIn("/", name)
+        self.assertNotEqual(name, dq.installer_guide_name(self.GUIDE))
+        self.assertEqual(
+            "erplibre-etc-profile.d-erplibre-login-guide.sh", name
+        )
+
+    def test_late_command_copies_the_snippet_to_profile_d(self):
+        args = dq.build_parser().parse_args(
+            ["--distro", "debian", "--desktop", "gnome", "--hostname", "vm"]
+        )
+        pre = dq.build_preseed(args, "$6$x$y", [])
+        name = dq.installer_guide_name(self.SNIPPET)
+        self.assertIn(f"cp /{name} /target{self.SNIPPET}", pre)
+        self.assertIn(f"chmod 0644 /target{self.SNIPPET}", pre)
+        self.assertNotIn("/target/etc/motd", pre)
+
+
 class TestInstallerGuideNames(unittest.TestCase):
     def test_names_are_flat(self):
         """Le cpio est déplié séquentiellement et ne crée pas les répertoires
