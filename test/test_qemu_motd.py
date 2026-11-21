@@ -452,12 +452,13 @@ class TestDesktopBlock(unittest.TestCase):
                 self.assertIn(f"client {client}", texte)
                 self.assertEqual(texte.count("ssh -L"), 1)
 
-    def test_tigervnc_says_how_to_start_its_server(self):
-        """TigerVNC sous Arch n'écoute qu'après « vncserver :1 » ; sans la
-        ligne, le tunnel mène à un port fermé."""
+    def test_tigervnc_takes_the_vm_account(self):
+        """TigerVNC sous Arch tourne en service, authentifié par PAM : aucun
+        mot de passe VNC à poser, aucun serveur à lancer à la main."""
         texte = self._acces("arch", "x11")
-        self.assertIn("vncpasswd", texte)
-        self.assertIn("vncserver :1", texte)
+        self.assertIn("compte et mot de passe de la VM", texte)
+        self.assertNotIn("vncpasswd", texte)
+        self.assertNotIn("vncserver :1", texte)
 
     def test_a_locked_session_is_announced_where_one_is_opened_at_boot(self):
         """KRdp et wayvnc servent une session ouverte au démarrage puis

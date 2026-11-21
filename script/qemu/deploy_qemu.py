@@ -3164,10 +3164,10 @@ def desktop_remote_rows(
         return (
             (
                 "ssh -L 5902:<ip>:5901 <hote-libvirt>",
-                "depuis le poste : client VNC sur localhost:5902, après "
-                "« vncpasswd » puis « vncserver :1 » sur la VM",
-                "from the workstation: VNC client on localhost:5902, after "
-                "« vncpasswd » then « vncserver :1 » on the VM",
+                "depuis le poste : client VNC à VeNCrypt (TLS) sur "
+                "localhost:5902, compte et mot de passe de la VM",
+                "from the workstation: VeNCrypt (TLS) VNC client on "
+                "localhost:5902, the VM's user and password",
             ),
         )
     verrou = _SESSION_VERROUILLEE if remote in ("krdp", "wayvnc") else ("", "")

@@ -263,12 +263,14 @@ class _Invite:
         "/etc/nixos/configuration.nix",
         "/etc/nixos/erplibre-desktop.nix",
         "/var/lib/erplibre/ca-bundle.crt",
+        "/etc/pam.d/vnc",
         "/etc/X11/xrdp/xorg.conf",
         "/etc/polkit-1",
         "/usr/share/wayland-sessions",
         "/sys/fs/selinux/enforce",
         "/sys/fs/selinux/booleans/"
         "unconfined_service_transition_to_unconfined_user",
+        "/etc/tigervnc/vncserver.users",
         "/etc/sysconfig/displaymanager",
     )
 
@@ -628,7 +630,7 @@ class TestRemoteAccessText(unittest.TestCase):
         self.assertNotIn("vncserver", _cmd("gnome"))
 
     def test_the_vnc_hint_stays_for_cinnamon(self):
-        self.assertIn("vncserver :1", _acces(_cmd("cinnamon")))
+        self.assertIn("VNC 5901 (TigerVNC", _acces(_cmd("cinnamon")))
 
     def test_the_rdp_service_is_opened_in_firewalld(self):
         cmd = _cmd("gnome")
@@ -1144,6 +1146,45 @@ class TestItRuns(unittest.TestCase):
         self.assertIn("VNC 5901", out)
         self.assertFalse(any("grdctl" in ligne for ligne in log))
 
+    def test_tigervnc_runs_as_a_service_on_the_vm_account(self):
+        """vncserver@:1 au démarrage, X509Plain par PAM pour le seul compte
+        de la VM : aucun « vncpasswd » à taper."""
+        self.vm.stub("pacman")
+        users = self.vm.etc("/etc/tigervnc/vncserver.users")
+        users.parent.mkdir(parents=True, exist_ok=True)
+        users.write_text("# :2=andrew\n")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="arch"))
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertIn(f":1={compte}", users.read_text().splitlines())
+        pam = self.vm.etc("/etc/pam.d/vnc").read_text()
+        self.assertIn("auth     required  pam_unix.so", pam)
+        conf = (self.vm.home / ".config/tigervnc/config").read_text()
+        for ligne in (
+            "session=xfce",
+            "securitytypes=X509Plain",
+            f"plainusers={compte}",
+        ):
+            self.assertIn(ligne, conf.splitlines())
+        self.assertIn("systemctl enable --now vncserver@:1", log)
+        self.assertNotIn("vncpasswd", out)
+
+    def test_tigervnc_config_is_completed_not_rewritten(self):
+        """Rejoué sur une configuration existante, le bloc ajoute les clés
+        manquantes et garde la session choisie par l'utilisateur."""
+        self.vm.stub("pacman")
+        d = self.vm.home / ".config/tigervnc"
+        d.mkdir(parents=True)
+        (d / "config").write_text("session=i3\n")
+        rc, out, _log = self.vm.run(_cmd("xfce", distro="arch"))
+        self.assertEqual(0, rc, out)
+        lignes = (d / "config").read_text().splitlines()
+        self.assertIn("session=i3", lignes)
+        self.assertNotIn("session=xfce", lignes)
+        self.assertIn("securitytypes=X509Plain", lignes)
+
 
 class TestNewFlavoursRun(unittest.TestCase):
     """Les saveurs ajoutées à GNOME et Cinnamon, exécutées sur un invité
@@ -1447,6 +1488,19 @@ class TestNewFlavoursRun(unittest.TestCase):
                 self.assertEqual(0, rc, out)
                 self.assertNotIn("dnf install -y xrdp-selinux", log)
                 self.assertFalse(any("semanage" in ligne for ligne in log))
+
+    def test_tigervnc_users_line_is_written_once(self):
+        self.vm.stub("pacman")
+        users = self.vm.etc("/etc/tigervnc/vncserver.users")
+        users.parent.mkdir(parents=True, exist_ok=True)
+        users.write_text("# :2=andrew\n")
+        for _ in range(2):
+            rc, out, _log = self.vm.run(_cmd("xfce", distro="arch"))
+            self.assertEqual(0, rc, out)
+        lignes = [
+            l for l in users.read_text().splitlines() if l.startswith(":1=")
+        ]
+        self.assertEqual(1, len(lignes), users.read_text())
 
     def test_nixos_krdp_stays_in_portal_mode(self):
         """Le mode Plasma de KRdp 6.6 ne crée aucun flux sans --monitor ;
@@ -2400,9 +2454,11 @@ class TestRemoteAccessPerRelease(unittest.TestCase):
             _cmd("i3", distro="arch", version="latest")
         )
         self.assertEqual(0, rc, out)
-        self.assertEqual(
-            "session=i3\n",
-            (self.vm.home / ".config/tigervnc/config").read_text(),
+        self.assertIn(
+            "session=i3",
+            (self.vm.home / ".config/tigervnc/config")
+            .read_text()
+            .splitlines(),
         )
 
     def test_an_existing_xsession_is_kept(self):

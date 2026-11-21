@@ -1138,7 +1138,11 @@ class QemuInstallMixin:
         # serveur X : sans lui, chaque session échoue à « waiting for the X
         # server ». apt l'installe en dépendance.
         "dnf": {"packages": "xrdp xorgxrdp", "port": 3389, "client": "RDP"},
-        "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
+        "pacman": {
+            "packages": "tigervnc openssl",
+            "port": 5901,
+            "client": "VNC",
+        },
         "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         # Déclaré par le module de bureau NixOS, rien à installer.
         "nix": {"packages": "", "port": 3389, "client": "RDP"},
@@ -2147,13 +2151,13 @@ class QemuInstallMixin:
             # lecteur qui l'a. La console de l'hyperviseur, elle, n'écoute
             # que sur la boucle locale de cet hôte.
             + self._qemu_tunnel_hint(3389, "RDP")
-            # TigerVNC sur Arch, pour une saveur X11 seulement : il se
-            # configure par utilisateur et n'a pas de service à activer
-            # d'office. Il ouvre une session X11, que GNOME n'a plus.
+            # TigerVNC sur Arch, pour une saveur X11 seulement : posé en
+            # service par _qemu_tigervnc_setup_cmd. Il ouvre une session X11,
+            # que GNOME n'a plus.
             + (
                 "elif command -v vncserver >/dev/null 2>&1; then "
                 f'echo "   {t("Remote desktop:")} VNC 5901 '
-                '(vncpasswd puis vncserver :1)"; '
+                f'(TigerVNC, VeNCrypt, {t("VM account and password")})"; '
                 + self._qemu_tunnel_hint(5901, "VNC")
                 if x11_remote
                 else ""
@@ -2342,7 +2346,7 @@ class QemuInstallMixin:
 
         Accès « x11 » : ~/.xsession (Debian, Ubuntu, openSUSE) et
         ~/.Xclients (Fedora, EL) lancent la session de la saveur, que xrdp
-        ouvre ; sur Arch, la configuration de TigerVNC nomme la même.
+        ouvre ; sur Arch, TigerVNC la sert (_qemu_tigervnc_setup_cmd).
 
         i3 : ~/.config/i3/config copié de /etc/i3/config, rendu inscriptible
         (sous NixOS, l'original est un fichier du store en 0444). L'assistant
@@ -2369,12 +2373,7 @@ class QemuInstallMixin:
                     f"$HOME/{nom}", f"#!/bin/sh\n{session}", "755"
                 )
             if distro == "arch" and de.get("vnc_session"):
-                out += 'mkdir -p "$HOME/.config/tigervnc"; ' + (
-                    self._qemu_write_if_absent(
-                        "$HOME/.config/tigervnc/config",
-                        f"session={de['vnc_session']}",
-                    )
-                )
+                out += self._qemu_tigervnc_setup_cmd(de["vnc_session"])
         if flavour == "i3":
             cfg = '"$HOME/.config/i3/config"'
             leap = (
@@ -2405,6 +2404,57 @@ class QemuInstallMixin:
         if flavour == "hyprland":
             out += self._qemu_hyprland_setup_cmd(distro, version, nix)
         return out
+
+    def _qemu_tigervnc_setup_cmd(self, session):
+        """Bloc shell : TigerVNC en service, VNC 5901, sur Arch.
+
+        vncserver@:1, lancé au démarrage pour le compte de la VM
+        (/etc/tigervnc/vncserver.users), ouvre la session X `session`. Le
+        client s'authentifie avec le compte et le mot de passe de la VM :
+        X509Plain seul, PlainUsers limité au compte, PAM par /etc/pam.d/vnc,
+        écrit ici — Arch n'en livre pas, et le service « other » refuse
+        tout. Xvnc tourne sous le compte : pam_unix n'y vérifie que son
+        propre mot de passe, le seul admis. Certificat auto-signé, clé en
+        0600 ; aucun mot de passe VNC à part.
+
+        Rejoué, le bloc complète ~/.config/tigervnc/config clé par clé sans
+        réécrire celles qui existent."""
+        d = "$HOME/.config/tigervnc"
+        pam = (
+            "#%PAM-1.0\n"
+            "auth     required  pam_unix.so\n"
+            "account  required  pam_unix.so"
+        )
+        pas_cert = t("VNC certificate not generated")
+        cles = (
+            ("session", session),
+            ("securitytypes", "X509Plain"),
+            ("plainusers", "$(id -un)"),
+            ("x509cert", f"{d}/vnc.crt"),
+            ("x509key", f"{d}/vnc.key"),
+        )
+        conf = "".join(
+            f'grep -q "^{k}=" "{d}/config" 2>/dev/null '
+            f'|| echo "{k}={v}" >> "{d}/config"; '
+            for k, v in cles
+        )
+        return (
+            f'mkdir -p "{d}"; '
+            f'[ -f "{d}/vnc.key" ] || openssl req -nodes -new -x509 '
+            f'-keyout "{d}/vnc.key" -out "{d}/vnc.crt" -days 3650 -batch '
+            '-subj "/CN=$(uname -n)" >/dev/null 2>&1 '
+            f'|| echo "   ⚠ {pas_cert}"; '
+            f'chmod 600 "{d}/vnc.key" 2>/dev/null || true; '
+            + conf
+            + "[ -f /etc/pam.d/vnc ] || "
+            f"printf '%s\\n' {self._qemu_sh_lines(pam)} "
+            "| sudo tee /etc/pam.d/vnc >/dev/null; "
+            "grep -q '^:1=' /etc/tigervnc/vncserver.users 2>/dev/null "
+            '|| echo ":1=$(id -un)" '
+            "| sudo tee -a /etc/tigervnc/vncserver.users >/dev/null; "
+            "sudo systemctl enable --now vncserver@:1 >/dev/null 2>&1 "
+            "|| true; "
+        )
 
     # Actions polkit qu'une session xrdp déclenche dès son ouverture et que
     # la règle par défaut réserve à la session locale active : colord, qui
