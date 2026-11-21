@@ -541,7 +541,10 @@ which the model already carries. The host's size is capped at two cores and
 4 GiB: the engine sums the cores of a host's roles, and the five it would
 derive exceed a whole nested terrain. The engine's own plan validators, and
 its proof that every OIDC return address aims at an exposed name, judge what
-the bench writes.
+the bench writes. Last, every host that holds state carries `client_backup`, the
+directory's included: the engine proves it of the plan, and the replayed
+recipe restores each one — for the directory, it also checks that the restored
+LDIF replays.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
@@ -1156,7 +1159,10 @@ dépendances du moteur ne lui demande que l'edge, que le modèle porte déjà. L
 taille de l'hôte est plafonnée à deux cœurs et 4 Gio : le moteur somme les
 cœurs des rôles d'un hôte, et les cinq qu'il dériverait dépassent tout un
 terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
-adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit.
+adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit. Enfin,
+tout hôte qui détient un état porte `client_backup`, l'annuaire compris : le
+moteur le prouve du plan, et la recette rejouée restaure chacun — pour
+l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

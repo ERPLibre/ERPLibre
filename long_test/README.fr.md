@@ -555,7 +555,10 @@ dépendances du moteur ne lui demande que l'edge, que le modèle porte déjà. L
 taille de l'hôte est plafonnée à deux cœurs et 4 Gio : le moteur somme les
 cœurs des rôles d'un hôte, et les cinq qu'il dériverait dépassent tout un
 terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
-adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit.
+adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit. Enfin,
+tout hôte qui détient un état porte `client_backup`, l'annuaire compris : le
+moteur le prouve du plan, et la recette rejouée restaure chacun — pour
+l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

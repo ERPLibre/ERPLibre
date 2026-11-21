@@ -2859,10 +2859,95 @@ def pose_l_identite(eco, hote_autorite):
     )
 
 
+# LES APPLICATIONS QUI DÉTIENNENT UN ÉTAT, et que le banc fait donc sauvegarder.
+# Le moteur prouve que tout détenteur d'état porte `client_backup` ; la recette
+# restaure ensuite un instantané de chacun — l'annuaire compris, dont elle
+# vérifie que le LDIF restauré se rejoue. Les hôtes sont LUS au registre.
+APPLICATIONS_A_SAUVEGARDER = (
+    APPLICATION_ANNUAIRE,
+    APPLICATION_IDENTITE,
+    APPLICATION_BASES,
+    APPLICATION_FORGE,
+)
+INTEGRATION_SAUVEGARDE = "client_backup"
+
+
+def ajoute_integration(texte, hote, integration):
+    """`texte` de serveurs.yml, `integration` ajoutée à l'entrée de `hote`. Ou
+    None.
+
+    L'ENTRÉE EST RÉÉCRITE SUR SA LIGNE, le reste du fichier tel quel. Elle
+    doit tenir sur une ligne en YAML de flux, comme toutes celles du modèle ;
+    une autre forme fait refuser plutôt que réécrire au jugé. Déjà là, rien ne
+    change.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return None
+    lignes = (texte or "").splitlines(keepends=True)
+    motif = re.compile(rf"^(\s+){re.escape(hote)}\s*:\s*(\{{.*\}})\s*$")
+    for i, ligne in enumerate(lignes):
+        prise = motif.match(ligne.rstrip("\n"))
+        if not prise:
+            continue
+        try:
+            entree = yaml.safe_load(prise.group(2))
+        except yaml.YAMLError:
+            return None
+        if not isinstance(entree, dict):
+            return None
+        actuelles = entree.get("integrations") or []
+        if not isinstance(actuelles, list):
+            return None
+        if integration in actuelles:
+            return texte
+        entree["integrations"] = actuelles + [integration]
+        champs = []
+        for cle, valeur in entree.items():
+            if isinstance(valeur, list):
+                valeur = "[" + ", ".join(str(v) for v in valeur) + "]"
+            champs.append((cle, valeur))
+        lignes[i] = f"{prise.group(1)}{hote}: {flux_yaml(tuple(champs))}\n"
+        return "".join(lignes)
+    return None
+
+
+def pose_les_sauvegardes(eco, hote_autorite):
+    """Fait porter `client_backup` à chaque hôte qui détient un état. Le
+    souci, ou « ».
+
+    `hote_autorite` est reçu pour la signature commune des poses.
+    """
+    plan = os.path.join(eco, "plan")
+    registre = lit_applications(os.path.join(plan, "applications.yml"))
+    if registre is None:
+        return "le registre des applications ne s'est pas lu"
+    hotes = []
+    for application in APPLICATIONS_A_SAUVEGARDER:
+        hote = (registre.get(application) or {}).get("hote")
+        if hote and hote not in hotes:
+            hotes.append(hote)
+    for hote in hotes:
+        souci = _recrit(
+            os.path.join(plan, "serveurs.yml"),
+            lambda t, h=hote: ajoute_integration(t, h, INTEGRATION_SAUVEGARDE),
+        )
+        if souci:
+            return f"{hote} : {souci}"
+    return ""
+
+
 # CE QUE LE BANC AJOUTE AU PLAN, dans l'ordre où il l'ajoute. Une liste et non
 # deux appels écrits à la suite : c'est elle qu'une épreuve interroge.
-# L'IDENTITÉ VIENT APRÈS L'ANNUAIRE, à qui elle se fédère.
-SERVICES_POSES = (pose_l_annuaire, pose_la_sauvegarde, pose_l_identite)
+# L'IDENTITÉ VIENT APRÈS L'ANNUAIRE, à qui elle se fédère ; les sauvegardes
+# en dernier, une fois tous les détenteurs d'état au plan.
+SERVICES_POSES = (
+    pose_l_annuaire,
+    pose_la_sauvegarde,
+    pose_l_identite,
+    pose_les_sauvegardes,
+)
 
 
 def pose_un_service(

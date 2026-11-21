@@ -536,7 +536,10 @@ which the model already carries. The host's size is capped at two cores and
 4 GiB: the engine sums the cores of a host's roles, and the five it would
 derive exceed a whole nested terrain. The engine's own plan validators, and
 its proof that every OIDC return address aims at an exposed name, judge what
-the bench writes.
+the bench writes. Last, every host that holds state carries `client_backup`, the
+directory's included: the engine proves it of the plan, and the replayed
+recipe restores each one — for the directory, it also checks that the restored
+LDIF replays.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the

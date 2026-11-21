@@ -5513,6 +5513,67 @@ def _parcours(arbre):
             yield from _parcours(valeur)
 
 
+class TestToutDetenteurDEtatEstSauvegarde(unittest.TestCase):
+    """Le moteur prouve que tout détenteur d'état porte `client_backup` ; la
+    recette restaure ensuite chacun, l'annuaire compris."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+
+    def test_the_engine_s_own_proof_holds_on_the_posed_plan(self):
+        """Le juge est la preuve du MOTEUR, qui lit son catalogue des
+        groupes détenteurs d'état : un rôle qui y entre la met en défaut."""
+        eco = self.eco_pose()
+        code = (
+            "import sys; sys.path.insert(0, 'scripts'); import prouver;"
+            " ok, dit = prouver.preuve_etat_sauvegarde();"
+            " print(dit); sys.exit(0 if ok else 1)"
+        )
+        vu = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=self.moteur(),
+            env=dict(
+                os.environ, SETOPS_INSTANCE=eco, PYTHONDONTWRITEBYTECODE="1"
+            ),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(0, vu.returncode, vu.stdout + vu.stderr)
+
+    def test_an_integration_joins_the_list_or_starts_it(self):
+        texte = (
+            "serveurs:\n"
+            "  a-01: { fonction: a, etat: actif, disque: 32G }\n"
+            "  b-01: { fonction: b, etat: actif, integrations: [x] }\n"
+        )
+        apres = B.ajoute_integration(texte, "a-01", "client_backup")
+        apres = B.ajoute_integration(apres, "b-01", "client_backup")
+        lu = yaml.safe_load(apres)["serveurs"]
+        self.assertEqual(["client_backup"], lu["a-01"]["integrations"])
+        self.assertEqual("32G", lu["a-01"]["disque"])
+        self.assertEqual(["x", "client_backup"], lu["b-01"]["integrations"])
+        # Déjà là : rien ne change.
+        self.assertEqual(
+            apres, B.ajoute_integration(apres, "b-01", "client_backup")
+        )
+
+    def test_an_entry_it_cannot_read_on_one_line_is_refused(self):
+        texte = "serveurs:\n  a-01:\n    fonction: a\n"
+        self.assertIsNone(B.ajoute_integration(texte, "a-01", "client_backup"))
+        self.assertIsNone(
+            B.ajoute_integration("serveurs: {}\n", "a-01", "client_backup")
+        )
+
+    def test_a_neighbour_named_alike_is_untouched(self):
+        texte = (
+            "serveurs:\n  a-010: { fonction: a }\n  a-01: { fonction: a }\n"
+        )
+        lu = yaml.safe_load(B.ajoute_integration(texte, "a-01", "c"))
+        self.assertNotIn("integrations", lu["serveurs"]["a-010"])
+        self.assertEqual(["c"], lu["serveurs"]["a-01"]["integrations"])
+
+
 class TestUnFichierDuModeleNEstJamaisReecrit(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
