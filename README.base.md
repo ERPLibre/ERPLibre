@@ -522,6 +522,137 @@ time make test_full_fast
 
 <!-- [en] -->
 
+## Test verdicts in the requirement registry
+
+The unit tests can send each test's verdict to the requirement registry of an
+Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
+that a unit test proves lists a *Repository unit test* line with the
+reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
+runner writes the verdict of each declared reference that ran, with one call
+per reference. A test that no requirement cites costs no call. A declared test
+missing from a file that ran to the end is recorded as an error: it was renamed
+or deleted, and its reference needs updating.
+
+Four environment variables turn this on, all four or none. The login is a user
+of the *Requirement test runner* group, and the key is that user's API key.
+`read -rs` reads the key without echoing it and keeps it out of the shell
+history:
+
+<!-- [fr] -->
+
+## Verdicts des tests dans le registre des requis
+
+Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
+requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
+Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
+la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
+aucun appel. Un test déclaré absent d'un fichier qui a tourné jusqu'au bout est
+noté en erreur : il a été renommé ou supprimé, et sa référence est à mettre à
+jour.
+
+Quatre variables d'environnement l'activent, les quatre ou aucune.
+L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
+clé est la clé d'API de cet utilisateur. `read -rs` lit la clé sans l'afficher
+et la garde hors de l'historique du shell :
+
+<!-- [common] -->
+
+```bash
+export ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com
+export ERPLIBRE_REQUIREMENT_DB=registry
+export ERPLIBRE_REQUIREMENT_LOGIN=test_runner
+read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
+./script/test/run_unit_test.sh
+```
+
+<!-- [en] -->
+
+The URL must be HTTPS. Plain HTTP is accepted only for a loopback address,
+such as an SSH tunnel to the instance, because the key travels with every call.
+The tests themselves do not receive these variables. Each sent log has the key
+masked, paths relative to the repository, and the home directory shown as `~`.
+
+Without these variables, the runner opens no connection and its output is
+unchanged. A failed send prints one warning line and stops. The exit code is
+the suite's own; only Ctrl+C during the send ends `--watch`, with code 130. The
+key is never printed.
+
+<!-- [fr] -->
+
+L'URL doit être en HTTPS. HTTP sans chiffrement n'est accepté que vers une
+adresse de bouclage, comme un tunnel SSH vers l'instance, parce que la clé part
+avec chaque appel. Les tests eux-mêmes ne reçoivent pas ces variables. Chaque
+journal envoyé a la clé masquée, les chemins relatifs au dépôt et le répertoire
+personnel affiché `~`.
+
+Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
+inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
+s'arrête. Le code de sortie est celui de la suite ; seul un Ctrl+C pendant
+l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
+
+<!-- [en] -->
+
+### Odoo module tests
+
+`script/test/odoo_test_report.py` runs the tests of Odoo modules and sends
+their verdicts with the same four variables. It installs the modules on a
+throwaway database, `erplibre_odoo_test_<random>`, runs their standard tests,
+drops the database and prints a summary. A requirement that an Odoo test proves
+lists a *Python test* line whose reference is the dotted path of the test
+method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
+error reaches every declared method of its class. A declared test missing from
+a complete run, one where Odoo printed its final summary and returned the
+tests' exit code, is recorded as an error. After an incomplete run, a declared
+test that did not run keeps its last verdict, unless its module was never
+reached.
+
+<!-- [fr] -->
+
+### Tests des modules Odoo
+
+`script/test/odoo_test_report.py` lance les tests de modules Odoo et envoie
+leurs verdicts avec les mêmes quatre variables. Il installe les modules sur une
+base jetable, `erplibre_odoo_test_<aléatoire>`, lance leurs tests standard,
+supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
+une ligne *Test Python* dont la référence est le chemin pointé de la méthode
+de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
+de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
+absent d'un passage complet, où Odoo a écrit son bilan final et rendu le code
+des tests, est noté en erreur. Après un passage incomplet, un test déclaré qui
+n'a pas tourné garde son dernier verdict, sauf si son module n'a jamais été
+atteint.
+
+<!-- [common] -->
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_devops_requirement
+```
+
+<!-- [en] -->
+
+Odoo never starts with the repository's `config.conf`: the run uses a generated
+configuration that keeps only `addons_path` and the PostgreSQL access, listens
+on 127.0.0.1 only, on two free ports, and never receives the registry
+variables. `--keep-db` keeps the database and prints its name. The exit code is
+0 when every test passes, 1 when a test fails, 2 when the run proves nothing
+(a module that does not install, Odoo crashing, no test run), and 130 after
+Ctrl+C, which still drops the database and sends nothing.
+
+<!-- [fr] -->
+
+Odoo ne démarre jamais avec le `config.conf` du dépôt : le passage utilise une
+configuration générée qui n'en garde que `addons_path` et l'accès à
+PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
+jamais les variables du registre. `--keep-db` garde la base et affiche son
+nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
+échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
+Odoo qui plante, aucun test lancé), et 130 après Ctrl+C, qui supprime quand
+même la base et n'envoie rien.
+
+<!-- [en] -->
+
 # Documentation
 
 | Guide | Description |

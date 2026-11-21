@@ -267,6 +267,72 @@ time make test_full_fast
 ```
 
 
+## Test verdicts in the requirement registry
+
+The unit tests can send each test's verdict to the requirement registry of an
+Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
+that a unit test proves lists a *Repository unit test* line with the
+reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
+runner writes the verdict of each declared reference that ran, with one call
+per reference. A test that no requirement cites costs no call. A declared test
+missing from a file that ran to the end is recorded as an error: it was renamed
+or deleted, and its reference needs updating.
+
+Four environment variables turn this on, all four or none. The login is a user
+of the *Requirement test runner* group, and the key is that user's API key.
+`read -rs` reads the key without echoing it and keeps it out of the shell
+history:
+
+
+```bash
+export ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com
+export ERPLIBRE_REQUIREMENT_DB=registry
+export ERPLIBRE_REQUIREMENT_LOGIN=test_runner
+read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
+./script/test/run_unit_test.sh
+```
+
+
+The URL must be HTTPS. Plain HTTP is accepted only for a loopback address,
+such as an SSH tunnel to the instance, because the key travels with every call.
+The tests themselves do not receive these variables. Each sent log has the key
+masked, paths relative to the repository, and the home directory shown as `~`.
+
+Without these variables, the runner opens no connection and its output is
+unchanged. A failed send prints one warning line and stops. The exit code is
+the suite's own; only Ctrl+C during the send ends `--watch`, with code 130. The
+key is never printed.
+
+
+### Odoo module tests
+
+`script/test/odoo_test_report.py` runs the tests of Odoo modules and sends
+their verdicts with the same four variables. It installs the modules on a
+throwaway database, `erplibre_odoo_test_<random>`, runs their standard tests,
+drops the database and prints a summary. A requirement that an Odoo test proves
+lists a *Python test* line whose reference is the dotted path of the test
+method, `odoo.addons.<module>.tests.<file>.<Class>.<method>`. A `setUpClass`
+error reaches every declared method of its class. A declared test missing from
+a complete run, one where Odoo printed its final summary and returned the
+tests' exit code, is recorded as an error. After an incomplete run, a declared
+test that did not run keeps its last verdict, unless its module was never
+reached.
+
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_devops_requirement
+```
+
+
+Odoo never starts with the repository's `config.conf`: the run uses a generated
+configuration that keeps only `addons_path` and the PostgreSQL access, listens
+on 127.0.0.1 only, on two free ports, and never receives the registry
+variables. `--keep-db` keeps the database and prints its name. The exit code is
+0 when every test passes, 1 when a test fails, 2 when the run proves nothing
+(a module that does not install, Odoo crashing, no test run), and 130 after
+Ctrl+C, which still drops the database and sends nothing.
+
+
 # Documentation
 
 | Guide | Description |
