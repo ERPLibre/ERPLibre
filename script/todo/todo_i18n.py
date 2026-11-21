@@ -3432,10 +3432,6 @@ TRANSLATIONS = {
         "fr": "Commandes Claude à déployer :",
         "en": "Claude commands to deploy:",
     },
-    "All commands": {
-        "fr": "Toutes les commandes",
-        "en": "All commands",
-    },
     "Attention": {
         "fr": "Attention",
         "en": "Attention",
@@ -3580,10 +3576,6 @@ TRANSLATIONS = {
         "fr": "Paquets que rien ne demande :",
         "en": "Packages nothing requires:",
     },
-    "All packages": {
-        "fr": "Tous les paquets",
-        "en": "All packages",
-    },
     "Uninstalled:": {
         "fr": "Désinstallés :",
         "en": "Uninstalled:",
@@ -3595,10 +3587,6 @@ TRANSLATIONS = {
     "Venvs to update:": {
         "fr": "Venvs à mettre à jour :",
         "en": "Venvs to update:",
-    },
-    "All venvs": {
-        "fr": "Tous les venvs",
-        "en": "All venvs",
     },
     "stale local manifest": {
         "fr": "manifeste local périmé",
@@ -3697,10 +3685,6 @@ TRANSLATIONS = {
     "These entries now appear in the menu, under Resolution.": {
         "fr": "Ces entrées apparaissent désormais dans le menu, sous Résolution.",
         "en": "These entries now appear in the menu, under Resolution.",
-    },
-    "Repositories, numbers separated by spaces (a = all): ": {
-        "fr": "Dépôts, numéros séparés par des espaces (a = tous) : ",
-        "en": "Repositories, numbers separated by spaces (a = all): ",
     },
     "All repositories": {
         "fr": "Tous les dépôts",

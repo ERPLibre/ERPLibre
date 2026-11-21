@@ -47,10 +47,10 @@ from dataclasses import dataclass, field
 from script.git import freeze_resolution
 from script.poetry import poetry_venv_drift as drift
 from script.todo import (
-    container_runtime,
     todo_couleur,
     todo_etat,
     todo_journal,
+    ui,
 )
 from script.todo.todo_i18n import t
 
@@ -1706,14 +1706,12 @@ VENVS_OBSOLETES = "venvs_obsoletes"
 PAQUETS_DE_TROP = "paquets_de_trop"
 
 
-def _mettre_a_jour_venvs(venvs, demander, sortie, mettre_a_jour_venv):
-    sortie(t("Venvs to update:"))
+def _mettre_a_jour_venvs(venvs, sortie, mettre_a_jour_venv):
     choisis = choisir_depots(
+        t("Venvs to update:"),
         venvs,
-        demander,
-        sortie,
         decrire=lambda c: f"{c['venv']} — {c['resume']}",
-        tous=t("All venvs"),
+        nommer=lambda c: c["venv"],
     )
     if not choisis or mettre_a_jour_venv is None:
         sortie(t("Nothing changed."))
@@ -2114,37 +2112,27 @@ def rendre_resolutions(resolutions):
     return "\n".join(lignes)
 
 
-def choisir_depots(depots, demander, sortie, decrire=None, tous=None):
-    """Les dépôts que l'utilisateur choisit parmi `depots`, numérotés :
-    plusieurs numéros séparés par des espaces ou des virgules, des plages
-    (« 2-3 »), « a » pour tous, 0 ou Entrée pour revenir sans rien choisir.
-    Une saisie dont une partie est fautive est refusée en entier, puis
-    redemandée : une faute ne retient jamais en silence une partie de la
-    sélection. Une fin d'entrée (Ctrl+D) vaut retour. `decrire(élément)`
-    rend la ligne d'un élément, l'écart au gel d'un dépôt par défaut ;
-    `tous` est le libellé de « a »."""
+def choisir_depots(texte, depots, decrire=None, nommer=None):
+    """Les éléments de `depots` choisis sous la question `texte`, dans
+    l'ordre de `depots` : un choix multiple de `ui.choose` (numéros,
+    plages, noms, « tout », « all » ou « * »). Une liste vide pour [0],
+    une réponse vide ou Ctrl+D : l'appelant revient sans agir. Une
+    réponse fautive est nommée et redemandée. `decrire(élément)` rend la
+    ligne d'un élément, l'écart au gel d'un dépôt par défaut ;
+    `nommer(élément)`, le nom affiché en tête de cette ligne, qui choisit
+    l'élément s'il est seul à le porter, le chemin d'un dépôt par défaut.
+    Un nom que deux éléments portent ne choisit ni l'un ni l'autre : ils
+    se choisissent par leur numéro."""
     decrire = decrire or (lambda depot: _ligne_gel(depot).strip())
-    while True:
-        for numero, depot in enumerate(depots, 1):
-            sortie(f"   [{numero}] {decrire(depot)}")
-        sortie(f"   [a] {tous or t('All repositories')}")
-        sortie(f"   {todo_couleur.retour()}")
-        try:
-            reponse = demander(
-                f"💬 {t('Repositories, numbers separated by spaces (a = all): ')}"
-            )
-        except EOFError:
-            print()
-            return []
-        reponse = reponse.strip().lower()
-        if reponse in ("", "0"):
-            return []
-        rangs = container_runtime.lire_selection(
-            "all" if reponse == "a" else reponse, len(depots)
-        )
-        if rangs is not None:
-            return [depots[rang] for rang in rangs]
-        sortie(f"{t('Error, cannot understand value')} '{reponse}'")
+    noms = [(nommer or (lambda depot: depot["path"]))(d) for d in depots]
+    choisis = ui.choose(
+        texte,
+        depots,
+        multi=True,
+        labels=[decrire(d) for d in depots],
+        names={n: d for n, d in zip(noms, depots) if noms.count(n) == 1},
+    )
+    return choisis or []
 
 
 def _afficher_commande(sortie):
@@ -2161,9 +2149,11 @@ def executer_resolution(
     mettre_a_jour_venv=None,
     deployer_commande_claude=None,
 ):
-    """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
-    True si quelque chose a changé. `demander` vaut `input` par défaut, lu
-    à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
+    """Lance `resolution`, sur les éléments que l'utilisateur choisit par
+    `choisir_depots` pour les résolutions qui en portent une liste. Rend
+    True si quelque chose a changé. `demander` pose les questions oui/non ;
+    il vaut `input` par défaut, lu à l'appel.
+    `mettre_a_jour_venv(choix)` met à jour un venv : celle du
     TODO, qui sait installer un lock et faire le rapport.
     `deployer_commande_claude(commande, gabarit)` déploie une commande
     Claude : celle du TODO, qui sait garder ou demander l'identité git."""
@@ -2172,24 +2162,24 @@ def executer_resolution(
         return _installer_hooks(ctx, demander, sortie)
     if resolution.cle == CLAUDE:
         return _deployer_commandes_claude(
-            resolution.depots, demander, sortie, deployer_commande_claude
+            resolution.depots, sortie, deployer_commande_claude
         )
     if resolution.cle == VENVS_OBSOLETES:
         return _remplacer_venvs_obsoletes(
             ctx, resolution.depots, demander, sortie
         )
     if resolution.cle == PAQUETS_DE_TROP:
-        return _retirer_paquets(ctx, resolution.depots, demander, sortie)
+        return _retirer_paquets(ctx, resolution.depots, sortie)
     if resolution.cle == REGENERER:
         return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
     if resolution.cle == MAJ_VENVS:
         return _mettre_a_jour_venvs(
-            resolution.depots, demander, sortie, mettre_a_jour_venv
+            resolution.depots, sortie, mettre_a_jour_venv
         )
     if resolution.cle == freeze_resolution.REMETTRE:
-        return _remettre_au_gel(ctx, resolution.depots, demander, sortie)
+        return _remettre_au_gel(ctx, resolution.depots, sortie)
     if resolution.cle == freeze_resolution.MAJ_GEL:
-        return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
+        return _mettre_a_jour_gel(ctx, resolution.depots, sortie)
     return False
 
 
@@ -2228,14 +2218,12 @@ def _installer_hooks(ctx, demander, sortie):
     return reussi
 
 
-def _deployer_commandes_claude(commandes, demander, sortie, deployer):
-    sortie(t("Claude commands to deploy:"))
+def _deployer_commandes_claude(commandes, sortie, deployer):
     choisies = choisir_depots(
+        t("Claude commands to deploy:"),
         commandes,
-        demander,
-        sortie,
         decrire=lambda c: f"/{c['commande']} — {c['etat']}",
-        tous=t("All commands"),
+        nommer=lambda c: f"/{c['commande']}",
     )
     if not choisies or deployer is None:
         sortie(t("Nothing changed."))
@@ -2264,13 +2252,11 @@ def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
     oui. L'installation rend sa version active ; une installation ratée
     garde le venv obsolète."""
     lancer = lancer or _lancer_dans_le_terminal(ctx)
-    sortie(t("Obsolete Odoo venvs:"))
     choisis = choisir_depots(
+        t("Obsolete Odoo venvs:"),
         venvs,
-        demander,
-        sortie,
         decrire=lambda c: f"{c['venv']} → {c['remplacant'] or '—'}",
-        tous=t("All venvs"),
+        nommer=lambda c: c["venv"],
     )
     if not choisis:
         sortie(t("Nothing changed."))
@@ -2317,16 +2303,14 @@ def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
     return change
 
 
-def _retirer_paquets(ctx, paquets, demander, sortie, lancer=None):
+def _retirer_paquets(ctx, paquets, sortie, lancer=None):
     """Désinstalle de leur venv les paquets choisis, d'un seul pip."""
     lancer = lancer or _lancer_dans_le_terminal(ctx)
-    sortie(t("Packages nothing requires:"))
     choisis = choisir_depots(
+        t("Packages nothing requires:"),
         paquets,
-        demander,
-        sortie,
         decrire=lambda p: f"{p['paquet']} {p['version']} — {p['venv']}",
-        tous=t("All packages"),
+        nommer=lambda p: p["paquet"],
     )
     if not choisis:
         sortie(t("Nothing changed."))
@@ -2413,9 +2397,10 @@ def _par_depot(depots, fonction, sortie):
             yield depot, rendu
 
 
-def _remettre_au_gel(ctx, depots, demander, sortie):
-    sortie(t("Repositories to put back on their freeze:"))
-    depots = choisir_depots(depots, demander, sortie)
+def _remettre_au_gel(ctx, depots, sortie):
+    depots = choisir_depots(
+        t("Repositories to put back on their freeze:"), depots
+    )
     if not depots:
         sortie(t("Nothing changed."))
         return False
@@ -2432,9 +2417,10 @@ def _remettre_au_gel(ctx, depots, demander, sortie):
     return change
 
 
-def _mettre_a_jour_gel(ctx, depots, demander, sortie):
-    sortie(t("Repositories whose freeze moves to HEAD:"))
-    depots = choisir_depots(depots, demander, sortie)
+def _mettre_a_jour_gel(ctx, depots, sortie):
+    depots = choisir_depots(
+        t("Repositories whose freeze moves to HEAD:"), depots
+    )
     if not depots:
         sortie(t("Nothing changed."))
         return False

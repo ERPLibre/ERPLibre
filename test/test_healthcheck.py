@@ -15,7 +15,9 @@ from pathlib import Path
 from unittest import mock
 
 from script.todo import healthcheck as h
+from script.todo import ui
 from script.todo.todo_i18n import TRANSLATIONS, t
+from script.todo.ui.port import ScriptedPort
 
 RACINE_DEPOT = Path(__file__).resolve().parent.parent
 ENV_GIT = {
@@ -35,6 +37,12 @@ def git(racine, *args, check=True):
         capture_output=True,
         text=True,
     )
+
+
+def choix(*reponses):
+    """Le port des choix de dépôts, lié le temps du bloc : il rend
+    `reponses` dans l'ordre, puis EOFError, comme Ctrl+D."""
+    return ui.bind(ScriptedPort(reponses))
 
 
 def ecrire(racine, chemin, texte):
@@ -876,32 +884,142 @@ class TestResolutions(unittest.TestCase):
             t("These entries now appear in the menu, under Resolution."), texte
         )
 
+    DEPOTS = [
+        {"path": f"A/{n}", "freeze": {"alignment": "en_retard"}}
+        for n in ("un", "deux", "trois")
+    ]
+
+    def choisir(self, *reponses):
+        """Les chemins que `reponses` choisissent parmi DEPOTS, et ce que
+        le port a vu : questions et avis."""
+        with choix(*reponses) as port:
+            choisis = h.choisir_depots("Dépôts :", self.DEPOTS)
+        return [d["path"] for d in choisis], port.events
+
     def test_selection_by_numbers_ranges_all_or_back(self):
-        depots = [
-            {"path": f"A/{n}", "freeze": {"alignment": "en_retard"}}
-            for n in ("un", "deux", "trois")
+        tous = ["A/un", "A/deux", "A/trois"]
+        self.assertEqual(self.choisir("1 3")[0], ["A/un", "A/trois"])
+        self.assertEqual(self.choisir("3,1")[0], ["A/un", "A/trois"])
+        self.assertEqual(self.choisir("2-3")[0], ["A/deux", "A/trois"])
+        for mot in ("tout", "all", "*"):
+            self.assertEqual(self.choisir(mot)[0], tous, mot)
+        # [0], une réponse vide et Ctrl+D ne choisissent rien.
+        self.assertEqual(self.choisir("0")[0], [])
+        self.assertEqual(self.choisir("")[0], [])
+        self.assertEqual(self.choisir()[0], [])
+
+    def test_a_wrong_answer_is_named_and_asked_again(self):
+        """Une partie fautive refuse toute la saisie, qui est redemandée ;
+        « a » n'est plus « tous »."""
+        for fautive in ("1 9", "a"):
+            choisis, events = self.choisir(fautive, "2")
+            self.assertEqual(choisis, ["A/deux"], fautive)
+            avis = [e for e in events if e.get("t") == "notice"]
+            self.assertEqual(
+                [(a["text"], a["level"]) for a in avis],
+                [(f"{t('Invalid choice: ')}{fautive}", "error")],
+            )
+            self.assertEqual(len(events), 3, fautive)
+
+    def test_the_exact_name_shown_picks_a_repository(self):
+        """Le chemin affiché choisit son dépôt, seul ou mêlé aux numéros ;
+        un nom inconnu est nommé, puis la question revient."""
+        self.assertEqual(self.choisir("A/trois")[0], ["A/trois"])
+        self.assertEqual(self.choisir("A/trois 1")[0], ["A/un", "A/trois"])
+        choisis, events = self.choisir("A/quatre", "A/deux")
+        self.assertEqual(choisis, ["A/deux"])
+        self.assertEqual(
+            [e["text"] for e in events if e.get("t") == "notice"],
+            [f"{t('Invalid choice: ')}A/quatre"],
+        )
+
+    def test_a_name_two_lines_share_picks_by_number_only(self):
+        """Un même paquet dans deux venvs : son nom ne choisit ni l'un ni
+        l'autre, son numéro, si ; un nom seul à sa ligne choisit."""
+        paquets = [
+            {"paquet": "zqpaquet", "venv": ".venv.x"},
+            {"paquet": "zqpaquet", "venv": ".venv.y"},
+            {"paquet": "zqautre", "venv": ".venv.x"},
         ]
 
         def choisir(*reponses):
-            suite = iter(reponses)
-            lignes = []
-            choisis = h.choisir_depots(
-                depots, lambda _q: next(suite), lignes.append
-            )
-            return [d["path"] for d in choisis], lignes
+            with choix(*reponses) as port:
+                choisis = h.choisir_depots(
+                    "Paquets :",
+                    paquets,
+                    decrire=lambda p: f"{p['paquet']} — {p['venv']}",
+                    nommer=lambda p: p["paquet"],
+                )
+            return choisis, port.events
 
-        self.assertEqual(choisir("1 3")[0], ["A/un", "A/trois"])
-        self.assertEqual(choisir("3,1")[0], ["A/un", "A/trois"])
-        self.assertEqual(choisir("2-3")[0], ["A/deux", "A/trois"])
-        self.assertEqual(choisir("a")[0], ["A/un", "A/deux", "A/trois"])
-        self.assertEqual(choisir("0")[0], [])
-        self.assertEqual(choisir("")[0], [])
-        # Une partie fautive refuse toute la saisie, qui est redemandée.
-        choisis, lignes = choisir("1 9", "2")
-        self.assertEqual(choisis, ["A/deux"])
-        self.assertIn(f"{t('Error, cannot understand value')} '1 9'", lignes)
-        self.assertIn("   [1] A/un — " + t("behind the freeze"), lignes)
-        self.assertIn(f"   [a] {t('All repositories')}", lignes)
+        self.assertEqual(choisir("zqautre")[0], [paquets[2]])
+        self.assertEqual(choisir("2")[0], [paquets[1]])
+        choisis, events = choisir("zqpaquet", "1")
+        self.assertEqual(choisis, [paquets[0]])
+        self.assertEqual(events[0]["names"], {"zqautre": "3"})
+
+    def test_each_list_is_chosen_by_the_name_it_shows(self):
+        """Chaque résolution qui choisit dans une liste nomme ses lignes
+        par ce qu'elles affichent en tête : chemin, venv, paquet ou
+        commande Claude."""
+        cas = [
+            (
+                h.freeze_resolution.REMETTRE,
+                [{"path": "A/x", "freeze": {"alignment": "en_retard"}}],
+                "A/x",
+            ),
+            (
+                h.freeze_resolution.MAJ_GEL,
+                [{"path": "A/x", "freeze": {"alignment": "en_avance"}}],
+                "A/x",
+            ),
+            (
+                h.MAJ_VENVS,
+                [{"venv": ".venv.a", "resume": "1 écart"}],
+                ".venv.a",
+            ),
+            (
+                h.VENVS_OBSOLETES,
+                [{"venv": ".venv.odoo0.0_python0.0.0", "remplacant": "x"}],
+                ".venv.odoo0.0_python0.0.0",
+            ),
+            (
+                h.PAQUETS_DE_TROP,
+                [{"venv": ".venv.x", "paquet": "zqautre", "version": "1"}],
+                "zqautre",
+            ),
+            (
+                h.CLAUDE,
+                [{"commande": "commit", "gabarit": "g.md", "etat": "missing"}],
+                "/commit",
+            ),
+        ]
+        for cle, depots, nom in cas:
+            with self.subTest(cle=cle), choix("0") as port:
+                h.executer_resolution(
+                    h.Contexte(tempfile.gettempdir()),
+                    self.resolution(cle, depots),
+                    sortie=lambda _l: None,
+                )
+                (question,) = port.events
+                self.assertEqual(question["names"], {nom: "1"})
+                self.assertTrue(
+                    question["options"][0]["label"].startswith(nom)
+                )
+
+    def test_the_page_gets_a_multiple_choice_of_the_lines(self):
+        _choisis, (question,) = self.choisir("1")
+        self.assertEqual(question["kind"], "choose")
+        self.assertTrue(question["multi"])
+        self.assertEqual(question["prompt"], "Dépôts :")
+        self.assertEqual(
+            [o["label"] for o in question["options"]],
+            [
+                f"A/{n} — {t('behind the freeze')}"
+                for n in ("un", "deux", "trois")
+            ]
+            + [t("Back")],
+        )
 
     def test_put_back_asks_first(self):
         depots = [{"path": "A/x", "freeze": {"alignment": "en_retard"}}]
@@ -910,17 +1028,15 @@ class TestResolutions(unittest.TestCase):
         with mock.patch.object(
             h.freeze_resolution, "remettre_au_gel", return_value=(True, "ok")
         ) as remettre:
-            self.assertFalse(
-                h.executer_resolution(
-                    ctx, res, demander=lambda _q: "", sortie=lambda _l: None
+            with choix(""):
+                self.assertFalse(
+                    h.executer_resolution(ctx, res, sortie=lambda _l: None)
                 )
-            )
             remettre.assert_not_called()
-            self.assertTrue(
-                h.executer_resolution(
-                    ctx, res, demander=lambda _q: "1", sortie=lambda _l: None
+            with choix("1"):
+                self.assertTrue(
+                    h.executer_resolution(ctx, res, sortie=lambda _l: None)
                 )
-            )
             remettre.assert_called_once()
             self.assertEqual(remettre.call_args.args, (ctx.racine, depots[0]))
 
@@ -933,41 +1049,96 @@ class TestResolutions(unittest.TestCase):
             return True, "abc"
 
         lignes = []
-        with mock.patch.object(
-            h.freeze_resolution, "remettre_au_gel", side_effect=remettre
+        with (
+            mock.patch.object(
+                h.freeze_resolution, "remettre_au_gel", side_effect=remettre
+            ),
+            choix("all"),
         ):
             h.executer_resolution(
-                h.Contexte(tempfile.gettempdir()),
-                res,
-                demander=lambda _q: "a",
-                sortie=lignes.append,
+                h.Contexte(tempfile.gettempdir()), res, sortie=lignes.append
             )
         commande = lignes.index(
             "   $ git -C A/x checkout --quiet --detach abc"
         )
         self.assertLess(commande, lignes.index("   ✅ A/x — abc"))
 
-    def test_end_of_input_means_no(self):
-        res = self.resolution(
+    def rien_ne_change(self, cle, depots, **actions):
+        """Lance la résolution `cle` sur `depots` en répondant [0], une
+        réponse vide, puis Ctrl+D au choix : chaque fois, elle rend False
+        sans rien lancer. Les fonctions de freeze_resolution, le lanceur
+        de commandes, la suppression de répertoires et `actions` (passées à
+        executer_resolution) sont des doubles qui ne doivent pas servir ;
+        une question oui/non échoue le test."""
+        res = self.resolution(cle, depots)
+
+        def demander(question):
+            raise AssertionError(f"question après un retour : {question}")
+
+        lancer = mock.Mock(return_value=0)
+        with (
+            mock.patch.object(h.freeze_resolution, "remettre_au_gel") as r,
+            mock.patch.object(h.freeze_resolution, "publication") as p,
+            mock.patch.object(h.freeze_resolution, "mettre_a_jour_gel") as m,
+            mock.patch.object(
+                h, "_lancer_dans_le_terminal", return_value=lancer
+            ),
+            mock.patch.object(h.shutil, "rmtree") as rmtree,
+            mock.patch.object(h.subprocess, "run") as run,
+        ):
+            for reponses in (["0"], [""], []):
+                lignes = []
+                with self.subTest(reponses=reponses), choix(*reponses):
+                    self.assertFalse(
+                        h.executer_resolution(
+                            h.Contexte(tempfile.gettempdir()),
+                            res,
+                            demander=demander,
+                            sortie=lignes.append,
+                            **actions,
+                        )
+                    )
+                    self.assertIn(t("Nothing changed."), lignes)
+        for double in (r, p, m, lancer, rmtree, run, *actions.values()):
+            double.assert_not_called()
+
+    def test_back_empty_or_end_of_input_puts_nothing_back(self):
+        self.rien_ne_change(
             h.freeze_resolution.REMETTRE,
             [{"path": "A/x", "freeze": {"alignment": "en_retard"}}],
         )
 
-        def fin(_question):
-            raise EOFError
+    def test_back_empty_or_end_of_input_moves_no_freeze(self):
+        self.rien_ne_change(
+            h.freeze_resolution.MAJ_GEL,
+            [{"path": "A/x", "freeze": {"alignment": "en_avance"}}],
+        )
 
-        with mock.patch.object(
-            h.freeze_resolution, "remettre_au_gel"
-        ) as remettre:
-            self.assertFalse(
-                h.executer_resolution(
-                    h.Contexte(tempfile.gettempdir()),
-                    res,
-                    demander=fin,
-                    sortie=lambda _l: None,
-                )
-            )
-        remettre.assert_not_called()
+    def test_back_empty_or_end_of_input_updates_no_venv(self):
+        self.rien_ne_change(
+            h.MAJ_VENVS,
+            [{"venv": ".venv.a", "resume": "1 écart"}],
+            mettre_a_jour_venv=mock.Mock(),
+        )
+
+    def test_back_empty_or_end_of_input_deploys_no_command(self):
+        self.rien_ne_change(
+            h.CLAUDE,
+            [{"commande": "commit", "gabarit": "g.md", "etat": "missing"}],
+            deployer_commande_claude=mock.Mock(),
+        )
+
+    def test_back_empty_or_end_of_input_replaces_no_venv(self):
+        self.rien_ne_change(
+            h.VENVS_OBSOLETES,
+            [{"venv": ".venv.odoo0.0_python0.0.0", "remplacant": "x"}],
+        )
+
+    def test_back_empty_or_end_of_input_removes_no_package(self):
+        self.rien_ne_change(
+            h.PAQUETS_DE_TROP,
+            [{"venv": ".venv.erplibre", "paquet": "agithub", "version": "1"}],
+        )
 
     def test_freeze_update_writes_only_pushed_heads(self):
         publie = {"path": "A/publie", "freeze": {"alignment": "en_avance"}}
@@ -989,10 +1160,9 @@ class TestResolutions(unittest.TestCase):
                 "mettre_a_jour_gel",
                 return_value=({"manifest/m.xml": ["k"]}, []),
             ) as maj,
+            choix("all"),
         ):
-            change = h.executer_resolution(
-                ctx, res, demander=lambda _q: "a", sortie=lignes.append
-            )
+            change = h.executer_resolution(ctx, res, sortie=lignes.append)
         self.assertTrue(change)
         self.assertEqual(maj.call_args_list[-1].args[1], [publie])
         self.assertIn("git push x", "\n".join(lignes))
@@ -1028,12 +1198,12 @@ class TestResolutions(unittest.TestCase):
                 "mettre_a_jour_gel",
                 return_value=({"manifest/m.xml": ["k"]}, []),
             ),
+            choix("all"),
         ):
             self.assertTrue(
                 h.executer_resolution(
                     h.Contexte(tempfile.gettempdir()),
                     res,
-                    demander=lambda _q: "a",
                     sortie=lignes.append,
                 )
             )
@@ -1153,21 +1323,21 @@ class TestDependancesVenvs(unittest.TestCase):
         )
 
     def test_the_resolution_updates_the_chosen_venvs(self):
-        choix = [
+        venvs = [
             {"venv": ".venv.a", "resume": "1 écart"},
             {"venv": ".venv.b", "resume": "2 écarts"},
         ]
-        res = h.Resolution(h.MAJ_VENVS, "📦 X", [], choix)
+        res = h.Resolution(h.MAJ_VENVS, "📦 X", [], venvs)
         mis_a_jour = []
-        change = h.executer_resolution(
-            h.Contexte(tempfile.gettempdir()),
-            res,
-            demander=lambda _q: "2",
-            sortie=lambda _l: None,
-            mettre_a_jour_venv=mis_a_jour.append,
-        )
+        with choix("2"):
+            change = h.executer_resolution(
+                h.Contexte(tempfile.gettempdir()),
+                res,
+                sortie=lambda _l: None,
+                mettre_a_jour_venv=mis_a_jour.append,
+            )
         self.assertTrue(change)
-        self.assertEqual(mis_a_jour, [choix[1]])
+        self.assertEqual(mis_a_jour, [venvs[1]])
 
     def test_a_venv_missing_from_the_catalogue_is_obsolete(self):
         ecrire(
@@ -1222,13 +1392,13 @@ class TestDependancesVenvs(unittest.TestCase):
             for p in ("agithub", "cssselect", "giturlparse")
         ]
         lances, lignes = [], []
-        change = h._retirer_paquets(
-            h.Contexte(self.racine),
-            paquets,
-            lambda _q: "1 3",
-            lignes.append,
-            lancer=lambda c: lances.append(c) or 0,
-        )
+        with choix("1 3"):
+            change = h._retirer_paquets(
+                h.Contexte(self.racine),
+                paquets,
+                lignes.append,
+                lancer=lambda c: lances.append(c) or 0,
+            )
         self.assertTrue(change)
         self.assertEqual(
             lances,
@@ -1264,15 +1434,16 @@ class TestDependancesVenvs(unittest.TestCase):
     ):
         shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
         ancien, venvs = self.obsolete()
-        reponses = iter(["a", "o", "o"])
+        reponses = iter(["o", "o"])
         lances = []
-        change = h._remplacer_venvs_obsoletes(
-            h.Contexte(self.racine),
-            venvs,
-            lambda _q: next(reponses),
-            lambda _l: None,
-            lancer=lambda c: lances.append(c) or 0,
-        )
+        with choix("all"):
+            change = h._remplacer_venvs_obsoletes(
+                h.Contexte(self.racine),
+                venvs,
+                lambda _q: next(reponses),
+                lambda _l: None,
+                lancer=lambda c: lances.append(c) or 0,
+            )
         self.assertTrue(change)
         self.assertEqual(
             lances,
@@ -1290,33 +1461,35 @@ class TestDependancesVenvs(unittest.TestCase):
     def test_a_refused_installation_keeps_the_obsolete_venv(self):
         shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
         ancien, venvs = self.obsolete()
-        reponses = iter(["a", ""])
+        reponses = iter([""])
         lances = []
-        self.assertFalse(
-            h._remplacer_venvs_obsoletes(
-                h.Contexte(self.racine),
-                venvs,
-                lambda _q: next(reponses),
-                lambda _l: None,
-                lancer=lambda c: lances.append(c) or 0,
+        with choix("all"):
+            self.assertFalse(
+                h._remplacer_venvs_obsoletes(
+                    h.Contexte(self.racine),
+                    venvs,
+                    lambda _q: next(reponses),
+                    lambda _l: None,
+                    lancer=lambda c: lances.append(c) or 0,
+                )
             )
-        )
         self.assertEqual(lances, [])
         self.assertTrue(os.path.isdir(ancien))
 
     def test_an_existing_replacement_only_asks_to_delete(self):
         ancien, venvs = self.obsolete()
-        reponses = iter(["1", "o"])
+        reponses = iter(["o"])
         lances = []
-        self.assertTrue(
-            h._remplacer_venvs_obsoletes(
-                h.Contexte(self.racine),
-                venvs,
-                lambda _q: next(reponses),
-                lambda _l: None,
-                lancer=lambda c: lances.append(c) or 0,
+        with choix("1"):
+            self.assertTrue(
+                h._remplacer_venvs_obsoletes(
+                    h.Contexte(self.racine),
+                    venvs,
+                    lambda _q: next(reponses),
+                    lambda _l: None,
+                    lancer=lambda c: lances.append(c) or 0,
+                )
             )
-        )
         self.assertEqual(lances, [])
         self.assertFalse(os.path.isdir(ancien))
 
@@ -1635,25 +1808,25 @@ class TestCommandesClaude(unittest.TestCase):
             return True
 
         with mock.patch("builtins.print"):
-            self.assertFalse(
-                h.executer_resolution(
-                    self.ctx(),
-                    resolution,
-                    lambda _q: "0",
-                    print,
-                    deployer_commande_claude=deployer,
+            with choix("0"):
+                self.assertFalse(
+                    h.executer_resolution(
+                        self.ctx(),
+                        resolution,
+                        sortie=print,
+                        deployer_commande_claude=deployer,
+                    )
                 )
-            )
             self.assertEqual(deployees, [])
-            self.assertTrue(
-                h.executer_resolution(
-                    self.ctx(),
-                    resolution,
-                    lambda _q: "a",
-                    print,
-                    deployer_commande_claude=deployer,
+            with choix("all"):
+                self.assertTrue(
+                    h.executer_resolution(
+                        self.ctx(),
+                        resolution,
+                        sortie=print,
+                        deployer_commande_claude=deployer,
+                    )
                 )
-            )
         self.assertEqual(
             sorted(deployees),
             [("autre", "gabarit_autre.md"), ("commit", "gabarit_commit.md")],
