@@ -534,10 +534,14 @@ application presumes, exposed itself through the edge under the internal
 domain, federated to the directory the model already carries, and placed in
 the directory's zone. Its PostgreSQL database sits on the same host, declared
 the way the role resolves it, and the database server accepts the tenant's
-supernet — the role's default network does not contain it. The host's size is
-capped at two cores and 3 GiB: the engine sums the cores of a host's roles,
-and the derived four would take a whole nested terrain. The engine's own plan
-validators judge what the bench writes.
+supernet — the role's default network does not contain it. On the same host
+the bench exposes a Forgejo forge declared as an OIDC client of the identity:
+in SQLite, the engine's dependency contract asks it for nothing but the edge,
+which the model already carries. The host's size is capped at two cores and
+4 GiB: the engine sums the cores of a host's roles, and the five it would
+derive exceed a whole nested terrain. The engine's own plan validators, and
+its proof that every OIDC return address aims at an exposed name, judge what
+the bench writes.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
@@ -1146,10 +1150,13 @@ application exposée suppose, exposé lui-même par l'edge sous le domaine
 interne, fédéré à l'annuaire que le modèle porte déjà, et placé dans la zone de
 l'annuaire. Sa base PostgreSQL vit sur le même hôte, déclarée comme le rôle la
 résout, et le serveur de bases accepte le supernet du locataire — le réseau par
-défaut du rôle ne le contient pas. La taille de l'hôte est plafonnée à deux
-cœurs et 3 Gio : le moteur somme les cœurs des rôles d'un hôte, et les quatre
-qu'il dériverait prendraient tout un terrain imbriqué. Les validateurs du plan
-du moteur jugent ce que le banc écrit.
+défaut du rôle ne le contient pas. Sur le même hôte, le banc expose une forge
+Forgejo déclarée cliente OIDC de l'identité : en SQLite, le contrat de
+dépendances du moteur ne lui demande que l'edge, que le modèle porte déjà. La
+taille de l'hôte est plafonnée à deux cœurs et 4 Gio : le moteur somme les
+cœurs des rôles d'un hôte, et les cinq qu'il dériverait dépassent tout un
+terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
+adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

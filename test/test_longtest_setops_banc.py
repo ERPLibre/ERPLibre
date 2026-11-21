@@ -5387,6 +5387,156 @@ class TestLIdentiteFederee(unittest.TestCase):
         self.assertIn("annuaire", B.pose_l_identite(eco, "infra-pki-01"))
 
 
+class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
+    """Une application exposée qui s'authentifie par l'identité : la recette
+    sonde son hôte virtuel, et le moteur prouve son client OIDC."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+    lu = TestLIdentiteFederee.lu
+
+    def test_the_engine_proves_its_client_aims_at_an_exposed_name(self):
+        """Le juge est la preuve du MOTEUR, jouée sur la copie posée."""
+        eco = self.eco_pose()
+        code = (
+            "import sys; sys.path.insert(0, 'scripts'); import prouver;"
+            " ok, dit = prouver.preuve_clients_oidc_vises_sur_une_exposition();"
+            " print(dit); sys.exit(0 if ok and 'Aucun' not in dit else 1)"
+        )
+        vu = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=self.moteur(),
+            env=dict(
+                os.environ, SETOPS_INSTANCE=eco, PYTHONDONTWRITEBYTECODE="1"
+            ),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(0, vu.returncode, vu.stdout + vu.stderr)
+
+    def test_the_client_is_the_one_the_forge_presents(self):
+        eco = self.eco_pose()
+        chemin = os.path.join(
+            eco,
+            "inventories",
+            "production",
+            "group_vars",
+            f"{B.GROUPE_IDENTITE}.yml",
+        )
+        with open(chemin, encoding="utf-8") as f:
+            clients = yaml.safe_load(f.read())["serveur_keycloak_clients"]
+        self.assertEqual(1, len(clients))
+        defauts = lu_au_moteur(
+            "roles", "serveur_forgejo", "defaults", "main.yml"
+        )
+        self.assertEqual(
+            defauts["serveur_forgejo_oidc_client_id"], clients[0]["clientId"]
+        )
+        # Le secret est celui que la forge lit, et il est scellé.
+        self.assertIn("vault_forgejo_oidc", clients[0]["secret"])
+        self.assertIn(
+            "vault_forgejo_oidc", [n for n, _f in B.SECRETS_LOCATAIRE]
+        )
+
+    def test_the_callback_names_the_provider_as_the_role_derives_it(self):
+        """Rendu par jinja comme Ansible le rend : le nom de fournisseur que
+        la forge enregistre est celui que porte l'URI de retour."""
+        import jinja2
+
+        defauts = lu_au_moteur(
+            "roles", "serveur_forgejo", "defaults", "main.yml"
+        )
+        for organisation in ("Exemple", "Mon Organisation"):
+            with self.subTest(organisation=organisation):
+                nom = (
+                    jinja2.Environment()
+                    .from_string(defauts["serveur_forgejo_oidc_nom"])
+                    .render(organisation=organisation)
+                )
+                texte = B.texte_client_forge("exemple.invalid", organisation)
+                uri = yaml.safe_load(texte)["serveur_keycloak_clients"][0][
+                    "redirect_uris"
+                ][0]
+                self.assertIn(f"/user/oauth2/{nom}/callback", uri)
+
+    def test_sqlite_lifts_the_database_requirement(self):
+        """Le contrat du moteur : la forge n'exige un serveur de bases que
+        hors SQLite. C'est ce qui la rend posable sans rompre ce contrat."""
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(
+            os.path.join(MOTEUR_CLONE, "docs", "dependances-groupes.yml"),
+            encoding="utf-8",
+        ) as f:
+            regles = yaml.safe_load(f.read())
+        entree = next(
+            v
+            for k, v in _parcours(regles)
+            if k == B.GROUPE_FORGE
+            and isinstance(v, dict)
+            and "requiert_groupes_actifs" in v
+        )
+        cle, valeur = B.BASE_FORGE
+        leves = {
+            groupe
+            for groupe, condition in (entree.get("sauf_si") or {}).items()
+            if condition == {"variable": cle, "vaut": valeur}
+        }
+        self.assertEqual(
+            set(entree["requiert_groupes_actifs"]) - leves,
+            {"serveur_nginx"},
+        )
+        self.assertEqual(valeur, yaml.safe_load(B.texte_forge())[cle])
+
+    def test_it_is_exposed_on_the_identity_host(self):
+        eco = self.eco_pose()
+        applications = self.lu(eco, "applications.yml")["applications"]
+        forge = applications[B.APPLICATION_FORGE]
+        self.assertEqual(
+            applications[B.APPLICATION_IDENTITE]["hote"], forge["hote"]
+        )
+        self.assertTrue(
+            forge["expose"][0].endswith("." + B.domaine_interne(eco))
+        )
+        self.assertIsInstance(forge["port"], int)
+
+
+def _parcours(arbre):
+    """Chaque couple (clé, valeur) d'un arbre YAML, à toute profondeur."""
+    if isinstance(arbre, dict):
+        for cle, valeur in arbre.items():
+            yield cle, valeur
+            yield from _parcours(valeur)
+    elif isinstance(arbre, list):
+        for valeur in arbre:
+            yield from _parcours(valeur)
+
+
+class TestUnFichierDuModeleNEstJamaisReecrit(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.chemin = os.path.join(self.d, "f.yml")
+
+    def test_absent_it_is_written(self):
+        self.assertEqual("", B.pose_un_fichier(self.chemin, "a: 1\n"))
+        with open(self.chemin) as f:
+            self.assertEqual("a: 1\n", f.read())
+
+    def test_identical_it_is_left_alone(self):
+        B.pose_un_fichier(self.chemin, "a: 1\n")
+        self.assertEqual("", B.pose_un_fichier(self.chemin, "a: 1\n"))
+
+    def test_different_it_is_refused_by_name_and_kept(self):
+        with open(self.chemin, "w") as f:
+            f.write("a: 2\n")
+        souci = B.pose_un_fichier(self.chemin, "a: 1\n")
+        self.assertIn("f.yml", souci)
+        with open(self.chemin) as f:
+            self.assertEqual("a: 2\n", f.read())
+
+
 class TestLaBaseAccepteLeLocataire(unittest.TestCase):
     """Le serveur de bases refuse par défaut un réseau qui ne contient pas le
     supernet d'un locataire d'index non nul."""

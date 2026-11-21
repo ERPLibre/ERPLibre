@@ -549,10 +549,13 @@ application exposée suppose, exposé lui-même par l'edge sous le domaine
 interne, fédéré à l'annuaire que le modèle porte déjà, et placé dans la zone de
 l'annuaire. Sa base PostgreSQL vit sur le même hôte, déclarée comme le rôle la
 résout, et le serveur de bases accepte le supernet du locataire — le réseau par
-défaut du rôle ne le contient pas. La taille de l'hôte est plafonnée à deux
-cœurs et 3 Gio : le moteur somme les cœurs des rôles d'un hôte, et les quatre
-qu'il dériverait prendraient tout un terrain imbriqué. Les validateurs du plan
-du moteur jugent ce que le banc écrit.
+défaut du rôle ne le contient pas. Sur le même hôte, le banc expose une forge
+Forgejo déclarée cliente OIDC de l'identité : en SQLite, le contrat de
+dépendances du moteur ne lui demande que l'edge, que le modèle porte déjà. La
+taille de l'hôte est plafonnée à deux cœurs et 4 Gio : le moteur somme les
+cœurs des rôles d'un hôte, et les cinq qu'il dériverait dépassent tout un
+terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
+adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

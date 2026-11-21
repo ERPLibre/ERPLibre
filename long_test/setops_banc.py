@@ -1956,6 +1956,11 @@ SECRETS_LOCATAIRE = (
     # L'identité fédérée que le banc POSE — voir `pose_l_identite`.
     ("vault_keycloak_admin", FORME_OPAQUE),
     ("vault_bd_keycloak", FORME_OPAQUE),
+    # La forge qui s'y authentifie — voir `pose_l_identite`.
+    ("vault_forgejo_admin", FORME_OPAQUE),
+    ("vault_forgejo_secret_key", FORME_OPAQUE),
+    ("vault_forgejo_internal_token", FORME_OPAQUE),
+    ("vault_forgejo_oidc", FORME_OPAQUE),
 )
 
 
@@ -2279,8 +2284,8 @@ def _recrit(chemin, transforme):
 # lie — voir `pose_l_annuaire`. Sans cet ajout il se déploierait vers une machine
 # qu'aucun plan ne nomme, et la passe serait verte sans que rien n'authentifie.
 #
-# L'IDENTITÉ FÉDÉRÉE ET SA BASE Y SONT, parce que le banc les POSE — voir
-# `pose_l_identite`.
+# L'IDENTITÉ FÉDÉRÉE, SA BASE ET LA FORGE QUI S'Y AUTHENTIFIE Y SONT, parce
+# que le banc les POSE — voir `pose_l_identite`.
 APPLICATIONS_COUVERTES = (
     "step_ca",
     "powerdns",
@@ -2291,6 +2296,7 @@ APPLICATIONS_COUVERTES = (
     "backup",
     "keycloak",
     "postgresql",
+    "forgejo",
 )
 
 
@@ -2596,37 +2602,99 @@ SERVEUR_BD_IDENTITE = "sql-identite"
 BASE_IDENTITE = "keycloak"
 SECRET_BD_IDENTITE = "vault_bd_keycloak"
 
+# LA FORGE QUI S'AUTHENTIFIE PAR L'IDENTITÉ : une application exposée, cliente
+# OIDC, dont la recette sonde l'hôte virtuel. La plus légère que le moteur
+# sache fédérer SANS rompre son contrat de dépendances : en SQLite, elle
+# n'exige que l'edge, que le socle porte déjà.
+APPLICATION_FORGE = "forgejo"
+GROUPE_FORGE = "serveur_forgejo"
+PORT_FORGE = 3000
+SOUS_DOMAINE_FORGE = "forge"
+BASE_FORGE = ("serveur_forgejo_bd", "sqlite")
+
 # LE DIMENSIONNEMENT EST PLAFONNÉ, et c'est le terrain qui l'impose. Le moteur
-# SOMME les cœurs des rôles d'un hôte : l'identité et sa base en réclameraient
-# quatre, soit tout un terrain imbriqué, et une VM qui demande autant de cœurs
-# que son nœud n'en a laisse le reste de la flotte se les disputer. La mémoire
-# suit la même borne ; le tas de la JVM se dimensionne sur elle.
-RESSOURCES_IDENTITE = (("coeurs", 2), ("memoire", 3072))
+# SOMME les cœurs des rôles d'un hôte : l'identité, sa base et la forge en
+# réclameraient cinq, plus que tout un terrain imbriqué, et une VM qui demande
+# autant de cœurs que son nœud n'en a laisse le reste de la flotte se les
+# disputer. La mémoire suit la même borne ; le tas de la JVM se dimensionne
+# sur elle.
+RESSOURCES_IDENTITE = (("coeurs", 2), ("memoire", 4096))
+
+
+def intrant_du_modele(eco, cle):
+    """La valeur que les intrants du modèle donnent à `cle`, ou « »."""
+    intrants = _lit_yaml(
+        os.path.join(
+            eco,
+            "inventories",
+            "production",
+            "group_vars",
+            "all",
+            "10-intrants.yml",
+        )
+    )
+    valeur = (intrants or {}).get(cle)
+    return valeur.strip() if isinstance(valeur, str) else ""
 
 
 def domaine_interne(eco):
     """Le domaine interne que les intrants du modèle déclarent, ou « »."""
-    try:
-        import yaml
-    except ImportError:
+    return intrant_du_modele(eco, "domaine_interne")
+
+
+def texte_client_forge(domaine, organisation):
+    """Le `group_vars/serveur_keycloak.yml` qui déclare la forge cliente, ou
+    « ».
+
+    DES NOMS LITTÉRAUX, et non `{{ domaine_interne }}` : le moteur prouve que
+    chaque URI de retour vise un nom que le plan expose, en lisant le fichier
+    tel qu'il est écrit. Le chemin de retour est celui que la forge annonce :
+    son nom de fournisseur est celui de l'organisation, en minuscules et sans
+    espaces, comme le rôle le dérive.
+    """
+    if not (domaine or "").strip() or not (organisation or "").strip():
         return ""
-    chemin = os.path.join(
-        eco,
-        "inventories",
-        "production",
-        "group_vars",
-        "all",
-        "10-intrants.yml",
-    )
+    forge = f"https://{SOUS_DOMAINE_FORGE}.{domaine.strip()}"
+    fournisseur = organisation.strip().lower().replace(" ", "-")
+    return f"""---
+# Posé par le banc : la forge qu'il expose s'authentifie par l'identité.
+serveur_keycloak_clients:
+  - clientId: forgejo
+    redirect_uris: ["{forge}/user/oauth2/{fournisseur}/callback"]
+    web_origins: ["{forge}"]
+    secret: "{{{{ vault_forgejo_oidc }}}}"
+"""
+
+
+def texte_forge():
+    """Le `group_vars/serveur_forgejo.yml` du banc : la forge en SQLite."""
+    cle, valeur = BASE_FORGE
+    return f"""---
+# Posé par le banc : sans serveur de bases à elle, la forge n'exige que l'edge.
+{cle}: {valeur}
+"""
+
+
+def pose_un_fichier(chemin, texte):
+    """Écrit `texte` à `chemin` s'il n'y est pas. Le souci, ou « ».
+
+    UN FICHIER DU MODÈLE N'EST JAMAIS RÉÉCRIT : identique, rien à faire ;
+    différent, le banc refuse en le nommant plutôt que d'effacer ce que le
+    modèle déclare.
+    """
     try:
         with open(chemin, encoding="utf-8") as lu:
-            intrants = yaml.safe_load(lu.read())
-    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            present = lu.read()
+    except FileNotFoundError:
+        return _ecrit(chemin, texte)
+    except OSError as souci:
+        return f"{os.path.basename(chemin)} : {souci.strerror or souci}"
+    if present == texte:
         return ""
-    valeur = (
-        intrants.get("domaine_interne") if isinstance(intrants, dict) else ""
+    return (
+        f"{os.path.basename(chemin)} existe déjà et diffère : le banc ne le"
+        " réécrit pas"
     )
-    return valeur.strip() if isinstance(valeur, str) else ""
 
 
 def pose_une_application(eco, application, valeur):
@@ -2707,8 +2775,12 @@ def _lit_yaml(chemin):
 
 
 def pose_l_identite(eco, hote_autorite):
-    """Ajoute l'identité fédérée, sa base et son exposition au plan. Le
+    """Ajoute l'identité fédérée, sa base, et la forge qui s'y authentifie. Le
     souci, ou « ».
+
+    LA FORGE EST SUR L'HÔTE DE L'IDENTITÉ : une VM de plus ne tiendrait pas
+    sur un terrain imbriqué. Elle est déclarée cliente OIDC, sous les noms que
+    le plan expose.
 
     DANS LA ZONE DE L'ANNUAIRE, et non dans celle de l'autorité : c'est à lui
     qu'elle se fédère, et c'est la zone de l'identité dans la nomenclature du
@@ -2754,8 +2826,37 @@ def pose_l_identite(eco, hote_autorite):
         flux_yaml(
             (("groupe", GROUPE_BASES), ("hote", hote), ("port", PORT_BASES))
         ),
+    ) or pose_la_base(eco, hote)
+    if souci:
+        return souci
+    souci = pose_une_application(
+        eco,
+        APPLICATION_FORGE,
+        flux_yaml(
+            (
+                ("groupe", GROUPE_FORGE),
+                ("hote", hote),
+                ("port", PORT_FORGE),
+                ("expose", f"[{SOUS_DOMAINE_FORGE}.{domaine}]"),
+            )
+        ),
     )
-    return souci or pose_la_base(eco, hote)
+    if souci:
+        return souci
+    variables = os.path.join(eco, "inventories", "production", "group_vars")
+    client = texte_client_forge(
+        domaine, intrant_du_modele(eco, "organisation")
+    )
+    if not client:
+        return (
+            "l'organisation du modèle ne s'est pas lue : la forge n'aurait"
+            " pas de client"
+        )
+    return pose_un_fichier(
+        os.path.join(variables, f"{GROUPE_IDENTITE}.yml"), client
+    ) or pose_un_fichier(
+        os.path.join(variables, f"{GROUPE_FORGE}.yml"), texte_forge()
+    )
 
 
 # CE QUE LE BANC AJOUTE AU PLAN, dans l'ordre où il l'ajoute. Une liste et non

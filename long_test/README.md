@@ -529,10 +529,14 @@ application presumes, exposed itself through the edge under the internal
 domain, federated to the directory the model already carries, and placed in
 the directory's zone. Its PostgreSQL database sits on the same host, declared
 the way the role resolves it, and the database server accepts the tenant's
-supernet — the role's default network does not contain it. The host's size is
-capped at two cores and 3 GiB: the engine sums the cores of a host's roles,
-and the derived four would take a whole nested terrain. The engine's own plan
-validators judge what the bench writes.
+supernet — the role's default network does not contain it. On the same host
+the bench exposes a Forgejo forge declared as an OIDC client of the identity:
+in SQLite, the engine's dependency contract asks it for nothing but the edge,
+which the model already carries. The host's size is capped at two cores and
+4 GiB: the engine sums the cores of a host's roles, and the five it would
+derive exceed a whole nested terrain. The engine's own plan validators, and
+its proof that every OIDC return address aims at an exposed name, judge what
+the bench writes.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
