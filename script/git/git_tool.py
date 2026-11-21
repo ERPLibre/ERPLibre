@@ -479,6 +479,13 @@ class GitTool:
             # Exception, ignore addons/OCA_web and root
             if update_repo in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
+            # The addons_path line written below already lists
+            # odoo<version>/addons/addons, unless ignore_odoo_path empties
+            # it: listing the repository again would name it twice.
+            if not ignore_odoo_path and update_repo == os.path.join(
+                self.odoo_version_long, "addons", "addons"
+            ):
+                continue
             # groups = repo.get("group")
             # Use variable instead of hardcoded path
             if update_repo.startswith(
