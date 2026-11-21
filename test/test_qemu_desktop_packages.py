@@ -21,8 +21,8 @@ saveur Cinnamon couvre le chemin X11.
 Le PATH ne contient QUE le répertoire des faux outils : un gnome-shell de
 l'hôte qui exécute les tests ne doit pas répondre à la place de la VM. Les
 chemins absolus que le bloc lit — /etc/os-release, /usr/sbin/xrdp,
-/etc/pam.d/system-login — sont remplacés par des chemins du répertoire
-temporaire, pour la même raison.
+/etc/pam.d/system-login, /etc/polkit-1 — sont remplacés par des chemins
+du répertoire temporaire, pour la même raison.
 """
 
 import pathlib
@@ -106,7 +106,14 @@ class _DesktopRun(unittest.TestCase):
                 'while [[ "$1" == *=* ]]; do export "$1"; shift; done\n'
                 'exec "$@"\n',
             ),
-            ("systemctl", '#!/bin/bash\necho "systemctl $*" >> "$LOG"\n'),
+            # Une unité xrdp n'existe que là où le faux dnf a posé xrdp :
+            # le bloc reconnaît xrdp aussi à son unité.
+            (
+                "systemctl",
+                '#!/bin/bash\necho "systemctl $*" >> "$LOG"\n'
+                'case "$*" in "cat xrdp.service") '
+                '[ -x "$BIN/xrdp" ] || exit 1;; esac\n',
+            ),
             ("crb", '#!/bin/bash\necho "crb $*" >> "$LOG"\n'),
         ):
             self._tool(name, body)
@@ -145,6 +152,7 @@ class _DesktopRun(unittest.TestCase):
             self.cmd.replace("/etc/os-release", str(osr))
             .replace("/usr/sbin/xrdp", str(sbin_xrdp))
             .replace("/etc/pam.d/system-login", str(tmp / "no-pam"))
+            .replace("/etc/polkit-1", str(tmp / "no-polkit"))
         )
         shell_bin = self.todo._QEMU_DESKTOP[self.flavour]["probe"]
         full_env = {
@@ -303,7 +311,7 @@ class TestDnfRemoteAccessOnRhelFamily(_DnfRun):
         ]
         self.assertEqual(1, len(warnings), res.stdout)
         self.assertIn("set-default graphical.target", calls)
-        self.assertNotIn("enable --now xrdp", calls)
+        self.assertNotIn("restart xrdp", calls)
 
 
 class TestXrdpInSbin(_DnfRun):
@@ -328,7 +336,7 @@ class TestXrdpInSbin(_DnfRun):
         )
         self.assertEqual(0, res.returncode, res.stdout + res.stderr)
         self.assertIn("RDP 3389", res.stdout)
-        self.assertIn("enable --now xrdp", calls)
+        self.assertIn("restart xrdp", calls)
 
 
 class TestAptDesktopProbe(_DesktopRun):
@@ -366,7 +374,7 @@ class TestCinnamonProbe(_DnfRun):
             calls.index("install -y epel-release"),
             calls.index("group install"),
         )
-        self.assertIn("enable --now xrdp", calls)
+        self.assertIn("restart xrdp", calls)
 
     def test_xrdp_nowhere_keeps_the_cinnamon_desktop(self):
         """Le chemin X11 suit la même règle : l'accès distant manquant est

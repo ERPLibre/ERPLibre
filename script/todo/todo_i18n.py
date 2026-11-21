@@ -7859,6 +7859,18 @@ TRANSLATIONS = {
         "fr": "certificat de KRdp non généré",
         "en": "KRdp certificate not generated",
     },
+    "SELinux boolean not set; xrdp cannot open a session": {
+        "fr": "booléen SELinux non posé ; xrdp ne peut pas ouvrir de session",
+        "en": "SELinux boolean not set; xrdp cannot open a session",
+    },
+    "xrdp-selinux not installed; xrdp cannot start X": {
+        "fr": "xrdp-selinux non installé ; xrdp ne peut pas démarrer X",
+        "en": "xrdp-selinux not installed; xrdp cannot start X",
+    },
+    "polkit rule not written; xrdp sessions may ask for a password": {
+        "fr": "règle polkit non écrite ; les sessions xrdp peuvent demander un mot de passe",
+        "en": "polkit rule not written; xrdp sessions may ask for a password",
+    },
     "portal not pre-authorised; confirm the first connection on the VM console": {
         "fr": "portail non pré-autorisé ; confirmez la première connexion sur la console de la VM",
         "en": "portal not pre-authorised; confirm the first connection on the VM console",

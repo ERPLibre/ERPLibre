@@ -1073,11 +1073,71 @@ class QemuInstallMixin:
             }.get(flavour, " flatpak")
         return pkgs.strip()
 
+    # Test shell : xrdp est-il installé ? Debian et openSUSE le posent dans
+    # /usr/sbin, hors du PATH d'un compte ordinaire, et NixOS ne le met dans
+    # aucun PATH : l'unité, celle que le bloc active ou coupe, fait foi.
+    _QEMU_XRDP_PRESENT = (
+        "{ [ -x /usr/sbin/xrdp ] || command -v xrdp >/dev/null 2>&1 "
+        "|| systemctl cat xrdp.service >/dev/null 2>&1; }"
+    )
+
+    # Booléen SELinux d'openSUSE qui permet à un service non confiné d'ouvrir
+    # la session d'un utilisateur non confiné ; coupé par défaut.
+    _QEMU_XRDP_SEBOOL = "unconfined_service_transition_to_unconfined_user"
+
+    def _qemu_xrdp_tuning_cmd(self):
+        """Bloc shell : réglages d'xrdp posés avant son redémarrage.
+
+        - Glamor coupé : xorgxrdp 0.9 (Debian 12, Ubuntu 24.04) accélère
+          par le nœud de rendu que nomme DRMDevice, dans
+          /etc/X11/xrdp/xorg.conf ; sur le GPU virgl d'une VM, les pixels
+          relus sont faux, et le client voit un bureau cisaillé, partiel ou
+          noir (Cinnamon, qui dessine par GL, toujours noir). Une valeur
+          vide fait échouer l'ouverture du nœud : rendu logiciel. Retirer la
+          ligne ne suffit pas, xorgxrdp prend alors le nœud par défaut.
+        - SELinux sur openSUSE : pam_selinux donne au processus de session
+          le contexte de l'utilisateur, et xrdp-sesman, service non
+          confiné, n'a le droit d'y passer qu'avec _QEMU_XRDP_SEBOOL. Sans
+          lui, chaque exec de la session est refusé (xauth, Xvnc,
+          xrdp-chansrv) et le client reçoit « VNC error ».
+        - xrdp-selinux sur dnf : Fedora et EPEL en font le module SELinux
+          d'xrdp, mais xrdp ne fait que le recommander, et dnf écarte cette
+          dépendance faible quand le module exige une politique plus
+          récente que celle de l'image ; sans lui, xrdp-sesman ne peut
+          lancer aucun programme de session (« X server could not be
+          started »). Le nommer met la politique à niveau avec lui."""
+        conf = "/etc/X11/xrdp/xorg.conf"
+        opt = '[[:space:]]*Option[[:space:]]*"DRMDevice"'
+        bool_ko = t("SELinux boolean not set; xrdp cannot open a session")
+        sel_ko = t("xrdp-selinux not installed; xrdp cannot start X")
+        return (
+            "if command -v dnf >/dev/null 2>&1 && rpm -q xrdp >/dev/null 2>&1 "
+            "&& ! rpm -q xrdp-selinux >/dev/null 2>&1 "
+            "&& [ -e /sys/fs/selinux/enforce ]; then "
+            f'sudo dnf install -y xrdp-selinux || echo "   ⚠ {sel_ko}"; fi; '
+            f"if [ -f {conf} ] "
+            f"&& grep -q 'Driver[[:space:]]*\"xrdpdev\"' {conf} "
+            f"&& ! grep -q '^{opt}[[:space:]]*\"\"' {conf}; then "
+            f"if grep -q '^{opt}' {conf}; then "
+            f"sudo sed -i 's|^\\([[:space:]]*\\)Option[[:space:]]*"
+            f'"DRMDevice".*|\\1Option "DRMDevice" ""|\' {conf}; '
+            'else sudo sed -i \'/^[[:space:]]*Driver[[:space:]]*"xrdpdev"/a'
+            f'\\    Option "DRMDevice" ""\' {conf}; fi; fi; '
+            "if command -v zypper >/dev/null 2>&1 "
+            f"&& [ -e /sys/fs/selinux/booleans/{self._QEMU_XRDP_SEBOOL} ]; "
+            "then sudo semanage boolean -m --on "
+            f"{self._QEMU_XRDP_SEBOOL} >/dev/null 2>&1 "
+            f'|| echo "   ⚠ {bool_ko}"; fi; '
+        )
+
     # Accès distant des saveurs « x11 », par famille. Les saveurs « grd »
     # n'y passent qu'en repli, quand grdctl n'a pas de mode système.
     _QEMU_DESKTOP_REMOTE = {
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
-        "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+        # Le paquet xrdp de Fedora et d'EPEL ne tire pas xorgxrdp, son
+        # serveur X : sans lui, chaque session échoue à « waiting for the X
+        # server ». apt l'installe en dépendance.
+        "dnf": {"packages": "xrdp xorgxrdp", "port": 3389, "client": "RDP"},
         "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
         "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         # Déclaré par le module de bureau NixOS, rien à installer.
@@ -1554,7 +1614,7 @@ class QemuInstallMixin:
             # aucune session GNOME à ouvrir. Une unité absente n'est pas une
             # erreur, d'où la boucle plutôt qu'un seul « disable » à deux
             # unités, qui s'arrêterait sur la première inconnue.
-            "if [ -x /usr/sbin/xrdp ] || command -v xrdp >/dev/null 2>&1; then "
+            f"if {self._QEMU_XRDP_PRESENT}; then "
             "for u in xrdp xrdp-sesman; do "
             'sudo systemctl disable --now "$u" >/dev/null 2>&1 || true; '
             "done; fi; "
@@ -2063,18 +2123,19 @@ class QemuInstallMixin:
             # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
             # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
             # sans session à ouvrir, ne le remplacerait pas.
-            # Debian et openSUSE posent xrdp dans /usr/sbin, absent du PATH
-            # d'un utilisateur : « command -v » seul ne l'y trouve pas. NixOS
-            # le déclare sans le mettre dans aucun PATH : son unité fait foi.
-            + 'elif [ "$EL_REM" != off ] && { [ -x /usr/sbin/xrdp ] '
-            "|| command -v xrdp >/dev/null 2>&1 "
-            + (
-                "|| systemctl cat xrdp.service >/dev/null 2>&1; "
-                if nix
-                else "; "
-            )
-            + "}; "
-            "then sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
+            + f'elif [ "$EL_REM" != off ] && {self._QEMU_XRDP_PRESENT}; then '
+            # La clé TLS de Debian 12 (lien vers celle de ssl-cert, en 0640)
+            # n'est lisible qu'au groupe ssl-cert, où le paquet ne met pas le
+            # compte xrdp : xrdp retombe alors sur la sécurité RDP classique,
+            # que les clients FreeRDP 3 refusent (somme MAC rejetée). Le
+            # redémarrage applique l'appartenance au démon déjà lancé par le
+            # paquet.
+            + "if getent group ssl-cert >/dev/null 2>&1 "
+            "&& id xrdp >/dev/null 2>&1; then "
+            "sudo usermod -aG ssl-cert xrdp >/dev/null 2>&1 || true; fi; "
+            + self._qemu_xrdp_tuning_cmd()
+            + "sudo systemctl enable xrdp >/dev/null 2>&1 || true; "
+            "sudo systemctl restart xrdp >/dev/null 2>&1 || true; "
             f'echo "   {t("Remote desktop:")} RDP 3389"; '
             # L'IP est sur le réseau PRIVÉ de libvirt : annoncer le port sans
             # dire comment l'atteindre ne sert à rien. La VM connaît sa propre
@@ -2129,6 +2190,9 @@ class QemuInstallMixin:
                 "services.xrdp.openFirewall = true;",
                 "services.xrdp.defaultWindowManager ="
                 f' "{de["x_session"]}";',
+                "security.polkit.extraConfig = ''\n"
+                + self._QEMU_POLKIT_REMOTE
+                + "\n'';",
             ]
         else:
             acces = self._qemu_remote_port(remote, "nixos")
@@ -2322,6 +2386,11 @@ class QemuInstallMixin:
                 f"cp /etc/i3/config {cfg} && chmod 644 {cfg}; fi; " + leap
             )
         nix = distro == "nixos"
+        if not nix:
+            # « grd » : le repli xrdp de GNOME (grdctl sans mode système)
+            # ouvre lui aussi des sessions xrdp.
+            if remote in ("x11", "grd"):
+                out += self._qemu_polkit_remote_cmd()
         if remote == "krdp":
             out += self._qemu_krdp_setup_cmd(
                 self._qemu_desktop_value(de, "service", distro, version), nix
@@ -2329,6 +2398,36 @@ class QemuInstallMixin:
         if flavour == "hyprland":
             out += self._qemu_hyprland_setup_cmd(distro, version, nix)
         return out
+
+    # Actions polkit qu'une session xrdp déclenche dès son ouverture et que
+    # la règle par défaut réserve à la session locale active : colord, qui
+    # crée le profil couleur de l'écran virtuel, et le contrôle réseau de
+    # NetworkManager. Sans règle, une boîte d'authentification couvre le
+    # bureau à chaque connexion.
+    _QEMU_POLKIT_REMOTE = (
+        "polkit.addRule(function (action, subject) {\n"
+        '  if (subject.user == "@EL_USER@" &&\n'
+        '      (action.id.indexOf("org.freedesktop.color-manager.") == 0 ||\n'
+        '       action.id == "org.freedesktop.NetworkManager.network-control"))'
+        "\n"
+        "    return polkit.Result.YES;\n"
+        "});"
+    )
+
+    def _qemu_polkit_remote_cmd(self):
+        """Bloc shell : la règle _QEMU_POLKIT_REMOTE pour le compte de la
+        VM, écrite si absente, là où polkit lit /etc/polkit-1/rules.d. Le
+        dossier est fermé au compte (750 ou 700, à polkitd) : la présence se
+        teste sous sudo. Un échec n'est qu'un avertissement."""
+        r = "/etc/polkit-1/rules.d/45-erplibre-remote.rules"
+        ko = t("polkit rule not written; xrdp sessions may ask for a password")
+        return (
+            f"if [ -d /etc/polkit-1 ] && ! sudo test -e {r}; then "
+            f"printf '%s\\n' {self._qemu_sh_lines(self._QEMU_POLKIT_REMOTE)} "
+            '| sed "s/@EL_USER@/$(id -un)/" '
+            f"| sudo install -D -m 644 /dev/stdin {r} "
+            f'|| echo "   ⚠ {ko}"; fi; '
+        )
 
     def _qemu_autologin_cmd(self, service, session):
         """Bloc shell : ouvre d'office la session `session` du compte de la

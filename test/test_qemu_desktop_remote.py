@@ -85,6 +85,12 @@ def _acces(cmd):
     return cmd[cmd.index("EL_REM=") :]
 
 
+def _touche_xrdp(ligne):
+    """Vrai pour un appel qui pose, active ou coupe xrdp ; la sonde de
+    présence (« systemctl cat xrdp.service ») n'en est pas un."""
+    return "xrdp" in ligne and ligne != "systemctl cat xrdp.service"
+
+
 class _Invite:
     """Un invité simulé : un PATH fermé, des doublures qui notent leurs
     appels dans un journal, et quelques vrais outils dont le bloc a besoin
@@ -157,12 +163,13 @@ class _Invite:
         # paquets posés : les faux gestionnaires ne l'apportent pas.
         for sonde in {d["probe"] for d in TODO._QEMU_DESKTOP.values()}:
             self.stub(sonde, log=False)
-        self.stub("systemctl")
-        # Les binaires que le bloc sonde après l'installation : les
-        # doublures des gestionnaires de paquets ne posent rien, l'invité
-        # simulé a donc son bureau d'avance.
-        self.stub("gnome-shell", log=False)
-        self.stub("cinnamon", log=False)
+        # Une unité xrdp n'existe que là où le test a posé xrdp ; toute
+        # autre unité existe.
+        self.stub(
+            "systemctl",
+            'case "$*" in "cat xrdp.service") '
+            '[ -x "${0%/*}/xrdp" ] || exit 1;; esac',
+        )
         self.stub(
             "getent",
             "echo 'gnome-remote-desktop:x:900:900::"
@@ -256,6 +263,11 @@ class _Invite:
         "/etc/nixos/configuration.nix",
         "/etc/nixos/erplibre-desktop.nix",
         "/var/lib/erplibre/ca-bundle.crt",
+        "/etc/X11/xrdp/xorg.conf",
+        "/etc/polkit-1",
+        "/sys/fs/selinux/enforce",
+        "/sys/fs/selinux/booleans/"
+        "unconfined_service_transition_to_unconfined_user",
     )
 
     def etc(self, chemin):
@@ -731,7 +743,7 @@ class TestItRuns(unittest.TestCase):
             "dnf -y -x firewalld group install workstation-product-environment",
             log,
         )
-        self.assertFalse(any("xrdp" in ligne for ligne in log), log)
+        self.assertFalse(any(_touche_xrdp(ligne) for ligne in log), log)
         self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
         self.assertIn(t("password chosen at deployment"), out)
         self.assertTrue(
@@ -842,7 +854,9 @@ class TestItRuns(unittest.TestCase):
                 rc, out, log = vm.run(_cmd("gnome"), "fedora")
                 self.assertEqual(0, rc, out)
                 self._non_annonce(out)
-                self.assertFalse(any("xrdp" in ligne for ligne in log), log)
+                self.assertFalse(
+                    any(_touche_xrdp(ligne) for ligne in log), log
+                )
 
     def test_an_inactive_daemon_is_not_announced(self):
         self.vm.stub("dnf")
@@ -876,7 +890,7 @@ class TestItRuns(unittest.TestCase):
         rc, out, log = self.vm.run(_cmd("gnome", distro="ubuntu"))
         self.assertEqual(0, rc, out)
         self.assertIn("systemctl disable --now xrdp", log)
-        self.assertNotIn("systemctl enable --now xrdp", log)
+        self.assertNotIn("systemctl restart xrdp", log)
         self.assertFalse(
             any(
                 ligne.startswith("apt-get") and "xrdp" in ligne
@@ -985,7 +999,7 @@ class TestItRuns(unittest.TestCase):
             ),
             log,
         )
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
         self.assertFalse(any("grdctl --system" in ligne for ligne in log))
         self.assertIn("RDP 3389", out)
 
@@ -993,7 +1007,7 @@ class TestItRuns(unittest.TestCase):
         self._apt()
         rc, out, log = self.vm.run(_cmd("gnome", distro="debian"))
         self.assertEqual(0, rc, out)
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
 
     def test_a_missing_xrdp_only_warns(self):
         self.vm.stub("apt-get", 'case " $* " in *" xrdp "*) exit 100;; esac')
@@ -1185,6 +1199,196 @@ class TestNewFlavoursRun(unittest.TestCase):
             _indice(log, "install @kde-desktop-environment"),
         )
 
+    _XORG = (
+        'Section "Device"\n'
+        '    Identifier "Video Card (xrdpdev)"\n'
+        '    Driver "xrdpdev"\n'
+        "{drm}"
+        '    Option "DRI3" "1"\n'
+        "EndSection\n"
+    )
+
+    def _xorg_conf(self, drm):
+        conf = self.vm.etc("/etc/X11/xrdp/xorg.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text(self._XORG.format(drm=drm))
+        return conf
+
+    def test_xorgxrdp_glamor_is_turned_off(self):
+        """xorgxrdp 0.9 relit de faux pixels du GPU virgl : DRMDevice vide
+        le fait rendre en logiciel."""
+        conf = self._xorg_conf(
+            '    Option "DRMDevice" "/dev/dri/renderD128"\n'
+        )
+        self._xrdp_apt()
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            self._XORG.format(drm='    Option "DRMDevice" ""\n'),
+            conf.read_text(),
+        )
+        self.assertIn("systemctl restart xrdp", log)
+
+    def test_an_absent_drmdevice_line_is_added_empty(self):
+        """Sans la ligne, xorgxrdp prend le nœud par défaut : elle est
+        ajoutée, vide, sous le pilote."""
+        conf = self._xorg_conf("")
+        self._xrdp_apt()
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="12")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            '    Driver "xrdpdev"\n    Option "DRMDevice" ""\n',
+            conf.read_text(),
+        )
+        # Rejoué, le fichier ne bouge plus.
+        avant = conf.read_text()
+        self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(avant, conf.read_text())
+
+    def test_opensuse_lets_xrdp_open_the_user_session(self):
+        """pam_selinux donne à la session le contexte de l'utilisateur ; le
+        booléen permet à xrdp-sesman d'y passer."""
+        self.vm.stub("zypper")
+        self.vm.stub("semanage")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        booleen = self.vm.etc(
+            "/sys/fs/selinux/booleans/"
+            "unconfined_service_transition_to_unconfined_user"
+        )
+        booleen.parent.mkdir(parents=True, exist_ok=True)
+        booleen.write_text("0 0\n")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(
+                log,
+                "semanage boolean -m --on "
+                "unconfined_service_transition_to_unconfined_user",
+            ),
+            _indice(log, "systemctl restart xrdp"),
+        )
+
+    def test_apt_never_touches_selinux(self):
+        self._xrdp_apt()
+        self.vm.stub("semanage")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertFalse(any("semanage" in ligne for ligne in log), log)
+
+    def test_dnf_names_xrdp_selinux_where_selinux_runs(self):
+        """xrdp ne fait que recommander son module SELinux ; dnf l'écarte
+        quand la politique de l'image est trop ancienne."""
+        self.vm.stub("dnf")
+        self.vm.stub(
+            "rpm", 'case "$*" in *xrdp-selinux*) exit 1;; *) exit 0;; esac'
+        )
+        enforce = self.vm.etc("/sys/fs/selinux/enforce")
+        enforce.parent.mkdir(parents=True, exist_ok=True)
+        enforce.write_text("1\n")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y xrdp-selinux"),
+            _indice(log, "systemctl restart xrdp"),
+        )
+
+    def _polkit(self):
+        """« install » qui écrit vraiment, et le dossier de polkit."""
+        self.vm.stub("install", 'cat > "${@: -1}"')
+        regles = self.vm.etc("/etc/polkit-1") / "rules.d"
+        regles.mkdir(parents=True)
+        return regles / "45-erplibre-remote.rules"
+
+    def test_xrdp_flavours_get_the_polkit_rule(self):
+        """colord et NetworkManager couvriraient le bureau xrdp d'une boîte
+        d'authentification ; la règle nomme le compte de la VM."""
+        self._xrdp_apt()
+        regle = self._polkit()
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        texte = regle.read_text()
+        self.assertIn(f'subject.user == "{compte}"', texte)
+        self.assertNotIn("@EL_USER@", texte)
+        self.assertIn('"org.freedesktop.color-manager."', texte)
+
+    def test_gnome_xrdp_fallback_gets_the_polkit_rule(self):
+        """GNOME sans mode système de grdctl ouvre ses sessions par xrdp."""
+        self._xrdp_apt()
+        self.vm.grdctl(systeme=False)
+        regle = self._polkit()
+        rc, out, _log = self.vm.run(
+            _cmd("gnome", distro="debian", version="12")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertTrue(regle.exists())
+
+    def test_an_edited_polkit_rule_is_kept(self):
+        self._xrdp_apt()
+        regle = self._polkit()
+        regle.write_text("// réglée par l'administrateur\n")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual("// réglée par l'administrateur\n", regle.read_text())
+        # rules.d est fermé au compte (750 ou 700, à polkitd) : la présence
+        # ne se voit que sous sudo.
+        self.assertIn(
+            "! sudo test -e /etc/polkit-1/rules.d/45-erplibre-remote.rules",
+            _cmd("xfce", distro="debian", version="13"),
+        )
+
+    def test_xrdp_selinux_is_left_alone_when_present_or_without_selinux(self):
+        self.vm.stub("dnf")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        for rpm, enforce in (
+            ("exit 0", True),
+            ('case "$*" in *xrdp-selinux*) exit 1;; esac', False),
+        ):
+            with self.subTest(rpm=rpm, enforce=enforce):
+                self.vm.stub("rpm", rpm)
+                fichier = self.vm.etc("/sys/fs/selinux/enforce")
+                fichier.parent.mkdir(parents=True, exist_ok=True)
+                if enforce:
+                    fichier.write_text("1\n")
+                elif fichier.exists():
+                    fichier.unlink()
+                self.vm.log.write_text("")
+                rc, out, log = self.vm.run(
+                    _cmd("xfce", distro="fedora", version="44"), "fedora"
+                )
+                self.assertEqual(0, rc, out)
+                self.assertNotIn("dnf install -y xrdp-selinux", log)
+                self.assertFalse(any("semanage" in ligne for ligne in log))
+
+    def test_dnf_xrdp_comes_with_its_x_server(self):
+        """xorgxrdp n'est pas une dépendance du xrdp de Fedora et d'EPEL :
+        sans lui, toute session échoue à attendre le serveur X."""
+        self.vm.stub("dnf")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf install -y xrdp xorgxrdp", log)
+
     def test_a_refused_exclusion_is_retried_without_it(self):
         self.vm.stub("dnf", 'case "$*" in *" -x "*) exit 1;; esac')
         rc, out, log = self.vm.run(
@@ -1322,11 +1526,46 @@ class TestNewFlavoursRun(unittest.TestCase):
             "dbus-x11 xrdp",
             " ".join(log),
         )
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
         self.assertIn("RDP 3389", out)
         self.assertEqual(
             "/usr/sbin/lightdm\n",
             self.vm.etc("/etc/X11/default-display-manager").read_text(),
+        )
+
+    def test_xrdp_outside_the_path_is_enabled_by_its_unit(self):
+        """openSUSE pose xrdp dans /usr/sbin, hors du PATH du compte : seule
+        l'unité le montre, et le bloc l'active quand même."""
+        self.vm.stub("zypper")
+        self.vm.stub(
+            "systemctl",
+            'case "$*" in "cat xrdp.service") exit 0;; esac',
+        )
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("systemctl restart xrdp", log)
+        self.assertIn("RDP 3389", out)
+
+    def test_xrdp_joins_ssl_cert_before_its_restart(self):
+        """Debian 12 : la clé TLS n'est lisible qu'au groupe ssl-cert ; le
+        compte xrdp y entre, puis le démon redémarre pour la lire."""
+        self._xrdp_apt()
+        vrai_id = shutil.which("id")
+        # bin/id est un lien vers le vrai : l'écrire écrirait au travers.
+        (self.vm.bin / "id").unlink()
+        self.vm.stub(
+            "id",
+            f'case "$1" in xrdp) exit 0;; esac; exec {vrai_id} "$@"',
+            log=False,
+        )
+        self.vm.stub("usermod")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "usermod -aG ssl-cert xrdp"),
+            _indice(log, "systemctl restart xrdp"),
         )
 
     def test_hyprland_on_apt_leaves_the_display_manager_file_alone(self):
@@ -1582,12 +1821,21 @@ class TestNixosDesktop(unittest.TestCase):
                 )
 
     def test_the_vm_account_is_substituted_where_a_session_opens(self):
-        """Plasma et Hyprland ouvrent la session du compte d'office ; le
-        nom n'est connu que dans l'invité."""
-        for flavour in ("plasma", "hyprland"):
+        """Plasma et Hyprland ouvrent la session du compte d'office, et la
+        règle polkit des saveurs xrdp le nomme ; le nom n'est connu que dans
+        l'invité. COSMIC n'en a pas l'usage."""
+        for flavour in ("plasma", "hyprland", "xfce"):
             self.assertIn('"@EL_USER@"', self._module(flavour))
             self.assertIn('sed "s/@EL_USER@/$(id -un)/g"', self._nix(flavour))
-        self.assertNotIn("@EL_USER@", self._module("xfce"))
+        self.assertNotIn("@EL_USER@", self._module("cosmic"))
+
+    def test_xrdp_sessions_get_the_polkit_rule(self):
+        """colord et NetworkManager ouvriraient une boîte
+        d'authentification dans chaque session xrdp."""
+        module = self._module("xfce")
+        self.assertIn("security.polkit.extraConfig = ''", module)
+        self.assertIn("org.freedesktop.color-manager.", module)
+        self.assertNotIn("security.polkit", self._module("plasma"))
 
     def test_gnome_remote_desktop_is_wanted_by_the_graphical_target(self):
         self.assertIn(
@@ -1639,11 +1887,12 @@ class TestNixosDesktop(unittest.TestCase):
             )
 
     def test_xrdp_is_found_by_its_unit(self):
-        """NixOS ne met pas xrdp dans le PATH : l'annonce lit l'unité."""
+        """NixOS ne met xrdp dans aucun PATH, openSUSE le met dans /usr/sbin,
+        hors du PATH du compte : l'unité fait foi partout."""
         self.assertIn("systemctl cat xrdp.service", self._nix("xfce"))
-        self.assertNotIn(
+        self.assertIn(
             "systemctl cat xrdp.service",
-            _cmd("xfce", distro="debian", version="13"),
+            _cmd("xfce", distro="opensuse", version="16.0"),
         )
 
     def test_i3_reads_the_account_config_at_the_console(self):
@@ -1695,8 +1944,14 @@ class TestNixosDesktopRun(unittest.TestCase):
             rc, out, log = self.vm.run(cmd)
             self.assertEqual(0, rc, out)
         module = self.vm.etc("/etc/nixos/erplibre-desktop.nix").read_text()
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
         self.assertEqual(
-            TODO.__new__(TODO)._qemu_nixos_desktop_module("xfce"), module
+            TODO.__new__(TODO)
+            ._qemu_nixos_desktop_module("xfce")
+            .replace("@EL_USER@", compte),
+            module,
         )
         self.assertEqual(
             1, self.conf.read_text().count("./erplibre-desktop.nix")
@@ -1963,7 +2218,7 @@ class TestRemoteAccessPerRelease(unittest.TestCase):
             "exec startplasma-x11", (self.vm.home / ".xsession").read_text()
         )
         self.assertFalse((self.vm.home / ".config/krdpserverrc").exists())
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
 
     # --- wayvnc --------------------------------------------------------- #
 
