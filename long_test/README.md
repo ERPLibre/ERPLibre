@@ -539,7 +539,12 @@ its proof that every OIDC return address aims at an exposed name, judge what
 the bench writes. Last, every host that holds state carries `client_backup`, the
 directory's included: the engine proves it of the plan, and the replayed
 recipe restores each one — for the directory, it also checks that the restored
-LDIF replays.
+LDIF replays. A green recipe is not enough: the engine answers "not
+applicable" or "to be confirmed" when it cannot conclude, which is fair at
+an operator's but not on a fleet the bench just raised with everything those
+checks need. The bench therefore demands "OK" from the HTTPS, identity,
+OIDC-client and directory-account verdicts — those the engine's recipe knows
+how to render — and a missing one counts as a recipe that did not hold.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the

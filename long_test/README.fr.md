@@ -558,7 +558,13 @@ terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
 adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit. Enfin,
 tout hôte qui détient un état porte `client_backup`, l'annuaire compris : le
 moteur le prouve du plan, et la recette rejouée restaure chacun — pour
-l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue.
+l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue. Une recette
+verte ne suffit pas : le moteur répond « sans objet » ou « à confirmer » quand
+il ne peut pas conclure, ce qui est juste chez un exploitant, pas sur une
+flotte que le banc vient de faire naître avec tout ce que ces contrôles
+demandent. Le banc exige donc « OK » des verdicts HTTPS, d'identité, des
+clients OIDC et du compte de l'annuaire — ceux que la recette du moteur sait
+rendre —, et un verdict absent compte comme une recette non tenue.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

@@ -4805,6 +4805,119 @@ class TestLaRecetteSeJugeAPart(unittest.TestCase):
         self.assertIn("recette fictive", "\n".join(dits))
 
 
+def sortie_de_recette(**messages):
+    """Une sortie d'ansible où chaque verdict exigé imprime son message, « OK »
+    par défaut, sous la forme que la recette du moteur imprime."""
+    blocs = []
+    for titre in B.VERDICTS_EXIGES:
+        message = messages.get(titre, f"OK — {titre} jugé")
+        blocs.append(
+            f"TASK [{titre}] {'*' * 20}\n"
+            "ok: [hote-invente-01] => {\n"
+            '    "changed": false,\n'
+            f'    "msg": {json.dumps(message, ensure_ascii=False)}\n'
+            "}\n"
+        )
+    return "".join(blocs)
+
+
+class TestLaRecetteJugeCeQueLeBancPose(unittest.TestCase):
+    """Le moteur rend « SANS OBJET » ou « À CONFIRMER » quand il ne peut pas
+    conclure. Sur une flotte que le banc vient de faire naître avec tout ce
+    que ces verdicts demandent, ce n'est pas une recette tenue."""
+
+    def test_every_ok_verdict_holds(self):
+        self.assertEqual([], B.exigences_non_tenues(sortie_de_recette()))
+
+    def test_a_verdict_that_could_not_conclude_is_named(self):
+        for debut in ("SANS OBJET — rien", "À CONFIRMER — le secret"):
+            with self.subTest(debut=debut):
+                manques = B.exigences_non_tenues(
+                    sortie_de_recette(**{B.VERDICTS_EXIGES[0]: debut})
+                )
+                self.assertEqual(1, len(manques))
+                self.assertIn(B.VERDICTS_EXIGES[0], manques[0])
+
+    def test_a_verdict_absent_from_the_recipe_is_named(self):
+        """Le jeu qui le porte n'a pas tourné : aucun hôte, ou plus de jeu."""
+        sortie = sortie_de_recette().replace(B.VERDICTS_EXIGES[-1], "✔ Autre")
+        manques = B.exigences_non_tenues(sortie)
+        self.assertEqual(1, len(manques))
+        self.assertIn("absent", manques[0])
+
+    def test_only_what_the_engine_s_recipe_can_judge_is_demanded(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        os.makedirs(os.path.join(d, "playbooks"))
+        with open(os.path.join(d, "playbooks", "valider.yml"), "w") as f:
+            f.write(f'- name: "{B.VERDICTS_EXIGES[0]}"\n')
+        self.assertEqual((B.VERDICTS_EXIGES[0],), B.verdicts_exigibles(d))
+        # Recette illisible : tout est exigé, rien n'est excusé.
+        self.assertEqual(
+            B.VERDICTS_EXIGES, B.verdicts_exigibles(os.path.join(d, "x"))
+        )
+
+    def test_the_engine_s_recipe_judges_everything_the_bench_poses(self):
+        """Contre le moteur cloné, qui porte les jeux d'identité."""
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        self.assertEqual(B.VERDICTS_EXIGES, B.verdicts_exigibles(MOTEUR_CLONE))
+
+    def test_the_message_is_decoded_as_json(self):
+        """Une apostrophe ou un accent imprimés échappés se lisent tels
+        quels."""
+        texte = sortie_de_recette().replace(
+            "OK — ✔ Clients OIDC jugé", "OK \\u2014 l\\u2019annuaire"
+        )
+        verdicts = B.verdicts_de_recette(texte)
+        self.assertEqual(["OK — l’annuaire"], verdicts["✔ Clients OIDC"])
+
+    def test_a_green_recipe_that_did_not_judge_is_a_recipe_failure(self):
+        """Le code 0 ne suffit pas : la recette passe par la même porte qu'un
+        échec, et la boucle va quand même jusqu'au rasage."""
+        vrai = B.runner_du_banc()
+        sortie = sortie_de_recette(
+            **{"✔ Compte de l'annuaire": "À CONFIRMER — le secret"}
+        )
+
+        class Faux:
+            def base(self_inner):
+                return vrai.base()
+
+            def cible(self_inner, *a, **k):
+                return ("make", "valider")
+
+            def cite(self_inner, argv):
+                return " ".join(argv)
+
+            def jouer(self_inner, *a, **k):
+                return B.Fait(0, sortie, 1)
+
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        recettes = []
+        with (
+            mock.patch.object(B, "runner_du_banc", lambda: Faux()),
+            mock.patch.object(
+                B,
+                "chemin_journal",
+                lambda passe, cible, base="": os.path.join(d, "j.log"),
+            ),
+        ):
+            souci = B.joue_une_etape(
+                "/f/moteur",
+                {},
+                B.Etape("valider", (), "~2 min", False, False, True),
+                "env",
+                "",
+                lambda *a: None,
+                recettes,
+            )
+        self.assertEqual("", souci)
+        self.assertEqual(1, len(recettes))
+        self.assertIn("Compte de l'annuaire", recettes[0])
+
+
 class TestLEtapeDeposeSaSortie(unittest.TestCase):
     """Le journal se dépose que l'étape passe ou non — c'est l'étape VERTE qui
     en avait le plus besoin."""
@@ -4887,7 +5000,7 @@ class TestLEtapeDeposeSaSortie(unittest.TestCase):
         self.assertEqual(1, len(recettes))
 
     def test_a_replayed_recipe_that_holds_replaces_the_earlier_ones(self):
-        self.atelier(0, "toutes les recettes tiennent")
+        self.atelier(0, sortie_de_recette())
         dits = []
         recettes = ["make reconstruire : recette fictive"]
         etape = B.Etape("valider", (), "~2 min", False, False, True)

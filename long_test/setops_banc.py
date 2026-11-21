@@ -4957,6 +4957,80 @@ def recette_seule(sortie):
     )
 
 
+# LES VERDICTS DE LA RECETTE QUE LE BANC EXIGE « OK », parce qu'il pose ce
+# qu'ils jugent. Le moteur rend « SANS OBJET » ou « À CONFIRMER » quand il ne
+# peut pas conclure — légitime chez un exploitant, dont le compte d'amorçage a
+# changé de secret ; pas sur une flotte que le banc vient de faire naître avec
+# tout ce que ces verdicts demandent. Un verdict ABSENT compte aussi : le jeu
+# qui le porte n'a pas tourné.
+VERDICTS_EXIGES = (
+    "✔ Endpoints HTTPS",
+    "✔ Identité fédérée",
+    "✔ Clients OIDC",
+    "✔ Compte de l'annuaire",
+)
+
+
+def verdicts_de_recette(sortie):
+    """{titre de tâche: [message, …]} de chaque tâche « ✔ » de la sortie.
+
+    LU DANS LA SORTIE D'ANSIBLE TELLE QU'ELLE S'IMPRIME : l'en-tête de tâche,
+    puis une ligne `"msg": "…"` par hôte, chaîne JSON qu'on décode.
+    """
+    verdicts, courant = {}, None
+    for ligne in (sortie or "").splitlines():
+        tache = re.match(r"^TASK \[(.*)\]", ligne)
+        if tache:
+            courant = (
+                tache.group(1) if tache.group(1).startswith("✔") else None
+            )
+            if courant:
+                verdicts.setdefault(courant, [])
+            continue
+        message = re.match(r'^\s*"msg": (".*")\s*,?\s*$', ligne)
+        if courant and message:
+            try:
+                verdicts[courant].append(json.loads(message.group(1)))
+            except ValueError:
+                verdicts[courant].append(message.group(1))
+    return verdicts
+
+
+def verdicts_exigibles(moteur, exiges=VERDICTS_EXIGES):
+    """Ceux des verdicts exigés que la recette du moteur sait rendre.
+
+    LU DANS SA RECETTE, pas supposé : un moteur plus ancien ne juge pas tout
+    ce que le banc pose, et exiger un verdict qu'il ne sait pas rendre ferait
+    échouer chaque lancement sur l'outil, pas sur la flotte. Un verdict qu'il
+    DÉCLARE et ne rend pas reste un échec. Recette illisible : tous exigés.
+    """
+    try:
+        with open(
+            os.path.join(moteur, "playbooks", "valider.yml"), encoding="utf-8"
+        ) as lu:
+            texte = lu.read()
+    except OSError:
+        return tuple(exiges)
+    return tuple(titre for titre in exiges if titre in texte)
+
+
+def exigences_non_tenues(sortie, exiges=VERDICTS_EXIGES):
+    """Les verdicts exigés qui manquent ou ne disent pas « OK », nommés."""
+    verdicts = verdicts_de_recette(sortie)
+    manques = []
+    for titre in exiges:
+        messages = verdicts.get(titre)
+        if not messages:
+            manques.append(f"{titre} : absent de la recette")
+            continue
+        manques += [
+            f"{titre} : {m[:160]}"
+            for m in messages
+            if not m.lstrip().startswith("OK")
+        ]
+    return manques
+
+
 def joue_une_etape(
     moteur, env, etape, passe="", secret="", dire=print, recettes=None
 ):
@@ -4988,6 +5062,18 @@ def joue_une_etape(
     )
     if souci:
         dire(f"      journal non déposé : {souci}")
+    # UNE RECETTE VERTE QUI N'A PAS JUGÉ ce que le banc a posé ne tient pas :
+    # ses verdicts exigés passent par la même porte qu'un échec de recette.
+    manques = (
+        exigences_non_tenues(vu.sortie, verdicts_exigibles(moteur))
+        if etape.recette
+        else []
+    )
+    if vu.code == 0 and manques and recettes is not None:
+        souci = f"make {etape.cible} : " + " ; ".join(manques)
+        recettes.append(souci)
+        dire(f"      recette non tenue — {souci}")
+        return ""
     if vu.code != 0:
         souci = f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
         if recettes is not None and (

@@ -544,7 +544,12 @@ its proof that every OIDC return address aims at an exposed name, judge what
 the bench writes. Last, every host that holds state carries `client_backup`, the
 directory's included: the engine proves it of the plan, and the replayed
 recipe restores each one — for the directory, it also checks that the restored
-LDIF replays.
+LDIF replays. A green recipe is not enough: the engine answers "not
+applicable" or "to be confirmed" when it cannot conclude, which is fair at
+an operator's but not on a fleet the bench just raised with everything those
+checks need. The bench therefore demands "OK" from the HTTPS, identity,
+OIDC-client and directory-account verdicts — those the engine's recipe knows
+how to render — and a missing one counts as a recipe that did not hold.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
@@ -1162,7 +1167,13 @@ terrain imbriqué. Les validateurs du plan du moteur, et sa preuve que chaque
 adresse de retour OIDC vise un nom exposé, jugent ce que le banc écrit. Enfin,
 tout hôte qui détient un état porte `client_backup`, l'annuaire compris : le
 moteur le prouve du plan, et la recette rejouée restaure chacun — pour
-l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue.
+l'annuaire, elle vérifie aussi que le LDIF restauré se rejoue. Une recette
+verte ne suffit pas : le moteur répond « sans objet » ou « à confirmer » quand
+il ne peut pas conclure, ce qui est juste chez un exploitant, pas sur une
+flotte que le banc vient de faire naître avec tout ce que ces contrôles
+demandent. Le banc exige donc « OK » des verdicts HTTPS, d'identité, des
+clients OIDC et du compte de l'annuaire — ceux que la recette du moteur sait
+rendre —, et un verdict absent compte comme une recette non tenue.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
