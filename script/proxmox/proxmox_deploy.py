@@ -51,8 +51,6 @@ DISK_CONTENT = ("images", "rootdir")
 # une seconde appliance en aurait fait une copie. Ces noms restent lisibles
 # ici — une quarantaine d'appels et leurs tests les nomment ainsi, et un test
 # qui REMPLACE `run` le fait sur ce module.
-from script.vm import verbs as vm_verbs  # noqa: E402
-from script.vm.backend import pve_handle  # noqa: E402
 from script.remote.appliance_ssh import (  # noqa: E402,F401
     collapse_progress,
     run,
@@ -60,6 +58,8 @@ from script.remote.appliance_ssh import (  # noqa: E402,F401
     strip_ssh_noise,
     wrap_privilege,
 )
+from script.vm import verbs as vm_verbs  # noqa: E402
+from script.vm.backend import pve_handle  # noqa: E402
 
 
 def timed_out(code: int, out: str) -> bool:
