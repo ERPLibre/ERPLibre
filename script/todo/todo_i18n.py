@@ -3695,9 +3695,9 @@ TRANSLATIONS = {
         "fr": "{installed} installé, {code} dans le code",
         "en": "{installed} installed, {code} in the code",
     },
-    "📥 Rebuild the QEMU cache": {
-        "fr": "📥 Rebâtir le cache QEMU",
-        "en": "📥 Rebuild the QEMU cache",
+    "📥 Rebuild the QEMU cache: {installed} → {code}": {
+        "fr": "📥 Rebâtir le cache QEMU : {installed} → {code}",
+        "en": "📥 Rebuild the QEMU cache: {installed} → {code}",
     },
     "Execute › Deploy › QEMU cache › Cache - Install or reinstall builds the binary from the code of this checkout and puts it in place, with sudo; the service then runs the version of the code.": {
         "fr": "Exécution › Déployer › Cache QEMU › Cache - Installer ou réinstaller bâtit le binaire depuis le code de ce checkout et le met en place, avec sudo ; le service tourne alors la version du code.",

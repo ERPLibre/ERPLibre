@@ -366,7 +366,9 @@ class TestCacheQemu(unittest.TestCase):
         self.assertIn("0.2.9", resultat.resume)
         self.assertIn("0.2.18", resultat.resume)
         (resolution,) = resultat.resolutions
-        self.assertFalse(resolution.actionnable)
+        self.assertTrue(resolution.actionnable)
+        self.assertEqual(h.CACHE_QEMU, resolution.cle)
+        self.assertIn("0.2.9 → 0.2.18", resolution.libelle)
         self.assertEqual(
             [
                 t(
@@ -378,6 +380,33 @@ class TestCacheQemu(unittest.TestCase):
             ],
             resolution.lignes,
         )
+
+    def test_its_resolution_runs_the_install_of_todo(self):
+        """L'entrée du menu Résolution lance la même installation que
+        Déployer › Cache QEMU › Installer ou réinstaller, qui pose ses
+        propres questions."""
+        self.installer("erplibre_go_qemu_cache 0.2.9")
+        (resolution,) = self.verifier().resolutions
+        rebatir = mock.Mock()
+        change = h.executer_resolution(
+            h.Contexte(self.racine),
+            resolution,
+            demander=lambda _q: self.fail("no question of its own"),
+            sortie=lambda _l: None,
+            rebatir_cache_qemu=rebatir,
+        )
+        rebatir.assert_called_once_with()
+        self.assertTrue(change)
+
+    def test_without_the_install_its_resolution_changes_nothing(self):
+        self.installer("erplibre_go_qemu_cache 0.2.9")
+        (resolution,) = self.verifier().resolutions
+        lignes = []
+        change = h.executer_resolution(
+            h.Contexte(self.racine), resolution, sortie=lignes.append
+        )
+        self.assertFalse(change)
+        self.assertEqual([t("Nothing changed.")], lignes)
 
     def test_a_newer_binary_is_information(self):
         self.installer("erplibre_go_qemu_cache 0.3.0")
@@ -1849,6 +1878,12 @@ class TestMenu(unittest.TestCase):
             obj.prompt_healthcheck()
         executer.assert_called_once()
         self.assertIs(executer.call_args.args[1], res)
+        # L'installation du cache QEMU de TODO est passée à la résolution
+        # qui le rebâtit, comme le déploiement des commandes Claude.
+        self.assertEqual(
+            executer.call_args.kwargs["rebatir_cache_qemu"],
+            obj._deploy_qemu_cache,
+        )
         # La vérification repasse ; sans résolution, l'entrée disparaît.
         self.assertEqual(appels, [None, [manifeste]])
 

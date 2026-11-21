@@ -1604,6 +1604,7 @@ class TODO(
                     resolution,
                     mettre_a_jour_venv=self.mettre_a_jour_venv,
                     deployer_commande_claude=self.deployer_commande_claude,
+                    rebatir_cache_qemu=self._deploy_qemu_cache,
                 )
                 print()
                 # La vérification repasse : ses résolutions suivent l'état.

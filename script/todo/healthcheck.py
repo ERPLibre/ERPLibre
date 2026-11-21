@@ -1808,6 +1808,9 @@ def verifier_odoo(ctx):
 # binaire qui annonce moins tourne sans les correctifs qui ont suivi.
 CACHE_QEMU_BINAIRE = "/usr/local/bin/erplibre_go_qemu_cache"
 CACHE_QEMU_SOURCE = os.path.join("script", "qemu_cache", "main.go")
+# La clé de sa résolution : rebâtir le cache par la même entrée de TODO que
+# Déployer › Cache QEMU › Installer ou réinstaller.
+CACHE_QEMU = "cache_qemu"
 _VERSION_GO = re.compile(r'^const version = "(\d+(?:\.\d+)*)"', re.MULTILINE)
 _VERSION_ANNONCEE = re.compile(r"(\d+(?:\.\d+)+)")
 
@@ -1853,8 +1856,10 @@ def verifier_cache_qemu(ctx):
         texte,
         resolutions=[
             Resolution(
-                None,
-                t("📥 Rebuild the QEMU cache"),
+                CACHE_QEMU,
+                t("📥 Rebuild the QEMU cache: {installed} → {code}").format(
+                    installed=installee, code=code
+                ),
                 [
                     t(
                         "Execute › Deploy › QEMU cache › Cache - Install or reinstall builds the binary from the code of this checkout and puts it in place, with sudo; the service then runs the version of the code."
@@ -2226,14 +2231,19 @@ def executer_resolution(
     sortie=print,
     mettre_a_jour_venv=None,
     deployer_commande_claude=None,
+    rebatir_cache_qemu=None,
 ):
     """Lance `resolution` sur les dépôts que l'utilisateur choisit. Rend
     True si quelque chose a changé. `demander` vaut `input` par défaut, lu
     à l'appel. `mettre_a_jour_venv(choix)` met à jour un venv : celle du
     TODO, qui sait installer un lock et faire le rapport.
     `deployer_commande_claude(commande, gabarit)` déploie une commande
-    Claude : celle du TODO, qui sait garder ou demander l'identité git."""
+    Claude : celle du TODO, qui sait garder ou demander l'identité git.
+    `rebatir_cache_qemu()` est l'installation du cache de TODO, avec ses
+    questions et sa confirmation."""
     demander = demander or input
+    if resolution.cle == CACHE_QEMU:
+        return _rebatir_cache_qemu(sortie, rebatir_cache_qemu)
     if resolution.cle == HOOKS_GIT:
         return _installer_hooks(ctx, demander, sortie)
     if resolution.cle == CLAUDE:
@@ -2257,6 +2267,17 @@ def executer_resolution(
     if resolution.cle == freeze_resolution.MAJ_GEL:
         return _mettre_a_jour_gel(ctx, resolution.depots, demander, sortie)
     return False
+
+
+def _rebatir_cache_qemu(sortie, rebatir):
+    """Lance l'installation du cache QEMU de TODO, qui demande ses ports et
+    son dossier puis confirme avant sudo. Rend True : la vérification qui
+    repasse ensuite dit si la version a changé."""
+    if rebatir is None:
+        sortie(t("Nothing changed."))
+        return False
+    rebatir()
+    return True
 
 
 def _oui(demander, question):
