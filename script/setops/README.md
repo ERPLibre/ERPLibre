@@ -148,6 +148,9 @@ What the engine declares, read as text:
 - `plage_ansible(moteur)`: the `serveur_ops_ansible` requirement, exactly as
   the engine writes it — it reaches pip unrephrased, so a disagreement shows
   instead of silently correcting itself;
+- `python_cible(moteur)`: the target `major.minor` the engine's runner lock
+  declares, `None` when it does not say; a test holds `MINEUR_CIBLE` equal to
+  it, so the constant cannot drift from the engine it serves;
 - `bibliotheques_epinglees(moteur)` and `collections_epinglees(moteur)`: the
   (name, version) the engine pins, `None` when the file does not read;
 - `specifieur(texte)`, `version(texte)` and
