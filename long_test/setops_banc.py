@@ -1961,6 +1961,12 @@ SECRETS_LOCATAIRE = (
     ("vault_forgejo_secret_key", FORME_OPAQUE),
     ("vault_forgejo_internal_token", FORME_OPAQUE),
     ("vault_forgejo_oidc", FORME_OPAQUE),
+    # L'observabilité — voir `pose_l_observabilite`. L'exportateur de la base
+    # est relevé dès qu'elle existe : sans son secret il n'est pas posé, et sa
+    # cible reste éteinte.
+    ("vault_grafana_admin", FORME_OPAQUE),
+    ("vault_grafana_oidc", FORME_OPAQUE),
+    ("vault_pg_exportateur", FORME_OPAQUE),
 )
 
 
@@ -2297,6 +2303,9 @@ APPLICATIONS_COUVERTES = (
     "keycloak",
     "postgresql",
     "forgejo",
+    "prometheus",
+    "loki",
+    "grafana",
 )
 
 
@@ -2642,28 +2651,49 @@ def domaine_interne(eco):
     return intrant_du_modele(eco, "domaine_interne")
 
 
-def texte_client_forge(domaine, organisation):
-    """Le `group_vars/serveur_keycloak.yml` qui déclare la forge cliente, ou
+# LES APPLICATIONS CLIENTES OIDC que le banc expose, et l'adresse de retour
+# que chacune annonce. L'identifiant du client est celui que le rôle de
+# l'application présente — une épreuve le confronte à son défaut. `{nom}` est
+# le nom de fournisseur que la forge dérive de l'organisation.
+CLIENTS_OIDC = (
+    ("forgejo", "forgejo", "/user/oauth2/{nom}/callback"),
+    ("grafana", "grafana", "/login/generic_oauth"),
+)
+
+
+def texte_clients_oidc(registre, organisation):
+    """Le `group_vars/serveur_keycloak.yml` qui déclare les clients OIDC, ou
     « ».
 
-    DES NOMS LITTÉRAUX, et non `{{ domaine_interne }}` : le moteur prouve que
-    chaque URI de retour vise un nom que le plan expose, en lisant le fichier
-    tel qu'il est écrit. Le chemin de retour est celui que la forge annonce :
-    son nom de fournisseur est celui de l'organisation, en minuscules et sans
-    espaces, comme le rôle le dérive.
+    DÉRIVÉ DU REGISTRE : un client par application cliente présente, sous le
+    nom qu'elle expose. DES NOMS LITTÉRAUX, et non `{{ domaine_interne }}` :
+    le moteur prouve que chaque URI de retour vise un nom que le plan expose,
+    en lisant le fichier tel qu'il est écrit. Le nom de fournisseur de la
+    forge est celui de l'organisation, en minuscules et sans espaces, comme
+    son rôle le dérive.
     """
-    if not (domaine or "").strip() or not (organisation or "").strip():
+    if not (organisation or "").strip():
         return ""
-    forge = f"https://{SOUS_DOMAINE_FORGE}.{domaine.strip()}"
     fournisseur = organisation.strip().lower().replace(" ", "-")
-    return f"""---
-# Posé par le banc : la forge qu'il expose s'authentifie par l'identité.
-serveur_keycloak_clients:
-  - clientId: forgejo
-    redirect_uris: ["{forge}/user/oauth2/{fournisseur}/callback"]
-    web_origins: ["{forge}"]
-    secret: "{{{{ vault_forgejo_oidc }}}}"
-"""
+    entrees = []
+    for application, client, retour in CLIENTS_OIDC:
+        expose = ((registre or {}).get(application) or {}).get("expose") or []
+        if not expose:
+            continue
+        base = f"https://{expose[0]}"
+        entrees.append(
+            f"  - clientId: {client}\n"
+            f'    redirect_uris: ["{base}{retour.format(nom=fournisseur)}"]\n'
+            f'    web_origins: ["{base}"]\n'
+            f'    secret: "{{{{ vault_{client}_oidc }}}}"\n'
+        )
+    if not entrees:
+        return ""
+    return (
+        "---\n# Posé par le banc : les applications qu'il expose"
+        " s'authentifient par l'identité.\nserveur_keycloak_clients:\n"
+        + "".join(entrees)
+    )
 
 
 def texte_forge():
@@ -2843,19 +2873,103 @@ def pose_l_identite(eco, hote_autorite):
     )
     if souci:
         return souci
-    variables = os.path.join(eco, "inventories", "production", "group_vars")
-    client = texte_client_forge(
-        domaine, intrant_du_modele(eco, "organisation")
+    return pose_un_fichier(
+        os.path.join(
+            eco,
+            "inventories",
+            "production",
+            "group_vars",
+            f"{GROUPE_FORGE}.yml",
+        ),
+        texte_forge(),
     )
-    if not client:
+
+
+# L'OBSERVABILITÉ QUE LE BANC AJOUTE AU PLAN : métriques, journaux, tableaux.
+# Les trois sur UN hôte, et ce n'est pas un choix : Prometheus n'accepte que
+# la boucle locale, d'où lit le Grafana co-localisé. Leur présence active
+# chez TOUS les hôtes l'exportateur de métriques et l'agent de journaux, et la
+# recette juge alors chaque cible relevée.
+FONCTION_OBSERVABILITE = "obs"
+APPLICATION_METRIQUES = "prometheus"
+GROUPE_METRIQUES = "serveur_prometheus"
+APPLICATION_JOURNAUX = "loki"
+GROUPE_JOURNAUX = "serveur_loki"
+APPLICATION_TABLEAUX = "grafana"
+GROUPE_TABLEAUX = "serveur_grafana"
+PORT_TABLEAUX = 3000
+SOUS_DOMAINE_TABLEAUX = "grafana"
+RESSOURCES_OBSERVABILITE = (("coeurs", 2), ("memoire", 3072))
+
+
+def pose_l_observabilite(eco, hote_autorite):
+    """Ajoute métriques, journaux et tableaux au plan, sur un hôte. Le souci,
+    ou « ». Les tableaux sont exposés, et s'authentifient par l'identité."""
+    domaine = domaine_interne(eco)
+    if not domaine:
+        return "le domaine interne du modèle ne s'est pas lu"
+    souci = pose_un_service(
+        eco,
+        hote_autorite,
+        FONCTION_OBSERVABILITE,
+        APPLICATION_METRIQUES,
+        GROUPE_METRIQUES,
+        hote_de_fonction(FONCTION_OBSERVABILITE),
+        champs_serveur=RESSOURCES_OBSERVABILITE,
+    )
+    if souci:
+        return souci
+    plan = os.path.join(eco, "plan")
+    registre = lit_applications(os.path.join(plan, "applications.yml")) or {}
+    hote = (registre.get(APPLICATION_METRIQUES) or {}).get("hote")
+    if not hote:
+        return "les métriques posées ne nomment pas leur hôte"
+    return pose_une_application(
+        eco,
+        APPLICATION_JOURNAUX,
+        flux_yaml((("groupe", GROUPE_JOURNAUX), ("hote", hote))),
+    ) or pose_une_application(
+        eco,
+        APPLICATION_TABLEAUX,
+        flux_yaml(
+            (
+                ("groupe", GROUPE_TABLEAUX),
+                ("hote", hote),
+                ("port", PORT_TABLEAUX),
+                ("expose", f"[{SOUS_DOMAINE_TABLEAUX}.{domaine}]"),
+            )
+        ),
+    )
+
+
+def pose_les_clients_oidc(eco, hote_autorite):
+    """Déclare à l'identité chaque application cliente exposée. Le souci, ou
+    « ». Posé APRÈS les applications : le fichier en dérive.
+
+    `hote_autorite` est reçu pour la signature commune des poses.
+    """
+    registre = lit_applications(os.path.join(eco, "plan", "applications.yml"))
+    if registre is None:
+        return "le registre des applications ne s'est pas lu"
+    if APPLICATION_IDENTITE not in registre:
+        return ""
+    texte = texte_clients_oidc(
+        registre, intrant_du_modele(eco, "organisation")
+    )
+    if not texte:
         return (
-            "l'organisation du modèle ne s'est pas lue : la forge n'aurait"
-            " pas de client"
+            "l'organisation du modèle ne s'est pas lue, ou aucune application"
+            " cliente n'est exposée"
         )
     return pose_un_fichier(
-        os.path.join(variables, f"{GROUPE_IDENTITE}.yml"), client
-    ) or pose_un_fichier(
-        os.path.join(variables, f"{GROUPE_FORGE}.yml"), texte_forge()
+        os.path.join(
+            eco,
+            "inventories",
+            "production",
+            "group_vars",
+            f"{GROUPE_IDENTITE}.yml",
+        ),
+        texte,
     )
 
 
@@ -2868,6 +2982,8 @@ APPLICATIONS_A_SAUVEGARDER = (
     APPLICATION_IDENTITE,
     APPLICATION_BASES,
     APPLICATION_FORGE,
+    APPLICATION_METRIQUES,
+    APPLICATION_JOURNAUX,
 )
 INTEGRATION_SAUVEGARDE = "client_backup"
 
@@ -2940,12 +3056,15 @@ def pose_les_sauvegardes(eco, hote_autorite):
 
 # CE QUE LE BANC AJOUTE AU PLAN, dans l'ordre où il l'ajoute. Une liste et non
 # deux appels écrits à la suite : c'est elle qu'une épreuve interroge.
-# L'IDENTITÉ VIENT APRÈS L'ANNUAIRE, à qui elle se fédère ; les sauvegardes
-# en dernier, une fois tous les détenteurs d'état au plan.
+# L'IDENTITÉ VIENT APRÈS L'ANNUAIRE, à qui elle se fédère ; ses clients après
+# les applications qu'ils déclarent ; les sauvegardes en dernier, une fois
+# tous les détenteurs d'état au plan.
 SERVICES_POSES = (
     pose_l_annuaire,
     pose_la_sauvegarde,
     pose_l_identite,
+    pose_l_observabilite,
+    pose_les_clients_oidc,
     pose_les_sauvegardes,
 )
 
@@ -4957,13 +5076,15 @@ def recette_seule(sortie):
     )
 
 
-# LES VERDICTS DE LA RECETTE QUE LE BANC EXIGE « OK », parce qu'il pose ce
-# qu'ils jugent. Le moteur rend « SANS OBJET » ou « À CONFIRMER » quand il ne
-# peut pas conclure — légitime chez un exploitant, dont le compte d'amorçage a
+# LES VERDICTS QUE LA RECETTE DU MOTEUR DOIT AU MOINS DÉCLARER, parce que le
+# banc pose ce qu'ils jugent. Le banc exige « OK » de TOUS ceux qu'elle
+# déclare : le moteur rend « SANS OBJET » ou « À CONFIRMER » quand il ne peut
+# pas conclure — légitime chez un exploitant, dont le compte d'amorçage a
 # changé de secret ; pas sur une flotte que le banc vient de faire naître avec
 # tout ce que ces verdicts demandent. Un verdict ABSENT compte aussi : le jeu
 # qui le porte n'a pas tourné.
 VERDICTS_EXIGES = (
+    "✔ Prometheus",
     "✔ Endpoints HTTPS",
     "✔ Identité fédérée",
     "✔ Clients OIDC",
@@ -4997,12 +5118,12 @@ def verdicts_de_recette(sortie):
 
 
 def verdicts_exigibles(moteur, exiges=VERDICTS_EXIGES):
-    """Ceux des verdicts exigés que la recette du moteur sait rendre.
+    """Les verdicts que la recette du moteur déclare, tous exigés « OK ».
 
-    LU DANS SA RECETTE, pas supposé : un moteur plus ancien ne juge pas tout
-    ce que le banc pose, et exiger un verdict qu'il ne sait pas rendre ferait
-    échouer chaque lancement sur l'outil, pas sur la flotte. Un verdict qu'il
-    DÉCLARE et ne rend pas reste un échec. Recette illisible : tous exigés.
+    LUS DANS SA RECETTE, pas supposés : un moteur plus ancien ne juge pas
+    tout ce que le banc pose, et exiger un verdict qu'il ne sait pas rendre
+    ferait échouer chaque lancement sur l'outil, pas sur la flotte. Un verdict
+    qu'il DÉCLARE et ne rend pas reste un échec. Recette illisible : `exiges`.
     """
     try:
         with open(
@@ -5011,7 +5132,11 @@ def verdicts_exigibles(moteur, exiges=VERDICTS_EXIGES):
             texte = lu.read()
     except OSError:
         return tuple(exiges)
-    return tuple(titre for titre in exiges if titre in texte)
+    return tuple(
+        dict.fromkeys(
+            re.findall(r'^\s*-?\s*name:\s*"(✔[^"]*)"', texte, re.MULTILINE)
+        )
+    )
 
 
 def exigences_non_tenues(sortie, exiges=VERDICTS_EXIGES):

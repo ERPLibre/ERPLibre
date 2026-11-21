@@ -546,6 +546,18 @@ checks need. The bench therefore demands "OK" from the HTTPS, identity,
 OIDC-client and directory-account verdicts — those the engine's recipe knows
 how to render — and a missing one counts as a recipe that did not hold.
 
+**The bench adds observability, so the metrics recipe judges every target.**
+Prometheus, Loki and Grafana share one host, capped at two cores and 3 GiB:
+Prometheus accepts only the loopback, where the co-located Grafana reads it.
+Their presence switches on the metrics exporter and the log agent on every
+host, and Grafana is exposed through the edge as a second OIDC client of the
+identity — the clients' file is now derived from the registry, one per exposed
+application whose role names an OIDC client. Prometheus scrapes a role's
+exporter as soon as its group is in the plan, while the role lays it down only
+when its secret exists: the bench seals that secret, otherwise the target
+stays down. The bench demands "OK" from every verdict the engine's recipe
+declares.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its

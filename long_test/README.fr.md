@@ -566,6 +566,18 @@ demandent. Le banc exige donc « OK » des verdicts HTTPS, d'identité, des
 clients OIDC et du compte de l'annuaire — ceux que la recette du moteur sait
 rendre —, et un verdict absent compte comme une recette non tenue.
 
+**Le banc ajoute l'observabilité, pour que la recette des métriques juge
+chaque cible.** Prometheus, Loki et Grafana partagent un hôte, plafonné à deux
+cœurs et 3 Gio : Prometheus n'accepte que la boucle locale, d'où le Grafana
+co-localisé le lit. Leur présence active l'exportateur de métriques et l'agent
+de journaux sur chaque hôte, et Grafana est exposé par l'edge comme second
+client OIDC de l'identité — le fichier des clients dérive désormais du
+registre, un par application exposée dont le rôle nomme un client OIDC.
+Prometheus relève l'exportateur d'un rôle dès que son groupe est au plan,
+alors que le rôle ne le pose que si son secret existe : le banc scelle ce
+secret, sans quoi la cible reste éteinte. Le banc exige « OK » de chaque
+verdict que la recette du moteur déclare.
+
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
 route pas : l'attente qui interroge la flotte jouerait sa borne entière puis la

@@ -4850,8 +4850,15 @@ class TestLaRecetteJugeCeQueLeBancPose(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         os.makedirs(os.path.join(d, "playbooks"))
         with open(os.path.join(d, "playbooks", "valider.yml"), "w") as f:
-            f.write(f'- name: "{B.VERDICTS_EXIGES[0]}"\n')
-        self.assertEqual((B.VERDICTS_EXIGES[0],), B.verdicts_exigibles(d))
+            f.write(
+                f'    - name: "{B.VERDICTS_EXIGES[0]}"\n'
+                '    - name: "Interroger quelque chose"\n'
+                '    - name: "✔ Un verdict que le banc ne connaît pas"\n'
+            )
+        self.assertEqual(
+            (B.VERDICTS_EXIGES[0], "✔ Un verdict que le banc ne connaît pas"),
+            B.verdicts_exigibles(d),
+        )
         # Recette illisible : tout est exigé, rien n'est excusé.
         self.assertEqual(
             B.VERDICTS_EXIGES, B.verdicts_exigibles(os.path.join(d, "x"))
@@ -4861,7 +4868,9 @@ class TestLaRecetteJugeCeQueLeBancPose(unittest.TestCase):
         """Contre le moteur cloné, qui porte les jeux d'identité."""
         if not os.path.isdir(MOTEUR_CLONE):
             self.skipTest("le clone du moteur n'est pas là")
-        self.assertEqual(B.VERDICTS_EXIGES, B.verdicts_exigibles(MOTEUR_CLONE))
+        self.assertLessEqual(
+            set(B.VERDICTS_EXIGES), set(B.verdicts_exigibles(MOTEUR_CLONE))
+        )
 
     def test_the_message_is_decoded_as_json(self):
         """Une apostrophe ou un accent imprimés échappés se lisent tels
@@ -5528,7 +5537,9 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
         )
         self.assertEqual(0, vu.returncode, vu.stdout + vu.stderr)
 
-    def test_the_client_is_the_one_the_forge_presents(self):
+    def test_each_client_is_the_one_its_application_presents(self):
+        """Un client par application cliente exposée ; son identifiant et
+        son secret sont ceux que le rôle de l'application lit."""
         eco = self.eco_pose()
         chemin = os.path.join(
             eco,
@@ -5539,18 +5550,23 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
         )
         with open(chemin, encoding="utf-8") as f:
             clients = yaml.safe_load(f.read())["serveur_keycloak_clients"]
-        self.assertEqual(1, len(clients))
-        defauts = lu_au_moteur(
-            "roles", "serveur_forgejo", "defaults", "main.yml"
-        )
-        self.assertEqual(
-            defauts["serveur_forgejo_oidc_client_id"], clients[0]["clientId"]
-        )
-        # Le secret est celui que la forge lit, et il est scellé.
-        self.assertIn("vault_forgejo_oidc", clients[0]["secret"])
-        self.assertIn(
-            "vault_forgejo_oidc", [n for n, _f in B.SECRETS_LOCATAIRE]
-        )
+        self.assertEqual(len(B.CLIENTS_OIDC), len(clients))
+        scelles = [n for n, _f in B.SECRETS_LOCATAIRE]
+        for (application, _c, _r), client in zip(B.CLIENTS_OIDC, clients):
+            with self.subTest(application=application):
+                defauts = lu_au_moteur(
+                    "roles", f"serveur_{application}", "defaults", "main.yml"
+                )
+                self.assertEqual(
+                    defauts[f"serveur_{application}_oidc_client_id"],
+                    client["clientId"],
+                )
+                lu = re.search(
+                    r"vault_[a-z0-9_]+",
+                    defauts[f"serveur_{application}_oidc_client_secret"],
+                ).group(0)
+                self.assertIn(lu, client["secret"])
+                self.assertIn(lu, scelles)
 
     def test_the_callback_names_the_provider_as_the_role_derives_it(self):
         """Rendu par jinja comme Ansible le rend : le nom de fournisseur que
@@ -5560,6 +5576,7 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
         defauts = lu_au_moteur(
             "roles", "serveur_forgejo", "defaults", "main.yml"
         )
+        registre = {"forgejo": {"expose": ["forge.exemple.invalid"]}}
         for organisation in ("Exemple", "Mon Organisation"):
             with self.subTest(organisation=organisation):
                 nom = (
@@ -5567,11 +5584,51 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
                     .from_string(defauts["serveur_forgejo_oidc_nom"])
                     .render(organisation=organisation)
                 )
-                texte = B.texte_client_forge("exemple.invalid", organisation)
+                texte = B.texte_clients_oidc(registre, organisation)
                 uri = yaml.safe_load(texte)["serveur_keycloak_clients"][0][
                     "redirect_uris"
                 ][0]
                 self.assertIn(f"/user/oauth2/{nom}/callback", uri)
+
+    def test_every_exposed_application_that_speaks_oidc_has_its_client(self):
+        """Lu au MOTEUR : un rôle qui déclare un identifiant de client OIDC
+        attend que l'identité le connaisse. Une application exposée sans son
+        client se déploie, puis renvoie l'utilisateur sur un refus."""
+        eco = self.eco_pose()
+        applications = self.lu(eco, "applications.yml")["applications"]
+        chemin = os.path.join(
+            eco,
+            "inventories",
+            "production",
+            "group_vars",
+            f"{B.GROUPE_IDENTITE}.yml",
+        )
+        with open(chemin, encoding="utf-8") as f:
+            declares = {
+                c["clientId"]
+                for c in yaml.safe_load(f.read())["serveur_keycloak_clients"]
+            }
+        attendus = set()
+        for entree in applications.values():
+            if not entree.get("expose"):
+                continue
+            groupe = entree["groupe"]
+            chemin = os.path.join(
+                self.moteur(), "roles", groupe, "defaults", "main.yml"
+            )
+            if not os.path.isfile(chemin):
+                continue
+            with open(chemin, encoding="utf-8") as f:
+                defauts = yaml.safe_load(f.read()) or {}
+            client = defauts.get(f"{groupe}_oidc_client_id")
+            if client:
+                attendus.add(client)
+        self.assertTrue(attendus)
+        self.assertEqual(attendus, declares)
+
+    def test_a_client_application_not_exposed_gets_no_client(self):
+        registre = {"forgejo": {"hote": "x-01"}, "grafana": {}}
+        self.assertEqual("", B.texte_clients_oidc(registre, "Exemple"))
 
     def test_sqlite_lifts_the_database_requirement(self):
         """Le contrat du moteur : la forge n'exige un serveur de bases que
@@ -5624,6 +5681,124 @@ def _parcours(arbre):
     elif isinstance(arbre, list):
         for valeur in arbre:
             yield from _parcours(valeur)
+
+
+class TestLObservabiliteTientSurUnHote(unittest.TestCase):
+    """Métriques, journaux et tableaux : Prometheus n'accepte que la boucle
+    locale, d'où lit le Grafana co-localisé."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+    lu = TestLIdentiteFederee.lu
+
+    def test_the_three_live_on_one_host(self):
+        applications = self.lu(self.eco_pose(), "applications.yml")[
+            "applications"
+        ]
+        hotes = {
+            applications[a]["hote"]
+            for a in (
+                B.APPLICATION_METRIQUES,
+                B.APPLICATION_JOURNAUX,
+                B.APPLICATION_TABLEAUX,
+            )
+        }
+        self.assertEqual(1, len(hotes))
+
+    def test_metrics_accept_only_the_loopback_hence_the_co_location(self):
+        """Le flux d'entrée de Prometheus, lu au moteur, ne vient que de la
+        boucle locale : c'est ce qui impose l'hôte commun."""
+        flux = lu_au_moteur("roles", B.GROUPE_METRIQUES, "meta", "flux.yml")
+        entrees = [
+            f.get("pair")
+            for f in flux["flux"]
+            if f.get("sens") == "ingress" and f.get("port") == 9090
+        ]
+        self.assertEqual(["localhost"], entrees)
+
+    def test_the_dashboards_are_exposed_under_the_internal_domain(self):
+        eco = self.eco_pose()
+        entree = self.lu(eco, "applications.yml")["applications"][
+            B.APPLICATION_TABLEAUX
+        ]
+        self.assertTrue(
+            entree["expose"][0].endswith("." + B.domaine_interne(eco))
+        )
+        self.assertIsInstance(entree["port"], int)
+
+    def test_the_dashboards_dependencies_are_in_the_plan(self):
+        """Le contrat du moteur : les tableaux exigent métriques et journaux."""
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(
+            os.path.join(MOTEUR_CLONE, "docs", "dependances-groupes.yml"),
+            encoding="utf-8",
+        ) as f:
+            regles = yaml.safe_load(f.read())
+        entree = next(
+            v
+            for k, v in _parcours(regles)
+            if k == B.GROUPE_TABLEAUX
+            and isinstance(v, dict)
+            and "requiert_groupes_actifs" in v
+        )
+        groupes = {
+            a["groupe"]
+            for a in self.lu(self.eco_pose(), "applications.yml")[
+                "applications"
+            ].values()
+        }
+        self.assertLessEqual(set(entree["requiert_groupes_actifs"]), groupes)
+
+    def test_its_size_leaves_room_on_a_nested_terrain(self):
+        eco = self.eco_pose()
+        hote = self.lu(eco, "applications.yml")["applications"][
+            B.APPLICATION_METRIQUES
+        ]["hote"]
+        serveur = self.lu(eco, "serveurs.yml")["serveurs"][hote]
+        self.assertLess(serveur["coeurs"], 4)
+        self.assertLessEqual(serveur["memoire"], 4096)
+
+
+class TestChaqueExportateurReleveEstPose(unittest.TestCase):
+    """Prometheus relève l'exportateur d'un rôle dès que son groupe est au
+    plan ; le rôle ne le pose que si son secret existe. Sans lui, la cible
+    reste éteinte et la recette des métriques échoue."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+    lu = TestLIdentiteFederee.lu
+
+    def test_every_exporter_of_a_planned_role_has_its_secret_sealed(self):
+        groupes = {
+            a["groupe"]
+            for a in self.lu(self.eco_pose(), "applications.yml")[
+                "applications"
+            ].values()
+        }
+        scelles = {n for n, _f in B.SECRETS_LOCATAIRE}
+        vus = 0
+        for groupe in sorted(groupes):
+            racine = os.path.join(self.moteur(), "roles", groupe)
+            meta = os.path.join(racine, "meta", "metriques.yml")
+            if not os.path.isfile(meta):
+                continue
+            with open(meta, encoding="utf-8") as f:
+                if not (yaml.safe_load(f.read()) or {}).get("exportateur"):
+                    continue
+            with open(
+                os.path.join(racine, "defaults", "main.yml"), encoding="utf-8"
+            ) as f:
+                actif = str(
+                    (yaml.safe_load(f.read()) or {}).get(
+                        f"{groupe}_exportateur_actif", ""
+                    )
+                )
+            for secret in re.findall(r"vault_[a-z0-9_]+", actif):
+                vus += 1
+                with self.subTest(groupe=groupe, secret=secret):
+                    self.assertIn(secret, scelles)
+        self.assertTrue(vus, "aucun exportateur conditionné n'a été lu")
 
 
 class TestToutDetenteurDEtatEstSauvegarde(unittest.TestCase):

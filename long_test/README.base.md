@@ -551,6 +551,18 @@ checks need. The bench therefore demands "OK" from the HTTPS, identity,
 OIDC-client and directory-account verdicts — those the engine's recipe knows
 how to render — and a missing one counts as a recipe that did not hold.
 
+**The bench adds observability, so the metrics recipe judges every target.**
+Prometheus, Loki and Grafana share one host, capped at two cores and 3 GiB:
+Prometheus accepts only the loopback, where the co-located Grafana reads it.
+Their presence switches on the metrics exporter and the log agent on every
+host, and Grafana is exposed through the edge as a second OIDC client of the
+identity — the clients' file is now derived from the registry, one per exposed
+application whose role names an OIDC client. Prometheus scrapes a role's
+exporter as soon as its group is in the plan, while the role lays it down only
+when its secret exists: the bench seals that secret, otherwise the target
+stays down. The bench demands "OK" from every verdict the engine's recipe
+declares.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its
@@ -1174,6 +1186,18 @@ flotte que le banc vient de faire naître avec tout ce que ces contrôles
 demandent. Le banc exige donc « OK » des verdicts HTTPS, d'identité, des
 clients OIDC et du compte de l'annuaire — ceux que la recette du moteur sait
 rendre —, et un verdict absent compte comme une recette non tenue.
+
+**Le banc ajoute l'observabilité, pour que la recette des métriques juge
+chaque cible.** Prometheus, Loki et Grafana partagent un hôte, plafonné à deux
+cœurs et 3 Gio : Prometheus n'accepte que la boucle locale, d'où le Grafana
+co-localisé le lit. Leur présence active l'exportateur de métriques et l'agent
+de journaux sur chaque hôte, et Grafana est exposé par l'edge comme second
+client OIDC de l'identité — le fichier des clients dérive désormais du
+registre, un par application exposée dont le rôle nomme un client OIDC.
+Prometheus relève l'exportateur d'un rôle dès que son groupe est au plan,
+alors que le rôle ne le pose que si son secret existe : le banc scelle ce
+secret, sans quoi la cible reste éteinte. Le banc exige « OK » de chaque
+verdict que la recette du moteur déclare.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
