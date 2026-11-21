@@ -536,7 +536,7 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 
 Run `./script/qemu/deploy_qemu.py --help` for the full list.
 
-## Login guide (`/etc/motd`)
+## Login guide (`/etc/motd` or `profile.d`)
 
 Every VM greets you, at each interactive SSH login, with the commands of
 **its own** distribution — `apt`, `dnf`, `zypper` or `pacman` — plus the
@@ -548,6 +548,17 @@ there if that installation fails, which is exactly when you log in by hand.
 `--dry-run` prints the generated guide along with the rest of the user-data.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
 installation log.
+
+A VM with a desktop (`--desktop`), except on NixOS, does not get `/etc/motd`: `pam_motd` sits in
+the generic login PAM stack, so GDM would show the guide as a PAM message and
+delay the start of the graphical session in proportion to its length (tens of
+seconds). The same text is written to `/etc/erplibre-login-guide`, and
+`/etc/profile.d/erplibre-login-guide.sh` prints it in interactive login
+shells of an SSH session (a nested login shell that keeps
+`SSH_CONNECTION`, such as `bash -l`, shows it again); desktop terminals, `ssh host 'command'`, `scp` and
+`sftp` stay silent. A server VM keeps `/etc/motd`, and so does a NixOS VM,
+desktop included: its sshd reads `/etc/motd`, it has no `pam_motd` and its
+`/etc/profile` does not source `profile.d`.
 
 The host's git identity travels with it, into the VM's `~/.gitconfig`: a
 commit made in the VM then carries your name instead of
@@ -797,7 +808,7 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 
 Lancez `./script/qemu/deploy_qemu.py --help` pour la liste complète.
 
-## Guide de connexion (`/etc/motd`)
+## Guide de connexion (`/etc/motd` ou `profile.d`)
 
 Chaque VM accueille celui qui s'y connecte en SSH avec les commandes de **sa**
 distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
@@ -809,6 +820,18 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 `--dry-run` affiche le guide généré avec le reste du user-data. Il ne
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
+
+Une VM à bureau (`--desktop`), hors NixOS, ne reçoit PAS `/etc/motd` : `pam_motd` figure
+dans la pile PAM générique de connexion, donc GDM afficherait le guide comme
+message PAM et retarderait l'ouverture de la session graphique en proportion
+de sa longueur (des dizaines de secondes). Le même texte est écrit dans
+`/etc/erplibre-login-guide`, et `/etc/profile.d/erplibre-login-guide.sh`
+l'affiche dans les shells de connexion interactifs d'une session SSH (un
+shell de connexion imbriqué qui garde `SSH_CONNECTION`, comme `bash -l`,
+l'affiche de nouveau) ; terminaux du bureau, `ssh hôte 'commande'`, `scp` et `sftp`
+restent silencieux. Une VM serveur garde `/etc/motd`, NixOS aussi, bureau
+compris : son sshd lit `/etc/motd`, il n'a pas de `pam_motd` et son
+`/etc/profile` ne source pas `profile.d`.
 
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que
