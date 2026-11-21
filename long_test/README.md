@@ -390,6 +390,7 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --detruire         # undo what was laid down
 ./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
 ./long_test/setops_banc.py --passe env        # token through the environment
+./long_test/setops_banc.py --batir-gabarit     # build the template if absent
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at
@@ -433,8 +434,8 @@ its hardware address, not only be up and filtering — `ifup` can return 0 and
 leave it without an address, and the fallback swallows a failed
 `ip addr add`.
 
-**The golden template is required after the pose, and the bench does not make
-it.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+**The golden template is required after the pose, and the bench builds it only
+when asked and only when it is absent.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
 change a setting — it replaces the virtual hardware under a system that believes
 it knows its own. Predictable interface names derive from the PCI path, so the
@@ -445,8 +446,24 @@ there, is it converted to a template, and does it carry the hardware the
 procedure requires — the very check the procedure calls "the last moment when the
 correction is free". A missing key counts as non-conforming, because the
 configuration only prints what differs from the default and the defaults are
-exactly what the procedure refuses. Every refusal names the procedure, since the
-bench does not make the template and must say where its making is described.
+exactly what the procedure refuses. Every refusal names the procedure: a
+template that is there but wrong is not repaired by the bench, it is
+reinstalled.
+
+With `--batir-gabarit`, an ABSENT template is built without a screen:
+debian-installer boots straight from its kernel and initrd, its answers slipped
+INTO the initrd, and the VM is born `q35` with OVMF. Cloud-Init then gives it
+the account and key every clone inherits — the engine lays none at cloning.
+Before the engine's cleanup the bench checks what the procedure has verified
+before hand-over — an ext4 root alone, no swap, an EFI boot, the packages the
+engine takes over from — and, before conversion, the virtual hardware. It does
+not play the engine's `preparer-modele` and `verifier-modele`: the first
+requires an artefact server and a resolver that the bench's site plan does not
+declare, and the second judges what the first laid down. A failed build removes
+its draft, since a VM of the template's name that is not a template would
+refuse every later launch; the name is checked first, and a template is never
+removed. What was built is then measured by the same reader as a template the
+operator built, never on the build's word.
 
 It is required AFTER the site is posed, and not among the prerequisites,
 because the template is an artefact OF the site: the preparation the engine
@@ -528,8 +545,8 @@ the fleet back to itself — and declares it in a group_vars file of its own,
 numbered after the model's so that it adds rather than rewrites.
 
 The plan announces what each step costs, and **says when a duration is only
-announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
-template, then per pass ~5 s for each of the two inventory gestures — both
+announced**: ~30 s for the bridge, ~10 s for the token, ~25 min for the golden
+template when it is built (~5 s to measure it otherwise), then per pass ~5 s for each of the two inventory gestures — both
 measured — and, still to be timed, ~45 min for the reconstruction and ~2 min for
 the razing. A plan that gave both in the same tone would promise a time nobody
 has clocked.

@@ -14,8 +14,15 @@ Les adresses employées appartiennent au bloc que la RFC 5737 réserve à la
 documentation : elles ne désignent aucune machine, ici ni ailleurs.
 """
 
+import base64
+import gzip
+import json
 import os
+import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -298,6 +305,14 @@ class TestLApresInstallation(unittest.TestCase):
 
 
 class TestLaConversion(unittest.TestCase):
+    def test_a_clean_shutdown_is_tried_before_the_power_is_cut(self):
+        """Le nettoyage vient d'écrire : couper le courant d'emblée peut
+        perdre ce qui n'est pas encore sur le disque."""
+        premiere = G.cmds_conversion(9000)[0]
+        alternatives = premiere.split("||")
+        self.assertIn("shutdown", alternatives[0])
+        self.assertIn("stop", alternatives[-1])
+
     def test_the_vm_is_stopped_before_it_is_frozen(self):
         # Le nettoyage vide /etc/machine-id et retire les clés d'hôte ; un
         # démarrage de plus les régénère, et le modèle les fige pour tous
@@ -314,6 +329,413 @@ class TestLaConversion(unittest.TestCase):
                 self.assertEqual(G.cmds_conversion(vu), ())
         # Contrôle positif : refuser toujours passerait les cinq.
         self.assertTrue(G.cmds_conversion(9000))
+
+
+def joue(cmds, env=None, cwd=None):
+    """Joue `cmds` dans un shell, comme le nœud le ferait, dans l'ordre."""
+    for cmd in cmds:
+        vu = subprocess.run(
+            ["sh", "-c", cmd],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=cwd,
+            timeout=60,
+        )
+        if vu.returncode:
+            return vu
+    return vu
+
+
+def bouchons(dossier, **corps):
+    """Un dossier de commandes factices, à mettre en tête du PATH."""
+    os.makedirs(dossier, exist_ok=True)
+    for nom, texte in corps.items():
+        chemin = os.path.join(dossier, nom.replace("_", "-"))
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\n" + texte + "\n")
+        os.chmod(chemin, 0o755)
+    return dict(os.environ, PATH=f"{dossier}:{os.environ['PATH']}")
+
+
+class TestLeReseauDeFabrique(unittest.TestCase):
+    def test_the_template_never_takes_the_gateway(self):
+        for cidr in ("192.0.2.1/24", "192.0.2.254/24", "198.51.100.1/30"):
+            with self.subTest(cidr=cidr):
+                adresse, prefixe, passerelle, masque = G.reseau_de_fabrique(
+                    cidr
+                )
+                import ipaddress
+
+                reseau = ipaddress.ip_interface(cidr).network
+                self.assertNotEqual(adresse, passerelle)
+                self.assertIn(ipaddress.ip_address(adresse), reseau)
+                self.assertNotEqual(
+                    ipaddress.ip_address(adresse), reseau.broadcast_address
+                )
+                self.assertEqual(reseau.prefixlen, prefixe)
+                self.assertEqual(str(reseau.netmask), masque)
+
+    def test_a_network_without_room_answers_nothing(self):
+        for cidr in (
+            "192.0.2.1/31",
+            "192.0.2.1/32",
+            "2001:db8::1/64",
+            "",
+            None,
+            "x",
+        ):
+            with self.subTest(cidr=cidr):
+                self.assertEqual((), G.reseau_de_fabrique(cidr))
+
+    def test_the_netmask_reaches_the_installer(self):
+        lignes = G.lignes_preseed(
+            HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE, masque="255.255.255.128"
+        )
+        self.assertEqual(
+            "255.255.255.128", reponse(lignes, "netcfg/get_netmask")
+        )
+
+
+@unittest.skipUnless(shutil.which("cpio"), "cpio absent")
+class TestLePreseedVoyageDansLInitrd(unittest.TestCase):
+    """Joué pour de vrai dans un dossier jetable, wget remplacé : le noyau
+    lit un cpio concaténé à la suite du premier, donc ce que l'initrd porte
+    doit SE RELIRE tel quel."""
+
+    URLS = (
+        "https://exemple.invalid/linux",
+        "https://exemple.invalid/initrd.gz",
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.dossier = os.path.join(self.tmp, "fabrique")
+        # Un initrd d'origine : un cpio gzippé portant un fichier à lui.
+        source = os.path.join(self.tmp, "source")
+        os.makedirs(source)
+        with open(os.path.join(source, "init"), "w") as fh:
+            fh.write("origine\n")
+        archive = subprocess.run(
+            "echo init | cpio -H newc -o 2>/dev/null | gzip",
+            shell=True,
+            cwd=source,
+            capture_output=True,
+            check=True,
+        ).stdout
+        self.initrd = os.path.join(self.tmp, "initrd-amont.gz")
+        with open(self.initrd, "wb") as fh:
+            fh.write(archive)
+        # wget factice : copie l'initrd d'amont, ou écrit un noyau quelconque.
+        self.env = bouchons(
+            os.path.join(self.tmp, "bin"),
+            wget=(
+                'for a; do case "$a" in -O) o=1;; *) [ "$o" = 1 ] && { f="$a";'
+                ' o=; }; u="$a";; esac; done;'
+                f' case "$u" in *initrd*) cp {shlex.quote(self.initrd)} "$f";;'
+                ' *) echo noyau > "$f";; esac'
+            ),
+        )
+
+    def lu_par_le_noyau(self, chemin):
+        """{nom: contenu} de TOUTES les archives cpio concaténées, lues à la
+        suite comme le noyau le fait. `cpio -i` s'arrêterait à la première."""
+        with open(chemin, "rb") as fh:
+            octets = gzip.decompress(fh.read())
+        fichiers, i = {}, 0
+        while i + 110 <= len(octets):
+            if octets[i : i + 6] != b"070701":
+                i += 1
+                continue
+            taille = int(octets[i + 54 : i + 62], 16)
+            longueur = int(octets[i + 94 : i + 102], 16)
+            debut = i + 110
+            nom = octets[debut : debut + longueur - 1].decode()
+            donnees = (debut + longueur + 3) & ~3
+            fin = donnees + taille
+            if nom != "TRAILER!!!":
+                fichiers[nom] = octets[donnees:fin].decode()
+            i = (fin + 3) & ~3
+        return fichiers
+
+    def membres(self, chemin):
+        return sorted(self.lu_par_le_noyau(chemin))
+
+    def test_the_preseed_is_read_back_from_the_initrd_unchanged(self):
+        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        vu = joue(
+            G.cmds_preparer_installateur(self.dossier, self.URLS, texte),
+            env=self.env,
+        )
+        self.assertEqual(0, vu.returncode, vu.stderr)
+        _n, initrd, porteur, _j = G.chemins_installateur(self.dossier)
+        self.assertEqual(["init", "preseed.cfg"], self.membres(porteur))
+        self.assertEqual(texte, self.lu_par_le_noyau(porteur)["preseed.cfg"])
+        # L'initrd d'origine reste intact : rejouer repart de lui.
+        self.assertEqual(["init"], self.membres(initrd))
+
+    def test_preparing_twice_does_not_stack_two_preseeds(self):
+        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        cmds = G.cmds_preparer_installateur(self.dossier, self.URLS, texte)
+        joue(cmds, env=self.env)
+        joue(cmds, env=self.env)
+        porteur = G.chemins_installateur(self.dossier)[2]
+        self.assertEqual(["init", "preseed.cfg"], self.membres(porteur))
+
+    def test_no_clear_preseed_is_left_beside_it(self):
+        """Le preseed porte le hachage root : il ne vit que dans l'initrd."""
+        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        joue(
+            G.cmds_preparer_installateur(self.dossier, self.URLS, texte),
+            env=self.env,
+        )
+        laisses = []
+        for racine, _d, fichiers in os.walk(self.dossier):
+            laisses += [f for f in fichiers if f.endswith(".cfg")]
+        self.assertEqual([], laisses)
+
+    def test_the_cleanup_takes_everything_away(self):
+        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        joue(
+            G.cmds_preparer_installateur(self.dossier, self.URLS, texte),
+            env=self.env,
+        )
+        self.assertTrue(os.path.isdir(self.dossier))
+        joue(G.cmds_menage(self.dossier))
+        self.assertFalse(os.path.exists(self.dossier))
+
+    def test_the_download_outlives_a_network_still_coming_up(self):
+        for cmd in G.cmds_preparer_installateur(
+            self.dossier, self.URLS, "x\n"
+        ):
+            if cmd.startswith("wget"):
+                self.assertIn("--retry-on-host-error", cmd)
+                self.assertIn("--retry-connrefused", cmd)
+
+    def test_a_missing_piece_names_no_command(self):
+        for dossier, urls, texte in (
+            ("", self.URLS, "x"),
+            ("relatif", self.URLS, "x"),
+            (self.dossier, self.URLS[:1], "x"),
+            (self.dossier, self.URLS, ""),
+        ):
+            with self.subTest(dossier=dossier, urls=urls, texte=texte):
+                self.assertEqual(
+                    (), G.cmds_preparer_installateur(dossier, urls, texte)
+                )
+        self.assertTrue(
+            G.cmds_preparer_installateur(self.dossier, self.URLS, "x")
+        )
+
+
+class TestLeStatut(unittest.TestCase):
+    def test_the_field_is_read_not_searched(self):
+        self.assertEqual("stopped", G.lit_statut("status: stopped\n"))
+        self.assertEqual("running", G.lit_statut("status: running\n"))
+        self.assertIsNone(G.lit_statut("VM 9000 not running: VM is stopped\n"))
+        self.assertIsNone(G.lit_statut(""))
+        self.assertIsNone(G.lit_statut(None))
+
+
+CLE = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInventeePourLeTest0123456789 x@y"
+
+
+class TestLIdentiteDuGabarit(unittest.TestCase):
+    def identite(self, cle=CLE, **change):
+        champs = dict(
+            vmid=9000,
+            utilisateur="ansible",
+            cle=cle,
+            dossier="/var/lib/fabrique",
+            adresse=ADRESSE,
+            prefixe=24,
+            passerelle=PASSERELLE,
+            dns=DNS,
+        )
+        champs.update(change)
+        return G.cmds_identite(**champs)
+
+    def test_the_key_written_on_the_node_is_the_key_given(self):
+        depot = self.identite()[0]
+        corps = shlex.split(depot)[1]
+        self.assertEqual(CLE + "\n", base64.b64decode(corps).decode())
+
+    def test_the_address_carries_its_prefix_and_gateway(self):
+        ligne = self.identite()[1]
+        self.assertIn(f"ip={ADRESSE}/24,gw={PASSERELLE}", ligne)
+        self.assertIn("--ciuser ansible", ligne)
+
+    def test_what_is_not_a_public_key_is_never_written(self):
+        for cle in (
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA==\n-----END",
+            CLE + "\n" + CLE,
+            "pas une clé",
+            "",
+            None,
+        ):
+            with self.subTest(cle=cle):
+                self.assertEqual((), self.identite(cle=cle))
+        self.assertTrue(self.identite())
+
+    def test_a_missing_value_names_no_command(self):
+        for change in (
+            {"vmid": 0},
+            {"vmid": "neuf"},
+            {"utilisateur": ""},
+            {"adresse": ""},
+            {"prefixe": 0},
+            {"prefixe": 33},
+            {"dossier": "relatif"},
+        ):
+            with self.subTest(**change):
+                self.assertEqual((), self.identite(**change))
+
+
+class TestCeQueDitLAgent(unittest.TestCase):
+    def test_the_command_reaches_the_guest_whole(self):
+        commande = 'echo "a b" | tr a c; exit 3'
+        argv = shlex.split(G.cmd_dans_l_invite(9000, commande, 45))
+        self.assertEqual(commande, argv[-1])
+        self.assertEqual("45", argv[argv.index("--timeout") + 1])
+
+    def test_the_guests_own_code_is_read(self):
+        sortie = json.dumps({"exited": 1, "exitcode": 3, "out-data": "x"})
+        self.assertEqual((3, "x"), G.lit_invite(sortie))
+        sortie = json.dumps({"exited": 1, "exitcode": 0})
+        self.assertEqual((0, ""), G.lit_invite(sortie))
+
+    def test_a_command_still_running_is_a_doubt(self):
+        for sortie in (
+            json.dumps({"exited": 0, "pid": 1234}),
+            # Un code sans la fin déclarée ne vaut rien : c'est « exited »
+            # qui dit que le processus s'est terminé.
+            json.dumps({"exited": 0, "exitcode": 0}),
+            json.dumps({"exited": 1, "exitcode": True}),
+            "",
+            None,
+            "agent not running",
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertIsNone(G.lit_invite(sortie))
+
+
+class TestLePremierDemarrageSeTait(unittest.TestCase):
+    """Joué dans un shell, les outils du système remplacés."""
+
+    def joue(self, **corps):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = bouchons(os.path.join(tmp, "bin"), **corps)
+            return subprocess.run(
+                ["sh", "-c", G.ATTENTE_PREMIER_DEMARRAGE],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+
+    def test_cloud_init_in_error_does_not_fail_the_wait(self):
+        """On attend la fin, pas le verdict."""
+        vu = self.joue(
+            cloud_init="echo 'status: error'; exit 1",
+            systemctl="exit 3",
+            pgrep="exit 1",
+        )
+        self.assertEqual(0, vu.returncode, vu.stdout + vu.stderr)
+        self.assertIn("status: error", vu.stdout)
+
+    def test_apt_that_never_rests_fails_and_says_so(self):
+        vu = self.joue(
+            cloud_init="exit 0",
+            systemctl="exit 3",
+            pgrep="exit 0",
+            sleep="exit 0",
+        )
+        self.assertNotEqual(0, vu.returncode)
+        self.assertIn("apt", vu.stdout)
+
+
+class TestLeSystemePoseSeDecrit(unittest.TestCase):
+    CONFORME = "racine=ext4\nechange=0\nefi=oui\n"
+
+    def test_what_the_command_prints_is_what_the_reader_reads(self):
+        """Joué dans un shell, outils remplacés : le relevé se relit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            env = bouchons(
+                os.path.join(tmp, "bin"),
+                findmnt="echo ext4",
+                swapon="true",
+                dpkg_query="printf 'install ok installed'",
+            )
+            vu = subprocess.run(
+                ["sh", "-c", G.CONSTATS_SYSTEME],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+        ecarts = G.ecarts_systeme(vu.stdout)
+        self.assertIsNotNone(ecarts, vu.stdout)
+        # L'EFI dépend de la machine qui joue l'épreuve ; le reste non.
+        self.assertEqual((), tuple(e for e in ecarts if "EFI" not in e))
+
+    def test_a_conforming_system_has_no_gap(self):
+        self.assertEqual((), G.ecarts_systeme(self.CONFORME))
+
+    def test_each_gap_is_named(self):
+        for texte, mot in (
+            (self.CONFORME.replace("ext4", "btrfs"), "btrfs"),
+            (self.CONFORME.replace("echange=0", "echange=1"), "échange"),
+            (self.CONFORME.replace("efi=oui", "efi=non"), "EFI"),
+            (self.CONFORME + "manque=cloud-init\n", "cloud-init"),
+        ):
+            with self.subTest(mot=mot):
+                ecarts = G.ecarts_systeme(texte)
+                self.assertTrue(ecarts)
+                self.assertIn(mot, " ".join(ecarts))
+
+    def test_a_truncated_report_is_a_doubt(self):
+        for texte in ("racine=ext4\nechange=0\n", "", None):
+            with self.subTest(texte=texte):
+                self.assertIsNone(G.ecarts_systeme(texte))
+
+
+class TestLeMaterielAvantConversion(unittest.TestCase):
+    CONFORME = (
+        "agent: enabled=1\nbios: ovmf\nboot: order=scsi0\n"
+        "efidisk0: local:9000/vm-9000-disk-0.qcow2,size=528K\n"
+        "ide2: local:9000/vm-9000-cloudinit.qcow2,media=cdrom\n"
+        "machine: q35\nname: g\n"
+    )
+
+    def sans(self, cle):
+        return "\n".join(
+            ligne
+            for ligne in self.CONFORME.splitlines()
+            if not ligne.startswith(cle + ":")
+        )
+
+    def test_a_conforming_vm_has_no_gap(self):
+        self.assertEqual((), G.ecarts_materiel(self.CONFORME))
+        self.assertEqual(
+            (),
+            G.ecarts_materiel(
+                self.CONFORME.replace("enabled=1", "1,fstrim_cloned_disks=1")
+            ),
+        )
+
+    def test_each_missing_key_is_a_gap(self):
+        for cle in ("machine", "bios", "efidisk0", "ide2", "agent"):
+            with self.subTest(cle=cle):
+                self.assertTrue(G.ecarts_materiel(self.sans(cle)))
+
+    def test_an_agent_switched_off_is_a_gap(self):
+        self.assertTrue(
+            G.ecarts_materiel(self.CONFORME.replace("enabled=1", "0"))
+        )
+
+    def test_an_unreadable_config_is_a_doubt(self):
+        self.assertIsNone(G.ecarts_materiel(""))
 
 
 if __name__ == "__main__":

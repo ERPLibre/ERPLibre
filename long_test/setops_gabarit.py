@@ -23,6 +23,9 @@ la voie d'entrée tant que Cloud-Init n'a pas parlé.
 Tout l'adressage est PARAMÈTRE : ce module ne connaît ni fabric ni labo.
 """
 
+import base64
+import ipaddress
+import json
 import re
 import shlex
 
@@ -96,7 +99,7 @@ def lignes_preseed(
     dns,
     hachage_root,
     disque="/dev/sda",
-    trace=False,
+    masque="255.255.255.0",
 ):
     """Les réponses écrites de l'installateur, ou `()`.
 
@@ -107,7 +110,7 @@ def lignes_preseed(
     L'adresse est fixe parce qu'aucun DHCP n'est supposé sur le pont de
     fabrication. Sans elle, netcfg demande l'adresse et attend.
     """
-    vus = (hote, adresse, passerelle, dns, disque)
+    vus = (hote, adresse, passerelle, dns, disque, masque)
     if not all((vu or "").strip() for vu in vus):
         return ()
     if not FORME_CRYPT.match((hachage_root or "").strip()):
@@ -120,7 +123,7 @@ def lignes_preseed(
         "d-i netcfg/disable_autoconfig boolean true",
         "d-i netcfg/dhcp_options select Configure network manually",
         f"d-i netcfg/get_ipaddress string {adresse.strip()}",
-        "d-i netcfg/get_netmask string 255.255.255.0",
+        f"d-i netcfg/get_netmask string {masque.strip()}",
         f"d-i netcfg/get_gateway string {passerelle.strip()}",
         f"d-i netcfg/get_nameservers string {dns.strip()}",
         "d-i netcfg/confirm_static boolean true",
@@ -193,11 +196,11 @@ def preseed(
     dns,
     hachage_root,
     disque="/dev/sda",
-    trace=False,
+    masque="255.255.255.0",
 ):
     """Le preseed complet, ou « » si un paramètre manque."""
     lignes = lignes_preseed(
-        hote, adresse, passerelle, dns, hachage_root, disque
+        hote, adresse, passerelle, dns, hachage_root, disque, masque
     )
     return "\n".join(lignes) + "\n" if lignes else ""
 
@@ -378,6 +381,347 @@ def cmds_conversion(vmid):
     if numero < 1:
         return ()
     return (
-        f"qm stop {numero}",
+        # UNE EXTINCTION PROPRE D'ABORD : le nettoyage vient d'écrire, et une
+        # coupure de courant peut perdre ce qui n'est pas encore sur le
+        # disque. L'arrêt brutal n'est qu'un repli, pour un système qui ne
+        # répond plus à l'ACPI dans la borne.
+        f"qm shutdown {numero} --timeout {EXTINCTION} || qm stop {numero}",
         f"qm template {numero}",
     )
+
+
+# Borne, en secondes, d'une extinction propre avant le repli brutal.
+EXTINCTION = 180
+
+# L'argv qui hache un secret lu sur l'entrée standard, au format crypt(3)
+# SHA-512 que d-i accepte. Le secret ne passe JAMAIS sur la ligne de
+# commande, qui se lit dans la table des processus par tout compte.
+ARGV_HACHAGE = ("openssl", "passwd", "-6", "-stdin")
+
+# La forme d'une clé publique OpenSSH, sur UNE ligne : un type, un corps en
+# base64, un commentaire facultatif. Ce qui n'en a pas la forme — une clé
+# PRIVÉE en premier lieu — n'est jamais déposé sur le nœud.
+FORME_CLE_PUBLIQUE = re.compile(
+    r"^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))"
+    r" [A-Za-z0-9+/]+={0,3}( [^\n]*)?$"
+)
+
+
+def reseau_de_fabrique(cidr):
+    """(adresse, préfixe, passerelle, masque) du gabarit sur `cidr`, ou ().
+
+    `cidr` est l'adresse de la PASSERELLE sur son réseau, telle que le pont
+    la porte. Le gabarit prend la DERNIÈRE adresse d'hôte, ou l'avant-
+    dernière quand la passerelle tient la dernière : loin du début de la
+    plage, où se posent d'ordinaire les adresses qu'on attribue à la main.
+    """
+    try:
+        interface = ipaddress.ip_interface((cidr or "").strip())
+    except (TypeError, ValueError):
+        return ()
+    reseau = interface.network
+    if interface.version != 4 or reseau.num_addresses < 4:
+        return ()
+    adresse = reseau.broadcast_address - 1
+    if adresse == interface.ip:
+        adresse -= 1
+    return (
+        str(adresse),
+        reseau.prefixlen,
+        str(interface.ip),
+        str(reseau.netmask),
+    )
+
+
+def chemins_installateur(dossier):
+    """Les chemins du nœud où l'installateur est déposé, ou ().
+
+    Rend (noyau, initrd d'origine, initrd porteur du preseed, journal
+    série). UNE SEULE SOURCE pour le dépôt et pour l'amorçage : deux listes
+    de chemins dérivent, et la VM amorce alors un initrd qui n'est pas
+    celui qu'on a préparé.
+    """
+    base = (dossier or "").strip().rstrip("/")
+    if not base.startswith("/"):
+        return ()
+    return (
+        f"{base}/linux",
+        f"{base}/initrd.gz",
+        f"{base}/initrd-preseed.gz",
+        f"{base}/installation.log",
+    )
+
+
+def cmds_preparer_installateur(dossier, urls, texte_preseed):
+    """Les commandes qui déposent l'installateur et glissent le preseed dans
+    son initrd, ou ().
+
+    LE PRESEED VOYAGE EN BASE64 : son texte porte des « $ » de la recette
+    et du hachage, qu'aucun shell ne doit interpréter en route.
+
+    AJOUTÉ À UNE COPIE de l'initrd, qui reste intact : un cpio concaténé
+    est lu par le noyau à la suite du premier, et rejouer la préparation
+    repart d'un initrd propre plutôt que d'empiler les preseeds.
+
+    LE TÉLÉCHARGEMENT SE REJOUE : wget tient un échec de résolution et un
+    refus de connexion pour définitifs, quel que soit --tries.
+    """
+    chemins = chemins_installateur(dossier)
+    if not chemins or len(urls or ()) != 2 or not (texte_preseed or ""):
+        return ()
+    noyau, initrd, porteur, journal = chemins
+    base = shlex.quote(dossier.strip().rstrip("/"))
+    racine = f"{base}/racine"
+    corps = base64.b64encode(texte_preseed.encode()).decode()
+    wget = (
+        "wget -nv --tries=5 --waitretry=5 --timeout=30"
+        " --retry-on-host-error --retry-connrefused"
+    )
+    return (
+        f"mkdir -p {racine} && chmod 700 {base}",
+        f"{wget} -O {shlex.quote(noyau)} {shlex.quote(urls[0])}",
+        f"{wget} -O {shlex.quote(initrd)} {shlex.quote(urls[1])}",
+        f"echo {corps} | base64 -d > {racine}/preseed.cfg",
+        f"cp {shlex.quote(initrd)} {shlex.quote(porteur)}",
+        f"cd {racine} && echo preseed.cfg | cpio -H newc -o 2>/dev/null"
+        f" | gzip >> {shlex.quote(porteur)}",
+        f"rm -f {racine}/preseed.cfg {shlex.quote(journal)}",
+    )
+
+
+def cmds_amorcer(vmid, argv_creation, args):
+    """Créer la VM, lui donner les arguments d'amorçage, la démarrer, ou ().
+
+    Les arguments sont CITÉS UNE SECONDE FOIS pour le shell du nœud : voir
+    `args_amorce`.
+    """
+    try:
+        numero = int(vmid)
+    except (TypeError, ValueError):
+        return ()
+    if numero < 1 or not argv_creation or not (args or "").strip():
+        return ()
+    return (
+        shlex.join(argv_creation),
+        f"qm set {numero} --args {shlex.quote(args)}",
+        f"qm start {numero}",
+    )
+
+
+def cmd_statut(vmid):
+    """La commande qui dit si la VM tourne, ou « »."""
+    try:
+        numero = int(vmid)
+    except (TypeError, ValueError):
+        return ""
+    return f"qm status {numero}" if numero >= 1 else ""
+
+
+def lit_statut(sortie):
+    """« running », « stopped », ou None si la sortie ne le dit pas.
+
+    LU PAR SON CHAMP et non cherché dans le texte : « stopped » se trouve
+    aussi dans un message d'erreur qui parle d'une VM arrêtée.
+    """
+    for ligne in (sortie or "").splitlines():
+        mots = ligne.split()
+        if mots[:1] == ["status:"] and len(mots) == 2:
+            return mots[1] if mots[1] in ("running", "stopped") else None
+    return None
+
+
+def cmds_identite(
+    vmid, utilisateur, cle, dossier, adresse, prefixe, passerelle, dns
+):
+    """Les commandes qui donnent au gabarit son compte, sa clé et son
+    adresse par Cloud-Init, puis le démarrent. Ou ().
+
+    LA CLÉ EST CELLE PAR LAQUELLE LE MOTEUR ENTRE : il ne pose aucune clé
+    au clonage, chaque clone hérite du compte et de la clé du gabarit. Elle
+    est refusée si elle n'a pas la forme d'une clé PUBLIQUE sur une ligne.
+    """
+    try:
+        numero, bits = int(vmid), int(prefixe)
+    except (TypeError, ValueError):
+        return ()
+    cle = (cle or "").strip()
+    vus = (utilisateur, adresse, passerelle, dns)
+    if numero < 1 or not all((vu or "").strip() for vu in vus):
+        return ()
+    if not FORME_CLE_PUBLIQUE.match(cle) or not 0 < bits <= 32:
+        return ()
+    chemins = chemins_installateur(dossier)
+    if not chemins:
+        return ()
+    fichier = shlex.quote(dossier.strip().rstrip("/") + "/cle.pub")
+    corps = base64.b64encode((cle + "\n").encode()).decode()
+    return (
+        f"echo {corps} | base64 -d > {fichier}",
+        f"qm set {numero} --ciuser {shlex.quote(utilisateur.strip())}"
+        f" --sshkeys {fichier}"
+        f" --ipconfig0 ip={adresse.strip()}/{bits},gw={passerelle.strip()}"
+        f" --nameserver {shlex.quote(dns.strip())}",
+        f"qm start {numero}",
+    )
+
+
+def cmd_agent(vmid):
+    """La commande qui répond quand l'agent invité est debout, ou « »."""
+    try:
+        numero = int(vmid)
+    except (TypeError, ValueError):
+        return ""
+    return f"qm guest cmd {numero} ping" if numero >= 1 else ""
+
+
+def cmd_dans_l_invite(vmid, commande, delai=60):
+    """La commande du nœud qui joue `commande` DANS le gabarit, par l'agent.
+    Ou « ».
+
+    `qm guest exec` rend son propre code, pas celui de la commande : le
+    verdict de celle-ci est dans le JSON qu'il imprime, que `lit_invite`
+    lit.
+    """
+    try:
+        numero, borne = int(vmid), int(delai)
+    except (TypeError, ValueError):
+        return ""
+    if numero < 1 or borne < 1 or not (commande or "").strip():
+        return ""
+    return shlex.join(
+        [
+            "qm",
+            "guest",
+            "exec",
+            str(numero),
+            "--timeout",
+            str(borne),
+            "--",
+            "/bin/sh",
+            "-c",
+            commande,
+        ]
+    )
+
+
+def lit_invite(sortie):
+    """(code, sortie) de la commande jouée dans l'invité, ou None.
+
+    FERMÉ PAR DÉFAUT : une commande qui n'a pas fini dans la borne rend un
+    JSON sans « exitcode », et se lit comme un doute, jamais comme un
+    succès.
+    """
+    texte = sortie or ""
+    debut = texte.find("{")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    if not isinstance(lu, dict) or not lu.get("exited"):
+        return None
+    code = lu.get("exitcode")
+    if isinstance(code, bool) or not isinstance(code, int):
+        return None
+    return code, str(lu.get("out-data") or "")
+
+
+# Ce qu'il faut attendre avant de nettoyer : la fin du premier Cloud-Init,
+# puis un apt au repos. Le premier démarrage lance Cloud-Init et les
+# minuteurs apt-daily, qui tiennent le verrou de dpkg ; un nettoyage joué
+# pendant ce temps échoue sur son « apt-get clean ». ON ATTEND LA FIN, PAS
+# LE VERDICT : Cloud-Init peut rendre une erreur pour un module sans rapport
+# avec le compte et la clé. La boucle rend 3 si apt ne se tait pas dans sa
+# borne, et la commande dit alors pourquoi.
+ATTENTE_PREMIER_DEMARRAGE = (
+    "cloud-init status --wait >/dev/null 2>&1; i=0;"
+    " while systemctl is-active --quiet apt-daily.service"
+    " || systemctl is-active --quiet apt-daily-upgrade.service"
+    " || pgrep -x 'apt|apt-get|dpkg' >/dev/null;"
+    " do i=$((i+1)); [ $i -gt 120 ] && { echo 'apt toujours actif'; exit 3; };"
+    " sleep 5; done; cloud-init status || true"
+)
+
+
+# Ce que le système posé dit de lui-même, une ligne « clé=valeur » par
+# fait. C'est ce que la procédure du moteur fait vérifier avant de remettre
+# le gabarit : une racine ext4 seule, aucun échange, un amorçage EFI, et les
+# paquets par lesquels le moteur prend le relais.
+CONSTATS_SYSTEME = (
+    "printf 'racine=%s\\n' \"$(findmnt -n -o FSTYPE /)\";"
+    " printf 'echange=%s\\n' \"$(swapon --show --noheadings | wc -l)\";"
+    " [ -d /sys/firmware/efi ] && echo efi=oui || echo efi=non;"
+    " for p in " + PAQUETS + "; do"
+    " dpkg-query -W -f='${Status}' \"$p\" 2>/dev/null"
+    " | grep -q 'install ok installed' || echo \"manque=$p\"; done"
+)
+
+
+def ecarts_systeme(sortie):
+    """Ce qui sépare le système posé de ce que la procédure exige, ou None.
+
+    None si la sortie ne porte pas les trois constats : un relevé tronqué ne
+    vaut pas un relevé conforme. () si tout est tenu.
+    """
+    lus, manquants = {}, []
+    for ligne in (sortie or "").splitlines():
+        cle, egal, valeur = ligne.strip().partition("=")
+        if not egal:
+            continue
+        if cle == "manque":
+            manquants.append(valeur)
+        else:
+            lus.setdefault(cle, valeur)
+    if not {"racine", "echange", "efi"} <= set(lus):
+        return None
+    ecarts = []
+    if lus["racine"] != "ext4":
+        ecarts.append(f"racine en {lus['racine'] or '?'} et non en ext4")
+    if lus["echange"] != "0":
+        ecarts.append(f"{lus['echange']} espace(s) d'échange actif(s)")
+    if lus["efi"] != "oui":
+        ecarts.append("amorcé sans EFI")
+    ecarts += [f"paquet absent : {nom}" for nom in manquants]
+    return tuple(ecarts)
+
+
+def ecarts_materiel(config):
+    """Ce qui manque à la configuration de la VM AVANT sa conversion, ou None.
+
+    AVANT et non après : convertie, la VM ne démarre plus, et corriger coûte
+    un clone. Lu par clé, fermé par défaut — `qm config` n'imprime que ce qui
+    diffère du défaut, et une clé absente vaut donc son défaut, que la
+    procédure refuse.
+    """
+    lu = {}
+    for ligne in (config or "").splitlines():
+        if ":" not in ligne or ligne.startswith((" ", "\t")):
+            continue
+        cle, valeur = ligne.split(":", 1)
+        lu[cle.strip()] = valeur.strip()
+    if not lu:
+        return None
+    ecarts = []
+    for cle, voulu in (("machine", MACHINE), ("bios", BIOS)):
+        if lu.get(cle) != voulu:
+            ecarts.append(f"{cle} : {lu.get(cle) or 'défaut'} et non {voulu}")
+    if not lu.get("efidisk0"):
+        ecarts.append("aucun disque EFI")
+    if "cloudinit" not in lu.get("ide2", ""):
+        ecarts.append("aucun lecteur Cloud-Init")
+    agent = lu.get("agent", "")
+    if agent.split(",")[0] not in ("1", "enabled=1"):
+        ecarts.append("agent invité non activé")
+    return tuple(ecarts)
+
+
+def cmds_menage(dossier):
+    """Ce qui retire du nœud les pièces de la fabrication, ou ().
+
+    L'initrd porteur du preseed contient le HACHAGE du mot de passe root du
+    gabarit : il ne reste pas sur le nœud une fois le gabarit converti.
+    """
+    if not chemins_installateur(dossier):
+        return ()
+    return (f"rm -rf {shlex.quote(dossier.strip().rstrip('/'))}",)

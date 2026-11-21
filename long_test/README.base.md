@@ -395,6 +395,7 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --detruire         # undo what was laid down
 ./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
 ./long_test/setops_banc.py --passe env        # token through the environment
+./long_test/setops_banc.py --batir-gabarit     # build the template if absent
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at
@@ -438,8 +439,8 @@ its hardware address, not only be up and filtering — `ifup` can return 0 and
 leave it without an address, and the fallback swallows a failed
 `ip addr add`.
 
-**The golden template is required after the pose, and the bench does not make
-it.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+**The golden template is required after the pose, and the bench builds it only
+when asked and only when it is absent.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
 change a setting — it replaces the virtual hardware under a system that believes
 it knows its own. Predictable interface names derive from the PCI path, so the
@@ -450,8 +451,24 @@ there, is it converted to a template, and does it carry the hardware the
 procedure requires — the very check the procedure calls "the last moment when the
 correction is free". A missing key counts as non-conforming, because the
 configuration only prints what differs from the default and the defaults are
-exactly what the procedure refuses. Every refusal names the procedure, since the
-bench does not make the template and must say where its making is described.
+exactly what the procedure refuses. Every refusal names the procedure: a
+template that is there but wrong is not repaired by the bench, it is
+reinstalled.
+
+With `--batir-gabarit`, an ABSENT template is built without a screen:
+debian-installer boots straight from its kernel and initrd, its answers slipped
+INTO the initrd, and the VM is born `q35` with OVMF. Cloud-Init then gives it
+the account and key every clone inherits — the engine lays none at cloning.
+Before the engine's cleanup the bench checks what the procedure has verified
+before hand-over — an ext4 root alone, no swap, an EFI boot, the packages the
+engine takes over from — and, before conversion, the virtual hardware. It does
+not play the engine's `preparer-modele` and `verifier-modele`: the first
+requires an artefact server and a resolver that the bench's site plan does not
+declare, and the second judges what the first laid down. A failed build removes
+its draft, since a VM of the template's name that is not a template would
+refuse every later launch; the name is checked first, and a template is never
+removed. What was built is then measured by the same reader as a template the
+operator built, never on the build's word.
 
 It is required AFTER the site is posed, and not among the prerequisites,
 because the template is an artefact OF the site: the preparation the engine
@@ -533,8 +550,8 @@ the fleet back to itself — and declares it in a group_vars file of its own,
 numbered after the model's so that it adds rather than rewrites.
 
 The plan announces what each step costs, and **says when a duration is only
-announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
-template, then per pass ~5 s for each of the two inventory gestures — both
+announced**: ~30 s for the bridge, ~10 s for the token, ~25 min for the golden
+template when it is built (~5 s to measure it otherwise), then per pass ~5 s for each of the two inventory gestures — both
 measured — and, still to be timed, ~45 min for the reconstruction and ~2 min for
 the razing. A plan that gave both in the same tone would promise a time nobody
 has clocked.
@@ -973,6 +990,7 @@ désigne.
 ./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
 ./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
+./long_test/setops_banc.py --batir-gabarit     # bâtir le gabarit s'il manque
 ```
 
 **Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
@@ -1018,7 +1036,8 @@ doit aussi PORTER son adresse et son adresse matérielle, pas seulement être
 debout et filtrant — `ifup` peut rendre 0 en le laissant sans adresse, et le
 repli avale l'échec d'un `ip addr add`.
 
-**Le gabarit doré est exigé après la pose, et le banc ne le fabrique pas.** La
+**Le gabarit doré est exigé après la pose, et le banc ne le bâtit que sur
+demande et sur absence.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
 configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
 un réglage — elle remplace le matériel virtuel sous un système qui croit
@@ -1031,8 +1050,24 @@ procédure exige — la vérification même que la procédure appelle « le dern
 moment où la correction est gratuite ». Une clé absente compte comme non
 conforme, la configuration n'imprimant que ce qui diffère du défaut et les
 défauts étant justement ce que la procédure refuse. Chaque refus nomme la
-procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
-est décrite.
+procédure : un gabarit présent mais faux ne se répare pas par le banc, il se
+réinstalle.
+
+Avec `--batir-gabarit`, un gabarit ABSENT se bâtit sans écran :
+debian-installer amorcé directement par son noyau et son initrd, ses réponses
+glissées DANS l'initrd, et la VM naît `q35` avec OVMF. Cloud-Init lui donne
+ensuite le compte et la clé dont chaque clone hérite — le moteur n'en pose
+aucun au clonage. Avant le nettoyage du moteur, le banc constate ce que la
+procédure fait vérifier avant la remise — une racine ext4 seule, aucun
+échange, un amorçage EFI, les paquets par lesquels le moteur prend le relais —
+et, avant la conversion, le matériel virtuel. Il ne joue ni `preparer-modele`
+ni `verifier-modele` du moteur : le premier exige un serveur d'artefacts et un
+résolveur que le plan du site du banc ne déclare pas, et le second juge ce que
+le premier a posé. Une fabrication manquée retire son ébauche, une VM du nom
+du gabarit qui n'est pas un modèle faisant refuser chaque lancement suivant ;
+le nom est vérifié d'abord, et un modèle n'est jamais retiré. Ce qui a été
+bâti est ensuite mesuré par le même lecteur qu'un gabarit bâti par
+l'exploitant, jamais sur la parole de la fabrication.
 
 Il est exigé APRÈS la pose du site, et non parmi les préalables, parce que le
 gabarit est un artefact DU site : la préparation que le moteur lui applique
@@ -1114,8 +1149,8 @@ flotte vers elle-même — et la déclare dans un fichier de group_vars qui est 
 sien, numéroté après celui du modèle pour ajouter au lieu de réécrire.
 
 Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
-qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit
-doré, puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
+qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~25 min pour le gabarit
+doré quand il est bâti (~5 s pour le mesurer sinon), puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
 chronométrés — et, encore à relever, ~45 min pour la reconstruction et ~2 min
 pour le rasage. Un plan qui donnerait les deux du même ton promettrait un temps
 que personne n'a chronométré.

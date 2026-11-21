@@ -39,6 +39,7 @@ envoyé éprouvable sans machine, avant même qu'une machine existe.
   ./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
   ./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
   ./long_test/setops_banc.py --passe env        # jeton par l'environnement
+  ./long_test/setops_banc.py --batir-gabarit     # bâtir le gabarit s'il manque
 
 CE QUI EST POSÉ ICI : les DÉCISIONS, et elles sont toutes gardées — préalables,
 terrain, pont libre, forme du jeton, ordre de la défaite, empreinte. Les VERBES
@@ -164,11 +165,11 @@ CLE = "cle"
 # qu'elle a sa propre strophe : retirer celle du pont ne l'emporte pas, et une
 # interface orpheline reste à réclamer une passerelle sur un pont disparu.
 SVI = "svi"
-# LE GABARIT N'EST PAS UN GENRE, et c'est une garantie et non un oubli : le
-# banc ne le fabrique pas — sa procédure impose une installation depuis
-# l'ISO — donc il ne peut pas l'avoir posé, donc il ne doit jamais le
-# défaire. Le détruire coûterait à l'exploitant la réinstallation entière,
-# et un genre qui existe finit par trouver un appelant.
+# LE GABARIT N'EST PAS UN GENRE, et c'est une garantie et non un oubli : il
+# survit au banc. Bâti par l'exploitant, ou par le banc sur demande, il sert
+# à tous les lancements suivants ; l'empreinte ne le nomme jamais, donc
+# `--detruire` ne le défait jamais. Le détruire coûterait la réinstallation
+# entière, et un genre qui existe finit par trouver un appelant.
 GENRES = (VM, SVI, PONT, API, LIEN, ECO, UNDERLAY, CLE)
 
 
@@ -1195,9 +1196,12 @@ def proxmox_deploy():
     return pve
 
 
-# Où le banc commence à chercher un VMID libre pour son gabarit. 9000 est la
-# convention du moteur pour un modèle, et sa valeur par défaut ; le banc part de
-# là et monte, parce qu'une grappe qu'on possède en a peut-être déjà un.
+# Où le banc commence à chercher un VMID libre pour BÂTIR son gabarit. 9000 est
+# la convention du moteur pour un modèle ; le banc part de là et monte, parce
+# qu'une grappe qu'on possède en a peut-être déjà un. Ce numéro ne sert qu'à la
+# construction : le placement nomme ensuite celui que le NOM retrouve.
+VMID_GABARIT_DEPART = 9000
+VMID_GABARIT_FIN = 9100
 
 
 def cmds_vmids():
@@ -1208,6 +1212,54 @@ def cmds_vmids():
     localement le prendrait à une VM d'un autre nœud.
     """
     return ["pvesh get /cluster/resources --type vm --output-format json"]
+
+
+def lit_vmids(sortie):
+    """Les VMID que la grappe déclare, ou None.
+
+    Fermé par défaut : ce qui n'est pas une liste d'objets portant un VMID
+    entier fait refuser TOUTE la lecture. Une lecture partielle ferait croire
+    un numéro libre alors qu'il est pris, et `qm create` échouerait au milieu
+    de la fabrication — après le téléchargement de l'installateur.
+
+    Une grappe sans aucune VM rend `()` : « rien à nommer » est une réponse.
+    """
+    texte = sortie or ""
+    debut = texte.find("[")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    if not isinstance(lu, list):
+        return None
+    vus = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        vmid = entree.get("vmid")
+        if isinstance(vmid, bool) or not isinstance(vmid, int):
+            return None
+        vus.append(vmid)
+    return tuple(vus)
+
+
+def gabarit_libre(vmids, depart=VMID_GABARIT_DEPART):
+    """Le premier VMID libre à partir de `depart`, ou 0.
+
+    LU sur la grappe, jamais supposé. `vmids` à None — la grappe n'a pas
+    répondu — rend 0 : prendre un numéro sans savoir lesquels sont pris
+    reviendrait à parier sur la VM de quelqu'un d'autre. 0 dit « pas de
+    numéro », et c'est le seul entier qu'un VMID ne peut pas valoir.
+    """
+    if vmids is None:
+        return 0
+    pris = set(vmids)
+    for numero in range(max(0, int(depart)), VMID_GABARIT_FIN):
+        if numero not in pris:
+            return numero
+    return 0
 
 
 # Le fichier du plan du SITE qui déclare son gabarit et où il place ses
@@ -2947,12 +2999,12 @@ def scelle_les_secrets(voute, identite, secrets, moteur):
     return scelle(voute, identite, clair, tuple(secrets.values()), moteur)
 
 
-# L'ÉTAT DU GABARIT, vocabulaire CLOS. Le banc ne le fabrique pas : sa procédure
-# impose une installation depuis l'ISO, parce qu'une machine NAÎT en q35 ou ne le
-# sera jamais proprement — convertir le chipset sous un système installé remplace
-# son matériel virtuel, et chacune des pannes qui s'ensuivent ressemble à autre
+# L'ÉTAT DU GABARIT, vocabulaire CLOS. Une machine NAÎT en q35 ou ne le sera
+# jamais proprement : convertir le chipset sous un système installé remplace son
+# matériel virtuel, et chacune des pannes qui s'ensuivent ressemble à autre
 # chose qu'à sa cause. Le banc le MESURE donc, et refuse plutôt que de cloner un
-# gabarit qui le trahirait.
+# gabarit qui le trahirait. Il ne le bâtit que sur demande et sur ABSENCE,
+# jamais par-dessus une VM qui porte déjà son nom.
 GABARIT_ABSENT = "absent"
 GABARIT_PAS_MODELE = "pas_modele"
 GABARIT_MATERIEL = "materiel"
@@ -3203,14 +3255,17 @@ def dit_gabarit(etat, nom=GABARIT):
     """Ce que l'écran dit d'un gabarit non conforme, ou « » s'il l'est.
 
     LE REFUS CITE LA PROCÉDURE. « Gabarit non conforme » laisse chercher quoi
-    corriger ; le banc ne fabrique pas le gabarit, donc il doit dire où la
-    fabrication est décrite.
+    corriger, et un gabarit présent ne se corrige pas par le banc : l'écran
+    doit dire où sa fabrication est décrite.
     """
     if etat == GABARIT_CONFORME:
         return ""
     attendu = ", ".join(f"{c} : {v}" for c, v in MATERIEL_GABARIT)
     raisons = {
-        GABARIT_ABSENT: f"aucune VM nommée « {nom} » sur la grappe",
+        GABARIT_ABSENT: (
+            f"aucune VM nommée « {nom} » sur la grappe ; --batir-gabarit"
+            " le bâtit sans écran"
+        ),
         GABARIT_PAS_MODELE: (
             f"« {nom} » existe mais n'est pas un modèle : le convertir"
         ),
@@ -3223,6 +3278,335 @@ def dit_gabarit(etat, nom=GABARIT):
         raisons.get(etat, f"état du gabarit illisible : {etat!r}")
         + f" — voir {PROCEDURE_GABARIT} chez le moteur"
     )
+
+
+# Où le nœud reçoit les pièces de la fabrication : l'installateur, l'initrd
+# porteur du preseed, la clé, le journal série. Retiré une fois le gabarit
+# converti — l'initrd porte le hachage du mot de passe root.
+DOSSIER_GABARIT = "/var/lib/vz/setops-banc-gabarit"
+
+# Le compte que Cloud-Init donne au gabarit, et dont chaque clone hérite : le
+# moteur ne pose aucune clé au clonage, il entre dans sa flotte par celui-ci.
+UTILISATEUR_GABARIT = "ansible"
+
+# La version de Debian que la procédure du moteur décrit.
+CODE_DEBIAN_GABARIT = "trixie"
+
+# Bornes de la fabrication, en secondes. L'installation sans écran dure une
+# dizaine de minutes sur un hyperviseur imbriqué ; une borne existe pour
+# qu'une installation figée rende la main, pas pour hâter le geste.
+BORNE_INSTALLATION = 90 * 60
+BORNE_AGENT = 20 * 60
+BORNE_PREMIER_DEMARRAGE = 30 * 60
+PAUSE_SONDE = 20
+
+# Le nettoyage du moteur, la seule de ses trois cibles de gabarit qui ne
+# dépende pas du plan du site. Son hôte s'ajoute au moment de jouer.
+ETAPE_NETTOYAGE = Etape("nettoyer-modele", (), "~2 min", True, True)
+
+
+def fabrique():
+    """Le module qui compose les commandes du gabarit, chargé à l'appel."""
+    import sys
+
+    chemin = os.path.join(RACINE, "long_test")
+    if chemin not in sys.path:
+        sys.path.insert(0, chemin)
+    import setops_gabarit
+
+    return setops_gabarit
+
+
+def attend(sonde, borne, pause=PAUSE_SONDE, dormir=None, horloge=None):
+    """Rejoue `sonde` jusqu'à ce qu'elle rende vrai ou que `borne` secondes
+    passent. Rend son dernier verdict.
+
+    La sonde est jouée UNE FOIS DE PLUS à l'échéance : une machine qui
+    répond juste à la borne répond, et la refuser ferait jeter une heure
+    d'installation sur une seconde. `dormir` et `horloge` s'injectent, pour
+    qu'une épreuve n'attende pas.
+    """
+    import time
+
+    dormir = dormir or time.sleep
+    horloge = horloge or time.monotonic
+    fin = horloge() + borne
+    while True:
+        vu = sonde()
+        if vu or horloge() >= fin:
+            return vu
+        dormir(pause)
+
+
+def hache(secret):
+    """Le hachage crypt(3) de `secret`, ou « ».
+
+    LE SECRET PASSE PAR L'ENTRÉE STANDARD : sur la ligne de commande, il se
+    lirait dans la table des processus.
+    """
+    vu = runner_du_banc().jouer(
+        fabrique().ARGV_HACHAGE, entree=secret, fusionner=False, delai=60
+    )
+    return (vu.sortie or "").strip() if vu.code == 0 else ""
+
+
+def cle_du_gabarit():
+    """La clé publique de l'exploitant, sur une ligne, ou « ».
+
+    C'est celle par laquelle le moteur entrera dans chaque clone. Ce qui n'a
+    pas la forme d'une clé PUBLIQUE est refusé, et rien n'est déposé.
+    """
+    import sys
+
+    chemin = os.path.join(RACINE, "long_test")
+    if chemin not in sys.path:
+        sys.path.insert(0, chemin)
+    import descente
+
+    fichier = descente.cle_publique()
+    try:
+        with open(fichier, encoding="utf-8") as lu:
+            cle = lu.read().strip()
+    except (OSError, TypeError, ValueError):
+        return ""
+    return cle if fabrique().FORME_CLE_PUBLIQUE.match(cle) else ""
+
+
+def dans_l_invite(terrain, elevation, vmid, commande, borne=60):
+    """Joue `commande` dans le gabarit, par l'agent. Rend (code, sortie), ou
+    None si l'agent n'a pas rendu de verdict lisible."""
+    G = fabrique()
+    cmd = G.cmd_dans_l_invite(vmid, commande, borne)
+    if not cmd:
+        return None
+    fait = joue_sur(terrain, [cmd], elevation, delai=borne + 120)
+    return G.lit_invite(fait.sortie) if fait.reussi else None
+
+
+def retire_l_ebauche(terrain, elevation, vmid):
+    """Retire la VM d'une fabrication manquée. Rend ce qui en a été dit.
+
+    LE NOM EST VÉRIFIÉ D'ABORD, ET UN MODÈLE N'EST JAMAIS RETIRÉ : le VMID a
+    été choisi libre, mais une grappe partagée a pu le donner à un autre
+    entre-temps. Une VM introuvable n'a rien à retirer — `qm create` a pu
+    échouer avant de rien créer.
+    """
+    config = joue_sur(terrain, cmds_config_vm(vmid), elevation)
+    if not config.reussi:
+        return f"aucune VM {vmid} à retirer"
+    if not effacable(GABARIT, lit_nom_vm(config.sortie)):
+        return f"VM {vmid} laissée : elle ne porte pas le nom du gabarit"
+    if any(
+        ligne.split(":", 1)[1].strip() == "1"
+        for ligne in config.sortie.splitlines()
+        if ligne.startswith("template:")
+    ):
+        return f"VM {vmid} laissée : c'est un modèle"
+    fait = joue_sur(terrain, cmds_effacer_vm(vmid, GABARIT), elevation)
+    if not fait.reussi:
+        return (
+            f"l'ébauche {vmid} n'a pas pu être retirée ; elle fera refuser"
+            f" le prochain lancement : qm destroy {vmid}"
+        )
+    return f"ébauche {vmid} retirée"
+
+
+def gabarit_a_batir(etat, demande):
+    """Le banc doit-il bâtir le gabarit ?
+
+    SUR DEMANDE ET SUR ABSENCE SEULEMENT. Un gabarit présent mais non
+    conforme ne se corrige pas, il se réinstalle — et le remplacer
+    détruirait une VM que l'exploitant a peut-être bâtie lui-même. Un état
+    non lu ne vaut pas absence : bâtir sur un doute créerait un second
+    gabarit du même nom, et le clonage ne saurait plus lequel prendre.
+    """
+    return bool(demande) and etat == GABARIT_ABSENT
+
+
+def batit_le_gabarit(moteur, mesures, dire=print):
+    """Bâtit le gabarit doré sur le terrain, sans écran. Rend le souci, ou « ».
+
+    APPELÉ SUR UN GABARIT ABSENT SEULEMENT, et l'appelant le RE-MESURE
+    ensuite : ce qui a été bâti est jugé par le même lecteur que ce qu'aurait
+    bâti l'exploitant, jamais sur la parole de la fabrication.
+
+    LE BANC NE JOUE NI `preparer-modele` NI `verifier-modele` du moteur. Le
+    premier exige un serveur d'artefacts et un résolveur au plan du site, que
+    le site du banc ne déclare pas, et le second juge ce que le premier a
+    posé. Le banc constate à leur place ce que la procédure fait vérifier
+    avant la remise — racine, échange, EFI, paquets du relais, matériel —
+    puis joue le nettoyage du moteur.
+
+    UNE FABRICATION MANQUÉE RETIRE SON ÉBAUCHE : une VM du nom du gabarit qui
+    n'est pas un modèle ferait refuser chaque lancement suivant.
+    """
+    G = fabrique()
+    terrain, elevation = mesures.terrain, mesures.elevation
+    reseau = G.reseau_de_fabrique(CIDR_PONT_BANC)
+    if not reseau:
+        return f"{CIDR_PONT_BANC} ne laisse aucune adresse au gabarit"
+    cle = cle_du_gabarit()
+    if not cle:
+        return (
+            "aucune clé publique ssh lisible dans ~/.ssh : le moteur"
+            " n'entrerait dans aucun clone"
+        )
+    vus = joue_sur(terrain, cmds_vmids(), elevation)
+    vmid = gabarit_libre(lit_vmids(vus.sortie) if vus.reussi else None)
+    if not vmid:
+        return (
+            f"aucun VMID libre de {VMID_GABARIT_DEPART} à"
+            f" {VMID_GABARIT_FIN - 1}, ou la grappe n'a pas répondu"
+        )
+    souci = installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire)
+    if souci:
+        return f"{souci} — {retire_l_ebauche(terrain, elevation, vmid)}"
+    # LE MÉNAGE NE FAIT PAS ÉCHOUER LA FABRICATION : le gabarit est converti
+    # et conforme ; ce qui reste sur le nœud n'est lisible que par root, et
+    # la plainte le dit.
+    menage = joue_sur(terrain, G.cmds_menage(DOSSIER_GABARIT), elevation)
+    if not menage.reussi:
+        dire(f"    ⚠ {DOSSIER_GABARIT} n'a pas été retiré du nœud")
+    return ""
+
+
+def installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire=print):
+    """Les gestes de la fabrication, du dépôt de l'installateur à la
+    conversion. Rend le souci, ou « ». `batit_le_gabarit` décide du reste."""
+    G = fabrique()
+    terrain, elevation = mesures.terrain, mesures.elevation
+    adresse, prefixe, passerelle, masque = reseau
+    hachage = hache(forge_opaque())
+    texte = G.preseed(
+        GABARIT, adresse, passerelle, mesures.resolveur, hachage, masque=masque
+    )
+    if not texte:
+        return (
+            "le preseed ne se compose pas : hachage, adresse ou résolveur"
+            " manquant"
+        )
+    noyau, _initrd, porteur, journal = G.chemins_installateur(DOSSIER_GABARIT)
+
+    dire(
+        f"    installateur {CODE_DEBIAN_GABARIT} déposé, preseed dans l'initrd"
+    )
+    fait = joue_sur(
+        terrain,
+        G.cmds_preparer_installateur(
+            DOSSIER_GABARIT, G.urls_installateur(CODE_DEBIAN_GABARIT), texte
+        ),
+        elevation,
+    )
+    if not fait.reussi:
+        return f"installateur non déposé : {fait.sortie.strip()[-300:]}"
+
+    dire(f"    VM {vmid} sur {mesures.stockage}, installation sans écran")
+    argv = G.argv_creation(vmid, GABARIT, mesures.stockage, mesures.pont)
+    amorce = G.cmds_amorcer(
+        vmid, argv, G.args_amorce(noyau, porteur, journal=journal)
+    )
+    fait = joue_sur(terrain, amorce, elevation)
+    if not fait.reussi:
+        return f"VM {vmid} non amorcée : {fait.sortie.strip()[-300:]}"
+
+    def eteinte():
+        vu = joue_sur(terrain, [G.cmd_statut(vmid)], elevation, delai=60)
+        return vu.reussi and G.lit_statut(vu.sortie) == "stopped"
+
+    if not attend(eteinte, BORNE_INSTALLATION):
+        fin = joue_sur(
+            terrain, [f"tail -c 1500 {shlex.quote(journal)}"], elevation
+        )
+        return (
+            f"l'installateur ne s'est pas éteint en"
+            f" {BORNE_INSTALLATION // 60} min ; fin du journal série :"
+            f" {fin.sortie.strip()[-600:]}"
+        )
+
+    dire("    installé ; identité Cloud-Init, premier démarrage")
+    apres = G.cmds_apres_installation(vmid, mesures.stockage)
+    identite = G.cmds_identite(
+        vmid,
+        UTILISATEUR_GABARIT,
+        cle,
+        DOSSIER_GABARIT,
+        adresse,
+        prefixe,
+        passerelle,
+        mesures.resolveur,
+    )
+    if not apres or not identite:
+        return "l'identité Cloud-Init ne se compose pas"
+    fait = joue_sur(terrain, apres + identite, elevation)
+    if not fait.reussi:
+        return f"identité non posée : {fait.sortie.strip()[-300:]}"
+
+    def agent():
+        return joue_sur(
+            terrain, [G.cmd_agent(vmid)], elevation, delai=60
+        ).reussi
+
+    if not attend(agent, BORNE_AGENT):
+        return f"l'agent invité ne répond pas en {BORNE_AGENT // 60} min"
+
+    for argv in G.cmds_dans_le_gabarit(vmid):
+        lu = G.lit_invite(
+            joue_sur(terrain, [shlex.join(argv)], elevation).sortie
+        )
+        if lu is None or lu[0] != 0:
+            return (
+                f"le réseau du gabarit n'a pas été délégué à Cloud-Init : {lu}"
+            )
+
+    dire("    attente de la fin du premier démarrage (Cloud-Init, apt)")
+    lu = dans_l_invite(
+        terrain,
+        elevation,
+        vmid,
+        G.ATTENTE_PREMIER_DEMARRAGE,
+        BORNE_PREMIER_DEMARRAGE,
+    )
+    if lu is None or lu[0] != 0:
+        return f"le premier démarrage ne s'est pas tu : {lu}"
+
+    lu = dans_l_invite(terrain, elevation, vmid, G.CONSTATS_SYSTEME)
+    ecarts = G.ecarts_systeme(lu[1]) if lu and lu[0] == 0 else None
+    if ecarts is None:
+        return f"le système posé ne s'est pas décrit : {lu}"
+    if ecarts:
+        return "le système posé s'écarte de la procédure : " + "; ".join(
+            ecarts
+        )
+
+    dire("    nettoyage du moteur")
+    saut = saut_ansible(moteur, terrain)
+    if saut is None:
+        return (
+            "aucun saut vers le gabarit : le moteur ne déclare pas ses"
+            " options ssh"
+        )
+    souci = joue_une_etape(
+        moteur,
+        dict(env_ansible(moteur), **saut),
+        ETAPE_NETTOYAGE._replace(variables=(("MODELE_HOTE", adresse),)),
+        passe="gabarit",
+        dire=dire,
+    )
+    if souci:
+        return souci
+
+    config = joue_sur(terrain, cmds_config_vm(vmid), elevation)
+    ecarts = G.ecarts_materiel(config.sortie) if config.reussi else None
+    if ecarts is None:
+        return f"la configuration de la VM {vmid} ne s'est pas lue"
+    if ecarts:
+        return "le matériel s'écarte de la procédure : " + "; ".join(ecarts)
+
+    dire("    extinction propre, conversion en modèle")
+    fait = joue_sur(terrain, G.cmds_conversion(vmid), elevation)
+    if not fait.reussi:
+        return f"conversion refusée : {fait.sortie.strip()[-300:]}"
+    return ""
 
 
 def cmds_effacer_vm(vmid, nom):
@@ -3255,9 +3639,8 @@ def effacable(nom_attendu, nom_vu):
 def a_defaire(empreinte):
     """Ce que le banc a posé, dans l'ordre INVERSE de la pose.
 
-    Les VM d'abord, le gabarit ensuite, le pont et l'utilisateur d'API en
-    dernier. Défaire le pont avant les VM leur retirerait leur réseau sans les
-    effacer, et un gabarit ne s'efface pas tant qu'un clone lié en dépend.
+    Les VM d'abord, le pont et l'utilisateur d'API en dernier. Défaire le
+    pont avant les VM leur retirerait leur réseau sans les effacer.
     LES LIENS PARTENT AVANT LES DÉPÔTS. Tant qu'ils sont montés, les gestes du
     moteur agissent ; le dépôt retiré sous un lien qui tient, le moteur nomme un
     inventaire qui n'existe plus et refuse en parlant d'une instance absente au
@@ -4185,7 +4568,7 @@ def route_les_zones(moteur, mesures, chantier, env, dire=print):
     return ""
 
 
-def plan(passes, terrain):
+def plan(passes, terrain, batir=False):
     """Les étapes, dans l'ordre, avec la durée annoncée de chacune.
 
     IMPRIMÉ AVANT TOUTE CRÉATION, et c'est la règle de ce dossier : un plan
@@ -4209,7 +4592,12 @@ def plan(passes, terrain):
         # les nommer avant de l'avoir. Il dit ce qu'il fera, pas combien.
         ("une interface routée par zone du plan", "~10 s"),
         ("utilisateur d'API et son jeton", "~10 s"),
-        ("gabarit doré, agent qemu compris", "~10 min"),
+        (
+            "gabarit doré : bâti sans écran s'il est absent"
+            if batir
+            else "gabarit doré : mesuré (--batir-gabarit le bâtit)",
+            "~25 min annoncé" if batir else "~5 s",
+        ),
     ]
     for passe in passes or ():
         ou = (
@@ -4239,10 +4627,10 @@ def chemin_empreinte(base=""):
     return os.path.join(racine, "longtest", "setops_banc.json")
 
 
-def dire_plan(passes, terrain):
+def dire_plan(passes, terrain, batir=False):
     """Imprime le plan. Rien n'est créé par cette fonction."""
     print("── le plan ──")
-    for quoi, duree in plan(passes, terrain):
+    for quoi, duree in plan(passes, terrain, batir):
         print(f"  {quoi}" + (f"   ({duree})" if duree else ""))
 
 
@@ -4271,6 +4659,11 @@ def principal(argv=None):
         action="append",
         help="la passe à jouer ; les deux dans l'ordre si l'on n'en dit aucune",
     )
+    analyseur.add_argument(
+        "--batir-gabarit",
+        action="store_true",
+        help="bâtir le gabarit doré s'il est ABSENT ; jamais le remplacer",
+    )
     args = analyseur.parse_args(argv)
     passes = tuple(args.passe) if args.passe else PASSES
 
@@ -4278,7 +4671,7 @@ def principal(argv=None):
         return defaire(args.dry_run)
 
     terrain = args.terrain.strip() or terrain_deduit()
-    dire_plan(passes, terrain)
+    dire_plan(passes, terrain, args.batir_gabarit)
     if args.dry_run:
         return SORTIE_OK
 
@@ -4321,6 +4714,14 @@ def principal(argv=None):
     # `--detruire` reprend, et rend NON_CONCLUANTE — la boucle n'a pas joué.
     print("\n── le gabarit ──")
     vu = mesure_le_gabarit(terrain, mesures.elevation)
+    if gabarit_a_batir(vu.etat, args.batir_gabarit):
+        print("  · absent : bâti sans écran")
+        souci = batit_le_gabarit(moteur, mesures)
+        if souci:
+            print(f"\n  ⛔ {souci}")
+            print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+            return SORTIE_NON_CONCLUANTE
+        vu = mesure_le_gabarit(terrain, mesures.elevation)
     exige = exigence_du_gabarit(vu.etat)
     marque = "✓" if exige.tenu else ("✗" if exige.tenu is False else "?")
     print(f"  {marque} {exige.quoi}")

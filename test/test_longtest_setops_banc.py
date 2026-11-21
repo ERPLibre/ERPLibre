@@ -1776,6 +1776,287 @@ class TestCeQueLeBancExigeDuGabarit(unittest.TestCase):
         self.assertIn(B.GABARIT, B.exigence_du_gabarit(B.GABARIT_ABSENT).quoi)
 
 
+CLE_INVENTEE = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInventeePourLeTest0123456789 x@y"
+)
+
+
+class FauxTerrain:
+    """Un terrain qui répond à chaque commande d'après ce qu'elle demande,
+    et garde trace de tout ce qui y a été joué, dans l'ordre."""
+
+    CONFIG = (
+        "agent: enabled=1\nbios: ovmf\n"
+        "efidisk0: local:9000/vm-9000-disk-1.qcow2,size=528K\n"
+        "ide2: local:cloudinit,media=cdrom\nmachine: q35\n"
+        f"name: {B.GABARIT}\n"
+    )
+
+    def __init__(self, **change):
+        self.vms = [{"vmid": 100, "name": "autre"}]
+        self.statut = "stopped"
+        self.agent = True
+        self.constats = "racine=ext4\nechange=0\nefi=oui\n"
+        self.config = self.CONFIG
+        self.vmids_lisibles = True
+        self.__dict__.update(change)
+        self.joues = []
+
+    def repond(self, cmd):
+        if cmd.startswith("pvesh get /cluster/resources"):
+            return (
+                (0, json.dumps(self.vms)) if self.vmids_lisibles else (1, "")
+            )
+        if cmd.startswith("qm status"):
+            return 0, f"status: {self.statut}\n"
+        if cmd.startswith("qm guest cmd"):
+            return (0, "") if self.agent else (2, "agent not running")
+        if cmd.startswith("qm guest exec"):
+            sortie = self.constats if "racine=" in cmd else "status: done\n"
+            return 0, json.dumps(
+                {"exited": 1, "exitcode": 0, "out-data": sortie}
+            )
+        if cmd.startswith("qm config"):
+            return (0, self.config) if self.config else (2, "no such VM")
+        return 0, ""
+
+    def __call__(self, terrain, cmds, elevation, delai=B.DELAI_TERRAIN):
+        sortie, jouees = "", 0
+        for cmd in cmds or ():
+            self.joues.append(cmd)
+            jouees += 1
+            code, sortie = self.repond(cmd)
+            if code:
+                return B.Fait(code, sortie, jouees)
+        return B.Fait(0, sortie, jouees)
+
+    def joue(self, motif):
+        return [c for c in self.joues if motif in c]
+
+    def rang(self, motif):
+        return next(i for i, c in enumerate(self.joues) if motif in c)
+
+
+class TestLeBancBatitSonGabarit(unittest.TestCase):
+    """Bâti contre un faux terrain : ce qui compte est CE QUI EST JOUÉ, dans
+    quel ordre, et ce qui est retiré quand la fabrication échoue."""
+
+    def batit(self, terrain=None, cle=CLE_INVENTEE, nettoyage="", **bornes):
+        terrain = terrain or FauxTerrain()
+        appels = []
+
+        def etape(moteur, env, etape, passe="", dire=print, **k):
+            terrain.joues.append(f"NETTOYAGE {etape.cible} {etape.variables}")
+            appels.append(etape)
+            return nettoyage
+
+        rustines = [
+            mock.patch.object(B, "joue_sur", terrain),
+            mock.patch.object(B, "hache", lambda s: "$6$sel$hachageInvente"),
+            mock.patch.object(B, "forge_opaque", lambda: "secret-invente"),
+            mock.patch.object(B, "cle_du_gabarit", lambda: cle),
+            mock.patch.object(B, "joue_une_etape", etape),
+            mock.patch.object(B, "env_ansible", lambda m: {}),
+            mock.patch.object(B, "saut_ansible", lambda m, t: {}),
+        ] + [mock.patch.object(B, nom, v) for nom, v in bornes.items()]
+        for rustine in rustines:
+            rustine.start()
+            self.addCleanup(rustine.stop)
+        souci = B.batit_le_gabarit(
+            "/moteur", mesures_bonnes(), dire=lambda t: None
+        )
+        return souci, terrain, appels
+
+    def test_a_built_template_ends_converted_and_the_node_cleaned(self):
+        souci, terrain, appels = self.batit()
+        self.assertEqual("", souci)
+        self.assertTrue(terrain.joue("qm template 9000"))
+        self.assertTrue(terrain.joue(f"rm -rf {B.DOSSIER_GABARIT}"))
+        self.assertFalse(terrain.joue("qm destroy"))
+        adresse = B.fabrique().reseau_de_fabrique(B.CIDR_PONT_BANC)[0]
+        self.assertEqual((("MODELE_HOTE", adresse),), appels[0].variables)
+        self.assertTrue(appels[0].confirmer)
+
+    def test_checks_come_before_the_cleanup_and_the_cleanup_before_freezing(
+        self,
+    ):
+        _s, terrain, _a = self.batit()
+        constats = terrain.rang("racine=")
+        nettoyage = terrain.rang("NETTOYAGE")
+        materiel = max(
+            i for i, c in enumerate(terrain.joues) if c.startswith("qm config")
+        )
+        conversion = terrain.rang("qm template")
+        self.assertLess(constats, nettoyage)
+        self.assertLess(nettoyage, materiel)
+        self.assertLess(materiel, conversion)
+
+    def test_the_first_free_vmid_from_the_convention_is_taken(self):
+        terrain = FauxTerrain(vms=[{"vmid": 9000, "name": "a-l-exploitant"}])
+        _s, terrain, _a = self.batit(terrain)
+        self.assertTrue(terrain.joue("qm create 9001"))
+        self.assertFalse(terrain.joue("qm create 9000"))
+
+    def test_the_secret_never_reaches_the_node(self):
+        _s, terrain, _a = self.batit()
+        self.assertNotIn("secret-invente", "\n".join(terrain.joues))
+
+    def test_an_installer_that_never_stops_removes_its_draft(self):
+        terrain = FauxTerrain(statut="running")
+        souci, terrain, appels = self.batit(terrain, BORNE_INSTALLATION=0)
+        self.assertIn("éteint", souci)
+        self.assertTrue(terrain.joue("qm destroy 9000"))
+        self.assertFalse(terrain.joue("qm template"))
+        self.assertEqual([], appels)
+
+    def test_a_gap_in_the_system_stops_before_the_cleanup(self):
+        terrain = FauxTerrain(constats="racine=btrfs\nechange=0\nefi=oui\n")
+        souci, terrain, appels = self.batit(terrain)
+        self.assertIn("btrfs", souci)
+        self.assertEqual([], appels)
+        self.assertTrue(terrain.joue("qm destroy 9000"))
+
+    def test_a_gap_in_the_hardware_stops_before_freezing(self):
+        terrain = FauxTerrain(
+            config=FauxTerrain.CONFIG.replace("efidisk0", "scsi1")
+        )
+        souci, terrain, _a = self.batit(terrain)
+        self.assertIn("EFI", souci)
+        self.assertFalse(terrain.joue("qm template"))
+
+    def test_a_refused_cleanup_stops_before_freezing(self):
+        souci, terrain, _a = self.batit(nettoyage="make nettoyer-modele : x")
+        self.assertIn("nettoyer-modele", souci)
+        self.assertFalse(terrain.joue("qm template"))
+
+    def test_an_agent_that_never_answers_removes_its_draft(self):
+        terrain = FauxTerrain(agent=False)
+        souci, terrain, _a = self.batit(terrain, BORNE_AGENT=0)
+        self.assertIn("agent", souci)
+        self.assertTrue(terrain.joue("qm destroy 9000"))
+
+    def test_without_a_public_key_nothing_is_played(self):
+        souci, terrain, _a = self.batit(cle="")
+        self.assertIn("clé", souci)
+        self.assertEqual([], terrain.joues)
+
+    def test_an_unreadable_cluster_creates_nothing(self):
+        souci, terrain, _a = self.batit(FauxTerrain(vmids_lisibles=False))
+        self.assertIn("VMID", souci)
+        self.assertFalse(terrain.joue("qm create"))
+
+
+class TestLEbaucheNeRetireQueLaSienne(unittest.TestCase):
+    def retire(self, config):
+        terrain = FauxTerrain(config=config)
+        with mock.patch.object(B, "joue_sur", terrain):
+            dit = B.retire_l_ebauche("t", B.ELEVE, 9000)
+        return dit, terrain
+
+    def test_a_half_built_vm_of_ours_is_removed(self):
+        dit, terrain = self.retire(FauxTerrain.CONFIG)
+        self.assertTrue(terrain.joue("qm destroy 9000"))
+        self.assertIn("retirée", dit)
+
+    def test_a_template_is_never_removed(self):
+        dit, terrain = self.retire(FauxTerrain.CONFIG + "template: 1\n")
+        self.assertFalse(terrain.joue("qm destroy"))
+        self.assertIn("modèle", dit)
+
+    def test_a_vm_under_another_name_is_never_removed(self):
+        dit, terrain = self.retire(
+            FauxTerrain.CONFIG.replace(B.GABARIT, "a-l-exploitant")
+        )
+        self.assertFalse(terrain.joue("qm destroy"))
+
+    def test_a_vm_that_does_not_exist_has_nothing_to_remove(self):
+        dit, terrain = self.retire("")
+        self.assertFalse(terrain.joue("qm destroy"))
+
+
+class TestLeGabaritNeSeBatitQueSurAbsence(unittest.TestCase):
+    def test_only_an_absent_template_asked_for_is_built(self):
+        for etat in B.ETATS_GABARIT + (None,):
+            for demande in (False, True):
+                with self.subTest(etat=etat, demande=demande):
+                    self.assertEqual(
+                        etat == B.GABARIT_ABSENT and demande,
+                        B.gabarit_a_batir(etat, demande),
+                    )
+
+
+class TestUnVmidLibrePourBatir(unittest.TestCase):
+    def test_an_unread_cluster_gives_no_number(self):
+        self.assertEqual(0, B.gabarit_libre(None))
+
+    def test_the_first_hole_from_the_start_is_taken(self):
+        self.assertEqual(9000, B.gabarit_libre(()))
+        self.assertEqual(9002, B.gabarit_libre((100, 9000, 9001)))
+
+    def test_a_full_range_gives_no_number(self):
+        pris = tuple(range(B.VMID_GABARIT_DEPART, B.VMID_GABARIT_FIN))
+        self.assertEqual(0, B.gabarit_libre(pris))
+
+    def test_a_partly_readable_list_is_refused_whole(self):
+        for sortie in (
+            '[{"vmid": 100}, {"vmid": "9000"}]',
+            '[{"vmid": true}]',
+            '[{"name": "x"}]',
+            "{}",
+            "",
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertIsNone(B.lit_vmids(sortie))
+        self.assertEqual((), B.lit_vmids("[]"))
+
+
+class TestLAttente(unittest.TestCase):
+    def horloge(self, pas):
+        temps = [0]
+
+        def horloge():
+            return temps[0]
+
+        def dormir(duree):
+            temps[0] += pas
+
+        return horloge, dormir
+
+    def test_it_stops_as_soon_as_the_probe_holds(self):
+        vus = iter([False, False, True, True])
+        horloge, dormir = self.horloge(1)
+        self.assertTrue(
+            B.attend(lambda: next(vus), 100, dormir=dormir, horloge=horloge)
+        )
+        self.assertEqual(True, next(vus))
+
+    def test_it_gives_up_at_the_bound_after_one_last_probe(self):
+        sondes = []
+        horloge, dormir = self.horloge(30)
+
+        def sonde():
+            sondes.append(horloge())
+            return False
+
+        self.assertFalse(B.attend(sonde, 60, dormir=dormir, horloge=horloge))
+        self.assertEqual([0, 30, 60], sondes)
+
+
+class TestLeSecretPasseParLEntree(unittest.TestCase):
+    def test_the_secret_is_never_on_the_command_line(self):
+        vus = {}
+
+        class Faux:
+            def jouer(self, argv, entree=None, **k):
+                vus.update(argv=argv, entree=entree)
+                return mock.Mock(code=0, sortie="$6$sel$h\n")
+
+        with mock.patch.object(B, "runner_du_banc", lambda: Faux()):
+            self.assertEqual("$6$sel$h", B.hache("secret-invente"))
+        self.assertNotIn("secret-invente", " ".join(vus["argv"]))
+        self.assertEqual("secret-invente", vus["entree"])
+
+
 class TestLaRelectureDuGabaritSurLaGrappe(unittest.TestCase):
     """RELU sur la grappe, jamais repris d'une mesure d'avant-pose : entre les
     deux, l'exploitant a pu bâtir le gabarit, et une valeur gardée dirait le
