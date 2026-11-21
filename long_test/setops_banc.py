@@ -694,7 +694,18 @@ def ecarts_de_strophe(interfaces, nom, cidr):
         return None
     vu = strophe_declaree(interfaces, nom)
     if vu is None:
-        return ()
+        # UN « auto <nom> » SANS SA STROPHE compte pour la pose comme une
+        # déclaration : elle n'écrit alors rien, et le pont ne monte jamais
+        # au démarrage.
+        seul = any(
+            ligne.split()[:1] == ["auto"] and nom in ligne.split()[1:]
+            for ligne in (interfaces or "").splitlines()
+        )
+        return (
+            ("« auto » sans strophe « iface », que la pose ne réécrit pas",)
+            if seul
+            else ()
+        )
     return tuple(
         f"{cle} : {vu.get(cle) or 'absent'} au lieu de {voulu}"
         for cle, voulu in strophe_attendue(nom, cidr).items()
@@ -939,15 +950,22 @@ def joue_sur(terrain, cmds, elevation, delai=DELAI_TERRAIN):
     LA SORTIE N'EST PAS EXPURGÉE ICI. Elle ne peut pas l'être : le secret qu'un
     pas rend n'est connu qu'après l'avoir lue. L'appelant l'extrait, puis passe
     par `expurge` pour tout ce qu'il montre ou journalise.
+
+    UNE COMMANDE PEUT ÊTRE UN COUPLE (commande, entrée) : l'entrée voyage sur
+    l'entrée standard de ssh, jamais sur la ligne de commande — que sudo
+    journalise, et qu'on lit dans la table des processus.
     """
     if elevation not in (TEL_QUEL, ELEVE):
         return Fait(None, "", 0)
     sortie, jouees = "", 0
     for commande in cmds or ():
+        commande, entree = (
+            commande if isinstance(commande, tuple) else (commande, None)
+        )
         argv = ssh_argv(terrain, commande, elevation)
         if argv is None:
             return Fait(None, sortie, jouees)
-        vu = runner_du_banc().jouer(argv, delai=delai)
+        vu = runner_du_banc().jouer(argv, delai=delai, entree=entree)
         jouees += 1
         if vu.code != 0:
             return Fait(vu.code, vu.sortie, jouees)
@@ -3191,6 +3209,12 @@ def lit_gabarit(sortie, nom=GABARIT):
 
     Deux VM du même nom rendent None : le clonage ne saurait pas laquelle prendre,
     et choisir pour lui serait deviner.
+
+    UNE ENTRÉE SANS NOM EST UN DOUTE, PAS UNE ABSENCE. La grappe tient le nom
+    d'une VM des relevés de son démon d'état : tant qu'il n'a pas parlé — un
+    nœud qui redémarre, un stockage qui ne répond plus —, la VM est listée
+    sans nom. La lire « pas la nôtre » ferait conclure à un gabarit absent, et
+    `--batir-gabarit` en bâtirait un second du même nom.
     """
     texte = sortie or ""
     debut = texte.find("[")
@@ -3209,7 +3233,10 @@ def lit_gabarit(sortie, nom=GABARIT):
     for entree in lu:
         if not isinstance(entree, dict):
             return None
-        if (entree.get("name") or "").strip() != attendu:
+        nom_vu = entree.get("name")
+        if not isinstance(nom_vu, str) or not nom_vu.strip():
+            return None
+        if nom_vu.strip() != attendu:
             continue
         vmid = entree.get("vmid")
         if isinstance(vmid, bool) or not isinstance(vmid, int) or vmid < 1:
@@ -3393,7 +3420,15 @@ def retire_l_ebauche(terrain, elevation, vmid):
     """
     config = joue_sur(terrain, cmds_config_vm(vmid), elevation)
     if not config.reussi:
-        return f"aucune VM {vmid} à retirer"
+        # « ABSENTE » SEULEMENT QUAND LA GRAPPE LE DIT : une panne de ssh
+        # n'est pas une absence, et la taire laisserait l'ébauche refuser le
+        # lancement suivant sans que l'écran l'ait annoncée.
+        if "does not exist" in (config.sortie or ""):
+            return f"aucune VM {vmid} à retirer"
+        return (
+            f"l'ébauche {vmid} n'a pas pu être vérifiée ; si elle existe,"
+            f" elle fera refuser le prochain lancement : qm destroy {vmid}"
+        )
     if not effacable(GABARIT, lit_nom_vm(config.sortie)):
         return f"VM {vmid} laissée : elle ne porte pas le nom du gabarit"
     if any(
@@ -3458,16 +3493,26 @@ def batit_le_gabarit(moteur, mesures, dire=print):
             f"aucun VMID libre de {VMID_GABARIT_DEPART} à"
             f" {VMID_GABARIT_FIN - 1}, ou la grappe n'a pas répondu"
         )
-    souci = installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire)
+    try:
+        souci = installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire)
+    except BaseException:
+        # UNE INTERRUPTION — une frappe, un signal — LAISSERAIT L'ÉBAUCHE : une
+        # VM du nom du gabarit qui n'en est pas un, qui ferait refuser chaque
+        # lancement suivant. Elle est retirée, puis l'interruption suit son
+        # cours.
+        dire(f"    {retire_l_ebauche(terrain, elevation, vmid)}")
+        # Verdict ignoré : l'interruption l'emporte, et rien ne la retient.
+        joue_sur(terrain, G.cmds_menage(DOSSIER_GABARIT), elevation)
+        raise
     if souci:
-        return f"{souci} — {retire_l_ebauche(terrain, elevation, vmid)}"
-    # LE MÉNAGE NE FAIT PAS ÉCHOUER LA FABRICATION : le gabarit est converti
-    # et conforme ; ce qui reste sur le nœud n'est lisible que par root, et
-    # la plainte le dit.
+        souci = f"{souci} — {retire_l_ebauche(terrain, elevation, vmid)}"
+    # LE MÉNAGE SUIT LA RÉUSSITE COMME L'ÉCHEC : l'initrd porte le hachage
+    # root. Il ne fait pas échouer la fabrication — ce qui reste n'est
+    # lisible que par root, et la plainte le dit.
     menage = joue_sur(terrain, G.cmds_menage(DOSSIER_GABARIT), elevation)
     if not menage.reussi:
         dire(f"    ⚠ {DOSSIER_GABARIT} n'a pas été retiré du nœud")
-    return ""
+    return souci
 
 
 def installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire=print):

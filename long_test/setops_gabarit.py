@@ -278,7 +278,10 @@ def argv_creation(vmid, nom, stockage, pont, gio=16, memoire=2048, coeurs=2):
         "--scsihw",
         "virtio-scsi-single",
         "--scsi0",
-        f"{lieu}:{taille},format=qcow2,iothread=1",
+        # SANS FORMAT IMPOSÉ : chaque stockage prend le sien par défaut, et
+        # un LVM-thin ou un ZFS refuse un qcow2. Le moteur clone en copie
+        # complète, donc le format de la source n'importe pas au clonage.
+        f"{lieu}:{taille},iothread=1",
         # Le disque EFI est ce qui rend `ovmf` utilisable : sans lui la VM
         # démarre sur un firmware sans stockage de variables, et l'entrée
         # d'amorçage écrite par l'installateur ne survit pas à l'extinction.
@@ -456,8 +459,10 @@ def cmds_preparer_installateur(dossier, urls, texte_preseed):
     """Les commandes qui déposent l'installateur et glissent le preseed dans
     son initrd, ou ().
 
-    LE PRESEED VOYAGE EN BASE64 : son texte porte des « $ » de la recette
-    et du hachage, qu'aucun shell ne doit interpréter en route.
+    LE PRESEED VOYAGE SUR L'ENTRÉE STANDARD, EN BASE64 : il porte le hachage
+    root, que sudo journaliserait s'il passait sur la ligne de commande, et
+    des « $ » qu'aucun shell ne doit interpréter. Cette étape est donc un
+    couple (commande, entrée), que l'appelant joue en passant l'entrée.
 
     AJOUTÉ À UNE COPIE de l'initrd, qui reste intact : un cpio concaténé
     est lu par le noyau à la suite du premier, et rejouer la préparation
@@ -481,7 +486,7 @@ def cmds_preparer_installateur(dossier, urls, texte_preseed):
         f"mkdir -p {racine} && chmod 700 {base}",
         f"{wget} -O {shlex.quote(noyau)} {shlex.quote(urls[0])}",
         f"{wget} -O {shlex.quote(initrd)} {shlex.quote(urls[1])}",
-        f"echo {corps} | base64 -d > {racine}/preseed.cfg",
+        (f"base64 -d > {racine}/preseed.cfg", corps),
         f"cp {shlex.quote(initrd)} {shlex.quote(porteur)}",
         f"cd {racine} && echo preseed.cfg | cpio -H newc -o 2>/dev/null"
         f" | gzip >> {shlex.quote(porteur)}",

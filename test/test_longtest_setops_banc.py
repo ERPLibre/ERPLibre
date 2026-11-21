@@ -749,6 +749,45 @@ class TestLaStropheDuPontPreditLeRedemarrage(unittest.TestCase):
         texte = strophe_posee("vmbr90", self.CIDR)
         self.assertIs(True, self.juge(texte).tenu)
 
+    def test_a_lone_auto_line_is_a_missing_stanza(self):
+        """La pose prend « auto <pont> » pour une déclaration et n'écrit
+        rien : sans sa strophe, le pont ne monte jamais au démarrage."""
+        texte = "auto lo\niface lo inet loopback\nauto vmbr9\n"
+        vu = self.juge(texte)
+        self.assertIs(False, vu.tenu)
+        self.assertIn("auto", vu.dit)
+        # Un « auto » qui nomme un autre pont ne compte pas.
+        self.assertIs(True, self.juge("auto vmbr90 lo\n").tenu)
+
+    def test_the_measure_carries_the_file_to_the_judge(self):
+        """Le fil de bout en bout : ce que le terrain déclare atteint le
+        préalable. Un défaut à « » couperait la garde en silence."""
+        mauvais = strophe_posee("vmbr9", "198.51.100.1/24")
+
+        def faux(terrain, cmds, elevation, delai=B.DELAI_TERRAIN):
+            if cmds == ["cat /etc/network/interfaces"]:
+                return B.Fait(0, mauvais, 1)
+            return B.Fait(1, "", 1)
+
+        with (
+            mock.patch.object(B, "joue_sur", faux),
+            mock.patch.object(B, "elevation_du_terrain", lambda t: B.ELEVE),
+            mock.patch.object(B, "instances_freres", lambda m: []),
+            mock.patch.object(B, "pont_deja_nomme", lambda: "vmbr9"),
+        ):
+            vu = B.mesure_le_terrain("/moteur", "un-terrain")
+        self.assertEqual(mauvais, vu.interfaces)
+        self.assertIs(
+            False, B.prealable_de_strophe(vu.interfaces, vu.pont).tenu
+        )
+
+    def test_an_unplayable_terrain_measures_no_file(self):
+        with mock.patch.object(
+            B, "elevation_du_terrain", lambda t: B.IMPOSSIBLE
+        ):
+            vu = B.mesure_le_terrain("/moteur", "un-terrain")
+        self.assertIsNone(vu.interfaces)
+
     def test_it_is_judged_before_anything_is_created(self):
         texte = strophe_posee("vmbr9", "198.51.100.1/24")
         vus = B.prealables(mesures_bonnes(interfaces=texte))
@@ -1799,8 +1838,11 @@ class FauxTerrain:
         self.constats = "racine=ext4\nechange=0\nefi=oui\n"
         self.config = self.CONFIG
         self.vmids_lisibles = True
+        self.ssh_coupe = False
+        self.interrompre = ""
         self.__dict__.update(change)
         self.joues = []
+        self.entrees = []
 
     def repond(self, cmd):
         if cmd.startswith("pvesh get /cluster/resources"):
@@ -1817,12 +1859,21 @@ class FauxTerrain:
                 {"exited": 1, "exitcode": 0, "out-data": sortie}
             )
         if cmd.startswith("qm config"):
-            return (0, self.config) if self.config else (2, "no such VM")
+            if self.ssh_coupe:
+                return 255, "ssh: connect to host: Connection timed out"
+            if not self.config:
+                return 2, "Configuration file 'x/9000.conf' does not exist"
+            return 0, self.config
         return 0, ""
 
     def __call__(self, terrain, cmds, elevation, delai=B.DELAI_TERRAIN):
         sortie, jouees = "", 0
         for cmd in cmds or ():
+            if isinstance(cmd, tuple):
+                cmd, entree = cmd
+                self.entrees.append(entree)
+            if self.interrompre and self.interrompre in cmd:
+                raise KeyboardInterrupt
             self.joues.append(cmd)
             jouees += 1
             code, sortie = self.repond(cmd)
@@ -1898,8 +1949,20 @@ class TestLeBancBatitSonGabarit(unittest.TestCase):
         self.assertFalse(terrain.joue("qm create 9000"))
 
     def test_the_secret_never_reaches_the_node(self):
+        """Ni en clair ni encodé, ni sur une ligne ni sur une entrée : seul
+        son hachage voyage, et par l'entrée standard."""
+        import base64
+
         _s, terrain, _a = self.batit()
-        self.assertNotIn("secret-invente", "\n".join(terrain.joues))
+        vus = list(terrain.joues) + list(terrain.entrees)
+        for texte in list(vus):
+            for mot in texte.split():
+                try:
+                    vus.append(base64.b64decode(mot, validate=True).decode())
+                except (ValueError, UnicodeDecodeError):
+                    pass
+        self.assertNotIn("secret-invente", "\n".join(vus))
+        self.assertNotIn("hachageInvente", "\n".join(terrain.joues))
 
     def test_an_installer_that_never_stops_removes_its_draft(self):
         terrain = FauxTerrain(statut="running")
@@ -1908,6 +1971,19 @@ class TestLeBancBatitSonGabarit(unittest.TestCase):
         self.assertTrue(terrain.joue("qm destroy 9000"))
         self.assertFalse(terrain.joue("qm template"))
         self.assertEqual([], appels)
+
+    def test_a_failed_build_cleans_the_node_too(self):
+        """L'initrd porte le hachage root : il ne reste pas sur le nœud."""
+        terrain = FauxTerrain(statut="running")
+        _s, terrain, _a = self.batit(terrain, BORNE_INSTALLATION=0)
+        self.assertTrue(terrain.joue(f"rm -rf {B.DOSSIER_GABARIT}"))
+
+    def test_an_interrupted_build_removes_its_draft_then_lets_go(self):
+        terrain = FauxTerrain(interrompre="qm guest cmd")
+        with self.assertRaises(KeyboardInterrupt):
+            self.batit(terrain)
+        self.assertTrue(terrain.joue("qm destroy 9000"))
+        self.assertTrue(terrain.joue(f"rm -rf {B.DOSSIER_GABARIT}"))
 
     def test_a_gap_in_the_system_stops_before_the_cleanup(self):
         terrain = FauxTerrain(constats="racine=btrfs\nechange=0\nefi=oui\n")
@@ -1972,6 +2048,33 @@ class TestLEbaucheNeRetireQueLaSienne(unittest.TestCase):
     def test_a_vm_that_does_not_exist_has_nothing_to_remove(self):
         dit, terrain = self.retire("")
         self.assertFalse(terrain.joue("qm destroy"))
+        self.assertIn("aucune", dit)
+
+    def test_a_check_that_did_not_run_is_not_an_absence(self):
+        terrain = FauxTerrain(ssh_coupe=True)
+        with mock.patch.object(B, "joue_sur", terrain):
+            dit = B.retire_l_ebauche("t", B.ELEVE, 9000)
+        self.assertNotIn("aucune", dit)
+        self.assertIn("qm destroy 9000", dit)
+
+
+class TestUneVMSansNomEstUnDoute(unittest.TestCase):
+    """Tant que le démon d'état de la grappe n'a pas parlé, ses VM sont
+    listées sans nom : les lire « pas la nôtre » ferait conclure à un
+    gabarit absent, et en bâtir un second du même nom."""
+
+    def test_a_nameless_entry_is_not_an_absence(self):
+        for entree in ({"vmid": 9000}, {"vmid": 9000, "name": ""}):
+            with self.subTest(entree=entree):
+                sortie = json.dumps([{"vmid": 100, "name": "x"}, entree])
+                self.assertIsNone(B.lit_gabarit(sortie))
+
+    def test_named_entries_still_answer(self):
+        """Contrôle positif : la règle ne rend pas tout douteux."""
+        sortie = json.dumps([{"vmid": 100, "name": "x"}])
+        self.assertEqual(0, B.lit_gabarit(sortie))
+        sortie = json.dumps([{"vmid": 9000, "name": B.GABARIT}])
+        self.assertEqual(9000, B.lit_gabarit(sortie))
 
 
 class TestLeGabaritNeSeBatitQueSurAbsence(unittest.TestCase):
@@ -2040,6 +2143,24 @@ class TestLAttente(unittest.TestCase):
 
         self.assertFalse(B.attend(sonde, 60, dormir=dormir, horloge=horloge))
         self.assertEqual([0, 30, 60], sondes)
+
+
+class TestUneEntreeVoyageHorsDeLaLigne(unittest.TestCase):
+    def test_the_input_reaches_ssh_stdin_not_its_command_line(self):
+        vus = []
+
+        class Faux:
+            def jouer(self, argv, entree=None, **k):
+                vus.append((argv, entree))
+                return mock.Mock(code=0, sortie="")
+
+        with mock.patch.object(B, "runner_du_banc", lambda: Faux()):
+            fait = B.joue_sur(
+                "un-terrain", ["true", ("cat > f", "donnee")], B.ELEVE
+            )
+        self.assertTrue(fait.reussi)
+        self.assertEqual([None, "donnee"], [e for _a, e in vus])
+        self.assertNotIn("donnee", " ".join(" ".join(a) for a, _e in vus))
 
 
 class TestLeSecretPasseParLEntree(unittest.TestCase):

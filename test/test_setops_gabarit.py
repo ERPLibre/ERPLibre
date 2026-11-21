@@ -216,6 +216,19 @@ class TestLesArgumentsDAmorcage(unittest.TestCase):
         self.assertIn("file:/var/log/di.log", avec)
 
 
+class TestLeDisqueVaSurToutStockageAImages(unittest.TestCase):
+    def test_no_disk_format_is_forced_on_the_storage(self):
+        """Un LVM-thin ou un ZFS refuse un qcow2 : chaque stockage prend le
+        format qui est le sien."""
+        argv = G.argv_creation(9000, HOTE, "un-stockage", "vmbr9")
+        disque = argv[argv.index("--scsi0") + 1]
+        options = dict(
+            p.split("=", 1) for p in disque.split(",")[1:] if "=" in p
+        )
+        self.assertNotIn("format", options)
+        self.assertTrue(disque.startswith("un-stockage:"))
+
+
 class TestLaCreationDeLaVM(unittest.TestCase):
     def argv(self, **ecarts):
         champs = dict(vmid=9000, nom="g", stockage="local", pont="vmbr0")
@@ -332,12 +345,15 @@ class TestLaConversion(unittest.TestCase):
 
 
 def joue(cmds, env=None, cwd=None):
-    """Joue `cmds` dans un shell, comme le nœud le ferait, dans l'ordre."""
+    """Joue `cmds` dans un shell, comme le nœud le ferait, dans l'ordre. Un
+    couple (commande, entrée) reçoit son entrée sur l'entrée standard."""
     for cmd in cmds:
+        cmd, entree = cmd if isinstance(cmd, tuple) else (cmd, None)
         vu = subprocess.run(
             ["sh", "-c", cmd],
             capture_output=True,
             text=True,
+            input=entree,
             env=env,
             cwd=cwd,
             timeout=60,
@@ -439,11 +455,13 @@ class TestLePreseedVoyageDansLInitrd(unittest.TestCase):
         )
 
     def lu_par_le_noyau(self, chemin):
-        """{nom: contenu} de TOUTES les archives cpio concaténées, lues à la
-        suite comme le noyau le fait. `cpio -i` s'arrêterait à la première."""
+        """[(nom, contenu)] de TOUTES les archives cpio concaténées, lues à la
+        suite comme le noyau le fait — `cpio -i` s'arrêterait à la première.
+        Une LISTE, et non un dictionnaire : deux entrées du même nom doivent
+        se compter deux fois."""
         with open(chemin, "rb") as fh:
             octets = gzip.decompress(fh.read())
-        fichiers, i = {}, 0
+        fichiers, i = [], 0
         while i + 110 <= len(octets):
             if octets[i : i + 6] != b"070701":
                 i += 1
@@ -455,12 +473,12 @@ class TestLePreseedVoyageDansLInitrd(unittest.TestCase):
             donnees = (debut + longueur + 3) & ~3
             fin = donnees + taille
             if nom != "TRAILER!!!":
-                fichiers[nom] = octets[donnees:fin].decode()
+                fichiers.append((nom, octets[donnees:fin].decode()))
             i = (fin + 3) & ~3
         return fichiers
 
     def membres(self, chemin):
-        return sorted(self.lu_par_le_noyau(chemin))
+        return [nom for nom, _c in self.lu_par_le_noyau(chemin)]
 
     def test_the_preseed_is_read_back_from_the_initrd_unchanged(self):
         texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
@@ -471,17 +489,45 @@ class TestLePreseedVoyageDansLInitrd(unittest.TestCase):
         self.assertEqual(0, vu.returncode, vu.stderr)
         _n, initrd, porteur, _j = G.chemins_installateur(self.dossier)
         self.assertEqual(["init", "preseed.cfg"], self.membres(porteur))
-        self.assertEqual(texte, self.lu_par_le_noyau(porteur)["preseed.cfg"])
+        self.assertEqual(
+            texte, dict(self.lu_par_le_noyau(porteur))["preseed.cfg"]
+        )
         # L'initrd d'origine reste intact : rejouer repart de lui.
         self.assertEqual(["init"], self.membres(initrd))
 
     def test_preparing_twice_does_not_stack_two_preseeds(self):
-        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
-        cmds = G.cmds_preparer_installateur(self.dossier, self.URLS, texte)
-        joue(cmds, env=self.env)
-        joue(cmds, env=self.env)
+        """Le second passage porte un AUTRE preseed : c'est le sien seul que
+        l'initrd doit porter."""
+        premier = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        second = G.preseed("autre-hote", ADRESSE, PASSERELLE, DNS, HACHAGE)
+        for texte in (premier, second):
+            joue(
+                G.cmds_preparer_installateur(self.dossier, self.URLS, texte),
+                env=self.env,
+            )
         porteur = G.chemins_installateur(self.dossier)[2]
         self.assertEqual(["init", "preseed.cfg"], self.membres(porteur))
+        self.assertEqual(
+            second, dict(self.lu_par_le_noyau(porteur))["preseed.cfg"]
+        )
+
+    def test_the_root_hash_never_travels_on_a_command_line(self):
+        """sudo journalise la ligne de commande, et la table des processus
+        la montre : le preseed passe par l'entrée standard."""
+        texte = G.preseed(HOTE, ADRESSE, PASSERELLE, DNS, HACHAGE)
+        cmds = G.cmds_preparer_installateur(self.dossier, self.URLS, texte)
+        lignes = [c[0] if isinstance(c, tuple) else c for c in cmds]
+        entrees = [c[1] for c in cmds if isinstance(c, tuple)]
+        for ligne in lignes:
+            for mot in shlex.split(ligne):
+                try:
+                    clair = base64.b64decode(mot, validate=True).decode()
+                except (ValueError, UnicodeDecodeError):
+                    clair = ""
+                self.assertNotIn(HACHAGE, mot + clair)
+        self.assertTrue(
+            any(HACHAGE in base64.b64decode(e).decode() for e in entrees)
+        )
 
     def test_no_clear_preseed_is_left_beside_it(self):
         """Le preseed porte le hachage root : il ne vit que dans l'initrd."""
@@ -509,7 +555,7 @@ class TestLePreseedVoyageDansLInitrd(unittest.TestCase):
         for cmd in G.cmds_preparer_installateur(
             self.dossier, self.URLS, "x\n"
         ):
-            if cmd.startswith("wget"):
+            if isinstance(cmd, str) and cmd.startswith("wget"):
                 self.assertIn("--retry-on-host-error", cmd)
                 self.assertIn("--retry-connrefused", cmd)
 
@@ -625,14 +671,27 @@ class TestLePremierDemarrageSeTait(unittest.TestCase):
 
     def joue(self, **corps):
         with tempfile.TemporaryDirectory() as tmp:
+            self.trace = os.path.join(tmp, "trace")
+            corps = {
+                nom: f'echo "{nom} $*" >> {self.trace}; {texte}'
+                for nom, texte in corps.items()
+            }
             env = bouchons(os.path.join(tmp, "bin"), **corps)
-            return subprocess.run(
+            vu = subprocess.run(
                 ["sh", "-c", G.ATTENTE_PREMIER_DEMARRAGE],
                 capture_output=True,
                 text=True,
                 env=env,
                 timeout=60,
             )
+            with open(self.trace) as fh:
+                self.appels = fh.read().splitlines()
+            return vu
+
+    def test_cloud_init_is_waited_for_before_apt_is_looked_at(self):
+        self.joue(cloud_init="exit 0", systemctl="exit 3", pgrep="exit 1")
+        self.assertTrue(self.appels[0].startswith("cloud_init"))
+        self.assertIn("--wait", self.appels[0].split())
 
     def test_cloud_init_in_error_does_not_fail_the_wait(self):
         """On attend la fin, pas le verdict."""
@@ -678,6 +737,31 @@ class TestLeSystemePoseSeDecrit(unittest.TestCase):
         self.assertIsNotNone(ecarts, vu.stdout)
         # L'EFI dépend de la machine qui joue l'épreuve ; le reste non.
         self.assertEqual((), tuple(e for e in ecarts if "EFI" not in e))
+
+    def test_a_missing_package_is_reported_by_the_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = bouchons(
+                os.path.join(tmp, "bin"),
+                findmnt="echo ext4",
+                swapon="true",
+                dpkg_query=(
+                    'for a; do p="$a"; done;'
+                    ' [ "$p" = cloud-init ] && exit 1;'
+                    " printf 'install ok installed'"
+                ),
+            )
+            vu = subprocess.run(
+                ["sh", "-c", G.CONSTATS_SYSTEME],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+        ecarts = G.ecarts_systeme(vu.stdout)
+        self.assertEqual(
+            ["paquet absent : cloud-init"],
+            [e for e in ecarts if "paquet" in e],
+        )
 
     def test_a_conforming_system_has_no_gap(self):
         self.assertEqual((), G.ecarts_systeme(self.CONFORME))
