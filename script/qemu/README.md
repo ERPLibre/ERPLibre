@@ -166,7 +166,7 @@ per-version matrix is `_QEMU_DESKTOP_RELEASES` in
 | Flavour | Ubuntu | Debian | Fedora | EL | openSUSE | Arch | NixOS |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | GNOME | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | 26.05 |
-| Cinnamon | ✔ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
+| Cinnamon | ✔ | ✔ | ✔ | 9 | 16.0 | ✔ | 26.05 |
 | Plasma 6 | 26.04 | 13 | ✔ | 10 | ✔ | ✔ | 26.05 |
 | Xfce | ✔¹ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
 | COSMIC | — | — | ✔ | — | tw | ✔ | 26.05 |
@@ -188,11 +188,24 @@ Remote access per flavour (`--desktop-remote` names the server):
 | Hyprland | wayvnc | VNC | 5900 |
 | COSMIC | — | console only | — |
 
-KRdp and wayvnc authenticate through PAM. Both open the session at boot and
-lock it immediately; the client unlocks with the VM account password. The SSH
-tunnel local port is the remote port plus one: 3390 → 3389, 5902 → 5901,
-5901 → 5900. KRdp 6.6, the one NixOS 26.05 ships, refuses NLA with PAM
-authentication: set the RDP client to TLS security. The NixOS module also
+KRdp, wayvnc and TigerVNC authenticate through PAM with the VM account; no
+separate VNC password exists. KRdp and wayvnc open the session at boot and
+lock it immediately; the client unlocks it with the VM account password.
+TigerVNC runs as the `vncserver@:1` service and opens its own X session. The
+SSH tunnel local port is the remote port plus one: 3390 → 3389, 5902 → 5901,
+5901 → 5900. KRdp before 6.8 — 6.6 on NixOS 26.05, 6.7 on EL 10 — refuses NLA
+with PAM authentication: set the RDP client to TLS security. On EL 10, its
+portal mode also loses about one connection in two (no image), so it runs as
+`krdpserver --plasma`, which captures through KWin and has no clipboard.
+Plasma VMs with KRdp never turn the screen off: a locked screen that Plasma
+powers off leaves KRdp without an image. xrdp renders in software
+(`DRMDevice ""` in `/etc/X11/xrdp/xorg.conf`): on the VM's virgl GPU,
+xorgxrdp 0.9 reads back wrong pixels. On openSUSE, the SELinux boolean
+`unconfined_service_transition_to_unconfined_user` lets xrdp open the user
+session. A polkit rule lets the VM account create the colour profile and
+control the network from an xrdp session, where a password prompt would
+otherwise cover the desktop. Cinnamon is not offered on Tumbleweed, whose
+packages hang it at start. The NixOS module also
 turns NetworkManager off, which GNOME, Cinnamon and COSMIC would enable over
 the image's network configuration.
 
