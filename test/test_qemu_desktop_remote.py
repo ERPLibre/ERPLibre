@@ -267,6 +267,8 @@ class _Invite:
         "/etc/X11/xrdp/xorg.conf",
         "/etc/polkit-1",
         "/usr/share/wayland-sessions",
+        "/usr/lib/NetworkManager/conf.d/00-server.conf",
+        "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf",
         "/sys/fs/selinux/enforce",
         "/sys/fs/selinux/booleans/"
         "unconfined_service_transition_to_unconfined_user",
@@ -990,6 +992,36 @@ class TestItRuns(unittest.TestCase):
 
     # --- repli xrdp ---------------------------------------------------- #
 
+    def test_el_xrdp_fallback_enables_epel_first(self):
+        """GNOME 40 d'EL 9 n'a pas grdctl : le repli prend xrdp dans EPEL,
+        que la saveur GNOME n'active pas d'elle-même."""
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("gnome", distro="almalinux", version="9").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y epel-release"),
+            _indice(log, "dnf install -y xrdp xorgxrdp"),
+        )
+
+    def test_the_bus_policy_is_reread_before_grd(self):
+        """dbus-broker relit sa politique avant que le compte de GNOME
+        Remote Desktop n'existe ; relue, elle le laisse prendre son nom."""
+        self._apt()
+        self.vm.stub("busctl")
+        self.vm.grdctl()
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "org.freedesktop.DBus ReloadConfig"),
+            _indice(log, "grdctl --system"),
+        )
+
     def test_without_system_mode_xrdp_is_installed_and_enabled(self):
         """GNOME 43 (Debian 12) : grdctl n'a pas de mode système."""
         self._apt()
@@ -1412,6 +1444,36 @@ class TestNewFlavoursRun(unittest.TestCase):
             _indice(log, "dnf install -y xrdp-selinux"),
             _indice(log, "systemctl restart xrdp"),
         )
+
+    def test_nm_auto_connection_survives_the_server_config(self):
+        """NetworkManager-config-server, tiré par le groupe de GNOME sur EL,
+        coupe la connexion automatique : la VM perdrait son réseau au
+        redémarrage."""
+        self.vm.stub("dnf")
+        serveur = self.vm.etc("/usr/lib/NetworkManager/conf.d/00-server.conf")
+        serveur.parent.mkdir(parents=True, exist_ok=True)
+        serveur.write_text("[main]\nno-auto-default=*\n")
+        surcharge = self.vm.etc(
+            "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf"
+        )
+        surcharge.parent.mkdir(parents=True, exist_ok=True)
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual("[main]\nno-auto-default=\n", surcharge.read_text())
+
+    def test_without_the_server_config_nm_is_left_alone(self):
+        self.vm.stub("dnf")
+        surcharge = self.vm.etc(
+            "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf"
+        )
+        surcharge.parent.mkdir(parents=True, exist_ok=True)
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(surcharge.exists())
 
     def _polkit(self):
         """« install » qui écrit vraiment, et le dossier de polkit."""

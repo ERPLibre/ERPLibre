@@ -442,8 +442,10 @@ class QemuInstallMixin:
             # l'accès distant, pas le bureau.
             "dnf_remote": "gnome-remote-desktop openssl",
             "pacman": "gnome gdm gnome-remote-desktop openssl",
+            # grdctl --system se relance par pkexec, paquet à part sur
+            # openSUSE : sans lui, chaque appel échoue en rendant 0.
             "zypper": "patterns-gnome-gnome_basic gdm "
-            "gnome-remote-desktop openssl",
+            "gnome-remote-desktop openssl pkexec",
             "service": "gdm",
             # Fichier témoin, sous le $HOME de l'utilisateur de la VM, qui
             # dit l'assistant de premier démarrage déjà passé : sans lui, il
@@ -1683,6 +1685,8 @@ class QemuInstallMixin:
                 "apt-get -o DPkg::Lock::Timeout=600 install -y",
                 "apt",
             ),
+            # xrdp n'est sur EL que dans EPEL, déjà activé en tête de la
+            # branche dnf (_qemu_epel_cmd).
             ("dnf", "sudo dnf install -y", "dnf"),
             (
                 "zypper",
@@ -2090,6 +2094,12 @@ class QemuInstallMixin:
             # -q peut refermer le tube avant la fin de l'aide, et grdctl,
             # coupé, rendrait alors un échec qui ne dit rien de sa capacité.
             + (
+                # dbus-broker relit sa politique pendant la transaction dnf,
+                # avant que le compte gnome-remote-desktop n'existe, et en
+                # écarte la règle qui lui laisse prendre son nom de bus :
+                # le service attend alors 90 s et échoue (EL 10).
+                "sudo busctl call org.freedesktop.DBus /org/freedesktop/DBus "
+                "org.freedesktop.DBus ReloadConfig >/dev/null 2>&1 || true; "
                 "EL_REM=; "
                 "if { grdctl --help 2>&1 || true; } "
                 "| grep -q -- --system; then "
@@ -2389,6 +2399,7 @@ class QemuInstallMixin:
             )
         nix = distro == "nixos"
         if not nix:
+            out += self._qemu_nm_auto_default_cmd()
             # « grd » : le repli xrdp de GNOME (grdctl sans mode système)
             # ouvre lui aussi des sessions xrdp.
             if remote in ("x11", "grd"):
@@ -2484,6 +2495,25 @@ class QemuInstallMixin:
             '| sed "s/@EL_USER@/$(id -un)/" '
             f"| sudo install -D -m 644 /dev/stdin {r} "
             f'|| echo "   ⚠ {ko}"; fi; '
+        )
+
+    def _qemu_nm_auto_default_cmd(self):
+        """Bloc shell : rend à NetworkManager sa connexion automatique.
+
+        Le groupe graphical-server-environment d'EL, que GNOME installe,
+        tire NetworkManager-config-server : no-auto-default=* y coupe la
+        connexion filaire créée d'office. Sur une image dont la carte n'est
+        décrite par aucune connexion (Rocky 10 : cloud-init écrit eth0, la
+        carte s'appelle enp1s0), la VM n'a plus de réseau au redémarrage
+        suivant. Une surcharge dans /etc rétablit la valeur par défaut ;
+        elle prend effet au démarrage suivant, sans couper la session qui
+        installe."""
+        conf = "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf"
+        return (
+            "if [ -f /usr/lib/NetworkManager/conf.d/00-server.conf ] "
+            f"&& [ ! -e {conf} ]; then "
+            f"printf '[main]\\nno-auto-default=\\n' "
+            f"| sudo tee {conf} >/dev/null || true; fi; "
         )
 
     def _qemu_autologin_cmd(self, service, sessions):
