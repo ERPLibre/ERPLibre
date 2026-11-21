@@ -314,6 +314,124 @@ class TestEnvironnement(unittest.TestCase):
             self.assertEqual(h.verifier_odoo(ctx).statut, h.INFO)
 
 
+class TestCacheQemu(unittest.TestCase):
+    """La version du cache QEMU installé face à celle de son code, avec un
+    faux binaire qui annonce la version voulue."""
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine)
+        self.binaire = os.path.join(self.racine, "erplibre_go_qemu_cache")
+        patch = mock.patch.object(h, "CACHE_QEMU_BINAIRE", self.binaire)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.code("0.2.18")
+
+    def code(self, version):
+        dossier = os.path.join(self.racine, "script", "qemu_cache")
+        os.makedirs(dossier, exist_ok=True)
+        with open(os.path.join(dossier, "main.go"), "w") as fh:
+            fh.write(f'package main\n\nconst version = "{version}"\n')
+
+    def installer(self, sortie, code=0):
+        with open(self.binaire, "w") as fh:
+            fh.write(f"#!/bin/sh\necho '{sortie}'\nexit {code}\n")
+        os.chmod(self.binaire, 0o755)
+
+    def verifier(self):
+        return h.verifier_cache_qemu(h.Contexte(self.racine))
+
+    def test_it_is_one_of_the_environment_checks(self):
+        self.assertIn(
+            ("environnement", h.verifier_cache_qemu), h.VERIFICATIONS
+        )
+
+    def test_an_absent_cache_is_information_not_a_fault(self):
+        resultat = self.verifier()
+        self.assertEqual(h.INFO, resultat.statut)
+        self.assertIn("0.2.18", resultat.resume)
+
+    def test_the_version_of_the_code_is_ok(self):
+        self.installer("erplibre_go_qemu_cache 0.2.18")
+        resultat = self.verifier()
+        self.assertEqual(h.OK, resultat.statut)
+        self.assertEqual("0.2.18", resultat.resume)
+
+    def test_an_older_binary_is_an_alert_naming_the_rebuild(self):
+        """0.2.9 est plus ancien que 0.2.18 : la comparaison est numérique,
+        pas celle de deux chaînes."""
+        self.installer("erplibre_go_qemu_cache 0.2.9")
+        resultat = self.verifier()
+        self.assertEqual(h.ALERTE, resultat.statut)
+        self.assertIn("0.2.9", resultat.resume)
+        self.assertIn("0.2.18", resultat.resume)
+        (resolution,) = resultat.resolutions
+        self.assertTrue(resolution.actionnable)
+        self.assertEqual(h.CACHE_QEMU, resolution.cle)
+        self.assertIn("0.2.9 → 0.2.18", resolution.libelle)
+        self.assertEqual(
+            [
+                t(
+                    "Execute › Deploy › QEMU cache › Cache - Install or"
+                    " reinstall builds the binary from the code of this"
+                    " checkout and puts it in place, with sudo; the service"
+                    " then runs the version of the code."
+                )
+            ],
+            resolution.lignes,
+        )
+
+    def test_its_resolution_runs_the_install_of_todo(self):
+        """L'entrée du menu Résolution lance la même installation que
+        Déployer › Cache QEMU › Installer ou réinstaller, qui pose ses
+        propres questions."""
+        self.installer("erplibre_go_qemu_cache 0.2.9")
+        (resolution,) = self.verifier().resolutions
+        rebatir = mock.Mock()
+        change = h.executer_resolution(
+            h.Contexte(self.racine),
+            resolution,
+            demander=lambda _q: self.fail("no question of its own"),
+            sortie=lambda _l: None,
+            rebatir_cache_qemu=rebatir,
+        )
+        rebatir.assert_called_once_with()
+        self.assertTrue(change)
+
+    def test_without_the_install_its_resolution_changes_nothing(self):
+        self.installer("erplibre_go_qemu_cache 0.2.9")
+        (resolution,) = self.verifier().resolutions
+        lignes = []
+        change = h.executer_resolution(
+            h.Contexte(self.racine), resolution, sortie=lignes.append
+        )
+        self.assertFalse(change)
+        self.assertEqual([t("Nothing changed.")], lignes)
+
+    def test_a_newer_binary_is_information(self):
+        self.installer("erplibre_go_qemu_cache 0.3.0")
+        resultat = self.verifier()
+        self.assertEqual(h.INFO, resultat.statut)
+        self.assertEqual([], resultat.resolutions)
+
+    def test_an_unreadable_answer_is_an_alert(self):
+        for sortie, code in (("no version here", 0), ("0.2.18", 2)):
+            with self.subTest(sortie=sortie, code=code):
+                self.installer(sortie, code)
+                self.assertEqual(h.ALERTE, self.verifier().statut)
+
+    def test_a_code_without_version_skips_the_check(self):
+        self.code("x")
+        self.installer("erplibre_go_qemu_cache 0.2.18")
+        self.assertEqual(h.SAUTE, self.verifier().statut)
+
+    def test_the_checkout_reads_its_own_version(self):
+        """Le vrai main.go du dépôt porte une version que la règle lit."""
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(racine, h.CACHE_QEMU_SOURCE)) as fh:
+            self.assertRegex(fh.read(), h._VERSION_GO)
+
+
 class TestManifeste(unittest.TestCase):
     """« Addons face au manifeste » sur une sortie de `repo_state` simulée."""
 
@@ -1760,6 +1878,12 @@ class TestMenu(unittest.TestCase):
             obj.prompt_healthcheck()
         executer.assert_called_once()
         self.assertIs(executer.call_args.args[1], res)
+        # L'installation du cache QEMU de TODO est passée à la résolution
+        # qui le rebâtit, comme le déploiement des commandes Claude.
+        self.assertEqual(
+            executer.call_args.kwargs["rebatir_cache_qemu"],
+            obj._deploy_qemu_cache,
+        )
         # La vérification repasse ; sans résolution, l'entrée disparaît.
         self.assertEqual(appels, [None, [manifeste]])
 

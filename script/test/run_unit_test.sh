@@ -18,6 +18,17 @@
 #       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
+#   export ERPLIBRE_REQUIREMENT_URL=https://… ERPLIBRE_REQUIREMENT_DB=… \
+#       ERPLIBRE_REQUIREMENT_LOGIN=…
+#   read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
+#   ./script/test/run_unit_test.sh                 # verdicts au registre
+#
+# Les quatre variables ERPLIBRE_REQUIREMENT_* envoient, après la suite, le
+# verdict de chaque test au registre des requis d'une instance Odoo
+# (requirement_report.py en décrit le contrat). Sans elles, aucune
+# connexion : la sortie est celle de toujours. Le code de sortie reste
+# celui de la suite, que l'envoi réussisse ou non ; seul un Ctrl+C pendant
+# l'envoi met fin à --watch, en 130.
 #
 # Une option à valeur s'écrit avec « = » : tout argument sans « -- » est
 # pris pour un fichier de tests.

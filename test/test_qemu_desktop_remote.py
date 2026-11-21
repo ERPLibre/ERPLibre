@@ -141,6 +141,11 @@ class _Invite:
         self.stub("openssl")
         self.stub("reflector")
         self.stub("systemctl")
+        # Les binaires que le bloc sonde après l'installation : les
+        # doublures des gestionnaires de paquets ne posent rien, l'invité
+        # simulé a donc son bureau d'avance.
+        self.stub("gnome-shell", log=False)
+        self.stub("cinnamon", log=False)
         self.stub(
             "getent",
             "echo 'gnome-remote-desktop:x:900:900::"

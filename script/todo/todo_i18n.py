@@ -3679,6 +3679,30 @@ TRANSLATIONS = {
         "fr": "menu réaffiché",
         "en": "menu redisplayed",
     },
+    "QEMU cache version": {
+        "fr": "Version du cache QEMU",
+        "en": "QEMU cache version",
+    },
+    "no version in the cache code": {
+        "fr": "aucune version dans le code du cache",
+        "en": "no version in the cache code",
+    },
+    "not installed, {code} in the code": {
+        "fr": "non installé, {code} dans le code",
+        "en": "not installed, {code} in the code",
+    },
+    "{installed} installed, {code} in the code": {
+        "fr": "{installed} installé, {code} dans le code",
+        "en": "{installed} installed, {code} in the code",
+    },
+    "📥 Rebuild the QEMU cache: {installed} → {code}": {
+        "fr": "📥 Rebâtir le cache QEMU : {installed} → {code}",
+        "en": "📥 Rebuild the QEMU cache: {installed} → {code}",
+    },
+    "Execute › Deploy › QEMU cache › Cache - Install or reinstall builds the binary from the code of this checkout and puts it in place, with sudo; the service then runs the version of the code.": {
+        "fr": "Exécution › Déployer › Cache QEMU › Cache - Installer ou réinstaller bâtit le binaire depuis le code de ce checkout et le met en place, avec sudo ; le service tourne alors la version du code.",
+        "en": "Execute › Deploy › QEMU cache › Cache - Install or reinstall builds the binary from the code of this checkout and puts it in place, with sudo; the service then runs the version of the code.",
+    },
     "TODO session logs": {
         "fr": "Journaux de session du TODO",
         "en": "TODO session logs",
@@ -7786,6 +7810,14 @@ TRANSLATIONS = {
     "xrdp not installed; the VM console remains available": {
         "fr": "xrdp non installé ; la console de la VM reste disponible",
         "en": "xrdp not installed; the VM console remains available",
+    },
+    "desktop not installed:": {
+        "fr": "bureau non installé :",
+        "en": "desktop not installed:",
+    },
+    "epel-release unavailable": {
+        "fr": "epel-release indisponible",
+        "en": "epel-release unavailable",
     },
     "grdctl has no system mode: xrdp instead": {
         "fr": "grdctl n'a pas de mode système : xrdp à la place",

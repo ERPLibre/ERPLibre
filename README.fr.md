@@ -272,6 +272,75 @@ time make test_full_fast
 ```
 
 
+## Verdicts des tests dans le registre des requis
+
+Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
+requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
+Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
+la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
+aucun appel. Un test déclaré absent d'un fichier qui a tourné jusqu'au bout est
+noté en erreur : il a été renommé ou supprimé, et sa référence est à mettre à
+jour.
+
+Quatre variables d'environnement l'activent, les quatre ou aucune.
+L'identifiant est un utilisateur du groupe *Lanceur de tests de requis*, et la
+clé est la clé d'API de cet utilisateur. `read -rs` lit la clé sans l'afficher
+et la garde hors de l'historique du shell :
+
+
+```bash
+export ERPLIBRE_REQUIREMENT_URL=https://odoo.example.com
+export ERPLIBRE_REQUIREMENT_DB=registry
+export ERPLIBRE_REQUIREMENT_LOGIN=test_runner
+read -rs ERPLIBRE_REQUIREMENT_KEY && export ERPLIBRE_REQUIREMENT_KEY
+./script/test/run_unit_test.sh
+```
+
+
+L'URL doit être en HTTPS. HTTP sans chiffrement n'est accepté que vers une
+adresse de bouclage, comme un tunnel SSH vers l'instance, parce que la clé part
+avec chaque appel. Les tests eux-mêmes ne reçoivent pas ces variables. Chaque
+journal envoyé a la clé masquée, les chemins relatifs au dépôt et le répertoire
+personnel affiché `~`.
+
+Sans ces variables, le lanceur n'ouvre aucune connexion et sa sortie est
+inchangée. Un envoi qui échoue affiche une ligne d'avertissement et
+s'arrête. Le code de sortie est celui de la suite ; seul un Ctrl+C pendant
+l'envoi met fin à `--watch`, avec le code 130. La clé n'est jamais affichée.
+
+
+### Tests des modules Odoo
+
+`script/test/odoo_test_report.py` lance les tests de modules Odoo et envoie
+leurs verdicts avec les mêmes quatre variables. Il installe les modules sur une
+base jetable, `erplibre_odoo_test_<aléatoire>`, lance leurs tests standard,
+supprime la base et affiche un bilan. Un requis prouvé par un test Odoo liste
+une ligne *Test Python* dont la référence est le chemin pointé de la méthode
+de test, `odoo.addons.<module>.tests.<fichier>.<Classe>.<méthode>`. Une erreur
+de `setUpClass` atteint chaque méthode déclarée de sa classe. Un test déclaré
+absent d'un passage complet, où Odoo a écrit son bilan final et rendu le code
+des tests, est noté en erreur. Après un passage incomplet, un test déclaré qui
+n'a pas tourné garde son dernier verdict, sauf si son module n'a jamais été
+atteint.
+
+
+```bash
+./script/test/odoo_test_report.py --modules erplibre_devops_requirement
+```
+
+
+Odoo ne démarre jamais avec le `config.conf` du dépôt : le passage utilise une
+configuration générée qui n'en garde que `addons_path` et l'accès à
+PostgreSQL, n'écoute que sur 127.0.0.1, sur deux ports libres, et ne reçoit
+jamais les variables du registre. `--keep-db` garde la base et affiche son
+nom. Le code de sortie vaut 0 quand tous les tests passent, 1 quand un test
+échoue, 2 quand le passage ne prouve rien (un module qui ne s'installe pas,
+Odoo qui plante, aucun test lancé), et 130 après Ctrl+C, qui supprime quand
+même la base et n'envoie rien.
+
+
 # Documentation
 
 | Guide | Description |

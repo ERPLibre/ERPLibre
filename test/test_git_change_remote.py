@@ -116,5 +116,59 @@ class LeBilanSeLitALaFin(unittest.TestCase):
         self.assertNotIn("Skipped", texte)
 
 
+class LesDepotsDeclaresParERPLibre(unittest.TestCase):
+    """Un projet que conf/git_manifest.csv déclare, cloné sur le disque
+    hors de Google Repo (l'extension GNOME par l'installateur), est
+    traité même absent du manifeste local."""
+
+    MANIFESTE = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<manifest>\n'
+        '  <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>\n'
+        '  <project name="outil.git" path="script/outil" remote="TechnoLibre"'
+        ' revision="main"/>\n'
+        '  <project name="absent.git" path="script/absent"'
+        ' remote="TechnoLibre"/>\n'
+        '  <project name="vide.git" path="script/vide" remote="TechnoLibre"/>\n'
+        "</manifest>\n"
+    )
+
+    def racine(self, dossier):
+        os.makedirs(os.path.join(dossier, "conf"))
+        os.makedirs(os.path.join(dossier, "manifest"))
+        with open(os.path.join(dossier, "conf/git_manifest.csv"), "w") as f:
+            f.write('"filepath"\nmanifest/outil.xml\n')
+        with open(os.path.join(dossier, "manifest/outil.xml"), "w") as f:
+            f.write(self.MANIFESTE)
+        _depot(os.path.join(dossier, "script/outil"))
+        os.makedirs(os.path.join(dossier, "script/vide"))
+        return dossier
+
+    def test_a_declared_clone_on_disk_is_added_once(self):
+        with TemporaryDirectory() as dossier:
+            racine = self.racine(dossier)
+            deja = [{"name": "", "path": racine}]
+            repos = GitTool().add_declared_repos(deja, racine)
+            self.assertEqual(["", "script/outil"], [r["name"] for r in repos])
+            (outil,) = [r for r in repos if r["name"] == "script/outil"]
+            self.assertEqual(
+                "git@github.com:TechnoLibre/outil.git", outil["url_git"]
+            )
+            again = GitTool().add_declared_repos(list(repos), racine)
+            self.assertEqual(repos, again)
+
+    def test_its_remote_is_then_rewritten(self):
+        with TemporaryDirectory() as dossier:
+            racine = self.racine(dossier)
+            repos = GitTool().add_declared_repos([], racine)
+            with redirect_stdout(io.StringIO()):
+                changed, skipped = change_all_remotes(GitTool(), repos, racine)
+            self.assertEqual((1, []), (changed, skipped))
+            self.assertEqual(GIT, _url(os.path.join(racine, "script/outil")))
+
+    def test_without_the_list_nothing_is_added(self):
+        with TemporaryDirectory() as dossier:
+            self.assertEqual([], GitTool().add_declared_repos([], dossier))
+
+
 if __name__ == "__main__":
     unittest.main()

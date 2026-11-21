@@ -99,8 +99,10 @@ func Key(method, rawURL string) string {
 // Le chemin ENTIER ne suffisait pas : un miroir le préfixe à sa guise —
 // « /rocky/10.2/… », « /mirror/rocky-linux/10.2/… », « /pub/archive/fedora/… »
 // — et le même octet prenait alors deux clés. Seule la FIN du chemin est
-// retenue (voir SegmentsDeCle), ce qui réunit ces copies sans jamais
-// confondre deux distributions.
+// retenue (voir SegmentsDeCle), ce qui réunit ces copies. La borne varie
+// selon la famille : elle doit garder ce qui distingue deux distributions, ou
+// deux versions d'une même distribution, qui publient un même nom pour
+// d'autres octets.
 // SegmentsDeCle : combien de segments de FIN de chemin identifient un fichier.
 //
 // Six, et pas moins : un chemin Debian en porte exactement six —
@@ -126,6 +128,27 @@ const SegmentsDeCle = 6
 // la borne haute ; celui d'Arch n'appartient qu'à lui.
 const SegmentsDeCleArch = 4
 
+// SegmentsDeCleRPM : les paquets RPM en demandent PLUS.
+//
+// L'arbre « releases » de Fedora est le plus profond :
+// « <version>/Everything/<arch>/os/Packages/<lettre>/<fichier>.rpm », sept
+// segments. Six effacent le numéro de version, et c'est une collision : Fedora
+// garde dans l'arbre d'une version les paquets qu'elle n'a pas reconstruits,
+// sous leur nom d'origine (« .fc41 » dans l'arbre de la 42), mais re-signés
+// avec la clé de la nouvelle version. Même nom, autres octets : la copie
+// gardée pour l'une est servie à l'autre, et dnf la rejette sur sa somme
+// auprès de chaque miroir, puisque tous répondent par la même copie.
+//
+// Sept, et pas plus : sur l'arbre « releases » de Fedora et sur celui de
+// Rocky, la clé commence au numéro de version, et ce qui le précède —
+// « fedora/linux/releases », « pub/rocky » — est le préfixe que chaque miroir
+// écrit à sa guise. Un arbre moins profond — EPEL, CentOS Stream, AlmaLinux —
+// fait entrer dans la clé un segment de ce préfixe (« epel » ou
+// « fedora-epel », « centos-stream » ou rien, « almalinux ») : les mêmes
+// octets servis par deux miroirs y prennent alors deux clés. C'est une copie
+// de trop dans le cache, jamais un paquet servi à la place d'un autre.
+const SegmentsDeCleRPM = 7
+
 // estPaquetArch reconnaît un paquet de la famille pacman à son nom.
 func estPaquetArch(nom string) bool {
 	nom = strings.ToLower(nom)
@@ -134,7 +157,7 @@ func estPaquetArch(nom string) bool {
 }
 
 func KeySansHote(method string, u *url.URL) string {
-	segments := make([]string, 0, SegmentsDeCle+2)
+	segments := make([]string, 0, SegmentsDeCleRPM+2)
 	for _, s := range strings.Split(u.Path, "/") {
 		// Les segments vides tombent : un miroir écrit « /pub/rocky//10.2 »,
 		// et deux écritures d'un même chemin feraient sinon deux clés.
@@ -143,8 +166,14 @@ func KeySansHote(method string, u *url.URL) string {
 		}
 	}
 	borne := SegmentsDeCle
-	if len(segments) > 0 && estPaquetArch(segments[len(segments)-1]) {
-		borne = SegmentsDeCleArch
+	if len(segments) > 0 {
+		nom := strings.ToLower(segments[len(segments)-1])
+		switch {
+		case estPaquetArch(nom):
+			borne = SegmentsDeCleArch
+		case strings.HasSuffix(nom, ".rpm"):
+			borne = SegmentsDeCleRPM
+		}
 	}
 	if len(segments) > borne {
 		segments = segments[len(segments)-borne:]

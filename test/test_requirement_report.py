@@ -1,0 +1,901 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le verdict de chaque test unitaire, poussé vers le registre des requis.
+
+Aucun test n'ouvre de connexion : `urllib.request.urlopen` est remplacé par
+un faux registre qui répond comme Odoo en JSON-RPC et garde chaque appel.
+Les références se jugent sur de vrais passages de unittest, par le lanceur
+et unit_file.py : c'est leur forme réelle que le registre doit reconnaître.
+"""
+
+import argparse
+import contextlib
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
+import urllib.error
+from unittest import mock
+
+RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RACINE, "script", "test"))
+
+import requirement_report as rr  # noqa: E402
+import run_unit_test as r  # noqa: E402
+
+CLE = "cle-inventee-0123456789"
+
+ENV = {
+    "ERPLIBRE_REQUIREMENT_URL": "https://registre.invalid/",
+    "ERPLIBRE_REQUIREMENT_DB": "registre",
+    "ERPLIBRE_REQUIREMENT_LOGIN": "lanceur",
+    "ERPLIBRE_REQUIREMENT_KEY": CLE,
+}
+
+# Chaque issue que unittest connaît, sous-test et fixture de classe compris.
+DEMO = """import unittest
+
+
+class A(unittest.TestCase):
+    def test_ok(self):
+        pass
+
+    def test_sub(self):
+        for i in range(3):
+            with self.subTest(i=i):
+                self.assertNotEqual(i, 1)
+
+    @unittest.skip("absent")
+    def test_skip(self):
+        pass
+
+    def test_err(self):
+        raise KeyError("x")
+
+
+class B(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        raise RuntimeError("fixture")
+
+    def test_b(self):
+        pass
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+
+PASSE = """import unittest
+
+
+class T(unittest.TestCase):
+    def test_vrai(self):
+        pass
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+
+# Un test qui met dans son message ce que son environnement porte de la clé.
+FUIT = """import os
+import unittest
+
+
+class T(unittest.TestCase):
+    def test_env(self):
+        self.fail("cle vue : %s" % os.environ.get("ERPLIBRE_REQUIREMENT_KEY"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+
+# Meurt à l'import : unit_file.py n'écrit aucune note.
+CASSE = """import unittest
+
+import module_qui_n_existe_pas  # noqa: F401
+
+
+class T(unittest.TestCase):
+    def test_x(self):
+        pass
+"""
+
+FAUX = """import unittest
+
+
+class T(unittest.TestCase):
+    def test_faux(self):
+        self.assertEqual(1, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+
+
+def ref(fichier, test):
+    return f"erplibre:test/{fichier}::{test}"
+
+
+def entree(test, etat="ok", message="", duree=0.1):
+    classe, nom = test.split("::")
+    return {
+        "id": f"mod.{classe}.{nom}",
+        "classe": classe,
+        "nom": nom,
+        "duree": duree,
+        "etat": etat,
+        "message": message,
+    }
+
+
+class FauxRegistre:
+    """Répond aux appels JSON-RPC du registre comme Odoo, et les garde.
+
+    `declarees` : les références que search_read rend ; `lignes` : le nombre
+    de lignes que chaque référence met à jour (1 par défaut) ; `uid` : ce
+    que rend login ; `erreur` : {méthode: réponse d'erreur JSON-RPC}."""
+
+    def __init__(self, declarees=(), lignes=None, uid=7, erreur=None):
+        self.declarees = list(declarees)
+        self.lignes = lignes or {}
+        self.uid = uid
+        self.erreur = erreur or {}
+        self.appels = []
+        self.delais = []
+
+    def __call__(self, requete, timeout=None):
+        self.delais.append(timeout)
+        corps = json.loads(requete.data.decode("utf-8"))
+        params = corps["params"]
+        self.appels.append((requete.full_url, params))
+        methode = params["method"]
+        if methode == "execute_kw":
+            methode = params["args"][4]
+        if methode in self.erreur:
+            reponse = {"jsonrpc": "2.0", "id": corps["id"]}
+            reponse["error"] = self.erreur[methode]
+        else:
+            reponse = {
+                "jsonrpc": "2.0",
+                "id": corps["id"],
+                "result": self._resultat(methode, params["args"]),
+            }
+        return io.BytesIO(json.dumps(reponse).encode("utf-8"))
+
+    def _resultat(self, methode, args):
+        if methode == "login":
+            return self.uid
+        if methode == "search_read":
+            return [
+                {"id": n, "reference": reference}
+                for n, reference in enumerate(self.declarees, 1)
+            ]
+        if methode == "record_result_by_reference":
+            return self.lignes.get(args[5][1], 1)
+        raise AssertionError(f"appel inattendu : {methode}")
+
+    def envois(self):
+        """(args, kwargs) de chaque record_result_by_reference, dans l'ordre."""
+        return [
+            (p["args"][5], p["args"][6])
+            for _, p in self.appels
+            if p["method"] == "execute_kw"
+            and p["args"][4] == "record_result_by_reference"
+        ]
+
+
+def registre():
+    return rr.Registre(
+        "http://registre.invalid:8069", "registre", "lanceur", CLE
+    )
+
+
+def pousser(faux, essais, racine="/depot"):
+    sortie = io.StringIO()
+    with mock.patch("urllib.request.urlopen", faux):
+        registre().pousser(essais, racine=racine, sortie=sortie)
+    return sortie.getvalue()
+
+
+class TestLaConfiguration(unittest.TestCase):
+    def test_unset_environment_means_no_registry_and_no_output(self):
+        sortie = io.StringIO()
+        self.assertIsNone(rr.depuis_environnement({}, sortie))
+        self.assertEqual(sortie.getvalue(), "")
+
+    def test_a_partial_configuration_warns_once_and_sends_nothing(self):
+        env = dict(ENV)
+        del env["ERPLIBRE_REQUIREMENT_LOGIN"]
+        sortie = io.StringIO()
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=AssertionError("réseau")
+        ):
+            self.assertIsNone(rr.depuis_environnement(env, sortie))
+        lignes = sortie.getvalue().splitlines()
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("ERPLIBRE_REQUIREMENT_LOGIN", lignes[0])
+        self.assertNotIn(CLE, sortie.getvalue())
+
+    def test_only_an_http_url_is_accepted(self):
+        for url in ("file:///etc/hosts", "ftp://registre.invalid/"):
+            with self.subTest(url=url):
+                sortie = io.StringIO()
+                env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
+                self.assertIsNone(rr.depuis_environnement(env, sortie))
+                self.assertEqual(len(sortie.getvalue().splitlines()), 1)
+
+    def test_plain_http_is_accepted_for_loopback_only(self):
+        """La clé part dans chaque appel : en HTTP, elle ne quitte pas la
+        machine, ou l'envoi n'a pas lieu."""
+        for url, accepte in (
+            ("https://registre.invalid/", True),
+            ("http://127.0.0.1:8069", True),
+            ("http://localhost:8069/", True),
+            ("http://[::1]:8069", True),
+            ("http://registre.invalid:8069/", False),
+            ("http://192.0.2.10:8069", False),
+        ):
+            with self.subTest(url=url):
+                sortie = io.StringIO()
+                env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    side_effect=AssertionError("réseau"),
+                ):
+                    registre = rr.depuis_environnement(env, sortie)
+                self.assertEqual(registre is not None, accepte)
+                self.assertEqual(
+                    len(sortie.getvalue().splitlines()), 0 if accepte else 1
+                )
+                self.assertNotIn(CLE, sortie.getvalue())
+
+    def test_a_refused_url_is_shown_without_its_credentials(self):
+        """L'URL refusée est citée dans l'avertissement, sans l'utilisateur,
+        le mot de passe, la requête ni le fragment qu'elle porte."""
+        url = (
+            f"http://lanceur:{CLE}@registre.invalid:8069/odoo"
+            f"?jeton={CLE}#{CLE}"
+        )
+        sortie = io.StringIO()
+        env = dict(ENV, ERPLIBRE_REQUIREMENT_URL=url)
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=AssertionError("réseau")
+        ):
+            self.assertIsNone(rr.depuis_environnement(env, sortie))
+        self.assertIn(
+            "« http://registre.invalid:8069/odoo »", sortie.getvalue()
+        )
+        self.assertNotIn(CLE, sortie.getvalue())
+        self.assertNotIn("lanceur:", sortie.getvalue())
+
+    def test_a_complete_configuration_gives_a_silent_registry(self):
+        sortie = io.StringIO()
+        registre = rr.depuis_environnement(ENV, sortie)
+        self.assertIsInstance(registre, rr.Registre)
+        self.assertEqual(sortie.getvalue(), "")
+
+
+class TestLesReferences(unittest.TestCase):
+    def verdicts(self, *essais, declarees=(), racine="/depot"):
+        return rr.verdicts_declares(essais, set(declarees), racine)
+
+    def test_each_outcome_maps_to_a_registry_result(self):
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [
+                entree("A::test_ok", duree=0.5),
+                entree("A::test_faux", "echec", "AssertionError: 1"),
+                entree("A::test_casse", "erreur", "KeyError: 'x'"),
+                entree("A::test_saute", "ignore", "Textual absent"),
+            ],
+            None,
+        )
+        refs = {
+            t: ref("test_demo.py", f"A::{t}")
+            for t in ("test_ok", "test_faux", "test_casse", "test_saute")
+        }
+        verdicts = self.verdicts(essai, declarees=refs.values())
+        self.assertEqual(
+            {t: verdicts[refs[t]]["result"] for t in refs},
+            {
+                "test_ok": "passed",
+                "test_faux": "failed",
+                "test_casse": "error",
+                "test_saute": "skipped",
+            },
+        )
+        self.assertEqual(verdicts[refs["test_ok"]]["duration"], 0.5)
+        self.assertIn("AssertionError: 1", verdicts[refs["test_faux"]]["log"])
+        self.assertIn("Textual absent", verdicts[refs["test_saute"]]["log"])
+
+    def test_only_declared_references_get_a_verdict(self):
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [entree("A::test_ok"), entree("A::test_cite_par_personne")],
+            None,
+        )
+        declaree = ref("test_demo.py", "A::test_ok")
+        self.assertEqual(
+            list(self.verdicts(essai, declarees=[declaree])), [declaree]
+        )
+
+    def test_the_path_is_relative_to_the_repository_root(self):
+        declaree = ref("test_demo.py", "A::test_ok")
+        with tempfile.TemporaryDirectory() as racine:
+            for chemin in (
+                os.path.join(racine, "test", "test_demo.py"),
+                os.path.join(racine, "test", "..", "test", "test_demo.py"),
+            ):
+                with self.subTest(chemin=chemin):
+                    essai = rr.Essai(chemin, [entree("A::test_ok")], None)
+                    self.assertIn(
+                        declaree,
+                        self.verdicts(
+                            essai, declarees=[declaree], racine=racine
+                        ),
+                    )
+            # Un fichier hors du dépôt n'a pas de référence « erplibre: ».
+            dehors = rr.Essai("/ailleurs/test_demo.py", [entree("A::x")], None)
+            self.assertEqual(rr.references(dehors, racine), {})
+
+    def test_a_failing_subtest_fails_its_test(self):
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [
+                entree("A::test_sub (i=0)", "ignore", "plus tard"),
+                entree("A::test_sub (i=1)", "echec", "AssertionError: 1"),
+            ],
+            None,
+        )
+        declaree = ref("test_demo.py", "A::test_sub")
+        verdict = self.verdicts(essai, declarees=[declaree])[declaree]
+        self.assertEqual(verdict["result"], "failed")
+        self.assertIn("AssertionError: 1", verdict["log"])
+
+    def test_a_repeated_test_keeps_its_worst_outcome(self):
+        chemin = "/depot/test/test_demo.py"
+        declaree = ref("test_demo.py", "A::test_x")
+        essais = [
+            rr.Essai(chemin, [entree("A::test_x", duree=1.0)], None),
+            rr.Essai(chemin, [entree("A::test_x", "echec", duree=2.0)], None),
+            rr.Essai(chemin, [entree("A::test_x", duree=0.5)], None),
+        ]
+        verdict = self.verdicts(*essais, declarees=[declaree])[declaree]
+        self.assertEqual(
+            (verdict["result"], verdict["duration"]), ("failed", 2.0)
+        )
+
+    def test_a_run_outcome_outweighs_a_skip(self):
+        """Un passage ignoré et un passage réussi du même test font un test
+        réussi ; un échec l'emporte sur les deux."""
+        chemin = "/depot/test/test_demo.py"
+        declaree = ref("test_demo.py", "A::test_x")
+        for issues, attendu in (
+            (("ignore", "ok"), "passed"),
+            (("ok", "ignore"), "passed"),
+            (("ignore", "echec", "ok"), "failed"),
+        ):
+            with self.subTest(issues=issues):
+                essais = [
+                    rr.Essai(chemin, [entree("A::test_x", issue)], None)
+                    for issue in issues
+                ]
+                verdict = self.verdicts(*essais, declarees=[declaree])
+                self.assertEqual(verdict[declaree]["result"], attendu)
+
+    def test_a_class_fixture_reaches_the_declared_tests_of_its_class(self):
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [
+                entree("A::test_ok"),
+                entree("B::setUpClass", "erreur", "RuntimeError: fixture"),
+                entree("C::setUpClass", "ignore", "dépôt absent"),
+            ],
+            None,
+        )
+        refs = [
+            ref("test_demo.py", t)
+            for t in ("A::test_ok", "B::test_b", "C::test_c")
+        ]
+        verdicts = self.verdicts(essai, declarees=refs)
+        self.assertEqual(
+            [verdicts[x]["result"] for x in refs],
+            ["passed", "error", "skipped"],
+        )
+        self.assertIn("RuntimeError: fixture", verdicts[refs[1]]["log"])
+
+    def test_a_file_without_detail_is_an_error_for_its_declared_tests(self):
+        """Mort à l'import ou tué par le délai, le fichier n'a noté aucun
+        test : ceux que le registre déclare passent en erreur plutôt que de
+        garder un verdict qui n'est plus vrai."""
+        casse = rr.Essai(
+            "/depot/test/test_casse.py", [], "ImportError: no module x"
+        )
+        sain = rr.Essai("/depot/test/test_sain.py", [entree("S::t")], None)
+        refs = [ref("test_casse.py", "K::t"), ref("test_sain.py", "S::t")]
+        verdicts = self.verdicts(casse, sain, declarees=refs)
+        self.assertEqual(verdicts[refs[0]]["result"], "error")
+        self.assertIn("ImportError", verdicts[refs[0]]["log"])
+        self.assertEqual(verdicts[refs[1]]["result"], "passed")
+
+    def test_a_declared_test_missing_from_a_complete_file_is_an_error(self):
+        """Le fichier a tourné jusqu'au bout sans ce test : il a été
+        renommé ou supprimé, et son ancien verdict ne prouve plus rien. Un
+        fichier qui n'a pas tourné, ou rien noté, ne dit rien de ses
+        tests."""
+        complet = rr.Essai(
+            "/depot/test/test_demo.py", [entree("A::test_ok")], None
+        )
+        vide = rr.Essai("/depot/test/test_vide.py", [], None)
+        refs = [
+            ref("test_demo.py", "A::test_ok"),
+            ref("test_demo.py", "A::test_renomme"),
+            ref("test_vide.py", "V::test_v"),
+            ref("test_pas_lance.py", "P::test_p"),
+        ]
+        verdicts = self.verdicts(complet, vide, declarees=refs)
+        self.assertEqual(sorted(verdicts), sorted(refs[:2]))
+        self.assertEqual(verdicts[refs[0]]["result"], "passed")
+        absent = verdicts[refs[1]]
+        self.assertEqual(absent["result"], "error")
+        self.assertIn("A::test_renomme", absent["log"])
+        self.assertIn("test/test_demo.py", absent["log"])
+
+
+class TestDeVraisPassages(unittest.TestCase):
+    """unit_file.py note chaque test, et ses notes deviennent les références
+    que le registre déclare."""
+
+    def test_every_outcome_of_a_real_run_reaches_its_reference(self):
+        with tempfile.TemporaryDirectory() as racine:
+            os.mkdir(os.path.join(racine, "test"))
+            chemin = os.path.join(racine, "test", "test_demo.py")
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(DEMO)
+            lanceur = r.Lanceur(
+                [chemin], sys.executable, 1, 60, {}, detaille=True
+            )
+            self.addCleanup(lanceur.nettoyer)
+            lanceur.lancer()
+            (f,) = lanceur.fichiers
+            essai = rr.Essai(f.chemin, f.tests, None)
+            refs = {
+                t: ref("test_demo.py", t)
+                for t in (
+                    "A::test_ok",
+                    "A::test_sub",
+                    "A::test_skip",
+                    "A::test_err",
+                    "B::test_b",
+                )
+            }
+            verdicts = rr.verdicts_declares(
+                [essai], set(refs.values()), racine
+            )
+        self.assertEqual(
+            {t: verdicts[x]["result"] for t, x in refs.items()},
+            {
+                "A::test_ok": "passed",
+                "A::test_sub": "failed",
+                "A::test_skip": "skipped",
+                "A::test_err": "error",
+                "B::test_b": "error",
+            },
+        )
+
+
+class TestLEnvoi(unittest.TestCase):
+    ESSAI = rr.Essai(
+        "/depot/test/test_demo.py",
+        [
+            entree("A::test_ok", duree=0.25),
+            entree("A::test_faux", "echec", "AssertionError: 1"),
+            entree("A::test_cite_par_personne"),
+        ],
+        None,
+    )
+    OK = ref("test_demo.py", "A::test_ok")
+    FAUX = ref("test_demo.py", "A::test_faux")
+    # Un fichier que ce passage n'a pas lancé.
+    PAS_LANCE = ref("test_autre.py", "A::test_pas_lance")
+
+    def test_one_call_per_declared_reference_that_ran(self):
+        faux = FauxRegistre(
+            declarees=[self.OK, self.FAUX, self.FAUX, self.PAS_LANCE],
+            lignes={self.OK: 2},
+        )
+        sortie = pousser(faux, [self.ESSAI])
+        url, login = faux.appels[0]
+        self.assertEqual(url, "http://registre.invalid:8069/jsonrpc")
+        self.assertEqual(
+            (login["service"], login["method"], login["args"]),
+            ("common", "login", ["registre", "lanceur", CLE]),
+        )
+        lecture = faux.appels[1][1]["args"]
+        self.assertEqual(
+            lecture[:5],
+            ["registre", 7, CLE, "devops.requirement.test", "search_read"],
+        )
+        self.assertEqual(
+            lecture[5],
+            [
+                [
+                    ["kind", "=", "repo_unittest"],
+                    ["reference", "=like", "erplibre:%"],
+                ]
+            ],
+        )
+        self.assertEqual(
+            sorted(faux.envois(), key=lambda e: e[0][1]),
+            [
+                (
+                    ["repo_unittest", self.FAUX, "failed"],
+                    {"log": "AssertionError: 1", "duration": 0.1},
+                ),
+                (
+                    ["repo_unittest", self.OK, "passed"],
+                    {"log": None, "duration": 0.25},
+                ),
+            ],
+        )
+        # Chaque appel porte un délai : un registre muet n'arrête pas la
+        # fin de la suite pour toujours.
+        self.assertEqual(faux.delais, [rr.DELAI] * len(faux.appels))
+        lignes = sortie.splitlines()
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("2 verdicts", lignes[0])
+        self.assertIn("3 lignes", lignes[0])
+        self.assertNotIn(CLE, sortie)
+
+    def test_a_failed_push_prints_one_warning_line(self):
+        refuse = mock.Mock(
+            side_effect=urllib.error.URLError("Connection refused")
+        )
+        sortie = pousser(refuse, [self.ESSAI])
+        self.assertEqual(len(sortie.splitlines()), 1)
+        self.assertIn("Connection refused", sortie)
+        self.assertEqual(refuse.call_count, 1)
+
+    def test_refused_credentials_stop_before_any_push(self):
+        faux = FauxRegistre(declarees=[self.OK], uid=False)
+        sortie = pousser(faux, [self.ESSAI])
+        self.assertEqual(len(faux.appels), 1)
+        self.assertEqual(len(sortie.splitlines()), 1)
+        self.assertNotIn(CLE, sortie)
+
+    def test_a_push_failing_midway_stops_at_the_first_failure(self):
+        faux = FauxRegistre(
+            declarees=[self.OK, self.FAUX],
+            erreur={
+                "record_result_by_reference": {
+                    "code": 200,
+                    "message": "Odoo Server Error",
+                    "data": {
+                        "name": "odoo.exceptions.AccessError",
+                        "message": "Only a requirement test runner can "
+                        "record a test result.",
+                    },
+                }
+            },
+        )
+        sortie = pousser(faux, [self.ESSAI])
+        self.assertEqual(len(faux.envois()), 1)
+        lignes = sortie.splitlines()
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("Only a requirement test runner", lignes[0])
+
+    def test_a_sent_log_carries_neither_the_key_nor_a_local_path(self):
+        """Le journal part dans une base que tout utilisateur interne lit :
+        la clé y est masquée, la racine du dépôt et le répertoire personnel
+        n'y apparaissent plus, et ses lignes restent des lignes."""
+        message = (
+            "Traceback (most recent call last):\n"
+            '  File "/depot/test/test_demo.py", line 3, in test_faux\n'
+            '  File "/srv/compte-invente/.pyenv/lib/case.py", line 9\n'
+            f"AssertionError: {CLE} != 2\n"
+            "cwd /depot, autre /depot2/x, voisin /x/depot/y"
+        )
+        essai = rr.Essai(
+            "/depot/test/test_demo.py",
+            [entree("A::test_faux", "echec", message)],
+            None,
+        )
+        faux = FauxRegistre(declarees=[self.FAUX])
+        with mock.patch.dict(os.environ, {"HOME": "/srv/compte-invente"}):
+            sortie = pousser(faux, [essai])
+        ((_args, kwargs),) = faux.envois()
+        self.assertEqual(
+            kwargs["log"],
+            "Traceback (most recent call last):\n"
+            '  File "test/test_demo.py", line 3, in test_faux\n'
+            '  File "~/.pyenv/lib/case.py", line 9\n'
+            "AssertionError: *** != 2\n"
+            "cwd ., autre /depot2/x, voisin /x/depot/y",
+        )
+        self.assertNotIn(CLE, sortie)
+
+    def test_the_root_is_replaced_before_the_home_it_lies_under(self):
+        """Une racine sous le répertoire personnel devient relative, pas
+        « ~/<racine> » : elle est remplacée la première."""
+        maison = "/srv/compte-invente"
+        racine = f"{maison}/depot-invente"
+        message = (
+            f'  File "{racine}/test/test_demo.py", line 3, in test_faux\n'
+            f'  File "{maison}/.pyenv/lib/case.py", line 9\n'
+            f"cwd {racine}"
+        )
+        essai = rr.Essai(
+            f"{racine}/test/test_demo.py",
+            [entree("A::test_faux", "echec", message)],
+            None,
+        )
+        faux = FauxRegistre(declarees=[self.FAUX])
+        with mock.patch.dict(os.environ, {"HOME": maison}):
+            pousser(faux, [essai], racine=racine)
+        ((_args, kwargs),) = faux.envois()
+        self.assertEqual(
+            kwargs["log"],
+            '  File "test/test_demo.py", line 3, in test_faux\n'
+            '  File "~/.pyenv/lib/case.py", line 9\n'
+            "cwd .",
+        )
+
+    def test_an_interrupt_during_the_push_ends_it_in_one_line(self):
+        """Ctrl+C, ou SIGTERM que le lanceur change en KeyboardInterrupt,
+        n'échappe pas à pousser : la suite garde son propre code."""
+        interrompu = mock.Mock(side_effect=KeyboardInterrupt)
+        sortie = pousser(interrompu, [self.ESSAI])
+        lignes = sortie.splitlines()
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("interrompu", lignes[0])
+        self.assertEqual(interrompu.call_count, 1)
+
+    def test_the_key_is_never_printed_even_when_a_server_echoes_it(self):
+        faux = FauxRegistre(
+            erreur={
+                "login": {
+                    "code": 200,
+                    "message": "Odoo Server Error",
+                    "data": {"message": f"bad credentials\n{CLE}\nend"},
+                }
+            }
+        )
+        sortie = pousser(faux, [self.ESSAI])
+        self.assertEqual(len(sortie.splitlines()), 1)
+        self.assertNotIn(CLE, sortie)
+        self.assertIn("bad credentials", sortie)
+
+
+class TestLesEssais(unittest.TestCase):
+    """r.essais : ce que le lanceur transmet au registre, fichier par
+    fichier."""
+
+    @staticmethod
+    def fichier(nom, etat, tests=(), log=""):
+        f = r.Fichier(f"/depot/test/{nom}")
+        f.etat, f.tests, f.log = etat, list(tests), log
+        return f
+
+    def test_a_stopped_file_proved_nothing_and_is_left_out(self):
+        lanceur = mock.Mock(
+            fichiers=[
+                self.fichier("test_ok.py", r.OK, [entree("A::t")]),
+                self.fichier("test_arrete.py", r.ARRETE, [entree("A::t")]),
+                self.fichier("test_attente.py", r.ATTENTE),
+            ]
+        )
+        self.assertEqual(
+            [e.chemin for e in r.essais(lanceur)], ["/depot/test/test_ok.py"]
+        )
+
+    def test_a_failed_file_without_notes_carries_its_log_tail(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            journal = os.path.join(dossier, "f.log")
+            with open(journal, "w", encoding="utf-8") as fh:
+                fh.write("".join(f"ligne {n}\n" for n in range(100)))
+            lanceur = mock.Mock(
+                fichiers=[
+                    self.fichier("test_mort.py", r.ECHEC, log=journal),
+                    self.fichier("test_delai.py", r.DELAI, log=journal),
+                    self.fichier(
+                        "test_note.py", r.ECHEC, [entree("A::t")], journal
+                    ),
+                    self.fichier("test_vert.py", r.OK, log=journal),
+                ]
+            )
+            essais = r.essais(lanceur)
+        pannes = {os.path.basename(e.chemin): e.panne for e in essais}
+        for nom in ("test_mort.py", "test_delai.py"):
+            self.assertIn("ligne 99", pannes[nom])
+            self.assertNotIn("ligne 59\n", pannes[nom])
+        self.assertIsNone(pannes["test_note.py"])
+        self.assertIsNone(pannes["test_vert.py"])
+
+
+class TestLeLanceur(unittest.TestCase):
+    """lancer_une_fois avec et sans le registre : le code de sortie est
+    celui de la suite dans tous les cas."""
+
+    def setUp(self):
+        # L'ordre des écritures des caches et des appels au registre.
+        self.ordre = []
+
+    def lancer(self, source, env, reseau=None, passage=None):
+        """(code, sortie, reseau, Lanceur) d'un passage sur un fichier
+        test/test_lot.py écrit dans une racine provisoire. `reseau` remplace
+        urlopen ; par défaut, toute connexion est refusée. `passage(chemin,
+        args)` rend le code ; par défaut, `r.lancer_une_fois([chemin],
+        args)`."""
+        passage = passage or (
+            lambda chemin, args: r.lancer_une_fois([chemin], args)
+        )
+        args = argparse.Namespace(
+            tui=False, repeat=1, slowest=0, junit=None, jobs=1, timeout=60
+        )
+        sortie = io.StringIO()
+        with tempfile.TemporaryDirectory() as dossier:
+            os.mkdir(os.path.join(dossier, "test"))
+            chemin = os.path.join(dossier, "test", "test_lot.py")
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(source)
+            if reseau is None:
+                reseau = mock.Mock(side_effect=urllib.error.URLError("refusé"))
+            # Le cache des durées et des échecs est celui du poste : le test
+            # ne le touche pas.
+            with (
+                mock.patch.dict(os.environ, env, clear=False),
+                mock.patch.object(rr, "RACINE", dossier),
+                mock.patch("urllib.request.urlopen", reseau),
+                mock.patch.object(r, "lire_durees", return_value={}),
+                mock.patch.object(
+                    r,
+                    "ecrire_durees",
+                    side_effect=lambda *_a, **_k: self.ordre.append("durees"),
+                ),
+                mock.patch.object(
+                    r.unit_selection,
+                    "retenir_echecs",
+                    side_effect=lambda *_a, **_k: self.ordre.append("echecs"),
+                ),
+                mock.patch.object(r, "Lanceur", wraps=r.Lanceur) as lanceur,
+                contextlib.redirect_stdout(sortie),
+            ):
+                for nom in rr.VARIABLES:
+                    if nom not in env:
+                        os.environ.pop(nom, None)
+                code = passage(chemin, args)
+        return code, sortie.getvalue(), reseau, lanceur
+
+    def test_unset_environment_runs_as_before_and_opens_no_connection(self):
+        for source, attendu in ((PASSE, 0), (FAUX, 1)):
+            with self.subTest(attendu=attendu):
+                code, sortie, reseau, lanceur = self.lancer(source, {})
+                self.assertEqual(code, attendu)
+                reseau.assert_not_called()
+                self.assertNotIn("Registre", sortie)
+                self.assertFalse(lanceur.call_args.kwargs["detaille"])
+
+    def test_a_failed_push_leaves_the_exit_code_alone(self):
+        for source, attendu in ((PASSE, 0), (FAUX, 1)):
+            with self.subTest(attendu=attendu):
+                code, sortie, reseau, lanceur = self.lancer(source, ENV)
+                self.assertEqual(code, attendu)
+                self.assertEqual(reseau.call_count, 1)
+                registre = [x for x in sortie.splitlines() if "Registre" in x]
+                self.assertEqual(len(registre), 1)
+                self.assertNotIn(CLE, sortie)
+                self.assertTrue(lanceur.call_args.kwargs["detaille"])
+
+    def test_an_interrupted_push_keeps_the_caches_and_the_exit_code(self):
+        """L'envoi vient après les caches : Ctrl+C ou SIGTERM pendant
+        l'envoi ne coûte ni les durées ni les échecs retenus, et la suite
+        rend son propre code."""
+
+        def interrompre(*_a, **_k):
+            self.ordre.append("envoi")
+            raise KeyboardInterrupt
+
+        for source, attendu in ((PASSE, 0), (FAUX, 1)):
+            with self.subTest(attendu=attendu):
+                self.ordre.clear()
+                code, sortie, _reseau, _lanceur = self.lancer(
+                    source, ENV, mock.Mock(side_effect=interrompre)
+                )
+                self.assertEqual(code, attendu)
+                self.assertEqual(self.ordre, ["durees", "echecs", "envoi"])
+                registre = [x for x in sortie.splitlines() if "Registre" in x]
+                self.assertEqual(len(registre), 1)
+                self.assertIn("interrompu", registre[0])
+
+    def test_an_interrupted_push_ends_watch(self):
+        """Sous --watch, Ctrl+C ou SIGTERM pendant l'envoi met fin à la
+        surveillance après les caches, comme pendant les tests : un seul
+        signal suffit."""
+        pause = 0.0123
+        veilles = []
+        dormir = r.time.sleep
+
+        def veille(duree):
+            # Seules les pauses de la boucle sont comptées : la deuxième
+            # veut dire que la surveillance continue après l'interruption.
+            if duree != pause:
+                return dormir(duree)
+            veilles.append(duree)
+            if len(veilles) > 1:
+                raise AssertionError("--watch continue après l'interruption")
+
+        def interrompre(*_a, **_k):
+            self.ordre.append("envoi")
+            raise KeyboardInterrupt
+
+        def surveiller(chemin, args):
+            # Un relevé avant la boucle, un modifié au premier tour, puis
+            # le même après le passage.
+            releves = iter([{chemin: 1}, {chemin: 2}])
+            with (
+                mock.patch.object(
+                    r.unit_selection, "fichiers_du_depot", return_value=[]
+                ),
+                mock.patch.object(
+                    r.unit_selection, "concernes", return_value=[chemin]
+                ),
+                mock.patch.object(
+                    r, "releve", lambda _f: next(releves, {chemin: 2})
+                ),
+                mock.patch("time.sleep", veille),
+            ):
+                return r.surveiller([chemin], args, pause=pause)
+
+        code, sortie, _reseau, _lanceur = self.lancer(
+            PASSE, ENV, mock.Mock(side_effect=interrompre), surveiller
+        )
+        self.assertEqual(code, 130)
+        self.assertEqual(self.ordre, ["durees", "echecs", "envoi"])
+        self.assertEqual(len(veilles), 1)
+        self.assertIn("--watch : fin.", sortie)
+
+    def test_a_suite_stopped_by_ctrl_c_sends_nothing(self):
+        with mock.patch.object(r, "en_ligne", return_value=130):
+            code, sortie, reseau, _lanceur = self.lancer(PASSE, ENV)
+        self.assertEqual(code, 130)
+        reseau.assert_not_called()
+        registre = [x for x in sortie.splitlines() if "Registre" in x]
+        self.assertEqual(len(registre), 1)
+        self.assertIn("aucun verdict", registre[0])
+        self.assertEqual(self.ordre, ["durees", "echecs"])
+
+    def test_a_file_dying_at_import_errs_its_declared_tests(self):
+        """Mort à l'import, le fichier n'a rien noté : la fin de son journal
+        part comme panne, et ses tests déclarés passent en erreur."""
+        declaree = ref("test_lot.py", "T::test_x")
+        faux = FauxRegistre(declarees=[declaree])
+        code, _sortie, _reseau, _lanceur = self.lancer(CASSE, ENV, faux)
+        self.assertEqual(code, 1)
+        ((args, kwargs),) = faux.envois()
+        self.assertEqual(args, ["repo_unittest", declaree, "error"])
+        self.assertIn("module_qui_n_existe_pas", kwargs["log"])
+
+    def test_tests_do_not_inherit_the_registry_variables(self):
+        """Un test qui affiche la clé de son environnement n'en trouve
+        aucune : ni le journal envoyé ni la sortie du lanceur ne la
+        portent."""
+        declaree = ref("test_lot.py", "T::test_env")
+        faux = FauxRegistre(declarees=[declaree])
+        code, sortie, _reseau, _lanceur = self.lancer(FUIT, ENV, faux)
+        self.assertEqual(code, 1)
+        ((args, kwargs),) = faux.envois()
+        self.assertEqual(args, ["repo_unittest", declaree, "failed"])
+        self.assertIn("cle vue : None", kwargs["log"])
+        self.assertNotIn(CLE, json.dumps(faux.envois()))
+        self.assertNotIn(CLE, sortie)
+
+
+if __name__ == "__main__":
+    unittest.main()
