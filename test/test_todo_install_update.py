@@ -41,6 +41,8 @@ ENV_GIT = {
 MAINTENANT = datetime(2026, 11, 15, 14, 30, 0)
 MANUEL = "odoo18.0/addons/manuel"
 GERE = "odoo18.0/addons/gere"
+# Trié après MANUEL : sa reprise suit celle de MANUEL.
+SUIVANT = "odoo18.0/addons/suivant"
 
 
 def git(dossier, *args):
@@ -211,7 +213,8 @@ class TestResynchronisation(unittest.TestCase):
     def jouer(self, reponses, cloner=True, status=0, declares=(MANUEL,)):
         """Lance execute_update_repos ; rend (questions, code). La
         reconfiguration, remplacée, note son argument et, avec `cloner`,
-        pose à MANUEL le clone que git-repo y mettrait."""
+        pose à MANUEL le clone que git-repo y mettrait. Une réponse
+        `EOFError` est un Ctrl+D à cette question."""
         todo = TODO.__new__(TODO)
         questions = []
         suite = iter(reponses)
@@ -219,11 +222,14 @@ class TestResynchronisation(unittest.TestCase):
         def repondre(prompt=""):
             questions.append(prompt)
             try:
-                return next(suite)
+                reponse = next(suite)
             except StopIteration:
                 raise AssertionError(
                     f"question sans réponse prévue : {prompt!r}"
                 ) from None
+            if reponse is EOFError:
+                raise EOFError
+            return reponse
 
         def reconfigurer(freeze=False):
             self.lances.append(freeze)
@@ -367,6 +373,102 @@ class TestResynchronisation(unittest.TestCase):
         questions, code = self.jouer([], cloner=False)
         self.assertEqual(questions, [])
         self.assertEqual(self.lances, [True])
+
+    # Ctrl+D : avant la synchronisation, il renonce, rien n'est déplacé ni
+    # synchronisé ; après, il vaut non pour le clone qu'il vise, et chaque
+    # clone déplacé suivant est repris quand même.
+
+    def deux_clones(self):
+        self.co.clone_manuel(MANUEL)
+        self.co.clone_manuel(SUIVANT)
+        return (MANUEL, SUIVANT)
+
+    def assert_suivant_remis(self):
+        self.assertTrue(os.path.isdir(self.co.chemin(f"{SUIVANT}/.git")))
+        self.assertFalse(
+            os.path.exists(
+                self.co.chemin(maj.destination(SUIVANT, MAINTENANT))
+            )
+        )
+        self.assertIn(
+            maj.t("Put back, repo sync did not clone it:"), self.sortie
+        )
+
+    def assert_manuel_garde(self):
+        """La ligne qui dit où l'ancien clone de MANUEL est gardé commence
+        sa propre ligne : la question restée sans saut de ligne est
+        refermée avant elle."""
+        ligne = (
+            f"⚠️  {MANUEL} : {maj.t('Kept as')} "
+            f"{maj.destination(MANUEL, MAINTENANT)}\n"
+        )
+        self.assertIn(f"\n\n{ligne}", self.sortie)
+
+    def test_at_the_move_question_nothing_moves_nor_syncs(self):
+        declares = self.deux_clones()
+        questions, code = self.jouer([EOFError], declares=declares)
+        self.assertIsNone(code)
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(self.lances, [])
+        for chemin in declares:
+            self.assertTrue(os.path.isdir(self.co.chemin(f"{chemin}/.git")))
+            self.assertFalse(
+                os.path.exists(
+                    self.co.chemin(maj.destination(chemin, MAINTENANT))
+                )
+            )
+
+    def test_at_the_second_move_question_the_first_does_not_move(self):
+        """Le « oui » au premier clone n'est qu'un plan : Ctrl+D au
+        second l'abandonne avant tout déplacement."""
+        declares = self.deux_clones()
+        questions, code = self.jouer(["o", EOFError], declares=declares)
+        self.assertIsNone(code)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(self.lances, [])
+        for chemin in declares:
+            self.assertTrue(os.path.isdir(self.co.chemin(f"{chemin}/.git")))
+            self.assertFalse(
+                os.path.exists(
+                    self.co.chemin(maj.destination(chemin, MAINTENANT))
+                )
+            )
+
+    def test_at_synchronize_anyway_nothing_moves_nor_syncs(self):
+        declares = self.deux_clones()
+        questions, code = self.jouer(["o", "n", EOFError], declares=declares)
+        self.assertIsNone(code)
+        self.assertEqual(len(questions), 3)
+        self.assertEqual(self.lances, [])
+        self.assertFalse(os.path.exists(self.ancien))
+        self.assertTrue(os.path.isdir(self.co.chemin(f"{MANUEL}/.git")))
+
+    def test_at_the_copy_the_next_clone_is_still_put_back(self):
+        declares = self.deux_clones()
+        questions, code = self.jouer(["o", "o", EOFError], declares=declares)
+        self.assertEqual(code, 0)
+        # Ctrl+D à la copie rend la main : ni copie ni question de
+        # suppression, l'ancien clone reste.
+        self.assertEqual(len(questions), 3)
+        self.assertTrue(os.path.isdir(os.path.join(self.ancien, ".git")))
+        self.assert_manuel_garde()
+        self.assertTrue(maj.clone_gere(self.co.racine, MANUEL))
+        self.assertEqual(self.branches(MANUEL), [])
+        self.assert_suivant_remis()
+
+    def test_at_the_deletion_the_old_clone_stays_and_the_next_is_put_back(
+        self,
+    ):
+        declares = self.deux_clones()
+        questions, code = self.jouer(
+            ["o", "o", "", EOFError], declares=declares
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(len(questions), 4)
+        self.assertEqual(self.branches(MANUEL), ["18.0", "travail"])
+        self.assertTrue(os.path.isdir(os.path.join(self.ancien, ".git")))
+        self.assert_manuel_garde()
+        self.assert_suivant_remis()
 
 
 class TestPertes(unittest.TestCase):

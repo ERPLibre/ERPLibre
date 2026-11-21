@@ -28,6 +28,7 @@ from datetime import datetime
 import click
 
 from script.git import repo_state
+from script.todo import ui
 from script.todo.git_repo_menu import (
     MANIFESTE_LOCAL,
     RACINE,
@@ -239,10 +240,12 @@ class InstallUpdateMenuMixin:
         lancé.
 
         Toutes les réponses sont prises avant le premier déplacement :
-        renoncer laisse chaque clone à sa place. Après la synchronisation,
-        réussie ou non, chaque clone déplacé est repris : rendu à son
-        chemin quand repo ne l'a pas recréé, sinon ses branches proposées
-        à la copie."""
+        renoncer, ou Ctrl+D à l'une d'elles, laisse chaque clone à sa
+        place. Après la synchronisation, réussie ou non, chaque clone
+        déplacé est repris : rendu à son chemin quand repo ne l'a pas
+        recréé, sinon ses branches proposées à la copie. Un Ctrl+D à l'une
+        de ces questions vaut non pour ce clone, et les suivants sont repris
+        quand même."""
         mode = repo_state.mode_du_checkout(racine)[0]
         if mode == "frozen":
             sources = gel_des_sources(racine)
@@ -277,7 +280,8 @@ class InstallUpdateMenuMixin:
         """Demande, pour chaque clone fait à la main à un chemin déclaré,
         s'il faut le déplacer ; rien n'est encore déplacé. Rend les
         (chemin, destination) acceptés, ou None quand l'utilisateur, ayant
-        gardé un clone, renonce à synchroniser."""
+        gardé un clone, renonce à synchroniser, ou sur Ctrl+D à l'une des
+        questions."""
         plan = []
         garde = False
         for chemin in clones_manuels(racine, chemins_declares(racine)):
@@ -286,7 +290,12 @@ class InstallUpdateMenuMixin:
                 f"⚠️  {chemin} : {t('cloned by hand at a path of the manifest, repo sync cannot adopt it and fails on it.')}"
             )
             self._update_decrire_clone(os.path.join(racine, chemin))
-            reponse = input(f"💬 {t('Move it aside to %s? (y/N): ') % ancien}")
+            try:
+                reponse = ui.ask(
+                    f"💬 {t('Move it aside to %s? (y/N): ') % ancien}"
+                )
+            except EOFError:
+                return None
             if self._is_yes(reponse):
                 plan.append((chemin, ancien))
             else:
@@ -294,10 +303,13 @@ class InstallUpdateMenuMixin:
                     f"   {t('Kept: repo sync will fail on this repository.')}"
                 )
                 garde = True
-        if garde and not self._is_yes(
-            input(f"💬 {t('Synchronize anyway? (y/N): ')}")
-        ):
-            return None
+        if garde:
+            try:
+                encore = ui.ask(f"💬 {t('Synchronize anyway? (y/N): ')}")
+            except EOFError:
+                return None
+            if not self._is_yes(encore):
+                return None
         return plan
 
     def _update_decrire_clone(self, clone):
@@ -323,7 +335,9 @@ class InstallUpdateMenuMixin:
         peut donc les écrire. Chaque branche est vérifiée par son commit,
         car `git fetch` rejette sans erreur une ref qu'un clone superficiel
         ne peut pas recevoir. La suppression de l'ancien n'est offerte que
-        si rien ne s'y perdrait."""
+        si rien ne s'y perdrait. Ctrl+D à l'une des deux questions vaut
+        non : l'ancien clone reste, sans copie ni suppression, et une ligne
+        à part dit où il est gardé."""
         nouveau = os.path.join(racine, chemin)
         vieux = os.path.join(racine, ancien)
         if not os.path.lexists(nouveau):
@@ -342,11 +356,16 @@ class InstallUpdateMenuMixin:
             )
             return
         anciennes = refs_locales(vieux)
-        if anciennes and self._is_yes_default_yes(
-            input(
-                f"💬 {t('Copy the local branches of %s into the new clone? (Y/n): ') % ancien}"
+        try:
+            copier = anciennes and self._is_yes_default_yes(
+                ui.ask(
+                    f"💬 {t('Copy the local branches of %s into the new clone? (Y/n): ') % ancien}"
+                )
             )
-        ):
+        except EOFError:
+            self._update_garder(chemin, ancien)
+            return
+        if copier:
             fait = _git(
                 nouveau,
                 "fetch",
@@ -375,12 +394,26 @@ class InstallUpdateMenuMixin:
             for perte in pertes:
                 print(f"   {perte}")
             return
-        if self._is_yes(
-            input(f"💬 {t('Delete the old clone %s? (y/N): ') % ancien}")
-        ):
+        try:
+            supprimer = self._is_yes(
+                ui.ask(f"💬 {t('Delete the old clone %s? (y/N): ') % ancien}")
+            )
+        except EOFError:
+            self._update_garder(chemin, ancien)
+            return
+        if supprimer:
             try:
                 shutil.rmtree(vieux)
             except OSError as erreur:
                 print(f"❌ {t('Could not delete')} {ancien} : {erreur}")
                 return
             print(f"✅ {t('Deleted:')} {ancien}")
+
+    @staticmethod
+    def _update_garder(chemin, ancien):
+        """Dit, sur sa propre ligne, que le clone de `chemin` reste gardé
+        sous `ancien`. `input` n'écrit pas de saut de ligne sur Ctrl+D :
+        le premier `print` en tient lieu, sinon la ligne suivante
+        s'écrirait à la suite de la question."""
+        print()
+        print(f"⚠️  {chemin} : {t('Kept as')} {ancien}")
