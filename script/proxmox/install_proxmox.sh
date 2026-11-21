@@ -335,8 +335,8 @@ add_repo() {
 # « proxmox-ve » installe SON dépôt entreprise (pve-enterprise.sources), qui
 # exige un abonnement payant. Sans lui, tout « apt update » ultérieur échoue :
 # « 401 Unauthorized » puis « The repository is not signed », et la machine ne
-# peut plus rien installer — pas même une mise à jour de sécurité. Mesuré sur
-# la VM d'essai, au deuxième passage du script.
+# peut plus rien installer — pas même une mise à jour de sécurité. La panne
+# n'apparaît qu'au passage suivant du script, le premier apt ayant déjà eu lieu.
 #
 # On le désactive au lieu de l'effacer : « Enabled: false » est la forme deb822
 # prévue pour cela, elle survit aux mises à jour du paquet, et il suffit de
@@ -571,10 +571,10 @@ fix_efi_fallback() {
     local esp="${PVE_ESP:-/boot/efi}"
     local secours="${esp}/EFI/BOOT"
     # sudo sur CHAQUE lecture. /boot/efi est une vfat montée « umask=077 » :
-    # root seul y entre, et un « [ -d ] » non privilégié y répond FAUX. Ce
-    # correctif ne faisait donc RIEN, en silence, et la VM retombait sur
-    # « grub> » au redémarrage suivant — vécu deux fois. Le glob du shell est
-    # aveugle pour la même raison : il faut énumérer avec sudo.
+    # root seul y entre, et un « [ -d ] » non privilégié y répond FAUX. Sans
+    # sudo, ce correctif ne fait RIEN, en silence, et la VM retombe sur
+    # « grub> » au redémarrage suivant. Le glob du shell est aveugle pour la
+    # même raison : il faut énumérer avec sudo.
     sudo test -d "${secours}" || return 0
     sudo test -e "${secours}/grub.cfg" && return 0
     local stub=""
