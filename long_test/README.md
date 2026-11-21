@@ -404,7 +404,7 @@ command line is readable in the machine's process table by any account.
 **The tenant's secrets are forged, not asked for.** The engine's base model
 declares none, and each of its roles asserts its own non-empty: the deployment
 stops on the name of a secret without saying who should have posed it. The bench
-forges seven and seals them in the TENANT's vault, which is not the hoster's —
+forges them and seals them in the TENANT's vault, which is not the hoster's —
 the latter carries the token and wins where both are read, the former carries
 what its roles demand and never leaves its repository. A SHAPE is forged, not a
 length: the assertion measures only a length, so a random string where a role
@@ -520,6 +520,19 @@ itself, which is stronger than reading metadata. Finally, the bench turns on
 TLS for internal delivery on the sender side, as a tenant does in its
 `group_vars`: the mail store requires it on its LMTP port, the shipped model
 does not set it, and without it no message reaches a mailbox.
+
+**The bench exposes a federated identity, so the HTTPS recipe judges
+something.** The shipped model exposes no application: the recipe reads the
+virtual hosts the edge serves, finds none under the internal domain, and passes
+on an empty list. The bench therefore adds Keycloak, the service every exposed
+application presumes, exposed itself through the edge under the internal
+domain, federated to the directory the model already carries, and placed in
+the directory's zone. Its PostgreSQL database sits on the same host, declared
+the way the role resolves it, and the database server accepts the tenant's
+supernet — the role's default network does not contain it. The host's size is
+capped at two cores and 3 GiB: the engine sums the cores of a host's roles,
+and the derived four would take a whole nested terrain. The engine's own plan
+validators judge what the bench writes.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the

@@ -1727,6 +1727,13 @@ VERIFICATION_DEPOT = "serveur_backup_verification_locale"
 TLS_LMTP_EMETTEUR = "serveur_postfix_lmtp_tls_verify"
 TLS_LMTP_MAGASIN = "serveur_dovecot_lmtp_tls"
 
+# LES RÉSEAUX QUE LE SERVEUR DE BASES ACCEPTE. Le rôle les fixe par défaut à un
+# réseau de dix bits, qui ne contient pas le supernet d'un locataire d'index
+# non nul : ses clients y sont refusés à la connexion, sur un message qui parle
+# d'authentification. Le banc les accorde au supernet que le moteur dérive
+# pour chaque hôte.
+RESEAUX_BASES = "serveur_postgresql_reseaux_autorises"
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1794,6 +1801,10 @@ def texte_intrants_du_banc(resolveur):
     `group_vars` : il accorde l'émetteur au magasin, qui exige TLS sur son port
     LMTP. Le modèle livré ne le pose pas, et sans lui aucun message n'atteint
     une boîte.
+
+    `RESEAUX_BASES` SUIT LE SUPERNET DU LOCATAIRE : le défaut du rôle ne le
+    contient pas, et l'identité fédérée que le banc pose ne joindrait pas sa
+    base.
     """
     if not (resolveur or "").strip():
         return ""
@@ -1806,6 +1817,7 @@ amorcage_acces_uid: "{COMPTE_RECETTE}"
 {RESTAURATION_ACTIVE}: false
 {VERIFICATION_DEPOT}: false
 {TLS_LMTP_EMETTEUR}: true
+{RESEAUX_BASES}: ["{{{{ setops_supernet }}}}"]
 """
 
 
@@ -1941,6 +1953,9 @@ SECRETS_LOCATAIRE = (
     ("vault_ldap_bind_postfix", FORME_OPAQUE),
     ("vault_ldap_bind_icingaweb2", FORME_OPAQUE),
     ("vault_backup_ssh_privkey", FORME_CLE_SSH),
+    # L'identité fédérée que le banc POSE — voir `pose_l_identite`.
+    ("vault_keycloak_admin", FORME_OPAQUE),
+    ("vault_bd_keycloak", FORME_OPAQUE),
 )
 
 
@@ -2263,6 +2278,9 @@ def _recrit(chemin, transforme):
 # LE MAGASIN DE COURRIEL Y EST, parce que le banc POSE l'annuaire auquel il se
 # lie — voir `pose_l_annuaire`. Sans cet ajout il se déploierait vers une machine
 # qu'aucun plan ne nomme, et la passe serait verte sans que rien n'authentifie.
+#
+# L'IDENTITÉ FÉDÉRÉE ET SA BASE Y SONT, parce que le banc les POSE — voir
+# `pose_l_identite`.
 APPLICATIONS_COUVERTES = (
     "step_ca",
     "powerdns",
@@ -2271,6 +2289,8 @@ APPLICATIONS_COUVERTES = (
     "dovecot",
     "postfix",
     "backup",
+    "keycloak",
+    "postgresql",
 )
 
 
@@ -2443,6 +2463,15 @@ def pose_sous_cle(texte, cle, nom, valeur):
     ]
     if len(debuts) != 1:
         return None
+    # UN BLOC VIDE S'ÉCRIT « cle: {} » : y ajouter une ligne indentée
+    # produirait un plan illisible. Il devient un bloc ouvert, puis reçoit
+    # la ligne comme les autres.
+    vide = re.match(
+        rf"({re.escape(cle.strip())}\s*:)\s*\{{\s*\}}\s*(#.*)?$",
+        lignes[debuts[0]].rstrip("\n"),
+    )
+    if vide:
+        lignes[debuts[0]] = vide.group(1) + "\n"
     if re.search(rf"^\s+{re.escape(nom.strip())}\s*:", texte, re.M):
         return None
     fin = debuts[0] + 1
@@ -2535,12 +2564,216 @@ def pose_la_sauvegarde(eco, hote_autorite):
     )
 
 
+def flux_yaml(champs):
+    """« { clé: valeur, … } » : une entrée du plan en YAML de flux.
+
+    Les valeurs sont écrites TELLES QUELLES — un entier, une liste de flux —
+    et l'appelant en répond ; une épreuve relit chaque entrée posée.
+    """
+    return (
+        "{ " + ", ".join(f"{cle}: {valeur}" for cle, valeur in champs) + " }"
+    )
+
+
+# L'IDENTITÉ FÉDÉRÉE QUE LE BANC AJOUTE AU PLAN, et la base dont elle vit. Le
+# modèle socle n'expose AUCUNE application : la recette du moteur sonde alors
+# zéro hôte virtuel et passe à vide. L'identité est le service que toutes les
+# applications exposées supposent, et elle s'expose elle-même ; elle se fédère
+# à l'annuaire que le socle porte déjà.
+#
+# LE NOM DE L'APPLICATION EST CELUI QUE LE MOTEUR LIT, pas un choix : ses rôles
+# cherchent l'émetteur OIDC sous cette clé du plan, et une épreuve le confronte
+# au défaut du rôle qui le résout.
+FONCTION_IDENTITE = "id-sso"
+APPLICATION_IDENTITE = "keycloak"
+GROUPE_IDENTITE = "serveur_keycloak"
+PORT_IDENTITE = 8080
+SOUS_DOMAINE_IDENTITE = "auth"
+APPLICATION_BASES = "postgresql"
+GROUPE_BASES = "serveur_postgresql"
+PORT_BASES = 5432
+SERVEUR_BD_IDENTITE = "sql-identite"
+BASE_IDENTITE = "keycloak"
+SECRET_BD_IDENTITE = "vault_bd_keycloak"
+
+# LE DIMENSIONNEMENT EST PLAFONNÉ, et c'est le terrain qui l'impose. Le moteur
+# SOMME les cœurs des rôles d'un hôte : l'identité et sa base en réclameraient
+# quatre, soit tout un terrain imbriqué, et une VM qui demande autant de cœurs
+# que son nœud n'en a laisse le reste de la flotte se les disputer. La mémoire
+# suit la même borne ; le tas de la JVM se dimensionne sur elle.
+RESSOURCES_IDENTITE = (("coeurs", 2), ("memoire", 3072))
+
+
+def domaine_interne(eco):
+    """Le domaine interne que les intrants du modèle déclarent, ou « »."""
+    try:
+        import yaml
+    except ImportError:
+        return ""
+    chemin = os.path.join(
+        eco,
+        "inventories",
+        "production",
+        "group_vars",
+        "all",
+        "10-intrants.yml",
+    )
+    try:
+        with open(chemin, encoding="utf-8") as lu:
+            intrants = yaml.safe_load(lu.read())
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return ""
+    valeur = (
+        intrants.get("domaine_interne") if isinstance(intrants, dict) else ""
+    )
+    return valeur.strip() if isinstance(valeur, str) else ""
+
+
+def pose_une_application(eco, application, valeur):
+    """Ajoute une application au registre, sur un hôte qui existe déjà. Le
+    souci, ou « ». Déjà au plan, rien à poser."""
+    chemin = os.path.join(eco, "plan", "applications.yml")
+    registre = lit_applications(chemin)
+    if registre is None:
+        return "le registre des applications ne s'est pas lu"
+    if application in registre:
+        return ""
+    return _recrit(
+        chemin,
+        lambda t: pose_sous_cle(t, "applications", application, valeur),
+    )
+
+
+def pose_la_base(eco, hote):
+    """Déclare le serveur de bases et la base de l'identité. Le souci, ou « ».
+
+    LA FORME EST CELLE QUE LE RÔLE RÉSOUT : il cherche l'entrée dont le
+    consommateur est son groupe, puis lit le mot de passe sous le nom que
+    l'entrée donne. Déjà déclarée, rien à poser.
+    """
+    chemin = os.path.join(eco, "plan", "bases-donnees.yml")
+    lu = _lit_yaml(chemin)
+    if lu is None:
+        return "le registre des bases ne s'est pas lu"
+    if BASE_IDENTITE in (lu.get("bases_donnees") or {}):
+        return ""
+    for cle, nom, valeur in (
+        (
+            "serveurs_bd",
+            SERVEUR_BD_IDENTITE,
+            flux_yaml(
+                (
+                    ("type", "postgres"),
+                    ("hote", hote),
+                    ("port", PORT_BASES),
+                    ("groupe", GROUPE_BASES),
+                )
+            ),
+        ),
+        (
+            "bases_donnees",
+            BASE_IDENTITE,
+            flux_yaml(
+                (
+                    ("serveur", SERVEUR_BD_IDENTITE),
+                    ("base", BASE_IDENTITE),
+                    ("proprietaire", BASE_IDENTITE),
+                    ("secret", SECRET_BD_IDENTITE),
+                    ("consommateur", GROUPE_IDENTITE),
+                    ("portee", "groupe"),
+                    ("usage", "principale"),
+                )
+            ),
+        ),
+    ):
+        souci = _recrit(
+            chemin, lambda t, c=cle, n=nom, v=valeur: pose_sous_cle(t, c, n, v)
+        )
+        if souci:
+            return souci
+    return ""
+
+
+def _lit_yaml(chemin):
+    """Le dictionnaire YAML de `chemin`, ou None. Ne lève jamais."""
+    try:
+        import yaml
+
+        with open(chemin, encoding="utf-8") as lu:
+            charge = yaml.safe_load(lu.read())
+    except (ImportError, OSError, UnicodeDecodeError, ValueError):
+        return None
+    return charge if isinstance(charge, dict) else None
+
+
+def pose_l_identite(eco, hote_autorite):
+    """Ajoute l'identité fédérée, sa base et son exposition au plan. Le
+    souci, ou « ».
+
+    DANS LA ZONE DE L'ANNUAIRE, et non dans celle de l'autorité : c'est à lui
+    qu'elle se fédère, et c'est la zone de l'identité dans la nomenclature du
+    modèle. L'hôte de l'annuaire est LU au registre, jamais nommé ici.
+
+    `hote_autorite` est reçu pour la signature commune des poses ; la zone
+    vient de l'annuaire.
+    """
+    plan = os.path.join(eco, "plan")
+    registre = lit_applications(os.path.join(plan, "applications.yml"))
+    if registre is None:
+        return "le registre des applications ne s'est pas lu"
+    annuaire = (registre.get(APPLICATION_ANNUAIRE) or {}).get("hote")
+    if not annuaire:
+        return "aucun annuaire au plan : l'identité n'aurait rien à fédérer"
+    domaine = domaine_interne(eco)
+    if not domaine:
+        return "le domaine interne du modèle ne s'est pas lu"
+    souci = pose_un_service(
+        eco,
+        annuaire,
+        FONCTION_IDENTITE,
+        APPLICATION_IDENTITE,
+        GROUPE_IDENTITE,
+        hote_de_fonction(FONCTION_IDENTITE),
+        champs_application=(
+            ("port", PORT_IDENTITE),
+            ("expose", f"[{SOUS_DOMAINE_IDENTITE}.{domaine}]"),
+        ),
+        champs_serveur=RESSOURCES_IDENTITE,
+    )
+    if souci:
+        return souci
+    # L'HÔTE EST RELU : un modèle qui déclare déjà l'identité la place où il
+    # veut, et sa base la suit.
+    registre = lit_applications(os.path.join(plan, "applications.yml")) or {}
+    hote = (registre.get(APPLICATION_IDENTITE) or {}).get("hote")
+    if not hote:
+        return "l'identité posée ne nomme pas son hôte"
+    souci = pose_une_application(
+        eco,
+        APPLICATION_BASES,
+        flux_yaml(
+            (("groupe", GROUPE_BASES), ("hote", hote), ("port", PORT_BASES))
+        ),
+    )
+    return souci or pose_la_base(eco, hote)
+
+
 # CE QUE LE BANC AJOUTE AU PLAN, dans l'ordre où il l'ajoute. Une liste et non
 # deux appels écrits à la suite : c'est elle qu'une épreuve interroge.
-SERVICES_POSES = (pose_l_annuaire, pose_la_sauvegarde)
+# L'IDENTITÉ VIENT APRÈS L'ANNUAIRE, à qui elle se fédère.
+SERVICES_POSES = (pose_l_annuaire, pose_la_sauvegarde, pose_l_identite)
 
 
-def pose_un_service(eco, hote_autorite, fonction, application, groupe, hote):
+def pose_un_service(
+    eco,
+    hote_autorite,
+    fonction,
+    application,
+    groupe,
+    hote,
+    champs_application=(),
+    champs_serveur=(),
+):
     """Ajoute un service aux trois fichiers du plan. Le souci, ou « ».
 
     DÉRIVÉ, JAMAIS ÉCRIT. La zone est celle où vit déjà l'autorité de
@@ -2558,6 +2791,10 @@ def pose_un_service(eco, hote_autorite, fonction, application, groupe, hote):
     que parce qu'un modèle peut l'omettre ; celui qui le déclare n'a besoin de
     rien. Traiter ce cas en refus ferait échouer la pose sur un plan PLUS complet
     que prévu — l'inverse exact de ce qu'on veut d'un modèle qui s'améliore.
+
+    `champs_application` et `champs_serveur` sont des couples (clé, valeur en
+    YAML de flux) ajoutés à l'entrée de l'application et à celle de l'hôte : un
+    port et une exposition pour l'une, un dimensionnement pour l'autre.
     """
     plan = os.path.join(eco, "plan")
     if application in (
@@ -2591,13 +2828,17 @@ def pose_un_service(eco, hote_autorite, fonction, application, groupe, hote):
             "serveurs.yml",
             "serveurs",
             hote,
-            f"{{ fonction: {fonction}, etat: actif }}",
+            flux_yaml(
+                (("fonction", fonction), ("etat", "actif")) + champs_serveur
+            ),
         ),
         (
             "applications.yml",
             "applications",
             application,
-            f"{{ groupe: {groupe}, hote: {hote} }}",
+            flux_yaml(
+                (("groupe", groupe), ("hote", hote)) + champs_application
+            ),
         ),
     ):
         souci = _recrit(

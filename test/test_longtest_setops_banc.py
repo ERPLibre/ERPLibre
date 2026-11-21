@@ -4002,7 +4002,7 @@ class TestLesSecretsDuLocataire(unittest.TestCase):
     def test_an_unknown_shape_names_the_variable(self):
         """Fermé par défaut : le banc ne scelle pas ce qu'il ne sait pas forger.
         Le refus NOMME la variable — sans son nom, l'opérateur la cherche parmi
-        les sept."""
+        toutes les autres."""
         secrets, souci = B.forge_les_secrets(
             (("vault_invente_pour_l_epreuve", "une-forme-qui-n-existe-pas"),)
         )
@@ -4134,8 +4134,8 @@ class TestLaPlainteNeCiteAucunSecret(unittest.TestCase):
     qu'il a reçu est le clair. Tout ce que le banc montre passe par l'expurge."""
 
     def test_every_secret_is_redacted_not_just_the_first(self):
-        """LA PROPRIÉTÉ : tous. Le clair du locataire en porte sept, et n'en
-        expurger qu'un en laisse six dans un journal permanent."""
+        """LA PROPRIÉTÉ : tous. Le clair du locataire en porte plusieurs, et
+        n'en expurger qu'un laisse les autres dans un journal permanent."""
         secrets = ("AAA-invente", "BBB-invente", "CCC-invente")
         vu = B.expurge_tous(" puis ".join(secrets), secrets)
         for secret in secrets:
@@ -4236,6 +4236,10 @@ class TestLesNomsDeVouteSontCeuxDuMoteur(unittest.TestCase):
                 ) as ouvert:
                     lus.update(re.findall(r"vault_[a-z0-9_]+", ouvert.read()))
         self.assertTrue(lus, "aucun nom de voûte lu chez le moteur")
+        # UN NOM QUE LE PLAN DONNE est lu aussi : le rôle de base lit le mot
+        # de passe sous le nom que l'entrée du registre porte. Ceux-là sont
+        # ceux que le banc écrit lui-même dans les bases qu'il pose.
+        lus.add(B.SECRET_BD_IDENTITE)
         for nom, _forme in B.SECRETS_LOCATAIRE:
             with self.subTest(nom=nom):
                 self.assertIn(nom, lus)
@@ -5230,6 +5234,191 @@ class TestLaRecetteDuCourrielTrouveSonCompte(unittest.TestCase):
             "roles", "amorcage_acces", "defaults", "main.yml"
         )
         self.assertIn("amorcage_acces_uid", defauts)
+
+
+class TestLIdentiteFederee(unittest.TestCase):
+    """Le modèle n'expose aucune application : la recette sondait zéro hôte
+    virtuel et passait à vide. Le banc pose l'identité fédérée, exposée, et
+    sa base."""
+
+    def moteur(self):
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        return MOTEUR_CLONE
+
+    def eco_pose(self):
+        source = os.path.join(self.moteur(), "exemples", "modeles", "socle")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        eco = os.path.join(d, "eco")
+        shutil.copytree(source, eco)
+        for pose in B.SERVICES_POSES:
+            self.assertEqual("", pose(eco, "infra-pki-01"), pose.__name__)
+        return eco
+
+    def lu(self, eco, fichier):
+        with open(os.path.join(eco, "plan", fichier), encoding="utf-8") as f:
+            return yaml.safe_load(f.read()) or {}
+
+    def test_the_application_name_is_the_one_the_engine_resolves(self):
+        defauts = lu_au_moteur("roles", "resoudre_idp", "defaults", "main.yml")
+        self.assertEqual(B.APPLICATION_IDENTITE, defauts["resoudre_idp_app"])
+
+    def test_both_groups_are_roles_of_the_engine(self):
+        for groupe in (B.GROUPE_IDENTITE, B.GROUPE_BASES):
+            with self.subTest(groupe=groupe):
+                self.assertTrue(
+                    os.path.isdir(os.path.join(self.moteur(), "roles", groupe))
+                )
+
+    def test_the_bench_covers_and_poses_it_after_the_directory(self):
+        for nom in (B.APPLICATION_IDENTITE, B.APPLICATION_BASES):
+            self.assertIn(nom, B.APPLICATIONS_COUVERTES)
+        poses = list(B.SERVICES_POSES)
+        self.assertLess(
+            poses.index(B.pose_l_annuaire), poses.index(B.pose_l_identite)
+        )
+
+    def test_the_engine_s_own_validators_accept_the_plan(self):
+        """Le juge est le MOTEUR : ses validateurs de serveurs, d'applications
+        et de bases relisent le plan que les poses ont écrit."""
+        eco = self.eco_pose()
+        sys.path.insert(0, os.path.join(self.moteur(), "scripts"))
+        self.addCleanup(
+            sys.path.remove, os.path.join(self.moteur(), "scripts")
+        )
+        import inventory_rules as regles
+
+        serveurs = self.lu(eco, "serveurs.yml")
+        applications = self.lu(eco, "applications.yml")
+        regles.valider_serveurs(serveurs, self.lu(eco, "nomenclature.yml"))
+        regles.valider_applications(
+            applications, self.lu(eco, "domaines.yml"), serveurs
+        )
+        regles.valider_bases(self.lu(eco, "bases-donnees.yml"), applications)
+
+    def test_it_is_exposed_under_the_internal_domain_through_the_edge(self):
+        eco = self.eco_pose()
+        entree = self.lu(eco, "applications.yml")["applications"][
+            B.APPLICATION_IDENTITE
+        ]
+        domaine = B.domaine_interne(eco)
+        self.assertTrue(domaine)
+        self.assertEqual(1, len(entree["expose"]))
+        self.assertTrue(entree["expose"][0].endswith("." + domaine))
+        # Un port : sans lui l'edge ne publie rien et l'exposition se sert
+        # elle-même, hors de la recette.
+        self.assertIsInstance(entree["port"], int)
+        domaines = self.lu(eco, "domaines.yml")["domaines_publics"]
+        self.assertIn("edge", domaines[domaine])
+
+    def test_it_lives_in_the_directory_s_zone(self):
+        eco = self.eco_pose()
+        fonctions = self.lu(eco, "nomenclature.yml")["fonctions"]
+        serveurs = self.lu(eco, "serveurs.yml")["serveurs"]
+        applications = self.lu(eco, "applications.yml")["applications"]
+
+        def zone(application):
+            hote = applications[application]["hote"]
+            return fonctions[serveurs[hote]["fonction"]]["categorie"]
+
+        self.assertEqual(
+            zone(B.APPLICATION_ANNUAIRE), zone(B.APPLICATION_IDENTITE)
+        )
+
+    def test_its_database_is_found_the_way_the_role_resolves_it(self):
+        """Le rôle cherche l'entrée dont le consommateur est son groupe, puis
+        le mot de passe sous le nom qu'elle porte : ce nom doit être scellé."""
+        eco = self.eco_pose()
+        bases = self.lu(eco, "bases-donnees.yml")
+        trouvees = [
+            b
+            for b in bases["bases_donnees"].values()
+            if b.get("consommateur") == B.GROUPE_IDENTITE
+        ]
+        self.assertEqual(1, len(trouvees))
+        scelles = [nom for nom, _f in B.SECRETS_LOCATAIRE]
+        self.assertIn(trouvees[0]["secret"], scelles)
+        serveur = bases["serveurs_bd"][trouvees[0]["serveur"]]
+        applications = self.lu(eco, "applications.yml")["applications"]
+        self.assertEqual(
+            applications[B.APPLICATION_BASES]["hote"], serveur["hote"]
+        )
+        self.assertEqual(B.GROUPE_BASES, serveur["groupe"])
+
+    def test_its_size_leaves_room_on_a_nested_terrain(self):
+        eco = self.eco_pose()
+        hote = self.lu(eco, "applications.yml")["applications"][
+            B.APPLICATION_IDENTITE
+        ]["hote"]
+        serveur = self.lu(eco, "serveurs.yml")["serveurs"][hote]
+        self.assertLess(serveur["coeurs"], 4)
+        self.assertLessEqual(serveur["memoire"], 4096)
+
+    def test_a_second_pose_doubles_nothing(self):
+        eco = self.eco_pose()
+        avant = {
+            f: self.lu(eco, f)
+            for f in (
+                "applications.yml",
+                "serveurs.yml",
+                "nomenclature.yml",
+                "bases-donnees.yml",
+            )
+        }
+        self.assertEqual("", B.pose_l_identite(eco, "infra-pki-01"))
+        for fichier, contenu in avant.items():
+            self.assertEqual(contenu, self.lu(eco, fichier), fichier)
+
+    def test_without_a_directory_it_refuses_by_name(self):
+        eco = self.eco_pose()
+        chemin = os.path.join(eco, "plan", "applications.yml")
+        with open(chemin, encoding="utf-8") as f:
+            texte = f.read()
+        texte = "\n".join(
+            ligne
+            for ligne in texte.splitlines()
+            if not ligne.strip().startswith(
+                (B.APPLICATION_ANNUAIRE + ":", B.APPLICATION_IDENTITE + ":")
+            )
+        )
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(texte + "\n")
+        self.assertIn("annuaire", B.pose_l_identite(eco, "infra-pki-01"))
+
+
+class TestLaBaseAccepteLeLocataire(unittest.TestCase):
+    """Le serveur de bases refuse par défaut un réseau qui ne contient pas le
+    supernet d'un locataire d'index non nul."""
+
+    def test_the_switch_is_one_the_engine_declares(self):
+        defauts = lu_au_moteur(
+            "roles", "serveur_postgresql", "defaults", "main.yml"
+        )
+        self.assertIn(B.RESEAUX_BASES, defauts)
+
+    def test_it_follows_the_supernet_the_engine_derives(self):
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        valeur = lu[B.RESEAUX_BASES]
+        self.assertEqual(1, len(valeur))
+        variable = valeur[0].strip("{} ")
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(
+            os.path.join(MOTEUR_CLONE, "scripts", "instancier.py"),
+            encoding="utf-8",
+        ) as f:
+            self.assertIn(f'"{variable}"', f.read())
+
+
+class TestUnBlocVideRecoitSaLigne(unittest.TestCase):
+    def test_an_empty_flow_block_opens_then_receives(self):
+        texte = "serveurs_bd: {}\nbases_donnees: {}\n"
+        apres = B.pose_sous_cle(texte, "serveurs_bd", "s", "{ a: 1 }")
+        self.assertEqual(
+            {"serveurs_bd": {"s": {"a": 1}}, "bases_donnees": {}},
+            yaml.safe_load(apres),
+        )
 
 
 class TestLaCibleDesSauvegardes(unittest.TestCase):

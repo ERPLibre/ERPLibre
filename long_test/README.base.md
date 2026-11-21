@@ -409,7 +409,7 @@ command line is readable in the machine's process table by any account.
 **The tenant's secrets are forged, not asked for.** The engine's base model
 declares none, and each of its roles asserts its own non-empty: the deployment
 stops on the name of a secret without saying who should have posed it. The bench
-forges seven and seals them in the TENANT's vault, which is not the hoster's —
+forges them and seals them in the TENANT's vault, which is not the hoster's —
 the latter carries the token and wins where both are read, the former carries
 what its roles demand and never leaves its repository. A SHAPE is forged, not a
 length: the assertion measures only a length, so a random string where a role
@@ -525,6 +525,19 @@ itself, which is stronger than reading metadata. Finally, the bench turns on
 TLS for internal delivery on the sender side, as a tenant does in its
 `group_vars`: the mail store requires it on its LMTP port, the shipped model
 does not set it, and without it no message reaches a mailbox.
+
+**The bench exposes a federated identity, so the HTTPS recipe judges
+something.** The shipped model exposes no application: the recipe reads the
+virtual hosts the edge serves, finds none under the internal domain, and passes
+on an empty list. The bench therefore adds Keycloak, the service every exposed
+application presumes, exposed itself through the edge under the internal
+domain, federated to the directory the model already carries, and placed in
+the directory's zone. Its PostgreSQL database sits on the same host, declared
+the way the role resolves it, and the database server accepts the tenant's
+supernet — the role's default network does not contain it. The host's size is
+capped at two cores and 3 GiB: the engine sums the cores of a host's roles,
+and the derived four would take a whole nested terrain. The engine's own plan
+validators judge what the bench writes.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
@@ -1004,7 +1017,7 @@ ligne de commande se lit dans la table des processus, par n'importe quel compte.
 **Les secrets du locataire se forgent, ils ne se demandent pas.** Le modèle de
 base du moteur n'en déclare aucun, et chacun de ses rôles assertionne le sien
 non vide : le déploiement s'arrête sur le nom d'un secret sans dire qui aurait
-dû le poser. Le banc en forge sept et les scelle dans la voûte du LOCATAIRE, qui
+dû le poser. Le banc les forge et les scelle dans la voûte du LOCATAIRE, qui
 n'est pas celle de l'hébergeur — la seconde porte le jeton et l'emporte là où
 les deux sont lues, la première porte ce qu'exigent ses rôles et ne sort pas de
 son dépôt. Une FORME se forge, pas une longueur : l'assertion ne mesure qu'une
@@ -1124,6 +1137,19 @@ instantané, ce qui est plus fort que relire des métadonnées. Enfin, le banc
 active le TLS de la remise interne du côté de l'émetteur, comme le pose un
 locataire dans ses `group_vars` : le magasin l'exige sur son port LMTP, le
 modèle livré ne le pose pas, et sans lui aucun message n'atteint une boîte.
+
+**Le banc expose une identité fédérée, pour que la recette HTTPS juge quelque
+chose.** Le modèle livré n'expose aucune application : la recette lit les hôtes
+virtuels que sert l'edge, n'en trouve aucun sous le domaine interne, et passe
+sur une liste vide. Le banc ajoute donc Keycloak, le service que toute
+application exposée suppose, exposé lui-même par l'edge sous le domaine
+interne, fédéré à l'annuaire que le modèle porte déjà, et placé dans la zone de
+l'annuaire. Sa base PostgreSQL vit sur le même hôte, déclarée comme le rôle la
+résout, et le serveur de bases accepte le supernet du locataire — le réseau par
+défaut du rôle ne le contient pas. La taille de l'hôte est plafonnée à deux
+cœurs et 3 Gio : le moteur somme les cœurs des rôles d'un hôte, et les quatre
+qu'il dériverait prendraient tout un terrain imbriqué. Les validateurs du plan
+du moteur jugent ce que le banc écrit.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
