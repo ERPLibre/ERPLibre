@@ -427,6 +427,17 @@ changes, and the bench would then route domains where nobody lives. A host
 missing one of the three values refuses the whole read: routing one zone out of
 two leaves half the fleet unreachable, and nothing in the inventory says which.
 
+**The bridge's stanza is judged before anything is created, because it alone
+says what a reboot brings back.** The pose replays `ifup` or its fallback on
+every launch, and the bridge comes up for THAT run; but it never writes over a
+stanza already declared. A stanza that lacks the address, the fixed hardware
+address or the VLAN filtering therefore survives every launch, and drops the
+bridge again at the terrain's next reboot. A stanza not declared yet passes:
+the pose will write it. Once posed, the bridge must also CARRY its address and
+its hardware address, not only be up and filtering — `ifup` can return 0 and
+leave it without an address, and the fallback swallows a failed
+`ip addr add`.
+
 **The golden template is required after the pose, and the bench does not make
 it.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
@@ -995,6 +1006,17 @@ divergerait de la sienne le jour où sa règle change, et le banc routerait alor
 des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeurs
 fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
 flotte injoignable, et rien dans l'inventaire ne dit laquelle.
+
+**La strophe du pont est jugée avant toute création, parce qu'elle seule dit
+ce qu'un redémarrage ramène.** La pose rejoue `ifup` ou son repli à chaque
+lancement, et le pont monte pour CETTE exécution ; mais elle n'écrit jamais
+par-dessus une strophe déjà déclarée. Une strophe à qui manque l'adresse,
+l'adresse matérielle fixe ou le filtrage des VLAN survit donc à tous les
+lancements, et refait tomber le pont au redémarrage suivant du terrain. Une
+strophe pas encore déclarée passe : la pose l'écrira. Une fois posé, le pont
+doit aussi PORTER son adresse et son adresse matérielle, pas seulement être
+debout et filtrant — `ifup` peut rendre 0 en le laissant sans adresse, et le
+repli avale l'échec d'un `ip addr add`.
 
 **Le gabarit doré est exigé après la pose, et le banc ne le fabrique pas.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée

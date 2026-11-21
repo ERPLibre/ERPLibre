@@ -440,6 +440,17 @@ des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeu
 fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
 flotte injoignable, et rien dans l'inventaire ne dit laquelle.
 
+**La strophe du pont est jugée avant toute création, parce qu'elle seule dit
+ce qu'un redémarrage ramène.** La pose rejoue `ifup` ou son repli à chaque
+lancement, et le pont monte pour CETTE exécution ; mais elle n'écrit jamais
+par-dessus une strophe déjà déclarée. Une strophe à qui manque l'adresse,
+l'adresse matérielle fixe ou le filtrage des VLAN survit donc à tous les
+lancements, et refait tomber le pont au redémarrage suivant du terrain. Une
+strophe pas encore déclarée passe : la pose l'écrira. Une fois posé, le pont
+doit aussi PORTER son adresse et son adresse matérielle, pas seulement être
+debout et filtrant — `ifup` peut rendre 0 en le laissant sans adresse, et le
+repli avale l'échec d'un `ip addr add`.
+
 **Le gabarit doré est exigé après la pose, et le banc ne le fabrique pas.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
 configurée pour le chipset PCI hérité, et la convertir après coup ne change pas

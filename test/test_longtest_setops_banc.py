@@ -530,8 +530,9 @@ class TestLesNomsDuBancNexistentNullePartAilleurs(unittest.TestCase):
         self.assertNotEqual([], self.cherche("bridge_setup_cmds"))
 
 
-def detail_pont(nom, filtrage="1", champ=True):
-    """La forme qu'un Proxmox imprime pour « ip -d link show dev <pont> ».
+def detail_pont(nom, filtrage="1", champ=True, adresse="", mac=""):
+    """La forme qu'un Proxmox imprime pour « ip -d link show dev <pont> »,
+    suivie de « ip -o -4 addr show dev <pont> » quand `adresse` est donnée.
 
     Trois lignes : l'entête indexée, le lien, puis la ligne de détail du pont
     qui porte les champs. Les valeurs sont INVENTÉES — une adresse matérielle
@@ -545,12 +546,214 @@ def detail_pont(nom, filtrage="1", champ=True):
     if champ:
         detail += f" vlan_filtering {filtrage} vlan_protocol 802.1Q"
     detail += " bridge_id 8000.0:0:0:0:0:0 vlan_default_pvid 1"
-    return (
+    texte = (
         f"3: {nom}: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UNKNOWN\n"
-        "    link/ether 02:00:00:00:00:01 brd ff:ff:ff:ff:ff:ff\n"
+        f"    link/ether {mac or '02:00:00:00:00:01'} brd ff:ff:ff:ff:ff:ff\n"
         + detail
         + "\n"
     )
+    if adresse:
+        texte += (
+            f"3: {nom}    inet {adresse} brd 192.0.2.255 scope global {nom}"
+            "\\       valid_lft forever preferred_lft forever\n"
+        )
+    return texte
+
+
+class TestLePontPorteSaPasserelle(unittest.TestCase):
+    """Debout et filtrant, un pont peut encore laisser la flotte sans
+    passerelle : `ifup` rend 0 en le laissant sans adresse, et le repli de la
+    pose avale l'échec de son « ip addr add ». Sans sa MAC fixe, ses
+    sous-interfaces refusent de monter."""
+
+    CIDR = "192.0.2.1/24"
+    MAC = "02:aa:bb:cc:dd:ee"
+
+    def lu(self, **change):
+        champs = dict(adresse=self.CIDR, mac=self.MAC)
+        champs.update(change)
+        return B.lit_constat_pont(detail_pont("vmbr9", **champs), "vmbr9")
+
+    def test_a_bridge_with_its_address_and_mac_holds(self):
+        self.assertTrue(self.lu().tient(self.CIDR, self.MAC))
+
+    def test_a_bridge_up_without_its_address_does_not_hold(self):
+        vu = self.lu(adresse="")
+        self.assertTrue(vu.utilisable)
+        self.assertFalse(vu.tient(self.CIDR, self.MAC))
+
+    def test_another_address_is_not_the_gateway(self):
+        self.assertFalse(
+            self.lu(adresse="192.0.2.7/24").tient(self.CIDR, self.MAC)
+        )
+
+    def test_a_bridge_on_another_mac_does_not_hold(self):
+        vu = self.lu(mac="00:00:00:00:00:00")
+        self.assertFalse(vu.tient(self.CIDR, self.MAC))
+
+    def test_the_case_of_the_mac_does_not_matter(self):
+        self.assertTrue(self.lu().tient(self.CIDR, self.MAC.upper()))
+
+    def test_the_address_of_a_neighbour_bridge_does_not_count(self):
+        """« vmbr90 » n'est pas « vmbr9 », pour l'adresse comme pour
+        l'entête."""
+        texte = detail_pont("vmbr9", mac=self.MAC) + (
+            f"4: vmbr90    inet {self.CIDR} scope global vmbr90\n"
+        )
+        vu = B.lit_constat_pont(texte, "vmbr9")
+        self.assertFalse(vu.tient(self.CIDR, self.MAC))
+
+    def test_a_bridge_that_does_not_filter_never_holds(self):
+        vu = self.lu(filtrage="0")
+        self.assertFalse(vu.tient(self.CIDR, self.MAC))
+
+    def test_the_probe_reads_the_addresses_in_the_same_shell(self):
+        """`joue_sur` ne garde que la sortie de la dernière commande : une
+        seconde commande séparée perdrait l'état du lien."""
+        cmds = B.cmds_constater_pont("vmbr9")
+        self.assertEqual(1, len(cmds))
+        self.assertIn("addr show", cmds[0])
+        self.assertIn("link show", cmds[0])
+
+
+class TestLaPoseExigeLaPasserelle(unittest.TestCase):
+    """La pose ne passe au jeton que sur un pont qui porte son adresse et sa
+    MAC : un pont debout et filtrant ne suffit pas."""
+
+    def pose(self, constat):
+        restes = [B.Fait(0, "", 3), B.Fait(0, constat, 1)]
+        vus = []
+
+        def faux(terrain, cmds, elevation, delai=B.DELAI_TERRAIN):
+            vus.append(cmds)
+            return restes.pop(0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            chantier = B.Chantier("un-terrain", os.path.join(tmp, "e.json"))
+            with (
+                mock.patch.object(B, "joue_sur", faux),
+                mock.patch.object(B, "lire_jeton", lambda *a, **k: ""),
+            ):
+                souci, _ = B.pose_le_banc(
+                    "/nulle-part", mesures_bonnes(), chantier, dire=lambda t: 0
+                )
+        return souci
+
+    def test_a_bridge_without_its_address_stops_the_pose(self):
+        mac = B.proxmox_deploy().mac_du_pont("vmbr9")
+        souci = self.pose(detail_pont("vmbr9", mac=mac))
+        self.assertIn("pas utilisable", souci)
+        self.assertIn(B.CIDR_PONT_BANC, souci)
+
+    def test_a_bridge_on_the_wrong_mac_stops_the_pose(self):
+        souci = self.pose(
+            detail_pont(
+                "vmbr9", adresse=B.CIDR_PONT_BANC, mac="00:00:00:00:00:00"
+            )
+        )
+        self.assertIn("pas utilisable", souci)
+
+    def test_a_bridge_that_holds_goes_on_to_the_token(self):
+        """Contrôle positif : un pont conforme passe, et la pose s'arrête
+        plus loin, sur le jeton qu'on lui refuse ici."""
+        mac = B.proxmox_deploy().mac_du_pont("vmbr9")
+        souci = self.pose(
+            detail_pont("vmbr9", adresse=B.CIDR_PONT_BANC, mac=mac)
+        )
+        self.assertNotIn("pas utilisable", souci)
+        self.assertIn("jeton", souci)
+
+
+def strophe_posee(nom, cidr):
+    """La strophe que la pose du banc ÉCRIT, tirée de ses propres commandes."""
+    import shlex
+
+    for cmd in B.cmds_pont(nom, cidr):
+        mots = shlex.split(cmd)
+        if "printf" in mots and "/etc/network/interfaces" in mots:
+            return mots[mots.index("printf") + 2]
+    return None
+
+
+class TestLaStropheDuPontPreditLeRedemarrage(unittest.TestCase):
+    """La pose rejoue `ifup` ou son repli à chaque lancement, mais n'écrit
+    jamais par-dessus une strophe existante : une strophe fausse survit à
+    tous les lancements et refait tomber le pont au redémarrage du terrain."""
+
+    CIDR = "192.0.2.1/24"
+
+    def juge(self, interfaces, pont="vmbr9"):
+        return B.prealable_de_strophe(interfaces, pont, self.CIDR)
+
+    def test_what_the_pose_writes_is_held(self):
+        """Contrôle positif : un préalable qui refuse toujours passerait
+        toutes les épreuves de refus."""
+        texte = strophe_posee("vmbr9", self.CIDR)
+        self.assertTrue(texte)
+        self.assertIs(
+            True, self.juge("auto lo\niface lo inet loopback\n" + texte).tenu
+        )
+
+    def test_nothing_declared_yet_is_held(self):
+        """Premier lancement : la pose l'écrira."""
+        self.assertIs(
+            True, self.juge("auto lo\niface lo inet loopback\n").tenu
+        )
+
+    def test_an_unread_file_is_a_doubt_not_a_refusal(self):
+        self.assertIsNone(self.juge(None).tenu)
+
+    def test_each_missing_attribute_is_refused_and_named(self):
+        texte = strophe_posee("vmbr9", self.CIDR)
+        for motif in ("hwaddress", "address", "bridge-vlan-aware"):
+            with self.subTest(motif=motif):
+                ampute = "\n".join(
+                    ligne
+                    for ligne in texte.splitlines()
+                    if ligne.split()[:1] != [motif]
+                )
+                vu = self.juge(ampute)
+                self.assertIs(False, vu.tenu)
+                self.assertIn(motif, vu.dit)
+                self.assertIn("--detruire", vu.dit)
+
+    def test_another_address_is_refused(self):
+        texte = strophe_posee("vmbr9", "198.51.100.1/24")
+        self.assertIs(False, self.juge(texte).tenu)
+
+    def test_the_order_and_spelling_of_attributes_do_not_matter(self):
+        """Ce que l'attribut fait compte, pas sa place ni sa graphie :
+        ifupdown accepte « bridge_vlan_aware »."""
+        texte = strophe_posee("vmbr9", self.CIDR)
+        lignes = texte.strip("\n").splitlines()
+        entete, corps = lignes[:2], lignes[2:]
+        corps = [
+            ligne.replace("bridge-vlan-aware", "bridge_vlan_aware")
+            for ligne in reversed(corps)
+        ]
+        self.assertIs(True, self.juge("\n".join(entete + corps)).tenu)
+
+    def test_the_next_stanza_does_not_lend_its_attributes(self):
+        """Une strophe s'arrête à la suivante : l'adresse d'un voisin ne
+        rend pas la sienne conforme."""
+        mac = B.proxmox_deploy().mac_du_pont("vmbr9")
+        texte = (
+            "iface vmbr9 inet manual\n"
+            "auto vmbr10\n"
+            f"iface vmbr10 inet static\n    address {self.CIDR}\n"
+            f"    hwaddress {mac}\n    bridge-vlan-aware yes\n"
+        )
+        self.assertIs(False, self.juge(texte).tenu)
+
+    def test_a_neighbour_named_alike_is_not_the_bridge(self):
+        texte = strophe_posee("vmbr90", self.CIDR)
+        self.assertIs(True, self.juge(texte).tenu)
+
+    def test_it_is_judged_before_anything_is_created(self):
+        texte = strophe_posee("vmbr9", "198.51.100.1/24")
+        vus = B.prealables(mesures_bonnes(interfaces=texte))
+        self.assertEqual(B.SORTIE_OUTILLAGE, B.juge(vus))
+        self.assertEqual(B.SORTIE_OK, B.juge(B.prealables(mesures_bonnes())))
 
 
 class TestLeConstatDuPont(unittest.TestCase):
@@ -561,13 +764,13 @@ class TestLeConstatDuPont(unittest.TestCase):
 
     def test_a_vlan_aware_bridge_is_usable(self):
         vu = B.lit_constat_pont(detail_pont("vmbr9"), "vmbr9")
-        self.assertEqual(B.Constat(debout=True, vlan=True), vu)
+        self.assertEqual((True, True), (vu.debout, vu.vlan))
         self.assertTrue(vu.utilisable)
 
     def test_a_bridge_that_does_not_filter_is_not_usable(self):
         """L'état que le repli de la pose produit."""
         vu = B.lit_constat_pont(detail_pont("vmbr9", filtrage="0"), "vmbr9")
-        self.assertEqual(B.Constat(debout=True, vlan=False), vu)
+        self.assertEqual((True, False), (vu.debout, vu.vlan))
         self.assertFalse(vu.utilisable)
 
     def test_a_bridge_absent_is_a_fact_not_a_doubt(self):
@@ -580,7 +783,7 @@ class TestLeConstatDuPont(unittest.TestCase):
         l'imprimerait pas, conclure « ne filtre pas » ferait reposer un pont
         qui filtre peut-être."""
         vu = B.lit_constat_pont(detail_pont("vmbr9", champ=False), "vmbr9")
-        self.assertEqual(B.Constat(debout=True, vlan=None), vu)
+        self.assertEqual((True, None), (vu.debout, vu.vlan))
         self.assertFalse(vu.utilisable)
 
     def test_another_field_carrying_the_same_digit_says_nothing(self):
@@ -2807,7 +3010,7 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
     def test_an_unmeasured_condition_is_not_a_refusal(self):
         """« Pas su regarder » se distingue de « non » : l'écran doit envoyer
         chercher la sonde, non la machine."""
-        for champ in ("elevation", "index_libre"):
+        for champ in ("elevation", "index_libre", "interfaces"):
             with self.subTest(champ=champ):
                 vus = B.prealables(mesures_bonnes(**{champ: None}))
                 inconnus = [p for p in vus if p.tenu is None]

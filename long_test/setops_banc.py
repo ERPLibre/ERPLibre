@@ -297,6 +297,11 @@ class Mesures(NamedTuple):
     d'une mesure qui a répondu « non ». Les préalables lisent cette différence :
     l'écran doit dire « pas su regarder » là où c'est le cas, faute de quoi on
     cherche une machine en panne quand c'est la sonde qui n'est pas passée.
+
+    `interfaces` est le texte de /etc/network/interfaces tel qu'il a été lu,
+    None s'il ne l'a pas été. Il est GARDÉ, et non seulement consulté pour
+    nommer le pont : c'est lui que le terrain relit à son redémarrage, donc
+    lui seul dit ce que le pont sera après.
     """
 
     terrain: str
@@ -309,6 +314,7 @@ class Mesures(NamedTuple):
     uplink: str = ""
     resolveur: str = ""
     adresse_api: str = ""
+    interfaces: str | None = ""
 
 
 class VuGabarit(NamedTuple):
@@ -488,6 +494,7 @@ def prealables(mesures):
             if (vu.pont or "").strip()
             else "aucun nom libre, ou la configuration réseau n'a pas été lue",
         ),
+        prealable_de_strophe(vu.interfaces, vu.pont),
         Prealable(
             quoi="la grappe nomme un nœud en ligne",
             tenu=bool((vu.noeud or "").strip()),
@@ -626,6 +633,97 @@ def pont_du_banc(interfaces, deja, depart=PONT_DEPART):
     return pont_libre(texte, depart)
 
 
+# Les mots qui ouvrent une strophe dans /etc/network/interfaces : ce qui suit
+# l'un d'eux n'appartient plus à la strophe précédente, indenté ou non.
+OUVRE_STROPHE = ("auto", "iface", "mapping", "source", "source-directory")
+
+
+def strophe_declaree(interfaces, nom):
+    """Les attributs de la strophe « iface <nom> », ou None si elle n'y est pas.
+
+    Rend {attribut: valeur}, la première valeur de chaque attribut. Les deux
+    graphies qu'ifupdown accepte, « bridge_vlan_aware » et
+    « bridge-vlan-aware », se lisent sous la seconde : la comparaison porte
+    sur ce que l'attribut fait, pas sur son orthographe.
+    """
+    nom = (nom or "").strip()
+    if not nom:
+        return None
+    attributs = None
+    for ligne in (interfaces or "").splitlines():
+        mots = ligne.split()
+        if not mots or mots[0].startswith("#"):
+            continue
+        if mots[0] in OUVRE_STROPHE or mots[0].startswith("allow-"):
+            if attributs is not None:
+                break
+            if mots[0] == "iface" and mots[1:2] == [nom]:
+                attributs = {}
+            continue
+        if attributs is not None:
+            cle = mots[0].replace("_", "-")
+            attributs.setdefault(cle, " ".join(mots[1:]))
+    return attributs
+
+
+def strophe_attendue(nom, cidr):
+    """Ce que la strophe du pont doit porter pour qu'il revienne utilisable.
+
+    Les trois attributs dont l'absence ne se voit qu'au redémarrage : sans
+    l'adresse la flotte perd sa passerelle ; sans l'adresse matérielle un pont
+    sans port prend celle de sa dernière carte, ou 00:00:… quand il n'en a
+    plus, et ses sous-interfaces refusent de monter ; sans le filtrage de VLAN
+    une carte taguée démarre et reste injoignable.
+    """
+    return {
+        "address": cidr,
+        "hwaddress": proxmox_deploy().mac_du_pont(nom),
+        "bridge-vlan-aware": "yes",
+    }
+
+
+def ecarts_de_strophe(interfaces, nom, cidr):
+    """Ce qui sépare la strophe déclarée de `nom` de celle que le banc pose.
+
+    None si le texte n'a pas été lu. () si la strophe est absente — rien n'est
+    encore déclaré, la pose l'écrira — ou si elle porte ce qu'il faut. Sinon,
+    un écart lisible par attribut.
+    """
+    if interfaces is None:
+        return None
+    vu = strophe_declaree(interfaces, nom)
+    if vu is None:
+        return ()
+    return tuple(
+        f"{cle} : {vu.get(cle) or 'absent'} au lieu de {voulu}"
+        for cle, voulu in strophe_attendue(nom, cidr).items()
+        if (vu.get(cle) or "").lower() != voulu.lower()
+    )
+
+
+def prealable_de_strophe(interfaces, pont, cidr=""):
+    """Le préalable qui juge la strophe du pont, déclarée sur le terrain.
+
+    C'EST LA SEULE MESURE QUI PRÉDIT LE REDÉMARRAGE. La pose rejoue `ifup` ou
+    son repli à chaque lancement, et le pont remonte pour CETTE exécution ;
+    mais elle n'écrit jamais par-dessus une strophe existante, donc une
+    strophe fausse survit à tous les lancements et refait tomber le pont au
+    redémarrage suivant du terrain.
+    """
+    ecarts = ecarts_de_strophe(interfaces, pont, cidr or CIDR_PONT_BANC)
+    return Prealable(
+        quoi="la strophe du pont, s'il est déclaré, est celle que le banc pose",
+        tenu=None if ecarts is None else not ecarts,
+        dit=(
+            "; ".join(ecarts)
+            + " — la pose n'écrit jamais par-dessus une strophe : --detruire,"
+            " puis relancer"
+            if ecarts
+            else ""
+        ),
+    )
+
+
 class Constat(NamedTuple):
     """Ce que le terrain dit du pont du banc, après coup.
 
@@ -637,15 +735,32 @@ class Constat(NamedTuple):
 
     `vlan` vaut None quand le pont a été lu sans que le champ y soit : « pas vu »
     n'est pas « ne filtre pas ».
+
+    `adresses` et `mac` sont ce que le pont PORTE, lu au même passage : un
+    `ifup` peut rendre 0 en laissant le pont sans son adresse, et le repli de
+    la pose avale l'échec de son « ip addr add ». Debout et filtrant, un tel
+    pont laisse la flotte sans passerelle.
     """
 
     debout: bool
     vlan: bool | None
+    adresses: tuple = ()
+    mac: str = ""
 
     @property
     def utilisable(self) -> bool:
         """Le banc peut-il clonner dessus ? Les deux faits, ou rien."""
         return self.debout and self.vlan is True
+
+    def tient(self, cidr, mac):
+        """Utilisable, ET porteur de l'adresse et de la MAC que la pose lui
+        donne. La casse de la MAC ne compte pas : le noyau l'écrit en
+        minuscules, une strophe peut l'écrire autrement."""
+        return (
+            self.utilisable
+            and cidr in self.adresses
+            and self.mac.lower() == (mac or "").lower()
+        )
 
 
 # Borne d'une CIBLE du moteur. `reconstruire` crée les VM, attend qu'elles
@@ -890,8 +1005,12 @@ def cmds_constater_pont(nom):
     dépôt lit déjà pour les ponts, et sa ligne de détail porte
     « vlan_filtering 0|1 ». Un second chemin vers le même fait dériverait du
     premier.
+
+    LES ADRESSES SUR LA MÊME LIGNE DE SHELL : `joue_sur` ne garde que la
+    sortie de la dernière commande, et l'adresse se lit avec le reste.
     """
-    return [f"ip -d link show dev {shlex.quote(str(nom))}"]
+    dev = shlex.quote(str(nom))
+    return [f"ip -d link show dev {dev}; ip -o -4 addr show dev {dev}"]
 
 
 def lit_constat_pont(sortie, nom):
@@ -918,9 +1037,19 @@ def lit_constat_pont(sortie, nom):
     # Le champ se lit par son NOM suivi de sa valeur : « vlan_default_pvid 1 »
     # porte le même chiffre et ne dit rien du filtrage.
     prise = re.search(r"\bvlan_filtering\s+(\d+)\b", texte)
-    if prise is None:
-        return Constat(debout=True, vlan=None)
-    return Constat(debout=True, vlan=prise.group(1) == "1")
+    vlan = None if prise is None else prise.group(1) == "1"
+    adresses = tuple(
+        re.findall(
+            rf"^\d+:\s+{re.escape(nom)}\s+inet\s+(\S+)", texte, re.MULTILINE
+        )
+    )
+    ether = re.search(r"\blink/ether\s+([0-9A-Fa-f:]{17})\b", texte)
+    return Constat(
+        debout=True,
+        vlan=vlan,
+        adresses=adresses,
+        mac=ether.group(1).lower() if ether else "",
+    )
 
 
 def cmds_vms_vivantes_du_pont(pont):
@@ -1043,17 +1172,27 @@ def cmds_pont(nom, cidr, uplink=""):
     Bâties par le module qui sait déjà poser un pont, avec son drapeau : une
     seconde strophe écrite ici dériverait de la première.
     """
+    return list(
+        proxmox_deploy().bridge_setup_cmds(
+            nom=nom, cidr=cidr, uplink=uplink, vlan_aware=True
+        )
+    )
+
+
+def proxmox_deploy():
+    """Le module qui pose les ponts, importé à la demande.
+
+    À LA DEMANDE parce que le banc se charge aussi comme script, hors du
+    paquet : la racine du dépôt n'est alors dans le chemin qu'une fois
+    ajoutée ici.
+    """
     import sys
 
     if RACINE not in sys.path:
         sys.path.insert(0, RACINE)
     from script.proxmox import proxmox_deploy as pve
 
-    return list(
-        pve.bridge_setup_cmds(
-            nom=nom, cidr=cidr, uplink=uplink, vlan_aware=True
-        )
-    )
+    return pve
 
 
 # Où le banc commence à chercher un VMID libre pour son gabarit. 9000 est la
@@ -3336,7 +3475,9 @@ def mesure_le_terrain(moteur, terrain):
         lien_etat(os.path.join(moteur, nom), cible)
         for nom, cible in cibles_des_liens()
     )
-    vide = Mesures(terrain or "", elevation, liens, None, "", 0, None)
+    vide = Mesures(
+        terrain or "", elevation, liens, None, "", 0, None, interfaces=None
+    )
     if elevation not in (TEL_QUEL, ELEVE):
         return vide
 
@@ -3362,6 +3503,7 @@ def mesure_le_terrain(moteur, terrain):
     return vide._replace(
         index_libre=index_libre(instances_freres(moteur), INDEX_ECOSYSTEME),
         pont=pont,
+        interfaces=interfaces.sortie if interfaces.reussi else None,
         # LE PREMIER, et le banc n'en CHOISIT pas : une grappe de banc n'a qu'un
         # nœud et qu'un stockage à images. Sur une grappe qui en a plusieurs,
         # choisir pour l'exploitant serait deviner où il veut se poser — et c'est
@@ -3587,11 +3729,18 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
         return f"le pont n'est pas posé : {fait.sortie.strip()[-200:]}", ""
     vu = joue_sur(terrain, cmds_constater_pont(mesures.pont), elevation)
     constat = lit_constat_pont(vu.sortie, mesures.pont) if vu.reussi else None
-    if constat is None or not constat.utilisable:
+    mac = proxmox_deploy().mac_du_pont(mesures.pont)
+    if constat is None or not constat.tient(CIDR_PONT_BANC, mac):
         # DEBOUT MAIS NON FILTRANT est le pire des trois états : une carte
         # taguée y démarre et reste injoignable, et la panne ne se voit ni à la
-        # création, ni dans un code de retour.
-        return f"le pont n'est pas utilisable : {constat}", ""
+        # création, ni dans un code de retour. Debout SANS SON ADRESSE, le
+        # pont laisse la flotte sans passerelle, et sans sa MAC ses
+        # sous-interfaces refusent de monter.
+        return (
+            f"le pont n'est pas utilisable : {constat}, attendu"
+            f" {CIDR_PONT_BANC} et {mac}",
+            "",
+        )
 
     dire(f"  · utilisateur d'API {UTILISATEUR_API} et son jeton")
     secret = lire_jeton(terrain, elevation)
