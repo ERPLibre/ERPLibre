@@ -25,6 +25,7 @@ survivraient pas à la reconstruction suivante.
 """
 
 import importlib.util
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -68,12 +69,18 @@ class LeCatalogue(unittest.TestCase):
             DQ.DISTROS["nixos"][1], TODO._QEMU_DISTROS["nixos"][1]
         )
 
-    def test_the_version_is_the_one_inside_the_image(self):
-        """Annoncer une version que l'image ne porte pas mentirait sur ce
-        qu'on livre : la release épinglée embarque 25.11."""
-        self.assertIn("25.11", DQ.DISTROS["nixos"][0])
-        code, osinfo, ram, disque = DQ.DISTROS["nixos"][0]["25.11"]
-        self.assertEqual("nixos-25.11", osinfo)
+    def test_the_version_is_the_channel_the_vm_is_brought_to(self):
+        """L'image épinglée embarque 25.11 ; la clé du catalogue est le canal
+        que la VM rejoint au premier démarrage. Annoncer une version sans la
+        poser mentirait sur ce qu'on livre."""
+        self.assertEqual(["26.05"], list(DQ.DISTROS["nixos"][0]))
+        code, osinfo, ram, disque = DQ.DISTROS["nixos"][0]["26.05"]
+        self.assertEqual("nixos-26.05", osinfo)
+        joint = " ".join(DQ.nixos_vm_commands("26.05", False))
+        self.assertIn(
+            f"nix-channel --add {DQ.NIXOS_CHANNEL_BASE}/nixos-26.05 nixos",
+            joint,
+        )
         self.assertEqual(2048, ram)
         self.assertEqual("40G", disque)
 
@@ -81,7 +88,7 @@ class LeCatalogue(unittest.TestCase):
         """Le store Nix garde chaque génération et ne se purge qu'à la main :
         le plancher est plus haut que celui d'Arch, à dessein."""
         _c, _o, ram_arch, _d = DQ.DISTROS["arch"][0]["latest"]
-        _c, _o, ram_nix, _d = DQ.DISTROS["nixos"][0]["25.11"]
+        _c, _o, ram_nix, _d = DQ.DISTROS["nixos"][0]["26.05"]
         self.assertGreater(ram_nix, ram_arch)
 
     def test_it_is_x86_only(self):
@@ -94,21 +101,21 @@ class LImage(unittest.TestCase):
     def test_the_release_is_pinned(self):
         """« latest » changerait le système de base d'un déploiement à
         l'autre, sans que rien ne le dise."""
-        url = DQ.image_candidates("nixos", "25.11", "amd64", "25.11", True)[0]
+        url = DQ.image_candidates("nixos", "26.05", "amd64", "26.05", True)[0]
         self.assertIn(DQ.NIXOS_IMAGE_TAG, url)
         self.assertNotIn("latest", url)
 
     def test_the_cache_name_carries_the_tag(self):
         """Changer le tag doit RETÉLÉCHARGER, et non réutiliser une image qui
         ne répond plus à la somme figée."""
-        nom = DQ.default_image_name("nixos", "25.11", "amd64", "25.11")
+        nom = DQ.default_image_name("nixos", "26.05", "amd64", "26.05")
         self.assertIn(DQ.NIXOS_IMAGE_TAG, nom)
 
     def test_the_cache_name_never_falls_back_to_fedora(self):
         """Le repli de fin de default_image_name() nomme « fedora-cloud-* » :
         une distribution oubliée là met son image en cache sous le nom d'une
         autre, silencieusement."""
-        nom = DQ.default_image_name("nixos", "25.11", "amd64", "25.11")
+        nom = DQ.default_image_name("nixos", "26.05", "amd64", "26.05")
         self.assertNotIn("fedora", nom)
 
     def test_the_pinned_sum_looks_like_a_sha256(self):
@@ -239,7 +246,7 @@ class LeSystemeInvite(unittest.TestCase):
         self.assertIn("wheel", DQ.user_groups("nixos").split(", "))
 
     def test_the_label_names_the_distribution(self):
-        self.assertEqual("NixOS 25.11", DQ.distro_label("nixos", "25.11"))
+        self.assertEqual("NixOS 26.05", DQ.distro_label("nixos", "26.05"))
 
     @unittest.skipUnless(YAML, "PyYAML absent")
     def test_the_cloud_config_stays_parsable(self):
@@ -273,17 +280,25 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                     TODO._qemu_tools_for(tous, "amd64", "gnome", distro)
                 )
 
-    def test_an_existing_nixos_vm_gets_no_fleet_desktop(self):
-        """Une VM existante n'a pas de rangée : le bureau du parc ne
-        l'atteint que si son système sait l'installer. Sa distribution se
-        déduit de son nom ; inconnue, le bureau reste."""
+    @staticmethod
+    def _todo_meta(systemes):
+        """TODO dont _qemu_vm_meta lit `systemes` ({nom: (distro,
+        version)}) au lieu de virsh."""
         todo = TODO.__new__(TODO)
         todo._qemu_import_module = lambda: object()
-        distros = {"vm-nix": "nixos", "vm-deb": "debian"}
         todo._qemu_vm_meta = lambda nom, mod: (
-            distros.get(nom),
-            None,
+            *(systemes.get(nom) or (None, None)),
             "amd64",
+        )
+        return todo
+
+    def test_an_existing_vm_of_an_unlisted_release_gets_no_fleet_desktop(self):
+        """Une VM existante n'a pas de rangée : le bureau du parc ne
+        l'atteint que si son couple (système, version) sait l'installer.
+        Il se déduit de son nom ; inconnu, ou une NixOS d'une version que la
+        table ne liste pas, elle n'en reçoit aucun."""
+        todo = self._todo_meta(
+            {"vm-nix": ("nixos", "25.11"), "vm-deb": ("debian", "13")}
         )
         spec = {
             "desktop": "gnome",
@@ -296,10 +311,49 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                 "vm-srv": "",
                 "vm-nix": "",
                 "vm-deb": "gnome",
-                "vm-autre": "gnome",
+                "vm-autre": "",
             },
             todo._qemu_desktop_map(spec),
         )
+
+    def test_an_existing_vm_left_without_the_fleet_desktop_is_named(self):
+        """La VM existante qui ne reçoit pas le bureau du parc est nommée :
+        sinon elle reste un serveur sans que rien ne l'annonce."""
+        todo = self._todo_meta({"vm-deb": ("debian", "13")})
+        spec = {"desktop": "gnome", "vms": [], "existing": ["vm-deb", "poste"]}
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            todo._qemu_desktop_map(spec)
+        lignes = out.getvalue().splitlines()
+        self.assertEqual(1, len(lignes), lignes)
+        self.assertIn("poste", lignes[0])
+        self.assertIn("gnome", lignes[0])
+
+    def test_an_existing_vm_keeps_its_own_flavour(self):
+        """Le suffixe du nom dit la saveur d'une VM existante : la saveur
+        du parc n'y est pas posée par-dessus."""
+        todo = self._todo_meta(
+            {
+                "vm-zeta-xfce": ("debian", "13"),
+                "vm-eta-i3": ("fedora", "44"),
+                "vm-iota": ("fedora", "44"),
+            }
+        )
+        spec = {
+            "desktop": "gnome",
+            "vms": [],
+            "existing": ["vm-zeta-xfce", "vm-eta-i3", "vm-iota"],
+        }
+        self.assertEqual(
+            {"vm-zeta-xfce": "xfce", "vm-eta-i3": "i3", "vm-iota": "gnome"},
+            todo._qemu_desktop_map(spec),
+        )
+
+    def test_an_existing_vm_whose_release_lacks_its_flavour_gets_none(self):
+        """La saveur lue au nom passe par la même porte que celle du parc :
+        un couple qui ne l'installe pas n'en reçoit aucune."""
+        todo = self._todo_meta({"vm-theta-plasma": ("debian", "12")})
+        spec = {"desktop": "gnome", "vms": [], "existing": ["vm-theta-plasma"]}
+        self.assertEqual({"vm-theta-plasma": ""}, todo._qemu_desktop_map(spec))
 
     def test_without_fleet_desktop_no_vm_is_read(self):
         """Sans bureau à offrir, aucune VM existante n'est interrogée."""
@@ -423,6 +477,209 @@ class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
         for ligne in vrais:
             with self.subTest(ligne=ligne.strip()[:50]):
                 self.assertIn("sha256=", ligne)
+
+
+class LaVmSuitSaPropreConfiguration(unittest.TestCase):
+    """La mise à jour automatique de l'image reconstruit le système depuis le
+    flake de son auteur, branche non épinglée, et redémarre : elle remplace
+    chaque nuit la configuration de la VM par celle d'un tiers. Le module
+    d'ERPLibre la garde, ramenée sur /etc/nixos et le canal officiel."""
+
+    def _args(self, distro="nixos"):
+        args = DQ.build_parser().parse_args(
+            ["--distro", "fedora", "--hostname", "vm"]
+        )
+        args.distro = distro
+        return args
+
+    def test_the_upgrade_follows_etc_nixos_not_the_third_party_flake(self):
+        module = DQ.nixos_vm_module(False)
+        self.assertIn("enable = true;", module)
+        self.assertIn("flake = lib.mkForce null;", module)
+        self.assertIn("flags = lib.mkForce [ ];", module)
+        self.assertNotIn("github:", module)
+
+    def test_the_upgrade_never_reboots_the_vm(self):
+        self.assertIn(
+            "allowReboot = lib.mkForce false;", DQ.nixos_vm_module(True)
+        )
+
+    def test_the_cache_authority_reaches_the_service_only_if_present(self):
+        """Une variable vers un fichier absent couperait TLS : la VM née
+        sans cache ne doit pas en recevoir."""
+        module = DQ.nixos_vm_module(False)
+        self.assertIn(f'bundle = "{DQ.NIX_CA_BUNDLE}";', module)
+        self.assertIn("lib.optionalAttrs (builtins.pathExists bundle)", module)
+        self.assertIn("NIX_SSL_CERT_FILE = bundle;", module)
+
+    def test_password_login_is_declared_from_the_password(self):
+        self.assertIn(
+            "PasswordAuthentication = true;", DQ.nixos_vm_module(True)
+        )
+        self.assertIn(
+            "PasswordAuthentication = false;", DQ.nixos_vm_module(False)
+        )
+
+    @unittest.skipUnless(YAML, "PyYAML absent")
+    def test_no_ssh_pwauth_on_nixos_only(self):
+        """cloud-init l'écrirait dans sshd_config, en lecture seule sur
+        NixOS : cloud-config échouerait, et chaque reconstruction le
+        relancerait pour rendre 4."""
+        for pw in (None, "$6$sel$empreinte"):
+            vu = yaml.safe_load(DQ.build_cloud_config(self._args(), pw, []))
+            self.assertNotIn("ssh_pwauth", vu)
+        vu = yaml.safe_load(
+            DQ.build_cloud_config(self._args("ubuntu"), None, [])
+        )
+        self.assertIn("ssh_pwauth", vu)
+
+    @unittest.skipUnless(YAML, "PyYAML absent")
+    def test_the_commands_close_the_runcmd(self):
+        """Après l'autorité du cache, qui ouvre le bloc : la reconstruction
+        télécharge."""
+        args = self._args()
+        vu = yaml.safe_load(DQ.build_cloud_config(args, None, []))
+        attendu = DQ.nixos_vm_commands(DQ.DISTROS["nixos"][1], False)
+        self.assertEqual(attendu, vu["runcmd"][-len(attendu) :])
+
+    @unittest.skipUnless(YAML, "PyYAML absent")
+    def test_other_distros_get_none_of_it(self):
+        vu = yaml.safe_load(
+            DQ.build_cloud_config(self._args("debian"), None, [])
+        )
+        self.assertNotIn(DQ.NIXOS_VM_MODULE, " ".join(vu["runcmd"]))
+
+    def test_the_timer_stops_before_the_rebuild(self):
+        """Persistant : une échéance manquée le déclenche au démarrage, et il
+        redémarrerait la VM en pleine installation."""
+        cmds = DQ.nixos_vm_commands("26.05", False)
+        arret = next(i for i, c in enumerate(cmds) if "nixos-upgrade" in c)
+        rebuild = next(i for i, c in enumerate(cmds) if "nixos-rebuild" in c)
+        self.assertLess(arret, rebuild)
+        self.assertIn("switch --upgrade", cmds[rebuild])
+
+    def test_the_module_written_is_the_module(self):
+        import base64
+        import re
+
+        joint = " ".join(DQ.nixos_vm_commands("26.05", True))
+        b64 = re.search(r"echo (\S+) \| base64 -d", joint).group(1)
+        self.assertEqual(
+            DQ.nixos_vm_module(True), base64.b64decode(b64).decode()
+        )
+
+    def test_the_import_is_added_once(self):
+        """Joué deux fois sur l'en-tête de la configuration de l'image : un
+        seul import, en tête de la liste."""
+        import subprocess
+        import tempfile
+
+        (imp,) = [
+            c for c in DQ.nixos_vm_commands("26.05", False) if "sed" in c
+        ]
+        image = (
+            "{ config, lib, pkgs, modulesPath, ... }: {\n"
+            "  imports = [\n"
+            '    "${toString modulesPath}/profiles/qemu-guest.nix"\n'
+            "  ];\n"
+            "}\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".nix") as fh:
+            fh.write(image)
+            fh.flush()
+            cmd = imp.replace("/etc/nixos/configuration.nix", fh.name)
+            for _ in range(2):
+                subprocess.run(["sh", "-c", cmd], check=True)
+            with open(fh.name) as lu:
+                texte = lu.read()
+        self.assertEqual(1, texte.count("./erplibre-vm.nix"))
+        self.assertIn("imports = [\n    ./erplibre-vm.nix\n", texte)
+
+    def test_every_command_loads_the_system_environment(self):
+        """Le runcmd de cloud-init n'a que le PATH de son service — ni grep,
+        ni sed, ni nix-channel — et aucun NIX_PATH : la reconstruction n'y
+        trouverait pas « <nixpkgs/nixos> ». Chaque commande charge
+        l'environnement que reçoit une session ssh. « test » et non « [ » :
+        en tête d'un élément YAML, le crochet ouvre une séquence."""
+        for c in DQ.nixos_vm_commands("26.05", False):
+            with self.subTest(c=c[:40]):
+                self.assertTrue(
+                    c.startswith(
+                        "test -r /etc/set-environment"
+                        " && . /etc/set-environment;"
+                    )
+                )
+
+    def test_every_command_parses_as_sh(self):
+        import subprocess
+
+        for c in DQ.nixos_vm_commands("26.05", False):
+            with self.subTest(c=c[:40]):
+                self.assertEqual(
+                    0, subprocess.run(["sh", "-n", "-c", c]).returncode
+                )
+
+    def test_the_last_command_is_the_verdict(self):
+        """Le canal pris ou non se lit dans le code de sortie : celui de
+        runcmd sous cloud-init, celui de ssh sur Proxmox."""
+        import os
+        import subprocess
+        import tempfile
+
+        verdict = DQ.nixos_vm_commands("26.05", False)[-1]
+        for version, code in (("26.05.1 (Yarara)", 0), ("25.11.1 (X)", 1)):
+            with tempfile.TemporaryDirectory() as d, self.subTest(v=version):
+                faux = os.path.join(d, "nixos-version")
+                with open(faux, "w") as fh:
+                    fh.write(f"#!/bin/sh\necho '{version}'\n")
+                os.chmod(faux, 0o755)
+                env = dict(os.environ, PATH=f"{d}:{os.environ['PATH']}")
+                res = subprocess.run(
+                    ["sh", "-c", verdict], env=env, capture_output=True
+                )
+                self.assertEqual(code, res.returncode)
+
+
+class LeRattrapageProxmox(unittest.TestCase):
+    """Derrière le cache, l'autorité d'une VM Proxmox arrive par ssh APRÈS
+    son premier démarrage : la reconstruction de son runcmd a échoué, et les
+    mêmes commandes sont rejouées."""
+
+    def _todo(self, code=0):
+        todo = TODO.__new__(TODO)
+        todo._qemu_import_module = lambda: DQ
+        todo._qemu_vm_password_hash = lambda spec: "$6$s$e"
+        todo._pve_note = lambda vm, ligne: None
+        todo.appels = []
+
+        def ssh(cible, remote, timeout=60):
+            todo.appels.append((cible, remote, timeout))
+            return code, ""
+
+        todo._pve_ssh = ssh
+        return todo
+
+    def test_a_non_nixos_vm_is_left_alone(self):
+        todo = self._todo()
+        self.assertTrue(todo._pve_nixos_rattrape("c", {"distro": "arch"}, {}))
+        self.assertEqual([], todo.appels)
+
+    def test_it_waits_for_cloud_init_then_replays_the_commands(self):
+        todo = self._todo()
+        vm = {"distro": "nixos", "version": "26.05"}
+        self.assertTrue(todo._pve_nixos_rattrape("c", vm, {}))
+        ((_cible, remote, _t),) = todo.appels
+        self.assertTrue(remote.startswith(DQ.attente_cloud_final(900)))
+        for c in DQ.nixos_vm_commands("26.05", True):
+            self.assertIn(c.split()[0], remote)
+        self.assertIn("switch --upgrade", remote)
+
+    def test_a_failure_is_reported(self):
+        todo = self._todo(code=1)
+        with mock.patch("builtins.print"):
+            self.assertFalse(
+                todo._pve_nixos_rattrape("c", {"distro": "nixos"}, {})
+            )
 
 
 if __name__ == "__main__":

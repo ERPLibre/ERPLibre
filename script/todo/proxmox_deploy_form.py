@@ -649,7 +649,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.overrides,
                 self._default_desktop(),
                 desktop_suffixes,
-                by_distro=self._extras["desktops_by_distro"],
+                by_release=self._extras["desktops_by_release"],
                 min_ram=self._extras["desktop_min_ram"],
             )
             # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE : le

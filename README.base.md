@@ -112,7 +112,7 @@ le compile.
 - **AlmaLinux, Rocky Linux** : 9 and 10 — RHEL and CentOS Stream take the same path
 - **openSUSE** : Leap 16.0 and Tumbleweed
 - **Arch Linux** : rolling release
-- **NixOS** : 25.11 — the dependencies are DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time
+- **NixOS** : 26.05 — the dependencies are DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time
 - **macOS** : through mise or pyenv
 - **Windows** : through WSL or Docker
 - **Architectures** : amd64, arm64 and s390x (IBM Z mainframe). On any other, `make install_os` and `make install` say so and ask whether to go on; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` answers yes without asking, as needed without a terminal
@@ -128,7 +128,7 @@ le compile.
 - **AlmaLinux, Rocky Linux** : 9 et 10 — RHEL et CentOS Stream empruntent le même chemin
 - **openSUSE** : Leap 16.0 et Tumbleweed
 - **Arch Linux** : rolling release
-- **NixOS** : 25.11 — les dépendances y sont DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande
+- **NixOS** : 26.05 — les dépendances y sont DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande
 - **macOS** : par mise ou pyenv
 - **Windows** : par WSL ou Docker
 - **Architectures** : amd64, arm64 et s390x (mainframe IBM Z). Sur toute autre, `make install_os` et `make install` le disent et demandent s'il faut continuer ; `EL_ALLOW_UNSUPPORTED_ARCH=1 make install_os` répond oui sans question, comme il le faut sans terminal

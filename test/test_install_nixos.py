@@ -548,9 +548,11 @@ class SudoNEffacePasLAutorite(unittest.TestCase):
     « unable to download ... narinfo: SSL peer certificate ... was not OK ».
     Le système n'est pas activé, et rien ne nomme la cause.
 
-    Le remède est celui des autres familles, « Defaults env_keep », et non un
-    second : NixOS lit bien /etc/sudoers.d — son /etc/sudoers porte
-    « #includedir », le répertoire existe, et visudo est dans le PATH de root.
+    Deux remèdes, parce que l'un ne suffit pas. « Defaults env_keep » dans
+    /etc/sudoers.d, comme les autres familles, ne vaut que tant que
+    /etc/sudoers inclut ce répertoire : le /etc/sudoers que produit la
+    construction ne l'inclut pas. La reconstruction reçoit donc
+    NIX_SSL_CERT_FILE, la seule que lit le nix de root, en argument de sudo.
     """
 
     def _commandes(self):
@@ -567,6 +569,15 @@ class SudoNEffacePasLAutorite(unittest.TestCase):
     def test_the_variables_cross_sudo(self):
         joint = " ".join(self._commandes())
         self.assertIn(DQ.CACHE_SUDOERS, joint)
+        self.assertIn("env_keep", joint)
+
+    def test_the_variable_root_nix_reads_is_kept(self):
+        """Le nix de root, qui télécharge pendant « sudo nixos-rebuild
+        switch », lit NIX_SSL_CERT_FILE ; SSL_CERT_FILE seule laisse la
+        reconstruction sans l'autorité."""
+        self.assertIn("NIX_SSL_CERT_FILE", DQ.NIX_CA_VARS)
+        joint = " ".join(self._commandes())
+        self.assertIn("NIX_SSL_CERT_FILE", joint)
         self.assertIn("env_keep", joint)
 
     def test_every_variable_the_session_exports_is_kept(self):
@@ -587,14 +598,43 @@ class SudoNEffacePasLAutorite(unittest.TestCase):
         self.assertTrue(exportees, "la commande n'exporte rien")
         self.assertEqual(exportees, set(DQ.NIX_CA_VARS))
 
-    def test_the_rebuild_is_the_one_that_needs_it(self):
-        """Le garde-fou pointe la ligne qui justifie tout le reste : si la
-        reconstruction cessait de passer par sudo, ce mécanisme n'aurait plus
-        de raison d'être, et personne ne s'en apercevrait."""
+    def test_the_rebuild_gets_the_authority_as_an_argument(self):
+        """La reconstruction passe par sudo, et l'autorité la suit en
+        argument : la règle env_keep ne survit pas à /etc/sudoers
+        reconstruit."""
         self.assertIn(
-            "sudo nixos-rebuild switch",
+            'sudo ${EL_CA_BUNDLE:+NIX_SSL_CERT_FILE="${EL_CA_BUNDLE}"} '
+            "nixos-rebuild switch",
             SCRIPT.read_text(encoding="utf-8"),
         )
+
+    def test_the_argument_reaches_the_rebuild_only_with_a_bundle(self):
+        """Exécutée : avec un faisceau, nixos-rebuild reçoit la variable ;
+        sans, aucune variable n'est posée — y pointer couperait TLS."""
+        import tempfile
+
+        ligne = next(
+            l
+            for l in SCRIPT.read_text(encoding="utf-8").splitlines()
+            if "nixos-rebuild switch; then" in l
+        )
+        appel = ligne.strip()[len("if ") : -len("; then")]
+        with tempfile.TemporaryDirectory() as rep:
+            outil = Path(rep) / "nixos-rebuild"
+            outil.write_text('#!/bin/sh\necho "[$NIX_SSL_CERT_FILE]"\n')
+            outil.chmod(0o755)
+            for faisceau, attendu in (("/f/ca.crt", "/f/ca.crt"), ("", "")):
+                res = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        'sudo() { env -u NIX_SSL_CERT_FILE "$@"; }; '
+                        f"PATH={rep}:$PATH; EL_CA_BUNDLE={faisceau}; {appel}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertIn(f"[{attendu}]", res.stdout, res.stderr)
 
 
 class LePortDOdooTraverseLePareFeu(unittest.TestCase):
@@ -724,9 +764,9 @@ class LAutoriteEstExporteeApresQueCloudInitLAEcrite(unittest.TestCase):
         installation complète — passent tous par l'attente."""
         todo = self._todo()
         for cas in (
-            {"branch": None, "desktop": False},
-            {"branch": None, "desktop": True},
-            {"branch": "master", "desktop": False},
+            {"branch": None, "desktop": ""},
+            {"branch": None, "desktop": "gnome"},
+            {"branch": "master", "desktop": ""},
         ):
             with self.subTest(**cas):
                 cmd = todo._qemu_erplibre_remote_cmd(**cas)

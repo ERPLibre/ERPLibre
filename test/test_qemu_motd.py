@@ -10,8 +10,10 @@ clé SSH, donc inaccessible.
 """
 
 import importlib.util
+import io
 import os
 import unittest
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEPLOY_QEMU = os.path.join(REPO, "script", "qemu", "deploy_qemu.py")
@@ -38,7 +40,7 @@ COMBOS = (
     ("opensuse", "16.0", "amd64"),
     ("opensuse", "tumbleweed", "amd64"),
     ("arch", "latest", "amd64"),
-    ("nixos", "25.11", "amd64"),
+    ("nixos", "26.05", "amd64"),
 )
 
 # Largeur d'un terminal standard. Au-delà, le guide se replie et devient
@@ -404,20 +406,16 @@ class TestDesktopBlock(unittest.TestCase):
         self.assertIn("systemctl status display-manager", motd)
 
     def test_it_names_no_display_manager(self):
-        """GDM pour GNOME, LightDM pour Cinnamon : le guide ne sait pas lequel
-        a été posé, l'alias display-manager vaut pour les deux."""
+        """GDM, LightDM, SDDM, greetd… l'alias display-manager vaut pour
+        toutes les saveurs, le guide n'en nomme aucun."""
         motd = self._motd(True)
         self.assertNotIn("gdm", motd)
         self.assertNotIn("lightdm", motd)
 
     def test_it_says_how_to_reach_the_desktop_remotely(self):
-        """RDP 3389, à travers l'hôte libvirt, avec le compte de la VM ; la
-        même ligne nomme VNC sur 5901, que Cinnamon sur Arch sert à la place.
-        Le guide ne sait pas quelle saveur a été posée."""
-        for lang, compte, vnc in (
-            ("fr", "compte et mot de", "Arch : VNC, 5901 au lieu de 3389"),
-            ("en", "user", "Arch: VNC, 5901 instead of 3389"),
-        ):
+        """Sans genre d'accès, RDP 3389 à travers l'hôte libvirt, avec le
+        compte de la VM : l'accès de GNOME, saveur par défaut."""
+        for lang, compte in (("fr", "compte et mot de"), ("en", "user")):
             with self.subTest(lang=lang):
                 motd = dq.build_motd(
                     "debian", "13", "amd64", lang, desktop=True
@@ -425,9 +423,104 @@ class TestDesktopBlock(unittest.TestCase):
                 self.assertIn("ssh -L 3390:<ip>:3389 <hote-libvirt>", motd)
                 self.assertIn("localhost:3390", motd)
                 self.assertIn(compte, motd)
-                # La glose se replie sur plusieurs lignes : on la relit
-                # d'un seul tenant.
-                self.assertIn(vnc, " ".join(motd.split()))
+                self.assertNotIn("5901", motd)
+
+    def _acces(
+        self, distro, remote, lang="fr", desktop="xfce", version="latest"
+    ):
+        motd = dq.build_motd(
+            distro, version, "amd64", lang, desktop=desktop, remote=remote
+        )
+        # La glose se replie sur plusieurs lignes : on la relit d'un seul
+        # tenant.
+        return " ".join(motd.split())
+
+    def test_each_remote_kind_announces_its_own_port(self):
+        """Le tunnel suit le serveur posé : port local = port distant + 1,
+        comme l'annonce de la commande d'installation."""
+        cas = (
+            ("fedora", "grd", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("fedora", "krdp", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("ubuntu", "x11", "ssh -L 3390:<ip>:3389", "RDP"),
+            ("arch", "x11", "ssh -L 5902:<ip>:5901", "VNC"),
+            ("arch", "wayvnc", "ssh -L 5901:<ip>:5900", "VNC"),
+        )
+        for distro, remote, tunnel, client in cas:
+            with self.subTest(distro=distro, remote=remote):
+                texte = self._acces(distro, remote)
+                self.assertIn(tunnel, texte)
+                self.assertIn(f"client {client}", texte)
+                self.assertEqual(texte.count("ssh -L"), 1)
+
+    def test_tigervnc_takes_the_vm_account(self):
+        """TigerVNC sous Arch tourne en service, authentifié par PAM : aucun
+        mot de passe VNC à poser, aucun serveur à lancer à la main."""
+        texte = self._acces("arch", "x11")
+        self.assertIn("compte et mot de passe de la VM", texte)
+        self.assertNotIn("vncpasswd", texte)
+        self.assertNotIn("vncserver :1", texte)
+
+    def test_a_locked_session_is_announced_where_one_is_opened_at_boot(self):
+        """KRdp et wayvnc servent une session ouverte au démarrage puis
+        verrouillée ; xrdp et GNOME Remote Desktop ouvrent la leur."""
+        for remote in ("krdp", "wayvnc"):
+            with self.subTest(remote=remote):
+                self.assertIn("verrouillée", self._acces("arch", remote))
+                self.assertIn("locked", self._acces("arch", remote, lang="en"))
+        for remote in ("grd", "x11"):
+            with self.subTest(remote=remote):
+                self.assertNotIn("verrouillée", self._acces("ubuntu", remote))
+
+    def test_krdp_before_6_8_asks_for_tls_security(self):
+        """KRdp 6.6 (NixOS 26.05) et 6.7 (EPEL 10) refusent NLA en
+        authentification PAM ; la 6.8 de Fedora et d'Arch le mène."""
+        for distro, version in (
+            ("nixos", "26.05"),
+            ("almalinux", "10"),
+            ("rocky", "10"),
+        ):
+            with self.subTest(distro=distro):
+                self.assertIn(
+                    "pas NLA", self._acces(distro, "krdp", version=version)
+                )
+        for distro, version in (("fedora", "44"), ("arch", "latest")):
+            with self.subTest(distro=distro):
+                self.assertNotIn(
+                    "NLA", self._acces(distro, "krdp", version=version)
+                )
+
+    def test_a_console_flavour_gets_no_tunnel(self):
+        """COSMIC n'a aucun serveur : un tunnel y mènerait à un port fermé."""
+        texte = self._acces("fedora", "console", desktop="cosmic")
+        self.assertNotIn("ssh -L", texte)
+        self.assertIn("console de l'hyperviseur", texte)
+
+    def test_the_flavour_titles_the_block(self):
+        self.assertIn(
+            "Bureau — plasma", self._acces("arch", "krdp", desktop="plasma")
+        )
+        self.assertIn("Desktop — i3", self._acces("arch", "x11", "en", "i3"))
+
+    def test_every_remote_kind_fits_a_standard_terminal(self):
+        for distro in ("ubuntu", "arch", "fedora", "nixos"):
+            for remote in dq.DESKTOP_REMOTES:
+                for lang in ("fr", "en"):
+                    motd = dq.build_motd(
+                        distro,
+                        "latest",
+                        "amd64",
+                        lang,
+                        "~/git/erplibre",
+                        "install_odoo_18",
+                        "vim",
+                        desktop="hyprland",
+                        tools=tuple(dq.TOOL_GUIDE),
+                        remote=remote,
+                    )
+                    for line in motd.splitlines():
+                        self.assertLessEqual(
+                            len(line), TERM_WIDTH, f"{remote} {lang}: {line}"
+                        )
 
     def test_it_stays_inside_the_frame(self):
         """Le guide est encadré : une ligne trop longue casse la boîte."""
@@ -451,7 +544,7 @@ class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
 
     def _motd(self, distro="nixos", **kw):
         return dq.build_motd(
-            distro, "25.11", "amd64", el_dir="~/git/erplibre", **kw
+            distro, "26.05", "amd64", el_dir="~/git/erplibre", **kw
         )
 
     def test_the_file_that_gets_rewritten_is_named_as_such(self):
@@ -484,7 +577,7 @@ class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
     def test_a_vm_without_erplibre_says_nothing_of_it(self):
         """Même règle que le bloc AUR : c'est l'installation qui pose le
         module dont ces lignes parlent."""
-        nu = dq.build_motd("nixos", "25.11", "amd64")
+        nu = dq.build_motd("nixos", "26.05", "amd64")
         self.assertNotIn("conf/nixos/erplibre.nix", nu)
 
     def test_the_module_turns_the_display_on(self):
@@ -548,20 +641,19 @@ class LeCheminDuDepotEstEntierDansLeGuide(unittest.TestCase):
 class LeGuideNixosDitCeQueNixosChange(unittest.TestCase):
     """Ce que le bloc ajoute, et qui ne se devine pas.
 
-    Chaque ligne a été confrontée à une VM NixOS 25.11 vivante avant d'être
-    écrite : « nixos-version » rend bien sa version, « --rollback » est dans
-    le synopsis de nixos-rebuild, et « ls /bin » rend VIDE sur une machine où
-    /bin/bash s'exécute.
+    Chaque ligne vaut sur une VM NixOS : « nixos-version » rend sa version,
+    « --rollback » est dans le synopsis de nixos-rebuild, et « ls /bin » rend
+    VIDE sur une machine où /bin/bash s'exécute.
 
-    Une recherche de paquet a été ESSAYÉE puis écartée : « nix-env -qaP »
-    ne rend rien sur cette image, dont le canal n'est pas peuplé, et
-    « nix search » se met à tirer un canal entier. Un guide qui envoie taper
-    une commande muette coûte plus qu'un guide qui se tait.
+    Aucune recherche de paquet n'y figure : « nix-env -qaP » ne rend rien sur
+    cette image, dont le canal n'est pas peuplé, et « nix search » tire un
+    canal entier. Un guide qui envoie taper une commande muette coûte plus
+    qu'un guide qui se tait.
     """
 
     def _motd(self, **kw):
         return dq.build_motd(
-            "nixos", "25.11", "amd64", el_dir="~/git/erplibre", **kw
+            "nixos", "26.05", "amd64", el_dir="~/git/erplibre", **kw
         )
 
     def test_the_safety_net_of_editing_is_named(self):
@@ -786,6 +878,49 @@ class LaGloseSeReplieAuLieuDeDeborder(unittest.TestCase):
         largeur ferait déborder le cadre de ce qu'il encadre."""
         self.assertEqual(dq.MOTD_TEXT_WIDTH, dq.MOTD_MAX_WIDTH - 4)
         self.assertEqual(dq.MOTD_MAX_WIDTH, TERM_WIDTH)
+
+
+class TestDesktopFlag(unittest.TestCase):
+    """« --desktop [SAVEUR] » : nu, il garde son sens d'avant, GNOME."""
+
+    def _args(self, *opts):
+        return dq.build_parser().parse_args(["--name", "vm", *opts])
+
+    def test_bare_flag_means_gnome(self):
+        self.assertEqual("gnome", self._args("--desktop").desktop)
+
+    def test_a_flavour_is_kept(self):
+        self.assertEqual("xfce", self._args("--desktop=xfce").desktop)
+
+    def test_absent_means_a_server(self):
+        args = self._args()
+        self.assertFalse(args.desktop)
+        self.assertEqual("", args.desktop_remote)
+
+    def test_an_image_path_is_not_taken_for_a_flavour(self):
+        """La forme séparée happerait le positionnel de l'image."""
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self._args("--desktop", "/var/lib/img/debian.qcow2")
+
+    def test_an_unknown_remote_kind_is_refused(self):
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self._args("--desktop", "--desktop-remote", "spice")
+
+    def test_the_guide_files_carry_the_flavour_block(self):
+        args = self._args(
+            "--desktop=hyprland",
+            "--desktop-remote",
+            "wayvnc",
+            "--distro",
+            "arch",
+            "--no-git-identity",
+        )
+        args.lang = "en"
+        motd = dict((f[0], f[2]) for f in dq.guide_files(args))["/etc/motd"]
+        self.assertIn("Desktop — hyprland", motd)
+        self.assertIn("ssh -L 5901:<ip>:5900", motd)
 
 
 if __name__ == "__main__":

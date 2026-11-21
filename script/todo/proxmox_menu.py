@@ -2036,6 +2036,38 @@ class ProxmoxMenuMixin:
         self._pve_note(vm, f"  ✓ {t('download cache authority installed')}")
         return True
 
+    def _pve_nixos_rattrape(self, cible, vm, spec):
+        """Rejoue sur une VM NixOS ce que son runcmd a fait sans l'autorité.
+
+        Le user-data porte déjà nixos_vm_commands : la VM change de canal et
+        se reconstruit au premier démarrage. Mais derrière le cache, son
+        autorité n'arrive qu'ensuite, par ssh, et cette reconstruction a
+        échoué sur « self-signed certificate in certificate chain ». Les
+        commandes sont idempotentes : on attend la fin de cloud-init, qui
+        peut encore reconstruire, puis on les relance.
+
+        Rend True quand la VM n'est pas NixOS ou que tout s'est appliqué.
+        """
+        if (vm.get("distro") or "") != "nixos":
+            return True
+        try:
+            mod = self._qemu_import_module()
+        except Exception:  # pragma: no cover - dépend du module
+            return False
+        version = vm.get("version") or mod.DISTROS["nixos"][1]
+        pw_auth = bool(self._qemu_vm_password_hash(spec))
+        morceaux = [mod.attente_cloud_final(900)]
+        morceaux += [
+            f"sudo sh -c {shlex.quote(c)}"
+            for c in mod.nixos_vm_commands(version, pw_auth)
+        ]
+        code, _o = self._pve_ssh(cible, "; ".join(morceaux), timeout=3600)
+        if code:
+            print(f"  ⚠ {t('NixOS not brought to its channel')} ({code})")
+            return False
+        self._pve_note(vm, f"  ✓ NixOS {version}")
+        return True
+
     def _pve_attendre_ssh(self, cible, delai=300, pas=10):
         """Attend que la VM réponde en ssh. Rend False si elle ne répond pas.
 
@@ -2158,6 +2190,10 @@ class ProxmoxMenuMixin:
 
         install = spec.get("install") or {}
         cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        # La saveur de CETTE VM, celle du parc à défaut : même lecture que
+        # _pve_disk_with_margin. Les outils se filtrent sur la saveur
+        # elle-même — les extensions GNOME n'ont pas de sens sous Xfce.
+        bureau = vm.get("desktop", spec.get("desktop")) or ""
         args = types.SimpleNamespace(
             distro=vm.get("distro") or "",
             version=vm.get("version") or "",
@@ -2173,7 +2209,13 @@ class ProxmoxMenuMixin:
                 else ""
             ),
             erplibre_make=self._qemu_make_target(cmd_install),
-            desktop=bool(vm.get("desktop")),
+            # La saveur elle-même, et l'accès que la commande d'installation
+            # lui pose : le bloc « Bureau » du guide en tire son titre et sa
+            # ligne de connexion, comme sur la voie libvirt.
+            desktop=bureau or False,
+            desktop_remote=self._qemu_remote_kind(
+                bureau, vm.get("distro") or "", vm.get("version") or ""
+            ),
             # Les outils que le guide annoncera, FILTRÉS par cette machine
             # comme la voie libvirt le fait : en annoncer un que l'
             # architecture ou l'absence de bureau écarte enverrait chercher
@@ -2182,7 +2224,7 @@ class ProxmoxMenuMixin:
                 self._qemu_tools_for(
                     spec.get("vm_tools") or (),
                     vm.get("arch") or "amd64",
-                    bool(vm.get("desktop")),
+                    bureau,
                     vm.get("distro") or "",
                 )
             ),
@@ -2478,13 +2520,13 @@ class ProxmoxMenuMixin:
                     # lorsqu'il y a quelqu'un pour la recevoir.
                     if not self._pve_cache_bypass_hote(
                         host, vm, hors_ligne=bool(coupee)
+                    ) and self._pve_set_cache_ca(
+                        vm["alias"],
+                        vm,
+                        ca_cache,
+                        hors_ligne=bool(coupee),
                     ):
-                        self._pve_set_cache_ca(
-                            vm["alias"],
-                            vm,
-                            ca_cache,
-                            hors_ligne=bool(coupee),
-                        )
+                        self._pve_nixos_rattrape(vm["alias"], vm, spec)
                 # Après la création, qui a posé l'écran accéléré : l'accès au
                 # nœud de rendu est une affaire de COMPTE, et il se donne
                 # dans l'invité.
@@ -2628,6 +2670,13 @@ class ProxmoxMenuMixin:
                 user=compte,
                 keep_login=garder,
                 vm_password=secret,
+                # Ce qu'est cette VM, pris de la SPEC comme pour le suivi :
+                # virsh ne connaît pas un domaine posé sur un Proxmox.
+                meta=(
+                    vm.get("distro"),
+                    vm.get("version"),
+                    vm.get("arch") or "amd64",
+                ),
             )
         return resultat
 

@@ -257,6 +257,35 @@ class TestVmPassword(unittest.TestCase):
         self.assertFalse(todo._qemu_vm_login_file_needed("", False))
         self.assertTrue(todo._qemu_vm_login_file_needed("", True))
 
+    def test_an_unknown_flavour_needs_nothing(self):
+        """Aucune saveur inconnue n'est installée comme GNOME : le clair
+        n'a pas à partir vers elle."""
+        todo = _todo()
+        self.assertFalse(todo._qemu_vm_login_file_needed("inventee", False))
+        self.assertTrue(todo._qemu_vm_login_file_needed("inventee", True))
+
+    def test_needed_only_by_gnome_today(self):
+        """Valeurs écrites en dur : seul GNOME Remote Desktop relit le mot de
+        passe dans l'invité, et seul son bloc retire le fichier ensuite. Une
+        saveur ajoutée ici doit aussi retirer le fichier sur toutes ses
+        voies."""
+        todo = _todo()
+        attendu = {
+            "gnome": True,
+            "cinnamon": False,
+            "plasma": False,
+            "xfce": False,
+            "cosmic": False,
+            "hyprland": False,
+            "i3": False,
+        }
+        self.assertEqual(set(attendu), set(TODO._QEMU_DESKTOP))
+        for key, besoin in attendu.items():
+            with self.subTest(saveur=key):
+                self.assertEqual(
+                    besoin, todo._qemu_vm_login_file_needed(key, False)
+                )
+
     def test_summary_line(self):
         ligne = _todo()._qemu_login_line(
             {"user": "essai", "login_default": False}
@@ -865,6 +894,21 @@ class TestRecreatePasswordLost(unittest.TestCase):
             {"login_default": False}
         )
         self.assertFalse(mon.recreate_login_lost(todo, spec))
+
+    def test_any_vm_of_a_mixed_spec_counts(self):
+        """Le besoin se lit sur CHAQUE VM de la spec, pas sur la première :
+        un serveur en tête ne masque pas un bureau GNOME derrière lui."""
+        spec = self._spec("")
+        spec["vms"].append({"name": "vm-b", "desktop": "gnome"})
+        self.assertTrue(mon.recreate_login_lost(_todo(), spec))
+
+    def test_the_fleet_desktop_fills_a_vm_without_its_own(self):
+        spec = self._spec("")
+        spec["vms"] = [{"name": "vm-a"}]
+        spec["desktop"] = "gnome"
+        self.assertTrue(mon.recreate_login_lost(_todo(), spec))
+        spec["vms"] = [{"name": "vm-a", "desktop": ""}]
+        self.assertFalse(mon.recreate_login_lost(_todo(), spec))
 
 
 class TestSecretRestore(unittest.TestCase):

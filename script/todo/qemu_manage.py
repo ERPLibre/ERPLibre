@@ -3259,13 +3259,16 @@ class QemuManageMixin:
 
     def _qemu_vm_meta(self, name, mod):
         """(distro, version, arch) d'une VM déduits de son nom + son arch. Le
-        nom suit _qemu_infra_name(distro, version, arch) : on retrouve donc
-        (distro, version) en testant les combinaisons du catalogue."""
+        nom suit _qemu_infra_name(distro, version, arch), suivi du suffixe
+        d'une saveur de bureau pour une VM graphique : le suffixe retiré
+        (_qemu_split_desktop_suffix), on retrouve (distro, version) en
+        testant les combinaisons du catalogue."""
         arch = self._qemu_vm_arch(name) or "amd64"
+        base, _flavour = self._qemu_split_desktop_suffix(name)
         try:
             for d, (versions, _default) in mod.DISTROS.items():
                 for v in versions:
-                    if self._qemu_infra_name(d, v, arch) == name:
+                    if self._qemu_infra_name(d, v, arch) in (name, base):
                         return d, v, arch
         except Exception:
             pass

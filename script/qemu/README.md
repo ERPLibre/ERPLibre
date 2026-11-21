@@ -149,6 +149,75 @@ ssh erplibre@<IP>
 
 The default user is `erplibre` (change it with `--user`).
 
+## Graphical VMs
+
+A graphical VM is chosen in the TODO deploy form or its questions; the
+install command then lays the desktop down, and `deploy_qemu.py` receives
+`--desktop=<flavour>` for the display and the login guide. The bare
+`--desktop` means `gnome`. The seven flavours are `gnome`, `cinnamon`,
+`plasma` (KDE Plasma 6), `xfce`, `cosmic`, `hyprland` and `i3`. Availability is
+closed per distro and version; Proxmox VE receives none. NixOS 26.05 receives
+all seven through a declarative module written to
+`/etc/nixos/erplibre-desktop.nix` and applied by `nixos-rebuild switch`
+(which also forces `system.autoUpgrade.allowReboot = false`). The exact
+per-version matrix is `_QEMU_DESKTOP_RELEASES` in
+`script/todo/qemu_install.py`.
+
+| Flavour | Ubuntu | Debian | Fedora | EL | openSUSE | Arch | NixOS |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| GNOME | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | 26.05 |
+| Cinnamon | ✔ | ✔ | ✔ | 9 | 16.0 | ✔ | 26.05 |
+| Plasma 6 | 26.04 | 13 | ✔ | 10 | ✔ | ✔ | 26.05 |
+| Xfce | ✔¹ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
+| COSMIC | — | — | ✔ | — | tw | ✔ | 26.05 |
+| Hyprland | 26.04 | — | — | — | tw | ✔ | 26.05 |
+| i3 | ✔¹ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
+
+¹ Not 25.10. tw = Tumbleweed only. EL = AlmaLinux/Rocky.
+
+Remote access per flavour (`--desktop-remote` names the server):
+
+| Flavour | Server | Protocol | Port |
+|---|---|---|---|
+| GNOME | GNOME Remote Desktop | RDP | 3389 |
+| Cinnamon, Xfce, i3 | xrdp | RDP | 3389 |
+| Cinnamon, Xfce, i3 on Arch | TigerVNC | VNC | 5901 |
+| Plasma (Fedora, EL 10, Arch, openSUSE tw, NixOS) | KRdp | RDP | 3389 |
+| Plasma (Ubuntu 26.04, Debian 13) | xrdp on X11 | RDP | 3389 |
+| Plasma (openSUSE Leap 16.0) | — | console only | — |
+| Hyprland | wayvnc | VNC | 5900 |
+| COSMIC | — | console only | — |
+
+KRdp, wayvnc and TigerVNC authenticate through PAM with the VM account; no
+separate VNC password exists. KRdp and wayvnc open the session at boot and
+lock it immediately; the client unlocks it with the VM account password.
+TigerVNC runs as the `vncserver@:1` service and opens its own X session. The
+SSH tunnel local port is the remote port plus one: 3390 → 3389, 5902 → 5901,
+5901 → 5900. KRdp before 6.8 — 6.6 on NixOS 26.05, 6.7 on EL 10 — refuses NLA
+with PAM authentication: set the RDP client to TLS security. On EL 10, its
+portal mode also loses about one connection in two (no image), so it runs as
+`krdpserver --plasma`, which captures through KWin and has no clipboard.
+Plasma VMs with KRdp never turn the screen off: a locked screen that Plasma
+powers off leaves KRdp without an image. xrdp renders in software
+(`DRMDevice ""` in `/etc/X11/xrdp/xorg.conf`): on the VM's virgl GPU,
+xorgxrdp 0.9 reads back wrong pixels. On openSUSE, the SELinux boolean
+`unconfined_service_transition_to_unconfined_user` lets xrdp open the user
+session. A polkit rule lets the VM account create the colour profile and
+control the network from an xrdp session, where a password prompt would
+otherwise cover the desktop. Cinnamon is not offered on Tumbleweed, whose
+packages hang it at start. The NixOS module also
+turns NetworkManager off, which GNOME, Cinnamon and COSMIC would enable over
+the image's network configuration.
+
+The application store question (distribution packages only, Flatpak tooling
+without a remote, or snap) is asked only when the fleet holds a graphical
+Ubuntu VM, and applies to Ubuntu and Debian alone. With Flatpak, Plasma gets
+Discover and its Flatpak backend, GNOME and Cinnamon the GNOME Software
+plugin, the other flavours the `flatpak` command only. Elsewhere each family
+keeps its own defaults: Fedora adds its `fedora` Flatpak remote, Arch imports
+Flathub the first time `flatpak` runs, and the Plasma and COSMIC packages of
+Fedora, Arch and Tumbleweed already bring Flatpak and their store.
+
 ## Via the TODO menu
 
 The script is integrated into the interactive assistant. Run `make todo` (or
@@ -171,7 +240,8 @@ JetBrains archive into `/opt/pycharm`, its launcher opening the ERPLibre
 checkout — the Community line, because the unified 2025.3 build stops on a
 licence screen and never opens a project), Android
 Studio (`/opt/android-studio`, command `studio` or `android-studio`; x86_64
-only — Google publishes no Linux aarch64 build) and a set of suggested GNOME extensions.
+only — Google publishes no Linux aarch64 build) and, for GNOME only, a set of
+suggested extensions.
 
 The extension packages of the distribution are installed but left disabled —
 their UUID is not reliably known, and the Extension Manager is there to pick
@@ -316,7 +386,11 @@ the preview hold none of it. A GNOME desktop needs the clear value for its RDP
 login: the host sends it over ssh's standard input to a root-only file,
 GNOME Remote Desktop reads it, and the file is deleted once the RDP login is
 checked. An install that stops before that point leaves the file for its
-relaunch. A server VM never receives it. With **Keep the password in the
+relaunch. No other flavour needs it: KRdp (Plasma), wayvnc (Hyprland) and
+xrdp authenticate through PAM against the account's crypt hash. Plasma (KRdp)
+and Hyprland open the session at boot and lock it immediately so the server is
+reachable from the first connection. A server VM, and any desktop that is not
+GNOME, never receives the clear password. With **Keep the password in the
 VM**, the file stays, and the form shows how to read it:
 
 ```bash
@@ -340,7 +414,12 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
   `rocky`, `opensuse`, `arch`, `nixos` or `proxmox`. NixOS is the one
   image no distribution publishes: it is rebuilt by a third party, so the
   release is pinned and its sha256 verified at every download, and the
-  origin is printed before anything is created.
+  origin is printed before anything is created. That image carries 25.11:
+  at first boot the VM switches its root channel to the chosen version
+  (26.05) and rebuilds. Its daily automatic upgrade is kept, but it
+  rebuilds `/etc/nixos` — ERPLibre included — from the official channel,
+  without rebooting, instead of the third party's flake; the setting lives
+  in `/etc/nixos/erplibre-vm.nix`, rewritten at each deployment.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
@@ -355,6 +434,14 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 - `--no-install-deps` — never auto-install dependencies.
 - `--dry-run` — show the commands without executing anything.
 - `--force` — overwrite the existing working qcow2 disk.
+- `--desktop[=FLAVOUR]` — graphical VM: configures a virtio-GPU display served
+  by VNC on `127.0.0.1`; on Debian, downloads the `generic` image. `FLAVOUR`
+  (default `gnome`) titles the Desktop block of the login guide. The TODO menu
+  always passes `--desktop=<flavour>`; packages are installed by the TODO
+  install command, not here.
+- `--desktop-remote {grd,x11,krdp,wayvnc,console}` — remote access server for
+  this desktop, reflected in the login guide. Resolved by the TODO menu from
+  the flavour, distro and version.
 - `--gpu` — 3D acceleration by the host GPU: `auto` (default, on when the
   host has a render node), `on` (force), `off` (software rendering).
 - `--gpu-node` — which render node to use, on a multi-GPU host.
@@ -382,6 +469,11 @@ there if that installation fails, which is exactly when you log in by hand.
 `--dry-run` prints the generated guide along with the rest of the user-data.
 The guide is not shown to `ssh host 'command'`, so it never pollutes an
 installation log.
+
+When a desktop is installed, a **Desktop** block appears in the guide, titled
+with the flavour name. It shows the display-manager state, the tunnel command
+for the remote access server and, for KRdp (Plasma) and wayvnc (Hyprland), a
+note that the session is locked at boot.
 
 The host's git identity travels with it, into the VM's `~/.gitconfig`: a
 commit made in the VM then carries your name instead of

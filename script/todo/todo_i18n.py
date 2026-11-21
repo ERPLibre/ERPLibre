@@ -7819,6 +7819,90 @@ TRANSLATIONS = {
         "fr": "epel-release indisponible",
         "en": "epel-release unavailable",
     },
+    "no package line for this system": {
+        "fr": "aucune ligne de paquets pour ce système",
+        "en": "no package line for this system",
+    },
+    "none, the hypervisor console only": {
+        "fr": "aucun, la console de l'hyperviseur seulement",
+        "en": "none, the hypervisor console only",
+    },
+    "no desktop installed, its system or version": {
+        "fr": "aucun bureau installé, son système ou sa version",
+        "en": "no desktop installed, its system or version",
+    },
+    "does not offer": {
+        "fr": "n'offre pas",
+        "en": "does not offer",
+    },
+    "VM account and password": {
+        "fr": "compte et mot de passe de la VM",
+        "en": "VM account and password",
+    },
+    "firewalld: vnc-server service opened": {
+        "fr": "firewalld : service vnc-server ouvert",
+        "en": "firewalld: vnc-server service opened",
+    },
+    "firewalld: vnc-server service not opened, 5900 may be blocked": {
+        "fr": "firewalld : service vnc-server non ouvert, 5900 peut être bloqué",
+        "en": "firewalld: vnc-server service not opened, 5900 may be blocked",
+    },
+    "automatic login not configured": {
+        "fr": "ouverture de session automatique non configurée",
+        "en": "automatic login not configured",
+    },
+    "krdpserver user unit not found; KRdp not enabled": {
+        "fr": "unité utilisateur de krdpserver introuvable ; KRdp non activé",
+        "en": "krdpserver user unit not found; KRdp not enabled",
+    },
+    "KRdp certificate not generated": {
+        "fr": "certificat de KRdp non généré",
+        "en": "KRdp certificate not generated",
+    },
+    "SELinux boolean not set; xrdp cannot open a session": {
+        "fr": "booléen SELinux non posé ; xrdp ne peut pas ouvrir de session",
+        "en": "SELinux boolean not set; xrdp cannot open a session",
+    },
+    "xrdp-selinux not installed; xrdp cannot start X": {
+        "fr": "xrdp-selinux non installé ; xrdp ne peut pas démarrer X",
+        "en": "xrdp-selinux not installed; xrdp cannot start X",
+    },
+    "polkit rule not written; xrdp sessions may ask for a password": {
+        "fr": "règle polkit non écrite ; les sessions xrdp peuvent demander un mot de passe",
+        "en": "polkit rule not written; xrdp sessions may ask for a password",
+    },
+    "locale not installed": {
+        "fr": "locale non installée",
+        "en": "locale not installed",
+    },
+    "Xfce volume plugin not installed": {
+        "fr": "greffon de volume de Xfce non installé",
+        "en": "Xfce volume plugin not installed",
+    },
+    "VNC certificate not generated": {
+        "fr": "certificat VNC non généré",
+        "en": "VNC certificate not generated",
+    },
+    "screen power-off left on; KRdp may show black": {
+        "fr": "extinction de l'écran laissée active ; KRdp peut n'envoyer que du noir",
+        "en": "screen power-off left on; KRdp may show black",
+    },
+    "portal not pre-authorised; confirm the first connection on the VM console": {
+        "fr": "portail non pré-autorisé ; confirmez la première connexion sur la console de la VM",
+        "en": "portal not pre-authorised; confirm the first connection on the VM console",
+    },
+    "wayvnc keys not generated": {
+        "fr": "clés de wayvnc non générées",
+        "en": "wayvnc keys not generated",
+    },
+    "wayvnc PAM service not written": {
+        "fr": "service PAM de wayvnc non écrit",
+        "en": "wayvnc PAM service not written",
+    },
+    "greetd not configured": {
+        "fr": "greetd non configuré",
+        "en": "greetd not configured",
+    },
     "grdctl has no system mode: xrdp instead": {
         "fr": "grdctl n'a pas de mode système : xrdp à la place",
         "en": "grdctl has no system mode: xrdp instead",
@@ -8241,6 +8325,46 @@ TRANSLATIONS = {
         "en": "No host in ~/.ssh/config and no local VM.",
     },
     "local VM": {"fr": "VM locale", "en": "local VM"},
+    "Desktop read from the VM name:": {
+        "fr": "Bureau lu dans le nom de la VM :",
+        "en": "Desktop read from the VM name:",
+    },
+    "console only": {
+        "fr": "console seulement",
+        "en": "console only",
+    },
+    "RDP 3389 (GNOME Remote Desktop, KRdp or xrdp)": {
+        "fr": "RDP 3389 (GNOME Remote Desktop, KRdp ou xrdp)",
+        "en": "RDP 3389 (GNOME Remote Desktop, KRdp or xrdp)",
+    },
+    "VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)": {
+        "fr": "VNC 5901 (TigerVNC : Cinnamon, Xfce ou i3 sur Arch)",
+        "en": "VNC 5901 (TigerVNC: Cinnamon, Xfce or i3 on Arch)",
+    },
+    "VNC 5900 (wayvnc, Hyprland)": {
+        "fr": "VNC 5900 (wayvnc, Hyprland)",
+        "en": "VNC 5900 (wayvnc, Hyprland)",
+    },
+    "no imports block in /etc/nixos/configuration.nix": {
+        "fr": "aucun bloc imports dans /etc/nixos/configuration.nix",
+        "en": "no imports block in /etc/nixos/configuration.nix",
+    },
+    "nixos-rebuild returned an error; checking the system": {
+        "fr": "nixos-rebuild rend une erreur ; vérification du système",
+        "en": "nixos-rebuild returned an error; checking the system",
+    },
+    "the rebuilt system has no display manager": {
+        "fr": "le système reconstruit n'a pas de gestionnaire d'affichage",
+        "en": "the rebuilt system has no display manager",
+    },
+    "RDP client in TLS security, not NLA": {
+        "fr": "client RDP en sécurité TLS, pas NLA",
+        "en": "RDP client in TLS security, not NLA",
+    },
+    "nixos-rebuild failed; the system is unchanged": {
+        "fr": "nixos-rebuild a échoué ; le système est inchangé",
+        "en": "nixos-rebuild failed; the system is unchanged",
+    },
     "Remote desktop kind:": {
         "fr": "Type de bureau distant :",
         "en": "Remote desktop kind:",
@@ -11312,6 +11436,10 @@ TRANSLATIONS = {
     "timezone not set": {
         "fr": "fuseau non posé",
         "en": "timezone not set",
+    },
+    "NixOS not brought to its channel": {
+        "fr": "NixOS n'a pas rejoint son canal",
+        "en": "NixOS not brought to its channel",
     },
     "No internet connection": {
         "fr": "Sans connexion internet",

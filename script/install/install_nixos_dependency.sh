@@ -111,7 +111,13 @@ echo -e "\n---- nixos-rebuild switch ----"
 # toute reconstruction ultérieure le trouve mort. Prendre ce 4 pour un échec
 # ferait échouer chaque redéploiement d'une machine déjà installée. C'est la
 # vérification ci-dessous qui tranche, sur l'état du système.
-if sudo nixos-rebuild switch; then
+#
+# L'autorité du cache passe en ARGUMENT de sudo. Le nix de root télécharge
+# lui-même et ne lit que NIX_SSL_CERT_FILE ; la règle env_keep de
+# /etc/sudoers.d ne la garantit pas, le /etc/sudoers que produit la
+# construction n'incluant pas ce répertoire. Sans elle, chaque narinfo est
+# refusé sur « self-signed certificate in certificate chain ».
+if sudo ${EL_CA_BUNDLE:+NIX_SSL_CERT_FILE="${EL_CA_BUNDLE}"} nixos-rebuild switch; then
   echo "  reconstruction appliquée"
 else
   echo "  ⚠ nixos-rebuild rend $? : une unité n'a pas redémarré."

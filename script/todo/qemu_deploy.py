@@ -19,8 +19,8 @@ import time
 
 from script.todo import todo_prefs
 from script.todo.deploy_form_lib import (
-    VM_PASSWORD_DEFAULT,
     VM_LOGIN_READ_CMD,
+    VM_PASSWORD_DEFAULT,
     VM_USER_DEFAULT,
     VmSecret,
 )
@@ -49,13 +49,14 @@ class QemuDeployMixin:
         branch,
         final_cmd=None,
         prod=False,
-        desktop=False,
+        desktop="",
         python_provider="",
         app_store="deb",
         tools=(),
         ai_agent="",
         distro="",
         keep_login=False,
+        version="",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -63,7 +64,8 @@ class QemuDeployMixin:
 
         `final_cmd` par défaut : install_os + install_odoo_18. `prod` :
         installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
-        SELinux confiné. `desktop` : ajoute GNOME et son accès distant.
+        SELinux confiné. `desktop` : clé de saveur (_QEMU_DESKTOP) dont le bloc
+        pose le bureau et son accès distant ; « » n'en pose aucun.
         `python_provider` : « mise » pour un CPython précompilé, sinon le
         comportement par défaut du dépôt (pyenv, qui compile). `tools` : outils
         de développement cochés (PyCharm, Android Studio, extensions GNOME),
@@ -71,6 +73,8 @@ class QemuDeployMixin:
         configuration du projet. `distro` : système de la VM, transmis au bloc
         du bureau, dont les paquets et l'accès distant en dépendent au-delà
         du seul gestionnaire de paquets ; « » quand l'appelant l'ignore.
+        `version` : version de ce système, transmise au même bloc, dont
+        certains paquets changent d'une version à l'autre.
         `keep_login` : le bloc GNOME Remote Desktop laisse en place le
         fichier du mot de passe après l'avoir relu (voir
         _qemu_grd_remote_cmd)."""
@@ -117,6 +121,7 @@ class QemuDeployMixin:
                     desktop,
                     app_store,
                     distro=distro,
+                    version=version,
                     keep_login=keep_login,
                 )
                 + self._qemu_tools_remote_cmd(tools, prod, ai_agent=ai_agent)
@@ -184,8 +189,7 @@ class QemuDeployMixin:
             chain.append(f"{{ {after_cmd} }}")
         install_chain = " && ".join(chain)
         return (
-            "set -e; "
-            + self._qemu_cloud_init_wait()
+            "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
             + no_auto_upgrade
@@ -197,6 +201,7 @@ class QemuDeployMixin:
                     desktop,
                     app_store,
                     distro=distro,
+                    version=version,
                     keep_login=keep_login,
                 )
                 if desktop
@@ -295,7 +300,7 @@ class QemuDeployMixin:
             # peu : l'installation choisit ensuite le Python d'Odoo, que le
             # module déclare et que le profil du système porte, cherché avant
             # celui de l'utilisateur.
-             + "elif command -v nix-env >/dev/null 2>&1; then "
+            + "elif command -v nix-env >/dev/null 2>&1; then "
             "nix-env -f '<nixpkgs>' -iA git gnumake curl python3"
             f"{self._qemu_editor_suffix()}; "
             # Le PATH de cette commande distante a été figé à l'ouverture du
@@ -379,7 +384,7 @@ class QemuDeployMixin:
         ip_map=None,
         final_cmd=None,
         prod=False,
-        desktop=False,
+        desktop="",
         python_provider="",
         app_store="deb",
         vm_tools=(),
@@ -537,6 +542,7 @@ class QemuDeployMixin:
                         ai_agent,
                         distro=d or "",
                         keep_login=vm_keep,
+                        version=v or "",
                     )
                 vms.append(entry)
             else:
@@ -608,7 +614,7 @@ class QemuDeployMixin:
         ip=None,
         final_cmd=None,
         prod=False,
-        desktop=False,
+        desktop="",
         python_provider="",
         app_store="deb",
         vm_tools=(),
@@ -616,6 +622,7 @@ class QemuDeployMixin:
         user="",
         keep_login=False,
         vm_password=None,
+        meta=None,
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -629,7 +636,11 @@ class QemuDeployMixin:
         que par l'environnement de la commande (new_env) et l'entrée
         standard de ssh : la commande affichée et journalisée ne porte que
         le nom de la variable. `keep_login` : voir
-        _qemu_erplibre_remote_cmd."""
+        _qemu_erplibre_remote_cmd.
+
+        `meta` : (distro, version, arch) de la VM quand l'appelant les
+        connaît, comme celui de _qemu_install_erplibre_monitored ; None, on
+        les demande à virsh, qui ne connaît que les domaines d'ici."""
         from script.todo.qemu_install_monitor import (
             VM_LOGIN_ENV,
             vm_login_push_cmd,
@@ -652,15 +663,20 @@ class QemuDeployMixin:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
-        # Distribution et architecture de CETTE VM : les outils s'y filtrent
-        # (Android Studio n'existe qu'en x86_64, la compilation mobile qu'en
-        # apt). Sans module lisible on ne filtre plus sur la distribution
-        # plutôt que d'écarter à tort.
-        try:
-            mod = self._qemu_import_module()
-            vm_distro, _v, vm_arch = self._qemu_vm_meta(name, mod)
-        except Exception:
-            vm_distro, vm_arch = "", self._qemu_vm_arch(name)
+        # Distribution, version et architecture de CETTE VM : les outils s'y
+        # filtrent (Android Studio n'existe qu'en x86_64, la compilation
+        # mobile qu'en apt) et le bloc du bureau en dépend. Sans module
+        # lisible on ne filtre plus sur la distribution plutôt que d'écarter
+        # à tort.
+        if meta:
+            vm_distro, vm_version, vm_arch = meta
+        else:
+            try:
+                mod = self._qemu_import_module()
+                vm_distro, vm_version, vm_arch = self._qemu_vm_meta(name, mod)
+            except Exception:
+                vm_distro, vm_version = "", ""
+                vm_arch = self._qemu_vm_arch(name)
         remote = self._qemu_erplibre_remote_cmd(
             branch,
             final_cmd,
@@ -674,6 +690,7 @@ class QemuDeployMixin:
             ai_agent,
             distro=vm_distro or "",
             keep_login=keep_login,
+            version=vm_version or "",
         )
         cible = shlex.quote(f"{user}@{ip}")
         if vm_password and self._qemu_vm_login_file_needed(
@@ -1361,7 +1378,16 @@ class QemuDeployMixin:
         if locale:
             parts += ["--locale", locale]
         if desktop:
-            parts.append("--desktop")
+            # « --desktop=<saveur> » collé : la forme séparée prendrait un
+            # positionnel placé après pour la saveur. Le genre d'accès se
+            # résout ici, deploy_qemu.py ne connaissant pas les saveurs.
+            if isinstance(desktop, str):
+                parts.append(f"--desktop={desktop}")
+                remote = self._qemu_remote_kind(desktop, d, v)
+                if remote:
+                    parts += ["--desktop-remote", remote]
+            else:
+                parts.append("--desktop")
         if gpu3d:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
@@ -1457,8 +1483,8 @@ class QemuDeployMixin:
             #
             # La SAVEUR, et non un booléen : les extensions GNOME n'ont pas de
             # sens sous Cinnamon, et c'est ici que se calcule la place disque
-            # des outils. « --desktop » ne regarde que la vérité de la valeur,
-            # une chaîne non vide lui va aussi bien.
+            # des outils. _qemu_build_deploy_parts en fait « --desktop=<saveur> »
+            # et en déduit le genre d'accès distant (« --desktop-remote »).
             desktop=vm.get("desktop", spec.get("desktop")) or "",
             # Les deux servent au guide de connexion : où ERPLibre sera posé, et
             # quelle cible make le remettra à jour.
@@ -1622,16 +1648,14 @@ class QemuDeployMixin:
 
     def _qemu_vm_login_file_needed(self, flavour, keep):
         """Vrai si l'invité doit recevoir le mot de passe en clair : un
-        bureau servi par GNOME Remote Desktop, dont grdctl veut le clair, ou
-        l'option « garder dans la VM »."""
+        bureau dont l'accès distant le lit (_QEMU_REMOTE_NEEDS_LOGIN, ainsi
+        GNOME Remote Desktop, dont grdctl veut le clair), ou l'option
+        « garder dans la VM ». Une saveur inconnue ou vide n'en a pas
+        besoin : aucun bureau ne s'y installe."""
         if keep:
             return True
-        if not flavour:
-            return False
-        # Même repli que _qemu_desktop_remote_cmd : une saveur inconnue est
-        # installée comme GNOME.
-        de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
-        return de.get("remote") == "grd"
+        remote = (self._QEMU_DESKTOP.get(flavour) or {}).get("remote")
+        return remote in self._QEMU_REMOTE_NEEDS_LOGIN
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
     # valeur au défaut du script d'installation : les deux séparées, la case
@@ -2311,24 +2335,22 @@ class QemuDeployMixin:
             print(f"  ⚠ {warn}")
         return relevees
 
-    def _qemu_ask_desktop(self, distros=None):
+    def _qemu_ask_desktop(self, releases=None):
         """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
 
         Serveur par défaut : c'est ce que sert une image cloud, et le bureau
         ajoute une à deux heures d'installation sur une architecture émulée.
 
-        `distros` : systèmes du parc. La question est posée une fois pour
-        tout le parc, elle offre donc les saveurs qu'au moins l'un d'eux
-        installe ; sans aucune, elle n'est pas posée. None : toutes."""
-        from script.todo.deploy_form_lib import desktops_for_fleet
-
+        `releases` : couples (système, version) du parc. La question est
+        posée une fois pour tout le parc, elle offre donc les saveurs qu'au
+        moins l'un d'eux installe ; sans aucune, elle n'est pas posée.
+        None : toutes."""
         flavours = list(self._QEMU_DESKTOP)
-        if distros is not None:
-            flavours = desktops_for_fleet(
-                distros,
-                flavours,
-                {d: self._qemu_desktops_for(d) for d in distros},
-            )
+        if releases is not None:
+            offertes = set()
+            for distro, version in releases:
+                offertes.update(self._qemu_desktops_for(distro, version))
+            flavours = [k for k in flavours if k in offertes]
             if not flavours:
                 return ""
         print(f"\n{t('VM type:')}")
@@ -2609,7 +2631,12 @@ class QemuDeployMixin:
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
         desktop = self._qemu_ask_desktop(
-            sorted({vm.get("distro") or "" for vm in vms})
+            sorted(
+                {
+                    (vm.get("distro") or "", vm.get("version") or "")
+                    for vm in vms
+                }
+            )
         )
         # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
         # VM avant de décider du magasin, qui ne concerne que les graphiques.
@@ -2621,9 +2648,12 @@ class QemuDeployMixin:
         restent_serveurs = []
         for _vm in vms:
             _vm.setdefault("desktop", desktop)
-            # Une saveur que le système de la VM n'installe pas ferait
-            # échouer son installation : la VM reste un serveur, et on le dit.
-            offertes = self._qemu_desktops_for(_vm.get("distro") or "")
+            # Une saveur que le système de la VM n'installe pas, dans sa
+            # version, ferait échouer son installation : la VM reste un
+            # serveur, et on le dit.
+            offertes = self._qemu_desktops_for(
+                _vm.get("distro") or "", _vm.get("version") or ""
+            )
             if _vm.get("desktop") and _vm["desktop"] not in offertes:
                 _vm["desktop"] = ""
                 restent_serveurs.append(_vm["name"])
@@ -3393,10 +3423,15 @@ class QemuDeployMixin:
         carte. Une VM à créer qui porte la clé « desktop », même vide, garde
         sa valeur ; sans la clé, elle reçoit le bureau du parc.
 
-        Une VM existante n'a pas de rangée : elle reçoit le bureau du parc
-        si son système sait l'installer (_qemu_desktops_for), et rien sinon
-        — une NixOS n'en reçoit aucun. Sa distribution se déduit de son nom
-        (_qemu_vm_meta) ; inconnue, le bureau du parc reste."""
+        Une VM existante n'a pas de rangée. Sans bureau du parc, elle n'en
+        reçoit aucun : rien ne demande d'installer un bureau. Avec, elle
+        garde SA saveur, lue au suffixe de son nom
+        (_qemu_split_desktop_suffix) — la saveur du parc posée sur une VM
+        d'un autre type y installerait un second bureau —, et reçoit celle
+        du parc sans suffixe. Dans les deux cas, la saveur ne reste que si le
+        couple (système, version) de la VM, déduit de son nom
+        (_qemu_vm_meta), sait l'installer (_qemu_desktops_for) ; un couple
+        inconnu, Proxmox VE, n'en reçoivent aucune."""
         desktop_default = spec.get("desktop") or ""
         desktop_map = {
             vm["name"]: (vm.get("desktop", desktop_default) or "")
@@ -3415,11 +3450,23 @@ class QemuDeployMixin:
         except Exception:
             mod = None
         for name in existantes:
-            distro = (self._qemu_vm_meta(name, mod)[0] if mod else None) or ""
-            offertes = self._qemu_desktops_for(distro)
-            desktop_map[name] = (
-                desktop_default if desktop_default in offertes else ""
-            )
+            _base, propre = self._qemu_split_desktop_suffix(name)
+            voulue = propre or desktop_default
+            distro, version = "", ""
+            if mod:
+                distro, version, _arch = self._qemu_vm_meta(name, mod)
+            offertes = self._qemu_desktops_for(distro or "", version or "")
+            desktop_map[name] = voulue if voulue in offertes else ""
+            if not desktop_map[name]:
+                # Dit ici : sinon la VM reste un serveur sans que rien ne
+                # l'annonce, le récapitulatif la listant comme existante.
+                print(
+                    f"  ⚠ {name} : "
+                    + t("no desktop installed, its system or version")
+                    + f" ({distro or '?'} {version or '?'}) "
+                    + t("does not offer")
+                    + f" {voulue}"
+                )
         return desktop_map
 
     def _qemu_deploie_spec_corps(self, spec, coupee, session):
@@ -3461,6 +3508,19 @@ class QemuDeployMixin:
         # La spec de chaque VM, réduite à elle seule : le suivi la garde pour
         # la recréer avec les mêmes paramètres.
         specs = {vm["name"]: self._qemu_spec_vm(spec, vm) for vm in pending}
+        # Ce que sont les VM à créer, pris de la spec, comme le fait la voie
+        # Proxmox : le bloc du bureau dépend de la version, et un nom donné
+        # à la main ne permet pas de la déduire (_qemu_vm_meta). Une VM
+        # existante, absente d'ici, se lit à son nom.
+        meta = {
+            vm["name"]: (
+                vm.get("distro"),
+                vm.get("version"),
+                vm.get("arch") or "amd64",
+            )
+            for vm in pending
+            if vm.get("distro")
+        }
         ssh_key = spec.get("ssh_key")
         # La clé injectée par cloud-init est celle de la spec : c'est elle que
         # doit présenter ssh, pas la première venue de l'agent ou de ~/.ssh.
@@ -3595,6 +3655,7 @@ class QemuDeployMixin:
                     created=created,
                     keep_login=keep_login,
                     vm_password=vm_password,
+                    meta=meta,
                 )
             elif install:
                 print(
@@ -3617,6 +3678,7 @@ class QemuDeployMixin:
                         user=users.get(name) or VM_USER_DEFAULT,
                         keep_login=keep_login or name not in created,
                         vm_password=vm_password if name in created else None,
+                        meta=meta.get(name),
                     )
 
         if session:

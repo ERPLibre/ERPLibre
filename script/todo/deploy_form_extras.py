@@ -55,9 +55,9 @@ SERVER = "__server__"
 _TABLES = (
     ("desktops", list, "desktops"),
     ("desktop_disk", int, "desktop_disk_gb"),
-    # {système: [saveurs installables]} : vide, toutes les saveurs restent
-    # offertes partout (desktops_for).
-    ("desktops_by_distro", dict, "desktops_by_distro"),
+    # {système: {version: [saveurs installables]}} : vide, toutes les
+    # saveurs restent offertes partout (desktops_for).
+    ("desktops_by_release", dict, "desktops_by_release"),
     # Plancher de RAM d'une VM graphique, en Mo ; 0 n'en impose aucun.
     ("desktop_min_ram", int, "desktop_min_ram_mb"),
     ("app_stores", list, "app_stores"),
@@ -251,16 +251,21 @@ class ExtrasMixin:
         # public) : la seule sortie du clair hors de l'écran. Absent, le clair
         # reste dans le champ et la spec dit seulement s'il est le défaut.
         self._vm_secret_sink = ctx.get("vm_secret_sink")
-        # Le type commun n'offre que les saveurs qu'au moins un système du
-        # catalogue installe. Filtré ICI, dans la table même, et non au
-        # dessin : `_default_desktop` lit la saveur par son RANG dans cette
-        # liste, et un bouton retiré à l'affichage seul décalerait le rang.
+        # Le type commun n'offre que les saveurs qu'au moins un couple
+        # (système, version) du catalogue installe. Filtré ICI, dans la
+        # table même, et non au dessin : `_default_desktop` lit la saveur
+        # par son RANG dans cette liste, et un bouton retiré à l'affichage
+        # seul décalerait le rang.
         tab = self._extras
-        if tab["desktops_by_distro"]:
+        if tab["desktops_by_release"]:
             cles = desktops_for_fleet(
-                tab["desktops_by_distro"],
+                [
+                    (d, v)
+                    for d, versions in tab["desktops_by_release"].items()
+                    for v in versions
+                ],
                 [k for k, _lbl in tab["desktops"]],
-                tab["desktops_by_distro"],
+                tab["desktops_by_release"],
             )
             tab["desktops"] = [
                 (k, lbl) for k, lbl in tab["desktops"] if k in cles
@@ -753,15 +758,17 @@ class ExtrasMixin:
                 return k
         return 0
 
-    def _type_options(self, distro=None):
+    def _type_options(self, distro=None, version=None):
         """Choix du type d'UNE rangée : serveur, puis les saveurs que son
-        système installe. Une saveur offerte à une VM NixOS y ferait
-        échouer l'installation, faute de gestionnaire de paquets connu."""
+        couple (système, version) installe. Une saveur offerte à une VM
+        NixOS, ou à une version qui n'en a pas le paquet, y ferait échouer
+        l'installation."""
         tab = self._extras
         cles = desktops_for(
             distro,
+            version,
             [k for k, _lbl in tab["desktops"]],
-            tab["desktops_by_distro"],
+            tab["desktops_by_release"],
         )
         return [(t("Server"), SERVER)] + [
             (label, key) for key, label in tab["desktops"] if key in cles
@@ -806,7 +813,7 @@ class ExtrasMixin:
             ),
         ]
         if tab["desktops"]:
-            options = self._type_options(vm.get("distro"))
+            options = self._type_options(vm.get("distro"), vm.get("version"))
             valeur = vm.get("desktop") or SERVER
             if valeur not in [v for _lbl, v in options]:
                 valeur = SERVER

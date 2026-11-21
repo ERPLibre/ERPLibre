@@ -426,26 +426,28 @@ def raise_desktop_ram(vms, floor):
     return relevees
 
 
-def desktops_for(distro, desktops, by_distro):
-    """Clés de `desktops` installables sur `distro`, dans l'ordre reçu.
+def desktops_for(distro, version, desktops, by_release):
+    """Clés de `desktops` installables sur (`distro`, `version`), dans
+    l'ordre reçu.
 
-    `by_distro` est {système: [saveurs]}. Vide, ou muet sur ce système, il ne
-    dit rien : toutes les saveurs restent offertes plutôt que d'en retirer à
-    l'aveugle. Un système qui y figure avec une liste vide (NixOS) n'en
-    reçoit aucune, son installation de bureau n'existant pas."""
-    if not by_distro or distro not in by_distro:
+    `by_release` est {système: {version: [saveurs]}}. Vide, il ne dit rien :
+    toutes les saveurs restent offertes, ce qui garde utilisable un
+    formulaire ouvert sans contexte. Rempli, il est fermé : un couple qui
+    n'y figure pas — Proxmox VE, NixOS, une version absente — n'en reçoit
+    aucune."""
+    if not by_release:
         return list(desktops)
-    permis = set(by_distro.get(distro) or ())
+    permis = set((by_release.get(distro) or {}).get(version) or ())
     return [k for k in desktops if k in permis]
 
 
-def desktops_for_fleet(distros, desktops, by_distro):
-    """Union de `desktops_for` sur les systèmes du parc, dans l'ordre de
-    `desktops`. C'est ce qu'offre un choix posé UNE fois pour tout le parc :
-    une saveur qu'au moins une VM peut recevoir."""
+def desktops_for_fleet(pairs, desktops, by_release):
+    """Union de `desktops_for` sur les couples (système, version) du parc,
+    dans l'ordre de `desktops`. C'est ce qu'offre un choix posé UNE fois
+    pour tout le parc : une saveur qu'au moins une VM peut recevoir."""
     offertes = set()
-    for d in distros:
-        offertes.update(desktops_for(d, desktops, by_distro))
+    for distro, version in pairs:
+        offertes.update(desktops_for(distro, version, desktops, by_release))
     return [k for k in desktops if k in offertes]
 
 
@@ -458,13 +460,14 @@ def build_vms(
     overrides,
     desktop="",
     suffixes=None,
-    by_distro=None,
+    by_release=None,
     min_ram=0,
 ):
     """Catalogue choisi + profil + surcharges -> liste de VM de la spec.
 
-    `by_distro` ({système: [saveurs]}) ramène au serveur une VM dont le
-    système n'installe pas la saveur reçue du choix commun. `min_ram` est le
+    `by_release` ({système: {version: [saveurs]}}) ramène au serveur une VM
+    dont le couple (système, version) n'installe pas la saveur reçue du
+    choix commun. `min_ram` est le
     plancher de RAM d'une VM graphique (`desktop_ram`)."""
     vms = apply_overrides(
         apply_profile(entries, profile, base_vcpus, host_cpu, custom, desktop),
@@ -476,7 +479,7 @@ def build_vms(
     # le nom, qui en prend le suffixe, et avant la RAM, qui en dépend.
     for vm in vms:
         if vm.get("desktop") and not desktops_for(
-            vm.get("distro"), [vm["desktop"]], by_distro
+            vm.get("distro"), vm.get("version"), [vm["desktop"]], by_release
         ):
             vm["desktop"] = ""
     raise_desktop_ram(vms, min_ram)

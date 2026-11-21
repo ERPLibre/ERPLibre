@@ -177,6 +177,74 @@ ssh erplibre@<IP>
 
 L'utilisateur par défaut est `erplibre` (modifiable avec `--user`).
 
+## VM graphiques
+
+Une VM graphique se choisit dans le formulaire de déploiement du menu TODO
+ou ses questions ; la commande d'installation pose ensuite le bureau, et
+`deploy_qemu.py` reçoit `--desktop=<saveur>` pour l'affichage et le guide de
+connexion. `--desktop` seul vaut `gnome`. Les sept saveurs sont `gnome`,
+`cinnamon`, `plasma` (KDE Plasma 6), `xfce`, `cosmic`, `hyprland` et `i3`. La
+disponibilité est
+close par distribution et version ; Proxmox VE n'en reçoit aucune. NixOS 26.05
+les reçoit toutes par un module déclaratif écrit dans
+`/etc/nixos/erplibre-desktop.nix` et appliqué par `nixos-rebuild switch`
+(qui force aussi `system.autoUpgrade.allowReboot = false`). La matrice exacte
+par version est `_QEMU_DESKTOP_RELEASES` dans `script/todo/qemu_install.py`.
+
+| Saveur | Ubuntu | Debian | Fedora | EL | openSUSE | Arch | NixOS |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| GNOME | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | 26.05 |
+| Cinnamon | ✔ | ✔ | ✔ | 9 | 16.0 | ✔ | 26.05 |
+| Plasma 6 | 26.04 | 13 | ✔ | 10 | ✔ | ✔ | 26.05 |
+| Xfce | ✔¹ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
+| COSMIC | — | — | ✔ | — | tw | ✔ | 26.05 |
+| Hyprland | 26.04 | — | — | — | tw | ✔ | 26.05 |
+| i3 | ✔¹ | ✔ | ✔ | 9 | ✔ | ✔ | 26.05 |
+
+¹ Pas 25.10. tw = Tumbleweed seulement. EL = AlmaLinux/Rocky.
+
+Accès distant par saveur (`--desktop-remote` nomme le serveur) :
+
+| Saveur | Serveur | Protocole | Port |
+|---|---|---|---|
+| GNOME | GNOME Remote Desktop | RDP | 3389 |
+| Cinnamon, Xfce, i3 | xrdp | RDP | 3389 |
+| Cinnamon, Xfce, i3 sur Arch | TigerVNC | VNC | 5901 |
+| Plasma (Fedora, EL 10, Arch, openSUSE tw, NixOS) | KRdp | RDP | 3389 |
+| Plasma (Ubuntu 26.04, Debian 13) | xrdp sur X11 | RDP | 3389 |
+| Plasma (openSUSE Leap 16.0) | — | console seule | — |
+| Hyprland | wayvnc | VNC | 5900 |
+| COSMIC | — | console seule | — |
+
+KRdp, wayvnc et TigerVNC s'authentifient par PAM avec le compte de la VM ;
+aucun mot de passe VNC à part. KRdp et wayvnc ouvrent la session au démarrage
+et la verrouillent aussitôt ; le client la déverrouille avec le mot de passe
+du compte de la VM. TigerVNC tourne en service `vncserver@:1` et ouvre sa
+propre session X. Le port local du tunnel est le port distant plus un :
+3390 → 3389, 5902 → 5901, 5901 → 5900. KRdp avant 6.8 — 6.6 sur NixOS 26.05,
+6.7 sur EL 10 — refuse NLA en authentification PAM : régler le client RDP en
+sécurité TLS. Sur EL 10, son mode portail perd aussi environ une connexion sur
+deux (aucune image) : il tourne en `krdpserver --plasma`, qui capture par KWin
+et n'a pas de presse-papiers. Les VM Plasma à KRdp n'éteignent jamais l'écran :
+un écran verrouillé que Plasma éteint laisse KRdp sans image. xrdp rend en
+logiciel (`DRMDevice ""` dans `/etc/X11/xrdp/xorg.conf`) : sur le GPU virgl de
+la VM, xorgxrdp 0.9 relit de faux pixels. Sur openSUSE, le booléen SELinux
+`unconfined_service_transition_to_unconfined_user` permet à xrdp d'ouvrir la
+session de l'utilisateur. Une règle polkit laisse le compte de la VM créer le
+profil couleur et piloter le réseau depuis une session xrdp, où une demande
+de mot de passe couvrirait sinon le bureau. Cinnamon n'est pas proposé sur
+Tumbleweed, dont les paquets le bloquent au démarrage. Le module NixOS coupe aussi NetworkManager, que GNOME, Cinnamon et COSMIC
+activeraient par-dessus la configuration réseau de l'image.
+
+La question du magasin d'applications (paquets de la distribution seuls,
+outillage Flatpak sans dépôt, ou snap) n'est posée que si le parc compte une
+VM Ubuntu graphique, et ne vaut que pour Ubuntu et Debian. Avec Flatpak,
+Plasma reçoit Discover et son greffon Flatpak, GNOME et Cinnamon le greffon de
+GNOME Logiciels, les autres saveurs la seule commande `flatpak`. Ailleurs,
+chaque famille garde ses défauts : Fedora ajoute son dépôt Flatpak `fedora`,
+Arch importe Flathub au premier lancement de `flatpak`, et les paquets Plasma
+et COSMIC de Fedora, Arch et Tumbleweed apportent déjà Flatpak et leur magasin.
+
 ## Via le menu TODO
 
 Le script est intégré à l'assistant interactif. Lancez `make todo` (ou
@@ -201,8 +269,7 @@ ERPLibre — la ligne Community, car le build unifié 2025.3 s'arrête sur un
 écran de licence et n'ouvre jamais de projet),
 Android Studio (`/opt/android-studio`, commande `studio` ou
 `android-studio` ; x86_64 seulement — Google ne publie aucune archive Linux
-aarch64) et un jeu
-d'extensions GNOME suggérées.
+aarch64) et, pour GNOME uniquement, un jeu d'extensions GNOME suggérées.
 
 Les extensions empaquetées par la distribution sont installées sans être
 activées — leur UUID n'est pas connu de façon fiable, et le gestionnaire
@@ -357,9 +424,13 @@ formulaire, les journaux et l'aperçu n'en portent rien. Un bureau GNOME a
 besoin du clair pour sa connexion RDP : l'hôte l'envoie par l'entrée standard
 de ssh dans un fichier lisible par root seul, GNOME Remote Desktop le lit, et
 le fichier est supprimé une fois la connexion RDP vérifiée. Une installation
-qui s'arrête avant laisse le fichier pour sa relance. Une VM serveur ne le
-reçoit jamais. Avec **Garder le mot de passe dans la VM**, le fichier reste,
-et le formulaire dit comment le lire :
+qui s'arrête avant laisse le fichier pour sa relance. Aucune autre saveur
+n'en a besoin : KRdp (Plasma), wayvnc (Hyprland) et xrdp s'authentifient par
+PAM contre l'empreinte crypt du compte. Plasma (KRdp) et Hyprland ouvrent la
+session au démarrage et la verrouillent aussitôt pour que le serveur soit
+joignable dès la première connexion. Une VM serveur, et tout bureau qui n'est
+pas GNOME, ne reçoit jamais le clair. Avec **Garder le mot de passe dans la
+VM**, le fichier reste, et le formulaire dit comment le lire :
 
 ```bash
 sudo cat /etc/erplibre/vm-password
@@ -382,7 +453,13 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   `rocky`, `opensuse`, `arch`, `nixos` ou `proxmox`. NixOS est la seule
   image qu'aucune distribution ne publie : elle est rebâtie par un tiers,
   donc la version est épinglée, sa somme sha256 vérifiée à chaque
-  téléchargement, et l'origine dite avant que rien ne soit créé.
+  téléchargement, et l'origine dite avant que rien ne soit créé. Cette
+  image porte 25.11 : au premier démarrage, la VM bascule son canal root
+  sur la version choisie (26.05) et se reconstruit. Sa mise à jour
+  automatique quotidienne est gardée, mais elle reconstruit `/etc/nixos` —
+  ERPLibre compris — depuis le canal officiel, sans redémarrer, au lieu du
+  flake du tiers ; le réglage vit dans `/etc/nixos/erplibre-vm.nix`,
+  réécrit à chaque déploiement.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
@@ -400,6 +477,14 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
 - `--force` — écrase le disque de travail qcow2 existant.
+- `--desktop[=SAVEUR]` — VM graphique : configure un affichage virtio-GPU servi
+  en VNC sur `127.0.0.1` ; sur Debian, télécharge l'image `generic`. `SAVEUR`
+  (défaut `gnome`) titre le bloc Bureau du guide de connexion. Le menu TODO
+  passe toujours `--desktop=<saveur>` ; les paquets sont posés par la commande
+  d'installation du TODO, pas ici.
+- `--desktop-remote {grd,x11,krdp,wayvnc,console}` — serveur d'accès distant
+  posé pour ce bureau, annoncé dans le guide de connexion. Résolu par le menu
+  TODO d'après la saveur, la distribution et la version.
 - `--gpu` — accélération 3D par le GPU de l'hôte : `auto` (défaut, activée si
   l'hôte a un nœud de rendu), `on` (forcer), `off` (rendu logiciel).
 - `--gpu-node` — quel nœud de rendu utiliser, sur un hôte à plusieurs cartes.
@@ -427,6 +512,12 @@ encore là si elle échoue — le moment où l'on se connecte justement à la ma
 `--dry-run` affiche le guide généré avec le reste du user-data. Il ne
 s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
 restent nets.
+
+Quand un bureau est installé, un bloc **Bureau** apparaît dans le guide, titré
+avec le nom de la saveur. Il affiche l'état du gestionnaire d'affichage, la
+commande de tunnel pour le serveur d'accès distant et, pour KRdp (Plasma) et
+wayvnc (Hyprland), une note indiquant que la session est verrouillée au
+démarrage.
 
 L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
 un commit fait dans la VM porte alors votre nom plutôt que

@@ -39,6 +39,7 @@ sys.argv = ["todo.py"]
 from script.todo.deploy_form_lib import (  # noqa: E402
     VM_LOGIN_FILE,
     VM_LOGIN_READ_CMD,
+    vm_name,
 )
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -50,9 +51,15 @@ DISTROS = ("", "ubuntu", "debian", "fedora", "almalinux", "arch", "opensuse")
 SONDE = "Zq7sondeXv"
 
 
-def _cmd(flavour="gnome", app_store="deb", distro="", keep_login=False):
+def _cmd(
+    flavour="gnome", app_store="deb", distro="", keep_login=False, version=""
+):
     return TODO.__new__(TODO)._qemu_desktop_remote_cmd(
-        flavour, app_store, distro=distro, keep_login=keep_login
+        flavour,
+        app_store,
+        distro=distro,
+        version=version,
+        keep_login=keep_login,
     )
 
 
@@ -78,6 +85,12 @@ def _acces(cmd):
     return cmd[cmd.index("EL_REM=") :]
 
 
+def _touche_xrdp(ligne):
+    """Vrai pour un appel qui pose, active ou coupe xrdp ; la sonde de
+    présence (« systemctl cat xrdp.service ») n'en est pas un."""
+    return "xrdp" in ligne and ligne != "systemctl cat xrdp.service"
+
+
 class _Invite:
     """Un invité simulé : un PATH fermé, des doublures qui notent leurs
     appels dans un journal, et quelques vrais outils dont le bloc a besoin
@@ -89,21 +102,26 @@ class _Invite:
 
     REELS = (
         "awk",
+        "base64",
         "cat",
         "chmod",
+        "cp",
         "cut",
         "date",
         "dirname",
         "grep",
         "id",
+        "ln",
         "mkdir",
         "rm",
         "sed",
         "sh",
         "sleep",
         "tail",
+        "tee",
         "test",
         "touch",
+        "head",
     )
 
     def __init__(self, tmp):
@@ -124,9 +142,11 @@ class _Invite:
             if vrai:
                 (self.bin / nom).symlink_to(vrai)
         # sudo laisse tomber « -u <compte> » et exporte les « VAR=valeur »
-        # qui précèdent la commande, comme le vrai.
+        # qui précèdent la commande, comme le vrai ; comme son env_reset, il
+        # ne laisse passer aucune variable d'autorité exportée par l'appelant.
         self.stub(
             "sudo",
+            "unset NIX_SSL_CERT_FILE SSL_CERT_FILE CURL_CA_BUNDLE\n"
             'while [ $# -gt 0 ]; do case "$1" in '
             '-u) shift 2;; *=*) export "$1"; shift;; *) break;; esac; done\n'
             'exec "$@"',
@@ -140,12 +160,17 @@ class _Invite:
         self.stub("install")
         self.stub("openssl")
         self.stub("reflector")
-        self.stub("systemctl")
-        # Les binaires que le bloc sonde après l'installation : les
-        # doublures des gestionnaires de paquets ne posent rien, l'invité
-        # simulé a donc son bureau d'avance.
-        self.stub("gnome-shell", log=False)
-        self.stub("cinnamon", log=False)
+        # Le binaire de chaque bureau, que la commande cherche une fois les
+        # paquets posés : les faux gestionnaires ne l'apportent pas.
+        for sonde in {d["probe"] for d in TODO._QEMU_DESKTOP.values()}:
+            self.stub(sonde, log=False)
+        # Une unité xrdp n'existe que là où le test a posé xrdp ; toute
+        # autre unité existe.
+        self.stub(
+            "systemctl",
+            'case "$*" in "cat xrdp.service") '
+            '[ -x "${0%/*}/xrdp" ] || exit 1;; esac',
+        )
         self.stub(
             "getent",
             "echo 'gnome-remote-desktop:x:900:900::"
@@ -223,11 +248,58 @@ class _Invite:
             "exit 0",
         )
 
+    # Fichiers système que le bloc écrit : redirigés sous le dossier du
+    # test, où chaque test peut les relire. Sans cela, un lancement en root
+    # écrirait le /etc de la machine qui exécute les tests.
+    ETC = (
+        "/etc/X11/default-display-manager",
+        "/etc/plasma-setup-done",
+        "/etc/greetd/config.toml",
+        "/etc/i3/config",
+        "/etc/pam.d/system-login",
+        "/etc/pam.d/wayvnc",
+        "/etc/plasmalogin.conf.d",
+        "/etc/sddm.conf.d",
+        "/usr/lib/systemd/user",
+        "/etc/nixos/configuration.nix",
+        "/etc/nixos/erplibre-desktop.nix",
+        "/var/lib/erplibre/ca-bundle.crt",
+        "/etc/pam.d/vnc",
+        "/etc/X11/xrdp/xorg.conf",
+        "/etc/locale.conf",
+        "/etc/polkit-1",
+        "/usr/share/wayland-sessions",
+        "/usr/share/glib-2.0/schemas",
+        "/usr/share/wallpapers",
+        "/usr/share/backgrounds",
+        "/usr/lib/NetworkManager/conf.d/00-server.conf",
+        "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf",
+        "/sys/fs/selinux/enforce",
+        "/sys/fs/selinux/booleans/"
+        "unconfined_service_transition_to_unconfined_user",
+        "/etc/tigervnc/vncserver.users",
+        "/etc/sysconfig/displaymanager",
+    )
+
+    def etc(self, chemin):
+        """Chemin, sous le dossier du test, qui remplace `chemin`."""
+        return self.tmp / "sys" / chemin.lstrip("/")
+
     def run(self, cmd, os_id=""):
         cmd = cmd.replace(VM_LOGIN_FILE, str(self.pw_file))
+        for chemin in self.ETC:
+            self.etc(chemin).parent.mkdir(parents=True, exist_ok=True)
+            cmd = cmd.replace(chemin, str(self.etc(chemin)))
         if os_id:
             release = self.tmp / "os-release"
-            release.write_text(f"ID={os_id}\n")
+            # ID_LIKE comme les vraies AlmaLinux et Rocky : la famille RHEL
+            # s'y reconnaît (_qemu_epel_cmd).
+            like = (
+                'ID_LIKE="rhel centos fedora"\n'
+                if os_id in ("almalinux", "rocky")
+                else ""
+            )
+            release.write_text(f"ID={os_id}\n{like}")
             cmd = cmd.replace("/etc/os-release", str(release))
         res = subprocess.run(
             ["/bin/bash", "-c", "set -e; " + cmd],
@@ -347,26 +419,192 @@ class TestAntiSnapList(unittest.TestCase):
     def test_snap_adds_nothing(self):
         self.assertEqual("", TODO._qemu_apt_store_pkgs("snap", "ubuntu"))
 
+    def test_evolution_only_where_thunderbird_is_recommended(self):
+        for flavour in ("gnome", "cinnamon"):
+            self.assertIn(
+                "evolution",
+                TODO._qemu_apt_store_pkgs("deb", "ubuntu", flavour).split(),
+            )
+        for flavour in ("plasma", "xfce", "hyprland", "i3"):
+            pkgs = TODO._qemu_apt_store_pkgs("deb", "ubuntu", flavour).split()
+            self.assertNotIn("evolution", pkgs, flavour)
+            self.assertIn("firefox-", pkgs, flavour)
+            self.assertIn("epiphany-browser", pkgs, flavour)
+
+    def test_plasma_keeps_discover_away_from_snap(self):
+        self.assertIn(
+            "plasma-discover-backend-snap-",
+            TODO._qemu_apt_store_pkgs("deb", "ubuntu", "plasma").split(),
+        )
+
+    def test_the_flatpak_plugin_is_the_flavour_store(self):
+        par_saveur = {
+            "gnome": "flatpak gnome-software-plugin-flatpak",
+            "plasma": "flatpak plasma-discover plasma-discover-backend-flatpak",
+            "i3": "flatpak",
+        }
+        for flavour, attendu in par_saveur.items():
+            self.assertEqual(
+                attendu,
+                TODO._qemu_apt_store_pkgs("flatpak", "debian", flavour),
+            )
+
     def test_the_old_call_is_unchanged(self):
         self.assertEqual(
             TODO._QEMU_APT_NO_SNAP, TODO._qemu_apt_store_pkgs("deb")
         )
 
 
-class TestDesktopsForDistro(unittest.TestCase):
-    def test_nixos_gets_none(self):
-        self.assertEqual([], TODO._qemu_desktops_for("nixos"))
+class TestDesktopsForRelease(unittest.TestCase):
+    """Les saveurs offertes, par couple (distribution, version)."""
 
-    def test_the_four_families_get_both(self):
-        for distro in ("ubuntu", "debian", "fedora", "arch", "opensuse"):
+    def test_what_is_not_listed_gets_nothing(self):
+        for distro, version in (
+            ("nixos", "25.11"),
+            ("proxmox", "9"),
+            ("inconnue", "1"),
+            ("ubuntu", ""),
+            ("", ""),
+            ("ubuntu", "99.04"),
+        ):
             self.assertEqual(
-                ["gnome", "cinnamon"], TODO._qemu_desktops_for(distro), distro
+                [], TODO._qemu_desktops_for(distro, version), (distro, version)
             )
 
-    def test_an_unknown_distro_gets_all(self):
+    def test_an_end_of_life_release_keeps_only_the_first_two(self):
         self.assertEqual(
-            list(TODO._QEMU_DESKTOP), TODO._qemu_desktops_for("inconnue")
+            ["gnome", "cinnamon"], TODO._qemu_desktops_for("ubuntu", "25.10")
         )
+
+    def test_el10_has_no_x_server_desktop(self):
+        for distro in ("almalinux", "rocky"):
+            self.assertEqual(
+                ["gnome", "plasma"], TODO._qemu_desktops_for(distro, "10")
+            )
+            self.assertEqual(
+                ["gnome", "cinnamon", "xfce", "i3"],
+                TODO._qemu_desktops_for(distro, "9"),
+            )
+
+    def test_the_rolling_releases_get_every_flavour(self):
+        """Arch a toutes les saveurs ; Tumbleweed toutes sauf Cinnamon, que
+        ses paquets bloquent au démarrage."""
+        tout = list(TODO._QEMU_DESKTOP)
+        self.assertEqual(tout, TODO._qemu_desktops_for("arch", "latest"))
+        self.assertEqual(
+            [f for f in tout if f != "cinnamon"],
+            TODO._qemu_desktops_for("opensuse", "tumbleweed"),
+        )
+
+    def test_the_order_is_the_table_order(self):
+        self.assertEqual(
+            ["gnome", "cinnamon", "plasma", "xfce", "hyprland", "i3"],
+            TODO._qemu_desktops_for("ubuntu", "26.04"),
+        )
+
+    def test_every_listed_release_exists_in_the_catalogue(self):
+        """Une version mal orthographiée dans la table masquerait la saveur
+        sans erreur : chaque version doit être une clé de DISTROS."""
+        from script.qemu import deploy_qemu
+
+        self.assertEqual(
+            set(TODO._QEMU_DESKTOP), set(TODO._QEMU_DESKTOP_RELEASES)
+        )
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            for distro, versions in par_distro.items():
+                for v in versions:
+                    self.assertIn(
+                        v, deploy_qemu.DISTROS[distro][0], (flavour, distro)
+                    )
+
+    def test_the_form_table_says_the_same_as_the_cli(self):
+        table = TODO._qemu_desktops_by_release()
+        for distro, par_version in table.items():
+            for version, saveurs in par_version.items():
+                self.assertEqual(
+                    TODO._qemu_desktops_for(distro, version), saveurs
+                )
+        self.assertNotIn("proxmox", table)
+
+    def test_nixos_gets_every_flavour(self):
+        """NixOS déclare chaque saveur par son module : toutes y sont."""
+        self.assertEqual(
+            list(TODO._QEMU_DESKTOP),
+            TODO._qemu_desktops_for("nixos", "26.05"),
+        )
+        self.assertEqual(
+            set(TODO._QEMU_DESKTOP), set(TODO._QEMU_NIXOS_DESKTOP)
+        )
+
+    def test_every_offered_pair_has_a_package_line(self):
+        """Ce qui est offert sait s'installer : une ligne de paquets pour le
+        gestionnaire de la distribution."""
+        o = TODO.__new__(TODO)
+        cle = {"apt": "apt", "pacman": "pacman", "zypper": "zypper"}
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            de = TODO._QEMU_DESKTOP[flavour]
+            for distro, versions in par_distro.items():
+                fam = TODO._QEMU_DISTRO_FAMILY[distro]
+                for v in versions:
+                    with self.subTest(f=flavour, d=distro, v=v):
+                        if fam == "nix":
+                            self.assertTrue(TODO._QEMU_NIXOS_DESKTOP[flavour])
+                        elif fam == "dnf":
+                            self.assertTrue(
+                                o._qemu_desktop_value(de, "dnf", distro, v)
+                                or de.get("dnf_env")
+                            )
+                        else:
+                            self.assertTrue(
+                                o._qemu_desktop_value(de, cle[fam], distro, v)
+                            )
+
+
+class TestFlavourField(unittest.TestCase):
+    def test_the_most_precise_key_wins(self):
+        de = {"k": {"*": "a", "opensuse": "b", "opensuse:16.0": "c"}}
+        val = TODO._qemu_desktop_value
+        self.assertEqual("c", val(de, "k", "opensuse", "16.0"))
+        self.assertEqual("b", val(de, "k", "opensuse", "tumbleweed"))
+        self.assertEqual("a", val(de, "k", "arch", "latest"))
+        self.assertEqual("a", val(de, "k"))
+
+    def test_a_string_holds_everywhere_and_nothing_is_none(self):
+        self.assertEqual("x", TODO._qemu_desktop_value({"k": "x"}, "k", "a"))
+        self.assertIsNone(TODO._qemu_desktop_value({}, "k", "a"))
+        self.assertIsNone(
+            TODO._qemu_desktop_value({"k": {"fedora": "x"}}, "k", "arch")
+        )
+
+
+class TestNameSuffix(unittest.TestCase):
+    def test_every_flavour_round_trips(self):
+        for flavour, de in TODO._QEMU_DESKTOP.items():
+            nom = vm_name(
+                "erplibre-ubuntu-2604", flavour, TODO._qemu_desktop_suffixes()
+            )
+            self.assertEqual(
+                ("erplibre-ubuntu-2604", flavour),
+                TODO._qemu_split_desktop_suffix(nom),
+            )
+
+    def test_a_server_name_has_no_flavour(self):
+        self.assertEqual(
+            ("erplibre-debian-13", None),
+            TODO._qemu_split_desktop_suffix("erplibre-debian-13"),
+        )
+        self.assertEqual(("", None), TODO._qemu_split_desktop_suffix(""))
+
+    def test_the_suffixes_are_distinct(self):
+        suffixes = list(TODO._qemu_desktop_suffixes().values())
+        self.assertEqual(len(suffixes), len(set(suffixes)))
+
+
+class TestUnknownFlavour(unittest.TestCase):
+    def test_it_is_refused_not_replaced_by_gnome(self):
+        for flavour in ("kde", "", None, True):
+            with self.assertRaises(ValueError, msg=repr(flavour)):
+                _cmd(flavour)
 
 
 class TestRemoteAccessText(unittest.TestCase):
@@ -402,7 +640,7 @@ class TestRemoteAccessText(unittest.TestCase):
         self.assertNotIn("vncserver", _cmd("gnome"))
 
     def test_the_vnc_hint_stays_for_cinnamon(self):
-        self.assertIn("vncserver :1", _acces(_cmd("cinnamon")))
+        self.assertIn("VNC 5901 (TigerVNC", _acces(_cmd("cinnamon")))
 
     def test_the_rdp_service_is_opened_in_firewalld(self):
         cmd = _cmd("gnome")
@@ -446,6 +684,21 @@ class TestArchUpgrade(unittest.TestCase):
 
 
 class TestValidShell(unittest.TestCase):
+    def test_every_offered_release_is_valid_shell(self):
+        for flavour, par_distro in TODO._QEMU_DESKTOP_RELEASES.items():
+            for distro, versions in par_distro.items():
+                for version in versions:
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        res = subprocess.run(
+                            ["bash", "-n"],
+                            input=_cmd(
+                                flavour, "deb", distro, version=version
+                            ),
+                            capture_output=True,
+                            text=True,
+                        )
+                        self.assertEqual(0, res.returncode, res.stderr)
+
     def test_every_flavour_and_distro_is_valid_shell(self):
         for flavour in TODO._QEMU_DESKTOP:
             for distro in DISTROS:
@@ -504,7 +757,7 @@ class TestItRuns(unittest.TestCase):
             "dnf -y -x firewalld group install workstation-product-environment",
             log,
         )
-        self.assertFalse(any("xrdp" in ligne for ligne in log), log)
+        self.assertFalse(any(_touche_xrdp(ligne) for ligne in log), log)
         self.assertIn("RDP 3389 (GNOME Remote Desktop)", out)
         self.assertIn(t("password chosen at deployment"), out)
         self.assertTrue(
@@ -615,7 +868,9 @@ class TestItRuns(unittest.TestCase):
                 rc, out, log = vm.run(_cmd("gnome"), "fedora")
                 self.assertEqual(0, rc, out)
                 self._non_annonce(out)
-                self.assertFalse(any("xrdp" in ligne for ligne in log), log)
+                self.assertFalse(
+                    any(_touche_xrdp(ligne) for ligne in log), log
+                )
 
     def test_an_inactive_daemon_is_not_announced(self):
         self.vm.stub("dnf")
@@ -649,7 +904,7 @@ class TestItRuns(unittest.TestCase):
         rc, out, log = self.vm.run(_cmd("gnome", distro="ubuntu"))
         self.assertEqual(0, rc, out)
         self.assertIn("systemctl disable --now xrdp", log)
-        self.assertNotIn("systemctl enable --now xrdp", log)
+        self.assertNotIn("systemctl restart xrdp", log)
         self.assertFalse(
             any(
                 ligne.startswith("apt-get") and "xrdp" in ligne
@@ -745,6 +1000,36 @@ class TestItRuns(unittest.TestCase):
 
     # --- repli xrdp ---------------------------------------------------- #
 
+    def test_el_xrdp_fallback_enables_epel_first(self):
+        """GNOME 40 d'EL 9 n'a pas grdctl : le repli prend xrdp dans EPEL,
+        que la saveur GNOME n'active pas d'elle-même."""
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("gnome", distro="almalinux", version="9").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y epel-release"),
+            _indice(log, "dnf install -y xrdp xorgxrdp"),
+        )
+
+    def test_the_bus_policy_is_reread_before_grd(self):
+        """dbus-broker relit sa politique avant que le compte de GNOME
+        Remote Desktop n'existe ; relue, elle le laisse prendre son nom."""
+        self._apt()
+        self.vm.stub("busctl")
+        self.vm.grdctl()
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "org.freedesktop.DBus ReloadConfig"),
+            _indice(log, "grdctl --system"),
+        )
+
     def test_without_system_mode_xrdp_is_installed_and_enabled(self):
         """GNOME 43 (Debian 12) : grdctl n'a pas de mode système."""
         self._apt()
@@ -758,7 +1043,7 @@ class TestItRuns(unittest.TestCase):
             ),
             log,
         )
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
         self.assertFalse(any("grdctl --system" in ligne for ligne in log))
         self.assertIn("RDP 3389", out)
 
@@ -766,7 +1051,7 @@ class TestItRuns(unittest.TestCase):
         self._apt()
         rc, out, log = self.vm.run(_cmd("gnome", distro="debian"))
         self.assertEqual(0, rc, out)
-        self.assertIn("systemctl enable --now xrdp", log)
+        self.assertIn("systemctl restart xrdp", log)
 
     def test_a_missing_xrdp_only_warns(self):
         self.vm.stub("apt-get", 'case " $* " in *" xrdp "*) exit 100;; esac')
@@ -900,6 +1185,1430 @@ class TestItRuns(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertIn("VNC 5901", out)
         self.assertFalse(any("grdctl" in ligne for ligne in log))
+
+    def test_tigervnc_runs_as_a_service_on_the_vm_account(self):
+        """vncserver@:1 au démarrage, X509Plain par PAM pour le seul compte
+        de la VM : aucun « vncpasswd » à taper."""
+        self.vm.stub("pacman")
+        users = self.vm.etc("/etc/tigervnc/vncserver.users")
+        users.parent.mkdir(parents=True, exist_ok=True)
+        users.write_text("# :2=andrew\n")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="arch"))
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertIn(f":1={compte}", users.read_text().splitlines())
+        pam = self.vm.etc("/etc/pam.d/vnc").read_text()
+        self.assertIn("auth     required  pam_unix.so", pam)
+        conf = (self.vm.home / ".config/tigervnc/config").read_text()
+        for ligne in (
+            "session=xfce",
+            "securitytypes=X509Plain",
+            f"plainusers={compte}",
+        ):
+            self.assertIn(ligne, conf.splitlines())
+        self.assertIn("systemctl enable --now vncserver@:1", log)
+        self.assertNotIn("vncpasswd", out)
+
+    def test_tigervnc_config_is_completed_not_rewritten(self):
+        """Rejoué sur une configuration existante, le bloc ajoute les clés
+        manquantes et garde la session choisie par l'utilisateur."""
+        self.vm.stub("pacman")
+        d = self.vm.home / ".config/tigervnc"
+        d.mkdir(parents=True)
+        (d / "config").write_text("session=i3\n")
+        rc, out, _log = self.vm.run(_cmd("xfce", distro="arch"))
+        self.assertEqual(0, rc, out)
+        lignes = (d / "config").read_text().splitlines()
+        self.assertIn("session=i3", lignes)
+        self.assertNotIn("session=xfce", lignes)
+        self.assertIn("securitytypes=X509Plain", lignes)
+
+
+class TestNewFlavoursRun(unittest.TestCase):
+    """Les saveurs ajoutées à GNOME et Cinnamon, exécutées sur un invité
+    simulé : ce que chaque gestionnaire installe, le gestionnaire
+    d'affichage retenu et ce que la saveur configure avant son démarrage."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vm = _Invite(self._tmp.name)
+
+    def _xrdp_apt(self):
+        self.vm.stub(
+            "apt-get",
+            f'case " $* " in *" xrdp "*) printf "#!/bin/bash\\nexit 0\\n" '
+            f"> {self.vm.bin}/xrdp; chmod +x {self.vm.bin}/xrdp;; esac",
+        )
+
+    # --- dnf ----------------------------------------------------------- #
+
+    def test_fedora_plasma_line_dm_and_first_run_marker(self):
+        self.vm.stub("dnf")
+        cmd = _cmd("plasma", distro="fedora", version="44")
+        rc, out, log = self.vm.run(cmd, "fedora")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "dnf -y -x firewalld -x firewall-config install "
+            "@kde-desktop-environment krdp openssl",
+            log,
+        )
+        self.assertFalse(any("epel-release" in l for l in log), log)
+        self.assertIn("systemctl enable --force plasmalogin", log)
+        self.assertTrue(self.vm.etc("/etc/plasma-setup-done").exists())
+        # touch est un vrai outil de l'invité simulé : l'ordre se lit dans
+        # la commande.
+        self.assertLess(
+            cmd.index("sudo touch /etc/plasma-setup-done"),
+            cmd.index("systemctl start display-manager"),
+        )
+
+    def test_el_enables_epel_and_crb_before_the_desktop(self):
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y epel-release"),
+            _indice(log, "crb enable"),
+        )
+        self.assertLess(
+            _indice(log, "crb enable"),
+            _indice(log, "install @kde-desktop-environment"),
+        )
+
+    def test_krdp_before_6_8_runs_in_plasma_mode(self):
+        """KRdp 6.7 d'EPEL 10 perd la réponse du portail une connexion sur
+        deux : il tourne en mode Plasma, RemoteFX gardé."""
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, _log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        d = (
+            self.vm.home / ".config/systemd/user/"
+            "app-org.kde.krdpserver.service.d"
+        )
+        self.assertEqual(
+            "[Service]\nExecStart=\n"
+            "ExecStart=/usr/bin/krdpserver --plasma\n",
+            (d / "erplibre-plasma.conf").read_text(),
+        )
+        self.assertIn("KRDP_DISABLE_H264=1", (d / "erplibre.conf").read_text())
+        self.assertIn("pas NLA", out)
+
+    def test_krdp_6_8_keeps_the_portal(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        d = (
+            self.vm.home / ".config/systemd/user/"
+            "app-org.kde.krdpserver.service.d"
+        )
+        self.assertFalse((d / "erplibre-plasma.conf").exists())
+        self.assertIn("KRDP_DISABLE_H264=1", (d / "erplibre.conf").read_text())
+        self.assertNotIn("NLA", out)
+
+    def test_krdp_keeps_the_screen_on(self):
+        """Écran éteint après le verrou = image noire en KRdp 6.7."""
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "[AC][Display]\nTurnOffDisplayWhenIdle=false\n",
+            (self.vm.home / ".config/powerdevilrc").read_text(),
+        )
+
+    def test_opensuse_sddm_autologin_is_named_in_sysconfig(self):
+        """Le SDDM d'openSUSE ignore [Autologin] tant que
+        DISPLAYMANAGER_AUTOLOGIN ne nomme pas le compte."""
+        self.vm.stub("zypper")
+        conf = self.vm.etc("/etc/sysconfig/displaymanager")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text('DISPLAYMANAGER_AUTOLOGIN=""\nDISPLAYMANAGER_X="y"\n')
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="opensuse", version="tumbleweed")
+        )
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertEqual(
+            f'DISPLAYMANAGER_AUTOLOGIN="{compte}"\nDISPLAYMANAGER_X="y"\n',
+            conf.read_text(),
+        )
+
+    _XORG = (
+        'Section "Device"\n'
+        '    Identifier "Video Card (xrdpdev)"\n'
+        '    Driver "xrdpdev"\n'
+        "{drm}"
+        '    Option "DRI3" "1"\n'
+        "EndSection\n"
+    )
+
+    def _xorg_conf(self, drm):
+        conf = self.vm.etc("/etc/X11/xrdp/xorg.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text(self._XORG.format(drm=drm))
+        return conf
+
+    def test_xorgxrdp_glamor_is_turned_off(self):
+        """xorgxrdp 0.9 relit de faux pixels du GPU virgl : DRMDevice vide
+        le fait rendre en logiciel."""
+        conf = self._xorg_conf(
+            '    Option "DRMDevice" "/dev/dri/renderD128"\n'
+        )
+        self._xrdp_apt()
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            self._XORG.format(drm='    Option "DRMDevice" ""\n'),
+            conf.read_text(),
+        )
+        self.assertIn("systemctl restart xrdp", log)
+
+    def test_an_absent_drmdevice_line_is_added_empty(self):
+        """Sans la ligne, xorgxrdp prend le nœud par défaut : elle est
+        ajoutée, vide, sous le pilote."""
+        conf = self._xorg_conf("")
+        self._xrdp_apt()
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="12")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            '    Driver "xrdpdev"\n    Option "DRMDevice" ""\n',
+            conf.read_text(),
+        )
+        # Rejoué, le fichier ne bouge plus.
+        avant = conf.read_text()
+        self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(avant, conf.read_text())
+
+    def test_opensuse_lets_xrdp_open_the_user_session(self):
+        """pam_selinux donne à la session le contexte de l'utilisateur ; le
+        booléen permet à xrdp-sesman d'y passer."""
+        self.vm.stub("zypper")
+        self.vm.stub("semanage")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        booleen = self.vm.etc(
+            "/sys/fs/selinux/booleans/"
+            "unconfined_service_transition_to_unconfined_user"
+        )
+        booleen.parent.mkdir(parents=True, exist_ok=True)
+        booleen.write_text("0 0\n")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(
+                log,
+                "semanage boolean -m --on "
+                "unconfined_service_transition_to_unconfined_user",
+            ),
+            _indice(log, "systemctl restart xrdp"),
+        )
+
+    def test_apt_never_touches_selinux(self):
+        self._xrdp_apt()
+        self.vm.stub("semanage")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertFalse(any("semanage" in ligne for ligne in log), log)
+
+    def test_dnf_names_xrdp_selinux_where_selinux_runs(self):
+        """xrdp ne fait que recommander son module SELinux ; dnf l'écarte
+        quand la politique de l'image est trop ancienne."""
+        self.vm.stub("dnf")
+        self.vm.stub(
+            "rpm", 'case "$*" in *xrdp-selinux*) exit 1;; *) exit 0;; esac'
+        )
+        enforce = self.vm.etc("/sys/fs/selinux/enforce")
+        enforce.parent.mkdir(parents=True, exist_ok=True)
+        enforce.write_text("1\n")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "dnf install -y xrdp-selinux"),
+            _indice(log, "systemctl restart xrdp"),
+        )
+
+    def test_nm_auto_connection_survives_the_server_config(self):
+        """NetworkManager-config-server, tiré par le groupe de GNOME sur EL,
+        coupe la connexion automatique : la VM perdrait son réseau au
+        redémarrage."""
+        self.vm.stub("dnf")
+        serveur = self.vm.etc("/usr/lib/NetworkManager/conf.d/00-server.conf")
+        serveur.parent.mkdir(parents=True, exist_ok=True)
+        serveur.write_text("[main]\nno-auto-default=*\n")
+        surcharge = self.vm.etc(
+            "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf"
+        )
+        surcharge.parent.mkdir(parents=True, exist_ok=True)
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual("[main]\nno-auto-default=\n", surcharge.read_text())
+
+    def test_without_the_server_config_nm_is_left_alone(self):
+        self.vm.stub("dnf")
+        surcharge = self.vm.etc(
+            "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf"
+        )
+        surcharge.parent.mkdir(parents=True, exist_ok=True)
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(surcharge.exists())
+
+    def test_the_vm_locale_is_installed(self):
+        """i3status quitte sur une locale absente ; l'image cloud d'EL n'a
+        que l'anglais."""
+        self.vm.stub("dnf")
+        self.vm.stub("locale", "echo C; echo en_US.utf8")
+        conf = self.vm.etc("/etc/locale.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text('LANG="fr_CA.UTF-8"\n')
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf install -y glibc-langpack-fr", log)
+
+    def test_an_installed_locale_is_left_alone(self):
+        self.vm.stub("dnf")
+        self.vm.stub("locale", "echo C; echo fr_CA.utf8")
+        conf = self.vm.etc("/etc/locale.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text("LANG=fr_CA.UTF-8\n")
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(any("glibc-langpack" in ligne for ligne in log))
+
+    def _polkit(self):
+        """« install » qui écrit vraiment, et le dossier de polkit."""
+        self.vm.stub("install", 'cat > "${@: -1}"')
+        regles = self.vm.etc("/etc/polkit-1") / "rules.d"
+        regles.mkdir(parents=True)
+        return regles / "45-erplibre-remote.rules"
+
+    def test_xrdp_flavours_get_the_polkit_rule(self):
+        """colord et NetworkManager couvriraient le bureau xrdp d'une boîte
+        d'authentification ; la règle nomme le compte de la VM."""
+        self._xrdp_apt()
+        regle = self._polkit()
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        texte = regle.read_text()
+        self.assertIn(f'subject.user == "{compte}"', texte)
+        self.assertNotIn("@EL_USER@", texte)
+        self.assertIn('"org.freedesktop.color-manager."', texte)
+
+    def test_gnome_xrdp_fallback_gets_the_polkit_rule(self):
+        """GNOME sans mode système de grdctl ouvre ses sessions par xrdp."""
+        self._xrdp_apt()
+        self.vm.grdctl(systeme=False)
+        regle = self._polkit()
+        rc, out, _log = self.vm.run(
+            _cmd("gnome", distro="debian", version="12")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertTrue(regle.exists())
+
+    def test_an_edited_polkit_rule_is_kept(self):
+        self._xrdp_apt()
+        regle = self._polkit()
+        regle.write_text("// réglée par l'administrateur\n")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual("// réglée par l'administrateur\n", regle.read_text())
+        # rules.d est fermé au compte (750 ou 700, à polkitd) : la présence
+        # ne se voit que sous sudo.
+        self.assertIn(
+            "! sudo test -e /etc/polkit-1/rules.d/45-erplibre-remote.rules",
+            _cmd("xfce", distro="debian", version="13"),
+        )
+
+    def test_cinnamon_gets_a_wallpaper_when_its_own_is_gone(self):
+        """Le schéma nomme un fond que gnome-backgrounds 48 ne livre plus."""
+        self.vm.stub("zypper")
+        self.vm.stub("glib-compile-schemas")
+        schemas = self.vm.etc("/usr/share/glib-2.0/schemas")
+        schemas.mkdir(parents=True)
+        (schemas / "org.cinnamon.desktop.background.gschema.xml").write_text(
+            '<key name="picture-uri" type="s">\n'
+            "  <default>'file:///usr/share/backgrounds/gnome/"
+            "adwaita-timed.xml'</default>\n"
+            "</key>\n"
+        )
+        fond = self.vm.etc(
+            "/usr/share/wallpapers/openSUSEdefault/contents/images/"
+            "default.png"
+        )
+        fond.parent.mkdir(parents=True)
+        fond.write_text("png")
+        rc, out, log = self.vm.run(
+            _cmd("cinnamon", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        ovr = schemas / "90_erplibre-cinnamon-background.gschema.override"
+        self.assertEqual(
+            "[org.cinnamon.desktop.background]\n"
+            f"picture-uri='file://{fond}'\n",
+            ovr.read_text(),
+        )
+        self.assertIn(f"glib-compile-schemas {schemas}", log)
+
+    def test_xrdp_selinux_is_left_alone_when_present_or_without_selinux(self):
+        self.vm.stub("dnf")
+        self.vm.stub(
+            "systemctl", 'case "$*" in "cat xrdp.service") exit 0;; esac'
+        )
+        for rpm, enforce in (
+            ("exit 0", True),
+            ('case "$*" in *xrdp-selinux*) exit 1;; esac', False),
+        ):
+            with self.subTest(rpm=rpm, enforce=enforce):
+                self.vm.stub("rpm", rpm)
+                fichier = self.vm.etc("/sys/fs/selinux/enforce")
+                fichier.parent.mkdir(parents=True, exist_ok=True)
+                if enforce:
+                    fichier.write_text("1\n")
+                elif fichier.exists():
+                    fichier.unlink()
+                self.vm.log.write_text("")
+                rc, out, log = self.vm.run(
+                    _cmd("xfce", distro="fedora", version="44"), "fedora"
+                )
+                self.assertEqual(0, rc, out)
+                self.assertNotIn("dnf install -y xrdp-selinux", log)
+                self.assertFalse(any("semanage" in ligne for ligne in log))
+
+    def test_tigervnc_users_line_is_written_once(self):
+        self.vm.stub("pacman")
+        users = self.vm.etc("/etc/tigervnc/vncserver.users")
+        users.parent.mkdir(parents=True, exist_ok=True)
+        users.write_text("# :2=andrew\n")
+        for _ in range(2):
+            rc, out, _log = self.vm.run(_cmd("xfce", distro="arch"))
+            self.assertEqual(0, rc, out)
+        lignes = [
+            l for l in users.read_text().splitlines() if l.startswith(":1=")
+        ]
+        self.assertEqual(1, len(lignes), users.read_text())
+
+    def test_opensuse_package_lines_carry_what_the_image_lacks(self):
+        de = TODO._QEMU_DESKTOP
+        self.assertIn("pkexec", de["gnome"]["zypper"].split())
+        for ligne in de["i3"]["zypper"].values():
+            self.assertIn("dejavu-fonts", ligne.split())
+        self.assertIn(
+            "_erplibre-cinnamon-background",
+            _cmd("cinnamon", distro="opensuse", version="16.0"),
+        )
+        self.assertNotIn(
+            "_erplibre-cinnamon-background",
+            _cmd("xfce", distro="opensuse", version="16.0"),
+        )
+
+    def test_nixos_krdp_stays_in_portal_mode(self):
+        """Le mode Plasma de KRdp 6.6 ne crée aucun flux sans --monitor ;
+        NixOS garde le portail, et un mode Plasma laissé par un passage
+        précédent est retiré."""
+        cmd = _cmd("plasma", distro="nixos", version="26.05")
+        self.assertNotIn("--plasma", cmd)
+        self.assertIn(
+            'rm -f "$HOME/.config/systemd/user/'
+            'app-org.kde.krdpserver.service.d/erplibre-plasma.conf"',
+            cmd,
+        )
+
+    def test_dnf_xrdp_comes_with_its_x_server(self):
+        """xorgxrdp n'est pas une dépendance du xrdp de Fedora et d'EPEL :
+        sans lui, toute session échoue à attendre le serveur X."""
+        self.vm.stub("dnf")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf install -y xrdp xorgxrdp", log)
+
+    def test_a_refused_exclusion_is_retried_without_it(self):
+        self.vm.stub("dnf", 'case "$*" in *" -x "*) exit 1;; esac')
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="45"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf -y install @xfce-desktop-environment", log)
+
+    def test_a_desktop_dnf_cannot_install_fails_the_command(self):
+        self.vm.stub("dnf", 'case "$*" in *@*) exit 1;; esac')
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(1, rc, out)
+        self.assertIn("❌", out)
+        self.assertFalse(any("set-default" in l for l in log), log)
+
+    def test_el9_cinnamon_is_a_package_list_and_xrdp_only_warns(self):
+        self.vm.stub("dnf", 'case "$*" in *xrdp*) exit 1;; esac')
+        self.vm.stub("crb")
+        cmd = _cmd("cinnamon", distro="rocky", version="9").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, log = self.vm.run(cmd, "rocky")
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "dnf -y install @base-x cinnamon lightdm lightdm-gtk dbus-x11", log
+        )
+        self.assertFalse(any("group install" in l for l in log), log)
+        self.assertIn("⚠", out)
+
+    def test_every_el_pair_runs_its_own_line_after_epel(self):
+        """Chaque saveur offerte sur AlmaLinux et Rocky, exécutée : EPEL et
+        CRB d'abord, puis la ligne propre à EL — jamais l'environnement de
+        Fedora ni la cascade de groupes, absents d'EPEL."""
+        attendus = {
+            ("cinnamon", "9"): "-y install @base-x cinnamon lightdm",
+            ("xfce", "9"): "-y -x gdm install @base-x @xfce-desktop lightdm",
+            ("i3", "9"): "-y -x firewalld -x firewall-config install "
+            "@base-x i3 i3status",
+            ("plasma", "10"): "-y -x firewalld -x firewall-config install "
+            "@kde-desktop-environment",
+        }
+        for distro in ("almalinux", "rocky"):
+            for version in ("9", "10"):
+                offertes = TODO._qemu_desktops_for(distro, version)
+                for flavour in offertes:
+                    if flavour == "gnome":
+                        continue
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        self.vm = _Invite(
+                            self._tmp_for(f"{flavour}-{distro}-{version}")
+                        )
+                        self.vm.stub("dnf")
+                        self.vm.stub("crb")
+                        cmd = _cmd(
+                            flavour, distro=distro, version=version
+                        ).replace("/usr/bin/crb", "crb")
+                        rc, out, log = self.vm.run(cmd, distro)
+                        self.assertEqual(0, rc, out)
+                        ligne = attendus[(flavour, version)]
+                        self.assertLess(
+                            _indice(log, "install -y epel-release"),
+                            _indice(log, ligne),
+                        )
+                        self.assertFalse(
+                            any("group install" in l for l in log), log
+                        )
+
+    def test_each_flavour_enables_its_own_display_manager(self):
+        """Le gestionnaire d'affichage activé, pour chaque couple offert :
+        plasma-login-manager là où l'environnement de Plasma l'impose."""
+        plasmalogin = ("fedora", "almalinux", "rocky", "arch")
+        attendu = {
+            "xfce": lambda d: "lightdm",
+            "i3": lambda d: "lightdm",
+            "cosmic": lambda d: "cosmic-greeter",
+            "hyprland": lambda d: "greetd",
+            "plasma": lambda d: "plasmalogin" if d in plasmalogin else "sddm",
+        }
+        for flavour, dm in attendu.items():
+            for distro, versions in TODO._QEMU_DESKTOP_RELEASES[
+                flavour
+            ].items():
+                if distro == "nixos":
+                    # Déclaré par le module, jamais activé à l'exécution.
+                    continue
+                for version in versions:
+                    with self.subTest(f=flavour, d=distro, v=version):
+                        cmd = _cmd(flavour, distro=distro, version=version)
+                        self.assertIn(
+                            f"systemctl enable --force {dm(distro)} ", cmd
+                        )
+
+    def test_fedora_cinnamon_keeps_its_group(self):
+        self.vm.stub("dnf")
+        rc, out, log = self.vm.run(
+            _cmd("cinnamon", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf -y group install cinnamon-desktop", log)
+        self.assertFalse(any("epel-release" in l for l in log), log)
+
+    # --- apt ----------------------------------------------------------- #
+
+    def test_apt_plasma_preselects_sddm(self):
+        self.vm.stub("debconf-set-selections", 'cat >> "$LOG"')
+        self._xrdp_apt()
+        cmd = _cmd("plasma", distro="ubuntu", version="26.04")
+        rc, out, log = self.vm.run(cmd)
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "shared/default-x-display-manager select sddm"),
+            _indice(log, "install -y kde-plasma-desktop sddm"),
+        )
+        self.assertEqual(
+            "/usr/bin/sddm\n",
+            self.vm.etc("/etc/X11/default-display-manager").read_text(),
+        )
+        self.assertIn("systemctl enable --force sddm", log)
+
+    def test_a_flavour_apt_cannot_install_fails_the_command(self):
+        self.vm.stub("apt-get")
+        rc, out, log = self.vm.run(_cmd("cosmic", distro="fedora"))
+        self.assertEqual(1, rc, out)
+        self.assertIn("❌", out)
+        self.assertFalse(any("install -y" in l for l in log), log)
+
+    def test_xfce_gets_xrdp_and_announces_rdp(self):
+        self._xrdp_apt()
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "install -y xfce4 xfce4-goodies lightdm lightdm-gtk-greeter "
+            "dbus-x11 xrdp",
+            " ".join(log),
+        )
+        self.assertIn("systemctl restart xrdp", log)
+        self.assertIn("RDP 3389", out)
+        self.assertEqual(
+            "/usr/sbin/lightdm\n",
+            self.vm.etc("/etc/X11/default-display-manager").read_text(),
+        )
+
+    def test_xrdp_outside_the_path_is_enabled_by_its_unit(self):
+        """openSUSE pose xrdp dans /usr/sbin, hors du PATH du compte : seule
+        l'unité le montre, et le bloc l'active quand même."""
+        self.vm.stub("zypper")
+        self.vm.stub(
+            "systemctl",
+            'case "$*" in "cat xrdp.service") exit 0;; esac',
+        )
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("systemctl restart xrdp", log)
+        self.assertIn("RDP 3389", out)
+
+    def test_xrdp_joins_ssl_cert_before_its_restart(self):
+        """Debian 12 : la clé TLS n'est lisible qu'au groupe ssl-cert ; le
+        compte xrdp y entre, puis le démon redémarre pour la lire."""
+        self._xrdp_apt()
+        vrai_id = shutil.which("id")
+        # bin/id est un lien vers le vrai : l'écrire écrirait au travers.
+        (self.vm.bin / "id").unlink()
+        self.vm.stub(
+            "id",
+            f'case "$1" in xrdp) exit 0;; esac; exec {vrai_id} "$@"',
+            log=False,
+        )
+        self.vm.stub("usermod")
+        rc, out, log = self.vm.run(_cmd("xfce", distro="debian", version="12"))
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "usermod -aG ssl-cert xrdp"),
+            _indice(log, "systemctl restart xrdp"),
+        )
+
+    def test_hyprland_on_apt_leaves_the_display_manager_file_alone(self):
+        self.vm.stub("apt-get")
+        rc, out, _log = self.vm.run(
+            _cmd("hyprland", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(
+            self.vm.etc("/etc/X11/default-display-manager").exists()
+        )
+
+    def test_gnome_keeps_a_plain_enable(self):
+        self.vm.stub("apt-get")
+        self.vm.grdctl()
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="debian", version="13")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("systemctl enable gdm", log)
+        self.assertFalse(any("enable --force" in l for l in log), log)
+
+    # --- pacman et zypper ---------------------------------------------- #
+
+    def test_arch_cosmic_names_its_vulkan_driver(self):
+        self.vm.stub("pacman")
+        rc, out, log = self.vm.run(
+            _cmd("cosmic", distro="arch", version="latest")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "pacman -S --needed --noconfirm cosmic-session vulkan-swrast", log
+        )
+        self.assertIn("systemctl enable --force cosmic-greeter", log)
+        self.assertTrue(
+            (self.vm.home / ".config/cosmic-initial-setup-done").exists()
+        )
+
+    def test_zypper_plasma_sets_the_display_manager_alternative(self):
+        self.vm.stub("zypper")
+        self.vm.stub("update-alternatives")
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro="opensuse", version="tumbleweed")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "patterns-kde-kde_plasma sddm-qt6"),
+            _indice(
+                log,
+                "update-alternatives --set default-displaymanager "
+                "/usr/lib/X11/displaymanagers/sddm",
+            ),
+        )
+
+    def test_leap_i3_has_no_i3status(self):
+        self.vm.stub("zypper")
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        ligne = log[_indice(log, "zypper --non-interactive install")]
+        self.assertNotIn("i3status", ligne)
+        self.assertIn(" i3 ", ligne)
+
+    # --- configuration propre à la saveur ------------------------------ #
+
+    def _i3(self, distro, version, existant=None):
+        etc = self.vm.etc("/etc/i3/config")
+        etc.parent.mkdir(parents=True, exist_ok=True)
+        etc.write_text("bar {\n    status_command i3status\n}\n")
+        cfg = self.vm.home / ".config/i3/config"
+        if existant is not None:
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(existant)
+        self.vm.stub("zypper")
+        self.vm.stub("pacman")
+        rc, out, _log = self.vm.run(_cmd("i3", distro=distro, version=version))
+        self.assertEqual(0, rc, out)
+        return cfg.read_text()
+
+    def test_i3_gets_a_user_config_so_the_wizard_stays_quiet(self):
+        self.assertIn("status_command i3status", self._i3("arch", "latest"))
+
+    def test_leap_i3_config_drops_the_status_line(self):
+        self.assertNotIn("status_command", self._i3("opensuse", "16.0"))
+
+    def test_an_existing_i3_config_is_kept(self):
+        self.assertEqual("mien\n", self._i3("arch", "latest", "mien\n"))
+
+    GESTIONNAIRE = {
+        "ubuntu": "apt-get",
+        "arch": "pacman",
+        "opensuse": "zypper",
+    }
+
+    def _hyprland(self, distro, version, lanceur=True, greetd=None):
+        """Hyprland sur un invité qui n'a QUE le gestionnaire de paquets de
+        `distro` : c'est sa branche, et sa ligne de paquets, qui tournent."""
+        gc = self.vm.etc("/etc/greetd/config.toml")
+        gc.parent.mkdir(parents=True, exist_ok=True)
+        gc.write_text(
+            greetd
+            or "[terminal]\nvt = 7\n\n[default_session]\n"
+            'command = "agreety --cmd /bin/sh"\nuser = "_greetd"\n'
+        )
+        self.vm.stub(self.GESTIONNAIRE[distro])
+        if lanceur:
+            self.vm.stub("start-hyprland")
+        rc, out, log = self.vm.run(
+            _cmd("hyprland", distro=distro, version=version)
+        )
+        self.assertEqual(0, rc, out)
+        return gc.read_text(), out, log
+
+    def test_hyprland_installs_its_greeter_on_each_system(self):
+        attendus = {
+            ("ubuntu", "26.04"): ("apt-get", "greetd tuigreet"),
+            ("arch", "latest"): ("pacman", "greetd greetd-tuigreet"),
+            ("opensuse", "tumbleweed"): (
+                "zypper",
+                "greetd greetd-branding-upstream tuigreet",
+            ),
+        }
+        for (distro, version), (pm, paquets) in attendus.items():
+            with self.subTest(distro):
+                self.vm = _Invite(self._tmp_for(distro))
+                _conf, _out, log = self._hyprland(distro, version)
+                ligne = " ".join(l for l in log if l.startswith(pm))
+                self.assertIn(paquets, ligne)
+                self.assertIn("hyprland xdg-desktop-portal-hyprland", ligne)
+
+    def test_a_rerun_keeps_the_existing_configurations(self):
+        mien = (
+            '[terminal]\nvt = 1\n\n[initial_session]\nuser = "x"\n'
+            '[default_session]\ncommand = "tuigreet --cmd sway"\n'
+        )
+        hypr = self.vm.home / ".config/hypr/hyprland.lua"
+        hypr.parent.mkdir(parents=True)
+        hypr.write_text("-- mien\n")
+        conf, _out, _log = self._hyprland("arch", "latest", greetd=mien)
+        self.assertEqual(mien, conf)
+        self.assertEqual("-- mien\n", hypr.read_text())
+
+    def test_hyprland_greetd_keeps_the_shipped_user_and_vt(self):
+        conf, _out, log = self._hyprland("ubuntu", "26.04")
+        self.assertIn('user = "_greetd"', conf)
+        self.assertIn("vt = 7", conf)
+        self.assertIn('command = "tuigreet --time --cmd start-hyprland"', conf)
+        self.assertIn("systemctl enable --force greetd", log)
+
+    def test_hyprland_without_its_launcher_starts_the_compositor(self):
+        conf, _out, _log = self._hyprland("ubuntu", "26.04", lanceur=False)
+        self.assertIn('--cmd Hyprland"', conf)
+
+    def test_hyprland_config_format_follows_the_release(self):
+        self._hyprland("ubuntu", "26.04")
+        hypr = self.vm.home / ".config/hypr"
+        conf = (hypr / "hyprland.conf").read_text()
+        self.assertIn("no_hardware_cursors = true", conf)
+        self.assertIn("bind = $mod, Return, exec, kitty", conf)
+        self.assertFalse((hypr / "hyprland.lua").exists())
+
+        self.vm = _Invite(self._tmp_for("arch"))
+        self._hyprland("arch", "latest")
+        hypr = self.vm.home / ".config/hypr"
+        lua = (hypr / "hyprland.lua").read_text()
+        self.assertIn("no_hardware_cursors = true", lua)
+        self.assertIn('hl.dsp.exec_cmd("kitty")', lua)
+        self.assertFalse((hypr / "hyprland.conf").exists())
+
+    def _tmp_for(self, nom):
+        d = Path(self._tmp.name) / f"cas-{nom}"
+        d.mkdir()
+        return d
+
+    def test_flavours_without_a_server_announce_the_console_only(self):
+        """Ni xrdp ni pare-feu pour une saveur dont l'accès distant n'est
+        pas posé, même quand un xrdp traîne sur le système : COSMIC, et
+        Plasma sur Leap 16.0."""
+        for flavour, distro, version, pm in (
+            ("cosmic", "arch", "latest", "pacman"),
+            ("plasma", "opensuse", "16.0", "zypper"),
+        ):
+            with self.subTest(flavour):
+                self.vm = _Invite(self._tmp_for(f"{flavour}-{distro}"))
+                self.vm.stub(pm)
+                self.vm.stub("xrdp")
+                self.vm.stub("firewall-cmd")
+                self.vm.stub("busctl")
+                rc, out, log = self.vm.run(
+                    _cmd(flavour, distro=distro, version=version)
+                )
+                self.assertEqual(0, rc, out)
+                self.assertIn(t("none, the hypervisor console only"), out)
+                self.assertFalse(any("xrdp" in l for l in log), log)
+                self.assertFalse(any("firewall" in l for l in log), log)
+                self.assertFalse(any("busctl" in l for l in log), log)
+                self.assertFalse(
+                    (self.vm.home / ".config/krdpserverrc").exists()
+                )
+
+
+class TestNixosDesktop(unittest.TestCase):
+    """NixOS déclare la saveur dans /etc/nixos/erplibre-desktop.nix, que
+    « nixos-rebuild switch » applique : /etc/systemd et /etc/pam.d y sont
+    produits par la construction, en lecture seule."""
+
+    def _module(self, flavour):
+        return TODO.__new__(TODO)._qemu_nixos_desktop_module(flavour)
+
+    def _nix(self, flavour):
+        return _cmd(flavour, distro="nixos", version="26.05")
+
+    def test_each_flavour_declares_its_desktop_and_display_manager(self):
+        attendu = {
+            "gnome": ("desktopManager.gnome.enable", "gdm.enable"),
+            "cinnamon": ("cinnamon.enable", "lightdm.enable"),
+            "plasma": ("plasma6.enable", "sddm.enable"),
+            "xfce": ("xfce.enable", "lightdm.enable"),
+            "cosmic": ("cosmic.enable", "cosmic-greeter.enable"),
+            "hyprland": ("programs.hyprland.enable", "greetd.enable"),
+            "i3": ("windowManager.i3.enable", "lightdm.enable"),
+        }
+        self.assertEqual(set(TODO._QEMU_DESKTOP), set(attendu))
+        for flavour, cles in attendu.items():
+            with self.subTest(flavour=flavour):
+                module = self._module(flavour)
+                for cle in cles:
+                    self.assertIn(f"{cle} = true;", module)
+                self.assertIn(
+                    "system.autoUpgrade.allowReboot = lib.mkForce false;",
+                    module,
+                )
+                self.assertTrue(module.rstrip().endswith("}"))
+                self.assertEqual(module.count("{"), module.count("}"))
+
+    def test_the_firewall_opens_the_server_port_only(self):
+        self.assertIn("allowedTCPPorts = [ 3389 ];", self._module("gnome"))
+        self.assertIn("allowedTCPPorts = [ 3389 ];", self._module("plasma"))
+        self.assertIn("allowedTCPPorts = [ 5900 ];", self._module("hyprland"))
+        self.assertNotIn("allowedTCPPorts", self._module("cosmic"))
+        self.assertNotIn("xrdp", self._module("cosmic"))
+
+    def test_x11_flavours_get_xrdp_on_their_own_session(self):
+        for flavour in ("xfce", "i3", "cinnamon"):
+            with self.subTest(flavour=flavour):
+                module = self._module(flavour)
+                session = TODO._QEMU_DESKTOP[flavour]["x_session"]
+                self.assertIn("services.xrdp.openFirewall = true;", module)
+                self.assertIn(
+                    f'services.xrdp.defaultWindowManager = "{session}";',
+                    module,
+                )
+
+    def test_the_vm_account_is_substituted_where_a_session_opens(self):
+        """Plasma et Hyprland ouvrent la session du compte d'office, et la
+        règle polkit des saveurs xrdp le nomme ; le nom n'est connu que dans
+        l'invité. COSMIC n'en a pas l'usage."""
+        for flavour in ("plasma", "hyprland", "xfce"):
+            self.assertIn('"@EL_USER@"', self._module(flavour))
+            self.assertIn('sed "s/@EL_USER@/$(id -un)/g"', self._nix(flavour))
+        self.assertNotIn("@EL_USER@", self._module("cosmic"))
+
+    def test_xrdp_sessions_get_the_polkit_rule(self):
+        """colord et NetworkManager ouvriraient une boîte
+        d'authentification dans chaque session xrdp."""
+        module = self._module("xfce")
+        self.assertIn("security.polkit.extraConfig = ''", module)
+        self.assertIn("org.freedesktop.color-manager.", module)
+        self.assertNotIn("security.polkit", self._module("plasma"))
+
+    def test_gnome_remote_desktop_is_wanted_by_the_graphical_target(self):
+        self.assertIn(
+            'systemd.services.gnome-remote-desktop.wantedBy = [ "graphical.target" ];',
+            self._module("gnome"),
+        )
+
+    def test_nothing_is_enabled_or_written_under_etc_at_runtime(self):
+        for flavour in TODO._QEMU_DESKTOP:
+            with self.subTest(flavour=flavour):
+                cmd = self._nix(flavour)
+                # Le repli xrdp de GNOME, sans mode système, garde son
+                # aiguillage ; l'installation du bureau n'en a aucun.
+                self.assertNotIn("apt-get", cmd[: cmd.index("EL_REM=")])
+                self.assertNotIn("set-default", cmd)
+                self.assertNotIn("systemctl enable --force", cmd)
+                self.assertNotIn("/etc/pam.d/wayvnc", cmd)
+                self.assertNotIn("/etc/greetd/config.toml", cmd)
+                self.assertNotIn(".conf.d/erplibre-autologin.conf", cmd)
+                self.assertNotIn("enable --now gnome-remote-desktop", cmd)
+                self.assertIn("nixos-rebuild switch", cmd)
+
+    def test_hyprland_keeps_the_account_files_but_not_the_unit(self):
+        """L'unité wayvnc est celle du module : une unité du compte, au
+        chemin /usr/bin, la masquerait."""
+        cmd = self._nix("hyprland")
+        self.assertIn(".config/wayvnc/config", cmd)
+        self.assertIn("hyprland.lua", cmd)
+        self.assertNotIn(".config/systemd/user/wayvnc.service", cmd)
+
+    def test_openssl_is_declared_for_the_server_keys(self):
+        """GNOME Remote Desktop, KRdp et wayvnc créent leurs clés par
+        openssl, absent du système de base ; une seule liste de paquets,
+        un attribut répété étant une erreur de Nix."""
+        for flavour in TODO._QEMU_DESKTOP:
+            module = self._module(flavour)
+            self.assertEqual(1, module.count("environment.systemPackages"))
+            self.assertIn("pkgs.openssl", module)
+        self.assertIn("pkgs.kitty", self._module("hyprland"))
+        self.assertIn("pkgs.xterm", self._module("i3"))
+
+    def test_networkmanager_stays_off(self):
+        """GNOME, Plasma et COSMIC l'activent ; il heurte la configuration
+        réseau de l'image."""
+        for flavour in TODO._QEMU_DESKTOP:
+            self.assertIn(
+                "networking.networkmanager.enable = lib.mkForce false;",
+                self._module(flavour),
+            )
+
+    def test_xrdp_is_found_by_its_unit(self):
+        """NixOS ne met xrdp dans aucun PATH, openSUSE le met dans /usr/sbin,
+        hors du PATH du compte : l'unité fait foi partout."""
+        self.assertIn("systemctl cat xrdp.service", self._nix("xfce"))
+        self.assertIn(
+            "systemctl cat xrdp.service",
+            _cmd("xfce", distro="opensuse", version="16.0"),
+        )
+
+    def test_i3_reads_the_account_config_at_the_console(self):
+        """configFile lancerait « i3 -c /etc/i3/config » et la console
+        ignorerait la copie du compte ; /etc/i3/config est posé à part."""
+        module = self._module("i3")
+        self.assertIn('environment.etc."i3/config".source', module)
+        self.assertNotIn("configFile", module)
+
+    def test_the_i3_copy_is_writable(self):
+        """L'original est un fichier du store, en 0444."""
+        self.assertIn('chmod 644 "$HOME/.config/i3/config"', self._nix("i3"))
+
+    def test_krdp_asks_for_tls_security_on_nixos(self):
+        """KRdp 6.6 propose NLA sans pouvoir le mener par PAM."""
+        self.assertIn("NLA", self._nix("plasma"))
+        self.assertNotIn("NLA", _cmd("plasma", distro="fedora", version="44"))
+
+    def test_krdp_finds_the_declared_unit(self):
+        self.assertIn("/etc/systemd/user", self._nix("plasma"))
+
+    def test_every_flavour_is_valid_shell(self):
+        for flavour in TODO._QEMU_DESKTOP:
+            res = subprocess.run(
+                ["bash", "-n", "-c", self._nix(flavour)], capture_output=True
+            )
+            self.assertEqual(0, res.returncode, (flavour, res.stderr))
+
+
+class TestNixosDesktopRun(unittest.TestCase):
+    """Le bloc NixOS exécuté dans un invité simulé."""
+
+    CONF = "{ ... }:\n{\n  imports = [\n    ./hardware-configuration.nix\n  ];\n}\n"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.vm = _Invite(tmp.name)
+        self.conf = self.vm.etc("/etc/nixos/configuration.nix")
+        self.conf.parent.mkdir(parents=True, exist_ok=True)
+        self.conf.write_text(self.CONF)
+        self.vm.stub("nixos-rebuild")
+        self.vm.stub("busctl")
+        self.vm.stub("ssh-keygen")
+
+    def test_the_module_is_written_imported_once_and_applied(self):
+        cmd = _cmd("xfce", distro="nixos", version="26.05")
+        for _ in range(2):
+            rc, out, log = self.vm.run(cmd)
+            self.assertEqual(0, rc, out)
+        module = self.vm.etc("/etc/nixos/erplibre-desktop.nix").read_text()
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertEqual(
+            TODO.__new__(TODO)
+            ._qemu_nixos_desktop_module("xfce")
+            .replace("@EL_USER@", compte),
+            module,
+        )
+        self.assertEqual(
+            1, self.conf.read_text().count("./erplibre-desktop.nix")
+        )
+        self.assertIn(
+            "imports = [\n    ./erplibre-desktop.nix\n"
+            "    ./hardware-configuration.nix\n",
+            self.conf.read_text(),
+        )
+        self.assertIn("nixos-rebuild switch", log)
+        self.assertLess(
+            _indice(log, "nixos-rebuild switch"),
+            _indice(log, "systemctl start display-manager.service"),
+        )
+
+    def test_the_account_name_replaces_the_placeholder(self):
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        module = self.vm.etc("/etc/nixos/erplibre-desktop.nix").read_text()
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertIn(f'autoLogin.user = "{compte}";', module)
+        self.assertNotIn("@EL_USER@", module)
+
+    def test_a_configuration_without_imports_stops_the_command(self):
+        self.conf.write_text("{ ... }:\n{\n}\n")
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertNotEqual(0, rc)
+        self.assertIn("imports", out)
+        self.assertNotIn("nixos-rebuild switch", log)
+
+    def test_a_rebuild_without_display_manager_fails(self):
+        self.vm.stub(
+            "systemctl",
+            'case "$*" in "cat display-manager.service") exit 1;; esac',
+        )
+        rc, out, _log = self.vm.run(
+            _cmd("cosmic", distro="nixos", version="26.05")
+        )
+        self.assertNotEqual(0, rc)
+        self.assertIn("❌", out)
+
+    def test_the_cache_authority_reaches_the_root_build(self):
+        """Le nix de root ne lit que NIX_SSL_CERT_FILE : la variable passe
+        en argument de sudo, jusqu'à la construction de root qui
+        télécharge, quelle que soit la règle env_keep de l'invité."""
+        faisceau = self.vm.etc("/var/lib/erplibre/ca-bundle.crt")
+        faisceau.parent.mkdir(parents=True, exist_ok=True)
+        faisceau.write_text("ca\n")
+        self.vm.stub("nixos-rebuild", 'echo "ca=$NIX_SSL_CERT_FILE" >> "$LOG"')
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertEqual(0, rc, out)
+        self.assertIn(f"ca={faisceau}", log)
+
+    def test_without_authority_the_build_gets_none(self):
+        self.vm.stub(
+            "nixos-rebuild", 'echo "ca=${NIX_SSL_CERT_FILE:-}" >> "$LOG"'
+        )
+        rc, out, log = self.vm.run(_cmd("i3", distro="nixos", version="26.05"))
+        self.assertEqual(0, rc, out)
+        self.assertIn("ca=", log)
+
+    def test_a_failed_rebuild_stops_the_command(self):
+        """Une VM qui avait déjà un bureau a déjà display-manager.service :
+        seul le code de retour dit que la nouvelle saveur n'a pas pris."""
+        self.vm.stub("nixos-rebuild", "exit 1")
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="nixos", version="26.05")
+        )
+        self.assertNotEqual(0, rc)
+        self.assertIn("❌", out)
+        self.assertNotIn(
+            "systemctl start display-manager.service", "\n".join(log)
+        )
+
+    def _readlink(self, demarre, courant):
+        self.vm.stub(
+            "readlink",
+            'case "$2" in /run/booted-system/*) echo ' + demarre + ";; "
+            "*) echo " + courant + ";; esac",
+            log=False,
+        )
+
+    def test_logind_restarts_after_a_version_jump(self):
+        """Système reconstruit plus récent que celui qui a démarré : logind
+        ancien, pam_systemd neuf, l'écran de connexion de GDM ne s'ouvre
+        pas."""
+        self._readlink("/nix/store/a-systemd", "/nix/store/b-systemd")
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertLess(
+            _indice(log, "systemctl cat display-manager.service"),
+            _indice(log, "systemctl restart systemd-logind"),
+        )
+
+    def test_logind_stays_when_the_versions_match(self):
+        self._readlink("/nix/store/a-systemd", "/nix/store/a-systemd")
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertNotIn("systemctl restart systemd-logind", log)
+
+    def test_a_rebuild_that_returns_4_is_not_the_verdict(self):
+        """switch-to-configuration rend 4 quand une unité n'a pas redémarré,
+        système activé quand même : le verdict est display-manager."""
+        self.vm.stub("nixos-rebuild", "exit 4")
+        rc, out, _log = self.vm.run(
+            _cmd("cosmic", distro="nixos", version="26.05")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("⚠", out)
+
+
+class TestRemoteAccessPerRelease(unittest.TestCase):
+    """L'accès distant choisi par (saveur, distribution, version), exécuté
+    sur un invité simulé : KRdp, wayvnc, ou xrdp et TigerVNC sur la
+    session X de la saveur."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vm = _Invite(self._tmp.name)
+        self.vm.stub("busctl")
+        self.vm.stub("firewall-cmd")
+        self.vm.stub("firewall-offline-cmd")
+        # ssh-keygen et openssl créent les fichiers demandés, comme les
+        # vrais : c'est ce qui permet de vérifier leurs droits.
+        self.vm.stub(
+            "ssh-keygen",
+            'while [ $# -gt 0 ]; do [ "$1" = -f ] && { touch "$2"; '
+            "break; }; shift; done",
+        )
+        self.vm.stub(
+            "openssl",
+            'while [ $# -gt 0 ]; do case "$1" in -keyout|-out) touch "$2"; '
+            "shift;; esac; shift; done",
+        )
+        self.compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+
+    def _krdp_unit(self):
+        unite = self.vm.etc("/usr/lib/systemd/user") / (
+            "app-org.kde.krdpserver.service"
+        )
+        unite.parent.mkdir(parents=True, exist_ok=True)
+        unite.write_text("[Service]\nExecStart=krdpserver\n")
+        return unite
+
+    def _plasma(self, distro, version, pm):
+        self.vm.stub(pm)
+        self._krdp_unit()
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro=distro, version=version), distro
+        )
+        self.assertEqual(0, rc, out)
+        return out, log
+
+    # --- KRdp ----------------------------------------------------------- #
+
+    def test_the_session_file_present_is_named(self):
+        """Tumbleweed ne livre que plasmawayland.desktop ; un nom absent
+        n'ouvrirait aucune session."""
+        sessions = self.vm.etc("/usr/share/wayland-sessions")
+        sessions.mkdir(parents=True)
+        (sessions / "plasmawayland.desktop").write_text("[Desktop Entry]\n")
+        self._plasma("opensuse", "tumbleweed", "zypper")
+        conf = self.vm.etc("/etc/sddm.conf.d") / "erplibre-autologin.conf"
+        self.assertIn("Session=plasmawayland.desktop\n", conf.read_text())
+
+    def test_krdp_mode_change_reaches_the_running_server(self):
+        """Rejoué sur une VM dont la session tourne, le changement de mode
+        est relu par systemd et KRdp relancé."""
+        _out, log = self._plasma("almalinux", "10", "dnf")
+        self.assertLess(
+            _indice(log, "systemctl --user daemon-reload"),
+            _indice(
+                log, "systemctl --user try-restart app-org.kde.krdpserver"
+            ),
+        )
+
+    def test_krdp_authenticates_the_session_account_with_pam(self):
+        out, log = self._plasma("fedora", "44", "dnf")
+        rc = (self.vm.home / ".config/krdpserverrc").read_text()
+        self.assertIn("SystemUserEnabled=true", rc)
+        self.assertIn("ListenPort=3389", rc)
+        self.assertNotIn("Users=", rc)
+        cle = self.vm.home / ".local/share/krdpserver/krdp.key"
+        self.assertIn(f"CertificateKey={cle}", rc)
+        self.assertEqual(0o600, cle.stat().st_mode & 0o777)
+        self.assertIn("RDP 3389 (KRdp", out)
+        self.assertIn("firewall-cmd --permanent --add-service=rdp", log)
+
+    def test_krdp_is_enabled_for_the_account_only_without_h264(self):
+        self._plasma("arch", "latest", "pacman")
+        uu = self.vm.home / ".config/systemd/user"
+        lien = (
+            uu / "plasma-workspace.target.wants/app-org.kde.krdpserver.service"
+        )
+        self.assertTrue(lien.is_symlink())
+        self.assertIn(
+            "Environment=KRDP_DISABLE_H264=1",
+            (
+                uu / "app-org.kde.krdpserver.service.d/erplibre.conf"
+            ).read_text(),
+        )
+
+    def test_krdp_pre_authorises_its_portal(self):
+        _out, log = self._plasma("fedora", "45", "dnf")
+        self.assertIn(
+            "busctl --user call org.freedesktop.impl.portal.PermissionStore "
+            "/org/freedesktop/impl/portal/PermissionStore "
+            "org.freedesktop.impl.portal.PermissionStore SetPermission sbssas "
+            "kde-authorized true remote-desktop org.kde.krdpserver 1 yes",
+            log,
+        )
+
+    def test_the_session_opens_by_itself_then_locks(self):
+        """Autologin dans le gestionnaire d'affichage de la distribution,
+        verrou au démarrage de la session."""
+        for distro, version, pm, dm in (
+            ("fedora", "44", "dnf", "plasmalogin"),
+            ("opensuse", "tumbleweed", "zypper", "sddm"),
+        ):
+            with self.subTest(distro):
+                self.setUp()
+                self._plasma(distro, version, pm)
+                conf = self.vm.etc(f"/etc/{dm}.conf.d") / (
+                    "erplibre-autologin.conf"
+                )
+                self.assertEqual(
+                    f"[Autologin]\nUser={self.compte}\n"
+                    "Session=plasma.desktop\n",
+                    conf.read_text(),
+                )
+                verrou = (
+                    self.vm.home / ".config/autostart/erplibre-lock.desktop"
+                )
+                self.assertIn("Exec=loginctl lock-session", verrou.read_text())
+
+    def test_krdp_writes_no_password_anywhere(self):
+        self._plasma("fedora", "44", "dnf")
+        for f in self.vm.home.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(SONDE, f.read_text(errors="ignore"), f)
+        self.assertNotIn(SONDE, " ".join(self.vm.journal()))
+
+    def test_a_rerun_keeps_an_edited_krdp_config(self):
+        rc = self.vm.home / ".config/krdpserverrc"
+        rc.parent.mkdir(parents=True)
+        rc.write_text("[General]\nListenPort=3390\n")
+        self._plasma("arch", "latest", "pacman")
+        self.assertEqual("[General]\nListenPort=3390\n", rc.read_text())
+
+    def test_a_missing_krdp_unit_only_warns(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            t("krdpserver user unit not found; KRdp not enabled"), out
+        )
+
+    def test_ubuntu_plasma_goes_through_xrdp_on_x11(self):
+        self.vm.stub(
+            "apt-get",
+            f'case " $* " in *" xrdp "*) printf "#!/bin/bash\\nexit 0\\n" '
+            f"> {self.vm.bin}/xrdp; chmod +x {self.vm.bin}/xrdp;; esac",
+        )
+        rc, out, log = self.vm.run(
+            _cmd("plasma", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        ligne = log[_indice(log, "install -y kde-plasma-desktop")]
+        self.assertIn("plasma-session-x11 kwin-x11", ligne)
+        self.assertIn(" xrdp", ligne)
+        self.assertIn(
+            "exec startplasma-x11", (self.vm.home / ".xsession").read_text()
+        )
+        self.assertFalse((self.vm.home / ".config/krdpserverrc").exists())
+        self.assertIn("systemctl restart xrdp", log)
+
+    # --- wayvnc --------------------------------------------------------- #
+
+    def _hyprland(self, distro, version, pm):
+        self.vm.stub(pm)
+        self.vm.stub("start-hyprland")
+        gc = self.vm.etc("/etc/greetd/config.toml")
+        gc.parent.mkdir(parents=True, exist_ok=True)
+        gc.write_text(
+            '[terminal]\nvt = 1\n[default_session]\nuser = "greeter"\n'
+        )
+        rc, out, log = self.vm.run(
+            _cmd("hyprland", distro=distro, version=version)
+        )
+        self.assertEqual(0, rc, out)
+        return out, log, gc.read_text()
+
+    def test_wayvnc_authenticates_through_its_own_pam_service(self):
+        out, log, _gc = self._hyprland("arch", "latest", "pacman")
+        self.assertEqual(
+            "auth    required pam_unix.so\naccount required pam_unix.so\n",
+            self.vm.etc("/etc/pam.d/wayvnc").read_text(),
+        )
+        w = self.vm.home / ".config/wayvnc"
+        conf = (w / "config").read_text()
+        for cle in (
+            "enable_auth=true",
+            "enable_pam=true",
+            "address=0.0.0.0",
+            "port=5900",
+            "rsa_private_key_file=rsa_key.pem",
+        ):
+            self.assertIn(cle, conf)
+        for nom in ("config", "rsa_key.pem", "tls_key.pem"):
+            self.assertEqual(0o600, (w / nom).stat().st_mode & 0o777, nom)
+        self.assertEqual(0o700, w.stat().st_mode & 0o777)
+        self.assertIn("VNC 5900 (wayvnc", out)
+        self.assertIn("firewall-cmd --permanent --add-service=vnc-server", log)
+
+    def test_hyprland_opens_by_itself_locks_and_starts_wayvnc(self):
+        _out, _log, gc = self._hyprland("arch", "latest", "pacman")
+        self.assertIn(
+            f'[initial_session]\ncommand = "start-hyprland"\n'
+            f'user = "{self.compte}"',
+            gc,
+        )
+        self.assertIn('user = "greeter"', gc)
+        lua = (self.vm.home / ".config/hypr/hyprland.lua").read_text()
+        self.assertLess(lua.index('"hyprlock"'), lua.index("wayvnc.service"))
+        self.assertNotIn("--immediate", lua)
+        unite = self.vm.home / ".config/systemd/user/wayvnc.service"
+        self.assertIn("ExecStart=/usr/bin/wayvnc", unite.read_text())
+        self.assertTrue((self.vm.home / ".config/hypr/hyprlock.conf").exists())
+
+    def test_hyprlang_config_also_locks_and_starts_wayvnc(self):
+        self._hyprland("ubuntu", "26.04", "apt-get")
+        conf = (self.vm.home / ".config/hypr/hyprland.conf").read_text()
+        self.assertIn("exec-once = hyprlock\n", conf)
+        self.assertIn("systemctl --user start wayvnc.service", conf)
+
+    # --- sessions X ----------------------------------------------------- #
+
+    def test_xrdp_opens_the_flavour_session(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        for nom in (".xsession", ".Xclients"):
+            f = self.vm.home / nom
+            self.assertEqual("#!/bin/sh\nexec startxfce4\n", f.read_text())
+            self.assertTrue(f.stat().st_mode & 0o100, nom)
+
+    def test_tigervnc_on_arch_names_the_flavour_session(self):
+        self.vm.stub("pacman")
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="arch", version="latest")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(
+            "session=i3",
+            (self.vm.home / ".config/tigervnc/config")
+            .read_text()
+            .splitlines(),
+        )
+
+    def test_an_existing_xsession_is_kept(self):
+        (self.vm.home / ".xsession").write_text("exec mien\n")
+        self.vm.stub("apt-get")
+        rc, out, _log = self.vm.run(_cmd("i3", distro="debian", version="13"))
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "exec mien\n", (self.vm.home / ".xsession").read_text()
+        )
 
 
 if __name__ == "__main__":
