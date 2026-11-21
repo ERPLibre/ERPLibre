@@ -3119,8 +3119,23 @@ def desktop_flavour_arg(valeur: str) -> str:
     return valeur
 
 
+# Versions dont KRdp est antérieur à 6.8 : NixOS 26.05 livre la 6.6, EPEL 10
+# la 6.7. Il propose NLA au client sans pouvoir le mener par PAM : un client
+# qui le tente est refusé, la sécurité TLS seule passe.
+KRDP_BEFORE_6_8 = frozenset(
+    {("nixos", "26.05"), ("almalinux", "10"), ("rocky", "10")}
+)
+
+# Versions dont le mode portail de KRdp perd environ une connexion sur deux
+# (abonnement à la réponse du portail après l'appel) : KRdp y tourne en mode
+# Plasma (qemu_install._qemu_krdp_setup_cmd). Le mode Plasma de la 6.6
+# (NixOS) ne crée aucun flux sans --monitor, et son mode portail n'y perd
+# rien à l'essai.
+KRDP_PORTAL_RACE = frozenset({("almalinux", "10"), ("rocky", "10")})
+
+
 def desktop_remote_rows(
-    remote: str, mgr: str
+    remote: str, mgr: str, tls_only: bool = False
 ) -> tuple[tuple[str, str, str], ...]:
     """Ligne d'accès distant du bloc « Bureau » pour le genre `remote`.
 
@@ -3132,7 +3147,8 @@ def desktop_remote_rows(
 
     L'adresse de la VM n'est routée que depuis l'hôte libvirt : le tunnel part
     du poste de travail, à travers cet hôte. Une saveur sans serveur
-    (« console ») renvoie à la console de l'hyperviseur.
+    (« console ») renvoie à la console de l'hyperviseur. `tls_only` : la
+    version est dans KRDP_BEFORE_6_8, la ligne KRdp le dit au client.
     """
     if remote == "console":
         return (
@@ -3165,13 +3181,12 @@ def desktop_remote_rows(
                 "VM's user and password" + verrou[1],
             ),
         )
-    # KRdp 6.6, celui de NixOS 26.05, refuse NLA en authentification PAM.
     tls = (
         (
             " ; client en sécurité TLS, pas NLA",
             "; client in TLS security, not NLA",
         )
-        if remote == "krdp" and mgr == "nix"
+        if remote == "krdp" and tls_only
         else ("", "")
     )
     return (
@@ -3398,7 +3413,9 @@ def build_motd(
         )
     if desktop:
         body.append("")
-        bureau_rows = DESKTOP_GUIDE + desktop_remote_rows(remote, mgr)
+        bureau_rows = DESKTOP_GUIDE + desktop_remote_rows(
+            remote, mgr, (distro, version) in KRDP_BEFORE_6_8
+        )
         bureau = _pick(("Bureau", "Desktop"), lang)
         if isinstance(desktop, str):
             bureau += f" — {desktop}"

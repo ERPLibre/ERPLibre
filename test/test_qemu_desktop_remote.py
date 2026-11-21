@@ -265,9 +265,11 @@ class _Invite:
         "/var/lib/erplibre/ca-bundle.crt",
         "/etc/X11/xrdp/xorg.conf",
         "/etc/polkit-1",
+        "/usr/share/wayland-sessions",
         "/sys/fs/selinux/enforce",
         "/sys/fs/selinux/booleans/"
         "unconfined_service_transition_to_unconfined_user",
+        "/etc/sysconfig/displaymanager",
     )
 
     def etc(self, chemin):
@@ -1199,6 +1201,73 @@ class TestNewFlavoursRun(unittest.TestCase):
             _indice(log, "install @kde-desktop-environment"),
         )
 
+    def test_krdp_before_6_8_runs_in_plasma_mode(self):
+        """KRdp 6.7 d'EPEL 10 perd la réponse du portail une connexion sur
+        deux : il tourne en mode Plasma, RemoteFX gardé."""
+        self.vm.stub("dnf")
+        self.vm.stub("crb")
+        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
+            "/usr/bin/crb", "crb"
+        )
+        rc, out, _log = self.vm.run(cmd, "almalinux")
+        self.assertEqual(0, rc, out)
+        d = (
+            self.vm.home / ".config/systemd/user/"
+            "app-org.kde.krdpserver.service.d"
+        )
+        self.assertEqual(
+            "[Service]\nExecStart=\n"
+            "ExecStart=/usr/bin/krdpserver --plasma\n",
+            (d / "erplibre-plasma.conf").read_text(),
+        )
+        self.assertIn("KRDP_DISABLE_H264=1", (d / "erplibre.conf").read_text())
+        self.assertIn("pas NLA", out)
+
+    def test_krdp_6_8_keeps_the_portal(self):
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        d = (
+            self.vm.home / ".config/systemd/user/"
+            "app-org.kde.krdpserver.service.d"
+        )
+        self.assertFalse((d / "erplibre-plasma.conf").exists())
+        self.assertIn("KRDP_DISABLE_H264=1", (d / "erplibre.conf").read_text())
+        self.assertNotIn("NLA", out)
+
+    def test_krdp_keeps_the_screen_on(self):
+        """Écran éteint après le verrou = image noire en KRdp 6.7."""
+        self.vm.stub("dnf")
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "[AC][Display]\nTurnOffDisplayWhenIdle=false\n",
+            (self.vm.home / ".config/powerdevilrc").read_text(),
+        )
+
+    def test_opensuse_sddm_autologin_is_named_in_sysconfig(self):
+        """Le SDDM d'openSUSE ignore [Autologin] tant que
+        DISPLAYMANAGER_AUTOLOGIN ne nomme pas le compte."""
+        self.vm.stub("zypper")
+        conf = self.vm.etc("/etc/sysconfig/displaymanager")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text('DISPLAYMANAGER_AUTOLOGIN=""\nDISPLAYMANAGER_X="y"\n')
+        rc, out, _log = self.vm.run(
+            _cmd("plasma", distro="opensuse", version="tumbleweed")
+        )
+        self.assertEqual(0, rc, out)
+        compte = subprocess.run(
+            ["id", "-un"], capture_output=True, text=True
+        ).stdout.strip()
+        self.assertEqual(
+            f'DISPLAYMANAGER_AUTOLOGIN="{compte}"\nDISPLAYMANAGER_X="y"\n',
+            conf.read_text(),
+        )
+
     _XORG = (
         'Section "Device"\n'
         '    Identifier "Video Card (xrdpdev)"\n'
@@ -1378,6 +1447,18 @@ class TestNewFlavoursRun(unittest.TestCase):
                 self.assertEqual(0, rc, out)
                 self.assertNotIn("dnf install -y xrdp-selinux", log)
                 self.assertFalse(any("semanage" in ligne for ligne in log))
+
+    def test_nixos_krdp_stays_in_portal_mode(self):
+        """Le mode Plasma de KRdp 6.6 ne crée aucun flux sans --monitor ;
+        NixOS garde le portail, et un mode Plasma laissé par un passage
+        précédent est retiré."""
+        cmd = _cmd("plasma", distro="nixos", version="26.05")
+        self.assertNotIn("--plasma", cmd)
+        self.assertIn(
+            'rm -f "$HOME/.config/systemd/user/'
+            'app-org.kde.krdpserver.service.d/erplibre-plasma.conf"',
+            cmd,
+        )
 
     def test_dnf_xrdp_comes_with_its_x_server(self):
         """xorgxrdp n'est pas une dépendance du xrdp de Fedora et d'EPEL :
@@ -2117,6 +2198,27 @@ class TestRemoteAccessPerRelease(unittest.TestCase):
         return out, log
 
     # --- KRdp ----------------------------------------------------------- #
+
+    def test_the_session_file_present_is_named(self):
+        """Tumbleweed ne livre que plasmawayland.desktop ; un nom absent
+        n'ouvrirait aucune session."""
+        sessions = self.vm.etc("/usr/share/wayland-sessions")
+        sessions.mkdir(parents=True)
+        (sessions / "plasmawayland.desktop").write_text("[Desktop Entry]\n")
+        self._plasma("opensuse", "tumbleweed", "zypper")
+        conf = self.vm.etc("/etc/sddm.conf.d") / "erplibre-autologin.conf"
+        self.assertIn("Session=plasmawayland.desktop\n", conf.read_text())
+
+    def test_krdp_mode_change_reaches_the_running_server(self):
+        """Rejoué sur une VM dont la session tourne, le changement de mode
+        est relu par systemd et KRdp relancé."""
+        _out, log = self._plasma("almalinux", "10", "dnf")
+        self.assertLess(
+            _indice(log, "systemctl --user daemon-reload"),
+            _indice(
+                log, "systemctl --user try-restart app-org.kde.krdpserver"
+            ),
+        )
 
     def test_krdp_authenticates_the_session_account_with_pam(self):
         out, log = self._plasma("fedora", "44", "dnf")

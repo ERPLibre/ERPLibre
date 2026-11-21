@@ -425,9 +425,11 @@ class TestDesktopBlock(unittest.TestCase):
                 self.assertIn(compte, motd)
                 self.assertNotIn("5901", motd)
 
-    def _acces(self, distro, remote, lang="fr", desktop="xfce"):
+    def _acces(
+        self, distro, remote, lang="fr", desktop="xfce", version="latest"
+    ):
         motd = dq.build_motd(
-            distro, "latest", "amd64", lang, desktop=desktop, remote=remote
+            distro, version, "amd64", lang, desktop=desktop, remote=remote
         )
         # La glose se replie sur plusieurs lignes : on la relit d'un seul
         # tenant.
@@ -468,10 +470,23 @@ class TestDesktopBlock(unittest.TestCase):
             with self.subTest(remote=remote):
                 self.assertNotIn("verrouillée", self._acces("ubuntu", remote))
 
-    def test_krdp_on_nixos_asks_for_tls_security(self):
-        """KRdp 6.6 refuse NLA en authentification PAM."""
-        self.assertIn("pas NLA", self._acces("nixos", "krdp"))
-        self.assertNotIn("NLA", self._acces("fedora", "krdp"))
+    def test_krdp_before_6_8_asks_for_tls_security(self):
+        """KRdp 6.6 (NixOS 26.05) et 6.7 (EPEL 10) refusent NLA en
+        authentification PAM ; la 6.8 de Fedora et d'Arch le mène."""
+        for distro, version in (
+            ("nixos", "26.05"),
+            ("almalinux", "10"),
+            ("rocky", "10"),
+        ):
+            with self.subTest(distro=distro):
+                self.assertIn(
+                    "pas NLA", self._acces(distro, "krdp", version=version)
+                )
+        for distro, version in (("fedora", "44"), ("arch", "latest")):
+            with self.subTest(distro=distro):
+                self.assertNotIn(
+                    "NLA", self._acces(distro, "krdp", version=version)
+                )
 
     def test_a_console_flavour_gets_no_tunnel(self):
         """COSMIC n'a aucun serveur : un tunnel y mènerait à un port fermé."""

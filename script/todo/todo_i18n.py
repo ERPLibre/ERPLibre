@@ -7871,6 +7871,10 @@ TRANSLATIONS = {
         "fr": "règle polkit non écrite ; les sessions xrdp peuvent demander un mot de passe",
         "en": "polkit rule not written; xrdp sessions may ask for a password",
     },
+    "screen power-off left on; KRdp may show black": {
+        "fr": "extinction de l'écran laissée active ; KRdp peut n'envoyer que du noir",
+        "en": "screen power-off left on; KRdp may show black",
+    },
     "portal not pre-authorised; confirm the first connection on the VM console": {
         "fr": "portail non pré-autorisé ; confirmez la première connexion sur la console de la VM",
         "en": "portal not pre-authorised; confirm the first connection on the VM console",

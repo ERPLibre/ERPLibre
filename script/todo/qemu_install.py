@@ -1837,6 +1837,8 @@ class QemuInstallMixin:
         `keep_login` : le fichier du mot de passe du compte reste dans la
         VM (voir _qemu_grd_remote_cmd). Faux, le repli xrdp le retire aussi :
         xrdp passe par PAM et n'en a pas l'usage."""
+        from script.qemu.deploy_qemu import KRDP_BEFORE_6_8
+
         de = self._QEMU_DESKTOP.get(flavour) if flavour else None
         if de is None:
             raise ValueError(f"unknown desktop flavour: {flavour!r}")
@@ -2101,7 +2103,9 @@ class QemuInstallMixin:
                     # démarrent avec la session ouverte d'office ; « off » écarte
                     # la chaîne xrdp ci-dessous.
                     else "EL_REM=off; "
-                    + self._qemu_wayland_remote_say(remote, nix)
+                    + self._qemu_wayland_remote_say(
+                        remote, (distro, version) in KRDP_BEFORE_6_8
+                    )
                 )
             )
             + 'if [ "$EL_REM" = grd ]; then '
@@ -2262,18 +2266,17 @@ class QemuInstallMixin:
             "sudo systemctl restart systemd-logind || true; fi; "
         )
 
-    def _qemu_wayland_remote_say(self, remote, nix=False):
+    def _qemu_wayland_remote_say(self, remote, tls_only=False):
         """Lignes d'annonce de l'accès distant d'une saveur Wayland : le port,
         le client, le compte de la VM et le tunnel, ou la console seule.
 
-        `nix` : KRdp 6.6, celui de NixOS 26.05, propose NLA au client sans
-        pouvoir le mener par PAM ; un client qui le tente est refusé, la
-        sécurité TLS seule passe."""
+        `tls_only` : la version est dans deploy_qemu.KRDP_BEFORE_6_8, dont le
+        KRdp refuse NLA par PAM ; l'annonce demande la sécurité TLS."""
         compte = t("VM account and password")
         if remote == "krdp":
             tls = (
                 f'echo "     {t("RDP client in TLS security, not NLA")}"; '
-                if nix
+                if tls_only
                 else ""
             )
             return (
@@ -2392,8 +2395,12 @@ class QemuInstallMixin:
             if remote in ("x11", "grd"):
                 out += self._qemu_polkit_remote_cmd()
         if remote == "krdp":
+            from script.qemu.deploy_qemu import KRDP_PORTAL_RACE
+
             out += self._qemu_krdp_setup_cmd(
-                self._qemu_desktop_value(de, "service", distro, version), nix
+                self._qemu_desktop_value(de, "service", distro, version),
+                nix,
+                (distro, version) in KRDP_PORTAL_RACE,
             )
         if flavour == "hyprland":
             out += self._qemu_hyprland_setup_cmd(distro, version, nix)
@@ -2429,24 +2436,43 @@ class QemuInstallMixin:
             f'|| echo "   ⚠ {ko}"; fi; '
         )
 
-    def _qemu_autologin_cmd(self, service, session):
-        """Bloc shell : ouvre d'office la session `session` du compte de la
+    def _qemu_autologin_cmd(self, service, sessions):
+        """Bloc shell : ouvre d'office une session Wayland du compte de la
         VM, par un fichier de /etc/<service>.conf.d. SDDM et
         plasma-login-manager lisent la même section [Autologin] ; le nom de
         session porte son « .desktop », sans lequel plasma-login-manager
         l'ignore. Le verrou posé au démarrage de la session
-        (_qemu_krdp_setup_cmd) referme aussitôt l'écran de la console."""
+        (_qemu_krdp_setup_cmd) referme aussitôt l'écran de la console.
+
+        `sessions` : noms possibles, le premier par défaut ; le premier
+        présent dans /usr/share/wayland-sessions est retenu. Un nom absent
+        n'ouvre rien, sans erreur.
+
+        Le SDDM d'openSUSE n'ouvre aucune session d'office tant que
+        DISPLAYMANAGER_AUTOLOGIN, dans /etc/sysconfig/displaymanager, ne
+        nomme pas le compte : la section [Autologin] seule y reste lettre
+        morte."""
         dossier = f"/etc/{service}.conf.d"
-        texte = f"[Autologin]\\nUser=%s\\nSession={session}\\n"
+        texte = "[Autologin]\\nUser=%s\\nSession=%s\\n"
         ko = t("automatic login not configured")
+        choix = f"EL_SES={sessions[0]}; for s in {' '.join(sessions)}; do "
+        choix += (
+            '[ -f "/usr/share/wayland-sessions/$s" ] && { EL_SES=$s; break; }; '
+            "done; "
+        )
+        sysconfig = "/etc/sysconfig/displaymanager"
         return (
-            f"sudo mkdir -p {dossier} && "
-            f'printf "{texte}" "$(id -un)" '
+            choix + f"sudo mkdir -p {dossier} && "
+            f'printf "{texte}" "$(id -un)" "$EL_SES" '
             f"| sudo tee {dossier}/erplibre-autologin.conf >/dev/null "
             f'|| echo "   ⚠ {ko}"; '
+            f"if [ -f {sysconfig} ]; then "
+            "sudo sed -i "
+            '"s/^DISPLAYMANAGER_AUTOLOGIN=.*/DISPLAYMANAGER_AUTOLOGIN=\\"$(id -un)\\"/" '
+            f'{sysconfig} || echo "   ⚠ {ko}"; fi; '
         )
 
-    def _qemu_krdp_setup_cmd(self, service, nix=False):
+    def _qemu_krdp_setup_cmd(self, service, nix=False, plasma_mode=False):
         """Bloc shell : KRdp en RDP 3389 dans la session Plasma Wayland.
 
         KRdp ne sert qu'une session ouverte, celle de son propriétaire, et
@@ -2466,6 +2492,16 @@ class QemuInstallMixin:
         - KRDP_DISABLE_H264=1 : RemoteFX Progressive. Sans encodeur H.264
           réel — Fedora, EPEL et openSUSE n'installent que le stub
           noopenh264 —, un client qui annonce H.264 n'aurait pas d'image.
+        - `plasma_mode` (deploy_qemu.KRDP_PORTAL_RACE, KRdp 6.7 d'EPEL 10) :
+          « krdpserver --plasma », capture par KWin au lieu du portail. Le
+          mode portail de ces versions s'abonne à la réponse du portail
+          APRÈS l'appel ; le portail, qui répond sans boîte de dialogue,
+          la livre parfois avant, et la connexion reste sans image, une fois
+          sur deux environ. Le mode Plasma n'a pas de presse-papiers.
+        - Écran jamais éteint (powerdevilrc, TurnOffDisplayWhenIdle) :
+          Plasma éteint la sortie une minute après le verrou, KWin ne produit
+          plus d'image, et KRdp 6.7 ne la rallume pas ; le client n'aurait que
+          du noir. Dans une VM, l'éteindre n'économise rien.
         - Portail : l'autorisation « kde-authorized » de PermissionStore
           évite la boîte de dialogue que xdg-desktop-portal-kde ouvre sur la
           console à la première connexion. Faute de bus de session, elle
@@ -2478,6 +2514,7 @@ class QemuInstallMixin:
         uu = "$HOME/.config/systemd/user"
         pas_unite = t("krdpserver user unit not found; KRdp not enabled")
         pas_cert = t("KRdp certificate not generated")
+        pas_veille = t("screen power-off left on; KRdp may show black")
         pas_portail = t(
             "portal not pre-authorised; confirm the first connection "
             "on the VM console"
@@ -2498,7 +2535,9 @@ class QemuInstallMixin:
             (
                 ""
                 if nix
-                else self._qemu_autologin_cmd(service, "plasma.desktop")
+                else self._qemu_autologin_cmd(
+                    service, ("plasma.desktop", "plasmawayland.desktop")
+                )
             )
             + f'mkdir -p "{k}" "$HOME/.config/autostart" '
             f'"{uu}/plasma-workspace.target.wants" "{uu}/{unite}.d"; '
@@ -2522,6 +2561,31 @@ class QemuInstallMixin:
                 f"{uu}/{unite}.d/erplibre.conf",
                 "[Service]\nEnvironment=KRDP_DISABLE_H264=1",
             )
+            # Le chemin du binaire est lu ici : /usr/bin ailleurs, le profil
+            # du système sous NixOS.
+            # Réécrit, ou retiré, à chaque passage : KRDP_PORTAL_RACE décide
+            # seule du mode, puis l'unité est relue et KRdp relancé s'il
+            # tourne déjà (VM qui avait le bureau).
+            + (
+                "printf '[Service]\\nExecStart=\\nExecStart=%s --plasma\\n' "
+                '"$(command -v krdpserver || echo /usr/bin/krdpserver)" '
+                f'> "{uu}/{unite}.d/erplibre-plasma.conf"; '
+                if plasma_mode
+                else f'rm -f "{uu}/{unite}.d/erplibre-plasma.conf"; '
+            )
+            + f"{bus} systemctl --user daemon-reload >/dev/null 2>&1 || true; "
+            f"{bus} systemctl --user try-restart {unite} >/dev/null 2>&1 "
+            "|| true; " + "if command -v kwriteconfig6 >/dev/null 2>&1; then "
+            "kwriteconfig6 --file powerdevilrc --group AC --group Display "
+            "--key TurnOffDisplayWhenIdle false "
+            f'|| echo "   ⚠ {pas_veille}"; else '
+            + self._qemu_write_if_absent(
+                "$HOME/.config/powerdevilrc",
+                "[AC][Display]\nTurnOffDisplayWhenIdle=false",
+            )
+            + "fi; "
+            f"{bus} systemctl --user try-restart plasma-powerdevil.service "
+            ">/dev/null 2>&1 || true; "
             + self._qemu_write_if_absent(
                 "$HOME/.config/autostart/erplibre-lock.desktop", verrou
             )
