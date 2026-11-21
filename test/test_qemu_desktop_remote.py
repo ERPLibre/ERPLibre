@@ -121,6 +121,7 @@ class _Invite:
         "tee",
         "test",
         "touch",
+        "head",
     )
 
     def __init__(self, tmp):
@@ -265,8 +266,12 @@ class _Invite:
         "/var/lib/erplibre/ca-bundle.crt",
         "/etc/pam.d/vnc",
         "/etc/X11/xrdp/xorg.conf",
+        "/etc/locale.conf",
         "/etc/polkit-1",
         "/usr/share/wayland-sessions",
+        "/usr/share/glib-2.0/schemas",
+        "/usr/share/wallpapers",
+        "/usr/share/backgrounds",
         "/usr/lib/NetworkManager/conf.d/00-server.conf",
         "/etc/NetworkManager/conf.d/90-erplibre-auto-default.conf",
         "/sys/fs/selinux/enforce",
@@ -482,10 +487,13 @@ class TestDesktopsForRelease(unittest.TestCase):
             )
 
     def test_the_rolling_releases_get_every_flavour(self):
+        """Arch a toutes les saveurs ; Tumbleweed toutes sauf Cinnamon, que
+        ses paquets bloquent au démarrage."""
         tout = list(TODO._QEMU_DESKTOP)
         self.assertEqual(tout, TODO._qemu_desktops_for("arch", "latest"))
         self.assertEqual(
-            tout, TODO._qemu_desktops_for("opensuse", "tumbleweed")
+            [f for f in tout if f != "cinnamon"],
+            TODO._qemu_desktops_for("opensuse", "tumbleweed"),
         )
 
     def test_the_order_is_the_table_order(self):
@@ -1475,6 +1483,32 @@ class TestNewFlavoursRun(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertFalse(surcharge.exists())
 
+    def test_the_vm_locale_is_installed(self):
+        """i3status quitte sur une locale absente ; l'image cloud d'EL n'a
+        que l'anglais."""
+        self.vm.stub("dnf")
+        self.vm.stub("locale", "echo C; echo en_US.utf8")
+        conf = self.vm.etc("/etc/locale.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text('LANG="fr_CA.UTF-8"\n')
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("dnf install -y glibc-langpack-fr", log)
+
+    def test_an_installed_locale_is_left_alone(self):
+        self.vm.stub("dnf")
+        self.vm.stub("locale", "echo C; echo fr_CA.utf8")
+        conf = self.vm.etc("/etc/locale.conf")
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text("LANG=fr_CA.UTF-8\n")
+        rc, out, log = self.vm.run(
+            _cmd("i3", distro="fedora", version="44"), "fedora"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(any("glibc-langpack" in ligne for ligne in log))
+
     def _polkit(self):
         """« install » qui écrit vraiment, et le dossier de polkit."""
         self.vm.stub("install", 'cat > "${@: -1}"')
@@ -1526,6 +1560,36 @@ class TestNewFlavoursRun(unittest.TestCase):
             _cmd("xfce", distro="debian", version="13"),
         )
 
+    def test_cinnamon_gets_a_wallpaper_when_its_own_is_gone(self):
+        """Le schéma nomme un fond que gnome-backgrounds 48 ne livre plus."""
+        self.vm.stub("zypper")
+        self.vm.stub("glib-compile-schemas")
+        schemas = self.vm.etc("/usr/share/glib-2.0/schemas")
+        schemas.mkdir(parents=True)
+        (schemas / "org.cinnamon.desktop.background.gschema.xml").write_text(
+            '<key name="picture-uri" type="s">\n'
+            "  <default>'file:///usr/share/backgrounds/gnome/"
+            "adwaita-timed.xml'</default>\n"
+            "</key>\n"
+        )
+        fond = self.vm.etc(
+            "/usr/share/wallpapers/openSUSEdefault/contents/images/"
+            "default.png"
+        )
+        fond.parent.mkdir(parents=True)
+        fond.write_text("png")
+        rc, out, log = self.vm.run(
+            _cmd("cinnamon", distro="opensuse", version="16.0")
+        )
+        self.assertEqual(0, rc, out)
+        ovr = schemas / "90_erplibre-cinnamon-background.gschema.override"
+        self.assertEqual(
+            "[org.cinnamon.desktop.background]\n"
+            f"picture-uri='file://{fond}'\n",
+            ovr.read_text(),
+        )
+        self.assertIn(f"glib-compile-schemas {schemas}", log)
+
     def test_xrdp_selinux_is_left_alone_when_present_or_without_selinux(self):
         self.vm.stub("dnf")
         self.vm.stub(
@@ -1563,6 +1627,20 @@ class TestNewFlavoursRun(unittest.TestCase):
             l for l in users.read_text().splitlines() if l.startswith(":1=")
         ]
         self.assertEqual(1, len(lignes), users.read_text())
+
+    def test_opensuse_package_lines_carry_what_the_image_lacks(self):
+        de = TODO._QEMU_DESKTOP
+        self.assertIn("pkexec", de["gnome"]["zypper"].split())
+        for ligne in de["i3"]["zypper"].values():
+            self.assertIn("dejavu-fonts", ligne.split())
+        self.assertIn(
+            "_erplibre-cinnamon-background",
+            _cmd("cinnamon", distro="opensuse", version="16.0"),
+        )
+        self.assertNotIn(
+            "_erplibre-cinnamon-background",
+            _cmd("xfce", distro="opensuse", version="16.0"),
+        )
 
     def test_nixos_krdp_stays_in_portal_mode(self):
         """Le mode Plasma de KRdp 6.6 ne crée aucun flux sans --monitor ;

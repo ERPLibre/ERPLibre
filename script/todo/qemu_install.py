@@ -478,9 +478,19 @@ class QemuInstallMixin:
                 "rocky": "@base-x cinnamon lightdm lightdm-gtk dbus-x11",
             },
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
-            "zypper": "cinnamon lightdm",
+            # Ni greeter, ni serveur X, ni pilote d'entrée, ni police ne
+            # viennent avec cinnamon sur openSUSE : lightdm échoue sans les
+            # deux premiers, la console reste sans clavier ni souris ni texte
+            # sans les deux autres.
+            "zypper": "cinnamon lightdm lightdm-gtk-greeter xorg-x11-server "
+            "xf86-input-libinput dejavu-fonts",
             "service": "lightdm",
             "probe": "cinnamon",
+            # Le paquet cinnamon d'openSUSE ne désigne aucun gestionnaire :
+            # display-manager-legacy.service suit l'alternative, et échoue
+            # sans elle.
+            "dm_force": True,
+            "suse_dm": "lightdm",
             "remote": "x11",
             "x_session": "cinnamon-session",
             "vnc_session": "cinnamon",
@@ -617,7 +627,8 @@ class QemuInstallMixin:
         # dmenu n'est sur apt qu'un paquet virtuel de suckless-tools. Le
         # groupe i3 de Fedora ne contient aucun terminal. Leap 16.0 n'a pas
         # i3status, seulement i3status-rust, qui exige sa propre
-        # configuration : la barre y est laissée sans état.
+        # configuration : la barre y est laissée sans état. L'image minimale
+        # d'openSUSE n'a aucune police : la barre s'y réduit à 3 pixels.
         "i3": {
             "label": "i3",
             "probe": "i3",
@@ -635,9 +646,9 @@ class QemuInstallMixin:
             "lightdm-gtk-greeter",
             "zypper": {
                 "*": "i3 i3status i3lock dmenu xterm xorg-x11-server "
-                "lightdm lightdm-gtk-greeter",
+                "lightdm lightdm-gtk-greeter dejavu-fonts",
                 "opensuse:16.0": "i3 i3lock dmenu xterm xorg-x11-server "
-                "lightdm lightdm-gtk-greeter",
+                "lightdm lightdm-gtk-greeter dejavu-fonts",
             },
             "service": "lightdm",
             "dm_force": True,
@@ -673,13 +684,16 @@ class QemuInstallMixin:
             "arch": ("latest",),
             "nixos": ("26.05",),
         },
+        # Tumbleweed : cinnamon y est lié à libgirepository-1.0 et cjs à la
+        # 2.0 ; les deux chargés dans le même processus, Cinnamon se bloque au
+        # démarrage, à la console comme par xrdp.
         "cinnamon": {
             "ubuntu": ("24.04", "25.10", "26.04"),
             "debian": ("12", "13"),
             "fedora": ("44", "45"),
             "almalinux": ("9",),
             "rocky": ("9",),
-            "opensuse": ("16.0", "tumbleweed"),
+            "opensuse": ("16.0",),
             "arch": ("latest",),
             "nixos": ("26.05",),
         },
@@ -2399,11 +2413,22 @@ class QemuInstallMixin:
             )
         nix = distro == "nixos"
         if not nix:
+            out += self._qemu_locale_cmd()
             out += self._qemu_nm_auto_default_cmd()
             # « grd » : le repli xrdp de GNOME (grdctl sans mode système)
             # ouvre lui aussi des sessions xrdp.
             if remote in ("x11", "grd"):
                 out += self._qemu_polkit_remote_cmd()
+            if flavour == "cinnamon":
+                out += self._qemu_cinnamon_wallpaper_cmd()
+            if flavour == "xfce" and distro == "opensuse":
+                ko = t("Xfce volume plugin not installed")
+                out += (
+                    "sudo zypper --non-interactive install "
+                    "--auto-agree-with-licenses "
+                    "xfce4-panel-plugin-pulseaudio >/dev/null 2>&1 "
+                    f'|| echo "   ⚠ {ko}"; '
+                )
         if remote == "krdp":
             from script.qemu.deploy_qemu import KRDP_PORTAL_RACE
 
@@ -2514,6 +2539,58 @@ class QemuInstallMixin:
             f"&& [ ! -e {conf} ]; then "
             f"printf '[main]\\nno-auto-default=\\n' "
             f"| sudo tee {conf} >/dev/null || true; fi; "
+        )
+
+    def _qemu_locale_cmd(self):
+        """Bloc shell : installe la locale que /etc/locale.conf nomme.
+
+        Les images cloud d'EL n'ont que glibc-langpack-en, celles d'openSUSE
+        que glibc-locale-base (C, en_US) : i3status y quitte sur « Could not
+        set locale » et la barre d'i3 affiche une erreur ; Cinnamon retombe
+        sur la locale C. openSUSE n'a pas de paquet par langue."""
+        ko = t("locale not installed")
+        return (
+            'EL_LC=$(sed -n \'s/^LANG="\\{0,1\\}\\([^"]*\\)"\\{0,1\\}$/\\1/p\' '
+            "/etc/locale.conf 2>/dev/null || true); "
+            'case "$EL_LC" in ""|C|C.*|POSIX) ;; *) '
+            "EL_LN=$(printf '%s' \"$EL_LC\" "
+            "| sed 's/\\.[Uu][Tt][Ff]-\\{0,1\\}8$/.utf8/'); "
+            'if ! locale -a 2>/dev/null | grep -qxF "$EL_LN"; then '
+            "if command -v dnf >/dev/null 2>&1; then "
+            'sudo dnf install -y "glibc-langpack-${EL_LC%%_*}" >/dev/null 2>&1 '
+            f'|| echo "   ⚠ {ko} : $EL_LC"; '
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive install --auto-agree-with-licenses "
+            "glibc-locale >/dev/null 2>&1 "
+            f'|| echo "   ⚠ {ko} : $EL_LC"; fi; fi;; esac; '
+        )
+
+    def _qemu_cinnamon_wallpaper_cmd(self):
+        """Bloc shell : un fond d'écran pour Cinnamon quand le sien manque.
+
+        Le schéma org.cinnamon.desktop.background nomme par défaut
+        /usr/share/backgrounds/gnome/adwaita-timed.xml, que gnome-backgrounds
+        48 ne livre plus (Leap 16.0) ; Cinnamon peint alors l'écran en noir.
+        Une surcharge de schéma nomme le fond de la distribution. Rien n'est
+        écrit tant que le fichier par défaut existe."""
+        sch = "/usr/share/glib-2.0/schemas"
+        ovr = f"{sch}/90_erplibre-cinnamon-background.gschema.override"
+        fonds = (
+            "/usr/share/wallpapers/openSUSEdefault/contents/images/default.png "
+            "/usr/share/backgrounds/gnome/adwaita-l.jpg"
+        )
+        return (
+            f"if [ -f {sch}/org.cinnamon.desktop.background.gschema.xml ] "
+            f"&& [ ! -f {ovr} ]; then "
+            'EL_CUR=$(sed -n \'/<key name="picture-uri"/,/<\\/key>/'
+            "s|.*<default>.file://\\([^<]*\\).</default>.*|\\1|p' "
+            f"{sch}/org.cinnamon.desktop.background.gschema.xml | head -1); "
+            'if [ -n "$EL_CUR" ] && [ ! -e "$EL_CUR" ]; then EL_WP=; '
+            f'for f in {fonds}; do [ -r "$f" ] && {{ EL_WP=$f; break; }}; done; '
+            '[ -n "$EL_WP" ] && printf "[org.cinnamon.desktop.background]'
+            '\\npicture-uri=\'file://%s\'\\n" "$EL_WP" '
+            f"| sudo tee {ovr} >/dev/null && sudo glib-compile-schemas {sch}; "
+            "fi; fi; "
         )
 
     def _qemu_autologin_cmd(self, service, sessions):

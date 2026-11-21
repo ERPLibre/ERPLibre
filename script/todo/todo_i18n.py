@@ -7871,6 +7871,14 @@ TRANSLATIONS = {
         "fr": "règle polkit non écrite ; les sessions xrdp peuvent demander un mot de passe",
         "en": "polkit rule not written; xrdp sessions may ask for a password",
     },
+    "locale not installed": {
+        "fr": "locale non installée",
+        "en": "locale not installed",
+    },
+    "Xfce volume plugin not installed": {
+        "fr": "greffon de volume de Xfce non installé",
+        "en": "Xfce volume plugin not installed",
+    },
     "VNC certificate not generated": {
         "fr": "certificat VNC non généré",
         "en": "VNC certificate not generated",
