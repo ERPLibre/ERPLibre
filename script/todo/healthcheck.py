@@ -159,6 +159,7 @@ TITRES = {
     "verifier_disque": "Free disk space",
     "verifier_postgresql": "PostgreSQL",
     "verifier_odoo": "Odoo HTTP port",
+    "verifier_cache_qemu": "QEMU cache version",
     "verifier_commandes_claude": "Claude commands",
     "verifier_journaux": "TODO session logs",
 }
@@ -183,6 +184,7 @@ ICONES_VERIFICATIONS = {
     "verifier_disque": "💾",
     "verifier_postgresql": "🐘",
     "verifier_odoo": "🌐",
+    "verifier_cache_qemu": "📀",
     "verifier_commandes_claude": "🤖",
     "verifier_journaux": "📜",
 }
@@ -1800,6 +1802,69 @@ def verifier_odoo(ctx):
     return Resultat(nom, INFO, t("not running"))
 
 
+# Le binaire du cache de téléchargement des VM QEMU, là où
+# script/install/install_qemu_cache.sh le pose, et le fichier de son code qui
+# porte sa version. Chaque correctif du cache incrémente cette constante : un
+# binaire qui annonce moins tourne sans les correctifs qui ont suivi.
+CACHE_QEMU_BINAIRE = "/usr/local/bin/erplibre_go_qemu_cache"
+CACHE_QEMU_SOURCE = os.path.join("script", "qemu_cache", "main.go")
+_VERSION_GO = re.compile(r'^const version = "(\d+(?:\.\d+)*)"', re.MULTILINE)
+_VERSION_ANNONCEE = re.compile(r"(\d+(?:\.\d+)+)")
+
+
+def _version(texte):
+    return tuple(int(partie) for partie in texte.split("."))
+
+
+def verifier_cache_qemu(ctx):
+    """Le cache QEMU installé est-il à la version de son code ?
+
+    Absent, il n'est pas un défaut : le cache ne sert qu'à qui déploie des
+    VM locales. Installé, `--version` le dit sans réseau ni service ; plus
+    ancien que le code, il est une alerte qui nomme l'entrée de TODO qui le
+    rebâtit, avec sudo. Plus récent, la branche du checkout est en retard
+    sur celle qui l'a bâti : une information.
+    """
+    nom = titre(verifier_cache_qemu)
+    source = todo_etat._lire(os.path.join(ctx.racine, CACHE_QEMU_SOURCE))
+    trouvee = _VERSION_GO.search(source)
+    if not trouvee:
+        return Resultat(nom, SAUTE, t("no version in the cache code"))
+    code = trouvee.group(1)
+    if not os.path.exists(CACHE_QEMU_BINAIRE):
+        return Resultat(
+            nom, INFO, t("not installed, {code} in the code").format(code=code)
+        )
+    sortie = ctx.lancer([CACHE_QEMU_BINAIRE, "--version"], delai=10)
+    annoncee = _VERSION_ANNONCEE.search(sortie.stdout)
+    if sortie.returncode != 0 or not annoncee:
+        return Resultat(nom, ALERTE, t("unreadable output"))
+    installee = annoncee.group(1)
+    if _version(installee) == _version(code):
+        return Resultat(nom, OK, installee)
+    texte = t("{installed} installed, {code} in the code").format(
+        installed=installee, code=code
+    )
+    if _version(installee) > _version(code):
+        return Resultat(nom, INFO, texte)
+    return Resultat(
+        nom,
+        ALERTE,
+        texte,
+        resolutions=[
+            Resolution(
+                None,
+                t("📥 Rebuild the QEMU cache"),
+                [
+                    t(
+                        "Execute › Deploy › QEMU cache › Cache - Install or reinstall builds the binary from the code of this checkout and puts it in place, with sudo; the service then runs the version of the code."
+                    )
+                ],
+            )
+        ],
+    )
+
+
 def claude_code_present():
     """Vrai si Claude Code est installé pour ce compte : son exécutable sur
     le PATH, ou son dossier ~/.claude, que sa première ouverture crée."""
@@ -1969,6 +2034,7 @@ VERIFICATIONS = (
     ("environnement", verifier_disque),
     ("environnement", verifier_postgresql),
     ("environnement", verifier_odoo),
+    ("environnement", verifier_cache_qemu),
     ("environnement", verifier_commandes_claude),
     ("environnement", verifier_journaux),
 )
