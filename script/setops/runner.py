@@ -248,36 +248,82 @@ def jouer(
         else None
     )
     try:
-        fait = subprocess.run(
+        processus = subprocess.Popen(
             list(argv),
             env=env,
             cwd=cwd,
-            # `input` OU `stdin`, JAMAIS LES DEUX : les passer ensemble lève
-            # une ValueError, que ce module attrape — le geste rendrait alors
-            # « n'a pas pu tourner » sur un argument, ce qui se diagnostique
-            # très loin de sa cause. Avec `input`, l'outil ouvre le tube lui-même.
-            **(
-                {"input": entree}
-                if entree is not None
-                else {"stdin": subprocess.DEVNULL}
-            ),
+            # `input` OU `stdin` : avec un texte à passer, le tube est ouvert
+            # ici et rempli par `communicate`. Sans lui l'entrée est fermée.
+            stdin=subprocess.PIPE
+            if entree is not None
+            else subprocess.DEVNULL,
             stdout=sortie,
             stderr=erreur,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=delai,
-            check=False,
+            # UN GESTE CAPTURÉ A SA PROPRE SESSION, donc son propre groupe :
+            # à la borne, c'est le GROUPE qui est abattu. Tuer le seul premier
+            # processus laisse ses enfants — `make` lance `ansible-playbook` —
+            # poursuivre leur travail sans personne pour lire ce qu'ils
+            # disent. Sans terminal de contrôle, un enfant qui voudrait y
+            # demander quelque chose échoue aussitôt au lieu d'attendre la
+            # borne. Un geste NON capturé reste au terminal de l'opérateur :
+            # c'est lui qui répond à ses questions.
+            start_new_session=capture,
         )
-    except subprocess.TimeoutExpired as souci:
-        # CE QUI A DÉJÀ ÉTÉ DIT EST GARDÉ. Jeté, le verdict d'un déploiement
-        # qui a tourné une heure en imprimant son avancement devenait celui
-        # d'un binaire introuvable, et l'écran annonçait « n'a pas pu tourner
-        # du tout » — faux, et sans la moindre trace de ce qui s'est passé.
-        return Verdict(None, souci.output or "" if capture else "")
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         return Verdict(None, "")
-    return Verdict(fait.returncode, fait.stdout or "")
+    try:
+        dit, _ = processus.communicate(entree, timeout=delai)
+    except subprocess.TimeoutExpired as souci:
+        abat(processus, groupe=capture)
+        # CE QUI A DÉJÀ ÉTÉ DIT EST GARDÉ. Jeté, le verdict d'un déploiement
+        # qui a tourné une heure en imprimant son avancement devenait celui
+        # d'un binaire introuvable. Il arrive en OCTETS, `text` ou non : la
+        # bibliothèque ne décode que la sortie d'un processus terminé.
+        return Verdict(None, en_texte(souci.output) if capture else "")
+    except BaseException:
+        abat(processus, groupe=capture)
+        raise
+    return Verdict(processus.returncode, dit or "")
+
+
+def en_texte(lu):
+    """`lu` en texte, qu'il arrive en octets, en texte ou pas du tout."""
+    if isinstance(lu, bytes):
+        return lu.decode("utf-8", errors="replace")
+    return lu or ""
+
+
+def abat(processus, groupe=False, grace=5):
+    """Arrête `processus`, et tout son groupe si `groupe`. Ne lève jamais.
+
+    TERM d'abord, pour qu'un outil range ce qu'il tient ; KILL après `grace`
+    secondes. Le groupe porte le numéro du processus, qui l'a fondé : il
+    survit à son fondateur, et ses enfants y restent.
+    """
+    import signal
+
+    def signale(signal_):
+        try:
+            if groupe:
+                os.killpg(processus.pid, signal_)
+            else:
+                processus.send_signal(signal_)
+        except OSError:
+            pass
+
+    signale(signal.SIGTERM)
+    try:
+        processus.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+    signale(signal.SIGKILL)
+    try:
+        processus.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def detacher(argv, env=None, cwd=None, journal=None):

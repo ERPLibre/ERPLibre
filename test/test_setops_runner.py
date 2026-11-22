@@ -268,24 +268,57 @@ class TestLeJournalDuDetache(unittest.TestCase):
             self.assertEqual("intact\n", tenu.read())
 
 
+def vivant(pid, borne=3.0):
+    """`pid` court-il encore après `borne` secondes ? Un zombie est mort."""
+    import time
+
+    fin = time.monotonic() + borne
+    while True:
+        try:
+            with open(f"/proc/{pid}/stat", encoding="utf-8") as lu:
+                etat = lu.read().rsplit(")", 1)[1].split()[0]
+        except OSError:
+            return False
+        if etat == "Z":
+            return False
+        if time.monotonic() > fin:
+            return True
+        time.sleep(0.05)
+
+
 class TestLeDelaiGardeCeQuiAEteDit(unittest.TestCase):
     """Jeté, le verdict d'un geste qui a tourné une heure en imprimant son
     avancement devenait celui d'un binaire introuvable."""
 
     def test_what_was_printed_before_the_bound_survives_it(self):
-        panne = subprocess.TimeoutExpired(
-            cmd=["banc"], timeout=1, output="tâche 3 sur 7 terminée\n"
+        """Joué pour de vrai : la bibliothèque rend ce texte en octets."""
+        vu = R.jouer(
+            ("sh", "-c", "echo 'tâche 3 sur 7 terminée'; sleep 30"), delai=1
         )
-        with mock.patch.object(subprocess, "run", side_effect=panne):
-            vu = R.jouer(["banc"])
         self.assertIsNone(vu.code)
+        self.assertIsInstance(vu.sortie, str)
         self.assertIn("tâche 3 sur 7", vu.sortie)
 
     def test_a_gesture_that_printed_nothing_says_nothing(self):
-        panne = subprocess.TimeoutExpired(cmd=["banc"], timeout=1)
-        with mock.patch.object(subprocess, "run", side_effect=panne):
-            vu = R.jouer(["banc"])
-        self.assertEqual("", vu.sortie)
+        vu = R.jouer(("sleep", "30"), delai=1)
+        self.assertEqual((None, ""), (vu.code, vu.sortie))
+
+    def test_the_children_of_a_gesture_do_not_outlive_its_bound(self):
+        """`make` lance l'outil qui travaille : abattre `make` seul le laisse
+        tourner sans personne pour lire ce qu'il dit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            note = os.path.join(tmp, "pid")
+            vu = R.jouer(
+                ("sh", "-c", f"sleep 30 & echo $! > {note}; wait"), delai=1
+            )
+            self.assertIsNone(vu.code)
+            with open(note, encoding="utf-8") as lu:
+                enfant = int(lu.read())
+        self.assertFalse(vivant(enfant))
+
+    def test_a_gesture_within_its_bound_is_not_touched(self):
+        vu = R.jouer(("sh", "-c", "sleep 0.2; echo fini"), delai=10)
+        self.assertEqual((0, "fini\n"), (vu.code, vu.sortie))
 
 
 class TestLEntreeNePasseJamaisParLeDisque(unittest.TestCase):
