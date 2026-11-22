@@ -4157,6 +4157,26 @@ def cle_du_gabarit():
     return cle if fabrique().FORME_CLE_PUBLIQUE.match(cle) else ""
 
 
+def autorite_du_cache():
+    """L'autorité du cache de téléchargement que la station porte, ou « ».
+
+    Lue là où le service du cache l'écrit, comme le fait le labo pour ses
+    propres machines : sans cache sur la station, rien n'est déposé.
+    """
+    import sys
+
+    chemin = os.path.join(RACINE, "long_test")
+    if chemin not in sys.path:
+        sys.path.insert(0, chemin)
+    import descente
+
+    try:
+        with open(descente.CACHE_CA, encoding="utf-8") as lu:
+            return lu.read()
+    except OSError:
+        return ""
+
+
 def dans_l_invite(terrain, elevation, vmid, commande, borne=60):
     """Joue `commande` dans le gabarit, par l'agent. Rend (code, sortie), ou
     None si l'agent n'a pas rendu de verdict lisible."""
@@ -4359,6 +4379,19 @@ def installe_le_gabarit(moteur, mesures, vmid, reseau, cle, dire=print):
         if lu is None or lu[0] != 0:
             return (
                 f"le réseau du gabarit n'a pas été délégué à Cloud-Init : {lu}"
+            )
+
+    # LE CACHE DU LABO INTERCEPTE TOUT CE QUI SORT, la flotte comprise : elle
+    # sort par le terrain. Son autorité, quand la station en porte une, entre
+    # dans le gabarit, et chaque clone lui fait confiance.
+    pem = autorite_du_cache()
+    if pem:
+        lu = dans_l_invite(
+            terrain, elevation, vmid, G.commande_autorite(pem), 120
+        )
+        if lu is None or lu[0] != 0:
+            return (
+                f"l'autorité du cache n'est pas entrée dans le gabarit : {lu}"
             )
 
     dire("    attente de la fin du premier démarrage (Cloud-Init, apt)")
@@ -5864,7 +5897,7 @@ def principal(argv=None):
             terrain,
             passes,
             tampon.getvalue(),
-            {p: verdicts_de_la_passe(p) for p in passes},
+            {p: verdicts_de_la_passe(p, debut) for p in passes},
         ),
     )
     if souci:
@@ -6019,10 +6052,18 @@ def chemin_rapport(base=""):
     return os.path.join(dossier_journal(base), RAPPORT)
 
 
-def verdicts_de_la_passe(passe):
-    """Les verdicts de la dernière recette jouée dans `passe`, ou {}."""
+def verdicts_de_la_passe(passe, depuis=0.0):
+    """Les verdicts de la recette jouée dans `passe` DEPUIS `depuis`, ou {}.
+
+    UN JOURNAL PLUS ANCIEN N'EST PAS CE LANCEMENT : il appartient à un
+    lancement précédent, et ses « OK » se liraient comme ceux d'une recette
+    que celui-ci n'a jamais atteinte.
+    """
+    chemin = chemin_journal(passe, "valider")
     try:
-        with open(chemin_journal(passe, "valider"), encoding="utf-8") as lu:
+        if os.path.getmtime(chemin) < depuis:
+            return {}
+        with open(chemin, encoding="utf-8") as lu:
             return verdicts_de_recette(lu.read())
     except OSError:
         return {}

@@ -784,6 +784,55 @@ class TestLeSystemePoseSeDecrit(unittest.TestCase):
                 self.assertIsNone(G.ecarts_systeme(texte))
 
 
+PEM_INVENTE = (
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIBaW52ZW50ZQ==\n"
+    "-----END CERTIFICATE-----\n"
+)
+
+
+class TestLAutoriteDuCache(unittest.TestCase):
+    """Un cache qui intercepte présente ses certificats : un gabarit qui ne
+    connaît pas son autorité rejette chaque téléchargement HTTPS."""
+
+    def test_the_certificate_reaches_the_store_unchanged(self):
+        """Joué dans un shell, dossier et outil remplacés."""
+        commande = G.commande_autorite(PEM_INVENTE)
+        with tempfile.TemporaryDirectory() as tmp:
+            cible = os.path.join(tmp, "ca.crt")
+            env = bouchons(
+                os.path.join(tmp, "bin"), update_ca_certificates="true"
+            )
+            vu = subprocess.run(
+                ["sh", "-c", commande.replace(G.CHEMIN_AUTORITE, cible)],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+            self.assertEqual(0, vu.returncode, vu.stderr)
+            with open(cible, encoding="utf-8") as f:
+                self.assertEqual(PEM_INVENTE, f.read())
+
+    def test_the_store_is_rebuilt_after_the_deposit(self):
+        commande = G.commande_autorite(PEM_INVENTE)
+        self.assertLess(
+            commande.index(G.CHEMIN_AUTORITE),
+            commande.index("update-ca-certificates"),
+        )
+
+    def test_what_is_not_one_certificate_is_never_deposited(self):
+        for texte in (
+            "",
+            None,
+            "pas un certificat",
+            PEM_INVENTE.replace("CERTIFICATE", "PRIVATE KEY"),
+            PEM_INVENTE + PEM_INVENTE,
+        ):
+            with self.subTest(texte=texte):
+                self.assertEqual("", G.commande_autorite(texte))
+
+
 class TestLeMaterielAvantConversion(unittest.TestCase):
     CONFORME = (
         "agent: enabled=1\nbios: ovmf\nboot: order=scsi0\n"

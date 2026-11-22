@@ -730,3 +730,32 @@ def cmds_menage(dossier):
     if not chemins_installateur(dossier):
         return ()
     return (f"rm -rf {shlex.quote(dossier.strip().rstrip('/'))}",)
+
+
+# L'AUTORITÉ D'UN CACHE QUI INTERCEPTE, déposée dans le magasin du système.
+# Un cache de téléchargement transparent présente SES certificats : un système
+# qui ne connaît pas son autorité rejette chaque téléchargement HTTPS sur
+# « self-signed certificate in certificate chain ». Déposée dans le gabarit,
+# elle vaut pour chacun de ses clones.
+CHEMIN_AUTORITE = "/usr/local/share/ca-certificates/erplibre-cache.crt"
+FORME_CERTIFICAT = re.compile(
+    r"^-----BEGIN CERTIFICATE-----\n"
+    r"[A-Za-z0-9+/=\n]+"
+    r"-----END CERTIFICATE-----\n?$"
+)
+
+
+def commande_autorite(pem):
+    """La commande qui dépose `pem` et reconstruit le magasin, ou « ».
+
+    Ce qui n'a pas la forme d'UN certificat PEM est refusé : une clé privée
+    ou un texte quelconque n'a rien à faire dans le magasin d'un modèle.
+    """
+    texte = (pem or "").strip() + "\n"
+    if not FORME_CERTIFICAT.match(texte) or texte.count("BEGIN") != 1:
+        return ""
+    corps = base64.b64encode(texte.encode()).decode()
+    return (
+        f"echo {corps} | base64 -d > {CHEMIN_AUTORITE}"
+        " && update-ca-certificates"
+    )

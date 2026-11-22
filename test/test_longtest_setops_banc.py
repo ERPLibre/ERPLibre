@@ -1897,7 +1897,9 @@ class TestLeBancBatitSonGabarit(unittest.TestCase):
     """Bâti contre un faux terrain : ce qui compte est CE QUI EST JOUÉ, dans
     quel ordre, et ce qui est retiré quand la fabrication échoue."""
 
-    def batit(self, terrain=None, cle=CLE_INVENTEE, nettoyage="", **bornes):
+    def batit(
+        self, terrain=None, cle=CLE_INVENTEE, nettoyage="", pem="", **bornes
+    ):
         terrain = terrain or FauxTerrain()
         appels = []
 
@@ -1911,6 +1913,7 @@ class TestLeBancBatitSonGabarit(unittest.TestCase):
             mock.patch.object(B, "hache", lambda s: "$6$sel$hachageInvente"),
             mock.patch.object(B, "forge_opaque", lambda: "secret-invente"),
             mock.patch.object(B, "cle_du_gabarit", lambda: cle),
+            mock.patch.object(B, "autorite_du_cache", lambda: pem),
             mock.patch.object(B, "joue_une_etape", etape),
             mock.patch.object(B, "env_ansible", lambda m: {}),
             mock.patch.object(B, "saut_ansible", lambda m, t: {}),
@@ -1952,6 +1955,18 @@ class TestLeBancBatitSonGabarit(unittest.TestCase):
         _s, terrain, _a = self.batit(terrain)
         self.assertTrue(terrain.joue("qm create 9001"))
         self.assertFalse(terrain.joue("qm create 9000"))
+
+    def test_the_lab_cache_authority_enters_the_template_when_present(self):
+        """Le cache du labo intercepte la flotte, qui sort par le terrain :
+        son autorité entre dans le gabarit, donc dans chaque clone."""
+        pem = (
+            "-----BEGIN CERTIFICATE-----\nMIIBaW52ZW50ZQ==\n"
+            "-----END CERTIFICATE-----\n"
+        )
+        _s, terrain, _a = self.batit(pem=pem)
+        self.assertTrue(terrain.joue("update-ca-certificates"))
+        _s, terrain, _a = self.batit(pem="")
+        self.assertFalse(terrain.joue("update-ca-certificates"))
 
     def test_the_secret_never_reaches_the_node(self):
         """Ni en clair ni encodé, ni sur une ligne ni sur une entrée : seul
@@ -5085,6 +5100,19 @@ class TestLeBancTourneSansMoi(unittest.TestCase):
         self.assertIn("la recette n'a pas tenu", texte)
         self.assertIn("(2 min)", texte)
 
+    def test_a_journal_older_than_the_launch_is_not_its_recipe(self):
+        """Une passe arrêtée avant sa recette n'a pas de verdicts : le
+        journal d'un lancement précédent ne parle pas pour elle."""
+        chemin = os.path.join(self.d, "env-valider.log")
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(sortie_de_recette())
+        os.utime(chemin, (1000, 1000))
+        with mock.patch.object(
+            B, "chemin_journal", lambda passe, cible, base="": chemin
+        ):
+            self.assertEqual({}, B.verdicts_de_la_passe("env", 2000))
+            self.assertTrue(B.verdicts_de_la_passe("env", 500))
+
     def test_a_real_launch_leaves_its_report(self):
         def lance(args, passes, terrain):
             print("  ✓ le banc est allé au bout")
@@ -5095,7 +5123,7 @@ class TestLeBancTourneSansMoi(unittest.TestCase):
             mock.patch.object(
                 B, "chemin_rapport", lambda: os.path.join(self.d, "r.txt")
             ),
-            mock.patch.object(B, "verdicts_de_la_passe", lambda p: {}),
+            mock.patch.object(B, "verdicts_de_la_passe", lambda p, d: {}),
             mock.patch.object(B, "dire_plan", lambda *a: None),
             redirect_stdout(io.StringIO()),
         ):
