@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Execute : Execute, qu'ouvre le menu principal, ses
 sous-menus Code, Config, Process, Test, Uninstall, Image Odoo, Analyse
-module et Python, Update et Debug, qu'ouvre Code, et Generate from
-pre-configuration, qu'ouvre Config.
+module, Python et System, Update et Debug, qu'ouvre Code, Generate from
+pre-configuration, qu'ouvre Config, et Containers, qu'ouvre System.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -69,12 +69,7 @@ EXECUTE = Menu(
             "Docker / Podman - Container engines", "prompt_execute_container"
         ),
         Section("System"),
-        # System dessine son menu lui-même (`system_menu.py`).
-        Entry(
-            "System - Diagnostic and disk space",
-            "prompt_execute_system",
-            crumb="System",
-        ),
+        Entry("System - Diagnostic and disk space", "prompt_execute_system"),
     ],
     back=None,
     render="once",
@@ -302,6 +297,61 @@ PYTHON = Menu(
         Entry("Install uv - Faster pip", "execute_install_uv", danger=True),
     ],
     intro="Python and Poetry tools!",
+    render="once",
+)
+
+# L'espace à récupérer efface, les caches du système se vident par sudo,
+# et la mémoire par processus installe par sudo l'outil qui manque :
+# `danger`. Le cache des VM aussi : sa méthode, une feuille de l'arbre,
+# ouvre CACHE_AGE (`menus/deploy.py`), dont les nettoyages portent
+# `danger`, et lancer la feuille y mènerait. Le diagnostic et la mémoire
+# GPU demandent avant d'écrire un rapport ou de relire en root ; les
+# répertoires lourds sont un rapport ; Containers est un menu déclaré,
+# dont les nettoyages portent `danger` eux-mêmes.
+SYSTEM = Menu(
+    "prompt_execute_system",
+    "System",
+    [
+        Entry("System diagnostic", "_system_diagnostic"),
+        Entry("Space to reclaim", "_system_espace", danger=True),
+        Entry(
+            "Heavy directories next to the repository",
+            "_system_depots_lourds",
+        ),
+        Entry("System caches (sudo)", "_system_caches_sudo", danger=True),
+        Entry(
+            "QEMU download cache - size and cleanup",
+            "_system_cache_qemu",
+            danger=True,
+        ),
+        Entry("Containers - size and cleanup", "_system_conteneurs"),
+        Entry("CPU memory per process", "_system_cpu", danger=True),
+        Entry("GPU memory per process", "_system_gpu"),
+    ],
+    intro="System and disk space!",
+    render="once",
+)
+
+# Les trois nettoyages de Docker / Podman (CONTAINER, `menus/deploy.py`),
+# par les mêmes méthodes, derrière le poids que rend « system df » à
+# l'ouverture. Chacun efface pour de bon : `danger`.
+CONTAINERS = Menu(
+    "_system_conteneurs",
+    "Containers",
+    [
+        Entry(
+            "Remove unused images, containers and volumes",
+            "_container_nettoyage",
+            danger=True,
+        ),
+        Entry(
+            "By workspace - a compose project and what it holds",
+            "_container_nettoyer_projets",
+            danger=True,
+        ),
+        Entry("Images one by one", "_container_nettoyer_images", danger=True),
+    ],
+    opens="_system_conteneurs_ouvre",
     render="once",
 )
 

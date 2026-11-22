@@ -567,5 +567,79 @@ class TestLesCachesSudoCtrlC(unittest.TestCase):
         self.assertFalse(any("beta :" in v for v in vus))
 
 
+class TestLesConteneurs(unittest.TestCase):
+    """System › Containers (CONTAINERS, `menus/execute.py`) : « system df »
+    du moteur retenu, puis les trois nettoyages ; sans moteur qui réponde,
+    rien ne se lance et le menu ne se dessine pas."""
+
+    FICHE = {"moteur": "podman", "sans_sudo": True, "docker_host": None}
+
+    def setUp(self):
+        # Un menu dessiné enregistre sa clé de télémétrie dans le HOME :
+        # aucun test de cette classe n'y écrit.
+        self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
+
+    def todo(self, fiche):
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+        todo._container_fiche = lambda: fiche
+        return todo
+
+    def test_without_an_engine_the_opening_gives_none(self):
+        todo = self.todo(None)
+        with mock.patch("builtins.print"):
+            self.assertIsNone(todo._system_conteneurs_ouvre())
+        todo.execute.exec_command_live.assert_not_called()
+
+    def test_without_an_engine_the_menu_draws_nothing(self):
+        todo = self.todo(None)
+        vus = []
+        # Un menu dessiné sans moteur lèverait à sa question au lieu de la
+        # reposer sans fin.
+        with (
+            mock.patch(
+                "click.prompt",
+                side_effect=AssertionError("menu drawn without an engine"),
+            ) as question,
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(" ".join(map(str, a))),
+            ),
+        ):
+            self.assertIsNone(todo._system_conteneurs())
+        question.assert_not_called()
+        todo.execute.exec_command_live.assert_not_called()
+        self.assertFalse(any("[1]" in v for v in vus), vus)
+
+    def test_with_an_engine_the_weight_comes_before_the_menu(self):
+        todo = self.todo(self.FICHE)
+        with mock.patch("builtins.print"):
+            self.assertEqual(todo._system_conteneurs_ouvre(), {})
+        todo.execute.exec_command_live.assert_called_once_with(
+            "podman system df", source_erplibre=False
+        )
+
+    def test_each_number_runs_its_cleanup_then_zero_goes_back(self):
+        from script.todo.todo import TODO
+
+        todo = self.todo(self.FICHE)
+        with (
+            mock.patch.object(TODO, "_container_nettoyage") as inutilises,
+            mock.patch.object(TODO, "_container_nettoyer_projets") as projets,
+            mock.patch.object(TODO, "_container_nettoyer_images") as images,
+            mock.patch("click.prompt", side_effect=["3", "1", "0"]),
+            mock.patch("builtins.print"),
+        ):
+            self.assertIs(todo._system_conteneurs(), False)
+        images.assert_called_once_with()
+        inutilises.assert_called_once_with()
+        projets.assert_not_called()
+        todo.execute.exec_command_live.assert_called_once_with(
+            "podman system df", source_erplibre=False
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

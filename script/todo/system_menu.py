@@ -18,8 +18,6 @@ import subprocess
 import sys
 import time
 
-import click
-
 from script.execute.execute import Execute
 from script.todo import (
     system_cleanup,
@@ -27,7 +25,9 @@ from script.todo import (
     system_diagnostic,
     system_gpu,
 )
+from script.todo.menus import execute as menus_execute
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 # Les jours d'inactivité au-delà desquels un reste de /tmp ou une session
 # web d'Odoo devient un candidat.
@@ -397,49 +397,9 @@ def choisir_en_ligne(candidats):
 
 class SystemMenuMixin:
     def prompt_execute_system(self):
-        print(f"🤖 {t('System and disk space!')}")
-        choices = [
-            {"prompt_description": t("System diagnostic")},
-            {"prompt_description": t("Space to reclaim")},
-            {
-                "prompt_description": t(
-                    "Heavy directories next to the repository"
-                )
-            },
-            {"prompt_description": t("System caches (sudo)")},
-            {
-                "prompt_description": t(
-                    "QEMU download cache - size and cleanup"
-                )
-            },
-            {"prompt_description": t("Containers - size and cleanup")},
-            {"prompt_description": t("CPU memory per process")},
-            {"prompt_description": t("GPU memory per process")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._system_diagnostic()
-            elif status == "2":
-                self._system_espace()
-            elif status == "3":
-                self._system_depots_lourds()
-            elif status == "4":
-                self._system_caches_sudo()
-            elif status == "5":
-                self._system_cache_qemu()
-            elif status == "6":
-                self._system_conteneurs()
-            elif status == "7":
-                self._system_cpu()
-            elif status == "8":
-                self._system_gpu()
-            else:
-                print(t("Command not found !"))
+        """System, déclaré dans SYSTEM (`menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.SYSTEM)
 
     def _system_diagnostic(self):
         faits = system_diagnostic.collecter(".")
@@ -818,38 +778,19 @@ class SystemMenuMixin:
 
     def _system_conteneurs(self):
         """Le poids des images, conteneurs et volumes, puis les nettoyages
-        du menu Conteneurs."""
+        de CONTAINERS (`menus/execute.py`). Rend False sur [0], et None,
+        le menu fermé, sans moteur qui réponde."""
+        return navigate(self, menus_execute.CONTAINERS)
+
+    def _system_conteneurs_ouvre(self):
+        """Ce qui ouvre le menu des conteneurs : « system df » du moteur
+        retenu. Rend {}, que le menu ouvre sans rien ajouter aux entrées,
+        ou None sans moteur qui réponde, sans rien lancer."""
         from script.todo import container_runtime
 
         fiche = self._container_fiche()
         if not fiche:
-            return
+            return None
         cmd = container_runtime.commande(fiche, ["system", "df"])
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
-        choices = [
-            {
-                "prompt_description": t(
-                    "Remove unused images, containers and volumes"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "By workspace - a compose project and what it holds"
-                )
-            },
-            {"prompt_description": t("Images one by one")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._container_nettoyage()
-            elif status == "2":
-                self._container_nettoyer_projets()
-            elif status == "3":
-                self._container_nettoyer_images()
-            else:
-                print(t("Command not found !"))
+        return {}

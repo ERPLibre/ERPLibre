@@ -190,6 +190,41 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertIsNotNone(noeud, "colonne Proxmox VE absente de l'arbre")
         self.assertGreaterEqual(len(noeud.get("children") or []), 15)
 
+    def test_the_system_column_carries_its_eleven_entries(self):
+        # Execute › System montre ses huit entrées, et Containers, l'une
+        # d'elles, les trois nettoyages de son menu.
+        system = self._noeud("System", self._noeud("Execute"))
+        self.assertIsNotNone(system, "colonne System absente de l'arbre")
+        self.assertEqual(
+            [enfant["label"] for enfant in system["children"]],
+            [
+                "System diagnostic",
+                "Space to reclaim",
+                "Heavy directories next to the repository",
+                "System caches (sudo)",
+                "QEMU download cache - size and cleanup",
+                "Containers",
+                "CPU memory per process",
+                "GPU memory per process",
+            ],
+        )
+        conteneurs = system["children"][5]
+        self.assertTrue(conteneurs["is_menu"])
+        self.assertEqual(
+            [(f["label"], f["method"]) for f in conteneurs["children"]],
+            [
+                (
+                    "Remove unused images, containers and volumes",
+                    "_container_nettoyage",
+                ),
+                (
+                    "By workspace - a compose project and what it holds",
+                    "_container_nettoyer_projets",
+                ),
+                ("Images one by one", "_container_nettoyer_images"),
+            ],
+        )
+
     def test_the_telemetry_entry_is_a_menu_of_four_leaves(self):
         # [5] du menu principal est un sous-menu de quatre feuilles ; les
         # autres entrées gardent leur numéro.
@@ -375,7 +410,10 @@ class TestLArbreDesMenus(unittest.TestCase):
         # sondent sans confirmation les VM de la machine ou les hôtes de
         # ~/.ssh/config, le retrait d'une version d'Odoo, la restauration
         # par-dessus et l'effacement d'une base ou des volumes du conteneur
-        # ERPLibre, la synchronisation et la reconfiguration des dépôts de
+        # ERPLibre, dans System, l'espace à récupérer, les caches vidés par
+        # sudo, le cache des VM qui ouvre ses nettoyages, ceux des
+        # conteneurs et l'outil de mémoire que sudo installe, la
+        # synchronisation et la reconfiguration des dépôts de
         # Repo, ce qui, dans la démonstration de la passerelle et le
         # modem, installe, agit en root, écrit une règle ou un service
         # système, envoie un SMS ou passe un vrai appel, et la remise à
@@ -401,6 +439,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         cache = f"{deploy} › QEMU cache"
         network = "TODO › Execute › Network"
         docker = "TODO › Execute › Docker / Podman"
+        system = "TODO › Execute › System"
         modem = "TODO › Assistant › Modem"
         # Les trois entrées de Repo qui lancent `repo sync` ou
         # `make repo_configure_all` sans confirmation.
@@ -566,6 +605,18 @@ class TestLArbreDesMenus(unittest.TestCase):
                 ),
                 (f"{docker} › Restore a .zip backup into the container", {}),
                 (f"{docker} › Delete a database of the container", {}),
+                (f"{system} › Space to reclaim", {}),
+                (f"{system} › System caches (sudo)", {}),
+                (f"{system} › QEMU download cache - size and cleanup", {}),
+                *[
+                    (f"{system} › Containers › {label}", {})
+                    for label in (
+                        "Remove unused images, containers and volumes",
+                        "By workspace - a compose project and what it holds",
+                        "Images one by one",
+                    )
+                ],
+                (f"{system} › CPU memory per process", {}),
                 *[
                     (f"TODO › Install › {label}", {"cible": cible, "cmd": cmd})
                     for label, cible, cmd in (
@@ -1716,6 +1767,119 @@ class TestPythonMenuNumbering(RegistryCoherence, unittest.TestCase):
                 "execute_install_uv",
             ],
         )
+
+
+class TestSystemMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › System (SYSTEM, `menus/execute.py`) : le diagnostic du
+    poste, l'espace à récupérer et ce qui l'occupe, les caches du système,
+    celui des VM et celui des conteneurs, puis la mémoire par processus."""
+
+    MENU = "prompt_execute_system"
+    EXPECTED = {
+        "System diagnostic": "_system_diagnostic",
+        "Space to reclaim": "_system_espace",
+        "Heavy directories": "_system_depots_lourds",
+        "System caches": "_system_caches_sudo",
+        "QEMU download cache": "_system_cache_qemu",
+        "Containers": "_system_conteneurs",
+        "CPU memory": "_system_cpu",
+        "GPU memory": "_system_gpu",
+    }
+
+    def test_each_number_reaches_its_tool(self):
+        self.assertEqual(
+            [entry.action for entry in self.entries],
+            [
+                "_system_diagnostic",
+                "_system_espace",
+                "_system_depots_lourds",
+                "_system_caches_sudo",
+                "_system_cache_qemu",
+                "_system_conteneurs",
+                "_system_cpu",
+                "_system_gpu",
+            ],
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.intro, self.menu.render),
+            ("System", "System and disk space!", "once"),
+        )
+
+    def test_what_deletes_or_runs_sudo_is_dangerous(self):
+        # L'espace à récupérer efface, les caches du système passent par
+        # sudo, le cache des VM ouvre les nettoyages de CACHE_AGE, et la
+        # mémoire par processus installe son outil par sudo quand il
+        # manque : ni la TUI ni la page web ne les lancent.
+        self.assertEqual(
+            [entry.action for entry in self.entries if entry.danger],
+            [
+                "_system_espace",
+                "_system_caches_sudo",
+                "_system_cache_qemu",
+                "_system_cpu",
+            ],
+        )
+
+    def test_the_vm_cache_opens_cleanups_declared_dangerous(self):
+        # La feuille du cache des VM mène aux nettoyages de CACHE_AGE : elle
+        # porte `danger` tant que l'un d'eux le porte.
+        from script.todo.menus import deploy
+
+        self.assertTrue(
+            any(
+                e.danger
+                for e in deploy.CACHE_AGE.entries
+                if isinstance(e, Entry)
+            )
+        )
+        cache = next(
+            e for e in self.entries if e.action == "_system_cache_qemu"
+        )
+        self.assertTrue(cache.danger)
+
+
+class TestSystemContainersMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › System › Containers (CONTAINERS, `menus/execute.py`) :
+    trois nettoyages de Docker / Podman, derrière le poids que rend
+    « system df » à l'ouverture."""
+
+    MENU = "_system_conteneurs"
+    EXPECTED = {
+        "Remove unused": "_container_nettoyage",
+        "By workspace": "_container_nettoyer_projets",
+        "Images one by one": "_container_nettoyer_images",
+    }
+
+    def test_each_number_reaches_its_cleanup(self):
+        self.assertEqual(
+            [entry.action for entry in self.entries],
+            [
+                "_container_nettoyage",
+                "_container_nettoyer_projets",
+                "_container_nettoyer_images",
+            ],
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.opens, self.menu.render),
+            ("Containers", "_system_conteneurs_ouvre", "once"),
+        )
+
+    def test_each_cleanup_is_the_one_of_docker_podman(self):
+        # Même clé, même méthode et même `danger` que sous Docker / Podman :
+        # chaque nettoyage efface pour de bon.
+        from script.todo.menus import deploy
+
+        twins = {
+            e.key: e for e in deploy.CONTAINER.entries if isinstance(e, Entry)
+        }
+        for entry in self.entries:
+            twin = twins[entry.key]
+            self.assertEqual(
+                (entry.action, entry.kwargs, entry.danger),
+                (twin.action, twin.kwargs, twin.danger),
+                entry.key,
+            )
+            self.assertTrue(entry.danger, entry.key)
 
 
 class TestSealMenuNumbering(MenuCoherence, unittest.TestCase):
@@ -5304,24 +5468,21 @@ class TestMenuLabels(unittest.TestCase):
     d'Odoo — et non un écran où l'on navigue, et `select_databases`,
     celle de DatabaseManager, qui choisit une ou plusieurs bases. Leur
     donner un segment mettrait une miette sur une invite passagère.
-    D'autres, écrites à la main et ouvertes par un écran lui-même écrit à
-    la main, prennent leur segment de `crumbs_at` (Update d'Install) ou
-    n'en ont pas encore (Containers de System) : elles sortent de la liste
-    en devenant des menus déclarés.
+    Une autre, écrite à la main et ouverte par un écran lui-même écrit à
+    la main, prend son segment de `crumbs_at` (Update d'Install) : elle
+    sort de la liste en devenant un menu déclaré.
     """
 
     ECRANS_EXEMPTES = {
         "execute_odoo_upgrade",
         "select_databases",
         "prompt_install_update",
-        "_system_conteneurs",
     }
     # Menus ajoutés par develop, à migrer : écrits à la main, ils tiennent
     # leur segment de l'entrée qui les ouvre (`Entry.crumb`), le temps de
     # leur action. La liste ne fait que rétrécir : un menu migré déclare
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
-        "prompt_execute_system": "System",
         "prompt_execute_seal": "PAdES seal",
         "_claude_reglages_depot": "Repository settings",
     }
@@ -5391,6 +5552,8 @@ class TestMenuLabels(unittest.TestCase):
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
+        "prompt_execute_system": "System",
+        "_system_conteneurs": "Containers",
         "prompt_execute_proxmox": "Proxmox VE",
         "prompt_execute_vpn": "VPN",
         "prompt_execute_longtest": "Long test",
