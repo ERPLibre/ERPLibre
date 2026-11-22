@@ -1831,17 +1831,13 @@ TRANSLATIONS = {
         "fr": "Interactive : les questions suivantes sont posées",
         "en": "Interactive: the next questions are asked",
     },
-    "Unattended: each next question takes its default answer (default)": {
-        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut (défaut)",
-        "en": "Unattended: each next question takes its default answer (default)",
+    "Unattended: each next question takes its default answer": {
+        "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut",
+        "en": "Unattended: each next question takes its default answer",
     },
     "git is missing and TODO needs it: run ./todo.sh, which offers to install it.": {
         "fr": "git est absent et TODO en a besoin : lancez ./todo.sh, qui propose de l'installer.",
         "en": "git is missing and TODO needs it: run ./todo.sh, which offers to install it.",
-    },
-    "Select [2]: ": {
-        "fr": "Sélection [2] : ",
-        "en": "Select [2]: ",
     },
     "Unattended: the default answers are taken. No git identity is written, mise is installed if absent, PyCharm is not offered.": {
         "fr": "Sans interaction : les réponses par défaut sont prises. Aucune identité git n'est écrite, mise est posé s'il manque, PyCharm n'est pas proposé.",

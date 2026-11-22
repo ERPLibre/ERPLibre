@@ -416,29 +416,33 @@ class TODO(
         )
 
     def _demander_systeme(self):
-        """Demande l'étape système ; rend True sur un oui. Posée APRÈS le
-        choix de prompt_install : une technologie qui installe ses propres
-        paquets ne passe pas ici. Pour une version d'Odoo, elle vient après
-        la dernière question qui offre [0] Retour : un retour ne laisse
-        rien d'installé.
+        """Demande l'étape système ; rend True sur un oui, False sur un non,
+        None sur Ctrl+D, que l'appelant lit comme un retour. Posée APRÈS le
+        choix entier de prompt_install : une technologie qui installe ses
+        propres paquets ne passe pas ici. Elle n'installe rien elle-même :
+        dans _install_run, _install_system_step installe après la suite et
+        l'identité git, et un retour à l'une d'elles ne laisse rien
+        d'installé.
 
         Entrée vaut oui quand _systeme_manquant trouve un manque, qui est
         nommé ; non quand tout est là."""
         manque = self._systeme_manquant()
         if manque:
             print(f"⚠  {t('System packages missing:')} {', '.join(manque)}")
-            return self._is_yes_default_yes(
-                input(
-                    f"💬 {t('First system installation? Installs the system packages first (Y/n): ')}"
+        try:
+            if manque:
+                return self._is_yes_default_yes(
+                    ui.ask(
+                        f"💬 {t('First system installation? Installs the system packages first (Y/n): ')}"
+                    )
+                )
+            return self._is_yes(
+                ui.ask(
+                    f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
                 )
             )
-        return self._is_yes(
-            input(
-                f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
-            )
-            .strip()
-            .lower()
-        )
+        except EOFError:
+            return None
 
     @staticmethod
     def _systeme_manquant():
@@ -490,27 +494,22 @@ class TODO(
         return manque
 
     def _choisir_suite(self):
-        """Demande comment se déroule la suite de l'installation ; rend True
-        pour « sans interaction ». Entrée choisit le sans interaction :
-        chaque question suivante (identité git, mise, PyCharm) prend sa
-        valeur par défaut, et personne n'a plus à rester devant
-        l'installation. L'interactif les pose."""
-        choix = {
-            "1": f"1: {t('Interactive: the next questions are asked')}",
-            "2": f"2: {t('Unattended: each next question takes its default answer (default)')}",
-        }
-        while True:
-            saisie = (
-                input(
-                    f"💬 {t('Rest of the installation:')}\n\t"
-                    + "\n\t".join(choix.values())
-                    + f"\n{t('Select [2]: ')}"
-                ).strip()
-                or "2"
-            )
-            if saisie in choix:
-                return saisie == "2"
-            print(f"{t('Error, cannot understand value')} '{saisie}'")
+        """Demande par `ui.choose` comment se déroule la suite de
+        l'installation ; rend True pour « sans interaction », False pour
+        l'interactif, None pour [0] Retour et Ctrl+D. Le sans interaction
+        est le défaut marqué d'une réponse vide : chaque question suivante
+        (identité git, mise, PyCharm) prend sa valeur par défaut, et
+        personne n'a plus à rester devant l'installation. L'interactif les
+        pose."""
+        return ui.choose(
+            f"💬 {t('Rest of the installation:')}",
+            [False, True],
+            default=True,
+            labels=[
+                t("Interactive: the next questions are asked"),
+                t("Unattended: each next question takes its default answer"),
+            ],
+        )
 
     @staticmethod
     def _ouvrir_ticket_sudo():
@@ -549,11 +548,15 @@ class TODO(
         interactif, l'installation système tourne dans ce terminal et
         l'appelant attend sa fin, au lieu d'une fenêtre à part ; PyCharm
         n'est pas proposé. Rend le code de l'installation système, 0 quand
-        elle n'a pas lieu, ou None quand l'attente de PyCharm est
-        abandonnée ([0] ou Ctrl+D) : l'installation système, si elle a été
-        demandée, est déjà partie, et l'appelant ne lance pas la suite."""
+        elle n'a pas lieu, ou None pour un retour : Ctrl+D à la question
+        système, qui ne lance rien, ou bien Ctrl+D à « Ouvrir PyCharm ? »
+        ou l'attente de PyCharm abandonnée ([0] ou Ctrl+D), où
+        l'installation système, si elle a été demandée, est déjà partie ;
+        l'appelant ne lance pas la suite."""
         if systeme is None:
             systeme = self._demander_systeme()
+            if systeme is None:
+                return None
         if systeme:
             cmd = prefixe + "./script/version/update_env_version.py --install"
             if non_interactif:
@@ -597,10 +600,11 @@ class TODO(
         if (has_pycharm or has_pycharm_community) and not os.path.exists(
             ".idea"
         ):
-            pycharm_configuration_input = (
-                input(f"💬 {t('Open PyCharm? (y/N): ')}").strip().lower()
-            )
-            if self._is_yes(pycharm_configuration_input):
+            try:
+                ouvrir = ui.ask(f"💬 {t('Open PyCharm? (y/N): ')}")
+            except EOFError:
+                return None
+            if self._is_yes(ouvrir):
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
 
                 cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
@@ -828,27 +832,34 @@ class TODO(
     ):
         """Lance l'installation `cmd` de la cible `cible` (« q », « w »,
         « m » ou une version d'Odoo) par bash, après l'étape système, la
-        suite et l'identité git : le choix est entier, seul l'abandon de
-        l'attente de PyCharm revient encore. Hors du mode `non_interactif`,
-        la suite est sans interaction par défaut, ses valeurs par défaut
-        prises, ou interactive (_choisir_suite) ; la cible « m » n'offre pas
-        ce choix, sa dernière étape faisant choisir un appareil Android au
-        clavier. `reponses`, `non_interactif` et `depuis_cli` sont ceux de
-        `prompt_install`. Rend le code de l'installation, 0 si elle réussit,
-        1 si sudo refuse son ticket, None quand l'attente de PyCharm est
-        abandonnée : la commande d'installation n'est alors pas lancée, mais
-        l'identité git et l'installation système, demandées avant, ont pu
-        l'être. Lancé depuis le menu, un échec relance TODO après avoir dit
-        son code de retour."""
+        suite et l'identité git, une fois le choix entier ; un retour à
+        l'une de ces questions ou à PyCharm ne lance pas la commande. Hors
+        du mode `non_interactif`, la suite est sans interaction par défaut,
+        ses valeurs par défaut prises, ou interactive (_choisir_suite) ; la
+        cible « m » n'offre pas ce choix, sa dernière étape faisant choisir
+        un appareil Android au clavier. `reponses`, `non_interactif` et
+        `depuis_cli` sont ceux de `prompt_install`. Rend le code de
+        l'installation, 0 si elle réussit, 1 si sudo refuse son ticket,
+        None pour un retour, où la commande d'installation n'est pas
+        lancée : [0] à la suite, ou Ctrl+D à la question système, à la
+        suite ou à l'identité git, qui ne laissent rien d'installé ni
+        d'écrit ; Ctrl+D à « Ouvrir PyCharm ? » ou l'attente de PyCharm
+        abandonnée, après lesquels l'identité git et l'installation
+        système, demandées avant, ont pu l'être. Lancé depuis le menu, un
+        échec relance TODO après avoir dit son code de retour."""
         systeme = reponses.get("systeme")
         if systeme is None:
             systeme = self._demander_systeme()
+            if systeme is None:
+                return None
         # La suite sans interaction, choisie au menu, passe aux commandes
         # par leur préfixe et non par os.environ : TODO, relancé après un
         # échec, refuserait son menu sous EL_NON_INTERACTIVE=1.
         sans_interaction, prefixe = non_interactif, ""
         if not non_interactif and cible != "m":
             sans_interaction = self._choisir_suite()
+            if sans_interaction is None:
+                return None
             if sans_interaction:
                 print(
                     t(
@@ -870,12 +881,12 @@ class TODO(
                     f" EL_INSTALL_MISE={'0' if mise is False else '1'} "
                 )
         # « q » n'installe qu'ERPLibre et ne lance pas repo init.
-        if cible != "q":
-            self._proposer_identite_git(
-                nom=reponses.get("git_nom"),
-                courriel=reponses.get("git_courriel"),
-                non_interactif=sans_interaction,
-            )
+        if cible != "q" and not self._proposer_identite_git(
+            nom=reponses.get("git_nom"),
+            courriel=reponses.get("git_courriel"),
+            non_interactif=sans_interaction,
+        ):
+            return None
         code = self._install_system_step(
             systeme=systeme, non_interactif=sans_interaction, prefixe=prefixe
         )
@@ -953,38 +964,55 @@ class TODO(
         proposées par défaut. Sur un non à la première question, rien
         n'est écrit : repo_init lance alors repo init sans terminal sur
         l'entrée, et il ne demande pas d'identité.
+
+        Rend True quand l'installation peut suivre, False sur Ctrl+D à
+        l'une de ses questions : rien n'est écrit, et l'appelant revient
+        sans installer.
         """
         if nom and courriel:
             self._ecrire_identite_git(nom, courriel)
-            return
+            return True
         if self._fragment_repo_init("repo_identity_ready").returncode == 0:
-            return
+            return True
         if non_interactif:
             print(
                 t(
                     "No git identity: repo init runs without asking for one (EL_GIT_NAME and EL_GIT_EMAIL set it)."
                 )
             )
-            return
+            return True
         print(
             f"⚠  {t('No git identity (user.name, user.email): repo init would ask for it.')}"
         )
-        if not self._is_yes_default_yes(
-            input(f"💬 {t('Configure it now? (Y/n): ')}")
-        ):
+        try:
+            configurer = ui.ask(f"💬 {t('Configure it now? (Y/n): ')}")
+        except EOFError:
+            return False
+        if not self._is_yes_default_yes(configurer):
             print(t("Skipped: the installation will not ask for it."))
-            return
+            return True
         nom = courriel = ""
         while True:
             nom = self._saisir_defaut(t("Your name"), nom)
+            if nom is None:
+                return False
             courriel = self._saisir_defaut(t("Your email"), courriel)
-            while not re.fullmatch(r"[^@\s]+@[^@\s]+", courriel):
+            while courriel is not None and not re.fullmatch(
+                r"[^@\s]+@[^@\s]+", courriel
+            ):
                 print(f"{t('Invalid email:')} '{courriel}'")
                 courriel = self._saisir_defaut(t("Your email"), "")
+            if courriel is None:
+                return False
             print(f"{t('Your identity is:')} {nom} <{courriel}>")
-            if self._is_yes(input(f"💬 {t('Is this correct? (y/N): ')}")):
+            try:
+                correcte = ui.ask(f"💬 {t('Is this correct? (y/N): ')}")
+            except EOFError:
+                return False
+            if self._is_yes(correcte):
                 break
         self._ecrire_identite_git(nom, courriel)
+        return True
 
     def _ecrire_identite_git(self, nom, courriel):
         """Écrit l'identité par repo_identity_set et dit si c'est fait."""
@@ -997,10 +1025,13 @@ class TODO(
     @staticmethod
     def _saisir_defaut(libelle, defaut):
         """Rend la saisie non vide pour `libelle` ; Entrée seule rend
-        `defaut` s'il n'est pas vide, sinon redemande."""
+        `defaut` s'il n'est pas vide, sinon redemande. None sur Ctrl+D."""
         while True:
             invite = f"{libelle} [{defaut}] : " if defaut else f"{libelle} : "
-            valeur = input(invite).strip()
+            try:
+                valeur = ui.ask(invite).strip()
+            except EOFError:
+                return None
             if valeur or defaut:
                 return valeur or defaut
 

@@ -304,7 +304,9 @@ class TestOrdreDesQuestions(Banc):
         for question in questions[:3]:
             self.assertNotIn(QUESTION_SYSTEME, question)
         self.assertIn(QUESTION_SYSTEME, questions[3])
-        self.assertIn(QUESTION_SUITE, questions[4])
+        # La suite est un choix : l'écran porte la question, et l'invite
+        # passée à input n'en est que la dernière ligne.
+        self.assertIn(QUESTION_SUITE, self.ecran)
         self.assertFalse(any(SANS_INTERACTION in c for c in commandes))
         self.assertIn(
             "./script/version/update_env_version.py --install", commandes
@@ -317,8 +319,12 @@ class TestOrdreDesQuestions(Banc):
         """Entrée à « Suite de l'installation » choisit le sans
         interaction : la commande porte EL_NON_INTERACTIVE=1."""
         questions, commandes = self.jouer(["1", "1", "1", "n", ""])
-        self.assertIn(QUESTION_SUITE, questions[4])
-        self.assertIn(todo_module.t("Select [2]: "), questions[4])
+        self.assertEqual(len(questions), 5)
+        self.assertIn(
+            f"[2] {t('Unattended: each next question takes its default answer')}"
+            f" {t('(default)')}",
+            self.ecran,
+        )
         self.assertTrue(
             any(SANS_INTERACTION in c for c in commandes), commandes
         )
@@ -414,8 +420,9 @@ class TestOrdreDesQuestions(Banc):
 
     def test_erplibre_only_keeps_the_system_question(self):
         questions, commandes = self.jouer(["q", "n", "1"])
+        self.assertEqual(len(questions), 3)
         self.assertIn(QUESTION_SYSTEME, questions[1])
-        self.assertIn(QUESTION_SUITE, questions[2])
+        self.assertIn(QUESTION_SUITE, self.ecran)
         self.assertEqual(commandes, ["./script/install/install_erplibre.sh"])
 
     def test_mobile_offers_no_unattended_rest(self):
@@ -489,8 +496,74 @@ class TestSuiteSansInteraction(Banc):
     def test_unknown_value_asks_again(self):
         questions, commandes = self.jouer(["1", "1", "1", "n", "x", "1"])
         self.assertEqual(len(questions), 6)
-        self.assertIn(QUESTION_SUITE, questions[5])
+        self.assertIn(f"{t('Invalid choice: ')}x", self.ecran)
+        apres = self.ecran.split(f"{t('Invalid choice: ')}x")[1]
+        self.assertIn(QUESTION_SUITE, apres)
         self.assertFalse(any(SANS_INTERACTION in c for c in commandes))
+
+    def test_the_rest_numbers_both_and_offers_back(self):
+        self.jouer(["1", "1", "1", "n", "0"])
+        self.assertIn(
+            f"[1] {t('Interactive: the next questions are asked')}", self.ecran
+        )
+        self.assertIn(
+            f"[2] {t('Unattended: each next question takes its default answer')}"
+            f" {t('(default)')}",
+            self.ecran,
+        )
+        self.assertIn(f"[0] {t('Back')}", self.ecran)
+
+
+class TestRetourApresLaVersion(Banc):
+    """La question système et la suite, posées une fois la version choisie :
+    [0] à la suite, Ctrl+D à l'une ou à l'autre reviennent sans rien
+    lancer, ni l'étape système, ni sudo, ni l'installation."""
+
+    def assert_rien_lance(self, commandes):
+        self.assertIsNone(self.code)
+        self.assertEqual(commandes, [])
+        self.assertFalse(
+            any(c[:1] == ["sudo"] for c in self.listes), self.listes
+        )
+
+    def test_ctrl_d_at_the_system_question(self):
+        # Défaut non quand rien ne manque, oui sinon : Ctrl+D ne vaut ni
+        # l'un ni l'autre, et la suite n'est pas demandée.
+        for manque in ([], ["psql"]):
+            with (
+                self.subTest(manque=manque),
+                mock.patch.object(
+                    TODO, "_systeme_manquant", staticmethod(lambda m=manque: m)
+                ),
+            ):
+                questions, commandes = self.jouer(["1", "1", "1", EOFError()])
+                self.assertEqual(len(questions), 4)
+                self.assertNotIn(QUESTION_SUITE, self.ecran)
+                self.assert_rien_lance(commandes)
+
+    def test_back_or_ctrl_d_at_the_rest(self):
+        # Un oui à la question système ne lance rien pour autant : l'étape
+        # système et le ticket sudo viennent après la suite.
+        for retour in ("0", EOFError()):
+            with self.subTest(retour=retour):
+                questions, commandes = self.jouer(["1", "1", "1", "y", retour])
+                self.assertEqual(len(questions), 5)
+                self.assert_rien_lance(commandes)
+
+    def test_the_system_step_asked_alone_goes_back_on_ctrl_d(self):
+        todo = TODO.__new__(TODO)
+        todo.execute = ExecuteFactice()
+        with (
+            mock.patch.object(builtins, "input", side_effect=EOFError),
+            mock.patch.object(
+                todo_module.subprocess,
+                "run",
+                side_effect=AssertionError("commande lancée"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertIsNone(todo._install_system_step())
+        self.assertEqual(todo.execute.commandes, [])
 
 
 class TestIdentiteGit(Banc):
@@ -528,7 +601,7 @@ class TestIdentiteGit(Banc):
     def test_refus_rien_n_est_ecrit(self):
         questions, commandes = self.jouer(["1", "1", "1", "n", "1", "n"])
         self.assertIn(QUESTION_SYSTEME, questions[3])
-        self.assertIn(QUESTION_SUITE, questions[4])
+        self.assertIn(QUESTION_SUITE, self.ecran)
         self.assertIn(todo_module.t("Configure it now? (Y/n): "), questions[5])
         self.assertEqual(self.ecrits, [])
         self.assertTrue(any("--install_dev" in c for c in commandes))
@@ -614,6 +687,27 @@ class TestIdentiteGit(Banc):
             self.ecrits,
             [("repo_identity_set", "Nom Fictif", "fictif@example.invalid")],
         )
+
+    def test_ctrl_d_a_chaque_question_n_installe_rien(self):
+        """Ctrl+D à « La configurer maintenant ? », au nom, au courriel, au
+        courriel redemandé ou à la confirmation : rien n'est écrit, et
+        l'installation ne part pas."""
+        debut = ["1", "1", "1", "n", "1"]
+        saisie = ["y", "Nom Fictif", "fictif@example.invalid"]
+        for suite in (
+            [EOFError()],
+            ["y", EOFError()],
+            ["y", "Nom Fictif", EOFError()],
+            ["y", "Nom Fictif", "sans-arobase", EOFError()],
+            [*saisie, EOFError()],
+        ):
+            with self.subTest(suite=suite):
+                self.ecrits.clear()
+                questions, commandes = self.jouer([*debut, *suite])
+                self.assertEqual(len(questions), len(debut) + len(suite))
+                self.assertEqual(self.ecrits, [])
+                self.assertEqual(commandes, [])
+                self.assertIsNone(self.code)
 
     def test_erplibre_seul_ne_propose_rien(self):
         questions, _ = self.jouer(["q", "n", ""])
@@ -963,11 +1057,12 @@ class TestPycharmFerme(unittest.TestCase):
                 self.assertEqual(len(questions), len(reponses))
         self.assertIn(f"{t('Invalid choice: ')}x", sortie)
 
-    def _parcours(self, attente):
+    def _parcours(self, attente, pycharm="y"):
         """Le parcours entier, PyCharm présent et sans `.idea` : version,
-        environnement, type, système non, PyCharm oui, puis `attente` à
-        l'attente. Rend les événements dans l'ordre : ("lance", commande),
-        ("question", invite) et ("ecran", texte imprimé)."""
+        environnement, type, système non, `pycharm` à « Ouvrir PyCharm ? »,
+        puis `attente` à l'attente. Rend les événements dans l'ordre :
+        ("lance", commande), ("question", invite) et ("ecran", texte
+        imprimé)."""
         todo = TODO.__new__(TODO)
         evenements = []
 
@@ -978,8 +1073,8 @@ class TestPycharmFerme(unittest.TestCase):
 
         todo.execute = Execute()
         # Version, environnement, type, système non, suite interactive,
-        # PyCharm oui, puis `attente` à l'attente.
-        suite = iter(["1", "1", "1", "n", "1", "y", attente])
+        # `pycharm` à son ouverture, puis `attente` à l'attente.
+        suite = iter(["1", "1", "1", "n", "1", pycharm, attente])
 
         def repondre(prompt=""):
             evenements.append(("question", prompt))
@@ -1008,7 +1103,7 @@ class TestPycharmFerme(unittest.TestCase):
             mock.patch.object(todo_module.subprocess, "run", run),
             # L'identité git a ses tests : TestIdentiteGit.
             mock.patch.object(
-                TODO, "_proposer_identite_git", lambda self, **_: None
+                TODO, "_proposer_identite_git", lambda self, **_: True
             ),
             mock.patch.object(
                 todo_module.os.path,
@@ -1052,6 +1147,15 @@ class TestPycharmFerme(unittest.TestCase):
                 self.assertFalse(
                     any("--install_dev" in v for v in lances), lances
                 )
+
+    def test_ctrl_d_at_open_pycharm_installs_nothing(self):
+        # Ni PyCharm, ni l'attente, ni la commande d'installation.
+        evenements = self._parcours(None, pycharm=EOFError())
+        questions = [v for k, v in evenements if k == "question"]
+        self.assertIn(todo_module.t("Open PyCharm? (y/N): "), questions[-1])
+        self.assertEqual([v for k, v in evenements if k == "lance"], [])
+        ecran = "".join(v for k, v in evenements if k == "ecran")
+        self.assertIn(t("Nothing to do."), ecran)
 
 
 class TestSondeSysteme(unittest.TestCase):
