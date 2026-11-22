@@ -225,6 +225,25 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_the_seal_column_carries_its_three_entries(self):
+        # Execute › Security › PAdES seal montre ses trois entrées, avec
+        # leur méthode, dans l'ordre que citent les ENTREE_* de
+        # seal_menu.py.
+        sceau = self._noeud("PAdES seal", self._noeud("Security"))
+        self.assertIsNotNone(sceau, "colonne PAdES seal absente de l'arbre")
+        self.assertTrue(sceau["is_menu"])
+        self.assertEqual(
+            [(f["label"], f["method"]) for f in sceau["children"]],
+            [
+                ("Status of the generated seals", "execute_seal_status"),
+                ("Internal or external key?", "execute_seal_guide"),
+                (
+                    "Generate an internal PAdES seal (self-signed)",
+                    "execute_generate_seal",
+                ),
+            ],
+        )
+
     def test_the_telemetry_entry_is_a_menu_of_four_leaves(self):
         # [5] du menu principal est un sous-menu de quatre feuilles ; les
         # autres entrées gardent leur numéro.
@@ -1353,9 +1372,8 @@ class MenuCoherence:
     la dernière décale tout ce qui suit sans que rien ne proteste.
 
     Les menus de TODO sont déclarés au registre (`RegistryCoherence`) ;
-    ce socle reste pour les menus écrits à la main que develop a ajoutés,
-    PAdES seal et la mise à jour d'Install, qui ne sont pas encore
-    migrés.
+    ce socle reste pour le menu écrit à la main que develop a ajouté, la
+    mise à jour d'Install, qui n'est pas encore migré.
 
     Une entrée peut aussi porter sa destination dans « method » plutôt que
     dans un « elif status » numéroté. Elle échappe alors à la renumérotation
@@ -1882,36 +1900,65 @@ class TestSystemContainersMenuNumbering(RegistryCoherence, unittest.TestCase):
             self.assertTrue(entry.danger, entry.key)
 
 
-class TestSealMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le sous-menu du sceau PAdES, dans script/todo/seal_menu.py."""
+class TestSealMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › Security › PAdES seal (SEAL, `menus/deploy.py`) : l'état
+    des sceaux générés, le guide de la clé interne ou externe, puis la
+    génération."""
 
-    SOURCE = TODO_DIR / "seal_menu.py"
-    ENTRY = "def prompt_execute_seal(self):"
-    END = "def execute_seal_status(self):"
-    MINIMUM = 2
-
+    MENU = "prompt_execute_seal"
     EXPECTED = {
         "Status of the generated seals": "execute_seal_status",
         "Internal or external key?": "execute_seal_guide",
         "Generate an internal PAdES seal": "execute_generate_seal",
     }
 
+    def test_each_number_reaches_its_step(self):
+        self.assertEqual(
+            [entry.action for entry in self.entries],
+            [
+                "execute_seal_status",
+                "execute_seal_guide",
+                "execute_generate_seal",
+            ],
+        )
+        self.assertEqual(
+            (
+                self.menu.crumb,
+                self.menu.intro,
+                self.menu.mark,
+                self.menu.render,
+            ),
+            ("PAdES seal", "PAdES signature seal", "🔏", "once"),
+        )
+
     def test_the_texts_cite_the_entries_they_name(self):
-        """seal_menu.py renvoie à « l'entrée 1 » : ses ENTREE_* doivent
-        suivre la numérotation du sous-menu."""
+        """seal_menu.py renvoie à « l'entrée 1 » : ses ENTREE_* sont les
+        numéros que le menu affiche, la place de l'entrée dans SEAL."""
         from script.todo import seal_menu
 
-        rangs = {label: str(num) for num, label in self.shown}
+        rangs = {
+            entry.action: str(rang)
+            for rang, entry in enumerate(self.entries, start=1)
+        }
         self.assertEqual(
-            seal_menu.ENTREE_ETAT, rangs["Status of the generated seals"]
+            (
+                seal_menu.ENTREE_ETAT,
+                seal_menu.ENTREE_GUIDE,
+                seal_menu.ENTREE_GENERER,
+            ),
+            (
+                rangs["execute_seal_status"],
+                rangs["execute_seal_guide"],
+                rangs["execute_generate_seal"],
+            ),
         )
-        self.assertEqual(
-            seal_menu.ENTREE_GUIDE, rangs["Internal or external key?"]
-        )
-        self.assertEqual(
-            seal_menu.ENTREE_GENERER,
-            rangs["Generate an internal PAdES seal (self-signed)"],
-        )
+
+    def test_no_entry_is_dangerous(self):
+        # L'état demande avant de retirer un dossier du registre, le guide
+        # n'écrit rien, et la génération demande le dossier, l'identité et
+        # le mot de passe avant d'écrire la clé : la TUI et la page web
+        # lancent les trois.
+        self.assertEqual([e.action for e in self.entries if e.danger], [])
 
 
 class TestInstallUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
@@ -5483,7 +5530,6 @@ class TestMenuLabels(unittest.TestCase):
     # leur action. La liste ne fait que rétrécir : un menu migré déclare
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
-        "prompt_execute_seal": "PAdES seal",
         "_claude_reglages_depot": "Repository settings",
     }
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
@@ -5539,6 +5585,7 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
+        "prompt_execute_seal": "PAdES seal",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_qemu_cache": "QEMU cache",
         "_cache_service": "Service",

@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
 sous-menus SSH, QEMU/KVM et QEMU cache, avec ses sept menus, Network,
-Security, et Docker / Podman avec ses trois menus.
+Security avec PAdES seal, et Docker / Podman avec ses trois menus.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -421,15 +421,31 @@ SECURITY = Menu(
             "execute_pip_audit",
         ),
         Section("Key generation"),
-        # Le sceau dessine son menu lui-même (`seal_menu.py`).
-        Entry(
-            "Seal for PAdES signature",
-            "prompt_execute_seal",
-            crumb="PAdES seal",
-        ),
+        Entry("Seal for PAdES signature", "prompt_execute_seal"),
         Entry("SSH key", "execute_generate_ssh_key"),
     ],
     intro="Dependency audit and key generation!",
+    render="once",
+)
+
+# Les textes de `seal_menu.py` citent ces entrées par leur numéro
+# (`ENTREE_*`) : l'ordre en dépend. Aucune ne porte `danger` : l'état
+# demande avant de retirer un dossier du registre, le guide n'écrit rien,
+# et la génération demande le dossier, l'identité et le mot de passe
+# avant d'écrire la clé.
+SEAL = Menu(
+    "prompt_execute_seal",
+    "PAdES seal",
+    [
+        Entry("Status of the generated seals", "execute_seal_status"),
+        Entry("Internal or external key?", "execute_seal_guide"),
+        Entry(
+            "Generate an internal PAdES seal (self-signed)",
+            "execute_generate_seal",
+        ),
+    ],
+    intro="PAdES signature seal",
+    mark="🔏",
     render="once",
 )
 

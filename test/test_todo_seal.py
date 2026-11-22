@@ -35,7 +35,8 @@ from script.todo.seal_menu import (
     commandes_openssl,
     generer_sceau,
 )
-from script.todo.todo_i18n import TRANSLATIONS
+from script.todo.todo_i18n import TRANSLATIONS, t
+from script.todo.ui.navigator import crumbs, crumbs_at
 
 MOT_DE_PASSE = "essai-sceau-inventé"
 OPENSSL = shutil.which("openssl")
@@ -623,6 +624,73 @@ class TestGuide(unittest.TestCase):
         sortie = self._guide("o")
         self.assertIn(seal_menu.URL_AATL, sortie)
         self.assertIn("PKCS#11", sortie)
+
+
+class _MenuDessine(_Menu):
+    """Le menu du sceau, dessiné sans TODO : chaque entrée retient le fil
+    d'Ariane sous lequel elle s'exécute."""
+
+    def __init__(self):
+        self.fils = []
+
+    @staticmethod
+    def fill_help_info(choices, state=None):
+        return "\n".join(
+            c["prompt_description"]
+            for c in choices
+            if "prompt_description" in c
+        )
+
+    def execute_seal_status(self):
+        self.fils.append(("status", crumbs()))
+
+    def execute_seal_guide(self):
+        self.fils.append(("guide", crumbs()))
+
+    def execute_generate_seal(self):
+        self.fils.append(("generate", crumbs()))
+
+
+class TestLeSousMenu(unittest.TestCase):
+    """PAdES seal est le menu SEAL (`menus/deploy.py`) : le navigateur
+    l'ouvre sous son segment, et chaque numéro mène à son étape."""
+
+    def _ouvre(self, reponses, fil=("TODO", "Execute", "Security")):
+        menu = _MenuDessine()
+        sortie = io.StringIO()
+        with (
+            crumbs_at(fil),
+            patch("click.prompt", side_effect=list(reponses)),
+            redirect_stdout(sortie),
+        ):
+            rendu = menu.prompt_execute_seal()
+            apres = crumbs()
+        return menu, rendu, apres, sortie.getvalue()
+
+    def test_chaque_numero_mene_a_son_etape_sous_le_segment_du_sceau(self):
+        menu, rendu, apres, sortie = self._ouvre(
+            [
+                seal_menu.ENTREE_GENERER,
+                seal_menu.ENTREE_ETAT,
+                seal_menu.ENTREE_GUIDE,
+                "0",
+            ]
+        )
+        fil = ("TODO", "Execute", "Security", "PAdES seal")
+        self.assertEqual(
+            menu.fils,
+            [("generate", fil), ("status", fil), ("guide", fil)],
+        )
+        # [0] revient à Security, sous son propre fil.
+        self.assertIs(rendu, False)
+        self.assertEqual(apres, ("TODO", "Execute", "Security"))
+        self.assertTrue(sortie.startswith(f"🔏 {t('PAdES signature seal')}\n"))
+
+    def test_un_numero_inconnu_ne_lance_rien(self):
+        menu, rendu, _, sortie = self._ouvre(["4", "0"])
+        self.assertEqual(menu.fils, [])
+        self.assertIs(rendu, False)
+        self.assertIn(t("Command not found !"), sortie)
 
 
 class TestTraductions(unittest.TestCase):

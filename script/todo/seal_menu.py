@@ -38,9 +38,9 @@ import stat
 import subprocess
 import tempfile
 
-import click
-
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 RACINE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
@@ -76,8 +76,8 @@ MARQUE_CLE_PEM = b"PRIVATE KEY-----"
 # Les dépôts du checkout que Google Repo gère, un chemin relatif par ligne.
 LISTE_DEPOTS = os.path.join(".repo", "project.list")
 URL_AATL = "https://helpx.adobe.com/acrobat/kb/approved-trust-list1.html"
-# Numéros des entrées du sous-menu du sceau (prompt_execute_seal) que les
-# textes citent.
+# Numéros des entrées du sous-menu du sceau, SEAL (`menus/deploy.py`),
+# que les textes citent : la place de chacune dans le menu.
 ENTREE_ETAT = "1"
 ENTREE_GUIDE = "2"
 ENTREE_GENERER = "3"
@@ -531,31 +531,9 @@ def jours_restants(fin, maintenant=None):
 
 class SealMenuMixin:
     def prompt_execute_seal(self):
-        print(f"🔏 {t('PAdES signature seal')}")
-        choices = [
-            # Les textes de ce fichier citent ces numéros (ENTREE_*).
-            {"prompt_description": t("Status of the generated seals")},
-            {"prompt_description": t("Internal or external key?")},
-            {
-                "prompt_description": t(
-                    "Generate an internal PAdES seal (self-signed)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_seal_status()
-            elif status == "2":
-                self.execute_seal_guide()
-            elif status == "3":
-                self.execute_generate_seal()
-            else:
-                print(t("Command not found !"))
+        """PAdES seal, déclaré dans SEAL (`menus/deploy.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_deploy.SEAL)
 
     def execute_seal_status(self):
         print(t("Status of the generated seals"))
