@@ -6259,6 +6259,18 @@ class TestLaSupervisionTientSurLObservabilite(unittest.TestCase):
         actifs = [e for e in serveurs.values() if e.get("etat") == "actif"]
         self.assertLessEqual(sum(e["memoire"] for e in actifs), 16 * 1024)
 
+    def test_nothing_is_taken_back_from_a_host(self):
+        """Le plancher de reprise vaut la mémoire, déclarée ou ramenée : sur
+        un terrain chargé, Proxmox reprend jusqu'au plancher, et l'invité
+        travaille avec une fraction de sa mémoire."""
+        serveurs = self.lu(self.eco_pose(), "serveurs.yml")["serveurs"]
+        for nom, entree in serveurs.items():
+            with self.subTest(hote=nom):
+                self.assertEqual(entree["memoire"], entree.get("memoire_min"))
+        self.assertTrue(
+            {e["memoire"] for e in serveurs.values()} - {B.MEMOIRE_SOBRE}
+        )
+
     def test_a_field_is_posed_once_and_never_overwritten(self):
         texte = (
             "serveurs:\n  a-01: { fonction: a, memoire: 2048 }\n"

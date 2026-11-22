@@ -594,7 +594,11 @@ plan est scellé — un secret absent fait rarement échouer son rôle, il fait
 échouer la première connexion. Pour tenir sur un terrain imbriqué, tout hôte
 qui ne déclare pas sa mémoire est ramené au plancher du moteur : il dérive une
 marge de 20 % au-dessus de la somme des rôles d'un hôte, et sur un terrain qui
-porte toute la flotte, ces marges s'additionnent.
+porte toute la flotte, ces marges s'additionnent. Et rien n'est repris : le
+plancher de ballon de chaque hôte (`memoire_min`) vaut sa mémoire. Un tel
+terrain passe le seuil où Proxmox reprend la mémoire de ses invités ; ses pages
+géantes ne lui en rendent presque rien, et l'invité garde une fraction de la
+sienne.
 
 **Chaque passe prouve la reprise après sinistre.** Une fois la recette
 rejouée tenue, le banc sauvegarde, rase chaque hôte sauf la cible des

@@ -573,7 +573,10 @@ to monitoring. Each secret the plan's roles read is sealed — a missing one
 rarely fails its role, it fails the first login. To fit a nested terrain,
 every host that declares no memory is brought down to the engine's floor: it
 derives a 20 % margin above the sum of a host's roles, and on a terrain that
-carries the whole fleet those margins add up.
+carries the whole fleet those margins add up. And nothing is taken back: each
+host's balloon floor (`memoire_min`) equals its memory. Such a terrain crosses
+the threshold where Proxmox reclaims guest memory; its huge pages give it
+almost nothing back, while the guest is left with a fraction of its own.
 
 **Every pass proves disaster recovery.** Once the replayed recipe holds, the
 bench backs up, razes every host but the backup target, and rebuilds with

@@ -3102,6 +3102,12 @@ def pose_la_supervision(eco, hote_autorite):
 # marge de vingt pour cent au-dessus de la somme des rôles ; sur un terrain
 # imbriqué qui porte toute la flotte, ce sont ces marges cumulées qui
 # manquent. Un hôte qui déclare déjà sa mémoire garde la sienne.
+#
+# ET RIEN N'EST REPRIS : le plancher (`memoire_min`, le `balloon` de Proxmox)
+# vaut la mémoire. Un terrain imbriqué qui porte toute la flotte passe le seuil
+# où Proxmox reprend la mémoire de ses invités ; ses pages géantes font que la
+# reprise ne lui rend presque rien, et l'invité, lui, travaille avec une
+# fraction de la sienne.
 MEMOIRE_SOBRE = 1024
 
 
@@ -3138,17 +3144,21 @@ def pose_champ(texte, hote, cle, valeur):
 
 
 def pose_la_sobriete(eco, hote_autorite):
-    """Ramène au plancher la mémoire de chaque hôte qui n'en déclare pas. Le
-    souci, ou « ». `hote_autorite` est reçu pour la signature commune."""
+    """Ramène au plancher la mémoire de chaque hôte qui n'en déclare pas, et
+    pose son plancher de reprise à sa mémoire. Le souci, ou « ».
+    `hote_autorite` est reçu pour la signature commune."""
     chemin = os.path.join(eco, "plan", "serveurs.yml")
     lu = _lit_yaml(chemin)
     if lu is None:
         return "le registre des serveurs ne s'est pas lu"
     for hote, entree in (lu.get("serveurs") or {}).items():
-        if isinstance(entree, dict) and "memoire" not in entree:
+        if not isinstance(entree, dict):
+            continue
+        memoire = entree.get("memoire", MEMOIRE_SOBRE)
+        for cle, valeur in (("memoire", memoire), ("memoire_min", memoire)):
             souci = _recrit(
                 chemin,
-                lambda t, h=hote: pose_champ(t, h, "memoire", MEMOIRE_SOBRE),
+                lambda t, h=hote, c=cle, v=valeur: pose_champ(t, h, c, v),
             )
             if souci:
                 return f"{hote} : {souci}"

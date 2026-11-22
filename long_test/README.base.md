@@ -578,7 +578,10 @@ to monitoring. Each secret the plan's roles read is sealed — a missing one
 rarely fails its role, it fails the first login. To fit a nested terrain,
 every host that declares no memory is brought down to the engine's floor: it
 derives a 20 % margin above the sum of a host's roles, and on a terrain that
-carries the whole fleet those margins add up.
+carries the whole fleet those margins add up. And nothing is taken back: each
+host's balloon floor (`memoire_min`) equals its memory. Such a terrain crosses
+the threshold where Proxmox reclaims guest memory; its huge pages give it
+almost nothing back, while the guest is left with a fraction of its own.
 
 **Every pass proves disaster recovery.** Once the replayed recipe holds, the
 bench backs up, razes every host but the backup target, and rebuilds with
@@ -1254,7 +1257,11 @@ plan est scellé — un secret absent fait rarement échouer son rôle, il fait
 échouer la première connexion. Pour tenir sur un terrain imbriqué, tout hôte
 qui ne déclare pas sa mémoire est ramené au plancher du moteur : il dérive une
 marge de 20 % au-dessus de la somme des rôles d'un hôte, et sur un terrain qui
-porte toute la flotte, ces marges s'additionnent.
+porte toute la flotte, ces marges s'additionnent. Et rien n'est repris : le
+plancher de ballon de chaque hôte (`memoire_min`) vaut sa mémoire. Un tel
+terrain passe le seuil où Proxmox reprend la mémoire de ses invités ; ses pages
+géantes ne lui en rendent presque rien, et l'invité garde une fraction de la
+sienne.
 
 **Chaque passe prouve la reprise après sinistre.** Une fois la recette
 rejouée tenue, le banc sauvegarde, rase chaque hôte sauf la cible des
