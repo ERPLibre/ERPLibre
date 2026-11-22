@@ -779,7 +779,9 @@ class Constat(NamedTuple):
 # répondent, amorce l'autorité de certification puis déploie par couches : elle
 # dure des dizaines de minutes sur un hyperviseur imbriqué. La borne existe pour
 # qu'une grappe qui ne répond plus rende la main, pas pour hâter le geste.
-DELAI_ETAPE = 7200
+# Une flotte complète — identité, observabilité, supervision, TLS partout —
+# dépasse deux heures sur un terrain imbriqué de quatre cœurs.
+DELAI_ETAPE = 4 * 3600
 
 # Borne d'une commande jouée sur le terrain. Un `qm destroy` ou un `apt` prend
 # des minutes sur un Proxmox imbriqué ; la borne existe pour qu'une grappe qui
