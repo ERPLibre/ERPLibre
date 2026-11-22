@@ -364,7 +364,9 @@ class TestLArbreDesMenus(unittest.TestCase):
         # la page web : l'effacement d'une base, le retrait d'un dépôt d'un
         # manifeste, la suppression de branches et l'archivage de forks, les
         # actions du serveur git de production, qui tournent en root, les
-        # installateurs de shell,
+        # installateurs de shell, ceux de Python, qui posent ou remplacent
+        # des venvs et des outils, et la mise à jour de Poetry, qui réécrit
+        # des fichiers suivis,
         # chaque entrée des familles QEMU et Proxmox qui efface ce que la
         # TUI ne rend pas par elle-même, pose des paquets ou un service, ici
         # ou sur un hôte distant, agit en root sur un hôte, écrit la
@@ -391,6 +393,7 @@ class TestLArbreDesMenus(unittest.TestCase):
 
         walk(self.arbre, "TODO")
         longtest = "TODO › Execute › Test › Long test"
+        python = "TODO › Execute › Python"
         git = "TODO › Execute › Git repository"
         actions = f"{git} › Git local server › Actions"
         shell = "TODO › Execute › Shell"
@@ -443,6 +446,16 @@ class TestLArbreDesMenus(unittest.TestCase):
                     "TODO › Execute › Uninstall › Remove every Odoo version",
                     {"tout": True},
                 ),
+                *[
+                    (f"{python} › {label}", {})
+                    for label in (
+                        "Python versions - Install or update the venvs,"
+                        " without the git repos",
+                        "Upgrade Poetry - Dependency of Odoo",
+                        "Install mise - Precompiled Python",
+                        "Install uv - Faster pip",
+                    )
+                ],
                 *[(f"{git} › Repo › {label}", kw) for label, kw in repo],
                 (f"{git} › ➖ Remove a repository from a manifest", {}),
                 (f"{git} › 🪦 List the orphan forks of an organisation", {}),
@@ -1290,7 +1303,7 @@ class MenuCoherence:
 
     Les menus de TODO sont déclarés au registre (`RegistryCoherence`) ;
     ce socle reste pour les menus écrits à la main que develop a ajoutés,
-    Python, PAdES seal et la mise à jour d'Install, qui ne sont pas encore
+    PAdES seal et la mise à jour d'Install, qui ne sont pas encore
     migrés.
 
     Une entrée peut aussi porter sa destination dans « method » plutôt que
@@ -1642,19 +1655,16 @@ class TestSecurityMenuNumbering(RegistryCoherence, unittest.TestCase):
     }
 
 
-class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Python regroupe des outils qui vivent AUSSI ailleurs.
+class TestPythonMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Execute › Python (PYTHON, `menus/execute.py`) regroupe des outils
+    qui vivent AUSSI ailleurs.
 
     « Upgrade Poetry » est dans Code › Update et pip-audit dans Security :
     les deux chemins doivent mener à la MÊME méthode. Une copie ici
     divergerait en silence de l'original au premier correctif.
     """
 
-    SOURCE = TODO_DIR / "python_menu.py"
-    ENTRY = "def prompt_execute_python(self):"
-    END = "def _python_versions_etat(self):"
-    MINIMUM = 5
-
+    MENU = "prompt_execute_python"
     EXPECTED = {
         "Lock drift": "execute_poetry_drift",
         "Python versions": "execute_python_versions",
@@ -1672,6 +1682,40 @@ class TestPythonMenuNumbering(MenuCoherence, unittest.TestCase):
 
         self.assertIn("upgrade_poetry", actions(execute.UPDATE))
         self.assertIn("execute_pip_audit", actions(deploy.SECURITY))
+
+    def test_each_number_reaches_its_tool(self):
+        # L'ordre est fixe : « see [1] » de Python versions renvoie à Lock
+        # drift, la première entrée.
+        self.assertEqual(
+            [entry.action for entry in self.entries],
+            [
+                "execute_poetry_drift",
+                "execute_python_versions",
+                "upgrade_poetry",
+                "execute_pip_audit",
+                "execute_install_mise",
+                "execute_install_uv",
+            ],
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.intro, self.menu.render),
+            ("Python", "Python and Poetry tools!", "once"),
+        )
+
+    def test_the_installers_are_dangerous(self):
+        # Python versions installe ou remplace des venvs, Upgrade Poetry
+        # réécrit les fichiers de dépendances suivis, mise et uv posent un
+        # outil : ni la TUI ni la page web ne les lancent. Lock drift et
+        # pip-audit lisent, et Lock drift demande avant d'installer.
+        self.assertEqual(
+            [entry.action for entry in self.entries if entry.danger],
+            [
+                "execute_python_versions",
+                "upgrade_poetry",
+                "execute_install_mise",
+                "execute_install_uv",
+            ],
+        )
 
 
 class TestSealMenuNumbering(MenuCoherence, unittest.TestCase):
@@ -5277,7 +5321,6 @@ class TestMenuLabels(unittest.TestCase):
     # leur action. La liste ne fait que rétrécir : un menu migré déclare
     # son `Menu` et son `crumb`.
     ECRANS_A_MIGRER = {
-        "prompt_execute_python": "Python",
         "prompt_execute_system": "System",
         "prompt_execute_seal": "PAdES seal",
         "_claude_reglages_depot": "Repository settings",
@@ -5310,6 +5353,7 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_execute_process": "Process",
         "prompt_execute_test": "Test",
         "prompt_execute_module_analysis": "Analyse module",
+        "prompt_execute_python": "Python",
         "prompt_execute_update": "Update",
         "prompt_execute_instance": "Run",
         "prompt_execute_database": "Database",

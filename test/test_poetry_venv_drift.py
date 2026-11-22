@@ -28,13 +28,14 @@ sys.path.insert(0, str(RACINE))
 sys.argv = ["todo.py"]
 from script.execute.execute import Execute  # noqa: E402
 from script.poetry import poetry_venv_drift as drift  # noqa: E402
-from script.todo import todo_i18n  # noqa: E402
+from script.todo import todo_i18n, ui  # noqa: E402
+from script.todo import version_manager as vm  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 from script.todo.version_manager import (  # noqa: E402
     diagnostiquer_version,
     get_odoo_version,
 )
-from script.todo import version_manager as vm  # noqa: E402
 
 VERSION = "odoo18.0_python3.12.16"
 # Un checkout resté sur un patch de Python que le json ne connaît plus.
@@ -347,12 +348,18 @@ class BancMenu(unittest.TestCase):
             return statut
 
         self.todo.execute.exec_command_live.side_effect = installer
+        # Une exception, EOFError pour Ctrl+D, est levée à la question.
+        leve = isinstance(reponse, BaseException)
         with (
             patch.object(
                 drift, "simuler", side_effect=simulations
             ) as self.simuler,
             patch.object(drift, "relever", side_effect=relever),
-            patch("builtins.input", return_value=reponse) as question,
+            patch(
+                "builtins.input",
+                return_value=None if leve else reponse,
+                side_effect=reponse if leve else None,
+            ) as question,
             patch("sys.stdout", sortie),
         ):
             self.todo.execute_poetry_drift()
@@ -463,6 +470,13 @@ class TestLeParcours(BancMenu):
         self.assertNotIn(
             todo_i18n.t("None: the venv matches the lock."), contenu
         )
+
+    def test_ctrl_d_a_la_mise_a_jour_n_installe_rien(self):
+        texte, question = self.lancer([self.simulation(SORTIE)], EOFError())
+        question.assert_called_once()
+        self.assertIn(f"{todo_i18n.t('Differences with the lock:')} 3", texte)
+        self.assertEqual([], self.installe())
+        self.assertFalse(Path(self.cache, "erplibre_poetry").exists())
 
     def test_un_refus_de_poetry_est_montre_sans_question(self):
         texte, question = self.lancer([self.simulation(REFUS, ok=False)])
@@ -636,7 +650,65 @@ class TestPlusieursVenvs(BancMenu):
 
     def test_un_numero_inconnu_est_redemande(self):
         texte, _ = self.jouer(["9", "0"])
-        self.assertIn("'9'", texte)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}9", texte)
+
+    def test_retour_vide_ou_ctrl_d_ne_compare_rien(self):
+        # Sans défaut, une réponse vide revient comme [0] et Ctrl+D.
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                texte, projets = self.jouer([reponse])
+                self.assertEqual(projets, [])
+                self.assertEqual([], self.installe())
+                self.assertNotIn("🐍 .venv", texte)
+
+    def test_le_nom_exact_choisit_le_venv(self):
+        texte, projets = self.jouer(
+            [f".venv.{self.AUTRE}", "n"],
+            simulations=[self.simulation(SORTIE)],
+        )
+        self.assertEqual(1, len(projets))
+        self.assertIsNotNone(projets[0])
+        self.assertIn(f"requirement/poetry.{self.AUTRE}.lock", texte)
+        self.assertEqual([], self.installe())
+
+    def test_la_page_recoit_un_choix_simple_des_venvs(self):
+        port = ScriptedPort(["0"])
+        with ui.bind(port), patch("sys.stdout", io.StringIO()):
+            self.todo.execute_poetry_drift()
+        [choix] = port.events
+        self.assertEqual("choose", choix["kind"])
+        self.assertFalse(choix["multi"])
+        self.assertIsNone(choix["default"])
+        self.assertEqual(todo_i18n.t("Venv to check:"), choix["prompt"])
+        self.assertEqual(
+            {
+                f".venv.{VERSION}": "1",
+                f".venv.{self.AUTRE}": "2",
+                ".venv.erplibre": "3",
+            },
+            choix["names"],
+        )
+
+    def test_ctrl_d_a_la_mise_a_jour_d_un_autre_venv_n_installe_rien(self):
+        texte, projets = self.jouer(
+            ["2", EOFError()],
+            simulations=[self.simulation(SORTIE)],
+        )
+        self.assertEqual(1, len(projets))
+        self.assertIn(f"{todo_i18n.t('Differences with the lock:')} 3", texte)
+        self.assertEqual([], self.installe())
+
+    def test_ctrl_d_a_l_installation_de_l_outillage_n_installe_rien(self):
+        etat = {
+            "exigences": 1,
+            "manquantes": ["absent>=1"],
+            "hors_bornes": [],
+            "illisibles": [],
+            "de_trop": [],
+        }
+        texte, _ = self.jouer(["3", EOFError()], sorties_outillage=[etat])
+        self.assertIn(f"{todo_i18n.t('Requirements not satisfied:')} 1", texte)
+        self.assertEqual([], self.installe())
 
 
 class TestDossierTemporaire(unittest.TestCase):
@@ -997,7 +1069,93 @@ class TestVersionsPython(BancMenu):
     def test_un_numero_invalide_redemande(self):
         self.preparer([NON_SUPPORTEE])
         texte, _ = self.jouer(["9", "1", ""])
-        self.assertIn(todo_i18n.t("Error, cannot understand value"), texte)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}9", texte)
+        self.assertEqual([], self.installe())
+
+    def test_retour_vide_ou_ctrl_d_ne_lance_rien(self):
+        # [0], une réponse vide et Ctrl+D au choix des versions reviennent :
+        # aucune commande, et la confirmation n'est pas posée.
+        self.preparer([NON_SUPPORTEE])
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                texte, question = self.jouer([reponse])
+                self.assertEqual([], self.installe())
+                question.assert_called_once()
+                self.assertNotIn(todo_i18n.t("Will execute:"), texte)
+
+    def test_ctrl_d_a_la_confirmation_ne_lance_rien(self):
+        self.preparer([NON_SUPPORTEE])
+        texte, question = self.jouer(["1", EOFError()])
+        self.assertEqual(2, question.call_count)
+        self.assertIn(todo_i18n.t("Will execute:"), texte)
+        self.assertEqual([], self.installe())
+        self.assertFalse(Path(".erplibre-state.json").exists())
+
+    def test_tout_choisit_chaque_version(self):
+        # Deux cibles, le venv d'Odoo 18 à mettre à jour et celui d'Odoo 17
+        # à installer : « tout » les prend dans l'ordre de la liste.
+        self.preparer([NON_SUPPORTEE], sources=("18.0", "17.0"))
+        self.jouer(["tout", "o"])
+        commandes = self.installe()
+        venv18 = (
+            f'./script/install/install_venv.sh "Odoo" .venv.{VERSION} 3.12.16'
+        )
+        venv17 = (
+            './script/install/install_venv.sh "Odoo"'
+            " .venv.odoo17.0_python3.10.18 3.10.18"
+        )
+        self.assertLess(commandes.index(venv18), commandes.index(venv17))
+
+    def test_l_ordre_tape_ne_change_pas_l_ordre_de_la_liste(self):
+        # La dernière cible décide de l'Odoo qui reste actif : « 2 1 »
+        # lance les cibles dans l'ordre de la liste, comme « 1 2 ».
+        self.preparer([NON_SUPPORTEE], sources=("18.0", "17.0"))
+        self.jouer(["2 1", "o"])
+        commandes = self.installe()
+        venv18 = (
+            f'./script/install/install_venv.sh "Odoo" .venv.{VERSION} 3.12.16'
+        )
+        venv17 = (
+            './script/install/install_venv.sh "Odoo"'
+            " .venv.odoo17.0_python3.10.18 3.10.18"
+        )
+        self.assertLess(commandes.index(venv18), commandes.index(venv17))
+
+    def test_le_nom_exact_choisit_la_version(self):
+        self.preparer([NON_SUPPORTEE], sources=("18.0", "17.0"))
+        self.jouer(["odoo17.0_python3.10.18", "o"])
+        self.assertEqual(
+            './script/install/install_venv.sh "Odoo"'
+            " .venv.odoo17.0_python3.10.18 3.10.18",
+            self.installe()[0],
+        )
+        self.assertNotIn(
+            f'./script/install/install_venv.sh "Odoo" .venv.{VERSION} 3.12.16',
+            self.installe(),
+        )
+
+    def test_la_page_recoit_un_choix_multiple_puis_un_oui_non(self):
+        # Par le port lié, la page reçoit une question à cases, que suit
+        # la confirmation, une question texte.
+        self.preparer([NON_SUPPORTEE], sources=("18.0", "17.0"))
+        port = ScriptedPort(["1", "n"])
+        with ui.bind(port), patch("sys.stdout", io.StringIO()):
+            self.todo.execute_python_versions()
+        choix, confirmation = port.events
+        self.assertEqual("choose", choix["kind"])
+        self.assertTrue(choix["multi"])
+        self.assertEqual(
+            todo_i18n.t("Venvs to install or update:"), choix["prompt"]
+        )
+        self.assertEqual(
+            {VERSION: "1", "odoo17.0_python3.10.18": "2"}, choix["names"]
+        )
+        self.assertTrue(choix["options"][0]["label"].startswith(VERSION))
+        self.assertEqual("text", confirmation["kind"])
+        self.assertIn(
+            todo_i18n.t("Run them now (y/N, default: N)? "),
+            confirmation["text"],
+        )
         self.assertEqual([], self.installe())
 
     def jouer_coupe(self, reponses, coupee):
@@ -1095,16 +1253,17 @@ class TestLeMenu(unittest.TestCase):
         )
 
     def test_le_fil_d_ariane_nomme_le_menu(self):
-        # Python dessine son menu lui-même : son segment de fil d'Ariane
-        # est le `crumb` de l'entrée qui l'ouvre, au registre.
-        from script.todo.menus.execute import EXECUTE
+        # Python est un menu déclaré : son segment est le `crumb` de PYTHON,
+        # et l'entrée d'Execute qui l'ouvre n'en déclare pas un second.
+        from script.todo.menus.execute import EXECUTE, PYTHON
 
+        self.assertEqual("Python", PYTHON.crumb)
         crumbs = [
             entree.crumb
             for entree in EXECUTE.entries
             if getattr(entree, "action", None) == "prompt_execute_python"
         ]
-        self.assertEqual(["Python"], crumbs)
+        self.assertEqual([None], crumbs)
 
 
 if __name__ == "__main__":

@@ -22,13 +22,13 @@ import os
 import shlex
 import subprocess
 
-import click
-
 from script.execute.execute import Execute
 from script.poetry import poetry_venv_drift as drift
+from script.todo import ui
 from script.todo import version_manager as vm
-from script.todo.todo_couleur import retour
+from script.todo.menus import execute as menus_execute
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 from script.todo.version_manager import (
     diagnostiquer_version,
     get_odoo_version,
@@ -50,49 +50,9 @@ LIBELLES = {
 
 class PythonMenuMixin:
     def prompt_execute_python(self):
-        print(f"🤖 {t('Python and Poetry tools!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Lock drift - Compare a venv with its lock or requirements"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Python versions - Install or update the venvs,"
-                    " without the git repos"
-                )
-            },
-            {"prompt_description": t("Upgrade Poetry - Dependency of Odoo")},
-            {
-                "prompt_description": t(
-                    "pip-audit - Check vulnerabilities on Python environments"
-                )
-            },
-            {"prompt_description": t("Install mise - Precompiled Python")},
-            {"prompt_description": t("Install uv - Faster pip")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_poetry_drift()
-            elif status == "2":
-                self.execute_python_versions()
-            elif status == "3":
-                self.upgrade_poetry()
-            elif status == "4":
-                self.execute_pip_audit()
-            elif status == "5":
-                self.execute_install_mise()
-            elif status == "6":
-                self.execute_install_uv()
-            else:
-                print(t("Command not found !"))
+        """Python, déclaré dans PYTHON (`menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.PYTHON)
 
     def _python_versions_etat(self):
         """(plan, active, anciens) : le plan de planifier_venvs pour ce
@@ -141,6 +101,7 @@ class PythonMenuMixin:
         plan, active, anciens = self._python_versions_etat()
         print(t("Odoo venvs, from conf/supported_version_erplibre.json:"))
         actions = []
+        libelles = []
         for entree in plan:
             cible = entree["cible"]
             detail = f"Python {entree['python']}, Poetry {entree['poetry']}"
@@ -159,7 +120,7 @@ class PythonMenuMixin:
                     quoi = f"{t('activate instead of')} {entree['depuis']}"
                 else:
                     quoi = f"{t('update from')} .venv.{entree['depuis']}"
-                print(f"[{len(actions)}] {cible} — {quoi} ({detail}){marque}")
+                libelles.append(f"{cible} — {quoi} ({detail}){marque}")
             elif entree["action"] == vm.A_JOUR:
                 print(f"    {cible} — {t('up to date')} ({detail}){marque}")
             else:
@@ -176,7 +137,7 @@ class PythonMenuMixin:
             print(f"✅ {t('No Python version to install or update.')}")
             print(f"   {t('For the dependencies of the lock, see [1].')}")
             return
-        cibles = self._python_versions_choisir(actions)
+        cibles = self._python_versions_choisir(actions, libelles)
         if not cibles:
             return
         print(t("Will execute:"))
@@ -191,35 +152,37 @@ class PythonMenuMixin:
             )
         elif self._python_versions_change_odoo(active, cibles):
             self._python_versions_avertir_config(cibles[-1]["cible"])
-        question = t("Run them now (y/N, default: N)? ")
-        if not self._is_yes(input(f"💬 {question}")):
+        if not self._python_oui(t("Run them now (y/N, default: N)? ")):
             return
         self._python_versions_executer(cibles, active)
 
-    def _python_versions_choisir(self, actions):
-        """Les entrées choisies par leurs numéros, séparés par des espaces ;
-        une saisie qui porte un numéro invalide est redemandée en entier."""
-        valides = {str(n) for n in range(1, len(actions) + 1)}
-        while True:
-            reponse = input(
-                f"💬 {t('Numbers separated by spaces, 0 to go back: ')}"
-            )
-            numeros = reponse.replace(",", " ").split()
-            if numeros == ["0"] or not numeros:
-                return []
-            fautifs = [n for n in numeros if n not in valides]
-            if fautifs:
-                print(
-                    f"{t('Error, cannot understand value')}"
-                    f" '{' '.join(fautifs)}'"
-                )
-                continue
-            choisies = []
-            for numero in numeros:
-                entree = actions[int(numero) - 1]
-                if entree not in choisies:
-                    choisies.append(entree)
-            return choisies
+    def _python_oui(self, question):
+        """Vrai si l'utilisateur répond oui à `question`, un oui/non qui
+        suit une liste ; Ctrl+D (EOFError) vaut non, sans rien lancer."""
+        try:
+            reponse = ui.ask(f"💬 {question}")
+        except EOFError:
+            return False
+        return self._is_yes(reponse)
+
+    @staticmethod
+    def _python_versions_choisir(actions, libelles):
+        """Les entrées d'`actions` choisies, dans l'ordre d'`actions` et
+        non dans l'ordre tapé, chacune montrée par son libellé de
+        `libelles` ; [] pour revenir. La dernière décide du retour à
+        l'Odoo de départ (`_python_versions_retour_prevu`).
+
+        Le choix multiple de `ui.choose` lit les numéros, les plages, tout,
+        all ou *, et le nom exact d'une cible, qui ouvre son libellé ; une
+        réponse vide, [0] et Ctrl+D ne choisissent rien."""
+        choisies = ui.choose(
+            t("Venvs to install or update:"),
+            actions,
+            multi=True,
+            labels=libelles,
+            names={entree["cible"]: entree for entree in actions},
+        )
+        return choisies or []
 
     @staticmethod
     def _python_versions_commandes(entree):
@@ -537,30 +500,29 @@ class PythonMenuMixin:
 
     def _venv_drift_choisir(self, candidats):
         """Le venv choisi, ou None pour revenir ; un seul est pris
-        d'office."""
+        d'office.
+
+        Le choix simple de `ui.choose`, sans défaut, lit le numéro ou le
+        nom exact du venv, qui ouvre sa ligne ; une réponse vide, [0] et
+        Ctrl+D reviennent."""
         if len(candidats) == 1:
             print(f"🐍 {candidats[0]['venv']}")
             return candidats[0]
-        for numero, venv in enumerate(candidats, 1):
+        libelles = []
+        for venv in candidats:
             if venv["genre"] == "outillage":
                 detail = f"{t('tooling')} — {drift.EXIGENCES_OUTILLAGE}"
             else:
                 detail = drift.chemins(venv["version"])["lock"]
                 if venv["active"]:
                     detail = f"{t('active version')} — {detail}"
-            print(f"   [{numero}] {venv['venv']} — {detail}")
-        print(f"   {retour(t('Back'))}")
-        while True:
-            try:
-                reponse = input(f"💬 {t('Venv to check: ')}").strip()
-            except EOFError:
-                print()
-                return None
-            if reponse in ("", "0"):
-                return None
-            if reponse.isdigit() and 1 <= int(reponse) <= len(candidats):
-                return candidats[int(reponse) - 1]
-            print(f"{t('Error, cannot understand value')} '{reponse}'")
+            libelles.append(f"{venv['venv']} — {detail}")
+        return ui.choose(
+            t("Venv to check:"),
+            candidats,
+            labels=libelles,
+            names={venv["venv"]: venv for venv in candidats},
+        )
 
     def mettre_a_jour_venv(self, choix):
         """Met à jour le venv `choix` (une entrée de `drift.venvs`) sans
@@ -583,7 +545,7 @@ class PythonMenuMixin:
         if not self._poetry_drift_afficher(version, simulation):
             return
         question = t("Update the venv to match the lock (y/N, default: N)? ")
-        if demander and not self._is_yes(input(f"💬 {question}")):
+        if demander and not self._python_oui(question):
             print(
                 t("To update it later: %s")
                 % "EL_PHASE=poetry ./script/install/install_locally.sh"
@@ -612,7 +574,7 @@ class PythonMenuMixin:
             question = t(
                 "Update the venv to match the lock (y/N, default: N)? "
             )
-            if demander and not self._is_yes(input(f"💬 {question}")):
+            if demander and not self._python_oui(question):
                 return
             self._poetry_drift_mettre_a_jour(
                 version,
@@ -630,7 +592,7 @@ class PythonMenuMixin:
         if etat is None or not self._venv_outillage_afficher(venv, etat):
             return
         question = t("Install the missing requirements (y/N, default: N)? ")
-        if demander and not self._is_yes(input(f"💬 {question}")):
+        if demander and not self._python_oui(question):
             return
         commande = (
             ". ./script/install/lib_pip_provider.sh && el_pip_install"

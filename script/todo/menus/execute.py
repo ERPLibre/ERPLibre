@@ -2,9 +2,9 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Execute : Execute, qu'ouvre le menu principal, ses
-sous-menus Code, Config, Process, Test, Uninstall, Image Odoo et Analyse
-module, Update et Debug, qu'ouvre Code, et Generate from pre-configuration,
-qu'ouvre Config.
+sous-menus Code, Config, Process, Test, Uninstall, Image Odoo, Analyse
+module et Python, Update et Debug, qu'ouvre Code, et Generate from
+pre-configuration, qu'ouvre Config.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -38,12 +38,7 @@ EXECUTE = Menu(
             "Analyse module - Odoo modules of the checkout",
             "prompt_execute_module_analysis",
         ),
-        # Python dessine son menu lui-même (`python_menu.py`).
-        Entry(
-            "Python - Poetry and Python tools",
-            "prompt_execute_python",
-            crumb="Python",
-        ),
+        Entry("Python - Poetry and Python tools", "prompt_execute_python"),
         Entry(
             "Git repository - Repositories and git tools",
             "prompt_execute_git",
@@ -268,6 +263,45 @@ MODULE_ANALYSIS = Menu(
     ],
     intro="Analyse the Odoo modules of the checkout",
     mark="🧩",
+    render="once",
+)
+
+# Python regroupe des outils qui vivent aussi ailleurs : Upgrade Poetry
+# dans Update, pip-audit dans Security, par la MÊME méthode. Python
+# versions installe ou remplace des venvs, Upgrade Poetry réécrit les
+# fichiers de dépendances suivis, mise et uv sont des installateurs :
+# `danger`. Lock drift demande avant d'installer, pip-audit lit.
+PYTHON = Menu(
+    "prompt_execute_python",
+    "Python",
+    [
+        Entry(
+            "Lock drift - Compare a venv with its lock or requirements",
+            "execute_poetry_drift",
+        ),
+        Entry(
+            "Python versions - Install or update the venvs,"
+            " without the git repos",
+            "execute_python_versions",
+            danger=True,
+        ),
+        Entry(
+            "Upgrade Poetry - Dependency of Odoo",
+            "upgrade_poetry",
+            danger=True,
+        ),
+        Entry(
+            "pip-audit - Check vulnerabilities on Python environments",
+            "execute_pip_audit",
+        ),
+        Entry(
+            "Install mise - Precompiled Python",
+            "execute_install_mise",
+            danger=True,
+        ),
+        Entry("Install uv - Faster pip", "execute_install_uv", danger=True),
+    ],
+    intro="Python and Poetry tools!",
     render="once",
 )
 

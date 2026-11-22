@@ -390,9 +390,9 @@ TRANSLATIONS = {
         "fr": "version active",
         "en": "active version",
     },
-    "Venv to check: ": {
-        "fr": "Venv à vérifier : ",
-        "en": "Venv to check: ",
+    "Venv to check:": {
+        "fr": "Venv à vérifier :",
+        "en": "Venv to check:",
     },
     "Install the missing requirements (y/N, default: N)? ": {
         "fr": "Installer les exigences manquantes (o/N, défaut : N) ? ",
@@ -706,9 +706,9 @@ TRANSLATIONS = {
         "fr": "Les lancer maintenant (o/N, défaut : N) ? ",
         "en": "Run them now (y/N, default: N)? ",
     },
-    "Numbers separated by spaces, 0 to go back: ": {
-        "fr": "Numéros séparés par des espaces, 0 pour revenir : ",
-        "en": "Numbers separated by spaces, 0 to go back: ",
+    "Venvs to install or update:": {
+        "fr": "Venvs à installer ou à mettre à jour :",
+        "en": "Venvs to install or update:",
     },
     "incomplete venv: resume": {
         "fr": "venv incomplet : reprendre",
