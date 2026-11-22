@@ -5886,6 +5886,54 @@ class TestUnFichierDuModeleNEstJamaisReecrit(unittest.TestCase):
             self.assertEqual("a: 2\n", f.read())
 
 
+def role_de(variable):
+    """Le rôle du moteur dont `variable` porte le préfixe, ou « »."""
+    roles = os.path.join(MOTEUR_CLONE, "roles")
+    candidats = [
+        r
+        for r in os.listdir(roles)
+        if variable.startswith(r + "_")
+        and os.path.isdir(os.path.join(roles, r))
+    ]
+    return max(candidats, key=len) if candidats else ""
+
+
+class TestLeTlsBasculeParPaires(unittest.TestCase):
+    """Un seul bout d'un lien en TLS, et l'autre lui parle en clair : les
+    deux bouts de chaque paire basculent ensemble."""
+
+    def lu(self):
+        return yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+
+    def test_both_ends_of_each_pair_hold_the_same_value(self):
+        lu = self.lu()
+        for a, b in B.PAIRES_TLS:
+            with self.subTest(paire=(a, b)):
+                self.assertIs(True, lu[a])
+                self.assertEqual(lu[a], lu[b])
+
+    def test_each_switch_is_one_its_role_declares(self):
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        for paire in B.PAIRES_TLS:
+            for variable in paire:
+                with self.subTest(variable=variable):
+                    role = role_de(variable)
+                    self.assertTrue(role, variable)
+                    defauts = lu_au_moteur(
+                        "roles", role, "defaults", "main.yml"
+                    )
+                    self.assertIn(variable, defauts)
+
+    def test_no_consumer_switch_is_set_by_hand(self):
+        """Le moteur prouve que les consommateurs de la base suivent son
+        verrou : le banc ne pose que les interrupteurs des serveurs et des
+        agents, jamais un mode de connexion dérivé."""
+        for cle in self.lu():
+            self.assertNotIn("sslmode", cle)
+            self.assertNotIn("db_tls", cle)
+
+
 class TestLaBaseAccepteLeLocataire(unittest.TestCase):
     """Le serveur de bases refuse par défaut un réseau qui ne contient pas le
     supernet d'un locataire d'index non nul."""

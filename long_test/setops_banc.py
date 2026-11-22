@@ -1734,6 +1734,20 @@ TLS_LMTP_MAGASIN = "serveur_dovecot_lmtp_tls"
 # pour chaque hôte.
 RESEAUX_BASES = "serveur_postgresql_reseaux_autorises"
 
+# LE TLS DE BOUT EN BOUT, PAR PAIRES QUI BASCULENT ENSEMBLE. Chaque paire nomme
+# les deux bouts d'un même lien ; un seul basculé, l'un parle en clair à
+# l'autre qui attend une poignée de main. Les métriques ont UN schéma pour
+# toutes leurs cibles : un exportateur seul en TLS fait tomber toutes les
+# cibles. Les journaux s'accumulent chez l'agent sans erreur visible. La base
+# sert d'abord son certificat, puis n'accepte plus que TLS : forcée sans le
+# servir, elle refuse tout client distant. Les consommateurs de la base
+# suivent d'eux-mêmes : le moteur prouve qu'ils restent dérivés.
+PAIRES_TLS = (
+    ("serveur_postgresql_tls_actif", "serveur_postgresql_tls_force"),
+    ("client_metrique_tls_actif", "serveur_prometheus_metriques_tls"),
+    ("serveur_loki_tls_actif", "client_journal_loki_tls"),
+)
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1805,6 +1819,9 @@ def texte_intrants_du_banc(resolveur):
     `RESEAUX_BASES` SUIT LE SUPERNET DU LOCATAIRE : le défaut du rôle ne le
     contient pas, et l'identité fédérée que le banc pose ne joindrait pas sa
     base.
+
+    `PAIRES_TLS` À VRAI, les deux bouts de chaque lien ensemble : la flotte du
+    banc parle TLS comme celle d'un locataire réel.
     """
     if not (resolveur or "").strip():
         return ""
@@ -1818,7 +1835,7 @@ amorcage_acces_uid: "{COMPTE_RECETTE}"
 {VERIFICATION_DEPOT}: false
 {TLS_LMTP_EMETTEUR}: true
 {RESEAUX_BASES}: ["{{{{ setops_supernet }}}}"]
-"""
+""" + "".join(f"{a}: true\n{b}: true\n" for a, b in PAIRES_TLS)
 
 
 def texte_underlay(noeud, pont, index=INDEX_UNDERLAY):

@@ -576,7 +576,10 @@ registre, un par application exposée dont le rôle nomme un client OIDC.
 Prometheus relève l'exportateur d'un rôle dès que son groupe est au plan,
 alors que le rôle ne le pose que si son secret existe : le banc scelle ce
 secret, sans quoi la cible reste éteinte. Le banc exige « OK » de chaque
-verdict que la recette du moteur déclare.
+verdict que la recette du moteur déclare. Enfin, la flotte parle TLS de bout
+en bout comme celle d'un locataire réel : la base, les métriques et les
+journaux basculent par paires, les deux bouts d'un lien ensemble — un bout
+seul parle en clair à l'autre, qui attend une poignée de main.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
