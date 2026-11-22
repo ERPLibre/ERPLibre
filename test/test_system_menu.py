@@ -186,33 +186,84 @@ class TestLesFichiersDuSysteme(unittest.TestCase):
 
 
 class TestLeChoixEnLigne(unittest.TestCase):
-    def candidats(self):
+    """Le repli sans Textual de l'espace à récupérer, que la page web
+    emprunte aussi : le choix multiple des règles communes, où [s] prend
+    les éléments pré-cochés et une réponse vide ne prend rien."""
+
+    def candidats(self, coche=True):
         return [
-            sc.Candidat("cache", ".cache/pip", ["/a"], 3000, coche=True),
+            sc.Candidat("cache", ".cache/pip", ["/a"], 3000, coche=coche),
             sc.Candidat("filestore", "orpheline", ["/b"], 2000),
             sc.Candidat(
                 "venv", ".venv.odoo16", ["/c"], 1000, mise_en_garde="reinstall"
             ),
         ]
 
-    def choisir(self, reponse):
+    def choisir(self, *reponses, coche=True):
+        """Ce que rend le choix avec `reponses` au clavier ; ce qui s'est
+        affiché reste dans `self.vu`."""
+        vus = []
         with (
-            mock.patch("builtins.input", return_value=reponse),
-            mock.patch("builtins.print"),
+            mock.patch("builtins.input", side_effect=reponses) as question,
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(" ".join(map(str, a))),
+            ),
         ):
-            return sm.choisir_en_ligne(self.candidats())
+            choisis = sm.choisir_en_ligne(self.candidats(coche))
+        self.vu = "\n".join(vus)
+        self.questions = question.call_count
+        return choisis
 
-    def test_enter_takes_the_checked_ones(self):
-        self.assertEqual(self.choisir(""), [0])
+    def test_enter_takes_nothing(self):
+        self.assertEqual(self.choisir(""), [])
+
+    def test_s_takes_the_checked_ones(self):
+        self.assertEqual(self.choisir("s"), [0])
+        self.assertIn("[s]", self.vu)
+
+    def test_without_a_checked_item_s_is_not_offered(self):
+        self.assertEqual(self.choisir("s", "2", coche=False), [1])
+        self.assertNotIn("[s]", self.vu)
+        self.assertIn("Choix invalide : s", self.vu)
 
     def test_numbers_pick_those_ones(self):
         self.assertEqual(self.choisir("2, 3"), [1, 2])
 
-    def test_out_of_range_numbers_are_ignored(self):
-        self.assertEqual(self.choisir("0,4,2"), [1])
+    def test_all_takes_every_item(self):
+        self.assertEqual(self.choisir("tout"), [0, 1, 2])
 
-    def test_c_cancels(self):
-        self.assertIsNone(self.choisir("c"))
+    def test_zero_and_ctrl_d_go_back(self):
+        self.assertIsNone(self.choisir("0"))
+        self.assertIsNone(self.choisir(EOFError()))
+
+    def test_a_wrong_number_is_named_and_asked_again(self):
+        self.assertEqual(self.choisir("0,4,2", "2"), [1])
+        self.assertIn("Choix invalide : 0,4,2", self.vu)
+        self.assertEqual(self.questions, 2)
+
+    def test_c_no_longer_cancels(self):
+        self.assertIsNone(self.choisir("c", "0"))
+        self.assertIn("Choix invalide : c", self.vu)
+
+    def test_each_line_shows_whether_it_is_pre_checked(self):
+        self.choisir("0")
+        self.assertIn("[1] ☑ ", self.vu)
+        self.assertIn("[2] ☐ ", self.vu)
+
+    def test_the_page_receives_a_multiple_choice_with_its_letter(self):
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        port = ScriptedPort(["0"])
+        with ui.bind(port):
+            self.assertIsNone(sm.choisir_en_ligne(self.candidats()))
+        [choix] = port.events
+        self.assertEqual(choix["kind"], "choose")
+        self.assertTrue(choix["multi"])
+        self.assertEqual(
+            [o["key"] for o in choix["options"]], ["1", "2", "3", "s", "0"]
+        )
 
     def test_the_label_says_size_category_and_warning(self):
         ligne = sm.libelle(self.candidats()[2])
@@ -329,35 +380,108 @@ class TestLesLibelles(unittest.TestCase):
 
 
 class TestLesCachesSudo(unittest.TestCase):
-    def lancer(self, reponses):
+    """System caches (sudo) : le choix multiple des règles communes, puis
+    le oui/non qui liste les commandes ; un retour ne lance aucun sudo."""
+
+    CACHES = [
+        {
+            "nom": "pacman",
+            "chemin": "/nulle/part",
+            "taille": 2048,
+            "commande": ["sudo", "pacman", "-Sc", "--noconfirm"],
+        },
+        {
+            "nom": "journal",
+            "chemin": "/nulle/journal",
+            "taille": 4096,
+            "commande": ["sudo", "journalctl", "--vacuum-size=1M"],
+        },
+    ]
+
+    def lancer(self, reponses, caches=CACHES[:1]):
+        """Les commandes lancées avec `reponses` au clavier ; ce qui s'est
+        affiché reste dans `self.vu`, le nombre de questions dans
+        `self.questions`."""
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
         todo.execute = mock.Mock()
-        caches = [
-            {
-                "nom": "pacman",
-                "chemin": "/nulle/part",
-                "taille": 2048,
-                "commande": ["sudo", "pacman", "-Sc", "--noconfirm"],
-            }
-        ]
+        todo.execute.exec_command_live.return_value = 0
+        vus = []
         with (
             mock.patch.object(sc, "caches_systeme", return_value=caches),
-            mock.patch("builtins.input", side_effect=reponses),
-            mock.patch("builtins.print"),
+            mock.patch.object(sc, "mesurer", return_value=(0, [])),
+            mock.patch("builtins.input", side_effect=reponses) as question,
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(" ".join(map(str, a))),
+            ),
         ):
             todo._system_caches_sudo()
-        return todo.execute.exec_command_live.call_args_list
+        self.vu = "\n".join(vus)
+        self.questions = question.call_count
+        return [
+            appel.args[0]
+            for appel in todo.execute.exec_command_live.call_args_list
+        ]
 
     def test_nothing_runs_without_a_yes(self):
         self.assertEqual(self.lancer(["1", "n"]), [])
-        self.assertEqual(self.lancer([""]), [])
+        self.assertEqual(self.lancer(["1", ""]), [])
+
+    def test_a_return_runs_nothing_and_asks_no_confirmation(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.assertEqual(self.lancer([reponse]), [])
+                self.assertEqual(self.questions, 1)
+
+    def test_ctrl_d_at_the_confirmation_runs_nothing(self):
+        self.assertEqual(self.lancer(["1", EOFError()]), [])
+        self.assertIn("Rien n'a été effacé.", self.vu)
 
     def test_the_chosen_command_runs_after_a_yes(self):
-        appels = self.lancer(["1", "o"])
-        self.assertEqual(len(appels), 1)
-        self.assertEqual(appels[0].args[0], "sudo pacman -Sc --noconfirm")
+        self.assertEqual(
+            self.lancer(["1", "o"]), ["sudo pacman -Sc --noconfirm"]
+        )
+
+    def test_a_wrong_number_is_named_and_asked_again(self):
+        self.assertEqual(
+            self.lancer(["3", "2", "o"], caches=self.CACHES),
+            ["sudo journalctl --vacuum-size=1M"],
+        )
+        self.assertIn("Choix invalide : 3", self.vu)
+
+    def test_the_name_of_a_cache_chooses_it(self):
+        self.assertEqual(
+            self.lancer(["journal", "o"], caches=self.CACHES),
+            ["sudo journalctl --vacuum-size=1M"],
+        )
+
+    def test_the_chosen_caches_run_once_in_the_order_of_the_list(self):
+        self.assertEqual(
+            self.lancer(["2 1 2", "o"], caches=self.CACHES),
+            [
+                "sudo pacman -Sc --noconfirm",
+                "sudo journalctl --vacuum-size=1M",
+            ],
+        )
+
+    def test_all_lists_every_command_before_the_confirmation(self):
+        lances = self.lancer(["tout", "o"], caches=self.CACHES)
+        self.assertEqual(
+            lances,
+            [
+                "sudo pacman -Sc --noconfirm",
+                "sudo journalctl --vacuum-size=1M",
+            ],
+        )
+        self.assertIn("  - sudo pacman -Sc --noconfirm", self.vu)
+        self.assertIn("  - sudo journalctl --vacuum-size=1M", self.vu)
+
+    def test_each_line_shows_its_command(self):
+        self.lancer(["0"], caches=self.CACHES)
+        self.assertIn("pacman", self.vu)
+        self.assertIn("Va exécuter : sudo pacman -Sc --noconfirm", self.vu)
 
 
 class TestLEspaceARecuperer(unittest.TestCase):
@@ -381,7 +505,7 @@ class TestLEspaceARecuperer(unittest.TestCase):
             mock.patch.object(sm, "choisir_en_ligne", return_value=[0]),
             mock.patch.object(sm.sys.stdin, "isatty", return_value=False),
             mock.patch.object(sc, "effacer", return_value=(0, [])) as effacer,
-            mock.patch("builtins.input", return_value=reponse),
+            mock.patch("builtins.input", side_effect=[reponse]),
             mock.patch("builtins.print"),
             mock.patch.dict(sm.os.environ, {}, clear=False),
         ):
@@ -393,6 +517,65 @@ class TestLEspaceARecuperer(unittest.TestCase):
     def test_nothing_is_deleted_without_a_yes(self):
         self.lancer("").assert_not_called()
         self.lancer("n").assert_not_called()
+
+    def test_ctrl_d_at_the_confirmation_deletes_nothing(self):
+        self.lancer(EOFError()).assert_not_called()
+
+    def parcourir(self, reponses):
+        """`_system_espace` sans terminal, deux candidats et sans base :
+        le choix en ligne puis la confirmation reçoivent `reponses`. Rend
+        le double d'effacer() ; l'affichage reste dans `self.vu`, le
+        nombre de questions dans `self.questions`."""
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        candidats = [
+            sc.Candidat("cache", ".cache/pip", ["/x/pip"], 3000, coche=True),
+            sc.Candidat("tmp", "reste", ["/x/reste"], 2000),
+        ]
+        vus = []
+        with (
+            mock.patch.object(TODO, "_system_data_dir", return_value=None),
+            mock.patch.object(sc, "candidats", return_value=candidats),
+            mock.patch.object(sm.sys.stdin, "isatty", return_value=False),
+            mock.patch.object(sc, "effacer", return_value=(0, [])) as effacer,
+            mock.patch("builtins.input", side_effect=reponses) as question,
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(" ".join(map(str, a))),
+            ),
+        ):
+            todo._system_espace()
+        self.vu = "\n".join(vus)
+        self.questions = question.call_count
+        return effacer
+
+    def test_a_return_deletes_nothing_and_asks_no_confirmation(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.parcourir([reponse]).assert_not_called()
+                self.assertEqual(self.questions, 1)
+                self.assertIn("Rien de sélectionné.", self.vu)
+
+    def test_s_deletes_the_pre_checked_ones_after_a_yes(self):
+        effacer = self.parcourir(["s", "o"])
+        self.assertEqual(
+            [c.nom for c in effacer.call_args.args[0]], [".cache/pip"]
+        )
+
+    def test_all_is_listed_before_the_confirmation(self):
+        effacer = self.parcourir(["tout", "o"])
+        self.assertEqual(
+            [c.nom for c in effacer.call_args.args[0]], [".cache/pip", "reste"]
+        )
+        apres_choix = self.vu.rsplit("[0]", 1)[1]
+        self.assertIn(".cache/pip", apres_choix)
+        self.assertIn("reste", apres_choix)
+
+    def test_a_wrong_number_asks_again_and_deletes_nothing_on_a_no(self):
+        self.parcourir(["3", "2", "n"]).assert_not_called()
+        self.assertIn("Choix invalide : 3", self.vu)
+        self.assertEqual(self.questions, 3)
 
     def test_an_empty_version_file_offers_no_current_venv(self):
         from script.todo.todo import TODO

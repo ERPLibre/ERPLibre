@@ -236,12 +236,36 @@ class TestLeMenu(unittest.TestCase):
             lances, [["/usr/bin/htop", "--sort-key", "PERCENT_MEM"]]
         )
 
-    def test_enter_runs_nothing(self):
-        self.assertEqual(self.lancer([""])[0], [])
-        self.assertEqual(self.lancer(["9"])[0], [])
+    def test_a_return_runs_nothing(self):
+        for reponse in ("", "0", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.assertEqual(self.lancer([reponse])[0], [])
+
+    def test_a_wrong_number_is_named_and_asked_again(self):
+        lances, vu = self.lancer(["9", "1"])
+        self.assertEqual(lances, [["/usr/bin/top", "-o", "%MEM"]])
+        self.assertIn("Choix invalide : 9", vu)
+
+    def test_the_name_of_a_tool_chooses_it(self):
+        lances, _ = self.lancer(["htop"], installes=("top", "htop"))
+        self.assertEqual(
+            lances, [["/usr/bin/htop", "--sort-key", "PERCENT_MEM"]]
+        )
+
+    def test_each_line_says_whether_the_tool_is_installed(self):
+        _, vu = self.lancer(["0"])
+        self.assertIn("[1] top", vu)
+        self.assertIn("✓ /usr/bin/top", vu)
+        self.assertIn("[2] htop", vu)
+        self.assertIn("absent : installable", vu)
 
     def test_a_missing_tool_is_installed_only_after_a_yes(self):
         lances, vu = self.lancer(["3", "n"])
+        self.assertEqual(lances, [])
+        self.assertIn("sudo pacman -S x", vu)
+
+    def test_ctrl_d_at_the_install_question_installs_nothing(self):
+        lances, vu = self.lancer(["3", EOFError()])
         self.assertEqual(lances, [])
         self.assertIn("sudo pacman -S x", vu)
 

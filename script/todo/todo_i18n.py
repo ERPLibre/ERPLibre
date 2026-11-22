@@ -24244,9 +24244,9 @@ TRANSLATIONS = {
         "fr": "absent, gestionnaire de paquets inconnu",
         "en": "not installed, unknown package manager",
     },
-    "Tool number, Enter for none: ": {
-        "fr": "Numéro de l'outil, Entrée pour aucun : ",
-        "en": "Tool number, Enter for none: ",
+    "Tool to run:": {
+        "fr": "Outil à lancer :",
+        "en": "Tool to run:",
     },
     "is still not in the PATH.": {
         "fr": "n'est toujours pas dans le PATH.",
@@ -24294,9 +24294,9 @@ TRANSLATIONS = {
         "fr": "Les venvs des autres checkouts ERPLibre sont proposés, décochés, dans Espace à récupérer.",
         "en": "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.",
     },
-    "Numbers to run (e.g. 1,2), Enter for none: ": {
-        "fr": "Numéros à lancer (ex. 1,2), Entrée pour aucun : ",
-        "en": "Numbers to run (e.g. 1,2), Enter for none: ",
+    "Caches to clear with sudo:": {
+        "fr": "Caches à vider avec sudo :",
+        "en": "Caches to clear with sudo:",
     },
     "Run these commands with sudo? (y/N): ": {
         "fr": "Lancer ces commandes avec sudo ? (o/N) : ",
@@ -24431,9 +24431,13 @@ TRANSLATIONS = {
         "fr": "Effacer",
         "en": "Delete",
     },
-    "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ": {
-        "fr": "Numéros à effacer (ex. 1,3), Entrée pour les cochés, c pour annuler : ",
-        "en": "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: ",
+    "Items to delete:": {
+        "fr": "Éléments à effacer :",
+        "en": "Items to delete:",
+    },
+    "The pre-checked items": {
+        "fr": "Les éléments pré-cochés",
+        "en": "The pre-checked items",
     },
     "Delete these items?": {
         "fr": "Effacer ces éléments ?",

@@ -24,6 +24,7 @@ from script.todo import (
     system_cpu,
     system_diagnostic,
     system_gpu,
+    ui,
 )
 from script.todo.menus import execute as menus_execute
 from script.todo.todo_i18n import t
@@ -376,23 +377,21 @@ def formulaire(candidats):
 
 
 def choisir_en_ligne(candidats):
-    """La même chose sans terminal plein écran : une liste numérotée."""
-    for i, c in enumerate(candidats, 1):
-        print(f"  [{i}] {'☑' if c.coche else '☐'} {libelle(c)}")
-    reponse = input(
-        t(
-            "Numbers to delete (e.g. 1,3), Enter for the checked ones, c to cancel: "
-        )
-    ).strip()
-    if reponse.lower() == "c":
-        return None
-    if not reponse:
-        return [i for i, c in enumerate(candidats) if c.coche]
-    choisis = []
-    for morceau in reponse.replace(" ", "").split(","):
-        if morceau.isdigit() and 1 <= int(morceau) <= len(candidats):
-            choisis.append(int(morceau) - 1)
-    return sorted(set(choisis))
+    """La même chose sans terminal plein écran, par le choix multiple de
+    `ui.choose`, que la page web reçoit aussi : les indices choisis, dans
+    l'ordre de `candidats`. Numéros, plages, tout, all ou * ; la lettre
+    [s] prend les pré-cochés, offerte s'il y en a. Rend [] pour une
+    réponse vide, qui ne prend jamais les pré-cochés, et None pour
+    [0] Retour ou Ctrl+D (EOFError)."""
+    coches = [i for i, c in enumerate(candidats) if c.coche]
+    choisis = ui.choose(
+        t("Items to delete:"),
+        list(range(len(candidats))),
+        multi=True,
+        labels=[f"{'☑' if c.coche else '☐'} {libelle(c)}" for c in candidats],
+        letters={"s": t("The pre-checked items")} if coches else None,
+    )
+    return coches if choisis == "s" else choisis
 
 
 class SystemMenuMixin:
@@ -400,6 +399,17 @@ class SystemMenuMixin:
         """System, déclaré dans SYSTEM (`menus/execute.py`). Rend False
         sur [0]."""
         return navigate(self, menus_execute.SYSTEM)
+
+    def _system_oui(self, question):
+        """Vrai si l'utilisateur répond oui à `question`, un oui/non qui
+        suit une liste et précède un effacement ou sudo ; une réponse vide
+        et Ctrl+D (EOFError) valent non."""
+        try:
+            reponse = ui.ask(question)
+        except EOFError:
+            print()
+            return False
+        return self._is_yes(reponse)
 
     def _system_diagnostic(self):
         faits = system_diagnostic.collecter(".")
@@ -420,10 +430,13 @@ class SystemMenuMixin:
 
     def _system_cpu(self):
         """Choisir top, htop, btop ou glances, l'installer s'il manque,
-        puis le lancer trié par mémoire quand l'outil le permet."""
+        puis le lancer trié par mémoire quand l'outil le permet. Le choix
+        simple de `ui.choose`, sans défaut, lit le numéro ou le nom de
+        l'outil ; une réponse vide, [0] et Ctrl+D ne lancent rien."""
         outils = system_cpu.etat()
         nix = system_cpu.gestionnaire() == "nix"
-        for i, o in enumerate(outils, 1):
+        libelles = []
+        for o in outils:
             if o["chemin"]:
                 note = f"✓ {o['chemin']}"
             elif nix:
@@ -432,11 +445,15 @@ class SystemMenuMixin:
                 note = f"✗ {t('not installed: can be installed')}"
             else:
                 note = f"✗ {t('not installed, unknown package manager')}"
-            print(f"  [{i}] {o['nom']:<8} {note}")
-        reponse = input(t("Tool number, Enter for none: ")).strip()
-        if not (reponse.isdigit() and 1 <= int(reponse) <= len(outils)):
+            libelles.append(f"{o['nom']:<8} {note}")
+        outil = ui.choose(
+            t("Tool to run:"),
+            outils,
+            labels=libelles,
+            names={o["nom"]: o for o in outils},
+        )
+        if outil is None:
             return
-        outil = outils[int(reponse) - 1]
         if outil["chemin"]:
             commande = [outil["chemin"]] + outil["args"]
         elif nix:
@@ -472,9 +489,7 @@ class SystemMenuMixin:
             return False
         for commande in plan:
             print(f"  {t('Will execute:')} {shlex.join(commande)}")
-        if not self._is_yes(
-            input(t("Install {name}? (y/N): ").format(name=nom))
-        ):
+        if not self._system_oui(t("Install {name}? (y/N): ").format(name=nom)):
             return False
         for commande in plan:
             try:
@@ -654,8 +669,8 @@ class SystemMenuMixin:
         for c in retenus:
             print(f"  - {libelle(c)}")
         prevu = sum(c.taille for c in retenus)
-        if not self._is_yes(
-            input(f"{t('Delete these items?')} ({octets(prevu)}) (y/N): ")
+        if not self._system_oui(
+            f"{t('Delete these items?')} ({octets(prevu)}) (y/N): "
         ):
             print(f"  {t('Nothing deleted.')}")
             return
@@ -713,31 +728,32 @@ class SystemMenuMixin:
     def _system_caches_sudo(self):
         """Les caches du système : leur poids et la commande, puis sudo
         après confirmation, cache par cache. Un échec passe au cache
-        suivant ; un Ctrl+C (`Execute.interrupted`) arrête la suite."""
+        suivant ; un Ctrl+C (`Execute.interrupted`) arrête la suite.
+
+        Le choix multiple de `ui.choose` lit les numéros, les plages, tout,
+        all ou *, et le nom d'un cache ; une réponse vide, [0] et Ctrl+D
+        ne lancent rien et ne demandent pas la confirmation."""
         caches = system_cleanup.caches_systeme()
         if not caches:
             print(f"  {t('Nothing to reclaim.')}")
             return
-        for i, c in enumerate(caches, 1):
-            print(
-                f"  [{i}] {octets(c['taille']):>10}  {c['nom']:<8}"
-                f" {c['chemin']}"
-            )
-            print(f"      {t('Will execute:')} {shlex.join(c['commande'])}")
-        reponse = input(
-            t("Numbers to run (e.g. 1,2), Enter for none: ")
-        ).strip()
-        choisis = [
-            caches[int(m) - 1]
-            for m in reponse.replace(" ", "").split(",")
-            if m.isdigit() and 1 <= int(m) <= len(caches)
-        ]
+        choisis = ui.choose(
+            t("Caches to clear with sudo:"),
+            caches,
+            multi=True,
+            labels=[
+                f"{octets(c['taille']):>10}  {c['nom']:<8} {c['chemin']}\n"
+                f"    {t('Will execute:')} {shlex.join(c['commande'])}"
+                for c in caches
+            ],
+            names={c["nom"]: c for c in caches},
+        )
         if not choisis:
             print(f"  {t('Nothing selected.')}")
             return
         for c in choisis:
             print(f"  - {shlex.join(c['commande'])}")
-        if not self._is_yes(input(t("Run these commands with sudo? (y/N): "))):
+        if not self._system_oui(t("Run these commands with sudo? (y/N): ")):
             print(f"  {t('Nothing deleted.')}")
             return
         for c in choisis:
