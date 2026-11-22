@@ -577,6 +577,17 @@ every host that declares no memory is brought down to the engine's floor: it
 derives a 20 % margin above the sum of a host's roles, and on a terrain that
 carries the whole fleet those margins add up.
 
+**Every pass proves disaster recovery.** Once the replayed recipe holds, the
+bench backs up, razes every host but the backup target, and rebuilds with
+restoration on. The backup target is kept because its repository IS the data:
+razed and redeployed first, it would answer "no repository", which the engine
+reads as a first life, and everything would come back empty without a
+failure. The engine judges and the bench demands: every data set must read
+`restaure`, every witness IDENTICAL or CONFORMING, and the certificate
+authority's root must keep its fingerprint — "not applicable" is not a
+recovery. Restoration goes back off whatever happens, and the recipe is
+replayed on the restored fleet.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its
@@ -1227,6 +1238,17 @@ plan est scellé — un secret absent fait rarement échouer son rôle, il fait
 qui ne déclare pas sa mémoire est ramené au plancher du moteur : il dérive une
 marge de 20 % au-dessus de la somme des rôles d'un hôte, et sur un terrain qui
 porte toute la flotte, ces marges s'additionnent.
+
+**Chaque passe prouve la reprise après sinistre.** Une fois la recette
+rejouée tenue, le banc sauvegarde, rase chaque hôte sauf la cible des
+sauvegardes, et reconstruit avec la restauration active. La cible des
+sauvegardes est gardée parce que son dépôt EST la donnée : rasée puis
+redéployée la première, elle répondrait « aucun dépôt », que le moteur lit
+comme une première vie, et tout reviendrait vide sans échec. Le moteur juge,
+le banc exige : chaque jeu doit dire `restaure`, chaque témoin IDENTIQUE ou
+CONFORME, et la racine de l'autorité de certification garder son empreinte —
+« sans objet » n'est pas une reprise. La restauration revient à faux quoi
+qu'il arrive, et la recette est rejouée sur la flotte restaurée.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

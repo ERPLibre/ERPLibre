@@ -593,6 +593,17 @@ qui ne déclare pas sa mémoire est ramené au plancher du moteur : il dérive u
 marge de 20 % au-dessus de la somme des rôles d'un hôte, et sur un terrain qui
 porte toute la flotte, ces marges s'additionnent.
 
+**Chaque passe prouve la reprise après sinistre.** Une fois la recette
+rejouée tenue, le banc sauvegarde, rase chaque hôte sauf la cible des
+sauvegardes, et reconstruit avec la restauration active. La cible des
+sauvegardes est gardée parce que son dépôt EST la donnée : rasée puis
+redéployée la première, elle répondrait « aucun dépôt », que le moteur lit
+comme une première vie, et tout reviendrait vide sans échec. Le moteur juge,
+le banc exige : chaque jeu doit dire `restaure`, chaque témoin IDENTIQUE ou
+CONFORME, et la racine de l'autorité de certification garder son empreinte —
+« sans objet » n'est pas une reprise. La restauration revient à faux quoi
+qu'il arrive, et la recette est rejouée sur la flotte restaurée.
+
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
 route pas : l'attente qui interroge la flotte jouerait sa borne entière puis la

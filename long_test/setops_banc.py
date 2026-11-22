@@ -1779,7 +1779,7 @@ def lit_resolveur(sortie):
     return ""
 
 
-def texte_intrants_du_banc(resolveur):
+def texte_intrants_du_banc(resolveur, restauration=False):
     """Le `group_vars` que le banc ajoute au locataire, ou « ».
 
     `courriel_amorcage` EST UNE EXIGENCE DU SOCLE, pas un confort : le rôle du
@@ -1792,14 +1792,17 @@ def texte_intrants_du_banc(resolveur):
     que la capture du gabarit a VIDÉ — et le premier `apt` échoue sur le cache,
     en ne disant rien du nom qu'il n'a pas résolu.
 
-    `RESTAURATION_ACTIVE` À FAUX, parce que la flotte du banc naît NEUVE à chaque
-    passe et qu'aucun serveur de sauvegarde n'est à son plan. Le modèle attache
-    pourtant `client_backup` à des hôtes qui portent un état, et le moteur, en
-    reconstruisant, interroge leur dépôt avant de créer cet état : un dépôt
-    injoignable le fait REFUSER, à raison — conclure « rien à restaurer » ferait
-    naître neuf ce qui attend chez l'hébergeur. L'interrupteur est celui que le
-    moteur documente pour « ne jamais restaurer » ; la sauvegarde n'en est pas
-    bloquée. La restauration n'est donc PAS éprouvée par ce banc.
+    `restauration` ne passe à vrai que le temps de la reprise après sinistre
+    (voir `joue_la_reprise`), sur une flotte rasée dont le dépôt est resté.
+
+    `RESTAURATION_ACTIVE` À FAUX par défaut, parce que la flotte du banc naît
+    NEUVE à chaque passe. Le moteur, en reconstruisant, interroge le dépôt d'un
+    hôte avant de créer son état ; or il amorce l'autorité de certification
+    AVANT de déployer la cible des sauvegardes, dont le dépôt n'existe donc pas
+    encore. Un dépôt injoignable le fait REFUSER, à raison — conclure « rien à
+    restaurer » ferait naître neuf ce qui attend ailleurs. L'interrupteur est
+    celui que le moteur documente pour « ne jamais restaurer » ; la sauvegarde
+    n'en est pas bloquée.
 
     `VERIFICATION_DEPOT` À VRAI : le dépôt de sauvegarde vérifie ses instantanés
     et le RAPPORTE à la supervision, que le banc pose — voir
@@ -1829,7 +1832,7 @@ def texte_intrants_du_banc(resolveur):
 dns_amorcage: "{resolveur.strip()}"
 amorcage_acces_courriel: "{COURRIEL_RECOURS}"
 amorcage_acces_uid: "{COMPTE_RECETTE}"
-{RESTAURATION_ACTIVE}: false
+{RESTAURATION_ACTIVE}: {"true" if restauration else "false"}
 {VERIFICATION_DEPOT}: true
 {TLS_LMTP_EMETTEUR}: true
 {RESEAUX_BASES}: ["{{{{ setops_supernet }}}}"]
@@ -3539,9 +3542,7 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
         os.makedirs(groupe, exist_ok=True)
     except OSError as souci:
         return pose._replace(souci=f"{INTRANTS_BANC} : {souci.strerror}")
-    souci = _ecrit(
-        os.path.join(groupe, INTRANTS_BANC), texte_intrants_du_banc(resolveur)
-    )
+    souci = ecrit_les_intrants(eco, resolveur)
     if souci:
         return pose._replace(souci=souci)
 
@@ -5052,6 +5053,221 @@ def chemin_inventaire(moteur):
     )
 
 
+def ecrit_les_intrants(eco, resolveur, restauration=False):
+    """Écrit les `group_vars` que le banc ajoute au locataire. Le souci, ou
+    « ». Réécrit à chaque appel : le fichier est au banc, pas au modèle."""
+    groupe = os.path.join(
+        eco, "inventories", INVENTAIRE_BANC, "group_vars", "all"
+    )
+    try:
+        os.makedirs(groupe, exist_ok=True)
+    except OSError as souci:
+        return f"{INTRANTS_BANC} : {souci.strerror}"
+    return _ecrit(
+        os.path.join(groupe, INTRANTS_BANC),
+        texte_intrants_du_banc(resolveur, restauration),
+    )
+
+
+# LA REPRISE APRÈS SINISTRE, jouée dans chaque passe, la recette tenue : la
+# flotte est rasée SAUF la cible des sauvegardes, puis reconstruite avec la
+# restauration active. Chaque détenteur d'état doit revenir de son dépôt, et
+# ce qu'il a remis doit être ce qu'il portait.
+#
+# LA CIBLE DES SAUVEGARDES N'EST PAS RASÉE, et c'est tout le sujet : son dépôt
+# EST la donnée. Rasée puis redéployée avant les autres, elle répondrait
+# « aucun dépôt », que le moteur lit comme une première vie : tout reviendrait
+# vide, et sans échec.
+#
+# LE MOTEUR JUGE, LE BANC EXIGE. `restauration-etat` dit ce que chaque jeu est
+# devenu ; les témoins comparent l'état vivant à l'instantané d'avant le
+# rasage ; l'empreinte de la racine de l'autorité dit si c'est la même. Le
+# banc exige `restaure` de chaque jeu, IDENTIQUE ou CONFORME de chaque témoin,
+# et la même empreinte : un « sans objet » n'est pas une reprise.
+ETAPE_EMPREINTE = Etape("ca-empreinte", (), "~10 s", False, False)
+ETAPE_ETAT_RESTAURATION = Etape("restauration-etat", (), "~30 s", False, False)
+ETAPE_TEMOINS = Etape("temoins-etat", (), "~1 min", False, False)
+ETAT_RESTAURE = "restaure"
+TEMOINS_TENUS = ("IDENTIQUE", "CONFORME")
+
+
+def hotes_actifs(inventaire):
+    """Les hôtes actifs de l'inventaire généré, triés. Ou None."""
+    try:
+        hotes = inventaire["all"]["children"][GROUPE_ACTIFS]["hosts"]
+    except (KeyError, TypeError):
+        return None
+    return tuple(sorted(hotes)) if isinstance(hotes, dict) else None
+
+
+def _par_hote(sortie):
+    """(hôte, ligne) de chaque ligne d'une sortie d'ansible, l'hôte étant
+    celui du dernier en-tête `ok: [hôte]` ou `fatal: [hôte]` lu."""
+    hote = ""
+    for ligne in (sortie or "").splitlines():
+        tete = re.match(r"^(?:ok|changed|fatal|failed): \[([^\]]+)\]", ligne)
+        if tete:
+            hote = tete.group(1)
+        yield hote, ligne
+
+
+def jeux_restaures(sortie):
+    """{« hôte/jeu »: état} lu dans la sortie de `restauration-etat`."""
+    jeux = {}
+    for hote, ligne in _par_hote(sortie):
+        prise = re.search(r"jeu (\S+) : (?:etat=(\S+)|(EN ATTENTE))", ligne)
+        if prise:
+            jeux[f"{hote}/{prise.group(1)}"] = prise.group(2) or "EN_ATTENTE"
+    return jeux
+
+
+def verdicts_temoins(sortie):
+    """({« hôte/jeu »: verdict}, {hôtes sans objet}) des témoins."""
+    verdicts, sans_objet = {}, set()
+    for hote, ligne in _par_hote(sortie):
+        prise = re.search(
+            r'"\s+(\S+)\s+(IDENTIQUE|CONFORME|ECART)\s+\d+', ligne
+        )
+        if prise:
+            verdicts[f"{hote}/{prise.group(1)}"] = prise.group(2)
+        elif "SANS OBJET" in ligne and hote:
+            sans_objet.add(hote)
+    return verdicts, sans_objet
+
+
+def empreinte_de(sortie):
+    """L'empreinte de la racine que `ca-empreinte` imprime, ou « »."""
+    for ligne in reversed((sortie or "").splitlines()):
+        if re.fullmatch(r"[0-9a-f]{64}", ligne.strip()):
+            return ligne.strip()
+    return ""
+
+
+def ecarts_de_reprise(etat, temoins, avant, apres):
+    """Ce qui manque à une reprise, nommé. () si elle tient."""
+    ecarts = []
+    jeux = jeux_restaures(etat)
+    if not jeux:
+        ecarts.append("aucun jeu lu par restauration-etat")
+    ecarts += [
+        f"{jeu} : {valeur}"
+        for jeu, valeur in sorted(jeux.items())
+        if valeur != ETAT_RESTAURE
+    ]
+    verdicts, sans_objet = verdicts_temoins(temoins)
+    ecarts += [f"{hote} : témoins sans objet" for hote in sorted(sans_objet)]
+    ecarts += [
+        f"témoin {jeu} : {verdict}"
+        for jeu, verdict in sorted(verdicts.items())
+        if verdict not in TEMOINS_TENUS
+    ]
+    ecarts += [
+        f"témoin {jeu} : absent" for jeu in sorted(set(jeux) - set(verdicts))
+    ]
+    if not avant or avant != apres:
+        ecarts.append(
+            f"racine de l'autorité : {avant or '?'} avant, {apres or '?'} après"
+        )
+    return tuple(ecarts)
+
+
+def joue_une_lecture(moteur, env, etape, passe, secret, dire=print):
+    """Joue une cible du moteur qui LIT, et rend sa sortie. « » si elle a
+    échoué : l'appelant juge ce qu'il n'a pas pu lire."""
+    argv = runner_du_banc().cible(
+        moteur, etape.cible, etape.variables, confirmer=etape.confirmer
+    )
+    dire(f"    {runner_du_banc().cite(argv)}")
+    vu = runner_du_banc().jouer(argv, env=env, cwd=moteur, delai=DELAI_ETAPE)
+    souci = ecrit_le_journal(
+        chemin_journal(passe, etape.cible), vu.sortie, secret
+    )
+    if souci:
+        dire(f"      journal non déposé : {souci}")
+    return vu.sortie if vu.code == 0 else ""
+
+
+def joue_la_reprise(
+    moteur, mesures, eco, env, etapes, passe, secret, dire, recettes
+):
+    """Rase la flotte sauf ses sauvegardes, la reconstruit en restaurant, et
+    juge la reprise. Rend (souci, écarts).
+
+    Le souci arrête la passe : un geste du moteur a échoué. Les écarts disent
+    une reprise qui n'a pas tenu, et la passe va quand même jusqu'au rasage.
+    LA RESTAURATION REVIENT À FAUX QUOI QU'IL ARRIVE : la passe suivante bâtit
+    une flotte neuve, dont le dépôt n'existe pas encore.
+    """
+    par_cible = {e.cible: e for e in etapes}
+    raser = par_cible.get("raser")
+    if raser is None or "reconstruire" not in par_cible:
+        return "la boucle n'a pas de quoi raser et reconstruire", ()
+    hotes = hotes_actifs(lit_inventaire(chemin_inventaire(moteur)))
+    if not hotes or HOTE_SAUVEGARDE not in hotes:
+        return "l'inventaire ne nomme pas la cible des sauvegardes", ()
+    dire("    — reprise après sinistre —")
+    avant = empreinte_de(
+        joue_une_lecture(moteur, env, ETAPE_EMPREINTE, passe, secret, dire)
+    )
+    souci = joue_une_etape(
+        moteur, env, par_cible["sauvegarder-maintenant"], passe, secret, dire
+    )
+    if souci:
+        return souci, ()
+    for hote in hotes:
+        if hote == HOTE_SAUVEGARDE:
+            continue
+        souci = joue_une_etape(
+            moteur,
+            env,
+            raser._replace(variables=raser.variables + (("HOTE", hote),)),
+            passe,
+            secret,
+            dire,
+        )
+        if souci:
+            return souci, ()
+    souci = ecrit_les_intrants(eco, mesures.resolveur, restauration=True)
+    if souci:
+        return souci, ()
+    try:
+        souci = joue_une_etape(
+            moteur,
+            env,
+            par_cible["reconstruire"],
+            passe,
+            secret,
+            dire,
+            recettes,
+        )
+        if souci:
+            return souci, ()
+        etat = joue_une_lecture(
+            moteur, env, ETAPE_ETAT_RESTAURATION, passe, secret, dire
+        )
+        temoins = joue_une_lecture(
+            moteur, env, ETAPE_TEMOINS, passe, secret, dire
+        )
+        apres = empreinte_de(
+            joue_une_lecture(moteur, env, ETAPE_EMPREINTE, passe, secret, dire)
+        )
+    finally:
+        retour = ecrit_les_intrants(eco, mesures.resolveur)
+    if retour:
+        return f"la restauration n'est pas revenue à faux : {retour}", ()
+    ecarts = ecarts_de_reprise(etat, temoins, avant, apres)
+    # LA RECETTE EST REJOUÉE SUR LA FLOTTE RESTAURÉE : elle doit fonctionner,
+    # pas seulement porter ses données.
+    souci = joue_une_etape(
+        moteur, env, par_cible["valider"], passe, secret, dire, recettes
+    )
+    if souci:
+        return souci, ecarts
+    if not ecarts:
+        dire("      reprise tenue : chaque jeu restauré, témoins conformes")
+    return "", tuple(f"reprise : {e}" for e in ecarts)
+
+
 def joue_une_passe(
     moteur, mesures, chantier, passe, secret, dire=print, recettes=None
 ):
@@ -5111,13 +5327,32 @@ def joue_une_passe(
     if souci:
         return souci
 
-    de_la_passe = []
+    de_la_passe, reprises = [], ()
     for etape in etapes[premier:]:
+        # LA REPRISE AVANT LE RASAGE FINAL : elle a besoin d'une flotte
+        # sauvegardée et de sa cible des sauvegardes, que le rasage emporte.
+        if etape.cible == "raser":
+            souci, reprises = joue_la_reprise(
+                moteur,
+                mesures,
+                chemins[2],
+                env,
+                etapes,
+                passe,
+                secret,
+                dire,
+                de_la_passe,
+            )
+            if souci:
+                return souci
         souci = joue_une_etape(
             moteur, env, etape, passe, secret, dire, de_la_passe
         )
         if souci:
             return souci
+    # LES ÉCARTS DE LA REPRISE APRÈS LES RECETTES : une recette rejouée qui
+    # tient remplace celles d'avant, jamais une reprise qui n'a pas tenu.
+    de_la_passe.extend(reprises)
     if recettes is not None:
         recettes.extend(de_la_passe)
     # Sa plainte est dite par elle-même et ne fait pas échouer la passe.
@@ -5507,6 +5742,23 @@ def plan(passes, terrain, batir=False):
                 etape.duree + ("" if etape.mesuree else " annoncé"),
             )
             for etape in ETAPES_BOUCLE
+            if etape.cible != "raser"
+        ]
+        etapes.append(
+            (
+                "  reprise : sauvegarde, rasage sauf "
+                f"{HOTE_SAUVEGARDE}, reconstruction restaurée, témoins",
+                "~50 min annoncé",
+            )
+        )
+        etapes += [
+            (
+                f"  make {etape.cible}"
+                + ("  (écrit)" if etape.confirmer else ""),
+                etape.duree + ("" if etape.mesuree else " annoncé"),
+            )
+            for etape in ETAPES_BOUCLE
+            if etape.cible == "raser"
         ]
     return tuple(etapes)
 

@@ -572,6 +572,17 @@ every host that declares no memory is brought down to the engine's floor: it
 derives a 20 % margin above the sum of a host's roles, and on a terrain that
 carries the whole fleet those margins add up.
 
+**Every pass proves disaster recovery.** Once the replayed recipe holds, the
+bench backs up, razes every host but the backup target, and rebuilds with
+restoration on. The backup target is kept because its repository IS the data:
+razed and redeployed first, it would answer "no repository", which the engine
+reads as a first life, and everything would come back empty without a
+failure. The engine judges and the bench demands: every data set must read
+`restaure`, every witness IDENTICAL or CONFORMING, and the certificate
+authority's root must keep its fingerprint — "not applicable" is not a
+recovery. Restoration goes back off whatever happens, and the recipe is
+replayed on the restored fleet.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its

@@ -1418,9 +1418,12 @@ class TestLaBoucleEstCelleDuMoteur(unittest.TestCase):
         annonces = [
             quoi for quoi, duree in dit.items() if "annoncé" in (duree or "")
         ]
+        # La reprise après sinistre n'a jamais été chronométrée : annoncée.
         self.assertEqual(
-            len([e for e in B.ETAPES_BOUCLE if not e.mesuree]), len(annonces)
+            len([e for e in B.ETAPES_BOUCLE if not e.mesuree]) + 1,
+            len(annonces),
         )
+        self.assertTrue(any(q.strip().startswith("reprise") for q in annonces))
 
 
 class TestLArgvSshDeriveDuLabo(unittest.TestCase):
@@ -4702,8 +4705,9 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
     sur « écrit ou non » jouait la recette — qui n'écrit rien — AVANT la
     construction qu'elle juge."""
 
-    def joue(self):
+    def joue(self, ecarts=()):
         joues = []
+        self.recettes = []
 
         def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
             joues.append(e.cible)
@@ -4713,6 +4717,10 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
             joues.append("zones")
             return ""
 
+        def reprise(*_a, **_k):
+            joues.append("reprise")
+            return "", tuple(ecarts)
+
         for nom, valeur in (
             ("env_ansible", lambda _m: {}),
             ("saut_ansible", lambda _m, _t: {}),
@@ -4721,16 +4729,36 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
             ("joue_une_etape", etape),
             ("route_les_zones", zones),
             ("rend_l_espace", lambda *_a, **_k: joues.append("rendre")),
+            ("joue_la_reprise", reprise),
         ):
             correctif = mock.patch.object(B, nom, valeur)
             correctif.start()
             self.addCleanup(correctif.stop)
         mesures = mock.Mock(terrain="t", adresse_api="")
         souci = B.joue_une_passe(
-            "/f/moteur", mesures, None, B.PASSE_VOUTE, "", lambda *a: None
+            "/f/moteur",
+            mesures,
+            None,
+            B.PASSE_VOUTE,
+            "",
+            lambda *a: None,
+            self.recettes,
         )
         self.assertEqual("", souci)
         return joues
+
+    def test_the_recovery_plays_after_the_recipe_and_before_the_raze(self):
+        """Elle a besoin d'une flotte sauvegardée et de sa cible des
+        sauvegardes, que le rasage final emporte."""
+        joues = self.joue()
+        self.assertLess(joues.index("valider"), joues.index("reprise"))
+        self.assertLess(joues.index("reprise"), joues.index("raser"))
+
+    def test_a_recovery_that_did_not_hold_is_a_recipe_failure(self):
+        """Ses écarts suivent les recettes : une recette rejouée qui tient
+        ne les efface pas."""
+        self.joue(ecarts=("reprise : un jeu neuf",))
+        self.assertEqual(["reprise : un jeu neuf"], self.recettes)
 
     def test_the_space_is_given_back_after_the_raze(self):
         """Rendre avant le rasage ne rendrait rien : les disques de la flotte
@@ -4749,6 +4777,227 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
         self.assertEqual(
             ["instancier", "instancier-appliquer", "zones"], joues[:3]
         )
+
+
+SORTIE_ETAT = """
+TASK [Etat] ************************************************************
+ok: [infra-pki-01] => {
+    "msg": [
+        "candidat   : abc123 2026-11-22T01:00:00 (ce que choisirait ...)",
+        "avant-raser: abc123",
+        "jeu step_ca : etat=restaure instantane=abc123 date=x (au depot)"
+    ]
+}
+ok: [id-sso-01] => {
+    "msg": [
+        "jeu postgresql : etat=restaure instantane=def456 date=x (au depot)",
+        "jeu forgejo : etat=neuf instantane= date=x ",
+        "jeu grafana : EN ATTENTE (aucun marqueur)"
+    ]
+}
+"""
+
+SORTIE_TEMOINS = """
+TASK [Temoins] *********************************************************
+ok: [infra-pki-01] => {
+    "msg": [
+        "TEMOINS de infra-pki-01 : instantane abc123 (x) contre l'etat vivant",
+        "  step_ca      IDENTIQUE  12 fichier(s)",
+        "Aucun ecart : rien de perdu, l'identite est intacte."
+    ]
+}
+ok: [id-sso-01] => {
+    "msg": [
+        "TEMOINS de id-sso-01 : instantane def456 (x) contre l'etat vivant",
+        "  postgresql   CONFORME   40 table(s)",
+        "      modifie  public.x",
+        "  forgejo      ECART      3 fichier(s)"
+    ]
+}
+ok: [obs-01] => {
+    "msg": [
+        "SANS OBJET : aucun instantane avant-raser pour obs-01."
+    ]
+}
+"""
+
+EMPREINTE = "a" * 64
+
+
+class TestLaRepriseSeJugeSurCeQueLeMoteurDit(unittest.TestCase):
+    """Le moteur dit ce que chaque jeu est devenu et compare l'état vivant à
+    l'instantané d'avant le rasage ; le banc exige restauré, conforme, et la
+    même racine. Les sorties sont celles qu'imprime le moteur, inventées."""
+
+    def test_each_set_is_read_with_its_host(self):
+        self.assertEqual(
+            {
+                "infra-pki-01/step_ca": "restaure",
+                "id-sso-01/postgresql": "restaure",
+                "id-sso-01/forgejo": "neuf",
+                "id-sso-01/grafana": "EN_ATTENTE",
+            },
+            B.jeux_restaures(SORTIE_ETAT),
+        )
+
+    def test_each_witness_is_read_with_its_host(self):
+        verdicts, sans_objet = B.verdicts_temoins(SORTIE_TEMOINS)
+        self.assertEqual(
+            {
+                "infra-pki-01/step_ca": "IDENTIQUE",
+                "id-sso-01/postgresql": "CONFORME",
+                "id-sso-01/forgejo": "ECART",
+            },
+            verdicts,
+        )
+        self.assertEqual({"obs-01"}, sans_objet)
+
+    def test_everything_that_is_not_a_recovery_is_named(self):
+        ecarts = " ; ".join(
+            B.ecarts_de_reprise(
+                SORTIE_ETAT, SORTIE_TEMOINS, EMPREINTE, "b" * 64
+            )
+        )
+        for attendu in (
+            "id-sso-01/forgejo : neuf",
+            "id-sso-01/grafana : EN_ATTENTE",
+            "obs-01 : témoins sans objet",
+            "témoin id-sso-01/forgejo : ECART",
+            "témoin id-sso-01/grafana : absent",
+            "racine de l'autorité",
+        ):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, ecarts)
+        self.assertNotIn("step_ca", ecarts)
+        self.assertNotIn("postgresql", ecarts)
+
+    def test_a_full_recovery_holds(self):
+        etat = SORTIE_ETAT.split("ok: [id-sso-01]")[0]
+        temoins = SORTIE_TEMOINS.split("ok: [id-sso-01]")[0]
+        self.assertEqual(
+            (), B.ecarts_de_reprise(etat, temoins, EMPREINTE, EMPREINTE)
+        )
+
+    def test_nothing_read_is_not_a_recovery(self):
+        """Un moteur muet ne prouve rien : aucun jeu, aucune empreinte."""
+        ecarts = B.ecarts_de_reprise("", "", "", "")
+        self.assertTrue(any("aucun jeu" in e for e in ecarts))
+        self.assertTrue(any("racine" in e for e in ecarts))
+
+    def test_the_fingerprint_is_the_hex_line_the_engine_prints(self):
+        self.assertEqual(EMPREINTE, B.empreinte_de(f"bruit\n{EMPREINTE}\n"))
+        self.assertEqual("", B.empreinte_de("Refus: aucun hote\n"))
+
+    def test_the_restore_switch_turns_on_only_when_asked(self):
+        for demande in (False, True):
+            with self.subTest(demande=demande):
+                lu = yaml.safe_load(
+                    B.texte_intrants_du_banc("192.0.2.1", demande)
+                )
+                self.assertIs(demande, lu[B.RESTAURATION_ACTIVE])
+
+    def test_the_active_hosts_are_read_from_the_inventory(self):
+        inventaire = {
+            "all": {
+                "children": {
+                    B.GROUPE_ACTIFS: {"hosts": {"b-01": {}, "a-01": {}}}
+                }
+            }
+        }
+        self.assertEqual(("a-01", "b-01"), B.hotes_actifs(inventaire))
+        self.assertIsNone(B.hotes_actifs({}))
+
+
+class TestLeDerouleDeLaReprise(unittest.TestCase):
+    """Rasée sauf ses sauvegardes, reconstruite en restaurant, jugée, et la
+    restauration revenue à faux quoi qu'il arrive."""
+
+    def joue(self, echec_reconstruire=False):
+        self.gestes, self.intrants = [], []
+        etapes = B.etapes_resolues(B.ETAPES_BOUCLE, "fictif")
+
+        def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
+            hote = dict(e.variables).get("HOTE", "")
+            self.gestes.append(f"{e.cible}{':' + hote if hote else ''}")
+            if e.cible == "reconstruire" and echec_reconstruire:
+                return "make reconstruire : fictif"
+            return ""
+
+        def lecture(moteur, env, e, passe="", secret="", dire=None):
+            self.gestes.append(e.cible)
+            return {
+                "ca-empreinte": "a" * 64,
+                "restauration-etat": SORTIE_ETAT.split("ok: [id-sso-01]")[0],
+                "temoins-etat": SORTIE_TEMOINS.split("ok: [id-sso-01]")[0],
+            }[e.cible]
+
+        def intrants(eco, resolveur, restauration=False):
+            self.intrants.append(restauration)
+            self.gestes.append(f"intrants:{restauration}")
+            return ""
+
+        inventaire = {
+            "all": {
+                "children": {
+                    B.GROUPE_ACTIFS: {
+                        "hosts": {
+                            "infra-pki-01": {},
+                            B.HOTE_SAUVEGARDE: {},
+                            "id-sso-01": {},
+                        }
+                    }
+                }
+            }
+        }
+        for nom, valeur in (
+            ("joue_une_etape", etape),
+            ("joue_une_lecture", lecture),
+            ("ecrit_les_intrants", intrants),
+            ("lit_inventaire", lambda _c: inventaire),
+            ("chemin_inventaire", lambda _m: "x"),
+        ):
+            correctif = mock.patch.object(B, nom, valeur)
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        return B.joue_la_reprise(
+            "/m",
+            mock.Mock(resolveur="192.0.2.53"),
+            "/eco",
+            {},
+            etapes,
+            "env",
+            "",
+            lambda *a: None,
+            [],
+        )
+
+    def test_the_backup_target_is_never_razed(self):
+        self.joue()
+        rases = [g for g in self.gestes if g.startswith("raser")]
+        self.assertEqual(["raser:id-sso-01", "raser:infra-pki-01"], rases)
+
+    def test_saved_then_razed_then_rebuilt_restoring_then_judged(self):
+        souci, ecarts = self.joue()
+        self.assertEqual("", souci)
+        self.assertEqual((), ecarts)
+        ordre = [
+            "ca-empreinte",
+            "sauvegarder-maintenant",
+            "raser:infra-pki-01",
+            "intrants:True",
+            "reconstruire",
+            "restauration-etat",
+            "temoins-etat",
+            "intrants:False",
+            "valider",
+        ]
+        positions = [self.gestes.index(g) for g in ordre]
+        self.assertEqual(sorted(positions), positions, self.gestes)
+
+    def test_the_restore_switch_comes_back_off_even_when_the_build_fails(self):
+        souci, _ = self.joue(echec_reconstruire=True)
+        self.assertIn("reconstruire", souci)
+        self.assertEqual([True, False], self.intrants)
 
 
 class TestLeTerrainRendCeQueLeRasageLibere(unittest.TestCase):
