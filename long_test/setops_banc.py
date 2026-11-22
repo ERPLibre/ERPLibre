@@ -5810,16 +5810,81 @@ def principal(argv=None):
         action="store_true",
         help="bâtir le gabarit doré s'il est ABSENT ; jamais le remplacer",
     )
+    analyseur.add_argument(
+        "--rapport",
+        action="store_true",
+        help="relire le rapport du dernier lancement ; rien n'est créé",
+    )
+    analyseur.add_argument(
+        "--planifier",
+        default="",
+        metavar="HH:MM",
+        help="lancer le banc chaque nuit à cette heure (minuteur de session)",
+    )
+    analyseur.add_argument(
+        "--deplanifier",
+        action="store_true",
+        help="retirer le lancement planifié",
+    )
     args = analyseur.parse_args(argv)
     passes = tuple(args.passe) if args.passe else PASSES
 
+    if args.rapport:
+        return relis_le_rapport()
+    if args.deplanifier:
+        return deplanifie()
     if args.detruire:
         return defaire(args.dry_run)
 
     terrain = args.terrain.strip() or terrain_deduit()
+    if args.planifier:
+        return planifie(args.planifier, terrain)
     dire_plan(passes, terrain, args.batir_gabarit)
     if args.dry_run:
         return SORTIE_OK
+
+    # LA SORTIE EST DOUBLÉE DANS UN TAMPON : le rapport de fin en garde la
+    # queue, qui porte le verdict et sa cause, pour qu'un lancement de nuit se
+    # relise le matin sans rouvrir son journal.
+    import io
+    import sys
+    import time
+    from contextlib import redirect_stdout
+
+    debut = time.time()
+    tampon = io.StringIO()
+    with redirect_stdout(Double(sys.stdout, tampon)):
+        code = lance(args, passes, terrain)
+    souci = ecrit_le_journal(
+        chemin_rapport(),
+        texte_rapport(
+            debut,
+            time.time(),
+            code,
+            terrain,
+            passes,
+            tampon.getvalue(),
+            {p: verdicts_de_la_passe(p) for p in passes},
+        ),
+    )
+    if souci:
+        print(f"  rapport non déposé : {souci}")
+    return code
+
+
+def lance(args, passes, terrain):
+    """Le lancement réel, de la mesure du terrain au verdict. Rend un code
+    du vocabulaire clos."""
+    # UN SEUL BANC À LA FOIS, ni pendant une autre épreuve longue : deux
+    # lancements poseraient le même pont et raseraient la même flotte, et un
+    # lancement de nuit tomberait sur celui qu'on a lancé à la main.
+    autres = autres_epreuves()
+    if autres is None or autres:
+        print(
+            "\n  ⛔ une autre épreuve longue tourne"
+            f" ({autres if autres else 'verrou illisible'}) : rien n'est lancé."
+        )
+        return SORTIE_OUTILLAGE
 
     moteur = moteur_du_banc()
     if not moteur:
@@ -5905,6 +5970,246 @@ def principal(argv=None):
     print(f"\n  ✓ le banc est allé au bout des {len(passes)} passe(s).")
     print(f"     défaire : {os.path.basename(__file__)} --detruire")
     return verdict_des_recettes(recettes, secret)
+
+
+class Double:
+    """Un flux qui écrit à deux endroits : la sortie réelle et un tampon."""
+
+    def __init__(self, reel, tampon):
+        self.reel, self.tampon = reel, tampon
+
+    def write(self, texte):
+        self.tampon.write(texte)
+        return self.reel.write(texte)
+
+    def flush(self):
+        self.reel.flush()
+
+
+def autres_epreuves():
+    """Les PID des autres épreuves longues vivantes, ou None si le verrou ne
+    se lit pas. NE PAS SAVOIR N'EST PAS UNE PERMISSION."""
+    import sys
+
+    chemin = os.path.join(RACINE, "long_test")
+    if chemin not in sys.path:
+        sys.path.insert(0, chemin)
+    try:
+        import descente
+    except ImportError:
+        return None
+    return descente.autre_descente()
+
+
+# LE RAPPORT DU DERNIER LANCEMENT, à côté des journaux de ses étapes : ce
+# qu'un lancement de nuit a prouvé se relit le matin, sans rouvrir la sortie.
+RAPPORT = "banc-rapport.txt"
+NOMS_DES_CODES = {
+    SORTIE_OK: "OK",
+    SORTIE_OUTILLAGE: "OUTILLAGE (rien n'a été tenté)",
+    SORTIE_NON_CONCLUANTE: "NON CONCLUANTE (la boucle n'a pas abouti)",
+    SORTIE_RECETTE: "RECETTE NON TENUE",
+}
+# Combien de lignes de la fin de la sortie le rapport garde.
+QUEUE_RAPPORT = 25
+
+
+def chemin_rapport(base=""):
+    """Où le banc dépose le rapport de son dernier lancement."""
+    return os.path.join(dossier_journal(base), RAPPORT)
+
+
+def verdicts_de_la_passe(passe):
+    """Les verdicts de la dernière recette jouée dans `passe`, ou {}."""
+    try:
+        with open(chemin_journal(passe, "valider"), encoding="utf-8") as lu:
+            return verdicts_de_recette(lu.read())
+    except OSError:
+        return {}
+
+
+def texte_rapport(debut, fin, code, terrain, passes, sortie, verdicts):
+    """Le rapport d'un lancement : quand, où, le code, les verdicts de
+    chaque passe, et la fin de la sortie, qui porte la cause."""
+    import time
+
+    def heure(t):
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+
+    minutes = max(0, int((fin - debut) // 60))
+    lignes = [
+        f"Banc Set-OPS — {heure(debut)} → {heure(fin)} ({minutes} min)",
+        f"Terrain : {terrain or '(aucun)'} ; passes : {', '.join(passes)}",
+        f"Code : {code} — {NOMS_DES_CODES.get(code, 'inconnu')}",
+        "",
+        "── verdicts de la recette ──",
+    ]
+    for passe in passes:
+        lignes.append(f"passe « {passe} » :")
+        messages = verdicts.get(passe) or {}
+        if not messages:
+            lignes.append("  (aucune recette lue)")
+        for titre, liste in messages.items():
+            lignes += [f"  {titre} : {m}" for m in liste]
+    lignes += ["", "── fin de la sortie ──"]
+    lignes += (sortie or "").rstrip().splitlines()[-QUEUE_RAPPORT:]
+    return "\n".join(lignes) + "\n"
+
+
+def relis_le_rapport():
+    """Imprime le rapport du dernier lancement. Rien n'est créé."""
+    try:
+        with open(chemin_rapport(), encoding="utf-8") as lu:
+            print(lu.read(), end="")
+    except FileNotFoundError:
+        print("  aucun lancement n'a encore déposé de rapport.")
+        return SORTIE_OK
+    except OSError as souci:
+        print(f"  ⛔ rapport illisible : {souci.strerror}")
+        return SORTIE_OUTILLAGE
+    return SORTIE_OK
+
+
+# LE LANCEMENT PLANIFIÉ : un minuteur systemd DE SESSION, au nom de
+# l'exploitant, qui lance le banc chaque nuit. De session et non du système :
+# le banc tourne avec les clés et les voûtes de l'exploitant, et un service
+# du système n'y aurait pas accès. Le terrain est FIGÉ à la planification :
+# déduit à chaque nuit, il pourrait changer sans que personne l'ait choisi.
+UNITE_BANC = "setops-banc"
+FORME_HEURE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def dossier_unites(base=""):
+    """Où vivent les unités systemd de session de l'exploitant."""
+    return os.path.join(
+        base or os.path.expanduser("~"), ".config", "systemd", "user"
+    )
+
+
+def texte_service(racine, python, terrain, journal):
+    """L'unité qui lance le banc, ou « » sans terrain.
+
+    `--batir-gabarit` : une nuit qui trouve le gabarit absent le rebâtit
+    plutôt que de s'arrêter à la porte. La sortie s'ajoute à un journal à
+    côté des autres ; le rapport du lancement, lui, est écrasé à chaque fois.
+    """
+    if not (terrain or "").strip():
+        return ""
+    banc = os.path.join(racine, "long_test", "setops_banc.py")
+    cible = shlex.quote(terrain.strip())
+    return f"""[Unit]
+Description=Banc du moteur Set-OPS (lancement planifié)
+
+[Service]
+Type=oneshot
+WorkingDirectory={racine}
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ExecStart={python} {banc} --terrain {cible} --batir-gabarit
+StandardOutput=append:{os.path.join(journal, "banc-planifie.log")}
+StandardError=inherit
+"""
+
+
+def texte_minuteur(heure):
+    """Le minuteur quotidien à `heure` (HH:MM), ou « » si elle ne se lit pas.
+
+    `Persistent=false` : une nuit manquée — poste éteint — ne se rattrape pas
+    au réveil, au moment où l'exploitant reprend la main sur le terrain.
+    """
+    if not FORME_HEURE.match((heure or "").strip()):
+        return ""
+    return f"""[Unit]
+Description=Banc du moteur Set-OPS, chaque nuit
+
+[Timer]
+OnCalendar=*-*-* {heure.strip()}:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+"""
+
+
+def planifie(heure, terrain, base="", systemctl=None):
+    """Pose et active le lancement planifié. Rend un code."""
+    import sys
+
+    service = texte_service(
+        RACINE, sys.executable, terrain, dossier_journal(base)
+    )
+    minuteur = texte_minuteur(heure)
+    if not service or not minuteur:
+        print(
+            "  ⛔ une heure HH:MM et un terrain sont exigés"
+            f" (heure « {heure} », terrain « {terrain or '?'} »)."
+        )
+        return SORTIE_OUTILLAGE
+    dossier = dossier_unites(base)
+    try:
+        os.makedirs(dossier, exist_ok=True)
+        os.makedirs(dossier_journal(base), mode=0o700, exist_ok=True)
+    except OSError as souci:
+        print(f"  ⛔ {dossier} : {souci.strerror}")
+        return SORTIE_OUTILLAGE
+    for nom, texte in (
+        (f"{UNITE_BANC}.service", service),
+        (f"{UNITE_BANC}.timer", minuteur),
+    ):
+        souci = _ecrit(os.path.join(dossier, nom), texte)
+        if souci:
+            print(f"  ⛔ {souci}")
+            return SORTIE_OUTILLAGE
+    jouer = systemctl or _systemctl_de_session
+    for gestes in (
+        ("daemon-reload",),
+        ("enable", "--now", f"{UNITE_BANC}.timer"),
+    ):
+        code, sortie = jouer(gestes)
+        if code != 0:
+            print(
+                f"  ⛔ systemctl --user {' '.join(gestes)} : {sortie.strip()}"
+            )
+            return SORTIE_OUTILLAGE
+    print(
+        f"  ✓ le banc se lancera chaque nuit à {heure.strip()}, sur"
+        f" « {terrain} »."
+    )
+    # UNE SESSION FERMÉE ARRÊTE LES MINUTEURS DE SESSION, sauf si l'exploitant
+    # demeure : c'est à lui de l'accepter, le banc ne le pose pas.
+    print(
+        "    sans « loginctl enable-linger », il ne tourne que pendant une"
+        " session ouverte."
+    )
+    return SORTIE_OK
+
+
+def deplanifie(base="", systemctl=None):
+    """Retire le lancement planifié. Rend un code. Absent, rien à faire."""
+    jouer = systemctl or _systemctl_de_session
+    # Verdict ignoré : un minuteur déjà absent ne se désactive pas, et c'est
+    # le retrait des fichiers qui décide.
+    jouer(("disable", "--now", f"{UNITE_BANC}.timer"))
+    for nom in (f"{UNITE_BANC}.service", f"{UNITE_BANC}.timer"):
+        try:
+            os.remove(os.path.join(dossier_unites(base), nom))
+        except FileNotFoundError:
+            pass
+        except OSError as souci:
+            print(f"  ⛔ {nom} : {souci.strerror}")
+            return SORTIE_OUTILLAGE
+    # Verdict ignoré : les fichiers sont retirés, systemd les oubliera au
+    # plus tard à la prochaine session.
+    jouer(("daemon-reload",))
+    print("  ✓ plus aucun lancement planifié.")
+    return SORTIE_OK
+
+
+def _systemctl_de_session(gestes):
+    """(code, sortie) de `systemctl --user <gestes>`."""
+    vu = runner_du_banc().jouer(
+        ("systemctl", "--user") + tuple(gestes), delai=60
+    )
+    return vu.code, vu.sortie or ""
 
 
 def verdict_des_recettes(recettes, secret="", dire=print):

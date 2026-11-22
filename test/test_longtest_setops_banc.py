@@ -18,6 +18,7 @@ nulle part ailleurs dans le dépôt : un banc qui reprendrait un nom du parc
 détruirait, au rasage, ce qui ne lui appartient pas.
 """
 
+import io
 import json
 import os
 import re
@@ -26,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 import yaml
@@ -4998,6 +5000,111 @@ class TestLeDerouleDeLaReprise(unittest.TestCase):
         souci, _ = self.joue(echec_reconstruire=True)
         self.assertIn("reconstruire", souci)
         self.assertEqual([True, False], self.intrants)
+
+
+class TestLeBancTourneSansMoi(unittest.TestCase):
+    """Un lancement de nuit : un seul à la fois, un rapport qui se relit le
+    matin, et un minuteur qu'on pose et qu'on retire."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def test_a_daily_time_is_read_or_refused(self):
+        self.assertIn("OnCalendar=*-*-* 02:30:00", B.texte_minuteur("02:30"))
+        for faux in ("2:30", "24:00", "02:60", "", None, "deux heures"):
+            with self.subTest(faux=faux):
+                self.assertEqual("", B.texte_minuteur(faux))
+
+    def test_the_service_runs_the_bench_on_a_frozen_terrain(self):
+        texte = B.texte_service("/r", "/py", "un terrain", "/j")
+        ligne = next(
+            ligne
+            for ligne in texte.splitlines()
+            if ligne.startswith("ExecStart=")
+        )
+        import shlex
+
+        mots = shlex.split(ligne.split("=", 1)[1])
+        self.assertEqual("/r/long_test/setops_banc.py", mots[1])
+        self.assertEqual("un terrain", mots[mots.index("--terrain") + 1])
+        self.assertIn("--batir-gabarit", mots)
+        self.assertEqual("", B.texte_service("/r", "/py", "", "/j"))
+
+    def test_scheduling_writes_both_units_then_enables_the_timer(self):
+        gestes = []
+
+        def systemctl(g):
+            gestes.append(g)
+            return 0, ""
+
+        code = B.planifie("03:15", "t", base=self.d, systemctl=systemctl)
+        self.assertEqual(B.SORTIE_OK, code)
+        dossier = B.dossier_unites(self.d)
+        self.assertEqual(
+            {"setops-banc.service", "setops-banc.timer"},
+            set(os.listdir(dossier)),
+        )
+        self.assertIn(("enable", "--now", "setops-banc.timer"), gestes)
+        self.assertEqual(B.SORTIE_OK, B.deplanifie(self.d, systemctl))
+        self.assertEqual([], os.listdir(dossier))
+
+    def test_a_bad_time_schedules_nothing(self):
+        gestes = []
+        code = B.planifie(
+            "25:00", "t", base=self.d, systemctl=lambda g: gestes.append(g)
+        )
+        self.assertEqual(B.SORTIE_OUTILLAGE, code)
+        self.assertEqual([], gestes)
+        self.assertFalse(os.path.exists(B.dossier_unites(self.d)))
+
+    def test_another_long_test_running_stops_the_launch(self):
+        for autres in ([4242], None):
+            with self.subTest(autres=autres):
+                with (
+                    mock.patch.object(B, "autres_epreuves", lambda: autres),
+                    mock.patch.object(
+                        B, "moteur_du_banc", lambda: self.fail("lancé")
+                    ),
+                ):
+                    code = B.lance(mock.Mock(), B.PASSES, "t")
+                self.assertEqual(B.SORTIE_OUTILLAGE, code)
+
+    def test_the_report_names_the_code_the_verdicts_and_the_cause(self):
+        texte = B.texte_rapport(
+            0,
+            125,
+            B.SORTIE_RECETTE,
+            "un-terrain",
+            ("env",),
+            "bruit\n  ⚠ la recette n'a pas tenu\n",
+            {"env": {"✔ Courriel": ["OK — remis"]}},
+        )
+        self.assertIn("RECETTE NON TENUE", texte)
+        self.assertIn("✔ Courriel : OK — remis", texte)
+        self.assertIn("la recette n'a pas tenu", texte)
+        self.assertIn("(2 min)", texte)
+
+    def test_a_real_launch_leaves_its_report(self):
+        def lance(args, passes, terrain):
+            print("  ✓ le banc est allé au bout")
+            return B.SORTIE_OK
+
+        with (
+            mock.patch.object(B, "lance", lance),
+            mock.patch.object(
+                B, "chemin_rapport", lambda: os.path.join(self.d, "r.txt")
+            ),
+            mock.patch.object(B, "verdicts_de_la_passe", lambda p: {}),
+            mock.patch.object(B, "dire_plan", lambda *a: None),
+            redirect_stdout(io.StringIO()),
+        ):
+            code = B.principal(["--terrain", "t"])
+        self.assertEqual(B.SORTIE_OK, code)
+        with open(os.path.join(self.d, "r.txt"), encoding="utf-8") as f:
+            rapport = f.read()
+        self.assertIn("Code : 0", rapport)
+        self.assertIn("allé au bout", rapport)
 
 
 class TestLeTerrainRendCeQueLeRasageLibere(unittest.TestCase):

@@ -9984,9 +9984,33 @@ TRANSLATIONS = {
         "fr": "Banc du moteur Set-OPS : le plan seulement (à blanc)",
         "en": "Set-OPS bench: plan only (dry-run)",
     },
-    "Set-OPS bench: a conforming template is required": {
-        "fr": "Banc du moteur Set-OPS : exige un gabarit conforme",
-        "en": "Set-OPS bench: a conforming template is required",
+    "Set-OPS bench: run it, building the template if absent": {
+        "fr": "Banc du moteur Set-OPS : le lancer, gabarit bâti s'il manque",
+        "en": "Set-OPS bench: run it, building the template if absent",
+    },
+    "Set-OPS bench: schedule it nightly": {
+        "fr": "Banc du moteur Set-OPS : le planifier chaque nuit",
+        "en": "Set-OPS bench: schedule it nightly",
+    },
+    "Set-OPS bench: unschedule it": {
+        "fr": "Banc du moteur Set-OPS : retirer la planification",
+        "en": "Set-OPS bench: unschedule it",
+    },
+    "Set-OPS bench: last report": {
+        "fr": "Banc du moteur Set-OPS : le dernier rapport",
+        "en": "Set-OPS bench: last report",
+    },
+    "Time (HH:MM, empty = 02:30): ": {
+        "fr": "Heure (HH:MM, vide = 02:30) : ",
+        "en": "Time (HH:MM, empty = 02:30): ",
+    },
+    "This runs the Set-OPS bench every night, unattended.": {
+        "fr": "Ceci lance le banc Set-OPS chaque nuit, sans surveillance.",
+        "en": "This runs the Set-OPS bench every night, unattended.",
+    },
+    "Schedule this long test?": {
+        "fr": "Planifier ce test long ?",
+        "en": "Schedule this long test?",
     },
     "Terrain (ssh alias, empty = the last floor laid): ": {
         "fr": "Terrain (alias ssh, vide = le dernier étage posé) : ",

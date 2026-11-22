@@ -407,6 +407,9 @@ désigne.
 ./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ./long_test/setops_banc.py --batir-gabarit     # bâtir le gabarit s'il manque
+./long_test/setops_banc.py --planifier 02:30   # chaque nuit, minuteur
+./long_test/setops_banc.py --rapport           # le rapport du dernier lancement
+./long_test/setops_banc.py --deplanifier       # retirer le lancement de nuit
 ```
 
 **Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
@@ -603,6 +606,18 @@ le banc exige : chaque jeu doit dire `restaure`, chaque témoin IDENTIQUE ou
 CONFORME, et la racine de l'autorité de certification garder son empreinte —
 « sans objet » n'est pas une reprise. La restauration revient à faux quoi
 qu'il arrive, et la recette est rejouée sur la flotte restaurée.
+
+**Le banc tourne sans qu'on le regarde.** Un lancement réel refuse pendant
+qu'une autre épreuve longue tourne : deux lancements poseraient le même pont
+et raseraient la même flotte. Chaque lancement dépose `banc-rapport.txt` à
+côté des journaux de ses étapes — ses bornes horaires, son code, chaque
+verdict de chaque passe, et la fin de sa sortie, qui porte la cause —, si bien
+qu'un lancement de nuit se relit le matin par `--rapport`. `--planifier HH:MM`
+pose un minuteur systemd de session qui lance le banc chaque nuit avec
+`--batir-gabarit`, sur le terrain figé à la planification ; de session, parce
+que le banc tourne avec les clés et les voûtes de l'exploitant. Sans
+`loginctl enable-linger`, il ne tourne que pendant une session ouverte, et ce
+choix reste à l'exploitant.
 
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y

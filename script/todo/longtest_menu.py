@@ -48,7 +48,8 @@ class LongTestMenuMixin:
     # Ce qui ne crée aucune machine : un plan, un rapport, une liste. Ces
     # commandes-là ne méritent pas de question — une invite qu'on apprend à
     # confirmer sans lire ne protège plus rien le jour où elle compte.
-    _LONGTEST_SANS_EFFET = ("--dry-run", "--rapport")
+    # Retirer un lancement planifié n'en crée aucun : pas de question non plus.
+    _LONGTEST_SANS_EFFET = ("--dry-run", "--rapport", "--deplanifier")
 
     @staticmethod
     def _longtest_question(args):
@@ -61,6 +62,11 @@ class LongTestMenuMixin:
             return (
                 "This destroys the machines of this test and their disks.",
                 "Destroy the machines of this test?",
+            )
+        if "--planifier" in (args or ""):
+            return (
+                "This runs the Set-OPS bench every night, unattended.",
+                "Schedule this long test?",
             )
         return (
             "This creates real VMs and takes a while.",
@@ -132,10 +138,13 @@ class LongTestMenuMixin:
             {"prompt_description": t("Set-OPS bench: plan only (dry-run)")},
             {
                 "prompt_description": t(
-                    "Set-OPS bench: a conforming template is required"
+                    "Set-OPS bench: run it, building the template if absent"
                 )
             },
             {"prompt_description": t("Undo what the descent created")},
+            {"prompt_description": t("Set-OPS bench: schedule it nightly")},
+            {"prompt_description": t("Set-OPS bench: unschedule it")},
+            {"prompt_description": t("Set-OPS bench: last report")},
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -149,7 +158,12 @@ class LongTestMenuMixin:
         # Il prend un TERRAIN, qui est une grappe déjà là — celle du dernier
         # étage posé, ou une qu'on possède. Ses entrées sont donc traitées à
         # part, comme celles du cache.
-        banc = {"10": "--dry-run", "11": ""}
+        banc = {
+            "10": "--dry-run",
+            "11": "--batir-gabarit",
+            "14": "--deplanifier",
+            "15": "--rapport",
+        }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -172,8 +186,22 @@ class LongTestMenuMixin:
                 self._longtest_run("qemu_cache.py", cache[status])
                 continue
             if status in banc:
-                args = banc[status] + self._longtest_terrain_banc()
+                args = banc[status]
+                # Le terrain ne sert qu'à ce qui touche une grappe : retirer
+                # une planification ou relire un rapport n'en vise aucune.
+                if status in ("10", "11"):
+                    args += self._longtest_terrain_banc()
                 self._longtest_run("setops_banc.py", args)
+                continue
+            if status == "13":
+                heure = (
+                    input(t("Time (HH:MM, empty = 02:30): ")).strip()
+                    or "02:30"
+                )
+                args = f"--planifier {shlex.quote(heure)}"
+                self._longtest_run(
+                    "setops_banc.py", args + self._longtest_terrain_banc()
+                )
                 continue
             if status in scripts:
                 script, demander = scripts[status]

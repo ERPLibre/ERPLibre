@@ -391,6 +391,9 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
 ./long_test/setops_banc.py --passe env        # token through the environment
 ./long_test/setops_banc.py --batir-gabarit     # build the template if absent
+./long_test/setops_banc.py --planifier 02:30   # every night, user timer
+./long_test/setops_banc.py --rapport           # the last launch's report
+./long_test/setops_banc.py --deplanifier       # remove the nightly launch
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at
@@ -582,6 +585,17 @@ failure. The engine judges and the bench demands: every data set must read
 authority's root must keep its fingerprint — "not applicable" is not a
 recovery. Restoration goes back off whatever happens, and the recipe is
 replayed on the restored fleet.
+
+**The bench runs without anyone watching.** A real launch refuses while
+another long test runs: two launches would lay the same bridge and raze the
+same fleet. Each launch leaves `banc-rapport.txt` beside its step journals —
+its time span, its code, every verdict of each pass, and the tail of its
+output, which carries the cause — so a night's launch reads the next morning
+with `--rapport`. `--planifier HH:MM` lays a user systemd timer that runs the
+bench every night with `--batir-gabarit`, on the terrain frozen at scheduling
+time; a user timer, because the bench runs with the operator's keys and
+vaults. Without `loginctl enable-linger`, it only runs while a session is
+open, and that choice stays the operator's.
 
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
