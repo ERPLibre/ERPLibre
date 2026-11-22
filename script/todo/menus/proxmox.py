@@ -2,8 +2,9 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy, VPN,
-ouvert depuis Deploy et depuis Network, Long test, ouvert depuis Test, et
-Install, ouvert par le menu principal.
+ouvert depuis Deploy et depuis Network, Long test, ouvert depuis Test,
+Install, ouvert par le menu principal, et Update, que `prompt_install` ouvre
+sous Install quand une version d'Odoo y est déjà.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -218,4 +219,40 @@ INSTALL = Menu(
     back=None,
     closes_on_result=True,
     asks="_install_ask",
+)
+
+# Update, la mise à jour d'un checkout installé, que `prompt_install` ouvre
+# sous le segment d'Install quand une version d'Odoo est présente sur
+# disque. Les entrées reprennent celles de Python et de Repo, sauf la
+# resynchronisation, propre à Update. Python versions installe ou remplace
+# des venvs ; la resynchronisation déplace les clones faits à la main,
+# régénère le manifeste local et lance `repo sync`, qui change le
+# checkout : `danger`, comme Python versions sous Python et la
+# synchronisation sous Repo. Aucune `Entry` n'ouvre ce menu, donc
+# `build_code_tree` ne le développe pas.
+INSTALL_UPDATE = Menu(
+    "prompt_install_update",
+    "Update",
+    [
+        Section("Python"),
+        Entry(
+            "Python versions - Install or update the venvs,"
+            " without the git repos",
+            "execute_python_versions",
+            danger=True,
+        ),
+        Entry(
+            "Lock drift - Compare a venv with its lock or requirements",
+            "execute_poetry_drift",
+        ),
+        Section("Repositories"),
+        Entry(
+            "Resynchronize the repositories with the manifests",
+            "execute_update_repos",
+            danger=True,
+        ),
+        Entry("⬇️ Pull the repositories", "_git_repo_tirer"),
+    ],
+    intro="Update what is installed!",
+    render="once",
 )

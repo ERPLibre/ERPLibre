@@ -4,8 +4,9 @@
 """La mise à jour d'un checkout déjà installé : Python, venvs et dépôts.
 
 Le menu Installation y mène quand une version d'Odoo est déjà installée.
-Rien n'est recopié ici : chaque entrée appelle la méthode du menu Python ou
-du menu des dépôts qui fait déjà le travail.
+Le menu Update est déclaré dans INSTALL_UPDATE (`menus/proxmox.py`) : chaque
+entrée y appelle la méthode du menu Python ou du menu des dépôts qui fait
+déjà le travail, et rien n'est recopié ici.
 
 La resynchronisation des dépôts régénère le manifeste local dans le mode du
 checkout, gelé ou branches, que `repo_state.mode_du_checkout` lit dans le
@@ -25,8 +26,6 @@ import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-import click
-
 from script.git import repo_state
 from script.todo import ui
 from script.todo.git_repo_menu import (
@@ -36,7 +35,9 @@ from script.todo.git_repo_menu import (
     gel_des_sources,
     libelle_mode,
 )
+from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 SUFFIXE_DEPLACE = ".avant_repo_"
 
@@ -193,45 +194,9 @@ def pertes_a_la_suppression(vieux, nouveau):
 
 class InstallUpdateMenuMixin:
     def prompt_install_update(self):
-        print(f"🤖 {t('Update what is installed!')}")
-        choices = [
-            {"section": "Python"},
-            {
-                "prompt_description": t(
-                    "Python versions - Install or update the venvs,"
-                    " without the git repos"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Lock drift - Compare a venv with its lock or requirements"
-                )
-            },
-            {"section": t("Repositories")},
-            {
-                "prompt_description": t(
-                    "Resynchronize the repositories with the manifests"
-                )
-            },
-            {"prompt_description": t("⬇️ Pull the repositories")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_python_versions()
-            elif status == "2":
-                self.execute_poetry_drift()
-            elif status == "3":
-                self.execute_update_repos()
-            elif status == "4":
-                self._git_repo_tirer()
-            else:
-                print(t("Command not found !"))
+        """Update, déclaré dans INSTALL_UPDATE (`menus/proxmox.py`). Rend
+        False sur [0]."""
+        return navigate(self, menus_proxmox.INSTALL_UPDATE)
 
     def execute_update_repos(self, racine=RACINE, maintenant=None):
         """Régénère le manifeste local dans le mode du checkout et

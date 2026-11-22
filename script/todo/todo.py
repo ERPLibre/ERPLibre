@@ -187,7 +187,7 @@ from script.todo.seal_menu import SealMenuMixin
 from script.todo.sms.menu import SmsMenuMixin
 from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo.system_menu import SystemMenuMixin
-from script.todo.todo_couleur import bleu_poudre, quitter, retour
+from script.todo.todo_couleur import quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.ui.navigator import crumbs, crumbs_at, navigate
@@ -377,10 +377,11 @@ class TODO(
         TODO au lieu de rendre son code.
 
         Lancé du menu avec une version d'Odoo installée et présente sur
-        disque, il demande d'abord s'il faut la mettre à jour, ce qui mène
-        à `prompt_install_update` et rend None, ou installer
-        (_choisir_maj_ou_installation). La ligne de commande, qui passe
-        `reponses`, ne voit jamais cette question."""
+        disque, il demande d'abord s'il faut la mettre à jour, ce qui ouvre
+        Update (`prompt_install_update`) sous le segment d'Install et rend
+        None, ou installer (_choisir_maj_ou_installation) ; [0] et Ctrl+D
+        y rendent None. La ligne de commande, qui passe `reponses`, ne voit
+        jamais cette question."""
         depuis_cli = reponses is not None
         reponses = reponses or {}
         if not depuis_cli:
@@ -390,13 +391,9 @@ class TODO(
                 choix = self._choisir_maj_ou_installation(presentes)
                 if choix != "installation":
                     if choix == "maj":
-                        # Le menu qu'ouvre la mise à jour se lit sous
-                        # Install, comme une entrée de celui-ci.
-                        segments = (
-                            *crumbs(),
-                            menus_proxmox.INSTALL.crumb,
-                            "Update",
-                        )
+                        # Update se lit sous Install, comme une entrée de
+                        # celui-ci : le navigateur ajoute son segment.
+                        segments = (*crumbs(), menus_proxmox.INSTALL.crumb)
                         with crumbs_at(segments):
                             self.prompt_install_update()
                     return None
@@ -925,33 +922,20 @@ class TODO(
         ]
 
     def _choisir_maj_ou_installation(self, presentes):
-        """Demande, quand une version d'Odoo est déjà installée, s'il faut
-        la mettre à jour ou installer. Entrée choisit la mise à jour. Rend
-        « maj », « installation » ou None pour quitter."""
+        """Demande par `ui.choose`, quand une version d'Odoo est déjà
+        installée, s'il faut la mettre à jour ou installer ; une réponse
+        vide choisit la mise à jour. Rend « maj », « installation », ou
+        None pour [0] Retour et Ctrl+D."""
         noms = ", ".join(f"Odoo {v[len('odoo') :]}" for v in presentes)
-        choix = {
-            "1": (
-                "maj",
-                f"1: {t('Update - Python, venvs, repositories (default)')}",
-            ),
-            "2": (
-                "installation",
-                f"2: {t('Installation - another version, ERPLibre alone, mobile')}",
-            ),
-            "0": (None, bleu_poudre(f"0: {t('Quit')}")),
-        }
-        while True:
-            saisie = (
-                input(
-                    f"💬 {t('Already installed: %s. What to do?') % noms}\n\t"
-                    + "\n\t".join(libelle for _, libelle in choix.values())
-                    + f"\n{t('Select [1]: ')}"
-                ).strip()
-                or "1"
-            )
-            if saisie in choix:
-                return choix[saisie][0]
-            print(f"{t('Error, cannot understand value')} '{saisie}'")
+        return ui.choose(
+            f"💬 {t('Already installed: %s. What to do?') % noms}",
+            ["maj", "installation"],
+            default="maj",
+            labels=[
+                t("Update - Python, venvs, repositories"),
+                t("Installation - another version, ERPLibre alone, mobile"),
+            ],
+        )
 
     def _proposer_identite_git(
         self, nom=None, courriel=None, non_interactif=False

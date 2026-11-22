@@ -150,7 +150,7 @@ QUESTION_MAJ = todo_module.t("Already installed: %s. What to do?") % (
 
 class TestMiseAJourOuInstallation(Banc):
     """Une version installée et présente sur disque : le menu demande
-    d'abord s'il faut la mettre à jour ou installer."""
+    d'abord s'il faut la mettre à jour ou installer, par `ui.choose`."""
 
     def jouer_installe(self, reponses):
         maj = mock.Mock(return_value=False)
@@ -168,10 +168,23 @@ class TestMiseAJourOuInstallation(Banc):
     def test_enter_chooses_the_update(self):
         questions, commandes, maj = self.jouer_installe([""])
         self.assertEqual(len(questions), 1)
-        self.assertIn(QUESTION_MAJ, questions[0])
+        self.assertIn(QUESTION_MAJ, self.ecran)
         maj.assert_called_once_with()
         self.assertIsNone(self.code)
         self.assertEqual(commandes, [])
+
+    def test_the_question_numbers_both_and_offers_back(self):
+        # La mise à jour, marquée comme le défaut, l'installation, puis
+        # [0] Retour ; aucune ligne « 0: Quit ».
+        self.jouer_installe(["0"])
+        maj = t("Update - Python, venvs, repositories")
+        self.assertIn(f"[1] {maj} {t('(default)')}", self.ecran)
+        self.assertIn(
+            f"[2] {t('Installation - another version, ERPLibre alone, mobile')}",
+            self.ecran,
+        )
+        self.assertIn(f"[0] {t('Back')}", self.ecran)
+        self.assertNotIn(f"0: {t('Quit')}", self.ecran)
 
     def test_installation_goes_on_with_the_version_menu(self):
         questions, commandes, maj = self.jouer_installe(["2", "0"])
@@ -183,11 +196,23 @@ class TestMiseAJourOuInstallation(Banc):
         questions, commandes, maj = self.jouer_installe(["0"])
         self.assertEqual(len(questions), 1)
         maj.assert_not_called()
+        self.assertIsNone(self.code)
+        self.assertEqual(commandes, [])
+
+    def test_ctrl_d_goes_back_without_anything(self):
+        # Ctrl+D rend None, comme [0] : ni la mise à jour ni le menu des
+        # versions, et aucune trace.
+        questions, commandes, maj = self.jouer_installe([EOFError()])
+        self.assertEqual(len(questions), 1)
+        maj.assert_not_called()
+        self.assertNotIn(t("Choose a version:"), self.ecran)
+        self.assertIsNone(self.code)
         self.assertEqual(commandes, [])
 
     def test_an_unknown_answer_is_asked_again(self):
         questions, _, maj = self.jouer_installe(["9", "1"])
         self.assertEqual(len(questions), 2)
+        self.assertIn(f"{t('Invalid choice: ')}9", self.ecran)
         maj.assert_called_once_with()
 
     def test_the_command_line_never_sees_the_question(self):
@@ -223,6 +248,45 @@ class TestMiseAJourOuInstallation(Banc):
                 ),
                 ["odoo18.0"],
             )
+
+
+class TestLeFilDeLaMiseAJour(unittest.TestCase):
+    """La mise à jour choisie ouvre Update, un menu déclaré, sous le
+    segment d'Install : le fil se lit « TODO › Install › Update », et [0]
+    y ramène au menu principal sans rien installer."""
+
+    def test_the_update_reads_under_install(self):
+        from script.todo.ui.navigator import crumbs, crumbs_at
+
+        todo = TODO.__new__(TODO)
+        fils = []
+        reponses = iter(["2", "0"])
+
+        def relever(_self):
+            fils.append(crumbs())
+
+        with (
+            mock.patch.object(
+                TODO,
+                "_versions_installees_presentes",
+                staticmethod(lambda _v: ["odoo18.0"]),
+            ),
+            # Entrée à la question : la mise à jour, le défaut.
+            mock.patch.object(builtins, "input", lambda _invite="": ""),
+            mock.patch.object(
+                TODO, "fill_help_info", lambda _self, _choix, **_k: "menu"
+            ),
+            mock.patch.object(TODO, "execute_poetry_drift", relever),
+            mock.patch("click.prompt", lambda *_a, **_k: next(reponses)),
+            crumbs_at(("TODO",)),
+            contextlib.redirect_stdout(io.StringIO()) as ecran,
+        ):
+            code = todo.prompt_install()
+            apres = crumbs()
+        self.assertIsNone(code)
+        self.assertEqual(fils, [("TODO", "Install", "Update")])
+        self.assertEqual(apres, ("TODO",))
+        self.assertIn(t("Update what is installed!"), ecran.getvalue())
 
 
 class TestOrdreDesQuestions(Banc):

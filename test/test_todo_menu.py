@@ -1363,130 +1363,6 @@ class RegistryCoherence:
         self.assertIs(self.menu.back, self.BACK)
 
 
-class MenuCoherence:
-    """Socle : un menu écrit en liste de dictionnaires est-il cohérent ?
-
-    Ce piège-là ne dépend pas du menu : seules les entrées
-    « prompt_description » consomment un numéro (les « section » sont des
-    titres), et le dispatch les renumérote à la main. Insérer une entrée avant
-    la dernière décale tout ce qui suit sans que rien ne proteste.
-
-    Les menus de TODO sont déclarés au registre (`RegistryCoherence`) ;
-    ce socle reste pour le menu écrit à la main que develop a ajouté, la
-    mise à jour d'Install, qui n'est pas encore migré.
-
-    Une entrée peut aussi porter sa destination dans « method » plutôt que
-    dans un « elif status » numéroté. Elle échappe alors à la renumérotation
-    par construction, et EXPECTED la vérifie contre cette clé.
-
-    À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
-    « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
-    EXPECTED (où mène chaque entrée, par le début de son libellé).
-    """
-
-    SOURCE = None
-    ENTRY = ""
-    END = ""
-    EXPECTED = {}
-    MINIMUM = 10
-
-    RE_ENTRY = re.compile(
-        r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
-    )
-    # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
-    # une entrée expliquée devenait invisible pour ce test, qui annonçait alors
-    # « 18 affichées, 17 dispatchées » sans qu'aucune entrée ne manque. Un test
-    # ne doit pas dépendre de l'endroit où quelqu'un met un commentaire.
-    RE_DISPATCH_CALL = re.compile(
-        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
-        r"\s*(?:status = )?self\.(\w+)\("
-    )
-    # Une entrée qui porte sa destination dans « method » se dispatche seule,
-    # par le repli générique. Elle n'a pas de numéro dans le code, donc aucune
-    # renumérotation ne peut la désaligner : c'est le seul moyen de placer une
-    # entrée codée en dur APRÈS des entrées venues de la configuration, dont
-    # le nombre n'est pas connu à la lecture du source.
-    RE_SELF_DISPATCH = re.compile(
-        r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
-        r'\s*"method": "(\w+)"'
-    )
-
-    def setUp(self):
-        source = self.SOURCE.read_text(encoding="utf-8")
-        start = source.index(self.ENTRY)
-        end = source.index(self.END, start)
-        self.body = source[start:end]
-        self.self_dispatch = dict(self.RE_SELF_DISPATCH.findall(self.body))
-        num = 0
-        self.shown = []
-        for kind, label in self.RE_ENTRY.findall(self.body):
-            if kind == "prompt_description":
-                num += 1
-                self.shown.append((num, label))
-        self.numbered = [
-            (n, label)
-            for n, label in self.shown
-            if label not in self.self_dispatch
-        ]
-        self.dispatch = [
-            (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
-        ]
-
-    def test_the_menu_was_actually_parsed(self):
-        """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
-        self.assertGreater(len(self.shown), self.MINIMUM)
-        self.assertEqual(len(self.numbered), len(self.dispatch))
-
-    def test_numbering_is_contiguous_from_one(self):
-        self.assertEqual(
-            [n for n, _ in self.shown],
-            list(range(1, len(self.shown) + 1)),
-        )
-
-    def test_every_shown_entry_has_the_matching_dispatch(self):
-        self.assertEqual(
-            [n for n, _ in self.numbered], [n for n, _ in self.dispatch]
-        )
-
-    def _key(self, label):
-        for key in self.EXPECTED:
-            if label.startswith(key):
-                return key
-        return label
-
-    def test_every_entry_reaches_the_method_it_names(self):
-        dct = dict(self.dispatch)
-        for num, label in self.shown:
-            key = self._key(label)
-            self.assertIn(
-                key,
-                self.EXPECTED,
-                f"entrée [{num}] « {label} » absente d'EXPECTED :"
-                " déclarez où elle mène",
-            )
-            atteint = self.self_dispatch.get(label, dct.get(num))
-            self.assertEqual(
-                atteint,
-                self.EXPECTED[key],
-                f"[{num}] « {label} » mène à {atteint}"
-                f" au lieu de {self.EXPECTED[key]}",
-            )
-
-    def test_expected_table_has_no_stale_entry(self):
-        keys = {self._key(label) for _, label in self.shown}
-        self.assertEqual(set(self.EXPECTED) - keys, set())
-
-    def test_self_dispatched_entries_name_a_real_method(self):
-        """« method » est une chaîne : rien ne la relie au code sans ceci."""
-        from script.todo.todo import TODO
-
-        for label, method in self.self_dispatch.items():
-            self.assertTrue(
-                hasattr(TODO, method),
-                f"« {label} » mène à {method}, qui n'existe pas",
-            )
-
-
 class TestDeployMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Deploy : cloner, monter et joindre ERPLibre en local, puis les hôtes
     distants, les VM et le cache de leurs téléchargements, et les VPN.
@@ -1961,22 +1837,74 @@ class TestSealMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual([e.action for e in self.entries if e.danger], [])
 
 
-class TestInstallUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Installation › Mise à jour, dans install_update_menu.py :
-    chaque entrée mène à la méthode du menu Python ou des dépôts qui fait
-    déjà le travail."""
+class TestInstallUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Install › Update (INSTALL_UPDATE, `menus/proxmox.py`) : chaque
+    entrée mène à la méthode du menu Python ou du menu des dépôts qui fait
+    déjà le travail, sous deux sections, Python puis les dépôts."""
 
-    SOURCE = TODO_DIR / "install_update_menu.py"
-    ENTRY = "def prompt_install_update(self):"
-    END = "def execute_update_repos("
-    MINIMUM = 3
-
+    MENU = "prompt_install_update"
     EXPECTED = {
         "Python versions": "execute_python_versions",
         "Lock drift": "execute_poetry_drift",
         "Resynchronize the repositories": "execute_update_repos",
         "⬇️ Pull the repositories": "_git_repo_tirer",
     }
+
+    def test_each_number_reaches_its_tool(self):
+        from script.todo.ui.registry import Section
+
+        self.assertEqual(
+            [
+                ("section", item.key)
+                if isinstance(item, Section)
+                else ("entry", item.action)
+                for item in self.menu.entries
+            ],
+            [
+                ("section", "Python"),
+                ("entry", "execute_python_versions"),
+                ("entry", "execute_poetry_drift"),
+                ("section", "Repositories"),
+                ("entry", "execute_update_repos"),
+                ("entry", "_git_repo_tirer"),
+            ],
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.intro, self.menu.render),
+            ("Update", "Update what is installed!", "once"),
+        )
+
+    def test_the_installer_and_the_resync_are_dangerous(self):
+        # Python versions installe ou remplace des venvs ; la
+        # resynchronisation déplace les clones faits à la main, puis
+        # régénère le manifeste local et lance `repo sync`, comme les
+        # entrées de Repo qui portent `danger`. Lock drift demande avant
+        # d'installer, et Pull ne fait que tirer, comme sous Repo.
+        self.assertEqual(
+            [entry.action for entry in self.entries if entry.danger],
+            ["execute_python_versions", "execute_update_repos"],
+        )
+
+    def test_each_entry_is_its_twin_elsewhere(self):
+        # Même clé, même méthode et même `danger` que sous Execute › Python
+        # et sous Repo : un seul geste, où qu'on l'ouvre.
+        from script.todo.menus import execute, git
+
+        twins = {
+            e.key: e
+            for menu in (execute.PYTHON, git.REPO)
+            for e in menu.entries
+            if isinstance(e, Entry)
+        }
+        for entry in self.entries:
+            if entry.action == "execute_update_repos":
+                continue
+            twin = twins[entry.key]
+            self.assertEqual(
+                (entry.action, entry.kwargs, entry.danger),
+                (twin.action, twin.kwargs, twin.danger),
+                entry.key,
+            )
 
 
 class TestContainerMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -5515,15 +5443,11 @@ class TestMenuLabels(unittest.TestCase):
     d'Odoo — et non un écran où l'on navigue, et `select_databases`,
     celle de DatabaseManager, qui choisit une ou plusieurs bases. Leur
     donner un segment mettrait une miette sur une invite passagère.
-    Une autre, écrite à la main et ouverte par un écran lui-même écrit à
-    la main, prend son segment de `crumbs_at` (Update d'Install) : elle
-    sort de la liste en devenant un menu déclaré.
     """
 
     ECRANS_EXEMPTES = {
         "execute_odoo_upgrade",
         "select_databases",
-        "prompt_install_update",
     }
     # Menus ajoutés par develop, à migrer : écrits à la main, ils tiennent
     # leur segment de l'entrée qui les ouvre (`Entry.crumb`), le temps de
@@ -5605,6 +5529,7 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_execute_vpn": "VPN",
         "prompt_execute_longtest": "Long test",
         "prompt_install": "Install",
+        "prompt_install_update": "Update",
         "prompt_assistant": "Assistant",
         "prompt_assistant_llm": "LLM",
         "_llm_servers": "Servers",

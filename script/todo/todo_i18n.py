@@ -574,9 +574,9 @@ TRANSLATIONS = {
         "fr": "Déjà installé : %s. Que faire ?",
         "en": "Already installed: %s. What to do?",
     },
-    "Update - Python, venvs, repositories (default)": {
-        "fr": "🔄 Mise à jour - Python, venvs, dépôts (défaut)",
-        "en": "🔄 Update - Python, venvs, repositories (default)",
+    "Update - Python, venvs, repositories": {
+        "fr": "🔄 Mise à jour - Python, venvs, dépôts",
+        "en": "🔄 Update - Python, venvs, repositories",
     },
     "Installation - another version, ERPLibre alone, mobile": {
         "fr": "📦 Installation - une autre version, ERPLibre seul, mobile",
@@ -585,6 +585,10 @@ TRANSLATIONS = {
     "Update what is installed!": {
         "fr": "Mettre à jour ce qui est installé !",
         "en": "Update what is installed!",
+    },
+    "Python": {
+        "fr": "Python",
+        "en": "Python",
     },
     "Resynchronize the repositories with the manifests": {
         "fr": "🔄 Resynchroniser les dépôts avec les manifestes",
@@ -1830,10 +1834,6 @@ TRANSLATIONS = {
     "Unattended: each next question takes its default answer (default)": {
         "fr": "Sans interaction : chaque question suivante prend sa réponse par défaut (défaut)",
         "en": "Unattended: each next question takes its default answer (default)",
-    },
-    "Select [1]: ": {
-        "fr": "Sélection [1] : ",
-        "en": "Select [1]: ",
     },
     "git is missing and TODO needs it: run ./todo.sh, which offers to install it.": {
         "fr": "git est absent et TODO en a besoin : lancez ./todo.sh, qui propose de l'installer.",

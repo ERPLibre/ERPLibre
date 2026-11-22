@@ -28,7 +28,7 @@ sys.path.insert(0, str(RACINE_DEPOT))
 
 from script.todo import install_update_menu as maj  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
-from script.todo.todo_i18n import TRANSLATIONS  # noqa: E402
+from script.todo.todo_i18n import TRANSLATIONS, t  # noqa: E402
 
 ENV_GIT = {
     "GIT_AUTHOR_NAME": "Essai",
@@ -521,6 +521,56 @@ class TestPertes(unittest.TestCase):
         ecrire(self.vieux, "un.txt", "encore")
         pertes = maj.pertes_a_la_suppression(self.vieux, self.nouveau)
         self.assertEqual(len(pertes), 2)
+
+
+class TestLeMenu(unittest.TestCase):
+    """Install › Update, déclaré au registre (INSTALL_UPDATE) : chaque
+    numéro lance l'outil qu'il nomme, puis le menu reprend ; un numéro
+    inconnu ne lance rien, et [0] rend False."""
+
+    OUTILS = (
+        "execute_python_versions",
+        "execute_poetry_drift",
+        "execute_update_repos",
+        "_git_repo_tirer",
+    )
+
+    def jouer(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+        suite = iter(reponses)
+        with contextlib.ExitStack() as pile:
+            for nom in self.OUTILS:
+                pile.enter_context(
+                    mock.patch.object(
+                        TODO, nom, lambda _self, nom=nom: lances.append(nom)
+                    )
+                )
+            pile.enter_context(
+                mock.patch.object(
+                    TODO, "fill_help_info", lambda _self, _c, **_k: "menu"
+                )
+            )
+            pile.enter_context(
+                mock.patch("click.prompt", lambda *_a, **_k: next(suite))
+            )
+            ecran = pile.enter_context(
+                contextlib.redirect_stdout(io.StringIO())
+            )
+            rendu = todo.prompt_install_update()
+        return rendu, lances, ecran.getvalue()
+
+    def test_each_number_runs_its_tool_then_zero_goes_back(self):
+        rendu, lances, ecran = self.jouer(["4", "3", "2", "1", "0"])
+        self.assertIs(rendu, False)
+        self.assertEqual(lances, list(reversed(self.OUTILS)))
+        self.assertIn(f"🤖 {t('Update what is installed!')}", ecran)
+
+    def test_an_unknown_number_runs_nothing(self):
+        rendu, lances, ecran = self.jouer(["5", "0"])
+        self.assertIs(rendu, False)
+        self.assertEqual(lances, [])
+        self.assertIn(t("Command not found !"), ecran)
 
 
 class TestTraductions(unittest.TestCase):
