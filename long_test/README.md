@@ -561,6 +561,17 @@ database, the metrics and the logs switch by pairs, both ends of a link
 together — one end alone talks clear text to the other, which waits for a
 handshake.
 
+**The bench adds supervision, so health reports are judged too.** Icinga, its
+web console and the identity gateway in front of the console share the
+observability host: the console listens on the identity's port, and only
+Icinga adds the package repository it needs. Their presence switches on the
+health report on every host and gives the backup repository back its report
+to monitoring. Each secret the plan's roles read is sealed — a missing one
+rarely fails its role, it fails the first login. To fit a nested terrain,
+every host that declares no memory is brought down to the engine's floor: it
+derives a 20 % margin above the sum of a host's roles, and on a terrain that
+carries the whole fleet those margins add up.
+
 **The fleet lives behind the terrain, so the bench hands ssh the jump.** The
 fleet's addresses are those of the internal network the bench laid, and the
 station does not route to them: the wait that pings the fleet would run its

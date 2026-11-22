@@ -581,6 +581,18 @@ en bout comme celle d'un locataire réel : la base, les métriques et les
 journaux basculent par paires, les deux bouts d'un lien ensemble — un bout
 seul parle en clair à l'autre, qui attend une poignée de main.
 
+**Le banc ajoute la supervision, pour que les rapports de santé soient jugés
+aussi.** Icinga, sa console web et la passerelle d'identité devant la console
+partagent l'hôte de l'observabilité : la console écoute sur le port de
+l'identité, et seul Icinga ajoute le dépôt de paquets qu'elle exige. Leur
+présence active le rapport de santé sur chaque hôte et rend au dépôt de
+sauvegarde le rapport à la supervision. Chaque secret que lisent les rôles du
+plan est scellé — un secret absent fait rarement échouer son rôle, il fait
+échouer la première connexion. Pour tenir sur un terrain imbriqué, tout hôte
+qui ne déclare pas sa mémoire est ramené au plancher du moteur : il dérive une
+marge de 20 % au-dessus de la somme des rôles d'un hôte, et sur un terrain qui
+porte toute la flotte, ces marges s'additionnent.
+
 **La flotte vit derrière le terrain, donc le banc tend le saut à ssh.** Ses
 adresses sont celles du réseau interne que le banc a posé, et la station n'y
 route pas : l'attente qui interroge la flotte jouerait sa borne entière puis la

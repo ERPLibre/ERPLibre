@@ -1801,11 +1801,9 @@ def texte_intrants_du_banc(resolveur):
     moteur documente pour « ne jamais restaurer » ; la sauvegarde n'en est pas
     bloquée. La restauration n'est donc PAS éprouvée par ce banc.
 
-    `VERIFICATION_DEPOT` À FAUX : le dépôt de sauvegarde vérifie ses instantanés
-    et le RAPPORTE à la supervision, que le banc ne pose pas — son rôle refuse
-    alors de se déployer. La constatation a lieu quand même : la recette rejouée
-    restaure un instantané de chaque hôte sauvegardé, ce qui est plus fort que
-    relire des métadonnées. Le rapport périodique n'est PAS éprouvé.
+    `VERIFICATION_DEPOT` À VRAI : le dépôt de sauvegarde vérifie ses instantanés
+    et le RAPPORTE à la supervision, que le banc pose — voir
+    `pose_la_supervision`. Son rôle refuse de se déployer sans elle.
 
     `amorcage_acces_uid` PREND LE NOM DE `COMPTE_RECETTE` : la recette du
     courriel remet un message à ce compte et le cherche dans sa boîte, et c'est
@@ -1832,7 +1830,7 @@ dns_amorcage: "{resolveur.strip()}"
 amorcage_acces_courriel: "{COURRIEL_RECOURS}"
 amorcage_acces_uid: "{COMPTE_RECETTE}"
 {RESTAURATION_ACTIVE}: false
-{VERIFICATION_DEPOT}: false
+{VERIFICATION_DEPOT}: true
 {TLS_LMTP_EMETTEUR}: true
 {RESEAUX_BASES}: ["{{{{ setops_supernet }}}}"]
 """ + "".join(f"{a}: true\n{b}: true\n" for a, b in PAIRES_TLS)
@@ -1984,6 +1982,13 @@ SECRETS_LOCATAIRE = (
     ("vault_grafana_admin", FORME_OPAQUE),
     ("vault_grafana_oidc", FORME_OPAQUE),
     ("vault_pg_exportateur", FORME_OPAQUE),
+    # La supervision — voir `pose_la_supervision`. Le secret du cookie de la
+    # passerelle doit se décoder en 32 octets d'un base64 sûr en URL : c'est
+    # exactement ce que forge `forge_opaque`.
+    ("vault_bd_icingadb", FORME_OPAQUE),
+    ("vault_bd_icingaweb2", FORME_OPAQUE),
+    ("vault_icingaweb2_oidc", FORME_OPAQUE),
+    ("vault_oauth2_cookie", FORME_OPAQUE),
 )
 
 
@@ -2323,6 +2328,9 @@ APPLICATIONS_COUVERTES = (
     "prometheus",
     "loki",
     "grafana",
+    "icinga",
+    "icingaweb2",
+    "oauth2_proxy",
 )
 
 
@@ -2675,6 +2683,7 @@ def domaine_interne(eco):
 CLIENTS_OIDC = (
     ("forgejo", "forgejo", "/user/oauth2/{nom}/callback"),
     ("grafana", "grafana", "/login/generic_oauth"),
+    ("oauth2_proxy", "icingaweb2", "/oauth2/callback"),
 )
 
 
@@ -2916,7 +2925,7 @@ APPLICATION_TABLEAUX = "grafana"
 GROUPE_TABLEAUX = "serveur_grafana"
 PORT_TABLEAUX = 3000
 SOUS_DOMAINE_TABLEAUX = "grafana"
-RESSOURCES_OBSERVABILITE = (("coeurs", 2), ("memoire", 3072))
+RESSOURCES_OBSERVABILITE = (("coeurs", 2), ("memoire", 4096))
 
 
 def pose_l_observabilite(eco, hote_autorite):
@@ -2957,6 +2966,188 @@ def pose_l_observabilite(eco, hote_autorite):
             )
         ),
     )
+
+
+# LA SUPERVISION QUE LE BANC AJOUTE : le cœur qui reçoit les rapports, sa
+# console, et la passerelle qui la met derrière l'identité. Sur l'hôte de
+# l'observabilité, et ce n'est pas un choix : la console écoute sur le port
+# de l'identité, et le dépôt de paquets qu'elle exige n'est ajouté que par le
+# cœur. Sa présence active chez tous les hôtes le rapport de santé, et rend
+# au dépôt de sauvegarde le rapport de ses vérifications.
+APPLICATION_SUPERVISION = "icinga"
+GROUPE_SUPERVISION = "serveur_icinga"
+APPLICATION_CONSOLE = "icingaweb2"
+GROUPE_CONSOLE = "serveur_icingaweb2"
+PORT_CONSOLE = 8080
+APPLICATION_PASSERELLE = "oauth2_proxy"
+GROUPE_PASSERELLE = "serveur_oauth2_proxy"
+PORT_PASSERELLE = 4180
+SOUS_DOMAINE_SUPERVISION = "icinga"
+
+# Les bases de la supervision, sur le serveur de bases de l'identité. La
+# console se résout par son APPLICATION (portée `application`), le cœur par
+# son groupe : c'est ce que chacun de leurs rôles cherche au registre.
+BASES_SUPERVISION = (
+    ("icingadb", "vault_bd_icingadb", GROUPE_SUPERVISION, "groupe"),
+    ("icingaweb2", "vault_bd_icingaweb2", APPLICATION_CONSOLE, "application"),
+)
+
+
+def texte_console():
+    """Le `group_vars/serveur_icingaweb2.yml` du banc : la console fait
+    confiance à l'utilisateur que la passerelle lui transmet, et n'écoute que
+    sur la boucle locale, d'où la passerelle la joint."""
+    return """---
+# Posé par le banc : la console derrière la passerelle d'identité.
+serveur_icingaweb2_auth: "external"
+serveur_icingaweb2_remote_user: "$http_x_forwarded_preferred_username"
+serveur_icingaweb2_nginx_bind: "127.0.0.1:"
+"""
+
+
+def texte_passerelle():
+    """Le `group_vars/serveur_oauth2_proxy.yml` du banc : le client OIDC de
+    la console, et l'amont local qu'elle protège."""
+    return f"""---
+# Posé par le banc : la passerelle d'identité devant la console.
+serveur_oauth2_proxy_client_id: "{APPLICATION_CONSOLE}"
+serveur_oauth2_proxy_client_secret: "{{{{ vault_{APPLICATION_CONSOLE}_oidc }}}}"
+serveur_oauth2_proxy_upstream: "http://127.0.0.1:{PORT_CONSOLE}"
+"""
+
+
+def pose_la_supervision(eco, hote_autorite):
+    """Ajoute la supervision au plan, sur l'hôte de l'observabilité. Le
+    souci, ou « ». Posée après l'identité, dont elle emprunte la base."""
+    plan = os.path.join(eco, "plan")
+    domaine = domaine_interne(eco)
+    if not domaine:
+        return "le domaine interne du modèle ne s'est pas lu"
+    registre = lit_applications(os.path.join(plan, "applications.yml")) or {}
+    hote = (registre.get(APPLICATION_METRIQUES) or {}).get("hote")
+    if not hote:
+        return (
+            "aucun hôte d'observabilité au plan : la supervision n'a où aller"
+        )
+    for application, valeur in (
+        (
+            APPLICATION_SUPERVISION,
+            flux_yaml((("groupe", GROUPE_SUPERVISION), ("hote", hote))),
+        ),
+        (
+            APPLICATION_CONSOLE,
+            flux_yaml(
+                (
+                    ("groupe", GROUPE_CONSOLE),
+                    ("hote", hote),
+                    ("port", PORT_CONSOLE),
+                )
+            ),
+        ),
+        (
+            APPLICATION_PASSERELLE,
+            flux_yaml(
+                (
+                    ("groupe", GROUPE_PASSERELLE),
+                    ("hote", hote),
+                    ("port", PORT_PASSERELLE),
+                    ("expose", f"[{SOUS_DOMAINE_SUPERVISION}.{domaine}]"),
+                )
+            ),
+        ),
+    ):
+        souci = pose_une_application(eco, application, valeur)
+        if souci:
+            return souci
+    chemin = os.path.join(plan, "bases-donnees.yml")
+    for base, secret, consommateur, portee in BASES_SUPERVISION:
+        lu = _lit_yaml(chemin)
+        if lu is None:
+            return "le registre des bases ne s'est pas lu"
+        if base in (lu.get("bases_donnees") or {}):
+            continue
+        valeur = flux_yaml(
+            (
+                ("serveur", SERVEUR_BD_IDENTITE),
+                ("base", base),
+                ("proprietaire", base),
+                ("secret", secret),
+                ("consommateur", consommateur),
+                ("portee", portee),
+                ("usage", "principale"),
+            )
+        )
+        souci = _recrit(
+            chemin,
+            lambda t, n=base, v=valeur: pose_sous_cle(
+                t, "bases_donnees", n, v
+            ),
+        )
+        if souci:
+            return souci
+    variables = os.path.join(eco, "inventories", "production", "group_vars")
+    return pose_un_fichier(
+        os.path.join(variables, f"{GROUPE_CONSOLE}.yml"), texte_console()
+    ) or pose_un_fichier(
+        os.path.join(variables, f"{GROUPE_PASSERELLE}.yml"), texte_passerelle()
+    )
+
+
+# LA MÉMOIRE DES PETITS HÔTES, ramenée au plancher du moteur. Il dérive une
+# marge de vingt pour cent au-dessus de la somme des rôles ; sur un terrain
+# imbriqué qui porte toute la flotte, ce sont ces marges cumulées qui
+# manquent. Un hôte qui déclare déjà sa mémoire garde la sienne.
+MEMOIRE_SOBRE = 1024
+
+
+def pose_champ(texte, hote, cle, valeur):
+    """`texte` de serveurs.yml, `cle: valeur` posée sur l'entrée de `hote` si
+    elle n'y est pas. Ou None si l'entrée ne se lit pas sur une ligne."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    lignes = (texte or "").splitlines(keepends=True)
+    motif = re.compile(rf"^(\s+){re.escape(hote)}\s*:\s*(\{{.*\}})\s*$")
+    for i, ligne in enumerate(lignes):
+        prise = motif.match(ligne.rstrip("\n"))
+        if not prise:
+            continue
+        try:
+            entree = yaml.safe_load(prise.group(2))
+        except yaml.YAMLError:
+            return None
+        if not isinstance(entree, dict):
+            return None
+        if cle in entree:
+            return texte
+        entree[cle] = valeur
+        champs = []
+        for nom, val in entree.items():
+            if isinstance(val, list):
+                val = "[" + ", ".join(str(v) for v in val) + "]"
+            champs.append((nom, val))
+        lignes[i] = f"{prise.group(1)}{hote}: {flux_yaml(tuple(champs))}\n"
+        return "".join(lignes)
+    return None
+
+
+def pose_la_sobriete(eco, hote_autorite):
+    """Ramène au plancher la mémoire de chaque hôte qui n'en déclare pas. Le
+    souci, ou « ». `hote_autorite` est reçu pour la signature commune."""
+    chemin = os.path.join(eco, "plan", "serveurs.yml")
+    lu = _lit_yaml(chemin)
+    if lu is None:
+        return "le registre des serveurs ne s'est pas lu"
+    for hote, entree in (lu.get("serveurs") or {}).items():
+        if isinstance(entree, dict) and "memoire" not in entree:
+            souci = _recrit(
+                chemin,
+                lambda t, h=hote: pose_champ(t, h, "memoire", MEMOIRE_SOBRE),
+            )
+            if souci:
+                return f"{hote} : {souci}"
+    return ""
 
 
 def pose_les_clients_oidc(eco, hote_autorite):
@@ -3001,6 +3192,7 @@ APPLICATIONS_A_SAUVEGARDER = (
     APPLICATION_FORGE,
     APPLICATION_METRIQUES,
     APPLICATION_JOURNAUX,
+    APPLICATION_SUPERVISION,
 )
 INTEGRATION_SAUVEGARDE = "client_backup"
 
@@ -3081,8 +3273,10 @@ SERVICES_POSES = (
     pose_la_sauvegarde,
     pose_l_identite,
     pose_l_observabilite,
+    pose_la_supervision,
     pose_les_clients_oidc,
     pose_les_sauvegardes,
+    pose_la_sobriete,
 )
 
 

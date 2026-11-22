@@ -4240,6 +4240,11 @@ class TestLesNomsDeVouteSontCeuxDuMoteur(unittest.TestCase):
         # de passe sous le nom que l'entrée du registre porte. Ceux-là sont
         # ceux que le banc écrit lui-même dans les bases qu'il pose.
         lus.add(B.SECRET_BD_IDENTITE)
+        lus.update(secret for _b, secret, _c, _p in B.BASES_SUPERVISION)
+        # ET UN NOM QUE LES RÉGLAGES DU BANC DONNENT à une variable qu'un
+        # rôle lit : la passerelle lit son secret de client sous le nom que
+        # le banc lui écrit.
+        lus.update(re.findall(r"vault_[a-z0-9_]+", B.texte_passerelle()))
         for nom, _forme in B.SECRETS_LOCATAIRE:
             with self.subTest(nom=nom):
                 self.assertIn(nom, lus)
@@ -5509,6 +5514,30 @@ class TestLIdentiteFederee(unittest.TestCase):
         self.assertIn("annuaire", B.pose_l_identite(eco, "infra-pki-01"))
 
 
+def reglages_client(eco, groupe):
+    """(identifiant, expression du secret) du client OIDC que `groupe`
+    présente : les défauts de son rôle, sous les `group_vars` de la copie —
+    c'est l'ordre où Ansible les lit. Une passerelle déclare les siens sans
+    « oidc » dans le nom ; une application à OIDC natif, avec."""
+    with open(
+        os.path.join(MOTEUR_CLONE, "roles", groupe, "defaults", "main.yml"),
+        encoding="utf-8",
+    ) as f:
+        valeurs = dict(yaml.safe_load(f.read()) or {})
+    poses = os.path.join(
+        eco, "inventories", "production", "group_vars", f"{groupe}.yml"
+    )
+    if os.path.isfile(poses):
+        with open(poses, encoding="utf-8") as f:
+            valeurs.update(yaml.safe_load(f.read()) or {})
+    for prefixe in (f"{groupe}_oidc_client", f"{groupe}_client"):
+        if valeurs.get(f"{prefixe}_id"):
+            return valeurs[f"{prefixe}_id"], str(
+                valeurs.get(f"{prefixe}_secret", "")
+            )
+    return "", ""
+
+
 class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
     """Une application exposée qui s'authentifie par l'identité : la recette
     sonde son hôte virtuel, et le moteur prouve son client OIDC."""
@@ -5554,17 +5583,9 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
         scelles = [n for n, _f in B.SECRETS_LOCATAIRE]
         for (application, _c, _r), client in zip(B.CLIENTS_OIDC, clients):
             with self.subTest(application=application):
-                defauts = lu_au_moteur(
-                    "roles", f"serveur_{application}", "defaults", "main.yml"
-                )
-                self.assertEqual(
-                    defauts[f"serveur_{application}_oidc_client_id"],
-                    client["clientId"],
-                )
-                lu = re.search(
-                    r"vault_[a-z0-9_]+",
-                    defauts[f"serveur_{application}_oidc_client_secret"],
-                ).group(0)
+                ident, secret = reglages_client(eco, f"serveur_{application}")
+                self.assertEqual(ident, client["clientId"])
+                lu = re.search(r"vault_[a-z0-9_]+", secret).group(0)
                 self.assertIn(lu, client["secret"])
                 self.assertIn(lu, scelles)
 
@@ -5618,9 +5639,7 @@ class TestLaForgeSAuthentifieParLIdentite(unittest.TestCase):
             )
             if not os.path.isfile(chemin):
                 continue
-            with open(chemin, encoding="utf-8") as f:
-                defauts = yaml.safe_load(f.read()) or {}
-            client = defauts.get(f"{groupe}_oidc_client_id")
+            client, _secret = reglages_client(eco, groupe)
             if client:
                 attendus.add(client)
         self.assertTrue(attendus)
@@ -5799,6 +5818,134 @@ class TestChaqueExportateurReleveEstPose(unittest.TestCase):
                 with self.subTest(groupe=groupe, secret=secret):
                     self.assertIn(secret, scelles)
         self.assertTrue(vus, "aucun exportateur conditionné n'a été lu")
+
+
+class TestLaSupervisionTientSurLObservabilite(unittest.TestCase):
+    """Le cœur, sa console et la passerelle d'identité, sur l'hôte de
+    l'observabilité : la console écoute sur le port de l'identité."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+    lu = TestLIdentiteFederee.lu
+
+    def test_no_two_applications_share_a_port_on_one_host(self):
+        vus = {}
+        for nom, entree in self.lu(self.eco_pose(), "applications.yml")[
+            "applications"
+        ].items():
+            if not entree.get("port"):
+                continue
+            cle = (entree["hote"], entree["port"])
+            with self.subTest(application=nom):
+                self.assertNotIn(cle, vus, f"{nom} et {vus.get(cle)}")
+            vus[cle] = nom
+
+    def test_the_console_and_its_gateway_live_with_the_core(self):
+        applications = self.lu(self.eco_pose(), "applications.yml")[
+            "applications"
+        ]
+        hotes = {
+            applications[a]["hote"]
+            for a in (
+                B.APPLICATION_SUPERVISION,
+                B.APPLICATION_CONSOLE,
+                B.APPLICATION_PASSERELLE,
+            )
+        }
+        self.assertEqual(1, len(hotes))
+
+    def test_the_gateway_cookie_secret_has_the_shape_it_demands(self):
+        """32 octets en base64 sûr pour une URL, sans « + » ni « / » : la
+        passerelle refuse toute autre forme."""
+        import base64
+
+        for _ in range(20):
+            secret = B.forge_opaque()
+            self.assertNotRegex(secret, r"[+/]")
+            brut = base64.urlsafe_b64decode(secret + "=" * (-len(secret) % 4))
+            self.assertEqual(32, len(brut))
+
+    def test_the_fleet_fits_the_terrain_with_room_for_its_host(self):
+        """Chaque hôte déclare sa mémoire, et la flotte entière tient sous
+        16 Gio : il reste au Proxmox imbriqué de quoi vivre sur 20."""
+        serveurs = self.lu(self.eco_pose(), "serveurs.yml")["serveurs"]
+        for nom, entree in serveurs.items():
+            with self.subTest(hote=nom):
+                self.assertIn("memoire", entree)
+        actifs = [e for e in serveurs.values() if e.get("etat") == "actif"]
+        self.assertLessEqual(sum(e["memoire"] for e in actifs), 16 * 1024)
+
+    def test_a_field_is_posed_once_and_never_overwritten(self):
+        texte = (
+            "serveurs:\n  a-01: { fonction: a, memoire: 2048 }\n"
+            "  b-01: { fonction: b }\n"
+        )
+        apres = B.pose_champ(texte, "a-01", "memoire", 1024)
+        apres = B.pose_champ(apres, "b-01", "memoire", 1024)
+        lu = yaml.safe_load(apres)["serveurs"]
+        self.assertEqual(2048, lu["a-01"]["memoire"])
+        self.assertEqual(1024, lu["b-01"]["memoire"])
+        self.assertIsNone(B.pose_champ("serveurs: {}\n", "a-01", "x", 1))
+
+
+# LES NOMS DE VOÛTE QU'UN RÔLE DU PLAN LIT ET QUE LE BANC NE SCELLE PAS, chacun
+# avec sa raison en une ligne.
+NON_SCELLES = {
+    "vault_icingaweb2_admin": "lu seulement en auth « db » ; le banc pose la "
+    "console en « external », derrière la passerelle",
+}
+
+
+class TestChaqueSecretQueLePlanLitEstScelle(unittest.TestCase):
+    """Le banc scelle ce que les rôles de son plan lisent : un secret absent
+    ne fait pas toujours échouer son rôle — un cookie vide, un mot de passe
+    vide se déploient, et la panne arrive à la première connexion."""
+
+    eco_pose = TestLIdentiteFederee.eco_pose
+    moteur = TestLIdentiteFederee.moteur
+    lu = TestLIdentiteFederee.lu
+
+    def test_every_vault_name_the_planned_roles_read_is_sealed(self):
+        groupes = {
+            a["groupe"]
+            for a in self.lu(self.eco_pose(), "applications.yml")[
+                "applications"
+            ].values()
+        } | {
+            "client_backup",
+            "client_sante",
+            "client_metrique",
+            "client_journal",
+        }
+        scelles = {n for n, _f in B.SECRETS_LOCATAIRE}
+
+        def valeurs(x):
+            if isinstance(x, dict):
+                for v in x.values():
+                    yield from valeurs(v)
+            elif isinstance(x, list):
+                for v in x:
+                    yield from valeurs(v)
+            elif isinstance(x, str):
+                yield x
+
+        lus = set()
+        for groupe in sorted(groupes):
+            chemin = os.path.join(
+                self.moteur(), "roles", groupe, "defaults", "main.yml"
+            )
+            if not os.path.isfile(chemin):
+                continue
+            with open(chemin, encoding="utf-8") as f:
+                for v in valeurs(yaml.safe_load(f.read())):
+                    lus.update(re.findall(r"vault_[a-z0-9_]+", v))
+        self.assertTrue(lus)
+        for nom in sorted(lus - set(NON_SCELLES)):
+            with self.subTest(nom=nom):
+                self.assertIn(nom, scelles)
+        # Une exemption qui ne sert plus se retire : elle excuserait demain
+        # un nom qu'un rôle se mettrait à exiger.
+        self.assertLessEqual(set(NON_SCELLES), lus)
 
 
 class TestToutDetenteurDEtatEstSauvegarde(unittest.TestCase):
@@ -6031,14 +6178,14 @@ class TestLaCibleDesSauvegardes(unittest.TestCase):
         self.assertEqual("", B.pose_la_sauvegarde(eco, "infra-pki-01"))
 
 
-class TestUnDepotSansSupervision(unittest.TestCase):
+class TestLeDepotRapporteALaSupervision(unittest.TestCase):
     """Le dépôt rapporte ses vérifications à la supervision, et son rôle refuse
-    de se déployer sans elle. Le banc n'en pose pas ; sa recette rejouée
-    restaure elle-même un instantané."""
+    de se déployer sans elle. Le banc la pose : le rapport est rallumé."""
 
-    def test_the_bench_turns_the_report_off(self):
+    def test_the_report_is_on_since_supervision_is_posed(self):
         lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
-        self.assertIs(False, lu[B.VERIFICATION_DEPOT])
+        self.assertIs(True, lu[B.VERIFICATION_DEPOT])
+        self.assertIn(B.pose_la_supervision, B.SERVICES_POSES)
 
     def test_the_switch_is_one_the_engine_declares(self):
         defauts = lu_au_moteur(
