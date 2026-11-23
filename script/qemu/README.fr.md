@@ -496,6 +496,33 @@ pont.
 Les deux sont aussi au menu **TODO › Execute › Deploy › QEMU/KVM**, section
 **Réseau**.
 
+## Mémoire partagée entre les VM (KSM)
+
+KSM (Kernel Samepage Merging) fusionne les pages de mémoire identiques des
+VM : plusieurs invités du même système, ou un hyperviseur imbriqué, rendent
+de la mémoire à l'hôte pour un peu de processeur. QEMU marque déjà la mémoire
+des invités comme fusionnable ; reste à faire tourner le démon du noyau.
+
+**TODO › Execute › Deploy › QEMU/KVM**, section **Hôte**, entrée **KSM,
+partage de mémoire** affiche trois lignes — en marche ou non, pages partagées
+(en Mio, avec la taille de page du noyau), permanent ou non — et offre quatre
+gestes : activer maintenant, désactiver maintenant, rendre permanent, retirer
+la permanence. Un noyau sans KSM, ou un fichier illisible, s'affiche
+*illisible*, jamais *inactif*.
+
+« Maintenant » écrit `/sys/kernel/mm/ksm/run`, qu'un redémarrage remet à
+zéro. « Permanent » écrit `/etc/tmpfiles.d/erplibre-ksm.conf`, que
+systemd-tmpfiles applique à chaque démarrage :
+
+```
+w /sys/kernel/mm/ksm/run - - - - 1
+```
+
+Toute écriture passe par `sudo` ; la commande est montrée et confirmée avant
+de partir, et l'état est relu après coup. Un refus de sudo est dit comme tel.
+Désactiver arrête le démon mais laisse partagé ce qui l'est ; retirer la
+permanence ne change pas l'état courant.
+
 ## Accès SSH depuis une autre machine (ProxyJump)
 
 Avec le réseau NAT par défaut, la VM n'est joignable que **depuis l'hôte

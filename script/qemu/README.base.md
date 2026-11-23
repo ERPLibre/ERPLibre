@@ -894,6 +894,32 @@ redefinition rather than losing its bridge under it.
 
 Both are also at **TODO › Execute › Deploy › QEMU/KVM**, section **Network**.
 
+## Memory shared between VMs (KSM)
+
+KSM (Kernel Samepage Merging) merges the identical memory pages of the VMs:
+several guests of the same system, or a nested hypervisor, give memory back
+to the host for a little CPU. QEMU already marks guest memory as mergeable;
+the kernel daemon still has to run.
+
+**TODO › Execute › Deploy › QEMU/KVM**, section **Host**, entry **KSM memory
+sharing** shows three lines — running or not, pages shared (in MiB, with the
+kernel's page size), permanent or not — and offers four actions: enable now,
+disable now, make permanent, remove the permanence. A kernel without KSM, or
+a file that cannot be read, is shown as *unreadable*, never as *inactive*.
+
+"Now" writes `/sys/kernel/mm/ksm/run`, which a reboot resets. "Permanent"
+writes `/etc/tmpfiles.d/erplibre-ksm.conf`, which systemd-tmpfiles applies at
+every boot:
+
+```
+w /sys/kernel/mm/ksm/run - - - - 1
+```
+
+Every write goes through `sudo`; the command is shown and confirmed before it
+runs, and the state is read back afterwards. A sudo refusal is reported as
+such. Disabling stops the daemon but leaves merged pages shared; removing the
+permanence does not change the current state.
+
 ## SSH access from another machine (ProxyJump)
 
 With the default NAT network the VM is reachable **only from the KVM host**.
@@ -935,6 +961,33 @@ pont.
 
 Les deux sont aussi au menu **TODO › Execute › Deploy › QEMU/KVM**, section
 **Réseau**.
+
+## Mémoire partagée entre les VM (KSM)
+
+KSM (Kernel Samepage Merging) fusionne les pages de mémoire identiques des
+VM : plusieurs invités du même système, ou un hyperviseur imbriqué, rendent
+de la mémoire à l'hôte pour un peu de processeur. QEMU marque déjà la mémoire
+des invités comme fusionnable ; reste à faire tourner le démon du noyau.
+
+**TODO › Execute › Deploy › QEMU/KVM**, section **Hôte**, entrée **KSM,
+partage de mémoire** affiche trois lignes — en marche ou non, pages partagées
+(en Mio, avec la taille de page du noyau), permanent ou non — et offre quatre
+gestes : activer maintenant, désactiver maintenant, rendre permanent, retirer
+la permanence. Un noyau sans KSM, ou un fichier illisible, s'affiche
+*illisible*, jamais *inactif*.
+
+« Maintenant » écrit `/sys/kernel/mm/ksm/run`, qu'un redémarrage remet à
+zéro. « Permanent » écrit `/etc/tmpfiles.d/erplibre-ksm.conf`, que
+systemd-tmpfiles applique à chaque démarrage :
+
+```
+w /sys/kernel/mm/ksm/run - - - - 1
+```
+
+Toute écriture passe par `sudo` ; la commande est montrée et confirmée avant
+de partir, et l'état est relu après coup. Un refus de sudo est dit comme tel.
+Désactiver arrête le démon mais laisse partagé ce qui l'est ; retirer la
+permanence ne change pas l'état courant.
 
 ## Accès SSH depuis une autre machine (ProxyJump)
 

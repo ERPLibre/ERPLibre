@@ -704,6 +704,7 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "Diagnostics (report to share)": "_qemu_diagnostics",
         "Show the libvirt network state": "_qemu_network_status",
         "Recreate the VM subnet": "_qemu_network_recreate",
+        "KSM memory sharing": "_qemu_ksm_menu",
     }
 
 

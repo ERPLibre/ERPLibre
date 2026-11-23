@@ -451,6 +451,32 @@ redefinition rather than losing its bridge under it.
 
 Both are also at **TODO › Execute › Deploy › QEMU/KVM**, section **Network**.
 
+## Memory shared between VMs (KSM)
+
+KSM (Kernel Samepage Merging) merges the identical memory pages of the VMs:
+several guests of the same system, or a nested hypervisor, give memory back
+to the host for a little CPU. QEMU already marks guest memory as mergeable;
+the kernel daemon still has to run.
+
+**TODO › Execute › Deploy › QEMU/KVM**, section **Host**, entry **KSM memory
+sharing** shows three lines — running or not, pages shared (in MiB, with the
+kernel's page size), permanent or not — and offers four actions: enable now,
+disable now, make permanent, remove the permanence. A kernel without KSM, or
+a file that cannot be read, is shown as *unreadable*, never as *inactive*.
+
+"Now" writes `/sys/kernel/mm/ksm/run`, which a reboot resets. "Permanent"
+writes `/etc/tmpfiles.d/erplibre-ksm.conf`, which systemd-tmpfiles applies at
+every boot:
+
+```
+w /sys/kernel/mm/ksm/run - - - - 1
+```
+
+Every write goes through `sudo`; the command is shown and confirmed before it
+runs, and the state is read back afterwards. A sudo refusal is reported as
+such. Disabling stops the daemon but leaves merged pages shared; removing the
+permanence does not change the current state.
+
 ## SSH access from another machine (ProxyJump)
 
 With the default NAT network the VM is reachable **only from the KVM host**.

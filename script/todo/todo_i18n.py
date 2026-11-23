@@ -11940,6 +11940,101 @@ TRANSLATIONS = {
         "fr": "Couper le courant des VM qui n'obéissent pas ? (o/N) : ",
         "en": "Power off VMs that ignore the shutdown? (y/N): ",
     },
+    # QEMU/KVM : KSM de la station (qemu_ksm.py)
+    "KSM memory sharing (state, enable, make permanent)": {
+        "fr": "🔗 KSM, partage de mémoire (état, activer, rendre permanent)",
+        "en": "🔗 KSM memory sharing (state, enable, make permanent)",
+    },
+    "KSM - identical memory pages shared between VMs": {
+        "fr": "KSM - pages de mémoire identiques partagées entre les VM",
+        "en": "KSM - identical memory pages shared between VMs",
+    },
+    "State:": {
+        "fr": "État :",
+        "en": "State:",
+    },
+    "inactive": {
+        "fr": "inactif",
+        "en": "inactive",
+    },
+    "inactive, pages unmerged": {
+        "fr": "inactif, pages défusionnées",
+        "en": "inactive, pages unmerged",
+    },
+    "unreadable: this kernel has no KSM ({path})": {
+        "fr": "illisible : ce noyau n'a pas KSM ({path})",
+        "en": "unreadable: this kernel has no KSM ({path})",
+    },
+    "unreadable: permission denied on {path}": {
+        "fr": "illisible : lecture refusée sur {path}",
+        "en": "unreadable: permission denied on {path}",
+    },
+    "unreadable: unexpected content in {path}": {
+        "fr": "illisible : contenu inattendu dans {path}",
+        "en": "unreadable: unexpected content in {path}",
+    },
+    "Shared:": {
+        "fr": "Partagé :",
+        "en": "Shared:",
+    },
+    "{pages} pages, {mio} MiB": {
+        "fr": "{pages} pages, {mio} Mio",
+        "en": "{pages} pages, {mio} MiB",
+    },
+    "Permanent:": {
+        "fr": "Permanent :",
+        "en": "Permanent:",
+    },
+    "yes ({path})": {
+        "fr": "oui ({path})",
+        "en": "yes ({path})",
+    },
+    "no (lost at the next reboot)": {
+        "fr": "non (perdu au prochain redémarrage)",
+        "en": "no (lost at the next reboot)",
+    },
+    "Enable KSM now": {
+        "fr": "▶ Activer KSM maintenant",
+        "en": "▶ Enable KSM now",
+    },
+    "Disable KSM now": {
+        "fr": "⏸ Désactiver KSM maintenant (le partagé le reste)",
+        "en": "⏸ Disable KSM now (what is shared stays shared)",
+    },
+    "Make KSM permanent (every boot)": {
+        "fr": "📌 Rendre KSM permanent (à chaque démarrage)",
+        "en": "📌 Make KSM permanent (every boot)",
+    },
+    "Remove the KSM permanence": {
+        "fr": "🧹 Retirer la permanence de KSM (l'état courant reste)",
+        "en": "🧹 Remove the KSM permanence (the current state stays)",
+    },
+    "Nothing to change: this kernel has no KSM.": {
+        "fr": "Rien à changer : ce noyau n'a pas KSM.",
+        "en": "Nothing to change: this kernel has no KSM.",
+    },
+    "systemd-tmpfiles is missing: no permanence here.": {
+        "fr": "systemd-tmpfiles est absent : pas de permanence sur cet hôte.",
+        "en": "systemd-tmpfiles is missing: no permanence on this host.",
+    },
+    "Done: the state read back is the expected one.": {
+        "fr": "Fait : l'état relu est celui visé.",
+        "en": "Done: the state read back is the expected one.",
+    },
+    "It applies from the next boot on.": {
+        "fr": "Il s'applique à partir du prochain démarrage.",
+        "en": "It applies from the next boot on.",
+    },
+    "Refused (code {code}): sudo was denied or the write was rejected.": {
+        "fr": "Refusé (code {code}) : sudo a refusé ou l'écriture a été"
+        " rejetée.",
+        "en": "Refused (code {code}): sudo was denied or the write was"
+        " rejected.",
+    },
+    "Code 0, but the state read back is unchanged.": {
+        "fr": "Code 0, mais l'état relu n'a pas changé.",
+        "en": "Code 0, but the state read back is unchanged.",
+    },
     "Troubleshoot": {
         "fr": "🩺 Dépanner",
         "en": "🩺 Troubleshoot",

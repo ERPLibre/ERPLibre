@@ -396,6 +396,12 @@ class QemuMenuMixin:
             {"prompt_description": t("Statistics (installs, durations, VMs)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
+            {"section": t("Host")},
+            {
+                "prompt_description": t(
+                    "KSM memory sharing (state, enable, make permanent)"
+                )
+            },
         ]
         config_entries = self.config_file.get_config("qemu_from_makefile")
         if config_entries:
@@ -447,6 +453,8 @@ class QemuMenuMixin:
                 self._qemu_stats()
             elif status == "20":
                 self._qemu_list_images()
+            elif status == "21":
+                self._qemu_ksm_menu()
             elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 

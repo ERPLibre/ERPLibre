@@ -177,6 +177,7 @@ from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
 from script.todo.qemu_deploy import QemuDeployMixin
 from script.todo.qemu_install import QemuInstallMixin
+from script.todo.qemu_ksm import QemuKsmMixin
 from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
@@ -260,6 +261,7 @@ class TODO(
     QemuInstallMixin,
     QemuManageMixin,
     QemuNetworkMixin,
+    QemuKsmMixin,
     QemuRecoverMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,
@@ -1360,6 +1362,7 @@ class TODO(
         "_cache_miroir_git": "Git mirrors",
         "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
+        "_qemu_ksm_menu": "KSM",
         "prompt_execute_proxmox": "Proxmox VE",
         "_analyse_follow_up": "Go further",
         "prompt_execute_egress_book": "Address book",
