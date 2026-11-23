@@ -215,5 +215,60 @@ class LExtensionGnome(unittest.TestCase):
         self.assertNotIn(self.DECK, projets)
 
 
+class LeGelDErplibreHome(unittest.TestCase):
+    """En mode --freeze, l'extension et le deck prennent le commit de leur
+    freeze-revision, comme le mobile : leurs fragments sont communs à toutes
+    les versions d'Odoo, et leur gel serait sinon retiré avant la fusion."""
+
+    PROJETS = {
+        "script/gnome-extension/erplibre_home": (
+            "manifest/git_manifest_erplibre_home_gnome_extension.xml"
+        ),
+        "script/stream_deck/deck": (
+            "manifest/git_manifest_erplibre_streamdeck_deck.xml"
+        ),
+    }
+
+    def gel_du_fragment(self, fragment):
+        projet = ET.parse(RACINE / fragment).getroot().find("project")
+        return projet.get("freeze-revision")
+
+    def revisions_fusionnees(self, options):
+        with tempfile.TemporaryDirectory() as dossier:
+            for nom in ("conf", "manifest"):
+                shutil.copytree(RACINE / nom, Path(dossier, nom))
+            Path(dossier, ".odoo-version").write_text(VERSION)
+            for chemin in self.PROJETS:
+                Path(dossier, chemin).mkdir(parents=True)
+            sortie = os.path.join(dossier, "fusion.xml")
+            fini = subprocess.run(
+                [sys.executable, str(SCRIPT), "--output", sortie, *options],
+                cwd=dossier,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(0, fini.returncode, fini.stderr)
+            return {
+                p.get("path"): p.get("revision")
+                for p in ET.parse(sortie).getroot().iter("project")
+            }
+
+    def test_each_fragment_freezes_its_project_on_a_commit(self):
+        for fragment in self.PROJETS.values():
+            with self.subTest(fragment=fragment):
+                self.assertRegex(
+                    self.gel_du_fragment(fragment) or "", r"^[0-9a-f]{40}$"
+                )
+
+    def test_the_freeze_applies_them_and_a_plain_merge_follows_main(self):
+        geles = self.revisions_fusionnees(("--freeze",))
+        suivis = self.revisions_fusionnees(())
+        for chemin, fragment in self.PROJETS.items():
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self.gel_du_fragment(fragment), geles[chemin])
+                self.assertEqual("main", suivis[chemin])
+
+
 if __name__ == "__main__":
     unittest.main()

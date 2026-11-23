@@ -407,7 +407,10 @@ def print_missing_freeze(manquants, fichiers=None):
 
 def common_input_paths(racine=""):
     """Les fragments communs à toutes les versions d'Odoo, dans leur ordre :
-    ceux que listent les CSV de conf/, sans les manifestes privés.
+    ceux que listent les CSV de conf/, sans les manifestes privés. Ceux
+    d'ERPLibre Home (l'extension GNOME, le programme du deck) en sont,
+    même quand la fusion ne les lit pas faute de leur répertoire : leur
+    gel ne dépend d'aucune version d'Odoo.
 
     Les CSV se lisent sous `racine` (le dossier courant par défaut) ; les
     chemins rendus restent tels que les CSV les écrivent, relatifs à elle.
@@ -416,6 +419,8 @@ def common_input_paths(racine=""):
     for conf in (
         DEFAULT_PATH_MANIFEST_ODOO_CONF,
         DEFAULT_PATH_MANIFEST_MOBILE_CONF,
+        DEFAULT_PATH_MANIFEST_STREAMDECK_CONF,
+        DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF,
         DEFAULT_PATH_MANIFEST_CONF,
     ):
         append_file_path_manifest(chemins, os.path.join(racine, conf))

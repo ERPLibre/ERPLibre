@@ -3,7 +3,8 @@
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
 
     <!-- L'extension GNOME ERPLibre Home, sur sa branche main : repo sync et
-         la base d'install_erplibre_home.sh amènent son dernier commit.
+         la base d'install_erplibre_home.sh amènent son dernier commit ; une
+         installation gelée (FREEZE=1) prend le commit de freeze-revision.
          CONTRACT.md, à la racine du dépôt, dit ce que l'extension et
          ERPLibre attendent l'une de l'autre ; sa version MAJEURE est celle
          de script/gnome-extension/erplibre_home_contract, et
@@ -16,6 +17,7 @@
         path="script/gnome-extension/erplibre_home"
         remote="TechnoLibre"
         revision="main"
+        freeze-revision="45b300debbbc000a6913c58e09d5985f4c3dcd02"
         groups="erplibre_home"
     />
 </manifest>
