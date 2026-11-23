@@ -1020,7 +1020,7 @@ class TestPlateformes(Banc):
         todo, cibles = self._todo_chevauche(
             {"18.0": ["amd64", "arm64"], "17.0": [], "12.0": []}
         )
-        with self.reponses(entrees=[""]) as sortie:
+        with self.reponses(entrees=["amd64"]) as sortie:
             plan = todo._container_choix_architectures("", cibles, "amd64")
         self.assertEqual(
             {"18.0": ["amd64"], "17.0": ["amd64"], "12.0": ["amd64"]}, plan
