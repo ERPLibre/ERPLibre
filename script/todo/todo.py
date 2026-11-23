@@ -175,6 +175,9 @@ from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.seal_menu import SealMenuMixin
 from script.todo.ssh_key_menu import SshKeyMenuMixin
+from script.todo import erplibre_home_status
+from script.todo.streamdeck_menu import RACINE as ERPLIBRE_HOME_RACINE
+from script.todo.streamdeck_menu import StreamDeckMenuMixin
 from script.todo.system_menu import SystemMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
@@ -269,6 +272,7 @@ class TODO(
     ModuleMenuMixin,
     SealMenuMixin,
     SshKeyMenuMixin,
+    StreamDeckMenuMixin,
     SystemMenuMixin,
 ):
     def __init__(self):
@@ -426,6 +430,9 @@ class TODO(
 
 ── {t("System")} ──
 [22] {t("System - Diagnostic and disk space")}
+
+── {t("🏠 ERPLibre Home")} ──
+[23] {t("ERPLibre Home - GNOME extension and Stream Deck")}
 {retour(t("Back"))}
 """
         while True:
@@ -519,6 +526,10 @@ class TODO(
                     return
             elif status == "22":
                 status = self.prompt_execute_system()
+                if status is not False:
+                    return
+            elif status == "23":
+                status = self.prompt_execute_streamdeck()
                 if status is not False:
                     return
             else:
@@ -833,6 +844,12 @@ class TODO(
                 f"m: {t('ERPLibre with the mobile home application')}",
                 "./mobile/install_and_run.sh",
             ),
+            # Sans commande : « s » demande l'extension GNOME puis le
+            # Stream Deck, et passe par l'entrée d'installation choisie.
+            "s": (
+                "s",
+                f"s: {t('ERPLibre Home with the GNOME extension and the Stream Deck')}",
+            ),
             "0": (
                 "0",
                 bleu_poudre(f"0: {t('Quit')}"),
@@ -906,6 +923,9 @@ class TODO(
             )
 
         if odoo_version_input == "0":
+            return
+        if odoo_version_input == "s":
+            self._erplibre_home_choose_install()
             return
 
         cmd_intern = install_commands.get(odoo_version_input)[2]
@@ -1348,6 +1368,7 @@ class TODO(
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
+        "prompt_execute_streamdeck": "ERPLibre Home",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
@@ -2614,6 +2635,133 @@ class TODO(
                 input(f"  {t('Discard everything and start over? (y/N): ')}")
             ):
                 return False
+
+    # install_erplibre_home.sh sort en 2 pour un système hors périmètre
+    # (distribution, version de GNOME) et en écrit la raison sur une ligne
+    # « UNSUPPORTED: <raison> » ; tout autre code non nul est un échec.
+    _ERPLIBRE_HOME_INSTALLER = "./script/install/install_erplibre_home.sh"
+    _ERPLIBRE_HOME_UNSUPPORTED = 2
+
+    def _erplibre_home_choose_install(self):
+        """Le choix « s » du menu Installation, selon ce que le poste porte
+        déjà. Rien : l'extension GNOME, oui par défaut, puis le Stream Deck,
+        non par défaut, avant les questions de l'installation Stream Deck ;
+        refuser l'extension n'installe rien, le Stream Deck l'exigeant, et
+        sans le Stream Deck la base seule est posée. L'extension seule :
+        seul l'ajout du Stream Deck est demandé, l'installateur gardant la
+        base. Les deux : une réinstallation, qui met l'extension et le deck
+        à jour. Rend False : le menu reste ouvert."""
+        niveau = erplibre_home_status.installed_level(ERPLIBRE_HOME_RACINE)
+        if niveau == erplibre_home_status.LEVEL_STREAM_DECK:
+            print(
+                t("ERPLibre Home with the Stream Deck is already installed.")
+            )
+            if self._is_yes(
+                input(
+                    t(
+                        "Reinstall it to update the extension and the deck?"
+                        " (y/N): "
+                    )
+                )
+            ):
+                return self._erplibre_home_streamdeck_install_local()
+            return False
+        if niveau == erplibre_home_status.LEVEL_BASE:
+            print(t("The GNOME extension is already installed."))
+        elif not self._is_yes_default_yes(
+            input(t("Install the GNOME extension? (Y/n): "))
+        ):
+            print(
+                t(
+                    "Nothing to install: the Stream Deck needs the GNOME"
+                    " extension."
+                )
+            )
+            return False
+        if self._is_yes(
+            input(t("Add the Stream Deck (deck program and service)? (y/N): "))
+        ):
+            return self._erplibre_home_streamdeck_install_local()
+        if niveau == erplibre_home_status.LEVEL_BASE:
+            return False
+        return self._erplibre_home_install_local()
+
+    def _erplibre_home_install_local(self):
+        """Installer la base d'ERPLibre Home sur ce poste, sans Odoo :
+        l'extension GNOME, ses schémas et ses traductions, activée. Rend
+        False : le menu reste ouvert."""
+        return self._erplibre_home_run_installer(self._ERPLIBRE_HOME_INSTALLER)
+
+    def _erplibre_home_streamdeck_install_local(self):
+        """Installer le niveau Stream Deck d'ERPLibre Home : la base au
+        besoin, puis les paquets USB, la règle udev, .venv.streamdeck et le
+        service du deck. Les questions du service deviennent des options ;
+        celle des outils facultatifs, l'installateur la pose lui-même. La
+        commande s'affiche par l'annonce d'exec_command_live, juste avant
+        de partir : aucune confirmation ne l'attend ici. Rend False : le
+        menu reste ouvert."""
+        options = self._erplibre_home_streamdeck_options()
+        if options is None:
+            return False
+        commande = " ".join(
+            [self._ERPLIBRE_HOME_INSTALLER, "--stream-deck", *options]
+        )
+        return self._erplibre_home_run_installer(commande)
+
+    def _erplibre_home_run_installer(
+        self,
+        commande,
+        succes=(
+            "ERPLibre Home installed. Log out and back in to load the"
+            " extension."
+        ),
+        echec="ERPLibre Home installation failed, see the output above.",
+        annoncee=False,
+    ):
+        """Lance `commande`, l'installateur et ses options, et en résume
+        l'issue sur une ligne ; `succes` et `echec` sont les clés de
+        traduction de la ligne d'un code 0 et d'un code d'échec.
+
+        La commande s'affiche une seule fois : par l'annonce du lanceur,
+        ou, quand `annoncee` est vrai, par l'appelant qui l'a déjà montrée
+        dans sa question de confirmation ; le lanceur ne l'annonce alors
+        pas. Le récapitulatif du lanceur ne la répète jamais : la ligne
+        d'issue ferme l'affichage.
+
+        L'installateur tourne en direct et hors du venv ERPLibre : la base
+        n'a pas de venv, et le niveau Stream Deck crée le sien,
+        .venv.streamdeck. exec_command_live fusionne stdout et stderr et en
+        retient les lignes ; la ligne « UNSUPPORTED: » y est cherchée, pour
+        qu'un code 2 se résume par sa raison et non par un code d'erreur nu.
+        Rend False.
+        """
+        status, lignes = self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+            return_status_and_output=True,
+            announce=not annoncee,
+            recap=False,
+        )
+        if status == self._ERPLIBRE_HOME_UNSUPPORTED:
+            prefixe = "UNSUPPORTED:"
+            raison = next(
+                (
+                    ligne.strip()[len(prefixe) :].strip()
+                    for ligne in lignes
+                    if ligne.strip().startswith(prefixe)
+                ),
+                "",
+            )
+            if not raison:
+                raison = t("no reason reported by the installer")
+            print(
+                f"⛔ {t('ERPLibre Home not supported on this system:')} {raison}"
+            )
+        elif status:
+            print("❌ " + t(echec))
+        else:
+            print("✅ " + t(succes))
+        return False
 
     # ---------------------------------------------------------------- #
     # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
