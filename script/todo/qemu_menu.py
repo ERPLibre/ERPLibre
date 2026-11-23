@@ -288,22 +288,58 @@ class QemuMenuMixin:
             input(t("Install the QEMU/libvirt tools now? (Y/n): "))
         ):
             return False
-        # Sans --assume-yes-reboot : accepter d'installer des paquets n'est
-        # pas accepter de perdre ce qui tourne sur la machine. Quand le noyau
-        # a été remplacé depuis le démarrage, deploy_qemu.py pose la question
-        # sur /dev/tty, et un refus laisse l'hôte avec ses paquets posés.
-        cmd = (
-            "sudo ./script/qemu/deploy_qemu.py --setup-host --assume-yes"
-            " --reboot-if-needed"
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(cmd, source_erplibre=False)
+        self._qemu_run_setup_host()
         if shutil.which("virsh"):
             print(f"✅ {t('libvirt is available.')}")
             return True
         # Sur une distribution à noyau roulant, --setup-host peut demander un
         # redémarrage avant que les modules soient chargeables.
         print(f"⚠  {t('virsh still missing; a reboot may be required.')}")
+        return False
+
+    def _qemu_run_setup_host(self, force_reinstall=False):
+        """Lance deploy_qemu.py --setup-host, qui connaît les paquets de
+        chaque distribution.
+
+        Sans --assume-yes-reboot : accepter d'installer des paquets n'est
+        pas accepter de perdre ce qui tourne sur la machine. Quand le noyau
+        a été remplacé depuis le démarrage, deploy_qemu.py pose la question
+        sur /dev/tty, et un refus laisse l'hôte avec ses paquets posés.
+        `force_reinstall` réinstalle tous les paquets, même présents. Rend
+        le code de sortie de deploy_qemu.py."""
+        cmd = (
+            "sudo ./script/qemu/deploy_qemu.py --setup-host --assume-yes"
+            " --reboot-if-needed"
+        )
+        if force_reinstall:
+            cmd += " --force-reinstall"
+        print(f"{t('Will execute:')} {cmd}")
+        return self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_reinstall_host(self):
+        """Réinstalle QEMU/libvirt sur l'hôte, même quand tout semble là.
+
+        La détection au démarrage du menu ne regarde que virsh : une
+        installation interrompue après la pose de virsh passe pour complète
+        et n'est plus jamais proposée. Cette entrée force la reprise :
+        paquets réinstallés, puis démon, groupe et réseau « default »
+        revérifiés par le même --setup-host."""
+        print(f"🔧 {t('Reinstall QEMU/libvirt on this host')}")
+        print(f"   {t('Every QEMU/libvirt package is reinstalled, even')}")
+        print(f"   {t('when present, then the service, the libvirt group')}")
+        print(f"   {t('and the « default » network are checked again.')}")
+        self._qemu_warn_libvirt_access()
+        if not self._is_yes(input(t("Force the reinstallation now? (y/N): "))):
+            return False
+        # Le code de sortie, et non la présence de virsh : virsh présent est
+        # justement l'état d'une installation interrompue que cette entrée
+        # vient réparer. deploy_qemu.py a déjà dit pourquoi il échoue.
+        code = self._qemu_run_setup_host(force_reinstall=True)
+        if code == 0:
+            print(f"✅ {t('QEMU/libvirt reinstalled, host ready.')}")
+            return True
+        print(f"❌ {t('Reinstallation failed (exit code')} {code}).")
+        print(f"   {t('Follow the instructions printed above, then rerun.')}")
         return False
 
     def prompt_execute_qemu(self):
@@ -361,6 +397,11 @@ class QemuMenuMixin:
                 )
             },
             {"section": t("Troubleshoot")},
+            {
+                "prompt_description": t(
+                    "Reinstall QEMU/libvirt on this host (force, repair)"
+                )
+            },
             {"prompt_description": t("Clean up QEMU (orphan files)")},
             {
                 "prompt_description": t(
@@ -416,16 +457,18 @@ class QemuMenuMixin:
             elif status == "14":
                 self._qemu_network_recreate()
             elif status == "15":
-                self._qemu_cleanup()
+                self._qemu_reinstall_host()
             elif status == "16":
-                self._qemu_recover_files()
+                self._qemu_cleanup()
             elif status == "17":
-                self._qemu_test_vm()
+                self._qemu_recover_files()
             elif status == "18":
-                self._qemu_diagnostics()
+                self._qemu_test_vm()
             elif status == "19":
-                self._qemu_stats()
+                self._qemu_diagnostics()
             elif status == "20":
+                self._qemu_stats()
+            elif status == "21":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True

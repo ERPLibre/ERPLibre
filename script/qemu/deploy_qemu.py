@@ -1137,6 +1137,84 @@ PKG_MANAGERS: tuple[
     ("brew", "brew", ["brew", "install"], False, None),
 )
 
+# Réinstallation forcée (--setup-host --force-reinstall), par gestionnaire.
+# La commande d'installation ordinaire saute ce qui est déjà posé
+# (« --needed », « déjà la version la plus récente »), y compris un paquet
+# dont l'installation a été interrompue et dont il manque des fichiers.
+#
+# pacman : « --overwrite * » parce qu'un pacman tué pendant l'extraction
+# laisse des fichiers sur le disque que sa base ne connaît pas encore, et le
+# pacman suivant refuse alors le paquet (« exists in filesystem »). Le joker
+# ne vaut que pour les fichiers des paquets de la transaction.
+REINSTALL_COMMANDS: dict[str, list[str]] = {
+    "apt": ["apt-get", "install", "-y", "--reinstall"],
+    "dnf": ["dnf", "reinstall", "-y"],
+    "pacman": ["pacman", "-S", "--noconfirm", "--overwrite", "*"],
+    "zypper": ["zypper", "--non-interactive", "install", "--force"],
+    "brew": ["brew", "reinstall"],
+}
+
+# Commandes passées AVANT la réinstallation, chacune suivie de la liste des
+# paquets. dnf et brew refusent de réinstaller un paquet absent : installer
+# d'abord. dnf refuse aussi de réinstaller une version que ses dépôts ne
+# servent plus (ils ne gardent que la dernière) : mettre à jour ensuite, pour
+# que la version installée soit celle qu'il peut retélécharger.
+REINSTALL_PREPARE: dict[str, list[list[str]]] = {
+    "dnf": [["dnf", "install", "-y"], ["dnf", "upgrade", "-y"]],
+    "brew": [["brew", "install"]],
+}
+
+# Paquets qui PORTENT les binaires, sous les métapaquets de DAEMON_PACKAGES :
+# une réinstallation n'agit que sur les paquets nommés, jamais sur leurs
+# dépendances déjà posées. Réinstaller « qemu-desktop » (pacman) ou
+# « libvirt-daemon-system » (apt) ne répare ni l'émulateur ni libvirtd. Seuls
+# ceux que le gestionnaire connaît sur cet hôte sont ajoutés : un nom absent
+# d'une version de la distribution ferait échouer toute la commande.
+REINSTALL_EXTRA: dict[str, list[str]] = {
+    "apt": [
+        "libvirt-daemon",
+        "libvirt-daemon-driver-qemu",
+        "libvirt0",
+        "qemu-system-x86",
+        "qemu-system-common",
+        "qemu-system-data",
+    ],
+    "dnf": [
+        "libvirt-daemon",
+        "libvirt-daemon-driver-qemu",
+        "libvirt-libs",
+        "qemu-system-x86-core",
+        "qemu-common",
+    ],
+    "pacman": ["qemu-system-x86", "qemu-base", "qemu-common"],
+    "zypper": [
+        "libvirt-daemon-driver-qemu",
+        "libvirt-libs",
+        "qemu-x86",
+        "qemu",
+    ],
+    "brew": [],
+}
+
+# Fichiers dont le paquet propriétaire est ajouté à la réinstallation, quel
+# que soit son nom sur cette version de la distribution. Complète
+# REINSTALL_EXTRA quand un paquet a été renommé ou scindé.
+REINSTALL_KEY_FILES: tuple[str, ...] = (
+    "qemu-system-x86_64",
+    "libvirtd",
+    "virsh",
+    "qemu-img",
+    "virt-install",
+)
+
+# Verrou de la base pacman. Un pacman tué en pleine transaction le laisse
+# derrière lui, et tout pacman suivant échoue sur « unable to lock database ».
+PACMAN_LOCK = "/var/lib/pacman/db.lck"
+# Base locale de pacman : un répertoire par paquet installé, qui reçoit son
+# « desc » une fois les fichiers extraits. Un répertoire sans « desc » est une
+# installation interrompue, et pacman refuse toute transaction qui le touche.
+PACMAN_LOCAL_DB = "/var/lib/pacman/local"
+
 
 def detect_pkg_manager() -> (
     tuple[str, list[str], bool, list[str] | None] | None
@@ -1373,6 +1451,7 @@ def setup_host(
     no_install: bool,
     reboot_if_needed: bool = False,
     assume_yes_reboot: bool = False,
+    force_reinstall: bool = False,
 ) -> None:
     """Prépare l'hôte à faire tourner des VM : paquets, démon, groupe, réseau.
 
@@ -1380,8 +1459,19 @@ def setup_host(
     Il réutilise les mêmes fonctions que le déploiement, donc les noms de
     paquets restent définis à UN SEUL endroit (TOOL_PACKAGES /
     DAEMON_PACKAGES) et restent valides pour apt, dnf, pacman, zypper et brew.
+
+    `force_reinstall` réinstalle d'abord tous ces paquets, même présents :
+    une installation interrompue laisse des binaires en place et passe pour
+    complète. Incompatible avec `no_install`, qui interdit toute installation.
     """
     print("\n== Préparation de l'hôte pour QEMU/libvirt ==")
+    if force_reinstall:
+        if no_install:
+            sys.exit(
+                "Erreur : --force-reinstall et --no-install-deps se"
+                " contredisent ; retirez l'une des deux options."
+            )
+        reinstall_host_packages(runner, assume_yes)
     # ensure_tools installe les clients ET, si le démon manque, les paquets de
     # DAEMON_PACKAGES (qemu système + libvirt + firmware UEFI), puis démarre le
     # service. ensure_emulator ne sert QU'À l'émulation croisée (arm64 sur x86)
@@ -1469,11 +1559,12 @@ def ensure_tools(
     """Vérifie outils, démon libvirt et émulateur ; installe/démarre ce qui
     manque, puis vérifie la connexion à l'hyperviseur.
 
-    `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
-    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
-    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
-    n'était jamais installé -> « Failed to start network default ». Les
-    gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
+    `force_daemon` passe DAEMON_PACKAGES à l'installation ordinaire même quand
+    le démon répond déjà : un libvirt posé sans dnsmasq fait répondre
+    daemon_missing() faux, et dnsmasq ne s'installe jamais -> « Failed to
+    start network default ». L'installation ordinaire saute ce qui est déjà
+    là, ce qui rend l'appel bon marché ; c'est aussi pourquoi elle ne répare
+    pas un paquet présent mais incomplet — reinstall_host_packages() le fait.
     """
     missing = missing_tools()
     need_daemon = daemon_missing() or force_daemon
@@ -1546,6 +1637,244 @@ def ensure_tools(
 
     # Démarre le démon (si nécessaire) et vérifie l'accès à l'hyperviseur.
     ensure_libvirt_service(runner)
+
+
+def _query(cmd: list[str]) -> tuple[int, str]:
+    """(code, stdout) d'une requête en lecture au gestionnaire de paquets.
+
+    Sans sudo : interroger la base des paquets ne demande aucun droit. Un
+    outil absent rend (127, "") plutôt que de lever.
+    """
+    try:
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return 127, ""
+    return res.returncode, res.stdout
+
+
+def package_known(pm_key: str, pkg: str) -> bool:
+    """Vrai si le gestionnaire tient ce paquet pour posé, même à moitié.
+
+    Sous apt, « half-installed » et « unpacked » comptent : ce sont justement
+    les paquets qu'une installation interrompue laisse derrière elle. Un
+    paquet retiré dont il ne reste que la configuration ne compte pas.
+    """
+    if pm_key == "apt":
+        code, out = _query(["dpkg-query", "-W", "-f=${db:Status-Status}", pkg])
+        return code == 0 and out.strip() not in (
+            "",
+            "not-installed",
+            "config-files",
+        )
+    if pm_key == "pacman":
+        return _query(["pacman", "-Q", pkg])[0] == 0
+    if pm_key in ("dnf", "zypper"):
+        return _query(["rpm", "-q", pkg])[0] == 0
+    return False
+
+
+def file_owner(pm_key: str, path: str) -> list[str]:
+    """Paquets propriétaires de ce fichier selon la base du gestionnaire.
+
+    Liste vide quand la base ne le connaît pas ou que le gestionnaire n'a pas
+    de requête par fichier (brew). La sortie de dpkg peut nommer plusieurs
+    paquets, porter l'architecture — « a:amd64, b: /chemin » — et ajouter
+    des lignes de détournement, qui ne nomment aucun propriétaire.
+    """
+    if pm_key == "apt":
+        code, out = _query(["dpkg-query", "-S", path])
+        if code != 0:
+            return []
+        noms = []
+        for ligne in out.splitlines():
+            # « diversion by X from: » et « diversion by X to: » décrivent
+            # un détournement, pas un propriétaire.
+            if ligne.startswith("diversion by "):
+                continue
+            tete = ligne.rsplit(": ", 1)[0]
+            noms += [n.strip().split(":")[0] for n in tete.split(",")]
+        return [n for n in noms if n]
+    if pm_key == "pacman":
+        code, out = _query(["pacman", "-Qqo", path])
+    elif pm_key in ("dnf", "zypper"):
+        code, out = _query(["rpm", "-qf", "--qf", "%{NAME}\n", path])
+    else:
+        return []
+    return out.split() if code == 0 else []
+
+
+def _key_file_paths() -> list[str]:
+    """Chemins présents des binaires de REINSTALL_KEY_FILES.
+
+    Le chemin tel que trouvé et sa cible réelle : sous usrmerge, la base de
+    dpkg peut connaître l'un sans l'autre. libvirtd vit souvent dans
+    /usr/sbin, hors du PATH d'un utilisateur ordinaire.
+    """
+    chemins = []
+    for nom in REINSTALL_KEY_FILES:
+        trouve = shutil.which(nom) or next(
+            (
+                p
+                for p in (f"/usr/sbin/{nom}", f"/usr/bin/{nom}")
+                if os.path.exists(p)
+            ),
+            None,
+        )
+        if trouve:
+            chemins += [trouve, os.path.realpath(trouve)]
+    return list(dict.fromkeys(chemins))
+
+
+def host_packages(pm_key: str) -> list[str]:
+    """Paquets QEMU/libvirt de l'hôte pour ce gestionnaire, sans doublon.
+
+    Les clients de REQUIRED_TOOLS, UN outil de seed — celui qui est déjà
+    présent, sinon le premier de SEED_TOOLS — et DAEMON_PACKAGES. Le seed
+    présent est gardé tel quel : réinstaller l'autre poserait un paquet que
+    l'hôte n'a jamais choisi.
+
+    S'y ajoutent les paquets qui portent réellement les binaires : ceux de
+    REINSTALL_EXTRA que le gestionnaire connaît ici, et les propriétaires des
+    REINSTALL_KEY_FILES présents. Un paquet porteur absent n'est pas nommé :
+    l'installation de son métapaquet le tire comme dépendance.
+    """
+    pkg_map = TOOL_PACKAGES[pm_key]
+    seed = next((s for s in SEED_TOOLS if shutil.which(s)), SEED_TOOLS[0])
+    tools = [*REQUIRED_TOOLS, seed]
+    packages = [pkg_map.get(t, t) for t in tools]
+    packages += DAEMON_PACKAGES.get(pm_key, [])
+    packages += [
+        p for p in REINSTALL_EXTRA.get(pm_key, []) if package_known(pm_key, p)
+    ]
+    for chemin in _key_file_paths():
+        packages += file_owner(pm_key, chemin)
+    return list(dict.fromkeys(packages))
+
+
+def pacman_lock_stale() -> bool:
+    """Vrai si le verrou pacman existe sans aucun processus pacman vivant.
+
+    Le verrou d'un pacman en cours est légitime : le retirer corromprait sa
+    transaction. Seul le verrou sans propriétaire est orphelin.
+    """
+    if not os.path.exists(PACMAN_LOCK):
+        return False
+    res = subprocess.run(
+        ["pgrep", "-x", "pacman"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return res.returncode != 0
+
+
+def pacman_broken_entries() -> list[str]:
+    """Entrées de la base locale pacman sans « desc » : installations
+    interrompues pendant l'extraction. Liste vide si la base est lisible."""
+    try:
+        noms = sorted(os.listdir(PACMAN_LOCAL_DB))
+    except OSError:
+        return []
+    return [
+        os.path.join(PACMAN_LOCAL_DB, n)
+        for n in noms
+        if os.path.isdir(os.path.join(PACMAN_LOCAL_DB, n))
+        and not os.path.exists(os.path.join(PACMAN_LOCAL_DB, n, "desc"))
+    ]
+
+
+def check_pacman_state() -> None:
+    """Refuse, avec la commande qui répare, un pacman hors d'état de servir.
+
+    Rien n'est retiré d'office. Un verrou orphelin peut appartenir à un autre
+    client de libalpm (pamac, une mise à jour graphique) que pgrep ne voit
+    pas ; une entrée de base interrompue ne se retire que si l'opérateur sait
+    qu'aucune transaction n'est en cours. Les deux, seul l'opérateur le sait.
+    """
+    if os.path.exists(PACMAN_LOCK):
+        if not pacman_lock_stale():
+            sys.exit(
+                "  Un pacman est en cours d'exécution : attendez sa fin,"
+                " puis relancez."
+            )
+        sys.exit(
+            f"  Verrou pacman orphelin : {PACMAN_LOCK}\n"
+            "  Aucun pacman ne tourne. Si aucun autre gestionnaire de"
+            " paquets (pamac, mise à jour graphique) n'est ouvert,"
+            " retirez-le puis relancez :\n"
+            f"    sudo rm {PACMAN_LOCK}"
+        )
+    casses = pacman_broken_entries()
+    if casses:
+        sys.exit(
+            "  Base pacman : installation interrompue, pacman refusera toute"
+            " transaction qui touche ces paquets :\n"
+            + "".join(f"    {c}\n" for c in casses)
+            + "  Retirez ces entrées (les fichiers seront réécrits par la"
+            " réinstallation), puis relancez :\n"
+            + "".join(f"    sudo rm -r {shlex.quote(c)}\n" for c in casses)
+        )
+
+
+def reinstall_host_packages(runner: Runner, assume_yes: bool) -> None:
+    """Réinstalle TOUS les paquets QEMU/libvirt de l'hôte, même présents.
+
+    Répare une installation interrompue que la détection ordinaire, fondée
+    sur la présence des binaires, tient pour complète. Remet d'abord en état
+    le gestionnaire lui-même : dpkg interrompu sous apt ; sous pacman, un
+    verrou orphelin ou une entrée de base interrompue arrête tout avec la
+    commande qui répare — sans quoi la réinstallation échoue avant d'avoir
+    commencé.
+    """
+    pm = detect_pkg_manager()
+    if pm is None:
+        sys.exit(
+            "  Gestionnaire de paquets non reconnu "
+            "(apt/dnf/pacman/zypper/brew) : réinstallation impossible."
+        )
+    pm_key, _install_cmd, use_sudo, refresh = pm
+
+    print("\n== Réinstallation forcée des paquets QEMU/libvirt ==")
+    if pm_key == "pacman":
+        check_pacman_state()
+    packages = host_packages(pm_key)
+
+    full_cmd = REINSTALL_COMMANDS[pm_key] + packages
+    printable = " ".join(shlex.quote(a) for a in full_cmd)
+    if use_sudo and runner.use_sudo:
+        printable = "sudo " + printable
+    print(f"  Gestionnaire détecté : {pm_key}")
+    print(f"  Commande de réinstallation : {printable}")
+    if not assume_yes and not prompt_yes_no(
+        "  Réinstaller ces paquets maintenant ?"
+    ):
+        sys.exit(
+            "  Réinstallation refusée.\n  Commande manuelle : " + printable
+        )
+
+    if pm_key == "apt":
+        # Un dpkg interrompu bloque tout apt-get suivant (« dpkg was
+        # interrupted ») ; les dépendances à moitié posées se complètent
+        # ensuite. Sans échec fatal : la réinstallation qui suit peut réparer
+        # le paquet dont le postinst a échoué.
+        runner.run(
+            ["dpkg", "--configure", "-a"], privileged=use_sudo, check=False
+        )
+        runner.run(
+            ["apt-get", "install", "-f", "-y"],
+            privileged=use_sudo,
+            check=False,
+        )
+    if refresh:
+        runner.run(refresh, privileged=use_sudo, check=False)
+    for prep in REINSTALL_PREPARE.get(pm_key, []):
+        runner.run(prep + packages, privileged=use_sudo)
+    runner.run(full_cmd, privileged=use_sudo)
+    print("  Paquets réinstallés.")
 
 
 def emulator_ready(arch: str) -> bool:
@@ -6119,6 +6448,13 @@ def build_parser() -> argparse.ArgumentParser:
         "sans personne devant l'écran ; --assume-yes ne l'implique pas.",
     )
     g_run.add_argument(
+        "--force-reinstall",
+        action="store_true",
+        help="Avec --setup-host : réinstalle TOUS les paquets QEMU/libvirt, "
+        "même présents. Répare une installation interrompue que la "
+        "détection, fondée sur la présence des binaires, croit complète.",
+    )
+    g_run.add_argument(
         "--list-images",
         action="store_true",
         help="Liste les distros/versions disponibles et leurs specs, "
@@ -6158,7 +6494,12 @@ def main() -> None:
     except (AttributeError, ValueError):
         pass
 
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.force_reinstall and not args.setup_host:
+        # Un déploiement n'installe que ce qui manque : ignorer l'option en
+        # silence laisserait croire que la réinstallation a eu lieu.
+        parser.error("--force-reinstall exige --setup-host")
 
     if args.list_images:
         list_images()
@@ -6176,6 +6517,7 @@ def main() -> None:
             args.no_install_deps,
             args.reboot_if_needed,
             args.assume_yes_reboot,
+            args.force_reinstall,
         )
         return
 

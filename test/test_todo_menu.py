@@ -442,6 +442,7 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "Open the console on a VM": "_qemu_console",
         "Resize a VM disk": "_qemu_resize_disk",
         "Delete VM(s)": "_qemu_delete_vm",
+        "Reinstall QEMU/libvirt": "_qemu_reinstall_host",
         "Clean up QEMU": "_qemu_cleanup",
         "Test": "_qemu_test_vm",
         "Statistics": "_qemu_stats",
