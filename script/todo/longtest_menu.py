@@ -32,6 +32,7 @@ SCRIPTS_DEFAISABLES = (
     "qemu_cache.py",
     "install_nixos.py",
     "install_erplibre_home.py",
+    "usb_passthrough.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -139,6 +140,16 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("Undo what the descent created")},
+            {
+                "prompt_description": t(
+                    "USB passthrough, emulated deck: plan only (dry-run)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "USB passthrough, emulated deck: run it"
+                )
+            },
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -153,6 +164,13 @@ class LongTestMenuMixin:
         erplibre_home = {
             "10": "--dry-run",
             "11": "",
+        }
+        # Le passage USB non plus : un deck simulé, ses domaines et une
+        # Debian. 13 et 14, après le défaire, pour ne renuméroter aucune
+        # entrée existante.
+        usb = {
+            "13": "--dry-run",
+            "14": "",
         }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
@@ -179,6 +197,9 @@ class LongTestMenuMixin:
                 self._longtest_run(
                     "install_erplibre_home.py", erplibre_home[status]
                 )
+                continue
+            if status in usb:
+                self._longtest_run("usb_passthrough.py", usb[status])
                 continue
             if status in scripts:
                 script, demander = scripts[status]

@@ -335,6 +335,59 @@ sub-directory. It proves every check: a `── contrôle <name> : réussi` or
 `ÉCHEC` line per command and check, followed by each command it ran, and on
 a failure by that command's raw reply.
 
+## usb_passthrough.py — does a deck reach a VM, and come back, without a deck?
+
+No Stream Deck is needed. A configfs gadget bound to the UDC of
+`dummy_hcd` stands in for one: `0fd9:0080`, "Stream Deck MK.2", an
+invented serial, a 64-byte HID function. The host kernel enumerates it as a
+plugged deck, `usbhid` takes it, and emptying the gadget's `UDC` file is
+the udev event of a pulled cable, with a new device number at each replug.
+
+Six stages, each with its verdict, run what the repository runs —
+`usb_qemu.py`, `qemu_usb.py`, `deploy_qemu.py`, `erplibre_home_status.py` —
+and not a copy of their logic:
+
+1. **emulated-deck**: modules loaded, gadget bound, `host_usb_devices()`
+   and `usb_qemu.py list` put it first;
+2. **libvirt-mechanics**: on a throwaway domain with no OS and no disk,
+   `attach --live`, `--config` and both, each one twice, then `detach`;
+   QEMU's `info usb` must agree with the live XML, and the host's
+   `usbhid` takes the deck back;
+3. **spice**: `spice_usbredir_xml` on a shut-off VNC domain, defined, then
+   started: SPICE first, two `spicevmc` slots, the vendor filter, and a
+   second plan that changes nothing;
+4. **auto-reattach**: `install-autoreattach`, `mapping add`, an unplug —
+   the dead-address `<hostdev>` leaves through the unplug unit, read in its
+   journal — a replug, reattached at the new number, then
+   `remove-autoreattach` leaves nothing, `/usr/local/libexec` as it was;
+5. **guest**: a real Debian 13 (the `generic` image: the cloud kernel has
+   no USB) deployed with `--usb-hostdev 0fd9:0080`; the deck is in its
+   sysfs, the host's own `plugged_decks()` copied into it sees it, and it
+   leaves then returns with an unplug and a replug;
+6. **host-status**: `erplibre_home_status` says the deck is passed to that
+   VM.
+
+A failed stage stops those that depend on it (`spice` depends on nothing;
+`host-status` on `guest`), and the verdict names the first check that fell:
+`FAILED(unplug-detached)`. Cleanup runs anyway, and is a verdict too.
+
+```
+./long_test/usb_passthrough.py                 # the six stages
+./long_test/usb_passthrough.py --sans-invite   # stages 1 to 4, seconds
+./long_test/usb_passthrough.py --dry-run       # the plan and the commands
+./long_test/usb_passthrough.py --garder        # keep domains, gadget, rule
+./long_test/usb_passthrough.py --detruire      # undo the last run
+```
+
+It needs passwordless `sudo`, `/dev/kvm`, an x86_64 host and the
+`dummy_hcd`, `libcomposite` and `usb_f_hid` modules. The report names,
+before creating them, the gadget, the modules it loaded (those already
+loaded are not its own), the auto-reattach it installed and each domain
+with its UUID: `--detruire` undoes exactly that. The run refuses to start
+when the host already carries what it would remove or what would skew the
+verdict: an installed auto-reattach, a non-empty mapping, a real deck, the
+`dummy_hcd` UDC held by another gadget, a running deck service.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -709,6 +762,62 @@ journal de chaque système — sortie de l'installateur, journal utilisateur,
 Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
 `ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
 sur un échec, de la réponse brute de cette commande.
+
+## usb_passthrough.py — un deck rejoint-il une VM, et en revient-il, sans deck ?
+
+Aucun Stream Deck n'est requis. Un gadget configfs lié à l'UDC de
+`dummy_hcd` en tient lieu : `0fd9:0080`, « Stream Deck MK.2 », une série
+inventée, une fonction HID de 64 octets. Le noyau de l'hôte l'énumère
+comme un deck branché, `usbhid` le prend, et vider le fichier `UDC` du
+gadget est l'événement udev d'un câble qu'on tire, avec un nouveau numéro
+de périphérique à chaque rebranchement.
+
+Six étapes, chacune avec son verdict, lancent ce que le dépôt lance —
+`usb_qemu.py`, `qemu_usb.py`, `deploy_qemu.py`, `erplibre_home_status.py` —
+et non une copie de leur logique :
+
+1. **emulated-deck** : modules chargés, gadget lié, `host_usb_devices()`
+   et `usb_qemu.py list` le mettent en tête ;
+2. **libvirt-mechanics** : sur un domaine jetable sans système ni disque,
+   `attach --live`, `--config` et les deux, chacun deux fois, puis
+   `detach` ; le `info usb` de QEMU doit s'accorder au XML live, et
+   `usbhid` de l'hôte reprend le deck ;
+3. **spice** : `spice_usbredir_xml` sur un domaine VNC arrêté, défini puis
+   démarré : SPICE en tête, deux emplacements `spicevmc`, le filtre de
+   vendeur, et un second plan qui ne change rien ;
+4. **auto-reattach** : `install-autoreattach`, `mapping add`, un
+   débranchement — le `<hostdev>` d'adresse morte part par l'unité de
+   débranchement, lue dans son journal —, un rebranchement, rattaché au
+   nouveau numéro, puis `remove-autoreattach` ne laisse rien,
+   `/usr/local/libexec` tel qu'il était ;
+5. **guest** : une vraie Debian 13 (l'image `generic` : le noyau cloud n'a
+   pas l'USB) déployée avec `--usb-hostdev 0fd9:0080` ; le deck est dans son
+   sysfs, le `plugged_decks()` de l'hôte, copié dedans, l'y voit, et il
+   part puis revient avec un débranchement et un rebranchement ;
+6. **host-status** : `erplibre_home_status` dit le deck passé à cette VM.
+
+Une étape qui échoue arrête celles qui en dépendent (`spice` ne dépend de
+rien ; `host-status` dépend de `guest`), et le verdict nomme le premier
+contrôle tombé : `FAILED(unplug-detached)`. Le nettoyage passe quand même,
+et il a lui aussi son verdict.
+
+```
+./long_test/usb_passthrough.py                 # les six étapes
+./long_test/usb_passthrough.py --sans-invite   # étapes 1 à 4, des secondes
+./long_test/usb_passthrough.py --dry-run       # le plan et les commandes
+./long_test/usb_passthrough.py --garder        # garder domaines, gadget, règle
+./long_test/usb_passthrough.py --detruire      # défaire la dernière course
+```
+
+Il demande `sudo` sans mot de passe, `/dev/kvm`, un hôte x86_64 et les
+modules `dummy_hcd`, `libcomposite` et `usb_f_hid`. Le rapport nomme, avant
+de les créer, le gadget, les modules qu'il charge (ceux déjà chargés ne lui
+appartiennent pas), le rattachement automatique qu'il pose et chaque
+domaine avec son UUID : `--detruire` défait exactement cela. La course
+refuse de partir quand l'hôte porte déjà ce qu'elle retirerait ou ce qui
+fausserait le verdict : un rattachement automatique posé, une
+correspondance non vide, un deck réel, l'UDC de `dummy_hcd` pris par un
+autre gadget, un service deck qui tourne.
 
 ## Partir d'un hôte qu'on possède déjà
 

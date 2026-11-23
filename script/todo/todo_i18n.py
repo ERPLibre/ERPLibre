@@ -25584,6 +25584,15 @@ TRANSLATIONS = {
         "fr": "Plus aucune correspondance n'envoie de deck à une VM.",
         "en": "No mapping sends a deck to a VM anymore.",
     },
+    # Tests longs — passage USB d'un deck simulé
+    "USB passthrough, emulated deck: plan only (dry-run)": {
+        "fr": "Passage USB, deck simulé : le plan seulement (à blanc)",
+        "en": "USB passthrough, emulated deck: plan only (dry-run)",
+    },
+    "USB passthrough, emulated deck: run it": {
+        "fr": "Passage USB, deck simulé : le lancer",
+        "en": "USB passthrough, emulated deck: run it",
+    },
 }
 
 
