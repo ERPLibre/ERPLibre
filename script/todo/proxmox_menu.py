@@ -27,6 +27,7 @@ import click
 from script.todo import qemu_privilege, todo_journal, todo_prefs
 from script.todo.deploy_form_lib import VM_LOGIN_READ_CMD, VM_USER_DEFAULT
 from script.todo.qemu_privilege import virsh_argv
+from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
 
 
@@ -683,6 +684,199 @@ class ProxmoxMenuMixin:
             return
         for volid, _taille in orphelins:
             self._pve_show(f"pvesm free {shlex.quote(volid)}", timeout=300)
+
+    # -- USB : périphériques du nœud passés à une VM -------------------- #
+    def _pve_usb_devices(self):
+        """Périphériques USB passables du nœud, decks en tête (forme de
+        proxmox_deploy.parse_hardware_usb), ou None quand pvesh échoue."""
+        from script.proxmox import proxmox_deploy as pve
+
+        code, out = self._pve_show(
+            pve.usb_list_cmd(self._pve_node_name()), quiet=True
+        )
+        return None if code else pve.parse_hardware_usb(out)
+
+    def _pve_usb_hostdev(self, valeur):
+        """Sélecteurs « host= » à poser à la création d'une VM, d'après
+        spec["usb_hostdev"].
+
+        Une chaîne ou une liste de « VID:PID » / « bus-port » passe telle
+        quelle ; un « bus.périphérique » se traduit en bus-port d'après les
+        périphériques que pvesh lit sur le nœud. True désigne les Stream
+        Deck branchés sur le nœud, lus par pvesh au moment de construire
+        les commandes : chacun par VID:PID, ou par bus-port quand deux sont
+        identiques. Toute autre valeur n'en donne aucun."""
+        from script.proxmox import proxmox_deploy as pve
+
+        if valeur is not True:
+            choisis = pve.usb_hostdevs(valeur)
+            if all(pve.usb_host_value(s) for s in choisis):
+                return choisis
+            # « bus.périphérique » (la forme libvirt quand deux decks sont
+            # identiques) se traduit en bus-port d'après les périphériques
+            # du nœud ; ce qui n'y correspond plus est écarté et nommé.
+            devs = self._pve_usb_devices() or []
+            hotes = []
+            for s in choisis:
+                hote = pve.usb_host_for(s, devs)
+                if not hote:
+                    avis = t("USB device not found on the Proxmox node:")
+                    print(f"  ⚠ {avis} {s}")
+                elif hote not in hotes:
+                    hotes.append(hote)
+            return hotes
+        devs = self._pve_usb_devices() or []
+        decks = [pve.usb_selector_for(d, devs) for d in devs if d["is_deck"]]
+        if not decks:
+            avis = t(
+                "No Stream Deck plugged into the Proxmox node: the VM is"
+                " created without one."
+            )
+            print(f"  ⚠ {avis}")
+        return decks
+
+    @staticmethod
+    def _pve_spec_usb_hostdev(spec, vm):
+        """spec["usb_hostdev"] pour la VM `vm` : la valeur de la spec pour
+        la première VM graphique du parc (qemu_deploy.spec_usb_receiver),
+        [] pour les autres. Un périphérique de l'hôte ne sert qu'à une VM en
+        marche ; _qemu_spec_vm applique la même règle à la recréation."""
+        from script.todo.qemu_deploy import spec_usb_receiver
+
+        if vm.get("name") != spec_usb_receiver(spec, vm):
+            return []
+        return spec.get("usb_hostdev")
+
+    def _pve_usb(self):
+        """Périphériques USB du nœud Proxmox passés à une VM : voir,
+        attacher, détacher.
+
+        « qm set -usbN » écrit la configuration de la VM : pas de choix
+        live/config comme avec libvirt, et le menu le dit avant tout.
+        host=VID:PID suit le périphérique d'un rebranchement à l'autre, donc
+        aucune règle udev n'est posée sur le nœud."""
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        avis = t(
+            "Proxmox USB attachments are always persistent: they are written"
+            " to the VM configuration and follow a replug by VID:PID, without"
+            " any udev rule."
+        )
+        print(f"\n  ℹ {avis}")
+        while True:
+            code, cfg = self._pve_show(
+                f"qm config {int(vm['vmid'])}", quiet=True
+            )
+            if code:
+                print(f"  ⚠ {t('exit code')} {code}")
+                return
+            ports = pve.parse_qm_config_usb(cfg)
+            titre = t("USB ports of Proxmox VM")
+            print(f"\n{titre} {vm['vmid']} ({vm['name']})")
+            for n, valeur in sorted(ports.items()):
+                print(f"  usb{n}: {valeur}")
+            if not ports:
+                print(f"  {t('No usbN port on this Proxmox VM.')}")
+            print(f"\n  [1] {t('Attach a USB device of the Proxmox node')}")
+            print(f"  [2] {t('Detach a USB device from this Proxmox VM')}")
+            print(f"  {retour()}")
+            choix = input(t("Choice: ")).strip()
+            if choix in ("0", ""):
+                return
+            if choix == "1":
+                self._pve_usb_attach(vm, cfg)
+            elif choix == "2":
+                self._pve_usb_detach(vm, ports)
+            else:
+                print(t("Invalid selection!"))
+
+    def _pve_usb_attach(self, vm, cfg):
+        """Liste l'USB du nœud, fait choisir, prend le premier port usbN
+        libre, montre la commande et l'exécute après confirmation. Un
+        périphérique déjà présent dans la configuration n'est pas reposé."""
+        from script.proxmox import proxmox_deploy as pve
+        from script.todo import qemu_usb as qu
+
+        devs = self._pve_usb_devices()
+        if devs is None:
+            avis = t("Cannot list the USB devices of the Proxmox node.")
+            print(f"  ⚠ {avis}")
+            return
+        if not devs:
+            print(f"\n  {t('No USB device plugged into the Proxmox node.')}")
+            return
+        print(f"\n{t('USB devices of the Proxmox node:')}")
+        for i, dev in enumerate(devs, 1):
+            print(f"  [{i}] {dev['sysname'] or '-':<8} {qu.device_line(dev)}")
+        brut = input(t("Selection (number): ")).strip()
+        if not (brut.isdigit() and 1 <= int(brut) <= len(devs)):
+            print(t("Invalid selection!"))
+            return
+        dev = devs[int(brut) - 1]
+        selecteur = pve.usb_selector_for(dev, devs)
+        ports = pve.parse_qm_config_usb(cfg)
+        deja = pve.usb_slots_for(ports, selecteur)
+        if deja:
+            print(
+                f"\n  ✓ {t('Already in this Proxmox VM:')}"
+                f" usb{deja[0]} ({selecteur})"
+            )
+            return
+        hote = self._pve_host(ask=False) or {}
+        total = pve.usb_slot_count(hote.get("version") or "")
+        slot = pve.next_usb_slot(ports, total)
+        if slot is None:
+            print(
+                f"  ⚠ {t('No free usbN port on this Proxmox VM:')}"
+                f" usb0 … usb{total - 1}"
+            )
+            return
+        if selecteur == dev["sysname"]:
+            avis = t(
+                "Two identical devices are plugged in: this one is pinned to"
+                " its physical port, and a replug on another port is not"
+                " followed."
+            )
+            print(f"\n  ℹ {avis}")
+        if vm.get("status") == "running" and not pve.usb_hotplug(cfg):
+            avis = t(
+                "USB hotplug is off for this Proxmox VM: the device appears at"
+                " its next start."
+            )
+            print(f"\n  ℹ {avis}")
+        cmd = pve.usb_set_cmd(vm["vmid"], slot, selecteur)
+        print(f"\n  {cmd}")
+        if not self._is_yes(input(t("Confirm? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        code, _out = self._pve_show(cmd)
+        if code == 0:
+            print(f"  ✓ usb{slot}: {qu.device_label(dev)}")
+
+    def _pve_usb_detach(self, vm, ports):
+        """Fait choisir un port usbN de la VM et le retire de sa
+        configuration, après confirmation."""
+        from script.proxmox import proxmox_deploy as pve
+
+        if not ports:
+            print(f"\n  {t('No usbN port on this Proxmox VM.')}")
+            return
+        rangs = sorted(ports)
+        for i, n in enumerate(rangs, 1):
+            print(f"  [{i}] usb{n}: {ports[n]}")
+        brut = input(t("Selection (number): ")).strip()
+        if not (brut.isdigit() and 1 <= int(brut) <= len(rangs)):
+            print(t("Invalid selection!"))
+            return
+        cmd = pve.usb_del_cmd(vm["vmid"], rangs[int(brut) - 1])
+        print(f"\n  {cmd}")
+        if not self._is_yes(input(t("Confirm? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        self._pve_show(cmd)
 
     def _pve_guest_ip(self, vmid, attente=120):
         """Adresse d'une VM Proxmox : agent invité, sinon voisinage de l'hôte.
@@ -1381,6 +1575,10 @@ class ProxmoxMenuMixin:
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
             # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
             # Odoo 18, comme l'écran d'à côté avant correction.
+            # Les périphériques USB du NŒUD, decks en tête : la case
+            # « Stream Deck » les lit sous la même clé que l'écran QEMU/KVM,
+            # mais ils viennent de pvesh et non du sysfs local.
+            "host_usb_devices": self._pve_usb_devices() or [],
             "distro_profiles": {
                 d: self._qemu_distro_profile(d)
                 for d in self._QEMU_DISTRO_PROFILE
@@ -1514,6 +1712,10 @@ class ProxmoxMenuMixin:
             # Proxmox est un choix de « qm create », et le changer ensuite
             # demande de l'éteindre.
             "gpu3d": bool(spec.get("gpu3d")),
+            # Les périphériques USB du nœud, posés avant « qm start ».
+            "usb_hostdev": self._pve_usb_hostdev(
+                vm.get("usb_hostdev", self._pve_spec_usb_hostdev(spec, vm))
+            ),
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
@@ -3062,6 +3264,7 @@ class ProxmoxMenuMixin:
                     "Android emulator (start, tunnel, scrcpy)"
                 )
             },
+            {"prompt_description": t("USB devices (Stream Deck)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and their specs")},
             {"prompt_description": t("Proxmox - example sequence (dry-run)")},
@@ -3114,10 +3317,12 @@ class ProxmoxMenuMixin:
             elif status == "15":
                 self._qemu_emulator_menu()
             elif status == "16":
-                self._qemu_list_images()
+                self._pve_usb()
             elif status == "17":
-                self._pve_example()
+                self._qemu_list_images()
             elif status == "18":
+                self._pve_example()
+            elif status == "19":
                 self._pve_forget_host()
                 self._pve_pick_host()
             else:

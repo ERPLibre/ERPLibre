@@ -25010,6 +25010,68 @@ TRANSLATIONS = {
         "fr": "{device} : associé à aucune VM.",
         "en": "{device}: mapped to no VM.",
     },
+    # Proxmox — USB : périphériques du nœud passés à une VM par
+    # « qm set -usbN » (proxmox_menu.py, _pve_usb).
+    "USB devices (Stream Deck)": {
+        "fr": "🔌 Périphériques USB (Stream Deck)",
+        "en": "🔌 USB devices (Stream Deck)",
+    },
+    "Proxmox USB attachments are always persistent: they are written to the VM configuration and follow a replug by VID:PID, without any udev rule.": {
+        "fr": "Sous Proxmox, un attachement USB est toujours persistant : il est écrit dans la configuration de la VM et suit un rebranchement par VID:PID, sans règle udev.",
+        "en": "Proxmox USB attachments are always persistent: they are written to the VM configuration and follow a replug by VID:PID, without any udev rule.",
+    },
+    "USB ports of Proxmox VM": {
+        "fr": "Ports USB de la VM Proxmox",
+        "en": "USB ports of Proxmox VM",
+    },
+    "No usbN port on this Proxmox VM.": {
+        "fr": "Aucun port usbN sur cette VM Proxmox.",
+        "en": "No usbN port on this Proxmox VM.",
+    },
+    "Attach a USB device of the Proxmox node": {
+        "fr": "Attacher un périphérique USB du nœud Proxmox",
+        "en": "Attach a USB device of the Proxmox node",
+    },
+    "Detach a USB device from this Proxmox VM": {
+        "fr": "Détacher un périphérique USB de cette VM Proxmox",
+        "en": "Detach a USB device from this Proxmox VM",
+    },
+    "Cannot list the USB devices of the Proxmox node.": {
+        "fr": "Impossible de lister les périphériques USB du nœud Proxmox.",
+        "en": "Cannot list the USB devices of the Proxmox node.",
+    },
+    "No USB device plugged into the Proxmox node.": {
+        "fr": "Aucun périphérique USB branché sur le nœud Proxmox.",
+        "en": "No USB device plugged into the Proxmox node.",
+    },
+    "USB devices of the Proxmox node:": {
+        "fr": "Périphériques USB du nœud Proxmox :",
+        "en": "USB devices of the Proxmox node:",
+    },
+    "Already in this Proxmox VM:": {
+        "fr": "Déjà dans cette VM Proxmox :",
+        "en": "Already in this Proxmox VM:",
+    },
+    "No free usbN port on this Proxmox VM:": {
+        "fr": "Aucun port usbN libre sur cette VM Proxmox :",
+        "en": "No free usbN port on this Proxmox VM:",
+    },
+    "Two identical devices are plugged in: this one is pinned to its physical port, and a replug on another port is not followed.": {
+        "fr": "Deux périphériques identiques sont branchés : celui-ci est épinglé à son port physique, et un rebranchement sur un autre port n'est pas suivi.",
+        "en": "Two identical devices are plugged in: this one is pinned to its physical port, and a replug on another port is not followed.",
+    },
+    "USB hotplug is off for this Proxmox VM: the device appears at its next start.": {
+        "fr": "Le branchement USB à chaud est désactivé pour cette VM Proxmox : le périphérique apparaîtra à son prochain démarrage.",
+        "en": "USB hotplug is off for this Proxmox VM: the device appears at its next start.",
+    },
+    "USB device not found on the Proxmox node:": {
+        "fr": "Périphérique USB introuvable sur le nœud Proxmox :",
+        "en": "USB device not found on the Proxmox node:",
+    },
+    "No Stream Deck plugged into the Proxmox node: the VM is created without one.": {
+        "fr": "Aucun Stream Deck branché sur le nœud Proxmox : la VM est créée sans.",
+        "en": "No Stream Deck plugged into the Proxmox node: the VM is created without one.",
+    },
     # Menu QEMU — USB : sous-menu de qemu_usb_menu.py (passage d'un
     # périphérique USB à une VM, redirection SPICE, rattachement auto).
     "USB": {

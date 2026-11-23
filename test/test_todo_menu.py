@@ -310,7 +310,7 @@ class TestLaParitéProxmox(unittest.TestCase):
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
     """L'icône vit DANS la chaîne traduite, et les deux langues la portent.
 
-    Une entrée sans icône se perd dans une liste de dix-huit : l'œil s'y
+    Une entrée sans icône se perd dans une liste de dix-neuf : l'œil s'y
     repère par le pictogramme avant de lire. Le même pictogramme dit la même
     chose partout dans l'outil — 📋 liste, 🧹 nettoie, 📊 mesure — et ce
     tableau est ce qui l'empêche de dériver d'un menu à l'autre.
@@ -332,6 +332,7 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
         "SSH configuration (~/.ssh/config, ProxyJump)": "🔑",
         "Remote desktop tunnel (VNC/RDP over SSH)": "🖥",
         "Android emulator (start, tunnel, scrcpy)": "📱",
+        "USB devices (Stream Deck)": "🔌",
         "List available images and their specs": "🗂",
         "Proxmox - example sequence (dry-run)": "🎬",
         "Change the Proxmox host": "🔀",
@@ -689,7 +690,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Proxmox : dix-huit entrées, le même piège.
+    """Le menu Proxmox : dix-neuf entrées, le même piège.
 
     Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
     c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
@@ -718,6 +719,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "SSH configuration": "_pve_ssh_config",
         "Remote desktop tunnel": "_qemu_tunnel_menu",
         "Android emulator": "_qemu_emulator_menu",
+        "USB devices (Stream Deck)": "_pve_usb",
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
