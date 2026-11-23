@@ -475,18 +475,28 @@ PLUGINS = Menu(
         Entry(
             "Show a plugin detail and its token cost", "_claude_plugin_details"
         ),
+        # Poser, mettre à jour ou retirer un plugin, ajouter un
+        # marketplace change ce que chaque session de Claude Code charge :
+        # `danger`. L'inventaire, la recherche et le détail lisent.
         Section("Install plugins"),
         Entry(
             "Install the ERPLibre preferred list",
             "_claude_install_preferred_plugins",
+            danger=True,
         ),
-        Entry("Install a plugin by name", "_claude_plugin_install_by_name"),
-        Entry("Add a marketplace", "_claude_marketplace_add"),
+        Entry(
+            "Install a plugin by name",
+            "_claude_plugin_install_by_name",
+            danger=True,
+        ),
+        Entry("Add a marketplace", "_claude_marketplace_add", danger=True),
         Section("Maintenance"),
         Entry(
-            "Update the marketplaces and the plugins", "_claude_plugin_update"
+            "Update the marketplaces and the plugins",
+            "_claude_plugin_update",
+            danger=True,
         ),
-        Entry("Uninstall a plugin", "_claude_plugin_uninstall"),
+        Entry("Uninstall a plugin", "_claude_plugin_uninstall", danger=True),
     ],
     intro="Manage Claude Code plugins and marketplaces!",
     render="once",
@@ -496,9 +506,15 @@ RTK = Menu(
     "prompt_execute_rtk",
     "RTK",
     [
+        # L'installation lance un installateur et le crochet global
+        # réécrit la configuration de Claude Code du compte : `danger`.
         Section("Setup"),
-        Entry("Install RTK", "rtk_install"),
-        Entry("Initialize global auto-rewrite hook", "rtk_init_global"),
+        Entry("Install RTK", "rtk_install", danger=True),
+        Entry(
+            "Initialize global auto-rewrite hook",
+            "rtk_init_global",
+            danger=True,
+        ),
         Section("Status"),
         Entry("Check RTK version", "rtk_check_version"),
         Entry("Check RTK status", "rtk_check_status"),

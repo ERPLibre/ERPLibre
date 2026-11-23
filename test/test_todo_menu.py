@@ -459,9 +459,16 @@ class TestLArbreDesMenus(unittest.TestCase):
         # nom, synchroniser ou geler un dépôt, avancer des forks sur
         # GitHub, ajouter les remotes du serveur git local, y pousser ou
         # le servir, réécrire todo.json, les manifestes d'addons ou les
-        # images d'Odoo. La mise à jour de Poetry porte `danger` sous
-        # Update comme sous Python. Les `kwargs` distinguent les actions de
-        # production de celles du serveur local, au même chemin.
+        # images d'Odoo. Puis les gestes en root : les gestes systemd du
+        # service du cache des VM et de celui du moteur de conteneurs,
+        # télécharger une image cloud par sudo,
+        # écrire un réglage du nettoyage automatique. Puis ce qui installe
+        # ou retire : RTK et son crochet global, les plugins et les
+        # marketplaces de Claude Code, l'environnement de lecture de
+        # Transform data, et l'anonymisation, qui réécrit une base en
+        # place. La mise à jour de Poetry porte `danger` sous Update comme
+        # sous Python. Les `kwargs` distinguent les actions de production
+        # de celles du serveur local, au même chemin.
         dangerous = []
 
         def walk(node, path):
@@ -590,6 +597,13 @@ class TestLArbreDesMenus(unittest.TestCase):
                 ],
                 ("TODO › Execute › Database › Restore from backup (.zip)", {}),
                 ("TODO › Execute › Database › Erase databases", {}),
+                *[
+                    (f"TODO › Execute › Transform data › {label}", {})
+                    for label in (
+                        "Anonymise an Odoo database or a backup",
+                        "Install the reading environment",
+                    )
+                ],
                 (f"{shell} › Install Starship on Shell", {}),
                 (f"{shell} › Install Claude Code", {}),
                 (f"{shell} › Install opencode", {}),
@@ -598,6 +612,23 @@ class TestLArbreDesMenus(unittest.TestCase):
                     " Claude in todo.py",
                     {},
                 ),
+                *[
+                    (f"TODO › Execute › GPT code › RTK › {label}", {})
+                    for label in (
+                        "Install RTK",
+                        "Initialize global auto-rewrite hook",
+                    )
+                ],
+                *[
+                    (f"TODO › Execute › GPT code › Plugins › {label}", {})
+                    for label in (
+                        "Install the ERPLibre preferred list",
+                        "Install a plugin by name",
+                        "Add a marketplace",
+                        "Update the marketplaces and the plugins",
+                        "Uninstall a plugin",
+                    )
+                ],
                 *[
                     (f"{deploy} › SSH › SSH - {label}", {})
                     for label in (
@@ -617,6 +648,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                 *[
                     (f"{deploy} › QEMU/KVM › {label}", {})
                     for label in (
+                        "Download a cloud image only",
                         "Resize a VM disk",
                         "Delete VM(s)",
                         "SSH configuration (~/.ssh/config, ProxyJump)",
@@ -636,10 +668,22 @@ class TestLArbreDesMenus(unittest.TestCase):
                     )
                 ],
                 (f"{deploy} › Deploy - Install NTFY notification server", {}),
+                (f"{cache} › Cache - Install or reinstall", {}),
+                *[
+                    (
+                        f"{cache} › Service › Service - {label}",
+                        {"verbe": verbe},
+                    )
+                    for label, verbe in (
+                        ("Start (start)", "start"),
+                        ("Start at boot (enable)", "enable"),
+                        ("Do not start at boot (disable)", "disable"),
+                        ("Stop (stop)", "stop"),
+                    )
+                ],
                 *[
                     (f"{cache} › {label}", {})
                     for label in (
-                        "Cache - Install or reinstall",
                         "Exceptions › Exceptions - Remove the stale ones",
                         "Exceptions › Exceptions - Remove one by its MAC",
                         "Git mirrors › Mirrors - Remove one",
@@ -658,10 +702,14 @@ class TestLArbreDesMenus(unittest.TestCase):
                     f"{cache} › Tests › Test - Undo the machines created",
                     {"nom": "qemu_cache.py", "args": "--detruire"},
                 ),
-                (
-                    f"{cache} › Automatic cleanup › Cleanup - Run now",
-                    {"a_blanc": False},
-                ),
+                *[
+                    (f"{cache} › Automatic cleanup › Cleanup - {label}", kw)
+                    for label, kw in (
+                        ("Set the age limit", {"cle": "EL_PURGE_AGE"}),
+                        ("Set the size ceiling", {"cle": "EL_MAX_SIZE"}),
+                        ("Run now", {"a_blanc": False}),
+                    )
+                ],
                 (
                     f"{deploy} › Deploy - Install Asterisk VoIP server"
                     " (hardened)",
@@ -675,6 +723,16 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Disconnect a profile",
                         "Delete a profile",
                         "Install the client packages",
+                    )
+                ],
+                *[
+                    (f"{docker} › Service › {label}", {"geste": geste})
+                    for label, geste in (
+                        ("Start", "start"),
+                        ("Stop", "stop"),
+                        ("Restart", "restart"),
+                        ("Enable at boot", "enable"),
+                        ("Disable at boot", "disable"),
                     )
                 ],
                 (f"{docker} › Install Docker", {"moteur": "docker"}),
@@ -1519,6 +1577,23 @@ class TestQemuMenuNumbering(RegistryCoherence, unittest.TestCase):
             ("qemu_from_makefile", "execute_from_configuration", "instance"),
         )
 
+    def test_the_download_is_dangerous_as_on_proxmox(self):
+        # Le téléchargement seul lance le script de déploiement par sudo,
+        # comme son jumeau de Proxmox VE télécharge sur l'hôte : ni la TUI
+        # ni la page web ne le lancent.
+        from script.todo.menus import proxmox
+
+        [entry] = [
+            e for e in self.entries if e.action == "_qemu_download_image"
+        ]
+        [twin] = [
+            e
+            for e in proxmox.PROXMOX.entries
+            if isinstance(e, Entry) and e.action == "_pve_fetch_image"
+        ]
+        self.assertTrue(entry.danger)
+        self.assertEqual(entry.danger, twin.danger)
+
 
 class TestProxmoxMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Le menu Proxmox VE (PROXMOX, `menus/proxmox.py`), qu'ouvre
@@ -2017,6 +2092,60 @@ class TestContainerMenuNumbering(RegistryCoherence, unittest.TestCase):
             [
                 ("Install Docker", {"moteur": "docker"}),
                 ("Install Podman", {"moteur": "podman"}),
+            ],
+        )
+
+
+class TestRootGesturesAreDangerous(unittest.TestCase):
+    """Les gestes systemd, par sudo hors de la portée du compte, et les
+    réglages écrits par sudo : ni la TUI ni la page web ne les lancent, le
+    menu oui. Ce qui lit l'état, le journal ou un aperçu à blanc reste
+    lançable de partout."""
+
+    def dangerous(self, menu):
+        return [
+            (e.action, e.kwargs)
+            for e in menu.entries
+            if isinstance(e, Entry) and e.danger
+        ]
+
+    def test_the_vm_cache_service_gestures(self):
+        # Arrêter le service retire ses règles : plus aucune VM n'est
+        # détournée ; le démarrer les repose.
+        from script.todo.menus import deploy
+
+        self.assertEqual(
+            self.dangerous(deploy.CACHE_SERVICE),
+            [
+                ("_cache_systemctl", {"verbe": verbe})
+                for verbe in ("start", "enable", "disable", "stop")
+            ],
+        )
+
+    def test_the_vm_cache_cleanup_settings(self):
+        # Chaque réglage s'écrit par sudo dans le fichier du service, et
+        # le lancer tout de suite efface ; l'aperçu à blanc n'écrit rien.
+        from script.todo.menus import deploy
+
+        self.assertEqual(
+            self.dangerous(deploy.CACHE_CLEANUP),
+            [
+                ("_cache_nettoyage_regler", {"cle": "EL_PURGE_AGE"}),
+                ("_cache_nettoyage_regler", {"cle": "EL_MAX_SIZE"}),
+                ("_cache_nettoyage_lancer", {"a_blanc": False}),
+            ],
+        )
+
+    def test_the_container_engine_service_gestures(self):
+        # Hors de la portée du compte, chaque geste passe par sudo
+        # systemctl ; l'état et le journal se lisent.
+        from script.todo.menus import deploy
+
+        self.assertEqual(
+            self.dangerous(deploy.CONTAINER_SERVICE),
+            [
+                ("_container_geste", {"geste": geste})
+                for geste in ("start", "stop", "restart", "enable", "disable")
             ],
         )
 
@@ -2575,6 +2704,15 @@ class TestTransformMenuNumbering(RegistryCoherence, unittest.TestCase):
         "Databases produced": "_transform_bases_produites",
     }
 
+    def test_anonymise_and_install_are_dangerous(self):
+        # L'anonymisation réécrit une base locale en place, sans copie ;
+        # l'environnement de lecture pose un venv et des paquets système
+        # par sudo. Lire un fichier ou lister ce qui a été produit, non.
+        self.assertEqual(
+            [e.action for e in self.entries if e.danger],
+            ["_transform_anonymise_base", "_transform_install_env"],
+        )
+
 
 class TestDocMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Doc : deux adresses qui dépendent d'une version tapée, puis deux
@@ -3099,6 +3237,21 @@ class TestPluginsMenuNumbering(RegistryCoherence, unittest.TestCase):
             [{"args": "list"}, {"args": "marketplace list"}],
         )
 
+    def test_what_installs_or_removes_is_dangerous(self):
+        # Poser, mettre à jour ou retirer un plugin, ajouter un
+        # marketplace : la CLI de Claude Code change ce que chaque session
+        # charge. L'inventaire, la recherche et le détail lisent.
+        self.assertEqual(
+            [e.action for e in self.entries if e.danger],
+            [
+                "_claude_install_preferred_plugins",
+                "_claude_plugin_install_by_name",
+                "_claude_marketplace_add",
+                "_claude_plugin_update",
+                "_claude_plugin_uninstall",
+            ],
+        )
+
 
 class TestRtkMenuNumbering(RegistryCoherence, unittest.TestCase):
     """RTK : l'installation et le crochet global, l'état, puis les
@@ -3113,6 +3266,15 @@ class TestRtkMenuNumbering(RegistryCoherence, unittest.TestCase):
         "Show cumulative token savings": "rtk_show_gain",
         "Discover optimization opportunities": "rtk_discover",
     }
+
+    def test_only_the_setup_is_dangerous(self):
+        # Installer RTK lance un installateur ; le crochet global réécrit
+        # la configuration de Claude Code du compte. L'état et les
+        # économies se lisent.
+        self.assertEqual(
+            [e.action for e in self.entries if e.danger],
+            ["rtk_install", "rtk_init_global"],
+        )
 
 
 class TestClaudeCodeMenuNumbering(RegistryCoherence, unittest.TestCase):

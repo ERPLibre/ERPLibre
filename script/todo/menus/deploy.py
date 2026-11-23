@@ -11,9 +11,12 @@ nomme la méthode publique de celui-ci, le `name` de son `Menu`.
 
 Un installateur, qui pose des paquets ou un service, ici ou sur un hôte
 distant, porte `danger`, comme une entrée qui efface, qui réécrit la
-configuration SSH du compte, qui crée de vraies machines ou qui agit
-sur une machine sans rien demander. Ni la TUI de télémétrie ni la page
-web ne lancent une entrée `danger`, son menu seul.
+configuration SSH du compte, qui crée de vraies machines, qui agit
+sur une machine sans rien demander ou qui change l'hôte par sudo : un
+geste systemd, un téléchargement, un réglage écrit dans un fichier du
+service. Lire un état, un journal ou un aperçu à blanc par sudo n'en
+porte pas. Ni la TUI de télémétrie ni la page web ne lancent une entrée
+`danger`, son menu seul.
 """
 
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
@@ -102,7 +105,8 @@ QEMU = Menu(
         Section("Deployment"),
         # Crée des VM par sudo et, par défaut, ajoute chacune à
         # ~/.ssh/config, comme son jumeau de Proxmox VE : `danger`.
-        # L'aperçu n'écrit rien.
+        # L'aperçu n'écrit rien. Le téléchargement seul lance le même
+        # script par sudo : `danger`, comme celui de Proxmox VE.
         Entry(
             "Deploy VM(s) (one or many)",
             "_qemu_deploy",
@@ -114,7 +118,11 @@ QEMU = Menu(
             "_qemu_deploy",
             kwargs={"dry_run": True},
         ),
-        Entry("Download a cloud image only", "_qemu_download_image"),
+        Entry(
+            "Download a cloud image only",
+            "_qemu_download_image",
+            danger=True,
+        ),
         Entry(
             "Reopen install monitoring (last run / history)",
             "_qemu_reopen_monitor",
@@ -198,7 +206,8 @@ QEMU_CACHE = Menu(
 )
 
 # Arrêter le service retire ses règles : plus aucune VM n'est détournée,
-# et le démarrer les repose.
+# et le démarrer les repose. Les quatre gestes passent par sudo systemctl
+# sans rien demander : `danger`. L'état et le journal se lisent.
 CACHE_SERVICE = Menu(
     "_cache_service",
     "Service",
@@ -207,21 +216,25 @@ CACHE_SERVICE = Menu(
             "Service - Start (start)",
             "_cache_systemctl",
             kwargs={"verbe": "start"},
+            danger=True,
         ),
         Entry(
             "Service - Start at boot (enable)",
             "_cache_systemctl",
             kwargs={"verbe": "enable"},
+            danger=True,
         ),
         Entry(
             "Service - Do not start at boot (disable)",
             "_cache_systemctl",
             kwargs={"verbe": "disable"},
+            danger=True,
         ),
         Entry(
             "Service - Stop (stop)",
             "_cache_systemctl",
             kwargs={"verbe": "stop"},
+            danger=True,
         ),
         Entry(
             "Service - Detailed state (status)",
@@ -362,6 +375,9 @@ CACHE_LOGS = Menu(
 )
 
 # L'état des deux réglages et du minuteur se relit avant chaque question.
+# Chaque réglage s'écrit par sudo dans le fichier du service et décide de
+# ce que le minuteur efface : `danger`, comme le nettoyage lancé tout de
+# suite. L'aperçu à blanc n'écrit rien.
 CACHE_CLEANUP = Menu(
     "_cache_nettoyage_auto",
     "Automatic cleanup",
@@ -370,11 +386,13 @@ CACHE_CLEANUP = Menu(
             "Cleanup - Set the age limit",
             "_cache_nettoyage_regler",
             kwargs={"cle": "EL_PURGE_AGE"},
+            danger=True,
         ),
         Entry(
             "Cleanup - Set the size ceiling",
             "_cache_nettoyage_regler",
             kwargs={"cle": "EL_MAX_SIZE"},
+            danger=True,
         ),
         Entry(
             "Cleanup - Preview now (dry run)",
@@ -539,19 +557,42 @@ CONTAINER = Menu(
 )
 
 # Chaque entrée reçoit la fiche du moteur choisi à l'ouverture et la portée
-# de ses unités.
+# de ses unités. Chaque geste lance systemctl sans rien demander, par sudo
+# hors de la portée du compte : `danger` quelle que soit la portée, qui ne
+# se choisit qu'à l'appel. L'état et le journal se lisent.
 CONTAINER_SERVICE = Menu(
     "_container_service",
     "Service",
     [
-        Entry("Start", "_container_geste", kwargs={"geste": "start"}),
-        Entry("Stop", "_container_geste", kwargs={"geste": "stop"}),
-        Entry("Restart", "_container_geste", kwargs={"geste": "restart"}),
         Entry(
-            "Enable at boot", "_container_geste", kwargs={"geste": "enable"}
+            "Start",
+            "_container_geste",
+            kwargs={"geste": "start"},
+            danger=True,
         ),
         Entry(
-            "Disable at boot", "_container_geste", kwargs={"geste": "disable"}
+            "Stop",
+            "_container_geste",
+            kwargs={"geste": "stop"},
+            danger=True,
+        ),
+        Entry(
+            "Restart",
+            "_container_geste",
+            kwargs={"geste": "restart"},
+            danger=True,
+        ),
+        Entry(
+            "Enable at boot",
+            "_container_geste",
+            kwargs={"geste": "enable"},
+            danger=True,
+        ),
+        Entry(
+            "Disable at boot",
+            "_container_geste",
+            kwargs={"geste": "disable"},
+            danger=True,
         ),
         Entry("Status and journal", "_container_etat_service"),
     ],

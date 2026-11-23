@@ -122,14 +122,22 @@ TRANSFORM = Menu(
         # « Source » et non « Source file » : l'entrée couvre un fichier et
         # une base Odoo, et un libellé qui dit « fichier » ferait chercher
         # ailleurs l'anonymiseur de base.
+        # L'anonymisation réécrit une base locale en place, sans copie, et
+        # l'environnement de lecture pose un venv et des paquets système
+        # par sudo : `danger`. Lire et lister ce qui a été produit, non.
         Section("Source"),
         Entry("Open a file and read its report", "_transform_open_and_report"),
         Entry(
             "Anonymise an Odoo database or a backup",
             "_transform_anonymise_base",
+            danger=True,
         ),
         Section("Environment"),
-        Entry("Install the reading environment", "_transform_install_env"),
+        Entry(
+            "Install the reading environment",
+            "_transform_install_env",
+            danger=True,
+        ),
         Entry("What can this machine read?", "_transform_capabilities"),
         Entry("Copies produced", "_transform_copies"),
         Entry("Databases produced", "_transform_bases_produites"),
