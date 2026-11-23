@@ -3949,87 +3949,120 @@ class TODO(
         )
 
     def _claude_reglages_depot(self):
-        """Ultracode et le message de session dans .claude/settings.json,
-        le fichier versionné du dépôt : chaque bascule montre la clé qui
-        change et demande un oui avant d'écrire."""
-        racine = self._claude_context_root()
-        while True:
-            try:
-                reglages = claude_reglages.lire(racine)
-            except ValueError as e:
-                print(f"❌ {e}")
-                return
-            ultracode = claude_reglages.ultracode_actif(reglages)
-            hook = claude_reglages.hook_installe(reglages)
-            print(f"⚙️ {claude_reglages.FICHIER}")
-            print(
-                f"   ultracode : {t('on') if ultracode else t('off')}"
-                f" · {t('session message:')}"
-                f" {t('installed') if hook else t('not installed')}"
+        """Repository settings (REPOSITORY_SETTINGS, `menus/git.py`) :
+        ultracode et le message de session dans .claude/settings.json, le
+        fichier versionné du dépôt. Rend False sur [0], None quand le
+        fichier n'est pas un objet JSON (`_claude_reglages_ouvre`)."""
+        return navigate(self, menus_git.REPOSITORY_SETTINGS)
+
+    def _claude_reglages_lus(self):
+        """Les réglages du dépôt ; None, après avoir nommé l'erreur, quand
+        .claude/settings.json n'est pas un objet JSON."""
+        try:
+            return claude_reglages.lire(self._claude_context_root())
+        except ValueError as e:
+            print(f"❌ {e}")
+            return None
+
+    def _claude_reglages_ouvre(self):
+        """Ouvre Repository settings : {} quand .claude/settings.json se
+        lit ou manque, None quand il n'est pas un objet JSON, que rien ne
+        doit alors écraser."""
+        return None if self._claude_reglages_lus() is None else {}
+
+    def _claude_reglages_etat(self):
+        """L'état de Repository settings : le fichier qu'écrivent ses
+        bascules, puis l'erreur de `claude_reglages.lire` quand ce fichier
+        a cessé d'être un objet JSON depuis l'ouverture du menu."""
+        etat = f"⚙️ {claude_reglages.FICHIER}"
+        try:
+            claude_reglages.lire(self._claude_context_root())
+        except ValueError as e:
+            etat += f"\n❌ {e}"
+        return etat
+
+    def _claude_reglage_etat(self, actif):
+        """L'état d'un réglage, en suffixe de son entrée : « on » quand
+        `actif(réglages)` est vrai, « off » sinon, « ? » quand le fichier
+        a cessé d'être un objet JSON depuis l'ouverture du menu."""
+        try:
+            reglages = claude_reglages.lire(self._claude_context_root())
+        except ValueError:
+            return "?"
+        return t("on") if actif(reglages) else t("off")
+
+    def _claude_ultracode_etat(self):
+        """Ultracode est-il actif par défaut (`_claude_reglage_etat`)."""
+        return self._claude_reglage_etat(claude_reglages.ultracode_actif)
+
+    def _claude_hook_etat(self):
+        """Le message de session est-il installé (`_claude_reglage_etat`)."""
+        return self._claude_reglage_etat(claude_reglages.hook_installe)
+
+    def _claude_basculer_ultracode(self):
+        """Inverse ultracode par défaut, après un oui
+        (`_claude_reglages_ecrire`)."""
+        reglages = self._claude_reglages_lus()
+        if reglages is None:
+            return
+        actif = claude_reglages.ultracode_actif(reglages)
+        self._claude_reglages_ecrire(
+            claude_reglages.avec_ultracode(reglages, not actif)
+        )
+
+    def _claude_basculer_hook(self):
+        """Pose ou retire le message de session, après un oui
+        (`_claude_reglages_ecrire`)."""
+        reglages = self._claude_reglages_lus()
+        if reglages is None:
+            return
+        installe = claude_reglages.hook_installe(reglages)
+        self._claude_reglages_ecrire(
+            claude_reglages.avec_hook(reglages, not installe)
+        )
+
+    def _claude_reglages_ecrire(self, neuf):
+        """Montre `neuf`, le contenu entier que recevrait
+        .claude/settings.json, rappelle qu'il est versionné, puis ne
+        l'écrit qu'après un oui."""
+        print(f"{t('Will write')} {claude_reglages.FICHIER} :")
+        print(json.dumps(neuf, indent=2, ensure_ascii=False))
+        print(
+            t(
+                "This file is versioned: the change applies to every clone once committed."
             )
-            choices = [
-                {
-                    "prompt_description": (
-                        t("Turn ultracode off by default")
-                        if ultracode
-                        else t("Turn ultracode on by default")
-                    )
-                },
-                {
-                    "prompt_description": (
-                        t("Remove the session message")
-                        if hook
-                        else t("Install the session message")
-                    )
-                },
-                {"prompt_description": t("Preview the session message")},
-            ]
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                neuf = claude_reglages.avec_ultracode(reglages, not ultracode)
-            elif status == "2":
-                neuf = claude_reglages.avec_hook(reglages, not hook)
-            elif status == "3":
-                commande = ["python3", "script/claude/session_start.py"]
-                print(f"{t('Will execute:')} {shlex.join(commande)}")
-                try:
-                    fait = subprocess.run(
-                        commande,
-                        cwd=racine,
-                        stdin=subprocess.DEVNULL,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    print(json.loads(fait.stdout)["systemMessage"])
-                except (
-                    OSError,
-                    subprocess.SubprocessError,
-                    ValueError,
-                    KeyError,
-                ):
-                    print(f"❌ {t('The session message could not be built.')}")
-                print()
-                continue
-            else:
-                print(t("Command not found !"))
-                continue
-            print(f"{t('Will write')} {claude_reglages.FICHIER} :")
-            print(json.dumps(neuf, indent=2, ensure_ascii=False))
-            print(
-                t(
-                    "This file is versioned: the change applies to every clone once committed."
-                )
+        )
+        if self._is_yes(input(t("Write it? (y/Y): "))):
+            claude_reglages.ecrire(self._claude_context_root(), neuf)
+            print(t("File written."))
+        else:
+            print(t("Nothing to do."))
+        print()
+
+    def _claude_apercu_hook(self):
+        """Affiche le message de session tel que le hook le compose :
+        script/claude/session_start.py, lancé à la racine du dépôt, sans
+        entrée, 30 secondes au plus. N'écrit rien."""
+        commande = ["python3", "script/claude/session_start.py"]
+        print(f"{t('Will execute:')} {shlex.join(commande)}")
+        try:
+            fait = subprocess.run(
+                commande,
+                cwd=self._claude_context_root(),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            if self._is_yes(input(t("Write it? (y/Y): "))):
-                claude_reglages.ecrire(racine, neuf)
-                print(t("File written."))
-            else:
-                print(t("Nothing to do."))
-            print()
+            print(json.loads(fait.stdout)["systemMessage"])
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+            KeyError,
+        ):
+            print(f"❌ {t('The session message could not be built.')}")
+        print()
 
     # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
     # chacune est la copie. La liste et l'écran de contexte en dérivent l'état

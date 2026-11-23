@@ -6,8 +6,9 @@ qu'ouvre Git repository, et le menu d'un dépôt en conflit, qu'ouvre sa
 file d'attente, dont les méthodes vivent dans `git_repo_menu.py` ; Git
 local server et ses deux menus Actions, l'un du serveur local, l'autre du
 serveur de production ; Shell, qu'ouvre Execute ; GPT code, qu'ouvre
-Execute, Claude configs, Plugins, RTK et Claude Code, dont la méthode vit
-dans `assistant_menu.py` ; Automation, qu'ouvre Execute.
+Execute, Claude configs et ses Repository settings, Plugins, RTK et
+Claude Code, dont la méthode vit dans `assistant_menu.py` ; Automation,
+qu'ouvre Execute.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -399,16 +400,39 @@ CLAUDE_CONFIGS = Menu(
             },
         ),
         Entry("Show installed custom commands", "_list_claude_commands"),
-        # Les réglages dessinent leur menu eux-mêmes : chaque tour relit
-        # .claude/settings.json.
         Entry(
             "⚙️ Repository settings: ultracode and session message",
             "_claude_reglages_depot",
-            crumb="Repository settings",
         ),
     ],
     intro="Deploy Claude Code commands!",
     render="once",
+)
+
+# Les réglages de .claude/settings.json, le fichier versionné du dépôt. Un
+# fichier qui n'est pas un objet JSON n'ouvre pas le menu : rien ne doit
+# l'écraser. Chaque libellé est fixe et son état le suit, relu à chaque
+# dessin. Aucune entrée ne porte `danger` : chaque bascule montre le
+# fichier qu'elle écrirait et demande un oui avant de l'écrire, et
+# l'aperçu n'écrit rien.
+REPOSITORY_SETTINGS = Menu(
+    "_claude_reglages_depot",
+    "Repository settings",
+    [
+        Entry(
+            "Ultracode by default",
+            "_claude_basculer_ultracode",
+            suffix="_claude_ultracode_etat",
+        ),
+        Entry(
+            "Session message",
+            "_claude_basculer_hook",
+            suffix="_claude_hook_etat",
+        ),
+        Entry("Preview the session message", "_claude_apercu_hook"),
+    ],
+    state="_claude_reglages_etat",
+    opens="_claude_reglages_ouvre",
 )
 
 PLUGINS = Menu(

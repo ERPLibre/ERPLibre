@@ -3444,25 +3444,13 @@ TRANSLATIONS = {
         "fr": "désactivé",
         "en": "off",
     },
-    "session message:": {
-        "fr": "message de session :",
-        "en": "session message:",
+    "Ultracode by default": {
+        "fr": "Ultracode par défaut",
+        "en": "Ultracode by default",
     },
-    "Turn ultracode off by default": {
-        "fr": "Désactiver ultracode par défaut",
-        "en": "Turn ultracode off by default",
-    },
-    "Turn ultracode on by default": {
-        "fr": "Activer ultracode par défaut",
-        "en": "Turn ultracode on by default",
-    },
-    "Remove the session message": {
-        "fr": "Retirer le message de session",
-        "en": "Remove the session message",
-    },
-    "Install the session message": {
-        "fr": "Installer le message de session",
-        "en": "Install the session message",
+    "Session message": {
+        "fr": "Message de session",
+        "en": "Session message",
     },
     "Preview the session message": {
         "fr": "Aperçu du message de session",

@@ -244,6 +244,21 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_the_repository_settings_column_carries_its_three_entries(self):
+        # GPT code › Claude configs › Repository settings montre ses deux
+        # bascules et l'aperçu, sous leur libellé fixe, avec leur méthode.
+        reglages = self._noeud("Repository settings", self._noeud("GPT code"))
+        self.assertIsNotNone(reglages, "Repository settings absent de l'arbre")
+        self.assertTrue(reglages["is_menu"])
+        self.assertEqual(
+            [(f["label"], f["method"]) for f in reglages["children"]],
+            [
+                ("Ultracode by default", "_claude_basculer_ultracode"),
+                ("Session message", "_claude_basculer_hook"),
+                ("Preview the session message", "_claude_apercu_hook"),
+            ],
+        )
+
     def test_the_telemetry_entry_is_a_menu_of_four_leaves(self):
         # [5] du menu principal est un sous-menu de quatre feuilles ; les
         # autres entrées gardent leur numéro.
@@ -2918,6 +2933,52 @@ class TestClaudeConfigsMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestRepositorySettingsMenuNumbering(
+    RegistryCoherence, unittest.TestCase
+):
+    """Claude configs › Repository settings (REPOSITORY_SETTINGS,
+    `menus/git.py`) : les deux bascules de .claude/settings.json, chacune
+    sous un libellé fixe suivi de son état, puis l'aperçu du message de
+    session."""
+
+    MENU = "_claude_reglages_depot"
+    EXPECTED = {
+        "Ultracode by default": "_claude_basculer_ultracode",
+        "Session message": "_claude_basculer_hook",
+        "Preview the session message": "_claude_apercu_hook",
+    }
+
+    def test_each_number_reaches_its_setting(self):
+        self.assertEqual(
+            [(e.action, e.suffix) for e in self.entries],
+            [
+                ("_claude_basculer_ultracode", "_claude_ultracode_etat"),
+                ("_claude_basculer_hook", "_claude_hook_etat"),
+                ("_claude_apercu_hook", None),
+            ],
+        )
+        self.assertEqual(
+            (
+                self.menu.crumb,
+                self.menu.state,
+                self.menu.opens,
+                self.menu.render,
+            ),
+            (
+                "Repository settings",
+                "_claude_reglages_etat",
+                "_claude_reglages_ouvre",
+                "each",
+            ),
+        )
+
+    def test_no_entry_is_dangerous(self):
+        # Chaque bascule montre le fichier qu'elle écrirait et demande un
+        # oui avant de l'écrire, et l'aperçu n'écrit rien : la TUI et la
+        # page web lancent les trois.
+        self.assertEqual([e.action for e in self.entries if e.danger], [])
+
+
 class TestPluginsMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Plugins : l'inventaire, l'installation, puis la maintenance des
     plugins et des marketplaces de Claude Code."""
@@ -5453,9 +5514,7 @@ class TestMenuLabels(unittest.TestCase):
     # leur segment de l'entrée qui les ouvre (`Entry.crumb`), le temps de
     # leur action. La liste ne fait que rétrécir : un menu migré déclare
     # son `Menu` et son `crumb`.
-    ECRANS_A_MIGRER = {
-        "_claude_reglages_depot": "Repository settings",
-    }
+    ECRANS_A_MIGRER = {}
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
     # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
     # feuille de l'entrée qui l'ouvre. La liste ne fait que rétrécir : un
@@ -5501,6 +5560,7 @@ class TestMenuLabels(unittest.TestCase):
         "_prompt_git_server_production": "Actions",
         "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
+        "_claude_reglages_depot": "Repository settings",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_execute_rtk": "RTK",
         "prompt_claude_sessions": "Claude Code",

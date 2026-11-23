@@ -206,8 +206,10 @@ class TestMessage(unittest.TestCase):
 
 
 class TestMenu(unittest.TestCase):
-    """L'entrée « Réglages du dépôt » de Claude configs, sur une racine
-    jetable : un oui écrit, un non laisse le fichier tel quel."""
+    """Le menu « Réglages du dépôt » de Claude configs
+    (REPOSITORY_SETTINGS, `menus/git.py`), sur une racine jetable : un oui
+    écrit, un non laisse le fichier tel quel, et un fichier qui n'est pas
+    un objet JSON n'ouvre rien."""
 
     def setUp(self):
         sys.argv = ["todo.py"]
@@ -220,24 +222,103 @@ class TestMenu(unittest.TestCase):
         self.todo._claude_context_root = lambda: self.racine
 
     def menu(self, choix, reponses):
+        """Ce que le menu affiche, sur les réponses `choix` au menu et
+        `reponses` aux oui/non ; `self.dessins` garde chaque dessin du
+        menu, dans l'ordre."""
         with (
-            mock.patch("click.prompt", side_effect=choix),
+            mock.patch("click.prompt", side_effect=choix) as question,
             mock.patch("builtins.input", side_effect=reponses),
             mock.patch("builtins.print") as affiche,
         ):
-            self.todo._claude_reglages_depot()
+            self.rendu = self.todo._claude_reglages_depot()
+        self.dessins = [appel.args[0] for appel in question.call_args_list]
         return "\n".join(
             " ".join(str(a) for a in appel.args)
             for appel in affiche.call_args_list
         )
 
+    def illisible(self):
+        """Un .claude/settings.json qui n'est pas un objet JSON."""
+        os.makedirs(os.path.join(self.racine, ".claude"))
+        with open(os.path.join(self.racine, c.FICHIER), "w") as fh:
+            fh.write("[]\n")
+
     def test_a_yes_writes_and_a_no_leaves_the_file_alone(self):
         self.menu(["1", "0"], ["n"])
+        self.assertEqual(c.lire(self.racine), {})
+        self.menu(["2", "0"], ["n"])
         self.assertEqual(c.lire(self.racine), {})
         self.menu(["1", "2", "0"], ["y", "y"])
         reglages = c.lire(self.racine)
         self.assertTrue(c.ultracode_actif(reglages))
         self.assertTrue(c.hook_installe(reglages))
+
+    def test_zero_goes_back_without_writing(self):
+        self.menu(["0"], [])
+        self.assertIs(self.rendu, False)
+        self.assertFalse(os.path.exists(os.path.join(self.racine, c.FICHIER)))
+
+    def test_each_label_carries_its_state_redrawn_after_a_write(self):
+        # Les libellés sont fixes et l'état les suit, relu à chaque dessin :
+        # « off » avant le oui, « on » après.
+        from script.todo.todo_i18n import t as tr
+
+        self.menu(["1", "0"], ["y"])
+        avant, apres = self.dessins
+        ultracode, message = tr("Ultracode by default"), tr("Session message")
+        self.assertIn(f"⚙️ {c.FICHIER}", avant)
+        self.assertIn(f"[1] {ultracode}  ({tr('off')})", avant)
+        self.assertIn(f"[2] {message}  ({tr('off')})", avant)
+        self.assertIn(f"[3] {tr('Preview the session message')}\n", avant)
+        self.assertIn(f"[1] {ultracode}  ({tr('on')})", apres)
+
+    def test_an_unreadable_file_opens_nothing(self):
+        # Rien ne doit écraser un fichier qui n'est pas un objet JSON : le
+        # menu nomme l'erreur et rend None sans se dessiner.
+        self.illisible()
+        with mock.patch("builtins.print"):
+            self.assertIsNone(self.todo._claude_reglages_ouvre())
+        texte = self.menu([AssertionError("menu drawn")], [])
+        self.assertIsNone(self.rendu)
+        self.assertEqual(self.dessins, [])
+        self.assertIn(f"❌ {c.FICHIER} is not a JSON object", texte)
+
+    def test_a_file_spoiled_after_opening_writes_nothing(self):
+        # Le menu est ouvert, puis le fichier cesse d'être un objet JSON :
+        # l'état se lit « ? » et une bascule nomme l'erreur sans écrire.
+        self.illisible()
+        self.assertEqual(self.todo._claude_ultracode_etat(), "?")
+        self.assertEqual(self.todo._claude_hook_etat(), "?")
+        with (
+            mock.patch("builtins.input", side_effect=AssertionError("asked")),
+            mock.patch("builtins.print"),
+        ):
+            self.todo._claude_basculer_ultracode()
+            self.todo._claude_basculer_hook()
+        with open(os.path.join(self.racine, c.FICHIER)) as fh:
+            self.assertEqual(fh.read(), "[]\n")
+
+    def test_a_file_spoiled_after_opening_is_named_at_the_next_drawing(self):
+        # Le fichier cesse d'être un objet JSON entre deux dessins : le
+        # dessin suivant nomme l'erreur sous la ligne ⚙️ et chaque état se
+        # lit « ? ».
+        reponses = iter(["9", "0"])
+
+        def repond(dessin):
+            if not os.path.exists(os.path.join(self.racine, c.FICHIER)):
+                self.illisible()
+            return next(reponses)
+
+        with (
+            mock.patch("click.prompt", side_effect=repond) as question,
+            mock.patch("builtins.print"),
+        ):
+            self.assertIs(self.todo._claude_reglages_depot(), False)
+        avant, apres = [appel.args[0] for appel in question.call_args_list]
+        erreur = f"❌ {c.FICHIER} is not a JSON object"
+        self.assertNotIn(erreur, avant)
+        self.assertIn(f"⚙️ {c.FICHIER}\n{erreur}\n", apres)
+        self.assertIn("  (?)", apres)
 
     def test_the_preview_prints_the_session_message(self):
         with mock.patch.object(
