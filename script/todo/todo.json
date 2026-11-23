@@ -12,17 +12,20 @@
         {
             "prompt_description_key": "Test - Minimal base instance",
             "makefile_cmd": "db_restore_erplibre_base_db_test",
-            "database": "test"
+            "database": "test",
+            "danger": true
         },
         {
             "prompt_description_key": "Open RobotLibre 🤖 minimal",
             "makefile_cmd": "robot_libre",
-            "database": "robotlibre"
+            "database": "robotlibre",
+            "danger": true
         },
         {
             "prompt_description_key": "Open RobotLibre 🤖 with search enabled",
             "makefile_cmd": "robot_libre_all",
-            "database": "robotlibre"
+            "database": "robotlibre",
+            "danger": true
         }
     ],
     "function": [
@@ -41,7 +44,8 @@
     "code_from_makefile": [
         {
             "prompt_description_key": "Format modified code",
-            "makefile_cmd": "format"
+            "makefile_cmd": "format",
+            "danger": true
         }
     ],
     "git_from_makefile": [
@@ -53,12 +57,14 @@
         {
             "prompt_description_key": "Stash all code",
             "menu_group": "repositories",
-            "makefile_cmd": "repo_do_stash"
+            "makefile_cmd": "repo_do_stash",
+            "danger": true
         },
         {
             "prompt_description_key": "Configure git local editor to vim",
             "menu_group": "configuration",
-            "bash_command": "git config --global core.editor \"vim\""
+            "bash_command": "git config --global core.editor \"vim\"",
+            "danger": true
         },
         {
             "prompt_description_key": "Generate git patch to /tmp",

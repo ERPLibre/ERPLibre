@@ -868,6 +868,65 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertNotIn("danger", language)
         self.assertNotIn("danger", forged)
 
+    def test_a_dangerous_configured_element_is_marked_in_the_tree(self):
+        # L'élément d'une liste de todo.json qui porte "danger": true donne
+        # une feuille qui porte "danger", et garde l'élément entier dans
+        # ses kwargs ; false, null ou pas de clé, non.
+        (self.dir / "todo.json").write_text(
+            '{"forged_list": ['
+            '{"prompt_description": "Marked", "danger": true},'
+            ' {"prompt_description": "Unmarked", "danger": false},'
+            ' {"prompt_description": "Null", "danger": null},'
+            ' {"prompt_description": "Plain"}]}'
+        )
+        [configuration, _] = self.tree()["children"]
+        elements = configuration["children"][3:]
+        self.assertEqual(
+            [(n["label"], n.get("danger")) for n in elements],
+            [
+                ("Marked", True),
+                ("Unmarked", None),
+                ("Null", None),
+                ("Plain", None),
+            ],
+        )
+        for node in elements[1:]:
+            self.assertNotIn("danger", node)
+        self.assertEqual(
+            elements[0]["kwargs"],
+            {"instance": {"prompt_description": "Marked", "danger": True}},
+        )
+
+    def test_a_configured_danger_that_is_no_boolean_reads_no_tree(self):
+        # Un "danger" d'élément qui n'est pas un booléen lève dans
+        # `_declared_children` ; l'arbre n'est alors pas construit, et un
+        # avertissement nomme todo.json : lu comme faux, il laisserait la
+        # TUI lancer l'élément.
+        entries = [
+            {
+                "type": "FromConfig",
+                "config_key": "forged_list",
+                "action": "run_element",
+                "kwarg": "instance",
+            }
+        ]
+        for value in ("1", "0", '"true"', "[true]"):
+            with self.subTest(value=value):
+                (self.dir / "todo.json").write_text(
+                    '{"forged_list": [{"prompt_description": "Forged",'
+                    f' "danger": {value}}}]}}'
+                )
+                with self.assertRaisesRegex(ValueError, "danger"):
+                    todo_telemetry._declared_children(
+                        {"entries": entries}, self.dir, {}, None
+                    )
+                with self.assertLogs(
+                    todo_telemetry.__name__, "WARNING"
+                ) as logs:
+                    self.assertIsNone(self.tree())
+                [record] = logs.records
+                self.assertIn(str(self.dir / "todo.json"), record.getMessage())
+
     def test_a_guarded_entry_is_in_the_tree_without_its_method(self):
         # Une entrée gardée y est, quoi que rende sa garde, mais la TUI ne
         # la lance pas : seul son menu lit la garde.

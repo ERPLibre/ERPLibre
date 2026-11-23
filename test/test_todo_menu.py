@@ -467,8 +467,23 @@ class TestLArbreDesMenus(unittest.TestCase):
         # marketplaces de Claude Code, l'environnement de lecture de
         # Transform data, et l'anonymisation, qui réécrit une base en
         # place. La mise à jour de Poetry porte `danger` sous Update comme
-        # sous Python. Les `kwargs` distinguent les actions de production
-        # de celles du serveur local, au même chemin.
+        # sous Python. Enfin les éléments de todo.json qui portent
+        # "danger": true : les trois instances de Run, qui, pour une
+        # nouvelle instance, effacent leur base, Format modified code, qui
+        # réécrit des fichiers suivis, Stash all code, qui remise chaque
+        # dépôt, et l'éditeur de la configuration git globale ; leurs
+        # `kwargs` portent l'élément. Les `kwargs` distinguent les actions
+        # de production de celles du serveur local, au même chemin.
+        config = json.loads((TODO_DIR / "todo.json").read_text())
+
+        def configured(key, label):
+            [element] = [
+                e
+                for e in config[key]
+                if e.get("prompt_description_key") == label
+            ]
+            return {"instance": element}
+
         dangerous = []
 
         def walk(node, path):
@@ -507,10 +522,25 @@ class TestLArbreDesMenus(unittest.TestCase):
             dangerous,
             [
                 (
+                    "TODO › Execute › Code › Format modified code",
+                    configured("code_from_makefile", "Format modified code"),
+                ),
+                (
                     "TODO › Execute › Code › Update › Upgrade Poetry -"
                     " Dependency of Odoo",
                     {},
                 ),
+                *[
+                    (
+                        f"TODO › Execute › Run › {label}",
+                        configured("instance", label),
+                    )
+                    for label in (
+                        "Test - Minimal base instance",
+                        "Open RobotLibre 🤖 minimal",
+                        "Open RobotLibre 🤖 with search enabled",
+                    )
+                ],
                 *[
                     (f"{longtest} › {label}", kwargs)
                     for label, kwargs in (
@@ -564,12 +594,23 @@ class TestLArbreDesMenus(unittest.TestCase):
                     )
                 ],
                 *[(f"{git} › Repo › {label}", kw) for label, kw in repo],
+                (
+                    f"{git} › Stash all code",
+                    configured("git_from_makefile", "Stash all code"),
+                ),
                 (f"{git} › 🔄 Synchronise one repository", {}),
                 (f"{git} › 🧊 Freeze one repository on a commit", {}),
                 (f"{git} › ➖ Remove a repository from a manifest", {}),
                 (f"{git} › ⏩ Update forks from their upstream on GitHub", {}),
                 (f"{git} › 🪦 List the orphan forks of an organisation", {}),
                 (f"{git} › 🧹 Clean the merged branches of a repository", {}),
+                (
+                    f"{git} › Configure git local editor to vim",
+                    configured(
+                        "git_from_makefile",
+                        "Configure git local editor to vim",
+                    ),
+                ),
                 *[
                     (
                         f"{actions} › {label}",
@@ -841,6 +882,42 @@ class TestLArbreDesMenus(unittest.TestCase):
                 (f"{modem} › Service › modem_service_remove", {}),
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
+        )
+
+    def test_the_dangerous_elements_of_todo_json(self):
+        # Les éléments de todo.json qui portent "danger" : les instances
+        # qui, pour une nouvelle instance, effacent leur base, le formatage
+        # qui réécrit des fichiers suivis, la remise de tous les dépôts, et
+        # chaque élément dont la commande écrit la configuration git
+        # globale ; la clé vaut true là où elle est. Ce test ne lit que
+        # todo.json : les `Entry` des menus déclarés n'y passent pas.
+        config = json.loads((TODO_DIR / "todo.json").read_text())
+        marked, global_git = [], []
+        for key, elements in config.items():
+            for element in elements if isinstance(elements, list) else []:
+                label = element.get("prompt_description_key")
+                if "danger" in element:
+                    marked.append((key, label, element["danger"]))
+                if "git config --global" in element.get("bash_command", ""):
+                    global_git.append((key, label, element.get("danger")))
+        self.assertEqual(
+            marked,
+            [
+                ("instance", "Test - Minimal base instance", True),
+                ("instance", "Open RobotLibre 🤖 minimal", True),
+                ("instance", "Open RobotLibre 🤖 with search enabled", True),
+                ("code_from_makefile", "Format modified code", True),
+                ("git_from_makefile", "Stash all code", True),
+                (
+                    "git_from_makefile",
+                    "Configure git local editor to vim",
+                    True,
+                ),
+            ],
+        )
+        self.assertTrue(global_git)
+        self.assertEqual(
+            [d for _, _, d in global_git], [True] * len(global_git)
         )
 
     def test_a_submenu_carries_the_entry_its_parent_shows(self):

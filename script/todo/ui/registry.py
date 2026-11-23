@@ -76,7 +76,11 @@ class FromConfig:
     groupes, `without` écarte ceux des siens (`kept`). Deux `FromConfig`
     d'une même liste, l'un `only=[g]`, l'autre `without=[g]`, la
     partagent ainsi entre deux sections, sans perdre un élément au
-    groupe inconnu."""
+    groupe inconnu. Un élément qui porte "danger": true donne à l'arbre de
+    télémétrie une feuille "danger", que ni la TUI ni la page web ne
+    lancent ; le menu, qui ne lit pas la clé, l'affiche et le lance comme
+    un autre. L'arbre ne lit que todo.json : un élément des surcharges
+    privées n'y est pas, et ni la TUI ni la page web ne le lancent."""
 
     config_key: str
     action: str

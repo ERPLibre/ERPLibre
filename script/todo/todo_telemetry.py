@@ -286,11 +286,13 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     élément qui porte une section, qui nomme celle des suivants. Une
     entrée dont le libellé finit par un `suffix` calculé à l'affichage
     porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
-    Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
-    ni la TUI ni la page web ne le lancent. Une feuille gardée (`when`) y
-    est, quoi que rende sa garde, mais sans méthode : seul son menu lit
-    la garde, et la TUI, qui lance une feuille par sa méthode, ne la
-    lance pas. La garde ne protège qu'une feuille : une entrée gardée qui
+    Le nœud d'une `Entry` déclarée `danger=True`, comme la feuille d'un
+    élément de configuration qui porte "danger": true, porte "danger":
+    True ; ni la TUI ni la page web ne le lancent. ValueError quand le
+    "danger" d'un élément n'est ni un booléen ni null. Une feuille gardée
+    (`when`) y est, quoi que rende sa garde, mais sans méthode : seul son
+    menu lit la garde, et la TUI, qui lance une feuille par sa méthode,
+    ne la lance pas. La garde ne protège qu'une feuille : une entrée gardée qui
     ouvre un menu de `labels` porte le nœud de `build`, dont les feuilles
     gardent leur méthode, et la TUI les lance quoi que rende la garde. Un
     `FromMethod` n'y donne aucune feuille : sa liste ne se lit qu'en
@@ -345,18 +347,25 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
                 if element.get("section"):
                     section = element["section"]
                     continue
-                children.append(
-                    {
-                        "label": element.get("prompt_description_key")
-                        or element.get("prompt_description")
-                        or "?",
-                        "is_menu": False,
-                        "children": [],
-                        "method": item.get("action"),
-                        "kwargs": {item.get("kwarg"): element},
-                        "section": section,
-                    }
-                )
+                danger = element.get("danger")
+                if danger is not None and not isinstance(danger, bool):
+                    raise ValueError(
+                        f"{item.get('config_key')}: danger is not a"
+                        f" boolean: {danger!r}"
+                    )
+                leaf = {
+                    "label": element.get("prompt_description_key")
+                    or element.get("prompt_description")
+                    or "?",
+                    "is_menu": False,
+                    "children": [],
+                    "method": item.get("action"),
+                    "kwargs": {item.get("kwarg"): element},
+                    "section": section,
+                }
+                if danger:
+                    leaf["danger"] = True
+                children.append(leaf)
     if menu.get("asks"):
         for child in children:
             child["entry"] = ""
@@ -373,7 +382,10 @@ def build_code_tree(todo_path=None) -> dict | None:
     (`_declared_children`). Un menu qui se contient lui-même n'est
     développé qu'une fois par chemin. None sans menu déclaré de `run`, ou
     dès qu'un fichier de menus ne déclare rien : l'entrée qui ouvre l'un
-    de ses menus y serait une feuille, que la TUI lancerait."""
+    de ses menus y serait une feuille, que la TUI lancerait. None aussi,
+    un avertissement du journal nommant todo.json, quand le "danger"
+    d'un de ses éléments n'est pas un booléen : lu comme faux, il
+    laisserait la TUI lancer l'élément."""
     todo_dir = Path(todo_path).parent if todo_path else Path(__file__).parent
     failed = []
     declared = _declared_menus(todo_dir, failed)
@@ -395,7 +407,11 @@ def build_code_tree(todo_path=None) -> dict | None:
         seen.discard(method)
         return node
 
-    return build("run")
+    try:
+        return build("run")
+    except ValueError as error:
+        log.warning("%s reads no tree: %s", todo_dir / "todo.json", error)
+        return None
 
 
 def _command_columns(tree, paths):
