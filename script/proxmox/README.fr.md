@@ -73,13 +73,36 @@ atteignent les invités Proxmox par les entrées `~/.ssh/config` que l'entrée 1
 
 ```text
 [1] Déployer une VM        [8]  Redimensionner un disque   [15] Émulateur Android *
-[2] Prévisualiser          [9]  Effacer des VM             [16] Catalogue d'images *
-[3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Exemple (dry-run)
-[4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Changer d'hôte
-[5] Lister (qm list)       [12] Statistiques
+[2] Prévisualiser          [9]  Effacer des VM             [16] Périphériques USB
+[3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Catalogue d'images *
+[4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Exemple (dry-run)
+[5] Lister (qm list)       [12] Statistiques               [19] Changer d'hôte
 [6] Adresse IP d'une VM    [13] Configuration SSH
 [7] Console d'une VM       [14] Tunnel bureau distant *
                                         * code partagé avec le menu QEMU/KVM
+```
+
+## Périphériques USB (Stream Deck)
+
+L'entrée 16 passe à une VM un périphérique USB branché sur le **nœud**
+Proxmox : elle liste les périphériques du nœud par
+`pvesh get /nodes/<nœud>/hardware/usb` (les Stream Deck d'Elgato en tête),
+prend le premier port `usbN` libre et montre la commande `qm set` avant de la
+lancer. La même entrée liste et détache les ports `usbN` de la VM.
+
+Contrairement à libvirt, il n'y a pas de choix live/config : `qm set -usbN`
+écrit la configuration de la VM, l'attachement est donc toujours persistant.
+Une VM en marche reçoit le périphérique tout de suite quand son option
+`hotplug` contient `usb` (le défaut), sinon à son prochain démarrage.
+`host=VID:PID` suit le périphérique d'un rebranchement à l'autre, donc aucune
+règle udev n'est nécessaire sur le nœud ; deux périphériques identiques se
+départagent par leur port physique (`host=BUS-PORT`).
+
+Une VM dispose de `usb0` à `usb13` depuis PVE 8, de `usb0` à `usb4` avant.
+
+```bash
+qm set 100 -usb0 host=0fd9:0080,usb3=1   # attacher
+qm set 100 -delete usb0                  # détacher
 ```
 
 ## Vérifié

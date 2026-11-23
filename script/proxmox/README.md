@@ -73,13 +73,35 @@ with the Proxmox host as ProxyJump.
 
 ```text
 [1] Déployer une VM        [8]  Redimensionner un disque   [15] Émulateur Android *
-[2] Prévisualiser          [9]  Effacer des VM             [16] Catalogue d'images *
-[3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Exemple (dry-run)
-[4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Changer d'hôte
-[5] Lister (qm list)       [12] Statistiques
+[2] Prévisualiser          [9]  Effacer des VM             [16] Périphériques USB
+[3] Télécharger une image  [10] Nettoyer (orphelins)       [17] Catalogue d'images *
+[4] Rouvrir le suivi *     [11] Tester une VM (Odoo)       [18] Exemple (dry-run)
+[5] Lister (qm list)       [12] Statistiques               [19] Changer d'hôte
 [6] Adresse IP d'une VM    [13] Configuration SSH
 [7] Console d'une VM       [14] Tunnel bureau distant *
                                         * code partagé avec le menu QEMU/KVM
+```
+
+## USB devices (Stream Deck)
+
+Entry 16 passes a USB device plugged into the Proxmox **node** to a VM: it
+lists the node's devices with `pvesh get /nodes/<node>/hardware/usb`
+(Elgato Stream Decks first), takes the first free `usbN` port and shows the
+`qm set` command before running it. The same entry lists and detaches the
+`usbN` ports of the VM.
+
+Unlike libvirt, there is no live/config choice: `qm set -usbN` writes the VM
+configuration, so the attachment is always persistent. A running VM gets the
+device at once when its `hotplug` option includes `usb` (the default),
+otherwise at its next start. `host=VID:PID` follows the device across
+replugs, so no udev rule is needed on the node; two identical devices are
+told apart by their physical port (`host=BUS-PORT`).
+
+A VM gets `usb0` to `usb13` on PVE 8 and later, `usb0` to `usb4` before.
+
+```bash
+qm set 100 -usb0 host=0fd9:0080,usb3=1   # attacher
+qm set 100 -delete usb0                  # détacher
 ```
 
 ## Verified
