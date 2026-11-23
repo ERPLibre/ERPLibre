@@ -1337,9 +1337,17 @@ TRANSLATIONS = {
         "fr": "ssh-keygen a échoué :",
         "en": "ssh-keygen failed:",
     },
-    "Key type: 1. ed25519 (recommended), 2. RSA 4096 (old servers) (default: 1): ": {
-        "fr": "Type de clé : 1. ed25519 (recommandé), 2. RSA 4096 (anciens serveurs) (défaut : 1) : ",
-        "en": "Key type: 1. ed25519 (recommended), 2. RSA 4096 (old servers) (default: 1): ",
+    "Key type:": {
+        "fr": "Type de clé :",
+        "en": "Key type:",
+    },
+    "recommended": {
+        "fr": "recommandé",
+        "en": "recommended",
+    },
+    "%s bits, for old servers": {
+        "fr": "%s bits, pour les anciens serveurs",
+        "en": "%s bits, for old servers",
     },
     "File of the private key (default: %s): ": {
         "fr": "Fichier de la clé privée (défaut : %s) : ",

@@ -17,6 +17,7 @@ import os
 import socket
 import subprocess
 
+from script.todo import ui
 from script.todo.seal_menu import chemin_commitable, format_commande
 from script.todo.todo_i18n import t
 
@@ -64,12 +65,19 @@ class SshKeyMenuMixin:
         if chemin is None:
             return
         defaut = commentaire_par_defaut()
-        commentaire = (
-            input(
-                f"💬 {t('Comment of the key (default: %s): ') % defaut}"
-            ).strip()
-            or defaut
+        commentaire = self._ssh_key_repondre(
+            f"💬 {t('Comment of the key (default: %s): ') % defaut}"
         )
+        if commentaire is None:
+            return
+        commentaire = commentaire or defaut
+        # Le dossier se crée après la dernière question : un retour, à
+        # n'importe laquelle, n'écrit rien.
+        try:
+            os.makedirs(os.path.dirname(chemin), mode=0o700, exist_ok=True)
+        except OSError as erreur:
+            print(f"❌ {t('Cannot create the folder of the key:')} {erreur}")
+            return
         commande = commande_ssh_keygen(chemin, type_cle, commentaire)
         print(f"\n{t('Command run:')}")
         print(f"$ {format_commande(commande)}")
@@ -91,28 +99,46 @@ class SshKeyMenuMixin:
             return
         self._ssh_key_report(chemin)
 
-    def _ssh_key_ask_type(self):
-        """Le type de clé choisi, ou None sur une réponse illisible."""
-        reponse = input(
-            f"💬 {t('Key type: 1. ed25519 (recommended), 2. RSA 4096 (old servers) (default: 1): ')}"
-        ).strip()
-        choix = {"": 0, "1": 0, "2": 1}.get(reponse)
-        if choix is None:
-            print(f"{t('Error, cannot understand value')} '{reponse}'")
+    @staticmethod
+    def _ssh_key_repondre(question):
+        """La réponse tapée à `question`, sans les blancs qui l'entourent,
+        ou None sur Ctrl+D (EOFError) : l'appelant revient alors sans
+        lancer ssh-keygen."""
+        try:
+            return ui.ask(question).strip()
+        except EOFError:
+            print()
             return None
-        return TYPES_CLE[choix]
+
+    def _ssh_key_ask_type(self):
+        """Le type de clé, l'une de `TYPES_CLE`, choisi par son numéro ou
+        par son nom ; une réponse vide prend ed25519, que la liste marque,
+        et une faute est nommée puis redemandée. None pour [0] ou
+        Ctrl+D."""
+        return ui.choose(
+            f"💬 {t('Key type:')}",
+            list(TYPES_CLE),
+            labels=[
+                f"ed25519 — {t('recommended')}",
+                f"rsa — {t('%s bits, for old servers') % BITS_RSA}",
+            ],
+            names={nom: nom for nom in TYPES_CLE},
+            default="ed25519",
+        )
 
     def _ssh_key_ask_path(self, type_cle):
-        """Le chemin absolu de la clé privée, son dossier créé en 0700, ou
-        None. Un dossier donné reçoit le nom par défaut. Sont refusés : un
-        fichier ou un lien qui existe déjà, même orphelin (ssh-keygen écrit
-        à travers un lien, à sa cible), un chemin que git pourrait commiter,
-        et un dossier qu'on ne peut pas créer."""
+        """Le chemin absolu de la clé privée, ou None, aussi sur Ctrl+D. Un
+        dossier donné reçoit le nom par défaut. Sont refusés : un fichier ou
+        un lien qui existe déjà, même orphelin (ssh-keygen écrit à travers
+        un lien, à sa cible), et un chemin que git pourrait commiter. Rien
+        n'est créé ici : le dossier attend la dernière question."""
         nom = f"id_{type_cle}"
         defaut = os.path.join(DOSSIER_SSH, nom)
-        reponse = input(
+        reponse = self._ssh_key_repondre(
             f"💬 {t('File of the private key (default: %s): ') % defaut}"
-        ).strip()
+        )
+        if reponse is None:
+            return None
         chemin = os.path.abspath(os.path.expanduser(reponse or defaut))
         if os.path.isdir(chemin):
             chemin = os.path.join(chemin, nom)
@@ -132,11 +158,6 @@ class SshKeyMenuMixin:
                 f"❌ {t('Git could commit this file, which holds a private key:')}"
             )
             print(f"\t{chemin}")
-            return None
-        try:
-            os.makedirs(os.path.dirname(chemin), mode=0o700, exist_ok=True)
-        except OSError as erreur:
-            print(f"❌ {t('Cannot create the folder of the key:')} {erreur}")
             return None
         return chemin
 
