@@ -4,14 +4,16 @@
 """Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
 (Navigation telemetry), Configuration, la famille Execute : Execute,
 Code et Debug, Config et Generate from pre-configuration, Process, Test,
-Uninstall, Image Odoo et Update, la famille Run : Run, Database et son menu d'effacement,
-Analyse, Transform data et Doc, la famille Git : Git, Git local server et
-ses deux menus Actions, GPT code, Claude configs, Plugins, Claude Code,
-RTK et Automation, la famille QEMU : Deploy, SSH, QEMU/KVM, QEMU cache et
-ses sept menus, Network, Security, Docker / Podman et ses trois menus, la
-famille Proxmox : Proxmox VE, VPN, Long test et Install, la famille
-Assistant : Assistant, LLM, Servers, Search et les trois menus du
-courriel, et le menu principal.
+Uninstall, Image Odoo, Update, Python, System et Containers, la famille
+Run : Run, Database et son menu d'effacement, Analyse, Transform data et
+Doc, la famille Git : Git repository, Git local server et ses deux menus
+Actions, Shell, GPT code, Claude configs et Repository settings,
+Plugins, Claude Code, RTK et Automation, la famille QEMU : Deploy, SSH,
+QEMU/KVM, QEMU cache et ses sept menus, Network, Security et PAdES seal,
+Docker / Podman et ses trois menus, la famille Proxmox : Proxmox VE,
+VPN, Long test, Install et son Update, la famille Assistant : Assistant,
+LLM, Servers, Search et les trois menus du courriel, et le menu
+principal.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
@@ -25,15 +27,20 @@ capture, comme dans le worker.
 `TestCapture` tient les garde-fous de la capture sur un menu factice mis
 à la place de [4] : une question au terminal lève au lieu de bloquer,
 une étape de WALK absente de son menu est nommée, et ce que les familles
-QEMU, Proxmox et Assistant lisent du système vient des doubles.
+QEMU, Proxmox et Assistant lisent du système, comme ce qu'Install,
+Repository settings et Containers lisent du checkout, vient des doubles
+que pose `golden.terminal`.
 """
 
 import getpass
 import io
 import json
+import os
 import shutil
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import click
@@ -173,6 +180,58 @@ class TestCapture(unittest.TestCase):
         self.assertEqual(seen["networks"], ["192.0.2.0/24", "198.51.100.0/24"])
         self.assertEqual(seen["answers"], {})
         self.assertEqual(seen["servers"], ["Forged one", "Forged two"])
+
+    def test_the_checkout_reads_through_doubles(self):
+        # Les versions installées dont les sources sont sur disque, les
+        # réglages de Claude du dépôt et l'ouverture de Containers sont
+        # ceux des doubles, jamais ceux du checkout qui lance la capture.
+        # Le dossier courant porte les sources des deux versions et le
+        # dépôt active les deux réglages : sans les doubles, les versions
+        # seraient présentes, les réglages à « on », et « system df »
+        # partirait. Avec eux, rien n'est présent, tout est à « off », et
+        # rien n'est lancé.
+        seen = {}
+
+        def menu(todo):
+            from script.todo import claude_reglages
+            from script.todo.todo_i18n import t
+
+            with tempfile.TemporaryDirectory() as tmp:
+                for version in ("odoo17.0", "odoo18.0"):
+                    odoo_bin = Path(tmp, version, "odoo", "odoo-bin")
+                    odoo_bin.parent.mkdir(parents=True)
+                    odoo_bin.touch()
+                actifs = claude_reglages.avec_ultracode({}, True)
+                claude_reglages.ecrire(
+                    tmp, claude_reglages.avec_hook(actifs, True)
+                )
+                cwd = os.getcwd()
+                os.chdir(tmp)
+                try:
+                    seen["present"] = todo._versions_installees_presentes(
+                        ["odoo17.0", "odoo18.0"]
+                    )
+                finally:
+                    os.chdir(cwd)
+                with (
+                    patch.object(
+                        todo, "_claude_context_root", return_value=tmp
+                    ),
+                    patch.object(todo.execute, "exec_command_live") as run,
+                ):
+                    seen["settings"] = [
+                        todo._claude_ultracode_etat(),
+                        todo._claude_hook_etat(),
+                    ]
+                    todo._system_conteneurs_ouvre()
+                seen["runs"] = run.call_args_list
+                seen["off"] = t("off")
+
+        self.captured(menu)
+        off = seen.pop("off")
+        self.assertEqual(
+            seen, {"present": [], "settings": [off, off], "runs": []}
+        )
 
     def test_a_step_absent_from_its_menu_is_named(self):
         # Le menu principal n'a aucune entrée de ce libellé : la session

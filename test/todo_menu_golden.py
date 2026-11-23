@@ -4,15 +4,16 @@
 """Rendus de référence de menus de TODO : l'entrée [4] (Navigation
 telemetry), Configuration, la famille Execute : Execute, Code et Debug,
 Config et Generate from pre-configuration, Process, Test, Uninstall,
-Image Odoo et Update, la
-famille Run : Run, Database et son menu d'effacement, Analyse, Transform
-data et Doc, la famille Git : Git, Git local server et ses deux menus
-Actions, GPT code, Claude configs, Plugins, Claude Code, RTK et
-Automation, la famille QEMU : Deploy, SSH, QEMU/KVM, QEMU cache et ses
-sept menus, Network, Security, Docker / Podman et ses trois menus, la
-famille Proxmox : Proxmox VE, VPN, Long test et Install, la famille
-Assistant : Assistant, LLM, Servers, Search et les trois menus du
-courriel, et le menu principal.
+Image Odoo, Update, Python, System et Containers, la famille Run : Run,
+Database et son menu d'effacement, Analyse, Transform data et Doc, la
+famille Git : Git repository, Git local server et ses deux menus
+Actions, Shell, GPT code, Claude configs et Repository settings,
+Plugins, Claude Code, RTK et Automation, la famille QEMU : Deploy, SSH,
+QEMU/KVM, QEMU cache et ses sept menus, Network, Security et PAdES
+seal, Docker / Podman et ses trois menus, la famille Proxmox : Proxmox
+VE, VPN, Long test, Install et son Update, la famille Assistant :
+Assistant, LLM, Servers, Search et les trois menus du courriel, et le
+menu principal.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -33,14 +34,18 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
 La configuration est CONFIG, les préférences celles d'un HOME vide où
 l'hôte Proxmox HOST est retenu, le hub web ne tourne pas
 (`launcher.status` rend None) et Claude Code n'a aucune session
-(`claude_sessions.fleet` rend []). Ce que les menus des familles QEMU,
-Proxmox et Assistant lisent du système en se dessinant vient de doubles
-(`doubles`) : de faux programmes en tête du PATH, un faux binaire du
-cache et son fichier de réglages, la place libre, les manifestes et
-leurs miroirs, les fiches des moteurs de conteneurs, les préférences,
-les versions d'Odoo, installées et active, qu'Install propose, les
-réseaux que la machine porte, et un serveur de modèles qui ne répond
-jamais : aucune sonde ne quitte la capture.
+(`claude_sessions.fleet` rend []). Ce que les menus lisent du système
+ou du dépôt en se dessinant vient de doubles (`doubles`) : de faux
+programmes en tête du PATH, un faux binaire du cache et son fichier de
+réglages, la place libre, les manifestes et leurs miroirs, les fiches
+des moteurs de conteneurs, les préférences, les versions d'Odoo,
+installées et active, qu'Install propose, les réseaux que la machine
+porte, un serveur de modèles qui ne répond jamais et les réglages de
+Claude du dépôt ; Containers s'ouvre sans rien lancer : aucune sonde ne
+quitte la capture. `terminal` double en plus les versions installées dont
+les sources sont sur disque : il n'y en a aucune, et Install s'ouvre sans
+demander laquelle mettre à jour. La session n'entre pas dans Install et
+n'a pas ce double.
 
     python3 test/todo_menu_golden.py   (depuis la racine du dépôt)
 
@@ -73,6 +78,9 @@ MENUS = (
     "prompt_execute_uninstall",
     "prompt_execute_image_db",
     "prompt_execute_update",
+    "prompt_execute_python",
+    "prompt_execute_system",
+    "_system_conteneurs",
     "prompt_execute_instance",
     "prompt_execute_database",
     # Le menu d'effacement vit sur l'objet `db_manager` de TODO.
@@ -82,8 +90,10 @@ MENUS = (
     "prompt_execute_doc",
     "prompt_execute_git",
     "prompt_execute_git_local_server",
+    "prompt_execute_shell",
     "prompt_execute_gpt_code",
     "_prompt_claude_configs",
+    "_claude_reglages_depot",
     "prompt_execute_claude_plugins",
     "prompt_claude_sessions",
     "prompt_execute_rtk",
@@ -101,6 +111,7 @@ MENUS = (
     "_cache_nettoyage_auto",
     "prompt_execute_network",
     "prompt_execute_security",
+    "prompt_execute_seal",
     "prompt_execute_container",
     "_container_service",
     "_container_compose",
@@ -109,6 +120,7 @@ MENUS = (
     "prompt_execute_vpn",
     "prompt_execute_longtest",
     "prompt_install",
+    "prompt_install_update",
     "prompt_assistant",
     "prompt_assistant_llm",
     "_llm_servers",
@@ -131,16 +143,21 @@ CRUMBS = (
     "Uninstall",
     "Image Odoo",
     "Update",
+    "Python",
+    "System",
+    "Containers",
     "Run",
     "Database",
     "Analyse",
     "Transform data",
     "Doc",
-    "Git",
+    "Git repository",
     "Git local server",
     "Actions",
+    "Shell",
     "GPT code",
     "Claude configs",
+    "Repository settings",
     "Plugins",
     "Claude Code",
     "RTK",
@@ -158,6 +175,7 @@ CRUMBS = (
     "Automatic cleanup",
     "Network",
     "Security",
+    "PAdES seal",
     "Docker / Podman",
     "Compose",
     "ERPLibre container",
@@ -173,17 +191,18 @@ CRUMBS = (
     "TODO",
 )
 ANSWERS = ("", "9", "0")
-# Execute montre dix-neuf entrées : « 9 » y ouvrirait Database, « 20 »
-# n'en a pas. Git en montre dix avec CONFIG, Plugins neuf : « 9 » y
-# lancerait une feuille. Git local server entre dans chacun de ses deux menus Actions,
-# qui reçoit une réponse vide et un numéro sans entrée, puis en sort.
+# Execute montre vingt-deux entrées : « 9 » y ouvrirait Python, « 23 »
+# n'en a pas. Git repository en montre vingt-quatre avec CONFIG, Plugins
+# neuf : « 9 » y lancerait une feuille. Git local server entre dans
+# chacun de ses deux menus Actions, qui reçoit une réponse vide et un
+# numéro sans entrée, puis en sort.
 # Deploy en montre onze, SSH onze, QEMU/KVM vingt-deux avec CONFIG, QEMU
 # cache douze, Docker / Podman seize, Proxmox VE vingt avec CONFIG, VPN
 # onze, Long test dix : « 9 » y lancerait une entrée. Search en montre
 # huit avec les deux réseaux de NETWORKS : « 9 » n'y est pas.
 ANSWERS_OF = {
-    "prompt_execute": ("", "20", "0"),
-    "prompt_execute_git": ("", "11", "0"),
+    "prompt_execute": ("", "23", "0"),
+    "prompt_execute_git": ("", "25", "0"),
     "prompt_execute_git_local_server": (
         *("", "9"),
         *("1", "", "9", "0"),
@@ -305,6 +324,12 @@ WALK = (
     "0",
     ["Image Odoo - Database images for a quick installation"],
     "0",
+    ["Python - Poetry and Python tools"],
+    "0",
+    ["System - Diagnostic and disk space"],
+    ["Containers - size and cleanup"],
+    "0",
+    "0",
     ["Run - Execute and install an instance"],
     "0",
     ["Database - Database tools"],
@@ -315,7 +340,7 @@ WALK = (
     "0",
     ["Doc - Documentation search"],
     "0",
-    ["Git - Git and shell tools"],
+    ["Git repository - Repositories and git tools"],
     ["Local git server"],
     ["Deploy a local git server (~/.git-server)"],
     "0",
@@ -323,8 +348,12 @@ WALK = (
     "0",
     "0",
     "0",
+    ["Shell - Shell tools"],
+    "0",
     ["GPT code - AI assistant tools"],
     ["Configure Claude Code configurations"],
+    ["⚙️ Repository settings: ultracode and session message"],
+    "0",
     "0",
     ["RTK - CLI proxy to reduce LLM token consumption"],
     "0",
@@ -359,7 +388,9 @@ WALK = (
     "0",
     ["Network - Network tools"],
     "0",
-    ["Security - Dependency security audit"],
+    ["Security - Dependency audit and key generation"],
+    ["Seal for PAdES signature"],
+    "0",
     "0",
     ["Docker / Podman - Container engines"],
     ["Service - start, stop, enable at boot, journal"],
@@ -567,8 +598,9 @@ def doubles(base) -> list:
     doublent la place libre, les manifestes et leurs miroirs, les fiches
     des moteurs de conteneurs, les réseaux de NETWORKS, la collecte des
     réponses d'un serveur de modèles, qui ne rend rien et n'ouvre aucune
-    connexion, et le rapport d'ouverture du menu principal, qui ne dit
-    rien.
+    connexion, le rapport d'ouverture du menu principal, qui ne dit rien,
+    les réglages de Claude du dépôt, vides, et l'ouverture de Containers,
+    qui ne lance rien.
     """
     from script.todo.assistant.discover import Interface
 
@@ -635,6 +667,16 @@ def doubles(base) -> list:
         # Le rapport d'ouverture du menu principal lit le checkout, ses
         # versions et ses hooks git : rien de stable à figer.
         patch("script.todo.todo_etat.afficher", lambda racine: None),
+        # Repository settings lit .claude/settings.json, que ses propres
+        # bascules réécrivent : le dépôt n'a aucun réglage, ultracode et
+        # le message de session y sont à « off ».
+        patch("script.todo.claude_reglages.lire", lambda racine: {}),
+        # Containers s'ouvre sur « system df » du moteur, une commande
+        # lancée dont la durée s'affiche : le menu s'ouvre sans la lancer.
+        patch(
+            "script.todo.system_menu.SystemMenuMixin._system_conteneurs_ouvre",
+            lambda self: {},
+        ),
     ]
 
 
@@ -660,7 +702,9 @@ def terminal(method, lang) -> dict:
     les sondes du hub web. `method` peut être pointé : « a.b » appelle la
     méthode `b` de l'attribut `a` de TODO, « script.….f » la fonction `f`
     de ce module, avec le TODO. Le répertoire de Mobile est présent, la
-    langue tenue pour choisie."""
+    langue tenue pour choisie. En plus des `doubles`, aucune version
+    installée n'a ses sources sur disque, quel que soit le dossier
+    courant."""
     import importlib
 
     from script.config import config_file
@@ -694,6 +738,14 @@ def terminal(method, lang) -> dict:
             patch.object(config_file, "CONFIG_OVERRIDE_PRIVATE_FILE", absent),
             patch.object(todo, "MOBILE_HOME_PATH", str(base)),
             patch.object(todo, "lang_is_configured", return_value=True),
+            # Aucune version installée n'a ses sources sur disque : Install
+            # ouvre son menu sans demander s'il faut en mettre une à jour,
+            # quel que soit le checkout qui lance la capture.
+            patch.object(
+                TODO,
+                "_versions_installees_presentes",
+                staticmethod(lambda installed: []),
+            ),
             patch("click.termui.visible_prompt_func", typed),
             # Un menu qui lirait le terminal bloquerait le test : `input`,
             # sauf pour un menu d'INPUTS, une question masquée
