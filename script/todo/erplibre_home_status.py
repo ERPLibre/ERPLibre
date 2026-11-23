@@ -25,7 +25,24 @@ Les faits :
   écrit le verrou (deck_lock.holder_running) ; faux quand il est libre ;
 - lock_pids : [pid] des processus qui ont le verrou ouvert, [] quand il
   est libre ;
-- decks : [{"product": str, "id_product": str}], vendeur 0fd9.
+- decks : les périphériques USB du vendeur 0fd9, triés par chemin sysfs,
+  chacun {"product": nom annoncé, "" s'il manque ; "id_product" ;
+  "model": nom du modèle d'après streamdeck_models, "" s'il est inconnu ;
+  "serial" ; "sysname" ; "busnum", "devnum": int|None ; "driver": pilote
+  de sa première interface (« usbhid », « usbfs »), "" sans pilote ;
+  "owner_uid": propriétaire de /dev/bus/usb/BBB/DDD, None s'il ne se lit
+  pas ; "vm": None quand le deck reste à l'hôte, le nom de la VM qui le
+  tient, "" quand une VM le tient sans qu'on sache laquelle}.
+
+Un deck passé à une VM se reconnaît sans root. libvirt donne le nœud
+/dev/bus/usb/BBB/DDD à l'utilisateur de QEMU dès l'attachement (son
+dynamic_ownership, actif par défaut), et QEMU détache usbhid de
+l'interface, qui passe à usbfs quand l'invité configure le périphérique.
+Le programme du deck de l'hôte, qui parle au deck par
+hidapi-libusb, met lui aussi l'interface sous usbfs, mais le nœud reste à
+root : seul le propriétaire départage. Le nom de la VM vient des
+<hostdev> live des domaines, lus par virsh en lecture seule, sinon de la
+correspondance du rattachement automatique (qemu_usb.MAPPING).
 """
 
 import glob
@@ -34,6 +51,7 @@ import os
 import re
 
 from script.todo import erplibre_home_service as service
+from script.todo.streamdeck_models import model_name
 from script.todo.todo_i18n import t
 
 EXTENSION_UUID = "erplibre-home@technolibre.ca"
@@ -74,6 +92,30 @@ JOURNAL_HINT = (
     " # or: Storage=persistent in /etc/systemd/journald.conf"
 )
 STREAMDECK_INSTALL = "make erplibre_home_streamdeck_install"
+
+# Pilote du noyau qui tient l'interface d'un deck resté à l'hôte.
+HOST_HID_DRIVER = "usbhid"
+# virsh en lecture seule : la socket en lecture seule de libvirtd ne demande
+# aucun mot de passe. « timeout » borne une connexion qui ne répond pas, et
+# place virsh hors du groupe de premier plan du terminal : une lecture au
+# clavier l'arrête au lieu d'attendre une réponse.
+LIBVIRT_URI = "qemu:///system"
+VIRSH_TIMEOUT_SEC = "5"
+
+
+def cmd_virsh(*args):
+    return (
+        "timeout",
+        VIRSH_TIMEOUT_SEC,
+        "virsh",
+        "--readonly",
+        "--connect",
+        LIBVIRT_URI,
+        *args,
+    )
+
+
+CMD_DOMAINS = cmd_virsh("list", "--name")
 
 
 def cmd_unit(verb):
@@ -137,23 +179,140 @@ def _lire(chemin):
         return ""
 
 
-def plugged_decks(sysfs="/sys"):
+def _entier(texte):
+    try:
+        return int(texte, 10)
+    except ValueError:
+        return None
+
+
+def _proprietaire(chemin):
+    """UID du propriétaire de `chemin`, None quand il ne se lit pas."""
+    try:
+        return os.stat(chemin).st_uid
+    except OSError:
+        return None
+
+
+def _pilote(dossier):
+    """Nom du pilote de la première interface (« 3-2:1.0 ») du
+    périphérique `dossier` qui en a un, "" quand aucune n'en a."""
+    for interface in sorted(glob.glob(dossier + ":*")):
+        lien = os.path.join(interface, "driver")
+        if os.path.islink(lien):
+            return os.path.basename(os.readlink(lien))
+    return ""
+
+
+def plugged_decks(sysfs="/sys", devfs="/dev", owner_of=_proprietaire):
     """Les périphériques USB du vendeur 0fd9 sous `sysfs`, triés par
-    chemin : {"product": nom lu dans « product », "" s'il manque,
-    "id_product": idProduct}."""
+    chemin, dans la forme de « decks » (vm toujours None : deck_vm la
+    remplit). `owner_of(chemin)` rend l'UID du propriétaire du nœud sous
+    `devfs`, ou None."""
     decks = []
     motif = os.path.join(sysfs, "bus/usb/devices/*/idVendor")
     for fichier in sorted(glob.glob(motif)):
         if _lire(fichier) != DECK_VENDOR:
             continue
         dossier = os.path.dirname(fichier)
+        id_product = _lire(os.path.join(dossier, "idProduct"))
+        bus = _entier(_lire(os.path.join(dossier, "busnum")))
+        dev = _entier(_lire(os.path.join(dossier, "devnum")))
+        noeud = (
+            os.path.join(devfs, "bus/usb", "%03d" % bus, "%03d" % dev)
+            if bus is not None and dev is not None
+            else None
+        )
         decks.append(
             {
                 "product": _lire(os.path.join(dossier, "product")),
-                "id_product": _lire(os.path.join(dossier, "idProduct")),
+                "id_product": id_product,
+                "model": model_name(id_product),
+                "serial": _lire(os.path.join(dossier, "serial")),
+                "sysname": os.path.basename(dossier),
+                "busnum": bus,
+                "devnum": dev,
+                "driver": _pilote(dossier),
+                "owner_uid": owner_of(noeud) if noeud else None,
+                "vm": None,
             }
         )
     return decks
+
+
+def libvirt_usb_holders(run):
+    """{(bus, dev): domaine} des <hostdev> USB des domaines en marche de
+    LIBVIRT_URI, lus dans leur XML live, où libvirt écrit l'adresse
+    résolue ; un <hostdev> laissé de côté au démarrage (missing) n'y entre
+    pas. None quand virsh manque, échoue ou dépasse son délai."""
+    from script.todo import qemu_usb
+
+    code, sortie = run(CMD_DOMAINS)
+    if code != 0:
+        return None
+    tenus = {}
+    for domaine in (sortie or "").split():
+        code, xml = run(cmd_virsh("dumpxml", domaine))
+        if code != 0:
+            continue
+        for h in qemu_usb.usb_state(xml)["hostdevs"]:
+            if h["missing"] or h["bus"] is None or h["dev"] is None:
+                continue
+            tenus[(h["bus"], h["dev"])] = domaine
+    return tenus
+
+
+def read_mapping(chemin):
+    """Les entrées de la correspondance du rattachement automatique ; []
+    quand le fichier manque, ne se lit pas ou n'est pas du JSON valide."""
+    from script.todo import qemu_usb
+
+    try:
+        return qemu_usb.mapping_loads(_lire(chemin))
+    except ValueError:
+        return []
+
+
+def deck_vm(deck, holders, entries, uid):
+    """La valeur de « vm » pour `deck` (forme plugged_decks).
+
+    `holders` : {(bus, dev): domaine} de libvirt_usb_holders, ou None.
+    Un domaine qui tient l'adresse du deck le nomme. Sinon, un deck que
+    usbhid tient reste à l'hôte ; un nœud dont le propriétaire n'est ni
+    root ni `uid` est à QEMU, et la VM est celle que `entries` (forme
+    qemu_usb.mapping_loads) attribue au deck, "" sans entrée. Le reste
+    (usbfs avec un nœud à root : le programme du deck de l'hôte) est à
+    l'hôte."""
+    from script.todo import qemu_usb
+
+    if holders:
+        domaine = holders.get((deck.get("busnum"), deck.get("devnum")))
+        if domaine:
+            return domaine
+    if deck.get("driver") == HOST_HID_DRIVER:
+        return None
+    proprio = deck.get("owner_uid")
+    if proprio is None or proprio in (0, uid):
+        return None
+    entree = qemu_usb.mapping_match(
+        entries,
+        {
+            "vid": DECK_VENDOR,
+            "pid": qemu_usb.norm_hex(deck.get("id_product")),
+            "serial": deck.get("serial") or "",
+        },
+    )
+    return entree["domain"] if entree else ""
+
+
+def decks_with_vm(decks, run, mapping_path, uid):
+    """`decks` où « vm » est rempli. virsh et la correspondance ne sont
+    lus que si un deck échappe à usbhid."""
+    if all(d.get("driver") == HOST_HID_DRIVER for d in decks):
+        return decks
+    holders = libvirt_usb_holders(run)
+    entries = read_mapping(mapping_path)
+    return [dict(d, vm=deck_vm(d, holders, entries, uid)) for d in decks]
 
 
 def _deck_lock(root):
@@ -214,11 +373,22 @@ def collect(
     sysfs="/sys",
     udev_rule=UDEV_RULE,
     lock_path=None,
+    devfs="/dev",
+    owner_of=_proprietaire,
+    mapping_path=None,
+    uid=None,
 ):
     """Les faits du poste. `run(argv)` rend (code, sortie) ; `root` est la
-    racine du dépôt. systemctl n'est appelé que si l'unité est installée.
-    `lock_path` None prend le chemin que lit deck_lock."""
+    racine du dépôt. systemctl n'est appelé que si l'unité est installée,
+    virsh que si un deck échappe à usbhid. `lock_path` None prend le
+    chemin que lit deck_lock ; `mapping_path` None, qemu_usb.MAPPING ;
+    `uid` None, celui du processus."""
     environ = os.environ if environ is None else environ
+    if mapping_path is None:
+        from script.todo import qemu_usb
+
+        mapping_path = qemu_usb.MAPPING
+    uid = os.getuid() if uid is None else uid
     lien = _extension_link(environ)
     python = _deck_python(root)
     unit_file = os.path.exists(service.unit_path(environ))
@@ -247,12 +417,32 @@ def collect(
         "lock": tenu[:2] if tenu else None,
         "lock_running": deck_lock.holder_running(tenu) if tenu else False,
         "lock_pids": deck_lock.holder_pids(verrou) if tenu else [],
-        "decks": plugged_decks(sysfs),
+        "decks": decks_with_vm(
+            plugged_decks(sysfs, devfs, owner_of), run, mapping_path, uid
+        ),
     }
 
 
 def _actif(extension):
     return extension["state"] == 1 and extension["error"] == ""
+
+
+def _nom_deck(deck):
+    """Le nom annoncé, sinon celui du modèle, sinon l'idProduct, et la VM
+    qui tient le deck quand il lui est passé."""
+    nom = deck["product"] or deck.get("model") or deck["id_product"] or "?"
+    vm = deck.get("vm")
+    if vm is None:
+        return nom
+    if vm:
+        return "%s (%s %s)" % (nom, t("passed to VM"), vm)
+    return "%s (%s)" % (nom, t("passed to a VM"))
+
+
+def _tous_dans_une_vm(decks):
+    """Vrai quand au moins un deck est branché et que tous sont passés à
+    une VM : le service de l'hôte n'a alors rien à piloter."""
+    return bool(decks) and all(d.get("vm") is not None for d in decks)
 
 
 def status_lines(facts):
@@ -294,6 +484,10 @@ def status_lines(facts):
             t("program"),
             facts["settings"]["DECK_PROGRAM"],
         )
+        if facts["unit_active"] != "active" and _tous_dans_une_vm(
+            facts["decks"]
+        ):
+            unite = "%s — %s" % (unite, t("idle, the deck is in a VM"))
     else:
         unite = t("Service: not installed")
     if not facts["deck_program"]:
@@ -312,9 +506,7 @@ def status_lines(facts):
     if facts["decks"]:
         decks = "%s %s" % (
             t("Decks plugged in:"),
-            ", ".join(
-                d["product"] or d["id_product"] or "?" for d in facts["decks"]
-            ),
+            ", ".join(_nom_deck(d) for d in facts["decks"]),
         )
     else:
         decks = t("Decks plugged in: none")
@@ -354,11 +546,12 @@ def diagnosis_lines(facts):
     """[(problème, correction)] pour chaque sonde qui n'est pas comme
     attendu, dans l'ordre où les corriger ; [] quand tout va. Une unité
     installée mais désactivée n'est pas un problème : l'ouverture
-    automatique est un choix d'installation. Un état de l'unité que
-    systemctl n'a pas rendu (pas de bus utilisateur, par ssh ou sudo) est
-    dit illisible, non faux. Sans
-    l'extension, ou sans le niveau Stream Deck, la liste s'arrête là : ce
-    qui suit en dépend."""
+    automatique est un choix d'installation. Un deck passé à une VM non
+    plus : le service de l'hôte n'a rien à piloter quand tous les decks
+    branchés sont dans une VM. Un état de l'unité que systemctl n'a pas
+    rendu (pas de bus utilisateur, par ssh ou sudo) est dit illisible, non
+    faux. Sans l'extension, ou sans le niveau Stream Deck, la liste
+    s'arrête là : ce qui suit en dépend."""
     if not facts["extension_linked"]:
         return [
             (t("ERPLibre Home is not installed"), "make erplibre_home_install")
@@ -441,7 +634,8 @@ def diagnosis_lines(facts):
             (t("No Stream Deck plugged in"), t("plug a Stream Deck in"))
         )
     elif (
-        programme != "none"
+        not _tous_dans_une_vm(facts["decks"])
+        and programme != "none"
         and facts["unit_active"]
         and facts["unit_active"] != "active"
     ):

@@ -302,7 +302,8 @@ class LeBalayageDeLHote(_Sysfs):
             u.device_line(mk2),
         )
         nu = next(d for d in self.devs if d["sysname"] == "1-3.2")
-        self.assertEqual("0fd9:0084", u.device_label(nu))
+        # Sans « product » dans sysfs, un deck prend le nom de son modèle.
+        self.assertEqual("Stream Deck +", u.device_label(nu))
         self.assertEqual(
             "Elgato Stream Deck",
             u.device_label(

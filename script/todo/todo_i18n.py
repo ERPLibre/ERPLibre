@@ -25499,6 +25499,20 @@ TRANSLATIONS = {
         "fr": "Lus sur le nœud Proxmox à la création de la VM.",
         "en": "Read from the Proxmox node when the VM is created.",
     },
+    # ERPLibre Home — deck passé à une VM : état du poste
+    # (erplibre_home_status.py) quand QEMU tient un deck branché.
+    "passed to VM": {
+        "fr": "passé à la VM",
+        "en": "passed to VM",
+    },
+    "passed to a VM": {
+        "fr": "passé à une VM",
+        "en": "passed to a VM",
+    },
+    "idle, the deck is in a VM": {
+        "fr": "au repos, le deck est dans une VM",
+        "en": "idle, the deck is in a VM",
+    },
 }
 
 

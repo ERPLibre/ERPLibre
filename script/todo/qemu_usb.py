@@ -61,6 +61,38 @@ except Exception:  # pragma: no cover - même repli
     DECK_VENDOR = "0fd9"
 
 
+def _sibling_model_name():
+    """model_name de streamdeck_models.py, chargé par CHEMIN depuis le
+    répertoire de ce fichier : c'est le cas de la copie installée sous
+    LIBEXEC_DIR, où script.todo n'est pas importable. None s'il manque."""
+    import importlib.util
+
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "streamdeck_models.py"
+    )
+    if not os.path.isfile(path):
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "erplibre_streamdeck_models", path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.model_name
+    except Exception:  # pragma: no cover - fichier illisible ou cassé
+        return None
+
+
+try:
+    from script.todo.streamdeck_models import model_name as deck_model
+except Exception:  # pragma: no cover - chargé hors du dépôt, ou en root
+    deck_model = _sibling_model_name()
+    if deck_model is None:
+        # Ni le dépôt ni la copie voisine : VID:PID sans nom de modèle.
+        def deck_model(pid) -> str:
+            return ""
+
+
 # URI par défaut : les domaines du parc vivent dans qemu:///system, jamais
 # dans qemu:///session.
 DEFAULT_URI = "qemu:///system"
@@ -150,9 +182,13 @@ def device_id(vid, pid, bus=None, dev=None) -> str:
 def device_label(dev: dict) -> str:
     """Nom lisible : fabricant et produit lus dans sysfs, sinon VID:PID.
 
-    Aucun catalogue de PID : le nom que le périphérique annonce suffit, et
-    il suit les nouveaux modèles sans qu'on touche au code."""
+    Le nom que le périphérique annonce passe devant tout. Sans lui, un deck
+    (vendeur DECK_VENDOR) prend le nom de son modèle dans streamdeck_models,
+    quand la table le connaît : la copie autonome sous LIBEXEC_DIR charge
+    le catalogue voisin, et garde VID:PID s'il manque."""
     maker, product = dev.get("manufacturer") or "", dev.get("product") or ""
+    if not product and norm_hex(dev.get("vid")) == DECK_VENDOR:
+        product = deck_model(dev.get("pid"))
     if maker and product.startswith(maker):
         maker = ""
     parts = [p for p in (maker, product) if p]
