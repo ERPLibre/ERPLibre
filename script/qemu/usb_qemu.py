@@ -14,9 +14,11 @@ s'arrête en le disant, code 3.
     usb_qemu.py detach DOMAINE SÉLECTEUR [--uri URI] [--live] [--config]
                        [--yes]
     usb_qemu.py reattach --sysname 3-2
+    usb_qemu.py detach-unplugged --instance 0fd9-003-002
     usb_qemu.py install-autoreattach [--prefix DIR] [--vendor VID ...]
     usb_qemu.py remove-autoreattach [--prefix DIR] [--purge]
-    usb_qemu.py mapping list|add|remove ...
+                       [--yes | --no-restart]
+    usb_qemu.py mapping list|add|remove ... [--yes | --no-restart]
 
 SÉLECTEUR : « VID:PID » (0fd9:0080) ou « BUS.DEV » (3.5). La persistance
 se choisit à chaque appel : --live, --config, ou les deux ; aucune n'est
@@ -28,18 +30,29 @@ après un « sudo -v » quand un terminal peut répondre. Une URI distante
 (qemu+ssh) ne prend jamais sudo : les droits sont ceux du compte distant,
 et virsh lit le fichier XML localement pour l'envoyer par le RPC.
 
-Rattachement automatique. install-autoreattach pose la règle udev,
-l'unité gabarit systemd, et COPIE ce fichier avec qemu_usb.py dans
-LIBEXEC_DIR : l'unité tourne en root, et n'exécute donc jamais un fichier
-que l'utilisateur peut réécrire dans son checkout. La copie installée
-charge qemu_usb.py depuis son propre répertoire ; depuis le dépôt, elle le
-prend dans ../todo/. Codes de sortie : 0 succès ou rien à faire, 1 échec,
-2 usage, 3 accord requis.
+Rattachement automatique. install-autoreattach pose la règle udev, les
+deux unités gabarits systemd — rattachement au branchement, détachement
+au débranchement —, et COPIE ce fichier avec qemu_usb.py dans
+LIBEXEC_DIR : les unités tournent en root, et n'exécutent donc jamais un
+fichier que l'utilisateur peut réécrire dans son checkout. La copie
+installée charge qemu_usb.py depuis son propre répertoire ; depuis le
+dépôt, elle le prend dans ../todo/.
+
+Service deck de l'hôte. Retirer la dernière entrée d'un deck de la
+correspondance, ou retirer le rattachement automatique, rend le deck à
+l'hôte : si le service deck y est installé et arrêté, --yes le relance,
+--no-restart le laisse arrêté, et sans l'un ni l'autre la commande
+s'arrête avant de rien changer, code 3.
+
+Codes de sortie : 0 succès ou rien à faire, 1 échec, 2 usage, 3 accord
+requis.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import importlib.util
 import json
 import os
@@ -67,6 +80,13 @@ EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_CONFIRM = 0, 1, 2, 3
 
 # Interpréteur des relances root, le même que l'ExecStart de l'unité.
 SYSTEM_PYTHON = "/usr/bin/python3"
+
+# Verrou des unités de branchement et de débranchement : un débranchement
+# suivi d'un rebranchement rapide lance les deux en même temps, et tous deux
+# détacheraient le même <hostdev> d'adresse morte. Sous /run, que seul root
+# écrit : dans /run/lock, ouvert à tous, un compte pourrait tenir le verrou
+# et bloquer les unités.
+LOCK_PATH = "/run/erplibre-usb.lock"
 
 
 def _load_lib():
@@ -448,6 +468,44 @@ def deck_service_do(ctx, verb) -> bool:
     return True
 
 
+def has_deck(entries) -> bool:
+    """Vrai quand une entrée de correspondance vise un deck (DECK_VENDOR)."""
+    return any(e["vid"] == QU.DECK_VENDOR for e in entries)
+
+
+def deck_service_stopped(ctx) -> bool:
+    """Vrai quand le service deck de l'hôte est installé et arrêté : celui
+    qu'un deck rendu à l'hôte doit retrouver."""
+    service = deck_service_state(ctx)
+    return bool(service and service["loaded"] and not service["active"])
+
+
+def deck_restart_consent(ctx, args):
+    """None quand --yes ou --no-restart a tranché ; sinon le dit et rend
+    EXIT_CONFIRM, avant que l'appelant ne change quoi que ce soit."""
+    if args.yes or args.no_restart:
+        return None
+    ctx.err(
+        t(
+            "The deck goes back to the libvirt host, where the ERPLibre Home"
+            " Stream Deck service is stopped. Run again with --yes to restart"
+            " it, or --no-restart to leave it stopped."
+        )
+    )
+    return EXIT_CONFIRM
+
+
+def deck_restart(ctx, args) -> bool:
+    """Après le retrait : relance le service deck avec --yes, sinon montre
+    la commande qui le ferait. Faux seulement quand la relance échoue."""
+    if not args.yes:
+        ctx.out(t("The host Stream Deck service is stopped; restart it with:"))
+        ctx.out("  " + shlex.join(deck_service_argv(ctx.uri, "start")))
+        return True
+    ctx.out(t("Restarting the host Stream Deck service"))
+    return deck_service_do(ctx, "start")
+
+
 # ---------------------------------------------------------------------------
 # attach / detach
 
@@ -623,21 +681,71 @@ def cmd_list(ctx, args) -> int:
 # Fichiers système
 
 
+def under(prefix, path):
+    """`path` du système, sous `prefix` s'il est donné."""
+    return os.path.join(prefix, path.lstrip("/")) if prefix else path
+
+
 def system_paths(prefix=""):
     """Chemins posés par install-autoreattach, sous `prefix` s'il est
     donné (arborescence de test ou de préparation)."""
-
-    def under(path):
-        return os.path.join(prefix, path.lstrip("/")) if prefix else path
-
     return {
-        "rule": under(QU.UDEV_RULE_PATH),
-        "unit": under(QU.UNIT_PATH),
-        "cli": under(QU.LIBEXEC_CLI),
-        "lib": under(QU.LIBEXEC_LIB),
-        "libexec": under(QU.LIBEXEC_DIR).rstrip("/"),
-        "mapping": under(QU.MAPPING),
+        "rule": under(prefix, QU.UDEV_RULE_PATH),
+        "unit": under(prefix, QU.UNIT_PATH),
+        "detach_unit": under(prefix, QU.DETACH_UNIT_PATH),
+        "cli": under(prefix, QU.LIBEXEC_CLI),
+        "lib": under(prefix, QU.LIBEXEC_LIB),
+        "models": under(prefix, QU.LIBEXEC_MODELS),
+        "created": under(prefix, QU.LIBEXEC_CREATED),
+        "libexec": under(prefix, QU.LIBEXEC_DIR).rstrip("/"),
+        "mapping": under(prefix, QU.MAPPING),
     }
+
+
+def systemctl_path() -> str:
+    """systemctl que la règle udev appelle : QU.SYSTEMCTL quand il existe,
+    sinon celui du PATH, sinon QU.SYSTEMCTL. Le même à chaque appel, pour
+    qu'une règle réécrite reste identique."""
+    if os.access(QU.SYSTEMCTL, os.X_OK):
+        return QU.SYSTEMCTL
+    found = shutil.which("systemctl") or ""
+    return found if found.startswith("/") else QU.SYSTEMCTL
+
+
+def libexec_parents():
+    """Les répertoires parents de LIBEXEC_DIR, chemins du système, du plus
+    profond au plus haut, sans la racine : ceux qu'une installation a pu
+    créer."""
+    out = []
+    path = os.path.dirname(QU.LIBEXEC_DIR.rstrip("/"))
+    while path and path != "/":
+        out.append(path)
+        path = os.path.dirname(path)
+    return out
+
+
+def missing_parents(prefix=""):
+    """Les parents de LIBEXEC_DIR absents sous `prefix`, chemins du système,
+    du plus profond au plus haut : ceux que l'installation va créer."""
+    return [
+        p for p in libexec_parents() if not os.path.isdir(under(prefix, p))
+    ]
+
+
+def read_created(path) -> list:
+    """Les répertoires que LIBEXEC_CREATED dit créés par l'installation.
+
+    Seuls les parents de LIBEXEC_DIR sont retenus, du plus profond au plus
+    haut : un fichier altéré ne désigne jamais un autre répertoire. Fichier
+    absent ou illisible -> [], et rien n'est retiré au-delà de LIBEXEC_DIR.
+    """
+    try:
+        listed = json.loads(_read(path) or "[]")
+    except ValueError:
+        return []
+    if not isinstance(listed, list):
+        return []
+    return [p for p in libexec_parents() if p in listed]
 
 
 def _read(path):
@@ -802,17 +910,37 @@ def cmd_install(ctx, args) -> int:
         cli_text = fh.read()
     with open(LIB_PATH, encoding="utf-8") as fh:
         lib_text = fh.read()
+    # Le catalogue des modèles, voisin de qemu_usb.py dans le dépôt comme
+    # dans une copie : absent, la copie installée nomme les decks par VID:PID.
+    models_path = os.path.join(
+        os.path.dirname(LIB_PATH), "streamdeck_models.py"
+    )
+    models_text = ""
+    if os.path.isfile(models_path):
+        with open(models_path, encoding="utf-8") as fh:
+            models_text = fh.read()
     ctx.out(t("Installing USB auto-reattach"))
+    # Lus AVANT la première écriture : la copie du CLI les crée.
+    created = missing_parents(args.prefix)
     changed = False
     changed |= write_file(
         ctx,
         paths["rule"],
-        QU.udev_rule_text(rule_vendors(entries, args.vendor or ())),
+        QU.udev_rule_text(
+            rule_vendors(entries, args.vendor or ()), systemctl_path()
+        ),
         0o644,
     )
     changed |= write_file(ctx, paths["unit"], QU.unit_text(), 0o644)
+    changed |= write_file(
+        ctx, paths["detach_unit"], QU.detach_unit_text(), 0o644
+    )
     changed |= write_file(ctx, paths["cli"], cli_text, 0o755)
     changed |= write_file(ctx, paths["lib"], lib_text, 0o644)
+    if models_text:
+        changed |= write_file(ctx, paths["models"], models_text, 0o644)
+    if created:
+        write_file(ctx, paths["created"], json.dumps(created) + "\n", 0o644)
     if not os.path.exists(paths["mapping"]):
         changed |= write_file(
             ctx, paths["mapping"], QU.mapping_dumps([]), 0o644
@@ -821,40 +949,107 @@ def cmd_install(ctx, args) -> int:
     if changed and not args.prefix:
         failures = reload_system(ctx)
     ctx.out(t("Test it by replugging the device, then read:"))
-    ctx.out("  journalctl -u 'erplibre-usb-reattach@*'")
+    ctx.out(
+        "  journalctl -u 'erplibre-usb-reattach@*' -u 'erplibre-usb-detach@*'"
+    )
     return EXIT_FAIL if failures else EXIT_OK
 
 
+def remove_dirs(ctx, paths, prefix, purge):
+    """Retire, vides seulement, LIBEXEC_DIR, les parents que l'installation
+    y a créés (LIBEXEC_CREATED), et avec `purge` le répertoire de la
+    correspondance.
+
+    La copie installée charge qemu_usb.py par chemin : lancée sans -B,
+    Python y écrit __pycache__, qui bloquerait le rmdir ; il part d'abord.
+    LIBEXEC_CREATED ne part qu'avec LIBEXEC_DIR : si un fichier étranger
+    retient le répertoire, la liste reste pour un retrait ultérieur. Un
+    parent qui existait avant l'installation n'y figure pas, et reste.
+    """
+    libexec = paths["libexec"]
+    shutil.rmtree(os.path.join(libexec, "__pycache__"), ignore_errors=True)
+    created = read_created(paths["created"])
+    try:
+        others = set(os.listdir(libexec)) - {
+            os.path.basename(paths["created"])
+        }
+    except OSError:
+        others = {"?"}
+    dirs = []
+    if not others:
+        remove_file(ctx, paths["created"])
+        dirs = [libexec] + [under(prefix, p) for p in created]
+    if purge:
+        dirs.append(os.path.dirname(paths["mapping"]))
+    for path in dirs:
+        try:
+            os.rmdir(path)
+        except OSError:
+            continue
+        ctx.out("  - " + path + "/")
+
+
+def remove_lock(ctx, prefix="") -> bool:
+    """Retire LOCK_PATH (sous `prefix` s'il est donné) ; rend vrai quand il
+    a été retiré.
+
+    Appelé après le rechargement d'udev et de systemd : aucune unité ne
+    peut plus démarrer. Sur le système, le retrait se fait verrou tenu,
+    si bien qu'une unité encore en cours finit avant. Une arborescence
+    préparée n'a pas d'unité qui le tienne : le fichier part sans lui.
+    """
+    path = under(prefix, LOCK_PATH)
+    if not os.path.lexists(path):
+        return False
+    ctx.out("  - " + path)
+    if ctx.dry_run:
+        return True
+    with contextlib.nullcontext() if prefix else serialized():
+        try:
+            os.unlink(path)
+        except OSError as err:
+            ctx.err("  " + t("FAILED: {error}").format(error=err))
+            return False
+    return True
+
+
 def cmd_remove(ctx, args) -> int:
-    """Retire règle, unité et copies ; le fichier de correspondance reste,
-    sauf --purge : il porte des choix de l'utilisateur."""
+    """Retire règle, unités et copies ; le fichier de correspondance reste,
+    sauf --purge : il porte des choix de l'utilisateur. Le verrou des
+    unités (LOCK_PATH), que leur premier lancement crée, part en dernier.
+
+    Quand le rattachement était posé et que la correspondance envoie un
+    deck à une VM, le retrait rend ce deck à l'hôte : le service deck
+    arrêté y est relancé selon deck_restart_consent, demandé avant tout
+    retrait."""
     paths = system_paths(args.prefix)
+    installed = any(
+        os.path.lexists(paths[k]) for k in ("rule", "unit", "detach_unit")
+    )
+    try:
+        entries = load_mapping(paths["mapping"])
+    except ValueError:
+        entries = []
+    restart = installed and has_deck(entries) and deck_service_stopped(ctx)
+    if restart:
+        code = deck_restart_consent(ctx, args)
+        if code is not None:
+            return code
     ctx.out(t("Removing USB auto-reattach"))
     changed = False
-    for key in ("rule", "unit", "cli", "lib"):
+    for key in ("rule", "unit", "detach_unit", "cli", "lib", "models"):
         changed |= remove_file(ctx, paths[key])
     if args.purge:
         remove_file(ctx, paths["mapping"])
     if not ctx.dry_run:
-        # La copie installée charge qemu_usb.py par chemin : lancée sans
-        # -B, Python y écrit __pycache__, qui bloquerait le rmdir. Seuls
-        # les dossiers vidés partent ; celui de la correspondance n'est
-        # vidé que par --purge, et garde tout autre fichier qu'on y aurait
-        # mis.
-        shutil.rmtree(
-            os.path.join(paths["libexec"], "__pycache__"), ignore_errors=True
-        )
-        dirs = [paths["libexec"]]
-        if args.purge:
-            dirs.append(os.path.dirname(paths["mapping"]))
-        for path in dirs:
-            try:
-                os.rmdir(path)
-            except OSError:
-                pass
+        remove_dirs(ctx, paths, args.prefix, args.purge)
+    failures = 0
     if changed and not args.prefix:
-        return EXIT_FAIL if reload_system(ctx) else EXIT_OK
-    return EXIT_OK
+        failures = reload_system(ctx)
+    remove_lock(ctx, args.prefix)
+    if restart and not deck_restart(ctx, args):
+        failures += 1
+    return EXIT_FAIL if failures else EXIT_OK
 
 
 # ---------------------------------------------------------------------------
@@ -874,7 +1069,10 @@ def refresh_rule(ctx, args, entries) -> int:
     if args.mapping or not os.path.exists(rule):
         return EXIT_OK
     if not write_file(
-        ctx, rule, QU.udev_rule_text(rule_vendors(entries)), 0o644
+        ctx,
+        rule,
+        QU.udev_rule_text(rule_vendors(entries), systemctl_path()),
+        0o644,
     ):
         return EXIT_OK
     if args.prefix or ctx.dry_run:
@@ -889,6 +1087,10 @@ def cmd_mapping(ctx, args) -> int:
     add : SÉLECTEUR VID:PID, ou BUS.DEV résolu sur l'hôte ; dans ce cas,
     deux périphériques identiques branchés font retenir le numéro de série,
     qui seul les départage au rebranchement.
+
+    remove : quand il retire la DERNIÈRE entrée d'un deck, le deck revient
+    à l'hôte au prochain branchement ; le service deck arrêté y est relancé
+    selon deck_restart_consent, demandé avant l'écriture.
     """
     path = mapping_path(args)
     try:
@@ -947,23 +1149,65 @@ def cmd_mapping(ctx, args) -> int:
         if args.uri and args.uri != QU.DEFAULT_URI:
             entry["uri"] = args.uri
         entries = QU.mapping_set(entries, entry)
-    else:
-        before = len(entries)
+    restart = False
+    if args.mapping_cmd == "remove":
+        before = entries
         entries = QU.mapping_remove(
             entries, sel["vid"], sel["pid"], serial, args.domain
         )
-        if len(entries) == before:
+        if len(entries) == len(before):
             ctx.out(t("No matching entry."))
             return EXIT_OK
+        restart = (
+            has_deck(before)
+            and not has_deck(entries)
+            and deck_service_stopped(ctx)
+        )
+        if restart:
+            code = deck_restart_consent(ctx, args)
+            if code is not None:
+                return code
     write_file(ctx, path, QU.mapping_dumps(entries), 0o644)
-    return refresh_rule(ctx, args, entries)
+    code = refresh_rule(ctx, args, entries)
+    if restart and not deck_restart(ctx, args):
+        return EXIT_FAIL
+    return code
 
 
 # ---------------------------------------------------------------------------
-# reattach
+# reattach / detach-unplugged
+
+
+@contextlib.contextmanager
+def serialized():
+    """Tient LOCK_PATH (flock exclusif, en attente) le temps du bloc.
+
+    Ouvert sans suivre de lien symbolique, en 0600. Un verrou qui ne
+    s'ouvre pas — compte non root, /run absent — laisse le bloc tourner
+    sans lui : il ordonne deux unités, il n'est pas une condition pour
+    agir."""
+    fd = None
+    try:
+        fd = os.open(LOCK_PATH, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError:
+        if fd is not None:
+            os.close(fd)
+        fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def cmd_reattach(ctx, args) -> int:
+    """reattach sous le verrou partagé avec detach-unplugged."""
+    with serialized():
+        return _reattach(ctx, args)
+
+
+def _reattach(ctx, args) -> int:
     """Lancé par erplibre-usb-reattach@<nom sysfs>.service, en root.
 
     Lit le périphérique sous sysfs, cherche sa VM dans la correspondance,
@@ -1016,8 +1260,80 @@ def cmd_reattach(ctx, args) -> int:
     return EXIT_FAIL if execute(ctx, steps) else EXIT_OK
 
 
+def cmd_detach_unplugged(ctx, args) -> int:
+    """detach-unplugged sous le verrou partagé avec reattach."""
+    with serialized():
+        return _detach_unplugged(ctx, args)
+
+
+def _detach_unplugged(ctx, args) -> int:
+    """Lancé par erplibre-usb-detach@<VID-BUS-DEV>.service, en root, quand un
+    périphérique d'un vendeur de la règle udev est débranché.
+
+    Pour chaque VM que la correspondance associe à ce vendeur et qui
+    tourne, exécute unplug_plan : seul le <hostdev> live d'un VID:PID de
+    la correspondance, à l'adresse exacte du périphérique parti, est
+    détaché. Le sysfs relu à cet instant écarte une adresse que porte
+    encore un périphérique branché. Rien à faire rend 0 ; une VM dont
+    l'état ne se lit pas compte comme un échec, sans arrêter les autres.
+    """
+    removed = QU.parse_unplugged(args.instance)
+    if removed is None:
+        ctx.err(t("Invalid unit instance: {name}").format(name=args.instance))
+        return EXIT_USAGE
+    path = mapping_path(args)
+    try:
+        entries = load_mapping(path)
+    except ValueError as err:
+        ctx.err(
+            t("Unreadable mapping {path}: {error}").format(
+                path=path, error=err
+            )
+        )
+        return EXIT_FAIL
+    label = QU.unplugged_id(removed)
+    targets = QU.unplug_targets(entries, removed["vid"])
+    if not targets:
+        ctx.out(t("{device}: mapped to no VM.").format(device=label))
+        return EXIT_OK
+    host_devs = QU.host_usb_devices(ctx.sysfs_root)
+    failures = 0
+    for target in targets:
+        ctx.uri = target["uri"]
+        ctx.out(f"{label} -> {target['domain']}")
+        running = domain_running(ctx, target["domain"])
+        if running is None:
+            failures += 1
+            continue
+        live_state = None
+        if running:
+            live_state = domain_state(ctx, target["domain"])
+            if live_state is None:
+                failures += 1
+                continue
+        steps = QU.unplug_plan(removed, target, live_state, host_devs)
+        failures += execute(ctx, steps)
+    return EXIT_FAIL if failures else EXIT_OK
+
+
 # ---------------------------------------------------------------------------
 # Ligne de commande
+
+
+def _restart_options(parser):
+    """--yes et --no-restart, exclusives : le sort du service deck de l'hôte
+    quand un retrait lui rend le deck (deck_restart_consent)."""
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--yes",
+        action="store_true",
+        help="Restart the stopped host Stream Deck service.",
+    )
+    group.add_argument(
+        "--no-restart",
+        action="store_true",
+        help="Leave the host Stream Deck service stopped.",
+    )
 
 
 def build_parser():
@@ -1067,6 +1383,15 @@ def build_parser():
     s.add_argument("--mapping", default="")
     s.add_argument("--prefix", default="")
 
+    s = sub.add_parser(
+        "detach-unplugged",
+        parents=[common],
+        help="udev/systemd unplug handler.",
+    )
+    s.add_argument("--instance", required=True, help="VID-BUS-DEV")
+    s.add_argument("--mapping", default="")
+    s.add_argument("--prefix", default="")
+
     s = sub.add_parser("install-autoreattach", parents=[common])
     s.add_argument("--prefix", default="")
     s.add_argument("--vendor", action="append", default=[])
@@ -1074,6 +1399,7 @@ def build_parser():
     s = sub.add_parser("remove-autoreattach", parents=[common])
     s.add_argument("--prefix", default="")
     s.add_argument("--purge", action="store_true")
+    _restart_options(s)
 
     s = sub.add_parser("mapping", help="Replug mapping file.")
     msub = s.add_subparsers(dest="mapping_cmd", required=True)
@@ -1088,6 +1414,7 @@ def build_parser():
     m.add_argument("selector", help="VID:PID or BUS.DEV")
     m.add_argument("--domain", default=None)
     m.add_argument("--serial", default=None)
+    _restart_options(m)
     for m in msub.choices.values():
         m.add_argument("--mapping", default="")
         m.add_argument("--prefix", default="")
@@ -1114,6 +1441,8 @@ def main(argv=None, run=None, out=None, err=None) -> int:
         return cmd_usb(ctx, args, args.cmd)
     if args.cmd == "reattach":
         return cmd_reattach(ctx, args)
+    if args.cmd == "detach-unplugged":
+        return cmd_detach_unplugged(ctx, args)
 
     # Les sous-commandes qui écrivent dans /etc et /usr/local se relancent
     # sous sudo plutôt que d'échouer à mi-chemin sur un fichier refusé.

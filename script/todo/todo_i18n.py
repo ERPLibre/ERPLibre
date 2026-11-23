@@ -25513,6 +25513,23 @@ TRANSLATIONS = {
         "fr": "au repos, le deck est dans une VM",
         "en": "idle, the deck is in a VM",
     },
+    # Menu QEMU — USB : débranchement et service deck
+    "Detach unplugged {device} from {domain}": {
+        "fr": "Détacher {device} débranché de {domain}",
+        "en": "Detach unplugged {device} from {domain}",
+    },
+    "The deck goes back to the libvirt host, where the ERPLibre Home Stream Deck service is stopped. Run again with --yes to restart it, or --no-restart to leave it stopped.": {
+        "fr": "Le deck revient à l'hôte libvirt, où le service Stream Deck d'ERPLibre Home est arrêté. Relancez avec --yes pour le redémarrer, ou --no-restart pour le laisser arrêté.",
+        "en": "The deck goes back to the libvirt host, where the ERPLibre Home Stream Deck service is stopped. Run again with --yes to restart it, or --no-restart to leave it stopped.",
+    },
+    "Invalid unit instance: {name}": {
+        "fr": "Instance d'unité invalide : {name}",
+        "en": "Invalid unit instance: {name}",
+    },
+    "No mapping sends a deck to a VM anymore.": {
+        "fr": "Plus aucune correspondance n'envoie de deck à une VM.",
+        "en": "No mapping sends a deck to a VM anymore.",
+    },
 }
 
 

@@ -949,23 +949,136 @@ class LeRattachement(unittest.TestCase):
         self.assertIn("<address", plan[1]["xml"])
 
 
+class LeDebranchement(unittest.TestCase):
+    """Un deck débranché : seul le <hostdev> live à son adresse part."""
+
+    PARTI = {"vid": "0fd9", "bus": 1, "dev": 9}
+    CIBLE = {"domain": VM, "uri": u.DEFAULT_URI, "pairs": {("0fd9", "0084")}}
+
+    def test_instance_is_parsed_strictly(self):
+        self.assertEqual(self.PARTI, u.parse_unplugged("0fd9-001-009"))
+        self.assertEqual("0fd9 @ 001.009", u.unplugged_id(self.PARTI))
+        for mauvais in (
+            "",
+            None,
+            "0fd9-1-9",
+            "0FD9-001-009",
+            "0fd9-001-009-x",
+            "0fd9-001-009;reboot",
+            "../0fd9-001-009",
+            "0fd9\\x2d001-009",
+        ):
+            self.assertIsNone(u.parse_unplugged(mauvais), mauvais)
+
+    def test_targets_one_per_vm_of_the_vendor(self):
+        entrees = [
+            {"vid": "0fd9", "pid": "0084", "domain": "vm-a"},
+            {"vid": "0fd9", "pid": "0080", "domain": "vm-a", "serial": "S"},
+            {
+                "vid": "0fd9",
+                "pid": "0084",
+                "domain": "vm-b",
+                "uri": URI_DISTANT,
+            },
+            {"vid": "046d", "pid": "c52b", "domain": "vm-c"},
+        ]
+        cibles = u.unplug_targets(entrees, "0FD9")
+        self.assertEqual(
+            [
+                {
+                    "domain": "vm-a",
+                    "uri": u.DEFAULT_URI,
+                    "pairs": {("0fd9", "0084"), ("0fd9", "0080")},
+                },
+                {
+                    "domain": "vm-b",
+                    "uri": URI_DISTANT,
+                    "pairs": {("0fd9", "0084")},
+                },
+            ],
+            cibles,
+        )
+        self.assertEqual([], u.unplug_targets(entrees, "1234"))
+
+    def test_hostdev_at_the_dead_address_is_detached_live(self):
+        live = u.usb_state(
+            _avec_hostdevs(_hd_addr(1, 9, "0084"), _hd_addr(1, 4, "0084"))
+        )
+        plan = u.unplug_plan(self.PARTI, self.CIBLE, live, [])
+        self.assertEqual(1, len(plan))
+        self.assertEqual(
+            ["virsh", "--connect", u.DEFAULT_URI, "detach-device", VM],
+            plan[0]["argv"][:5],
+        )
+        self.assertEqual("--live", plan[0]["argv"][-1])
+        self.assertIn("<address bus='1' device='9'/>", plan[0]["xml"])
+        self.assertIn("<product id='0x0084'/>", plan[0]["xml"])
+
+    def test_still_plugged_identical_deck_is_kept(self):
+        """Le même bus/numéro porte encore un deck du même modèle : c'est
+        un autre exemplaire, jamais détaché."""
+        live = u.usb_state(_avec_hostdevs(_hd_addr(1, 9, "0084")))
+        branche = {"vid": "0fd9", "pid": "0084", "busnum": 1, "devnum": 9}
+        plan = u.unplug_plan(self.PARTI, self.CIBLE, live, [branche])
+        self.assertEqual(1, len(plan))
+        self.assertIn("skip", plan[0])
+
+    def test_other_address_unmapped_model_and_placeholder_are_kept(self):
+        live = u.usb_state(
+            _avec_hostdevs(
+                _hd_addr(1, 4, "0084"),
+                _hd_addr(1, 9, "0080"),
+                HD_MANQUANT.replace("0x0080", "0x0084"),
+            )
+        )
+        plan = u.unplug_plan(self.PARTI, self.CIBLE, live, [])
+        self.assertEqual(1, len(plan))
+        self.assertEqual(u.t("not attached"), plan[0]["skip"])
+
+    def test_vm_not_running(self):
+        plan = u.unplug_plan(self.PARTI, self.CIBLE, None)
+        self.assertEqual(u.t("the VM is not running"), plan[0]["skip"])
+
+    def test_remote_uri_of_the_entry(self):
+        live = u.usb_state(_avec_hostdevs(_hd_addr(1, 9, "0084")))
+        cible = {**self.CIBLE, "uri": URI_DISTANT}
+        plan = u.unplug_plan(self.PARTI, cible, live, [])
+        self.assertEqual(URI_DISTANT, plan[0]["argv"][2])
+
+
 class LesTextesSysteme(unittest.TestCase):
     def test_udev_rule(self):
         texte = u.udev_rule_text(["0FD9", "0fd9", "046d"])
         regles = [l for l in texte.splitlines() if not l.startswith("#")]
+        retrait = (
+            'ACTION=="remove", SUBSYSTEM=="usb", ENV{{DEVTYPE}}=="usb_device", '
+            'ENV{{PRODUCT}}=="{glob}/*", ENV{{BUSNUM}}=="[0-9][0-9][0-9]", '
+            'ENV{{DEVNUM}}=="[0-9][0-9][0-9]", RUN+="/usr/bin/systemctl '
+            "--no-block start erplibre-usb-detach@{vid}-$env{{BUSNUM}}-"
+            '$env{{DEVNUM}}.service"'
+        )
         self.assertEqual(
             [
                 'ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", '
                 'ATTR{idVendor}=="046d", TAG+="systemd", '
                 'ENV{SYSTEMD_WANTS}+="erplibre-usb-reattach@%k.service"',
+                retrait.format(glob="46d", vid="046d"),
                 'ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", '
                 'ATTR{idVendor}=="0fd9", TAG+="systemd", '
                 'ENV{SYSTEMD_WANTS}+="erplibre-usb-reattach@%k.service"',
+                retrait.format(glob="fd9", vid="0fd9"),
             ],
             regles,
         )
         with self.assertRaises(ValueError):
             u.udev_rule_text([])
+        for mauvais in ("systemctl", "/usr/bin/system ctl", '/bin/a"b'):
+            with self.assertRaises(ValueError):
+                u.udev_rule_text(["0fd9"], mauvais)
+        # Le noyau écrit PRODUCT sans zéros de tête.
+        self.assertIn(
+            'ENV{PRODUCT}=="0/*"', u.udev_rule_text(["0000"], "/bin/systemctl")
+        )
         self.assertTrue(
             u.UDEV_RULE_PATH.endswith("/85-erplibre-usb-passthrough.rules")
         )
@@ -986,12 +1099,30 @@ class LesTextesSysteme(unittest.TestCase):
         for mauvais in ("relatif/usb_qemu.py", "/chemin avec espace.py"):
             with self.assertRaises(ValueError):
                 u.unit_text(mauvais)
+            with self.assertRaises(ValueError):
+                u.detach_unit_text(mauvais)
+
+    def test_detach_unit(self):
+        texte = u.detach_unit_text()
+        self.assertIn("Type=oneshot\n", texte)
+        self.assertIn(
+            "ExecStart=/usr/bin/python3 -I -B "
+            "/usr/local/libexec/erplibre-usb/usb_qemu.py detach-unplugged "
+            "--instance %i\n",
+            texte,
+        )
+        self.assertNotIn("%I", texte)
 
     def test_locations(self):
         self.assertEqual("/etc/erplibre/usb-passthrough.json", u.MAPPING)
         self.assertEqual(
             "/etc/systemd/system/erplibre-usb-reattach@.service", u.UNIT_PATH
         )
+        self.assertEqual(
+            "/etc/systemd/system/erplibre-usb-detach@.service",
+            u.DETACH_UNIT_PATH,
+        )
+        self.assertTrue(u.LIBEXEC_CREATED.startswith(u.LIBEXEC_DIR))
         self.assertTrue(u.LIBEXEC_CLI.startswith(u.LIBEXEC_DIR))
         self.assertTrue(u.LIBEXEC_LIB.startswith(u.LIBEXEC_DIR))
 

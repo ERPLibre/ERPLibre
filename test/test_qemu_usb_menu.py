@@ -558,7 +558,13 @@ class TestRattachementAuto(_Cas):
         scp, install = self.hv.commandes
         self.assertEqual(
             shlex.join(
-                ["scp", qemu_usb_menu.CLI, qemu_usb_menu.LIB, f"{SAUT}:{tmp}/"]
+                [
+                    "scp",
+                    qemu_usb_menu.CLI,
+                    qemu_usb_menu.LIB,
+                    qemu_usb_menu.MODELS,
+                    f"{SAUT}:{tmp}/",
+                ]
             ),
             scp,
         )
@@ -699,6 +705,52 @@ class TestRetraitSansSerie(_Cas):
         self.assertEqual(["--serial", ""], mots[-2:])
 
 
+class TestServiceRenduALHote(_Cas):
+    """Retirer la dernière entrée d'un deck, ou le rattachement : le menu
+    demande s'il faut relancer le service deck arrêté de l'hôte, et passe
+    --yes ou --no-restart au CLI, qui l'exige."""
+
+    def setUp(self):
+        super().setUp()
+        self.service = {"installed": True, "active": False}
+        self.entrees = [{"vid": "0fd9", "pid": "0080", "domain": "vm-a"}]
+        self.todo._qemu_usb_read_mapping = lambda jump="": list(self.entrees)
+
+    def test_unmap_the_last_deck_asks_then_passes_yes(self):
+        with mock.patch("os.geteuid", lambda: 0):
+            self.jouer("_qemu_usb_autoreattach", ["1", "3", "1", "y", "y"])
+        self.assertEqual("--yes", shlex.split(self.hv.commandes[0])[-1])
+
+    def test_unmap_declined_passes_no_restart(self):
+        with mock.patch("os.geteuid", lambda: 0):
+            self.jouer("_qemu_usb_autoreattach", ["1", "3", "1", "n", "y"])
+        self.assertEqual("--no-restart", shlex.split(self.hv.commandes[0])[-1])
+
+    def test_no_question_while_another_deck_stays_mapped(self):
+        self.entrees.append({"vid": "0fd9", "pid": "0084", "domain": "vm-z"})
+        with mock.patch("os.geteuid", lambda: 0):
+            self.jouer("_qemu_usb_autoreattach", ["1", "3", "1", "y"])
+        mots = shlex.split(self.hv.commandes[0])
+        self.assertNotIn("--yes", mots)
+        self.assertNotIn("--no-restart", mots)
+
+    def test_no_question_when_the_service_runs(self):
+        self.service = {"installed": True, "active": True}
+        with mock.patch("os.geteuid", lambda: 0):
+            self.jouer("_qemu_usb_autoreattach", ["1", "5", "y"])
+        self.assertEqual(
+            "remove-autoreattach", shlex.split(self.hv.commandes[0])[-1]
+        )
+
+    def test_remove_autoreattach_asks_too(self):
+        with mock.patch("os.geteuid", lambda: 0):
+            self.jouer("_qemu_usb_autoreattach", ["1", "5", "y", "y"])
+        self.assertEqual(
+            ["remove-autoreattach", "--yes"],
+            shlex.split(self.hv.commandes[0])[-2:],
+        )
+
+
 class TestLeContratDuCli(_Cas):
     """Chaque commande que le menu compose se lit par l'analyseur du CLI
     lui-même : une option renommée là-bas fait tomber ce test-ci."""
@@ -736,6 +788,21 @@ class TestLeContratDuCli(_Cas):
             (remove.mapping_cmd, remove.selector, remove.domain),
         )
         self.assertEqual("remove-autoreattach", desinstalle.cmd)
+
+    def test_restart_options_parse(self):
+        """--yes et --no-restart, que le menu ajoute quand le deck revient à
+        l'hôte, sont lus par mapping remove et remove-autoreattach."""
+        self.service = {"installed": True, "active": False}
+        self.todo._qemu_usb_read_mapping = lambda jump="": [
+            {"vid": "0fd9", "pid": "0080", "domain": "vm-a"}
+        ]
+        with mock.patch("os.geteuid", lambda: 1000):
+            self.jouer("_qemu_usb_autoreattach", ["1", "3", "1", "y", "y"])
+            self.jouer("_qemu_usb_autoreattach", ["1", "5", "n", "y"])
+        remove, desinstalle = map(self.lire, self.hv.commandes)
+        self.assertTrue(remove.yes)
+        self.assertFalse(remove.no_restart)
+        self.assertTrue(desinstalle.no_restart)
 
 
 class TestSondes(unittest.TestCase):

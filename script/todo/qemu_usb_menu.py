@@ -52,6 +52,8 @@ RACINE = os.path.normpath(
 )
 CLI = os.path.join(RACINE, "script", "qemu", "usb_qemu.py")
 LIB = os.path.join(RACINE, "script", "todo", "qemu_usb.py")
+# Voisin de LIB, copié avec lui : la copie installée y lit les noms de modèle.
+MODELS = os.path.join(RACINE, "script", "todo", "streamdeck_models.py")
 
 # Options des sondes ssh : jamais d'invite de mot de passe dans une sonde
 # muette, et un hôte injoignable rend la main en quelques secondes.
@@ -431,6 +433,32 @@ class QemuUsbMixin:
         )
         if self._is_yes(input(question.format(host=host))):
             self._qemu_usb_exec(self._qemu_usb_service_cmd("start", jump))
+
+    def _qemu_usb_restart_option(self, jump, before, after):
+        """L'option du CLI quand un retrait rend le deck à l'hôte.
+
+        before / after : la correspondance avant et après le retrait. Quand
+        aucune entrée de deck ne reste et que le service deck de l'hôte est
+        installé et arrêté, le CLI exige --yes ou --no-restart (sinon code
+        3) : demande, et rend l'option choisie. [] sinon : le CLI ne
+        demande rien."""
+
+        def deck(entries):
+            return any(e["vid"] == qu.DECK_VENDOR for e in entries)
+
+        if not deck(before) or deck(after):
+            return []
+        etat = self._qemu_usb_service_state(jump)
+        if not etat["installed"] or etat["active"]:
+            return []
+        host = jump or t("this machine")
+        print(f"\n  {t('No mapping sends a deck to a VM anymore.')}")
+        question = t(
+            "Restart the ERPLibre Home deck service on {host}? (y/N): "
+        )
+        if self._is_yes(input(question.format(host=host))):
+            return ["--yes"]
+        return ["--no-restart"]
 
     # -------------------------------------------------------------- #
     # [1] à [4] : périphérique sur l'hôte libvirt
@@ -934,7 +962,7 @@ class QemuUsbMixin:
             return
         cli = f"{tmp}/{os.path.basename(CLI)}"
         cmds = [
-            shlex.join(["scp", CLI, LIB, f"{jump}:{tmp}/"]),
+            shlex.join(["scp", CLI, LIB, MODELS, f"{jump}:{tmp}/"]),
             self._qemu_usb_root_cmd(jump, cli, "install-autoreattach"),
         ]
         try:
@@ -944,11 +972,20 @@ class QemuUsbMixin:
             self._qemu_usb_capture(["ssh", *SSH_OPTS, jump, "rm", "-rf", tmp])
 
     def _qemu_usb_reattach_remove(self, jump):
+        """Retire règle, unités et copie du CLI de l'hôte. Une
+        correspondance qui envoie un deck à une VM cesse d'agir : le
+        service deck arrêté de l'hôte est alors proposé à la relance."""
         if jump and not self._qemu_usb_cli_installed(jump):
             print(f"  {t('Auto-reattach is not installed on this host.')}")
             return
+        option = self._qemu_usb_restart_option(
+            jump, self._qemu_usb_read_mapping(jump), []
+        )
         cmd = self._qemu_usb_root_cmd(
-            jump, self._qemu_usb_host_cli(jump), "remove-autoreattach"
+            jump,
+            self._qemu_usb_host_cli(jump),
+            "remove-autoreattach",
+            *option,
         )
         if self._qemu_usb_confirm_run([cmd]):
             print(f"✅ {t('Auto-reattach removed.')}")
@@ -996,12 +1033,12 @@ class QemuUsbMixin:
             print(f"    {t('starts on replug: disable its autostart there.')}")
 
     def _qemu_usb_unmap(self, target):
+        """Retire une entrée de cette VM de la correspondance de l'hôte. La
+        dernière entrée d'un deck rend le deck à l'hôte : le service deck
+        arrêté y est proposé à la relance."""
         jump = target["jump"]
-        entries = [
-            e
-            for e in self._qemu_usb_read_mapping(jump)
-            if e["domain"] == target["domain"]
-        ]
+        toutes = self._qemu_usb_read_mapping(jump)
+        entries = [e for e in toutes if e["domain"] == target["domain"]]
         if not entries:
             print(f"  {t('No mapping for this VM.')}")
             return
@@ -1018,6 +1055,10 @@ class QemuUsbMixin:
         # retirerait aussi les entrées de ce modèle qui en portent une.
         args = ["mapping", "remove", selecteur, "--domain", e["domain"]]
         args += ["--serial", e.get("serial") or ""]
+        reste = qu.mapping_remove(
+            toutes, e["vid"], e["pid"], e.get("serial") or "", e["domain"]
+        )
+        args += self._qemu_usb_restart_option(jump, toutes, reste)
         if self._qemu_usb_confirm_run(
             [
                 self._qemu_usb_root_cmd(

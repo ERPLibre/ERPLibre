@@ -124,11 +124,22 @@ UDEV_RULE_NAME = "85-erplibre-usb-passthrough.rules"
 UDEV_RULE_PATH = "/etc/udev/rules.d/" + UDEV_RULE_NAME
 UNIT_NAME = "erplibre-usb-reattach@.service"
 UNIT_PATH = "/etc/systemd/system/" + UNIT_NAME
+# Unité du débranchement : son instance est « VID-BUS-DEV » (0fd9-003-002).
+DETACH_UNIT_NAME = "erplibre-usb-detach@.service"
+DETACH_UNIT_PATH = "/etc/systemd/system/" + DETACH_UNIT_NAME
+# systemctl que la règle udev lance au débranchement : RUN exige un chemin
+# absolu.
+SYSTEMCTL = "/usr/bin/systemctl"
 # Le CLI et ce module sont COPIÉS hors du dépôt : une unité root n'exécute
 # pas un fichier que l'utilisateur peut réécrire dans son checkout.
 LIBEXEC_DIR = "/usr/local/libexec/erplibre-usb/"
 LIBEXEC_CLI = LIBEXEC_DIR + "usb_qemu.py"
 LIBEXEC_LIB = LIBEXEC_DIR + "qemu_usb.py"
+# Le catalogue des modèles, voisin de LIBEXEC_LIB qui le charge par chemin.
+LIBEXEC_MODELS = LIBEXEC_DIR + "streamdeck_models.py"
+# Liste JSON des répertoires parents de LIBEXEC_DIR que l'installation a
+# créés : le retrait ne supprime qu'eux, et seulement vides.
+LIBEXEC_CREATED = LIBEXEC_DIR + ".created-dirs.json"
 
 # Espaces de noms que libvirt et virt-install écrivent dans un domaine.
 # ElementTree renomme en ns0, ns1… tout préfixe qu'il ne connaît pas ; les
@@ -148,6 +159,9 @@ _BUSDEV = re.compile(r"^\s*(\d{1,3})\.(\d{1,3})\s*$")
 # ni « .. » ne passe : le nom vient d'udev et finit dans un chemin lu en
 # root.
 _SYSNAME = re.compile(r"^\d{1,3}-\d{1,3}(?:\.\d{1,3}){0,6}$")
+# Instance de DETACH_UNIT_NAME : VID sur 4 chiffres hexadécimaux, puis
+# BUSNUM et DEVNUM tels que le noyau les écrit (%03d).
+_UNPLUGGED = re.compile(r"^([0-9a-f]{4})-(\d{3})-(\d{3})$")
 
 
 # ---------------------------------------------------------------------------
@@ -1227,37 +1241,177 @@ def reattach_plan(
     return plan
 
 
-def udev_rule_text(vids=(DECK_VENDOR,)) -> str:
-    """Contenu de UDEV_RULE_PATH : à l'ajout d'un périphérique USB de ces
-    vendeurs, systemd démarre erplibre-usb-reattach@<nom sysfs>.service.
+def parse_unplugged(instance):
+    """{"vid", "bus", "dev"} lus dans l'instance « VID-BUS-DEV » de
+    DETACH_UNIT_NAME (« 0fd9-003-002 »), ou None si elle n'a pas cette
+    forme exacte. Rien d'autre ne passe : la chaîne vient d'udev et finit
+    dans les arguments de virsh."""
+    m = _UNPLUGGED.match(instance or "")
+    if not m:
+        return None
+    return {"vid": m.group(1), "bus": int(m.group(2)), "dev": int(m.group(3))}
+
+
+def unplugged_id(removed: dict) -> str:
+    """« 0fd9 @ 003.002 » : le vendeur et l'adresse d'un périphérique parti,
+    tout ce que l'événement de retrait en garde (forme parse_unplugged)."""
+    return f"{removed['vid']} @ {removed['bus']:03d}.{removed['dev']:03d}"
+
+
+def unplug_targets(entries, vid) -> list:
+    """Les VM que la correspondance associe au vendeur `vid`, une fois
+    chacune : [{"domain", "uri", "pairs"}], dans l'ordre des entrées.
+    pairs : l'ensemble des (vid, pid) de ce vendeur associés à cette VM ;
+    uri : entry["uri"], sinon DEFAULT_URI."""
+    vid = norm_hex(vid)
+    out = {}
+    for e in (_norm_entry(x) for x in entries):
+        if not e or e["vid"] != vid:
+            continue
+        key = (e.get("uri") or DEFAULT_URI, e["domain"])
+        target = out.setdefault(
+            key, {"domain": key[1], "uri": key[0], "pairs": set()}
+        )
+        target["pairs"].add((e["vid"], e["pid"]))
+    return list(out.values())
+
+
+def unplug_plan(removed: dict, target: dict, live_state, host_devs=()) -> list:
+    """Étapes qui retirent de la VM `target` (forme unplug_targets) le
+    <hostdev> live du périphérique débranché `removed` (forme
+    parse_unplugged).
+
+    Au débranchement, libvirt garde le <hostdev> live à son adresse morte
+    et QEMU continue de le lister : l'invité garde un périphérique
+    fantôme. Le détacher aussitôt lui montre la déconnexion.
+
+    Un <hostdev> n'est détaché que si les trois conditions tiennent :
+    son VID:PID est dans target["pairs"], son adresse est exactement
+    bus/dev de `removed`, et aucun périphérique de ce VID:PID n'est encore
+    branché à cette adresse (host_devs, forme read_usb_device) — un deck
+    identique toujours branché n'est jamais touché. Le joker « missing »
+    n'a pas d'adresse et reste. live_state None : VM arrêtée, une étape
+    skip. Ne touche jamais --config.
+    """
+    domain, uri = target["domain"], target.get("uri") or DEFAULT_URI
+    label = unplugged_id(removed)
+    if live_state is None:
+        return [
+            {
+                "what": t("Detach unplugged {device} from {domain}").format(
+                    device=label, domain=domain
+                ),
+                "view": "live",
+                "skip": t("the VM is not running"),
+            }
+        ]
+    plugged = {
+        (d.get("vid"), d.get("pid"), d.get("busnum"), d.get("devnum"))
+        for d in host_devs
+    }
+    plan = []
+    for h in live_state["hostdevs"]:
+        if (h["vid"], h["pid"]) not in target["pairs"]:
+            continue
+        if h.get("missing") or (h["bus"], h["dev"]) != (
+            removed["bus"],
+            removed["dev"],
+        ):
+            continue
+        if (h["vid"], h["pid"], h["bus"], h["dev"]) in plugged:
+            continue
+        plan.append(
+            {
+                "what": t("Detach unplugged {device} from {domain}").format(
+                    device=device_id(h["vid"], h["pid"], h["bus"], h["dev"]),
+                    domain=domain,
+                )
+                + " (live)",
+                "view": "live",
+                "argv": virsh_uri_argv(
+                    uri, "detach-device", domain, XML_PLACEHOLDER, "--live"
+                ),
+                "xml": hostdev_xml(
+                    h["vid"], h["pid"], h["bus"], h["dev"], optional=False
+                ),
+            }
+        )
+    if not plan:
+        plan.append(
+            {
+                "what": t("Detach unplugged {device} from {domain}").format(
+                    device=label, domain=domain
+                ),
+                "view": "live",
+                "skip": t("not attached"),
+            }
+        )
+    return plan
+
+
+def _product_glob(vid) -> str:
+    """Motif udev du champ PRODUCT d'un vendeur : le noyau l'écrit
+    « %x/%x/%x » (idVendor/idProduct/bcdDevice), en hexadécimal minuscule
+    sans zéros de tête — 0fd9 donne « fd9/* », 0000 donne « 0/* »."""
+    return (vid.lstrip("0") or "0") + "/*"
+
+
+def udev_rule_text(vids=(DECK_VENDOR,), systemctl=SYSTEMCTL) -> str:
+    """Contenu de UDEV_RULE_PATH, deux lignes par vendeur de `vids`.
+
+    Branchement : systemd démarre erplibre-usb-reattach@<nom sysfs>.service
+    par SYSTEMD_WANTS. Débranchement : SYSTEMD_WANTS n'agit qu'à
+    l'apparition d'un périphérique, donc RUN lance « systemctl --no-block
+    start erplibre-usb-detach@<VID-BUS-DEV>.service », qui rend la main
+    aussitôt. Au retrait, sysfs n'a plus d'attributs (ATTR{} ne vaut rien)
+    et la base udev n'est pas relue (ID_VENDOR_ID manque) : seules les
+    variables du noyau restent, PRODUCT, BUSNUM et DEVNUM. Le VID de
+    l'instance est celui de la ligne, BUSNUM et DEVNUM sont exigés sur
+    trois chiffres : l'instance ne porte que [0-9a-f-], sans échappement
+    systemd à faire ni rien qu'un périphérique puisse y glisser.
 
     udev ne lance pas virsh lui-même : il tue un travail long, et le pilote
-    nodedev de libvirt attend lui-même les événements udev. L'unité tourne
-    hors d'udev. Le nom 85-… passe après 70-streamdeck.rules : les deux
-    règles s'appliquent. Vendeurs vides -> ValueError.
+    nodedev de libvirt attend lui-même les événements udev. Les unités
+    tournent hors d'udev. Le nom 85-… passe après 70-streamdeck.rules : les
+    deux règles s'appliquent. Vendeurs vides, ou systemctl qui n'est pas
+    un chemin absolu sans espace -> ValueError.
     """
     vendors = sorted({norm_hex(v) for v in vids if norm_hex(v)})
     if not vendors:
         raise ValueError("udev_rule_text: at least one vendor required")
+    if not systemctl.startswith("/") or re.search(r"[\s\"]", systemctl):
+        raise ValueError("udev_rule_text: absolute systemctl path required")
     lines = [
         "# ERPLibre : rattache à leur VM les périphériques USB de " + MAPPING,
+        "# et les en détache au débranchement.",
         "# Généré par TODO, réécrit à chaque pose.",
     ]
     unit = UNIT_NAME.replace("@.", "@%k.")
+    digits = "[0-9][0-9][0-9]"
     for vid in vendors:
+        detach = DETACH_UNIT_NAME.replace(
+            "@.", f"@{vid}-$env{{BUSNUM}}-$env{{DEVNUM}}."
+        )
         lines.append(
             'ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", '
             f'ATTR{{idVendor}}=="{vid}", TAG+="systemd", '
             f'ENV{{SYSTEMD_WANTS}}+="{unit}"'
         )
+        lines.append(
+            'ACTION=="remove", SUBSYSTEM=="usb", '
+            'ENV{DEVTYPE}=="usb_device", '
+            f'ENV{{PRODUCT}}=="{_product_glob(vid)}", '
+            f'ENV{{BUSNUM}}=="{digits}", ENV{{DEVNUM}}=="{digits}", '
+            f'RUN+="{systemctl} --no-block start {detach}"'
+        )
     return "\n".join(lines) + "\n"
 
 
-def unit_text(exec_path: str = LIBEXEC_CLI) -> str:
-    """Contenu de UNIT_PATH, l'unité gabarit lancée par la règle udev.
+def _unit(description: str, exec_path: str, args: str) -> str:
+    """Texte d'une unité gabarit oneshot qui lance le CLI en root.
 
-    %i et non %I : l'instance est le nom sysfs brut (« 3-2.1 »), et %I
-    déséchapperait chaque « - » en « / ». Root, donc qemu:///system sans
+    %i et non %I : l'instance est brute (« 3-2.1 », « 0fd9-003-002 »), et
+    %I déséchapperait chaque « - » en « / ». Root, donc qemu:///system sans
     sudo. -B : root n'écrit aucun __pycache__ à côté de la copie. exec_path
     : chemin absolu sans espace, sinon ValueError.
     """
@@ -1265,11 +1419,28 @@ def unit_text(exec_path: str = LIBEXEC_CLI) -> str:
         raise ValueError("unit_text: absolute path without spaces required")
     return (
         "[Unit]\n"
-        "Description=ERPLibre USB passthrough reattach (%i)\n"
+        f"Description={description} (%i)\n"
         "After=libvirtd.service virtqemud.service\n"
         "\n"
         "[Service]\n"
         "Type=oneshot\n"
-        f"ExecStart=/usr/bin/python3 -I -B {exec_path}"
-        " reattach --sysname %i\n"
+        f"ExecStart=/usr/bin/python3 -I -B {exec_path} {args}\n"
+    )
+
+
+def unit_text(exec_path: str = LIBEXEC_CLI) -> str:
+    """Contenu de UNIT_PATH, l'unité gabarit du branchement : « reattach
+    --sysname %i »."""
+    return _unit(
+        "ERPLibre USB passthrough reattach", exec_path, "reattach --sysname %i"
+    )
+
+
+def detach_unit_text(exec_path: str = LIBEXEC_CLI) -> str:
+    """Contenu de DETACH_UNIT_PATH, l'unité gabarit du débranchement :
+    « detach-unplugged --instance %i »."""
+    return _unit(
+        "ERPLibre USB passthrough detach on unplug",
+        exec_path,
+        "detach-unplugged --instance %i",
     )

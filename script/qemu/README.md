@@ -580,22 +580,41 @@ libvirt host, a udev rule starts a root systemd unit that reads the mapping
 *device → VM* and reattaches the device **live** to its running VM. It never
 touches the saved definition — persistence was chosen at attach time.
 
+On **unplug**, libvirt keeps the live `<hostdev>` at its dead address and the
+guest keeps a phantom device. The same rule starts a second unit that detaches
+it live right away: only a `<hostdev>` whose `VID:PID` is in the mapping and
+whose address is exactly the one of the device that left, never a still
+plugged identical deck. The removal event no longer has the sysfs attributes,
+so the rule reads the kernel variables `PRODUCT`, `BUSNUM` and `DEVNUM`, and
+the unit instance is `VID-BUS-DEV` (`0fd9-003-002`). Both units share a lock,
+so a fast unplug/replug runs them one after the other.
+
 | File | Role |
 |---|---|
-| `/etc/udev/rules.d/85-erplibre-usb-passthrough.rules` | one line per mapped vendor (deck always) |
-| `/etc/systemd/system/erplibre-usb-reattach@.service` | `Type=oneshot`, runs as root |
-| `/usr/local/libexec/erplibre-usb/` | a **copy** of `usb_qemu.py` and `qemu_usb.py`: the root unit never runs a file of the checkout |
+| `/etc/udev/rules.d/85-erplibre-usb-passthrough.rules` | two lines per mapped vendor (deck always): add and remove |
+| `/etc/systemd/system/erplibre-usb-reattach@.service` | replug, `Type=oneshot`, runs as root |
+| `/etc/systemd/system/erplibre-usb-detach@.service` | unplug, `Type=oneshot`, runs as root |
+| `/usr/local/libexec/erplibre-usb/` | a **copy** of `usb_qemu.py`, `qemu_usb.py` and `streamdeck_models.py`: the root units never run a file of the checkout |
 | `/etc/erplibre/usb-passthrough.json` | the mapping, kept by the removal unless `--purge` |
+
+The removal takes away only the directories the installation created: a
+`/usr/local/libexec` that existed before stays.
+
+Removing the **last mapping entry of a deck**, or removing auto-reattach while
+a deck is mapped, gives the deck back to the host. When the ERPLibre Home deck
+service is installed and stopped there, the command asks for a decision first:
+`--yes` restarts it, `--no-restart` leaves it stopped, and without either it
+changes nothing and exits with code 3. The TODO menu asks the question.
 
 ```bash
 # On the libvirt host (re-runs itself under sudo when needed)
 ./script/qemu/usb_qemu.py install-autoreattach [--vendor VID]...
 ./script/qemu/usb_qemu.py mapping add <vm-name> 0fd9:0080 [--serial SERIAL]
 ./script/qemu/usb_qemu.py mapping list
-./script/qemu/usb_qemu.py mapping remove 0fd9:0080 --domain <vm-name> [--serial SERIAL]
-./script/qemu/usb_qemu.py remove-autoreattach [--purge]
+./script/qemu/usb_qemu.py mapping remove 0fd9:0080 --domain <vm-name> [--serial SERIAL] [--yes|--no-restart]
+./script/qemu/usb_qemu.py remove-autoreattach [--purge] [--yes|--no-restart]
 
-journalctl -u 'erplibre-usb-reattach@*'   # one line per decision
+journalctl -u 'erplibre-usb-reattach@*' -u 'erplibre-usb-detach@*'   # one line per decision
 ```
 
 The serial only matters for two identical decks going to two VMs: an entry
@@ -649,8 +668,10 @@ With a real Stream Deck:
    ERPLibre checkout, exits 0 once a graphical session is open.
 4. The deck's **buttons render** from the guest's ERPLibre Home.
 5. Start the VM with the deck unplugged: it still starts.
-6. With auto-reattach: unplug and replug the deck on the host; the journal of
-   `erplibre-usb-reattach@*` shows the reattach, and the buttons come back.
+6. With auto-reattach: unplug the deck on the host; the journal of
+   `erplibre-usb-detach@*` shows the detach, and the guest sees the deck
+   leave. Replug it; the journal of `erplibre-usb-reattach@*` shows the
+   reattach, and the buttons come back.
 7. SPICE: open `virt-viewer` from the menu. It opens the SPICE display, not
    the VNC one; **File › USB device selection** lists the workstation's
    devices, and the deck is ticked.

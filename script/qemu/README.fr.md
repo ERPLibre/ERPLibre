@@ -634,22 +634,43 @@ la correspondance *périphérique → VM* et rattache le périphérique **en liv
 à sa VM en marche. Elle ne touche jamais la définition enregistrée — la
 persistance a été choisie à l'attachement.
 
+Au **débranchement**, libvirt garde le `<hostdev>` live à son adresse morte
+et l'invité garde un périphérique fantôme. La même règle lance une seconde
+unité qui le détache aussitôt en live : seulement un `<hostdev>` dont le
+`VID:PID` est dans la correspondance et dont l'adresse est exactement celle
+du périphérique parti, jamais un deck identique encore branché. L'événement
+de retrait n'a plus les attributs sysfs : la règle lit les variables du noyau
+`PRODUCT`, `BUSNUM` et `DEVNUM`, et l'instance de l'unité est `VID-BUS-DEV`
+(`0fd9-003-002`). Les deux unités partagent un verrou : un débranchement suivi
+d'un rebranchement rapide les fait passer l'une après l'autre.
+
 | Fichier | Rôle |
 |---|---|
-| `/etc/udev/rules.d/85-erplibre-usb-passthrough.rules` | une ligne par vendeur de la correspondance (deck toujours) |
-| `/etc/systemd/system/erplibre-usb-reattach@.service` | `Type=oneshot`, tourne en root |
-| `/usr/local/libexec/erplibre-usb/` | une **copie** de `usb_qemu.py` et `qemu_usb.py` : l'unité root n'exécute jamais un fichier du checkout |
+| `/etc/udev/rules.d/85-erplibre-usb-passthrough.rules` | deux lignes par vendeur de la correspondance (deck toujours) : ajout et retrait |
+| `/etc/systemd/system/erplibre-usb-reattach@.service` | rebranchement, `Type=oneshot`, tourne en root |
+| `/etc/systemd/system/erplibre-usb-detach@.service` | débranchement, `Type=oneshot`, tourne en root |
+| `/usr/local/libexec/erplibre-usb/` | une **copie** de `usb_qemu.py`, `qemu_usb.py` et `streamdeck_models.py` : les unités root n'exécutent jamais un fichier du checkout |
 | `/etc/erplibre/usb-passthrough.json` | la correspondance, conservée au retrait sauf `--purge` |
+
+Le retrait n'ôte que les répertoires que l'installation a créés : un
+`/usr/local/libexec` qui existait avant reste.
+
+Retirer la **dernière entrée d'un deck** de la correspondance, ou retirer le
+rattachement alors qu'un deck y figure, rend le deck à l'hôte. Quand le
+service deck d'ERPLibre Home y est installé et arrêté, la commande demande
+d'abord une décision : `--yes` le relance, `--no-restart` le laisse arrêté, et
+sans l'un ni l'autre elle ne change rien et sort en code 3. Le menu TODO pose
+la question.
 
 ```bash
 # Sur l'hôte libvirt (se relance sous sudo au besoin)
 ./script/qemu/usb_qemu.py install-autoreattach [--vendor VID]...
 ./script/qemu/usb_qemu.py mapping add <nom-vm> 0fd9:0080 [--serial SÉRIE]
 ./script/qemu/usb_qemu.py mapping list
-./script/qemu/usb_qemu.py mapping remove 0fd9:0080 --domain <nom-vm> [--serial SÉRIE]
-./script/qemu/usb_qemu.py remove-autoreattach [--purge]
+./script/qemu/usb_qemu.py mapping remove 0fd9:0080 --domain <nom-vm> [--serial SÉRIE] [--yes|--no-restart]
+./script/qemu/usb_qemu.py remove-autoreattach [--purge] [--yes|--no-restart]
 
-journalctl -u 'erplibre-usb-reattach@*'   # une ligne par décision
+journalctl -u 'erplibre-usb-reattach@*' -u 'erplibre-usb-detach@*'   # une ligne par décision
 ```
 
 Le numéro de série ne compte que pour deux decks identiques destinés à deux
@@ -706,9 +727,10 @@ Avec un vrai Stream Deck :
    ouverte.
 4. Les **boutons du deck s'affichent** depuis l'ERPLibre Home de l'invité.
 5. Démarrez la VM deck débranché : elle démarre quand même.
-6. Avec le rattachement auto : débranchez puis rebranchez le deck sur
-   l'hôte ; le journal de `erplibre-usb-reattach@*` montre le rattachement,
-   et les boutons reviennent.
+6. Avec le rattachement auto : débranchez le deck sur l'hôte ; le journal
+   de `erplibre-usb-detach@*` montre le détachement, et l'invité voit le
+   deck partir. Rebranchez-le ; le journal de `erplibre-usb-reattach@*`
+   montre le rattachement, et les boutons reviennent.
 7. SPICE : ouvrez `virt-viewer` depuis le menu. Il ouvre l'affichage SPICE,
    pas le VNC ; **File › USB device selection** liste les périphériques du
    poste, et le deck y est coché.

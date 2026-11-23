@@ -13,11 +13,17 @@ Ce que ces tests gardent :
 - le service Stream Deck de l'hôte n'est arrêté qu'avec --yes ;
 - reattach rend 0 quand il n'a rien à faire, détache l'adresse morte et
   attache en live à la nouvelle ;
-- install-autoreattach pose les fichiers à l'identique une seule fois.
+- detach-unplugged ne détache que l'adresse du périphérique parti, sous le
+  même verrou que reattach ;
+- install-autoreattach pose les fichiers à l'identique une seule fois, et
+  remove-autoreattach ne retire que les répertoires qu'elle a créés ;
+- un retrait qui rend le deck à l'hôte exige --yes ou --no-restart quand
+  le service deck y est arrêté.
 
 Toutes les valeurs sont inventées : VM « vm-essai », hôte en .invalid.
 """
 
+import contextlib
 import importlib.util
 import io
 import json
@@ -636,6 +642,153 @@ class TestReattach(Base):
         self.assertEqual(code, 1)
 
 
+class TestDebranchement(Base):
+    EUID = 0
+
+    def setUp(self):
+        super().setUp()
+        self.mapping = os.path.join(self.tmp, "usb-passthrough.json")
+        self.ecrire(
+            [
+                {"vid": "0fd9", "pid": "0080", "domain": DOMAINE},
+                {"vid": "046d", "pid": "c52b", "domain": "vm-souris"},
+            ]
+        )
+        verrou = mock.patch.object(
+            UQ, "LOCK_PATH", os.path.join(self.tmp, "usb.lock")
+        )
+        verrou.start()
+        self.addCleanup(verrou.stop)
+
+    def ecrire(self, entrees):
+        with open(self.mapping, "w") as fh:
+            fh.write(QU.mapping_dumps(entrees))
+
+    def debrancher(self, hote, instance="0fd9-003-004"):
+        return self.lancer(
+            hote,
+            "detach-unplugged",
+            "--instance",
+            instance,
+            "--mapping",
+            self.mapping,
+        )
+
+    def test_instance_invalide(self):
+        hote = Hote()
+        for mauvaise in ("3-2", "0fd9-3-4", "0fd9-003-004;id"):
+            code, _, _ = self.debrancher(hote, mauvaise)
+            self.assertEqual(code, 2, mauvaise)
+        self.assertEqual(hote.appels, [])
+
+    def test_vendeur_sans_vm(self):
+        hote = Hote()
+        code, out, _ = self.debrancher(hote, "1234-003-004")
+        self.assertEqual(code, 0)
+        self.assertEqual(hote.appels, [])
+        self.assertIn("mapped to no VM", out)
+
+    def test_detache_l_adresse_partie_seulement(self):
+        hote = Hote(
+            live=xml_vm(
+                hostdev("0fd9", "0080", 3, 4),
+                hostdev("0fd9", "0080", 3, 5),
+                hostdev("0fd9", "0080", missing=True),
+            )
+        )
+        code, _, err = self.debrancher(hote)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            [(v, f) for v, f, _x in hote.envoyes],
+            [("detach-device", "--live")],
+        )
+        self.assertIn("device='4'", hote.envoyes[0][2])
+        self.assertFalse(any("--config" in a for a in hote.appels))
+        self.assertFalse(any(a[0] == "sudo" for a in hote.appels))
+
+    def test_deck_identique_encore_branche_garde(self):
+        """3.5 porte encore le deck du faux sysfs : son <hostdev> reste."""
+        hote = Hote(live=xml_vm(hostdev("0fd9", "0080", 3, 5)))
+        code, out, _ = self.debrancher(hote, "0fd9-003-005")
+        self.assertEqual(code, 0)
+        self.assertEqual(hote.envoyes, [])
+        self.assertIn("not attached", out)
+
+    def test_vm_arretee(self):
+        hote = Hote(
+            etat="shut off", live=xml_vm(hostdev("0fd9", "0080", 3, 4))
+        )
+        code, _, _ = self.debrancher(hote)
+        self.assertEqual(code, 0)
+        self.assertEqual(hote.envoyes, [])
+        self.assertNotIn("dumpxml", hote.verbes())
+
+    def test_une_vm_illisible_n_arrete_pas_les_autres(self):
+        self.ecrire(
+            [
+                {"vid": "0fd9", "pid": "0080", "domain": "vm-absente"},
+                {
+                    "vid": "0fd9",
+                    "pid": "0080",
+                    "domain": DOMAINE,
+                    "serial": "S",
+                },
+            ]
+        )
+
+        class Partiel(Hote):
+            def __call__(hote, argv, **kw):
+                if "domstate" in argv and "vm-absente" in argv:
+                    hote.appels.append(list(argv))
+                    return cp(1, err="error: failed to get domain")
+                return super().__call__(argv, **kw)
+
+        hote = Partiel(live=xml_vm(hostdev("0fd9", "0080", 3, 4)))
+        code, _, _ = self.debrancher(hote)
+        self.assertEqual(code, 1)
+        self.assertEqual(1, len(hote.envoyes))
+
+    def test_correspondance_illisible(self):
+        with open(self.mapping, "w") as fh:
+            fh.write("{pas du json")
+        code, _, _ = self.debrancher(Hote())
+        self.assertEqual(code, 1)
+
+    def test_verrou_tenu_pendant_les_appels(self):
+        """reattach et detach-unplugged tiennent LOCK_PATH : un second
+        verrou ne s'obtient pas pendant qu'ils parlent à virsh."""
+        import fcntl
+
+        tenus = []
+
+        class Sonde(Hote):
+            def __call__(hote, argv, **kw):
+                with open(UQ.LOCK_PATH) as fh:
+                    try:
+                        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        tenus.append(False)
+                    except BlockingIOError:
+                        tenus.append(True)
+                return super().__call__(argv, **kw)
+
+        self.debrancher(Sonde(live=xml_vm(hostdev("0fd9", "0080", 3, 4))))
+        self.lancer(
+            Sonde(), "reattach", "--sysname", "3-2", "--mapping", self.mapping
+        )
+        self.assertTrue(tenus)
+        self.assertTrue(all(tenus))
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(UQ.LOCK_PATH).st_mode))
+
+    def test_verrou_inaccessible_n_empeche_rien(self):
+        with mock.patch.object(
+            UQ, "LOCK_PATH", os.path.join(self.tmp, "absent", "usb.lock")
+        ):
+            hote = Hote(live=xml_vm(hostdev("0fd9", "0080", 3, 4)))
+            code, _, _ = self.debrancher(hote)
+        self.assertEqual(code, 0)
+        self.assertEqual(1, len(hote.envoyes))
+
+
 class TestInstallation(Base):
     def test_pose_puis_rien_a_refaire(self):
         prefix = os.path.join(self.tmp, "racine")
@@ -651,9 +804,21 @@ class TestInstallation(Base):
             self.assertIn(
                 f"-I -B {QU.LIBEXEC_CLI} reattach --sysname %i", fh.read()
             )
+        with open(p["detach_unit"]) as fh:
+            self.assertIn(
+                f"-I -B {QU.LIBEXEC_CLI} detach-unplugged --instance %i",
+                fh.read(),
+            )
+        with open(p["rule"]) as fh:
+            self.assertIn("erplibre-usb-detach@0fd9-$env{BUSNUM}", fh.read())
         with open(p["cli"]) as fh, open(CLI) as src:
             self.assertEqual(fh.read(), src.read())
         with open(p["lib"]) as fh, open(UQ.LIB_PATH) as src:
+            self.assertEqual(fh.read(), src.read())
+        modeles = os.path.join(
+            os.path.dirname(UQ.LIB_PATH), "streamdeck_models.py"
+        )
+        with open(p["models"]) as fh, open(modeles) as src:
             self.assertEqual(fh.read(), src.read())
         self.assertEqual(stat.S_IMODE(os.stat(p["cli"]).st_mode), 0o755)
         self.assertEqual(stat.S_IMODE(os.stat(p["rule"]).st_mode), 0o644)
@@ -691,14 +856,123 @@ class TestInstallation(Base):
             Hote(), "remove-autoreattach", "--prefix", prefix
         )
         self.assertEqual(code, 0)
-        for cle in ("rule", "unit", "cli", "lib", "libexec"):
+        for cle in (
+            "rule",
+            "unit",
+            "detach_unit",
+            "cli",
+            "lib",
+            "models",
+            "libexec",
+        ):
             self.assertFalse(os.path.exists(p[cle]), cle)
         self.assertTrue(os.path.exists(p["mapping"]))
+        # /usr/local/libexec, /usr/local et /usr n'existaient pas dans
+        # l'arborescence : l'installation les a créés, le retrait les ôte.
+        self.assertFalse(os.path.exists(os.path.join(prefix, "usr")))
         self.lancer(
             Hote(), "remove-autoreattach", "--prefix", prefix, "--purge"
         )
         self.assertFalse(os.path.exists(p["mapping"]))
         self.assertFalse(os.path.exists(os.path.dirname(p["mapping"])))
+
+    def test_retrait_ote_le_verrou_des_unites(self):
+        """Le premier rattachement crée LOCK_PATH ; le retrait ne le laisse
+        pas derrière lui."""
+        prefix = os.path.join(self.tmp, "racine")
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        verrou = UQ.under(prefix, UQ.LOCK_PATH)
+        os.makedirs(os.path.dirname(verrou))
+        Path(verrou).write_bytes(b"")
+        code, out, _ = self.lancer(
+            Hote(), "remove-autoreattach", "--prefix", prefix
+        )
+        self.assertEqual(code, 0)
+        self.assertFalse(os.path.lexists(verrou))
+        self.assertIn("  - " + verrou, out)
+        # Absent : rien à dire, rien d'échoué.
+        code, out, _ = self.lancer(
+            Hote(), "remove-autoreattach", "--prefix", prefix
+        )
+        self.assertEqual(code, 0)
+        self.assertNotIn(verrou, out)
+
+    def test_retrait_du_verrou_le_tient(self):
+        """Sur le système, le verrou est pris avant d'être retiré : une
+        unité encore en cours finit d'abord."""
+        verrou = os.path.join(self.tmp, "usb.lock")
+        Path(verrou).write_bytes(b"")
+        vus = []
+
+        @contextlib.contextmanager
+        def tenu():
+            vus.append(os.path.exists(verrou))
+            yield
+
+        sorties = []
+        ctx = UQ.Ctx(run=Hote(), out=sorties.append)
+        with (
+            mock.patch.object(UQ, "LOCK_PATH", verrou),
+            mock.patch.object(UQ, "serialized", tenu),
+        ):
+            self.assertTrue(UQ.remove_lock(ctx))
+        self.assertEqual(vus, [True])
+        self.assertFalse(os.path.exists(verrou))
+
+    def test_un_libexec_preexistant_reste(self):
+        prefix = os.path.join(self.tmp, "racine")
+        avant = os.path.join(prefix, "usr/local/libexec")
+        os.makedirs(avant)
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        p = UQ.system_paths(prefix)
+        self.assertFalse(os.path.exists(p["created"]))
+        self.lancer(Hote(), "remove-autoreattach", "--prefix", prefix)
+        self.assertFalse(os.path.exists(p["libexec"]))
+        self.assertTrue(os.path.isdir(avant))
+
+    def test_seuls_les_parents_crees_partent(self):
+        prefix = os.path.join(self.tmp, "racine")
+        os.makedirs(os.path.join(prefix, "usr/local"))
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        p = UQ.system_paths(prefix)
+        with open(p["created"]) as fh:
+            self.assertEqual(["/usr/local/libexec"], json.load(fh))
+        # Une seconde pose ne réécrit pas la liste : rien n'a été créé.
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        with open(p["created"]) as fh:
+            self.assertEqual(["/usr/local/libexec"], json.load(fh))
+        self.lancer(Hote(), "remove-autoreattach", "--prefix", prefix)
+        self.assertFalse(
+            os.path.exists(os.path.join(prefix, "usr/local/libexec"))
+        )
+        self.assertTrue(os.path.isdir(os.path.join(prefix, "usr/local")))
+
+    def test_un_fichier_etranger_garde_libexec_et_sa_liste(self):
+        prefix = os.path.join(self.tmp, "racine")
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        p = UQ.system_paths(prefix)
+        Path(p["libexec"], "autre.txt").write_text("x")
+        self.lancer(Hote(), "remove-autoreattach", "--prefix", prefix)
+        self.assertTrue(os.path.exists(p["created"]))
+        self.assertFalse(os.path.exists(p["cli"]))
+        os.unlink(os.path.join(p["libexec"], "autre.txt"))
+        self.lancer(Hote(), "remove-autoreattach", "--prefix", prefix)
+        self.assertFalse(os.path.exists(os.path.join(prefix, "usr")))
+
+    def test_une_liste_alteree_ne_designe_rien_d_autre(self):
+        prefix = os.path.join(self.tmp, "racine")
+        self.lancer(Hote(), "install-autoreattach", "--prefix", prefix)
+        p = UQ.system_paths(prefix)
+        etc_vide = os.path.join(prefix, "etc", "vide")
+        os.makedirs(etc_vide)
+        with open(p["created"], "w") as fh:
+            json.dump(["/etc/vide", "/usr/local/libexec", "../.."], fh)
+        self.lancer(Hote(), "remove-autoreattach", "--prefix", prefix)
+        self.assertTrue(os.path.isdir(etc_vide))
+        self.assertFalse(
+            os.path.exists(os.path.join(prefix, "usr/local/libexec"))
+        )
+        self.assertTrue(os.path.isdir(os.path.join(prefix, "usr/local")))
 
     def test_non_root_se_relance_sous_sudo(self):
         hote = Hote()
@@ -725,6 +999,119 @@ class TestInstallation(Base):
         absent = os.path.join(self.tmp, "absent", "python3")
         with venv, mock.patch.object(UQ, "SYSTEM_PYTHON", absent):
             self.assertEqual("/venv.invalid/python", UQ.root_python())
+
+
+class TestServiceRendu(Base):
+    """Un retrait qui rend le deck à l'hôte, service deck arrêté."""
+
+    def setUp(self):
+        super().setUp()
+        self.prefix = os.path.join(self.tmp, "racine")
+        self.chemin = UQ.system_paths(self.prefix)["mapping"]
+
+    def ecrire(self, *entrees):
+        os.makedirs(os.path.dirname(self.chemin), exist_ok=True)
+        with open(self.chemin, "w") as fh:
+            fh.write(QU.mapping_dumps(entrees))
+
+    def lire(self):
+        with open(self.chemin) as fh:
+            return QU.mapping_loads(fh.read())
+
+    def retirer(self, hote, *extra, selecteur="0fd9:0080"):
+        return self.lancer(
+            hote,
+            "mapping",
+            "remove",
+            selecteur,
+            "--prefix",
+            self.prefix,
+            *extra,
+        )
+
+    DECK = {"vid": "0fd9", "pid": "0080", "domain": DOMAINE}
+
+    def test_derniere_entree_sans_accord_rend_3_sans_rien_changer(self):
+        self.ecrire(self.DECK)
+        hote = Hote(service="inactive")
+        code, _, err = self.retirer(hote)
+        self.assertEqual(code, 3)
+        self.assertIn("--yes", err)
+        self.assertIn("--no-restart", err)
+        self.assertEqual([self.DECK], self.lire())
+        self.assertEqual([], hote.verbes())
+
+    def test_yes_retire_puis_relance(self):
+        self.ecrire(self.DECK)
+        hote = Hote(service="inactive")
+        code, _, err = self.retirer(hote, "--yes")
+        self.assertEqual(code, 0, err)
+        self.assertEqual([], self.lire())
+        self.assertEqual(["systemctl start"], hote.verbes())
+        self.assertEqual("active", hote.service)
+
+    def test_no_restart_retire_et_montre_la_commande(self):
+        self.ecrire(self.DECK)
+        hote = Hote(service="inactive")
+        code, out, _ = self.retirer(hote, "--no-restart")
+        self.assertEqual(code, 0)
+        self.assertEqual([], self.lire())
+        self.assertEqual([], hote.verbes())
+        self.assertIn(f"systemctl --user start {UQ.DECK_SERVICE}", out)
+
+    def test_yes_et_no_restart_s_excluent(self):
+        with self.assertRaises(SystemExit):
+            self.retirer(Hote(), "--yes", "--no-restart")
+
+    def test_rien_a_demander(self):
+        """Un autre deck reste, le service tourne ou manque, ou l'entrée
+        n'est pas un deck : ni accord, ni relance."""
+        souris = {"vid": "046d", "pid": "c52b", "domain": DOMAINE}
+        autre = {"vid": "0fd9", "pid": "0084", "domain": "vm-autre"}
+        for entrees, service, selecteur in (
+            ((self.DECK, autre), "inactive", "0fd9:0080"),
+            ((self.DECK,), "active", "0fd9:0080"),
+            ((self.DECK,), None, "0fd9:0080"),
+            ((souris,), "inactive", "046d:c52b"),
+        ):
+            self.ecrire(*entrees)
+            hote = Hote(service=service)
+            code, _, _ = self.retirer(hote, selecteur=selecteur)
+            self.assertEqual(code, 0, (entrees, service))
+            self.assertEqual([], hote.verbes())
+
+    def test_remove_autoreattach_exige_l_accord(self):
+        self.lancer(Hote(), "install-autoreattach", "--prefix", self.prefix)
+        self.ecrire(self.DECK)
+        p = UQ.system_paths(self.prefix)
+        hote = Hote(service="inactive")
+        code, _, _ = self.lancer(
+            hote, "remove-autoreattach", "--prefix", self.prefix
+        )
+        self.assertEqual(code, 3)
+        self.assertTrue(os.path.exists(p["rule"]))
+        code, _, err = self.lancer(
+            hote, "remove-autoreattach", "--prefix", self.prefix, "--yes"
+        )
+        self.assertEqual(code, 0, err)
+        self.assertFalse(os.path.exists(p["rule"]))
+        self.assertEqual(["systemctl start"], hote.verbes())
+
+    def test_remove_autoreattach_sans_deck_ni_pose(self):
+        hote = Hote(service="inactive")
+        self.ecrire(self.DECK)
+        # Rien de posé : le retrait ne change rien au sort du deck.
+        code, _, _ = self.lancer(
+            hote, "remove-autoreattach", "--prefix", self.prefix
+        )
+        self.assertEqual(code, 0)
+        self.lancer(Hote(), "install-autoreattach", "--prefix", self.prefix)
+        self.ecrire({"vid": "046d", "pid": "c52b", "domain": DOMAINE})
+        code, _, _ = self.lancer(
+            hote, "remove-autoreattach", "--prefix", self.prefix
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual([], hote.verbes())
 
 
 class TestCorrespondance(Base):
