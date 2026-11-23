@@ -110,8 +110,10 @@ Fedora publie s390x sur une arborescence à part (`fedora-secondary`) :
 ses versions s390x sont donc tenues à la main dans `ARCH_ONLY_VERSIONS`.
 
 Debian publie deux variantes d'image cloud. `genericcloud` porte un noyau
-compilé sans aucun pilote d'affichage : une VM graphique (`--desktop`)
-télécharge donc `generic`, dont le noyau pilote l'écran virtuel. Debian 13 ne
+compilé sans aucun pilote d'affichage et sans USB : une VM graphique
+(`--desktop`) ou qui reçoit un périphérique USB (`--usb-hostdev`,
+`--spice-usbredir`) télécharge donc `generic`, dont le noyau pilote l'écran
+virtuel et le bus USB. Debian 13 ne
 publie que `generic` ; Debian 12 garde `genericcloud` pour les serveurs.
 Chaque variante a son propre fichier en cache.
 
@@ -492,6 +494,226 @@ pont.
 
 Les deux sont aussi au menu **TODO › Execute › Deploy › QEMU/KVM**, section
 **Réseau**.
+
+## Périphériques USB : passage et redirection SPICE (Stream Deck)
+
+Un périphérique USB atteint une VM par l'une de deux voies, selon **l'endroit
+où il est branché**. Les Stream Deck (Elgato, vendeur `0fd9`) sont toujours
+listés en tête et marqués, parce qu'ERPLibre Home les pilote dans l'invité.
+
+| Périphérique branché sur… | Voie | Ce qu'elle exige |
+|---|---|---|
+| l'**hôte libvirt** (ce poste, ou l'hyperviseur derrière un ProxyJump) | passage `<hostdev>`, attaché par `virsh` | un contrôleur USB dans la VM ; rien côté visionneuse |
+| le **poste** qui ouvre `virt-viewer` | redirection USB SPICE (`usbredir`) | un affichage SPICE placé **avant** le VNC, des emplacements de redirection `spicevmc`, une session de visionneuse ouverte |
+
+Prenez le passage quand le deck est sur la machine qui fait tourner la VM : il
+tient sans visionneuse, peut revenir à chaque démarrage et suivre un
+rebranchement. Prenez la redirection SPICE quand le deck est sur votre bureau
+et la VM ailleurs : le deck suit la fenêtre de la visionneuse et revient au
+poste à sa fermeture.
+
+Un périphérique USB de l'hôte ne sert qu'**un** domaine en marche à la fois :
+libvirt refuse de démarrer une seconde VM qui le tient, et
+`startupPolicy='optional'` ne couvre pas un périphérique déjà pris.
+
+### Le menu TODO
+
+**TODO › Execute › Deploy › QEMU/KVM**, section **USB**, entrée
+**Périphériques USB (Stream Deck, passage, SPICE)** :
+
+- *Périphérique sur l'hôte libvirt* — lister les périphériques USB de cette
+  machine (concentrateurs exclus) ; attacher un périphérique à une VM ; le
+  détacher ; voir les périphériques USB d'une VM (chaque vue, contrôleurs
+  USB, ordre des affichages, emplacements de redirection).
+- *Périphérique sur ce poste (SPICE)* — ouvrir `virt-viewer` avec la
+  redirection USB ; activer la redirection USB SPICE sur une VM.
+- *Rebranchement* — rattachement auto au rebranchement (règle udev,
+  correspondance).
+
+La VM se choisit parmi les domaines libvirt locaux, puis les hôtes de
+`~/.ssh/config` : un hôte distant est joint par son `ProxyJump` en
+`qemu+ssh://<saut>/system`, et la liste des périphériques vient alors de
+**cet** hyperviseur. Un hôte sans `ProxyJump` est refusé. Chaque plan est
+montré — étapes sautées avec leur raison, puis les commandes — et ne s'exécute
+qu'après confirmation. `sudo` ne précède `virsh` que pour un `qemu:///system`
+local que le groupe `libvirt` n'ouvre pas, jamais pour `qemu+ssh`.
+
+**La persistance se choisit à chaque attachement** :
+
+- **live et config** — maintenant et à chaque démarrage ;
+- **live seulement** — jusqu'à l'arrêt de la VM ;
+- **config seulement** — à partir du prochain démarrage.
+
+Une vue qui tient déjà le périphérique est sautée : attacher deux fois ne
+change rien. La vue live est sautée quand la VM est éteinte. Une VM sans
+contrôleur USB, ou au modèle `none`, est refusée. Le XML porte
+`startupPolicy='optional'` : la VM démarre même deck débranché.
+
+Deux périphériques identiques branchés rendent `VID:PID` ambigu pour
+libvirt : le périphérique est alors épinglé par `BUS.DEV`, une adresse qui
+change au rebranchement.
+
+### Le CLI `script/qemu/usb_qemu.py`
+
+Les mêmes plans, sans question — ce qui demande un accord passe par `--yes`.
+Codes de sortie : `0` fait ou rien à faire, `1` échec, `2` usage, `3` accord
+requis.
+
+```bash
+# Périphériques de l'hôte, decks en tête (marqués *) ; --json pour un script
+./script/qemu/usb_qemu.py list
+./script/qemu/usb_qemu.py list --uri qemu+ssh://<saut>/system
+
+# Attacher : --live, --config ou les deux ; aucune n'est implicite
+./script/qemu/usb_qemu.py attach <nom-vm> 0fd9:0080 --live --config
+./script/qemu/usb_qemu.py attach <nom-vm> 3.5 --live    # BUS.DEV
+./script/qemu/usb_qemu.py attach <nom-vm> 0fd9:0080 --live \
+    --uri qemu+ssh://<saut>/system
+
+# Détacher ; --yes relance ensuite le service deck de l'hôte
+./script/qemu/usb_qemu.py detach <nom-vm> 0fd9:0080 --live --config --yes
+
+# Options communes : --dry-run (commandes et XML, rien ne change), --no-sudo
+```
+
+Le sélecteur est `VID:PID` (préfixes `0x` admis) ou `BUS.DEV` tel que `list`
+l'affiche. Un nom sysfs comme `3-5` est refusé : son second nombre est un
+port, pas un numéro de périphérique. Un `VID:PID` non branché est admis pour
+un détachement, et pour un attachement `--config` seul. Sur une URI distante,
+`list` lit l'hyperviseur par `virsh nodedev-list`, pas le sysfs local.
+
+### À l'installation
+
+Le formulaire de déploiement porte la case **Attacher les Stream Deck branchés
+(passage USB + SPICE)**, et les invites posent la même question ; les deux
+n'apparaissent que si une VM choisie a un bureau. La cocher ajoute deux
+options à `deploy_qemu.py` :
+
+```bash
+./script/qemu/deploy_qemu.py --name <nom-vm> --desktop \
+    --usb-hostdev 0fd9:0080 --spice-usbredir --dry-run
+```
+
+- `--usb-hostdev VID:PID|BUS.DEV` (répétable) passe un périphérique de l'hôte
+  avec `startupPolicy=optional`. Absent de l'hôte, il est ignoré avec un
+  avertissement et la VM est créée quand même ; des périphériques identiques
+  sont chacun épinglés par `bus.dev`.
+- `--spice-usbredir` ajoute un affichage SPICE **avant** le VNC, avec ses
+  emplacements de redirection : `virt-viewer` ouvre le premier affichage, et
+  offre donc son menu *USB device selection*. L'affichage VNC reste pour les
+  tunnels SSH et le diagnostic de console. VM graphique x86_64 seulement :
+  une VM sans affichage, ou d'une autre architecture, est refusée avant tout
+  téléchargement. `--usb-hostdev` est refusé sur s390x, qui n'a pas de bus
+  USB.
+
+Quand plusieurs VM se déploient d'un coup, les decks vont à la **première** VM
+graphique seulement — les autres reçoivent quand même SPICE. Une VM recréée
+ne retrouve les decks que si elle les avait à sa création. Avec l'outil
+`erplibre_home_streamdeck`, l'installation dans l'invité reçoit toujours
+`--stream-deck --autostart` : le service deck y démarre quelle que soit la
+voie qui amène le deck.
+
+### Redirection SPICE sur une VM existante
+
+L'entrée *Activer la redirection USB SPICE sur une VM* lit la définition
+enregistrée et n'ajoute que ce qui manque : un affichage SPICE déplacé ou
+ajouté avant le VNC, un contrôleur `qemu-xhci`, deux emplacements `spicevmc`,
+le canal de l'agent SPICE et — si vous l'acceptez — un filtre qui ne redirige
+que le vendeur `0fd9`. Un changement d'affichage vaut au démarrage suivant :
+une VM en marche n'est arrêtée qu'avec votre accord, redéfinie, puis
+relancée. *Ouvrir virt-viewer avec la redirection USB* lance ensuite
+`virt-viewer` avec le filtre de redirection automatique de `0fd9` : un deck
+branché sur le poste suit la fenêtre ; les autres périphériques se choisissent
+à la main dans **File › USB device selection**.
+
+### Rattachement automatique au rebranchement
+
+Un rebranchement donne au périphérique un nouveau numéro, et QEMU perd le
+sien. Sur l'hôte libvirt, une règle udev lance une unité systemd root qui lit
+la correspondance *périphérique → VM* et rattache le périphérique **en live**
+à sa VM en marche. Elle ne touche jamais la définition enregistrée — la
+persistance a été choisie à l'attachement.
+
+| Fichier | Rôle |
+|---|---|
+| `/etc/udev/rules.d/85-erplibre-usb-passthrough.rules` | une ligne par vendeur de la correspondance (deck toujours) |
+| `/etc/systemd/system/erplibre-usb-reattach@.service` | `Type=oneshot`, tourne en root |
+| `/usr/local/libexec/erplibre-usb/` | une **copie** de `usb_qemu.py` et `qemu_usb.py` : l'unité root n'exécute jamais un fichier du checkout |
+| `/etc/erplibre/usb-passthrough.json` | la correspondance, conservée au retrait sauf `--purge` |
+
+```bash
+# Sur l'hôte libvirt (se relance sous sudo au besoin)
+./script/qemu/usb_qemu.py install-autoreattach [--vendor VID]...
+./script/qemu/usb_qemu.py mapping add <nom-vm> 0fd9:0080 [--serial SÉRIE]
+./script/qemu/usb_qemu.py mapping list
+./script/qemu/usb_qemu.py mapping remove 0fd9:0080 --domain <nom-vm> [--serial SÉRIE]
+./script/qemu/usb_qemu.py remove-autoreattach [--purge]
+
+journalctl -u 'erplibre-usb-reattach@*'   # une ligne par décision
+```
+
+Le numéro de série ne compte que pour deux decks identiques destinés à deux
+VM : une entrée dont la série correspond l'emporte sur une entrée sans. Au
+retrait, sans `--serial`, toutes les entrées de ce modèle pour la VM partent,
+et `--serial ""` ne retire que l'entrée sans série. Installer deux fois ne
+change rien.
+
+Pour un **hyperviseur distant**, *Rebranchement* installe depuis le menu : il
+copie `usb_qemu.py` et `qemu_usb.py` dans un répertoire temporaire là-bas,
+lance `ssh -t <saut> 'sudo python3 -I -B <tmp>/usb_qemu.py install-autoreattach'`,
+puis efface le répertoire. Les correspondances passent ensuite par la copie
+installée, `/usr/local/libexec/erplibre-usb/usb_qemu.py`, qui doit être
+présente.
+
+### Proxmox VE
+
+Une attribution USB Proxmox (`qm set <vmid> -usbN host=…`) est **toujours
+persistante** : elle est écrite dans la configuration de la VM et suit un
+rebranchement par `VID:PID` sans règle udev. Il n'y a là ni choix live/config
+ni voie SPICE. Le menu USB QEMU refuse un hyperviseur Proxmox et renvoie à
+**TODO › Execute › Deploy › Proxmox VE**, entrée **Périphériques USB (Stream
+Deck)**, décrite dans [`script/proxmox/README.fr.md`](../proxmox/README.fr.md).
+La case du déploiement y existe aussi, et lit les decks du nœud à la création
+de la VM.
+
+### Le service deck de l'hôte lui-même
+
+Un hôte qui fait tourner ERPLibre Home avec le Stream Deck tient le deck par
+son unité utilisateur `erplibre-home-streamdeck.service` ; QEMU comme
+spice-gtk le lui retirent. Avant un attachement live d'un deck, ou une
+redirection depuis ce poste, l'outil **demande** : *non* annule, *oui* arrête
+le service une fois la confirmation finale donnée ; un attachement config
+seul, ou à une VM arrêtée, ne demande rien. Si l'attachement échoue ensuite,
+l'outil propose de relancer le service. Un déploiement qui passe les decks à
+une nouvelle VM pose la même question avant le démarrage de la VM : *non* crée
+la VM sans le passage. Détacher un deck en live propose de le relancer. Le CLI s'arrête en code `3` au lieu de demander, et
+`--yes` donne l'accord ; avec `--config` seul, il n'affiche qu'une note. Ce
+service redémarre aussi de lui-même au rebranchement du deck : sur un hôte qui
+associe un deck à une VM, coupez son démarrage automatique (**TODO › Execute ›
+ERPLibre Home**, réglages du deck).
+
+### Vérifier sur du vrai matériel
+
+Avec un vrai Stream Deck :
+
+1. `./script/qemu/usb_qemu.py list` sur l'hôte libvirt montre le deck en
+   tête, marqué `*`.
+2. Attachez-le, puis
+   `sudo virsh dumpxml <nom-vm> | grep -A6 hostdev` montre le périphérique.
+3. Dans l'invité, `cat /sys/bus/usb/devices/*/idVendor` liste `0fd9`, et
+   `./script/install/erplibre_home_deck.sh --check`, lancé depuis le
+   checkout ERPLibre de l'invité, rend 0 une fois une session graphique
+   ouverte.
+4. Les **boutons du deck s'affichent** depuis l'ERPLibre Home de l'invité.
+5. Démarrez la VM deck débranché : elle démarre quand même.
+6. Avec le rattachement auto : débranchez puis rebranchez le deck sur
+   l'hôte ; le journal de `erplibre-usb-reattach@*` montre le rattachement,
+   et les boutons reviennent.
+7. SPICE : ouvrez `virt-viewer` depuis le menu. Il ouvre l'affichage SPICE,
+   pas le VNC ; **File › USB device selection** liste les périphériques du
+   poste, et le deck y est coché.
+8. Détachement : le deck revient à l'hôte, et la relance du service deck de
+   l'hôte est proposée.
 
 ## Accès SSH depuis une autre machine (ProxyJump)
 
