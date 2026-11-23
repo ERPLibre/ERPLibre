@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -5330,6 +5331,90 @@ class TestLaRecetteJugeCeQueLeBancPose(unittest.TestCase):
         self.assertEqual("", souci)
         self.assertEqual(1, len(recettes))
         self.assertIn("Compte de l'annuaire", recettes[0])
+
+
+class TestLaVeilleVideLeCacheDuTerrain(unittest.TestCase):
+    """La commande se juge sur de vrais fichiers ; le fil qui la rejoue, sur
+    un terrain simulé qui compte ce qu'on lui a demandé."""
+
+    def joue_la_commande(self, cache_ko, seuil_ko):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        meminfo = os.path.join(d, "meminfo")
+        cible = os.path.join(d, "drop_caches")
+        with open(meminfo, "w") as f:
+            f.write(f"MemTotal: 20000000 kB\nCached: {cache_ko} kB\n")
+        with open(cible, "w") as f:
+            f.write("0\n")
+        vu = subprocess.run(
+            ["sh", "-c", B.commande_cache(seuil_ko, meminfo, cible)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        with open(cible) as f:
+            return vu.returncode, vu.stdout, f.read().strip()
+
+    def test_a_cache_above_the_bound_is_dropped_and_said(self):
+        code, sortie, ecrit = self.joue_la_commande(5000, 4000)
+        self.assertEqual((0, "1"), (code, ecrit))
+        self.assertIn(B.CACHE_VIDE, sortie)
+
+    def test_an_unreadable_cache_is_a_failure_and_drops_nothing(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        meminfo, cible = os.path.join(d, "meminfo"), os.path.join(d, "dc")
+        with open(meminfo, "w") as f:
+            f.write("MemTotal: 20000000 kB\n")
+        with open(cible, "w") as f:
+            f.write("0\n")
+        for source in (meminfo, os.path.join(d, "absent")):
+            with self.subTest(source=source):
+                vu = subprocess.run(
+                    ["sh", "-c", B.commande_cache(1, source, cible)],
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.assertNotEqual(0, vu.returncode)
+                with open(cible) as f:
+                    self.assertEqual("0", f.read().strip())
+
+    def test_a_cache_under_the_bound_is_left_and_is_not_a_failure(self):
+        code, sortie, ecrit = self.joue_la_commande(3000, 4000)
+        self.assertEqual((0, "0", ""), (code, ecrit, sortie.strip()))
+
+    def veille(self, fait):
+        appels, dits = [], []
+
+        def joue(terrain, cmds, elevation, delai=0):
+            appels.append((terrain, tuple(cmds), elevation))
+            return fait
+
+        patch = mock.patch.object(B, "joue_sur", joue)
+        patch.start()
+        self.addCleanup(patch.stop)
+        with B.VeilleDuCache("t", B.ELEVE, dits.append, 0.01) as v:
+            for _ in range(500):
+                if len(appels) >= 3:
+                    break
+                threading.Event().wait(0.01)
+        n = len(appels)
+        threading.Event().wait(0.05)
+        self.assertEqual(n, len(appels), "la veille tourne encore")
+        return v, appels, dits
+
+    def test_the_watch_drops_on_the_terrain_with_its_elevation(self):
+        v, appels, dits = self.veille(B.Fait(0, B.CACHE_VIDE, 1))
+        self.assertGreaterEqual(len(appels), 3)
+        self.assertEqual(("t", (B.commande_cache(),), B.ELEVE), appels[0])
+        self.assertEqual(len(appels), v.vidages)
+        self.assertTrue(any("vidé" in d for d in dits))
+
+    def test_a_refusing_terrain_is_complained_about_once(self):
+        v, appels, dits = self.veille(B.Fait(1, "", 1))
+        self.assertGreaterEqual(len(appels), 3)
+        self.assertEqual(1, sum("⚠" in d for d in dits))
+        self.assertEqual(0, v.vidages)
 
 
 class TestLEtapeDeposeSaSortie(unittest.TestCase):

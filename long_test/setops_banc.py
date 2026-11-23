@@ -54,6 +54,7 @@ import json
 import os
 import re
 import shlex
+import threading
 from typing import NamedTuple
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -5446,6 +5447,82 @@ def rend_l_espace(terrain, elevation, dire=print):
     return plainte
 
 
+# UN TERRAIN IMBRIQUÉ GARDE SON CACHE DISQUE DANS LA MÉMOIRE DE SON HÔTE. Le
+# clonage d'une flotte lit le gabarit et écrit chaque disque : le noyau du
+# terrain en garde une dizaine de gigaoctets en cache, des pages que l'hôte a
+# dû fournir et qu'il ne récupère pas — le report des pages libres ne rend que
+# les pages LIBRES, et une page en cache ne l'est pas. Le terrain atteint sa
+# mémoire entière, et c'est son hôte qui manque : le noyau de l'hôte tue alors
+# la VM du terrain au milieu d'une construction. Le cache PROPRE se jette sans
+# rien perdre ; ce qui sert encore se relit du disque.
+#
+# UNE VEILLE, ET NON UN GESTE APRÈS UNE ÉTAPE. La reprise clone au début de
+# `reconstruire`, puis déploie pendant une heure : un vidage à la fin de
+# l'étape viendrait après le pic qu'il devait éviter.
+CACHE_SEUIL_KO = 2 * 1024 * 1024
+CACHE_PERIODE = 120
+CACHE_VIDE = "cache-vide"
+
+
+def commande_cache(
+    seuil_ko=CACHE_SEUIL_KO,
+    meminfo="/proc/meminfo",
+    cible="/proc/sys/vm/drop_caches",
+):
+    """La commande qui jette le cache propre au-delà de `seuil_ko`, et
+    imprime CACHE_VIDE quand elle l'a fait. Rend 0 sous le seuil : ne rien
+    avoir à jeter n'est pas un échec. UN CACHE ILLISIBLE EN EST UN : sans
+    nombre lu, elle échoue sans rien jeter, et VeilleDuCache s'en plaint."""
+    return (
+        f"c=$(awk '/^Cached:/ {{print $2}}' {meminfo}) && [ -n \"$c\" ]"
+        f' && {{ [ "$c" -le {int(seuil_ko)} ]'
+        f" || {{ echo 1 > {cible} && echo {CACHE_VIDE}; }}; }}"
+    )
+
+
+class VeilleDuCache:
+    """Vide le cache du terrain toutes les `periode` secondes tant qu'elle est
+    ouverte. S'emploie en `with` ; ne lève jamais.
+
+    NE FAIT RIEN ÉCHOUER : la boucle qu'elle protège juge ce qu'elle bâtit, et
+    un cache qui reste plein n'invalide aucune recette. LA PLAINTE EST DITE UNE
+    FOIS : un terrain qui refuse le vidage le refuse à chaque tour, et la
+    redire toutes les deux minutes noierait la sortie de la boucle.
+    """
+
+    def __init__(self, terrain, elevation, dire=print, periode=CACHE_PERIODE):
+        self.terrain, self.elevation = terrain, elevation
+        self.dire, self.periode = dire, periode
+        self.vidages, self.plainte = 0, ""
+        self._fin = threading.Event()
+        self._fil = threading.Thread(target=self._veille, daemon=True)
+
+    def _veille(self):
+        while not self._fin.wait(self.periode):
+            fait = joue_sur(
+                self.terrain, [commande_cache()], self.elevation, delai=60
+            )
+            if fait.reussi:
+                self.vidages += CACHE_VIDE in fait.sortie
+            elif not self.plainte:
+                self.plainte = (
+                    f"le cache du terrain n'est pas vidé (code {fait.code}) :"
+                    " son hôte peut manquer de mémoire"
+                )
+                self.dire(f"    ⚠ {self.plainte}")
+
+    def __enter__(self):
+        self._fil.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._fin.set()
+        self._fil.join(timeout=90)
+        if self.vidages:
+            self.dire(f"  · cache du terrain vidé {self.vidages} fois")
+        return False
+
+
 # CE QUI DIT POURQUOI, et ce n'est pas la fin de la sortie. Ansible imprime sa
 # cause sur une ligne « fatal: [hôte]: FAILED! => {…} », puis chaque niveau de
 # `make` empile la sienne par-dessus. Les derniers caractères portent donc la
@@ -6015,15 +6092,16 @@ def lance(args, passes, terrain):
     print(f"  · sorties du moteur : {dossier_journal()}")
 
     recettes = []
-    for passe in passes:
-        print(f"\n── passe « {passe} » ──")
-        souci = joue_une_passe(
-            moteur, mesures, chantier, passe, secret, recettes=recettes
-        )
-        if souci:
-            print(f"\n  ⛔ {expurge(souci, secret)}")
-            print(f"     ce qui est posé est nommé dans {chantier.chemin}")
-            return SORTIE_NON_CONCLUANTE
+    with VeilleDuCache(mesures.terrain, mesures.elevation):
+        for passe in passes:
+            print(f"\n── passe « {passe} » ──")
+            souci = joue_une_passe(
+                moteur, mesures, chantier, passe, secret, recettes=recettes
+            )
+            if souci:
+                print(f"\n  ⛔ {expurge(souci, secret)}")
+                print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+                return SORTIE_NON_CONCLUANTE
 
     print(f"\n  ✓ le banc est allé au bout des {len(passes)} passe(s).")
     print(f"     défaire : {os.path.basename(__file__)} --detruire")
