@@ -488,6 +488,12 @@ class LaSpecAtteintLaCommande(unittest.TestCase):
         self.assertTrue(reduite["spice_usbredir"])
         self.assertNotIn("--usb-hostdev", self._parts(b, reduite))
 
+    def test_the_proxmox_commands_follow_the_same_receiver(self):
+        a, b = _vm("vm-a"), _vm("vm-b")
+        spec = self._spec([a, b], usb_hostdev=True)
+        self.assertIs(True, TODO._pve_spec_usb_hostdev(spec, a))
+        self.assertEqual([], TODO._pve_spec_usb_hostdev(spec, b))
+
 
 class LaQuestionEnLigne(unittest.TestCase):
     def setUp(self):

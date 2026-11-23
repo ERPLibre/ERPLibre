@@ -654,6 +654,231 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("root", sortie)
 
 
+# « pvesh get /nodes/<nœud>/hardware/usb --output-format json » : un
+# concentrateur racine, un concentrateur, un clavier, un Stream Deck et deux
+# Stream Deck identiques. Numéros de série inventés.
+HARDWARE_USB = """[
+ {"busnum": 1, "class": 9, "devnum": 1, "level": 0, "port": 0,
+  "prodid": "0002", "vendid": "1d6b", "product": "xHCI Host Controller",
+  "manufacturer": "Linux 6.8.12-4-pve xhci-hcd", "speed": "480"},
+ {"busnum": 1, "class": 9, "devnum": 2, "level": 1, "port": 1,
+  "prodid": "0608", "vendid": "05e3", "product": "USB2.0 Hub",
+  "usbpath": "1", "speed": "480"},
+ {"busnum": 1, "class": 0, "devnum": 3, "level": 2, "port": 4,
+  "prodid": "c31c", "vendid": "046d", "product": "USB Keyboard",
+  "manufacturer": "Logitech", "usbpath": "1.4", "speed": "1.5"},
+ {"busnum": 3, "class": 0, "devnum": 5, "level": 1, "port": 2,
+  "prodid": "0080", "vendid": "0fd9", "product": "Stream Deck MK.2",
+  "manufacturer": "Elgato", "serial": "SERIE-ESSAI-A", "usbpath": "2",
+  "speed": "12"},
+ {"busnum": 2, "class": 0, "devnum": 7, "level": 1, "port": 3,
+  "prodid": "006d", "vendid": "0FD9", "product": "Stream Deck Mini",
+  "manufacturer": "Elgato", "usbpath": "3", "speed": "12"},
+ {"busnum": 2, "class": 0, "devnum": 8, "level": 1, "port": 4,
+  "prodid": "006d", "vendid": "0fd9", "product": "Stream Deck Mini",
+  "manufacturer": "Elgato", "usbpath": "4", "speed": "12"}
+]"""
+QM_CONFIG_USB = """boot: order=scsi0
+hotplug: network,disk
+memory: 2048
+usb0: host=0FD9:0080,usb3=1
+usb2: spice
+usb3: host=2-3
+"""
+
+
+class TestLUsb(unittest.TestCase):
+    """« qm set -usbN » : un périphérique du nœud passé à une VM.
+
+    Toujours persistant, sans le choix live/config de libvirt, et host=
+    VID:PID suit le rebranchement : aucune règle udev côté Proxmox. Deux
+    périphériques identiques se départagent par le port physique."""
+
+    def test_the_list_is_read_with_pvesh_in_json(self):
+        self.assertEqual(
+            "pvesh get /nodes/pve-essai/hardware/usb --output-format json",
+            pve.usb_list_cmd("pve-essai"),
+        )
+
+    def test_an_unknown_node_falls_back_to_localhost(self):
+        self.assertIn("/nodes/localhost/hardware/usb", pve.usb_list_cmd(""))
+
+    def test_a_node_name_cannot_break_the_command(self):
+        args = shlex.split(pve.usb_list_cmd("x; rm -rf /"))
+        self.assertNotIn("rm", args)
+        self.assertEqual("--output-format", args[3])
+
+    def test_hubs_are_dropped_and_decks_come_first(self):
+        devs = pve.parse_hardware_usb(HARDWARE_USB)
+        self.assertEqual(
+            [
+                ("0fd9", "006d", "2-3"),
+                ("0fd9", "006d", "2-4"),
+                ("0fd9", "0080", "3-2"),
+                ("046d", "c31c", "1-1.4"),
+            ],
+            [(d["vid"], d["pid"], d["sysname"]) for d in devs],
+        )
+        self.assertTrue(devs[0]["is_deck"])
+        self.assertFalse(devs[-1]["is_deck"])
+
+    def test_the_device_keeps_the_fields_of_a_sysfs_read(self):
+        """La forme de qemu_usb.read_usb_device : device_line et
+        device_label s'en servent sans adaptation."""
+        from script.todo import qemu_usb as qu
+
+        deck = [d for d in pve.parse_hardware_usb(HARDWARE_USB)][2]
+        self.assertEqual(3, deck["busnum"])
+        self.assertEqual(5, deck["devnum"])
+        self.assertEqual("SERIE-ESSAI-A", deck["serial"])
+        self.assertEqual("Elgato Stream Deck MK.2", qu.device_label(deck))
+
+    def test_an_unreadable_answer_gives_nothing(self):
+        for texte in ("", "pvesh: not found", "{}", "[1, 2]"):
+            self.assertEqual([], pve.parse_hardware_usb(texte), texte)
+
+    def test_a_unique_device_is_taken_by_vid_pid(self):
+        devs = pve.parse_hardware_usb(HARDWARE_USB)
+        mk2 = [d for d in devs if d["pid"] == "0080"][0]
+        self.assertEqual("0fd9:0080", pve.usb_selector_for(mk2, devs))
+
+    def test_two_identical_devices_are_pinned_to_their_port(self):
+        devs = pve.parse_hardware_usb(HARDWARE_USB)
+        minis = [d for d in devs if d["pid"] == "006d"]
+        self.assertEqual(
+            ["2-3", "2-4"], [pve.usb_selector_for(d, devs) for d in minis]
+        )
+
+    def test_a_libvirt_bus_dev_becomes_a_physical_port(self):
+        """« bus.périphérique » est la forme libvirt de deux decks
+        identiques ; Proxmox ne la lit pas, et le chemin du nœud la
+        remplace."""
+        devs = pve.parse_hardware_usb(HARDWARE_USB)
+        self.assertEqual("2-4", pve.usb_host_for("2.8", devs))
+        self.assertEqual("2-4", pve.usb_host_for("002.008", devs))
+        self.assertEqual("0fd9:0080", pve.usb_host_for("0fd9:0080", []))
+        self.assertEqual("", pve.usb_host_for("9.9", devs))
+        self.assertEqual("", pve.usb_host_for("n'importe quoi", devs))
+
+    def test_the_usb_lines_of_qm_config(self):
+        self.assertEqual(
+            {0: "host=0FD9:0080,usb3=1", 2: "spice", 3: "host=2-3"},
+            pve.parse_qm_config_usb(QM_CONFIG_USB),
+        )
+        self.assertEqual({}, pve.parse_qm_config_usb(QM_CONFIG))
+
+    def test_the_device_of_a_usb_line(self):
+        self.assertEqual("0fd9:0080", pve.usb_host_of("host=0FD9:0080,usb3=1"))
+        self.assertEqual("2-3", pve.usb_host_of("host=2-3"))
+        self.assertEqual("spice", pve.usb_host_of("spice"))
+        self.assertEqual("", pve.usb_host_of("usb3=1"))
+
+    def test_a_device_already_in_the_vm_is_found(self):
+        ports = pve.parse_qm_config_usb(QM_CONFIG_USB)
+        self.assertEqual([0], pve.usb_slots_for(ports, "0x0fd9:0x0080"))
+        self.assertEqual([3], pve.usb_slots_for(ports, "2-3"))
+        self.assertEqual([], pve.usb_slots_for(ports, "2-4"))
+
+    def test_the_first_free_slot(self):
+        ports = pve.parse_qm_config_usb(QM_CONFIG_USB)
+        self.assertEqual(1, pve.next_usb_slot(ports))
+        self.assertEqual(0, pve.next_usb_slot([]))
+        self.assertEqual(4, pve.next_usb_slot([0, 1, 2, 3]))
+
+    def test_a_full_vm_has_no_free_slot(self):
+        self.assertIsNone(pve.next_usb_slot(range(5), pve.USB_SLOTS_LEGACY))
+        self.assertEqual(5, pve.next_usb_slot(range(5)))
+        self.assertIsNone(pve.next_usb_slot(range(pve.USB_SLOTS)))
+
+    def test_the_slot_count_follows_the_version(self):
+        self.assertEqual(14, pve.usb_slot_count("9.2.11"))
+        self.assertEqual(14, pve.usb_slot_count("8.0.3"))
+        self.assertEqual(5, pve.usb_slot_count("7.4-3"))
+        self.assertEqual(5, pve.usb_slot_count(""))
+
+    def test_the_attach_command(self):
+        self.assertEqual(
+            "qm set 100 -usb0 host=0fd9:0080,usb3=1",
+            pve.usb_set_cmd(100, 0, "0x0FD9:0x0080"),
+        )
+        self.assertEqual(
+            "qm set 100 -usb1 host=0fd9:0080",
+            pve.usb_set_cmd(100, 1, "0fd9:0080", usb3=False),
+        )
+
+    def test_the_attach_command_accepts_a_physical_port(self):
+        self.assertEqual(
+            "qm set 100 -usb2 host=1-2.3,usb3=1",
+            pve.usb_set_cmd(100, 2, "1-2.3"),
+        )
+
+    def test_an_unreadable_selector_is_refused(self):
+        """La commande part dans un shell distant en root : rien d'autre
+        qu'un VID:PID ou un bus-port n'y entre. « 3.5 » est la forme
+        bus.périphérique de virt-install, que Proxmox ne lit pas."""
+        for mauvais in ("3.5", "0fd9", "0fd9:0080; rm -rf /", "", "1-2/.."):
+            with self.assertRaises(ValueError, msg=mauvais):
+                pve.usb_set_cmd(100, 0, mauvais)
+        with self.assertRaises(ValueError):
+            pve.usb_set_cmd(100, -1, "0fd9:0080")
+
+    def test_the_detach_command(self):
+        self.assertEqual("qm set 100 -delete usb3", pve.usb_del_cmd(100, 3))
+
+    def test_hotplug(self):
+        self.assertTrue(pve.usb_hotplug(QM_CONFIG))
+        self.assertFalse(pve.usb_hotplug(QM_CONFIG_USB))
+        self.assertTrue(pve.usb_hotplug("hotplug: disk,usb\n"))
+        self.assertTrue(pve.usb_hotplug("hotplug: 1\n"))
+        self.assertFalse(pve.usb_hotplug("hotplug: 0\n"))
+
+
+class TestLUsbALaCreation(unittest.TestCase):
+    """spec["usb_hostdev"] : un port usbN par périphérique, AVANT le
+    « qm start » final, pour que la VM naisse avec eux."""
+
+    def _spec(self, **extra):
+        return dict(SPEC_VM, **extra)
+
+    def test_the_devices_come_before_the_start(self):
+        cmds = pve.create_cmds(
+            100, self._spec(usb_hostdev=["0fd9:0080", "2-3"])
+        )
+        self.assertEqual("qm start 100", cmds[-1])
+        self.assertEqual(
+            [
+                "qm set 100 -usb0 host=0fd9:0080,usb3=1",
+                "qm set 100 -usb1 host=2-3,usb3=1",
+            ],
+            cmds[-3:-1],
+        )
+
+    def test_a_single_string_and_duplicates(self):
+        cmds = pve.create_cmds(100, self._spec(usb_hostdev="0fd9:0080"))
+        self.assertEqual(1, sum("-usb" in c for c in cmds))
+        cmds = pve.create_cmds(
+            100, self._spec(usb_hostdev=["0fd9:0080", "0fd9:0080"])
+        )
+        self.assertEqual(1, sum("-usb" in c for c in cmds))
+
+    def test_without_devices_nothing_changes(self):
+        sans = pve.create_cmds(100, self._spec())
+        for valeur in (None, [], True, False):
+            self.assertEqual(
+                sans, pve.create_cmds(100, self._spec(usb_hostdev=valeur))
+            )
+
+    def test_without_start_the_devices_close_the_sequence(self):
+        cmds = pve.create_cmds(
+            100, self._spec(usb_hostdev=["0fd9:0080"], start=False)
+        )
+        self.assertEqual("qm set 100 -usb0 host=0fd9:0080,usb3=1", cmds[-1])
+
+    def test_an_unreadable_selector_stops_the_sequence(self):
+        with self.assertRaises(ValueError):
+            pve.create_cmds(100, self._spec(usb_hostdev=["0fd9; reboot"]))
+
+
 class TestLeMenu(unittest.TestCase):
     def test_proxmox_sits_right_under_qemu_in_the_deploy_menu(self):
         src = open("script/todo/todo.py", encoding="utf-8").read()
@@ -684,7 +909,7 @@ class TestLeMenu(unittest.TestCase):
         src = open("script/todo/proxmox_menu.py", encoding="utf-8").read()
         debut = src.index("    def prompt_execute_proxmox(self):")
         bloc = src[debut : src.index("    def _pve_fetch_image(self):")]
-        for n in range(1, 19):
+        for n in range(1, 20):
             self.assertIn(f'elif status == "{n}":', bloc, f"entrée {n}")
 
     def test_the_script_is_valid_python(self):

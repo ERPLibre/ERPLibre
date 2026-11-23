@@ -1161,6 +1161,13 @@ def create_cmds(vmid: int, spec: dict) -> list:
     #    rien pour installer quoi que ce soit.
     if spec.get("disk"):
         cmds.append(f"qm resize {vmid} scsi0 {spec['disk']}")
+    # 6. Les périphériques USB du nœud (spec["usb_hostdev"] : « VID:PID »
+    #    ou « bus-port »), un port usbN chacun à partir de usb0, AVANT le
+    #    démarrage : la VM naît avec eux. Un périphérique absent au
+    #    démarrage n'empêche pas la VM de démarrer ; QEMU le prend quand il
+    #    apparaît.
+    for slot, selector in enumerate(usb_hostdevs(spec.get("usb_hostdev"))):
+        cmds.append(usb_set_cmd(vmid, slot, selector))
     if spec.get("start", True):
         cmds.append(f"qm start {vmid}")
     return cmds
@@ -1181,6 +1188,250 @@ def resize_cmd(vmid: int, taille: str, disque: str = "scsi0") -> str:
     """« +10G » agrandit, « 40G » fixe. Proxmox REFUSE de rétrécir un disque —
     le dire ici évite de croire à un bug de l'outil."""
     return f"qm resize {vmid} {disque} {taille}"
+
+
+# -- USB : un périphérique du nœud passé à une VM -------------------------- #
+#
+# « qm set <id> -usbN host=… » écrit la configuration de la VM
+# (/etc/pve/qemu-server/<id>.conf) : l'attachement est TOUJOURS persistant,
+# il n'existe pas de choix live/config comme avec libvirt. Sur une VM en
+# marche, Proxmox le branche à chaud quand l'option « hotplug » de la VM
+# contient « usb » ; sinon il prend effet au démarrage suivant.
+#
+# host=VID:PID suit le périphérique d'un rebranchement à l'autre, quel que
+# soit le port : aucune règle udev n'est nécessaire côté Proxmox.
+# host=BUS-PORT (« 1-2.3 », la forme d'un nom sysfs) épingle un port
+# physique : c'est ce qui départage deux périphériques identiques.
+
+# Ports usbN d'une VM : usb0 à usb13 depuis PVE 8 (type de machine 7.1 ou
+# plus, celui des VM qu'il crée), usb0 à usb4 avant.
+USB_SLOTS = 14
+USB_SLOTS_LEGACY = 5
+
+_RE_USB_LIGNE = re.compile(r"^usb(\d+):\s*(\S.*?)\s*$", re.M)
+_RE_USB_HOST = re.compile(r"(?:^|,)host=([^,]+)")
+
+
+def usb_slot_count(version: str) -> int:
+    """Nombre de ports usbN qu'accepte une VM d'un hôte de cette version
+    (« 9.2.11 »). Une version illisible rend le plafond ancien : un port
+    de moins coûte moins qu'un « qm set » refusé."""
+    m = re.match(r"^\s*(\d+)", str(version or ""))
+    return USB_SLOTS if m and int(m.group(1)) >= 8 else USB_SLOTS_LEGACY
+
+
+def usb_list_cmd(node: str) -> str:
+    """Périphériques USB du nœud, en JSON (« pvesh », sans lsusb).
+
+    Un nom de nœud inconnu donne « localhost », que pvesh résout vers le
+    nœud qui exécute la commande."""
+    chemin = f"/nodes/{node or 'localhost'}/hardware/usb"
+    return f"pvesh get {shlex.quote(chemin)} --output-format json"
+
+
+def usb_host_value(selector) -> str:
+    """Valeur normalisée de « host= », ou "" si `selector` ne se lit pas.
+
+    - « 0x0FD9:0x0080 », « 0fd9:0080 » -> « 0fd9:0080 »
+    - « 1-2.3 » (bus-port, nom sysfs) -> « 1-2.3 »
+    """
+    from script.todo import qemu_usb as qu
+
+    texte = str(selector or "").strip()
+    sel = qu.parse_selector(texte)
+    if sel and sel.get("vid"):
+        return f"{sel['vid']}:{sel['pid']}"
+    return texte if qu.valid_sysname(texte) else ""
+
+
+def parse_hardware_usb(json_text: str) -> list:
+    """Périphériques passables rendus par usb_list_cmd(), decks en tête.
+
+    Chaque dict a la forme de qemu_usb.read_usb_device() — vid, pid,
+    busnum, devnum, product, manufacturer, serial, device_class, is_deck —
+    et « sysname » porte la forme bus-port de « host= » (« 1-2.3 »), ou ""
+    quand pvesh ne donne pas le chemin. pvesh rend « usbpath » sans le bus
+    (« 2.3 ») : le bus y est ajouté. Concentrateurs et concentrateurs
+    racines sont écartés par qemu_usb.is_usable(). Un JSON illisible rend
+    [].
+    """
+    from script.todo import qemu_usb as qu
+
+    try:
+        data = json.loads(json_text or "")
+    except (ValueError, TypeError):
+        return []
+    devs = []
+    for d in data if isinstance(data, list) else []:
+        if not isinstance(d, dict):
+            continue
+        vid = qu.norm_hex(d.get("vendid"))
+        pid = qu.norm_hex(d.get("prodid"))
+        bus = _usb_int(d.get("busnum"))
+        num = _usb_int(d.get("devnum"))
+        if not vid or not pid or bus is None or num is None:
+            continue
+        chemin = str(d.get("usbpath") or "").strip()
+        if chemin and "-" not in chemin:
+            chemin = f"{bus}-{chemin}"
+        classe = d.get("class")
+        if isinstance(classe, int):
+            classe = f"{classe:02x}"
+        dev = {
+            "sysname": chemin if qu.valid_sysname(chemin) else "",
+            "busnum": bus,
+            "devnum": num,
+            "vid": vid,
+            "pid": pid,
+            "product": str(d.get("product") or "").strip(),
+            "manufacturer": str(d.get("manufacturer") or "").strip(),
+            "serial": str(d.get("serial") or "").strip(),
+            "device_class": str(classe or "").strip().lower().zfill(2),
+            "is_deck": vid == qu.DECK_VENDOR,
+        }
+        if qu.is_usable(dev):
+            devs.append(dev)
+    return qu.sort_devices(devs)
+
+
+def _usb_int(value):
+    try:
+        return int(str(value).strip(), 10)
+    except (TypeError, ValueError):
+        return None
+
+
+def usb_selector_for(dev: dict, devs) -> str:
+    """« host= » pour `dev` parmi les périphériques `devs` du nœud.
+
+    VID:PID seul, qui survit au rebranchement, sauf quand un autre
+    périphérique branché porte le même VID:PID : la valeur désignerait
+    alors l'un ou l'autre, et le port bus-port épingle le bon. Sans chemin
+    connu, VID:PID reste la seule forme possible."""
+    from script.todo import qemu_usb as qu
+
+    if dev.get("sysname") and qu.ambiguous(devs, dev["vid"], dev["pid"]):
+        return dev["sysname"]
+    return f"{dev['vid']}:{dev['pid']}"
+
+
+def usb_host_for(selector, devs) -> str:
+    """« host= » pour un sélecteur, ou "" s'il ne désigne rien.
+
+    VID:PID et bus-port passent par usb_host_value().
+    « bus.périphérique » (la forme de virt-install, que Proxmox ne lit pas)
+    se traduit en bus-port d'après `devs` (parse_hardware_usb) : le
+    périphérique qui porte ce bus et ce numéro, s'il a un chemin connu."""
+    from script.todo import qemu_usb as qu
+
+    hote = usb_host_value(selector)
+    if hote:
+        return hote
+    sel = qu.parse_selector(str(selector or ""))
+    if not sel or sel.get("bus") is None:
+        return ""
+    for dev in qu.find_devices(devs or [], bus=sel["bus"], dev=sel["dev"]):
+        if dev.get("sysname"):
+            return dev["sysname"]
+    return ""
+
+
+def parse_qm_config_usb(text: str) -> dict:
+    """{numéro: valeur} des lignes « usbN: » de « qm config <id> »,
+    par exemple {0: "host=0fd9:0080,usb3=1"}."""
+    return {
+        int(m.group(1)): m.group(2) for m in _RE_USB_LIGNE.finditer(text or "")
+    }
+
+
+def usb_host_of(value: str) -> str:
+    """Le périphérique d'une valeur « usbN » : « host= » normalisé par
+    usb_host_value(), « spice » pour un port de redirection SPICE, ""
+    sinon."""
+    texte = str(value or "").strip()
+    if texte.split(",")[0] == "spice":
+        return "spice"
+    m = _RE_USB_HOST.search(texte)
+    return usb_host_value(m.group(1)) if m else ""
+
+
+def usb_slots_for(config_usb: dict, selector) -> list:
+    """Numéros des ports usbN de `config_usb` (parse_qm_config_usb) qui
+    portent déjà `selector`, triés."""
+    cible = usb_host_value(selector)
+    if not cible:
+        return []
+    return sorted(
+        n for n, v in (config_usb or {}).items() if usb_host_of(v) == cible
+    )
+
+
+def next_usb_slot(used, max_slot: int = USB_SLOTS):
+    """Premier port usbN libre, ou None quand les `max_slot` ports
+    (usb0 à usb{max_slot-1}) sont pris.
+
+    `used` : numéros occupés — une liste, ou le dict de
+    parse_qm_config_usb(). Le défaut vaut pour PVE 8 et plus ; un hôte
+    plus ancien n'accepte que USB_SLOTS_LEGACY ports, que usb_slot_count()
+    rend d'après sa version."""
+    pris = {int(n) for n in used or ()}
+    for n in range(int(max_slot)):
+        if n not in pris:
+            return n
+    return None
+
+
+def usb_set_cmd(vmid: int, slot: int, selector, usb3: bool = True) -> str:
+    """« qm set <id> -usbN host=VID:PID[,usb3=1] » ; `selector` accepte
+    aussi la forme bus-port (« 1-2.3 »).
+
+    usb3=1 place le périphérique sur le contrôleur xHCI de la VM, qui sert
+    aussi un périphérique USB 2. Lève ValueError pour un sélecteur ou un
+    port illisible : la commande part dans un shell distant en root."""
+    host = usb_host_value(selector)
+    if not host:
+        raise ValueError(f"USB selector: {selector!r}")
+    n = int(slot)
+    if n < 0:
+        raise ValueError(f"USB slot: {slot!r}")
+    return f"qm set {int(vmid)} -usb{n} host={host}" + (
+        ",usb3=1" if usb3 else ""
+    )
+
+
+def usb_del_cmd(vmid: int, slot: int) -> str:
+    """Retire le port usbN de la configuration (et de la VM en marche,
+    selon son option « hotplug »)."""
+    return f"qm set {int(vmid)} -delete usb{int(slot)}"
+
+
+def usb_hotplug(config_text: str) -> bool:
+    """Vrai quand la VM de « qm config » branche l'USB à chaud.
+
+    Ligne « hotplug: » absente : le défaut de Proxmox (network,disk,usb).
+    « 1 » vaut ce même défaut, « 0 » désactive tout ; sinon, une liste."""
+    m = re.search(r"^hotplug:\s*(\S+)", config_text or "", re.M)
+    if not m:
+        return True
+    valeur = m.group(1).strip()
+    if valeur in ("0", "1"):
+        return valeur == "1"
+    return "usb" in valeur.split(",")
+
+
+def usb_hostdevs(valeur) -> list:
+    """Sélecteurs de spec["usb_hostdev"] : une chaîne seule ou une suite
+    de chaînes, doublons retirés dans l'ordre. Toute autre valeur (un
+    booléen que le menu n'a pas résolu, None) n'en donne aucun."""
+    if isinstance(valeur, str):
+        valeur = [valeur]
+    if not isinstance(valeur, (list, tuple)):
+        return []
+    vus = []
+    for s in valeur:
+        if isinstance(s, str) and s.strip() and s.strip() not in vus:
+            vus.append(s.strip())
+    return vus
 
 
 def status_cmd(vmid: int) -> str:
