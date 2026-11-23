@@ -104,6 +104,32 @@ qm set 100 -usb0 host=0fd9:0080,usb3=1   # attacher
 qm set 100 -delete usb0                  # détacher
 ```
 
+### A deck plugged into the workstation (SPICE)
+
+When the deck is plugged into the workstation that shows the VM rather than
+into the node, the same entry redirects it over SPICE, the counterpart of the
+libvirt `usbredir`. It gives the VM a SPICE display (`vga: qxl` when the
+current one is not `qxl`, `virtio` or `virtio-gl`) and one `usbN: spice` port
+per deck plugged in here, in a single confirmed `qm set`. A display change
+applies at the next start of the VM: the menu offers `qm reboot`, which
+applies the pending configuration (a reboot from inside the guest does not).
+
+It then opens an ssh tunnel to the node's SPICE proxy (port 3128) along the
+menu's ssh path, fetches a ticket with `pvesh create
+/nodes/<node>/qemu/<vmid>/spiceproxy`, writes it as a private `.vv` file
+(mode 0600, deleted as soon as `remote-viewer` has read it) and starts
+`remote-viewer` with the filter that redirects every Stream Deck. The ticket's
+password expires thirty seconds after `pvesh` returns it. The workstation's
+ERPLibre Home deck service is stopped, after confirmation, just before
+`remote-viewer` starts; it is restarted if `remote-viewer` cannot start.
+Without a display, the menu prints the `remote-viewer` command to run on the
+workstation.
+
+```bash
+qm set 100 -vga qxl -usb1 spice          # affichage SPICE, un port redirigé
+qm reboot 100                            # applique l'affichage
+```
+
 ## Verified
 
 Deploying a VM inside a Proxmox that itself runs in a libvirt VM: image

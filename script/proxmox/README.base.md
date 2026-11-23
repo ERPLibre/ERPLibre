@@ -212,6 +212,55 @@ qm set 100 -delete usb0                  # détacher
 ```
 
 <!-- [en] -->
+### A deck plugged into the workstation (SPICE)
+
+When the deck is plugged into the workstation that shows the VM rather than
+into the node, the same entry redirects it over SPICE, the counterpart of the
+libvirt `usbredir`. It gives the VM a SPICE display (`vga: qxl` when the
+current one is not `qxl`, `virtio` or `virtio-gl`) and one `usbN: spice` port
+per deck plugged in here, in a single confirmed `qm set`. A display change
+applies at the next start of the VM: the menu offers `qm reboot`, which
+applies the pending configuration (a reboot from inside the guest does not).
+
+It then opens an ssh tunnel to the node's SPICE proxy (port 3128) along the
+menu's ssh path, fetches a ticket with `pvesh create
+/nodes/<node>/qemu/<vmid>/spiceproxy`, writes it as a private `.vv` file
+(mode 0600, deleted as soon as `remote-viewer` has read it) and starts
+`remote-viewer` with the filter that redirects every Stream Deck. The ticket's
+password expires thirty seconds after `pvesh` returns it. The workstation's
+ERPLibre Home deck service is stopped, after confirmation, just before
+`remote-viewer` starts; it is restarted if `remote-viewer` cannot start.
+Without a display, the menu prints the `remote-viewer` command to run on the
+workstation.
+
+<!-- [fr] -->
+### Un deck branché sur le poste (SPICE)
+
+Quand le deck est branché sur le poste qui affiche la VM plutôt que sur le
+nœud, la même entrée le redirige par SPICE, le pendant du `usbredir` de
+libvirt. Elle donne à la VM un affichage SPICE (`vga: qxl` quand l'actuel
+n'est ni `qxl`, ni `virtio`, ni `virtio-gl`) et un port `usbN: spice` par deck
+branché ici, en un seul `qm set` confirmé. Un changement d'affichage s'applique
+au prochain démarrage de la VM : le menu propose `qm reboot`, qui applique la
+configuration en attente (un redémarrage depuis l'invité ne le fait pas).
+
+Elle ouvre ensuite un tunnel ssh vers le proxy SPICE du nœud (port 3128) par
+le chemin ssh du menu, obtient un billet par `pvesh create
+/nodes/<nœud>/qemu/<vmid>/spiceproxy`, l'écrit dans un fichier `.vv` privé
+(mode 0600, effacé dès que `remote-viewer` l'a lu) et lance `remote-viewer`
+avec le filtre qui redirige tous les Stream Deck. Le mot de passe du billet
+expire trente secondes après que `pvesh` l'a rendu. Le service deck ERPLibre
+Home du poste est arrêté, après confirmation, juste avant le lancement de
+`remote-viewer` ; il est relancé si `remote-viewer` ne démarre pas. Sans
+affichage, le menu affiche la commande `remote-viewer` à lancer sur le poste.
+
+<!-- [common] -->
+```bash
+qm set 100 -vga qxl -usb1 spice          # affichage SPICE, un port redirigé
+qm reboot 100                            # applique l'affichage
+```
+
+<!-- [en] -->
 ## Verified
 
 Deploying a VM inside a Proxmox that itself runs in a libvirt VM: image

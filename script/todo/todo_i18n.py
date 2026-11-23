@@ -25513,6 +25513,60 @@ TRANSLATIONS = {
         "fr": "au repos, le deck est dans une VM",
         "en": "idle, the deck is in a VM",
     },
+    # Proxmox — redirection SPICE : un deck du poste vers une VM Proxmox
+    # (proxmox_menu._pve_usb_spice).
+    "Redirect a deck from this workstation (SPICE)": {
+        "fr": "Rediriger un deck de ce poste (SPICE)",
+        "en": "Redirect a deck from this workstation (SPICE)",
+    },
+    "No Stream Deck plugged into this workstation: one plugged in later is redirected too.": {
+        "fr": "Aucun Stream Deck branché sur ce poste : un deck branché plus tard est redirigé aussi.",
+        "en": "No Stream Deck plugged into this workstation: one plugged in later is redirected too.",
+    },
+    "Not enough free usbN ports for every deck; missing:": {
+        "fr": "Pas assez de ports usbN libres pour chaque deck ; il en manque :",
+        "en": "Not enough free usbN ports for every deck; missing:",
+    },
+    "Missing for SPICE USB redirection:": {
+        "fr": "Manque pour la redirection USB SPICE :",
+        "en": "Missing for SPICE USB redirection:",
+    },
+    "The display change takes effect at the next start of the VM (qm reboot, or stop and start), not at a reboot from inside the guest.": {
+        "fr": "Le changement d'affichage prend effet au prochain démarrage de la VM (qm reboot, ou arrêt puis démarrage), pas à un redémarrage depuis l'invité.",
+        "en": "The display change takes effect at the next start of the VM (qm reboot, or stop and start), not at a reboot from inside the guest.",
+    },
+    "The running VM does not use SPICE redirection yet: it needs a restart.": {
+        "fr": "La VM en marche n'utilise pas encore la redirection SPICE : elle doit redémarrer.",
+        "en": "The running VM does not use SPICE redirection yet: it needs a restart.",
+    },
+    "Restart the VM now (qm reboot)? (y/N): ": {
+        "fr": "Redémarrer la VM maintenant (qm reboot) ? (o/N) : ",
+        "en": "Restart the VM now (qm reboot)? (y/N): ",
+    },
+    "The VM is not running. Start it now? (y/N): ": {
+        "fr": "La VM n'est pas en marche. La démarrer maintenant ? (o/N) : ",
+        "en": "The VM is not running. Start it now? (y/N): ",
+    },
+    "No display here: run this entry on the workstation where the deck is plugged in. It opens:": {
+        "fr": "Aucun affichage ici : lancez cette entrée sur le poste où le deck est branché. Elle ouvre :",
+        "en": "No display here: run this entry on the workstation where the deck is plugged in. It opens:",
+    },
+    "remote-viewer is missing (package virt-viewer).": {
+        "fr": "remote-viewer est absent (paquet virt-viewer).",
+        "en": "remote-viewer is missing (package virt-viewer).",
+    },
+    "The SSH tunnel to the SPICE proxy of the node did not open.": {
+        "fr": "Le tunnel SSH vers le proxy SPICE du nœud ne s'est pas ouvert.",
+        "en": "The SSH tunnel to the SPICE proxy of the node did not open.",
+    },
+    "No SPICE ticket from the Proxmox node.": {
+        "fr": "Aucun billet SPICE reçu du nœud Proxmox.",
+        "en": "No SPICE ticket from the Proxmox node.",
+    },
+    "When the viewer is closed, restart the deck service:": {
+        "fr": "Une fois la fenêtre fermée, relancez le service deck :",
+        "en": "When the viewer is closed, restart the deck service:",
+    },
     # Menu QEMU — USB : débranchement et service deck
     "Detach unplugged {device} from {domain}": {
         "fr": "Détacher {device} débranché de {domain}",

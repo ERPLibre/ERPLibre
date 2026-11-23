@@ -21,6 +21,8 @@ gardent les modes de défaillance d'un hôte Proxmox VE 9.2 :
   répond « not running ».
 """
 
+import configparser
+import json
 import shlex
 import subprocess
 import sys
@@ -877,6 +879,188 @@ class TestLUsbALaCreation(unittest.TestCase):
     def test_an_unreadable_selector_stops_the_sequence(self):
         with self.assertRaises(ValueError):
             pve.create_cmds(100, self._spec(usb_hostdev=["0fd9; reboot"]))
+
+
+# Billet au format de « pvesh create …/spiceproxy --output-format json »,
+# valeurs inventées. Le certificat y arrive avec des « \n » LITTÉRAUX.
+BILLET_SPICE = {
+    "type": "spice",
+    "title": "VM 101 - vm-essai",
+    "host": "pvespiceproxy:6566a1b2:101:pve-essai::0123abcd",
+    "proxy": "http://pve-essai.invalid:3128",
+    "tls-port": 61000,
+    "password": "faux-billet",
+    "ca": "-----BEGIN CERTIFICATE-----\\nMIIBinvente\\n-----END"
+    " CERTIFICATE-----\\n",
+    "host-subject": "OU=PVE Cluster Node,O=Proxmox Virtual Environment,"
+    "CN=pve-essai.invalid",
+    "secure-attention": "Ctrl+Alt+Ins",
+    "delete-this-file": 1,
+}
+
+
+class TestLaRedirectionSpice(unittest.TestCase):
+    """Un deck du POSTE redirigé vers une VM Proxmox par SPICE : un
+    affichage SPICE, un port « usbN: spice » par deck, un billet pvesh mis
+    en .vv, et remote-viewer avec le filtre des decks."""
+
+    def test_the_display_type(self):
+        self.assertEqual("std", pve.vga_type(QM_CONFIG))
+        self.assertEqual("serial0", pve.vga_type("vga: serial0\n"))
+        self.assertEqual("qxl", pve.vga_type("vga: qxl,memory=32\n"))
+        self.assertEqual("virtio", pve.vga_type("vga: type=virtio\n"))
+
+    def test_which_displays_run_spice(self):
+        for vga in ("qxl", "qxl3", "virtio", "virtio-gl", "type=qxl2"):
+            self.assertTrue(pve.spice_display(f"vga: {vga}\n"), vga)
+        for vga in ("std", "serial0", "cirrus", "vmware", "none", "qxl5"):
+            self.assertFalse(pve.spice_display(f"vga: {vga}\n"), vga)
+        self.assertFalse(pve.spice_display(QM_CONFIG))
+
+    def test_ready_needs_the_display_and_a_spice_port(self):
+        self.assertTrue(pve.spice_ready("vga: qxl\nusb2: spice\n"))
+        self.assertFalse(pve.spice_ready("vga: qxl\nusb0: host=0fd9:0080\n"))
+        self.assertFalse(pve.spice_ready("vga: serial0\nusb0: spice\n"))
+
+    def test_the_plan_of_a_deployed_vm(self):
+        """Une VM du parc naît en « vga serial0 » : l'affichage change,
+        et le port libre suit ceux du nœud déjà pris."""
+        cfg = "vga: serial0\nusb0: host=0fd9:0080,usb3=1\n"
+        plan = pve.spice_plan(cfg, wanted=2)
+        self.assertEqual(
+            {"vga": True, "have": [], "slots": [1, 2], "short": 0}, plan
+        )
+        self.assertEqual(
+            "qm set 101 -vga qxl -usb1 spice -usb2 spice",
+            pve.spice_set_cmd(101, plan),
+        )
+
+    def test_existing_spice_ports_count(self):
+        plan = pve.spice_plan("vga: virtio-gl\nusb3: spice\n", wanted=1)
+        self.assertEqual(
+            {"vga": False, "have": [3], "slots": [], "short": 0}, plan
+        )
+        self.assertEqual("", pve.spice_set_cmd(101, plan))
+
+    def test_a_full_vm_says_what_is_missing(self):
+        pleine = "vga: qxl\n" + "".join(
+            f"usb{n}: host=1-{n + 1}\n" for n in range(pve.USB_SLOTS_LEGACY)
+        )
+        plan = pve.spice_plan(pleine, 2, pve.USB_SLOTS_LEGACY)
+        self.assertEqual([], plan["slots"])
+        self.assertEqual(2, plan["short"])
+
+    def test_the_ticket_command(self):
+        self.assertEqual(
+            "pvesh create /nodes/pve-essai/qemu/101/spiceproxy"
+            " --output-format json",
+            pve.spiceproxy_cmd("pve-essai", "101"),
+        )
+        self.assertIn("/nodes/localhost/", pve.spiceproxy_cmd("", 101))
+        with self.assertRaises(ValueError):
+            pve.spiceproxy_cmd("pve-essai", "101; reboot")
+
+    def test_the_ticket_is_read(self):
+        self.assertEqual(
+            BILLET_SPICE, pve.parse_spiceproxy(json.dumps(BILLET_SPICE))
+        )
+        for mauvais in ("", "non json", "[]", '{"type": "spice"}'):
+            self.assertEqual({}, pve.parse_spiceproxy(mauvais), mauvais)
+
+    def test_the_ticket_is_read_among_stderr_lines(self):
+        """stdout et stderr arrivent mêlés : l'objet se trouve avant, entre
+        ou après des avertissements, compact ou indenté."""
+        billet = json.dumps(BILLET_SPICE)
+        for sortie in (
+            billet + "\nperl: warning: Setting locale failed.\n",
+            "sudo: avertissement invente\n" + billet,
+            "bruit {pas du json\n" + json.dumps(BILLET_SPICE, indent=1),
+            '{"type": "autre"}\n' + billet,
+        ):
+            self.assertEqual(
+                BILLET_SPICE, pve.parse_spiceproxy(sortie), sortie
+            )
+        self.assertEqual({}, pve.parse_spiceproxy(None))
+
+    def test_the_noise_never_carries_the_ticket(self):
+        partiel = dict(BILLET_SPICE, proxy="")
+        for billet in (json.dumps(partiel), json.dumps(partiel, indent=1)):
+            sortie = billet + "\nperl: warning: locale\n"
+            lignes = pve.spiceproxy_noise(sortie)
+            self.assertEqual(["perl: warning: locale"], lignes)
+            self.assertNotIn("faux-billet", "\n".join(lignes))
+            self.assertNotIn("pvespiceproxy", "\n".join(lignes))
+
+    def test_the_vv_file(self):
+        vv = pve.spice_vv_text(BILLET_SPICE, "http://127.0.0.1:41234")
+        lignes = vv.splitlines()
+        self.assertEqual("[virt-viewer]", lignes[0])
+        self.assertIn("proxy=http://127.0.0.1:41234", lignes)
+        self.assertNotIn("pve-essai.invalid:3128", vv)
+        self.assertIn("tls-port=61000", lignes)
+        self.assertIn("delete-this-file=1", lignes)
+        self.assertIn(
+            "ca=-----BEGIN CERTIFICATE-----\\nMIIBinvente\\n-----END"
+            " CERTIFICATE-----\\n",
+            lignes,
+        )
+        # Lu comme le lit virt-viewer (GKeyFile) : une section, des clés.
+        ini = configparser.ConfigParser(interpolation=None)
+        ini.optionxform = str
+        ini.read_string(vv)
+        self.assertEqual("faux-billet", ini["virt-viewer"]["password"])
+
+    def test_the_vv_file_cannot_gain_lines(self):
+        """Une fin de ligne dans une valeur ou une clé hors forme
+        ajouterait une ligne au fichier : la valeur s'échappe, la clé
+        part."""
+        vv = pve.spice_vv_text(
+            {
+                "host": "h",
+                "password": "a\nproxy=http://ailleurs.invalid",
+                "x\ny": "1",
+                "fullscreen": True,
+            }
+        )
+        self.assertEqual(
+            [
+                "[virt-viewer]",
+                "host=h",
+                "password=a\\nproxy=http://ailleurs.invalid",
+                "fullscreen=1",
+            ],
+            vv.splitlines(),
+        )
+
+    def test_the_tunnel_follows_the_ssh_path(self):
+        hote = {"target": "root@pve.invalid", "jump": "rebond", "port": "2222"}
+        argv = pve.spice_tunnel_argv(hote, 41234)
+        self.assertEqual("ssh", argv[0])
+        self.assertEqual(["-f", "-o", "ExitOnForwardFailure=yes"], argv[1:4])
+        self.assertEqual("127.0.0.1:41234:localhost:3128", argv[5])
+        self.assertEqual(argv[6:], pve.ssh_argv(hote, "sleep 60")[1:])
+        self.assertEqual(
+            "http://127.0.0.1:41234", pve.spice_tunnel_proxy(41234)
+        )
+
+    def test_remote_viewer_redirects_the_decks(self):
+        from script.todo import qemu_usb as qu
+
+        argv = pve.remote_viewer_argv("/tmp/essai.vv")
+        filtre = qu.usbredir_filter()
+        self.assertEqual(
+            [
+                "remote-viewer",
+                f"--spice-usbredir-auto-redirect-filter={filtre}",
+                f"--spice-usbredir-redirect-on-connect={filtre}",
+                "/tmp/essai.vv",
+            ],
+            argv,
+        )
+        self.assertEqual(
+            ["remote-viewer", "/tmp/essai.vv"],
+            pve.remote_viewer_argv("/tmp/essai.vv", auto_vendors=()),
+        )
 
 
 class TestLeMenu(unittest.TestCase):

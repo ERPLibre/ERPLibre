@@ -1434,6 +1434,236 @@ def usb_hostdevs(valeur) -> list:
     return vus
 
 
+# -- SPICE : un périphérique du POSTE redirigé vers une VM ----------------- #
+#
+# Le pendant de la redirection USB de libvirt : le deck reste branché sur le
+# poste qui ouvre la console, et spice-gtk (remote-viewer) le transmet à la
+# VM par le canal SPICE. Il faut à la VM :
+#
+# - un affichage SPICE : qemu-server lance le serveur SPICE pour un « vga »
+#   qxl, qxl2 à qxl4, virtio ou virtio-gl. Un changement d'affichage ne
+#   prend effet qu'au démarrage suivant de la VM, que « qm reboot »
+#   provoque en appliquant la configuration en attente ;
+# - un port « usbN: spice » par périphérique redirigé en même temps. Sur
+#   une VM SPICE en marche, il se branche à chaud comme un « host= ».
+#
+# Le client lit un fichier .vv : celui que « pvesh create
+# /nodes/<nœud>/qemu/<id>/spiceproxy » rend en JSON, mis en INI. Il porte un
+# mot de passe à usage unique que le nœud fait expirer trente secondes après
+# l'avoir posé (« expire_password +30 »), et « delete-this-file=1 », qui
+# fait effacer le fichier par remote-viewer dès sa lecture.
+#
+# La connexion passe par le proxy SPICE du nœud (spiceproxy, port 3128),
+# qui ouvre la VM désignée par le jeton du champ « host ». Le poste le joint
+# par un tunnel ssh sur le chemin du menu, rebond compris : aucun port du
+# nœud n'a à être joignable du poste, et le TLS de bout en bout reste
+# vérifié par « ca » et « host-subject ».
+
+# Affichage posé quand la VM n'a pas d'affichage SPICE.
+SPICE_VGA = "qxl"
+_RE_SPICE_VGA = re.compile(r"^(qxl[234]?|virtio|virtio-gl)$")
+_RE_VGA = re.compile(r"^vga:\s*(\S+)", re.M)
+SPICE_PROXY_PORT = 3128
+# Secondes pendant lesquelles le tunnel attend la première connexion de
+# remote-viewer ; il reste ensuite ouvert tant qu'une connexion le traverse.
+SPICE_TUNNEL_WAIT = 60
+# Clé d'un fichier .vv : celles de virt-viewer sont des mots à tirets. Une
+# autre clé (ou une fin de ligne dans une valeur) ajouterait des lignes au
+# fichier.
+_RE_VV_CLE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
+
+
+def vga_type(config_text: str) -> str:
+    """Type d'affichage de « qm config » : « vga: qxl,memory=32 » ->
+    « qxl », « vga: type=virtio » -> « virtio ». Ligne absente : « std »,
+    le défaut de Proxmox."""
+    m = _RE_VGA.search(config_text or "")
+    if not m:
+        return "std"
+    premier = m.group(1).split(",")[0]
+    return premier.split("=", 1)[1] if premier.startswith("type=") else premier
+
+
+def spice_display(config_text: str) -> bool:
+    """Vrai quand l'affichage de la VM lance le serveur SPICE."""
+    return bool(_RE_SPICE_VGA.match(vga_type(config_text)))
+
+
+def spice_usb_slots(config_usb: dict) -> list:
+    """Numéros des ports « usbN: spice » de `config_usb`
+    (parse_qm_config_usb), triés."""
+    return sorted(
+        n for n, v in (config_usb or {}).items() if usb_host_of(v) == "spice"
+    )
+
+
+def spice_ready(config_text: str) -> bool:
+    """Vrai quand la VM décrite redirige l'USB par SPICE : un affichage
+    SPICE et au moins un port « usbN: spice »."""
+    return spice_display(config_text) and bool(
+        spice_usb_slots(parse_qm_config_usb(config_text))
+    )
+
+
+def spice_plan(config_text: str, wanted: int = 1, max_slot: int = USB_SLOTS):
+    """Ce qui manque à la VM de « qm config » pour rediriger `wanted`
+    périphériques à la fois.
+
+    Rend {"vga": vrai quand l'affichage doit devenir SPICE_VGA, "have":
+    ports spice déjà là, "slots": ports libres à ajouter, pris par
+    next_usb_slot(), "short": ports qui manquent faute de place}."""
+    ports = parse_qm_config_usb(config_text)
+    have = spice_usb_slots(ports)
+    pris = set(ports)
+    slots = []
+    for _ in range(max(0, int(wanted) - len(have))):
+        n = next_usb_slot(pris, max_slot)
+        if n is None:
+            break
+        pris.add(n)
+        slots.append(n)
+    return {
+        "vga": not spice_display(config_text),
+        "have": have,
+        "slots": slots,
+        "short": max(0, int(wanted) - len(have) - len(slots)),
+    }
+
+
+def spice_set_cmd(vmid: int, plan: dict) -> str:
+    """Un seul « qm set » pour tout le plan (spice_plan) : l'affichage,
+    puis un « -usbN spice » par port ajouté. "" quand rien ne manque."""
+    opts = []
+    if plan.get("vga"):
+        opts.append(f"-vga {SPICE_VGA}")
+    opts += [f"-usb{int(n)} spice" for n in plan.get("slots") or ()]
+    return f"qm set {int(vmid)} " + " ".join(opts) if opts else ""
+
+
+def config_current_cmd(vmid: int) -> str:
+    """Configuration en vigueur dans la VM, sans les changements en
+    attente que « qm config » seul affiche déjà appliqués."""
+    return f"qm config {int(vmid)} --current"
+
+
+def spiceproxy_cmd(node: str, vmid: int) -> str:
+    """Billet SPICE de la VM, en JSON. La VM doit tourner, avec un
+    affichage SPICE. Un nom de nœud inconnu donne « localhost »."""
+    chemin = f"/nodes/{node or 'localhost'}/qemu/{int(vmid)}/spiceproxy"
+    return f"pvesh create {shlex.quote(chemin)} --output-format json"
+
+
+def _billet_spice(data) -> bool:
+    """Vrai pour un objet JSON qui porte « host », « password » et
+    « proxy » non vides : la forme d'un billet de spiceproxy_cmd()."""
+    return isinstance(data, dict) and all(
+        data.get(k) for k in ("host", "password", "proxy")
+    )
+
+
+def parse_spiceproxy(json_text: str) -> dict:
+    """Le dict de spiceproxy_cmd(), ou {} quand la sortie ne porte pas de
+    billet SPICE (objet JSON avec « host », « password » et « proxy »).
+
+    La sortie lue mêle stdout et stderr du nœud : un avertissement de sudo
+    ou de perl peut précéder ou suivre l'objet. Le premier objet JSON qui
+    s'ouvre en début de ligne et a la forme d'un billet est rendu, le reste
+    du texte est ignoré."""
+    texte = json_text or ""
+    if not isinstance(texte, str):
+        return {}
+    lecteur = json.JSONDecoder()
+    for m in re.finditer(r"^[ \t]*\{", texte, re.M):
+        try:
+            data, _fin = lecteur.raw_decode(texte, m.end() - 1)
+        except ValueError:
+            continue
+        if _billet_spice(data):
+            return data
+    return {}
+
+
+def spiceproxy_noise(out: str) -> list[str]:
+    """Les lignes de la sortie de spiceproxy_cmd() qu'un message d'échec
+    peut montrer : toute ligne d'allure JSON (ouverte par « { », « } »,
+    « [ », « ] » ou « " ») et toute ligne qui nomme « password » ou
+    « pvespiceproxy » en est retirée, car un billet, même incomplet ou
+    mêlé à du bruit, porte un mot de passe et un jeton du proxy."""
+    gardees = []
+    for ligne in (out or "").splitlines():
+        nue = ligne.strip()
+        if not nue or nue[0] in '{}[]"':
+            continue
+        if "password" in nue or "pvespiceproxy" in nue:
+            continue
+        gardees.append(ligne)
+    return gardees
+
+
+def spice_vv_text(data: dict, proxy: str = "") -> str:
+    """Le fichier .vv de remote-viewer pour le billet `data`
+    (parse_spiceproxy) : la section [virt-viewer], une ligne « clé=valeur »
+    par champ, dans l'ordre reçu.
+
+    `proxy` remplace l'adresse du proxy SPICE, celle du tunnel du poste.
+    Une valeur multiligne (le certificat « ca ») s'écrit avec des « \\n »
+    littéraux, que virt-viewer relit en fins de ligne ; une clé hors de la
+    forme de virt-viewer est écartée. Un booléen s'écrit 1 ou 0."""
+    champs = dict(data or {})
+    if proxy:
+        champs["proxy"] = proxy
+    lignes = ["[virt-viewer]"]
+    for cle, valeur in champs.items():
+        if not _RE_VV_CLE.match(str(cle)):
+            continue
+        if isinstance(valeur, bool):
+            valeur = int(valeur)
+        texte = str(valeur).replace("\r", "").replace("\n", "\\n")
+        lignes.append(f"{cle}={texte}")
+    return "\n".join(lignes) + "\n"
+
+
+def spice_tunnel_argv(host: dict, local_port: int, wait=SPICE_TUNNEL_WAIT):
+    """ssh qui porte 127.0.0.1:<local_port> du poste vers le proxy SPICE
+    du nœud, sur le chemin de ssh_argv (port, rebond, alias).
+
+    « -f » rend la main une fois le transfert en place ; la commande
+    distante « sleep » garde le tunnel `wait` secondes, puis ssh ne se
+    ferme qu'avec la dernière connexion qui le traverse. Un port local
+    déjà pris fait échouer ssh (ExitOnForwardFailure)."""
+    argv = ssh_argv(host, f"sleep {int(wait)}")
+    transfert = f"127.0.0.1:{int(local_port)}:localhost:{SPICE_PROXY_PORT}"
+    return (
+        argv[:1]
+        + ["-f", "-o", "ExitOnForwardFailure=yes", "-L", transfert]
+        + argv[1:]
+    )
+
+
+def spice_tunnel_proxy(local_port: int) -> str:
+    """Adresse du proxy SPICE à écrire dans le .vv quand le tunnel de
+    spice_tunnel_argv() écoute sur `local_port`."""
+    return f"http://127.0.0.1:{int(local_port)}"
+
+
+def remote_viewer_argv(vv_path: str, auto_vendors=None) -> list:
+    """argv de remote-viewer pour le fichier .vv, avec les options
+    spice-gtk de qemu_usb.virt_viewer_argv : les périphériques des
+    vendeurs auto_vendors (les Stream Deck par défaut) passent d'office
+    dans la VM, au branchement comme à la connexion. auto_vendors vide :
+    aucune option, la sélection reste au menu USB de remote-viewer."""
+    from script.todo import qemu_usb as qu
+
+    if auto_vendors is None:
+        auto_vendors = (qu.DECK_VENDOR,)
+    # virt_viewer_argv rend « virt-viewer -c <uri> [options] <cible> » ;
+    # remote-viewer prend les mêmes options spice-gtk, sans « -c ».
+    vv = qu.virt_viewer_argv(
+        "", vv_path, usbredir=True, auto_vendors=auto_vendors
+    )
+    return ["remote-viewer", *vv[3:]]
+
+
 def status_cmd(vmid: int) -> str:
     return f"qm status {vmid} --verbose"
 

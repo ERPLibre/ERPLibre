@@ -12,13 +12,16 @@ librement les helpers généraux (self._is_yes, self.fill_help_info) et ceux du
 menu QEMU (self._qemu_prompt_distro, self._qemu_install_erplibre_monitored),
 qu'elles réutilisent volontairement plutôt que de les redire."""
 
+import atexit
 import contextlib
 import json
 import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -782,6 +785,8 @@ class ProxmoxMenuMixin:
                 print(f"  {t('No usbN port on this Proxmox VM.')}")
             print(f"\n  [1] {t('Attach a USB device of the Proxmox node')}")
             print(f"  [2] {t('Detach a USB device from this Proxmox VM')}")
+            redir = t("Redirect a deck from this workstation (SPICE)")
+            print(f"  [3] {redir}")
             print(f"  {retour()}")
             choix = input(t("Choice: ")).strip()
             if choix in ("0", ""):
@@ -790,6 +795,8 @@ class ProxmoxMenuMixin:
                 self._pve_usb_attach(vm, cfg)
             elif choix == "2":
                 self._pve_usb_detach(vm, ports)
+            elif choix == "3":
+                self._pve_usb_spice(vm, cfg)
             else:
                 print(t("Invalid selection!"))
 
@@ -877,6 +884,268 @@ class ProxmoxMenuMixin:
             print(t("Cancelled."))
             return
         self._pve_show(cmd)
+
+    # -- SPICE : un deck de CE poste redirigé vers une VM --------------- #
+    # Secondes laissées à remote-viewer pour lire le .vv, qu'il efface
+    # lui-même (« delete-this-file ») ; passé ce délai le menu l'efface.
+    _PVE_VV_WAIT = 10
+    _PVE_VV_POLL = 0.5
+    # Journal de remote-viewer ; vide : voir _pve_viewer_log.
+    _PVE_VIEWER_LOG = ""
+
+    def _pve_usb_spice(self, vm, cfg):
+        """Redirige les Stream Deck de CE poste vers la VM par SPICE.
+
+        Pose d'abord ce qui manque à la VM (affichage SPICE, un port
+        « usbN: spice » par deck branché ici, au moins un) en un seul
+        « qm set » confirmé, puis s'assure que la VM tourne avec : un
+        changement d'affichage demande « qm reboot », proposé. Sans
+        affichage local, la commande à lancer sur le poste est montrée.
+        Sinon : accord demandé pour arrêter le service deck de ce poste,
+        remote-viewer installé au besoin, tunnel ssh vers le proxy SPICE du
+        nœud, billet lu par pvesh, puis seulement le service arrêté, .vv
+        écrit en 0600 puis effacé, remote-viewer lancé avec le filtre qui
+        redirige les decks d'office. Le service n'est donc arrêté qu'une
+        fois tout le reste obtenu, et relancé si remote-viewer ne démarre
+        pas."""
+        from script.proxmox import proxmox_deploy as pve
+
+        hote = self._pve_host(ask=False) or {}
+        if not hote:
+            return
+        display = os.environ.get("DISPLAY") or os.environ.get(
+            "WAYLAND_DISPLAY"
+        )
+        decks = [
+            d for d in (self._qemu_usb_host_devices() or []) if d["is_deck"]
+        ]
+        if not decks:
+            avis = t(
+                "No Stream Deck plugged into this workstation: one plugged in"
+                " later is redirected too."
+            )
+            print(f"\n  ℹ {avis}")
+        total = pve.usb_slot_count(hote.get("version") or "")
+        plan = pve.spice_plan(cfg, max(1, len(decks)), total)
+        if plan["short"]:
+            avis = t("Not enough free usbN ports for every deck; missing:")
+            print(f"\n  ⚠ {avis} {plan['short']}")
+            if not plan["have"] and not plan["slots"]:
+                return
+        cmd = pve.spice_set_cmd(vm["vmid"], plan)
+        if cmd and not self._pve_spice_enable(vm, cfg, plan, cmd):
+            return
+        if not self._pve_spice_running(vm):
+            return
+        if not display:
+            avis = t(
+                "No display here: run this entry on the workstation where the"
+                " deck is plugged in. It opens:"
+            )
+            print(f"\n  {avis}")
+            print(f"    {shlex.join(pve.remote_viewer_argv('<file.vv>'))}")
+            return
+        arrete = False
+        if decks:
+            arrete = self._qemu_usb_deck_conflict()
+            if arrete is None:
+                return
+        if not self._qemu_ensure_virt_viewer() or not shutil.which(
+            "remote-viewer"
+        ):
+            print(
+                f"  ⚠ {t('remote-viewer is missing (package virt-viewer).')}"
+            )
+            return
+        port = self._pve_spice_tunnel(hote)
+        if port is None:
+            return
+        remote = pve.spiceproxy_cmd(self._pve_node_name(), vm["vmid"])
+        # Montrée sans sa sortie : le billet porte un mot de passe.
+        self._pve_print_command(hote, remote)
+        code, out = self._pve_show(remote, quiet=True)
+        data = pve.parse_spiceproxy(out) if code == 0 else {}
+        if not data:
+            print(f"  ⚠ {t('No SPICE ticket from the Proxmox node.')}")
+            # Seules les lignes sans billet : un objet JSON mal lu porte
+            # quand même le mot de passe.
+            for ligne in pve.spiceproxy_noise(out)[-3:]:
+                print(f"    {ligne}")
+            return
+        vv = pve.spice_vv_text(data, pve.spice_tunnel_proxy(port))
+        if arrete:
+            self._qemu_usb_exec(self._qemu_usb_service_cmd("stop"))
+        if not self._pve_spice_launch(vv, display):
+            if arrete:
+                self._qemu_usb_exec(self._qemu_usb_service_cmd("start"))
+            return
+        if arrete:
+            rappel = t("When the viewer is closed, restart the deck service:")
+            print(f"  {rappel}")
+            print(f"    {self._qemu_usb_service_cmd('start')}")
+
+    def _pve_spice_enable(self, vm, cfg, plan, cmd):
+        """Montre ce que `cmd` (spice_set_cmd) ajoute à la VM, rappelle
+        qu'un changement d'affichage attend le démarrage suivant, et le
+        lance après confirmation. Vrai quand il a réussi."""
+        from script.proxmox import proxmox_deploy as pve
+
+        print(f"\n{t('Missing for SPICE USB redirection:')}")
+        if plan["vga"]:
+            print(f"  ▶ vga: {pve.vga_type(cfg)} -> {pve.SPICE_VGA}")
+        for n in plan["slots"]:
+            print(f"  ▶ usb{n}: spice")
+        if plan["vga"]:
+            avis = t(
+                "The display change takes effect at the next start of the VM"
+                " (qm reboot, or stop and start), not at a reboot from inside"
+                " the guest."
+            )
+            print(f"\n  ℹ {avis}")
+        print(f"\n  {cmd}")
+        if not self._is_yes(input(t("Confirm? (y/N): "))):
+            print(t("Cancelled."))
+            return False
+        code, _out = self._pve_show(cmd)
+        return code == 0
+
+    def _pve_spice_running(self, vm):
+        """Vrai quand la VM tourne avec la redirection SPICE en vigueur.
+
+        L'état est relu (« qm status ») : la liste du menu a pu vieillir.
+        En marche, la configuration en vigueur (sans l'attente) décide ;
+        il lui manque la redirection : « qm reboot » est proposé, qui
+        applique l'attente. Arrêtée : « qm start » est proposé."""
+        from script.proxmox import proxmox_deploy as pve
+
+        vmid = int(vm["vmid"])
+        _c, etat = self._pve_show(f"qm status {vmid}", quiet=True)
+        if re.search(r"^status:\s*running\b", etat or "", re.M):
+            code, cur = self._pve_show(
+                pve.config_current_cmd(vmid), quiet=True
+            )
+            if code == 0 and pve.spice_ready(cur):
+                return True
+            avis = t(
+                "The running VM does not use SPICE redirection yet: it needs"
+                " a restart."
+            )
+            print(f"\n  ⚠ {avis}")
+            question = t("Restart the VM now (qm reboot)? (y/N): ")
+            remote = f"qm reboot {vmid}"
+        else:
+            question = t("The VM is not running. Start it now? (y/N): ")
+            remote = f"qm start {vmid}"
+        if not self._is_yes(input(question)):
+            print(t("Cancelled."))
+            return False
+        code, _out = self._pve_show(remote, timeout=600)
+        return code == 0
+
+    @staticmethod
+    def _pve_free_port():
+        """Port TCP libre sur la boucle locale de ce poste, choisi par le
+        noyau."""
+        with contextlib.closing(
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def _pve_spice_tunnel(self, hote):
+        """Ouvre le tunnel de pve.spice_tunnel_argv vers le proxy SPICE du
+        nœud ; rend le port local, ou None quand ssh échoue. ssh passe en
+        arrière-plan de lui-même (« -f ») : aucun tube n'est tenu ouvert."""
+        from script.proxmox import proxmox_deploy as pve
+
+        port = self._pve_free_port()
+        argv = pve.spice_tunnel_argv(hote, port)
+        print(f"\n{t('Will execute:')} {shlex.join(argv)}")
+        try:
+            code = subprocess.run(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                timeout=60,
+            ).returncode
+        except (OSError, subprocess.SubprocessError):
+            code = None
+        if code != 0:
+            avis = t(
+                "The SSH tunnel to the SPICE proxy of the node did not open."
+            )
+            print(f"  ⚠ {avis}")
+            return None
+        return port
+
+    def _pve_viewer_log(self):
+        """Chemin du journal de remote-viewer : _PVE_VIEWER_LOG s'il est
+        posé, sinon « erplibre/remote-viewer.log » sous $XDG_CACHE_HOME
+        (~/.cache à défaut). Un dossier propre à l'utilisateur plutôt que
+        /tmp partagé, où un autre compte pourrait créer le fichier avant
+        lui."""
+        if self._PVE_VIEWER_LOG:
+            return self._PVE_VIEWER_LOG
+        base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser(
+            "~/.cache"
+        )
+        return os.path.join(base, "erplibre", "remote-viewer.log")
+
+    @staticmethod
+    def _pve_open_log(chemin):
+        """Ouvre `chemin` en ajout, créé en 0600 dans un dossier créé en
+        0700 au besoin. O_NOFOLLOW refuse un lien symbolique posé à sa
+        place : l'ouverture lève OSError plutôt que d'écrire ailleurs."""
+        os.makedirs(os.path.dirname(chemin), mode=0o700, exist_ok=True)
+        fd = os.open(
+            chemin,
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+        )
+        return os.fdopen(fd, "ab")
+
+    @staticmethod
+    def _pve_spice_forget(chemin):
+        """Efface le .vv s'il existe encore."""
+        with contextlib.suppress(OSError):
+            os.unlink(chemin)
+
+    def _pve_spice_launch(self, vv_text, display):
+        """Écrit le .vv dans un fichier privé (mkstemp : 0600), lance
+        remote-viewer détaché, puis efface le fichier dès que
+        remote-viewer l'a lu, ou après _PVE_VV_WAIT secondes ; atexit
+        l'efface aussi si le menu s'arrête avant. Vrai quand remote-viewer
+        a démarré."""
+        from script.proxmox import proxmox_deploy as pve
+
+        journal = self._pve_viewer_log()
+        fd, chemin = tempfile.mkstemp(prefix="erplibre-spice-", suffix=".vv")
+        atexit.register(self._pve_spice_forget, chemin)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(vv_text)
+            argv = pve.remote_viewer_argv(chemin)
+            print(f"\n  {t('Opening')} : {shlex.join(argv)}")
+            with self._pve_open_log(journal) as log:
+                subprocess.Popen(
+                    argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=log,
+                    start_new_session=True,
+                )
+        except OSError as exc:
+            print(f"  ⚠ {t('Could not start it:')} {exc}")
+            self._pve_spice_forget(chemin)
+            return False
+        fin = time.monotonic() + self._PVE_VV_WAIT
+        while os.path.exists(chemin) and time.monotonic() < fin:
+            time.sleep(self._PVE_VV_POLL)
+        self._pve_spice_forget(chemin)
+        print(f"  {t('Window opening on your display')} ({display}).")
+        print(f"  {t('Log:')} {journal}")
+        print(f"  {t('Other devices: File > USB device selection.')}")
+        return True
 
     def _pve_guest_ip(self, vmid, attente=120):
         """Adresse d'une VM Proxmox : agent invité, sinon voisinage de l'hôte.
