@@ -12,8 +12,9 @@ Ce que ces tests tiennent :
 - le mot de passe en clair n'entre ni dans la spec, ni dans l'historique, ni
   dans le vidage F9 : il sort par le rappel « vm_secret_sink » seul ;
 - F5 refuse un utilisateur invalide ou un mot de passe vide ;
-- les invites : défaut, génération écrite hors du journal, saisie getpass
-  confirmée, option « garder ».
+- les invites : défaut, génération écrite hors du journal, saisie masquée
+  confirmée, option « garder » ; [0] et Ctrl+D y renoncent au déploiement
+  sans écrire de secret.
 
 SONDE est un mot de passe inventé : on le cherche partout où il ne doit
 pas être.
@@ -32,17 +33,19 @@ sys.path.insert(0, "test")
 
 from async_case import AsyncCase  # noqa: E402
 
+from script.todo import ui  # noqa: E402
 from script.todo.deploy_form_lib import (  # noqa: E402
+    VM_LOGIN_FILE,
+    VM_LOGIN_READ_CMD,
     VM_PASSWORD_ALPHABET,
     VM_PASSWORD_DEFAULT,
-    VM_LOGIN_FILE,
     VM_PASSWORD_LENGTH,
-    VM_LOGIN_READ_CMD,
     VM_USER_DEFAULT,
     t,
     vm_login_value_error,
 )
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 
 try:
     import textual  # noqa: F401
@@ -313,9 +316,8 @@ class TestQemu(_Commun, _Base):
         app = self.app
         construire = self.ctx["build_command"]
         lignes = []
-        self.ctx["build_command"] = (
-            lambda vm, spec, dry: lignes.append(construire(vm, spec, dry))
-            or lignes[-1]
+        self.ctx["build_command"] = lambda vm, spec, dry: (
+            lignes.append(construire(vm, spec, dry)) or lignes[-1]
         )
         async with app.run_test(size=(200, 60)) as pilote:
             await self.monte(pilote)
@@ -419,56 +421,116 @@ class TestProxmox(_Commun, _Base):
 
 class TestLesInvites(unittest.TestCase):
     """_qemu_ask_vm_account : ce que rendent les invites, et où va le
-    clair."""
+    clair. Le port scripté répond, dans l'ordre, à l'utilisateur, au choix
+    du mot de passe, aux deux saisies masquées et à « garder ? » ; une
+    EOFError y vaut Ctrl+D."""
 
-    def _demande(self, reponses, saisies=()):
+    def _demande(self, *reponses, avant=None):
         todo = TODO.__new__(TODO)
+        todo._qemu_vm_secret = avant
+        self.port = ScriptedPort(reponses)
         sortie, origine = io.StringIO(), io.StringIO()
-        reponses, saisies = iter(reponses), iter(saisies)
         with (
-            mock.patch("builtins.input", lambda *a: next(reponses)),
-            mock.patch("getpass.getpass", lambda *a: next(saisies)),
+            ui.bind(self.port),
             mock.patch("sys.stdout", sortie),
             mock.patch("sys.__stdout__", origine),
         ):
             rendu = todo._qemu_ask_vm_account()
         return todo, rendu, sortie.getvalue(), origine.getvalue()
 
+    def _genres(self):
+        return [e.get("kind") for e in self.port.events if e["t"] == "ask"]
+
+    def _refus(self):
+        return [
+            e["text"]
+            for e in self.port.events
+            if e["t"] == "notice" and e["level"] == "error"
+        ]
+
     def test_enter_everywhere_keeps_the_defaults(self):
-        todo, rendu, _o, _n = self._demande(["", "", ""])
+        todo, rendu, _o, _n = self._demande("", "", "")
         self.assertEqual((VM_USER_DEFAULT, True, False), rendu)
         self.assertIsNone(todo._qemu_vm_secret)
+        self.assertEqual([], self.port.answers)
+
+    def test_the_password_is_a_choice_whose_public_default_is_marked(self):
+        self._demande("", "", "")
+        self.assertEqual(["text", "choose", "text"], self._genres())
+        choix = self.port.events[1]
+        self.assertEqual("1", choix["default"])
+        self.assertEqual(
+            ["1", "2", "3", "0"], [o["key"] for o in choix["options"]]
+        )
+        premiere = choix["options"][0]["label"]
+        self.assertIn(VM_PASSWORD_DEFAULT, premiere)
+        self.assertIn(t("(default)"), premiere)
 
     def test_an_invalid_user_is_asked_again(self):
-        _t, rendu, sortie, _n = self._demande(["root", "operateur", "", ""])
+        _t, rendu, sortie, _n = self._demande("root", "operateur", "", "")
         self.assertEqual("operateur", rendu[0])
         self.assertIn("root", sortie)
 
+    def test_an_invalid_choice_is_named_and_asked_again(self):
+        # « x » et « g » ne sont ni un numéro ni un nom affiché : chacun
+        # est une faute nommée, et la question revient.
+        for faute in ("x", "g"):
+            with self.subTest(faute=faute):
+                todo, rendu, _s, _o = self._demande("", faute, "", "")
+                self.assertEqual(
+                    [t("Invalid choice: ") + faute], self._refus()
+                )
+                self.assertEqual((VM_USER_DEFAULT, True, False), rendu)
+                self.assertNotIn("secret", self._genres())
+                self.assertIsNone(todo._qemu_vm_secret)
+
     def test_a_generated_password_is_shown_outside_the_journal(self):
-        todo, rendu, sortie, origine = self._demande(["", "g", ""])
+        todo, rendu, sortie, origine = self._demande("", "2", "")
         secret = todo._qemu_vm_secret
         self.assertEqual(VM_PASSWORD_LENGTH, len(secret))
         self.assertFalse(rendu[1])
         self.assertIn(secret, origine)
         self.assertNotIn(secret, sortie)
 
-    def test_a_typed_password_is_confirmed(self):
+    def test_a_typed_password_is_confirmed_by_masked_questions(self):
         todo, rendu, sortie, origine = self._demande(
-            ["", "t", ""], [SONDE, "autre", SONDE, SONDE]
+            "", "3", SONDE, "autre", SONDE, SONDE, ""
         )
         self.assertEqual(SONDE, todo._qemu_vm_secret)
         self.assertFalse(rendu[1])
         self.assertNotIn(SONDE, sortie + origine)
+        self.assertEqual(4, self._genres().count("secret"))
+        self.assertNotIn(SONDE, repr(self.port.events))
 
     def test_an_empty_typed_password_keeps_the_default(self):
-        todo, rendu, _s, _o = self._demande(["", "t", ""], [""])
+        todo, rendu, _s, _o = self._demande("", "3", "", "")
         self.assertIsNone(todo._qemu_vm_secret)
         self.assertTrue(rendu[1])
 
     def test_keep_names_the_command_that_reads_it(self):
-        _t, rendu, sortie, _o = self._demande(["", "", "o"])
+        _t, rendu, sortie, _o = self._demande("", "", "o")
         self.assertTrue(rendu[2])
         self.assertIn(VM_LOGIN_READ_CMD, sortie)
+
+    def test_zero_or_ctrl_d_at_each_question_goes_back(self):
+        # Chaque liste finit par le retour ; ce qui la suit doit rester au
+        # port : rien n'est demandé après.
+        fin = EOFError()
+        for reponses, reste in (
+            ((fin,), []),
+            (("", "0", "de trop"), ["de trop"]),
+            (("", fin, "de trop"), ["de trop"]),
+            (("", "3", fin, "de trop"), ["de trop"]),
+            (("", "3", SONDE, fin, "de trop"), ["de trop"]),
+            (("", "3", SONDE, SONDE, fin, "de trop"), ["de trop"]),
+            (("", "2", fin, "de trop"), ["de trop"]),
+        ):
+            with self.subTest(reponses=reponses):
+                # Un clair resté d'un déploiement précédent part aussi.
+                todo, rendu, _s, _o = self._demande(*reponses, avant=SONDE)
+                self.assertIsNone(rendu)
+                self.assertIsNone(todo._qemu_vm_secret)
+                self.assertEqual(reste, self.port.answers)
 
     def test_the_recap_names_the_account_not_the_password(self):
         todo = TODO.__new__(TODO)
@@ -492,6 +554,50 @@ class TestLesInvites(unittest.TestCase):
         self.assertIn("operateur", buf.getvalue())
         self.assertIn(VM_LOGIN_READ_CMD, buf.getvalue())
         self.assertNotIn(SONDE, buf.getvalue())
+
+
+class TestLeRetourAuCompte(unittest.TestCase):
+    """_qemu_collect_options_cli : un retour aux questions du compte
+    renonce au déploiement, sans un mot, avant de lister les VM ou d'en
+    faire le récapitulatif. Les questions d'avant (installer ERPLibre,
+    suivre, la 3D, ~/.ssh/config) reçoivent « n »."""
+
+    AVANT = ("n", "n", "n", "n")
+
+    def _collecte(self, reponses, saisies=()):
+        todo = TODO.__new__(TODO)
+        todo._qemu_collect_guest_cli = lambda vms: {"vm_tools": ()}
+        todo._qemu_cache_active = lambda: False
+        todo._qemu_list_domains = lambda: self.fail("déploiement poursuivi")
+        todo._qemu_print_recap = lambda *a: self.fail("récapitulatif")
+        vms = [{"name": "vm-galet", "distro": "debian", "arch": "amd64"}]
+        sortie = io.StringIO()
+        with (
+            mock.patch("builtins.input", side_effect=reponses) as tape,
+            mock.patch("getpass.getpass", side_effect=saisies) as masque,
+            mock.patch("sys.stdout", sortie),
+            mock.patch("sys.__stdout__", io.StringIO()),
+        ):
+            rendu = todo._qemu_collect_options_cli(vms, "x1")
+        appels = tape.call_count + masque.call_count
+        self.assertEqual(len(reponses) + len(saisies), appels)
+        self.assertNotIn(t("Cancelled."), sortie.getvalue())
+        self.assertIsNone(todo._qemu_vm_secret)
+        return rendu
+
+    def test_back_at_each_account_question_deploys_nothing(self):
+        fin = EOFError()
+        for reponses, saisies in (
+            ((fin,), ()),
+            (("", "0"), ()),
+            (("", fin), ()),
+            (("", "3"), (fin,)),
+            (("", "3"), (SONDE, fin)),
+            (("", "2", fin), ()),
+        ):
+            with self.subTest(reponses=reponses, saisies=saisies):
+                rendu = self._collecte((*self.AVANT, *reponses), saisies)
+                self.assertIsNone(rendu)
 
 
 if __name__ == "__main__":

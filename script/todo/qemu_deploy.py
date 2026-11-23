@@ -2439,51 +2439,63 @@ class QemuDeployMixin:
 
     def _qemu_ask_vm_account(self):
         """Le compte de la VM, aux invites. Rend (utilisateur, mot de passe
-        par défaut ?, garder dans la VM ?).
+        par défaut ?, garder dans la VM ?), ou None pour [0] au choix du
+        mot de passe ou Ctrl+D à l'une des questions : le clair en mémoire
+        est alors retiré, aucun n'est posé.
 
-        Le clair choisi part à _qemu_set_vm_secret, jamais dans la valeur
-        rendue. Un mot de passe généré s'écrit sur sys.__stdout__ : le
-        sys.stdout de todo (todo_journal.Duplicateur) recopie au journal ce
-        qu'il affiche, le flux d'origine non. Un mot de passe tapé passe par
-        getpass, qui ne l'affiche pas, puis se confirme."""
+        Le mot de passe se choisit par `ui.choose` : le défaut public, marqué,
+        un mot de passe généré ou un mot de passe tapé. Le clair choisi part
+        à _qemu_set_vm_secret, jamais dans la valeur rendue. Un mot de passe
+        généré s'écrit sur sys.__stdout__ : le sys.stdout de todo
+        (todo_journal.Duplicateur) recopie au journal ce qu'il affiche, le
+        flux d'origine non. Un mot de passe tapé passe par `ui.secret`, qui
+        ne l'affiche pas, puis se confirme."""
         from script.todo.deploy_form_lib import (
             generate_vm_password,
             validate_vm_user,
         )
 
         print(f"\n{t('VM account')}")
-        while True:
-            user = (
-                input(f"  {t('VM user')} [{VM_USER_DEFAULT}] : ").strip()
-                or VM_USER_DEFAULT
+        try:
+            while True:
+                user = (
+                    ui.ask(f"  {t('VM user')} [{VM_USER_DEFAULT}] : ").strip()
+                    or VM_USER_DEFAULT
+                )
+                erreur = validate_vm_user(user)
+                if not erreur:
+                    break
+                print(f"  ⚠ {erreur}")
+            choix = ui.choose(
+                f"{t('VM password')} :",
+                ["public", "generate", "type"],
+                labels=[
+                    t("Keep {default}, the public password").format(
+                        default=VM_PASSWORD_DEFAULT
+                    ),
+                    t("Generate password"),
+                    t("Type it"),
+                ],
+                default="public",
             )
-            erreur = validate_vm_user(user)
-            if not erreur:
-                break
-            print(f"  ⚠ {erreur}")
-        choix = (
-            input(
-                "  "
-                + t(
-                    "VM password: Enter = {default} (public),"
-                    " g = generate, t = type it: "
-                ).format(default="erplibre")
+            if choix is None:
+                self._qemu_set_vm_secret(None)
+                return None
+            secret = None
+            if choix == "generate":
+                secret = generate_vm_password()
+                sys.__stdout__.write(
+                    f"  {t('Generated password, note it now:')} {secret}\n"
+                )
+                sys.__stdout__.flush()
+            elif choix == "type":
+                secret = self._qemu_type_vm_password()
+            keep = self._is_yes(
+                ui.ask(f"  {t('Keep the password in the VM? (y/N): ')}")
             )
-            .strip()
-            .lower()
-        )
-        secret = None
-        if choix == "g":
-            secret = generate_vm_password()
-            sys.__stdout__.write(
-                f"  {t('Generated password, note it now:')} {secret}\n"
-            )
-            sys.__stdout__.flush()
-        elif choix:
-            secret = self._qemu_type_vm_password()
-        keep = self._is_yes(
-            input(f"  {t('Keep the password in the VM? (y/N): ')}")
-        )
+        except EOFError:
+            self._qemu_set_vm_secret(None)
+            return None
         if keep:
             print(f"    {t('Read it with:')} {VM_LOGIN_READ_CMD}")
         self._qemu_set_vm_secret(secret)
@@ -2491,14 +2503,15 @@ class QemuDeployMixin:
 
     @staticmethod
     def _qemu_type_vm_password():
-        """Mot de passe tapé deux fois par getpass, ou None pour garder le
-        défaut public : une première saisie vide, ou le défaut lui-même. Une
-        saisie refusée par vm_login_value_error, ou deux saisies qui
-        diffèrent, reposent la question."""
+        """Mot de passe tapé deux fois par `ui.secret`, ou None pour garder
+        le défaut public : une première saisie vide, ou le défaut lui-même.
+        Une saisie refusée par vm_login_value_error, ou deux saisies qui
+        diffèrent, reposent la question. Ctrl+D lève EOFError, que
+        l'appelant lit comme un retour."""
         from script.todo.deploy_form_lib import vm_login_value_error
 
         while True:
-            premier = getpass.getpass(f"  {t('VM password')} : ")
+            premier = ui.secret(f"  {t('VM password')} : ")
             if not premier:
                 print(f"  {t('Empty: the default password is kept.')}")
                 return None
@@ -2506,7 +2519,7 @@ class QemuDeployMixin:
             if erreur:
                 print(f"  ⚠ {erreur}")
                 continue
-            if getpass.getpass(f"  {t('Confirm the password')} : ") != premier:
+            if ui.secret(f"  {t('Confirm the password')} : ") != premier:
                 print(f"  ⚠ {t('The passwords do not match.')}")
                 continue
             return None if premier == VM_PASSWORD_DEFAULT else premier
@@ -2776,7 +2789,11 @@ class QemuDeployMixin:
         )
         # Posé après le type de VM : un bureau GNOME ouvre sa session RDP
         # avec ce mot de passe.
-        vm_user, login_default, keep_login = self._qemu_ask_vm_account()
+        # [0] ou Ctrl+D au compte renonce, rien n'étant encore créé.
+        account = self._qemu_ask_vm_account()
+        if account is None:
+            return None
+        vm_user, login_default, keep_login = account
 
         # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
         # parallélisme : on connaît alors le vrai nombre à déployer (affiché

@@ -8113,11 +8113,13 @@ TRANSLATIONS = {
         "fr": "Le mot de passe de la VM ne peut pas commencer par « - ».",
         "en": "The VM password cannot start with '-'.",
     },
-    "VM password: Enter = {default} (public), g = generate, t = type it: ": {
-        "fr": "Mot de passe de la VM : Entrée = {default} (public), g ="
-        " générer, t = le taper : ",
-        "en": "VM password: Enter = {default} (public), g = generate, t ="
-        " type it: ",
+    "Keep {default}, the public password": {
+        "fr": "Garder {default}, le mot de passe public",
+        "en": "Keep {default}, the public password",
+    },
+    "Type it": {
+        "fr": "Le taper",
+        "en": "Type it",
     },
     "Generated password, note it now:": {
         "fr": "Mot de passe généré, à noter maintenant :",
