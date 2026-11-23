@@ -4930,7 +4930,7 @@ class TestLeDerouleDeLaReprise(unittest.TestCase):
     restauration revenue à faux quoi qu'il arrive."""
 
     def joue(self, echec_reconstruire=False):
-        self.gestes, self.intrants = [], []
+        self.gestes, self.intrants, self.lisibles = [], [], {}
         etapes = B.etapes_resolues(B.ETAPES_BOUCLE, "fictif")
 
         def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
@@ -4940,8 +4940,11 @@ class TestLeDerouleDeLaReprise(unittest.TestCase):
                 return "make reconstruire : fictif"
             return ""
 
-        def lecture(moteur, env, e, passe="", secret="", dire=None):
+        def lecture(
+            moteur, env, e, passe="", secret="", dire=None, echec_lisible=False
+        ):
             self.gestes.append(e.cible)
+            self.lisibles[e.cible] = echec_lisible
             return {
                 "ca-empreinte": "a" * 64,
                 "restauration-etat": SORTIE_ETAT.split("ok: [id-sso-01]")[0],
@@ -4986,6 +4989,19 @@ class TestLeDerouleDeLaReprise(unittest.TestCase):
             "",
             lambda *a: None,
             [],
+        )
+
+    def test_only_the_witnesses_are_read_through_their_failure(self):
+        """Leur échec est un verdict ; celui des autres lectures, un hôte
+        muet."""
+        self.joue()
+        self.assertEqual(
+            {
+                "ca-empreinte": False,
+                "restauration-etat": False,
+                "temoins-etat": True,
+            },
+            self.lisibles,
         )
 
     def test_the_backup_target_is_never_razed(self):
@@ -5363,6 +5379,37 @@ class TestLEtapeDeposeSaSortie(unittest.TestCase):
             "/f/moteur", {}, etape, "env", "", dire=lambda *a: None
         )
         return souci, os.path.join(d, "journal", "env-une-cible.log")
+
+    def lit(self, code, sortie, etape=B.ETAPE_TEMOINS, echec_lisible=True):
+        self.atelier(code, sortie)
+        return B.joue_une_lecture(
+            "/f/moteur",
+            {},
+            etape,
+            "env",
+            "",
+            lambda *a: None,
+            echec_lisible=echec_lisible,
+        )
+
+    def test_a_failed_reading_of_hosts_reads_nothing(self):
+        """Un hôte en échec n'imprime rien : lire le reste le ferait sortir
+        des jeux attendus, au lieu de faire dire « aucun jeu lu »."""
+        lu = self.lit(2, SORTIE_ETAT, B.ETAPE_ETAT_RESTAURATION, False)
+        self.assertEqual("", lu)
+        self.assertIn(
+            "aucun jeu lu", " ".join(B.ecarts_de_reprise(lu, "", "", ""))
+        )
+
+    def test_a_failed_reading_still_names_what_it_judged(self):
+        """La cible des témoins échoue sur un ECART : ses verdicts restent
+        lus, et l'écart nommé plutôt que chaque témoin dit absent."""
+        verdicts, _ = B.verdicts_temoins(self.lit(2, SORTIE_TEMOINS))
+        self.assertEqual("ECART", verdicts.get("id-sso-01/forgejo"))
+        self.assertEqual("IDENTIQUE", verdicts.get("infra-pki-01/step_ca"))
+
+    def test_a_reading_cut_by_its_bound_reads_nothing(self):
+        self.assertEqual("", self.lit(None, SORTIE_TEMOINS))
 
     def test_a_recipe_failure_is_collected_and_the_loop_goes_on(self):
         self.atelier(2, APRES_RECETTE)

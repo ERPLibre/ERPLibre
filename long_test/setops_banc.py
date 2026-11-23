@@ -5216,9 +5216,20 @@ def ecarts_de_reprise(etat, temoins, avant, apres):
     return tuple(ecarts)
 
 
-def joue_une_lecture(moteur, env, etape, passe, secret, dire=print):
+def joue_une_lecture(
+    moteur, env, etape, passe, secret, dire=print, echec_lisible=False
+):
     """Joue une cible du moteur qui LIT, et rend sa sortie. « » si elle a
-    échoué : l'appelant juge ce qu'il n'a pas pu lire."""
+    échoué : l'appelant juge ce qu'il n'a pas pu lire.
+
+    `echec_lisible` : L'ÉCHEC EST LUI-MÊME UN VERDICT. `temoins-etat` échoue
+    précisément quand un témoin est en ECART, et sa sortie dit lequel ; la
+    jeter ferait lire « absent » chacun des témoins qu'elle a jugés. Seule la
+    borne atteinte rend alors « ».
+
+    LES AUTRES LECTURES GARDENT LE « » : leur échec vient d'un HÔTE, et un
+    hôte qui n'a rien imprimé disparaîtrait de la liste des jeux attendus au
+    lieu de faire dire « aucun jeu lu »."""
     argv = runner_du_banc().cible(
         moteur, etape.cible, etape.variables, confirmer=etape.confirmer
     )
@@ -5229,7 +5240,9 @@ def joue_une_lecture(moteur, env, etape, passe, secret, dire=print):
     )
     if souci:
         dire(f"      journal non déposé : {souci}")
-    return vu.sortie if vu.code == 0 else ""
+    if vu.code == 0 or (echec_lisible and vu.code is not None):
+        return vu.sortie
+    return ""
 
 
 def joue_la_reprise(
@@ -5291,7 +5304,7 @@ def joue_la_reprise(
             moteur, env, ETAPE_ETAT_RESTAURATION, passe, secret, dire
         )
         temoins = joue_une_lecture(
-            moteur, env, ETAPE_TEMOINS, passe, secret, dire
+            moteur, env, ETAPE_TEMOINS, passe, secret, dire, echec_lisible=True
         )
         apres = empreinte_de(
             joue_une_lecture(moteur, env, ETAPE_EMPREINTE, passe, secret, dire)
