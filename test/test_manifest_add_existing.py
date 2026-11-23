@@ -104,9 +104,12 @@ class TestLHote(unittest.TestCase):
             f"{GEL}\trefs/heads/otp-1\n"
         )
         fait = subprocess.CompletedProcess([], 0, sortie, "")
-        with mock.patch.object(
-            repo_upgrade.subprocess, "run", return_value=fait
-        ) as run, mock.patch.object(repo_upgrade.command_echo, "show"):
+        with (
+            mock.patch.object(
+                repo_upgrade.subprocess, "run", return_value=fait
+            ) as run,
+            mock.patch.object(repo_upgrade.command_echo, "show"),
+        ):
             self.assertEqual(
                 repo_upgrade.branches_et_defaut("u"),
                 ({"main", "otp-1"}, "main"),
@@ -116,9 +119,12 @@ class TestLHote(unittest.TestCase):
             ["git", "ls-remote", "--symref", "u", "HEAD", "refs/heads/*"],
         )
         refus = subprocess.CompletedProcess([], 128, "", "denied")
-        with mock.patch.object(
-            repo_upgrade.subprocess, "run", return_value=refus
-        ), mock.patch.object(repo_upgrade.command_echo, "show"):
+        with (
+            mock.patch.object(
+                repo_upgrade.subprocess, "run", return_value=refus
+            ),
+            mock.patch.object(repo_upgrade.command_echo, "show"),
+        ):
             self.assertIsNone(repo_upgrade.branches_et_defaut("u"))
         self.assertIsNone(repo_upgrade.branches_et_defaut(""))
 
@@ -339,11 +345,10 @@ class TestLeMenu(Racine):
 
     def lancer(self, methode, reponses):
         with (
-            mock.patch("builtins.input", side_effect=reponses) as entree,
+            mock.patch("builtins.input", side_effect=reponses),
             mock.patch("builtins.print") as sortie,
         ):
             code = getattr(self.todo, methode)()
-        self.invites = [c.args[0] for c in entree.call_args_list if c.args]
         return code, "\n".join(
             str(c.args[0]) for c in sortie.call_args_list if c.args
         )
@@ -420,7 +425,7 @@ class TestLeMenu(Racine):
         self.assertEqual(
             ouvertures, [(os.path.join(self.racine, "odoo18.0"), True)]
         )
-        self.assertIn("(Entrée : parcourir)", self.invites[0])
+        self.assertIn("Parcourir… (défaut)", texte)
         self.assertIn("choisissez « . »", texte)
         self.assertIn(
             'path="odoo18.0/addons/addons"',
@@ -445,9 +450,20 @@ class TestLeMenu(Racine):
 
     def test_without_urwid_enter_cancels(self):
         with mock.patch.object(gm, "todo_file_browser", None):
-            code, _texte = self.lancer("_git_ajouter_existant", [""])
+            code, texte = self.lancer("_git_ajouter_existant", [""])
         self.assertEqual(code, 0)
-        self.assertIn("(Entrée : annuler)", self.invites[0])
+        self.assertNotIn("Parcourir", texte)
+        self.assertNotIn("(défaut)", texte)
+
+    def test_a_number_out_of_range_is_no_path(self):
+        self.clone("odoo18.0/addons/addons")
+        public = self.lire("manifest/git_manifest_odoo18.0.xml")
+        code, texte = self.lancer("_git_ajouter_existant", ["5", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Choix invalide : 5", texte)
+        self.assertEqual(
+            self.lire("manifest/git_manifest_odoo18.0.xml"), public
+        )
 
     def test_no_visibility_chosen_writes_nothing(self):
         self.clone("odoo18.0/addons/addons")

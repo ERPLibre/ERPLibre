@@ -298,6 +298,36 @@ class TestLeMenu(Clone):
             self.assertIsNone(todo._git_creer_pull_request())
         fabrique.assert_not_called()
 
+    def test_a_typo_at_the_target_is_asked_again_and_ctrl_d_opens_nothing(
+        self,
+    ):
+        from script.todo.todo import TODO
+
+        self.pousser("18.0_ma_fonction")
+        todo = TODO.__new__(TODO)
+        projet = {"name": "web.git", "revision": "18.0", "remote": "OCA"}
+        with (
+            mock.patch.object(
+                type(todo),
+                "_git_choisir_clone",
+                return_value=(
+                    {"OCA": "https://github.com/OCA/"},
+                    projet,
+                    self.clone,
+                ),
+            ),
+            mock.patch.object(gm.github_fork, "ClientGitHub") as fabrique,
+            mock.patch("builtins.input", side_effect=["2", "1", EOFError()]),
+            mock.patch("builtins.print") as sortie,
+        ):
+            self.assertIsNone(todo._git_creer_pull_request())
+        fabrique.assert_not_called()
+        texte = "\n".join(
+            str(c.args[0]) for c in sortie.call_args_list if c.args
+        )
+        self.assertIn("Choix invalide : 2", texte)
+        self.assertIn("(défaut)", texte)
+
 
 class TestLaLigneDeCommande(unittest.TestCase):
     def test_pulls_prints_each_and_the_total(self):

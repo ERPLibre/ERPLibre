@@ -505,14 +505,20 @@ class LeMenuGit(unittest.TestCase):
         branches=True,
         installees=("17.0", "18.0"),
         manifestes=("17.0", "18.0"),
+        non_declares=(("18.0", LUNE["path"]),),
         ajoute="odoo18.0/addons/outils",
+        navigateur=None,
+        cibles=None,
     ):
         """(retour de `methode(*args)`, double de manifest_repo, port,
         fabrique du client GitHub). `branches` faux : l'hôte ne dit pas
         ses branches ; `installees`, les versions installées ;
-        `manifestes`, celles qui ont un manifeste ; `ajoute`, le chemin du
-        projet qu'écrit `ajouter_depot`. Le double de `print` reste dans
-        `self.imprime`."""
+        `manifestes`, celles qui ont un manifeste ; `non_declares`, les
+        clones que le manifeste ne déclare pas ; `ajoute`, le chemin du
+        projet qu'écrit `ajouter_depot` ; `navigateur`, le module du
+        navigateur de fichiers, None comme sans urwid ; `cibles`, les
+        cibles de pull request, deux dépôts distincts par défaut. Le double
+        de `print` reste dans `self.imprime`."""
         from script.todo import ui
         from script.todo.todo import TODO
         from script.todo.ui.port import ScriptedPort
@@ -521,7 +527,7 @@ class LeMenuGit(unittest.TestCase):
         double = mock.Mock(name="manifest_repo")
         double.versions_installees.return_value = list(installees)
         double.depot_de_l_url.return_value = "outils-fictifs"
-        double.clones_non_declares.return_value = [("18.0", LUNE["path"])]
+        double.clones_non_declares.return_value = list(non_declares)
         double.lire_clone.return_value = {
             "url": URL_AJOUT,
             "remote": "origin",
@@ -547,6 +553,22 @@ class LeMenuGit(unittest.TestCase):
             {},
             {"locales": {"fini": "fusion"}, "distantes": {}},
         )
+        double.ajouter_existant.return_value = (
+            os.path.join(gm.RACINE, "manifest", "default.dev.xml"),
+            {"path": LUNE["path"], "remote": "r", "revision": "b"},
+            None,
+            0,
+        )
+        double.forker.return_value = ({"html_url": "u"}, True, None)
+        double.prendre_le_fork.return_value = [
+            ("18.0", os.path.join(gm.RACINE, "manifest", "f.xml"), None)
+        ]
+        double.branche_poussee.return_value = ("b", "origin", "b")
+        double.cibles_pull_request.return_value = cibles or {
+            "manifeste": ("Bidon/lune", "18.0"),
+            "amont": ("AmontBrume/lune", "18.0"),
+        }
+        double.resume_commits.return_value = ("sujet", "corps")
         port = ScriptedPort(reponses)
         lu = ({"18.0", "main"}, "18.0") if branches else None
         with (
@@ -575,6 +597,8 @@ class LeMenuGit(unittest.TestCase):
                 gm.github_fork, "depot_github", return_value=("Bidon", "x")
             ),
             mock.patch.object(gm.github_fork, "ClientGitHub") as fabrique,
+            mock.patch.object(gm, "ref_de_base", return_value="HEAD"),
+            mock.patch.object(gm, "todo_file_browser", navigateur),
             mock.patch("builtins.input", side_effect=list(saisies)),
             mock.patch("builtins.print") as self.imprime,
             ui.bind(port),
@@ -675,15 +699,18 @@ class TestUnRetourNAgitPas(LeMenuGit):
                 self.assertRienNAgit(double, fabrique)
 
     def test_add_an_existing_clone_at_the_version_or_the_visibility(self):
-        # Un chemin hors des versions installées demande la version ; le
-        # clone [1] passe directement à la visibilité.
-        for saisie, reponse in (
-            *(("odoo16.0/addons/Bidon_lune", r) for r in ("0", EOFError())),
-            *(("1", r) for r in RETOURS),
+        # Un chemin tapé ([2]) hors des versions installées demande la
+        # version ; le clone [1] passe directement à la visibilité.
+        for avant, reponse in (
+            *(
+                (["2", "odoo16.0/addons/Bidon_lune"], r)
+                for r in ("0", EOFError())
+            ),
+            *((["1"], r) for r in RETOURS),
         ):
-            with self.subTest(saisie=saisie, reponse=reponse):
+            with self.subTest(avant=avant, reponse=reponse):
                 retour, double, _p, fabrique = self.lancer(
-                    "_git_ajouter_existant", [reponse], saisies=[saisie]
+                    "_git_ajouter_existant", [*avant, reponse]
                 )
                 self.assertEqual(retour, 0)
                 self.assertRienNAgit(double, fabrique)
@@ -935,10 +962,366 @@ class TestCtrlDApresLeChoix(LeMenuGit):
 
     def test_add_an_existing_clone_at_the_freeze(self):
         retour, double, _p, _f = self.lancer(
-            "_git_ajouter_existant", ["1", EOFError()], saisies=["1"]
+            "_git_ajouter_existant", ["1", "1", EOFError()]
         )
         self.assertEqual(retour, 0)
         double.ajouter_existant.assert_not_called()
+
+
+class TestLesOptionsDuFork(LeMenuGit):
+    """L'amont et les branches du fork se choisissent sous les règles
+    communes, avec leur défaut ; un retour, ou Ctrl+D à une question qui
+    suit, ne forke rien et ne réécrit aucun manifeste."""
+
+    def forker(self, reponses, amont="AmontBrume"):
+        """`_git_fork_organisation` sur LUNE pour OrgBrume, `reponses`
+        après le filtre, le choix de LUNE et l'organisation ; `amont`,
+        l'amont actuel du projet. Rend (retour, double de manifest_repo,
+        port, double de `_git_client`, double de `_git_amont_de`)."""
+        from script.todo.todo import TODO
+
+        with (
+            mock.patch.object(
+                gm.manifest_fork, "amont_actuel", return_value=amont
+            ),
+            mock.patch.object(TODO, "_git_client") as client,
+            mock.patch.object(TODO, "_git_amont_de") as amont_de,
+        ):
+            retour, double, port, fabrique = self.lancer(
+                "_git_fork_organisation", ["", "1", "OrgBrume", *reponses]
+            )
+        fabrique.assert_not_called()
+        return retour, double, port, client, amont_de
+
+    def test_the_upstream_by_number_default_or_after_a_typo(self):
+        for reponses, attendu, fautes in (
+            ([""], mf.AMONT_ORIGINE, 0),
+            (["1"], mf.AMONT_ORIGINE, 0),
+            (["2"], mf.AMONT_FORK, 0),
+            (["3", "fork", "2"], mf.AMONT_FORK, 2),
+            (["0"], None, 0),
+            ([EOFError()], None, 0),
+        ):
+            with (
+                self.subTest(reponses=reponses),
+                mock.patch.object(
+                    gm.manifest_fork, "amont_actuel", return_value="Amont"
+                ),
+            ):
+                retour, _d, port, _f = self.lancer(
+                    "_git_fork_choisir_mode", reponses, LUNE, {}
+                )
+                self.assertEqual(retour, attendu)
+                question = self.choix(port)[0]
+                self.assertEqual(question["default"], "1")
+                self.assertEqual(
+                    [o["key"] for o in question["options"]], ["1", "2", "0"]
+                )
+                notices = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(len(notices), fautes)
+
+    def test_the_upstream_by_its_remote_name(self):
+        # « Amont » et « Bidon », le remote de LUNE, se lisent comme [1] et
+        # [2] ; quand l'amont porte le nom du remote, aucun nom ne se lit.
+        for amont, reponses, attendu, fautes in (
+            ("Amont", ["Amont"], mf.AMONT_ORIGINE, 0),
+            ("Amont", ["Bidon"], mf.AMONT_FORK, 0),
+            ("Amont", ["bidon", "Bidon"], mf.AMONT_FORK, 1),
+            ("Bidon", ["Bidon", "2"], mf.AMONT_FORK, 1),
+        ):
+            with (
+                self.subTest(amont=amont, reponses=reponses),
+                mock.patch.object(
+                    gm.manifest_fork, "amont_actuel", return_value=amont
+                ),
+            ):
+                retour, _d, port, _f = self.lancer(
+                    "_git_fork_choisir_mode", reponses, LUNE, {}
+                )
+                self.assertEqual(retour, attendu)
+                notices = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(len(notices), fautes)
+
+    def test_a_project_that_is_no_fork_is_not_asked(self):
+        with mock.patch.object(
+            gm.manifest_fork, "amont_actuel", return_value=None
+        ):
+            retour, _d, port, _f = self.lancer(
+                "_git_fork_choisir_mode", [], LUNE, {}
+            )
+        self.assertEqual(retour, mf.AMONT_FORK)
+        self.assertEqual(port.events, [])
+
+    def test_the_branches_by_number_default_or_after_a_typo(self):
+        for reponses, attendu in (
+            ([""], False),
+            (["1"], False),
+            (["2"], True),
+            (["18.0"], False),
+            (["toutes", "2"], True),
+            (["0"], None),
+            ([EOFError()], None),
+        ):
+            with self.subTest(reponses=reponses):
+                retour, _d, port, _f = self.lancer(
+                    "_git_fork_choisir_branches", reponses, "18.0"
+                )
+                self.assertIs(retour, attendu)
+                self.assertEqual(self.choix(port)[0]["default"], "1")
+
+    def test_back_at_the_upstream_or_the_branches_forks_nothing(self):
+        # Le « o » qui suit, s'il était lu, confirmerait le fork.
+        for reponses in (["0"], [EOFError()], ["", "0"], ["", EOFError()]):
+            with self.subTest(reponses=reponses):
+                retour, double, port, client, _a = self.forker(
+                    [*reponses, "o"]
+                )
+                self.assertEqual(retour, 0)
+                client.assert_not_called()
+                double.forker.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+
+    def test_ctrl_d_at_fork_it_forks_nothing(self):
+        retour, double, port, _c, _a = self.forker(["", "", EOFError(), "o"])
+        self.assertEqual(retour, 0)
+        double.forker.assert_not_called()
+        self.assertEqual(port.answers, ["o"])
+
+    def test_ctrl_d_after_the_fork_changes_no_manifest(self):
+        # Ctrl+D à « prendre ce fork », puis aux versions à changer.
+        for reste in ([], ["o"]):
+            with self.subTest(reste=reste):
+                retour, double, port, _c, _a = self.forker(
+                    ["", "", "o", *reste, EOFError(), "17.0"]
+                )
+                self.assertEqual(retour, 0)
+                double.forker.assert_called_once()
+                double.prendre_le_fork.assert_not_called()
+                self.assertEqual(port.answers, ["17.0"])
+
+    def test_ctrl_d_at_the_upstream_remote_adds_none(self):
+        for reponse, ajoute in ((EOFError(), False), ("o", True)):
+            with self.subTest(reponse=reponse):
+                retour, double, _p, _c, amont_de = self.forker(
+                    ["", "", "o", "o", "", reponse]
+                )
+                self.assertEqual(retour, 0)
+                double.prendre_le_fork.assert_called_once()
+                self.assertEqual(amont_de.called, ajoute)
+
+
+class TestLaPullRequest(LeMenuGit):
+    """La cible de la pull request se choisit sous les règles communes,
+    l'amont déclaré par défaut ; un retour, ou Ctrl+D à une question qui
+    suit, n'ouvre rien et ne demande rien à GitHub."""
+
+    def ouvrir(self, reponses, cibles=None):
+        """`_git_creer_pull_request` sur LUNE, `reponses` après le filtre et
+        le choix de LUNE ; `cibles`, celles de `lancer`. Rend (retour,
+        double de manifest_repo, port, double de `_git_client`)."""
+        from script.todo.todo import TODO
+
+        with mock.patch.object(TODO, "_git_client") as client:
+            retour, double, port, fabrique = self.lancer(
+                "_git_creer_pull_request", ["", "1", *reponses], cibles=cibles
+            )
+        fabrique.assert_not_called()
+        return retour, double, port, client
+
+    def test_the_target_by_number_default_or_after_a_typo(self):
+        for cible, depot, fautes in (
+            ([""], "AmontBrume/lune", 0),
+            (["2"], "Bidon/lune", 0),
+            (["3", "2"], "Bidon/lune", 1),
+            (["deux", "1"], "AmontBrume/lune", 1),
+            (["Bidon/lune"], "Bidon/lune", 0),
+            (["AmontBrume/lune"], "AmontBrume/lune", 0),
+        ):
+            with self.subTest(cible=cible):
+                retour, double, port, client = self.ouvrir(
+                    [*cible, "", "", "", "o"]
+                )
+                double.ouvrir_pull_request.assert_called_once_with(
+                    client.return_value,
+                    os.path.join(gm.RACINE, LUNE["path"]),
+                    depot,
+                    "18.0",
+                    "sujet",
+                    "corps",
+                    False,
+                )
+                question = self.choix(port)[1]
+                self.assertEqual(question["default"], "1")
+                self.assertEqual(
+                    [o["key"] for o in question["options"]], ["1", "2", "0"]
+                )
+                notices = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(len(notices), fautes)
+
+    def test_a_repository_shared_by_both_targets_is_no_name(self):
+        # Le même dépôt vers deux branches : son nom ne départage pas les
+        # cibles, il est nommé fautif et la question revient.
+        cibles = {
+            "manifeste": ("Bidon/lune", "18.0"),
+            "amont": ("Bidon/lune", "17.0"),
+        }
+        retour, double, port, client = self.ouvrir(
+            ["Bidon/lune", "2", "", "", "", "o"], cibles=cibles
+        )
+        double.ouvrir_pull_request.assert_called_once_with(
+            client.return_value,
+            os.path.join(gm.RACINE, LUNE["path"]),
+            "Bidon/lune",
+            "18.0",
+            "sujet",
+            "corps",
+            False,
+        )
+        notices = [e for e in port.events if e.get("t") == "notice"]
+        self.assertEqual(len(notices), 1)
+
+    def test_back_at_the_target_opens_nothing(self):
+        for reponse in ("0", EOFError()):
+            with self.subTest(reponse=reponse):
+                retour, double, port, client = self.ouvrir(
+                    [reponse, "", "", "", "o"]
+                )
+                self.assertIsNone(retour)
+                client.assert_not_called()
+                double.resume_commits.assert_not_called()
+                double.ouvrir_pull_request.assert_not_called()
+                self.assertEqual(port.answers, ["", "", "", "o"])
+
+    def test_ctrl_d_at_each_question_opens_nothing(self):
+        # Au titre, à la description, au brouillon, à la confirmation ; le
+        # « o » qui suit, s'il était lu, ouvrirait la pull request.
+        for avant in range(4):
+            with self.subTest(avant=avant):
+                retour, double, port, client = self.ouvrir(
+                    ["", *[""] * avant, EOFError(), "o"]
+                )
+                self.assertIsNone(retour)
+                client.assert_not_called()
+                double.ouvrir_pull_request.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+
+
+class TestLeRepertoireExistant(LeMenuGit):
+    """Ajouter un dépôt depuis un répertoire existant : un clone non
+    déclaré par son numéro ou son chemin, un chemin à taper, ou le
+    navigateur, sous les règles communes."""
+
+    def ajouter(self, reponses, navigateur=None, **quoi):
+        """`_git_ajouter_existant`, `_git_parcourir_clone` et `_git_lancer`
+        doublés. Rend (retour, double de manifest_repo, port, double du
+        parcours, double de `_git_lancer`)."""
+        from script.todo.todo import TODO
+
+        with (
+            mock.patch.object(
+                TODO, "_git_parcourir_clone", return_value=""
+            ) as parcours,
+            mock.patch.object(TODO, "_git_lancer", return_value=0) as lance,
+        ):
+            retour, double, port, _f = self.lancer(
+                "_git_ajouter_existant",
+                reponses,
+                navigateur=navigateur,
+                **quoi,
+            )
+        return retour, double, port, parcours, lance
+
+    def test_a_clone_by_its_number_or_path_and_a_typo_asked_again(self):
+        for reponses, fautes in (
+            (["1"], 0),
+            ([LUNE["path"]], 0),
+            ([f"{LUNE['path']}/"], 0),
+            ([f"./{LUNE['path']}"], 0),
+            ([f"./{LUNE['path']}/"], 0),
+            (["4", "1"], 1),
+            ([f"{LUNE['path']}//", "1"], 1),
+        ):
+            with self.subTest(reponses=reponses):
+                retour, double, port, _pa, _l = self.ajouter([*reponses, "0"])
+                self.assertEqual(retour, 0)
+                double.lire_clone.assert_called_once_with(
+                    os.path.join(gm.RACINE, LUNE["path"])
+                )
+                notices = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(len(notices), fautes)
+
+    def test_back_reads_and_browses_nothing(self):
+        # Sans navigateur, une réponse vide revient, comme [0] et Ctrl+D.
+        for reponse in RETOURS:
+            with self.subTest(reponse=reponse):
+                retour, double, port, parcours, _l = self.ajouter(
+                    [reponse, "1"]
+                )
+                self.assertEqual(retour, 0)
+                double.lire_clone.assert_not_called()
+                parcours.assert_not_called()
+                self.assertEqual(port.answers, ["1"])
+                question = self.choix(port)[0]
+                self.assertIsNone(question["default"])
+                self.assertEqual(
+                    [o["key"] for o in question["options"]], ["1", "2", "0"]
+                )
+
+    def test_enter_browses_when_a_browser_exists(self):
+        retour, double, port, parcours, _l = self.ajouter(
+            [""], navigateur=object()
+        )
+        self.assertEqual(retour, 0)
+        parcours.assert_called_once_with()
+        double.lire_clone.assert_not_called()
+        question = self.choix(port)[0]
+        self.assertEqual(question["default"], "3")
+        self.assertEqual(
+            question["options"][2]["label"].split()[0], t("Browse…")
+        )
+
+    def test_a_typed_path_is_a_value(self):
+        retour, double, _p, _pa, _l = self.ajouter(
+            ["2", "odoo18.0/addons/Bidon_comete", "0"]
+        )
+        self.assertEqual(retour, 0)
+        double.lire_clone.assert_called_once_with(
+            os.path.join(gm.RACINE, "odoo18.0/addons/Bidon_comete")
+        )
+        for reponse in ("", EOFError()):
+            with self.subTest(reponse=reponse):
+                retour, double, port, _pa, _l = self.ajouter(
+                    ["2", reponse, "1"]
+                )
+                self.assertEqual(retour, 0)
+                double.lire_clone.assert_not_called()
+                self.assertEqual(port.answers, ["1"])
+
+    def test_no_undeclared_clone_still_offers_a_path(self):
+        retour, double, port, _pa, _l = self.ajouter(
+            ["1", "odoo18.0/addons/Bidon_comete", "0"], non_declares=()
+        )
+        self.assertEqual(retour, 0)
+        self.assertEqual(
+            [o["key"] for o in self.choix(port)[0]["options"]], ["1", "0"]
+        )
+        double.lire_clone.assert_called_once()
+
+    def test_ctrl_d_at_set_aside_moves_nothing(self):
+        for reponse, mis_de_cote in ((EOFError(), False), ("o", True)):
+            with self.subTest(reponse=reponse):
+                retour, double, _p, _pa, lance = self.ajouter(
+                    ["1", "1", "", reponse]
+                )
+                self.assertEqual(retour, 0)
+                double.ajouter_existant.assert_called_once()
+                self.assertEqual(double.mettre_de_cote.called, mis_de_cote)
+                self.assertEqual(lance.called, mis_de_cote)
+                if not mis_de_cote:
+                    self.assertIn(
+                        t("Until then, repo sync fails on this path."),
+                        self.imprime_texte(),
+                    )
 
 
 if __name__ == "__main__":

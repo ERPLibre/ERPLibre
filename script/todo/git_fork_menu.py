@@ -179,7 +179,10 @@ class GitForkMenuMixin:
 
     def _git_fork_organisation(self, version=None, preselection=None):
         """Le parcours complet ; rend 0, ou 2 sur un refus ou une erreur.
-        `preselection` saute le choix du projet, dans `version`."""
+        `preselection` saute le choix du projet, dans `version`. Un retour
+        au choix de l'amont ou des branches, ou Ctrl+D à une question qui
+        suit, rend 0 : rien n'est forké avant « Fork it? », et aucun
+        manifeste n'est réécrit avant le choix des versions."""
         version = version or repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
@@ -200,8 +203,12 @@ class GitForkMenuMixin:
             )
             return 2
         mode = self._git_fork_choisir_mode(projet, remotes)
+        if mode is None:
+            return 0
         branche = branche_du_projet(projet)
         toutes = self._git_fork_choisir_branches(branche)
+        if toutes is None:
+            return 0
         client = self._git_client(organisation)
         if client is None:
             return 2
@@ -209,7 +216,8 @@ class GitForkMenuMixin:
             f"  {proprietaire}/{depot} → {organisation}/{depot}"
             f" · {t('all branches') if toutes else branche}"
         )
-        if not self._is_yes(input(t("Fork it? (y/N): "))):
+        reponse = self._git_repondre(t("Fork it? (y/N): "))
+        if reponse is None or not self._is_yes(reponse):
             return 0
         print(f"  {t('Waiting for GitHub to create the fork…')}")
         try:
@@ -226,19 +234,22 @@ class GitForkMenuMixin:
                 f"  ✓ {t('Branch created in the fork:')}"
                 f" {posee[0]} @ {posee[1][:12]}"
             )
-        if not self._is_yes(
-            input(t("Change the manifest to take this fork? (y/N): "))
-        ):
+        reponse = self._git_repondre(
+            t("Change the manifest to take this fork? (y/N): ")
+        )
+        if reponse is None or not self._is_yes(reponse):
             return 0
         par_version = versions_du_depot(proprietaire, depot)
         print(
             f"  {t('Versions whose manifest clones this repository:')}"
             f" {', '.join(par_version) or '-'}"
         )
-        saisie = input(
+        saisie = self._git_repondre(
             f"{t('Versions to change, separated by commas (Enter: the active one)')}"
             f" [{version}] : "
-        ).strip()
+        )
+        if saisie is None:
+            return 0
         voulues = [v.strip() for v in saisie.split(",") if v.strip()] or [
             version
         ]
@@ -264,38 +275,57 @@ class GitForkMenuMixin:
         print(
             f"  {t('Commit manifest/, then synchronise the repositories so the clone follows the fork.')}"
         )
-        if version in changees and self._is_yes(
-            input(t("Add the upstream remote to the local clone now? (y/N): "))
-        ):
+        if version not in changees:
+            return 0
+        reponse = self._git_repondre(
+            t("Add the upstream remote to the local clone now? (y/N): ")
+        )
+        if reponse is not None and self._is_yes(reponse):
             self._git_amont_de(version, projet.get("path"))
         return 0
 
     def _git_fork_choisir_mode(self, projet, remotes):
-        """AMONT_ORIGINE ou AMONT_FORK. Un projet qui n'est pas un fork n'a
-        que son ancienne source pour amont : rien à demander."""
+        """AMONT_ORIGINE, le défaut, ou AMONT_FORK, choisi par son numéro,
+        ou par le remote affiché quand les deux diffèrent ; une saisie
+        fautive est nommée et redemandée. None pour [0] ou Ctrl+D. Un
+        projet qui n'est pas un fork n'a que son ancienne source pour
+        amont : AMONT_FORK, sans question."""
         amont = manifest_fork.amont_actuel(projet, remotes)
         if not amont:
             return manifest_fork.AMONT_FORK
-        print(
-            f"  {t('This repository is already a fork. Upstream of the new fork:')}"
-        )
-        print(f"  [1] {amont} — {t('keep the original upstream (default)')}")
-        print(
-            f"  [2] {projet.get('remote')} — {t('the current fork becomes the upstream')}"
-        )
-        saisie = input("  : ").strip()
-        return (
-            manifest_fork.AMONT_FORK
-            if saisie == "2"
-            else manifest_fork.AMONT_ORIGINE
+        remote = projet.get("remote")
+        return ui.choose(
+            t("This repository is already a fork. Upstream of the new fork:"),
+            [manifest_fork.AMONT_ORIGINE, manifest_fork.AMONT_FORK],
+            labels=[
+                f"{amont} — {t('keep the original upstream')}",
+                f"{remote} — {t('the current fork becomes the upstream')}",
+            ],
+            names=(
+                {
+                    amont: manifest_fork.AMONT_ORIGINE,
+                    remote: manifest_fork.AMONT_FORK,
+                }
+                if remote and remote != amont
+                else None
+            ),
+            default=manifest_fork.AMONT_ORIGINE,
         )
 
     def _git_fork_choisir_branches(self, branche):
-        """Vrai pour copier toutes les branches."""
-        print(f"  {t('Branches to copy into the fork:')}")
-        print(f"  [1] {branche} — {t('the active branch only (default)')}")
-        print(f"  [2] {t('every branch of the source')}")
-        return input("  : ").strip() == "2"
+        """Vrai pour copier toutes les branches, faux, le défaut, pour la
+        branche active seule, choisie aussi par son nom ; None pour [0] ou
+        Ctrl+D."""
+        return ui.choose(
+            t("Branches to copy into the fork:"),
+            [False, True],
+            labels=[
+                f"{branche} — {t('the active branch only')}",
+                t("every branch of the source"),
+            ],
+            names={branche: False} if branche else None,
+            default=False,
+        )
 
     # ── Ajouter un dépôt ─────────────────────────────────────────────
 
@@ -463,35 +493,71 @@ class GitForkMenuMixin:
         print(f"  {relatif}")
         return relatif
 
-    def _git_ajouter_existant(self):
-        """Déclare un clone qui existe déjà sous odoo<V>/, à son chemin et
-        sur la branche qu'il suit, sans réseau ; puis propose de le remettre
-        à repo, qui ne sait pas reprendre un clone qu'il n'a pas fait.
-        Rend 0, ou 2 sur un refus."""
+    def _git_choisir_repertoire(self):
+        """(version, chemin) du clone non déclaré choisi par son numéro ou
+        son chemin, ou (None, chemin) d'un autre répertoire, tapé ou
+        parcouru ; None pour un retour. Après les clones, deux options :
+        taper un chemin depuis la racine, puis le navigateur, que prend une
+        réponse vide quand urwid est là ; sans urwid, une réponse vide
+        revient. Un numéro hors de la liste est nommé et redemandé, jamais
+        lu comme un chemin. Le chemin tapé est une valeur : vide ou Ctrl+D
+        revient."""
         candidats = manifest_repo.clones_non_declares(RACINE)
-        for i, (version, chemin) in enumerate(candidats, 1):
-            print(f"  [{i}] {chemin} (Odoo {version})")
         if not candidats:
             print(
                 f"  {t('No undeclared git clone under the installed versions.')}"
             )
-        if todo_file_browser is None:
-            invite = t(
-                "Number, or a path from the ERPLibre root (Enter: cancel): "
-            )
-        else:
-            invite = t(
-                "Number, or a path from the ERPLibre root (Enter: browse): "
-            )
-        saisie = input(invite).strip()
-        if not saisie:
+        autres = (
+            ["taper"] if todo_file_browser is None else ["taper", "parcourir"]
+        )
+        libelles = {
+            "taper": t("Type a path from the ERPLibre root…"),
+            "parcourir": t("Browse…"),
+        }
+        choix = ui.choose(
+            t("Which directory?"),
+            [*candidats, *autres],
+            labels=[
+                f"{chemin} (Odoo {version})" for version, chemin in candidats
+            ]
+            + [libelles[a] for a in autres],
+            # Le chemin d'un clone se lit aussi avec « ./ » devant ou « / »
+            # derrière, les formes qu'os.path.normpath ramène à lui.
+            names={
+                forme: (version, chemin)
+                for version, chemin in candidats
+                for forme in (
+                    chemin,
+                    f"{chemin}/",
+                    f"./{chemin}",
+                    f"./{chemin}/",
+                )
+            },
+            default=None if todo_file_browser is None else "parcourir",
+        )
+        if choix is None or isinstance(choix, tuple):
+            return choix
+        if choix == "parcourir":
             saisie = self._git_parcourir_clone()
-            if not saisie:
-                return 0
-        if saisie.isdigit() and 1 <= int(saisie) <= len(candidats):
-            version, chemin = candidats[int(saisie) - 1]
         else:
-            chemin = os.path.normpath(saisie)
+            saisie = self._git_repondre(
+                t("Path from the ERPLibre root (Enter: back): ")
+            )
+        return (None, saisie) if saisie else None
+
+    def _git_ajouter_existant(self):
+        """Déclare un clone qui existe déjà sous odoo<V>/, à son chemin et
+        sur la branche qu'il suit, sans réseau ; puis propose de le remettre
+        à repo, qui ne sait pas reprendre un clone qu'il n'a pas fait.
+        Rend 0, ou 2 sur un refus ; un retour, ou Ctrl+D à une question
+        avant l'écriture, rend 0 sans rien écrire, et Ctrl+D à la mise de
+        côté vaut non."""
+        choix = self._git_choisir_repertoire()
+        if choix is None:
+            return 0
+        version, chemin = choix
+        if version is None:
+            chemin = os.path.normpath(chemin)
             prefixe = chemin.split(os.sep, 1)[0]
             versions = manifest_repo.versions_installees(RACINE)
             version = prefixe.removeprefix("odoo")
@@ -538,13 +604,12 @@ class GitForkMenuMixin:
         print(
             f"  {t('repo sync refuses a clone it did not make: it must be set aside and cloned again by repo.')}"
         )
-        if self._is_yes(
-            input(
-                t(
-                    "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
-                )
+        reponse = self._git_repondre(
+            t(
+                "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
             )
-        ):
+        )
+        if reponse is not None and self._is_yes(reponse):
             try:
                 copie = manifest_repo.mettre_de_cote(chemin, RACINE)
             except ValueError as exc:
@@ -1253,8 +1318,11 @@ class GitForkMenuMixin:
 
     def _git_creer_pull_request(self):
         """Ouvre une pull request depuis la branche courante, déjà poussée,
-        du clone choisi, vers le dépôt du manifeste ou l'amont déclaré.
-        Rend son URL, ou None."""
+        du clone choisi, vers le dépôt du manifeste ou l'amont déclaré, le
+        défaut quand il existe, choisi par son numéro ou le nom de son
+        dépôt. Rend son URL, ou None ; un retour, ou
+        Ctrl+D à une question qui suit la cible, rend None avant tout appel
+        à GitHub."""
         choix = self._git_choisir_clone()
         if choix is None:
             return None
@@ -1272,46 +1340,57 @@ class GitForkMenuMixin:
             )
             return None
         cles = [c for c in ("amont", "manifeste") if c in cibles]
-        print(f"  {t('Target of the pull request:')}")
-        for i, cle in enumerate(cles, 1):
-            depot, base = cibles[cle]
-            libelle = (
-                t("declared upstream")
-                if cle == "amont"
-                else t("manifest repository")
-            )
-            defaut = f" ({t('default')})" if i == 1 else ""
-            print(
-                f"  [{i}] {depot} ← {poussee[2]} → {base} · {libelle}{defaut}"
-            )
-        saisie = input("  : ").strip()
-        cle = (
-            cles[int(saisie) - 1]
-            if saisie in ("1", "2")[: len(cles)]
-            else cles[0]
+        noms = {
+            "amont": t("declared upstream"),
+            "manifeste": t("manifest repository"),
+        }
+        # Le dépôt cible se tape aussi par son nom, sauf quand les deux
+        # cibles partagent le dépôt, que le nom ne départagerait pas.
+        depots = {cibles[c][0]: c for c in cles}
+        cle = ui.choose(
+            t("Target of the pull request:"),
+            cles,
+            labels=[
+                f"{cibles[c][0]} ← {poussee[2]} → {cibles[c][1]} · {noms[c]}"
+                for c in cles
+            ],
+            names=depots if len(depots) == len(cles) else None,
+            default=cles[0],
         )
+        if cle is None:
+            return None
         depot, base = cibles[cle]
         sujet, corps_propose = manifest_repo.resume_commits(
             chemin, ref_de_base(chemin, projet, remotes, cle, base)
         )
-        titre = input(f"{t('Title')} [{sujet}] : ").strip() or sujet
-        corps = (
-            input(
-                f"{t('Description (Enter: the list of commits)')} : "
-            ).strip()
-            or corps_propose
+        titre = self._git_repondre(f"{t('Title')} [{sujet}] : ")
+        if titre is None:
+            return None
+        corps = self._git_repondre(
+            f"{t('Description (Enter: the list of commits)')} : "
         )
-        brouillon = self._is_yes(input(t("Open it as a draft? (y/N): ")))
-        if not self._is_yes(
-            input(f"{t('Open the pull request on')} {depot} ? (y/N): ")
-        ):
+        if corps is None:
+            return None
+        brouillon = self._git_repondre(t("Open it as a draft? (y/N): "))
+        if brouillon is None:
+            return None
+        reponse = self._git_repondre(
+            f"{t('Open the pull request on')} {depot} ? (y/N): "
+        )
+        if reponse is None or not self._is_yes(reponse):
             return None
         client = self._git_client()
         if client is None:
             return None
         try:
             pr = manifest_repo.ouvrir_pull_request(
-                client, chemin, depot, base, titre, corps, brouillon
+                client,
+                chemin,
+                depot,
+                base,
+                titre or sujet,
+                corps or corps_propose,
+                self._is_yes(brouillon),
             )
         except (github_fork.ErreurGitHub, ValueError) as exc:
             if isinstance(exc, github_fork.ErreurGitHub):

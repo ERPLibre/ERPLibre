@@ -2408,19 +2408,21 @@ TRANSLATIONS = {
         "fr": "Pas une URL de dépôt.",
         "en": "Not a repository URL.",
     },
-    "Number, or a path from the ERPLibre root (Enter: cancel): ": {
-        "fr": (
-            "Numéro, ou chemin depuis la racine d'ERPLibre (Entrée : annuler) "
-            ": "
-        ),
-        "en": "Number, or a path from the ERPLibre root (Enter: cancel): ",
+    "Which directory?": {
+        "fr": "Quel répertoire ?",
+        "en": "Which directory?",
     },
-    "Number, or a path from the ERPLibre root (Enter: browse): ": {
-        "fr": (
-            "Numéro, ou chemin depuis la racine d'ERPLibre (Entrée : "
-            "parcourir) : "
-        ),
-        "en": "Number, or a path from the ERPLibre root (Enter: browse): ",
+    "Type a path from the ERPLibre root…": {
+        "fr": "Taper un chemin depuis la racine d'ERPLibre…",
+        "en": "Type a path from the ERPLibre root…",
+    },
+    "Browse…": {
+        "fr": "Parcourir…",
+        "en": "Browse…",
+    },
+    "Path from the ERPLibre root (Enter: back): ": {
+        "fr": "Chemin depuis la racine d'ERPLibre (Entrée : retour) : ",
+        "en": "Path from the ERPLibre root (Enter: back): ",
     },
     "Enter the clone, then choose « . »; q cancels.": {
         "fr": "Entrez dans le clone, puis choisissez « . » ; q annule.",
@@ -2972,10 +2974,6 @@ TRANSLATIONS = {
         "fr": "Aucun dépôt GitHub où ouvrir la pull request.",
         "en": "No GitHub repository to open the pull request on.",
     },
-    "default": {
-        "fr": "défaut",
-        "en": "default",
-    },
     "Open the pull request on": {
         "fr": "Ouvrir la pull request sur",
         "en": "Open the pull request on",
@@ -3094,9 +3092,9 @@ TRANSLATIONS = {
         "fr": "Ce dépôt est déjà un fork. Amont du nouveau fork :",
         "en": "This repository is already a fork. Upstream of the new fork:",
     },
-    "keep the original upstream (default)": {
-        "fr": "garder l'amont d'origine (défaut)",
-        "en": "keep the original upstream (default)",
+    "keep the original upstream": {
+        "fr": "garder l'amont d'origine",
+        "en": "keep the original upstream",
     },
     "the current fork becomes the upstream": {
         "fr": "le fork actuel devient l'amont",
@@ -3106,9 +3104,9 @@ TRANSLATIONS = {
         "fr": "Branches à copier dans le fork :",
         "en": "Branches to copy into the fork:",
     },
-    "the active branch only (default)": {
-        "fr": "la branche active seulement (défaut)",
-        "en": "the active branch only (default)",
+    "the active branch only": {
+        "fr": "la branche active seulement",
+        "en": "the active branch only",
     },
     "every branch of the source": {
         "fr": "toutes les branches de la source",
