@@ -732,6 +732,398 @@ TRANSLATIONS = {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
+    # ERPLibre Home : section et entrée d'Exécution
+    "🏠 ERPLibre Home": {
+        "fr": "🏠 ERPLibre Home",
+        "en": "🏠 ERPLibre Home",
+    },
+    "ERPLibre Home - GNOME extension and Stream Deck": {
+        "fr": "🏠 ERPLibre Home - Extension GNOME et Stream Deck",
+        "en": "🏠 ERPLibre Home - GNOME extension and Stream Deck",
+    },
+    "Install the GNOME extension (local)": {
+        "fr": "📦 Installer l'extension GNOME (local)",
+        "en": "📦 Install the GNOME extension (local)",
+    },
+    "Install the Stream Deck (adds the extension if needed)": {
+        "fr": "📦 Installer le Stream Deck (ajoute l'extension au besoin)",
+        "en": "📦 Install the Stream Deck (adds the extension if needed)",
+    },
+    "GNOME extension": {
+        "fr": "Extension GNOME",
+        "en": "GNOME extension",
+    },
+    "Stream Deck (office tool)": {
+        "fr": "Stream Deck (outil bureautique)",
+        "en": "Stream Deck (office tool)",
+    },
+    "Deck settings": {
+        "fr": "Réglages du deck",
+        "en": "Deck settings",
+    },
+    "ERPLibre Home not supported on this system:": {
+        "fr": "ERPLibre Home non pris en charge sur ce système :",
+        "en": "ERPLibre Home not supported on this system:",
+    },
+    "no reason reported by the installer": {
+        "fr": "aucune raison donnée par l'installateur",
+        "en": "no reason reported by the installer",
+    },
+    "ERPLibre Home installation failed, see the output above.": {
+        "fr": (
+            "L'installation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home installation failed, see the output above.",
+    },
+    "ERPLibre Home installed. Log out and back in to load the extension.": {
+        "fr": (
+            "ERPLibre Home installé. Fermer la session puis la rouvrir"
+            " pour charger l'extension."
+        ),
+        "en": (
+            "ERPLibre Home installed. Log out and back in to load"
+            " the extension."
+        ),
+    },
+    # ERPLibre Home submenu (script/todo/streamdeck_menu.py)
+    "Status - What is installed and what runs": {
+        "fr": "📋 État - Ce qui est installé et ce qui tourne",
+        "en": "📋 Status - What is installed and what runs",
+    },
+    "Service - Start, stop, restart, live log": {
+        "fr": "⚙️ Service - Démarrer, arrêter, redémarrer, journal en direct",
+        "en": "⚙️ Service - Start, stop, restart, live log",
+    },
+    "Deck program - Tiler, controller or none": {
+        "fr": "🎛️ Programme du deck - Tiler, contrôleur ou aucun",
+        "en": "🎛️ Deck program - Tiler, controller or none",
+    },
+    "Autostart - Enable or disable": {
+        "fr": "🚀 Démarrage auto - Activer ou désactiver",
+        "en": "🚀 Autostart - Enable or disable",
+    },
+    "Diagnosis - What is wrong and how to fix it": {
+        "fr": "🩺 Diagnostic - Ce qui ne va pas et comment le corriger",
+        "en": "🩺 Diagnosis - What is wrong and how to fix it",
+    },
+    "Uninstall everything (extension included)": {
+        "fr": "🗑 Désinstaller tout (extension comprise)",
+        "en": "🗑 Uninstall everything (extension included)",
+    },
+    "Uninstall the Stream Deck level": {
+        "fr": "🗑 Désinstaller le niveau Stream Deck",
+        "en": "🗑 Uninstall the Stream Deck level",
+    },
+    "Extension - Reload or preferences": {
+        "fr": "🧩 Extension - Recharger ou préférences",
+        "en": "🧩 Extension - Reload or preferences",
+    },
+    "The Stream Deck service is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "Le service Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "The Stream Deck service is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
+    "Nothing to fix.": {
+        "fr": "Rien à corriger.",
+        "en": "Nothing to fix.",
+    },
+    "Service action:": {
+        "fr": "Action sur le service :",
+        "en": "Service action:",
+    },
+    "live log (Ctrl-C to leave)": {
+        "fr": "journal en direct (Ctrl-C pour sortir)",
+        "en": "live log (Ctrl-C to leave)",
+    },
+    "Deck program:": {
+        "fr": "Programme du deck :",
+        "en": "Deck program:",
+    },
+    "Tiler": {
+        "fr": "Tiler",
+        "en": "Tiler",
+    },
+    "Controller": {
+        "fr": "Contrôleur",
+        "en": "Controller",
+    },
+    "No program": {
+        "fr": "Aucun programme",
+        "en": "No program",
+    },
+    "invalid": {
+        "fr": "invalide",
+        "en": "invalid",
+    },
+    "Enable": {
+        "fr": "Activer",
+        "en": "Enable",
+    },
+    "Disable": {
+        "fr": "Désactiver",
+        "en": "Disable",
+    },
+    "Unchanged.": {
+        "fr": "Inchangé.",
+        "en": "Unchanged.",
+    },
+    "Autostart:": {
+        "fr": "Démarrage auto :",
+        "en": "Autostart:",
+    },
+    "ERPLibre Home uninstalled.": {
+        "fr": "ERPLibre Home désinstallé.",
+        "en": "ERPLibre Home uninstalled.",
+    },
+    "ERPLibre Home uninstall failed, see the output above.": {
+        "fr": (
+            "La désinstallation d'ERPLibre Home a échoué, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "ERPLibre Home uninstall failed, see the output above.",
+    },
+    "Extension action:": {
+        "fr": "Action sur l'extension :",
+        "en": "Extension action:",
+    },
+    "Reload the extension": {
+        "fr": "Recharger l'extension",
+        "en": "Reload the extension",
+    },
+    "Open its preferences": {
+        "fr": "Ouvrir ses préférences",
+        "en": "Open its preferences",
+    },
+    "Start the deck program at login and when the deck is plugged in?"
+    " (y/N): ": {
+        "fr": "Démarrer le programme du deck à l'ouverture de session et"
+        " au branchement du deck ? (o/N) : ",
+        "en": "Start the deck program at login and when the deck is"
+        " plugged in? (y/N): ",
+    },
+    # Stream Deck: status and diagnosis (script/todo/erplibre_home_status.py)
+    "Level: not installed": {
+        "fr": "Niveau : non installé",
+        "en": "Level: not installed",
+    },
+    "Level: base": {
+        "fr": "Niveau : base",
+        "en": "Level: base",
+    },
+    "Level: Stream Deck": {
+        "fr": "Niveau : Stream Deck",
+        "en": "Level: Stream Deck",
+    },
+    "Extension: active": {
+        "fr": "Extension : active",
+        "en": "Extension: active",
+    },
+    "Extension: not loaded in this session": {
+        "fr": "Extension : non chargée dans cette session",
+        "en": "Extension: not loaded in this session",
+    },
+    "Extension: state": {
+        "fr": "Extension : état",
+        "en": "Extension: state",
+    },
+    "error:": {
+        "fr": "erreur :",
+        "en": "error:",
+    },
+    "Indicators: journal not read": {
+        "fr": "Indicateurs : journal non lu",
+        "en": "Indicators: journal not read",
+    },
+    "Indicators: journal not readable by this user": {
+        "fr": "Indicateurs : journal illisible par cet utilisateur",
+        "en": "Indicators: journal not readable by this user",
+    },
+    "The journal is not readable by this user": {
+        "fr": "Le journal n'est pas lisible par cet utilisateur",
+        "en": "The journal is not readable by this user",
+    },
+    "Indicators: failed to mount:": {
+        "fr": "Indicateurs : non montés :",
+        "en": "Indicators: failed to mount:",
+    },
+    "Indicators: all mounted": {
+        "fr": "Indicateurs : tous montés",
+        "en": "Indicators: all mounted",
+    },
+    "program": {
+        "fr": "programme",
+        "en": "program",
+    },
+    "Service: not installed": {
+        "fr": "Service : non installé",
+        "en": "Service: not installed",
+    },
+    "Deck lock: held by": {
+        "fr": "Verrou du deck : tenu par",
+        "en": "Deck lock: held by",
+    },
+    "no longer running": {
+        "fr": "ne tourne plus",
+        "en": "no longer running",
+    },
+    "Deck program: not installed": {
+        "fr": "Programme du deck : pas installé",
+        "en": "Deck program: not installed",
+    },
+    "Deck lock: free": {
+        "fr": "Verrou du deck : libre",
+        "en": "Deck lock: free",
+    },
+    "Decks plugged in:": {
+        "fr": "Decks branchés :",
+        "en": "Decks plugged in:",
+    },
+    "Decks plugged in: none": {
+        "fr": "Decks branchés : aucun",
+        "en": "Decks plugged in: none",
+    },
+    "udev rule: present": {
+        "fr": "Règle udev : présente",
+        "en": "udev rule: present",
+    },
+    "udev rule: missing": {
+        "fr": "Règle udev : absente",
+        "en": "udev rule: missing",
+    },
+    "Stream Deck venv: present": {
+        "fr": "Venv Stream Deck : présent",
+        "en": "Stream Deck venv: present",
+    },
+    "Stream Deck venv: missing": {
+        "fr": "Venv Stream Deck : absent",
+        "en": "Stream Deck venv: missing",
+    },
+    "ERPLibre Home is not installed": {
+        "fr": "ERPLibre Home n'est pas installé",
+        "en": "ERPLibre Home is not installed",
+    },
+    "The extension is not loaded in this session": {
+        "fr": "L'extension n'est pas chargée dans cette session",
+        "en": "The extension is not loaded in this session",
+    },
+    "log out and back in": {
+        "fr": "fermer la session puis la rouvrir",
+        "en": "log out and back in",
+    },
+    "The extension is in error:": {
+        "fr": "L'extension est en erreur :",
+        "en": "The extension is in error:",
+    },
+    "Indicators failed to mount:": {
+        "fr": "Indicateurs non montés :",
+        "en": "Indicators failed to mount:",
+    },
+    "The Stream Deck level is not installed": {
+        "fr": "Le niveau Stream Deck n'est pas installé",
+        "en": "The Stream Deck level is not installed",
+    },
+    "The deck program is not installed": {
+        "fr": "Le programme du deck n'est pas installé",
+        "en": "The deck program is not installed",
+    },
+    "The deck service is not installed": {
+        "fr": "Le service du deck n'est pas installé",
+        "en": "The deck service is not installed",
+    },
+    "Unknown DECK_PROGRAM:": {
+        "fr": "DECK_PROGRAM inconnu :",
+        "en": "Unknown DECK_PROGRAM:",
+    },
+    "TODO › ERPLibre Home › Deck program": {
+        "fr": "TODO › ERPLibre Home › Programme du deck",
+        "en": "TODO › ERPLibre Home › Deck program",
+    },
+    "Plugins on/off - Enable or disable deck plugins": {
+        "fr": "🧩 Plugins on/off - Activer ou désactiver les plugins du deck",
+        "en": "🧩 Plugins on/off - Enable or disable deck plugins",
+    },
+    "No deck plugins found.": {
+        "fr": "Aucun plugin du deck trouvé.",
+        "en": "No deck plugins found.",
+    },
+    "Deck plugins:": {"fr": "Plugins du deck :", "en": "Deck plugins:"},
+    "Plugins off:": {"fr": "Plugins coupés :", "en": "Plugins off:"},
+    "Unknown plugin in DECK_PLUGINS_OFF:": {
+        "fr": "Plugin inconnu dans DECK_PLUGINS_OFF :",
+        "en": "Unknown plugin in DECK_PLUGINS_OFF:",
+    },
+    "TODO › ERPLibre Home › Plugins on/off": {
+        "fr": "TODO › ERPLibre Home › Plugins on/off",
+        "en": "TODO › ERPLibre Home › Plugins on/off",
+    },
+    "Session refresh - Period of the session pages": {
+        "fr": "⏱️ Rafraîchissement - Période des pages de session",
+        "en": "⏱️ Session refresh - Period of the session pages",
+    },
+    "Session refresh:": {
+        "fr": "Rafraîchissement des sessions :",
+        "en": "Session refresh:",
+    },
+    "New period in seconds ({bas} to {haut}), Enter to keep: ": {
+        "fr": "Nouvelle période en secondes ({bas} à {haut}), "
+        "Entrée pour garder : ",
+        "en": "New period in seconds ({bas} to {haut}), Enter to keep: ",
+    },
+    "Setting locked by Odoo ({destination}): it will be offered again.": {
+        "fr": "Réglage verrouillé par Odoo ({destination}) : "
+        "il sera reproposé.",
+        "en": "Setting locked by Odoo ({destination}): "
+        "it will be offered again.",
+    },
+    "Invalid period, expected {bas} to {haut} seconds.": {
+        "fr": "Période invalide, attendu de {bas} à {haut} secondes.",
+        "en": "Invalid period, expected {bas} to {haut} seconds.",
+    },
+    "Invalid DECK_SESSION_REFRESH_SEC:": {
+        "fr": "DECK_SESSION_REFRESH_SEC invalide :",
+        "en": "Invalid DECK_SESSION_REFRESH_SEC:",
+    },
+    "TODO › ERPLibre Home › Session refresh": {
+        "fr": "TODO › ERPLibre Home › Rafraîchissement",
+        "en": "TODO › ERPLibre Home › Session refresh",
+    },
+    "Enabled": {"fr": "Activés", "en": "Enabled"},
+    "Disabled": {"fr": "Désactivés", "en": "Disabled"},
+    "No Stream Deck plugged in": {
+        "fr": "Aucun Stream Deck branché",
+        "en": "No Stream Deck plugged in",
+    },
+    "plug a Stream Deck in": {
+        "fr": "brancher un Stream Deck",
+        "en": "plug a Stream Deck in",
+    },
+    "The deck is held by": {
+        "fr": "Le deck est tenu par",
+        "en": "The deck is held by",
+    },
+    "close it": {
+        "fr": "le fermer",
+        "en": "close it",
+    },
+    "close it, or:": {
+        "fr": "le fermer, ou :",
+        "en": "close it, or:",
+    },
+    "The deck service is not running": {
+        "fr": "Le service du deck ne tourne pas",
+        "en": "The deck service is not running",
+    },
+    "The deck service state could not be read": {
+        "fr": "L'état du service du deck est illisible",
+        "en": "The deck service state could not be read",
+    },
+    "run it from the desktop session": {
+        "fr": "le lancer depuis la session du bureau",
+        "en": "run it from the desktop session",
+    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "🚀 Déploiement - Déployer ERPLibre localement",
@@ -1858,6 +2250,35 @@ TRANSLATIONS = {
     "ERPLibre with the mobile home application": {
         "fr": "ERPLibre avec l'application mobile home",
         "en": "ERPLibre with the mobile home application",
+    },
+    "ERPLibre Home with the GNOME extension and the Stream Deck": {
+        "fr": "ERPLibre Home avec l'extension GNOME et le Stream Deck",
+        "en": "ERPLibre Home with the GNOME extension and the Stream Deck",
+    },
+    "Install the GNOME extension? (Y/n): ": {
+        "fr": "Installer l'extension GNOME ? (O/n) : ",
+        "en": "Install the GNOME extension? (Y/n): ",
+    },
+    "Add the Stream Deck (deck program and service)? (y/N): ": {
+        "fr": "Ajouter le Stream Deck (programme du deck et service) ? (o/N) : ",
+        "en": "Add the Stream Deck (deck program and service)? (y/N): ",
+    },
+    "ERPLibre Home with the Stream Deck is already installed.": {
+        "fr": "ERPLibre Home avec le Stream Deck est déjà installé.",
+        "en": "ERPLibre Home with the Stream Deck is already installed.",
+    },
+    "Reinstall it to update the extension and the deck? (y/N): ": {
+        "fr": "Le réinstaller pour mettre à jour l'extension et le deck ?"
+        " (o/N) : ",
+        "en": "Reinstall it to update the extension and the deck? (y/N): ",
+    },
+    "The GNOME extension is already installed.": {
+        "fr": "L'extension GNOME est déjà installée.",
+        "en": "The GNOME extension is already installed.",
+    },
+    "Nothing to install: the Stream Deck needs the GNOME extension.": {
+        "fr": "Rien à installer : le Stream Deck a besoin de l'extension GNOME.",
+        "en": "Nothing to install: the Stream Deck needs the GNOME extension.",
     },
     "odoo_version_installed": {
         "fr": "Installée",
@@ -9316,6 +9737,16 @@ TRANSLATIONS = {
         "fr": "Partir d'une machine NixOS qu'on possède déjà",
         "en": "Use a NixOS machine you already have",
     },
+    # ERPLibre Home installé sur chaque distribution, extension ACTIVE.
+    "ERPLibre Home on every distribution: plan only (dry-run)": {
+        "fr": "ERPLibre Home sur chaque distribution : le plan seulement"
+        " (à blanc)",
+        "en": "ERPLibre Home on every distribution: plan only (dry-run)",
+    },
+    "ERPLibre Home on every distribution: run it": {
+        "fr": "ERPLibre Home sur chaque distribution : le lancer",
+        "en": "ERPLibre Home on every distribution: run it",
+    },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
         "en": "Nested QEMU depth: run it",
@@ -10504,6 +10935,10 @@ TRANSLATIONS = {
         "fr": "ERPLibre mobile (home)",
         "en": "ERPLibre mobile (home)",
     },
+    "ERPLibre Home (no Odoo)": {
+        "fr": "ERPLibre Home (sans Odoo)",
+        "en": "ERPLibre Home (no Odoo)",
+    },
     "ERPLibre Deployment (+ QEMU + dev)": {
         "fr": "ERPLibre Déploiement (+ QEMU + dev)",
         "en": "ERPLibre Deployment (+ QEMU + dev)",
@@ -10675,6 +11110,50 @@ TRANSLATIONS = {
     "nixos-anywhere missing, see the log above": {
         "fr": "nixos-anywhere absent, voir le journal ci-dessus",
         "en": "nixos-anywhere missing, see the log above",
+    },
+    # Outils QEMU « erplibre_home » et « erplibre_home_streamdeck » : leurs
+    # libellés, leurs indices et les lignes de leur « ? ».
+    "ERPLibre Home": {
+        "fr": "ERPLibre Home",
+        "en": "ERPLibre Home",
+    },
+    "ERPLibre Home Stream Deck": {
+        "fr": "ERPLibre Home Stream Deck",
+        "en": "ERPLibre Home Stream Deck",
+    },
+    "GNOME extension, no Stream Deck": {
+        "fr": "extension GNOME, sans Stream Deck",
+        "en": "GNOME extension, no Stream Deck",
+    },
+    "deck controller, GNOME extension": {
+        "fr": "contrôleur du deck, extension GNOME",
+        "en": "deck controller, GNOME extension",
+    },
+    "script/install/install_erplibre_home.sh in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh in the VM's checkout",
+    },
+    "extension, schemas and translations, extension enabled": {
+        "fr": "extension, schémas et traductions, extension activée",
+        "en": "extension, schemas and translations, extension enabled",
+    },
+    "script/install/install_erplibre_home.sh --stream-deck"
+    " in the VM's checkout": {
+        "fr": "script/install/install_erplibre_home.sh --stream-deck"
+        " dans le checkout de la VM",
+        "en": "script/install/install_erplibre_home.sh --stream-deck"
+        " in the VM's checkout",
+    },
+    "ERPLibre Home, plus USB packages, udev rule, deck program,"
+    " .venv.streamdeck": {
+        "fr": "ERPLibre Home, plus paquets USB, règle udev, programme du"
+        " deck, .venv.streamdeck",
+        "en": "ERPLibre Home, plus USB packages, udev rule, deck program,"
+        " .venv.streamdeck",
+    },
+    "log out and back in to load the extension": {
+        "fr": "fermer puis rouvrir la session pour charger l'extension",
+        "en": "log out and back in to load the extension",
     },
     "Help": {
         "fr": "Aide",

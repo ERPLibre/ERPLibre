@@ -30,6 +30,8 @@ extend-exclude = [
   "odoo[0-9]*",
   "script/OCA_maintainer-tools",
   "script/OCA_odoo-module-migrator",
+  "script/gnome-extension/erplibre_home",
+  "script/stream_deck/deck",
 ]
 
 [lint]

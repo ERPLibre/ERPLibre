@@ -7,15 +7,25 @@ Le script lit ses listes (conf/*.csv, private/default_git_manifest.csv) par
 chemins relatifs au répertoire courant ; il est donc lancé comme en vrai, en
 sous-processus, depuis une racine jetable.
 
-Deux propriétés gardées :
+Propriétés gardées :
 - l'ordre des manifests est celui des listes : private/ est lu en dernier et
   l'emporte, quel que soit PYTHONHASHSEED (un ensemble le rendait aléatoire) ;
 - le projet Dolibarr entre dans la fusion avec --with_dolibarr, ou d'office
   quand son checkout existe. Sorti de la fusion, il serait effacé par le
   prochain « repo sync », conf.php compris.
+
+Et, dans une copie de conf/ et manifest/ sans mobile/ ni .repo/ :
+- un .odoo-version terminé par un saut de ligne, comme l'écrit un éditeur,
+  donne le même manifeste fusionné que sans, avec les modules de cette
+  version d'Odoo et sans ligne d'erreur ;
+- l'extension GNOME n'entre dans la fusion que si
+  script/gnome-extension/erplibre_home existe, ou avec
+  --with_erplibre_home, comme le mobile ; le programme du deck, que si
+  script/stream_deck/deck existe, ou avec --with_streamdeck.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +35,7 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script" / "git" / "git_merge_repo_manifest.py"
+VERSION = "18.0"
 
 # Commits inventés.
 PIN_A = "a" * 40
@@ -112,6 +123,151 @@ class TestOrdreDeFusion(Banc):
                 self.assertEqual(
                     projets["dolibarr/dolibarr"].get("revision"), PIN_B
                 )
+
+
+def chemins(manifeste):
+    return sorted(
+        p.get("path") for p in ET.parse(manifeste).getroot().iter("project")
+    )
+
+
+class LaVersionDOdoo(unittest.TestCase):
+    def fusionner(self, contenu, deck=False, options=(), extension=False):
+        with tempfile.TemporaryDirectory() as dossier:
+            for nom in ("conf", "manifest"):
+                shutil.copytree(RACINE / nom, Path(dossier, nom))
+            if contenu is not None:
+                Path(dossier, ".odoo-version").write_text(contenu)
+            if deck:
+                Path(dossier, "script/stream_deck/deck").mkdir(parents=True)
+            if extension:
+                Path(dossier, "script/gnome-extension/erplibre_home").mkdir(
+                    parents=True
+                )
+            sortie = os.path.join(dossier, "fusion.xml")
+            fini = subprocess.run(
+                [sys.executable, str(SCRIPT), "--output", sortie, *options],
+                cwd=dossier,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(0, fini.returncode, fini.stderr)
+            return fini.stdout, chemins(sortie)
+
+    def test_a_trailing_newline_changes_nothing(self):
+        attendus = chemins(RACINE / f"manifest/git_manifest_odoo{VERSION}.xml")
+        sans_saut, projets = self.fusionner(VERSION)
+        avec_saut, projets_avec_saut = self.fusionner(VERSION + "\n")
+        self.assertNotIn("ERROR", avec_saut)
+        self.assertNotIn("ERROR", sans_saut)
+        self.assertEqual(projets, projets_avec_saut)
+        self.assertTrue(set(attendus) <= set(projets_avec_saut))
+
+
+class LeProgrammeDuDeck(unittest.TestCase):
+    DECK = "script/stream_deck/deck"
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_they_come_only_with_their_directory_or_the_option(self):
+        for contenu, deck, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_streamdeck",), True),
+        ):
+            with self.subTest(odoo=contenu, deck=deck, options=options):
+                _sortie, projets = self.fusionner(contenu, deck, options)
+                self.assertEqual(attendu, self.DECK in projets)
+
+
+class LExtensionGnome(unittest.TestCase):
+    """Le manifeste de l'extension n'entre qu'avec son répertoire ou
+    --with_erplibre_home, indépendamment de celui du deck : la base
+    d'ERPLibre Home s'installe sans le Stream Deck."""
+
+    EXTENSION = "script/gnome-extension/erplibre_home"
+    DECK = LeProgrammeDuDeck.DECK
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_it_comes_only_with_its_directory_or_the_option(self):
+        for contenu, extension, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_erplibre_home",), True),
+            (None, False, ("--with_streamdeck",), False),
+        ):
+            with self.subTest(
+                odoo=contenu, extension=extension, options=options
+            ):
+                _sortie, projets = self.fusionner(
+                    contenu, False, options, extension=extension
+                )
+                self.assertEqual(attendu, self.EXTENSION in projets)
+
+    def test_the_deck_does_not_bring_it_nor_it_the_deck(self):
+        _sortie, projets = self.fusionner(None, True, ())
+        self.assertNotIn(self.EXTENSION, projets)
+        _sortie, projets = self.fusionner(None, False, (), extension=True)
+        self.assertNotIn(self.DECK, projets)
+
+
+class LeGelDErplibreHome(unittest.TestCase):
+    """En mode --freeze, l'extension et le deck prennent le commit de leur
+    freeze-revision, comme le mobile : leurs fragments sont communs à toutes
+    les versions d'Odoo, et leur gel serait sinon retiré avant la fusion."""
+
+    PROJETS = {
+        "script/gnome-extension/erplibre_home": (
+            "manifest/git_manifest_erplibre_home_gnome_extension.xml"
+        ),
+        "script/stream_deck/deck": (
+            "manifest/git_manifest_erplibre_streamdeck_deck.xml"
+        ),
+    }
+
+    def gel_du_fragment(self, fragment):
+        projet = ET.parse(RACINE / fragment).getroot().find("project")
+        return projet.get("freeze-revision")
+
+    def revisions_fusionnees(self, options):
+        with tempfile.TemporaryDirectory() as dossier:
+            for nom in ("conf", "manifest"):
+                shutil.copytree(RACINE / nom, Path(dossier, nom))
+            Path(dossier, ".odoo-version").write_text(VERSION)
+            for chemin in self.PROJETS:
+                Path(dossier, chemin).mkdir(parents=True)
+            sortie = os.path.join(dossier, "fusion.xml")
+            fini = subprocess.run(
+                [sys.executable, str(SCRIPT), "--output", sortie, *options],
+                cwd=dossier,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(0, fini.returncode, fini.stderr)
+            return {
+                p.get("path"): p.get("revision")
+                for p in ET.parse(sortie).getroot().iter("project")
+            }
+
+    def test_each_fragment_freezes_its_project_on_a_commit(self):
+        for fragment in self.PROJETS.values():
+            with self.subTest(fragment=fragment):
+                self.assertRegex(
+                    self.gel_du_fragment(fragment) or "", r"^[0-9a-f]{40}$"
+                )
+
+    def test_the_freeze_applies_them_and_a_plain_merge_follows_main(self):
+        geles = self.revisions_fusionnees(("--freeze",))
+        suivis = self.revisions_fusionnees(())
+        for chemin, fragment in self.PROJETS.items():
+            with self.subTest(chemin=chemin):
+                self.assertEqual(self.gel_du_fragment(fragment), geles[chemin])
+                self.assertEqual("main", suivis[chemin])
 
 
 if __name__ == "__main__":

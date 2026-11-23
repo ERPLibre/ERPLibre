@@ -115,6 +115,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Security": "prompt_execute_security",
         "Docker / Podman": "prompt_execute_container",
         "System": "prompt_execute_system",
+        "ERPLibre Home": "prompt_execute_streamdeck",
     }
 
     def _entry_key(self, label):
@@ -480,6 +481,32 @@ class TestContainerMenuNumbering(MenuCoherence, unittest.TestCase):
         "Disk space": "_container_espace_disque",
         "Restore a .zip backup": "_container_restaurer_base",
         "Delete a database": "_container_supprimer_base",
+    }
+
+
+class TestStreamDeckMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu ERPLibre Home, dans script/todo/streamdeck_menu.py :
+    extension GNOME, Stream Deck, réglages du deck et état, réunis sous une
+    entrée d'Exécution."""
+
+    SOURCE = TODO_DIR / "streamdeck_menu.py"
+    ENTRY = "def prompt_execute_streamdeck(self):"
+    END = "def _streamdeck_probe(argv):"
+    MINIMUM = 9
+
+    EXPECTED = {
+        "Plugins on/off": "_streamdeck_plugins_setting",
+        "Session refresh": "_streamdeck_session_refresh_setting",
+        "Status": "_streamdeck_status",
+        "Service": "_streamdeck_service",
+        "Deck program": "_streamdeck_program",
+        "Autostart": "_streamdeck_autostart",
+        "Diagnosis": "_streamdeck_diagnosis",
+        "Install the GNOME extension": "_erplibre_home_install_local",
+        "Install the Stream Deck": "_erplibre_home_streamdeck_install_local",
+        "Uninstall everything": "_erplibre_home_uninstall_all",
+        "Uninstall the Stream Deck level": "_streamdeck_uninstall",
+        "Extension": "_streamdeck_extension",
     }
 
 

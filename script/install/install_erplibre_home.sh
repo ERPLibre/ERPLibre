@@ -1,0 +1,1792 @@
+#!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Installe ERPLibre Home sans Odoo, à deux niveaux. La base : l'extension
+# GNOME, un dépôt à part que Google Repo amène dans
+# script/gnome-extension/erplibre_home/, liée, ses schémas et ses
+# traductions compilés, puis activée ; ni accès au périphérique ni venv.
+# --stream-deck ajoute le niveau Stream Deck par-dessus la base : paquets
+# USB, règle udev, le programme du deck, un dépôt à part que Google Repo
+# amène dans script/stream_deck/deck/, le venv dédié .venv.streamdeck, qui
+# reçoit ses dépendances, et le service systemd --user
+# erplibre-home-streamdeck.service avec ses réglages. Le niveau Stream Deck
+# inclut toujours la base ; la base s'installe seule.
+#
+# Chaque dépôt à part est un projet repo : l'installateur l'ajoute au
+# manifeste local, puis « repo sync » de son chemin l'amène au dernier
+# commit de main, à chaque exécution. git et le repo de .venv.erplibre
+# (./script/install/install_erplibre.sh) sont requis. Un contenu qui n'est
+# pas un checkout repo est mis de côté, et revient si la pose échoue.
+#
+#   ./script/install/install_erplibre_home.sh [--stream-deck] [--no-enable]
+#       [--extension-only] [--with-extras|--no-extras] [--uninstall]
+#       [--dry-run] [--help] [--deck-program=tiler|controller|none]
+#       [--autostart]
+#
+# Les outils facultatifs des indicateurs (extras_for) s'installent avec
+# --with-extras. Sans --with-extras ni --no-extras, une installation dont
+# l'entrée standard est un terminal liste ceux qui manquent, affiche la
+# commande de chacun pour la famille du système, puis demande ; « o »
+# les installe comme --with-extras. Une exécution sans terminal (VM, test
+# long, tube) ne demande rien et n'installe aucun extra.
+#
+# Codes de sortie : 0 fait (installé ou désinstallé) ; 2 système non
+# supporté, avec UNE ligne « UNSUPPORTED: <raison> » sur la sortie
+# d'erreur ; 1 tout autre échec.
+#
+# Tourne sous le compte de l'utilisateur et refuse root : le venv,
+# l'extension et les clés gsettings lui appartiennent. sudo ne sert qu'aux
+# paquets système et à la règle udev. Se lance de n'importe où : le script
+# se place à la racine du dépôt qui le contient.
+#
+# Cinq variables remplacent une lecture du système, pour les tests :
+#   ERPLIBRE_HOME_OS_RELEASE     fichier lu à la place de /etc/os-release
+#   ERPLIBRE_HOME_SYSTEM_PYTHON  interpréteur essayé à la place de
+#                                /usr/bin/python3 pour juger du module lz4
+#   ERPLIBRE_HOME_GNOME_VERSION  version lue à la place de « gnome-shell
+#                                --version » ; « none » : pas de GNOME Shell
+#   ERPLIBRE_HOME_UID            remplace « id -u »
+#   ERPLIBRE_HOME_REPO           commande lancée à la place de
+#                                .venv.erplibre/bin/repo
+set -euo pipefail
+
+RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "${RACINE}"
+# shellcheck source=script/install/erplibre_home_settings.sh
+. "${RACINE}/script/install/erplibre_home_settings.sh"
+
+UUID="erplibre-home@technolibre.ca"
+EXT_SRC="${RACINE}/${ERPLIBRE_HOME_EXT_DIR}"
+EXT_MANIFEST="${RACINE}/manifest/git_manifest_erplibre_home_gnome_extension.xml"
+EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
+METADATA="${EXT_SRC}/metadata.json"
+DECK_SRC="${RACINE}/${DECK_REPO_DIR}"
+DECK_MANIFEST="${RACINE}/manifest/git_manifest_erplibre_streamdeck_deck.xml"
+UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
+# Le nom stable que la règle udev donne au deck branché, et l'unité .device
+# que systemd en tire : l'unité du service la nomme dans WantedBy=.
+DECK_DEVICE_ALIAS="/sys/subsystem/erplibre/streamdeck"
+DECK_DEVICE_UNIT="sys-subsystem-erplibre-streamdeck.device"
+VENV="${RACINE}/.venv.streamdeck"
+UNIT_FILE="$(deck_unit_file)"
+SETTINGS_FILE="$(deck_settings_file)"
+OS_RELEASE="${ERPLIBRE_HOME_OS_RELEASE:-/etc/os-release}"
+# Le python3 du système, celui où python3-lz4 et python-lz4 posent lz4.
+SYSTEM_PYTHON="${ERPLIBRE_HOME_SYSTEM_PYTHON:-/usr/bin/python3}"
+
+STREAM_DECK=0
+NO_ENABLE=0
+EXTENSION_ONLY=0
+WITH_EXTRAS=0
+NO_EXTRAS=0
+# Les extras manquants que l'utilisateur a acceptés à la question
+# (ask_extras) ; install_packages les installe comme --with-extras.
+EXTRAS_ACCEPTED=""
+UNINSTALL=0
+DRY_RUN=0
+# Les options du service, au niveau Stream Deck seulement. DECK_PROGRAM
+# reste vide quand l'option manque : la valeur déjà dans les réglages est
+# alors gardée (voir service_setting). SERVICE_OPTIONS compte les options
+# données, pour refuser leur emploi ailleurs.
+DECK_PROGRAM=""
+AUTOSTART=0
+SERVICE_OPTIONS=0
+
+OS=""
+OS_LIKE=""
+FAMILY=""
+GNOME_VERSION=""
+
+log() { echo "[ERPLibre Home] $*"; }
+die() {
+    echo "[ERPLibre Home] ERREUR : $*" >&2
+    exit 1
+}
+# Le code 2 et la ligne « UNSUPPORTED: » sont lus par TODO et par le test
+# long : la raison tient sur une ligne, en anglais, et rien d'autre ne part
+# sur la sortie d'erreur avant elle.
+unsupported() {
+    UNSUPPORTED_EXIT=1
+    echo "UNSUPPORTED: $*" >&2
+    exit 2
+}
+
+usage() {
+    cat <<'USAGE'
+Usage : ./script/install/install_erplibre_home.sh [options]
+
+Installe ERPLibre Home sans Odoo : l'extension GNOME erplibre-home, ses
+schémas et ses traductions, activée. --stream-deck y ajoute le Stream Deck.
+L'extension, script/gnome-extension/erplibre_home/, est un projet Google
+Repo : l'installateur l'ajoute au manifeste local, puis repo sync l'amène au
+dernier commit de main à chaque exécution. git et le repo de .venv.erplibre
+sont requis (./script/install/install_erplibre.sh d'abord). Un répertoire
+qui n'est pas un checkout repo est mis de côté, <dir>.avant-repo-<date>, et
+remis en place si la pose échoue.
+
+  --stream-deck     ajoute le niveau Stream Deck : paquets USB, règle udev,
+                    le programme du deck de script/stream_deck/deck/
+                    (projet repo, comme l'extension), .venv.streamdeck et
+                    le service ; la base s'installe aussi, au besoin
+  --no-enable       n'active pas l'extension ; un poste où l'ancienne
+                    extension était active garde cet état sous le
+                    nouveau nom (migration)
+  --extension-only  repo sync de l'extension, migration de l'ancienne
+                    identité, lien, schémas et traductions de
+                    l'extension seulement, sans sudo ni
+                    vérification du système ; ne se combine ni avec
+                    --stream-deck ni avec --uninstall
+  --with-extras     ajoute mpv, yt-dlp, nmap, keepassxc, xdotool et le
+                    module Python lz4 du système ; un paquet absent est
+                    signalé, jamais fatal. Sans cette option, sur un
+                    terminal, l'installation liste les outils qui
+                    manquent, affiche leur commande et demande (o/N)
+  --no-extras       ne demande pas et n'installe aucun outil facultatif,
+                    pour un script ; exclut --with-extras
+  --deck-program=tiler|controller|none
+                    avec --stream-deck : le programme que lance le service
+                    erplibre-home-streamdeck.service (défaut : tiler)
+  --autostart       avec --stream-deck : active le service à l'ouverture de
+                    session (défaut : non activé)
+                    Une option du service absente garde la valeur déjà
+                    dans les réglages ; le défaut ne vaut que pour une clé
+                    qui n'y est pas.
+  --uninstall       retire tout : extension, règle udev, .venv.streamdeck,
+                    service et réglages ; avec --stream-deck, tout sauf
+                    l'extension, qui reste active ; les paquets système,
+                    .repo, le manifeste local et les checkouts de
+                    l'extension et du deck restent
+  --dry-run         affiche ce qui serait fait, sans rien changer ni
+                    appeler sudo
+  -h, --help        cette aide
+
+Codes de sortie : 0 fait ; 2 système non supporté (une ligne
+« UNSUPPORTED: <raison> » sur la sortie d'erreur) ; 1 autre échec.
+USAGE
+}
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --stream-deck) STREAM_DECK=1 ;;
+            --no-enable) NO_ENABLE=1 ;;
+            --extension-only) EXTENSION_ONLY=1 ;;
+            --with-extras) WITH_EXTRAS=1 ;;
+            --no-extras) NO_EXTRAS=1 ;;
+            --uninstall) UNINSTALL=1 ;;
+            --dry-run) DRY_RUN=1 ;;
+            --deck-program=*)
+                DECK_PROGRAM="${1#*=}"
+                deck_program_path "${DECK_PROGRAM}" >/dev/null \
+                    || die "--deck-program=${DECK_PROGRAM} : tiler," \
+                        "controller ou none"
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
+            --autostart)
+                AUTOSTART=1
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
+            *)
+                usage >&2
+                die "option inconnue : $1"
+                ;;
+        esac
+        shift
+    done
+    # --extension-only est l'entrée étroite de
+    # « make erplibre_home_install_extension » : l'étape de l'extension
+    # seule, que le niveau Stream Deck et la désinstallation dépassent.
+    if [ "${EXTENSION_ONLY}" = 1 ] \
+        && [ $((STREAM_DECK + UNINSTALL)) -gt 0 ]; then
+        die "--extension-only ne se combine ni avec --stream-deck ni avec" \
+            "--uninstall"
+    fi
+    if [ "${WITH_EXTRAS}" = 1 ] && [ "${NO_EXTRAS}" = 1 ]; then
+        die "--with-extras et --no-extras s'excluent"
+    fi
+    if [ "${UNINSTALL}" = 1 ] && [ $((NO_ENABLE + WITH_EXTRAS + NO_EXTRAS \
+        + SERVICE_OPTIONS)) -gt 0 ]; then
+        die "--uninstall ne se combine qu'avec --stream-deck et --dry-run"
+    fi
+    if [ "${SERVICE_OPTIONS}" -gt 0 ] && [ "${STREAM_DECK}" = 0 ]; then
+        die "--deck-program et --autostart demandent --stream-deck"
+    fi
+}
+
+check_not_root() {
+    local uid="${ERPLIBRE_HOME_UID:-$(id -u)}"
+    if [ "${uid}" = 0 ]; then
+        die "à lancer sous votre compte, pas en root : le venv, l'extension" \
+            "et gsettings appartiennent à l'utilisateur, et le script appelle" \
+            "sudo lui-même pour les paquets et la règle udev"
+    fi
+}
+
+# ID et ID_LIKE sont lus dans un sous-shell : sourcer os-release dans le
+# script même y déposerait NAME, VERSION et le reste parmi ses variables.
+detect_os() {
+    if [ "$(uname -s)" = Darwin ]; then
+        unsupported "macOS is not handled"
+    fi
+    [ -r "${OS_RELEASE}" ] || unsupported "unknown system (no ${OS_RELEASE})"
+    # Un fichier qui ne se source pas ferait sortir le script avec le code
+    # du sous-shell et un message de bash : il finit en « unsupported ».
+    # shellcheck disable=SC1090
+    OS="$(. "${OS_RELEASE}" 2>/dev/null && echo "${ID:-}")" \
+        || unsupported "unreadable ${OS_RELEASE}"
+    # shellcheck disable=SC1090
+    OS_LIKE="$(. "${OS_RELEASE}" 2>/dev/null && echo "${ID_LIKE:-}")" \
+        || unsupported "unreadable ${OS_RELEASE}"
+}
+
+# Pose FAMILY plutôt que de l'écrire sur la sortie : appelée dans « $(…) »,
+# le code 2 de unsupported se perdrait dans le sous-shell. L'ID exact passe
+# avant ID_LIKE ; un dérivé inconnu est rattaché par son ID_LIKE.
+detect_family() {
+    case "${OS}" in
+        nixos)
+            unsupported "NixOS is not handled: its packages are declared" \
+                "in the system configuration, not installed"
+            ;;
+        ubuntu | debian | linuxmint | pop | elementary | raspbian)
+            FAMILY=debian
+            return
+            ;;
+        arch | manjaro | endeavouros | artix | garuda)
+            FAMILY=arch
+            return
+            ;;
+        fedora | rhel | centos | almalinux | rocky)
+            FAMILY=rhel
+            return
+            ;;
+        opensuse* | sles | sled)
+            FAMILY=suse
+            return
+            ;;
+    esac
+    case "${OS_LIKE}" in
+        *debian* | *ubuntu*) FAMILY=debian ;;
+        *arch*) FAMILY=arch ;;
+        *rhel* | *fedora*) FAMILY=rhel ;;
+        *suse*) FAMILY=suse ;;
+        *) unsupported "unknown distribution ${OS} (ID_LIKE=${OS_LIKE})" ;;
+    esac
+}
+
+# wmctrl, un paquet du niveau Stream Deck, n'est pas dans les dépôts de base
+# de la famille RHEL hors Fedora (RHEL, CentOS Stream, AlmaLinux, Rocky
+# Linux) : EPEL le porte. Fedora l'a dans les siens, et EPEL n'y existe pas.
+# Sort en 0 pour la famille rhel de detect_family dont l'ID est RHEL ou une
+# reconstruction, ou dont ID_LIKE nomme rhel ; un dérivé que seul fedora
+# rattache suit Fedora. L'appelant n'active EPEL qu'avec --stream-deck.
+needs_epel() {
+    [ "${FAMILY:-}" = rhel ] || return 1
+    case "${OS}" in
+        fedora) return 1 ;;
+        rhel | centos | almalinux | rocky) return 0 ;;
+    esac
+    case " ${OS_LIKE:-} " in
+        *" rhel "*) return 0 ;;
+    esac
+    return 1
+}
+
+# Les versions de « shell-version » dans metadata.json, séparées par une
+# espace. tr, grep et sed, et non python3 : le python3 du système est un
+# paquet de base que l'étape des paquets installe, APRÈS cette lecture. Les
+# sauts de ligne sont retirés d'abord, si bien que le tableau se lit qu'il
+# tienne sur une ligne ou sur plusieurs. Ne rend rien quand la clé manque.
+shell_versions() {
+    tr -d '\n\r' <"${METADATA}" \
+        | grep -o '"shell-version"[^]]*' \
+        | grep -o '"[0-9][^"]*"' \
+        | tr -d '"' | tr '\n' ' ' | sed 's/ *$//'
+}
+
+# Pose GNOME_VERSION, la version de GNOME Shell ; un poste sans GNOME Shell
+# n'est pas supporté. Ne lit rien de l'extension : repo peut ne l'avoir
+# pas encore posée.
+read_gnome_version() {
+    if [ -n "${ERPLIBRE_HOME_GNOME_VERSION:-}" ]; then
+        GNOME_VERSION="${ERPLIBRE_HOME_GNOME_VERSION}"
+    elif command -v gnome-shell >/dev/null 2>&1; then
+        # Un gnome-shell qui échoue laisse la version vide, et le « die »
+        # ci-dessous sort en 1 : son propre code ne doit pas devenir celui
+        # du script, que 2 réserve à « unsupported ».
+        GNOME_VERSION="$(gnome-shell --version 2>/dev/null \
+            | sed -n 's/^GNOME Shell //p')" || GNOME_VERSION=""
+        [ -n "${GNOME_VERSION}" ] \
+            || die "« gnome-shell --version » ne rend aucune version lisible"
+    else
+        GNOME_VERSION=none
+    fi
+    [ "${GNOME_VERSION}" != none ] || unsupported "no GNOME Shell"
+}
+
+# Le majeur de la version doit figurer dans « shell-version » de
+# metadata.json, la liste même que GNOME Shell confronte à sa version avant
+# de charger l'extension. La lire là, plutôt que d'en tenir une copie ici,
+# empêche les deux listes de diverger. Suit read_gnome_version et le repo
+# sync de l'extension.
+check_shell_version() {
+    local accepted major
+    accepted="$(shell_versions)" || accepted=""
+    [ -n "${accepted}" ] || die "shell-version illisible dans ${METADATA}"
+    major="${GNOME_VERSION%%.*}"
+    case " ${accepted} " in
+        *" ${major} "*) ;;
+        *) unsupported "GNOME ${GNOME_VERSION} not in shell-version (${accepted})" ;;
+    esac
+}
+
+# Paquets de la base, par famille : de quoi compiler les schémas (glib) et
+# les traductions (msgfmt, de gettext), le python3 du système, qui lance la
+# migration de l'ancienne identité de l'extension, et make. Un bureau neuf
+# n'a pas toujours make, alors que les cibles erplibre_home_* et le message
+# des indicateurs du deck sans venv le nomment.
+packages_for() {
+    case "$1" in
+        debian) echo "libglib2.0-bin gettext python3 make" ;;
+        rhel) echo "glib2 gettext python3 make" ;;
+        suse) echo "glib2-tools gettext-tools python3 make" ;;
+        arch) echo "glib2 gettext python make" ;;
+        *) die "famille inconnue : $1" ;;
+    esac
+}
+
+# Paquets du niveau Stream Deck, par famille : hidapi et libusb pour parler
+# au deck, le module venv, et wmctrl pour keyboard_talk.py. opencv-python
+# arrive en roue manylinux par pip ; elle lie libgthread, que openSUSE
+# empaquette à part de glib2 (les autres familles l'ont avec glib2).
+streamdeck_packages_for() {
+    case "$1" in
+        debian) echo "libhidapi-libusb0 libusb-1.0-0 python3-venv wmctrl" ;;
+        rhel) echo "hidapi libusb1 python3 wmctrl" ;;
+        suse) echo "libhidapi-libusb0 libusb-1_0-0 libgthread-2_0-0 python3 wmctrl" ;;
+        arch) echo "hidapi libusb python wmctrl" ;;
+        *) die "famille inconnue : $1" ;;
+    esac
+}
+
+# level_packages FAMILLE rend les paquets du niveau choisi : ceux de la
+# base, puis, avec --stream-deck, ceux du deck que la base ne porte pas déjà
+# (le python3 du venv est celui de la base sur dnf, zypper et pacman).
+level_packages() {
+    local pkgs pkg
+    pkgs="$(packages_for "$1")"
+    if [ "${STREAM_DECK}" = 1 ]; then
+        for pkg in $(streamdeck_packages_for "$1"); do
+            case " ${pkgs} " in
+                *" ${pkg} "*) ;;
+                *) pkgs="${pkgs} ${pkg}" ;;
+            esac
+        done
+    fi
+    echo "${pkgs}"
+}
+
+# Outils facultatifs des indicateurs, donc de la base. lz4 est le module
+# Python du SYSTÈME : l'import des onglets Firefox tourne sous le python3
+# que prefs.js trouve sur le PATH de la session GNOME, celui du système, et
+# un lz4 posé dans le venv ne le servirait pas.
+extras_for() {
+    case "$1" in
+        debian | rhel | suse) echo "mpv yt-dlp nmap keepassxc xdotool python3-lz4" ;;
+        arch) echo "mpv yt-dlp nmap keepassxc xdotool python-lz4" ;;
+        *) die "famille inconnue : $1" ;;
+    esac
+}
+
+# extra_present PAQUET sort en 0 quand l'outil que porte ce paquet
+# d'extras_for est déjà utilisable. La présence se juge à ce que les
+# indicateurs appellent, et non à la base du gestionnaire de paquets, que
+# chaque famille interroge autrement : la commande sur le PATH, keepassxc
+# ou son keepassxc-cli, l'un suffit, et pour le module lz4 son import par
+# SYSTEM_PYTHON, l'interpréteur où le paquet l'installe. Le python3 du PATH
+# d'un terminal, souvent un venv activé ou un shim mise, n'importe pas le
+# lz4 du système : il ne sert que lorsque SYSTEM_PYTHON manque. Un outil
+# posé hors du gestionnaire de paquets compte donc pour présent. Avant les
+# paquets de la base, un python3 absent fait compter lz4 pour manquant, ce
+# qu'il est.
+extra_present() {
+    local python=python3
+    [ -x "${SYSTEM_PYTHON}" ] && python="${SYSTEM_PYTHON}"
+    case "$1" in
+        keepassxc)
+            command -v keepassxc >/dev/null 2>&1 \
+                || command -v keepassxc-cli >/dev/null 2>&1
+            ;;
+        python3-lz4 | python-lz4) "${python}" -c 'import lz4' >/dev/null 2>&1 ;;
+        *) command -v "$1" >/dev/null 2>&1 ;;
+    esac
+}
+
+# missing_extras FAMILLE rend, séparés par une espace, les paquets
+# d'extras_for dont extra_present ne trouve pas l'outil.
+missing_extras() {
+    local pkg missing=""
+    for pkg in $(extras_for "$1"); do
+        extra_present "${pkg}" || missing="${missing:+${missing} }${pkg}"
+    done
+    echo "${missing}"
+}
+
+# Sort en 0 quand les messages sont à écrire en français : la première
+# variable non vide de LC_ALL, LC_MESSAGES et LANG décide, dans l'ordre de
+# priorité où gettext les lit.
+speaks_french() {
+    case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+        fr*) return 0 ;;
+    esac
+    return 1
+}
+
+# package_cmd FAMILLE PAQUET... rend, sur une ligne, la commande non
+# interactive qui installe ces paquets avec le gestionnaire de la famille.
+# Fonction pure : --dry-run affiche cette ligne, l'installation exécute la
+# même, et les deux ne peuvent pas diverger. Un paquet déjà présent est
+# sauté par le gestionnaire lui-même. « -o DPkg::Lock::Timeout=600 » fait
+# attendre apt-get jusqu'à dix minutes le verrou de dpkg, qu'une mise à
+# jour automatique tient souvent dans les premières minutes d'une session
+# neuve, au lieu d'échouer aussitôt.
+package_cmd() {
+    local fam="$1"
+    shift
+    case "${fam}" in
+        debian)
+            echo "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq &&" \
+                "sudo env DEBIAN_FRONTEND=noninteractive apt-get" \
+                "-o DPkg::Lock::Timeout=600 install -y" \
+                "--no-install-recommends $*"
+            ;;
+        rhel) echo "sudo dnf install -y $*" ;;
+        suse) echo "sudo zypper --non-interactive install $*" ;;
+        arch) echo "sudo pacman -S --needed --noconfirm $*" ;;
+        *) die "famille inconnue : ${fam}" ;;
+    esac
+}
+
+# Les langues des traductions : une par po/<langue>.po. Le gabarit
+# erplibre-home.pot n'en est pas une.
+locale_langs() {
+    local po
+    for po in "${EXT_SRC}"/po/*.po; do
+        [ -e "${po}" ] || continue
+        basename "${po}" .po
+    done
+}
+
+# Le .mo que msgfmt écrit pour une langue, là où l'extension le cherche.
+mo_file() {
+    echo "${EXT_SRC}/locale/$1/LC_MESSAGES/erplibre-home.mo"
+}
+
+# ---------- Installation ----------
+
+# Les dépendances du programme du deck, que son dépôt liste.
+REQUIREMENTS="${DECK_SRC}/requirements.txt"
+
+# Ce que l'exécution a réellement changé, une ligne par effet, pour le bilan.
+DONE=()
+
+# Les extras à proposer : ceux qui manquent, quand la question a lieu,
+# c'est-à-dire sans --with-extras ni --no-extras et sur une entrée standard
+# qui est un terminal ; rien sinon. Une exécution sans terminal n'est
+# jamais interrogée, et n'installe aucun extra, faute de réponse.
+extras_to_offer() {
+    [ "${WITH_EXTRAS}" = 0 ] && [ "${NO_EXTRAS}" = 0 ] && [ -t 0 ] \
+        || return 0
+    missing_extras "${FAMILY}"
+}
+
+# ask_extras PAQUET... liste les extras manquants, puis la commande de
+# chacun, celle même que install_packages lance pour un extra, et demande.
+# o, oui, y ou yes, sans égard à la casse, les retient dans
+# EXTRAS_ACCEPTED ; toute autre réponse, la ligne vide et la fin de
+# l'entrée valent non.
+ask_extras() {
+    local pkg answer question
+    if speaks_french; then
+        log "Outils facultatifs absents : $*"
+        log "Commande, un paquet à la fois :"
+        question="Installer les outils facultatifs ? (o/N) : "
+    else
+        log "Optional tools missing: $*"
+        log "Command, one package at a time:"
+        question="Install the optional tools? (y/N): "
+    fi
+    for pkg in "$@"; do
+        echo "    $(package_cmd "${FAMILY}" "${pkg}")"
+    done
+    printf '%s' "${question}"
+    if ! read -r answer; then
+        answer=""
+        echo
+    fi
+    case "${answer,,}" in
+        o | oui | y | yes) EXTRAS_ACCEPTED="$*" ;;
+    esac
+}
+
+# EPEL au besoin (--stream-deck, voir needs_epel), les paquets du niveau,
+# puis chaque extra seul : tous ceux d'extras_for avec --with-extras, ceux
+# d'EXTRAS_ACCEPTED sinon. Chaque ligne est celle de package_cmd, celle
+# même que --dry-run affiche ; eval l'exécute, et chacun de ses mots
+# est un littéral de packages_for, streamdeck_packages_for, extras_for ou
+# « epel-release ». L'échec des paquets du niveau arrête l'installation
+# (set -e) ; celui d'un extra n'est qu'un avertissement, et un extra absent
+# du dépôt ne fait échouer que sa propre commande.
+install_packages() {
+    local level pkg extras="${EXTRAS_ACCEPTED}"
+    if [ "${STREAM_DECK}" = 1 ] && needs_epel; then
+        eval "$(package_cmd "${FAMILY}" epel-release)"
+    fi
+    level="$(level_packages "${FAMILY}")"
+    # shellcheck disable=SC2086
+    eval "$(package_cmd "${FAMILY}" ${level})"
+    DONE+=("system packages: ${level}")
+    if [ "${WITH_EXTRAS}" = 1 ]; then
+        extras="$(extras_for "${FAMILY}")"
+    fi
+    for pkg in ${extras}; do
+        if eval "$(package_cmd "${FAMILY}" "${pkg}")"; then
+            DONE+=("optional package: ${pkg}")
+        else
+            log "WARNING: optional package ${pkg} not installed, skipped"
+        fi
+    done
+}
+
+# ---------- Règle udev ----------
+
+# Le contenu exact de la règle. « uaccess » donne l'accès à l'utilisateur
+# assis devant le poste sur toutes les familles, là où le groupe plugdev
+# n'existe que sur Debian et Ubuntu. Le préfixe 70- passe avant
+# 73-seat-late.rules, qui applique uaccess.
+# La troisième ligne fait du deck branché l'unité DECK_DEVICE_UNIT dans
+# chaque gestionnaire systemd --user (tag « systemd » et alias). L'unité du
+# service la nomme dans WantedBy= : « enable » démarre alors le service au
+# branchement comme à l'ouverture de session, et « disable » coupe les deux.
+# La ligne ne vise que le périphérique entier (usb_device), pas ses
+# interfaces ni son hidraw. Un service déjà actif n'est pas relancé ; hors
+# de la session graphique, --check saute le démarrage.
+udev_rule_content() {
+    printf '%s\n' \
+        'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"' \
+        'KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"'
+    printf '%s, %s, %s\n' \
+        'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device"' \
+        'ATTR{idVendor}=="0fd9", TAG+="systemd"' \
+        "ENV{SYSTEMD_ALIAS}=\"${DECK_DEVICE_ALIAS}\""
+}
+
+# Écrit la règle seulement si le fichier en place diffère (cmp), et ne
+# recharge udev que dans ce cas : une seconde exécution ne touche ni au
+# fichier ni à son mtime.
+write_udev_rule() {
+    if cmp -s <(udev_rule_content) "${UDEV_RULE}"; then
+        log "udev rule already in place: ${UDEV_RULE}"
+        return 0
+    fi
+    udev_rule_content | sudo tee "${UDEV_RULE}" >/dev/null
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+    DONE+=("udev rule: ${UDEV_RULE}")
+}
+
+# ---------- venv ----------
+
+# Crée le venv avec le python3 du système s'il manque, puis y installe les
+# dépendances du deck. pip ne réinstalle pas ce qui est déjà satisfait : le
+# venv existant garde son contenu.
+make_venv() {
+    if [ ! -x "${VENV}/bin/python" ]; then
+        python3 -m venv "${VENV}"
+        DONE+=("venv created: ${VENV}")
+    fi
+    "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
+        -r "${REQUIREMENTS}"
+}
+
+# ---------- Google Repo ----------
+
+# L'extension et le programme du deck sont des dépôts à part, des projets
+# Google Repo comme les addons d'un checkout complet. L'installateur ajoute
+# leur projet au manifeste local, puis « repo sync » de leur seul chemin les
+# amène au dernier commit de main ; la sémantique est celle de repo, sans
+# rien de plus : un HEAD détaché suit main, une branche de « repo start »
+# suit repo. Les fonctions repo_* prennent le libellé du projet (le mot qui
+# ouvre ses lignes du bilan : « extension », « deck »), son chemin relatif
+# à la racine, son manifeste dans manifest/ et le fichier témoin qui dit
+# qu'il est posé.
+
+# Les manifestes locaux de repo. erplibre_manifest.xml est celui qu'écrit la
+# fusion des manifestes d'un checkout complet : l'installateur y ajoute ses
+# projets, si bien qu'aucun chemin n'y est nommé deux fois (repo refuse un
+# « duplicate path »), et la fusion suivante les reprend, leurs répertoires
+# existant.
+LOCAL_MANIFESTS="${RACINE}/.repo/local_manifests"
+LOCAL_MANIFEST="${LOCAL_MANIFESTS}/erplibre_manifest.xml"
+# Le manifeste de l'init : il ne porte aucun projet, l'init ne pose donc
+# rien et ne demande ni branche ni réseau.
+INIT_MANIFEST="${RACINE}/manifest/git_manifest_erplibre.xml"
+
+# La commande repo, que check_fetch_tools pose : ERPLIBRE_HOME_REPO quand il
+# est donné (un faux repo pour les tests), sinon le repo de .venv.erplibre,
+# lancé depuis la racine, où son hashbang relatif trouve le python du venv.
+REPO_CMD=()
+# Sous --dry-run, la ligne « init: » ne s'écrit qu'une fois.
+REPO_INIT_SHOWN=0
+# Le répertoire d'une première pose en cours, et le contenu à y remettre
+# si elle échoue : celui qui y était, mis de côté, ou, pour un répertoire
+# absent, la plus récente de ses sauvegardes ; vide quand il n'y en a
+# aucune. repo_restore les remet dans leur état d'avant, à l'échec comme à
+# l'arrêt du script. Un contenu ne
+# fait du répertoire la pose en cours qu'une fois mis de côté. Un checkout
+# repo n'y figure jamais : repo le met à jour en place.
+REPO_POSE_DIR=""
+REPO_SET_ASIDE=""
+
+# Sort en 0 quand le répertoire $1 porte un repo/main.py sous .repo : le
+# lanceur de repo, qui cherche ce fichier en remontant depuis le répertoire
+# courant, s'arrête là.
+repo_top() {
+    [ -f "$1/.repo/repo/main.py" ]
+}
+
+# Sans .repo à la racine, le lanceur de repo remonterait jusqu'au .repo d'un
+# répertoire parent, et « repo init » réinitialiserait le checkout de ce
+# parent. Un tel parent arrête l'installation, en le nommant.
+repo_check_not_nested() {
+    local dir
+    repo_top "${RACINE}" && return 0
+    dir="$(dirname "${RACINE}")"
+    while :; do
+        if repo_top "${dir}"; then
+            die "${RACINE} est imbriqué dans le checkout repo ${dir} :" \
+                "lancez l'installateur depuis le checkout principal"
+        fi
+        [ "${dir}" != / ] || return 0
+        dir="$(dirname "${dir}")"
+    done
+}
+
+# Une installation à la fois par checkout : un verrou flock sur la racine,
+# tenu jusqu'à la sortie du script, hors --dry-run. Sans lui, une seconde
+# installation lirait « absent » un répertoire que la première a mis de
+# côté, et l'échec de sa propre pose supprimerait celle de la première. Une
+# installation en cours fait attendre la suivante, qui le dit. Sans flock,
+# ou sur un système de fichiers qui refuse les verrous, l'installation se
+# fait sans verrou.
+REPO_LOCK_FD=""
+repo_lock() {
+    local rc=0
+    [ "${DRY_RUN}" = 0 ] && [ -z "${REPO_LOCK_FD}" ] || return 0
+    type -P flock >/dev/null || return 0
+    exec {REPO_LOCK_FD}<"${RACINE}"
+    flock -n -E 75 "${REPO_LOCK_FD}" 2>/dev/null || rc=$?
+    [ "${rc}" = 75 ] || return 0
+    log "une autre installation tourne sur ${RACINE} : attente de sa fin"
+    flock "${REPO_LOCK_FD}"
+}
+
+# Les outils de la récupération, avant toute pose, sous --dry-run comme sous
+# --extension-only : git, que repo lance, et repo lui-même. Pose REPO_CMD.
+# .venv.erplibre, que pose ./script/install/install_erplibre.sh, porte repo
+# dans bin/ ; quand il y manque, install_git_repo.sh l'y pose (sous
+# --dry-run, une ligne l'annonce). Sans .venv.erplibre, l'installation
+# s'arrête en nommant la commande qui le pose. Prend d'abord le verrou de
+# repo_lock.
+check_fetch_tools() {
+    local log
+    repo_lock
+    type -P git >/dev/null \
+        || die "git est requis pour récupérer l'extension : installez le paquet git"
+    repo_check_not_nested
+    if [ -n "${ERPLIBRE_HOME_REPO:-}" ]; then
+        REPO_CMD=("${ERPLIBRE_HOME_REPO}")
+        return 0
+    fi
+    [ -d "${RACINE}/.venv.erplibre" ] \
+        || die "pas de .venv.erplibre, qui porte repo :" \
+            "lancez ./script/install/install_erplibre.sh d'abord"
+    REPO_CMD=("./.venv.erplibre/bin/repo")
+    [ ! -x "${RACINE}/.venv.erplibre/bin/repo" ] || return 0
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "repo: ./script/install/install_git_repo.sh"
+        return 0
+    fi
+    log="$(repo_log)"
+    ./script/install/install_git_repo.sh </dev/null >"${log}" 2>&1 \
+        || die "install_git_repo.sh n'a pas posé repo ; journal : ${log}"
+    [ -x "${RACINE}/.venv.erplibre/bin/repo" ] \
+        || die "pas de .venv.erplibre/bin/repo après install_git_repo.sh ;" \
+            "journal : ${log}"
+    rm -f "${log}"
+    DONE+=("git-repo: ${RACINE}/.venv.erplibre/bin/repo")
+}
+
+# Un journal neuf, que repo_run remplit. Il n'est nommé qu'en cas d'échec et
+# supprimé sinon : la sortie de repo, bruit du mode standalone compris
+# (« unparseable HEAD »), ne va jamais sur la sortie d'erreur, où la ligne
+# UNSUPPORTED doit rester seule.
+repo_log() {
+    mktemp "${TMPDIR:-/tmp}/erplibre_home_repo.XXXXXX"
+}
+
+# repo_run JOURNAL ARG… lance repo depuis la racine, l'entrée fermée (repo
+# init ne pose alors aucune question), ses deux sorties ajoutées à JOURNAL.
+repo_run() {
+    local log="$1"
+    shift
+    "${REPO_CMD[@]}" "$@" </dev/null >>"${log}" 2>&1
+}
+
+# xml_attribute NOM ÉLÉMENT : la valeur de l'attribut NOM="…" de l'élément
+# XML ÉLÉMENT, écrit sur une ligne ; vide quand il manque.
+xml_attribute() {
+    sed -n "s/.*[[:space:]]$1=\"\([^\"]*\)\".*/\1/p" <<<"$2"
+}
+
+# repo_project_lines MANIFESTE CHEMIN écrit, telles qu'elles s'y lisent, les
+# lignes de l'élément <project …/> du manifeste dont path vaut CHEMIN ; code
+# 1 quand il n'y en a pas. Le manifeste est lu comme ceux de manifest/
+# s'écrivent : un projet qui s'ouvre sur sa ligne et se ferme par « /> »,
+# ses attributs entre guillemets doubles.
+repo_project_lines() {
+    awk -v voulu="path=\"$2\"" '
+        /<project[[:space:]]|<project$/ { bloc = ""; dans = 1 }
+        dans { bloc = bloc $0 "\n" }
+        dans && /\/>/ {
+            dans = 0
+            if (index(bloc, voulu)) { printf "%s", bloc; trouve = 1; exit }
+        }
+        END { exit !trouve }' "$1"
+}
+
+# repo_remote_line MANIFESTE NOM écrit la ligne <remote …/> du manifeste
+# dont name vaut NOM ; code 1 quand il n'y en a pas.
+repo_remote_line() {
+    awk -v voulu="name=\"$2\"" '
+        /<remote[[:space:]]/ && index($0, voulu) { print; trouve = 1; exit }
+        END { exit !trouve }' "$1"
+}
+
+# repo_project_source MANIFESTE CHEMIN rend « <url> <révision> » du projet,
+# pour la ligne de --dry-run : l'URL est le fetch de son remote suivi de
+# son name. tr, awk et sed, sans python3.
+repo_project_source() {
+    local projet remote fetch
+    projet="$(repo_project_lines "$1" "$2" | tr '\n\r\t' '   ')" || return 1
+    remote="$(xml_attribute remote "${projet}")"
+    fetch="$(tr '\n\r\t' '   ' <"$1" | grep -o '<remote [^>]*>' \
+        | grep -F " name=\"${remote}\"" | head -n 1)" || true
+    fetch="$(xml_attribute fetch "${fetch}")"
+    [ -n "${remote}" ] && [ -n "${fetch}" ] || return 1
+    echo "${fetch%/}/$(xml_attribute name "${projet}")" \
+        "$(xml_attribute revision "${projet}")"
+}
+
+# Sort en 0 quand un manifeste local nomme déjà path="$1".
+repo_manifest_has() {
+    local f
+    for f in "${LOCAL_MANIFESTS}"/*.xml; do
+        [ -f "${f}" ] || continue
+        grep -qF "path=\"$1\"" "${f}" && return 0
+    done
+    return 1
+}
+
+# repo_manifest_add CHEMIN MANIFESTE ajoute le projet CHEMIN de MANIFESTE à
+# LOCAL_MANIFEST, et rien d'autre : ses lignes, précédées de celle de son
+# <remote> quand aucun remote de ce nom n'y figure, s'insèrent juste avant
+# le dernier </manifest>, et chaque autre octet du fichier reste. Un chemin
+# déjà nommé ne change rien : la sélection d'une installation antérieure
+# (le deck d'une base relancée) et les révisions figées d'un checkout
+# complet restent. Un fichier absent est créé ; un fichier sans
+# </manifest> (<manifest/>) arrête l'installation sans être touché.
+repo_manifest_add() {
+    local chemin="$1" manifeste="$2" texte bloc remote ligne avant apres
+    repo_manifest_has "${chemin}" && return 0
+    if [ ! -e "${LOCAL_MANIFEST}" ]; then
+        mkdir -p "${LOCAL_MANIFESTS}"
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<manifest>' '</manifest>' >"${LOCAL_MANIFEST}"
+    fi
+    # Le « . » final garde les sauts de ligne de la fin, que $(…) retire.
+    texte="$(cat "${LOCAL_MANIFEST}" && echo .)"
+    texte="${texte%.}"
+    case "${texte}" in
+        *"</manifest>"*) ;;
+        *) die "${LOCAL_MANIFEST} sans </manifest> : lancez make pour le régénérer" ;;
+    esac
+    bloc="$(repo_project_lines "${manifeste}" "${chemin}")" \
+        || die "pas de projet ${chemin} dans ${manifeste}"
+    remote="$(xml_attribute remote "$(tr '\n' ' ' <<<"${bloc}")")"
+    if ! tr '\n\r\t' '   ' <<<"${texte}" \
+        | grep -q "<remote [^>]*name=\"${remote}\""; then
+        ligne="$(repo_remote_line "${manifeste}" "${remote}")" \
+            || die "pas de remote ${remote} dans ${manifeste}"
+        bloc="${ligne}"$'\n'"${bloc}"
+    fi
+    avant="${texte%</manifest>*}"
+    apres="</manifest>${texte##*</manifest>}"
+    [[ -z "${avant}" || "${avant}" == *$'\n' ]] || avant="${avant}"$'\n'
+    install_file "${LOCAL_MANIFEST}" \
+        < <(printf '%s%s\n%s' "${avant}" "${bloc}" "${apres}") || true
+    DONE+=("manifest: ${chemin} added to ${LOCAL_MANIFEST}")
+}
+
+# repo init, quand .repo/manifest.xml manque : --standalone-manifest sur
+# INIT_MANIFEST, sans -g, que le manifeste local complète. Un .repo déjà
+# initialisé ne l'est jamais une seconde fois : une ré-init changerait ses
+# groupes et son manifeste, et le sync suivant supprimerait ce qui en sort.
+# Un .repo que cet appel a créé part avec son échec.
+repo_init_once() {
+    local log cree=0
+    [ ! -f "${RACINE}/.repo/manifest.xml" ] || return 0
+    [ -e "${RACINE}/.repo" ] || cree=1
+    log="$(repo_log)"
+    if ! repo_run "${log}" init --standalone-manifest \
+        -u "file://${INIT_MANIFEST}"; then
+        [ "${cree}" = 0 ] || rm -rf "${RACINE}/.repo"
+        die "repo init impossible ; journal : ${log}"
+    fi
+    rm -f "${log}"
+    DONE+=("repo init: ${RACINE}/.repo")
+}
+
+# Tout repo sync, même limité à un chemin, supprime, .git compris, chaque
+# chemin de .repo/project.list que le manifeste ne retient plus (les
+# groupes comptent). Avant un sync, un tel chemin encore sur le disque
+# arrête l'installation : c'est la fusion des manifestes (make) qui doit
+# passer d'abord. Sans project.list, aucun sync n'a eu lieu, et rien ne peut
+# être supprimé.
+repo_shrink_guard() {
+    local liste="${RACINE}/.repo/project.list" retenus chemin log
+    [ -f "${liste}" ] || return 0
+    log="$(repo_log)"
+    retenus="$("${REPO_CMD[@]}" list -p --all </dev/null 2>>"${log}")" \
+        || die "repo list impossible ; journal : ${log}"
+    rm -f "${log}"
+    while IFS= read -r chemin; do
+        [ -n "${chemin}" ] || continue
+        [ -e "${RACINE}/${chemin}/.git" ] || continue
+        grep -qxF -- "${chemin}" <<<"${retenus}" && continue
+        die "un changement de manifeste en attente supprimerait ${chemin}" \
+            "au prochain repo sync : lancez make d'abord"
+    done <"${liste}"
+}
+
+# repo_dir_state DIR rend « absent » (rien, ou un répertoire vide),
+# « checkout » (un projet de repo : .git en lien, ou, dans l'ancienne
+# disposition, un .git répertoire dont objects/ est un lien) ou « other »
+# (tout le reste : clone git, copie, restes ignorés, fichier).
+repo_dir_state() {
+    local dir="$1"
+    if [ ! -e "${dir}" ] && [ ! -L "${dir}" ]; then
+        echo absent
+    elif [ -d "${dir}" ] && [ ! -L "${dir}" ] \
+        && [ -z "$(ls -A "${dir}")" ]; then
+        echo absent
+    elif [ -d "${dir}" ] && [ ! -L "${dir}" ] && { [ -L "${dir}/.git" ] \
+        || { [ -d "${dir}/.git" ] && [ -L "${dir}/.git/objects" ]; }; }; then
+        echo checkout
+    else
+        echo other
+    fi
+}
+
+# Le nom sous lequel le contenu de DIR est mis de côté : un voisin daté de
+# DIR, dans le même parent.
+repo_set_aside_name() {
+    echo "$1.avant-repo-$(date +%Y%m%d-%H%M%S)"
+}
+
+# repo_last_set_aside DIR : la plus récente des sauvegardes de DIR, que
+# repo_set_aside_name date ; rien quand il n'y en a pas. Celle d'une pose
+# arrêtée sans passer par le piège de sortie (SIGKILL, coupure) est la
+# dernière, et le répertoire est alors absent.
+repo_last_set_aside() {
+    local sauvegarde dernier=""
+    for sauvegarde in "$1".avant-repo-*; do
+        [ -e "${sauvegarde}" ] || [ -L "${sauvegarde}" ] || continue
+        dernier="${sauvegarde}"
+    done
+    echo "${dernier}"
+}
+
+# Met DIR de côté, entier, sous repo_set_aside_name (suivi du PID s'il est
+# pris), et le retient pour repo_restore. DIR ne devient la pose en cours
+# qu'une fois déplacé : un renommage refusé (parent en lecture seule, point
+# de montage) arrête l'installation sans que repo_restore, au piège de
+# sortie, supprime le contenu resté en place.
+repo_set_aside() {
+    local dir="$1" dest
+    dest="$(repo_set_aside_name "${dir}")"
+    [ ! -e "${dest}" ] || dest="${dest}-$$"
+    mv "${dir}" "${dest}" || die "${dir} : mise de côté impossible"
+    REPO_POSE_DIR="${dir}"
+    REPO_SET_ASIDE="${dest}"
+}
+
+# Défait une première pose inachevée : ce que repo a commencé de poser
+# part, et le contenu mis de côté revient à sa place. Le répertoire, que
+# GNOME Shell charge ou que le service lance, n'est jamais laissé vide
+# quand il avait un contenu. Sans pose en cours, ne fait rien ; le piège de
+# sortie l'appelle à chaque fin.
+repo_restore() {
+    [ -n "${REPO_POSE_DIR}" ] || return 0
+    rm -rf "${REPO_POSE_DIR}"
+    if [ -n "${REPO_SET_ASIDE}" ]; then
+        mv "${REPO_SET_ASIDE}" "${REPO_POSE_DIR}"
+    fi
+    REPO_POSE_DIR=""
+    REPO_SET_ASIDE=""
+}
+
+# repo_fail DIR JOURNAL RAISON : la pose ou le sync a échoué ; une
+# première pose est défaite (repo_restore), et l'installation s'arrête sur
+# une ligne qui nomme le journal de repo.
+repo_fail() {
+    local remis=""
+    [ -z "${REPO_SET_ASIDE}" ] \
+        || remis=" ; ancien contenu remis en place depuis ${REPO_SET_ASIDE}"
+    repo_restore
+    die "repo n'a pas posé ${1} (${3})${remis} ; journal : ${2}"
+}
+
+# repo_project LABEL CHEMIN MANIFESTE TÉMOIN amène le projet CHEMIN par
+# repo : init au besoin, ajout au manifeste local, garde de rétrécissement,
+# mise de côté d'un contenu qui n'est pas un checkout, puis « sync -n -c »
+# (le réseau) et « sync -l -c » (l'extraction) de ce seul chemin. TÉMOIN,
+# relatif au projet, se vérifie après le sync. Sur un checkout, un échec de
+# repo n'arrête rien : l'ancien contenu reste en service et le bilan le dit.
+# À la première pose, il arrête l'installation, contenu remis en place :
+# celui qui y était, ou, sur un répertoire absent, sa sauvegarde la plus
+# récente. Le répertoire n'est jamais laissé absent quand une sauvegarde
+# existe.
+repo_project() {
+    local label="$1" chemin="$2" manifeste="$3" temoin="$4"
+    local dir="${RACINE}/$2" etat origine log avant=""
+    etat="$(repo_dir_state "${dir}")"
+    origine="$(repo_project_source "${manifeste}" "${chemin}")" \
+        || die "projet ${chemin} illisible dans ${manifeste}"
+    if [ "${DRY_RUN}" = 1 ]; then
+        if [ ! -f "${RACINE}/.repo/manifest.xml" ] \
+            && [ "${REPO_INIT_SHOWN}" = 0 ]; then
+            echo "init: repo --standalone-manifest"
+            REPO_INIT_SHOWN=1
+        fi
+        repo_manifest_has "${chemin}" || echo "manifest: add ${chemin}"
+        if [ "${etat}" = other ]; then
+            echo "${label}: set aside ${dir} to $(repo_set_aside_name "${dir}")"
+        fi
+        echo "${label}: repo sync ${dir} (${origine% *} at ${origine#* })"
+        return 0
+    fi
+    repo_init_once
+    repo_manifest_add "${chemin}" "${manifeste}"
+    repo_shrink_guard
+    if [ "${etat}" = absent ]; then
+        REPO_POSE_DIR="${dir}"
+        REPO_SET_ASIDE="$(repo_last_set_aside "${dir}")"
+    elif [ "${etat}" = other ]; then
+        repo_set_aside "${dir}"
+        DONE+=("${label} set aside: ${dir} moved to ${REPO_SET_ASIDE}")
+    else
+        avant="$(git -C "${dir}" rev-parse -q --verify HEAD 2>/dev/null)" \
+            || avant=""
+    fi
+    log="$(repo_log)"
+    if ! repo_run "${log}" sync -n -c "${chemin}"; then
+        if [ "${etat}" = checkout ]; then
+            DONE+=("${label} NOT updated: fetch failed; log: ${log}")
+            return 0
+        fi
+        repo_fail "${dir}" "${log}" "fetch"
+    fi
+    if ! repo_run "${log}" sync -l -c "${chemin}"; then
+        if [ "${etat}" = checkout ]; then
+            DONE+=("${label} NOT updated: repo sync -l failed; log: ${log}")
+            return 0
+        fi
+        repo_fail "${dir}" "${log}" "sync -l"
+    fi
+    [ -f "${dir}/${temoin}" ] || repo_fail "${dir}" "${log}" "pas de ${temoin}"
+    rm -f "${log}"
+    REPO_POSE_DIR=""
+    REPO_SET_ASIDE=""
+    if [ "${etat}" != checkout ]; then
+        DONE+=("${label} synced: ${dir} (${origine#* })")
+    elif [ "$(git -C "${dir}" rev-parse -q --verify HEAD 2>/dev/null)" \
+        != "${avant}" ]; then
+        DONE+=("${label} updated: ${dir} (${origine#* })")
+    fi
+}
+
+# ---------- Service du deck ----------
+
+# Ce que le bilan demande de lancer après la prochaine connexion : les
+# commandes systemctl --user qui n'ont pas pu passer faute de gestionnaire
+# de l'utilisateur joignable (une installation par ssh sans session).
+SERVICE_HINTS=()
+
+# systemd refuse un chemin d'exécutable qui porte une apostrophe, un
+# guillemet, une barre oblique inverse ou un caractère de contrôle, même
+# cité : l'unité ne se chargerait pas. Le niveau Stream Deck s'arrête donc
+# avant de rien installer, en nommant le chemin. Une espace et « % » passent.
+check_checkout_path() {
+    case "${RACINE}" in
+        *\'* | *\"* | *\\*)
+            die "${RACINE} : systemd refuse ' \" et \\ dans le chemin du" \
+                "service ; déplacer le dépôt"
+            ;;
+    esac
+    if [[ "${RACINE}" == *[[:cntrl:]]* ]]; then
+        die "${RACINE} : caractère de contrôle refusé par systemd"
+    fi
+}
+
+# Le texte de l'unité, pour le dépôt RACINE. Les chemins s'écrivent entiers :
+# entre guillemets dans les lignes Exec*, où une espace séparerait sinon les
+# arguments, et « % » doublé partout, sans quoi systemd le lit comme un
+# spécificateur. « $ » reste tel quel : systemd ne développe les variables
+# que dans les arguments d'une ligne Exec*, et le chemin n'y est jamais que
+# l'exécutable ou WorkingDirectory, où un « $$ » resterait doublé.
+#
+# Ce qui borne les redémarrages (Restart=on-failure) :
+# - RestartPreventExitStatus=2 3 : le programme sort en 2 quand un autre
+#   tient le verrou du deck, en 3 quand le tiler ne trouve aucun deck à
+#   écran ; relancer n'y change rien (deck_lock.BUSY_EXIT, NO_DECK_EXIT) ;
+# - StartLimitBurst=5 en 60 s : tout autre échec persistant finit en
+#   « failed », que la diagnostic signale, au lieu d'un processus toutes les
+#   RestartSec pour la session entière ; le défaut de systemd (5 en 10 s)
+#   n'est jamais atteint avec RestartSec=3.
+# SuccessExitStatus=143 : sur SIGTERM (systemctl stop), le programme remet
+# le deck à zéro et sort en 128 + 15 (deck_lock.exit_on_sigterm) ; sans
+# cette ligne, l'arrêt laisserait l'unité « failed ». TimeoutStopSec=10 :
+# un fil non démon (animation, webcam du contrôleur) retient SystemExit, et
+# l'arrêt finit alors en SIGKILL au bout de 10 s au lieu des 90 s par
+# défaut. PYTHONUNBUFFERED : la
+# sortie va au journal ligne par ligne, et non par blocs à la sortie.
+unit_content() {
+    local dir entry
+    dir="${RACINE//%/%%}"
+    entry="\"${dir}/script/install/erplibre_home_deck.sh\""
+    printf '%s\n' \
+        "[Unit]" \
+        "Description=ERPLibre Home Stream Deck program" \
+        "PartOf=graphical-session.target" \
+        "After=graphical-session.target" \
+        "StartLimitIntervalSec=60" \
+        "StartLimitBurst=5" \
+        "" \
+        "[Service]" \
+        "Type=simple" \
+        "WorkingDirectory=${dir}" \
+        "Environment=PYTHONUNBUFFERED=1" \
+        "ExecCondition=${entry} --check" \
+        "ExecStart=${entry}" \
+        "Restart=on-failure" \
+        "RestartSec=3" \
+        "RestartPreventExitStatus=2 3" \
+        "SuccessExitStatus=143" \
+        "TimeoutStopSec=10" \
+        "" \
+        "[Install]" \
+        "WantedBy=graphical-session.target ${DECK_DEVICE_UNIT}"
+}
+
+# settings_content FICHIER CLÉ=valeur… rend les lignes de FICHIER (rien
+# s'il manque), chaque ligne « CLÉ=… » d'une clé donnée remplacée sur place,
+# puis les clés données qui n'y étaient pas. Les autres lignes restent
+# telles quelles, dans leur ordre. Lu octet par octet (LC_ALL=C local),
+# comme deck_setting : un octet hors UTF-8 ne mange pas le saut de ligne.
+settings_content() {
+    local LC_ALL=C
+    local file="$1" line pair seen=" "
+    shift
+    if [ -f "${file}" ]; then
+        while IFS= read -r line || [ -n "${line}" ]; do
+            for pair in "$@"; do
+                case "${line}" in
+                    "${pair%%=*}="*)
+                        line="${pair}"
+                        seen="${seen}${pair%%=*} "
+                        ;;
+                esac
+            done
+            printf '%s\n' "${line}"
+        done <"${file}"
+    fi
+    for pair in "$@"; do
+        case "${seen}" in
+            *" ${pair%%=*} "*) ;;
+            *) printf '%s\n' "${pair}" ;;
+        esac
+    done
+}
+
+# Recopie l'entrée standard sauf la ligne où systemctl prévient que
+# DECK_DEVICE_UNIT n'existe pas. enable et reenable l'écrivent dès qu'aucun
+# deck n'est branché : systemd ne crée cette unité .device que lorsque la
+# règle udev voit un deck, et le lien du WantedBy= est posé quand même.
+# Rend toujours 0.
+drop_deck_device_warning() {
+    local line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        case "${line}" in
+            *"non-existent unit ${DECK_DEVICE_UNIT}"*) ;;
+            *) printf '%s\n' "${line}" ;;
+        esac
+    done
+}
+
+# systemctl --user, sur le bus que choisit on_session_bus. La sortie
+# d'erreur passe par drop_deck_device_warning, la sortie standard telle
+# quelle, et le code de retour est celui de systemctl : pipefail fait
+# porter au tube l'échec de systemctl, puisque le filtre rend 0.
+user_systemctl() {
+    local status=0
+    {
+        on_session_bus systemctl --user "$@" 2>&1 >&3 3>&- \
+            | drop_deck_device_warning >&2 || status=$?
+    } 3>&1
+    return "${status}"
+}
+
+# service_setting CLÉ DONNÉE DÉFAUT rend la valeur qu'une installation écrit
+# pour CLÉ : DONNÉE quand l'option a été donnée (non vide), sinon la valeur
+# déjà dans les réglages, sinon DÉFAUT quand le fichier ou la clé manque, ou
+# que sa valeur est vide. Une option absente ne défait donc pas un choix
+# antérieur, fait par une installation ou par le menu ERPLibre Home de TODO.
+service_setting() {
+    local key="$1" given="$2" default="$3" current
+    if [ -n "${given}" ]; then
+        echo "${given}"
+        return 0
+    fi
+    current="$(deck_setting "${key}" "")"
+    echo "${current:-${default}}"
+}
+
+# La ligne « CLÉ=valeur » que l'installation pose, selon service_setting.
+service_pairs() {
+    local program
+    program="$(service_setting DECK_PROGRAM "${DECK_PROGRAM}" tiler)"
+    printf '%s\n' "DECK_PROGRAM=${program}"
+}
+
+# install_file FICHIER remplace FICHIER par l'entrée standard, par un
+# fichier temporaire renommé, seulement quand le contenu diffère : une
+# seconde exécution identique n'y touche pas. Rend 1 quand le contenu était
+# déjà en place. FICHIER garde son mode, 0644 quand il est neuf. Un
+# répertoire ou une écriture qui échoue arrête l'installation en nommant le
+# chemin, sans laisser le fichier temporaire : l'appelant teste le code de
+# retour, et bash suspend alors set -e dans toute la fonction.
+install_file() {
+    local file="$1" dir tmp mode=0644
+    dir="$(dirname "${file}")"
+    mkdir -p "${dir}" || die "${dir} : répertoire non créé"
+    tmp="$(mktemp "${file}.XXXXXX")" || die "${dir} : écriture refusée"
+    if ! cat >"${tmp}"; then
+        rm -f "${tmp}"
+        die "${file} : écriture interrompue"
+    fi
+    if cmp -s "${tmp}" "${file}"; then
+        rm -f "${tmp}"
+        return 1
+    fi
+    [ ! -e "${file}" ] || mode="$(stat -c %a "${file}")"
+    if ! chmod "${mode}" "${tmp}" || ! mv -f "${tmp}" "${file}"; then
+        rm -f "${tmp}"
+        die "${file} : non remplacé"
+    fi
+}
+
+# Écrit les réglages que résout service_pairs, quand ils changent.
+write_settings() {
+    local pairs
+    mapfile -t pairs < <(service_pairs)
+    if install_file "${SETTINGS_FILE}" \
+        < <(settings_content "${SETTINGS_FILE}" "${pairs[@]}"); then
+        DONE+=("settings: ${SETTINGS_FILE}")
+    else
+        log "settings already in place: ${SETTINGS_FILE}"
+    fi
+}
+
+# Écrit l'unité seulement quand elle diffère ; vrai quand elle a été écrite.
+write_unit() {
+    if install_file "${UNIT_FILE}" < <(unit_content); then
+        DONE+=("unit: ${UNIT_FILE}")
+    else
+        log "unit already in place: ${UNIT_FILE}"
+        return 1
+    fi
+}
+
+# Les réglages, l'unité, daemon-reload, et enable avec --autostart
+# seulement. Jamais start : le programme demande l'extension chargée, ce
+# qu'une installation neuve n'a qu'à la prochaine connexion. daemon-reload
+# passe même quand l'unité n'a pas changé : celui qu'une installation
+# précédente n'a pas pu faire est ainsi refait. Une unité déjà en place,
+# réécrite et activée est réactivée (reenable) : enable ne pose les liens
+# que de la section [Install] qu'il lit, et un WantedBy= ajouté resterait
+# sans lien. Un systemctl qui échoue n'arrête rien, et sa commande va au
+# bilan.
+install_service() {
+    local changed=1 existed=0
+    [ ! -e "${UNIT_FILE}" ] || existed=1
+    write_settings
+    write_unit || changed=0
+    if user_systemctl daemon-reload; then
+        [ "${changed}" = 0 ] || DONE+=("systemctl --user daemon-reload")
+    else
+        SERVICE_HINTS+=("systemctl --user daemon-reload")
+    fi
+    if [ "${changed}${existed}" = 11 ] \
+        && user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
+        if user_systemctl reenable "${DECK_UNIT_NAME}"; then
+            DONE+=("systemctl --user reenable ${DECK_UNIT_NAME}")
+        else
+            SERVICE_HINTS+=("systemctl --user reenable ${DECK_UNIT_NAME}")
+        fi
+    fi
+    [ "${AUTOSTART}" = 1 ] || return 0
+    if user_systemctl is-enabled --quiet "${DECK_UNIT_NAME}" 2>/dev/null; then
+        log "unit already enabled: ${DECK_UNIT_NAME}"
+    elif user_systemctl enable "${DECK_UNIT_NAME}"; then
+        DONE+=("systemctl --user enable ${DECK_UNIT_NAME}")
+    else
+        SERVICE_HINTS+=("systemctl --user enable ${DECK_UNIT_NAME}")
+    fi
+}
+
+# Arrête, désactive et retire l'unité, recharge systemd, puis retire les
+# réglages. Les liens de graphical-session.target.wants et du .wants du deck
+# partent aussi quand disable n'a pas pu les retirer. Ce qui manque est
+# sauté : une seconde exécution n'appelle pas systemctl. Un systemctl qui
+# échoue n'arrête rien.
+uninstall_service() {
+    local wants dir
+    dir="$(dirname "${UNIT_FILE}")"
+    if [ -e "${UNIT_FILE}" ]; then
+        user_systemctl stop "${DECK_UNIT_NAME}" \
+            || log "WARNING: systemctl --user stop ${DECK_UNIT_NAME} failed"
+        user_systemctl disable "${DECK_UNIT_NAME}" \
+            || log "WARNING: systemctl --user disable ${DECK_UNIT_NAME} failed"
+        rm -f "${UNIT_FILE}"
+        DONE+=("removed ${UNIT_FILE}")
+        user_systemctl daemon-reload \
+            || log "WARNING: systemctl --user daemon-reload failed"
+    fi
+    for wants in "${dir}/graphical-session.target.wants" \
+        "${dir}/${DECK_DEVICE_UNIT}.wants"; do
+        wants="${wants}/${DECK_UNIT_NAME}"
+        if [ -L "${wants}" ]; then
+            rm -f "${wants}"
+            DONE+=("removed ${wants}")
+        fi
+    done
+    if [ -e "${SETTINGS_FILE}" ]; then
+        rm -f "${SETTINGS_FILE}"
+        DONE+=("removed ${SETTINGS_FILE}")
+    fi
+}
+
+# ---------- Extension GNOME ----------
+
+# Pose le lien vers le checkout, sauf s'il pointe déjà au bon endroit. Un
+# répertoire ou un fichier ordinaire à cette place (une copie posée à la
+# main, une extension installée depuis une archive) n'est jamais écrasé :
+# l'installation s'arrête en le nommant. « ln -sfn » sur un répertoire
+# créerait d'ailleurs le lien DEDANS.
+#
+# La migration de l'ancienne identité passe d'abord, à chaque exécution :
+# elle libère l'ancien UUID, ses réglages et ses données, et reprend au
+# passage suivant ce qu'une session absente a laissé. Elle rend toujours
+# 0 ; le « || » couvre un bit d'exécution perdu ou un python3 absent, que
+# « set -e » changerait sinon en arrêt de l'installation.
+link_extension() {
+    "${EXT_SRC}/tools/migrate_legacy.py" ||
+        log "legacy migration did not run; the install goes on"
+    mkdir -p "$(dirname "${EXT_LINK}")"
+    if [ "$(readlink "${EXT_LINK}" 2>/dev/null || true)" = "${EXT_SRC}" ]; then
+        log "extension link already in place: ${EXT_LINK}"
+        return 0
+    fi
+    if [ -e "${EXT_LINK}" ] && [ ! -L "${EXT_LINK}" ]; then
+        die "${EXT_LINK} exists and is not a symlink; move it away and rerun"
+    fi
+    ln -sfn "${EXT_SRC}" "${EXT_LINK}"
+    DONE+=("extension link: ${EXT_LINK} -> ${EXT_SRC}")
+}
+
+# --strict refuse un schéma douteux ; son échec arrête l'installation, faute
+# de quoi l'extension se chargerait sans réglages.
+compile_schemas() {
+    glib-compile-schemas --strict "${EXT_SRC}/schemas/"
+}
+
+# Le paquet qui porte msgfmt dans la famille. Sous --extension-only, la
+# famille n'est pas lue : le message nomme alors les deux noms.
+gettext_package() {
+    case "$1" in
+        suse) echo "gettext-tools" ;;
+        debian | rhel | arch) echo "gettext" ;;
+        *) echo "gettext (gettext-tools on openSUSE)" ;;
+    esac
+}
+
+# Un .mo par po/<langue>.po, là où l'extension le cherche, par « msgfmt
+# --check » : ni polib ni venv, msgfmt vient du paquet gettext de la base.
+# --check refuse un format ou un en-tête faux ; ce refus, comme un msgfmt
+# absent, arrête l'installation, faute de quoi l'extension se chargerait
+# sans traductions.
+compile_locales() {
+    local lang mo
+    command -v msgfmt >/dev/null 2>&1 \
+        || die "msgfmt is missing; install $(gettext_package "${FAMILY}")"
+    for lang in $(locale_langs); do
+        mo="$(mo_file "${lang}")"
+        mkdir -p "$(dirname "${mo}")"
+        msgfmt --check -o "${mo}" "${EXT_SRC}/po/${lang}.po"
+    done
+}
+
+# Lance une commande sur le bus de la session ouverte quand il y en a une :
+# celui de l'environnement, sinon le socket du compte (ssh dans une machine
+# dont la session graphique tourne). Le dconf-service de cette session garde
+# la base qu'il a lue et la réécrit en entier : une écriture faite à côté,
+# sous un dbus-run-session, lui échappe et peut être recouverte. Sans
+# aucune session (ssh, VM fraîche), dbus-run-session lance un dconf-service
+# à part qui écrit le profil de l'utilisateur, que la prochaine session lit.
+on_session_bus() {
+    local bus
+    if bus="$(shell_bus_address)"; then
+        DBUS_SESSION_BUS_ADDRESS="${bus}" "$@"
+    else
+        dbus-run-session -- "$@"
+    fi
+}
+
+# gsettings, sur le bus que choisit on_session_bus.
+gsettings_bus() {
+    on_session_bus gsettings "$@"
+}
+
+# uuid_list_edit has <liste> <uuid> rend « yes » ou « no » ;
+# uuid_list_edit remove <liste> <uuid> rend la liste GVariant « as » sans
+# <uuid>, ou l'entrée telle quelle quand il n'y a rien à retirer :
+# l'appelant compare pour savoir s'il doit écrire. La liste se lit par
+# tools/gsettings_strv.py, le lecteur que partagent les outils de
+# l'extension, qui accepte les deux formes que gsettings affiche,
+# « @as [] » et « ['a', 'b'] ». Une liste illisible sort en erreur.
+uuid_list_edit() {
+    python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from gsettings_strv import format_strv, parse_strv
+mode, current, uuid = sys.argv[2:5]
+items = parse_strv(current)
+if mode == "has":
+    print("yes" if uuid in items else "no")
+elif uuid in items:
+    print(format_strv([item for item in items if item != uuid]))
+else:
+    print(current.strip())
+' "${EXT_SRC}/tools" "$@"
+}
+
+# L'adresse d'un bus de session joignable : celle de l'environnement, sinon
+# le socket du compte sous /run/user. Rien, et un code 1, quand aucun
+# n'existe.
+shell_bus_address() {
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        echo "${DBUS_SESSION_BUS_ADDRESS}"
+        return 0
+    fi
+    local sock
+    sock="/run/user/$(id -u)/bus"
+    [ -S "${sock}" ] || return 1
+    echo "unix:path=${sock}"
+}
+
+# Active l'extension pour le compte. Les deux listes s'écrivent par
+# tools/enable_next_login.py, l'aide de la cible make
+# erplibre_home_enable_extension, sur le bus que choisit on_session_bus :
+# l'UUID retiré de disabled-extensions, où l'application Extensions le range
+# quand on l'y éteint et qui l'emporte sur enabled-extensions, puis ajouté à
+# enabled-extensions sans doublon. make et l'installateur activent donc par
+# le même code. disable-user-extensions passe ensuite à false. Les trois
+# clés sont relues ; une écriture qui n'a pas pris arrête l'installation.
+# gnome-extensions enable ne sert que si GNOME Shell tourne déjà sur un bus
+# joignable, et son échec n'arrête rien : la prochaine session charge
+# l'extension depuis les clés. Sa sortie d'erreur passe par
+# drop_unknown_extension_warning : juste après un lien neuf, GNOME Shell
+# sous Wayland ne connaît pas encore l'extension, qu'il ne cherche qu'à
+# l'ouverture de session, et l'outil la dit absente. Ce refus seul se lit
+# « extension enabled » ; toute autre erreur passe, et le journal dit
+# l'échec. LC_ALL=C fixe la langue de la ligne que le filtre reconnaît.
+enable_extension() {
+    local enabled disabled bus errors status=0
+    enabled="$(gsettings_bus get org.gnome.shell enabled-extensions)"
+    disabled="$(gsettings_bus get org.gnome.shell disabled-extensions)"
+    on_session_bus "${EXT_SRC}/tools/enable_next_login.py" "${UUID}" >/dev/null \
+        || die "enabled-extensions not written for ${UUID}"
+    if [ "$(uuid_list_edit has "${disabled}" "${UUID}")" = yes ]; then
+        DONE+=("disabled-extensions -= ${UUID}")
+    fi
+    if [ "$(uuid_list_edit has "${enabled}" "${UUID}")" = no ]; then
+        DONE+=("enabled-extensions += ${UUID}")
+    fi
+    if [ "$(gsettings_bus get org.gnome.shell disable-user-extensions)" != "false" ]; then
+        gsettings_bus set org.gnome.shell disable-user-extensions false
+        DONE+=("disable-user-extensions = false")
+    fi
+    enabled="$(gsettings_bus get org.gnome.shell enabled-extensions)"
+    if [ "$(uuid_list_edit has "${enabled}" "${UUID}")" != yes ]; then
+        die "enabled-extensions does not hold ${UUID} after writing it"
+    fi
+    disabled="$(gsettings_bus get org.gnome.shell disabled-extensions)"
+    if [ "$(uuid_list_edit has "${disabled}" "${UUID}")" != no ]; then
+        die "disabled-extensions still holds ${UUID} after removing it"
+    fi
+    if [ "$(gsettings_bus get org.gnome.shell disable-user-extensions)" != "false" ]; then
+        die "disable-user-extensions is still true after writing it"
+    fi
+    bus="$(shell_bus_address || true)"
+    if [ -n "${bus}" ] && DBUS_SESSION_BUS_ADDRESS="${bus}" gdbus call --session \
+        --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner org.gnome.Shell \
+        2>/dev/null | grep -q true; then
+        {
+            errors="$(DBUS_SESSION_BUS_ADDRESS="${bus}" LC_ALL=C \
+                gnome-extensions enable "${UUID}" 2>&1 >&3 3>&-)" || status=$?
+        } 3>&1
+        errors="$(printf '%s\n' "${errors}" | drop_unknown_extension_warning)"
+        [ -z "${errors}" ] || printf '%s\n' "${errors}" >&2
+        if [ "${status}" != 0 ] && [ -z "${errors}" ]; then
+            log "extension enabled; GNOME Shell loads it at the next login"
+        elif [ "${status}" != 0 ]; then
+            log "gnome-extensions enable failed (code ${status});" \
+                "the next login loads the extension from gsettings"
+        fi
+    fi
+}
+
+# Recopie l'entrée standard sauf la ligne où gnome-extensions dit UUID
+# inexistant, la seule que lance un GNOME Shell qui n'a pas encore relu ses
+# extensions. Les guillemets autour de l'UUID varient avec le jeu de
+# caractères, d'où un motif qui ne les nomme pas. Rend toujours 0.
+drop_unknown_extension_warning() {
+    local line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        case "${line}" in
+            *"${UUID}"*" does not exist"*) ;;
+            *) printf '%s\n' "${line}" ;;
+        esac
+    done
+}
+
+# ---------- Désinstallation ----------
+
+# Retire le niveau Stream Deck : le service et ses réglages d'abord, pour que
+# le programme ne tourne plus quand son venv part, puis la règle udev, la
+# relecture des règles, et le venv. Ce qui manque déjà est sauté, si bien
+# qu'une seconde exécution n'appelle ni sudo, ni udevadm, ni systemctl.
+uninstall_streamdeck() {
+    uninstall_service
+    if [ -e "${UDEV_RULE}" ]; then
+        sudo rm -f "${UDEV_RULE}"
+        sudo udevadm control --reload-rules
+        DONE+=("removed ${UDEV_RULE}")
+    fi
+    if [ -e "${VENV}" ]; then
+        rm -rf "${VENV}"
+        DONE+=("removed ${VENV}")
+    fi
+}
+
+# Ce qui reste debout après une désinstallation qui a fait tout le reste ;
+# step_uninstall le donne pour raison d'un échec, après le bilan.
+UNINSTALL_ERROR=""
+
+# Défait tout ce que l'installation pose : l'UUID d'enabled-extensions, le
+# lien, puis le niveau Stream Deck, service compris. Jamais de paquet
+# système : d'autres logiciels peuvent s'en servir. Un répertoire ordinaire
+# à la place du lien n'a pas été posé par ce script et reste en place. Une
+# liste enabled-extensions qui ne se lit ou ne s'écrit pas (gsettings
+# absent, bus en panne) n'arrête pas le reste, mais pose UNINSTALL_ERROR :
+# l'UUID peut y rester, et la désinstallation n'est pas complète.
+uninstall() {
+    local current wanted
+    if [ ! -f "${EXT_SRC}/tools/gsettings_strv.py" ]; then
+        DONE+=("enabled-extensions NOT edited: no ${EXT_SRC}/tools/gsettings_strv.py; ${UUID} may still be listed")
+    elif current="$(gsettings_bus get org.gnome.shell enabled-extensions 2>/dev/null)" \
+        && wanted="$(uuid_list_edit remove "${current}" "${UUID}" 2>/dev/null)"; then
+        if [ "${wanted}" != "${current}" ]; then
+            if gsettings_bus set org.gnome.shell enabled-extensions "${wanted}"; then
+                DONE+=("enabled-extensions -= ${UUID}")
+            else
+                UNINSTALL_ERROR="enabled-extensions not written; ${UUID} may still be listed"
+            fi
+        fi
+    else
+        UNINSTALL_ERROR="enabled-extensions unreadable; ${UUID} may still be listed"
+    fi
+    if [ -L "${EXT_LINK}" ]; then
+        rm -f "${EXT_LINK}"
+        DONE+=("removed ${EXT_LINK}")
+    elif [ -e "${EXT_LINK}" ]; then
+        log "left in place, not a symlink: ${EXT_LINK}"
+    fi
+    uninstall_streamdeck
+}
+
+# ---------- Bilan ----------
+
+summary() {
+    local line
+    if [ "${#DONE[@]}" -eq 0 ]; then
+        log "nothing to change"
+    else
+        for line in "${DONE[@]}"; do
+            log "${line}"
+        done
+    fi
+    for line in "${SERVICE_HINTS[@]}"; do
+        log "after the next login, run: ${line}"
+    done
+    if [ "${UNINSTALL}" = 0 ]; then
+        log "log out and back in: GNOME Shell loads a new extension only at session start under Wayland"
+    fi
+}
+
+# Chaque étape affiche, sous --dry-run, une ligne par effet qu'elle aurait,
+# puis rend la main ; elle agit sinon.
+# La question des extras précède tout appel à sudo : la réponse donnée,
+# l'installation se déroule sans autre attente. Sous --dry-run, elle n'est
+# pas posée : une ligne « offer: » par extra dit la commande qu'elle
+# proposerait.
+step_packages() {
+    local pkg offered
+    offered="$(extras_to_offer)"
+    if [ "${DRY_RUN}" = 1 ]; then
+        if [ "${STREAM_DECK}" = 1 ] && needs_epel; then
+            echo "packages: $(package_cmd "${FAMILY}" epel-release)"
+        fi
+        # shellcheck disable=SC2046
+        echo "packages: $(package_cmd "${FAMILY}" $(level_packages "${FAMILY}"))"
+        if [ "${WITH_EXTRAS}" = 1 ]; then
+            for pkg in $(extras_for "${FAMILY}"); do
+                echo "packages: $(package_cmd "${FAMILY}" "${pkg}")"
+            done
+        fi
+        for pkg in ${offered}; do
+            echo "offer: $(package_cmd "${FAMILY}" "${pkg}")"
+        done
+        return 0
+    fi
+    if [ -n "${offered}" ]; then
+        # shellcheck disable=SC2086
+        ask_extras ${offered}
+    fi
+    install_packages
+}
+
+step_udev() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "write: ${UDEV_RULE}"
+        return 0
+    fi
+    write_udev_rule
+}
+
+# Le programme du deck, par repo_project ; sous --dry-run, ses lignes.
+step_deck() {
+    repo_project deck "${DECK_REPO_DIR}" "${DECK_MANIFEST}" \
+        erplibre_streamdeck/__main__.py
+}
+
+step_venv() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "venv: ${VENV}"
+        echo "pip: install -r ${REQUIREMENTS}"
+        return 0
+    fi
+    make_venv
+}
+
+step_service() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "write: ${UNIT_FILE}"
+        echo "write: ${SETTINGS_FILE}"
+        service_pairs | sed 's/^/setting: /'
+        echo "systemctl: --user daemon-reload"
+        if [ "${AUTOSTART}" = 1 ]; then
+            echo "systemctl: --user enable ${DECK_UNIT_NAME}"
+        fi
+        return 0
+    fi
+    install_service
+}
+
+# L'extension, par repo_project ; sous --dry-run, ses lignes.
+step_extension_source() {
+    repo_project extension "${ERPLIBRE_HOME_EXT_DIR}" "${EXT_MANIFEST}" \
+        metadata.json
+}
+
+# Sous --dry-run, la vérification de shell-version ne se fait que sur une
+# extension déjà là : celle que repo n'a pas encore posée ne la dit pas, et
+# une ligne l'annonce.
+step_shell_version() {
+    if [ "${DRY_RUN}" = 1 ] && [ ! -f "${METADATA}" ]; then
+        echo "check: shell-version of ${METADATA} after the sync"
+        return 0
+    fi
+    check_shell_version
+}
+
+step_extension() {
+    local lang
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "run: ${EXT_SRC}/tools/migrate_legacy.py"
+        echo "write: ${EXT_LINK}"
+        echo "write: ${EXT_SRC}/schemas/gschemas.compiled"
+        for lang in $(locale_langs); do
+            echo "run: msgfmt --check -o $(mo_file "${lang}") ${EXT_SRC}/po/${lang}.po"
+            echo "write: $(mo_file "${lang}")"
+        done
+        return 0
+    fi
+    link_extension
+    compile_schemas
+    compile_locales
+}
+
+step_enable() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        echo "gsettings: org.gnome.shell enabled-extensions +${UUID}"
+        echo "gsettings: org.gnome.shell disable-user-extensions false"
+        return 0
+    fi
+    enable_extension
+}
+
+step_summary() {
+    summary
+}
+
+# --uninstall retire tout ; --uninstall --stream-deck ne retire que le
+# niveau Stream Deck, le service, la règle et le venv, et laisse
+# l'extension active.
+# Le bilan dit ce qui est parti ; UNINSTALL_ERROR, posé par uninstall, fait
+# ensuite sortir en 1.
+step_uninstall() {
+    if [ "${DRY_RUN}" = 1 ]; then
+        if [ "${STREAM_DECK}" = 0 ]; then
+            if [ -f "${EXT_SRC}/tools/gsettings_strv.py" ]; then
+                echo "gsettings: org.gnome.shell enabled-extensions -${UUID}"
+            else
+                echo "skip: enabled-extensions -${UUID}, no ${EXT_SRC}/tools/gsettings_strv.py"
+            fi
+            echo "remove: ${EXT_LINK}"
+        fi
+        echo "systemctl: --user stop ${DECK_UNIT_NAME}"
+        echo "systemctl: --user disable ${DECK_UNIT_NAME}"
+        echo "remove: ${UNIT_FILE}"
+        echo "systemctl: --user daemon-reload"
+        echo "remove: ${SETTINGS_FILE}"
+        echo "remove: ${UDEV_RULE}"
+        echo "remove: ${VENV}"
+        return 0
+    fi
+    if [ "${STREAM_DECK}" = 1 ]; then
+        uninstall_streamdeck
+    else
+        uninstall
+    fi
+    summary
+    [ -z "${UNINSTALL_ERROR}" ] || die "${UNINSTALL_ERROR}"
+}
+
+# --uninstall et --extension-only ne lisent ni os-release ni la version de
+# GNOME : ni l'un ni l'autre n'installe de paquet, et une désinstallation
+# doit marcher sur un GNOME sorti de shell-version. La base passe toujours ;
+# la règle udev, le programme du deck, le venv et le service n'arrivent
+# qu'avec --stream-deck, dont le chemin du dépôt se vérifie avant tout le
+# reste. check_fetch_tools (git, repo) précède toute pose, après la version
+# de GNOME : un poste sans GNOME Shell n'est pas supporté sans que repo ait
+# rien touché. repo amène l'extension avant la lecture de shell-version,
+# qu'elle porte, et le deck avant le venv, qui lit ses dépendances. La
+# désinstallation n'appelle jamais repo, et laisse .repo et le manifeste
+# local : sans le projet au manifeste, le sync suivant supprimerait son
+# répertoire.
+main() {
+    parse_args "$@"
+    check_not_root
+    if [ "${STREAM_DECK}" = 1 ] && [ "${UNINSTALL}" = 0 ]; then
+        check_checkout_path
+    fi
+    if [ "${UNINSTALL}" = 1 ]; then
+        step_uninstall
+        return 0
+    fi
+    if [ "${EXTENSION_ONLY}" = 0 ]; then
+        detect_os
+        detect_family
+        read_gnome_version
+    fi
+    check_fetch_tools
+    step_extension_source
+    if [ "${EXTENSION_ONLY}" = 0 ]; then
+        step_shell_version
+        if [ "${DRY_RUN}" = 1 ]; then
+            echo "family=${FAMILY}"
+            echo "gnome=${GNOME_VERSION}"
+        else
+            log "famille ${FAMILY}, GNOME ${GNOME_VERSION}"
+        fi
+        step_packages
+        if [ "${STREAM_DECK}" = 1 ]; then
+            step_udev
+            step_deck
+            step_venv
+            step_service
+        fi
+    fi
+    step_extension
+    if [ "${EXTENSION_ONLY}" = 0 ] && [ "${NO_ENABLE}" = 0 ]; then
+        step_enable
+    fi
+    if [ "${DRY_RUN}" = 0 ]; then
+        step_summary
+    fi
+}
+
+# Sourcé avec ERPLIBRE_HOME_SOURCE_ONLY=1, le script définit ses fonctions et
+# s'arrête là : les tests unitaires les appellent une à une, sans sudo.
+#
+# Les codes de sortie sont 0, 2 et 1, rien d'autre. Une commande appelée
+# qui arrête le script sous set -e lui laisserait son propre code : 100
+# pour apt-get, 104 pour zypper, 127 pour une commande absente, et 2 pour
+# pip, msgfmt ou un gestionnaire de paquets, où TODO comme le test long
+# liraient un système non supporté. Le piège EXIT ramène à 1 tout code non
+# nul que unsupported n'a pas posé. Il remet aussi en place un contenu que
+# repo_project a mis de côté et que la pose n'a pas remplacé : un arrêt en
+# cours de pose, par un signal ou une erreur, ne laisse pas le répertoire
+# absent.
+if [ "${ERPLIBRE_HOME_SOURCE_ONLY:-0}" != "1" ]; then
+    trap 'rc=$?; repo_restore; if [ "${rc}" != 0 ] && [ "${UNSUPPORTED_EXIT:-0}" != 1 ]; then exit 1; fi' EXIT
+    main "$@"
+fi

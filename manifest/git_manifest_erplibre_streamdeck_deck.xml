@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
+
+    <!-- Le programme du deck d'ERPLibre Home (le paquet erplibre_streamdeck,
+         le contrôleur, le verrou du deck et le traducteur), sur sa branche
+         main : repo sync et le niveau Stream Deck d'install_erplibre_home.sh
+         amènent son dernier commit ; une installation gelée (FREEZE=1) prend
+         le commit de freeze-revision. CONTRACT.md, à la racine du dépôt, dit
+         ce que le deck et ERPLibre attendent l'un de l'autre ; sa version
+         MAJEURE est celle de script/stream_deck/deck_contract, et
+         test/test_streamdeck_deck_repo.py échoue quand elles divergent.
+         install_erplibre_home.sh ajoute ce projet au manifeste local ;
+         repo sync l'amène. Le groupe streamdeck est à part d'erplibre_home :
+         la base s'installe sans le deck. -->
+    <project
+        name="erplibre_streamdeck.git"
+        path="script/stream_deck/deck"
+        remote="TechnoLibre"
+        revision="main"
+        freeze-revision="198bb45f0ca25501d1905bb36647cd1c40fbbea2"
+        groups="streamdeck"
+    />
+</manifest>
