@@ -41,6 +41,7 @@ SCRIPTS = (
     "deep_proxmox.py",
     "deep_qemu.py",
     "install_nixos.py",
+    "install_erplibre_home.py",
     "qemu_cache.py",
 )
 
@@ -783,31 +784,72 @@ class Descente:
         return etat
 
 
-def _lance_une_descente(pid):
-    """`pid` exécute-t-il UN des scripts de descente — pas seulement le
-    nomme-t-il ?
+# argv[0] d'un interpréteur Python : python, python3, python3.12, une
+# construction suffixée (python3.13t, python3.12d), pypy3, chemin d'un venv
+# compris.
+_INTERPRETE = re.compile(r"(?:python|pypy)[0-9.]*[dmt]*")
+# Une grappe d'options courtes qui finit par -m : la valeur, collée
+# (« -mpaquet.module », « -Impaquet.module ») ou vide quand le module est
+# l'argument suivant (« -m », « -Im »).
+_MODULE = re.compile(r"-[A-Za-z]*m(.*)")
 
-    Par ARGUMENT, jamais par sous-chaîne. Un « pgrep -f deep_proxmox.py » posé
-    dans une boucle de surveillance donne un shell dont la ligne de commande
-    contient le motif, et le contrôle comptait ce shell comme une descente —
-    deux faux positifs sur trois.
 
-    Et par NOM DE FICHIER, pas par suffixe. « endswith » prenait
-    « test_longtest_install_nixos.py » pour « install_nixos.py » : le fichier
-    de tests se déclarait descente en cours, et « --detruire » refusait de
-    travailler tant qu'il tournait. Le basename ne confond pas deux fichiers
-    dont l'un finit comme l'autre, et reconnaît toujours le chemin complet
-    qu'un interpréteur reçoit.
+def _execute_un_script(arguments):
+    """La ligne de commande `arguments` (liste de str) est-elle un
+    interpréteur Python dont un argument nomme un des SCRIPTS ?
+
+    argv[0] doit être un interpréteur : un shell, un « timeout » ou un
+    éditeur qui nomme le script n'exécute pas de Python. Après lui, TOUS les
+    arguments comptent, par leur basename ; un module donné à -m compte par
+    son dernier composant, « paquet.module » valant « module.py ». Un
+    débogueur (pydevd, debugpy), un profileur (cProfile) ou coverage occupe
+    la place du script et ne reçoit le test long qu'en argument : seul un
+    balayage de toute la ligne le voit, sans liste d'enveloppes à tenir.
+
+    Le verrou protège une destruction : un processus Python qui nomme un
+    script sans l'exécuter fait refuser à tort, ce qui coûte un message,
+    alors qu'une descente manquée se fait détruire son arbre.
+    """
+    if not arguments or not _INTERPRETE.fullmatch(
+        os.path.basename(arguments[0])
+    ):
+        return False
+    reste = iter(arguments[1:])
+    for argument in reste:
+        module = _MODULE.fullmatch(argument)
+        if module:
+            valeur = module.group(1) or next(reste, "")
+            nom = valeur.rsplit(".", 1)[-1] + ".py"
+        else:
+            nom = os.path.basename(argument)
+        if nom in SCRIPTS:
+            return True
+    return False
+
+
+def _lance_une_descente(pid, proc="/proc"):
+    """`pid` est-il un interpréteur Python dont la ligne de commande nomme
+    UN des scripts de descente ?
+
+    La ligne de commande, lue dans `proc`/<pid>/cmdline, passe par
+    _execute_un_script : seul un interpréteur Python compte, pas un shell
+    qui nomme le script. Le script se compare par NOM DE FICHIER, pas
+    par suffixe : « test_longtest_install_nixos.py » n'est pas
+    « install_nixos.py », et le chemin complet qu'un interpréteur reçoit se
+    reconnaît toujours.
     """
     try:
-        with open(f"/proc/{int(pid)}/cmdline", "rb") as fh:
-            arguments = fh.read().split(b"\0")
+        with open(f"{proc}/{int(pid)}/cmdline", "rb") as fh:
+            brut = fh.read()
     except (OSError, ValueError):
         return False
+    # Chaque argument se termine par NUL, le dernier compris.
+    arguments = [os.fsdecode(a) for a in brut.split(b"\0")]
+    if arguments and not arguments[-1]:
+        arguments.pop()
     # LES scripts, tous : deux tests longs se disputent la RAM, le disque et
     # ~/.ssh/config aussi sûrement que deux descentes de la même pile.
-    attendus = {nom.encode() for nom in SCRIPTS}
-    return any(os.path.basename(a) in attendus for a in arguments)
+    return _execute_un_script(arguments)
 
 
 def descente_vivante(pid):
@@ -820,31 +862,51 @@ def descente_vivante(pid):
     return bool(pid) and _lance_une_descente(pid)
 
 
-def autre_descente():
-    """Les PID des AUTRES descentes vivantes. Le sien est exclu.
+def _ascendance(pid, proc="/proc"):
+    """`pid` et ses ancêtres, lus de parent en parent dans `proc`/<pid>/stat.
 
-    Le garde-fou du rapport — un PID dans le fichier — ne protège que les
-    descentes lancées APRÈS son écriture : celle qui tournait déjà avait
-    chargé l'ancien module en mémoire et n'écrira jamais de PID. Constaté sur
-    une descente réelle de dix étages, à l'étage 4. Ce contrôle-ci ne dépend
-    d'aucun rapport : détruire pendant qu'une descente tourne n'est jamais
-    juste, quel que soit le rapport choisi.
-
-    /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
-    l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
+    Le nom de commande, entre parenthèses, peut contenir espaces et
+    parenthèses : le parent est le 2e champ après la DERNIÈRE « ) ». La
+    remontée s'arrête sur un stat illisible, sur le PID 0 et sur un PID
+    déjà vu.
     """
-    moi = os.getpid()
+    vus = set()
+    while pid > 0 and pid not in vus:
+        vus.add(pid)
+        try:
+            with open(f"{proc}/{pid}/stat", "rb") as fh:
+                stat = fh.read()
+            pid = int(stat[stat.rindex(b")") + 1 :].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return vus
+
+
+def autre_descente(proc="/proc", moi=None):
+    """Les PID des AUTRES descentes vivantes, lues dans `proc`.
+
+    `moi` (os.getpid() par défaut) et tous ses ancêtres sont exclus : le
+    shell ou le lanceur qui a démarré ce processus nomme souvent le script,
+    et ce processus-ci peut lui-même en être un.
+
+    Le contrôle ne dépend d'aucun rapport : une descente lancée avant que le
+    rapport porte un PID n'en écrit jamais, et détruire pendant qu'une
+    descente tourne n'est jamais juste, quel que soit le rapport choisi.
+    /proc plutôt que pgrep : « pgrep -f » attrape aussi le shell qui
+    l'invoque.
+    """
+    exclus = _ascendance(os.getpid() if moi is None else moi, proc)
     vivants = []
     try:
-        entrees = os.listdir("/proc")
+        entrees = os.listdir(proc)
     except OSError:
         return vivants
     for entree in entrees:
-        if not entree.isdigit() or int(entree) == moi:
+        if not entree.isdigit() or int(entree) in exclus:
             continue
-        if _lance_une_descente(entree):
+        if _lance_une_descente(entree, proc):
             vivants.append(int(entree))
-    return vivants
+    return sorted(vivants)
 
 
 def joindre_racine(cible, jump=""):
@@ -1149,10 +1211,25 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
         ["sudo", "-n", "virsh", "dominfo", nom],
         capture_output=True,
         text=True,
+        env=dict(os.environ, LC_ALL="C"),
     )
     if existe.returncode:
-        dire(f"    — {nom} : aucun domaine libvirt", journal)
-        return True
+        message = (existe.stderr or "").strip()
+        # Seul un refus de virsh qui dit « domaine inconnu » vaut « déjà
+        # défait » ; sudo qui refuse ou libvirtd arrêté ne disent rien de la
+        # machine, qui peut tourner : la compter défaite la laisserait
+        # debout sans que personne le sache.
+        if "failed to get domain" in message.lower() or (
+            "domain not found" in message.lower()
+        ):
+            dire(f"    — {nom} : aucun domaine libvirt", journal)
+            return True
+        dire(
+            f"    ✗ virsh dominfo {nom} : {message[:160] or 'échec'}"
+            " — l'état de la machine est inconnu, rien touché",
+            journal,
+        )
+        return False
     if attendu:
         vu = Descente.uuid_libvirt(nom)
         if vu != attendu:
@@ -1204,13 +1281,38 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     return True
 
 
+def racines_du_rapport(rapport, nom_base=""):
+    """[(nom, uuid, cree)] des machines de niveau 1, dans l'ordre du rapport.
+
+    Une descente en inscrit une ; un test long qui crée une VM par système en
+    inscrit une par machine encore debout. Sans aucune entrée de niveau 1, la
+    liste porte une seule racine, nommée `nom_etage(1, nom_base)` et sans
+    UUID : detruire_etage1 la cherche alors par son nom, et le dit.
+    """
+    racines = [
+        (
+            e.get("nom") or nom_etage(1, nom_base),
+            e.get("uuid"),
+            bool(e.get("cree", True)),
+        )
+        for e in (rapport.get("etages") or [])
+        if int(e.get("niveau", 0)) == 1
+    ]
+    return racines or [(nom_etage(1, nom_base), None, True)]
+
+
 def detruire(famille, journal=None, dry_run=False):
     """Défait ce que le DERNIER rapport dit avoir créé, du plus profond.
 
-    Rien d'autre. La version d'avant prenait toute entrée ~/.ssh/config dont
-    le nom contenait « deep-pve », puis sur son rebond détruisait toute VM
-    dont le nom contenait « deep-pve » — une machine de labo appelée
-    « deep-pve-lab » sur un hyperviseur de production tombait dedans.
+    Rien d'autre : chaque machine visée est nommée par le rapport, avec
+    l'identifiant noté à sa création, jamais choisie d'après un préfixe de
+    nom. Les étages imbriqués partent d'abord, chez leur parent, puis CHAQUE
+    machine de niveau 1 (racines_du_rapport). Une seule confirmation couvre
+    le tout.
+
+    Rend 0 quand toutes les racines sont défaites, 1 quand une descente
+    tourne, quand la confirmation est refusée ou quand une racine reste
+    debout.
     """
     # Avant tout : refuser tant qu'une descente tourne. Elle installe encore
     # sur les machines qu'on s'apprête à détruire, et son rapport peut être
@@ -1233,31 +1335,30 @@ def detruire(famille, journal=None, dry_run=False):
         )
         return 0
     liste = a_defaire(rapport, famille.nom_base)
+    racines = racines_du_rapport(rapport, famille.nom_base)
+    total = len(liste) + len(racines)
     dire(f"  rapport : {rapport.get('fichier')}", journal)
-    dire(f"  {len(liste)} VM imbriquée(s) + l'étage 1 :", journal)
+    dire(
+        f"  {len(liste)} VM imbriquée(s) + "
+        + (
+            "l'étage 1 :"
+            if len(racines) == 1
+            else f"{len(racines)} VM d'étage 1 :"
+        ),
+        journal,
+    )
     for niveau, parent_alias, identite, nom in liste:
         dire(
             f"    étage {niveau:2d}  {nom} ({identite}) sur {parent_alias}",
             journal,
         )
-    etage1_nom = next(
-        (
-            e.get("nom")
-            for e in (rapport.get("etages") or [])
-            if int(e.get("niveau", 0)) == 1
-        ),
-        None,
-    )
-    dire(
-        f"    étage  1  {etage1_nom or nom_etage(1, famille.nom_base)}"
-        " (libvirt)",
-        journal,
-    )
+    for nom, _uuid, _cree in racines:
+        dire(f"    étage  1  {nom} (libvirt)", journal)
     if dry_run:
         dire("\n  --dry-run : rien ne sera détruit.", journal)
         return 0
     # Une confirmation, parce que « --purge » emporte les disques et que le
-    # menu lançait cette option d'une seule touche.
+    # menu lance cette option d'une seule touche.
     reponse = input("\n  Détruire tout cela ? (tapez OUI) : ").strip()
     if reponse != "OUI":
         dire("  annulé.", journal)
@@ -1267,38 +1368,44 @@ def detruire(famille, journal=None, dry_run=False):
         for niveau, parent_alias, identite, nom in liste
         if famille.detruire_une(parent_alias, identite, nom, journal)
     )
-    # « if not … : faits -= 1 » : un succès de l'étage 1 n'ajoutait RIEN,
-    # alors que le total est len(liste) + 1. Le décompte était décalé de un
-    # dans TOUS les cas — une destruction complète annonçait « il reste des
-    # machines » et sortait 1, si bien que le seul avertissement censé
-    # prévenir qu'un disque de plusieurs dizaines de Go reste alloué
-    # s'affichait toujours, et qu'on apprenait à ne plus le lire.
-    etage1 = next(
-        (
-            e
-            for e in (rapport.get("etages") or [])
-            if int(e.get("niveau", 0)) == 1
+    # Chaque racine compte pour un dans le total, défaite ou non : le
+    # décompte final se lit contre len(liste) + len(racines). L'échec de
+    # l'une n'arrête pas les suivantes.
+    debout = []
+    for nom, uuid, cree in racines:
+        if detruire_etage1(journal, attendu=uuid, nom=nom, cree=cree):
+            faits += 1
+        else:
+            debout.append(nom)
+    # Les alias ssh des seules machines défaites : une racine encore debout
+    # (et ce qu'elle contient) garde les siens, ils servent à l'atteindre.
+    restant = {
+        id(e)
+        for e in rapport.get("etages") or []
+        if int(e.get("niveau", 0)) == 1
+        and (e.get("nom") or nom_etage(1, famille.nom_base)) in debout
+    }
+    retirer_alias(
+        dict(
+            rapport,
+            etages=[
+                e
+                for e in rapport.get("etages") or []
+                if id(e) not in restant
+                and not (debout and int(e.get("niveau", 0)) > 1)
+            ],
         ),
-        {},
-    )
-    racine = detruire_etage1(
         journal,
-        attendu=etage1.get("uuid"),
-        nom=etage1.get("nom") or nom_etage(1, famille.nom_base),
-        cree=bool(etage1.get("cree", True)),
+        famille.nom_base,
     )
-    if racine:
-        faits += 1
-    retirer_alias(rapport, journal, famille.nom_base)
-    if racine:
-        # L'étage 1 est un DISQUE, et tout le reste vit dedans. « virsh
-        # undefine --remove-all-storage » l'a effacé : les étages injoignables
-        # — leur parent était éteint — ont disparu avec, qu'on ait pu leur
-        # parler ou non. Annoncer « il reste des machines » dans ce cas était
-        # faux dans l'autre sens, et un avertissement faux ne se lit plus.
-        reste = len(liste) + 1 - faits
+    if not debout:
+        # Une racine est un DISQUE, et ses étages imbriqués vivent dedans.
+        # « virsh undefine --remove-all-storage » l'a effacé : un étage
+        # injoignable — son parent éteint — a disparu avec lui. Tout est
+        # donc défait, et l'écart dit seulement combien l'ont été ainsi.
+        reste = total - faits
         dire(
-            f"\n  {len(liste) + 1} / {len(liste) + 1} défait(s)."
+            f"\n  {total} / {total} défait(s)."
             + (
                 f"  ({reste} injoignable(s), emporté(s) avec le disque de"
                 " l'étage 1.)"
@@ -1309,8 +1416,9 @@ def detruire(famille, journal=None, dry_run=False):
         )
         return 0
     dire(
-        f"\n  {faits} / {len(liste) + 1} défait(s)."
-        "  ⚠ l'étage 1 est DEBOUT : ce qu'il contient vit encore.",
+        f"\n  {faits} / {total} défait(s)."
+        f"  ⚠ l'étage 1 est DEBOUT ({', '.join(debout)}) :"
+        " ce qu'il contient vit encore.",
         journal,
     )
     return 1
