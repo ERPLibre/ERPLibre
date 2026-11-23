@@ -130,16 +130,27 @@ class TestLAPI(unittest.TestCase):
 
 
 class TestLeMenu(unittest.TestCase):
+    """Le choix multiple des forks à avancer : [0], une réponse vide et
+    Ctrl+D ne demandent rien à GitHub ; une faute est nommée et
+    redemandée ; un fork se coche aussi par son chemin."""
+
     def setUp(self):
         ancienne = todo_i18n._current_lang
         todo_i18n._current_lang = "fr"
         self.addCleanup(setattr, todo_i18n, "_current_lang", ancienne)
 
-    def lancer(self, saisie, gele=False, client=None):
+    def lancer(self, reponses, gele=False, client=None, forks=(FORK, FORK)):
+        """(ce que rend le menu, le client, le double de `_git_client`,
+        ce qui s'est imprimé, le port) après `reponses`, données au port
+        dans l'ordre ; le port lève EOFError, comme Ctrl+D, quand elles
+        manquent."""
+        from script.todo import ui
         from script.todo.todo import TODO
+        from script.todo.ui.port import ScriptedPort
 
         todo = TODO.__new__(TODO)
         client = client or Client()
+        port = ScriptedPort(reponses)
         with (
             mock.patch.object(
                 gm.repo_upgrade, "version_active", return_value="18.0"
@@ -147,40 +158,103 @@ class TestLeMenu(unittest.TestCase):
             mock.patch.object(
                 gm.manifest_repo,
                 "forks_du_manifeste",
-                return_value=[FORK, FORK],
+                return_value=list(forks),
             ),
             mock.patch.object(
                 gm.manifest_repo, "mode_gele", return_value=gele
             ),
-            mock.patch.object(TODO, "_git_client", return_value=client),
-            mock.patch("builtins.input", return_value=saisie),
+            mock.patch.object(
+                TODO, "_git_client", return_value=client
+            ) as fabrique,
             mock.patch("builtins.print") as sortie,
+            ui.bind(port),
         ):
             code = todo._git_mettre_forks_a_jour()
         return (
             code,
             client,
-            "\n".join(str(c.args[0]) for c in sortie.call_args_list),
+            fabrique,
+            "\n".join(
+                " ".join(str(a) for a in c.args) for c in sortie.call_args_list
+            ),
+            port,
         )
 
     def test_the_checked_forks_are_updated_and_a_frozen_checkout_is_warned(
         self,
     ):
-        code, client, texte = self.lancer("2", gele=True)
+        code, client, _f, texte, port = self.lancer(["2"], gele=True)
         self.assertEqual((code, client.synchros), (0, [("Org/web", "18.0")]))
         self.assertIn("⏩ Org/web:18.0 · fast-forward", texte)
         self.assertIn("gelé", texte)
-        code, _client, texte = self.lancer(
-            "all", client=Client(code=409, corps={"message": "c"})
+        choix = [e for e in port.events if e.get("kind") == "choose"]
+        self.assertTrue(choix[0]["multi"])
+        self.assertEqual(
+            choix[0]["options"][0]["label"],
+            "addons/OCA_web · Org/web:18.0 ← OCA/web:18.0",
         )
-        self.assertEqual(code, 2)
-        self.assertIn("conflit : à fusionner à la main — c", texte)
-        self.assertNotIn("gelé", texte)
+        for tous in ("all", "tout", "*", "1-2"):
+            with self.subTest(tous=tous):
+                code, client, _f, texte, _p = self.lancer(
+                    [tous], client=Client(code=409, corps={"message": "c"})
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(len(client.synchros), 2)
+                self.assertIn("conflit : à fusionner à la main — c", texte)
+                self.assertNotIn("gelé", texte)
 
-    def test_enter_runs_nothing(self):
-        code, client, _texte = self.lancer("")
-        self.assertIsNone(code)
+    def test_a_fork_is_checked_by_its_path(self):
+        brume = ("addons/Brume_lanterne", "Org/lanterne", "18.0", "", "")
+        code, client, _f, texte, _p = self.lancer(
+            ["addons/OCA_web"], forks=(FORK, brume)
+        )
+        self.assertEqual((code, client.synchros), (0, [("Org/web", "18.0")]))
+        code, client, _f, texte, _p = self.lancer(
+            ["addons/Brume_lanterne"], forks=(FORK, brume)
+        )
         self.assertEqual(client.synchros, [])
+        self.assertIn("Org/lanterne:18.0", texte)
+
+    def test_a_path_two_forks_carry_is_no_name(self):
+        # Deux forks au même chemin : ce chemin n'en coche aucun, la
+        # réponse est nommée invalide, et seul le numéro les départage.
+        sorbier = ("addons/OCA_web", "Sorbier/web", "18.0", "OCA/web", "18.0")
+        code, client, _f, _t, port = self.lancer(
+            ["addons/OCA_web", "2", "de trop"], forks=(FORK, sorbier)
+        )
+        self.assertEqual(
+            (code, client.synchros), (0, [("Sorbier/web", "18.0")])
+        )
+        avis = [e for e in port.events if e.get("t") == "notice"]
+        self.assertEqual(
+            [a["text"] for a in avis], ["Choix invalide : addons/OCA_web"]
+        )
+        self.assertEqual(port.answers, ["de trop"])
+
+    def test_a_typo_is_named_and_asked_again(self):
+        for faute in ("3", "1 3", "web", "2-3"):
+            with self.subTest(faute=faute):
+                code, client, _f, _t, port = self.lancer([faute, "1"])
+                self.assertEqual(
+                    (code, client.synchros), (0, [("Org/web", "18.0")])
+                )
+                avis = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(
+                    [a["text"] for a in avis], [f"Choix invalide : {faute}"]
+                )
+
+    def test_a_back_asks_nothing_of_github(self):
+        # [0], une réponse vide et Ctrl+D : aucun client, donc aucun
+        # jeton lu ni appel réseau ; la réponse de trop reste au port.
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                code, client, fabrique, _t, port = self.lancer(
+                    [reponse, "de trop"]
+                )
+                self.assertIsNone(code)
+                self.assertEqual(client.synchros, [])
+                fabrique.assert_not_called()
+                self.assertEqual(port.answers, ["de trop"])
 
 
 if __name__ == "__main__":

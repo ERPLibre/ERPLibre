@@ -188,27 +188,6 @@ def ligne_du_gel(sources, forks):
     return ligne
 
 
-def choix_numeros(saisie, candidats):
-    """Les éléments de `candidats` que `saisie` désigne, ou None.
-
-    « all » les rend tous ; sinon des numéros séparés par des virgules,
-    chacun entre 1 et len(candidats). Un numéro hors de ces bornes ou qui
-    n'est pas un entier rend None.
-    """
-    if saisie == "all":
-        return list(candidats)
-    choisis = []
-    for morceau in saisie.split(","):
-        try:
-            numero = int(morceau)
-        except ValueError:
-            return None
-        if not 1 <= numero <= len(candidats):
-            return None
-        choisis.append(candidats[numero - 1])
-    return choisis
-
-
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         """Repo, déclaré dans REPO (`menus/git.py`). Rend False sur [0]."""

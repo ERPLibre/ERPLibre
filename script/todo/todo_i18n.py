@@ -207,14 +207,17 @@ TRANSLATIONS = {
         "fr": "Aucun dépôt d'addons cloné pour cette version.",
         "en": "No addons repository cloned for this version.",
     },
-    "Numbers separated by commas, all for every one, Enter for none: ": {
-        "fr": (
-            "Numéros séparés par des virgules, all pour tous, Entrée pour "
-            "aucun : "
-        ),
-        "en": (
-            "Numbers separated by commas, all for every one, Enter for none: "
-        ),
+    "Repositories where to disable auto_install:": {
+        "fr": "Dépôts où désactiver auto_install :",
+        "en": "Repositories where to disable auto_install:",
+    },
+    "Repositories where to create the branch:": {
+        "fr": "Dépôts où créer la branche :",
+        "en": "Repositories where to create the branch:",
+    },
+    "Forks to update from their upstream:": {
+        "fr": "Forks à mettre à jour depuis leur amont :",
+        "en": "Forks to update from their upstream:",
     },
     "Commit the changed manifests in each repository (current branch)?": {
         "fr": (
@@ -2526,9 +2529,9 @@ TRANSLATIONS = {
         "fr": "déjà archivés",
         "en": "already archived",
     },
-    "Numbers to archive, all for every one, Enter for none: ": {
-        "fr": "Numéros à archiver, all pour tous, Entrée pour aucun : ",
-        "en": "Numbers to archive, all for every one, Enter for none: ",
+    "Forks to archive:": {
+        "fr": "Forks à archiver :",
+        "en": "Forks to archive:",
     },
     "Archive these repositories on GitHub": {
         "fr": "Archiver ces dépôts sur GitHub",

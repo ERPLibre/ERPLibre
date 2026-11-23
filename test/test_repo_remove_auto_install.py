@@ -18,8 +18,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.git import repo_remove_auto_install as rai  # noqa: E402
-from script.todo import module_menu  # noqa: E402
-from script.todo import todo_i18n  # noqa: E402
+from script.todo import module_menu, todo_i18n  # noqa: E402
 
 MANIFESTE = """{
     "name": "Exemple",
@@ -181,11 +180,17 @@ class TestLeMenu(Depots):
                 ["odoo18.0/addons/OCA_a", "odoo18.0/addons/OCA_b"],
             )
 
-    def lancer(self, saisie, confirmations=(False, False)):
+    def lancer(self, reponses, confirmations=(False, False)):
+        """(le double de `traiter`, celui de `click.confirm`, le port)
+        après `reponses`, données au port dans l'ordre ; le port lève
+        EOFError, comme Ctrl+D, quand elles manquent."""
+        from script.todo import ui
         from script.todo.todo import TODO
+        from script.todo.ui.port import ScriptedPort
 
         todo = TODO.__new__(TODO)
         depots = ["odoo18.0/addons/OCA_a", "odoo18.0/addons/OCA_b"]
+        port = ScriptedPort(reponses)
         with (
             mock.patch.object(
                 module_menu.repo_upgrade, "version_active", return_value="18.0"
@@ -194,35 +199,68 @@ class TestLeMenu(Depots):
                 module_menu, "depots_d_addons", return_value=depots
             ),
             mock.patch.object(module_menu, "RACINE", "/racine"),
-            mock.patch("builtins.input", return_value=saisie),
-            mock.patch("click.confirm", side_effect=list(confirmations)),
+            mock.patch(
+                "click.confirm", side_effect=list(confirmations)
+            ) as confirmer,
             mock.patch.object(
                 module_menu.repo_remove_auto_install,
                 "traiter",
                 return_value=[],
             ) as traiter,
             mock.patch("builtins.print"),
+            ui.bind(port),
         ):
             todo._module_auto_install()
-        return traiter
+        return traiter, confirmer, port
 
     def test_the_checked_repositories_are_handled_together(self):
-        traiter = self.lancer("1,2")
+        for choix in ("1,2", "1 2", "1-2", "all", "tout", "*"):
+            with self.subTest(choix=choix):
+                traiter, _c, port = self.lancer([choix])
+                traiter.assert_called_once_with(
+                    [
+                        "/racine/odoo18.0/addons/OCA_a",
+                        "/racine/odoo18.0/addons/OCA_b",
+                    ],
+                    commit=False,
+                    push=False,
+                )
+        choix = [e for e in port.events if e.get("kind") == "choose"]
+        self.assertTrue(choix[0]["multi"])
+
+    def test_a_repository_is_checked_by_its_path(self):
+        traiter, _c, _p = self.lancer(["odoo18.0/addons/OCA_b"])
         traiter.assert_called_once_with(
-            ["/racine/odoo18.0/addons/OCA_a", "/racine/odoo18.0/addons/OCA_b"],
-            commit=False,
-            push=False,
+            ["/racine/odoo18.0/addons/OCA_b"], commit=False, push=False
         )
 
     def test_commit_and_push_only_when_asked(self):
-        traiter = self.lancer("2", confirmations=(True, True))
+        traiter, _c, _p = self.lancer(["2"], confirmations=(True, True))
         self.assertEqual(
             traiter.call_args.kwargs, {"commit": True, "push": True}
         )
 
-    def test_enter_or_a_wrong_number_runs_nothing(self):
-        self.lancer("").assert_not_called()
-        self.lancer("9").assert_not_called()
+    def test_a_back_runs_nothing(self):
+        # [0], une réponse vide et Ctrl+D : ni réécriture, ni question de
+        # commit ; la réponse de trop reste au port.
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                traiter, confirmer, port = self.lancer([reponse, "de trop"])
+                traiter.assert_not_called()
+                confirmer.assert_not_called()
+                self.assertEqual(port.answers, ["de trop"])
+
+    def test_a_wrong_number_is_named_and_asked_again(self):
+        for faute in ("9", "1,9", "OCA_a", "01"):
+            with self.subTest(faute=faute):
+                traiter, _c, port = self.lancer([faute, "1"])
+                traiter.assert_called_once_with(
+                    ["/racine/odoo18.0/addons/OCA_a"], commit=False, push=False
+                )
+                avis = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(
+                    [a["text"] for a in avis], [f"Choix invalide : {faute}"]
+                )
 
     def test_entry_7_opens_it(self):
         from script.todo.todo import TODO

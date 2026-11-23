@@ -4215,14 +4215,6 @@ class TestGitRepoPublish(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertEqual(publier.call_count, 2)
 
-    def test_numbers_pick_their_repositories(self):
-        lst = [{"n": 1}, {"n": 2}, {"n": 3}]
-        self.assertEqual(
-            self.menu.choix_numeros("3,1", lst), [{"n": 3}, {"n": 1}]
-        )
-        self.assertEqual(self.menu.choix_numeros("all", lst), lst)
-        self.assertIsNone(self.menu.choix_numeros("4", lst))
-
     def test_a_refused_plan_pushes_nothing_and_asks_nothing(self):
         plan = dict(self._plan(), refus="remote moved")
         code, publier, retenir, maj, _g = self._publier(plan, [])

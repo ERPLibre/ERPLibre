@@ -664,10 +664,11 @@ class GitForkMenuMixin:
 
     def _git_creer_branche_plusieurs(self):
         """Crée la même branche dans les clones cochés, en parallèle, et la
-        pousse vers le remote de chaque projet si demandé. Rend le nombre
-        de dépôts en échec, ou None si rien n'a été lancé."""
-        from script.todo.git_repo_menu import choix_numeros
-
+        pousse vers le remote de chaque projet si demandé. Les clones se
+        cochent par le choix multiple de `ui.choose`, par numéro, plage,
+        « tout » ou chemin exact. Rend le nombre de dépôts en échec, ou
+        None si rien n'a été lancé : [0], une réponse vide ou Ctrl+D au
+        choix, un nom vide, Ctrl+D au nom, au départ ou au push."""
         version = repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
@@ -676,23 +677,29 @@ class GitForkMenuMixin:
         if not liste:
             print(f"  {t('No repository matches.')}")
             return None
-        for i, projet in enumerate(liste, 1):
-            print(f"  [{i}] {projet['path']}")
-        saisie = input(
-            t(
-                "Numbers separated by commas, all for every one, Enter for none: "
-            )
-        ).strip()
-        choisis = choix_numeros(saisie, liste) if saisie else None
+        choisis = ui.choose(
+            t("Repositories where to create the branch:"),
+            liste,
+            multi=True,
+            labels=[p["path"] for p in liste],
+            names={p["path"]: p for p in liste},
+        )
         if not choisis:
             return None
-        nom = input(t("Name of the new branch: ")).strip()
+        nom = self._git_repondre(t("Name of the new branch: "))
         if not nom:
             return None
-        depart = input(t("Start from (Enter: the current commit): ")).strip()
-        pousser = self._is_yes(
-            input(t("Push it to each project's remote? (y/N): "))
+        depart = self._git_repondre(
+            t("Start from (Enter: the current commit): ")
         )
+        if depart is None:
+            return None
+        pousser = self._git_repondre(
+            t("Push it to each project's remote? (y/N): ")
+        )
+        if pousser is None:
+            return None
+        pousser = self._is_yes(pousser)
         print(f"  {len(choisis)} {t('repositories, in parallel…')}")
         resultats = manifest_repo.brancher_plusieurs(
             [
@@ -921,11 +928,11 @@ class GitForkMenuMixin:
 
     def _git_mettre_forks_a_jour(self):
         """Avance sur GitHub, par merge-upstream, la branche des forks
-        cochés parmi ceux du manifeste de la version active. Rend le nombre
-        de forks en conflit, refusés ou en erreur, ou None si rien n'a été
-        lancé."""
-        from script.todo.git_repo_menu import choix_numeros
-
+        cochés parmi ceux du manifeste de la version active, par le choix
+        multiple de `ui.choose` : numéro, plage, « tout » ou chemin exact
+        d'un projet que seul ce fork porte. Rend le nombre de forks en
+        conflit, refusés ou en erreur, ou None si rien n'a été lancé : [0],
+        une réponse vide et Ctrl+D reviennent avant tout client GitHub."""
         version = repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
@@ -934,15 +941,18 @@ class GitForkMenuMixin:
         if not forks:
             print(f"  {t('No fork in the manifests of this version.')}")
             return None
-        for i, (chemin, fork, branche, amont, b_amont) in enumerate(forks, 1):
+        libelles = []
+        for chemin, fork, branche, amont, b_amont in forks:
             source = f"{amont}:{b_amont}" if amont and b_amont else "-"
-            print(f"  [{i}] {chemin} · {fork}:{branche} ← {source}")
-        saisie = input(
-            t(
-                "Numbers separated by commas, all for every one, Enter for none: "
-            )
-        ).strip()
-        choisis = choix_numeros(saisie, forks) if saisie else None
+            libelles.append(f"{chemin} · {fork}:{branche} ← {source}")
+        chemins = [f[0] for f in forks]
+        choisis = ui.choose(
+            t("Forks to update from their upstream:"),
+            forks,
+            multi=True,
+            labels=libelles,
+            names={f[0]: f for f in forks if chemins.count(f[0]) == 1},
+        )
         if not choisis:
             return None
         client = self._git_client()
@@ -975,10 +985,17 @@ class GitForkMenuMixin:
     def _git_forks_orphelins(self):
         """Les forks d'une organisation qu'aucun manifeste ne clone plus,
         puis, sur demande, l'archivage de ceux qu'on coche, après une
-        dernière confirmation. Rend le nombre archivé, ou None."""
-        from script.todo.git_repo_menu import choix_numeros
-
-        organisation = input(t("Organisation (or GitHub account): ")).strip()
+        dernière confirmation qui en dit le nombre. Ils se cochent par le
+        choix multiple de `ui.choose` : numéro, plage, « tout » ou nom
+        complet sur GitHub. Rend le nombre archivé ; 0 pour [0], une
+        réponse vide, Ctrl+D au choix ou à la confirmation, et tout ce qui
+        n'est pas un oui ; None pour une organisation vide ou Ctrl+D à
+        l'organisation, avant tout client GitHub, et aussi quand il n'y a
+        pas de client, quand GitHub ne répond pas ou ne connaît pas
+        l'organisation."""
+        organisation = self._git_repondre(
+            t("Organisation (or GitHub account): ")
+        )
         if not organisation:
             return None
         client = self._git_client(organisation)
@@ -993,30 +1010,31 @@ class GitForkMenuMixin:
             print(f"⚠ {organisation} : {t('not found on GitHub.')}")
             return None
         orphelins, archives = res
-        for i, depot in enumerate(orphelins, 1):
-            print(
-                f"  [{i}] {depot.get('full_name')}"
-                f" · {t('last push')} {(depot.get('pushed_at') or '-')[:10]}"
-                f" — {depot.get('html_url')}"
-            )
         print(
             f"  {len(orphelins)} {t('orphan forks')} · {archives}"
             f" {t('already archived')}"
         )
         if not orphelins:
             return 0
-        saisie = input(
-            t("Numbers to archive, all for every one, Enter for none: ")
-        ).strip()
-        choisis = choix_numeros(saisie, orphelins) if saisie else None
+        choisis = ui.choose(
+            t("Forks to archive:"),
+            orphelins,
+            multi=True,
+            labels=[
+                f"{depot.get('full_name')}"
+                f" · {t('last push')} {(depot.get('pushed_at') or '-')[:10]}"
+                f" — {depot.get('html_url')}"
+                for depot in orphelins
+            ],
+            names={d["full_name"]: d for d in orphelins if d.get("full_name")},
+        )
         if not choisis:
             return 0
-        if not self._is_yes(
-            input(
-                f"{t('Archive these repositories on GitHub')}"
-                f" ({len(choisis)}) ? (y/N) : "
-            )
-        ):
+        reponse = self._git_repondre(
+            f"{t('Archive these repositories on GitHub')}"
+            f" ({len(choisis)}) ? (y/N) : "
+        )
+        if not self._is_yes(reponse or ""):
             return 0
         archives = 0
         for depot in choisis:

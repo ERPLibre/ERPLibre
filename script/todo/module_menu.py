@@ -37,7 +37,6 @@ from script.git import (  # noqa: E402
     repo_upgrade,
 )
 from script.todo import ui  # noqa: E402
-from script.todo.git_repo_menu import choix_numeros  # noqa: E402
 from script.todo.menus import execute as menus_execute  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 from script.todo.ui.navigator import navigate  # noqa: E402
@@ -134,8 +133,11 @@ class ModuleMenuMixin:
     def _module_auto_install(self):
         """Désactive auto_install dans les dépôts cochés parmi ceux du
         manifeste de la version active, en parallèle ; committe et pousse
-        seulement si on le demande. Rend le nombre de dépôts traités, ou
-        None si rien n'a été lancé."""
+        seulement si on le demande. Les dépôts se cochent par le choix
+        multiple de `ui.choose` : numéro, plage, « tout » ou chemin exact.
+        Rend le nombre de dépôts traités, ou None si rien n'a été lancé :
+        [0], une réponse vide et Ctrl+D reviennent avant toute réécriture
+        et toute question de commit."""
         version = repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
@@ -144,18 +146,12 @@ class ModuleMenuMixin:
         if not depots:
             print(f"  {t('No addons repository cloned for this version.')}")
             return None
-        for i, chemin in enumerate(depots, 1):
-            print(f"  [{i}] {chemin}")
-        saisie = input(
-            t(
-                "Numbers separated by commas, all for every one, Enter for none: "
-            )
-        ).strip()
-        if not saisie:
-            return None
-        choisis = choix_numeros(saisie, depots)
+        choisis = ui.choose(
+            t("Repositories where to disable auto_install:"),
+            depots,
+            multi=True,
+        )
         if not choisis:
-            print(t("Command not found !"))
             return None
         commit = click.confirm(
             f"  {t('Commit the changed manifests in each repository (current branch)?')}",
