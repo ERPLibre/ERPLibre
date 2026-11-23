@@ -30,12 +30,9 @@ def _non(reponse):
 
 
 try:
-    import click
-
     from script.todo import todo_file_browser
     from script.todo.ui.navigator import navigate
 except Exception:
-    click = None
     todo_file_browser = None
     navigate = None
 
@@ -96,52 +93,40 @@ class DatabaseManager:
         )
 
     def select_databases(self) -> list:
-        """Faire choisir UNE OU PLUSIEURS bases, par leurs numéros.
-
-        Les numéros se séparent par des espaces (une virgule est tolérée).
-        Rend les noms dans l'ordre tapé, sans doublon, ou une liste vide pour
-        « 0 ». Une réponse qui contient un seul numéro invalide est refusée
-        en entier et redemandée : effacer « ce qui était valide » d'une
-        saisie fautive détruirait une base que l'on n'a peut-être pas visée.
+        """Faire choisir UNE OU PLUSIEURS bases, par les règles d'un choix
+        multiple (`ui.choose`) : numéros, plages « 2-3 » ou noms exacts,
+        séparés d'espaces ou de virgules, et « tout », « all » ou « * ».
+        Rend les noms dans l'ordre de la liste, sans doublon, ou une liste
+        vide pour [0], une réponse vide, Ctrl+D, sans base, ou quand la
+        liste échoue. Une réponse dont un seul morceau ne se lit pas est
+        refusée en entier et redemandée : effacer « ce qui était valide »
+        d'une saisie fautive détruirait une base que l'on n'a peut-être pas
+        visée.
         """
         databases = self._list_databases()
         if not databases:
             return []
 
-        choices = [{"prompt_description": a} for a in databases]
-        help_info = (
-            self.fill_help_info(choices)
-            + t("Numbers separated by spaces, e.g. 1 3 4")
-            + "\n"
+        print()
+        return (
+            ui.choose(
+                f"\U0001f4ac {t('Which databases to erase?')}",
+                databases,
+                multi=True,
+            )
+            or []
         )
-        valid_choices = {str(a + 1) for a in range(len(databases))}
-
-        while True:
-            answer = click.prompt(help_info)
-            print()
-            numbers = answer.replace(",", " ").split()
-            if numbers == ["0"]:
-                return []
-            invalid = [n for n in numbers if n not in valid_choices]
-            if not numbers or invalid:
-                print(
-                    f"{t('Invalid choice:')} {' '.join(invalid or [answer])}"
-                )
-                continue
-            selected = []
-            for number in numbers:
-                name = databases[int(number) - 1]
-                if name not in selected:
-                    selected.append(name)
-            return selected
 
     def _confirm_drop(self, message: str) -> bool:
-        """Ask for an explicit 'oui'/'yes' confirmation, default is no."""
+        """Imprime `message`, puis demande « oui » ou « yes » tapé ; vrai
+        pour l'un d'eux seulement. Le défaut est non : toute autre réponse,
+        une réponse vide et Ctrl+D (EOFError) rendent faux."""
         print(f"⚠️  {message}")
-        answer = (
-            input(t("Type 'oui' to confirm (default: no): ")).strip().lower()
-        )
-        return answer in ("oui", "yes")
+        try:
+            answer = ui.ask(t("Type 'oui' to confirm (default: no): "))
+        except EOFError:
+            return False
+        return answer.strip().lower() in ("oui", "yes")
 
     def drop_database(self) -> None:
         """Effacer toutes les bases, ou celles qu'on choisit (ERASE,
@@ -209,7 +194,8 @@ class DatabaseManager:
         """Restaurer une image de `image_db` : [1] en demande le nom, [2],
         le défaut d'une réponse vide, ouvre le navigateur de fichiers ; [0],
         un nom vide à [1] et le navigateur quitté sans fichier rendent la
-        main sans rien restaurer."""
+        main sans rien restaurer, comme Ctrl+D à n'importe quelle question
+        qui suit."""
         path_image_db = os.path.join(os.getcwd(), "image_db")
         status = ui.choose(
             f"\U0001f4ac {t('Which image to restore?')}",
@@ -234,14 +220,20 @@ class DatabaseManager:
         if default_database_name.endswith(".zip"):
             default_database_name = default_database_name[:-4]
 
-        database_name = input(
-            f"\U0001f4ac {t('Database name (default=')}"
-            f"{default_database_name}) : "
-        )
+        try:
+            database_name = ui.ask(
+                f"\U0001f4ac {t('Database name (default=')}"
+                f"{default_database_name}) : "
+            )
+        except EOFError:
+            return
         if not database_name:
             database_name = default_database_name
 
-        for commande in self._restore_commands(file_name, database_name):
+        commandes = self._restore_commands(file_name, database_name)
+        if commandes is None:
+            return
+        for commande in commandes:
             status, _output_lines = self._execute.exec_command_live(
                 commande,
                 return_status_and_output=True,
@@ -259,17 +251,21 @@ class DatabaseManager:
 
     @staticmethod
     def _ask_image_db_file_name(path_image_db):
-        """Une sauvegarde de `path_image_db` par son nom ; "" pour renoncer.
+        """Une sauvegarde de `path_image_db` par son nom ; "" pour un nom
+        vide ou Ctrl+D.
 
         db_restore.py lit « --image » dans image_db/, avec ou sans « .zip » :
         le nom rendu est celui du fichier, tel que le dossier le porte. Un
         nom absent est redemandé, avant toute question sur la base.
         """
         while True:
-            nom = input(
-                "\U0001f4ac "
-                + t("Backup file name in image_db (empty to cancel): ")
-            ).strip()
+            try:
+                nom = ui.ask(
+                    "\U0001f4ac "
+                    + t("Backup file name in image_db (empty to cancel): ")
+                ).strip()
+            except EOFError:
+                return ""
             if not nom:
                 return ""
             for candidat in (nom, f"{nom}.zip"):
@@ -278,7 +274,8 @@ class DatabaseManager:
             print(f"❌ {t('No such file in image_db:')} {nom}")
 
     def _restore_commands(self, file_name, database_name):
-        """Poser toutes les questions, puis rendre les commandes, dans l'ordre.
+        """Poser toutes les questions, puis rendre les commandes, dans
+        l'ordre ; None sur Ctrl+D (EOFError) à l'une d'elles.
 
         Les questions viennent AVANT la première commande : la restauration
         et les mises à jour durent, et l'on peut s'éloigner une fois la
@@ -291,48 +288,52 @@ class DatabaseManager:
         La mise à jour « avant » se place entre les deux : ces modules
         s'installent alors sur des modules déjà au niveau du code.
         """
-        cache = _oui(
-            input(
-                "\U0001f4ac "
-                + t(
-                    "Keep a _cache_ copy, not neutralized, to speed up the"
-                    " next restore of this image (y/N, default: N)? "
-                )
-            )
-        )
-        neutraliser = not _non(
-            input(
-                "\U0001f4ac "
-                + t("Neutralize the database (Y/n, default: Y)? ")
-            )
-        )
-        if neutraliser:
-            avant = _oui(
-                input(
+        try:
+            cache = _oui(
+                ui.ask(
                     "\U0001f4ac "
                     + t(
-                        "Update all addons before neutralizing"
-                        " (y/N, default: N)? "
+                        "Keep a _cache_ copy, not neutralized, to speed up"
+                        " the next restore of this image (y/N, default: N)? "
                     )
                 )
             )
-            apres = _oui(
-                input(
+            neutraliser = not _non(
+                ui.ask(
                     "\U0001f4ac "
-                    + t(
-                        "Update all addons after neutralizing"
-                        " (y/N, default: N)? "
+                    + t("Neutralize the database (Y/n, default: Y)? ")
+                )
+            )
+            if neutraliser:
+                avant = _oui(
+                    ui.ask(
+                        "\U0001f4ac "
+                        + t(
+                            "Update all addons before neutralizing"
+                            " (y/N, default: N)? "
+                        )
                     )
                 )
-            )
-            database_name += "_neutralize"
-        else:
-            avant = False
-            apres = _oui(
-                input(
-                    "\U0001f4ac " + t("Update all addons (y/N, default: N)? ")
+                apres = _oui(
+                    ui.ask(
+                        "\U0001f4ac "
+                        + t(
+                            "Update all addons after neutralizing"
+                            " (y/N, default: N)? "
+                        )
+                    )
                 )
-            )
+                database_name += "_neutralize"
+            else:
+                avant = False
+                apres = _oui(
+                    ui.ask(
+                        "\U0001f4ac "
+                        + t("Update all addons (y/N, default: N)? ")
+                    )
+                )
+        except EOFError:
+            return None
 
         restore = (
             f"python3 ./script/database/db_restore.py -d {database_name} "

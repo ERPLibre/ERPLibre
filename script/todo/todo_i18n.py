@@ -1154,13 +1154,9 @@ TRANSLATIONS = {
         "fr": "Effacer une ou plusieurs bases de données",
         "en": "Erase one or more databases",
     },
-    "Numbers separated by spaces, e.g. 1 3 4": {
-        "fr": "Numéros séparés par des espaces, ex. : 1 3 4",
-        "en": "Numbers separated by spaces, e.g. 1 3 4",
-    },
-    "Invalid choice:": {
-        "fr": "Choix invalide :",
-        "en": "Invalid choice:",
+    "Which databases to erase?": {
+        "fr": "Quelles bases effacer ?",
+        "en": "Which databases to erase?",
     },
     "You are about to erase {count} databases. This cannot be undone:": {
         "fr": (
@@ -1227,10 +1223,6 @@ TRANSLATIONS = {
     "Which image to restore?": {
         "fr": "Quelle image restaurer ?",
         "en": "Which image to restore?",
-    },
-    "By filename from image_db": {
-        "fr": "Par son nom de fichier dans image_db",
-        "en": "By filename from image_db",
     },
     "Which database?": {"fr": "Quelle base ?", "en": "Which database?"},
     "File name in image_db (empty to go back): ": {

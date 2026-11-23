@@ -1229,83 +1229,144 @@ class TestTheDatabaseListGoesBack(unittest.TestCase):
 
 
 class TestDropSeveralDatabases(unittest.TestCase):
-    """Effacer une ou plusieurs bases, choisies par leurs numéros séparés
-    par des espaces, après une seule confirmation qui les nomme toutes."""
+    """Effacer une ou plusieurs bases, choisies par les règles d'un choix
+    multiple (`ui.choose`), après une seule confirmation tapée qui les
+    nomme toutes. Un `ScriptedPort` répond à la liste, puis à la
+    confirmation ; sans réponse, il lève EOFError, comme Ctrl+D."""
 
     BASES = ["alpha", "beta", "gamma"]
+    LIST = "./odoo_bin.sh db list"
 
-    def manager(self, saisies, drops=None):
-        """Un gestionnaire dont « db list » rend BASES, dont click.prompt
-        répond `saisies` dans l'ordre, et dont chaque « db drop » rend le
-        statut suivant de `drops` (0 par défaut)."""
+    def manager(self, drops=None):
+        """Un gestionnaire dont « db list » rend BASES, et dont chaque
+        « db drop » rend le statut suivant de `drops` (0 par défaut)."""
         todo = TODO()
         manager = todo.db_manager
         statuts = iter(drops or [])
 
         def executer(commande, **_kwargs):
-            if commande.endswith("db list"):
+            if commande == self.LIST:
                 return (0, list(self.BASES))
             return (next(statuts, 0), [])
 
         manager._execute = MagicMock()
         manager._execute.exec_command_live.side_effect = executer
-        invite = patch(
-            "script.todo.database_manager.click.prompt",
-            side_effect=list(saisies),
-        )
-        self.invite = invite.start()
-        self.addCleanup(invite.stop)
         return manager
 
-    def drops(self, manager):
+    def answer(self, manager, method, *answers):
+        """(ce que rend `method` de `manager`, le port) quand le port
+        répond `answers` dans l'ordre ; la sortie va dans `self.sortie`."""
+        scripted = port.ScriptedPort(list(answers))
+        sortie = io.StringIO()
+        with ui.bind(scripted), redirect_stdout(sortie):
+            result = getattr(manager, method)()
+        self.sortie = sortie.getvalue()
+        return result, scripted
+
+    def selected(self, *answers):
+        return self.answer(self.manager(), "select_databases", *answers)[0]
+
+    def commands(self, manager):
         return [
             appel[0][0]
             for appel in manager._execute.exec_command_live.call_args_list
-            if " db drop " in appel[0][0]
         ]
 
+    def drops(self, manager):
+        return [c for c in self.commands(manager) if " db drop " in c]
+
     def test_plusieurs_numeros_separes_par_des_espaces(self):
-        self.assertEqual(
-            ["alpha", "gamma"], self.manager(["1 3"]).select_databases()
-        )
+        self.assertEqual(["alpha", "gamma"], self.selected("1 3"))
 
-    def test_l_ordre_tape_sans_doublon(self):
-        self.assertEqual(
-            ["gamma", "alpha"], self.manager(["3 1 3"]).select_databases()
-        )
+    def test_l_ordre_de_la_liste_sans_doublon(self):
+        # L'ordre retenu est celui de la liste, pas celui tapé.
+        self.assertEqual(["alpha", "gamma"], self.selected("3 1 3"))
 
-    def test_une_virgule_est_toleree(self):
-        self.assertEqual(
-            ["alpha", "beta"], self.manager(["1,2"]).select_databases()
-        )
+    def test_une_virgule_une_plage_ou_un_nom(self):
+        for answer, expected in (
+            ("1,2", ["alpha", "beta"]),
+            ("2-3", ["beta", "gamma"]),
+            ("gamma alpha", ["alpha", "gamma"]),
+        ):
+            with self.subTest(answer=answer):
+                self.assertEqual(expected, self.selected(answer))
 
-    def test_zero_renonce(self):
-        self.assertEqual([], self.manager(["0"]).select_databases())
+    def test_tout_all_ou_etoile_prennent_chaque_base(self):
+        for answer in ("tout", "all", "*"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.BASES, self.selected(answer))
 
-    def test_un_seul_numero_invalide_refuse_toute_la_saisie(self):
+    def test_zero_une_reponse_vide_et_ctrl_d_ne_prennent_rien(self):
+        # Ctrl+D : le port n'a plus de réponse et lève EOFError.
+        for answers in (("0",), ("",), ()):
+            with self.subTest(answers=answers):
+                self.assertEqual([], self.selected(*answers))
+
+    def test_un_seul_morceau_invalide_refuse_toute_la_saisie(self):
         # « 1 9 » n'efface pas « alpha » en silence : tout est redemandé.
-        for fautive in ("1 9", "1 0", "deux", "  "):
+        for fautive in ("1 9", "1 0", "deux", "1-9"):
             with self.subTest(fautive=fautive):
-                sortie = io.StringIO()
-                with patch("sys.stdout", sortie):
-                    choix = self.manager([fautive, "2"]).select_databases()
+                choix, scripted = self.answer(
+                    self.manager(), "select_databases", fautive, "2"
+                )
                 self.assertEqual(["beta"], choix)
-                self.assertIn(
-                    todo_i18n.t("Invalid choice:"), sortie.getvalue()
+                notices = [
+                    e["text"] for e in scripted.events if e["t"] == "notice"
+                ]
+                self.assertEqual(
+                    [f"{todo_i18n.t('Invalid choice: ')}{fautive}"], notices
                 )
 
-    def test_la_consigne_est_affichee(self):
-        manager = self.manager(["0"])
-        manager.select_databases()
-        invite = self.invite.call_args[0][0]
-        self.assertIn(
-            todo_i18n.t("Numbers separated by spaces, e.g. 1 3 4"), invite
+    def test_la_question_liste_chaque_base_en_choix_multiple(self):
+        _, scripted = self.answer(self.manager(), "select_databases", "0")
+        [question] = scripted.events
+        self.assertTrue(question["multi"])
+        self.assertEqual(
+            ["alpha", "beta", "gamma", todo_i18n.t("Back")],
+            [o["label"] for o in question["options"]],
+        )
+
+    def test_un_retour_n_efface_rien(self):
+        # [0], une réponse vide et Ctrl+D au choix des bases : la seule
+        # commande lancée est la liste, et rien n'est demandé de plus.
+        for answers in (("0",), ("",), ()):
+            with self.subTest(answers=answers):
+                manager = self.manager()
+                _, scripted = self.answer(
+                    manager, "_drop_selected_databases", *answers
+                )
+                self.assertEqual([self.LIST], self.commands(manager))
+                self.assertEqual(1, len(scripted.events), scripted.events)
+                self.assertIn(
+                    todo_i18n.t("No database selected."), self.sortie
+                )
+
+    def test_tout_suivi_d_un_refus_n_efface_rien(self):
+        # « non », Entrée (défaut : non) et Ctrl+D à la confirmation.
+        for refus in (("non",), ("",), ()):
+            with self.subTest(refus=refus):
+                manager = self.manager()
+                self.answer(
+                    manager, "_drop_selected_databases", "tout", *refus
+                )
+                self.assertEqual([self.LIST], self.commands(manager))
+                self.assertIn(
+                    todo_i18n.t("Database deletion cancelled."), self.sortie
+                )
+
+    def test_tout_suivi_du_oui_tape_efface_chaque_base_nommee(self):
+        manager = self.manager()
+        self.answer(manager, "_drop_selected_databases", "tout", "oui")
+        for name in self.BASES:
+            self.assertIn(f"- {name}", self.sortie)
+        self.assertEqual(
+            [f"./odoo_bin.sh db drop {name}" for name in self.BASES],
+            self.drops(manager),
         )
 
     def test_seules_les_bases_choisies_sont_effacees(self):
-        manager = self.manager(["1 3"])
-        with patch("builtins.input", return_value="oui"):
-            manager._drop_selected_databases()
+        manager = self.manager()
+        self.answer(manager, "_drop_selected_databases", "1 3", "oui")
         self.assertEqual(
             [
                 "./odoo_bin.sh db drop alpha",
@@ -1315,93 +1376,76 @@ class TestDropSeveralDatabases(unittest.TestCase):
         )
 
     def test_la_confirmation_nomme_chaque_base_avant_la_question(self):
-        manager = self.manager(["1 3"])
-        sortie = io.StringIO()
-        with (
-            patch("builtins.input", return_value="") as question,
-            patch("sys.stdout", sortie),
-        ):
-            manager._drop_selected_databases()
-        texte = sortie.getvalue()
-        self.assertIn("- alpha", texte)
-        self.assertIn("- gamma", texte)
-        self.assertNotIn("- beta", texte)
-        question.assert_called_once()
+        manager = self.manager()
+        _, scripted = self.answer(
+            manager, "_drop_selected_databases", "1 3", ""
+        )
+        self.assertIn("- alpha", self.sortie)
+        self.assertIn("- gamma", self.sortie)
+        self.assertNotIn("- beta", self.sortie)
+        # Une liste, puis une seule question : la confirmation tapée.
+        self.assertEqual(2, len(scripted.events), scripted.events)
+        self.assertEqual(
+            todo_i18n.t("Type 'oui' to confirm (default: no): "),
+            scripted.events[1]["text"],
+        )
         # Le défaut est non : rien n'est effacé.
         self.assertEqual([], self.drops(manager))
 
     def test_une_seule_base_garde_le_message_au_singulier(self):
-        manager = self.manager(["2"])
-        sortie = io.StringIO()
-        with (
-            patch("builtins.input", return_value="non"),
-            patch("sys.stdout", sortie),
-        ):
-            manager._drop_selected_databases()
-        self.assertIn("beta", sortie.getvalue())
-        self.assertNotIn("- beta", sortie.getvalue())
+        self.answer(self.manager(), "_drop_selected_databases", "2", "non")
+        self.assertIn("beta", self.sortie)
+        self.assertNotIn("- beta", self.sortie)
 
     def test_un_echec_n_arrete_pas_les_suivantes(self):
-        manager = self.manager(["1 2 3"], drops=[0, 1, 0])
-        sortie = io.StringIO()
-        with (
-            patch("builtins.input", return_value="yes"),
-            patch("sys.stdout", sortie),
-        ):
-            manager._drop_selected_databases()
+        manager = self.manager(drops=[0, 1, 0])
+        self.answer(manager, "_drop_selected_databases", "1 2 3", "yes")
         self.assertEqual(3, len(self.drops(manager)))
-        texte = sortie.getvalue()
-        self.assertIn(f"{todo_i18n.t('Erased:')} alpha, gamma", texte)
-        self.assertIn(f"{todo_i18n.t('Not erased:')} beta", texte)
+        self.assertIn(f"{todo_i18n.t('Erased:')} alpha, gamma", self.sortie)
+        self.assertIn(f"{todo_i18n.t('Not erased:')} beta", self.sortie)
 
     def test_un_ctrl_c_arrete_l_effacement(self):
         # La première suppression est interrompue : elle rend -2 et pose
         # Execute.interrupted. Les bases suivantes ne sont pas effacées, et
         # le bilan les compte parmi celles qui restent.
-        manager = self.manager(["1 2 3"])
+        manager = self.manager()
         lancees = []
 
         def executer(commande, **_kwargs):
-            if commande.endswith("db list"):
+            if commande == self.LIST:
                 return (0, list(self.BASES))
             lancees.append(commande)
             Execute.interrupted = True
             return (-2, [])
 
         manager._execute.exec_command_live.side_effect = executer
-        sortie = io.StringIO()
-        with (
-            patch.object(Execute, "interrupted", False),
-            patch("builtins.input", return_value="yes"),
-            patch("sys.stdout", sortie),
-        ):
-            manager._drop_selected_databases()
+        with patch.object(Execute, "interrupted", False):
+            self.answer(manager, "_drop_selected_databases", "1 2 3", "yes")
         self.assertEqual(["./odoo_bin.sh db drop alpha"], lancees)
-        texte = sortie.getvalue()
-        self.assertNotIn(todo_i18n.t("Erased:"), texte)
+        self.assertNotIn(todo_i18n.t("Erased:"), self.sortie)
         self.assertIn(
-            f"{todo_i18n.t('Not erased:')} alpha, beta, gamma", texte
+            f"{todo_i18n.t('Not erased:')} alpha, beta, gamma", self.sortie
         )
 
+    def test_ctrl_d_a_la_confirmation_de_tout_effacer_n_efface_rien(self):
+        manager = self.manager()
+        self.answer(manager, "_drop_all_databases")
+        self.assertEqual([], self.commands(manager))
+        self.assertIn(todo_i18n.t("Database deletion cancelled."), self.sortie)
+
     def test_le_menu_mene_a_la_selection_multiple(self):
-        manager = self.manager(["2", "0"])
-        with patch("builtins.input", return_value=""):
-            manager.drop_database()
-        # « 2 » ouvre la sélection, « 0 » y renonce : aucun effacement.
-        self.assertEqual([], self.drops(manager))
-        invites = [appel[0][0] for appel in self.invite.call_args_list]
-        self.assertIn(todo_i18n.t("Erase one or more databases"), invites[0])
-        # La seconde invite est bien la liste à numéros multiples, et le
-        # chemin « tout effacer » n'a jamais été pris.
-        self.assertEqual(2, len(invites), invites)
+        manager = self.manager()
+        with patch("click.prompt", side_effect=["2"]) as invite:
+            _, scripted = self.answer(manager, "drop_database", "0")
+        # « 2 » ouvre la sélection, « 0 » y renonce : aucun effacement, et
+        # le chemin « tout effacer » n'a jamais été pris.
         self.assertIn(
-            todo_i18n.t("Numbers separated by spaces, e.g. 1 3 4"), invites[1]
+            todo_i18n.t("Erase one or more databases"),
+            invite.call_args[0][0],
         )
-        commandes = [
-            appel[0][0]
-            for appel in manager._execute.exec_command_live.call_args_list
-        ]
-        self.assertNotIn("make db_drop_all", commandes)
+        [question] = scripted.events
+        self.assertTrue(question["multi"])
+        self.assertEqual([self.LIST], self.commands(manager))
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
@@ -1626,6 +1670,30 @@ class TestRestoreFromDatabase(unittest.TestCase):
         cmds = self.restaurer(["1", ""])
         self.assertEqual([], cmds)
 
+    def test_ctrl_d_at_any_value_restores_nothing(self):
+        # Ctrl+D (EOFError) au nom du fichier, au nom de la base, puis à
+        # chaque oui/non, avec et sans neutralisation : aucune commande, ni
+        # question de plus, ni exception qui remonte à TODO.
+        for reponses in (
+            ["1", "backup", "mydb", "", "y", "o", "o"],
+            ["1", "backup", "mydb", "", "n", "y"],
+        ):
+            for k in range(1, len(reponses)):
+                with self.subTest(reponses=reponses, ctrl_d=k):
+                    todo = TODO()
+                    todo.db_manager._execute = MagicMock()
+                    with (
+                        patch(
+                            "builtins.input",
+                            side_effect=[*reponses[:k], EOFError()],
+                        ) as asked,
+                        redirect_stdout(io.StringIO()),
+                    ):
+                        todo.db_manager.restore_from_database()
+                    live = todo.db_manager._execute.exec_command_live
+                    live.assert_not_called()
+                    self.assertEqual(k + 1, asked.call_count)
+
     def test_leaving_the_browser_restores_nothing(self):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
@@ -1640,17 +1708,18 @@ class TestRestoreFromDatabase(unittest.TestCase):
 
     def choisir(self, *par_ui, reponses=(), parcouru="backup.zip"):
         """(commandes lancées, port qui a répondu, double d'`input`) quand
-        le choix de la source reçoit `par_ui` d'un ScriptedPort, `input`
-        les `reponses` suivantes, et le navigateur de fichiers rend
-        `parcouru`."""
+        un ScriptedPort répond `par_ui` au choix de la source, puis les
+        `reponses` suivantes, et que le navigateur de fichiers rend
+        `parcouru`. Le double d'`input` lève : chaque question passe par
+        le port."""
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (0, [])
         todo.db_manager.open_file_image_db = lambda: parcouru
-        scripted = port.ScriptedPort(list(par_ui))
+        scripted = port.ScriptedPort([*par_ui, *reponses])
         with (
             ui.bind(scripted),
-            patch("builtins.input", side_effect=list(reponses)) as asked,
+            patch("builtins.input", side_effect=AssertionError) as asked,
             redirect_stdout(io.StringIO()),
         ):
             todo.db_manager.restore_from_database()
@@ -1664,7 +1733,7 @@ class TestRestoreFromDatabase(unittest.TestCase):
             "1", reponses=["backup", "", "", "n", ""]
         )
         self.assertIn("--image backup.zip", commands[0])
-        [choice] = scripted.events
+        choice = scripted.events[0]
         self.assertEqual(
             [o["key"] for o in choice["options"]], ["1", "2", "0"]
         )
@@ -1684,6 +1753,8 @@ class TestRestoreFromDatabase(unittest.TestCase):
             commands, scripted, asked = self.choisir(*par_ui)
             self.assertEqual(commands, [], par_ui)
             self.assertEqual(asked.call_count, 0, par_ui)
+            kinds = {e["kind"] for e in scripted.events if e["t"] == "ask"}
+            self.assertEqual(kinds, {"choose"}, par_ui)
             notices = [
                 e["text"] for e in scripted.events if e["t"] == "notice"
             ]
