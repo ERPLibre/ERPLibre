@@ -125,6 +125,15 @@ def build_spec(vms, existants, form):
         "offline": bool(form.get("offline")),
         # L'écran accéléré, posé à la création de chaque VM.
         "gpu3d": bool(form.get("gpu3d")),
+        # Les Stream Deck du nœud : True (« ceux qui sont branchés », lus par
+        # pvesh à la création) ou des sélecteurs ; même clé que la spec
+        # libvirt (deploy_form_lib.build_spec). Jamais de SPICE ici.
+        "usb_hostdev": (
+            True
+            if form.get("usb_hostdev") is True
+            else list(form.get("usb_hostdev") or ())
+        ),
+        "spice_usbredir": False,
     }
 
 
@@ -381,6 +390,10 @@ def run_proxmox_form(ctx, run_app: bool = True):
                                     t("Install on the host"),
                                     id="f_gpu_poser",
                                 )
+                    # Les Stream Deck branchés sur le NŒUD Proxmox, posés par
+                    # « qm set -usbN » à la création. Pas de SPICE ici : la
+                    # VM Proxmox n'a pas l'affichage de la redirection USB.
+                    yield from self.compose_usb_deck(spice=False, remote=True)
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(

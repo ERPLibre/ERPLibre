@@ -46,10 +46,12 @@ OUTILS = (BASE, DECK)
 INSTALLEUR = "./script/install/install_erplibre_home.sh"
 # Le venv d'outillage, qui porte repo, et le script qui le pose.
 OUTILLAGE = "./script/install/install_erplibre.sh"
-STREAM_DECK = INSTALLEUR + " --stream-deck"
+# --autostart active le service du deck : un deck qui entre dans la VM
+# (passage à la création, menu, redirection SPICE) le lance alors.
+STREAM_DECK = INSTALLEUR + " --stream-deck --autostart"
 # La commande que chaque case lance, et son option.
 COMMANDES = {BASE: INSTALLEUR, DECK: STREAM_DECK}
-OPTIONS = {BASE: "", DECK: "--stream-deck"}
+OPTIONS = {BASE: "", DECK: "--stream-deck --autostart"}
 PROFIL = "ERPLibre Home (no Odoo)"
 
 
@@ -545,6 +547,18 @@ class LesLibelles(unittest.TestCase):
                 self.assertIn("log out", aide)
         self.assertNotIn(
             "--stream-deck", " ".join(TODO._QEMU_VM_TOOLS[BASE]["help"])
+        )
+
+    def test_only_the_deck_level_enables_the_service(self):
+        """--autostart n'a de sens qu'avec --stream-deck : l'installateur
+        refuse l'un sans l'autre, et la base n'a aucun service à activer."""
+        todo = TODO.__new__(TODO)
+        self.assertIn(
+            "--autostart",
+            todo._qemu_erplibre_home_remote_cmd(False, stream_deck=True),
+        )
+        self.assertNotIn(
+            "--autostart", todo._qemu_erplibre_home_remote_cmd(False)
         )
 
 

@@ -449,6 +449,174 @@ def gpu_install_args(node: str) -> list[str]:
     ]
 
 
+# --------------------------------------------------------------------------- #
+# USB : périphériques de l'hôte passés à la VM dès sa création
+# --------------------------------------------------------------------------- #
+# La lecture de sysfs et des sélecteurs vit dans script/todo/qemu_usb.py, que
+# le menu TODO utilise aussi. Ce script tourne hors de tout paquet Python
+# (lancé par son chemin, souvent sous sudo) : le module est chargé par son
+# chemin, et seulement quand une option USB est donnée.
+QEMU_USB_PATH = Path(__file__).resolve().parent.parent / "todo" / "qemu_usb.py"
+_QEMU_USB = {}
+
+# L'affichage que la redirection USB SPICE demande. Sur la boucle locale,
+# comme le VNC : virt-viewer y arrive par qemu+ssh, qui tunnelle jusqu'au
+# port de l'hyperviseur ; « listen=none » ne s'ouvre qu'en local.
+SPICE_USBREDIR_GRAPHICS = "spice,listen=127.0.0.1"
+
+# Architectures où virt-install pose les emplacements <redirdev spicevmc>
+# d'un affichage SPICE : x86 seulement.
+SPICE_USBREDIR_ARCHES = ("amd64", "x86_64")
+
+
+def qemu_usb():
+    """Le module qemu_usb.py, chargé une fois par son chemin."""
+    if "mod" not in _QEMU_USB:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "erplibre_qemu_usb", QEMU_USB_PATH
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _QEMU_USB["mod"] = mod
+    return _QEMU_USB["mod"]
+
+
+def usb_selector(text: str) -> str:
+    """Type argparse de --usb-hostdev : « VID:PID » ou « BUS.DEV ».
+
+    Seule la FORME est vérifiée ici ; la présence du périphérique l'est au
+    moment de virt-install (usb_hostdev_args), où son absence n'arrête rien.
+    """
+    try:
+        lisible = qemu_usb().parse_selector(text) is not None
+    except Exception as exc:  # module introuvable ou illisible
+        raise argparse.ArgumentTypeError(
+            f"lecture USB impossible ({QEMU_USB_PATH}) : {exc}"
+        ) from exc
+    if not lisible:
+        raise argparse.ArgumentTypeError(
+            f"« {text} » : attendu VID:PID (ex. 0fd9:0080) ou BUS.DEV"
+            " (ex. 3.5)"
+        )
+    return text.strip()
+
+
+def usb_host_devices() -> list:
+    """Les périphériques USB passables de l'hôte (sysfs, sans privilège)."""
+    return qemu_usb().host_usb_devices()
+
+
+def usb_hostdev_args(selectors, devs) -> tuple[list[str], list[str]]:
+    """(arguments « --hostdev » de virt-install, lignes à afficher).
+
+    virt-install cherche le périphérique au moment de créer la VM, et échoue
+    s'il est absent (« Did not find a matching node device ») ou si deux
+    branchés répondent au même VID:PID (« corresponds to multiple node
+    devices »). Chaque sélecteur est donc confronté d'abord à `devs`
+    (host_usb_devices) :
+
+    - absent : ignoré avec un avertissement ; la VM est créée sans lui ;
+    - unique par son VID:PID : passé par VID:PID, forme qui survit au
+      rebranchement ;
+    - ambigu : chaque périphérique désigné est épinglé par « bus.dev », sans
+      zéros de tête (libvirt lirait « 008 » comme un octal invalide).
+
+    Un périphérique désigné par deux sélecteurs n'est passé qu'une fois.
+    « source.startupPolicy=optional » laisse la VM démarrer plus tard sans
+    lui : un Stream Deck débranché n'empêche pas le démarrage.
+    """
+    qu = qemu_usb()
+    args, lignes, vus = [], [], set()
+    for sel in selectors or ():
+        crit = qu.parse_selector(sel)
+        if crit is None:
+            lignes.append(f"  ⚠ USB : sélecteur illisible « {sel} », ignoré.")
+            continue
+        trouves = qu.find_devices(devs, **crit)
+        if not trouves:
+            lignes.append(
+                f"  ⚠ USB : {sel} n'est pas branché sur l'hôte — ignoré, la"
+                " VM est créée sans lui."
+            )
+            continue
+        for dev in trouves:
+            cle = (dev["busnum"], dev["devnum"])
+            if cle in vus:
+                continue
+            vus.add(cle)
+            epingle = qu.ambiguous(devs, dev["vid"], dev["pid"])
+            source = (
+                f"{dev['busnum']}.{dev['devnum']}"
+                if epingle
+                else f"{dev['vid']}:{dev['pid']}"
+            )
+            args += ["--hostdev", f"{source},source.startupPolicy=optional"]
+            note = (
+                " (épinglé par son adresse : plusieurs identiques branchés)"
+                if epingle
+                else ""
+            )
+            lignes.append(
+                f"  USB : {qu.device_label(dev)} [{source}] passé à la"
+                f" VM{note}."
+            )
+    return args, lignes
+
+
+def _graphics_type(graphics: str) -> str:
+    """« vnc,listen=… » ou « type=vnc,… » -> « vnc »."""
+    tete = (graphics or "").split(",", 1)[0].strip()
+    return tete.split("=", 1)[1] if tete.startswith("type=") else tete
+
+
+def usb_refusal(args: argparse.Namespace) -> str:
+    """Pourquoi les options USB ne s'appliquent pas à cette VM ; "" si
+    elles s'appliquent.
+
+    --spice-usbredir demande un écran (une VM sans affichage n'a pas de
+    session SPICE où brancher quoi que ce soit) et une VM x86 : ailleurs,
+    virt-install ne pose aucun emplacement de redirection. --usb-hostdev
+    est refusé sur s390x, qui n'a pas de bus USB.
+    """
+    arch = getattr(args, "arch", "amd64")
+    if getattr(args, "usb_hostdev", None) and arch == "s390x":
+        return "--usb-hostdev : s390x n'a pas de bus USB."
+    if not getattr(args, "spice_usbredir", False):
+        return ""
+    if arch not in SPICE_USBREDIR_ARCHES:
+        return (
+            f"--spice-usbredir : VM x86_64 seulement ({arch} demandée) —"
+            " virt-install n'y pose aucun emplacement de redirection USB."
+        )
+    if not args.desktop and _graphics_type(args.graphics) == "none":
+        return (
+            "--spice-usbredir : la VM n'a pas d'écran. Ajouter --desktop"
+            " (ou un --graphics) : la redirection passe par la session"
+            " SPICE de virt-viewer."
+        )
+    return ""
+
+
+def spice_usbredir_graphics(args: argparse.Namespace, graphics: str) -> list:
+    """Le « --graphics spice » à poser AVANT l'affichage `graphics`, ou [].
+
+    virt-viewer ouvre le PREMIER affichage du domaine, et seul SPICE offre
+    son menu « USB device selection » : SPICE passe donc devant. Le VNC
+    reste derrière, pour les tunnels SSH et le diagnostic de console. Dès
+    qu'un affichage SPICE est présent, virt-install ajoute de lui-même deux
+    <redirdev type='spicevmc'>, le canal de l'agent et le son.
+    """
+    if not getattr(args, "spice_usbredir", False):
+        return []
+    if getattr(args, "arch", "amd64") not in SPICE_USBREDIR_ARCHES:
+        return []
+    if _graphics_type(graphics) in ("none", "spice"):
+        return []
+    return ["--graphics", SPICE_USBREDIR_GRAPHICS]
+
+
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 # Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
@@ -525,14 +693,30 @@ def debian_variant(version: str, desktop: bool = False) -> str:
 
     « genericcloud » embarque le noyau cloud, compilé sans DRM : ni
     virtio-gpu, ni aucun autre pilote d'affichage. Une VM graphique y démarre
-    sur un écran que GDM et LightDM ne savent pas ouvrir. « generic » porte le
-    noyau standard, avec le même cloud-init et le même fichier SHA512SUMS dans
-    le même répertoire. « genericcloud », plus léger, ne sert donc qu'à un
-    serveur, et seulement là où il est encore publié.
+    sur un écran que GDM et LightDM ne savent pas ouvrir. Il est aussi
+    compilé sans USB : un périphérique passé à la VM n'y apparaît pas, d'où
+    `desktop` vrai aussi pour une VM qui reçoit un périphérique USB
+    (wants_full_kernel). « generic » porte le noyau standard, avec le même
+    cloud-init et le même fichier SHA512SUMS dans le même répertoire.
+    « genericcloud », plus léger, ne sert donc qu'à un serveur, et seulement
+    là où il est encore publié.
     """
     if desktop or version not in DEBIAN_GENERICCLOUD_VERSIONS:
         return "generic"
     return "genericcloud"
+
+
+def wants_full_kernel(args) -> bool:
+    """Vrai quand la VM exige le noyau standard plutôt que le noyau cloud
+    de Debian : bureau (DRM), --usb-hostdev ou --spice-usbredir. Le noyau
+    cloud est compilé sans USB (CONFIG_USB_SUPPORT absent) : un
+    périphérique passé à la VM, par l'hôte comme par virt-viewer, n'y
+    apparaîtrait jamais. Rend la valeur `desktop` de debian_variant."""
+    return (
+        bool(getattr(args, "desktop", False))
+        or bool(getattr(args, "usb_hostdev", None))
+        or bool(getattr(args, "spice_usbredir", False))
+    )
 
 
 def image_url(
@@ -5545,9 +5729,25 @@ def virt_install(
     # console dont la 3D est demandée, egl-headless reste donc le seul.
     graphics_omis = bool(gpu_args) and graphics == "none"
     if not graphics_omis:
-        cmd += ["--graphics", graphics]
+        # SPICE avant l'affichage demandé : il est avant la tranche 3D, que
+        # le repli EGL est seul à retirer, et y survit donc.
+        spice = spice_usbredir_graphics(args, graphics)
+        if spice:
+            print(
+                "  USB : affichage SPICE posé AVANT le VNC (virt-viewer ouvre"
+                " le premier), avec ses emplacements de redirection USB."
+            )
+        cmd += spice + ["--graphics", graphics]
     i_gpu = len(cmd)
     cmd += video + gpu_args
+    # Les périphériques USB de l'hôte, APRÈS la tranche 3D : le repli EGL
+    # recopie tout ce qui la suit, le --hostdev compris.
+    usb_selectors = getattr(args, "usb_hostdev", None) or ()
+    if usb_selectors:
+        hostdev, lignes = usb_hostdev_args(usb_selectors, usb_host_devices())
+        for ligne in lignes:
+            print(ligne)
+        cmd += hostdev
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -5897,6 +6097,26 @@ def build_parser() -> argparse.ArgumentParser:
         "sur un hôte à plusieurs cartes.",
     )
     g_vm.add_argument(
+        "--usb-hostdev",
+        action="append",
+        default=[],
+        type=usb_selector,
+        metavar="VID:PID|BUS.DEV",
+        help="Périphérique USB de l'hôte passé à la VM (répétable), ex. "
+        "0fd9:0080 pour un Stream Deck. Absent de l'hôte : ignoré avec un "
+        "avertissement, la VM est créée quand même. Plusieurs identiques "
+        "branchés : chacun est épinglé par bus.dev. La VM démarre aussi "
+        "quand il est débranché (startupPolicy=optional).",
+    )
+    g_vm.add_argument(
+        "--spice-usbredir",
+        action="store_true",
+        help="Ajoute un affichage SPICE AVANT le VNC, avec ses emplacements "
+        "de redirection USB : virt-viewer, qui ouvre le premier affichage, "
+        "offre alors son menu « USB device selection ». VM graphique x86_64 "
+        "seulement ; le VNC reste pour les tunnels SSH.",
+    )
+    g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
     )
     g_vm.add_argument(
@@ -6203,6 +6423,11 @@ def main() -> None:
             f"{args.distro} {args.version} n'est pas publié en {args.arch}.\n"
             f"  Versions disponibles : {', '.join(ok_versions) or 'aucune'}."
         )
+    # Refusé avant toute image téléchargée : l'option ne changerait rien à la
+    # VM, et le dire après une heure d'installation ne sert plus.
+    refus_usb = usb_refusal(args)
+    if refus_usb:
+        sys.exit(refus_usb)
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
         code = args.codename
@@ -6217,13 +6442,14 @@ def main() -> None:
     # échouer le resize : on suppose des Go par défaut (« 30 » -> « 30G »).
     if re.fullmatch(r"\d+", str(args.disk_size)):
         args.disk_size = f"{args.disk_size}G"
+    full_kernel = wants_full_kernel(args)
     urls = image_candidates(
         args.distro,
         code,
         args.arch,
         args.version,
         args.dry_run,
-        bool(args.desktop),
+        full_kernel,
     )
     url = urls[0]
     # PAR DÉFAUT, et pour toute distribution qui publie ses sommes. C'était
@@ -6241,7 +6467,7 @@ def main() -> None:
     # Chemin de l'image : déduit automatiquement si non fourni.
     if args.image_path is None:
         args.image_path = args.image_dir / default_image_name(
-            args.distro, code, args.arch, args.version, bool(args.desktop)
+            args.distro, code, args.arch, args.version, full_kernel
         )
 
     runner = Runner(

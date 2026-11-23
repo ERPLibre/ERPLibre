@@ -1610,7 +1610,7 @@ class QemuInstallMixin:
             "label": "ERPLibre Home Stream Deck",
             "help": (
                 "script/install/install_erplibre_home.sh --stream-deck"
-                " in the VM's checkout",
+                " --autostart in the VM's checkout",
                 "ERPLibre Home, plus USB packages, udev rule, deck program,"
                 " .venv.streamdeck",
                 "log out and back in to load the extension",
@@ -2997,7 +2997,13 @@ class QemuInstallMixin:
         commande = "./script/install/install_erplibre_home.sh"
         titre = t("ERPLibre Home")
         if stream_deck:
-            commande += " --stream-deck"
+            # --autostart : le service du deck est activé, donc lancé par
+            # l'arrivée du deck dans la session (WantedBy du périphérique).
+            # Toujours, et non selon la case USB du déploiement : le deck
+            # entre dans la VM par plusieurs voies (passage à la création,
+            # attachement par le menu, redirection SPICE de virt-viewer,
+            # rebranchement), et sans unité activée aucune ne lance rien.
+            commande += " --stream-deck --autostart"
             titre = t("ERPLibre Home Stream Deck")
         return (
             f'echo "== {titre} =="; (cd "{el_dir}" && '

@@ -11117,11 +11117,11 @@ TRANSLATIONS = {
         "en": "extension, schemas and translations, extension enabled",
     },
     "script/install/install_erplibre_home.sh --stream-deck"
-    " in the VM's checkout": {
+    " --autostart in the VM's checkout": {
         "fr": "script/install/install_erplibre_home.sh --stream-deck"
-        " dans le checkout de la VM",
+        " --autostart dans le checkout de la VM",
         "en": "script/install/install_erplibre_home.sh --stream-deck"
-        " in the VM's checkout",
+        " --autostart in the VM's checkout",
     },
     "ERPLibre Home, plus USB packages, udev rule, deck program,"
     " .venv.streamdeck": {
@@ -25343,6 +25343,42 @@ TRANSLATIONS = {
     "Which device?": {
         "fr": "Quel périphérique ?",
         "en": "Which device?",
+    },
+    # Déploiement QEMU — USB : case « Stream Deck » du formulaire, question
+    # en ligne, et note du nœud Proxmox.
+    "Attach the plugged Stream Decks (USB passthrough + SPICE)": {
+        "fr": "Attacher les Stream Deck branchés (passage USB + SPICE)",
+        "en": "Attach the plugged Stream Decks (USB passthrough + SPICE)",
+    },
+    "Attach the plugged Stream Decks (USB passthrough)": {
+        "fr": "Attacher les Stream Deck branchés (passage USB)",
+        "en": "Attach the plugged Stream Decks (USB passthrough)",
+    },
+    "Attach the plugged Stream Decks (USB passthrough + SPICE)? (y/N): ": {
+        "fr": "Attacher les Stream Deck branchés (passage USB + SPICE) ?"
+        " (o/N) : ",
+        "en": "Attach the plugged Stream Decks (USB passthrough + SPICE)?"
+        " (y/N): ",
+    },
+    "Plugged into the host:": {
+        "fr": "Branchés sur l'hôte :",
+        "en": "Plugged into the host:",
+    },
+    "They go to the first graphical VM only.": {
+        "fr": "Ils vont à la première VM graphique seulement.",
+        "en": "They go to the first graphical VM only.",
+    },
+    "No Stream Deck plugged into the host.": {
+        "fr": "Aucun Stream Deck branché sur l'hôte.",
+        "en": "No Stream Deck plugged into the host.",
+    },
+    "SPICE redirection only.": {
+        "fr": "Redirection SPICE seulement.",
+        "en": "SPICE redirection only.",
+    },
+    "Read from the Proxmox node when the VM is created.": {
+        "fr": "Lus sur le nœud Proxmox à la création de la VM.",
+        "en": "Read from the Proxmox node when the VM is created.",
     },
 }
 

@@ -383,6 +383,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
+                    # Matériel de la VM, comme la 3D : le Stream Deck de
+                    # l'hôte et l'affichage SPICE de la redirection USB.
+                    yield from self.compose_usb_deck()
                     # Offerte seulement là où elle a un effet : sans cache
                     # actif, rien n'intercepte, et une case qui ne change
                     # rien apprend au lecteur une chose fausse.
