@@ -5822,8 +5822,10 @@ class TestMenuLabels(unittest.TestCase):
     par la table d'un menu : un écran ouvert depuis ailleurs, ou défini
     dans un mixin, comme le sous-menu VPN, serait manqué. Chacun est un
     menu déclaré avec son segment, l'un des menus déclarés sans segment
-    que nomme `MENUS_SANS_SEGMENT`, l'action d'une entrée qui déclare son
-    segment, ou l'une des exceptions.
+    que nomme `MENUS_SANS_SEGMENT`, ou l'une des exceptions. Le segment
+    d'une entrée (`Entry.crumb`) que le navigateur sait poser, la garde le
+    refuse : aucune entrée n'en déclare, un écran tient le sien de son
+    `Menu`.
 
     Une méthode est exemptée, qui s'affiche sous le fil du menu qui
     l'ouvre : une ACTION qui pose une question — une montée de version
@@ -5834,11 +5836,6 @@ class TestMenuLabels(unittest.TestCase):
     ECRANS_EXEMPTES = {
         "execute_odoo_upgrade",
     }
-    # Menus ajoutés par develop, à migrer : écrits à la main, ils tiennent
-    # leur segment de l'entrée qui les ouvre (`Entry.crumb`), le temps de
-    # leur action. La liste ne fait que rétrécir : un menu migré déclare
-    # son `Menu` et son `crumb`.
-    ECRANS_A_MIGRER = {}
     # Les menus déclarés sans segment : chacun s'affiche sous le fil du
     # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
     # feuille de l'entrée qui l'ouvre. La liste ne fait que rétrécir : un
@@ -5992,14 +5989,12 @@ class TestMenuLabels(unittest.TestCase):
 
     def test_no_screen_forgets_its_crumb(self):
         """Chaque écran est un menu déclaré avec son segment, l'un des
-        MENUS_SANS_SEGMENT, l'action d'une entrée qui déclare son segment,
-        ou une exception."""
+        MENUS_SANS_SEGMENT, ou une exception."""
         avec_segment = {n for n, m in self.menus.items() if m["crumb"]}
         missing = (
             self._menus_du_paquet()
             - avec_segment
             - self.MENUS_SANS_SEGMENT
-            - set(self.ecrans)
             - self.ECRANS_EXEMPTES
         )
         self.assertEqual(missing, set(), "écrans sans segment déclaré")
@@ -6022,17 +6017,14 @@ class TestMenuLabels(unittest.TestCase):
 
     def test_each_declared_menu_keeps_its_crumb(self):
         """Un menu du registre garde son segment, le dernier de sa clé de
-        télémétrie ; seules les entrées d'ECRANS_A_MIGRER déclarent le
-        leur."""
+        télémétrie, et aucune entrée ne déclare le sien : le navigateur
+        empilerait les deux sur un menu déclaré, et l'en-tête s'écarterait
+        du chemin de l'arbre, qui ne garde que celui du menu."""
         self.assertEqual(
             {name: self.menus[name]["crumb"] for name in self.SEGMENTS},
             self.SEGMENTS,
         )
-        self.assertEqual(self.ecrans, self.ECRANS_A_MIGRER)
-        # Une entrée qui ouvre un menu déclaré ne déclare pas de segment : le
-        # navigateur empilerait les deux, et l'en-tête s'écarterait du
-        # chemin de l'arbre, qui ne garde que celui du menu.
-        self.assertEqual(set(self.ecrans) & set(self.menus), set())
+        self.assertEqual(self.ecrans, {}, "déclarer le Menu de ces écrans")
 
     def test_no_second_list_repeats_the_crumbs(self):
         """Les segments ne s'écrivent qu'au registre : un dict de
@@ -6069,8 +6061,7 @@ class TestMenuLabels(unittest.TestCase):
 
     def test_an_exemption_is_never_also_declared(self):
         """Exempter ET déclarer dirait deux choses opposées du même écran."""
-        declares = set(self.menus) | set(self.ecrans)
-        self.assertEqual(self.ECRANS_EXEMPTES & declares, set())
+        self.assertEqual(self.ECRANS_EXEMPTES & set(self.menus), set())
 
 
 if __name__ == "__main__":

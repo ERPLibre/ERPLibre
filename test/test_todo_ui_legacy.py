@@ -130,13 +130,14 @@ RAW_CALLS = {
     "script/todo/assistant_menu.py": 14,
     "script/todo/auto_ask.py": 2,
     "script/todo/container_menu.py": 21,
-    "script/todo/database_manager.py": 11,
-    "script/todo/kdbx_manager.py": 1,
+    "script/todo/database_manager.py": 7,
+    "script/todo/git_fork_menu.py": 8,
     "script/todo/git_repo_menu.py": 15,
+    "script/todo/kdbx_manager.py": 1,
     "script/todo/longtest_menu.py": 2,
     "script/todo/mail/menu.py": 14,
     "script/todo/modem/menu.py": 29,
-    "script/todo/module_menu.py": 1,
+    "script/todo/module_menu.py": 4,
     "script/todo/proxmox_menu.py": 11,
     "script/todo/qemu_access.py": 7,
     "script/todo/qemu_cache_menu.py": 17,
@@ -146,9 +147,11 @@ RAW_CALLS = {
     "script/todo/qemu_menu.py": 2,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 6,
+    "script/todo/seal_menu.py": 9,
     "script/todo/sms/menu.py": 6,
     "script/todo/sms/tui.py": 1,
-    "script/todo/todo.py": 85,
+    "script/todo/system_menu.py": 2,
+    "script/todo/todo.py": 84,
     "script/todo/todo_install.py": 2,
     "script/todo/todo_telemetry.py": 1,
     "script/todo/todo_upgrade.py": 2,
@@ -191,7 +194,10 @@ def _dotted(node) -> str:
 
 
 def raw_calls(source) -> int:
-    """Nombre d'appels de `source` à une fonction de RAW_PROMPTS."""
+    """Nombre d'appels de `source` à une fonction de RAW_PROMPTS, nommée
+    à l'appel. Une fonction de RAW_PROMPTS passée comme valeur, puis
+    appelée sous un autre nom (`demander = demander or input`, puis
+    `demander(…)`), n'y compte pas : le compte ne suit pas les noms."""
     return sum(
         isinstance(node, ast.Call) and _dotted(node.func) in RAW_PROMPTS
         for node in ast.walk(ast.parse(source))
@@ -1101,7 +1107,7 @@ class TestRealTodo(unittest.TestCase):
 
     def test_the_menus_of_the_real_todo(self):
         # TODO › Configuration › Back › Assistant › mail › Back › Back › Quit
-        seen = self.real_todo("5", "0", "3", "2", "0", "0", "0")
+        seen = self.real_todo("6", "0", "3", "2", "0", "0", "0")
         menus = [
             (e["source"], e["crumbs"], [i["key"] for i in e["items"]])
             for e in seen["events"]
@@ -1143,9 +1149,9 @@ class TestRealTodo(unittest.TestCase):
         self.assertEqual(execute["source"], "fill_help_info")
         self.assertEqual(
             [i["key"] for i in execute["items"]],
-            [str(n) for n in range(1, 20)] + ["0"],
+            [str(n) for n in range(1, 23)] + ["0"],
         )
-        self.assertEqual(len(execute["sections"]), 5)
+        self.assertEqual(len(execute["sections"]), 6)
         self.assertIsNone(execute["items"][-1]["section"])
 
     def test_what_a_leaf_prints_flags_the_menu_that_follows(self):
@@ -1153,7 +1159,7 @@ class TestRealTodo(unittest.TestCase):
         # required! » précède le menu Test qui revient. Back, Back, puis
         # Navigation telemetry, dont la ligne d'état est une note ; Back,
         # Quit. Le logo précède le premier menu, la bannière de Test le sien.
-        seen = self.real_todo("1", "4", "1", "", "0", "0", "4", "0", "0")
+        seen = self.real_todo("1", "4", "1", "", "0", "0", "5", "0", "0")
         stopped = todo_i18n.translate("Web interface: stopped", "en")
         menus = [
             (e["crumbs"][-1], e["printed"], e["notes"])
