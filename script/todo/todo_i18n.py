@@ -24811,6 +24811,205 @@ TRANSLATIONS = {
             "data_dir is not consulted."
         ),
     },
+    # Menu QEMU — USB : plans de qemu_usb.py (passage d'un périphérique
+    # USB à une VM, redirection SPICE).
+    "Attach {device} to {domain}": {
+        "fr": "Attacher {device} à {domain}",
+        "en": "Attach {device} to {domain}",
+    },
+    "Detach {device} from {domain}": {
+        "fr": "Détacher {device} de {domain}",
+        "en": "Detach {device} from {domain}",
+    },
+    "Detach stale {device} from {domain}": {
+        "fr": "Détacher {device}, débranché, de {domain}",
+        "en": "Detach stale {device} from {domain}",
+    },
+    "Detach empty placeholder {device} from {domain}": {
+        "fr": "Détacher l'emplacement vide {device} de {domain}",
+        "en": "Detach empty placeholder {device} from {domain}",
+    },
+    "The Stream Decks stay on the host:": {
+        "fr": "Les Stream Deck restent à l'hôte :",
+        "en": "The Stream Decks stay on the host:",
+    },
+    "the VM is created without USB passthrough.": {
+        "fr": "la VM est créée sans passage USB.",
+        "en": "the VM is created without USB passthrough.",
+    },
+    "already attached": {
+        "fr": "déjà attaché",
+        "en": "already attached",
+    },
+    "not attached": {
+        "fr": "pas attaché",
+        "en": "not attached",
+    },
+    "the VM is not running": {
+        "fr": "la VM n'est pas démarrée",
+        "en": "the VM is not running",
+    },
+    "the VM has no USB controller": {
+        "fr": "la VM n'a aucun contrôleur USB",
+        "en": "the VM has no USB controller",
+    },
+    "USB is disabled in the VM (model none)": {
+        "fr": "l'USB est désactivé dans la VM (modèle none)",
+        "en": "USB is disabled in the VM (model none)",
+    },
+    "Add a SPICE display (127.0.0.1)": {
+        "fr": "Ajouter un affichage SPICE (127.0.0.1)",
+        "en": "Add a SPICE display (127.0.0.1)",
+    },
+    "Add a SPICE display (127.0.0.1) before {first}": {
+        "fr": "Ajouter un affichage SPICE (127.0.0.1) avant {first}",
+        "en": "Add a SPICE display (127.0.0.1) before {first}",
+    },
+    "Move the SPICE display before {first}": {
+        "fr": "Placer l'affichage SPICE avant {first}",
+        "en": "Move the SPICE display before {first}",
+    },
+    "Add a USB controller ({model})": {
+        "fr": "Ajouter un contrôleur USB ({model})",
+        "en": "Add a USB controller ({model})",
+    },
+    "Enable USB: controller model none -> {model}": {
+        "fr": "Activer l'USB : modèle de contrôleur none -> {model}",
+        "en": "Enable USB: controller model none -> {model}",
+    },
+    "Add {n} SPICE USB redirection slot(s)": {
+        "fr": "Ajouter {n} emplacement(s) de redirection USB SPICE",
+        "en": "Add {n} SPICE USB redirection slot(s)",
+    },
+    "Add the SPICE agent channel": {
+        "fr": "Ajouter le canal de l'agent SPICE",
+        "en": "Add the SPICE agent channel",
+    },
+    "Restrict USB redirection to vendor(s) {vendors}": {
+        "fr": "Restreindre la redirection USB au(x) vendeur(s) {vendors}",
+        "en": "Restrict USB redirection to vendor(s) {vendors}",
+    },
+    "Remove the USB redirection filter": {
+        "fr": "Retirer le filtre de redirection USB",
+        "en": "Remove the USB redirection filter",
+    },
+    "Redefine {domain}: {changes}": {
+        "fr": "Redéfinir {domain} : {changes}",
+        "en": "Redefine {domain}: {changes}",
+    },
+    "SPICE is not available on s390x": {
+        "fr": "SPICE n'est pas disponible sur s390x",
+        "en": "SPICE is not available on s390x",
+    },
+    # Menu QEMU — USB : messages du CLI autonome script/qemu/usb_qemu.py.
+    "sudo is needed: {uri} is open to root only (the libvirt group would avoid it).": {
+        "fr": "sudo est requis : {uri} n'est ouvert qu'à root (le groupe libvirt l'éviterait).",
+        "en": "sudo is needed: {uri} is open to root only (the libvirt group would avoid it).",
+    },
+    "Cannot read the state of {domain}: {error}": {
+        "fr": "Impossible de lire l'état de {domain} : {error}",
+        "en": "Cannot read the state of {domain}: {error}",
+    },
+    "Cannot read the definition of {domain}: {error}": {
+        "fr": "Impossible de lire la définition de {domain} : {error}",
+        "en": "Cannot read the definition of {domain}: {error}",
+    },
+    "FAILED: {error}": {
+        "fr": "ÉCHEC : {error}",
+        "en": "FAILED: {error}",
+    },
+    "Cannot list the USB devices of {uri}: {error}": {
+        "fr": "Impossible de lister les périphériques USB de {uri} : {error}",
+        "en": "Cannot list the USB devices of {uri}: {error}",
+    },
+    "Invalid domain name: {domain}": {
+        "fr": "Nom de domaine invalide : {domain}",
+        "en": "Invalid domain name: {domain}",
+    },
+    "Choose --live, --config, or both.": {
+        "fr": "Choisir --live, --config, ou les deux.",
+        "en": "Choose --live, --config, or both.",
+    },
+    "Unreadable selector {selector}: expected VID:PID or BUS.DEV.": {
+        "fr": "Sélecteur illisible {selector} : VID:PID ou BUS.DEV attendu.",
+        "en": "Unreadable selector {selector}: expected VID:PID or BUS.DEV.",
+    },
+    "{selector} matches several devices; choose one by BUS.DEV:": {
+        "fr": "{selector} désigne plusieurs périphériques ; en choisir un par BUS.DEV :",
+        "en": "{selector} matches several devices; choose one by BUS.DEV:",
+    },
+    "No USB device at {selector} on the host.": {
+        "fr": "Aucun périphérique USB en {selector} sur l'hôte.",
+        "en": "No USB device at {selector} on the host.",
+    },
+    "{device} is not plugged into the host: only --config can declare it ahead.": {
+        "fr": "{device} n'est pas branché sur l'hôte : seul --config peut le déclarer d'avance.",
+        "en": "{device} is not plugged into the host: only --config can declare it ahead.",
+    },
+    "The ERPLibre Home Stream Deck service runs on the libvirt host and holds the deck. Run again with --yes to stop it during the passthrough.": {
+        "fr": "Le service Stream Deck d'ERPLibre Home tourne sur l'hôte libvirt et tient le deck. Relancer avec --yes pour l'arrêter pendant le passage à la VM.",
+        "en": "The ERPLibre Home Stream Deck service runs on the libvirt host and holds the deck. Run again with --yes to stop it during the passthrough.",
+    },
+    "Stopping the host Stream Deck service": {
+        "fr": "Arrêt du service Stream Deck de l'hôte",
+        "en": "Stopping the host Stream Deck service",
+    },
+    "Note: the host Stream Deck service runs; the VM takes the deck from it at its next start.": {
+        "fr": "Note : le service Stream Deck de l'hôte tourne ; la VM lui prendra le deck à son prochain démarrage.",
+        "en": "Note: the host Stream Deck service runs; the VM takes the deck from it at its next start.",
+    },
+    "Restarting the host Stream Deck service": {
+        "fr": "Relance du service Stream Deck de l'hôte",
+        "en": "Restarting the host Stream Deck service",
+    },
+    "The host Stream Deck service is stopped; restart it with:": {
+        "fr": "Le service Stream Deck de l'hôte est arrêté ; le relancer par :",
+        "en": "The host Stream Deck service is stopped; restart it with:",
+    },
+    "No USB device found on the host.": {
+        "fr": "Aucun périphérique USB trouvé sur l'hôte.",
+        "en": "No USB device found on the host.",
+    },
+    "Root is needed; running:": {
+        "fr": "Root est requis ; lancement de :",
+        "en": "Root is needed; running:",
+    },
+    "Unreadable mapping {path}: {error}": {
+        "fr": "Correspondance illisible {path} : {error}",
+        "en": "Unreadable mapping {path}: {error}",
+    },
+    "Installing USB auto-reattach": {
+        "fr": "Pose du rattachement USB automatique",
+        "en": "Installing USB auto-reattach",
+    },
+    "Test it by replugging the device, then read:": {
+        "fr": "L'essayer en rebranchant le périphérique, puis lire :",
+        "en": "Test it by replugging the device, then read:",
+    },
+    "Removing USB auto-reattach": {
+        "fr": "Retrait du rattachement USB automatique",
+        "en": "Removing USB auto-reattach",
+    },
+    "No device mapped to a VM.": {
+        "fr": "Aucun périphérique associé à une VM.",
+        "en": "No device mapped to a VM.",
+    },
+    "No matching entry.": {
+        "fr": "Aucune entrée correspondante.",
+        "en": "No matching entry.",
+    },
+    "Invalid sysfs name: {name}": {
+        "fr": "Nom sysfs invalide : {name}",
+        "en": "Invalid sysfs name: {name}",
+    },
+    "{name}: device gone, nothing to do.": {
+        "fr": "{name} : périphérique reparti, rien à faire.",
+        "en": "{name}: device gone, nothing to do.",
+    },
+    "{device}: mapped to no VM.": {
+        "fr": "{device} : associé à aucune VM.",
+        "en": "{device}: mapped to no VM.",
+    },
 }
 
 
