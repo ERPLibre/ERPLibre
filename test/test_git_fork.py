@@ -18,6 +18,7 @@ sys.argv = ["todo.py"]
 from script.git import github_fork as gf  # noqa: E402
 from script.git import manifest_fork as mf  # noqa: E402
 from script.todo import git_fork_menu as gm  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 GEL = "a" * 40
 BASE = "b" * 40
@@ -457,6 +458,487 @@ class TestLeParcours(Manifestes):
         )
         self.assertEqual(code, 2)
         fabrique.assert_not_called()
+
+
+LUNE = {
+    "path": "odoo18.0/addons/Bidon_lune",
+    "name": "lune.git",
+    "remote": "Bidon",
+    "revision": "18.0",
+}
+SOLEIL = {
+    "path": "odoo18.0/addons/Bidon_soleil",
+    "name": "soleil.git",
+    "remote": "Bidon",
+    "revision": "18.0",
+}
+PROJETS = [LUNE, SOLEIL]
+URL_AJOUT = "https://github.com/Bidon/outils-fictifs"
+# Ce que le menu lit dans manifest_repo sans rien écrire, lancer ni
+# demander au réseau : tout autre appel est une action.
+LECTEURS = {
+    "versions_installees",
+    "depot_de_l_url",
+    "clones_non_declares",
+    "lire_clone",
+    "remotes_du_clone",
+    "branche_poussee",
+    "cibles_pull_request",
+    "branche_proposee",
+    "gel_par_defaut",
+}
+# Les trois retours d'un choix sans défaut : [0], une réponse vide, Ctrl+D.
+RETOURS = ("0", "", EOFError())
+
+
+class LeMenuGit(unittest.TestCase):
+    """Les méthodes du menu Répertoire git, questions posées au port
+    scripté ; `input` n'a que les réponses `saisies`. manifest_repo est
+    un double, GitHub aussi : rien n'est écrit, lancé ni envoyé."""
+
+    def lancer(
+        self,
+        methode,
+        reponses,
+        *args,
+        saisies=(),
+        branches=True,
+        installees=("17.0", "18.0"),
+        manifestes=("17.0", "18.0"),
+        ajoute="odoo18.0/addons/outils",
+    ):
+        """(retour de `methode(*args)`, double de manifest_repo, port,
+        fabrique du client GitHub). `branches` faux : l'hôte ne dit pas
+        ses branches ; `installees`, les versions installées ;
+        `manifestes`, celles qui ont un manifeste ; `ajoute`, le chemin du
+        projet qu'écrit `ajouter_depot`. Le double de `print` reste dans
+        `self.imprime`."""
+        from script.todo import ui
+        from script.todo.todo import TODO
+        from script.todo.ui.port import ScriptedPort
+
+        todo = TODO.__new__(TODO)
+        double = mock.Mock(name="manifest_repo")
+        double.versions_installees.return_value = list(installees)
+        double.depot_de_l_url.return_value = "outils-fictifs"
+        double.clones_non_declares.return_value = [("18.0", LUNE["path"])]
+        double.lire_clone.return_value = {
+            "url": URL_AJOUT,
+            "remote": "origin",
+            "branche": "18.0",
+            "sha": GEL,
+            "pousse": True,
+        }
+        double.remotes_du_clone.return_value = ["origin"]
+        double.branche_proposee.return_value = "18.0"
+        double.gel_par_defaut.return_value = False
+        double.ajouter_depot.return_value = (
+            os.path.join(gm.RACINE, "manifest", "default.dev.xml"),
+            {"path": ajoute, "remote": "r", "revision": "b"},
+            None,
+        )
+        double.retirer_depot.return_value = (
+            os.path.join(gm.RACINE, "manifest", "default.dev.xml"),
+            LUNE,
+            None,
+        )
+        double.plan_nettoyage.return_value = (
+            ["18.0"],
+            {},
+            {"locales": {"fini": "fusion"}, "distantes": {}},
+        )
+        port = ScriptedPort(reponses)
+        lu = ({"18.0", "main"}, "18.0") if branches else None
+        with (
+            mock.patch.object(gm, "manifest_repo", double),
+            mock.patch.object(
+                gm.repo_upgrade, "version_active", return_value="18.0"
+            ),
+            mock.patch.object(
+                gm.repo_upgrade,
+                "lire_manifestes",
+                return_value=({}, {p["path"]: p for p in PROJETS}),
+            ),
+            mock.patch.object(
+                gm.repo_upgrade, "branches_et_defaut", return_value=lu
+            ),
+            mock.patch.object(gm, "clones", return_value=({}, PROJETS)),
+            mock.patch.object(
+                gm, "versions_des_manifestes", return_value=list(manifestes)
+            ),
+            mock.patch.object(
+                gm,
+                "projets_github",
+                return_value=({}, [(p, "Bidon", p["name"]) for p in PROJETS]),
+            ),
+            mock.patch.object(
+                gm.github_fork, "depot_github", return_value=("Bidon", "x")
+            ),
+            mock.patch.object(gm.github_fork, "ClientGitHub") as fabrique,
+            mock.patch("builtins.input", side_effect=list(saisies)),
+            mock.patch("builtins.print") as self.imprime,
+            ui.bind(port),
+        ):
+            retour = getattr(todo, methode)(*args)
+        return retour, double, port, fabrique
+
+    def assertRienNAgit(self, double, fabrique):
+        appeles = {appel[0].split(".")[0] for appel in double.method_calls}
+        self.assertLessEqual(appeles, LECTEURS)
+        fabrique.assert_not_called()
+
+    def choix(self, port):
+        """Les questions à choix qu'a posées le port."""
+        return [e for e in port.events if e.get("kind") == "choose"]
+
+    def imprime_texte(self):
+        """Tout ce que le menu a imprimé, une ligne par appel."""
+        return "\n".join(
+            " ".join(str(a) for a in appel.args)
+            for appel in self.imprime.call_args_list
+        )
+
+
+class TestUnRetourNAgitPas(LeMenuGit):
+    """[0], une réponse vide ou Ctrl+D au choix d'un dépôt, d'une version
+    ou de la visibilité : l'appelant revient sans rien écrire, retirer,
+    supprimer ni demander à GitHub."""
+
+    # Les appelants du choix d'un clone de la version active, et ce
+    # qu'ils rendent sur un retour.
+    PAR_CLONE = {
+        "_git_creer_branche": 0,
+        "_git_ajouter_amont": 0,
+        "_git_regeler_depot": 0,
+        "_git_nettoyer_branches": None,
+        "_git_creer_pull_request": None,
+    }
+
+    def test_each_caller_of_the_clone_choice(self):
+        for methode, attendu in self.PAR_CLONE.items():
+            # Filtre vide puis chaque retour, et Ctrl+D dès le filtre ; le
+            # « 1 » qui suit choisirait un dépôt s'il était lu.
+            cas = [["", reponse] for reponse in RETOURS] + [[EOFError()]]
+            for reponses in cas:
+                with self.subTest(methode=methode, reponses=reponses):
+                    retour, double, port, fabrique = self.lancer(
+                        methode, [*reponses, "1"]
+                    )
+                    self.assertEqual(retour, attendu)
+                    self.assertRienNAgit(double, fabrique)
+                    self.assertEqual(port.answers, ["1"])
+
+    def test_the_repository_to_fork(self):
+        for reponses in (
+            ["", "0"],
+            ["", ""],
+            ["", EOFError()],
+            [EOFError()],
+        ):
+            with self.subTest(reponses=reponses):
+                retour, double, port, fabrique = self.lancer(
+                    "_git_fork_organisation", [*reponses, "1"]
+                )
+                self.assertEqual(retour, 0)
+                self.assertRienNAgit(double, fabrique)
+                self.assertEqual(port.answers, ["1"])
+
+    def test_remove_and_synchronise_at_the_version_or_the_repository(self):
+        for methode in ("_git_retirer_depot", "_git_synchroniser_depot"):
+            for reponses in (
+                ["0"],
+                [EOFError()],
+                ["", "", "0"],
+                ["", "", ""],
+                ["", "", EOFError()],
+            ):
+                with self.subTest(methode=methode, reponses=reponses):
+                    retour, double, _p, fabrique = self.lancer(
+                        methode, reponses
+                    )
+                    self.assertEqual(retour, 0)
+                    self.assertRienNAgit(double, fabrique)
+
+    def test_add_a_repository_at_the_version_or_the_visibility(self):
+        for reponses in (
+            ["0"],
+            [EOFError()],
+            ["", "0"],
+            ["", ""],
+            ["", EOFError()],
+        ):
+            with self.subTest(reponses=reponses):
+                retour, double, _p, fabrique = self.lancer(
+                    "_git_ajouter_depot", reponses, saisies=[URL_AJOUT]
+                )
+                self.assertEqual(retour, 0)
+                self.assertRienNAgit(double, fabrique)
+
+    def test_add_an_existing_clone_at_the_version_or_the_visibility(self):
+        # Un chemin hors des versions installées demande la version ; le
+        # clone [1] passe directement à la visibilité.
+        for saisie, reponse in (
+            *(("odoo16.0/addons/Bidon_lune", r) for r in ("0", EOFError())),
+            *(("1", r) for r in RETOURS),
+        ):
+            with self.subTest(saisie=saisie, reponse=reponse):
+                retour, double, _p, fabrique = self.lancer(
+                    "_git_ajouter_existant", [reponse], saisies=[saisie]
+                )
+                self.assertEqual(retour, 0)
+                self.assertRienNAgit(double, fabrique)
+
+
+class TestLesChoix(LeMenuGit):
+    """Le choix d'un dépôt, d'une version et de la visibilité suit les
+    règles communes : numéro affiché ou nom exact, [0], une saisie fautive
+    nommée puis redemandée."""
+
+    def test_a_typo_or_a_number_out_of_range_is_asked_again(self):
+        retour, _d, port, _f = self.lancer(
+            "_git_choisir_clone", ["", "9", "deux", "2"]
+        )
+        self.assertEqual(retour[1], SOLEIL)
+        self.assertEqual(retour[2], os.path.join(gm.RACINE, SOLEIL["path"]))
+        erreurs = [e for e in port.events if e.get("t") == "notice"]
+        self.assertEqual(len(erreurs), 2)
+        self.assertEqual(len(self.choix(port)), 3)
+
+    def test_a_repository_by_its_path(self):
+        retour, _d, _p, _f = self.lancer(
+            "_git_choisir_clone", ["", SOLEIL["path"]]
+        )
+        self.assertEqual(retour[1], SOLEIL)
+
+    def test_the_filter_narrows_the_list_and_back_is_offered(self):
+        retour, _d, port, _f = self.lancer(
+            "_git_choisir_clone", ["SOLEIL", "1"]
+        )
+        self.assertEqual(retour[1], SOLEIL)
+        (question,) = self.choix(port)
+        self.assertEqual([o["key"] for o in question["options"]], ["1", "0"])
+        self.assertIsNone(question["default"])
+
+    def test_a_filter_that_matches_nothing_asks_no_number(self):
+        retour, _d, port, _f = self.lancer("_git_choisir_clone", ["mars"])
+        self.assertIsNone(retour)
+        self.assertEqual(self.choix(port), [])
+
+    def test_the_fork_lists_the_owner_and_takes_the_path(self):
+        # Le chemin seul choisit le projet ; l'organisation laissée vide,
+        # ou Ctrl+D à sa question, arrête le parcours avant GitHub.
+        from script.todo.todo import TODO
+
+        for organisation in ("", EOFError()):
+            with (
+                self.subTest(organisation=organisation),
+                mock.patch.object(TODO, "_git_fork_choisir_mode") as mode,
+            ):
+                retour, double, port, fabrique = self.lancer(
+                    "_git_fork_organisation",
+                    ["", LUNE["path"], organisation],
+                )
+                self.assertEqual(retour, 0)
+                (question,) = self.choix(port)
+                libelles = [o["label"] for o in question["options"]]
+                self.assertEqual(
+                    libelles[0], f"{LUNE['path']}  (Bidon/lune.git)"
+                )
+                notices = [e for e in port.events if e.get("t") == "notice"]
+                self.assertFalse(notices)
+                mode.assert_not_called()
+                self.assertRienNAgit(double, fabrique)
+
+    def test_a_version_by_its_number_its_name_or_the_active_one(self):
+        for reponses, attendu in (
+            (["17.0"], "17.0"),
+            (["2"], "18.0"),
+            ([""], "18.0"),
+            (["16.0", "1"], "17.0"),
+            (["0"], None),
+            ([EOFError()], None),
+        ):
+            with self.subTest(reponses=reponses):
+                retour, _d, port, _f = self.lancer(
+                    "_git_choisir_version", reponses, "18.0"
+                )
+                self.assertEqual(retour, attendu)
+                self.assertEqual(self.choix(port)[0]["default"], "2")
+
+    def test_a_version_without_a_manifest_is_no_default(self):
+        retour, _d, port, _f = self.lancer(
+            "_git_choisir_version", [""], "16.0"
+        )
+        self.assertIsNone(retour)
+        self.assertIsNone(self.choix(port)[0]["default"])
+        self.assertIn(
+            f"16.0 : {t('no manifest for this version.')}",
+            self.imprime_texte(),
+        )
+
+    def test_no_manifest_at_all_asks_nothing(self):
+        for methode, args, quoi in (
+            ("_git_choisir_version", ("18.0",), {"manifestes": ()}),
+            ("_git_choisir_version_installee", (), {"installees": ()}),
+        ):
+            with self.subTest(methode=methode):
+                retour, _d, port, _f = self.lancer(
+                    methode, ["1"], *args, **quoi
+                )
+                self.assertIsNone(retour)
+                self.assertEqual(port.events, [])
+                self.assertIn(
+                    t("No Odoo version has a manifest."), self.imprime_texte()
+                )
+
+    def test_the_installed_version_defaults_to_the_active_one(self):
+        for reponses, attendu in (
+            ([""], "18.0"),
+            (["17.0"], "17.0"),
+            (["1"], "17.0"),
+            (["3", "2"], "18.0"),
+            (["0"], None),
+            ([EOFError()], None),
+        ):
+            with self.subTest(reponses=reponses):
+                retour, _d, port, _f = self.lancer(
+                    "_git_choisir_version_installee", reponses
+                )
+                self.assertEqual(retour, attendu)
+                self.assertEqual(self.choix(port)[0]["default"], "2")
+
+    def test_one_installed_version_is_not_asked(self):
+        retour, _d, port, _f = self.lancer(
+            "_git_choisir_version_installee", [], installees=["18.0"]
+        )
+        self.assertEqual(retour, "18.0")
+        self.assertEqual(port.events, [])
+
+    def test_the_visibility_has_no_default(self):
+        for reponses, attendu in (
+            (["1"], False),
+            (["2"], True),
+            (["3", "2"], True),
+            ([""], None),
+            (["0"], None),
+            ([EOFError()], None),
+        ):
+            with self.subTest(reponses=reponses):
+                retour, _d, port, _f = self.lancer(
+                    "_git_choisir_visibilite", reponses
+                )
+                self.assertIs(retour, attendu)
+                question = self.choix(port)[0]
+                self.assertIsNone(question["default"])
+                self.assertEqual(
+                    [o["key"] for o in question["options"]], ["1", "2", "0"]
+                )
+
+
+class TestCtrlDApresLeChoix(LeMenuGit):
+    """Ctrl+D à une question qui suit le choix d'un dépôt revient sans
+    rien écrire, retirer ni supprimer, et sans trace."""
+
+    def test_create_a_branch_at_its_name_start_or_remote(self):
+        # « origin », lu après le Ctrl+D, ferait pousser la branche.
+        for reste in ([], ["b"], ["b", ""]):
+            with self.subTest(reste=reste):
+                retour, double, port, _f = self.lancer(
+                    "_git_creer_branche",
+                    ["", "1", *reste, EOFError(), "origin"],
+                )
+                self.assertEqual(retour, 0)
+                double.brancher.assert_not_called()
+                self.assertEqual(port.answers, ["origin"])
+
+    def test_freeze_again_at_the_commit(self):
+        retour, double, _p, _f = self.lancer(
+            "_git_regeler_depot", ["", "1", EOFError()]
+        )
+        self.assertEqual(retour, 0)
+        double.regeler.assert_not_called()
+
+    def test_remove_at_the_confirmation_then_at_the_clone(self):
+        retour, double, _p, _f = self.lancer(
+            "_git_retirer_depot", ["", "", "1", EOFError()]
+        )
+        self.assertEqual(retour, 0)
+        double.retirer_depot.assert_not_called()
+        retour, double, _p, _f = self.lancer(
+            "_git_retirer_depot", ["", "", "1", "o", EOFError()]
+        )
+        self.assertEqual(retour, 0)
+        double.retirer_depot.assert_called_once_with("18.0", LUNE["path"])
+        double.executer.assert_not_called()
+
+    def test_clean_branches_at_each_question(self):
+        for reste in ([], ["n"]):
+            with self.subTest(reste=reste):
+                retour, double, _p, fabrique = self.lancer(
+                    "_git_nettoyer_branches", ["", "1", *reste, EOFError()]
+                )
+                self.assertIsNone(retour)
+                double.plan_nettoyage.assert_not_called()
+                fabrique.assert_not_called()
+        retour, double, _p, _f = self.lancer(
+            "_git_nettoyer_branches", ["", "1", "n", "", EOFError()]
+        )
+        self.assertEqual(retour, 0)
+        double.plan_nettoyage.assert_called_once()
+        double.supprimer_branches.assert_not_called()
+
+    def test_add_a_repository_at_each_question_before_writing(self):
+        # Ctrl+D à la branche, au gel, puis à « l'ajouter sans vérifier » ;
+        # le « o » qui suit, s'il était lu, mènerait jusqu'à l'écriture.
+        for reponses, branches in (
+            (["", "1", EOFError()], True),
+            (["", "1", "", EOFError()], True),
+            (["", "1", EOFError()], False),
+        ):
+            with self.subTest(reponses=reponses, branches=branches):
+                retour, double, port, _f = self.lancer(
+                    "_git_ajouter_depot",
+                    [*reponses, "o"],
+                    saisies=[URL_AJOUT],
+                    branches=branches,
+                )
+                self.assertEqual(retour, 0)
+                double.ajouter_depot.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+
+    def test_add_a_repository_then_ctrl_d_at_the_fork(self):
+        # Le projet écrit est dans la liste des projets GitHub : « o »
+        # forke, Ctrl+D non.
+        from script.todo.todo import TODO
+
+        for reponse, forke in (("o", True), (EOFError(), False)):
+            with (
+                self.subTest(reponse=reponse),
+                mock.patch.object(
+                    TODO, "_git_fork_organisation", return_value=0
+                ) as fork,
+            ):
+                retour, double, _p, _f = self.lancer(
+                    "_git_ajouter_depot",
+                    ["", "1", "", "", reponse],
+                    saisies=[URL_AJOUT],
+                    ajoute=LUNE["path"],
+                )
+                self.assertEqual(retour, 0)
+                double.ajouter_depot.assert_called_once()
+                if forke:
+                    fork.assert_called_once_with(
+                        "18.0", (LUNE, "Bidon", LUNE["name"])
+                    )
+                else:
+                    fork.assert_not_called()
+
+    def test_add_an_existing_clone_at_the_freeze(self):
+        retour, double, _p, _f = self.lancer(
+            "_git_ajouter_existant", ["1", EOFError()], saisies=["1"]
+        )
+        self.assertEqual(retour, 0)
+        double.ajouter_existant.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -26,8 +26,12 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import github_fork, manifest_fork, manifest_repo  # noqa: E402
-from script.git import repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    github_fork,
+    manifest_fork,
+    manifest_repo,
+    repo_upgrade,
+)
 from script.git.manifest_repo import (  # noqa: E402,F401
     branche_du_projet,
     fichier_du_projet,
@@ -36,6 +40,7 @@ from script.git.manifest_repo import (  # noqa: E402,F401
     versions_des_manifestes,
     versions_du_depot,
 )
+from script.todo import ui  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 try:
@@ -95,33 +100,49 @@ def clones(version, racine=RACINE):
 class GitForkMenuMixin:
     # ── Choisir ──────────────────────────────────────────────────────
 
-    def _git_filtrer(self, elements, texte):
-        """Les `elements` dont `texte(e)` contient le filtre tapé, numérotés
-        et affichés ; rend celui qu'on choisit, ou None."""
-        filtre = (
-            input(
-                t(
-                    "Filter (part of the path or of the repository), Enter for all: "
-                )
+    def _git_repondre(self, question):
+        """La réponse tapée à `question`, sans les blancs qui l'entourent,
+        ou None sur Ctrl+D (EOFError) : l'appelant revient alors sans
+        rien écrire, retirer ni supprimer."""
+        try:
+            return ui.ask(question).strip()
+        except EOFError:
+            print()
+            return None
+
+    def _git_filtrer(self, elements, texte, nom=None):
+        """L'élément choisi parmi les `elements` dont `texte(e)` contient
+        le filtre tapé, ou None. Le choix simple de `ui.choose`, sans
+        défaut, montre `texte(e)` et lit le numéro affiché ou le nom exact
+        `nom(e)` (`texte(e)` sans `nom`) ; une saisie fautive est nommée
+        et redemandée. [0], une réponse vide et Ctrl+D, au filtre comme
+        au choix, rendent None."""
+        filtre = self._git_repondre(
+            t(
+                "Filter (part of the path or of the repository), Enter for all: "
             )
-            .strip()
-            .lower()
         )
-        retenus = [e for e in elements if filtre in texte(e).lower()]
+        if filtre is None:
+            return None
+        retenus = [e for e in elements if filtre.lower() in texte(e).lower()]
         if not retenus:
             print(f"  {t('No repository matches.')}")
             return None
-        for i, e in enumerate(retenus, 1):
-            print(f"  [{i}] {texte(e)}")
-        saisie = input(t("Repository number, Enter for none: ")).strip()
-        if not (saisie.isdigit() and 1 <= int(saisie) <= len(retenus)):
-            return None
-        return retenus[int(saisie) - 1]
+        nom = nom or texte
+        return ui.choose(
+            t("Which repository?"),
+            retenus,
+            labels=[texte(e) for e in retenus],
+            names={nom(e): e for e in retenus if nom(e)},
+        )
 
     def _git_fork_choisir_projet(self, liste):
-        """(projet, propriétaire, dépôt) choisi, ou None."""
+        """(projet, propriétaire, dépôt) choisi, ou None ; le chemin du
+        projet est son nom."""
         return self._git_filtrer(
-            liste, lambda r: f"{r[0].get('path')}  ({r[1]}/{r[2]})"
+            liste,
+            lambda r: f"{r[0].get('path')}  ({r[1]}/{r[2]})",
+            lambda r: r[0].get("path"),
         )
 
     def _git_choisir_clone(self):
@@ -138,17 +159,21 @@ class GitForkMenuMixin:
         return remotes, projet, os.path.join(RACINE, projet["path"])
 
     def _git_choisir_version(self, defaut):
-        """La version d'Odoo tapée parmi celles qui ont un manifeste, ou
-        `defaut` sur Entrée ; None pour une version sans manifeste."""
+        """La version d'Odoo choisie parmi celles qui ont un manifeste, par
+        son numéro ou son nom ; une réponse vide prend `defaut` quand il a
+        un manifeste, et revient sinon : un avis nomme alors `defaut`
+        avant la liste. None sur un retour, ou sans aucun manifeste."""
         versions = versions_des_manifestes()
-        saisie = input(
-            f"{t('Odoo version')} ({', '.join(versions)}) [{defaut}] : "
-        ).strip()
-        version = saisie or defaut
-        if version not in versions:
-            print(f"⚠ {version} : {t('no manifest for this version.')}")
+        if not versions:
+            print(f"⚠ {t('No Odoo version has a manifest.')}")
             return None
-        return version
+        if defaut and defaut not in versions:
+            print(f"⚠ {defaut} : {t('no manifest for this version.')}")
+        return ui.choose(
+            t("Odoo version:"),
+            versions,
+            default=defaut if defaut in versions else None,
+        )
 
     # ── Forker ───────────────────────────────────────────────────────
 
@@ -164,9 +189,9 @@ class GitForkMenuMixin:
         if choix is None:
             return 0
         projet, proprietaire, depot = choix
-        organisation = input(
+        organisation = self._git_repondre(
             t("Organisation (or GitHub account) that receives the fork: ")
-        ).strip()
+        )
         if not organisation:
             return 0
         if organisation.lower() == proprietaire.lower():
@@ -277,51 +302,52 @@ class GitForkMenuMixin:
     def _git_choisir_version_installee(self):
         """La version d'Odoo où ajouter un dépôt, parmi les versions
         INSTALLÉES qui ont un manifeste : sans question quand il n'y en a
-        qu'une, sinon tapée, l'active par défaut. None sur un refus."""
+        qu'une, sinon choisie par son numéro ou son nom, l'active, ou la
+        dernière, par défaut. None sur un retour, ou sans aucun manifeste,
+        après un avis qui le dit."""
         versions = manifest_repo.versions_installees(RACINE)
+        if not versions:
+            print(f"⚠ {t('No Odoo version has a manifest.')}")
+            return None
         if len(versions) == 1:
             print(f"  {t('Odoo version')} : {versions[0]}")
             return versions[0]
         actif = repo_upgrade.version_active(RACINE)
         defaut = actif if actif in versions else versions[-1]
-        saisie = input(
-            f"{t('Odoo version')} ({', '.join(versions)}) [{defaut}] : "
-        ).strip()
-        version = saisie or defaut
-        if version not in versions:
-            print(
-                f"⚠ {version} : {t('not an installed version with a manifest.')}"
-            )
-            return None
-        return version
+        return ui.choose(t("Odoo version:"), versions, default=defaut)
 
     def _git_choisir_visibilite(self):
         """Vrai pour le manifeste privé, faux pour le public, None pour
-        annuler. Aucun défaut : un dépôt de client déclaré par réflexe dans
-        le manifeste public partirait avec ERPLibre."""
-        print(f"  [1] {t('Public: manifest/, published with ERPLibre.')}")
-        print(
-            f"  [2] {t('Private: private/manifest/, only in a private repository.')}"
+        [0], une réponse vide ou Ctrl+D. Aucun défaut : un dépôt de client
+        déclaré par réflexe dans le manifeste public partirait avec
+        ERPLibre."""
+        return ui.choose(
+            t("Public or private?"),
+            [False, True],
+            labels=[
+                t("Public: manifest/, published with ERPLibre."),
+                t("Private: private/manifest/, only in a private repository."),
+            ],
         )
-        choix = input(t("Public or private? (1/2, Enter: cancel): ")).strip()
-        if choix not in ("1", "2"):
-            return None
-        return choix == "2"
 
     def _git_question_gel(self, defaut):
-        """La réponse à « le geler ? », `defaut` sur Entrée."""
+        """La réponse à « le geler ? », `defaut` sur Entrée, None sur
+        Ctrl+D : rien n'est encore écrit, l'appelant revient."""
         invite = (
             "Freeze it on the head of the branch? (Y/n): "
             if defaut
             else "Freeze it on the head of the branch? (y/N): "
         )
-        reponse = input(t(invite)).strip()
+        reponse = self._git_repondre(t(invite))
+        if reponse is None:
+            return None
         return self._is_yes(reponse) if reponse else defaut
 
     def _git_ajouter_depot(self):
         """Ajoute un dépôt au manifeste public ou privé de la version
         choisie, sur la branche que l'hôte annonce, puis propose de forker
-        un dépôt GitHub public. Rend 0, ou 2 sur un refus."""
+        un dépôt GitHub public. Rend 0, ou 2 sur un refus ; Ctrl+D, à
+        chaque question après l'URL, rend 0 sans rien écrire de plus."""
         url = input(t("URL of the repository to add: ")).strip()
         if not url:
             return 0
@@ -330,7 +356,7 @@ class GitForkMenuMixin:
             return 2
         version = self._git_choisir_version_installee()
         if not version:
-            return 2
+            return 0
         prive = self._git_choisir_visibilite()
         if prive is None:
             return 0
@@ -342,9 +368,12 @@ class GitForkMenuMixin:
             print(
                 f"⚠ {t('Host unreachable, or a private repository git cannot read without credentials.')}"
             )
-            if not self._is_yes(
-                input(t("Add it without checking the branch? (y/N): "))
-            ):
+            reponse = self._git_repondre(
+                t("Add it without checking the branch? (y/N): ")
+            )
+            if reponse is None:
+                return 0
+            if not self._is_yes(reponse):
                 return 2
         else:
             print(
@@ -352,15 +381,19 @@ class GitForkMenuMixin:
                 f" · {t('default branch')} : {defaut or '-'}"
             )
         proposee = manifest_repo.branche_proposee(version, disponibles, defaut)
-        branche = (
-            input(f"{t('Branch to follow')} [{proposee}] : ").strip()
-            or proposee
+        branche = self._git_repondre(
+            f"{t('Branch to follow')} [{proposee}] : "
         )
+        if branche is None:
+            return 0
+        branche = branche or proposee
         geler = False
         if verifier:
             geler = self._git_question_gel(
                 manifest_repo.gel_par_defaut(version)
             )
+            if geler is None:
+                return 0
         try:
             fichier, plan, gel = manifest_repo.ajouter_depot(
                 url,
@@ -390,7 +423,10 @@ class GitForkMenuMixin:
         )
         if prive or not github_fork.depot_github(url):
             return 0
-        if self._is_yes(input(t("Fork it for an organisation now? (y/N): "))):
+        reponse = self._git_repondre(
+            t("Fork it for an organisation now? (y/N): ")
+        )
+        if reponse is not None and self._is_yes(reponse):
             _remotes, liste = projets_github(version)
             choix = next(
                 (r for r in liste if r[0].get("path") == plan["path"]), None
@@ -462,7 +498,7 @@ class GitForkMenuMixin:
             if not (prefixe.startswith("odoo") and version in versions):
                 version = self._git_choisir_version_installee()
                 if not version:
-                    return 2
+                    return 0
         try:
             infos = manifest_repo.lire_clone(os.path.join(RACINE, chemin))
         except ValueError as exc:
@@ -481,6 +517,8 @@ class GitForkMenuMixin:
             geler = self._git_question_gel(
                 manifest_repo.gel_par_defaut(version)
             )
+            if geler is None:
+                return 0
         else:
             print(
                 f"⚠ {t('HEAD is not pushed: the repository is added without a freeze.')}"
@@ -527,20 +565,27 @@ class GitForkMenuMixin:
 
     def _git_creer_branche(self):
         """Crée une branche dans le clone choisi, s'y place, et la pousse
-        vers le remote tapé, si un est tapé. Rend 0, ou 2 sur un échec."""
+        vers le remote tapé, si un est tapé. Rend 0, ou 2 sur un échec ;
+        Ctrl+D à l'une des trois valeurs rend 0 sans rien créer."""
         choix = self._git_choisir_clone()
         if choix is None:
             return 0
         _remotes, projet, chemin = choix
-        nom = input(t("Name of the new branch: ")).strip()
+        nom = self._git_repondre(t("Name of the new branch: "))
         if not nom:
             return 0
-        depart = input(t("Start from (Enter: the current commit): ")).strip()
+        depart = self._git_repondre(
+            t("Start from (Enter: the current commit): ")
+        )
+        if depart is None:
+            return 0
         remotes = manifest_repo.remotes_du_clone(chemin)
-        pousser = input(
+        pousser = self._git_repondre(
             f"{t('Push it to the remote (Enter: no push)')}"
             f" ({', '.join(remotes) or '-'}) : "
-        ).strip()
+        )
+        if pousser is None:
+            return 0
         if pousser and pousser not in remotes:
             print(f"⚠ {pousser} : {t('no such remote in this clone.')}")
             return 2
@@ -644,7 +689,7 @@ class GitForkMenuMixin:
 
     def _git_choisir_projet_version(self):
         """(version, projet) choisi parmi les projets du manifeste de la
-        version tapée (l'active par défaut), ou None."""
+        version choisie (l'active par défaut), ou None."""
         version = self._git_choisir_version(
             repo_upgrade.version_active(RACINE)
         )
@@ -657,16 +702,16 @@ class GitForkMenuMixin:
 
     def _git_retirer_depot(self):
         """Retire un projet du manifeste de la version choisie, puis
-        propose de retirer son clone. Rend 0, ou 2 sur un refus."""
+        propose de retirer son clone. Rend 0, ou 2 sur un refus ; Ctrl+D
+        vaut non à chacune des deux questions."""
         choix = self._git_choisir_projet_version()
         if choix is None:
             return 0
         version, projet = choix
-        if not self._is_yes(
-            input(
-                f"{t('Remove from the manifest')} {version} : {projet['path']} ? (y/N): "
-            )
-        ):
+        reponse = self._git_repondre(
+            f"{t('Remove from the manifest')} {version} : {projet['path']} ? (y/N): "
+        )
+        if reponse is None or not self._is_yes(reponse):
             return 0
         try:
             fichier, _p, remote = manifest_repo.retirer_depot(
@@ -678,13 +723,14 @@ class GitForkMenuMixin:
         print(
             f"  ✓ {os.path.relpath(fichier, RACINE)}{' · remote ' + remote if remote else ''}"
         )
-        if version == repo_upgrade.version_active(RACINE) and self._is_yes(
-            input(
+        local = version == repo_upgrade.version_active(RACINE) and (
+            self._git_repondre(
                 t(
                     "Remove the local clone too? repo keeps it if it holds uncommitted work. (y/N): "
                 )
             )
-        ):
+        )
+        if local and self._is_yes(local):
             return self._git_lancer(
                 manifest_repo.commandes_synchro(RACINE, local=True)
             )
@@ -709,7 +755,11 @@ class GitForkMenuMixin:
         if choix is None:
             return 0
         _remotes, projet, _chemin = choix
-        sha = input(t("Commit to freeze (Enter: HEAD of the clone): ")).strip()
+        sha = self._git_repondre(
+            t("Commit to freeze (Enter: HEAD of the clone): ")
+        )
+        if sha is None:
+            return 0
         version = repo_upgrade.version_active(RACINE)
         try:
             res = manifest_repo.regeler(
@@ -733,18 +783,26 @@ class GitForkMenuMixin:
         """Les branches fusionnées d'un clone, dans la base du manifeste ou
         par une pull request fusionnée : supprimées en local, puis sur
         chaque remote de fork, chacun après sa propre confirmation. Rend
-        le nombre de branches supprimées, ou None."""
+        le nombre de branches supprimées, ou None. Ctrl+D à une question
+        revient : avant le plan, sans rien récupérer ; à une confirmation,
+        sans supprimer ce groupe ni les suivants."""
         choix = self._git_choisir_clone()
         if choix is None:
             return None
         remotes, projet, chemin = choix
-        fetch = self._is_yes_default_yes(
-            input(t("Fetch the remotes first, with prune? (Y/n): "))
+        fetch = self._git_repondre(
+            t("Fetch the remotes first, with prune? (Y/n): ")
         )
+        if fetch is None:
+            return None
+        fetch = self._is_yes_default_yes(fetch)
+        squash = self._git_repondre(
+            t("Also ask GitHub for branches merged by squash? (y/N): ")
+        )
+        if squash is None:
+            return None
         client = None
-        if self._is_yes(
-            input(t("Also ask GitHub for branches merged by squash? (y/N): "))
-        ):
+        if self._is_yes(squash):
             client = self._git_client()
             if client is None:
                 return None
@@ -778,7 +836,10 @@ class GitForkMenuMixin:
                 if remote is None
                 else f"{t('Delete these branches on the server')} {remote} ? (y/N) : "
             )
-            if not self._is_yes(input(question)):
+            reponse = self._git_repondre(question)
+            if reponse is None:
+                return supprimees
+            if not self._is_yes(reponse):
                 continue
             resultats = manifest_repo.supprimer_branches(
                 chemin,

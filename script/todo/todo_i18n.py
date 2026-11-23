@@ -2434,9 +2434,9 @@ TRANSLATIONS = {
         "fr": "Privé : private/manifest/, seulement dans un dépôt privé.",
         "en": "Private: private/manifest/, only in a private repository.",
     },
-    "Public or private? (1/2, Enter: cancel): ": {
-        "fr": "Public ou privé ? (1/2, Entrée : annuler) : ",
-        "en": "Public or private? (1/2, Enter: cancel): ",
+    "Public or private?": {
+        "fr": "Public ou privé ?",
+        "en": "Public or private?",
     },
     "Public: manifest/, published with ERPLibre.": {
         "fr": "Public : manifest/, publié avec ERPLibre.",
@@ -2466,10 +2466,6 @@ TRANSLATIONS = {
     "default branch": {
         "fr": "branche par défaut",
         "en": "default branch",
-    },
-    "not an installed version with a manifest.": {
-        "fr": "pas une version installée avec un manifeste.",
-        "en": "not an installed version with a manifest.",
     },
     "pushed": {
         "fr": "poussé",
@@ -3032,6 +3028,10 @@ TRANSLATIONS = {
         "fr": "aucun manifeste pour cette version.",
         "en": "no manifest for this version.",
     },
+    "No Odoo version has a manifest.": {
+        "fr": "Aucune version d'Odoo n'a de manifeste.",
+        "en": "No Odoo version has a manifest.",
+    },
     "Not a GitHub repository URL.": {
         "fr": "Ce n'est pas l'URL d'un dépôt GitHub.",
         "en": "Not a GitHub repository URL.",
@@ -3078,9 +3078,9 @@ TRANSLATIONS = {
         "fr": "Aucun dépôt ne correspond.",
         "en": "No repository matches.",
     },
-    "Repository number, Enter for none: ": {
-        "fr": "Numéro du dépôt, Entrée pour aucun : ",
-        "en": "Repository number, Enter for none: ",
+    "Which repository?": {
+        "fr": "Quel dépôt ?",
+        "en": "Which repository?",
     },
     "Organisation (or GitHub account) that receives the fork: ": {
         "fr": "Organisation (ou compte GitHub) qui reçoit le fork : ",

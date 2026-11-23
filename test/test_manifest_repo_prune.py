@@ -201,6 +201,21 @@ class TestLeMenu(Clone):
         self.assertEqual(self.lancer(["", "", "", ""]), 0)
         self.assertIn("fait", git(self.c, "branch"))
 
+    def test_ctrl_d_at_a_confirmation_deletes_nothing_more(self):
+        # Ctrl+D à la confirmation locale : ni elle ni celle du serveur.
+        self.assertEqual(self.lancer(["n", "", EOFError()]), 0)
+        self.assertIn("fait", git(self.c, "branch"))
+        self.assertIn("fait", git(self.perso, "branch"))
+
+    def test_ctrl_d_before_the_plan_fetches_nothing(self):
+        for reponses in ([EOFError()], ["n", EOFError()]):
+            with (
+                self.subTest(reponses=reponses),
+                mock.patch.object(gm.manifest_repo, "plan_nettoyage") as plan,
+            ):
+                self.assertIsNone(self.lancer(reponses))
+                plan.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
