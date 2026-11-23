@@ -277,26 +277,26 @@ def jouer(
     try:
         dit, _ = processus.communicate(entree, timeout=delai)
     except subprocess.TimeoutExpired as souci:
-        abat(processus, groupe=capture)
+        _abat(processus, groupe=capture)
         # CE QUI A DÉJÀ ÉTÉ DIT EST GARDÉ. Jeté, le verdict d'un déploiement
         # qui a tourné une heure en imprimant son avancement devenait celui
         # d'un binaire introuvable. Il arrive en OCTETS, `text` ou non : la
         # bibliothèque ne décode que la sortie d'un processus terminé.
-        return Verdict(None, en_texte(souci.output) if capture else "")
+        return Verdict(None, _en_texte(souci.output) if capture else "")
     except BaseException:
-        abat(processus, groupe=capture)
+        _abat(processus, groupe=capture)
         raise
     return Verdict(processus.returncode, dit or "")
 
 
-def en_texte(lu):
+def _en_texte(lu):
     """`lu` en texte, qu'il arrive en octets, en texte ou pas du tout."""
     if isinstance(lu, bytes):
         return lu.decode("utf-8", errors="replace")
     return lu or ""
 
 
-def abat(processus, groupe=False, grace=5):
+def _abat(processus, groupe=False, grace=5):
     """Arrête `processus`, et tout son groupe si `groupe`. Ne lève jamais.
 
     TERM d'abord, pour qu'un outil range ce qu'il tient ; KILL après `grace`
