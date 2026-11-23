@@ -1002,12 +1002,11 @@ class TestItRuns(unittest.TestCase):
 
     def test_el_xrdp_fallback_enables_epel_first(self):
         """GNOME 40 d'EL 9 n'a pas grdctl : le repli prend xrdp dans EPEL,
-        que la saveur GNOME n'active pas d'elle-même."""
+        que la tête de la branche dnf active pour toute saveur avant
+        l'installation."""
         self.vm.stub("dnf")
         self.vm.stub("crb")
-        cmd = _cmd("gnome", distro="almalinux", version="9").replace(
-            "/usr/bin/crb", "crb"
-        )
+        cmd = _cmd("gnome", distro="almalinux", version="9")
         rc, out, log = self.vm.run(cmd, "almalinux")
         self.assertEqual(0, rc, out)
         self.assertLess(
@@ -1268,9 +1267,7 @@ class TestNewFlavoursRun(unittest.TestCase):
     def test_el_enables_epel_and_crb_before_the_desktop(self):
         self.vm.stub("dnf")
         self.vm.stub("crb")
-        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
-            "/usr/bin/crb", "crb"
-        )
+        cmd = _cmd("plasma", distro="almalinux", version="10")
         rc, out, log = self.vm.run(cmd, "almalinux")
         self.assertEqual(0, rc, out)
         self.assertLess(
@@ -1287,9 +1284,7 @@ class TestNewFlavoursRun(unittest.TestCase):
         deux : il tourne en mode Plasma, RemoteFX gardé."""
         self.vm.stub("dnf")
         self.vm.stub("crb")
-        cmd = _cmd("plasma", distro="almalinux", version="10").replace(
-            "/usr/bin/crb", "crb"
-        )
+        cmd = _cmd("plasma", distro="almalinux", version="10")
         rc, out, _log = self.vm.run(cmd, "almalinux")
         self.assertEqual(0, rc, out)
         d = (
@@ -1684,9 +1679,7 @@ class TestNewFlavoursRun(unittest.TestCase):
     def test_el9_cinnamon_is_a_package_list_and_xrdp_only_warns(self):
         self.vm.stub("dnf", 'case "$*" in *xrdp*) exit 1;; esac')
         self.vm.stub("crb")
-        cmd = _cmd("cinnamon", distro="rocky", version="9").replace(
-            "/usr/bin/crb", "crb"
-        )
+        cmd = _cmd("cinnamon", distro="rocky", version="9")
         rc, out, log = self.vm.run(cmd, "rocky")
         self.assertEqual(0, rc, out)
         self.assertIn(
@@ -1719,9 +1712,7 @@ class TestNewFlavoursRun(unittest.TestCase):
                         )
                         self.vm.stub("dnf")
                         self.vm.stub("crb")
-                        cmd = _cmd(
-                            flavour, distro=distro, version=version
-                        ).replace("/usr/bin/crb", "crb")
+                        cmd = _cmd(flavour, distro=distro, version=version)
                         rc, out, log = self.vm.run(cmd, distro)
                         self.assertEqual(0, rc, out)
                         ligne = attendus[(flavour, version)]

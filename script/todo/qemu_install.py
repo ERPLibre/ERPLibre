@@ -1810,10 +1810,12 @@ class QemuInstallMixin:
         Rocky, CentOS Stream, RHEL — ID ou ID_LIKE contient « rhel »), et ne
         fait rien ailleurs, Fedora comprise, où EPEL n'existe pas.
 
-        Le groupe « cinnamon-desktop » et xrdp ne sont pas dans les dépôts de
-        base de cette famille : EPEL les porte, et demande CRB pour une
-        partie de leurs dépendances. D'où un appel AVANT la cascade des
-        environnements. Même ordre d'essais que install_fedora_dependency.sh :
+        xrdp et les bureaux d'EL autres que GNOME (Cinnamon, Xfce et i3 sur
+        EL 9, Plasma et KRdp sur EL 10) ne sont pas dans les dépôts de base
+        de cette famille : EPEL les porte, et demande CRB pour une partie de
+        leurs dépendances. D'où un appel en tête de la branche dnf, avant la
+        ligne de la saveur comme avant la cascade des environnements. Même
+        ordre d'essais que install_fedora_dependency.sh :
         « crb », qui vient avec epel-release, puis « config-manager » en
         repli. « crb » se cherche dans le PATH, et non par un chemin absolu,
         pour qu'un banc d'essai le remplace. Aucun échec ici n'arrête le

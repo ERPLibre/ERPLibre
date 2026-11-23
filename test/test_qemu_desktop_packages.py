@@ -37,6 +37,7 @@ from script.todo.todo import TODO  # noqa: E402
 
 _FEDORA = 'ID=fedora\nVERSION_ID="42"\n'
 _ALMA = 'ID="almalinux"\nID_LIKE="rhel centos fedora"\nVERSION_ID="10.1"\n'
+_ALMA9 = 'ID="almalinux"\nID_LIKE="rhel centos fedora"\nVERSION_ID="9.6"\n'
 
 # Faux dnf piloté par l'environnement :
 #   DE_ENVS     environnements que « group install » sait installer
@@ -58,6 +59,10 @@ case "$*" in
   *"install -y epel-release"*)
     touch "$BIN/.epel"; exit 0;;
   *"config-manager"*) exit 0;;
+  *" install @"*)
+    # Ligne de paquets d'une saveur (EL 9, Fedora) : le bureau est posé.
+    [ -n "$DE_NOSHELL" ] || { printf '#!/bin/sh\n' > "$BIN/$SHELL_BIN"; chmod +x "$BIN/$SHELL_BIN"; }
+    exit 0;;
   *"install -y xrdp"*)
     if [ "$XRDP_FROM" = base ] || { [ "$XRDP_FROM" = epel ] && [ -e "$BIN/.epel" ]; }; then
       printf '#!/bin/sh\n' > "$BIN/xrdp"; chmod +x "$BIN/xrdp"; exit 0
@@ -87,10 +92,15 @@ class _DesktopRun(unittest.TestCase):
     """Exécute le bloc du bureau avec « set -e », comme la commande distante."""
 
     flavour = "gnome"
+    # Vides : la ligne par défaut de la saveur, ou la cascade de groupes.
+    distro = ""
+    version = ""
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
-        self.cmd = self.todo._qemu_desktop_remote_cmd(self.flavour, "deb")
+        self.cmd = self.todo._qemu_desktop_remote_cmd(
+            self.flavour, "deb", distro=self.distro, version=self.version
+        )
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.bin = pathlib.Path(self.tmp) / "bin"
@@ -207,8 +217,18 @@ class TestTheBlockIsValidShell(unittest.TestCase):
     def test_every_flavour_names_its_probe(self):
         """La sonde est le binaire du bureau lui-même : un groupe de paquets
         peut réussir sans l'apporter."""
-        self.assertEqual("gnome-shell", TODO._QEMU_DESKTOP["gnome"]["probe"])
-        self.assertEqual("cinnamon", TODO._QEMU_DESKTOP["cinnamon"]["probe"])
+        self.assertEqual(
+            {
+                "gnome": "gnome-shell",
+                "cinnamon": "cinnamon",
+                "plasma": "plasmashell",
+                "xfce": "xfce4-session",
+                "cosmic": "cosmic-session",
+                "hyprland": "Hyprland",
+                "i3": "i3",
+            },
+            {k: d["probe"] for k, d in TODO._QEMU_DESKTOP.items()},
+        )
 
     def test_every_xrdp_lookup_also_reads_sbin(self):
         """Chaque « command -v xrdp » du bloc a son pendant /usr/sbin."""
@@ -280,8 +300,8 @@ class TestDnfRemoteAccessOnRhelFamily(_DnfRun):
         self.assertIn("RDP 3389", res.stdout)
 
     def test_epel_comes_before_the_desktop(self):
-        """Le groupe « cinnamon-desktop » vient d'EPEL : activé après la
-        cascade, il ne serait jamais disponible."""
+        """EPEL et CRB précèdent toute installation de bureau : activés
+        après, les paquets que porte EPEL ne seraient jamais disponibles."""
         _, calls = self.run_block(
             _ALMA, DE_ENVS="graphical-server-environment"
         )
@@ -387,6 +407,55 @@ class TestCinnamonProbe(_DnfRun):
             any("⚠" in ln and "xrdp" in ln for ln in res.stdout.splitlines()),
             res.stdout,
         )
+        self.assertIn("set-default graphical.target", calls)
+
+
+class TestEl9CinnamonLine(_DnfRun):
+    """Le vrai chemin d'AlmaLinux 9 : Cinnamon y est une ligne de paquets
+    d'EPEL, sans groupe comps."""
+
+    flavour = "cinnamon"
+    distro = "almalinux"
+    version = "9"
+
+    def test_epel_then_the_line_then_xrdp(self):
+        res, calls = self.run_block(_ALMA9)
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+        self.assertLess(
+            calls.index("install -y epel-release"),
+            calls.index("install @base-x cinnamon"),
+        )
+        self.assertNotIn("group install", calls)
+        self.assertIn("restart xrdp", calls)
+
+    def test_a_line_without_the_binary_fails(self):
+        res, calls = self.run_block(_ALMA9, DE_NOSHELL="1")
+        self.assertNotEqual(0, res.returncode, res.stdout)
+        failures = _failures(res.stdout)
+        self.assertEqual(1, len(failures), res.stdout)
+        self.assertIn("cinnamon", failures[0])
+        self.assertNotIn("set-default graphical.target", calls)
+
+
+class TestXfceProbe(_DnfRun):
+    """Une saveur ajoutée après GNOME et Cinnamon tranche aussi par son
+    propre binaire."""
+
+    flavour = "xfce"
+    distro = "fedora"
+    version = "44"
+
+    def test_xfce_without_its_session_fails(self):
+        res, calls = self.run_block(DE_NOSHELL="1")
+        self.assertNotEqual(0, res.returncode, res.stdout)
+        failures = _failures(res.stdout)
+        self.assertEqual(1, len(failures), res.stdout)
+        self.assertIn("xfce4-session", failures[0])
+        self.assertNotIn("set-default graphical.target", calls)
+
+    def test_xfce_with_its_session_succeeds(self):
+        res, calls = self.run_block()
+        self.assertEqual(0, res.returncode, res.stdout + res.stderr)
         self.assertIn("set-default graphical.target", calls)
 
 
