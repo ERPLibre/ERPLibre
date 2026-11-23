@@ -62,6 +62,7 @@ class TestLesExclusions(unittest.TestCase):
             "odoo12.0/odoo/odoo/invented.py",
             "addons/invented_repo/invented_module/models.py",
             "script/OCA_maintainer-tools/invented.py",
+            "script/gnome-extension/erplibre_home/invented.py",
         ):
             with self.subTest(chemin=chemin):
                 self.assertFalse(formate(chemin))

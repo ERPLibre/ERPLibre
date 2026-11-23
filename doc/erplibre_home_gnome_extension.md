@@ -1,0 +1,137 @@
+
+# The ERPLibre Home GNOME extension in ERPLibre
+
+The ERPLibre Home GNOME extension is a repository of its own,
+[erplibre-home-gnome-extension](https://github.com/TechnoLibre/erplibre-home-gnome-extension),
+which runs without ERPLibre; its `README.md` says how. This page covers
+what ERPLibre adds: where the extension lives in a checkout, how it arrives
+and follows new commits, what ERPLibre runs of it, and how to change it.
+`CONTRACT.md`, at the root of the extension, states what each side relies
+on.
+
+## In a checkout
+
+The extension is a Google Repo project at
+`script/gnome-extension/erplibre_home/`, which ERPLibre's git ignores, and
+is linked as
+`~/.local/share/gnome-shell/extensions/erplibre-home@technolibre.ca`.
+`manifest/git_manifest_erplibre_home_gnome_extension.xml` points at its
+`main` branch: a checkout gets the latest extension at each update.
+`script/gnome-extension/erplibre_home_contract` holds the contract version
+ERPLibre is written against, and
+`test/test_erplibre_home_extension_repo.py` fails when the checkout's MAJOR
+differs. ERPLibre's tests read from the checkout only what its
+`CONTRACT.md` states, with the values it gives
+(`test/erplibre_home_extension.py`): the extension's code may change shape
+as long as its own tests hold it to the contract.
+
+Google Repo brings it two ways:
+
+- **The manifest update.** `conf/git_manifest_erplibre_home.csv` names the
+  manifest, in the group `erplibre_home`, apart from the Stream Deck's: the
+  base installs without the deck. `git_merge_repo_manifest.py` adds it
+  when `script/gnome-extension/erplibre_home` exists, or with
+  `--with_erplibre_home`; an Odoo server never gets it. Every
+  `script/manifest/update_manifest_*.sh` then syncs it to `main`.
+- **The installer**, at both levels:
+
+```
+make erplibre_home_install
+```
+
+  It takes `repo` from `.venv.erplibre`, so
+  `./script/install/install_erplibre.sh` comes first
+  (`./script/install/install_git_repo.sh` adds `bin/repo` when only that
+  is missing). A checkout without `.repo` gets one `repo init
+  --standalone-manifest`, never a second one. The installer adds the
+  extension's project to `.repo/local_manifests/erplibre_manifest.xml`,
+  removing nothing from that file, then runs `repo sync` on that path
+  alone, at each run, before it reads the GNOME versions `metadata.json`
+  supports. A directory there that is not a repo checkout, a plain git
+  clone or a copy, is moved aside whole to
+  `script/gnome-extension/erplibre_home.avant-repo-<date>/`, named in the
+  summary, and put back when the sync fails: the directory the session
+  loads is never left missing or empty. On a repo checkout, a failed sync
+  leaves the extension as it is, and the summary says "NOT updated". The
+  installer stops before any sync when a pending manifest change would
+  make repo remove a project: `make` comes first then. The base therefore
+  needs `git`, `.venv.erplibre` and GitHub; `--extension-only`
+  (`make erplibre_home_install_extension`) syncs too, and `--uninstall`
+  removes neither the checkout, nor `.repo`, nor the local manifest.
+
+## What ERPLibre runs of it
+
+The installer links the checkout, runs `tools/migrate_legacy.py`, compiles
+`schemas/` and each `po/<lang>.po`, and enables the extension through
+`tools/enable_next_login.py`. The make targets
+`erplibre_home_enable_extension`, `erplibre_home_dev_nested`,
+`erplibre_home_e2e_nested`, `erplibre_home_compile_locale`,
+`extension_i18n_compile`, `claude_install_hooks` and `test_gnome_extension`
+run one of its files: without the checkout each stops on one line naming
+`make erplibre_home_install_extension`, which syncs it without requiring
+GNOME Shell. `make test_full_fast` runs the extension's suites when the
+checkout is there and announces them skipped otherwise. The Stream Deck
+program, the controller, the translator and the TODO menu talk to the
+running extension over D-Bus and degrade when it does not answer. The
+extension, in turn, finds the ERPLibre checkout from its own path and runs
+the deck program and the controller from there.
+
+## Older ERPLibre commits
+
+ERPLibre commits older than the extension's move to its own repository
+track its files at this same path, and so do the branches made from them.
+Git treats the files it ignores as expendable: checking out such a branch
+or commit writes its versions over the clone's files without asking, and
+uncommitted changes to the extension are lost. Checking a newer commit out
+again deletes those files, and the directory the session loads keeps only
+`.git` and what the clone does not track. A bisect across that move does
+the same.
+
+Work on such a branch in its own worktree, `git worktree add <dir>
+<branch>`, and merge the current branch into it there; once merged, it no
+longer tracks the extension. When it happened, restore the clone's files
+from its own history:
+
+```
+git -C script/gnome-extension/erplibre_home checkout -- .
+```
+
+The `post-checkout` hook of `script/git/hooks` (`git config core.hooksPath
+script/git/hooks`) prints that command after a checkout from or to a
+commit that tracks the extension. It restores nothing itself: it cannot
+tell an overwrite from a wanted change.
+
+## Changing the extension
+
+A commit pushed to `main` of erplibre-home-gnome-extension reaches every
+checkout at its next update. Run the extension's tests first, in its
+directory:
+
+```
+node --test test/unit/*.test.js
+python3 -m unittest discover -s test/python
+git push TechnoLibre HEAD:main
+```
+
+`make test_gnome_extension`, from the ERPLibre root, runs the same suites
+after a strict check of the schema. A change the other side can see bumps
+the contract version in `CONTRACT.md`, as `CONTRACT.md` says. A MINOR bump
+needs nothing else; record it in ERPLibre's `erplibre_home_contract` when
+convenient. A MAJOR bump breaks the checkouts until ERPLibre follows: push
+the ERPLibre side, with `erplibre_home_contract` set to the new version,
+together with it.
+
+`script/gnome-extension/erplibre_home/` is a Google Repo project of
+erplibre-home-gnome-extension: its `.git` links into `.repo/`, and its
+remote is named after the manifest's, `TechnoLibre`, over https. Work on a
+branch that `repo start <branch> script/gnome-extension/erplibre_home`
+starts, commit, and push it (`git push TechnoLibre <branch>`; for SSH, set
+`url.git@github.com:.pushInsteadOf https://github.com/` in git's config).
+Each installer run and each manifest update syncs it by repo's own rules:
+a branch started by `repo start` keeps its commits, rebased on the new
+`main`; a detached HEAD moves to `main`, leaving the commits made on it
+(`git reflog` still finds them); a sync repo refuses, uncommitted changes
+in the way or a rebase conflict, leaves the checkout as it is, and the
+installer says "NOT updated". The running GNOME session keeps the code it
+loaded: `make erplibre_home_reload` loads a new copy under Wayland without
+logging out.
