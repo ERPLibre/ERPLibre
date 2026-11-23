@@ -37,7 +37,10 @@ DATABASE = Menu(
             "download_database_backup_cli",
         ),
         Section("Restore"),
-        Entry("Restore from backup (.zip)", "restore_from_database"),
+        # Supprime d'abord la base de même nom, sans le dire : `danger`.
+        Entry(
+            "Restore from backup (.zip)", "restore_from_database", danger=True
+        ),
         Section("Duplicate"),
         Entry("Duplicate a database", "duplicate_database"),
         Section("Danger zone"),

@@ -25,10 +25,12 @@ GIT = Menu(
         # Settings ou Tools selon leur « menu_group » : Tools prend aussi
         # ceux qui n'en portent pas, comme en écrit « Ajouter une
         # automatisation », ou au groupe inconnu. Un élément peut nommer la
-        # méthode qui le lance. Aucune section ne passe cinq entrées. Une
-        # entrée qui retire un dépôt d'un manifeste, supprime des branches
-        # ou archive des forks porte `danger`, chacune après sa propre
-        # confirmation.
+        # méthode qui le lance. Aucune section ne passe cinq entrées.
+        # Portent `danger` les entrées qui retirent un dépôt d'un manifeste,
+        # suppriment des branches ou archivent des forks, même après leur
+        # propre confirmation, et celles qui agissent sans rien demander
+        # après le choix : synchroniser un clone par `repo sync`, geler un
+        # dépôt dans un manifeste suivi, avancer des forks sur GitHub.
         Section("Repositories"),
         Entry("🔃 Update git repo", "prompt_execute_git_repo"),
         FromConfig(
@@ -37,8 +39,16 @@ GIT = Menu(
             "instance",
             only=["repositories"],
         ),
-        Entry("🔄 Synchronise one repository", "_git_synchroniser_depot"),
-        Entry("🧊 Freeze one repository on a commit", "_git_regeler_depot"),
+        Entry(
+            "🔄 Synchronise one repository",
+            "_git_synchroniser_depot",
+            danger=True,
+        ),
+        Entry(
+            "🧊 Freeze one repository on a commit",
+            "_git_regeler_depot",
+            danger=True,
+        ),
         Section("Manifest"),
         Entry("➕ Add a repository to a manifest", "_git_ajouter_depot"),
         Entry(
@@ -61,6 +71,7 @@ GIT = Menu(
         Entry(
             "⏩ Update forks from their upstream on GitHub",
             "_git_mettre_forks_a_jour",
+            danger=True,
         ),
         Entry(
             "🪦 List the orphan forks of an organisation",
@@ -261,7 +272,11 @@ GIT_LOCAL_SERVER = Menu(
 
 # Les deux menus Actions ne diffèrent que par leur intro, par le
 # `production_ready` que chaque entrée passe à `_deploy_git_server` et par
-# `danger`, que portent les actions de production : elles tournent en root.
+# `danger`. Les actions de production le portent toutes : elles tournent en
+# root. En local, tout le porte sauf Init, qui n'écrit que sous
+# ~/.git-server : Remote et Push ajoutent un remote à chaque dépôt du
+# checkout ou y poussent, Serve ouvre les dépôts nus à la lecture et au
+# push anonymes sur toutes les interfaces, chacun sans rien demander.
 GIT_SERVER_LOCAL = Menu(
     "_prompt_git_server_local",
     "Actions",
@@ -270,6 +285,7 @@ GIT_SERVER_LOCAL = Menu(
             "Run all (init + remote + push + serve)",
             "_deploy_git_server",
             kwargs={"production_ready": False, "action": "all"},
+            danger=True,
         ),
         Entry(
             "Init - Create bare repos",
@@ -280,16 +296,19 @@ GIT_SERVER_LOCAL = Menu(
             "Remote - Add local remotes",
             "_deploy_git_server",
             kwargs={"production_ready": False, "action": "remote"},
+            danger=True,
         ),
         Entry(
             "Push - Push to local server",
             "_deploy_git_server",
             kwargs={"production_ready": False, "action": "push"},
+            danger=True,
         ),
         Entry(
             "Serve - Start git daemon",
             "_deploy_git_server",
             kwargs={"production_ready": False, "action": "serve"},
+            danger=True,
         ),
     ],
     intro="Local mode (~/.git-server)",
@@ -342,9 +361,11 @@ GPT_CODE = Menu(
         Entry(
             "Configure Claude Code configurations", "_prompt_claude_configs"
         ),
+        # Réécrit script/todo/todo.json, suivi par git, sans confirmation.
         Entry(
             "Add an automation with Claude in todo.py",
             "_claude_add_automation",
+            danger=True,
         ),
         Entry(
             "RTK - CLI proxy to reduce LLM token consumption",

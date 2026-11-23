@@ -10,9 +10,10 @@ et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
 nomme la méthode publique de celui-ci, le `name` de son `Menu`.
 
 Un installateur, qui pose des paquets ou un service, ici ou sur un hôte
-distant, porte `danger`, comme une entrée qui efface ou qui réécrit la
-configuration SSH du compte : ni la TUI de télémétrie ni la page web ne
-le lancent, son menu seul.
+distant, porte `danger`, comme une entrée qui efface, qui réécrit la
+configuration SSH du compte, qui crée de vraies machines ou qui agit
+sur une machine sans rien demander. Ni la TUI de télémétrie ni la page
+web ne lancent une entrée `danger`, son menu seul.
 """
 
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
@@ -72,11 +73,13 @@ SSH = Menu(
         Entry("SSH - Sync files (rsync)", "_deploy_ssh_push", danger=True),
         Entry("SSH - Install ERPLibre", "_deploy_ssh_install", danger=True),
         Entry("SSH - Start Odoo", "_deploy_ssh_run"),
-        Entry("SSH - Stop Odoo", "_deploy_ssh_stop"),
-        Entry("SSH - Restart Odoo", "_deploy_ssh_restart"),
+        # Arrêter ou relancer Odoo, et la cible make tapée, agissent sur
+        # l'hôte distant sans rien demander.
+        Entry("SSH - Stop Odoo", "_deploy_ssh_stop", danger=True),
+        Entry("SSH - Restart Odoo", "_deploy_ssh_restart", danger=True),
         Entry("SSH - Service status", "_deploy_ssh_status"),
         Entry("SSH - View logs", "_deploy_ssh_logs"),
-        Entry("SSH - Run make target", "_deploy_ssh_make"),
+        Entry("SSH - Run make target", "_deploy_ssh_make", danger=True),
         Entry(
             "SSH - Install systemd service",
             "_deploy_ssh_install_systemd",
@@ -97,10 +100,14 @@ QEMU = Menu(
     "QEMU/KVM",
     [
         Section("Deployment"),
+        # Crée des VM par sudo et, par défaut, ajoute chacune à
+        # ~/.ssh/config, comme son jumeau de Proxmox VE : `danger`.
+        # L'aperçu n'écrit rien.
         Entry(
             "Deploy VM(s) (one or many)",
             "_qemu_deploy",
             kwargs={"dry_run": False},
+            danger=True,
         ),
         Entry(
             "Preview a deployment (dry-run, no sudo)",
@@ -309,7 +316,9 @@ CACHE_TESTS = Menu(
     "_cache_tests",
     "Tests",
     [
-        Entry("Test - Choose and run", "_cache_assistant"),
+        # Les essais choisis créent de vraies VM pour des heures, comme
+        # ceux de Long test : `danger`.
+        Entry("Test - Choose and run", "_cache_assistant", danger=True),
         Entry(
             "Test - The plan only (dry-run)",
             "_longtest_run",
@@ -551,7 +560,8 @@ CONTAINER_SERVICE = Menu(
 )
 
 # Chaque entrée reçoit la commande compose du moteur retenu à l'ouverture.
-# « down » efface les conteneurs de la composition.
+# « up -d » démarre la composition sans rien demander, « down » en efface
+# les conteneurs : `danger`.
 CONTAINER_COMPOSE = Menu(
     "_container_compose",
     "Compose",
@@ -560,6 +570,7 @@ CONTAINER_COMPOSE = Menu(
             "Start in the background",
             "_container_compose_geste",
             kwargs={"args": ["up", "-d"]},
+            danger=True,
         ),
         Entry(
             "Stop",

@@ -451,9 +451,17 @@ class TestLArbreDesMenus(unittest.TestCase):
         # Repo, ce qui, dans la démonstration de la passerelle et le
         # modem, installe, agit en root, écrit une règle ou un service
         # système, envoie un SMS ou passe un vrai appel, et la remise à
-        # zéro des préférences. Les `kwargs`
-        # distinguent les actions de production de celles du serveur local,
-        # au même chemin.
+        # zéro des préférences. S'y ajoute ce qui crée de vraies machines,
+        # même après confirmation : déployer des VM QEMU, lancer les tests
+        # du cache. Puis ce qui agit sans rien demander : arrêter ou
+        # relancer Odoo ou lancer une cible make sur un hôte distant,
+        # démarrer une composition, restaurer par-dessus la base de même
+        # nom, synchroniser ou geler un dépôt, avancer des forks sur
+        # GitHub, ajouter les remotes du serveur git local, y pousser ou
+        # le servir, réécrire todo.json, les manifestes d'addons ou les
+        # images d'Odoo. La mise à jour de Poetry porte `danger` sous
+        # Update comme sous Python. Les `kwargs` distinguent les actions de
+        # production de celles du serveur local, au même chemin.
         dangerous = []
 
         def walk(node, path):
@@ -491,6 +499,11 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertEqual(
             dangerous,
             [
+                (
+                    "TODO › Execute › Code › Update › Upgrade Poetry -"
+                    " Dependency of Odoo",
+                    {},
+                ),
                 *[
                     (f"{longtest} › {label}", kwargs)
                     for label, kwargs in (
@@ -519,6 +532,20 @@ class TestLArbreDesMenus(unittest.TestCase):
                     "TODO › Execute › Uninstall › Remove every Odoo version",
                     {"tout": True},
                 ),
+                (
+                    "TODO › Execute › Image Odoo › Regenerate every image of"
+                    " an Odoo version",
+                    {"tout": True},
+                ),
+                (
+                    "TODO › Execute › Image Odoo › Regenerate one image",
+                    {"tout": False},
+                ),
+                (
+                    "TODO › Execute › Analyse module › 🚫 Disable"
+                    " auto_install in repositories of the manifest",
+                    {},
+                ),
                 *[
                     (f"{python} › {label}", {})
                     for label in (
@@ -530,9 +557,24 @@ class TestLArbreDesMenus(unittest.TestCase):
                     )
                 ],
                 *[(f"{git} › Repo › {label}", kw) for label, kw in repo],
+                (f"{git} › 🔄 Synchronise one repository", {}),
+                (f"{git} › 🧊 Freeze one repository on a commit", {}),
                 (f"{git} › ➖ Remove a repository from a manifest", {}),
+                (f"{git} › ⏩ Update forks from their upstream on GitHub", {}),
                 (f"{git} › 🪦 List the orphan forks of an organisation", {}),
                 (f"{git} › 🧹 Clean the merged branches of a repository", {}),
+                *[
+                    (
+                        f"{actions} › {label}",
+                        {"production_ready": False, "action": action},
+                    )
+                    for label, action in (
+                        ("Run all (init + remote + push + serve)", "all"),
+                        ("Remote - Add local remotes", "remote"),
+                        ("Push - Push to local server", "push"),
+                        ("Serve - Start git daemon", "serve"),
+                    )
+                ],
                 *[
                     (
                         f"{actions} › {label}",
@@ -546,19 +588,32 @@ class TestLArbreDesMenus(unittest.TestCase):
                         ("Serve - Start git daemon", "serve"),
                     )
                 ],
+                ("TODO › Execute › Database › Restore from backup (.zip)", {}),
                 ("TODO › Execute › Database › Erase databases", {}),
                 (f"{shell} › Install Starship on Shell", {}),
                 (f"{shell} › Install Claude Code", {}),
                 (f"{shell} › Install opencode", {}),
+                (
+                    "TODO › Execute › GPT code › Add an automation with"
+                    " Claude in todo.py",
+                    {},
+                ),
                 *[
                     (f"{deploy} › SSH › SSH - {label}", {})
                     for label in (
                         "Sync files (rsync)",
                         "Install ERPLibre",
+                        "Stop Odoo",
+                        "Restart Odoo",
+                        "Run make target",
                         "Install systemd service",
                         "Configure nginx + SSL",
                     )
                 ],
+                (
+                    f"{deploy} › QEMU/KVM › Deploy VM(s) (one or many)",
+                    {"dry_run": False},
+                ),
                 *[
                     (f"{deploy} › QEMU/KVM › {label}", {})
                     for label in (
@@ -598,6 +653,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Forget one URL",
                     )
                 ],
+                (f"{cache} › Tests › Test - Choose and run", {}),
                 (
                     f"{cache} › Tests › Test - Undo the machines created",
                     {"nom": "qemu_cache.py", "args": "--detruire"},
@@ -631,6 +687,10 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Images one by one",
                     )
                 ],
+                (
+                    f"{docker} › Compose › Start in the background",
+                    {"args": ["up", "-d"]},
+                ),
                 (f"{docker} › Compose › Stop", {"args": ["down"]}),
                 (
                     f"{docker} › ERPLibre container › Delete the volumes:"
@@ -2077,6 +2137,18 @@ class TestUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
             ("update_from_makefile", "execute_from_configuration", "instance"),
         )
 
+    def test_upgrade_poetry_is_dangerous_as_under_python(self):
+        # La même méthode réécrit les fichiers de dépendances suivis, d'où
+        # qu'on l'ouvre : ni la TUI ni la page web ne la lancent.
+        from script.todo.menus import execute
+
+        [entry] = [e for e in self.entries if e.action == "upgrade_poetry"]
+        [twin] = [
+            e for e in execute.PYTHON.entries if e.action == "upgrade_poetry"
+        ]
+        self.assertTrue(entry.danger)
+        self.assertEqual(entry.danger, twin.danger)
+
 
 class TestExecuteMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Le menu Execute : vingt-deux sous-menus, en six sections.
@@ -2409,6 +2481,15 @@ class TestModuleAnalysisMenuNumbering(RegistryCoherence, unittest.TestCase):
             [None, {"filtre": "/OCA/"}],
         )
 
+    def test_only_disable_auto_install_is_dangerous(self):
+        # Il réécrit les __manifest__.py des dépôts cochés sans les
+        # confirmer ; les comparaisons et les statistiques lisent, ou
+        # demandent avant de cloner.
+        self.assertEqual(
+            [e.action for e in self.entries if e.danger],
+            ["_module_auto_install"],
+        )
+
 
 class TestDatabaseMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
@@ -2621,11 +2702,17 @@ class TestGitMenuNumbering(RegistryCoherence, unittest.TestCase):
 
     def test_the_destructive_entries_are_dangerous(self):
         # Retirer un dépôt d'un manifeste, supprimer des branches ou
-        # archiver des forks : ni la TUI ni la page web ne les lancent.
+        # archiver des forks, et ce qui agit sans rien demander après le
+        # choix : synchroniser un clone par `repo sync`, geler un dépôt
+        # dans un manifeste suivi, avancer des forks sur GitHub. Ni la TUI
+        # ni la page web ne les lancent.
         self.assertEqual(
             [entry.action for entry in self.entries if entry.danger],
             [
+                "_git_synchroniser_depot",
+                "_git_regeler_depot",
                 "_git_retirer_depot",
+                "_git_mettre_forks_a_jour",
                 "_git_forks_orphelins",
                 "_git_nettoyer_branches",
             ],
@@ -2843,10 +2930,12 @@ class TestGitLocalServerMenuNumbering(RegistryCoherence, unittest.TestCase):
 
 class TestGitServerLocalMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Actions du serveur git local : les cinq étapes du déploiement, en
-    mode local ; aucune n'est dangereuse."""
+    mode local ; toutes sont dangereuses sauf Init, qui n'écrit que sous
+    ~/.git-server."""
 
     MENU = "_prompt_git_server_local"
     PRODUCTION = False
+    DANGEROUS = ["all", "remote", "push", "serve"]
     EXPECTED = {
         "Run all": "_deploy_git_server",
         "Init": "_deploy_git_server",
@@ -2864,11 +2953,16 @@ class TestGitServerLocalMenuNumbering(RegistryCoherence, unittest.TestCase):
             ],
         )
 
-    def test_each_entry_is_dangerous_in_production_only(self):
-        # En production, les actions tournent en root, sous /srv/git : ni
-        # la TUI ni la page web ne les lancent.
+    def test_the_dangerous_steps_are_the_declared_ones(self):
+        # En local, Remote et Push ajoutent un remote à chaque dépôt ou y
+        # poussent, Serve ouvre les dépôts nus au push anonyme sur le
+        # réseau, chacun sans rien demander ; Init n'écrit que sous
+        # ~/.git-server. En production, chaque action tourne en root, sous
+        # /srv/git. Ni la TUI ni la page web ne lancent une action
+        # dangereuse.
         self.assertEqual(
-            {bool(entry.danger) for entry in self.entries}, {self.PRODUCTION}
+            [e.kwargs["action"] for e in self.entries if e.danger],
+            self.DANGEROUS,
         )
 
 
@@ -2878,6 +2972,7 @@ class TestGitServerProductionMenuNumbering(TestGitServerLocalMenuNumbering):
 
     MENU = "_prompt_git_server_production"
     PRODUCTION = True
+    DANGEROUS = ["all", "init", "remote", "push", "serve"]
 
 
 class TestGptCodeMenuNumbering(RegistryCoherence, unittest.TestCase):

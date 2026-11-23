@@ -192,6 +192,8 @@ UNINSTALL = Menu(
     render="once",
 )
 
+# Regénérer écrase les .zip de image_db/ sans confirmation ; regénérer
+# toutes les images vide aussi le cache des bases : `danger`.
 IMAGE_DB = Menu(
     "prompt_execute_image_db",
     "Image Odoo",
@@ -201,11 +203,13 @@ IMAGE_DB = Menu(
             "Regenerate every image of an Odoo version",
             "image_db_regenerate",
             kwargs={"tout": True},
+            danger=True,
         ),
         Entry(
             "Regenerate one image",
             "image_db_regenerate",
             kwargs={"tout": False},
+            danger=True,
         ),
     ],
     intro="Database images for a quick installation!",
@@ -216,7 +220,8 @@ IMAGE_DB = Menu(
 # `-u` (`mode`, une valeur de git_module_diff, MODE_BRANCHE ou MODE_GEL),
 # leur évolution par année, et l'auto_install des dépôts du manifeste.
 # Les entrées 5 et 6 lisent les données que 3 et 4 écrivent : leurs
-# libellés les nomment par leur numéro.
+# libellés les nomment par leur numéro. Désactiver auto_install réécrit les
+# __manifest__.py des dépôts cochés sans les confirmer : `danger`.
 MODULE_ANALYSIS = Menu(
     "prompt_execute_module_analysis",
     "Analyse module",
@@ -254,6 +259,7 @@ MODULE_ANALYSIS = Menu(
         Entry(
             "🚫 Disable auto_install in repositories of the manifest",
             "_module_auto_install",
+            danger=True,
         ),
     ],
     intro="Analyse the Odoo modules of the checkout",
@@ -363,7 +369,12 @@ UPDATE = Menu(
             "update_from_makefile", "execute_from_configuration", "instance"
         ),
         Entry("Upgrade Odoo - Migration Database", "_upgrade_odoo"),
-        Entry("Upgrade Poetry - Dependency of Odoo", "upgrade_poetry"),
+        # Réécrit les fichiers de dépendances suivis, comme sous Python.
+        Entry(
+            "Upgrade Poetry - Dependency of Odoo",
+            "upgrade_poetry",
+            danger=True,
+        ),
     ],
     intro="Development update",
     render="once",
