@@ -1818,19 +1818,21 @@ class QemuInstallMixin:
         ordre d'essais que install_fedora_dependency.sh :
         « crb », qui vient avec epel-release, puis « config-manager » en
         repli. « crb » se cherche dans le PATH, et non par un chemin absolu,
-        pour qu'un banc d'essai le remplace. Aucun échec ici n'arrête le
-        bloc : c'est l'installation qui suit qui dit ce qui manque.
+        pour qu'un banc d'essai le remplace ; dnf-plugins-core apporte
+        « config-manager ». Aucun échec ici n'arrête le bloc : un
+        avertissement le nomme, et l'installation qui suit dit ce qui
+        manque.
 
         La famille se lit dans un sous-shell : sourcer os-release dans le
         shell courant y laisserait NAME, VERSION et les autres."""
         return (
             'case "$( . /etc/os-release 2>/dev/null; '
             'echo " ${ID:-} ${ID_LIKE:-} ")" in *" rhel "*) '
-            "sudo dnf install -y epel-release || "
+            "sudo dnf install -y epel-release dnf-plugins-core || "
             f'echo "   ⚠ {t("epel-release unavailable")}"; '
             "sudo crb enable >/dev/null 2>&1 "
             "|| sudo dnf config-manager --set-enabled crb >/dev/null 2>&1 "
-            "|| true;; esac; "
+            f'|| echo "   ⚠ {t("CRB not enabled")}";; esac; '
         )
 
     def _qemu_desktop_remote_cmd(

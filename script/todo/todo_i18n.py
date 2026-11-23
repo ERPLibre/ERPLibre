@@ -7819,6 +7819,10 @@ TRANSLATIONS = {
         "fr": "epel-release indisponible",
         "en": "epel-release unavailable",
     },
+    "CRB not enabled": {
+        "fr": "CRB non activé",
+        "en": "CRB not enabled",
+    },
     "no package line for this system": {
         "fr": "aucune ligne de paquets pour ce système",
         "en": "no package line for this system",

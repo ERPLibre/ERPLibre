@@ -1659,6 +1659,17 @@ class TestNewFlavoursRun(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertIn("dnf install -y xrdp xorgxrdp", log)
 
+    def test_a_crb_that_stays_off_only_warns(self):
+        """CRB refusé par « crb » comme par « config-manager » : une ligne le
+        nomme, et l'installation continue."""
+        self.vm.stub("dnf", 'case "$*" in *config-manager*) exit 1;; esac')
+        self.vm.stub("crb", "exit 1")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="almalinux", version="9"), "almalinux"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn(f"⚠ {t('CRB not enabled')}", out)
+
     def test_a_refused_exclusion_is_retried_without_it(self):
         self.vm.stub("dnf", 'case "$*" in *" -x "*) exit 1;; esac')
         rc, out, log = self.vm.run(
