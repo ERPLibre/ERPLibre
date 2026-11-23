@@ -173,6 +173,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.qemu_usb_menu import QemuUsbMixin
 from script.todo.seal_menu import SealMenuMixin
 from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo.streamdeck_menu import StreamDeckMenuMixin
@@ -257,6 +258,7 @@ class TODO(
     QemuNetworkMixin,
     QemuRecoverMixin,
     QemuAccessMixin,
+    QemuUsbMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     TransformMenuMixin,
@@ -1354,6 +1356,7 @@ class TODO(
         "_cache_miroir_git": "Git mirrors",
         "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
+        "_qemu_usb_menu": "USB",
         "prompt_execute_proxmox": "Proxmox VE",
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",

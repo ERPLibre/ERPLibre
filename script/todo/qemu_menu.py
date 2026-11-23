@@ -360,6 +360,12 @@ class QemuMenuMixin:
                     "Recreate the VM subnet (stop, redefine, restart)"
                 )
             },
+            {"section": t("USB")},
+            {
+                "prompt_description": t(
+                    "USB devices (Stream Deck, passthrough, SPICE)"
+                )
+            },
             {"section": t("Troubleshoot")},
             {"prompt_description": t("Clean up QEMU (orphan files)")},
             {
@@ -416,16 +422,18 @@ class QemuMenuMixin:
             elif status == "14":
                 self._qemu_network_recreate()
             elif status == "15":
-                self._qemu_cleanup()
+                self._qemu_usb_menu()
             elif status == "16":
-                self._qemu_recover_files()
+                self._qemu_cleanup()
             elif status == "17":
-                self._qemu_test_vm()
+                self._qemu_recover_files()
             elif status == "18":
-                self._qemu_diagnostics()
+                self._qemu_test_vm()
             elif status == "19":
-                self._qemu_stats()
+                self._qemu_diagnostics()
             elif status == "20":
+                self._qemu_stats()
+            elif status == "21":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True

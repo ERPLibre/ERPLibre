@@ -453,6 +453,27 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "Diagnostics (report to share)": "_qemu_diagnostics",
         "Show the libvirt network state": "_qemu_network_status",
         "Recreate the VM subnet": "_qemu_network_recreate",
+        "USB devices": "_qemu_usb_menu",
+    }
+
+
+class TestQemuUsbMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu USB de QEMU/KVM, dans script/todo/qemu_usb_menu.py :
+    trois sections, sept entrées."""
+
+    SOURCE = TODO_DIR / "qemu_usb_menu.py"
+    ENTRY = "def _qemu_usb_menu(self):"
+    END = "def _qemu_usb_capture("
+    MINIMUM = 6
+
+    EXPECTED = {
+        "List the USB devices": "_qemu_usb_list",
+        "Attach a USB device": "_qemu_usb_attach",
+        "Detach a USB device": "_qemu_usb_detach",
+        "Show the USB devices of a VM": "_qemu_usb_show",
+        "Open virt-viewer": "_qemu_usb_viewer",
+        "Enable SPICE USB redirection": "_qemu_usb_enable_spice",
+        "Auto-reattach on replug": "_qemu_usb_autoreattach",
     }
 
 
