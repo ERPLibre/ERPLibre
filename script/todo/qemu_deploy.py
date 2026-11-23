@@ -19,10 +19,14 @@ import time
 
 from script.todo import todo_prefs
 from script.todo.deploy_form_lib import (
-    VM_PASSWORD_DEFAULT,
     VM_LOGIN_READ_CMD,
+    VM_PASSWORD_DEFAULT,
     VM_USER_DEFAULT,
     VmSecret,
+    usb_deck_selectors,
+    usb_eligible,
+    usb_receiver,
+    usb_spice_eligible,
 )
 from script.todo.qemu_privilege import (
     needs_sudo,
@@ -30,6 +34,20 @@ from script.todo.qemu_privilege import (
     sudo_prefix,
 )
 from script.todo.todo_i18n import get_lang, t
+
+
+def spec_usb_receiver(spec, vm=None) -> str:
+    """Nom de la VM de la spec qui reçoit les decks de l'hôte
+    (deploy_form_lib.usb_receiver), le type de chaque VM résolu comme dans
+    _qemu_deploy_parts_for : le sien, sinon celui du parc. Une spec sans VM
+    à créer se ramène à `vm`."""
+    vms = spec.get("vms") or ([vm] if vm else [])
+    return usb_receiver(
+        [
+            dict(v, desktop=v.get("desktop", spec.get("desktop")) or "")
+            for v in vms
+        ]
+    )
 
 
 class _SansInternetImpossible(Exception):
@@ -1314,6 +1332,8 @@ class QemuDeployMixin:
         offline=False,
         user="",
         password_hash="",
+        usb_hostdev=(),
+        spice_usbredir=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel).
@@ -1322,7 +1342,10 @@ class QemuDeployMixin:
         `password_hash` : empreinte SHA-512 crypt de son mot de passe, passée
         en « --password-hash ». Le clair n'est jamais dans la commande : elle
         s'affiche en aperçu et sudo la journalise. Vide, aucune option de mot
-        de passe : le compte n'ouvre que par la clé SSH."""
+        de passe : le compte n'ouvre que par la clé SSH.
+        `usb_hostdev` : sélecteurs « --usb-hostdev » (VID:PID ou bus.dev) ;
+        `spice_usbredir` : affichage SPICE de la redirection USB. Les deux ne
+        valent que pour une VM graphique, SPICE pour une VM x86 seulement."""
         from script.todo.deploy_form_lib import desktop_ram
 
         # Dernier rempart du plancher de RAM d'un bureau : toute interface
@@ -1366,6 +1389,17 @@ class QemuDeployMixin:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
             parts += ["--gpu", "on"]
+        # Matériel USB : seulement sur une VM graphique, la seule où
+        # ERPLibre Home prend le deck. deploy_qemu.py refuserait SPICE sur
+        # une VM sans écran ou hors x86 : le filtre est donc posé ici aussi.
+        usb_vm = {"desktop": desktop, "arch": arch or "amd64"}
+        # Une liste de sélecteurs ; True (« les decks du nœud », forme de la
+        # spec Proxmox) ne se résout pas ici et ne donne rien.
+        if usb_eligible(usb_vm) and isinstance(usb_hostdev, (list, tuple)):
+            for sel in usb_hostdev:
+                parts += ["--usb-hostdev", sel]
+        if spice_usbredir and usb_spice_eligible(usb_vm):
+            parts.append("--spice-usbredir")
         if cache_bypass:
             # L'exception l'emporte sur l'autorité : la VM ne rencontrera
             # jamais le cache, lui faire approuver cette signature ne servirait
@@ -1492,6 +1526,14 @@ class QemuDeployMixin:
             offline=bool(spec.get("offline")),
             user=spec.get("user") or "",
             password_hash=self._qemu_vm_password_hash(spec),
+            # Les decks de l'hôte ne vont qu'à UNE VM du parc : libvirt
+            # refuse de démarrer un second domaine qui les tiendrait.
+            usb_hostdev=(
+                spec.get("usb_hostdev") or ()
+                if vm["name"] == spec_usb_receiver(spec, vm)
+                else ()
+            ),
+            spice_usbredir=bool(spec.get("spice_usbredir")),
         )
         if sudo_n and parts[:1] == ["sudo"]:
             parts.insert(1, "-n")
@@ -1940,6 +1982,10 @@ class QemuDeployMixin:
             "ram_presets": self._QEMU_RAM_PRESETS,
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            # Les périphériques USB de l'hôte, decks en tête : lus ICI, la
+            # case « Stream Deck » n'interroge rien pendant que Textual
+            # affiche.
+            "host_usb_devices": self._qemu_host_usb_devices(),
             **self._qemu_guest_context(),
             # L'aperçu passe par le MÊME constructeur que le déploiement.
             "build_command": lambda vm, spec, dry: " ".join(
@@ -1947,6 +1993,53 @@ class QemuDeployMixin:
                 for p in self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
             ),
         }
+
+    @staticmethod
+    def _qemu_host_usb_devices():
+        """Les périphériques USB passables de CET hôte
+        (qemu_usb.host_usb_devices), [] si sysfs ne se lit pas. Le
+        déploiement est local : l'hôte libvirt est cette machine."""
+        try:
+            from script.todo.qemu_usb import host_usb_devices
+
+            return host_usb_devices()
+        except Exception:
+            return []
+
+    def _qemu_ask_usb_decks(self, vms):
+        """Question en ligne, jumelle de la case « Stream Deck » du
+        formulaire. Rend (sélecteurs --usb-hostdev, redirection SPICE).
+
+        Posée seulement quand une VM est graphique (usb_eligible) : sur un
+        parc de serveurs, la réponse ne changerait rien. Les decks branchés
+        sont nommés avant la question, et le défaut est « non »."""
+        from script.todo.deploy_form_lib import usb_eligible
+        from script.todo.qemu_usb import device_label
+
+        if not any(usb_eligible(vm) for vm in vms):
+            return [], False
+        devs = self._qemu_host_usb_devices()
+        decks = [d for d in devs if d.get("is_deck")]
+        if decks:
+            noms = ", ".join(device_label(d) for d in decks)
+            print(f"  {t('Plugged into the host:')} {noms}")
+            print(f"  {t('They go to the first graphical VM only.')}")
+        else:
+            print(
+                f"  {t('No Stream Deck plugged into the host.')}"
+                f" {t('SPICE redirection only.')}"
+            )
+        oui = self._is_yes(
+            input(
+                t(
+                    "Attach the plugged Stream Decks (USB passthrough +"
+                    " SPICE)? (y/N): "
+                )
+            )
+        )
+        if not oui:
+            return [], False
+        return usb_deck_selectors(devs), True
 
     def _qemu_deploy(self, dry_run=False):
         """Déploiement d'un parc de VM, en trois temps : collecte des choix
@@ -2086,6 +2179,7 @@ class QemuDeployMixin:
             return None
         if not self._qemu_ensure_spec_ssh_key(spec):
             return None
+        self._qemu_usb_hand_over_decks(spec)
         # deploy_qemu.py et virsh partiront sous « sudo -n » : le ticket se
         # prend ici, là où l'invite de mot de passe a un terminal où
         # s'afficher. Des VM existantes seules l'exigent aussi quand libvirt
@@ -2695,6 +2789,8 @@ class QemuDeployMixin:
                 t("3D acceleration (host GPU), even without a screen? (y/N): ")
             )
         )
+        # Matériel de la VM, comme la 3D : posée après elle.
+        usb_hostdev, spice_usbredir = self._qemu_ask_usb_decks(vms)
 
         # Posée seulement quand un cache tourne : ailleurs, la réponse ne
         # changerait rien et la question ferait croire le contraire.
@@ -2774,6 +2870,8 @@ class QemuDeployMixin:
             # décochée (voir _qemu_run_spec).
             "monitor": monitor,
             "gpu3d": gpu3d,
+            "usb_hostdev": usb_hostdev,
+            "spice_usbredir": spice_usbredir,
             "cache_bypass": cache_bypass,
             "ai_agent": ai_agent,
             "git_name": git_name,
@@ -3286,11 +3384,40 @@ class QemuDeployMixin:
         """
         if not self._qemu_ensure_spec_ssh_key(spec):
             return
+        self._qemu_usb_hand_over_decks(spec)
         try:
             with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
                 return self._qemu_deploie_spec(spec, coupee=coupee)
         except _SansInternetImpossible:
             return
+
+    def _qemu_usb_hand_over_decks(self, spec):
+        """Le service deck d'ERPLibre Home de CET hôte, face aux decks que la
+        spec passe à une VM. Modifie `spec` sur place.
+
+        virt-install démarre la VM aussitôt, et QEMU prend le deck au
+        service qui le tient. La règle est celle de l'attachement du menu
+        USB (_qemu_usb_deck_conflict) : service inactif, rien à faire ;
+        accord, le service s'arrête avant la création ; refus, la spec perd
+        ses « usb_hostdev » et les decks restent à l'hôte — la redirection
+        SPICE, qui ne prend le deck que sur demande dans virt-viewer, reste.
+        Une liste vide, ou True (hôte distant, Proxmox), n'est pas de ce
+        poste : rien n'est demandé."""
+        hostdev = spec.get("usb_hostdev")
+        if not isinstance(hostdev, (list, tuple)) or not hostdev:
+            return
+        if not any(
+            vm.get("name") == spec_usb_receiver(spec, vm)
+            for vm in spec.get("vms") or []
+        ):
+            return
+        accord = self._qemu_usb_deck_conflict("")
+        if accord is None:
+            spec["usb_hostdev"] = []
+            print(f"  {t('The Stream Decks stay on the host:')}")
+            print(f"  {t('the VM is created without USB passthrough.')}")
+        elif accord:
+            self._qemu_usb_exec(self._qemu_usb_service_cmd("stop", ""))
 
     @staticmethod
     def _qemu_spec_uses_ssh(spec):
@@ -3382,6 +3509,12 @@ class QemuDeployMixin:
         }
         reduite["vms"] = [dict(vm)]
         reduite["existing"] = []
+        # Seule la VM qui a reçu les decks les reçoit à nouveau : rejouée
+        # seule, toute VM graphique serait la première du parc.
+        if "usb_hostdev" in reduite and vm.get("name") != spec_usb_receiver(
+            spec, vm
+        ):
+            reduite["usb_hostdev"] = []
         return reduite
 
     def _qemu_desktop_map(self, spec):

@@ -778,6 +778,65 @@ def plan_totals(rows):
     )
 
 
+# --------------------------------------------------------------------------- #
+# USB : les Stream Deck branchés, passés à la VM dès sa création
+# --------------------------------------------------------------------------- #
+def usb_eligible(vm) -> bool:
+    """Vrai pour une VM graphique qui a un bus USB (toute arch sauf s390x).
+
+    La case vise ERPLibre Home dans l'invité, qui demande une session
+    graphique ; une VM serveur ne la reçoit pas."""
+    return bool(vm.get("desktop")) and vm.get("arch") != "s390x"
+
+
+def usb_spice_eligible(vm) -> bool:
+    """Vrai pour une VM graphique x86 : virt-install ne pose les
+    emplacements de redirection SPICE que là."""
+    return usb_eligible(vm) and vm.get("arch", "amd64") in (
+        "amd64",
+        "x86_64",
+    )
+
+
+def usb_receiver(vms) -> str:
+    """Nom de la VM qui reçoit les périphériques de l'hôte : la première
+    VM éligible de `vms`, "" s'il n'y en a aucune.
+
+    Un périphérique USB de l'hôte ne sert qu'à UN domaine en marche : libvirt
+    refuse de démarrer le second (« in use by … domain … »). Le déploiement
+    d'un parc le donne donc à une seule VM ; les autres gardent la
+    redirection SPICE, qui ne prend rien à l'hôte."""
+    for vm in vms or ():
+        if usb_eligible(vm):
+            return vm.get("name") or ""
+    return ""
+
+
+def usb_deck_selectors(devs) -> list:
+    """Sélecteurs --usb-hostdev des Stream Deck de `devs`
+    (qemu_usb.host_usb_devices), dans leur ordre.
+
+    VID:PID quand il est unique — la forme qui survit au rebranchement ;
+    « bus.dev » sans zéros de tête quand deux decks identiques sont
+    branchés, la seule que libvirt accepte alors. Chaque sélecteur est
+    unique."""
+    from script.todo.qemu_usb import want_for
+
+    sels = []
+    for dev in devs or ():
+        if not dev.get("is_deck"):
+            continue
+        want = want_for(dev, devs)
+        sel = (
+            f"{want['bus']}.{want['dev']}"
+            if want.get("bus") is not None
+            else f"{want['vid']}:{want['pid']}"
+        )
+        if sel not in sels:
+            sels.append(sel)
+    return sels
+
+
 def build_spec(vms, domains, form):
     """Assemble la spec finale, dans la forme exacte que produit la CLI."""
     known = set(domains)
@@ -799,6 +858,12 @@ def build_spec(vms, domains, form):
         # Au niveau du déploiement : la 3D est une propriété du matériel de la
         # VM, pas de ce qu'on installe dedans.
         "gpu3d": form.get("gpu3d", False),
+        # Au niveau du déploiement : les Stream Deck branchés sur l'hôte, en
+        # sélecteurs --usb-hostdev (usb_deck_selectors), et l'affichage
+        # SPICE qui ouvre la redirection USB de virt-viewer. Le déploiement
+        # les pose sur les seules VM graphiques (usb_receiver).
+        "usb_hostdev": list(form.get("usb_hostdev") or ()),
+        "spice_usbredir": bool(form.get("spice_usbredir", False)),
         # Au niveau du déploiement : l'agent choisi et l'identité git valent
         # pour tout le parc, comme le fuseau ou le magasin d'applications.
         "ai_agent": form.get("ai_agent", ""),

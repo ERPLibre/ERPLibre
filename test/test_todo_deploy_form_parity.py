@@ -44,6 +44,9 @@ REGLAGES = (
     "f_vm_user",
     "f_password",
     "f_keep_pw",
+    # Les Stream Deck de l'hôte passés à la VM : la même case sur les deux
+    # hyperviseurs, SPICE en plus sur libvirt seulement.
+    "f_usb_deck",
 )
 
 CATALOGUE = [

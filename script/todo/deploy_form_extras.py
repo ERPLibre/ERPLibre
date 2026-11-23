@@ -78,6 +78,9 @@ _TABLES = (
     ("distro_family", dict, "distro_family"),
     ("mise_arches", set, "mise_arches"),
     ("defaults", dict, "defaults"),
+    # Périphériques USB de l'hôte (qemu_usb.host_usb_devices), lus AVANT
+    # l'écran : aucune sonde pendant que Textual affiche.
+    ("usb_devices", list, "host_usb_devices"),
 )
 
 
@@ -364,6 +367,56 @@ class ExtrasMixin:
             yield RadioButton(t("mise (precompiled, faster)"), value=True)
             yield RadioButton(t("pyenv (compiles from source)"))
         yield Static("", id="miswarn")
+
+    def compose_usb_deck(self, spice=True, remote=False):
+        """La case « attacher les Stream Deck branchés » et ce qu'elle vise.
+
+        `spice` : l'hyperviseur sait poser l'affichage SPICE de la
+        redirection USB (libvirt) ; faux, seul le passage des decks de
+        l'hôte est offert. `remote` : les decks sont sur un hôte distant que
+        l'écran ne lit pas (nœud Proxmox) ; la spec dit alors « les decks
+        branchés » (True), lus à la création. Sinon, ceux du contexte
+        « host_usb_devices » sont nommés et deviennent des sélecteurs.
+
+        La case n'est montrée que si une VM retenue est graphique
+        (_sync_usb_deck) : ERPLibre Home, qui prend le deck dans l'invité,
+        demande une session graphique."""
+        from textual.widgets import Checkbox, Static
+
+        from script.todo.qemu_usb import device_label
+
+        self._usb_spice = bool(spice)
+        self._usb_remote = bool(remote)
+        decks = [d for d in self._extras["usb_devices"] if d.get("is_deck")]
+        yield Checkbox(
+            t("Attach the plugged Stream Decks (USB passthrough + SPICE)")
+            if spice
+            else t("Attach the plugged Stream Decks (USB passthrough)"),
+            value=bool(self._extras["defaults"].get("usb_deck", False)),
+            id="f_usb_deck",
+        )
+        if remote:
+            avis = t("Read from the Proxmox node when the VM is created.")
+            yield Static(f"    {avis}", id="t_usb_deck")
+            yield Static(
+                f"    {t('They go to the first graphical VM only.')}",
+                id="t_usb_deck_first",
+            )
+        elif decks:
+            noms = ", ".join(device_label(d) for d in decks)
+            yield Static(
+                f"    {t('Plugged into the host:')} {noms}", id="t_usb_deck"
+            )
+            yield Static(
+                f"    {t('They go to the first graphical VM only.')}",
+                id="t_usb_deck_first",
+            )
+        else:
+            yield Static(
+                f"    {t('No Stream Deck plugged into the host.')}"
+                + (f" {t('SPICE redirection only.')}" if spice else ""),
+                id="t_usb_deck",
+            )
 
     def compose_credentials(self):
         """Le compte de la VM : utilisateur, mot de passe, et l'option qui
@@ -977,10 +1030,54 @@ class ExtrasMixin:
             )
 
     def render_extras(self) -> None:
-        """Les trois, dans l'ordre. Appelée à la fin de chaque recalcul."""
+        """Les quatre, dans l'ordre. Appelée à la fin de chaque recalcul."""
         self._render_mise()
         self._render_store()
         self._render_tools()
+        self._sync_usb_deck()
+
+    def _usb_offered(self) -> bool:
+        """Vrai quand au moins une VM retenue est graphique et a un bus
+        USB : sans elle, la case ne changerait rien."""
+        from script.todo.deploy_form_lib import usb_eligible
+
+        return any(usb_eligible(vm) for vm in getattr(self, "vms", ()) or ())
+
+    def _sync_usb_deck(self) -> None:
+        """Montre la case USB et ses lignes seulement quand elle a un objet.
+        Cachée, elle vaut « non » (usb_values)."""
+        vu = self._usb_offered()
+        for sel in ("#f_usb_deck", "#t_usb_deck", "#t_usb_deck_first"):
+            widget = self._widget(sel)
+            if widget is not None:
+                widget.display = vu
+
+    def usb_values(self) -> dict:
+        """Le fragment de spec de la case USB.
+
+        « usb_hostdev » : les sélecteurs des decks de l'hôte
+        (usb_deck_selectors), ou True pour un hôte distant (les decks
+        branchés, lus à la création) ; « spice_usbredir » : la redirection
+        SPICE. Vide quand la case est absente, cachée ou décochée."""
+        from script.todo.deploy_form_lib import usb_deck_selectors
+
+        case = self._widget("#f_usb_deck")
+        coche = bool(
+            case is not None
+            and case.value
+            and case.display
+            and self._usb_offered()
+        )
+        if not coche:
+            return {"usb_hostdev": [], "spice_usbredir": False}
+        if getattr(self, "_usb_remote", False):
+            hostdev = True
+        else:
+            hostdev = usb_deck_selectors(self._extras["usb_devices"])
+        return {
+            "usb_hostdev": hostdev,
+            "spice_usbredir": getattr(self, "_usb_spice", True),
+        }
 
     def _sync_install_deps(self) -> None:
         """Grise ce que le choix d'installation rend SANS EFFET.
@@ -1057,4 +1154,5 @@ class ExtrasMixin:
             "python_provider": self._python_provider(),
             "app_store": self._app_store(),
             **self.credentials_values(),
+            **self.usb_values(),
         }
