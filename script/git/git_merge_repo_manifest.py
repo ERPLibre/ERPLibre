@@ -33,6 +33,9 @@ DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
 DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
+DEFAULT_PATH_MANIFEST_STREAMDECK_CONF = os.path.join(
+    "conf", "git_manifest_streamdeck.csv"
+)
 DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF = os.path.join(
     "conf", "git_manifest_erplibre_home.csv"
 )
@@ -44,9 +47,14 @@ DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
-# L'extension GNOME ERPLibre Home : comme le mobile, son manifeste n'entre
-# que si son répertoire existe (install_erplibre_home.sh l'y pose par repo
-# sync) ou avec --with_erplibre_home. Un serveur Odoo ne l'a pas.
+# Le programme du deck : comme le mobile, son manifeste n'entre que si son
+# répertoire existe (install_erplibre_home.sh --stream-deck l'y pose par
+# repo sync) ou avec --with_streamdeck. Un serveur Odoo ne l'a pas.
+STREAMDECK_DECK_PATH = os.path.join("script", "stream_deck", "deck")
+# L'extension GNOME ERPLibre Home, de même : son manifeste n'entre que si son
+# répertoire existe (install_erplibre_home.sh l'y pose par repo sync) ou
+# avec --with_erplibre_home. Sa liste est à part de celle du Stream Deck : la
+# base d'ERPLibre Home s'installe sans le deck.
 ERPLIBRE_HOME_EXTENSION_PATH = os.path.join(
     "script", "gnome-extension", "erplibre_home"
 )
@@ -87,6 +95,11 @@ def get_config(argv=None):
         "--with_mobile",
         action="store_true",
         help="Add mobile project manifest",
+    )
+    parser.add_argument(
+        "--with_streamdeck",
+        action="store_true",
+        help="Add the Stream Deck manifest list (the deck program)",
     )
     parser.add_argument(
         "--with_erplibre_home",
@@ -139,6 +152,7 @@ def main():
         input_paths = default_input_paths(
             with_OCA=config.with_OCA,
             with_mobile=config.with_mobile,
+            with_streamdeck=config.with_streamdeck,
             with_erplibre_home=config.with_erplibre_home,
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
@@ -244,6 +258,7 @@ def main():
 def default_input_paths(
     with_OCA=False,
     with_mobile=False,
+    with_streamdeck=False,
     with_erplibre_home=False,
     with_extra=False,
     with_new_manifest=False,
@@ -252,9 +267,10 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    l'extension GNOME, les modules extra. Un fichier cité deux fois n'est
-    gardé qu'à sa PREMIÈRE place, et l'ordre est celui de la liste : lors
-    de la fusion, le dernier fichier qui définit un projet l'emporte.
+    le programme du deck, l'extension GNOME, les modules extra. Un
+    fichier cité deux fois n'est gardé qu'à sa PREMIÈRE place, et l'ordre
+    est celui de la liste : lors de la fusion, le dernier fichier qui
+    définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
@@ -267,6 +283,8 @@ def default_input_paths(
             with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             with_mobile = True
+        if os.path.isdir(STREAMDECK_DECK_PATH):
+            with_streamdeck = True
         if os.path.isdir(ERPLIBRE_HOME_EXTENSION_PATH):
             with_erplibre_home = True
         if odoo_version and get_version_extra(odoo_version.strip()):
@@ -317,6 +335,10 @@ def default_input_paths(
     if with_mobile:
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+        )
+    if with_streamdeck:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_STREAMDECK_CONF
         )
     if with_erplibre_home:
         append_file_path_manifest(

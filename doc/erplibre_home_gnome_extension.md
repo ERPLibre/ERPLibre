@@ -71,10 +71,14 @@ run one of its files: without the checkout each stops on one line naming
 `make erplibre_home_install_extension`, which syncs it without requiring
 GNOME Shell. `make test_full_fast` runs the extension's suites when the
 checkout is there and announces them skipped otherwise. The Stream Deck
-program, the controller, the translator and the TODO menu talk to the
-running extension over D-Bus and degrade when it does not answer. The
-extension, in turn, finds the ERPLibre checkout from its own path and runs
-the deck program and the controller from there.
+program, the controller and the translator, a Google Repo project of their
+own at `script/stream_deck/deck/` (see
+[the deck program in ERPLibre](erplibre_streamdeck_deck.md)), and the TODO
+menu talk to the running extension over D-Bus and degrade when it does not
+answer. The extension, in turn, finds the ERPLibre checkout from its own
+path and runs the deck program and the controller from
+`script/stream_deck/deck/`, or from `script/stream_deck/` in an ERPLibre
+checkout older than the deck's own repository (contract 1.5).
 
 ## Older ERPLibre commits
 

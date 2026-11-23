@@ -52,6 +52,8 @@ pyproject.toml
 requirements.txt
 requirement/ignore_requirements.txt
 screenshots
+!/script/stream_deck/screenshots
+!/script/stream_deck/screenshots/**
 screencasts
 private/todo/todo_override_private.json
 # Sceau PAdES : un .p12 porte une clé privée. private/ est versionné, ce
@@ -77,3 +79,11 @@ private/todo/todo_override_private.json
 # Ce que l'installateur met de côté avant la pose par repo
 # (erplibre_home.avant-repo-<date>).
 /script/gnome-extension/erplibre_home.*/
+
+# Le programme du deck : un dépôt à part, posé ici par Google Repo, par make
+# ou par install_erplibre_home.sh --stream-deck
+# (manifest/git_manifest_erplibre_streamdeck_deck.xml).
+/script/stream_deck/deck/
+# Ce que l'installateur met de côté avant la pose par repo
+# (deck.avant-repo-<date>).
+/script/stream_deck/deck.*/
