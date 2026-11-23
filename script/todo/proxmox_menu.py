@@ -165,17 +165,10 @@ class ProxmoxMenuMixin:
         if not entrees:
             print(f"\n{t('No SSH hosts found in ~/.ssh/config')}")
             return None
-        print()
-        for i, (nom, info) in enumerate(entrees, 1):
-            hn = info.get("hostname", nom)
-            u = info.get("user", "")
-            desc = nom + (f" ({hn})" if hn != nom else "")
-            print(f"  [{i}] {desc}{f' [{u}]' if u else ''}")
-        sel = input(t("Select SSH host number: ")).strip()
-        if not sel.isdigit() or not 1 <= int(sel) <= len(entrees):
-            print(t("Invalid selection!"))
+        choisi = self._pick_ssh_config_host(entrees, indent="  ")
+        if not choisi:
             return None
-        alias = entrees[int(sel) - 1][0]
+        alias = choisi[0]
         # L'alias SEUL : ssh y lira l'utilisateur, le port et le ProxyJump.
         return {"target": alias, "jump": ""}
 
