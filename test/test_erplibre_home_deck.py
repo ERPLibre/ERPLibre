@@ -389,7 +389,7 @@ class LesProgrammesExistent(unittest.TestCase):
     def test_the_tiler_is_the_package_of_the_clone(self):
         bib = RACINE / "script/install/erplibre_home_settings.sh"
         fini = subprocess.run(
-            ["bash", "-c", ". \"$0\"; deck_program_path tiler", str(bib)],
+            ["bash", "-c", '. "$0"; deck_program_path tiler', str(bib)],
             capture_output=True,
             text=True,
             timeout=30,

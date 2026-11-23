@@ -451,9 +451,7 @@ class LaFamille(Installateur):
         for systeme in ("fedora:43", "derive-fedora"):
             with self.subTest(systeme=systeme):
                 paquets = self.lignes(
-                    self.lancer(
-                        "--dry-run", "--stream-deck", systeme=systeme
-                    ),
+                    self.lancer("--dry-run", "--stream-deck", systeme=systeme),
                     "packages: ",
                 )
                 self.assertEqual([DECK["rhel"]], paquets)
@@ -3346,9 +3344,7 @@ class TestServiceInstalle(unittest.TestCase):
                 dossier, reglages="# note\nDECK_PROGRAM=\n"
             )
             self.assertEqual(fait.returncode, 0, fait.stderr)
-            self.assertEqual(
-                "# note\nDECK_PROGRAM=tiler\n", conf.read_text()
-            )
+            self.assertEqual("# note\nDECK_PROGRAM=tiler\n", conf.read_text())
 
     def test_a_second_identical_run_touches_nothing(self):
         with tempfile.TemporaryDirectory() as dossier:
