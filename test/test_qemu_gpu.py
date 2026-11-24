@@ -530,13 +530,19 @@ class TestMenuGlue(unittest.TestCase):
 
     def test_an_empty_answer_keeps_the_current_state(self):
         """Le défaut d'une question fermée est l'état ACTUEL de la VM : sur un
-        formulaire de matériel, le silence ne modifie rien."""
+        formulaire de matériel, le silence ne modifie rien. Une réponse
+        illisible est dite, et la question revient."""
         todo = TODO.__new__(TODO)
         with mock.patch("builtins.input", lambda *a: ""):
             self.assertTrue(todo._qemu_ask_bool("? ", True))
             self.assertFalse(todo._qemu_ask_bool("? ", False))
-        with mock.patch("builtins.input", lambda *a: "n'importe quoi"):
+        out = io.StringIO()
+        with (
+            mock.patch("builtins.input", side_effect=["n'importe quoi", ""]),
+            contextlib.redirect_stdout(out),
+        ):
             self.assertTrue(todo._qemu_ask_bool("? ", True))
+        self.assertIn("n'importe quoi", out.getvalue())
 
     def test_autostart_is_read_from_virsh(self):
         out = "Id:  -\nName: vm-a\nAutostart:      enable\n"

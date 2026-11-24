@@ -146,7 +146,7 @@ class TestChangerLEtat(_Cas):
                 self.todo.execute.cmds.clear()
                 self.play("_qemu_change_state", *answers)
                 self.assertIn(
-                    t("Adjust hardware before starting? (y/N): "),
+                    t("Adjust hardware before starting?"),
                     self.asked[2],
                 )
                 self.assertEqual(adjusted, hardware)

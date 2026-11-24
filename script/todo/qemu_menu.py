@@ -265,8 +265,8 @@ class QemuMenuMixin:
         print(f"\n⚠  {t('virsh is missing: libvirt is not installed here.')}")
         print(f"   {t('Every VM command will fail until it is.')}")
         self._qemu_warn_libvirt_access()
-        if not self._is_yes_default_yes(
-            input(t("Install the QEMU/libvirt tools now? (Y/n): "))
+        if not ui.confirm(
+            t("Install the QEMU/libvirt tools now?"), default=True
         ):
             return False
         # Sans --assume-yes-reboot : accepter d'installer des paquets n'est
@@ -382,11 +382,10 @@ class QemuMenuMixin:
             if not summary:
                 print(f"   {t('Nothing to reset.')}")
                 continue
-            confirm = input(
-                f"   {t('Erase')} {summary['total']}"
-                f" {t('recorded runs')}? (y/N): "
-            ).strip()
-            if self._is_yes(confirm):
+            if ui.confirm(
+                f"   {t('Erase %s recorded runs?') % summary['total']}",
+                default=False,
+            ):
                 count = mon.reset_stats()
                 print(f"   ✅ {count} {t('runs erased')}.")
             else:

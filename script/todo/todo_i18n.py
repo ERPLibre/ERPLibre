@@ -7038,10 +7038,9 @@ TRANSLATIONS = {
         "fr": "Toutes les commandes VM échoueront tant que ce sera le cas.",
         "en": "Every VM command will fail until it is.",
     },
-    "Install the QEMU/libvirt tools now? (Y/n): ": {
-        "fr": "Installer les outils QEMU/libvirt maintenant ? "
-        "(O/n, défaut : oui) : ",
-        "en": "Install the QEMU/libvirt tools now? (Y/n, default: yes): ",
+    "Install the QEMU/libvirt tools now?": {
+        "fr": "Installer les outils QEMU/libvirt maintenant ?",
+        "en": "Install the QEMU/libvirt tools now?",
     },
     "libvirt is available.": {
         "fr": "libvirt est disponible.",
@@ -8922,17 +8921,17 @@ TRANSLATIONS = {
         "fr": "Pas assez de place libre pour une sauvegarde complète.",
         "en": "Not enough free space for a full backup.",
     },
-    "Back up anyway, at the risk of filling the disk? (y/N): ": {
-        "fr": "Sauvegarder quand même, au risque de remplir le disque? (y/N) : ",
-        "en": "Back up anyway, at the risk of filling the disk? (y/N): ",
+    "Back up anyway, at the risk of filling the disk?": {
+        "fr": "Sauvegarder quand même, au risque de remplir le disque ?",
+        "en": "Back up anyway, at the risk of filling the disk?",
     },
     "Backing up the disk before shrinking…": {
         "fr": "Sauvegarde du disque avant réduction…",
         "en": "Backing up the disk before shrinking…",
     },
-    "Back up the disk before shrinking? (Y/n): ": {
-        "fr": "Sauvegarder le disque avant réduction ? (O/n, défaut : oui) : ",
-        "en": "Back up the disk before shrinking? (Y/n, default: yes): ",
+    "Back up the disk before shrinking?": {
+        "fr": "Sauvegarder le disque avant réduction ?",
+        "en": "Back up the disk before shrinking?",
     },
     "No backup: a failure could leave the disk broken.": {
         "fr": "Sans sauvegarde : un échec pourrait rendre le disque inutilisable.",
@@ -8950,9 +8949,9 @@ TRANSLATIONS = {
         "fr": "Une sauvegarde du disque a été conservée :",
         "en": "A disk backup was kept:",
     },
-    "Delete this backup now? (y/N): ": {
-        "fr": "Effacer cette sauvegarde maintenant ? (o/N) : ",
-        "en": "Delete this backup now? (y/N): ",
+    "Delete this backup now?": {
+        "fr": "Effacer cette sauvegarde maintenant ?",
+        "en": "Delete this backup now?",
     },
     "Backup deleted.": {
         "fr": "Sauvegarde effacée.",
@@ -9170,13 +9169,13 @@ TRANSLATIONS = {
         "fr": "Repli console série. Connectez-vous, puis collez :",
         "en": "Serial console fallback. Log in, then paste:",
     },
-    "Open the serial console now? (y/N): ": {
-        "fr": "Ouvrir la console série maintenant ? (o/N) : ",
-        "en": "Open the serial console now? (y/N): ",
+    "Open the serial console now?": {
+        "fr": "Ouvrir la console série maintenant ?",
+        "en": "Open the serial console now?",
     },
-    "The VM must be off. Shut it down and retry? (y/N): ": {
-        "fr": "La VM doit être éteinte. L'éteindre et réessayer ? (o/N) : ",
-        "en": "The VM must be off. Shut it down and retry? (y/N): ",
+    "The VM must be off. Shut it down and retry?": {
+        "fr": "La VM doit être éteinte. L'éteindre et réessayer ?",
+        "en": "The VM must be off. Shut it down and retry?",
     },
     "VM is still not off; aborting.": {
         "fr": "La VM n'est toujours pas éteinte ; abandon.",
@@ -9206,13 +9205,13 @@ TRANSLATIONS = {
         "fr": "La VM a été éteinte pour le redimensionnement.",
         "en": "The VM was shut down for the resize.",
     },
-    "Start the VM now? (y/N): ": {
-        "fr": "Démarrer la VM maintenant ? (o/N) : ",
-        "en": "Start the VM now? (y/N): ",
+    "Start the VM now?": {
+        "fr": "Démarrer la VM maintenant ?",
+        "en": "Start the VM now?",
     },
-    "Graceful shutdown timed out. Force off (destroy)? (y/N): ": {
-        "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ? (o/N) : ",
-        "en": "Graceful shutdown timed out. Force off (destroy)? (y/N): ",
+    "Graceful shutdown timed out. Force off (destroy)?": {
+        "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ?",
+        "en": "Graceful shutdown timed out. Force off (destroy)?",
     },
     "Show advanced info (vCPU, RAM, disk)? (y/N): ": {
         "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
@@ -9246,9 +9245,9 @@ TRANSLATIONS = {
         "fr": "Régler le matériel seulement (vCPU, RAM, 3D)",
         "en": "Adjust hardware only (vCPU, RAM, 3D)",
     },
-    "Adjust hardware before starting? (y/N): ": {
-        "fr": "Régler le matériel avant de démarrer ? (o/N) : ",
-        "en": "Adjust hardware before starting? (y/N): ",
+    "Adjust hardware before starting?": {
+        "fr": "Régler le matériel avant de démarrer ?",
+        "en": "Adjust hardware before starting?",
     },
     "Not shut off, hardware left untouched:": {
         "fr": "Pas éteintes, matériel inchangé :",
@@ -9278,9 +9277,9 @@ TRANSLATIONS = {
         "fr": "Changements :",
         "en": "Changes:",
     },
-    "Apply these changes? (y/N): ": {
-        "fr": "Appliquer ces changements ? (o/N) : ",
-        "en": "Apply these changes? (y/N): ",
+    "Apply these changes?": {
+        "fr": "Appliquer ces changements ?",
+        "en": "Apply these changes?",
     },
     "Autostart": {
         "fr": "Démarrage automatique",
@@ -10157,9 +10156,17 @@ TRANSLATIONS = {
         "fr": "Appliquer :",
         "en": "Apply:",
     },
+    "Apply: %s?": {
+        "fr": "Appliquer : %s ?",
+        "en": "Apply: %s?",
+    },
     "Confirm for real? (y/N): ": {
         "fr": "Confirmer pour de vrai ? (o/N) : ",
         "en": "Confirm for real? (y/N): ",
+    },
+    "Confirm for real?": {
+        "fr": "Confirmer pour de vrai ?",
+        "en": "Confirm for real?",
     },
     "Storage": {
         "fr": "Stockage",
@@ -10210,10 +10217,9 @@ TRANSLATIONS = {
         "fr": "Éteignez la VM avant de réduire (virsh shutdown).",
         "en": "Shut the VM off before shrinking (virsh shutdown).",
     },
-    "Type y to confirm you understand the risk (y/N): ": {
-        "fr": "Tapez o pour confirmer que vous comprenez le risque "
-        "(o/N, défaut : non) : ",
-        "en": "Type y to confirm you understand the risk (y/N): ",
+    "Type the VM name (%s) to confirm you understand the risk: ": {
+        "fr": "Tapez le nom de la VM (%s) pour confirmer que vous comprenez le risque : ",
+        "en": "Type the VM name (%s) to confirm you understand the risk: ",
     },
     "Resize failed (see error above).": {
         "fr": "Échec du redimensionnement (voir l'erreur ci-dessus).",
@@ -10223,10 +10229,9 @@ TRANSLATIONS = {
         "fr": "Disque virtuel redimensionné.",
         "en": "Virtual disk resized.",
     },
-    "Grow the guest filesystem now (over SSH)? (y/N): ": {
-        "fr": "Étendre le système de fichiers invité maintenant (via SSH) ? "
-        "(o/N, défaut : non) : ",
-        "en": "Grow the guest filesystem now (over SSH)? (y/N): ",
+    "Grow the guest filesystem now (over SSH)?": {
+        "fr": "Étendre le système de fichiers invité maintenant (via SSH) ?",
+        "en": "Grow the guest filesystem now (over SSH)?",
     },
     "No IP; grow the guest FS manually once booted.": {
         "fr": "Pas d'IP ; étendez le FS invité manuellement après le boot.",
@@ -10302,9 +10307,9 @@ TRANSLATIONS = {
         "fr": "Sélectionner les VM à effacer :",
         "en": "Select VMs to delete:",
     },
-    "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
-        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",
-        "en": "Also delete disk images (qcow2 + seed ISO)? (y/N, default: no): ",
+    "Also delete disk images (qcow2 + seed ISO)?": {
+        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ?",
+        "en": "Also delete disk images (qcow2 + seed ISO)?",
     },
     "Will delete:": {
         "fr": "Sera effacé :",
@@ -10318,9 +10323,9 @@ TRANSLATIONS = {
         "fr": "disques conservés",
         "en": "disks kept",
     },
-    "Confirm deletion? (y/N): ": {
-        "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
-        "en": "Confirm deletion? (y/N, default: no): ",
+    "Confirm deletion?": {
+        "fr": "Confirmer l'effacement ?",
+        "en": "Confirm deletion?",
     },
     "Deletion done.": {
         "fr": "Effacement terminé.",
@@ -10441,9 +10446,9 @@ TRANSLATIONS = {
         "fr": "fichiers",
         "en": "files",
     },
-    "Delete these orphan files? (y/N): ": {
-        "fr": "Effacer ces fichiers orphelins ? (o/N, défaut : non) : ",
-        "en": "Delete these orphan files? (y/N, default: no): ",
+    "Delete these orphan files?": {
+        "fr": "Effacer ces fichiers orphelins ?",
+        "en": "Delete these orphan files?",
     },
     "Cleanup done.": {
         "fr": "Nettoyage terminé.",
@@ -10461,25 +10466,25 @@ TRANSLATIONS = {
         "fr": "Toutes les images de base en cache (réutilisables) :",
         "en": "All cached base images (reusable):",
     },
-    "Delete ALL cached base images? (y/N): ": {
-        "fr": "Effacer TOUTES les images de base en cache ? (o/N, défaut : non) : ",
-        "en": "Delete ALL cached base images? (y/N, default: no): ",
+    "Delete ALL cached base images?": {
+        "fr": "Effacer TOUTES les images de base en cache ?",
+        "en": "Delete ALL cached base images?",
     },
     "Ghost domains (defined but disk missing):": {
         "fr": "Domaines fantômes (définis, disque manquant) :",
         "en": "Ghost domains (defined but disk missing):",
     },
-    "Undefine these ghost domains? (y/N): ": {
-        "fr": "Supprimer la définition de ces domaines ? (o/N, défaut : non) : ",
-        "en": "Undefine these ghost domains? (y/N, default: no): ",
+    "Undefine these ghost domains?": {
+        "fr": "Supprimer la définition de ces domaines ?",
+        "en": "Undefine these ghost domains?",
     },
     "Stale codename-named Ubuntu images (duplicates):": {
         "fr": "Images Ubuntu nommées par codename (doublons) :",
         "en": "Stale codename-named Ubuntu images (duplicates):",
     },
-    "Delete these duplicate images? (y/N): ": {
-        "fr": "Effacer ces images en double ? (o/N, défaut : non) : ",
-        "en": "Delete these duplicate images? (y/N, default: no): ",
+    "Delete these duplicate images?": {
+        "fr": "Effacer ces images en double ?",
+        "en": "Delete these duplicate images?",
     },
     "its jump host is gone:": {
         "fr": "son rebond n'existe plus :",
@@ -10501,17 +10506,17 @@ TRANSLATIONS = {
         "fr": "une VM de l'hôte Proxmox",
         "en": "a VM of the Proxmox host",
     },
-    "Remove these ~/.ssh/config entries? (y/N): ": {
-        "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N, défaut : non) : ",
-        "en": "Remove these ~/.ssh/config entries? (y/N, default: no): ",
+    "Remove these ~/.ssh/config entries?": {
+        "fr": "Retirer ces entrées de ~/.ssh/config ?",
+        "en": "Remove these ~/.ssh/config entries?",
     },
     "Stale DHCP leases (no matching VM):": {
         "fr": "Baux DHCP périmés (aucune VM correspondante) :",
         "en": "Stale DHCP leases (no matching VM):",
     },
-    "Clear these stale leases? (y/N): ": {
-        "fr": "Effacer ces baux périmés ? (o/N, défaut : non) : ",
-        "en": "Clear these stale leases? (y/N, default: no): ",
+    "Clear these stale leases?": {
+        "fr": "Effacer ces baux périmés ?",
+        "en": "Clear these stale leases?",
     },
     "Deploy ERPLibre infra (one minimal VM per image)": {
         "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
@@ -10791,9 +10796,9 @@ TRANSLATIONS = {
         "fr": "Disques orphelins qui feraient échouer le déploiement",
         "en": "Orphan disks that would fail the deployment",
     },
-    "Delete them and continue? (y/N): ": {
-        "fr": "Les effacer et continuer ? (o/N) : ",
-        "en": "Delete them and continue? (y/N, default: no): ",
+    "Delete them and continue?": {
+        "fr": "Les effacer et continuer ?",
+        "en": "Delete them and continue?",
     },
     "Kept - the deployment of these VMs will FAIL:": {
         "fr": "Conservés — le déploiement de ces VM ÉCHOUERA :",
@@ -11149,9 +11154,9 @@ TRANSLATIONS = {
         "fr": "Gestionnaire de paquets inconnu : installez libguestfs.",
         "en": "Unknown package manager: install libguestfs.",
     },
-    "Install libguestfs now? (Y/n): ": {
-        "fr": "Installer libguestfs maintenant ? (O/n) : ",
-        "en": "Install libguestfs now? (Y/n, default: yes): ",
+    "Install libguestfs now?": {
+        "fr": "Installer libguestfs maintenant ?",
+        "en": "Install libguestfs now?",
     },
     "This VM is running.": {
         "fr": "Cette VM est allumée.",
@@ -11221,9 +11226,9 @@ TRANSLATIONS = {
         "fr": "Disque :",
         "en": "Disk:",
     },
-    "Run the diagnostics first? (y/N): ": {
-        "fr": "Lancer d'abord les diagnostics ? (o/N) : ",
-        "en": "Run the diagnostics first? (y/N, default: no): ",
+    "Run the diagnostics first?": {
+        "fr": "Lancer d'abord les diagnostics ?",
+        "en": "Run the diagnostics first?",
     },
     "Directory to list [/]: ": {
         "fr": "Répertoire à lister [/] : ",
@@ -11251,9 +11256,9 @@ TRANSLATIONS = {
         ),
         "en": "The VM cannot boot while 3D stays in its definition.",
     },
-    "Remove the 3D and start again? (Y/n): ": {
-        "fr": "Retirer la 3D et redémarrer ? (O/n) : ",
-        "en": "Remove the 3D and start again? (Y/n, default: yes): ",
+    "Remove the 3D and start again?": {
+        "fr": "Retirer la 3D et redémarrer ?",
+        "en": "Remove the 3D and start again?",
     },
     "3D on this host": {
         "fr": "La 3D sur cet hôte",
@@ -11308,9 +11313,9 @@ TRANSLATIONS = {
         "fr": "Réseau libvirt",
         "en": "libvirt network",
     },
-    "Power off VMs that ignore the shutdown? (y/N): ": {
-        "fr": "Couper le courant des VM qui n'obéissent pas ? (o/N) : ",
-        "en": "Power off VMs that ignore the shutdown? (y/N): ",
+    "Power off VMs that ignore the shutdown?": {
+        "fr": "Couper le courant des VM qui n'obéissent pas ?",
+        "en": "Power off VMs that ignore the shutdown?",
     },
     "Troubleshoot": {
         "fr": "🩺 Dépanner",
@@ -11348,9 +11353,9 @@ TRANSLATIONS = {
         "fr": "gestionnaire de paquets inconnu",
         "en": "unknown package manager",
     },
-    "Install them now? (y/N): ": {
-        "fr": "Les installer maintenant ? (o/N) : ",
-        "en": "Install them now? (y/N, default: no): ",
+    "Install them now?": {
+        "fr": "Les installer maintenant ?",
+        "en": "Install them now?",
     },
     "Run the diagnostics again for a fuller report.": {
         "fr": "Relancez le diagnostic pour un rapport plus complet.",
@@ -12415,9 +12420,9 @@ TRANSLATIONS = {
         "fr": "Écraser le disque de la VM s'il existe ? (o/N, défaut : non) : ",
         "en": "Overwrite existing VM disk if present? (y/N, default: no): ",
     },
-    "Verify SHA256 after download? (y/N): ": {
-        "fr": "Vérifier le SHA256 après téléchargement ? (o/N, défaut : non) : ",
-        "en": "Verify SHA256 after download? (y/N, default: no): ",
+    "Verify SHA256 after download?": {
+        "fr": "Vérifier le SHA256 après téléchargement ?",
+        "en": "Verify SHA256 after download?",
     },
     "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
         "fr": "🧰 QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
@@ -12462,7 +12467,10 @@ TRANSLATIONS = {
     },
     "Nothing to reset.": {"fr": "Rien à effacer.", "en": "Nothing to reset."},
     "Erase": {"fr": "Effacer", "en": "Erase"},
-    "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
+    "Erase %s recorded runs?": {
+        "fr": "Effacer %s runs enregistrés ?",
+        "en": "Erase %s recorded runs?",
+    },
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
     # Database migration - resume menu

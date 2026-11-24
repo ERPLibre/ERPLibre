@@ -19,6 +19,7 @@ des autres fichiers, elles s'appellent donc par « self. » sans rien importer.
 
 import os
 
+from script.todo import ui
 from script.todo.qemu_privilege import needs_sudo
 from script.todo.todo_i18n import t
 
@@ -76,8 +77,8 @@ class QemuNetworkMixin:
         prefixe = prefixe or PREFIXE_LIBVIRT
         reseau = input(f"{t('libvirt network')} [default] : ").strip()
         reseau = reseau or "default"
-        forcer = self._is_yes(
-            input(t("Power off VMs that ignore the shutdown? (y/N): "))
+        forcer = ui.confirm(
+            t("Power off VMs that ignore the shutdown?"), default=False
         )
         args = ["--recreate", "--network", reseau, "--prefix", prefixe]
         if forcer:

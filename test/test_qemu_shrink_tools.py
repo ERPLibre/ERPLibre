@@ -25,7 +25,7 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 sys.argv = ["todo.py"]
-from script.todo import todo_install  # noqa: E402
+from script.todo import todo_i18n, todo_install  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -263,6 +263,9 @@ class TestBackupSpace(unittest.TestCase):
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
 
     def test_the_need_is_the_allocated_size_not_the_apparent_one(self):
         """« cp --sparse=always » ne recopie pas les trous d'un qcow2 : un
@@ -309,13 +312,13 @@ class TestBackupSpace(unittest.TestCase):
 
     def test_with_room_the_default_stays_yes(self):
         question, retenu = self._decision(12 * self.GIB, 40 * self.GIB, "")
-        self.assertIn("(O/n", question)
+        self.assertIn("[O/n]", question)
         self.assertTrue(retenu)
 
     def test_without_room_the_default_flips_to_no(self):
         """Le cœur du correctif : entrée vide ne doit PAS remplir le disque."""
         question, retenu = self._decision(12 * self.GIB, 3 * self.GIB, "")
-        self.assertIn("(y/N", question)
+        self.assertIn("[o/N]", question)
         self.assertFalse(retenu)
 
     def test_without_room_insisting_still_works(self):

@@ -443,8 +443,153 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/qemu_manage.py",
+        "QemuManageMixin._cleanup_delete_files",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._cleanup_ghost_domains",
+        "Undefine these ghost domains?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._cleanup_ssh_config",
+        "Remove these ~/.ssh/config entries?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._cleanup_stale_leases",
+        "Clear these stale leases?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_adjust_hardware",
+        "Apply these changes?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_ask_backup",
+        "Back up anyway, at the risk of filling the disk?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_ask_backup",
+        "Back up the disk before shrinking?",
+    ): [True],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_ask_bool",
+        "<dynamique>",
+    ): ["état"],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_change_state",
+        "Adjust hardware before starting?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_change_state",
+        "Apply: %s?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_change_state",
+        "Confirm for real?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_cleanup",
+        "Delete these orphan files?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_delete_vm",
+        "Also delete disk images (qcow2 + seed ISO)?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_delete_vm",
+        "Confirm deletion?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_diag_offer_tools",
+        "Install them now?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_download_image",
+        "Verify SHA256 after download?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_grow_via_console",
+        "Open the serial console now?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
         "QemuManageMixin._qemu_install_shrink_tools",
         "Install them?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_offer_start",
+        "Start the VM now?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_resize_disk",
+        "Delete this backup now?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_resize_disk",
+        "Grow the guest filesystem now (over SSH)?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_resize_disk",
+        "The VM must be off. Shut it down and retry?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_shrink_typed",
+        "Type the VM name (%s) to confirm you understand the risk: ",
+    ): ["typed"],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_shutdown_wait",
+        "Graceful shutdown timed out. Force off (destroy)?",
+    ): [False],
+    (
+        "script/todo/qemu_manage.py",
+        "QemuManageMixin._qemu_start_failed",
+        "Remove the 3D and start again?",
+    ): [True],
+    (
+        "script/todo/qemu_menu.py",
+        "QemuMenuMixin._qemu_ensure_tools",
+        "Install the QEMU/libvirt tools now?",
+    ): [True],
+    (
+        "script/todo/qemu_menu.py",
+        "QemuMenuMixin._qemu_stats",
+        "Erase %s recorded runs?",
+    ): [False],
+    (
+        "script/todo/qemu_network.py",
+        "QemuNetworkMixin._qemu_network_recreate",
+        "Power off VMs that ignore the shutdown?",
+    ): [False],
+    (
+        "script/todo/qemu_recover.py",
+        "QemuRecoverMixin._qemu_recover_ensure_tools",
+        "Install libguestfs now?",
+    ): [True],
+    (
+        "script/todo/qemu_recover.py",
+        "QemuRecoverMixin._qemu_recover_files",
+        "Run the diagnostics first?",
     ): [False],
     (
         "script/todo/sms/menu.py",

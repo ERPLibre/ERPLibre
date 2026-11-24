@@ -1028,7 +1028,7 @@ class QemuDeployMixin:
         self._cleanup_delete_files(
             t("Orphan disks that would fail the deployment"),
             items,
-            t("Delete them and continue? (y/N): "),
+            t("Delete them and continue?"),
         )
         restants = self._qemu_orphan_disks(names)
         if not restants:

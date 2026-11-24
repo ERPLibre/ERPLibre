@@ -223,7 +223,7 @@ class QemuManageMixin:
         version = self._qemu_prompt_version(distro)
         if version is None:
             return
-        ans = input(t("Verify SHA256 after download? (y/N): "))
+        verify = ui.confirm(t("Verify SHA256 after download?"), default=False)
         parts = [
             "sudo",
             script_path,
@@ -233,7 +233,7 @@ class QemuManageMixin:
             "--version",
             version,
         ]
-        if self._is_yes(ans):
+        if verify:
             parts.append("--verify")
         cmd = " ".join(shlex.quote(p) for p in parts)
         print(f"{t('Will execute:')} {cmd}")
@@ -294,16 +294,18 @@ class QemuManageMixin:
         # Le matériel d'une VM ne se règle QUE pendant qu'elle est éteinte :
         # démarrer est donc le dernier moment pour le faire, et le seul où la
         # question tombe juste.
-        if action == "start" and self._is_yes(
-            input(f"\n{t('Adjust hardware before starting? (y/N): ')}")
-        ):
-            self._qemu_adjust_hardware(resolved)
+        if action == "start":
+            print()
+            if ui.confirm(
+                t("Adjust hardware before starting?"), default=False
+            ):
+                self._qemu_adjust_hardware(resolved)
         # DOUBLE validation avant d'appliquer.
         summary = f"{verb} -> {', '.join(resolved)}"
-        if not self._is_yes(input(f"{t('Apply:')} {summary} ? (o/N) : ")):
+        if not ui.confirm(t("Apply: %s?") % summary, default=False):
             print(t("Cancelled."))
             return
-        if not self._is_yes(input(t("Confirm for real? (y/N): "))):
+        if not ui.confirm(t("Confirm for real?"), default=False):
             print(t("Cancelled."))
             return
         for real in resolved:
@@ -376,18 +378,12 @@ class QemuManageMixin:
                 return line.split(":", 1)[1].strip() == "enable"
         return False
 
-    def _qemu_ask_bool(self, prompt, default):
-        """Question fermée dont le DÉFAUT est l'état actuel de la VM.
-
-        Une réponse vide — ou incompréhensible — laisse la VM telle quelle :
-        sur un formulaire de matériel, le silence ne doit rien modifier.
-        """
-        ans = input(prompt).strip()
-        if self._is_yes(ans):
-            return True
-        if self._is_no(ans):
-            return False
-        return default
+    def _qemu_ask_bool(self, text, default):
+        """Question oui/non dont le DÉFAUT est `default`, l'état actuel de
+        la VM, que l'indice dit : une réponse vide et Ctrl+D le rendent, sur
+        un formulaire de matériel le silence ne modifie rien."""
+        answer = ui.confirm(text, default=default, back=True)
+        return default if answer is None else answer
 
     def _qemu_host_gpu_node(self):
         """Nœud de rendu de l'hôte, vu par deploy_qemu (source unique), ou ''."""
@@ -703,14 +699,7 @@ class QemuManageMixin:
         print(f"\n  {t('Will run, as root:')}")
         for cmd in commandes:
             print(f"    {cmd}")
-        try:
-            reponse = input(t("Install them now? (y/N): "))
-        except EOFError:
-            # Sans terminal — un lancement scripté — la question n'a personne
-            # pour y répondre. Ne rien installer, et laisser le rapport, qui
-            # est déjà écrit, faire son travail.
-            return False
-        if not self._is_yes(reponse):
+        if not ui.confirm(t("Install them now?"), default=False):
             return False
         for cmd in commandes:
             print(f"\n{t('Will execute:')} {cmd}")
@@ -902,9 +891,7 @@ class QemuManageMixin:
             f"   {t('The VM cannot boot while 3D stays in its definition.')}"
         )
         self._qemu_gpu_3d_report()
-        if not self._is_yes_default_yes(
-            input(t("Remove the 3D and start again? (Y/n): "))
-        ):
+        if not ui.confirm(t("Remove the 3D and start again?"), default=True):
             return
         from script.todo import qemu_hardware as hw
 
@@ -996,7 +983,7 @@ class QemuManageMixin:
         print(f"\n{t('Changes:')}")
         for entry in cmds:
             print(f"  - {entry['what']}")
-        if not self._is_yes(input(t("Apply these changes? (y/N): "))):
+        if not ui.confirm(t("Apply these changes?"), default=False):
             print(t("Cancelled."))
             return
         for entry in cmds:
@@ -1060,11 +1047,11 @@ class QemuManageMixin:
                 gpu = False
             else:
                 gpu = self._qemu_ask_bool(
-                    f"    {t('3D acceleration (host GPU)')} ? (o/N) : ",
+                    f"    {t('3D acceleration (host GPU)')} ?",
                     bool(r.get("accel3d")),
                 )
             auto = self._qemu_ask_bool(
-                f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
+                f"    {t('Autostart')} ?", bool(r.get("autostart"))
             )
             # [0] rend None, que build_want lit comme la valeur actuelle :
             # renoncer à un champ du formulaire n'y change rien.
@@ -1631,10 +1618,9 @@ class QemuManageMixin:
             time.sleep(2)
         print()  # newline après le compte à rebours
         # Arrêt gracieux trop long : proposer un arrêt forcé.
-        if self._is_yes(
-            input(
-                t("Graceful shutdown timed out. Force off (destroy)? (y/N): ")
-            )
+        if ui.confirm(
+            t("Graceful shutdown timed out. Force off (destroy)?"),
+            default=False,
         ):
             cmd = (
                 f"{sudo_prefix()}virsh --connect {URI} "
@@ -1796,13 +1782,9 @@ class QemuManageMixin:
             )
             print(f"⚠  {danger}")
             if state != "shut off":
-                if not self._is_yes(
-                    input(
-                        t(
-                            "The VM must be off. Shut it down and retry? "
-                            "(y/N): "
-                        )
-                    )
+                if not ui.confirm(
+                    t("The VM must be off. Shut it down and retry?"),
+                    default=False,
                 ):
                     print(t("Cancelled."))
                     return
@@ -1811,10 +1793,11 @@ class QemuManageMixin:
                     return
                 state = "shut off"
                 was_shut_down = True
-            if not self._is_yes(
-                input(t("Type y to confirm you understand the risk (y/N): "))
-            ):
+            # Un refus, Ctrl+D compris, laisse le disque intact ; la VM
+            # éteinte pour l'opération peut redémarrer.
+            if not self._qemu_shrink_typed(name):
                 print(t("Cancelled."))
+                self._qemu_offer_start(name, was_shut_down)
                 return
             # Réduction SÛRE (qemu-nbd : réduit FS + partition + GPT, avec
             # sauvegarde optionnelle restaurée en cas d'échec).
@@ -1842,8 +1825,8 @@ class QemuManageMixin:
                 print(f"❌ {t('Resize failed (see error above).')}")
                 return
             print(f"✅ {t('Virtual disk resized.')}")
-            if self._is_yes(
-                input(t("Grow the guest filesystem now (over SSH)? (y/N): "))
+            if ui.confirm(
+                t("Grow the guest filesystem now (over SSH)?"), default=False
             ):
                 self._qemu_grow_guest_fs(name)
 
@@ -1856,12 +1839,26 @@ class QemuManageMixin:
         bak = getattr(self, "_shrink_backup", None)
         if shrink and bak and os.path.exists(bak):
             print(f"\n{t('A disk backup was kept:')} {bak}")
-            if self._is_yes(input(t("Delete this backup now? (y/N): "))):
+            if ui.confirm(t("Delete this backup now?"), default=False):
                 todo_journal.lancer_journalise(["sudo", "rm", "-f", bak])
                 print(t("Backup deleted."))
             else:
                 print(t("Backup kept (delete later via Clean up QEMU)."))
             self._shrink_backup = None
+
+    def _qemu_shrink_typed(self, name):
+        """Vrai si l'opérateur tape `name`, le nom de la VM, et non un « o »,
+        pour confirmer la réduction de son disque. Ctrl+D, comme l'Annuler
+        de la page, lève EOFError dans `ui.confirm` : il rend False, comme
+        un autre nom."""
+        try:
+            return ui.confirm(
+                t("Type the VM name (%s) to confirm you understand the risk: ")
+                % name,
+                typed=name,
+            )
+        except EOFError:
+            return False
 
     def _qemu_offer_start(self, name, was_shut_down):
         """Si la VM a été éteinte pour l'opération, le noter et proposer de la
@@ -1869,7 +1866,7 @@ class QemuManageMixin:
         if not was_shut_down:
             return
         print(f"\nℹ  {t('The VM was shut down for the resize.')}")
-        if self._is_yes(input(t("Start the VM now? (y/N): "))):
+        if ui.confirm(t("Start the VM now?"), default=False):
             # `name` est déjà le nom canonique : « virsh start <id> »
             # échouerait car l'ID disparaît quand la VM est éteinte.
             cmd = (
@@ -1948,7 +1945,8 @@ class QemuManageMixin:
         return besoin, libre
 
     def _qemu_ask_backup(self, disk):
-        """Proposer la sauvegarde du disque, chiffres en main. True si oui.
+        """Proposer la sauvegarde du disque, chiffres en main. True si oui,
+        None pour Ctrl+D ou l'Annuler de la page, qui arrêtent la réduction.
 
         Les deux tailles passent AVANT la question : une copie qui ne tient
         pas s'arrête à mi-course et laisse un .bak tronqué sur un système de
@@ -1963,14 +1961,16 @@ class QemuManageMixin:
             f" {self._human_size(libre)}"
         )
         if libre > besoin * 1.05:
-            return self._is_yes_default_yes(
-                input(t("Back up the disk before shrinking? (Y/n): "))
+            return ui.confirm(
+                t("Back up the disk before shrinking?"),
+                default=True,
+                back=True,
             )
         print(f"⚠  {t('Not enough free space for a full backup.')}")
-        return self._is_yes(
-            input(
-                t("Back up anyway, at the risk of filling the disk? (y/N): ")
-            )
+        return ui.confirm(
+            t("Back up anyway, at the risk of filling the disk?"),
+            default=False,
+            back=True,
         )
 
     def _qemu_safe_shrink(self, name, disk, new_gb):
@@ -1998,7 +1998,11 @@ class QemuManageMixin:
         # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
         self._shrink_backup = None
         bak = None
-        if self._qemu_ask_backup(disk):
+        sauvegarde = self._qemu_ask_backup(disk)
+        if sauvegarde is None:
+            print(t("Cancelled."))
+            return False
+        if sauvegarde:
             bak = f"{disk}.bak"
             print(f"\n{t('Backing up the disk before shrinking…')}")
             if (
@@ -2429,7 +2433,7 @@ class QemuManageMixin:
         print(f"\n  {remote}\n")
         print(f"💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
         print(f"👤 {self._qemu_console_login(name)}")
-        if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
+        if not ui.confirm(t("Open the serial console now?"), default=False):
             return
         cmd = (
             f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
@@ -2474,8 +2478,8 @@ class QemuManageMixin:
                 print(t("Nothing selected."))
             return
 
-        del_disks = self._is_yes(
-            input(t("Also delete disk images (qcow2 + seed ISO)? (y/N): "))
+        del_disks = ui.confirm(
+            t("Also delete disk images (qcow2 + seed ISO)?"), default=False
         )
 
         print(f"\n{t('Will delete:')} {', '.join(chosen)}")
@@ -2483,7 +2487,7 @@ class QemuManageMixin:
             print(f"  + {t('disk images and seed ISOs')}")
         else:
             print(f"  ({t('disks kept')})")
-        if not self._is_yes(input(t("Confirm deletion? (y/N): "))):
+        if not ui.confirm(t("Confirm deletion?"), default=False):
             print(t("Cancelled."))
             return
 
@@ -2554,7 +2558,8 @@ class QemuManageMixin:
         return out
 
     def _cleanup_delete_files(self, title, items, prompt):
-        """items : [(taille, chemin)]. Liste, confirme, puis « sudo rm -f »."""
+        """items : [(taille, chemin)]. Liste, demande `prompt`, une question
+        oui/non sans indice, non par défaut, puis « sudo rm -f »."""
         if not items:
             return
         total = sum(s for s, _ in items)
@@ -2564,7 +2569,7 @@ class QemuManageMixin:
         )
         for size, path in sorted(items, key=lambda o: -o[0]):
             print(f"  {self._human_size(size):>9}  {path}")
-        if not self._is_yes(input(prompt)):
+        if not ui.confirm(prompt, default=False):
             print(t("Cancelled."))
             return
         paths = " ".join(shlex.quote(p) for _, p in items)
@@ -2636,7 +2641,7 @@ class QemuManageMixin:
                 f"\n  {t('Total:')} {self._human_size(total)} "
                 f"({len(orphans)} {t('files')})"
             )
-            if self._is_yes(input(t("Delete these orphan files? (y/N): "))):
+            if ui.confirm(t("Delete these orphan files?"), default=False):
                 paths = " ".join(shlex.quote(o[1]) for o in orphans)
                 cmd = f"sudo rm -f {paths}"
                 print(f"{t('Will execute:')} {cmd}")
@@ -2665,7 +2670,7 @@ class QemuManageMixin:
         self._cleanup_delete_files(
             t("Stale codename-named Ubuntu images (duplicates):"),
             dups,
-            t("Delete these duplicate images? (y/N): "),
+            t("Delete these duplicate images?"),
         )
         # 4) Entrées ~/.ssh/config orphelines (erplibre-* sans VM).
         self._cleanup_ssh_config(domains)
@@ -2690,7 +2695,7 @@ class QemuManageMixin:
         self._cleanup_delete_files(
             t("All cached base images (reusable):"),
             cached,
-            t("Delete ALL cached base images? (y/N): "),
+            t("Delete ALL cached base images?"),
         )
 
     def _cleanup_ghost_domains(self):
@@ -2726,7 +2731,7 @@ class QemuManageMixin:
             f"\n{t('Ghost domains (defined but disk missing):')} "
             f"{', '.join(ghosts)}"
         )
-        if not self._is_yes(input(t("Undefine these ghost domains? (y/N): "))):
+        if not ui.confirm(t("Undefine these ghost domains?"), default=False):
             print(t("Cancelled."))
             return
         for name in ghosts:
@@ -2819,8 +2824,8 @@ class QemuManageMixin:
         for h, raison in orphelines:
             print(f"  {h}" + (f"  ← {raison}" if raison else ""))
         orphans = [h for h, _r in orphelines]
-        if not self._is_yes(
-            input(t("Remove these ~/.ssh/config entries? (y/N): "))
+        if not ui.confirm(
+            t("Remove these ~/.ssh/config entries?"), default=False
         ):
             print(t("Cancelled."))
             return
@@ -2867,7 +2872,7 @@ class QemuManageMixin:
                 f"  {ln.get('ip-address', '?'):<16} "
                 f"{ln.get('mac-address', '?')}  {ln.get('hostname', '')}"
             )
-        if not self._is_yes(input(t("Clear these stale leases? (y/N): "))):
+        if not ui.confirm(t("Clear these stale leases?"), default=False):
             print(t("Cancelled."))
             return
         kept = [ln for ln in leases if ln not in stale]

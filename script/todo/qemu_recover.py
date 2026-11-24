@@ -19,6 +19,7 @@ import shutil
 import subprocess
 
 from script.execute.execute import Execute
+from script.todo import ui
 from script.todo.qemu_privilege import (
     install_cmd_for,
     system_env,
@@ -126,9 +127,7 @@ class QemuRecoverMixin:
             print(f"   {t('Unknown package manager: install libguestfs.')}")
             return not manque_essentiel
         print(f"   {t('Will execute:')} {install}")
-        if not self._is_yes_default_yes(
-            input(t("Install libguestfs now? (Y/n): "))
-        ):
+        if not ui.confirm(t("Install libguestfs now?"), default=True):
             return not manque_essentiel
         self.execute.exec_command_live(
             install, source_erplibre=False, new_env={"PATH": system_path()}
@@ -299,7 +298,7 @@ class QemuRecoverMixin:
         if not self._qemu_recover_ready(name):
             print(t("Cancelled."))
             return
-        if self._is_yes(input(t("Run the diagnostics first? (y/N): "))):
+        if ui.confirm(t("Run the diagnostics first?"), default=False):
             self._qemu_recover_diagnostics(disk)
         part = self._qemu_recover_pick_filesystem(disk)
         if not part:

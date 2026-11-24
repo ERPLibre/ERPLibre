@@ -2379,12 +2379,6 @@ class TODO(
         return a == "" or a in ("y", "yes", "o", "oui")
 
     @staticmethod
-    def _is_no(ans):
-        """Réponse négative explicite, FR et EN (n/no/non). Utile pour les
-        invites « défaut oui » où tout sauf « non » vaut oui."""
-        return ans.strip().lower() in ("n", "no", "non")
-
-    @staticmethod
     def _host_disk_gb(path="/var/lib/libvirt/images"):
         """(libre, total) en Go du système de fichiers qui portera les disques.
 
