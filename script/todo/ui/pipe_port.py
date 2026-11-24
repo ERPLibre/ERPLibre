@@ -32,7 +32,9 @@ ou le non lu (`yes`, `port.confirmed`), ou la lettre d'une action (`key`),
 aucun pour une réponse invalide.
 Pour une question finie sans réponse, il porte `end` : `timeout` à
 l'échéance, `cancel` sur une exception (annulée par la page, Ctrl+D,
-Ctrl+C). Un secret se pose écho coupé, comme `getpass` ; le hub y voit
+Ctrl+C), sauf pour une confirmation sans `back`, où Annuler et Ctrl+D
+valent non : `yes` faux. Annuler et Ctrl+D finissent la ligne de
+l'invite. Un secret se pose écho coupé, comme `getpass` ; le hub y voit
 l'invite d'un mot de passe. Après une réponse
 venue du canal, le terminal en montre la transcription sur la ligne de la
 question : l'entrée choisie d'un menu, Oui ou Non pour une confirmation,
@@ -188,6 +190,15 @@ class PipePort(port.BasePort):
                     answered["key" if isinstance(yes, str) else "yes"] = yes
             if source is None:
                 answered["end"] = "timeout"
+        except EOFError:
+            # Ctrl+D ou Annuler : la ligne de l'invite se finit, comme
+            # `port._line` au CLI ; sans `back`, une confirmation lit non.
+            self._write("\n")
+            if kind == "confirm" and not message.get("back"):
+                answered["yes"] = False
+            else:
+                answered["end"] = "cancel"
+            raise
         except BaseException:
             answered["end"] = "cancel"
             raise

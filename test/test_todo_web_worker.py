@@ -741,25 +741,30 @@ class TestPipePort(unittest.TestCase):
         self.assertNotIn("back", asked)
         os.write(self.master, b"\x04")
         self.assertIs(future.result(10), False)
-        closed = {"t": "answered", "qid": asked["qid"], "end": "cancel"}
-        self.assertEqual(self.received(), closed)
+        # Sans `back`, `answered` porte le non lu, et non une annulation.
+        said_no = {"t": "answered", "qid": asked["qid"], "yes": False}
+        self.assertEqual(self.received(), said_no)
         # Annuler, que la page n'offre qu'avec `back`, vaut sinon non.
         future, asked = self.asking(self.port.confirm, "Go?", True)
         self.reply(t="cancel", qid=asked["qid"])
         self.assertIs(future.result(10), False)
-        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+        self.assertEqual(self.received(), {**said_no, "qid": asked["qid"]})
         future, asked = self.asking(
             self.port.confirm, "Go?", True, None, None, True
         )
         self.assertIs(asked["back"], True)
         self.reply(t="cancel", qid=asked["qid"])
         self.assertIsNone(future.result(10))
-        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+        closed = {"t": "answered", "qid": asked["qid"], "end": "cancel"}
+        self.assertEqual(self.received(), closed)
         future, asked = self.asking(
             self.port.confirm, "Go?", True, None, None, True
         )
         os.write(self.master, b"\x04")
         self.assertIsNone(future.result(10))
+        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+        # Chacune finit la ligne de son invite, comme Ctrl+D au CLI.
+        self.assertEqual(self.out.getvalue(), "Go? [Y/n]: \n" * 4)
 
     def test_an_invalid_confirmation_asks_again_with_a_new_qid(self):
         # Un test en échec laisse sa question posée : Ctrl+D la finit.
