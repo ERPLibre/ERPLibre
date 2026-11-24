@@ -2367,17 +2367,6 @@ class TODO(
         return int(m.group(1)) if m else 0
 
     @staticmethod
-    def _is_yes(ans):
-        """Réponse affirmative, FR et EN (o/oui/y/yes)."""
-        return ans.strip().lower() in ("y", "yes", "o", "oui")
-
-    @staticmethod
-    def _is_yes_default_yes(ans):
-        """Comme _is_yes mais le DÉFAUT (réponse vide) est OUI."""
-        a = ans.strip().lower()
-        return a == "" or a in ("y", "yes", "o", "oui")
-
-    @staticmethod
     def _host_disk_gb(path="/var/lib/libvirt/images"):
         """(libre, total) en Go du système de fichiers qui portera les disques.
 

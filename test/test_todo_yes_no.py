@@ -17,10 +17,11 @@ même commit. Le défaut est un booléen littéral, `typed` pour une
 confirmation tapée, ou l'état pour les seules fonctions de
 STATE_DEFAULTS.
 
-Deux gardes ferment la porte aux règles écrites hors du port : aucun
-texte ne porte d'indice oui/non hors de HINTED_TEXTS, et aucune réponse
-lue n'est comparée à un mot oui/non hors de YES_NO_COMPARES. Chaque table
-ne fait que baisser.
+Trois gardes ferment la porte aux règles écrites hors du port : aucun
+texte ne porte d'indice oui/non hors de HINTED_TEXTS, aucune réponse lue
+n'est comparée à un mot oui/non hors de YES_NO_COMPARES, et aucune aide
+oui/non n'est définie ni lue hors de YES_NO_HELPERS. Chaque table ne
+fait que baisser.
 """
 
 import ast
@@ -1264,24 +1265,6 @@ HINT = re.compile(
     re.IGNORECASE,
 )
 
-# Les clés de TRANSLATIONS à indice qu'aucune constante de script/ ne lit.
-DEAD_HINT_KEYS = {
-    "Add this VM to ~/.ssh/config? (y/N): ",
-    "First system installation? (Y/N)",
-    "Open Pycharm? (Y/N): ",
-    "Create the SSH key if missing and deploy it? (Y/n): ",
-    "Install libguestfs-tools now? (y/N): ",
-    "Show advanced info (vCPU, RAM, disk)? (y/N): ",
-    "Also delete the cached base images? (y/N): ",
-    "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ",
-    "No SSH key found. Set a password instead? (Y/n): ",
-    "Overwrite existing VM disk if present? (y/N): ",
-    "Press y/Y to upgrade all addons of the",
-    "Press y/Y or type filename.zip to export, or",
-    "Compare with the module source? (Y/n): ",
-    "Advanced settings (MTU, L2TP port, DNS)? (y/N)",
-}
-
 # Les textes qui portent un indice oui/non, clés de TRANSLATIONS ou
 # littéraux d'une question, chacun avec ce qui le tient hors du port. La
 # table ne fait que baisser : une question neuve passe par `ui.confirm`,
@@ -1308,7 +1291,6 @@ HINTED_TEXTS = {
         "l'amorçage de todo.py, sous le Python du système, avant que `ui`"
         " puisse s'importer"
     ),
-    **dict.fromkeys(DEAD_HINT_KEYS, "aucune constante de script/ ne la lit"),
 }
 
 # Les appels qui rendent une réponse tapée, et ceux qui posent une
@@ -1368,6 +1350,20 @@ NOT_ANSWERS = {
     ("script/todo/qemu_hardware.py", "hw_state"),
     ("script/todo/system_menu.py", "octets"),
     ("script/todo/ui/legacy.py", "confirm_default"),
+}
+
+# Le nom d'une aide qui lit un oui ou un non hors du port.
+HELPER_NAME = re.compile(
+    r"_(?:is_(?:yes(?:_default_yes)?|no)|oui\w*|non|system_oui|python_oui)"
+)
+
+# Les aides oui/non de `script/todo` hors du port, (fichier, nom) → la
+# raison qui les y tient. La table ne fait que baisser.
+YES_NO_HELPERS = {
+    ("script/todo/transform_setup.py", "_oui"): (
+        "transform_setup.create et ensure, que des scripts lancés à part"
+        " appellent avec leur propre `ask`"
+    ),
 }
 
 
@@ -1559,7 +1555,7 @@ def _reads_answer(node, names) -> bool:
     return isinstance(node, ast.Name) and node.id in names
 
 
-def _is_yes_no(node) -> bool:
+def _yes_no_word(node) -> bool:
     """Vrai pour une constante, ou un tuple, une liste, un ensemble de
     constantes, dont l'une est un mot de YES_NO_WORDS."""
     items = [node]
@@ -1611,7 +1607,7 @@ def _compared(node):
 def yes_no_compares(source) -> dict:
     """(fonction, ligne) → vrai quand la comparaison porte sur une réponse
     lue, pour chaque comparaison de `source` (_compared) dont un côté est
-    un mot oui/non (_is_yes_no). Une réponse lue : un appel
+    un mot oui/non (_yes_no_word). Une réponse lue : un appel
     d'ANSWER_ASKS, ou un nom que la MÊME fonction en assigne ; un
     paramètre n'en est pas une, il porte une valeur lue ailleurs. Le code
     hors de toute fonction compte sous `<module>`."""
@@ -1627,11 +1623,44 @@ def yes_no_compares(source) -> dict:
         names = _answer_names(nodes)
         for node in nodes:
             sides = _compared(node) or []
-            if any(_is_yes_no(side) for side in sides):
+            if any(_yes_no_word(side) for side in sides):
                 where = getattr(scope, "name", "<module>")
                 found[(where, node.lineno)] = any(
                     _reads_answer(side, names) for side in sides
                 )
+    return found
+
+
+def yes_no_helpers(source) -> set:
+    """Les noms d'aide oui/non (HELPER_NAME) que `source` définit, par
+    `def` ou par une lambda affectée, ou qu'il lit, en nom nu ou en
+    attribut : un appel comme une référence passée sans appel
+    (`run(ask=_oui)`). Un nom affecté d'autre chose qu'une lambda n'en
+    est pas un."""
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            name = node.name
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            name = node.id
+        elif isinstance(node, ast.Attribute) and isinstance(
+            node.ctx, ast.Load
+        ):
+            name = node.attr
+        elif isinstance(node, ast.Assign) and isinstance(
+            node.value, ast.Lambda
+        ):
+            found |= {
+                target.id
+                for target in node.targets
+                if isinstance(target, ast.Name)
+                and HELPER_NAME.fullmatch(target.id)
+            }
+            continue
+        else:
+            continue
+        if HELPER_NAME.fullmatch(name):
+            found.add(name)
     return found
 
 
@@ -1764,6 +1793,24 @@ def nested():
         a == "y"
 """
 
+HELPERS = """
+def _oui(answer):
+    return answer in ("", "o")
+
+_oui_lambda = lambda answer: answer == "o"
+
+class Menu:
+    async def _non(self, answer):
+        return self.forms._oui_forged(answer)
+
+    def probe(self, run):
+        return run(ask=self._oui_passed, other=_oui_bare)
+
+def ask():
+    _oui_kept = _is_none(input("?"))
+    return _nom(input("?")) or _nonce()
+"""
+
 
 class TestYesNoGuards(unittest.TestCase):
     def test_the_hint_reads_each_form(self):
@@ -1813,21 +1860,6 @@ class TestYesNoGuards(unittest.TestCase):
             sorted(listed - found), [], "remove these from HINTED_TEXTS"
         )
 
-    def test_the_dead_hint_keys_are_read_by_no_constant(self):
-        read = set()
-        for path in sorted((REPO / "script").rglob("*.py")):
-            if path == TODO / "todo_i18n.py":
-                continue
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            read |= {
-                node.value
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Constant)
-                and node.value in DEAD_HINT_KEYS
-            }
-        self.assertEqual(sorted(read), [])
-        self.assertLessEqual(DEAD_HINT_KEYS, set(TRANSLATIONS))
-
     def test_the_compare_guard_reads_each_form(self):
         by_scope = {}
         for (where, _line), reads in yes_no_compares(COMPARES).items():
@@ -1876,6 +1908,35 @@ class TestYesNoGuards(unittest.TestCase):
                     if where == function
                 }
                 self.assertEqual(reads, {False})
+
+    def test_the_helper_guard_reads_each_form(self):
+        self.assertEqual(
+            yes_no_helpers(HELPERS),
+            {
+                "_oui",
+                "_oui_lambda",
+                "_non",
+                "_oui_forged",
+                "_oui_passed",
+                "_oui_bare",
+            },
+        )
+
+    def test_no_yes_no_helper_is_left(self):
+        found = set()
+        for path in sorted(TODO.rglob("*.py")):
+            if path.is_relative_to(PORT):
+                continue
+            rel = path.relative_to(REPO).as_posix()
+            source = path.read_text(encoding="utf-8")
+            found |= {(rel, name) for name in yes_no_helpers(source)}
+        listed = set(YES_NO_HELPERS)
+        self.assertEqual(
+            sorted(found - listed), [], "ask through ui.confirm instead"
+        )
+        self.assertEqual(
+            sorted(listed - found), [], "remove these from YES_NO_HELPERS"
+        )
 
 
 class TestCountdownOnlyInAutoMode(unittest.TestCase):

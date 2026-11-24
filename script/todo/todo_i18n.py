@@ -898,10 +898,6 @@ TRANSLATIONS = {
         "fr": "Login par défaut :",
         "en": "Default login:",
     },
-    "Add this VM to ~/.ssh/config? (y/N): ": {
-        "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N, défaut : non) : ",
-        "en": "Add this VM to ~/.ssh/config? (y/N, default: no): ",
-    },
     "Add each VM to ~/.ssh/config?": {
         "fr": "Ajouter chaque VM à ~/.ssh/config ?",
         "en": "Add each VM to ~/.ssh/config?",
@@ -1998,25 +1994,11 @@ TRANSLATIONS = {
         "fr": "Recherche d'une première installation depuis le code source.",
         "en": "Detect first installation from code source.",
     },
-    "First system installation? (Y/N)": {
-        "fr": (
-            "Première installation du système ? Le système s'installe"
-            " d'abord (O/N) : "
-        ),
-        "en": (
-            "First system installation? This will process system"
-            " installation before (Y/N): "
-        ),
-    },
     "Wait after OS installation before continue.": {
         "fr": (
             "Attendre la fin de l'installation du système avant de continuer."
         ),
         "en": "Wait after OS installation before continue.",
-    },
-    "Open Pycharm? (Y/N): ": {
-        "fr": "Ouvrir Pycharm ? (O/N) : ",
-        "en": "Open Pycharm? (Y/N): ",
     },
     "Close Pycharm once it is done": {
         "fr": (
@@ -7232,12 +7214,6 @@ TRANSLATIONS = {
         "fr": "QEMU présent, aucune VM",
         "en": "QEMU present, no VM",
     },
-    "Create the SSH key if missing and deploy it? (Y/n): ": {
-        "fr": "Créer la clé SSH si absente et la déployer ? "
-        "(O/n, défaut : oui) : ",
-        "en": "Create the SSH key if missing and deploy it? "
-        "(Y/n, default: yes): ",
-    },
     "Generating an ed25519 SSH key": {
         "fr": "Génération d'une clé SSH ed25519",
         "en": "Generating an ed25519 SSH key",
@@ -8861,10 +8837,6 @@ TRANSLATIONS = {
         "fr": "La réduction sûre nécessite libguestfs (virt-resize).",
         "en": "Safe shrink needs libguestfs (virt-resize).",
     },
-    "Install libguestfs-tools now? (y/N): ": {
-        "fr": "Installer libguestfs-tools maintenant ? (o/N) : ",
-        "en": "Install libguestfs-tools now? (y/N): ",
-    },
     "Shrink aborted; disk left intact.": {
         "fr": "Réduction annulée ; disque laissé intact.",
         "en": "Shrink aborted; disk left intact.",
@@ -9197,10 +9169,6 @@ TRANSLATIONS = {
     "Graceful shutdown timed out. Force off (destroy)?": {
         "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ?",
         "en": "Graceful shutdown timed out. Force off (destroy)?",
-    },
-    "Show advanced info (vCPU, RAM, disk)? (y/N): ": {
-        "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
-        "en": "Show advanced info (vCPU, RAM, disk)? (y/N): ",
     },
     "What do you want to do?": {
         "fr": "Que voulez-vous faire ?",
@@ -10435,10 +10403,6 @@ TRANSLATIONS = {
         "fr": "Images de base en cache (réutilisables) :",
         "en": "Cached base images (reusable):",
     },
-    "Also delete the cached base images? (y/N): ": {
-        "fr": "Effacer aussi les images de base en cache ? (o/N, défaut : non) : ",
-        "en": "Also delete the cached base images? (y/N, default: no): ",
-    },
     "All cached base images (reusable):": {
         "fr": "Toutes les images de base en cache (réutilisables) :",
         "en": "All cached base images (reusable):",
@@ -10678,10 +10642,6 @@ TRANSLATIONS = {
     "Installing ERPLibre on each VM": {
         "fr": "Installation d'ERPLibre sur chaque VM",
         "en": "Installing ERPLibre on each VM",
-    },
-    "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ": {
-        "fr": "Installer ERPLibre dans ~/git/erplibre sur cette VM ? (o/N, défaut : non) : ",
-        "en": "Install ERPLibre into ~/git/erplibre on this VM? (y/N, default: no): ",
     },
     "installing ERPLibre": {
         "fr": "installation d'ERPLibre",
@@ -12384,14 +12344,6 @@ TRANSLATIONS = {
         "fr": "Fuseau inconnu, on garde",
         "en": "Unknown timezone, keeping",
     },
-    "No SSH key found. Set a password instead? (Y/n): ": {
-        "fr": "Aucune clé SSH trouvée. Définir un mot de passe ? (O/n) : ",
-        "en": "No SSH key found. Set a password instead? (Y/n): ",
-    },
-    "Overwrite existing VM disk if present? (y/N): ": {
-        "fr": "Écraser le disque de la VM s'il existe ? (o/N, défaut : non) : ",
-        "en": "Overwrite existing VM disk if present? (y/N, default: no): ",
-    },
     "Verify SHA256 after download?": {
         "fr": "Vérifier le SHA256 après téléchargement ?",
         "en": "Verify SHA256 after download?",
@@ -13437,10 +13389,6 @@ TRANSLATIONS = {
         "fr": "ou attendre la version suivante",
         "en": "or wait next version",
     },
-    "Press y/Y to upgrade all addons of the": {
-        "fr": "y/Y pour mettre à jour tous les modules de la",
-        "en": "Press y/Y to upgrade all addons of the",
-    },
     "Open the server with Selenium to test this upgrade?": {
         "fr": "Ouvrir le serveur avec Selenium pour tester cette migration ?",
         "en": "Open the server with Selenium to test this upgrade?",
@@ -13460,10 +13408,6 @@ TRANSLATIONS = {
     "A backup can be created": {
         "fr": "Une sauvegarde peut être créée",
         "en": "A backup can be created",
-    },
-    "Press y/Y or type filename.zip to export, or": {
-        "fr": "y/Y ou un nom fichier.zip pour exporter, ou",
-        "en": "Press y/Y or type filename.zip to export, or",
     },
     "enter to continue": {
         "fr": "Entrée pour continuer",
@@ -16222,10 +16166,6 @@ TRANSLATIONS = {
         " read_arch_from_file returns the raw file, while the database holds"
         " the arch AFTER load-time processing. Measured on a freshly installed"
         " 18.0 database, 160 of its 974 views already differ this way.",
-    },
-    "Compare with the module source? (Y/n): ": {
-        "fr": "Comparer avec la source du module ? (O/n) : ",
-        "en": "Compare with the module source? (Y/n): ",
     },
     # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
     # conseillé en options de ligne de commande est devenu des entrées :
@@ -19914,10 +19854,6 @@ TRANSLATIONS = {
     "Witness address reachable only through the tunnel (optional)": {
         "fr": "Adresse témoin joignable seulement par le tunnel (facultatif)",
         "en": "Witness address reachable only through the tunnel (optional)",
-    },
-    "Advanced settings (MTU, L2TP port, DNS)? (y/N)": {
-        "fr": "Réglages avancés (MTU, port L2TP, DNS) ? (o/N)",
-        "en": "Advanced settings (MTU, L2TP port, DNS)? (y/N)",
     },
     "Profile name (lowercase, digits, - or _)": {
         "fr": "Nom du profil (minuscules, chiffres, « - » ou « _ »)",
