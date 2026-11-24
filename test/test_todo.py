@@ -372,16 +372,19 @@ class TestExecuteUnitTests(unittest.TestCase):
 
     def _cmd(self, code=0):
         todo = TODO()
+        processus = MagicMock(args=["lanceur"])
+        processus.wait.return_value = code
         with (
+            # L'attente passe par Popen : un Ctrl+C ne l'interrompt pas, le
+            # lanceur démonte ce qu'il a créé avant de rendre la main.
             patch(
-                "script.todo.todo.subprocess.run",
-                return_value=MagicMock(returncode=code),
-            ) as run,
+                "script.todo.todo.subprocess.Popen", return_value=processus
+            ) as popen,
             patch("builtins.print") as mock_print,
         ):
             todo.execute_unit_tests()
         self.mock_print = mock_print
-        return run.call_args[0][0]
+        return popen.call_args[0][0]
 
     def test_it_runs_the_whole_suite_through_the_runner_table(self):
         """Aucun fichier nommé : le lanceur balaie alors tout test/."""

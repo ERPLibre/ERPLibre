@@ -103,6 +103,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Analyse module": "prompt_execute_module_analysis",
         "Python": "prompt_execute_python",
         "Git repository": "prompt_execute_git",
+        "Coverage": "prompt_execute_coverage",
         "Database": "prompt_execute_database",
         "Analyse": "prompt_execute_analyse",
         "Transform data": "prompt_execute_transform",
@@ -2132,6 +2133,23 @@ class TestCodeMenuNumbering(MenuCoherence, unittest.TestCase):
         "Update - Update all developed staging source code": (
             "prompt_execute_update"
         ),
+    }
+
+
+class TestCoverageMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Couverture, entrée [11] du menu Développement."""
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_coverage(self):"
+    END = "def _coverage_tui(self):"
+    MINIMUM = 4
+
+    EXPECTED = {
+        "Open the coverage screen": "_coverage_tui",
+        "Run the unit tests with coverage": "_coverage_run_unit",
+        "Run the Odoo scenarios with coverage": "_coverage_run_odoo",
+        "Open the HTML coverage report": "_coverage_html",
+        "Erase the coverage data of a set": "_coverage_erase",
     }
 
 

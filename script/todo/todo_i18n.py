@@ -2629,6 +2629,83 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
+    # Coverage section : Exécution › Développement › Couverture
+    "Coverage - Track the code covered by tests": {
+        "fr": "🎯 Couverture - Suivi du code couvert par les tests",
+        "en": "🎯 Coverage - Track the code covered by tests",
+    },
+    "Open the coverage screen": {
+        "fr": "📊 Ouvrir l'écran de couverture",
+        "en": "📊 Open the coverage screen",
+    },
+    "Run the unit tests with coverage": {
+        "fr": "⚗  Lancer les tests unitaires avec couverture",
+        "en": "⚗  Run the unit tests with coverage",
+    },
+    "Run the Odoo scenarios with coverage": {
+        "fr": "🧪 Lancer les scénarios Odoo avec couverture",
+        "en": "🧪 Run the Odoo scenarios with coverage",
+    },
+    "Open the HTML coverage report": {
+        "fr": "🌐 Ouvrir le rapport HTML de couverture",
+        "en": "🌐 Open the HTML coverage report",
+    },
+    "Erase the coverage data of a set": {
+        "fr": "🗑  Effacer les données de couverture d'un jeu",
+        "en": "🗑  Erase the coverage data of a set",
+    },
+    "ERPLibre code, measured by the unit tests": {
+        "fr": "code ERPLibre, mesuré par les tests unitaires",
+        "en": "ERPLibre code, measured by the unit tests",
+    },
+    "Odoo modules, measured by the Odoo scenarios": {
+        "fr": "modules Odoo, mesurés par les scénarios Odoo",
+        "en": "Odoo modules, measured by the Odoo scenarios",
+    },
+    "Coverage set": {
+        "fr": "Jeu de couverture",
+        "en": "Coverage set",
+    },
+    "Running unit tests with coverage": {
+        "fr": "Exécution des tests unitaires avec couverture",
+        "en": "Running unit tests with coverage",
+    },
+    "Running Odoo scenarios with coverage": {
+        "fr": "Exécution des scénarios Odoo avec couverture",
+        "en": "Running Odoo scenarios with coverage",
+    },
+    "All Odoo scenarios passed": {
+        "fr": "Tous les scénarios Odoo ont réussi",
+        "en": "All Odoo scenarios passed",
+    },
+    "Some Odoo scenarios failed, exit code": {
+        "fr": "Des scénarios Odoo ont échoué, code de sortie",
+        "en": "Some Odoo scenarios failed, exit code",
+    },
+    "Odoo scenario launcher missing:": {
+        "fr": "Lanceur des scénarios Odoo absent :",
+        "en": "Odoo scenario launcher missing:",
+    },
+    "No coverage data yet for this set.": {
+        "fr": "Aucune mesure de couverture pour ce jeu : lancez d'abord un"
+        " passage.",
+        "en": "No coverage data yet for this set: run it first.",
+    },
+    "No program to open it; the report is here:": {
+        "fr": "Aucun programme pour l'ouvrir ; le rapport est ici :",
+        "en": "No program to open it; the report is here:",
+    },
+    "Erase the measurement data of this set? The report and the history"
+    " are kept.": {
+        "fr": "Effacer les données de mesure de ce jeu ? Le rapport et"
+        " l'historique restent.",
+        "en": "Erase the measurement data of this set? The report and the"
+        " history are kept.",
+    },
+    "Coverage data erased": {
+        "fr": "Données de couverture effacées",
+        "en": "Coverage data erased",
+    },
     # Test section
     "Test - Test an Odoo module": {
         "fr": "🧪 Test - Tester un module Odoo",
