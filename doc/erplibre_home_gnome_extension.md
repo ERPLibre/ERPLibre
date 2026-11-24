@@ -78,7 +78,8 @@ menu talk to the running extension over D-Bus and degrade when it does not
 answer. The extension, in turn, finds the ERPLibre checkout from its own
 path and runs the deck program and the controller from
 `script/stream_deck/deck/`, or from `script/stream_deck/` in an ERPLibre
-checkout older than the deck's own repository (contract 1.5).
+checkout older than the deck's own repository (contract 1.5), and the games
+gallery from `script/stream_deck/games/`.
 
 ## Older ERPLibre commits
 
@@ -102,8 +103,9 @@ git -C script/gnome-extension/erplibre_home checkout -- .
 
 The `post-checkout` hook of `script/git/hooks` (`git config core.hooksPath
 script/git/hooks`) prints that command after a checkout from or to a
-commit that tracks the extension. It restores nothing itself: it cannot
-tell an overwrite from a wanted change.
+commit that tracks the extension, or the games at
+`script/stream_deck/games/`. It restores nothing itself: it cannot tell an
+overwrite from a wanted change.
 
 ## Changing the extension
 

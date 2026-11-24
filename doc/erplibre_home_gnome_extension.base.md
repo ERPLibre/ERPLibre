@@ -125,7 +125,8 @@ menu talk to the running extension over D-Bus and degrade when it does not
 answer. The extension, in turn, finds the ERPLibre checkout from its own
 path and runs the deck program and the controller from
 `script/stream_deck/deck/`, or from `script/stream_deck/` in an ERPLibre
-checkout older than the deck's own repository (contract 1.5).
+checkout older than the deck's own repository (contract 1.5), and the games
+gallery from `script/stream_deck/games/`.
 
 ## Older ERPLibre commits
 
@@ -149,8 +150,9 @@ git -C script/gnome-extension/erplibre_home checkout -- .
 
 The `post-checkout` hook of `script/git/hooks` (`git config core.hooksPath
 script/git/hooks`) prints that command after a checkout from or to a
-commit that tracks the extension. It restores nothing itself: it cannot
-tell an overwrite from a wanted change.
+commit that tracks the extension, or the games at
+`script/stream_deck/games/`. It restores nothing itself: it cannot tell an
+overwrite from a wanted change.
 
 ## Changing the extension
 
@@ -199,7 +201,8 @@ menu TODO parlent à l'extension en marche par D-Bus et se dégradent quand
 elle ne répond pas. L'extension, elle, trouve le checkout d'ERPLibre par
 son propre chemin et lance le programme du deck et le contrôleur depuis
 `script/stream_deck/deck/`, ou depuis `script/stream_deck/` dans un
-checkout d'ERPLibre antérieur au dépôt propre du deck (contrat 1.5).
+checkout d'ERPLibre antérieur au dépôt propre du deck (contrat 1.5), et la
+galerie des jeux depuis `script/stream_deck/games/`.
 
 ## Les commits d'ERPLibre plus anciens
 
@@ -224,7 +227,8 @@ git -C script/gnome-extension/erplibre_home checkout -- .
 
 Le hook `post-checkout` de `script/git/hooks` (`git config core.hooksPath
 script/git/hooks`) affiche cette commande après une extraction depuis ou
-vers un commit qui suit l'extension. Il ne restaure rien lui-même : il ne
+vers un commit qui suit l'extension, ou les jeux de
+`script/stream_deck/games/`. Il ne restaure rien lui-même : il ne
 distingue pas un écrasement d'une modification voulue.
 
 ## Modifier l'extension

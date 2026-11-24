@@ -74,8 +74,14 @@ deck) et `streamdeck_translator_unittest` lancent un fichier du checkout et
 s'arrêtent de même. TODO › ERPLibre Home lit le verrou du deck par le
 `deck_lock.py` du checkout, liste les plugins de
 `erplibre_streamdeck/plugins/`, et dit « Programme du deck : pas installé »
-sans lui. L'extension GNOME cherche le programme du deck d'abord dans
-`script/stream_deck/deck/` (son contrat 1.5).
+sans lui. La passation du service à un jeu,
+`script/install/erplibre_home_streamdeck_handover.sh`, lance
+`python3 -I script/stream_deck/deck/deck_lock.py game <commande>`, la ligne
+de commande du contrat 1.1 ; sur un checkout dont le contrat a une autre
+MAJEURE ou une MINEURE plus basse que `deck_contract`, elle sort en 5 avant
+d'arrêter quoi que ce soit, en nommant les deux versions. L'extension GNOME
+cherche le programme du deck d'abord dans `script/stream_deck/deck/` (son
+contrat 1.5).
 
 ## Modifier le programme du deck
 
