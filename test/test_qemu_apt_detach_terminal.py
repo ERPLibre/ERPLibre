@@ -41,29 +41,51 @@ def _deploy_qemu():
 DQ = _deploy_qemu()
 
 
-class DetachFromTerminal(unittest.TestCase):
-    def _lancer(self, cmd, use_sudo=False, capture=False, dry_run=False):
-        """Runner.run sur `cmd`, subprocess.run simulé.
+class FauxPopen:
+    """subprocess.Popen simulé : retient (argv, kwargs), rend le code 0."""
 
-        Rend (argv passé à subprocess.run ou None, ses kwargs, sortie).
+    appels: list = []
+
+    def __init__(self, argv, **kwargs):
+        FauxPopen.appels.append((argv, kwargs))
+        self.pid = 0
+        self.returncode = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def communicate(self, timeout=None):
+        return "", None
+
+    def kill(self):
+        pass
+
+
+class DetachFromTerminal(unittest.TestCase):
+    def setUp(self):
+        FauxPopen.appels = []
+
+    def _lancer(self, cmd, use_sudo=False, capture=False, dry_run=False):
+        """Runner.run sur `cmd`, subprocess.Popen simulé.
+
+        Rend (argv passé à Popen ou None, ses kwargs, sortie).
         """
         runner = DQ.Runner(use_sudo=use_sudo, dry_run=dry_run)
         # L'annonce sudo lit l'état de la machine : hors sujet ici.
         runner._sudo_dit = True
         sortie = io.StringIO()
         with (
-            mock.patch.object(
-                DQ.subprocess,
-                "run",
-                return_value=mock.Mock(returncode=0, stdout=""),
-            ) as run,
+            mock.patch.object(DQ.subprocess, "Popen", FauxPopen),
             redirect_stdout(sortie),
         ):
             runner.run(cmd, privileged=True, capture=capture)
-        if not run.called:
+        if not FauxPopen.appels:
             return None, {}, sortie.getvalue()
-        args, kwargs = run.call_args
-        return args[0], kwargs, sortie.getvalue()
+        argv, kwargs = FauxPopen.appels[-1]
+        return argv, kwargs, sortie.getvalue()
 
     def test_apt_get_gets_no_pty_and_null_stdin(self):
         argv, kw, _ = self._lancer(["apt-get", "install", "-y", "qemu-utils"])
@@ -151,17 +173,14 @@ class DetachFromTerminal(unittest.TestCase):
             mock.patch.object(
                 DQ, "host_packages", return_value=["qemu-utils"]
             ),
-            mock.patch.object(
-                DQ.subprocess, "run", return_value=mock.Mock(returncode=0)
-            ) as run,
+            mock.patch.object(DQ.subprocess, "Popen", FauxPopen),
             redirect_stdout(io.StringIO()),
         ):
             DQ.reinstall_host_packages(runner, assume_yes=True)
-        self.assertEqual(4, run.call_count)
-        for call in run.call_args_list:
-            argv = call.args[0]
+        self.assertEqual(4, len(FauxPopen.appels))
+        for argv, kwargs in FauxPopen.appels:
             with self.subTest(argv=argv[:2]):
-                self.assertIs(subprocess.DEVNULL, call.kwargs["stdin"])
+                self.assertIs(subprocess.DEVNULL, kwargs["stdin"])
                 if argv[0] == "apt-get":
                     self.assertEqual(DQ.APT_NO_PTY, argv[1:3])
                     self.assertIn("Dpkg::Options::=--force-confold", argv)

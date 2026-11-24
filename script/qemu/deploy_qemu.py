@@ -1145,6 +1145,270 @@ def detach_from_terminal(cmd: list[str]) -> tuple[list[str], int | None]:
     return [cmd[0], *extra, *cmd[1:]], subprocess.DEVNULL
 
 
+# Un processus arrêté par le noyau (état T de /proc/<pid>/stat) ne reprend
+# que sur SIGCONT : l'attendre, c'est attendre sans fin. Le délai de grâce
+# couvre la reprise d'un Ctrl+Z (« fg » relance tout le groupe, mais sudo
+# relaie la reprise à son pseudo-terminal un instant plus tard).
+STOPPED_GRACE_S = 30.0
+STOPPED_POLL_S = 2.0
+PROC_ROOT = Path("/proc")
+
+
+def parse_proc_stat(text: str) -> tuple[int, str, str, int] | None:
+    """(pid, comm, état, ppid) lus dans le texte de /proc/<pid>/stat.
+
+    comm peut contenir espaces et parenthèses : la coupe se fait sur la
+    DERNIÈRE « ) ». Rend None si le texte est malformé.
+    """
+    head, sep, tail = text.rpartition(")")
+    pid_s, sep2, comm = head.partition(" (")
+    fields = tail.split()
+    if not sep or not sep2 or len(fields) < 2:
+        return None
+    try:
+        return int(pid_s), comm, fields[0], int(fields[1])
+    except ValueError:
+        return None
+
+
+def proc_watch_supported(proc_root: Path = PROC_ROOT) -> bool:
+    """Vrai sous Linux avec un /proc lisible ; ailleurs, rien n'est surveillé."""
+    return sys.platform.startswith("linux") and proc_root.is_dir()
+
+
+def stopped_descendants(
+    root_pid: int, proc_root: Path = PROC_ROOT
+) -> list[tuple[int, str]]:
+    """[(pid, comm)] des processus à l'état « T » parmi root_pid et ses
+    descendants, du plus profond au moins profond.
+
+    Le plus profond, souvent le vrai fautif, vient d'abord. « t » (tracé par
+    un débogueur) n'en est pas. Une entrée qui disparaît ou se refuse
+    pendant la lecture est ignorée ; un /proc illisible rend []. Seuls les
+    processus joignables depuis root_pid par leur ppid comptent, et un
+    ensemble des pid vus empêche de boucler sur un pid réutilisé.
+    """
+    try:
+        entrees = list(proc_root.iterdir())
+    except OSError:
+        return []
+    enfants: dict[int, list[int]] = {}
+    infos: dict[int, tuple[str, str]] = {}
+    for d in entrees:
+        if not d.name.isdigit():
+            continue
+        try:
+            lu = parse_proc_stat((d / "stat").read_text(errors="replace"))
+        except OSError:
+            continue
+        if lu is None:
+            continue
+        pid, comm, etat, ppid = lu
+        infos[pid] = (comm, etat)
+        enfants.setdefault(ppid, []).append(pid)
+    trouves: list[tuple[int, int, str]] = []
+    vus = {root_pid}
+    niveau = [root_pid]
+    profondeur = 0
+    while niveau:
+        suivant = []
+        for pid in niveau:
+            info = infos.get(pid)
+            if info and info[1] == "T":
+                trouves.append((profondeur, pid, info[0]))
+            for enfant in enfants.get(pid, ()):
+                if enfant not in vus:
+                    vus.add(enfant)
+                    suivant.append(enfant)
+        niveau = suivant
+        profondeur += 1
+    trouves.sort(key=lambda t: -t[0])
+    return [(pid, comm) for _p, pid, comm in trouves]
+
+
+def _proc_cmdline(pid: int, proc_root: Path) -> str:
+    """Ligne de commande de `pid` (/proc/<pid>/cmdline, séparée par NUL).
+
+    Rend "" si elle est illisible.
+    """
+    try:
+        brut = (proc_root / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return ""
+    return " ".join(p.decode(errors="replace") for p in brut.split(b"\0") if p)
+
+
+def _proc_foreign(pid: int, proc_root: Path) -> bool:
+    """Vrai si `pid` appartient à un autre utilisateur : le signaler exige sudo."""
+    try:
+        return (proc_root / str(pid)).stat().st_uid != os.getuid()
+    except OSError:
+        return False
+
+
+def _in_background() -> bool:
+    """Vrai si ce programme n'a pas le premier plan de son terminal.
+
+    Faux sans terminal.
+    """
+    try:
+        return os.getpgrp() != os.tcgetpgrp(sys.stdin.fileno())
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def stopped_message(
+    pid: int,
+    comm: str,
+    cmdline: str,
+    *,
+    waited: float,
+    foreign: bool,
+    background: bool,
+    label: str,
+) -> str:
+    """Le message, une seule fois par arrêt : qui, pourquoi, comment
+    reprendre ou abandonner. `foreign` préfixe les kill de « sudo »,
+    `background` ajoute le conseil « fg »."""
+    s = "sudo " if foreign else ""
+    lignes = [
+        "",
+        f"  ⚠ Processus arrêté par le noyau depuis {int(waited)} s :"
+        f" pid {pid} ({comm})",
+        f"    {cmdline or comm}",
+        "    Cause probable : il a voulu lire le terminal ou en changer les"
+        " réglages",
+        "    sans en avoir le premier plan (SIGTTIN/SIGTTOU). Il ne reprendra"
+        " pas seul,",
+        "    et une reprise sans rendre le terminal le suspend aussitôt de"
+        " nouveau.",
+    ]
+    if background:
+        lignes.append(
+            "    Ce programme tourne en arrière-plan : « fg » dans son shell"
+            " le ramène au premier plan."
+        )
+    lignes += [
+        f"    Reprendre : {s}kill -CONT {pid}",
+        f"    Abandonner : Ctrl+C ici, ou {s}kill {pid}",
+        f"    Commande lancée : {label}",
+    ]
+    return "\n".join(lignes)
+
+
+class StoppedChildWatch:
+    """Surveille les descendants d'un processus et signale, une fois par
+    arrêt, celui qui reste à l'état T plus de `grace` secondes.
+
+    Le délai compte depuis le premier relevé qui voit l'arrêt, sur une
+    horloge monotone. Un processus qui quitte l'état T ouvre un nouvel
+    épisode : l'arrêt suivant a son propre délai et son propre message.
+    Rien n'est jamais envoyé au processus : la surveillance ne fait que dire.
+    """
+
+    def __init__(
+        self,
+        root_pid: int,
+        label: str,
+        *,
+        grace: float = STOPPED_GRACE_S,
+        proc_root: Path = PROC_ROOT,
+        now=time.monotonic,
+        out=None,
+    ) -> None:
+        self.root_pid = root_pid
+        self.label = label
+        self.grace = grace
+        self.proc_root = proc_root
+        self.now = now
+        # out(message) ; par défaut, affiché aussitôt, même dans un tube.
+        self.out = out or (lambda msg: print(msg, flush=True))
+        self._first: dict[int, float] = {}
+        self._reported: set[int] = set()
+
+    def check(self) -> list[int]:
+        """Une lecture de /proc ; rend les pid annoncés par CET appel."""
+        if not proc_watch_supported(self.proc_root):
+            return []
+        stopped = dict(stopped_descendants(self.root_pid, self.proc_root))
+        t = self.now()
+        for pid in list(self._first):
+            if pid not in stopped:
+                del self._first[pid]
+                self._reported.discard(pid)
+        nouveaux = []
+        for pid, comm in stopped.items():
+            first = self._first.setdefault(pid, t)
+            if pid in self._reported or t - first < self.grace:
+                continue
+            self._reported.add(pid)
+            nouveaux.append(pid)
+            self.out(
+                stopped_message(
+                    pid,
+                    comm,
+                    _proc_cmdline(pid, self.proc_root),
+                    waited=t - first,
+                    foreign=_proc_foreign(pid, self.proc_root),
+                    background=_in_background(),
+                    label=self.label,
+                )
+            )
+        return nouveaux
+
+
+def run_watched(
+    cmd: list[str],
+    *,
+    stdin=None,
+    capture: bool = False,
+    label: str = "",
+    poll: float | None = None,
+    grace: float | None = None,
+    proc_root: Path | None = None,
+    now=time.monotonic,
+    out=None,
+) -> tuple[int, str]:
+    """Lance `cmd` et attend sa fin en surveillant ses descendants arrêtés.
+
+    Rend (code, sortie) ; sortie vaut "" sans `capture`. Avec `capture`,
+    stdout et stderr sont réunis dans un tube vidé à chaque tour d'attente :
+    communicate() relancé après TimeoutExpired ne perd rien, et une sortie
+    volumineuse ne bloque pas l'enfant. Une interruption (Ctrl+C compris)
+    tue l'enfant puis remonte, comme subprocess.run. Les valeurs par défaut
+    sont lues à l'appel, depuis les constantes STOPPED_* et PROC_ROOT.
+    """
+    poll = STOPPED_POLL_S if poll is None else poll
+    grace = STOPPED_GRACE_S if grace is None else grace
+    proc_root = PROC_ROOT if proc_root is None else proc_root
+    with subprocess.Popen(
+        cmd,
+        stdin=stdin,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+        text=True,
+    ) as proc:
+        watch = StoppedChildWatch(
+            proc.pid,
+            label or " ".join(cmd),
+            grace=grace,
+            proc_root=proc_root,
+            now=now,
+            out=out,
+        )
+        try:
+            while True:
+                try:
+                    sortie, _ = proc.communicate(timeout=poll)
+                    break
+                except subprocess.TimeoutExpired:
+                    watch.check()
+        except:  # noqa: E722 — KeyboardInterrupt compris, comme subprocess.run
+            proc.kill()
+            raise
+    return proc.returncode, sortie or ""
+
+
 # --------------------------------------------------------------------------- #
 class Runner:
     """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
@@ -1183,7 +1447,9 @@ class Runner:
 
         Sans `capture`, un échec termine le programme : c'est le comportement
         voulu partout où il n'y a rien à rattraper. Avec, l'appelant décide —
-        seul l'appel qui SAIT réessayer autrement doit le demander.
+        seul l'appel qui SAIT réessayer autrement doit le demander. Un
+        descendant arrêté par le noyau est signalé, jamais relancé : voir
+        run_watched().
         """
         cmd, stdin = detach_from_terminal(cmd)
         if privileged and self.use_sudo:
@@ -1194,27 +1460,18 @@ class Runner:
             print(f"  [dry-run] {printable}")
             return (0, "") if capture else None
         print(f"  $ {printable}")
+        code, sortie = run_watched(
+            cmd, stdin=stdin, capture=capture, label=printable
+        )
         if capture:
             # La sortie est réaffichée telle quelle : le journal garde tout,
             # et l'appelant peut lire ce que l'outil a dit.
-            res = subprocess.run(
-                cmd,
-                stdin=stdin,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            if res.stdout:
-                print(res.stdout, end="")
-            return res.returncode, res.stdout or ""
-        try:
-            subprocess.run(cmd, stdin=stdin, check=check)
-        except subprocess.CalledProcessError as exc:
+            if sortie:
+                print(sortie, end="")
+            return code, sortie
+        if check and code != 0:
             # Sortie propre plutôt qu'une trace Python illisible.
-            sys.exit(
-                f"\nÉchec de la commande (code {exc.returncode}) :\n"
-                f"  {printable}"
-            )
+            sys.exit(f"\nÉchec de la commande (code {code}) :\n  {printable}")
 
 
 def need_tool(name: str) -> None:
