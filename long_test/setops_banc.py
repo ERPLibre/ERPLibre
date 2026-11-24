@@ -317,6 +317,7 @@ class Mesures(NamedTuple):
     resolveur: str = ""
     adresse_api: str = ""
     interfaces: str | None = ""
+    memoire_mo: int | None = None
 
 
 class VuGabarit(NamedTuple):
@@ -2206,6 +2207,12 @@ def active_les_hotes(texte, hotes):
 
 def active_un_hote(texte, hote):
     """`texte`, le seul `etat:` de `hote` porté à « actif ». None si refus.
+    Voir `porte_l_etat`."""
+    return porte_l_etat(texte, hote, "actif")
+
+
+def porte_l_etat(texte, hote, etat):
+    """`texte`, le seul `etat:` de `hote` porté à `etat`. None si refus.
 
     CHIRURGICAL : un attribut d'une ligne change, tout le reste est rendu tel
     quel, commentaires compris. Réécrire le plan en entier le ferait diverger du
@@ -2231,7 +2238,11 @@ def active_un_hote(texte, hote):
     ligne = lignes[vus[0]]
     if len(re.findall(r"\betat\s*:\s*\w+", ligne)) != 1:
         return None
-    lignes[vus[0]] = re.sub(r"\betat(\s*:\s*)\w+", r"etat\g<1>actif", ligne)
+    if not re.fullmatch(r"\w+", etat or ""):
+        return None
+    lignes[vus[0]] = re.sub(
+        r"\betat(\s*:\s*)\w+", lambda m: f"etat{m.group(1)}{etat}", ligne
+    )
     return "".join(lignes)
 
 
@@ -3300,6 +3311,147 @@ SERVICES_POSES = (
 )
 
 
+def pose_un_serveur(eco, hote_autorite, fonction, hote, champs_serveur=()):
+    """Ajoute un hôte SANS application : sa fonction à la nomenclature, l'hôte
+    au registre des serveurs. Le souci, ou « ».
+
+    Même dérivation que `pose_un_service` : la zone est celle de l'autorité, le
+    rang le premier libre. Un hôte déjà au registre n'est pas reposé.
+
+    L'hôte est posé « planifie » : c'est à l'appelant de l'activer, parce qu'un
+    hôte sans application n'est couvert par aucune activation du banc.
+    """
+    plan = os.path.join(eco, "plan")
+    try:
+        with open(
+            os.path.join(plan, "nomenclature.yml"), encoding="utf-8"
+        ) as lu:
+            nomenclature = lu.read()
+        with open(os.path.join(plan, "serveurs.yml"), encoding="utf-8") as lu:
+            serveurs = lu.read()
+    except OSError as souci:
+        return f"le plan ne s'est pas lu : {souci.strerror or souci}"
+    if hote in (
+        (_lit_yaml(os.path.join(plan, "serveurs.yml")) or {}).get("serveurs")
+        or {}
+    ):
+        return ""
+    fonctions = lit_fonctions(nomenclature)
+    if fonctions is None:
+        return "la nomenclature du plan ne s'est pas lue"
+    zone = categorie_de(fonctions, fonction_de(serveurs, hote_autorite))
+    rang = place_libre(fonctions, zone)
+    if not zone or not rang:
+        return f"aucune place au plan pour « {fonction} »"
+    for fichier, cle, nom, valeur in (
+        (
+            "nomenclature.yml",
+            "fonctions",
+            fonction,
+            f"{{ categorie: {zone}, service: {rang} }}",
+        ),
+        (
+            "serveurs.yml",
+            "serveurs",
+            hote,
+            flux_yaml(
+                (("fonction", fonction), ("etat", "planifie")) + champs_serveur
+            ),
+        ),
+    ):
+        souci = _recrit(
+            os.path.join(plan, fichier),
+            lambda t, c=cle, n=nom, v=valeur: pose_sous_cle(t, c, n, v),
+        )
+        if souci:
+            return souci
+    return ""
+
+
+# CE QUE LE TERRAIN GARDE POUR LUI, au-delà de la flotte : Proxmox lui-même,
+# et le cache propre que `VeilleDuCache` laisse monter jusqu'à son seuil
+# (2 Gio). Sous cette marge, le terrain reprend de la mémoire à ses invités,
+# ou son hôte manque de la sienne.
+MARGE_TERRAIN_MO = 4096
+
+
+def souci_de_memoire(serveurs, memoire_mo):
+    """« » si la flotte ACTIVE du plan tient sur le terrain, la marge gardée ;
+    sinon ce qui manque, en Mio.
+
+    UNE MÉMOIRE ILLISIBLE REFUSE : bâtir une flotte sans savoir si elle tient,
+    c'est découvrir le manque au milieu d'une construction, quand le terrain
+    reprend à ses invités. Un hôte actif sans `memoire` compte pour
+    `MEMOIRE_SOBRE`, ce que la sobriété lui pose.
+    """
+    if memoire_mo is None:
+        return "la mémoire du terrain ne s'est pas lue"
+    if not isinstance(serveurs, dict):
+        return "le registre des serveurs ne s'est pas lu"
+    flotte = 0
+    for entree in (serveurs.get("serveurs") or {}).values():
+        if isinstance(entree, dict) and entree.get("etat") == "actif":
+            flotte += int(entree.get("memoire", MEMOIRE_SOBRE))
+    if flotte + MARGE_TERRAIN_MO <= memoire_mo:
+        return ""
+    return (
+        f"la flotte active demande {flotte} Mio, plus {MARGE_TERRAIN_MO} Mio"
+        f" de marge ; le terrain en offre {memoire_mo} : agrandir le terrain"
+        " ou retirer un hôte"
+    )
+
+
+# L'HÔTE D'ERPLIBRE (P14). UNE VOIE PAR LANCEMENT : la flotte du banc et un
+# hôte ERPLibre tiennent ensemble sur un terrain plus grand, mais pas deux
+# hôtes ERPLibre. `ssh` : Set-OPS pose et équipe la VM, l'installateur d'ERPLibre
+# s'y joue par SSH. La voie `dorsal` (application cliente du moteur) viendra
+# avec sa pose d'application.
+VOIES_ERPLIBRE = ("ssh",)
+FONCTION_ERPLIBRE = "erplibre"
+HOTE_ERPLIBRE = "erplibre-01"
+# Base locale : PostgreSQL et Odoo sur la même VM, sans échange (le gabarit
+# n'en a pas), et une installation qui compile des dépendances. Le plancher
+# vaut la mémoire : rien ne lui est repris.
+RESSOURCES_ERPLIBRE_SSH = (
+    ("coeurs", 2),
+    ("memoire", 3072),
+    ("memoire_min", 3072),
+    ("disque", "32G"),
+)
+
+
+def pose_erplibre(eco, hote_autorite, voie=""):
+    """Pose l'hôte d'ERPLibre, actif si `voie` le demande. Le souci, ou « ».
+
+    LE PLAN DU BANC PERSISTE d'un lancement à l'autre : un hôte posé une fois y
+    resterait, et chaque lancement suivant le bâtirait. Sans voie, un hôte déjà
+    posé repasse donc « planifie », que l'inventaire ignore ; il n'est jamais
+    retiré, ce qui garde sa place dans la nomenclature.
+    """
+    chemin = os.path.join(eco, "plan", "serveurs.yml")
+    if voie:
+        if voie not in VOIES_ERPLIBRE:
+            return f"voie ERPLibre inconnue : {voie}"
+        souci = pose_un_serveur(
+            eco,
+            hote_autorite,
+            FONCTION_ERPLIBRE,
+            HOTE_ERPLIBRE,
+            RESSOURCES_ERPLIBRE_SSH,
+        )
+        if souci:
+            return souci
+        return _recrit(
+            chemin, lambda t: porte_l_etat(t, HOTE_ERPLIBRE, "actif")
+        )
+    serveurs = (_lit_yaml(chemin) or {}).get("serveurs") or {}
+    if HOTE_ERPLIBRE not in serveurs:
+        return ""
+    return _recrit(
+        chemin, lambda t: porte_l_etat(t, HOTE_ERPLIBRE, "planifie")
+    )
+
+
 def pose_un_service(
     eco,
     hote_autorite,
@@ -3477,7 +3629,16 @@ def etapes_resolues(etapes, nom):
     )
 
 
-def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
+def monte_localement(
+    moteur,
+    noeud,
+    pont,
+    stockage,
+    hote_api,
+    resolveur,
+    erplibre="",
+    memoire_mo=None,
+):
     """Pose les deux dépôts du banc et les deux liens du moteur. Rend un `Montage`.
 
     LES LIENS SE JUGENT AVANT QUE RIEN NE SOIT CRÉÉ. Un lien occupé est celui
@@ -3499,6 +3660,10 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     NE LÈVE JAMAIS, et rend ce qu'elle a posé même en échec : c'est par ces
     chemins que le montage se défait, et rendre une absence laisserait sur le
     disque ce que plus rien ne nomme.
+
+    `erplibre` nomme la voie d'ERPLibre de ce lancement, ou « » ; `memoire_mo`
+    est la mémoire du nœud, à laquelle la flotte active du plan est comparée
+    avant tout lien (voir `souci_de_memoire`).
     """
     import shutil
 
@@ -3579,6 +3744,9 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
         souci = pose_service(eco, hotes[0])
         if souci:
             return pose._replace(souci=souci)
+    souci = pose_erplibre(eco, hotes[0], erplibre)
+    if souci:
+        return pose._replace(souci=f"ERPLibre : {souci}")
     couverts = hotes_couverts(os.path.join(eco, "plan", "applications.yml"))
     if couverts is None:
         return pose._replace(
@@ -3592,6 +3760,11 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
         souci = _recrit(os.path.join(eco, "plan", fichier), transforme)
         if souci:
             return pose._replace(souci=souci)
+    souci = souci_de_memoire(
+        _lit_yaml(os.path.join(eco, "plan", "serveurs.yml")), memoire_mo
+    )
+    if souci:
+        return pose._replace(souci=souci)
 
     liens = []
     for nom, cible in cibles_des_liens():
@@ -3860,6 +4033,25 @@ def lit_noeuds(sortie):
             continue
         vus.append(nom.strip())
     return tuple(vus)
+
+
+def lit_memoire_du_noeud(sortie, noeud):
+    """La mémoire de `noeud` en Mio, telle que la grappe la déclare. Ou None.
+
+    `maxmem` est ce que le nœud OFFRE à ses invités, en octets : c'est lui qui
+    borne la flotte, pas la mémoire libre d'un instant. Fermé par défaut : un
+    nœud absent, ou un `maxmem` qui n'est pas un entier positif, rend None.
+    """
+    lu = _json_liste(sortie)
+    if lu is None or not (noeud or "").strip():
+        return None
+    for entree in lu:
+        if isinstance(entree, dict) and entree.get("node") == noeud.strip():
+            octets = entree.get("maxmem")
+            if isinstance(octets, int) and octets > 0:
+                return octets // (1024 * 1024)
+            return None
+    return None
 
 
 def cmds_stockages():
@@ -4751,6 +4943,11 @@ def mesure_le_terrain(moteur, terrain):
         uplink=(dedans or ("", ""))[0],
         adresse_api=(dedans or ("", ""))[1],
         resolveur=resolveur,
+        memoire_mo=(
+            lit_memoire_du_noeud(noeuds.sortie, lus[0])
+            if noeuds.reussi and lus
+            else None
+        ),
     )
 
 
@@ -4929,7 +5126,7 @@ def identite_de_role(voutes, identites, role):
     return next((i for i in identites or () if i.cle == voute.chemin), None)
 
 
-def pose_le_banc(moteur, mesures, chantier, dire=print):
+def pose_le_banc(moteur, mesures, chantier, dire=print, erplibre=""):
     """Pose ce que le banc exige. Rend (souci, secret). Ne lève jamais.
 
     LE SECRET EST RENDU À SON SEUL APPELANT, qui le garde en mémoire pour la
@@ -5007,6 +5204,8 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
         mesures.stockage,
         mesures.adresse_api,
         mesures.resolveur,
+        erplibre=erplibre,
+        memoire_mo=mesures.memoire_mo,
     )
     if not montage.complet:
         return montage.souci or "le montage local n'est pas complet", secret
@@ -5866,10 +6065,11 @@ def route_les_zones(moteur, mesures, chantier, env, dire=print):
     return ""
 
 
-def plan(passes, terrain, batir=False, garder=False):
+def plan(passes, terrain, batir=False, garder=False, erplibre=""):
     """Les étapes, dans l'ordre, avec la durée annoncée de chacune.
 
     `garder` : le rasage final de la dernière passe est annoncé SAUTÉ.
+    `erplibre` : l'hôte ERPLibre et sa voie sont annoncés.
 
     IMPRIMÉ AVANT TOUTE CRÉATION, et c'est la règle de ce dossier : un plan
     qu'on lit après coup ne sert plus à décider.
@@ -5892,6 +6092,12 @@ def plan(passes, terrain, batir=False, garder=False):
         # les nommer avant de l'avoir. Il dit ce qu'il fera, pas combien.
         ("une interface routée par zone du plan", "~10 s"),
         ("utilisateur d'API et son jeton", "~10 s"),
+    ]
+    if erplibre:
+        etapes.append(
+            (f"hôte ERPLibre {HOTE_ERPLIBRE} : voie « {erplibre} »", "")
+        )
+    etapes += [
         (
             "gabarit doré : bâti sans écran s'il est absent"
             if batir
@@ -5949,10 +6155,10 @@ def chemin_empreinte(base=""):
     return os.path.join(racine, "longtest", "setops_banc.json")
 
 
-def dire_plan(passes, terrain, batir=False, garder=False):
+def dire_plan(passes, terrain, batir=False, garder=False, erplibre=""):
     """Imprime le plan. Rien n'est créé par cette fonction."""
     print("── le plan ──")
-    for quoi, duree in plan(passes, terrain, batir, garder):
+    for quoi, duree in plan(passes, terrain, batir, garder, erplibre):
         print(f"  {quoi}" + (f"   ({duree})" if duree else ""))
 
 
@@ -5985,6 +6191,12 @@ def principal(argv=None):
         "--batir-gabarit",
         action="store_true",
         help="bâtir le gabarit doré s'il est ABSENT ; jamais le remplacer",
+    )
+    analyseur.add_argument(
+        "--erplibre",
+        choices=VOIES_ERPLIBRE,
+        default="",
+        help="ajouter l'hôte ERPLibre, par cette voie (une par lancement)",
     )
     analyseur.add_argument(
         "--garder-la-flotte",
@@ -6020,7 +6232,13 @@ def principal(argv=None):
     terrain = args.terrain.strip() or terrain_deduit()
     if args.planifier:
         return planifie(args.planifier, terrain)
-    dire_plan(passes, terrain, args.batir_gabarit, args.garder_la_flotte)
+    dire_plan(
+        passes,
+        terrain,
+        args.batir_gabarit,
+        args.garder_la_flotte,
+        args.erplibre,
+    )
     if args.dry_run:
         return SORTIE_OK
 
@@ -6093,7 +6311,9 @@ def lance(args, passes, terrain):
 
     print("\n── la pose ──")
     chantier = Chantier(terrain)
-    souci, secret = pose_le_banc(moteur, mesures, chantier)
+    souci, secret = pose_le_banc(
+        moteur, mesures, chantier, erplibre=args.erplibre or ""
+    )
     if souci:
         # EXPURGÉ, comme tout ce que le banc montre : la plainte d'un outil cite
         # parfois ce qu'il a reçu, et ce qu'il a reçu est le secret.

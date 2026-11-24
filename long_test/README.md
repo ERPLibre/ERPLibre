@@ -395,6 +395,7 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --rapport           # the last launch's report
 ./long_test/setops_banc.py --deplanifier       # remove the nightly launch
 ./long_test/setops_banc.py --garder-la-flotte  # last pass leaves its fleet up
+./long_test/setops_banc.py --erplibre ssh      # add the ERPLibre host (P14)
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at

@@ -7233,5 +7233,165 @@ class TestLeBancNePoseQueSesVoutes(unittest.TestCase):
         self.assertIsNone(B.lit_empreinte(B.ecrit_empreinte(empreinte)))
 
 
+NOEUDS_INVENTES = (
+    '[{"node": "noeud-invente", "status": "online", "maxmem": 20966486016},'
+    ' {"node": "autre-invente", "status": "online", "maxmem": "beaucoup"}]'
+)
+
+
+class TestLaFlotteTientSurSonTerrain(unittest.TestCase):
+    """La flotte ACTIVE du plan, plus la marge du terrain, tient dans la
+    mémoire que le nœud offre ; sinon le banc refuse avant de rien bâtir."""
+
+    def test_the_node_memory_is_read_from_maxmem(self):
+        self.assertEqual(
+            19995, B.lit_memoire_du_noeud(NOEUDS_INVENTES, "noeud-invente")
+        )
+
+    def test_an_unreadable_node_memory_is_none(self):
+        for noeud in ("autre-invente", "absent-invente", ""):
+            with self.subTest(noeud=noeud):
+                self.assertIsNone(
+                    B.lit_memoire_du_noeud(NOEUDS_INVENTES, noeud)
+                )
+        self.assertIsNone(B.lit_memoire_du_noeud("pas du json", "x"))
+
+    def serveurs(self, *memoires, planifie=0):
+        lu = {
+            f"h-{i:02d}": {"etat": "actif", "memoire": m}
+            for i, m in enumerate(memoires)
+        }
+        lu["p-01"] = {"etat": "planifie", "memoire": planifie}
+        return {"serveurs": lu}
+
+    def test_a_fleet_that_fits_with_its_margin_passes(self):
+        self.assertEqual(
+            "", B.souci_de_memoire(self.serveurs(8192, 4096), 16384)
+        )
+
+    def test_a_fleet_over_the_margin_is_refused_with_its_numbers(self):
+        souci = B.souci_de_memoire(self.serveurs(8192, 4096), 16383)
+        self.assertIn("12288", souci)
+        self.assertIn("16383", souci)
+
+    def test_planned_hosts_do_not_count(self):
+        self.assertEqual(
+            "",
+            B.souci_de_memoire(
+                self.serveurs(8192, 4096, planifie=99999), 16384
+            ),
+        )
+
+    def test_a_host_without_memory_counts_as_the_sober_floor(self):
+        lu = {"serveurs": {"a-01": {"etat": "actif"}}}
+        self.assertEqual(
+            "", B.souci_de_memoire(lu, B.MEMOIRE_SOBRE + B.MARGE_TERRAIN_MO)
+        )
+        self.assertTrue(
+            B.souci_de_memoire(lu, B.MEMOIRE_SOBRE + B.MARGE_TERRAIN_MO - 1)
+        )
+
+    def test_an_unread_memory_or_registry_refuses(self):
+        self.assertTrue(B.souci_de_memoire(self.serveurs(1024), None))
+        self.assertTrue(B.souci_de_memoire(None, 99999))
+
+
+class TestLHoteDERPLibre(unittest.TestCase):
+    """P14 : l'hôte ERPLibre est posé à la demande, une voie par lancement, et
+    repasse « planifie » sans elle : le plan du banc persiste d'un lancement
+    à l'autre."""
+
+    def eco_pose(self):
+        if not os.path.isdir(MOTEUR_CLONE):
+            self.skipTest("le clone du moteur n'est pas là")
+        source = os.path.join(MOTEUR_CLONE, "exemples", "modeles", "socle")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        eco = os.path.join(d, "eco")
+        shutil.copytree(source, eco)
+        for pose in B.SERVICES_POSES:
+            self.assertEqual("", pose(eco, "infra-pki-01"), pose.__name__)
+        return eco
+
+    def lu(self, eco, fichier):
+        with open(os.path.join(eco, "plan", fichier), encoding="utf-8") as f:
+            return yaml.safe_load(f.read()) or {}
+
+    def test_asked_it_is_posed_active_in_the_zone_of_the_authority(self):
+        eco = self.eco_pose()
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", "ssh"))
+        serveurs = self.lu(eco, "serveurs.yml")["serveurs"]
+        entree = serveurs[B.HOTE_ERPLIBRE]
+        self.assertEqual("actif", entree["etat"])
+        self.assertEqual(entree["memoire"], entree["memoire_min"])
+        fonctions = self.lu(eco, "nomenclature.yml")["fonctions"]
+        autorite = fonctions[serveurs["infra-pki-01"]["fonction"]]
+        self.assertEqual(
+            autorite["categorie"],
+            fonctions[B.FONCTION_ERPLIBRE]["categorie"],
+        )
+        self.assertNotIn(
+            B.HOTE_ERPLIBRE,
+            [
+                a.get("hote")
+                for a in self.lu(eco, "applications.yml")[
+                    "applications"
+                ].values()
+            ],
+        )
+
+    def test_not_asked_it_goes_back_to_planned_and_is_never_removed(self):
+        eco = self.eco_pose()
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", ""))
+        self.assertNotIn(
+            B.HOTE_ERPLIBRE, self.lu(eco, "serveurs.yml")["serveurs"]
+        )
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", "ssh"))
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", ""))
+        entree = self.lu(eco, "serveurs.yml")["serveurs"][B.HOTE_ERPLIBRE]
+        self.assertEqual("planifie", entree["etat"])
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", "ssh"))
+        texte = open(
+            os.path.join(eco, "plan", "serveurs.yml"), encoding="utf-8"
+        ).read()
+        self.assertEqual(1, texte.count(f"{B.HOTE_ERPLIBRE}:"))
+        self.assertEqual(
+            "actif",
+            self.lu(eco, "serveurs.yml")["serveurs"][B.HOTE_ERPLIBRE]["etat"],
+        )
+
+    def test_an_unknown_path_is_refused(self):
+        eco = self.eco_pose()
+        self.assertIn("inconnue", B.pose_erplibre(eco, "infra-pki-01", "x"))
+
+    def test_the_default_fleet_fits_the_terrain_and_erplibre_needs_more(self):
+        """Sur un terrain de 20 Gio (19995 Mio offerts), la flotte par défaut
+        tient ; avec ERPLibre, elle exige un terrain plus grand."""
+        terrain = 19995
+        eco = self.eco_pose()
+        lu = self.lu(eco, "serveurs.yml")
+        for hote in lu["serveurs"]:
+            lu["serveurs"][hote]["etat"] = "actif"
+        self.assertEqual("", B.souci_de_memoire(lu, terrain))
+        self.assertEqual("", B.pose_erplibre(eco, "infra-pki-01", "ssh"))
+        lu = self.lu(eco, "serveurs.yml")
+        for hote in lu["serveurs"]:
+            lu["serveurs"][hote]["etat"] = "actif"
+        self.assertTrue(B.souci_de_memoire(lu, terrain))
+
+    def test_the_state_is_carried_surgically(self):
+        texte = "serveurs:\n  a-01: { fonction: f, etat: actif }  # garde\n"
+        apres = B.porte_l_etat(texte, "a-01", "planifie")
+        self.assertEqual(texte.replace("actif", "planifie"), apres)
+        self.assertIsNone(B.porte_l_etat(texte, "a-01", "pas un etat"))
+        self.assertIsNone(B.porte_l_etat(texte, "b-01", "actif"))
+
+    def test_the_plan_announces_the_erplibre_host(self):
+        quoi = [q for q, _d in B.plan(B.PASSES, "t", erplibre="ssh")]
+        self.assertTrue(any(B.HOTE_ERPLIBRE in q and "ssh" in q for q in quoi))
+        sans = [q for q, _d in B.plan(B.PASSES, "t")]
+        self.assertFalse(any(B.HOTE_ERPLIBRE in q for q in sans))
+
+
 if __name__ == "__main__":
     unittest.main()

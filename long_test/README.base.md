@@ -400,6 +400,7 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --rapport           # the last launch's report
 ./long_test/setops_banc.py --deplanifier       # remove the nightly launch
 ./long_test/setops_banc.py --garder-la-flotte  # last pass leaves its fleet up
+./long_test/setops_banc.py --erplibre ssh      # add the ERPLibre host (P14)
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at
@@ -1075,6 +1076,7 @@ désigne.
 ./long_test/setops_banc.py --rapport           # le rapport du dernier lancement
 ./long_test/setops_banc.py --deplanifier       # retirer le lancement de nuit
 ./long_test/setops_banc.py --garder-la-flotte  # la dernière passe laisse sa flotte debout
+./long_test/setops_banc.py --erplibre ssh      # ajouter l'hôte ERPLibre (P14)
 ```
 
 **Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
