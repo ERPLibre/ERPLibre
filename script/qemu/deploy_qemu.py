@@ -7182,6 +7182,28 @@ def preflight_firmware(
     sys.exit("\n".join(lignes))
 
 
+def memory_args(memory: int, max_memory: int | None = None) -> list[str]:
+    """Arguments mémoire de virt-install.
+
+    Sans plafond, ou un plafond qui ne dépasse pas la RAM : « --memory N »,
+    la forme historique, inchangée. Au-dessus : virtinst lit
+    « memory=MAX,currentMemory=MEM » comme les deux valeurs du XML —
+    <memory>, le plafond fixé au démarrage, et <currentMemory>, la cible du
+    ballon — et un ballon virtio explicite les sépare. virt-install en pose
+    déjà un par défaut sur les machines qu'il connaît ; l'écrire le garantit
+    ailleurs, et le XML produit est le même élément, auquel libvirt ajoute
+    lui-même freePageReporting.
+    """
+    if not max_memory or max_memory <= memory:
+        return ["--memory", str(memory)]
+    return [
+        "--memory",
+        f"memory={max_memory},currentMemory={memory}",
+        "--memballoon",
+        "model=virtio",
+    ]
+
+
 def virt_install(
     args: argparse.Namespace,
     disk: Path,
@@ -7259,8 +7281,7 @@ def virt_install(
         LIBVIRT_URI,
         "--name",
         args.name,
-        "--memory",
-        str(args.memory),
+        *memory_args(args.memory, getattr(args, "max_memory", None)),
         "--vcpus",
         str(args.vcpus),
     ]
@@ -7583,6 +7604,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="RAM en Mo (défaut : minimum requis par la version choisie, "
         "voir --list-images ; au moins 4096 sur s390x, où tout se compile).",
+    )
+    g_vm.add_argument(
+        "--max-memory",
+        type=int,
+        default=None,
+        help="Plafond de RAM en Mo, pour le ballon virtio (défaut : égal à "
+        "--memory). Au-dessus de --memory, la VM démarre avec --memory et "
+        "peut monter jusqu'à ce plafond sans redémarrer. Pas gratuit : "
+        "l'invité réserve ~1,6 %% du plafond pour ses tables de pages.",
     )
     g_vm.add_argument(
         "--vcpus", type=int, default=2, help="Nombre de vCPU (défaut : 2)."
@@ -8010,6 +8040,14 @@ def main() -> None:
     # relevé sur s390x par default_ram.
     if args.memory is None:
         args.memory = default_ram(args.arch, min_ram)
+    # Vérifié une fois --memory résolu : sans lui, c'est le minimum du
+    # catalogue qui fait foi. currentMemory au-dessus de memory est refusé
+    # par libvirt, autant le dire avant de télécharger quoi que ce soit.
+    if args.max_memory is not None and args.max_memory < args.memory:
+        parser.error(
+            f"--max-memory ({args.max_memory}) doit être >= --memory"
+            f" ({args.memory})."
+        )
     if args.disk_size is None:
         args.disk_size = min_disk
     # Un nombre nu (« 30 ») serait pris pour des OCTETS par qemu-img et ferait

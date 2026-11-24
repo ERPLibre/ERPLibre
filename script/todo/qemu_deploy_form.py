@@ -46,6 +46,7 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     SELECT_TO_FIELD,
     apply_overrides,
     apply_profile,
+    balloon_max,
     branch_default,
     branch_order,
     build_spec,
@@ -386,6 +387,21 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # Matériel de la VM, comme la 3D : le Stream Deck de
                     # l'hôte et l'affichage SPICE de la redirection USB.
                     yield from self.compose_usb_deck()
+                    # Le plafond du ballon, pour tout le parc : vide, chaque
+                    # VM démarre comme avant, son plafond égal à sa RAM.
+                    yield Static(f"  {t('RAM max (balloon)')}")
+                    yield Input(
+                        value=str(defaults.get("max_ram") or ""),
+                        placeholder=t("RAM max (balloon): empty = RAM"),
+                        id="f_max_ram",
+                    )
+                    yield Static(
+                        "  "
+                        + t(
+                            "Above the RAM, the VM can grow up to it without"
+                            " a reboot; the guest reserves ~1.6% of it."
+                        )
+                    )
                     # Offerte seulement là où elle a un effet : sans cache
                     # actif, rien n'intercepte, et une case qui ne change
                     # rien apprend au lecteur une chose fausse.
@@ -1266,6 +1282,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
                 "monitor": monitor,
                 "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
+                # Illisible, il vaut 0 ici ; F5 le refuse en le disant.
+                "max_ram": parse_ram(
+                    self.query_one("#f_max_ram", Input).value
+                ),
                 # La case n'existe que si le cache tourne : la chercher
                 # toujours ferait lever le formulaire là où il n'y a pas de
                 # cache, c'est-à-dire sur la plupart des hôtes.
@@ -1395,6 +1415,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                     t("Nothing to create - every VM already exists."),
                     severity="warning",
                 )
+                return
+            _plafond, erreur = balloon_max(
+                self.query_one("#f_max_ram", Input).value,
+                spec["vms"],
+                self._extras["desktop_min_ram"],
+                spec.get("desktop", ""),
+            )
+            if erreur:
+                self.notify(erreur, severity="error", markup=False)
                 return
             # Hors ligne : ce que le cache ne détient pas, aucune VM ne
             # pourra le lire. Dit MAINTENANT, et non après une heure

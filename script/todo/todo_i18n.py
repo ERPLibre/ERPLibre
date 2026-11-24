@@ -26729,6 +26729,30 @@ TRANSLATIONS = {
         "fr": "Ballon maintenant à :",
         "en": "Balloon now at:",
     },
+    "RAM max (balloon): unreadable value": {
+        "fr": "RAM max (ballon) : valeur illisible",
+        "en": "RAM max (balloon): unreadable value",
+    },
+    "RAM max (balloon) is below the RAM of a VM": {
+        "fr": "La RAM max (ballon) est sous la RAM d'une VM",
+        "en": "RAM max (balloon) is below the RAM of a VM",
+    },
+    "RAM max (balloon): empty = RAM": {
+        "fr": "RAM max (ballon) : vide = RAM",
+        "en": "RAM max (balloon): empty = RAM",
+    },
+    "Above the RAM, the VM can grow up to it without a reboot; the guest reserves ~1.6% of it.": {
+        "fr": "Au-dessus de la RAM, la VM peut y monter sans redémarrer ; l'invité en réserve ~1,6 %.",
+        "en": "Above the RAM, the VM can grow up to it without a reboot; the guest reserves ~1.6% of it.",
+    },
+    "RAM max (balloon)": {
+        "fr": "RAM max (ballon)",
+        "en": "RAM max (balloon)",
+    },
+    "RAM max (balloon), empty = RAM (e.g. 8G): ": {
+        "fr": "RAM max (ballon), vide = RAM (ex. 8G) : ",
+        "en": "RAM max (balloon), empty = RAM (e.g. 8G): ",
+    },
 }
 
 

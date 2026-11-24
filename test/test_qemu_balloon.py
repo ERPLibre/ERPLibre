@@ -14,21 +14,49 @@ Ce que ces tests gardent :
 - un plafond au-dessus de la RAM sans ballon reçoit un ballon, posé en
   place quand un <memballoon model='none'/> existe ;
 - la RAM à chaud refuse tout ce qui ferait tuer des processus dans
-  l'invité ou échanger l'hôte, et ne lance rien sans o/N.
+  l'invité ou échanger l'hôte, et ne lance rien sans o/N ;
+- deploy_qemu.py n'écrit la forme « memory=,currentMemory= » qu'avec
+  --max-memory, et la commande sans lui reste identique ;
+- le champ du formulaire de déploiement va jusqu'à --max-memory.
 
 Les noms et les valeurs sont inventés.
 """
 
+import asyncio
 import contextlib
+import importlib.util
 import io
 import subprocess
 import sys
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo import qemu_hardware as hw  # noqa: E402
+from script.todo.deploy_form_lib import balloon_max, build_spec  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+
+RACINE = Path(__file__).resolve().parents[1]
+
+try:
+    import textual  # noqa: F401
+
+    TEXTUAL = True
+except Exception:  # pragma: no cover - dépend de l'environnement
+    TEXTUAL = False
+
+
+def _deploy_qemu():
+    path = RACINE / "script/qemu/deploy_qemu.py"
+    spec = importlib.util.spec_from_file_location("deploy_qemu", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+DQ = _deploy_qemu()
 
 NOM = "vm-essai-ballon"
 
@@ -554,6 +582,251 @@ class LesInvites(unittest.TestCase):
         want = self._want(xml(8192), ["", "", "o"])
         self.assertEqual(8192, want["max_ram"])
         self.assertTrue(want["autostart"])
+
+
+class DeployQemu(unittest.TestCase):
+    def _args(self, **extra):
+        base = dict(
+            name="vm-a",
+            memory=4096,
+            vcpus=2,
+            arch="amd64",
+            network="network=default,model=virtio",
+            graphics="none",
+            desktop=False,
+            gpu="off",
+            gpu_node="",
+            attach_console=False,
+            bios=False,
+        )
+        base.update(extra)
+        return SimpleNamespace(**base)
+
+    def _cmd(self, args):
+        lances = []
+
+        class FauxRunner:
+            dry_run = False
+            use_sudo = False
+
+            def run(self, cmd, *, privileged=False, check=True, capture=False):
+                lances.append(list(cmd))
+                return (0, "") if capture else None
+
+        with (
+            mock.patch.object(DQ, "host_arch", return_value="amd64"),
+            mock.patch.object(DQ, "kvm_available", return_value=True),
+            mock.patch.object(DQ, "os") as faux_os,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            faux_os.getuid.return_value = 1000
+            DQ.virt_install(
+                args,
+                Path("/tmp/d.qcow2"),
+                Path("/tmp/s.iso"),
+                "ubuntu26.04",
+                FauxRunner(),
+            )
+        return lances[0]
+
+    def test_without_max_memory_the_command_is_unchanged(self):
+        """Absent, None ou égal à --memory : la même commande, octet pour
+        octet, avec « --memory 4096 »."""
+        base = self._cmd(self._args())
+        self.assertEqual(base, self._cmd(self._args(max_memory=None)))
+        self.assertEqual(base, self._cmd(self._args(max_memory=4096)))
+        self.assertEqual("4096", base[base.index("--memory") + 1])
+        self.assertNotIn("--memballoon", base)
+
+    def test_with_max_memory_both_values_and_a_balloon(self):
+        cmd = self._cmd(self._args(max_memory=16384))
+        self.assertEqual(
+            "memory=16384,currentMemory=4096", cmd[cmd.index("--memory") + 1]
+        )
+        self.assertEqual("model=virtio", cmd[cmd.index("--memballoon") + 1])
+        self.assertEqual(1, cmd.count("--memory"))
+
+    def test_memory_args(self):
+        self.assertEqual(["--memory", "2048"], DQ.memory_args(2048))
+        self.assertEqual(["--memory", "2048"], DQ.memory_args(2048, 1024))
+
+    def test_the_option_is_parsed_and_documented(self):
+        p = DQ.build_parser()
+        self.assertEqual(
+            16384, p.parse_args(["--max-memory", "16384"]).max_memory
+        )
+        self.assertIsNone(p.parse_args([]).max_memory)
+        aide = p.format_help()
+        self.assertIn("--max-memory", aide)
+        self.assertIn("1,6 %", aide)
+
+    def test_a_max_below_the_memory_is_an_argparse_error(self):
+        res = subprocess.run(
+            [
+                sys.executable,
+                str(RACINE / "script/qemu/deploy_qemu.py"),
+                "--distro",
+                "ubuntu",
+                "--name",
+                "vm-a",
+                "--memory",
+                "4096",
+                "--max-memory",
+                "2048",
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(2, res.returncode, res.stdout + res.stderr)
+        self.assertIn("--max-memory", res.stderr)
+
+
+class LeFormulaireDeDeploiement(unittest.TestCase):
+    def test_the_field_is_validated_against_every_vm(self):
+        vms = [{"ram": 2048}, {"ram": 4096}]
+        self.assertEqual((0, ""), balloon_max("", vms))
+        self.assertEqual((8192, ""), balloon_max("8G", vms))
+        self.assertEqual((4096, ""), balloon_max("4096", vms))
+        self.assertEqual(0, balloon_max("2G", vms)[0])
+        self.assertTrue(balloon_max("2G", vms)[1])
+        self.assertTrue(balloon_max("beaucoup", vms)[1])
+
+    def test_the_field_counts_the_desktop_floor(self):
+        """Comparé à la RAM que recevra la VM, plancher d'un bureau
+        compris : un plafond accepté ici est celui que la commande garde."""
+        vms = [{"ram": 1024, "desktop": "gnome"}]
+        self.assertEqual((2048, ""), balloon_max("2G", vms))
+        self.assertTrue(balloon_max("2G", vms, 4096)[1])
+        self.assertEqual((8192, ""), balloon_max("8G", vms, 4096))
+        # Type commun : une VM qui ne porte pas le sien prend celui-là.
+        self.assertTrue(balloon_max("2G", [{"ram": 1024}], 4096, "gnome")[1])
+        self.assertFalse(balloon_max("2G", [{"ram": 1024}], 4096)[1])
+
+    def test_the_cli_asks_until_the_value_is_valid(self):
+        todo = TODO.__new__(TODO)
+        vms = [{"ram": 4096, "desktop": ""}]
+        it = iter(["2G", "beaucoup", "8G"])
+        with (
+            mock.patch("builtins.input", lambda *a: next(it)),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertEqual(8192, todo._qemu_ask_max_ram(vms))
+        self.assertIn(
+            hw.t("RAM max (balloon) is below the RAM of a VM"),
+            out.getvalue(),
+        )
+        self.assertIn(
+            hw.t("RAM max (balloon): unreadable value"), out.getvalue()
+        )
+
+    def test_the_cli_empty_answer_keeps_the_ram(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch("builtins.input", lambda *a: ""),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(0, todo._qemu_ask_max_ram([{"ram": 4096}]))
+
+    def test_the_spec_carries_it(self):
+        form = {
+            "res_label": "x1",
+            "ssh_key": "",
+            "install": None,
+            "add_ssh_config": True,
+            "parallelism": 1,
+        }
+        self.assertEqual(0, build_spec([], [], form)["max_ram"])
+        form["max_ram"] = 8192
+        self.assertEqual(8192, build_spec([], [], form)["max_ram"])
+
+    def _parts(self, max_ram=None, ram=4096, desktop=""):
+        todo = TODO.__new__(TODO)
+        # L'empreinte du mot de passe est salée, et le cache dépend de
+        # l'hôte : deux commandes ne se comparent qu'une fois les deux figés.
+        todo._qemu_vm_password_hash = lambda spec: ""
+        todo._qemu_cache_active = lambda: False
+        vm = {
+            "name": "vm-a",
+            "distro": "ubuntu",
+            "version": "24.04",
+            "arch": "amd64",
+            "ram": ram,
+            "vcpus": 2,
+            "disk": "20G",
+            "desktop": desktop,
+        }
+        spec = {"vms": [vm], "install": None, "ssh_key": "", "vm_tools": ()}
+        if max_ram is not None:
+            spec["max_ram"] = max_ram
+        return todo._qemu_deploy_parts_for(vm, spec, dry_run=True)
+
+    def test_it_reaches_max_memory(self):
+        parts = self._parts(8192)
+        self.assertEqual("8192", parts[parts.index("--max-memory") + 1])
+
+    def test_without_it_the_command_is_unchanged(self):
+        base = self._parts()
+        self.assertNotIn("--max-memory", base)
+        self.assertEqual(base, self._parts(0))
+        self.assertEqual(base, self._parts(4096))
+
+    def test_the_desktop_floor_counts(self):
+        """Un bureau monte la RAM à son plancher : un plafond qui ne le
+        dépasse pas ne donne aucune marge, donc aucune option."""
+        plancher = TODO.QEMU_DESKTOP_MIN_RAM_MB
+        parts = self._parts(plancher, ram=1024, desktop="gnome")
+        self.assertNotIn("--max-memory", parts)
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class LeChampDuFormulaire(unittest.TestCase):
+    def _monter(self, valeur):
+        from textual.widgets import Input, SelectionList
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_list_domains = lambda: []
+        todo._qemu_branch_list = lambda: ["develop", "master"]
+        ctx = todo._qemu_form_context(todo._qemu_import_module())
+        vu = {}
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(220, 70)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                await pilote.pause()
+                app.query_one("#f_max_ram", Input).value = valeur
+                await pilote.pause()
+                vu["form"] = app._form_values()
+                vu["ram"] = max(vm["ram"] for vm in app.vms)
+                notes = []
+                app.notify = lambda msg, **kw: notes.append(msg)
+                app.action_deploy()
+                vu["notes"] = notes
+                vu["spec"] = app._result["spec"]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_the_value_reaches_the_form_values(self):
+        vu = self._monter("64G")
+        self.assertEqual(65536, vu["form"]["max_ram"])
+
+    def test_a_max_below_the_ram_blocks_the_deploy(self):
+        vu = self._monter("1")
+        self.assertIsNone(vu["spec"])
+        self.assertTrue(
+            any(
+                hw.t("RAM max (balloon) is below the RAM of a VM") in n
+                for n in vu["notes"]
+            ),
+            vu["notes"],
+        )
 
 
 if __name__ == "__main__":
