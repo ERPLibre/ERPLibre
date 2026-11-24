@@ -3,11 +3,24 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La mémoire d'échange : swap sur disque (fichier ou partition) et zram.
 
+Deux moitiés.
+
 La LECTURE rend des faits : /proc/swaps, /proc/meminfo, /sys/block/zram*,
 /proc/cmdline, /proc/self/mountinfo, la configuration de zram-generator ou
 de zram-tools. Chaque analyseur prend un texte ou un chemin, et etat() les
 assemble en lisant sous une racine, « / » par défaut : un test fabrique
 son arborescence et la lui donne.
+
+Les PLANS rendent des listes d'arguments, jamais exécutées ici. Le menu
+les montre, demande confirmation, puis les lance une à une et s'arrête à
+la première qui échoue. Un plan est un dict :
+
+    {"ok": bool, "reason": code ou None, "details": {...},
+     "plan": [[argv], ...], "warnings": [{"code": ..., ...}],
+     "nix": texte ou None}
+
+« nix » porte, sur NixOS, l'extrait de configuration.nix qui remplace
+tout changement impératif.
 
 Ce module ne rend que des codes et des nombres (octets) ; la phrase et la
 langue appartiennent au menu.
@@ -20,19 +33,45 @@ toujours la plus haute priorité d'abord.
 import math
 import os
 import re
+import shlex
 import shutil
+import time
 
 from script.todo import system_cpu
-from script.todo.system_diagnostic import desechapper, lire, memoire
+from script.todo.system_diagnostic import commande, desechapper, lire, memoire
 
 KIO = 1024
 MIO = 1024**2
 GIO = 1024**3
+TIO = 1024**4
 
+# Ce que la mémoire disponible doit garder après un swapoff : sous ce
+# seuil, le noyau tue des processus plutôt que de rendre la main.
+MARGE_MEMOIRE = 512 * MIO
 # L'espace laissé libre sur le système de fichiers après un agrandissement.
 MARGE_DISQUE = GIO
+# Plus petit swap sur disque qu'on accepte de créer ou de réduire.
+PLANCHER_SWAP = 256 * MIO
+# Une taille au-delà est une faute de frappe.
+TAILLE_MAX = 64 * TIO
 
 PRIORITE_ZRAM = 100
+
+CHEMIN_SWAPFILE = "/swapfile"
+# Sur btrfs, un fichier d'échange interdit tout instantané du sous-volume
+# qui le contient : il vit dans un sous-volume à lui, que les instantanés
+# de la racine n'emportent pas.
+CHEMIN_SWAPFILE_BTRFS = "/swap/swapfile"
+
+# Les systèmes de fichiers qui acceptent un fichier d'échange.
+FS_SWAP = {"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "jfs", "reiserfs"}
+# Ceux où un fichier préalloué par fallocate n'a pas de trou aux yeux de
+# swapon (xfs depuis Linux 4.18). Ailleurs, dd écrit chaque bloc.
+FS_FALLOCATE = {"ext4", "xfs"}
+# « btrfs filesystem mkswapfile » paraît avec btrfs-progs 6.1.
+BTRFS_MKSWAPFILE = (6, 1)
+
+FSTAB = "/etc/fstab"
 
 # zram-generator : le fichier principal de plus haute priorité masque les
 # autres ; puis les fichiers *.conf des répertoires conf.d s'appliquent par
@@ -70,8 +109,62 @@ SERVICES_ZRAM = (
     ("zramswap.service", ("/usr/sbin/zramswapon", "/usr/bin/zramswapon")),
 )
 
+# Les suffixes anglais (K, KB, KiB) et français (Ko, Kio) : le menu écrit
+# ses tailles en « Gio », et une taille recopiée de son affichage se relit.
+SUFFIXES = {
+    "": MIO,
+    **{
+        lettre + fin: facteur
+        for lettre, facteur in (("k", KIO), ("m", MIO), ("g", GIO), ("t", TIO))
+        for fin in ("", "b", "i", "ib", "o", "io")
+    },
+}
+
+# Ce que systemd-detect-virt nomme quand il reconnaît un conteneur. Le swap
+# et la zram y appartiennent à l'hôte : swapon et la configuration d'une
+# zram exigent des droits que le conteneur n'a pas.
+CONTENEURS = {
+    "openvz",
+    "lxc",
+    "lxc-libvirt",
+    "systemd-nspawn",
+    "docker",
+    "podman",
+    "rkt",
+    "wsl",
+    "proot",
+    "pouch",
+}
+
 
 # ── Lecture ─────────────────────────────────────────────────────────────
+
+
+def parse_taille(texte):
+    """« 4G », « 512M », « 1.5G », « 8.0 Gio », « 2048 » (Mio) -> octets,
+    arrondis au Mio inférieur ; None pour ce qui n'est pas une taille
+    positive."""
+    if texte is None:
+        return None
+    m = re.fullmatch(
+        r"\s*(\d+(?:[.,]\d+)?)\s*([kmgt](?:ib|io|b|o|i)?)?\s*",
+        str(texte).lower(),
+    )
+    if not m:
+        return None
+    nombre = float(m.group(1).replace(",", "."))
+    unite = SUFFIXES.get(m.group(2) or "")
+    if unite is None:
+        return None
+    octets = int(nombre * unite) // MIO * MIO
+    if octets <= 0 or octets > TAILLE_MAX:
+        return None
+    return octets
+
+
+def mio(octets):
+    """Octets -> Mio entiers, arrondis au plus proche."""
+    return (octets + MIO // 2) // MIO
 
 
 def type_swap(chemin, type_noyau):
@@ -390,6 +483,12 @@ def recommandation(ram, hibernation=False):
     }
 
 
+def version_btrfs(texte):
+    """« btrfs-progs v6.6.3 » -> (6, 6) ; None sinon."""
+    m = re.search(r"v(\d+)\.(\d+)", texte or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
 def _libre(racine, point):
     try:
         return shutil.disk_usage(_sous(racine, point)).free
@@ -401,22 +500,35 @@ def etat(racine="/"):
     """Tout l'état de la mémoire d'échange, lu sous `racine`.
 
     {memory, swaps, zram, persistence, hibernation, mounts, root_fs,
-    root_free, os_id, recommendation, racine}. Chaque swap porte, en plus
+    root_free, fstab, manager, os_id, btrfs_mkswapfile,
+    virtualization, container, recommendation, racine}. container est vrai
+    quand systemd-detect-virt nomme un conteneur. Chaque swap porte, en plus
     de lire_swaps() : fs (son montage, pour un fichier), free (l'espace
-    libre de ce montage) et hibernation (resume= le vise peut-être)."""
+    libre de ce montage), max_size (la taille que l'espace libre permet,
+    marge déduite) et hibernation (resume= le vise peut-être)."""
     hib = lire_cmdline(lire(_sous(racine, "/proc/cmdline")))
     montages = lire_mountinfo(lire(_sous(racine, "/proc/self/mountinfo")))
     swaps = lire_swaps(lire(_sous(racine, "/proc/swaps")))
     for s in swaps:
-        s["fs"] = s["free"] = None
+        s["fs"] = s["free"] = s["max_size"] = None
         if s["type"] == "file":
             s["fs"] = montage_de(s["path"], montages)
             if s["fs"]:
                 s["free"] = _libre(racine, s["fs"]["mountpoint"])
+            if s["free"] is not None:
+                s["max_size"] = max(
+                    s["size"], s["size"] + s["free"] - MARGE_DISQUE
+                )
         s["hibernation"] = vise_hibernation(s, hib)
     os_release = _sous(racine, "/etc/os-release")
     os_id, _ = system_cpu.systeme(os_release)
     racine_fs = montage_de("/", montages)
+    mkswapfile = False
+    if shutil.which("btrfs"):
+        version = version_btrfs(commande(["btrfs", "--version"]))
+        mkswapfile = bool(version and version >= BTRFS_MKSWAPFILE)
+    virt = (commande(["systemd-detect-virt"], codes_ok=(0, 1)) or "").strip()
+    virt = None if virt in ("", "none") else virt
     mem = memoire(_sous(racine, "/proc/meminfo"))
     actives = {s["path"] for s in swaps}
     zram = lire_zram(_sous(racine, "/sys/block"))
@@ -433,7 +545,12 @@ def etat(racine="/"):
         "root_free": _libre(racine, racine_fs["mountpoint"])
         if racine_fs
         else None,
+        "fstab": lire(_sous(racine, FSTAB)),
+        "manager": system_cpu.gestionnaire(os_release),
         "os_id": os_id,
+        "btrfs_mkswapfile": mkswapfile,
+        "virtualization": virt,
+        "container": virt in CONTENEURS,
         "recommendation": recommandation(
             mem.get("total"), hibernation=bool(hib["resume"])
         ),
@@ -442,8 +559,8 @@ def etat(racine="/"):
 
 
 def cibles_disque(etat):
-    """Les swaps sur disque actifs (fichiers et partitions), sans la
-    zram."""
+    """Les swaps sur disque actifs (fichiers et partitions), ceux qu'on
+    agrandit ou réduit, sans la zram."""
     return [s for s in etat["swaps"] if s["type"] != "zram"]
 
 
@@ -460,3 +577,362 @@ def croissance_swap(etat):
     if libre is None:
         return None
     return max(0, libre - MARGE_DISQUE) // MIO * MIO
+
+
+def chemin_par_defaut(etat):
+    """{path, reason} du fichier d'échange à créer : reason vaut
+    « btrfs_subvolume » quand la racine est en btrfs."""
+    racine_fs = etat.get("root_fs") or {}
+    if racine_fs.get("fstype") == "btrfs":
+        return {"path": CHEMIN_SWAPFILE_BTRFS, "reason": "btrfs_subvolume"}
+    return {"path": CHEMIN_SWAPFILE, "reason": None}
+
+
+# ── Plans ───────────────────────────────────────────────────────────────
+
+
+def _resultat(ok, reason=None, plan=None, warnings=None, **d):
+    return {
+        "ok": ok,
+        "reason": reason,
+        "details": d,
+        "plan": plan or [],
+        "warnings": warnings or [],
+        "nix": None,
+    }
+
+
+def _refus(reason, **details):
+    return _resultat(False, reason, **details)
+
+
+def _horodatage(valeur):
+    return valeur or time.strftime("%Y%m%d-%H%M%S")
+
+
+def _capacite(etat, sauf=()):
+    """Ce que le système absorbe quand un swap s'éteint : la mémoire
+    disponible moins la marge, plus la place libre des AUTRES swaps sur
+    disque. La place libre d'une zram ne compte pas : la remplir coûte de
+    la RAM."""
+    dispo = etat["memory"].get("available") or 0
+    autres = sum(
+        s["size"] - s["used"]
+        for s in etat["swaps"]
+        if s["type"] != "zram" and s["path"] not in sauf
+    )
+    return {
+        "available": dispo,
+        "margin": MARGE_MEMOIRE,
+        "other_swap_free": autres,
+        "capacity": dispo - MARGE_MEMOIRE + autres,
+    }
+
+
+def refus_conteneur(etat):
+    """Le refus « container » quand etat vient d'un conteneur, sinon None :
+    swapon, swapoff et la zram y échouent faute de droits sur l'hôte."""
+    if etat.get("container"):
+        return _refus("container", virtualization=etat.get("virtualization"))
+    return None
+
+
+def _existe(etat, chemin):
+    return os.path.lexists(_sous(etat.get("racine", "/"), chemin))
+
+
+# Sur btrfs, le répertoire racine de chaque sous-volume porte cet inode.
+INODE_SOUS_VOLUME = 256
+
+
+def _est_racine_sous_volume(chemin_reel):
+    """Vrai si `chemin_reel` (déjà sous la racine) est la racine d'un
+    sous-volume btrfs ; faux s'il ne se lit pas."""
+    try:
+        return os.stat(chemin_reel).st_ino == INODE_SOUS_VOLUME
+    except OSError:
+        return False
+
+
+def sous_volume_de(etat, chemin, point):
+    """Le sous-volume btrfs qui contient le répertoire existant `chemin` :
+    le premier ancêtre, `chemin` compris, qui en est une racine, en
+    remontant jusqu'au point de montage `point`, rendu s'il n'y en a
+    aucun."""
+    racine = etat.get("racine", "/")
+    courant = chemin
+    while courant != point and courant != "/":
+        if _est_racine_sous_volume(_sous(racine, courant)):
+            return courant
+        courant = os.path.dirname(courant)
+    return point
+
+
+def _vide(etat, chemin):
+    """Vrai si le répertoire `chemin` est lisible et vide."""
+    try:
+        return not os.listdir(_sous(etat.get("racine", "/"), chemin))
+    except OSError:
+        return False
+
+
+def _creation(chemin, taille, fstype, mkswapfile):
+    """Les commandes qui créent un fichier d'échange formaté, absent au
+    départ, sans l'activer.
+
+    btrfs : « btrfs filesystem mkswapfile » pose NOCOW et formate ; sans
+    lui, chattr +C sur le fichier encore vide, puis fallocate. ext4 et
+    xfs : fallocate. Ailleurs dd, qui écrit chaque bloc et ne laisse pas
+    de trou que swapon refuserait."""
+    n = taille // MIO
+    if fstype == "btrfs" and mkswapfile:
+        return [
+            [
+                "sudo",
+                "btrfs",
+                "filesystem",
+                "mkswapfile",
+                "--size",
+                f"{n}m",
+                chemin,
+            ],
+            ["sudo", "chmod", "600", chemin],
+        ]
+    if fstype == "btrfs":
+        cree = [
+            ["sudo", "truncate", "-s", "0", chemin],
+            ["sudo", "chattr", "+C", chemin],
+            ["sudo", "fallocate", "-l", f"{n}MiB", chemin],
+        ]
+    elif fstype in FS_FALLOCATE:
+        cree = [["sudo", "fallocate", "-l", f"{n}MiB", chemin]]
+    else:
+        cree = [
+            [
+                "sudo",
+                "dd",
+                "if=/dev/zero",
+                f"of={chemin}",
+                "bs=1M",
+                f"count={n}",
+                "status=progress",
+            ]
+        ]
+    return cree + [
+        ["sudo", "chmod", "600", chemin],
+        ["sudo", "mkswap", chemin],
+    ]
+
+
+def echapper_fstab(chemin):
+    """Un chemin tel que fstab l'écrit : espace, tabulation, saut de ligne
+    et barre oblique inverse en octal."""
+    return "".join(f"\\{ord(c):03o}" if c in " \t\n\\" else c for c in chemin)
+
+
+def dans_fstab(texte, chemin):
+    """Vrai si une ligne active de fstab monte déjà `chemin`."""
+    for ligne in (texte or "").splitlines():
+        champs = ligne.split()
+        if champs and not champs[0].startswith("#"):
+            if desechapper(champs[0]) == chemin:
+                return True
+    return False
+
+
+def extrait_nix(swap):
+    """L'extrait de configuration.nix. swap : (chemin, octets) d'un
+    swapDevices."""
+    chemin, taille = swap
+    lignes = [
+        f'swapDevices = [ {{ device = "{chemin}";'
+        f" size = {taille // MIO}; }} ];",
+        "# sudo nixos-rebuild switch",
+    ]
+    return "\n".join(lignes) + "\n"
+
+
+def _nix(resultat, texte):
+    resultat["nix"] = texte
+    resultat["reason"] = "nixos"
+    return resultat
+
+
+def plan_redimensionner(etat, chemin, taille, sens=None):
+    """Agrandir ou réduire le fichier d'échange actif `chemin` à `taille`
+    octets : swapoff, rm, recréation, chmod 600, mkswap, swapon.
+
+    sens vaut « grow », « shrink » ou None (l'un ou l'autre). Refus
+    (reason) : container, not_active, zram, partition (details.suggestion :
+    le fichier à créer à la place), partition_shrink (réduire une
+    partition), below_floor, not_larger, not_smaller, same_size,
+    fs_unsupported, ram_cannot_absorb, disk_unknown, disk_full. warnings :
+    hibernation (resume= le vise : l'offset change avec le fichier).
+    details : path, old, new, recovery_from, et les chiffres du refus.
+
+    recovery_from est l'indice de l'étape rm : une fois le swapoff passé,
+    une étape qui échoue laisse le swap éteint et son fichier absent ou
+    incomplet, et plan[recovery_from:] le reconstruit depuis zéro."""
+    conteneur = refus_conteneur(etat)
+    if conteneur:
+        return conteneur
+    swap = next((s for s in etat["swaps"] if s["path"] == chemin), None)
+    if swap is None:
+        return _refus("not_active", path=chemin)
+    if swap["type"] == "zram":
+        return _refus("zram", path=chemin)
+    if swap["type"] != "file" and sens == "shrink":
+        return _refus("partition_shrink", path=chemin)
+    if swap["type"] != "file":
+        return _refus(
+            "partition",
+            path=chemin,
+            suggestion=chemin_par_defaut(etat)["path"],
+        )
+    taille = taille // MIO * MIO
+    ancienne = swap["size"]
+    if taille < PLANCHER_SWAP:
+        return _refus("below_floor", floor=PLANCHER_SWAP, new=taille)
+    if mio(taille) == mio(ancienne):
+        return _refus("same_size", old=ancienne, new=taille)
+    if sens == "grow" and taille < ancienne:
+        return _refus("not_larger", old=ancienne, new=taille)
+    if sens == "shrink" and taille > ancienne:
+        return _refus("not_smaller", old=ancienne, new=taille)
+    fs = swap.get("fs")
+    if not fs or fs["fstype"] not in FS_SWAP:
+        return _refus("fs_unsupported", fstype=fs and fs["fstype"])
+    if etat.get("manager") == "nix":
+        return _nix(
+            _resultat(True, old=ancienne, new=taille),
+            extrait_nix(swap=(chemin, taille)),
+        )
+    cap = _capacite(etat, sauf=(chemin,))
+    if swap["used"] > cap["capacity"]:
+        return _refus("ram_cannot_absorb", used=swap["used"], **cap)
+    if taille > ancienne:
+        libre = swap.get("free")
+        if libre is None:
+            return _refus("disk_unknown", mountpoint=fs["mountpoint"])
+        besoin = taille - ancienne + MARGE_DISQUE
+        if besoin > libre:
+            return _refus(
+                "disk_full",
+                needed=besoin,
+                free=libre,
+                max_size=swap.get("max_size"),
+            )
+    swapon = ["sudo", "swapon"]
+    if swap["priority"] >= 0:
+        swapon += ["-p", str(swap["priority"])]
+    plan = (
+        [["sudo", "swapoff", chemin], ["sudo", "rm", "-f", chemin]]
+        + _creation(chemin, taille, fs["fstype"], etat.get("btrfs_mkswapfile"))
+        + [swapon + [chemin]]
+    )
+    alertes = []
+    if swap.get("hibernation"):
+        alertes.append(
+            {"code": "hibernation", "resume": etat["hibernation"]["resume"]}
+        )
+    return _resultat(
+        True,
+        plan=plan,
+        warnings=alertes,
+        path=chemin,
+        old=ancienne,
+        new=taille,
+        recovery_from=1,
+    )
+
+
+def plan_creer(etat, chemin, taille, horodatage=None):
+    """Créer et activer un fichier d'échange de `taille` octets, et
+    l'inscrire dans /etc/fstab (copie de sauvegarde d'abord) s'il n'y est
+    pas déjà.
+
+    Refus : container, invalid_path, already_active, exists,
+    below_floor, fs_unsupported, disk_unknown, disk_full, parent_missing.
+    Sur btrfs, un répertoire parent absent devient un sous-volume (btrfs
+    subvolume create). warnings : btrfs_snapshot (le fichier rejoint un
+    sous-volume qui porte autre chose que lui : il en bloque les
+    instantanés ; seul un répertoire parent qui est lui-même la racine
+    d'un sous-volume vide y échappe). details : new, fstab (« added » ou « present »), backup.
+    Sur NixOS, plan vide et nix donne swapDevices.
+
+    La première étape, « sudo test ! -e », refuse un fichier qui existe :
+    lexists, lancé sans droits, voit absent ce qui dort dans un répertoire
+    qu'on ne peut pas traverser, et dd ou mkswap l'écraseraient.
+
+    La ligne de fstab s'ajoute après un saut de ligne quand le fichier
+    n'en finit pas par un : collée à la dernière ligne, elle la rendrait
+    illisible au démarrage, montage compris."""
+    conteneur = refus_conteneur(etat)
+    if conteneur:
+        return conteneur
+    if (
+        not chemin.startswith("/")
+        or ".." in chemin.split("/")
+        or chemin.endswith("/")
+        or "\x00" in chemin
+    ):
+        return _refus("invalid_path", path=chemin)
+    if any(s["path"] == chemin for s in etat["swaps"]):
+        return _refus("already_active", path=chemin)
+    taille = taille // MIO * MIO
+    if taille < PLANCHER_SWAP:
+        return _refus("below_floor", floor=PLANCHER_SWAP, new=taille)
+    if etat.get("manager") == "nix":
+        return _nix(
+            _resultat(True, new=taille), extrait_nix(swap=(chemin, taille))
+        )
+    if _existe(etat, chemin):
+        return _refus("exists", path=chemin)
+    fs = montage_de(chemin, etat.get("mounts") or [])
+    if not fs or fs["fstype"] not in FS_SWAP:
+        return _refus("fs_unsupported", fstype=fs and fs["fstype"])
+    libre = _libre(etat.get("racine", "/"), fs["mountpoint"])
+    if libre is None:
+        return _refus("disk_unknown", mountpoint=fs["mountpoint"])
+    if taille + MARGE_DISQUE > libre:
+        return _refus(
+            "disk_full",
+            needed=taille + MARGE_DISQUE,
+            free=libre,
+            max_size=max(0, (libre - MARGE_DISQUE) // MIO * MIO),
+        )
+    plan = [["sudo", "test", "!", "-e", chemin]]
+    alertes = []
+    parent = os.path.dirname(chemin)
+    if not _existe(etat, parent):
+        if fs["fstype"] != "btrfs" or not _existe(
+            etat, os.path.dirname(parent)
+        ):
+            return _refus("parent_missing", parent=parent)
+        plan.append(["sudo", "btrfs", "subvolume", "create", parent])
+    elif fs["fstype"] == "btrfs":
+        sous_volume = sous_volume_de(etat, parent, fs["mountpoint"])
+        if sous_volume != parent or not _vide(etat, parent):
+            alertes.append(
+                {"code": "btrfs_snapshot", "subvolume": sous_volume}
+            )
+    plan += _creation(
+        chemin, taille, fs["fstype"], etat.get("btrfs_mkswapfile")
+    )
+    plan.append(["sudo", "swapon", chemin])
+    details = {"new": taille, "fstab": "present", "backup": None}
+    if not dans_fstab(etat.get("fstab"), chemin):
+        copie = f"{FSTAB}.bak-{_horodatage(horodatage)}"
+        ligne = f"{echapper_fstab(chemin)} none swap defaults 0 0"
+        plan += [
+            ["sudo", "cp", "-a", FSTAB, copie],
+            [
+                "sudo",
+                "sh",
+                "-c",
+                f'[ -z "$(tail -c 1 {FSTAB})" ] || echo >> {FSTAB}; '
+                f"printf '%s\\n' {shlex.quote(ligne)} >> {FSTAB}",
+            ],
+        ]
+        details.update(fstab="added", backup=copie, line=ligne)
+    return _resultat(True, plan=plan, warnings=alertes, **details)
