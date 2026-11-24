@@ -201,6 +201,12 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
             echo "  libsodium absent ou antérieur à 1.0.19 :" \
                 "PyNaCl bâtira sa copie embarquée." >&2
         fi
+        # grpcio n'a pas de roue s390x non plus, et la BoringSSL qu'il
+        # embarque ne connaît pas cette architecture : sa compilation s'arrête
+        # sur « #error "Unknown target CPU" ». Le lier à l'OpenSSL de la
+        # distribution, dont les en-têtes viennent de libssl-dev, contourne
+        # BoringSSL entièrement.
+        export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
     fi
     "${POETRY_ODOO_PATH}" --version
     # To fix keyring problem when installation is blocked, use
