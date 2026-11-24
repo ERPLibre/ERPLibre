@@ -9,6 +9,7 @@ donne :
 
     run_unit_test.py [--tui] [--changed[=REF]] [--failed] [--watch]
                      [--repeat N] [--slowest N] [--junit FICHIER]
+                     [--coverage] [-k MOTIF] [--ordre-aleatoire[=GRAINE]]
                      [--jobs N] [--timeout S] -- fichier...
 
 `--changed` ne garde que les fichiers de tests qu'un fichier modifié depuis
@@ -22,6 +23,20 @@ un test instable sous la charge. `--slowest N` liste les N TESTS les plus
 lents, et `--junit FICHIER` écrit le résultat de chaque test au format
 JUnit XML ; ces deux-là passent chaque fichier par unit_file.py, qui note
 chaque test, au lieu de le lancer comme programme.
+
+`--coverage` mesure la couverture du code ERPLibre (jeu « erplibre » de
+couverture.py) : chaque fichier tourne sous « coverage run -p », ses
+sous-processus Python compris, puis les données sont fusionnées, le JSON
+produit et le passage ajouté à l'historique. Un passage partiel —
+--changed, --failed, -k, des fichiers nommés — y est marqué comme tel. Les
+durées n'en sont pas retenues : mesurées sous coverage, elles fausseraient
+l'ordre et les tranches du passage suivant.
+
+`-k MOTIF` ne garde que les tests dont le nom contient MOTIF, comme
+unittest ; `--ordre-aleatoire[=GRAINE]` mélange les classes, et les tests
+de chaque classe, dans un ordre rejouable : la graine est imprimée. Tous
+deux passent chaque fichier par unit_file.py. Un test qui dépend d'un autre
+du même fichier s'y révèle.
 
 Chaque fichier tourne dans son propre processus, `--jobs` à la fois, les
 plus LONGS d'abord d'après les durées du passage précédent (DURATIONS) : la
@@ -61,32 +76,43 @@ Deux affichages :
 """
 
 import argparse
-import json
+import glob
 import os
+import random
 import re
-import shutil
 import signal
-import subprocess
 import sys
-import tempfile
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
+import couverture
+import lanceur as moteur
 import requirement_report
 import unit_selection
-
-ROUGE = "\033[0;31m"
-VERT = "\033[0;32m"
-JAUNE = "\033[0;33m"
-FIN = "\033[0m"
-
-ATTENTE = "en attente"
-EN_COURS = "en cours"
-OK = "OK"
-ECHEC = "ÉCHEC"
-DELAI = "DÉLAI"
-ARRETE = "arrêté"
+from lanceur import (  # noqa: F401  (noms publics, repris par les tests)
+    ARRETE,
+    ATTENTE,
+    DELAI,
+    ECHEC,
+    EN_COURS,
+    FIN,
+    JAUNE,
+    OK,
+    ROUGE,
+    VERT,
+    _lire,
+    bilan,
+    bilan_des_echecs,
+    couleur,
+    ecoule_total,
+    ecrire_junit,
+    en_ligne,
+    instables,
+    ligne,
+    ordonner,
+    plus_lents,
+    restes_temporaires,
+    tui,
+)
 
 # Un fichier dont la dernière durée connue dépasse ce nombre de secondes
 # tourne en plusieurs processus, chacun avec une tranche de ses tests (voir
@@ -133,87 +159,19 @@ ACCEPTEES = {
 }
 
 
-class Fichier:
-    """Un fichier de tests et ce qu'on sait de son passage."""
-
-    def __init__(self, chemin, passage=0, passages=1, tranche=None):
-        self.chemin = chemin
-        # (rang, nombre) quand le fichier tourne en tranches, sinon None.
-        self.tranche = tranche
-        # Le nom du FICHIER, sur lequel se règlent les durées et les échecs
-        # retenus ; `nom` est celui qu'on affiche, un passage de --repeat
-        # y portant son rang.
-        self.fichier = os.path.basename(chemin)
-        self.passage = passage
-        self.nom = self.fichier
-        if tranche:
-            self.nom += f" [{tranche[0] + 1}/{tranche[1]}]"
-        if passages > 1:
-            self.nom += f" #{passage + 1}"
-        self.etat = ATTENTE
-        self.tests = []
-        self.debut = 0.0
-        self.duree = 0.0
-        self.ran = "?"
-        self.skipped = ""
-        self.log = ""
-        self.proc = None
-        # Le rang du fichier dans le lanceur, qui nomme ses fichiers de
-        # travail : deux fichiers de même nom — dans deux répertoires, ou le
-        # même donné deux fois — ne partagent ni journal ni TMPDIR.
-        self.rang = 0
-        # Entrées que le fichier a laissées dans son TMPDIR : le lanceur les
-        # supprime et les signale au bilan.
-        self.restes = 0
-
-    def ecoule(self):
-        """Secondes écoulées : figées une fois fini, courantes sinon."""
-        if self.etat == EN_COURS:
-            return time.monotonic() - self.debut
-        return self.duree
-
-    def echoue(self):
-        return self.etat in (ECHEC, DELAI, ARRETE)
+# Un fichier de tests est un élément du moteur.
+Fichier = moteur.Element
 
 
 def lire_durees(chemin=DURATIONS):
     """{nom: secondes} du passage précédent ; vide si illisible."""
-    durees = {}
-    try:
-        with open(chemin, encoding="utf-8") as fh:
-            for ligne in fh:
-                morceaux = ligne.split(maxsplit=1)
-                if len(morceaux) == 2 and morceaux[0].isdigit():
-                    durees[morceaux[1].strip()] = int(morceaux[0])
-    except OSError:
-        pass
-    return durees
+    return moteur.lire_durees(chemin)
 
 
 def ecrire_durees(fichiers, chemin=DURATIONS):
-    """Remplace les durées des fichiers finis, garde celles des autres.
-
-    Un fichier arrêté par Ctrl+C n'a pas de durée qui vaille : on garde
-    l'ancienne plutôt que d'en inventer une. Un fichier en tranches retient
-    la SOMME de ses tranches, sa durée d'un seul tenant : c'est elle qui
-    décide de le découper au passage suivant, qui le découpe donc de même,
-    et seulement si toutes ses tranches ont fini."""
-    durees = lire_durees(chemin)
-    par_passage = {}
-    for f in fichiers:
-        par_passage.setdefault((f.fichier, f.passage), []).append(f)
-    for (nom, _passage), groupe in par_passage.items():
-        if all(f.etat in (OK, ECHEC, DELAI) for f in groupe):
-            durees[nom] = int(round(sum(f.duree for f in groupe)))
-    try:
-        os.makedirs(os.path.dirname(chemin), exist_ok=True)
-        provisoire = chemin + ".tmp"
-        with open(provisoire, "w", encoding="utf-8") as fh:
-            for nom, secondes in sorted(durees.items()):
-                fh.write(f"{secondes} {nom}\n")
-        os.replace(provisoire, chemin)
-    except OSError:
-        pass
+    """Remplace les durées des fichiers finis, garde celles des autres
+    (voir lanceur.ecrire_durees)."""
+    moteur.ecrire_durees(fichiers, chemin)
 
 
 def nombre_de_tranches(duree, jobs, seuil=None):
@@ -221,20 +179,7 @@ def nombre_de_tranches(duree, jobs, seuil=None):
     (None si inconnue) : une par tranche de `seuil` secondes commencée, au
     plus `jobs`. Un seuil nul ne découpe rien."""
     seuil = SEUIL_TRANCHE if seuil is None else seuil
-    if not seuil or not duree or duree <= seuil:
-        return 1
-    return max(1, min(jobs, -(-duree // seuil)))
-
-
-def ordonner(fichiers, durees):
-    """Durée connue décroissante, inconnue d'abord ; une tranche compte pour
-    sa part de la durée de son fichier."""
-
-    def estimation(f):
-        duree = durees.get(f.fichier, 10**9)
-        return duree / f.tranche[1] if f.tranche else duree
-
-    return sorted(fichiers, key=lambda f: (-estimation(f), f.passage))
+    return moteur.nombre_de_tranches(duree, jobs, seuil)
 
 
 # Les doublures vivent à un chemin FIXE, hors du dépôt, et non dans le
@@ -293,66 +238,45 @@ def doublures(travail):
         return poser_doublures(os.path.join(travail, "bin"))
 
 
-class Lanceur:
-    """Exécute les fichiers et tient leur état à jour.
+class CampagneUnitaire(moteur.Campagne):
+    """Les tests unitaires : un fichier par élément, découpé en tranches
+    au-delà de SEUIL_TRANCHE secondes, hermétique (doublures en tête du
+    PATH, PYTHONPATH à la racine), et vert seulement si unittest l'a dit
+    (« OK ») et que le code de retour est nul."""
 
-    Les états sont écrits par les fils d'exécution et lus par l'affichage,
-    qui ne fait que les lire : pas de verrou, une valeur lue au milieu
-    d'une mise à jour est simplement rafraîchie au tour suivant."""
+    unite = "tests"
+    prefixe = "run_unit_test."
+    tranches = True
+    fichier_durees = DURATIONS
+    fichier_echecs = ECHECS
 
     def __init__(
-        self, fichiers, py, jobs, delai, durees, passages=1, detaille=False
+        self, grace=None, couverture=False, motifs=(), ordre_aleatoire=None
     ):
-        self.fichiers = ordonner(
-            [
-                Fichier(
-                    c,
-                    k,
-                    passages,
-                    tranche=(rang, nombre) if nombre > 1 else None,
-                )
-                for c in fichiers
-                for nombre in [
-                    nombre_de_tranches(
-                        durees.get(os.path.basename(c)), max(1, jobs)
-                    )
-                ]
-                for k in range(max(1, passages))
-                for rang in range(nombre)
-            ],
-            durees,
+        # UNIT_GRACE : secondes laissées à SIGTERM avant SIGKILL quand un
+        # fichier est arrêté (délai, Ctrl+C). 0 par défaut : un test n'a
+        # rien à sauver. Sous couverture, coverage écrit ses données sur
+        # SIGTERM (sigterm = true) : 5 s par défaut.
+        defaut = 5 if couverture else 0
+        self.grace = (
+            float(os.environ.get("UNIT_GRACE") or defaut)
+            if grace is None
+            else grace
         )
-        for rang, f in enumerate(self.fichiers):
-            f.rang = rang
-        self.detaille = detaille
-        self.py = py
-        self.jobs = max(1, jobs)
-        self.delai = delai
-        self.arret = threading.Event()
-        self.debut = 0.0
-        self.fin = 0.0
-        self.travail = tempfile.mkdtemp(prefix="run_unit_test.")
-        # Les variables du registre des requis ne vont pas aux tests : aucun
-        # n'en a besoin, et un test qui affiche son environnement mettrait
-        # la clé dans son journal, donc dans le registre.
-        self.env = {
-            nom: valeur
-            for nom, valeur in os.environ.items()
-            if nom not in requirement_report.VARIABLES
-        }
-        self.env.update(
-            PATH=doublures(self.travail)
-            + os.pathsep
-            + os.environ.get("PATH", ""),
-            PYTHONPATH=".",
-        )
+        self.couverture = couverture
+        self.motifs = list(motifs)
+        self.ordre_aleatoire = ordre_aleatoire
 
-    def _un(self, f):
-        if self.arret.is_set():
-            f.etat = ARRETE
-            return
-        base = os.path.join(self.travail, f"{f.rang}.{f.fichier}")
-        f.log = base + ".log"
+    # Lus au moment du lancement, pas à l'import : un test peut les régler.
+    @property
+    def seuil_tranche(self):
+        return SEUIL_TRANCHE
+
+    @property
+    def signal(self):
+        return SIGNAL
+
+    def commande(self, lanceur, element, base):
         # « -u » : le journal reçoit la sortie standard ET la sortie
         # d'erreur. Sans terminal, la première ne se vide qu'à la fin du
         # processus, APRÈS le verdict qu'unittest écrit sur la seconde : les
@@ -360,309 +284,75 @@ class Lanceur:
         # imprime, et non l'erreur. L'option plutôt que PYTHONUNBUFFERED :
         # un programme que le test lance garde le tampon qu'il aurait hors
         # du lanceur.
-        cmd = [self.py, "-u", f.chemin]
-        if self.detaille or f.tranche:
-            cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
-        if f.tranche:
-            cmd += ["--tranche", f"{f.tranche[0]}/{f.tranche[1]}"]
-        # Un TMPDIR par fichier, sous le répertoire de travail : ce qu'un
-        # test oublie de supprimer y reste, est compté puis supprimé, au lieu
-        # de s'accumuler dans /tmp jusqu'à en épuiser les inodes.
-        tmp = base + ".tmp"
-        os.makedirs(tmp, exist_ok=True)
-        f.debut = time.monotonic()
-        f.etat = EN_COURS
-        with open(f.log, "wb") as sortie:
-            f.proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.DEVNULL,
-                stdout=sortie,
-                stderr=subprocess.STDOUT,
-                env=dict(self.env, TMPDIR=tmp),
-                start_new_session=True,
-            )
-            try:
-                rc = f.proc.wait(timeout=self.delai)
-            except subprocess.TimeoutExpired:
-                _tuer(f.proc)
-                f.proc.wait()
-                rc = None
-        f.duree = time.monotonic() - f.debut
-        try:
-            restes = len(os.listdir(tmp))
-        except OSError:
-            restes = 0
-        shutil.rmtree(tmp, ignore_errors=True)
-        if self.detaille:
-            try:
-                with open(base + ".json", encoding="utf-8") as fh:
-                    f.tests = json.load(fh)
-            except (OSError, ValueError):
-                f.tests = []
-        texte = _lire(f.log)
-        ran = re.findall(r"Ran (\d+)", texte)
-        f.ran = ran[-1] if ran else "?"
-        skipped = re.findall(r"skipped=\d+", texte)
-        f.skipped = skipped[-1] if skipped else ""
-        if self.arret.is_set() and rc != 0:
-            f.etat = ARRETE
-        elif rc is None:
-            f.etat = DELAI
-        elif rc == 0 and re.search(r"^OK", texte, re.M):
-            f.etat = OK
-        else:
-            f.etat = ECHEC
-        # Un fichier tué — délai ou Ctrl+C — n'a pas eu le temps de nettoyer
-        # derrière lui : ses restes ne disent rien du test.
-        if f.etat in (OK, ECHEC):
-            f.restes = restes
+        cmd = [lanceur.py, "-u", element.chemin]
+        # Le fichier fixe sys.argv à l'import : -k ne lui parviendrait pas
+        # en argument. unit_file.py filtre et mélange lui-même.
+        if (
+            lanceur.detaille
+            or element.tranche
+            or self.motifs
+            or self.ordre_aleatoire
+        ):
+            cmd = [lanceur.py, "-u", UNIT_FILE, element.chemin, base + ".json"]
+        if element.tranche:
+            cmd += ["--tranche", f"{element.tranche[0]}/{element.tranche[1]}"]
+        for motif in self.motifs:
+            cmd += ["-k", motif]
+        if self.ordre_aleatoire:
+            cmd += [f"--ordre-aleatoire={self.ordre_aleatoire}"]
+        if self.couverture:
+            cmd = couverture.envelopper("erplibre", cmd)
+        return cmd
 
-    def lancer(self, fini=None):
-        """Exécute tout ; `fini(f)` est appelé à la fin de chaque fichier."""
-        self.debut = time.monotonic()
+    def env(self, lanceur, travail):
+        # Les variables du registre des requis ne vont pas aux tests : aucun
+        # n'en a besoin, et un test qui affiche son environnement mettrait
+        # la clé dans son journal, donc dans le registre.
+        env = {
+            nom: valeur
+            for nom, valeur in os.environ.items()
+            if nom not in requirement_report.VARIABLES
+        }
+        env.update(
+            PATH=doublures(travail) + os.pathsep + os.environ.get("PATH", ""),
+            PYTHONPATH=".",
+        )
+        # Les données vont dans le répertoire du jeu, HORS du TMPDIR de
+        # chaque fichier, que le lanceur supprime.
+        if self.couverture:
+            env.update(couverture.env("erplibre"))
+        return env
 
-        def un(f):
-            self._un(f)
-            if fini:
-                fini(f)
-
-        with ThreadPoolExecutor(max_workers=self.jobs) as pool:
-            list(pool.map(un, self.fichiers))
-        self.fin = time.monotonic()
-
-    def arreter(self):
-        """Plus rien ne démarre, et les groupes en cours sont tués."""
-        self.arret.set()
-        for f in self.fichiers:
-            if f.etat == EN_COURS and f.proc is not None:
-                _tuer(f.proc)
-
-    def en_cours(self):
-        return [f for f in self.fichiers if f.etat == EN_COURS]
-
-    def nettoyer(self):
-        shutil.rmtree(self.travail, ignore_errors=True)
+    def verdict(self, rc, texte, element):
+        if rc == 0 and re.search(r"^OK", texte, re.M):
+            return OK
+        return ECHEC
 
 
-def _tuer(proc):
-    """Tue le groupe entier : le test ET ce qu'il a lancé."""
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        pass
+class Lanceur(moteur.Lanceur):
+    """Le moteur, réglé par défaut pour les tests unitaires."""
 
-
-def _lire(chemin, fin=None):
-    """Le journal en texte ; ses `fin` dernières lignes si demandé."""
-    try:
-        with open(chemin, encoding="utf-8", errors="replace") as fh:
-            texte = fh.read()
-    except OSError:
-        return ""
-    if fin is None:
-        return texte
-    return "\n".join(texte.rstrip("\n").split("\n")[-fin:])
-
-
-def couleur(etat):
-    if etat == OK:
-        return VERT
-    if etat == ATTENTE:
-        return ""
-    if etat in (EN_COURS, ARRETE):
-        return JAUNE
-    return ROUGE
-
-
-def ligne(f, delai):
-    etat = f"{DELAI} {delai}s" if f.etat == DELAI else f.etat
-    return "  %-42s %5s tests %-14s %s%s%s" % (
-        f.nom,
-        f.ran,
-        f.skipped,
-        couleur(f.etat),
-        etat,
-        FIN,
-    )
-
-
-def restes_temporaires(lanceur):
-    """Lignes d'avertissement : les fichiers qui ont laissé des entrées dans
-    leur TMPDIR. Le lanceur les a supprimées ; le test reste à corriger, car
-    lancé hors du lanceur il les laisse dans /tmp. N'échoue pas la suite."""
-    fautifs = sorted(
-        (f for f in lanceur.fichiers if getattr(f, "restes", 0)),
-        key=lambda f: f.nom,
-    )
-    if not fautifs:
-        return []
-    lignes = [
-        f"  {JAUNE}Temporaires laissés (supprimés par le lanceur) :{FIN}"
-    ]
-    lignes += [f"    {f.nom}  ({f.restes})" for f in fautifs]
-    return lignes
-
-
-def bilan(lanceur):
-    """Les sorties des échecs, dans l'ordre des noms, puis le total.
-
-    Rend le code de sortie : 0 si tout est vert."""
-    echecs = sorted(
-        (f for f in lanceur.fichiers if f.echoue() and f.log),
-        key=lambda f: f.nom,
-    )
-    for f in echecs:
-        print(f"\n  {ROUGE}── {f.nom}{FIN}")
-        print(_lire(f.log, fin=12))
-    total = sum(int(f.ran) for f in lanceur.fichiers if f.ran.isdigit())
-    duree = f"{lanceur.fin - lanceur.debut:.0f} s, {lanceur.jobs} en parallèle"
-    for ligne in restes_temporaires(lanceur):
-        print(ligne)
-    print("  ─────")
-    arretes = [f for f in lanceur.fichiers if f.etat == ARRETE]
-    if arretes:
-        print(f"  {JAUNE}interrompu{FIN} ({duree})")
-        return 130
-    if any(f.echoue() for f in lanceur.fichiers):
-        print(f"  {ROUGE}des échecs ci-dessus{FIN} ({duree})")
-        return 1
-    print(f"  {VERT}{total} tests, tout vert{FIN} ({duree})")
-    return 0
-
-
-def en_ligne(lanceur):
-    """L'affichage par défaut : une ligne par fichier fini, un rappel pour
-    ceux qui s'éternisent, et les fichiers en cours nommés à Ctrl+C."""
-    fil = threading.Thread(
-        target=lanceur.lancer,
-        kwargs={"fini": lambda f: print(ligne(f, lanceur.delai), flush=True)},
-        daemon=True,
-    )
-    fil.start()
-    signale = {}
-    try:
-        while fil.is_alive():
-            fil.join(timeout=1)
-            for f in lanceur.en_cours():
-                ecoule = f.ecoule()
-                if (
-                    ecoule >= SIGNAL
-                    and ecoule - signale.get(f.nom, 0) >= SIGNAL
-                ):
-                    signale[f.nom] = ecoule
-                    print(
-                        f"  {JAUNE}… {f.nom} en cours depuis"
-                        f" {ecoule:.0f} s{FIN}",
-                        flush=True,
-                    )
-    except KeyboardInterrupt:
-        tournaient = [(f.nom, f.ecoule()) for f in lanceur.en_cours()]
-        lanceur.arreter()
-        print(f"\n  {JAUNE}Interrompu. En cours à cet instant :{FIN}")
-        for nom, ecoule in sorted(tournaient, key=lambda x: -x[1]):
-            print(f"    {nom}  {ecoule:.0f} s")
-        fil.join()
-    return bilan(lanceur)
-
-
-def ecoule_total(lanceur, maintenant=None):
-    """Le temps écoulé depuis le début de la passe, arrêté à sa fin : une
-    passe finie garde sa durée au lieu de compter jusqu'à ce qu'on quitte
-    l'affichage."""
-    if not lanceur.debut:
-        return 0.0
-    fin = lanceur.fin or (maintenant or time.monotonic())
-    return fin - lanceur.debut
-
-
-def tui(lanceur):
-    """Le tableau Textual. Rend None si Textual manque : l'appelant
-    retombe alors sur l'affichage en ligne."""
-    try:
-        from rich.text import Text
-        from textual.app import App
-        from textual.containers import Vertical
-        from textual.widgets import DataTable, Footer, Header, Static
-    except ImportError:
-        return None
-
-    colonnes = ("Fichier", "État", "Tests", "Durée")
-
-    class Vue(App):
-        TITLE = "Tests unitaires"
-        CSS = """
-        DataTable { height: 2fr; }
-        #journal { height: 1fr; border-top: solid $accent; padding: 0 1; }
-        """
-        BINDINGS = [("q", "quitter", "Quitter (arrête les tests)")]
-
-        def compose(self):
-            yield Header()
-            with Vertical():
-                yield DataTable(cursor_type="row", zebra_stripes=True)
-                yield Static("", id="journal")
-            yield Footer()
-
-        def on_mount(self):
-            table = self.query_one(DataTable)
-            for nom in colonnes:
-                table.add_column(nom, key=nom)
-            for f in lanceur.fichiers:
-                table.add_row(*self._cellules(f), key=f.nom)
-            self.fil = threading.Thread(target=lanceur.lancer, daemon=True)
-            self.fil.start()
-            self.set_interval(0.5, self._rafraichir)
-
-        def _cellules(self, f):
-            duree = f"{f.ecoule():.0f} s" if f.etat != ATTENTE else ""
-            return (f.nom, f.etat, f.ran if f.ran != "?" else "", duree)
-
-        def _rafraichir(self):
-            table = self.query_one(DataTable)
-            for f in lanceur.fichiers:
-                for colonne, valeur in zip(colonnes, self._cellules(f)):
-                    table.update_cell(f.nom, colonne, valeur)
-            faits = sum(
-                f.etat not in (ATTENTE, EN_COURS) for f in lanceur.fichiers
-            )
-            rouges = sum(f.echoue() for f in lanceur.fichiers)
-            ecoule = ecoule_total(lanceur)
-            fin = "" if self.fil.is_alive() else " — terminé, q pour quitter"
-            self.sub_title = (
-                f"{faits}/{len(lanceur.fichiers)} finis,"
-                f" {len(lanceur.en_cours())} en cours, {rouges} en échec,"
-                f" {ecoule:.0f} s{fin}"
-            )
-            ligne_choisie = table.cursor_row
-            if 0 <= ligne_choisie < len(lanceur.fichiers):
-                f = lanceur.fichiers[ligne_choisie]
-                journal = self.query_one("#journal", Static)
-                # La FIN du journal, à la hauteur du panneau : c'est là que
-                # unittest écrit l'erreur et le verdict.
-                hauteur = max(3, journal.size.height - 1)
-                texte = _lire(f.log, fin=hauteur) if f.log else "(pas démarré)"
-                # Du texte brut, jamais du balisage : un journal porte des
-                # crochets et des codes ANSI, que le balisage de Textual
-                # prendrait pour les siens et refuserait.
-                contenu = Text(f"{f.nom} — {f.etat}\n", style="bold")
-                contenu.append_text(Text.from_ansi(texte))
-                journal.update(contenu)
-
-        def action_quitter(self):
-            lanceur.arreter()
-            self.exit()
-
-    Vue().run()
-    lanceur.arreter()
-    # Les fils finissent sur les groupes tués : attendre qu'ils aient posé
-    # leur état avant le bilan.
-    while lanceur.en_cours():
-        time.sleep(0.1)
-    if not lanceur.fin:
-        lanceur.fin = time.monotonic()
-    for f in lanceur.fichiers:
-        print(ligne(f, lanceur.delai))
-    return bilan(lanceur)
+    def __init__(
+        self,
+        fichiers,
+        py,
+        jobs,
+        delai,
+        durees,
+        passages=1,
+        detaille=False,
+        campagne=None,
+    ):
+        super().__init__(
+            fichiers,
+            py,
+            jobs,
+            delai,
+            durees,
+            passages,
+            detaille,
+            campagne or CampagneUnitaire(),
+        )
 
 
 def choisir(fichiers, reference, echecs):
@@ -693,94 +383,6 @@ def choisir(fichiers, reference, echecs):
     return [f for f in fichiers if os.path.normpath(f) in choisis]
 
 
-def instables(lanceur):
-    """Les fichiers dont l'issue a varié d'un passage de --repeat à
-    l'autre, avec le décompte de leurs issues."""
-    # Un passage en tranches a une seule issue : la pire de ses tranches.
-    # Comparées entre elles, deux tranches d'un même passage passeraient
-    # pour un fichier instable.
-    gravite = {OK: 0, DELAI: 1, ECHEC: 2}
-    par_passage = {}
-    for f in lanceur.fichiers:
-        if f.etat in gravite:
-            cle = (f.fichier, f.passage)
-            pire = par_passage.get(cle)
-            if pire is None or gravite[f.etat] > gravite[pire]:
-                par_passage[cle] = f.etat
-    par_fichier = {}
-    for (nom, _passage), etat in par_passage.items():
-        par_fichier.setdefault(nom, []).append(etat)
-    return {
-        nom: {e: etats.count(e) for e in sorted(set(etats))}
-        for nom, etats in sorted(par_fichier.items())
-        if len(set(etats)) > 1
-    }
-
-
-def plus_lents(lanceur, combien):
-    """Les `combien` tests les plus lents : (secondes, fichier, id). Un test
-    répété par --repeat compte pour sa durée la plus longue."""
-    pire = {}
-    for f in lanceur.fichiers:
-        for t in f.tests:
-            cle = (f.fichier, t["id"])
-            pire[cle] = max(pire.get(cle, 0.0), t["duree"])
-    return sorted(
-        ((d, fichier, ident) for (fichier, ident), d in pire.items()),
-        reverse=True,
-    )[:combien]
-
-
-def ecrire_junit(lanceur, chemin):
-    """Le résultat de chaque test au format JUnit XML, une suite par
-    fichier. Un fichier sans détail — tué par le délai, ou mort avant
-    d'écrire — y figure comme une erreur, pour ne pas disparaître."""
-    import xml.etree.ElementTree as ET
-
-    racine = ET.Element("testsuites")
-    for f in lanceur.fichiers:
-        suite = ET.SubElement(
-            racine, "testsuite", name=f.nom, time=f"{f.duree:.3f}"
-        )
-        comptes = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-        tests = f.tests or [
-            {
-                "classe": "",
-                "nom": f.fichier,
-                "duree": f.duree,
-                "etat": "erreur",
-                "message": f"{f.etat} : aucun résultat par test",
-            }
-        ]
-        for t in tests:
-            comptes["tests"] += 1
-            cas = ET.SubElement(
-                suite,
-                "testcase",
-                classname=f"{f.fichier[:-3]}.{t['classe']}".rstrip("."),
-                name=t["nom"],
-                time=f"{t['duree']:.3f}",
-            )
-            balise = {
-                "echec": ("failure", "failures"),
-                "erreur": ("error", "errors"),
-                "ignore": ("skipped", "skipped"),
-            }.get(t["etat"])
-            if balise:
-                comptes[balise[1]] += 1
-                message = t.get("message") or ""
-                ET.SubElement(
-                    cas,
-                    balise[0],
-                    message=message.splitlines()[-1:][0] if message else "",
-                ).text = message
-        for cle, valeur in comptes.items():
-            suite.set(cle, str(valeur))
-    ET.ElementTree(racine).write(
-        chemin, encoding="utf-8", xml_declaration=True
-    )
-
-
 def rapports(lanceur, args):
     """Ce que --repeat, --slowest et --junit demandent, après le bilan.
 
@@ -806,19 +408,40 @@ def rapports(lanceur, args):
     return code
 
 
-def bilan_des_echecs(fichiers):
-    """(passés, échoués) : les noms de fichiers à retirer des échecs
-    retenus, et ceux à y ajouter.
+def passage_complet(fichiers, args):
+    """Vrai si le passage couvre TOUTE la suite : tous les test/test_*.py,
+    sans sélection. Seul un passage complet se compare à un autre dans
+    l'historique de couverture."""
+    tous = {os.path.normpath(c) for c in glob.glob("test/test_*.py")}
+    return (
+        not (args.changed or args.failed or args.k)
+        and {os.path.normpath(c) for c in fichiers} == tous
+    )
 
-    Un fichier ne sort des échecs retenus que si TOUS ses passages ont
-    réussi : un seul échec sur N le garde, c'est ce qu'il faut relancer.
-    Un passage arrêté n'a rien prouvé, dans un sens ni dans l'autre."""
-    issues = {}
-    for f in fichiers:
-        issues.setdefault(f.fichier, set()).add(f.etat)
-    passes = [n for n, e in issues.items() if e == {OK}]
-    echoues = [n for n, e in issues.items() if e & {ECHEC, DELAI}]
-    return passes, echoues
+
+def couvrir(lanceur, complet):
+    """Après un passage sous --coverage : fusion, JSON, historique, et la
+    ligne du bilan. Une couverture qui échoue ne change pas le verdict des
+    tests : elle le dit."""
+    incomplets = [
+        f.nom for f in lanceur.fichiers if f.etat in (moteur.DELAI, ARRETE)
+    ]
+    try:
+        if not couverture.combiner("erplibre"):
+            print(f"  {JAUNE}Couverture : aucune donnée écrite.{FIN}")
+            return
+        couverture.produire_json("erplibre")
+        couverture.historiser(
+            "erplibre",
+            complet=complet,
+            incomplets=incomplets,
+            duree=lanceur.fin - lanceur.debut,
+        )
+    except RuntimeError as exc:
+        print(f"  {ROUGE}Couverture : {exc}{FIN}")
+        return
+    print(f"  {couverture.ligne_de_bilan('erplibre')}")
+    print(f"    {couverture.chemin_json('erplibre')}")
 
 
 def essais(lanceur):
@@ -846,6 +469,9 @@ def lancer_une_fois(fichiers, args, surveille=False):
     """Un passage complet sur `fichiers` : exécution, bilan, rapports, et
     mise à jour des durées et des échecs retenus. Rend le code de sortie.
 
+    Le verrou des campagnes est tenu tout le passage : une autre suite, ou
+    les scénarios Odoo, partagent le serveur PostgreSQL.
+
     Avec les variables ERPLIBRE_REQUIREMENT_* (requirement_report.py),
     chaque test est noté puis son verdict poussé au registre des requis,
     après les rapports et les caches. Quand Ctrl+C ou SIGTERM arrête
@@ -853,7 +479,27 @@ def lancer_une_fois(fichiers, args, surveille=False):
     (`surveille`), c'est 130, qui met fin à la surveillance comme un
     Ctrl+C pendant les tests. Sans ces variables, rien de cela : ni détail
     par test, ni connexion."""
+    try:
+        with moteur.verrou_campagne("tests unitaires"):
+            return _lancer_une_fois(fichiers, args, surveille)
+    except moteur.CampagneOccupee as exc:
+        print(f"  {ROUGE}{exc}{FIN}")
+        print("  Attendre sa fin, ou l'arrêter, puis relancer.")
+        return 2
+
+
+def _lancer_une_fois(fichiers, args, surveille=False):
     registre = requirement_report.depuis_environnement()
+    mesure = getattr(args, "coverage", False)
+    if mesure:
+        couverture.effacer("erplibre")
+    graine = getattr(args, "ordre_aleatoire", None)
+    if graine == "auto":
+        # UNE graine pour tout le passage, imprimée : le même ordre se
+        # rejoue par --ordre-aleatoire=GRAINE.
+        graine = str(random.randrange(1, 1_000_000))
+    if graine:
+        print(f"  Ordre aléatoire, graine {graine}")
     lanceur = Lanceur(
         fichiers,
         py=sys.executable,
@@ -862,6 +508,11 @@ def lancer_une_fois(fichiers, args, surveille=False):
         durees=lire_durees(),
         passages=args.repeat,
         detaille=bool(args.slowest or args.junit or registre),
+        campagne=CampagneUnitaire(
+            couverture=mesure,
+            motifs=getattr(args, "k", None) or (),
+            ordre_aleatoire=graine,
+        ),
     )
     try:
         code = None
@@ -874,8 +525,23 @@ def lancer_une_fois(fichiers, args, surveille=False):
         # Toujours produits : c'est après un échec qu'on en a besoin.
         instable = rapports(lanceur, args)
         code = code or instable
-        ecrire_durees(lanceur.fichiers)
+        filtre = bool(getattr(args, "k", None))
+        if mesure:
+            # Un passage interrompu n'a pas tout mesuré : il ne sert jamais
+            # de référence.
+            complet = passage_complet(fichiers, args) and not any(
+                f.etat == ARRETE for f in lanceur.fichiers
+            )
+            couvrir(lanceur, complet)
+        elif not filtre:
+            # Sous -k, un fichier ne lance qu'une partie de ses tests : sa
+            # durée fausserait l'ordre et les tranches du passage suivant.
+            ecrire_durees(lanceur.fichiers)
         passes, echoues = bilan_des_echecs(lanceur.fichiers)
+        if filtre:
+            # Un fichier vert sous -k n'a passé que les tests retenus : il
+            # ne sort pas des échecs retenus.
+            passes = []
         unit_selection.retenir_echecs(ECHECS, passes=passes, echoues=echoues)
         # En dernier : un envoi lent, ou interrompu, ne coûte ni les durées
         # ni les échecs retenus. Une suite arrêtée par Ctrl+C n'envoie rien.
@@ -959,6 +625,15 @@ def main(argv=None):
     parser.add_argument("--repeat", type=int, default=1, metavar="N")
     parser.add_argument("--slowest", type=int, default=0, metavar="N")
     parser.add_argument("--junit", metavar="FICHIER")
+    parser.add_argument("--coverage", action="store_true")
+    parser.add_argument("-k", action="append", metavar="MOTIF")
+    parser.add_argument(
+        "--ordre-aleatoire",
+        dest="ordre_aleatoire",
+        nargs="?",
+        const="auto",
+        metavar="GRAINE",
+    )
     parser.add_argument(
         "--jobs", type=int, default=int(os.environ.get("UNIT_JOBS") or 0)
     )
@@ -972,6 +647,11 @@ def main(argv=None):
     # un lanceur tué sans les arrêter les laisserait tourner jusqu'au délai.
     signal.signal(signal.SIGTERM, _interrompre)
     if args.watch:
+        if args.coverage:
+            # Chaque relance effacerait les données de la précédente : le
+            # rapport ne dirait rien de cohérent.
+            print("  --coverage ne se combine pas avec --watch.")
+            return 2
         return surveiller(args.fichiers, args)
     fichiers = args.fichiers
     if args.changed or args.failed:

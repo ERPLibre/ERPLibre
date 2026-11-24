@@ -41,6 +41,13 @@ test_unit_changed:
 test_unit_failed:
 	./script/test/run_unit_test.sh --failed
 
+# La suite unitaire sous couverture (jeu « erplibre » de
+# script/test/couverture.py) : données, JSON et historique sous
+# ~/.cache/erplibre/couverture/erplibre/.
+.PHONY: test_unit_coverage
+test_unit_coverage:
+	./script/test/run_unit_test.sh --coverage
+
 .PHONY: open_test_coverage
 open_test_coverage:
 	-$(BROWSER) htmlcov/index.html
