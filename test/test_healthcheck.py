@@ -40,9 +40,21 @@ def git(racine, *args, check=True):
 
 
 def choix(*reponses):
-    """Le port des choix de dépôts, lié le temps du bloc : il rend
-    `reponses` dans l'ordre, puis EOFError, comme Ctrl+D."""
+    """Le port des choix de dépôts et des questions oui/non, lié le temps
+    du bloc : il rend `reponses` dans l'ordre, puis EOFError, comme
+    Ctrl+D."""
     return ui.bind(ScriptedPort(reponses))
+
+
+def oui_non(port):
+    """Les questions oui/non que `port` a reçues, chacune un `confirm`."""
+    return [e for e in port.events if e.get("kind") == "confirm"]
+
+
+# Les réponses qui refusent une question oui/non de défaut non, chacune
+# avec le nombre de fois que la question se pose : Entrée, Ctrl+D, une
+# faute (dite, puis la question revient) puis Ctrl+D.
+REFUS = (([""], 1), ([], 1), (["peut-être"], 2))
 
 
 def ecrire(racine, chemin, texte):
@@ -683,17 +695,21 @@ class TestManifeste(unittest.TestCase):
             lances.append(commande)
             return 0
 
-        self.assertFalse(
-            h._regenerer_manifeste(
-                ctx, [{}], lambda _q: "", lignes.append, lancer=lancer
-            )
-        )
+        for reponses, posees in REFUS:
+            with self.subTest(reponses=reponses), choix(*reponses) as port:
+                self.assertFalse(
+                    h._regenerer_manifeste(
+                        ctx, [{}], lignes.append, lancer=lancer
+                    )
+                )
+                self.assertEqual(
+                    [e["default"] for e in oui_non(port)], ["n"] * posees
+                )
         self.assertEqual(lances, [])
-        self.assertTrue(
-            h._regenerer_manifeste(
-                ctx, [{}], lambda _q: "o", lignes.append, lancer=lancer
+        with choix("o"):
+            self.assertTrue(
+                h._regenerer_manifeste(ctx, [{}], lignes.append, lancer=lancer)
             )
-        )
         self.assertEqual(lances, [h.COMMANDE_REGENERER])
         self.assertIn(f"   $ {h.COMMANDE_REGENERER}", lignes)
 
@@ -1069,12 +1085,8 @@ class TestResolutions(unittest.TestCase):
         sans rien lancer. Les fonctions de freeze_resolution, le lanceur
         de commandes, la suppression de répertoires et `actions` (passées à
         executer_resolution) sont des doubles qui ne doivent pas servir ;
-        une question oui/non échoue le test."""
+        aucune question oui/non ne suit le retour."""
         res = self.resolution(cle, depots)
-
-        def demander(question):
-            raise AssertionError(f"question après un retour : {question}")
-
         lancer = mock.Mock(return_value=0)
         with (
             mock.patch.object(h.freeze_resolution, "remettre_au_gel") as r,
@@ -1088,17 +1100,20 @@ class TestResolutions(unittest.TestCase):
         ):
             for reponses in (["0"], [""], []):
                 lignes = []
-                with self.subTest(reponses=reponses), choix(*reponses):
+                with (
+                    self.subTest(reponses=reponses),
+                    choix(*reponses) as port,
+                ):
                     self.assertFalse(
                         h.executer_resolution(
                             h.Contexte(tempfile.gettempdir()),
                             res,
-                            demander=demander,
                             sortie=lignes.append,
                             **actions,
                         )
                     )
                     self.assertIn(t("Nothing changed."), lignes)
+                    self.assertEqual(oui_non(port), [])
         for double in (r, p, m, lancer, rmtree, run, *actions.values()):
             double.assert_not_called()
 
@@ -1434,17 +1449,16 @@ class TestDependancesVenvs(unittest.TestCase):
     ):
         shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
         ancien, venvs = self.obsolete()
-        reponses = iter(["o", "o"])
         lances = []
-        with choix("all"):
+        with choix("all", "o", "o") as port:
             change = h._remplacer_venvs_obsoletes(
                 h.Contexte(self.racine),
                 venvs,
-                lambda _q: next(reponses),
                 lambda _l: None,
                 lancer=lambda c: lances.append(c) or 0,
             )
         self.assertTrue(change)
+        self.assertEqual([e["default"] for e in oui_non(port)], ["n", "n"])
         self.assertEqual(
             lances,
             [
@@ -1461,14 +1475,12 @@ class TestDependancesVenvs(unittest.TestCase):
     def test_a_refused_installation_keeps_the_obsolete_venv(self):
         shutil.rmtree(os.path.join(self.racine, f".venv.{self.version}"))
         ancien, venvs = self.obsolete()
-        reponses = iter([""])
         lances = []
-        with choix("all"):
+        with choix("all", ""):
             self.assertFalse(
                 h._remplacer_venvs_obsoletes(
                     h.Contexte(self.racine),
                     venvs,
-                    lambda _q: next(reponses),
                     lambda _l: None,
                     lancer=lambda c: lances.append(c) or 0,
                 )
@@ -1478,20 +1490,40 @@ class TestDependancesVenvs(unittest.TestCase):
 
     def test_an_existing_replacement_only_asks_to_delete(self):
         ancien, venvs = self.obsolete()
-        reponses = iter(["o"])
         lances = []
-        with choix("1"):
+        with choix("1", "o"):
             self.assertTrue(
                 h._remplacer_venvs_obsoletes(
                     h.Contexte(self.racine),
                     venvs,
-                    lambda _q: next(reponses),
                     lambda _l: None,
                     lancer=lambda c: lances.append(c) or 0,
                 )
             )
         self.assertEqual(lances, [])
         self.assertFalse(os.path.isdir(ancien))
+
+    def test_enter_ctrl_d_or_a_typo_keeps_the_obsolete_venv(self):
+        """« Supprimer le venv obsolète ? », défaut non : Entrée, Ctrl+D,
+        une faute puis Ctrl+D le gardent ; la faute est dite."""
+        ancien, venvs = self.obsolete()
+        for reponses, posees in REFUS:
+            with (
+                self.subTest(reponses=reponses),
+                choix("1", *reponses) as port,
+            ):
+                self.assertFalse(
+                    h._remplacer_venvs_obsoletes(
+                        h.Contexte(self.racine),
+                        venvs,
+                        lambda _l: None,
+                        lancer=mock.Mock(side_effect=AssertionError),
+                    )
+                )
+                self.assertTrue(os.path.isdir(ancien))
+                self.assertEqual(len(oui_non(port)), posees)
+                fautes = [e for e in port.events if e.get("t") == "notice"]
+                self.assertEqual(len(fautes), posees - 1)
 
 
 class TestRapport(unittest.TestCase):
@@ -1678,9 +1710,7 @@ class TestHooks(DepotJetable):
         lignes = []
         resolution = h.verifier_hooks(self.ctx()).resolutions[0]
         self.assertTrue(
-            h.executer_resolution(
-                self.ctx(), resolution, lambda _q: "", lignes.append
-            )
+            h.executer_resolution(self.ctx(), resolution, lignes.append)
         )
         self.assertEqual(self.hooks_path(), "script/git/hooks")
         for hook in h.todo_etat.HOOKS_GIT:
@@ -1711,17 +1741,24 @@ class TestHooks(DepotJetable):
         self.assertEqual(resultat.resolutions, [])
 
     def test_another_hooks_path_is_replaced_only_on_a_yes(self):
+        """« Le remplacer ? », défaut non : Entrée, Ctrl+D, une faute puis
+        Ctrl+D gardent l'autre chemin."""
         git(self.racine, "config", "core.hooksPath", "ailleurs/hooks")
         resolution = h.verifier_hooks(self.ctx()).resolutions[0]
-        self.assertFalse(
-            h.executer_resolution(self.ctx(), resolution, lambda _q: "", print)
-        )
-        self.assertEqual(self.hooks_path(), "ailleurs/hooks")
-        with mock.patch("builtins.print"):
-            self.assertTrue(
-                h.executer_resolution(
-                    self.ctx(), resolution, lambda _q: "o", print
+        for reponses, posees in REFUS:
+            with self.subTest(reponses=reponses), choix(*reponses) as port:
+                self.assertFalse(
+                    h.executer_resolution(
+                        self.ctx(), resolution, lambda _l: None
+                    )
                 )
+                self.assertEqual(self.hooks_path(), "ailleurs/hooks")
+                self.assertEqual(len(oui_non(port)), posees)
+                self.assertEqual(oui_non(port)[0]["prompt"], t("Replace it?"))
+                self.assertEqual(oui_non(port)[0]["default"], "n")
+        with mock.patch("builtins.print"), choix("o"):
+            self.assertTrue(
+                h.executer_resolution(self.ctx(), resolution, print)
             )
         self.assertEqual(self.hooks_path(), "script/git/hooks")
 

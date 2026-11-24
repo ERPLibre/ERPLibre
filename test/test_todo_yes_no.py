@@ -142,6 +142,46 @@ CONFIRM_DEFAULTS = {
         "Neutralize the copy?",
     ): [True],
     (
+        "script/todo/healthcheck.py",
+        "_installer_hooks",
+        "Replace it?",
+    ): [False],
+    (
+        "script/todo/healthcheck.py",
+        "_regenerer_manifeste",
+        "Switch to production: regenerate the local manifest and sync?",
+    ): [False],
+    (
+        "script/todo/healthcheck.py",
+        "_remplacer_venvs_obsoletes",
+        "Delete the obsolete venv %s?",
+    ): [False],
+    (
+        "script/todo/healthcheck.py",
+        "_remplacer_venvs_obsoletes",
+        "Install %s? It becomes the active version, and takes a while",
+    ): [False],
+    (
+        "script/todo/install_update_menu.py",
+        "InstallUpdateMenuMixin._update_choisir_deplacements",
+        "Move it aside to %s?",
+    ): [False],
+    (
+        "script/todo/install_update_menu.py",
+        "InstallUpdateMenuMixin._update_choisir_deplacements",
+        "Synchronize anyway?",
+    ): [False],
+    (
+        "script/todo/install_update_menu.py",
+        "InstallUpdateMenuMixin._update_reprendre",
+        "Copy the local branches of %s into the new clone?",
+    ): [True],
+    (
+        "script/todo/install_update_menu.py",
+        "InstallUpdateMenuMixin._update_reprendre",
+        "Delete the old clone %s?",
+    ): [False],
+    (
         "script/todo/python_menu.py",
         "PythonMenuMixin._poetry_drift_actif",
         "Update the venv to match the lock?",

@@ -617,9 +617,9 @@ TRANSLATIONS = {
         "fr": "branches locales :",
         "en": "local branches:",
     },
-    "Move it aside to %s? (y/N): ": {
-        "fr": "Le déplacer vers %s ? (o/N) : ",
-        "en": "Move it aside to %s? (y/N): ",
+    "Move it aside to %s?": {
+        "fr": "Le déplacer vers %s ?",
+        "en": "Move it aside to %s?",
     },
     "Kept: repo sync will fail on this repository.": {
         "fr": "Gardé : repo sync échouera sur ce dépôt.",
@@ -633,9 +633,9 @@ TRANSLATIONS = {
         "fr": "Déplacé :",
         "en": "Moved:",
     },
-    "Synchronize anyway? (y/N): ": {
-        "fr": "Synchroniser quand même ? (o/N) : ",
-        "en": "Synchronize anyway? (y/N): ",
+    "Synchronize anyway?": {
+        "fr": "Synchroniser quand même ?",
+        "en": "Synchronize anyway?",
     },
     "Checkout mode kept:": {
         "fr": "Mode du checkout gardé :",
@@ -645,9 +645,9 @@ TRANSLATIONS = {
         "fr": "pas cloné par repo sync, l'ancien clone est gardé :",
         "en": "not cloned by repo sync, the old clone is kept:",
     },
-    "Copy the local branches of %s into the new clone? (Y/n): ": {
-        "fr": "Recopier les branches locales de %s dans le nouveau clone ? (O/n) : ",
-        "en": "Copy the local branches of %s into the new clone? (Y/n): ",
+    "Copy the local branches of %s into the new clone?": {
+        "fr": "Recopier les branches locales de %s dans le nouveau clone ?",
+        "en": "Copy the local branches of %s into the new clone?",
     },
     "Branches not copied:": {
         "fr": "Branches non recopiées :",
@@ -673,9 +673,9 @@ TRANSLATIONS = {
         "fr": "Ancien clone gardé, le supprimer perdrait :",
         "en": "Old clone kept, deleting it would lose:",
     },
-    "Delete the old clone %s? (y/N): ": {
-        "fr": "Supprimer l'ancien clone %s ? (o/N) : ",
-        "en": "Delete the old clone %s? (y/N): ",
+    "Delete the old clone %s?": {
+        "fr": "Supprimer l'ancien clone %s ?",
+        "en": "Delete the old clone %s?",
     },
     "Python versions - Install or update the venvs, without the git repos": {
         "fr": "🔄 Versions Python - Installer ou mettre à jour les venvs, sans les dépôts git",
@@ -1715,6 +1715,7 @@ TRANSLATIONS = {
         "fr": "Le remplacer ? (o/N) : ",
         "en": "Replace it? (y/N): ",
     },
+    "Replace it?": {"fr": "Le remplacer ?", "en": "Replace it?"},
     "Certificate name (default: %s): ": {
         "fr": "Nom du certificat (défaut : %s) : ",
         "en": "Certificate name (default: %s): ",
@@ -3538,13 +3539,13 @@ TRANSLATIONS = {
         "fr": "Venvs d'Odoo obsolètes :",
         "en": "Obsolete Odoo venvs:",
     },
-    "Install %s? It becomes the active version, and takes a while (y/N): ": {
-        "fr": "Installer %s ? Elle devient la version active, et c'est long (o/N) : ",
-        "en": "Install %s? It becomes the active version, and takes a while (y/N): ",
+    "Install %s? It becomes the active version, and takes a while": {
+        "fr": "Installer %s ? Elle devient la version active, et c'est long",
+        "en": "Install %s? It becomes the active version, and takes a while",
     },
-    "Delete the obsolete venv %s? (y/N): ": {
-        "fr": "Supprimer le venv obsolète %s ? (o/N) : ",
-        "en": "Delete the obsolete venv %s? (y/N): ",
+    "Delete the obsolete venv %s?": {
+        "fr": "Supprimer le venv obsolète %s ?",
+        "en": "Delete the obsolete venv %s?",
     },
     "Could not delete": {
         "fr": "Suppression impossible :",
@@ -3602,15 +3603,9 @@ TRANSLATIONS = {
             " without being overwritten."
         ),
     },
-    "Switch to production: regenerate the local manifest and sync? (y/N): ": {
-        "fr": (
-            "Passer en production : régénérer le manifeste local et"
-            " synchroniser ? (o/N) : "
-        ),
-        "en": (
-            "Switch to production: regenerate the local manifest and sync?"
-            " (y/N): "
-        ),
+    "Switch to production: regenerate the local manifest and sync?": {
+        "fr": "Passer en production : régénérer le manifeste local et synchroniser ?",
+        "en": "Switch to production: regenerate the local manifest and sync?",
     },
     "Local manifest regenerated.": {
         "fr": "Manifeste local régénéré.",

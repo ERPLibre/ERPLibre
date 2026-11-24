@@ -27,8 +27,10 @@ RACINE_DEPOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE_DEPOT))
 
 from script.todo import install_update_menu as maj  # noqa: E402
+from script.todo import ui  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import TRANSLATIONS, t  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 
 ENV_GIT = {
     "GIT_AUTHOR_NAME": "Essai",
@@ -252,6 +254,19 @@ class TestResynchronisation(unittest.TestCase):
         self.sortie = sortie.getvalue()
         return questions, code
 
+    def confirmations(self, reponses, **kwargs):
+        """Les questions oui/non que pose `jouer` quand un `ScriptedPort`
+        répond `reponses` : (texte sans indice, défaut, `back`) de chacune.
+        Aucune ne passe par `input`."""
+        scripted = ScriptedPort(reponses)
+        with ui.bind(scripted):
+            self.jouer([], **kwargs)
+        return [
+            (e["prompt"], e["default"], e.get("back", False))
+            for e in scripted.events
+            if e.get("kind") == "confirm"
+        ]
+
     @property
     def ancien(self):
         return self.co.chemin(maj.destination(MANUEL, MAINTENANT))
@@ -368,6 +383,81 @@ class TestResynchronisation(unittest.TestCase):
         self.assertEqual(len(questions), 1)
         self.assertFalse(os.path.exists(self.ancien))
         self.assertEqual(self.branches(MANUEL), ["18.0", "travail"])
+
+    # Déplacer et recopier arrêtent l'action sur Ctrl+D (`back`) ;
+    # « Synchroniser quand même ? » et la suppression y valent non.
+
+    def test_moving_copying_and_deleting_state_their_defaults(self):
+        self.co.clone_manuel(MANUEL)
+        ancien = maj.destination(MANUEL, MAINTENANT)
+        self.assertEqual(
+            self.confirmations(["o", "", "n"]),
+            [
+                (t("Move it aside to %s?") % ancien, "n", True),
+                (
+                    t("Copy the local branches of %s into the new clone?")
+                    % ancien,
+                    "y",
+                    True,
+                ),
+                (t("Delete the old clone %s?") % ancien, "n", False),
+            ],
+        )
+
+    def test_synchronize_anyway_states_its_default(self):
+        self.co.clone_manuel(MANUEL)
+        ancien = maj.destination(MANUEL, MAINTENANT)
+        self.assertEqual(
+            self.confirmations(["n", "n"]),
+            [
+                (t("Move it aside to %s?") % ancien, "n", True),
+                (t("Synchronize anyway?"), "n", False),
+            ],
+        )
+        self.assertEqual(self.lances, [])
+
+    def test_a_typo_at_the_move_question_is_said_and_asked_again(self):
+        self.co.clone_manuel(MANUEL)
+        questions, code = self.jouer(["peut-être", "o"], cloner=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0], questions[1])
+        self.assertIn(f"{t('Answer yes or no: ')}peut-être", self.sortie)
+        # Déplacé puis remis : repo sync ne l'a pas cloné.
+        self.assertIn(
+            maj.t("Put back, repo sync did not clone it:"), self.sortie
+        )
+
+    def test_no_at_the_deletion_says_where_the_old_clone_is_kept(self):
+        self.co.clone_manuel(MANUEL)
+        questions, code = self.jouer(["o", "", "n"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(questions), 3)
+        self.assertTrue(os.path.isdir(os.path.join(self.ancien, ".git")))
+        ligne = (
+            f"\n⚠️  {MANUEL} : {maj.t('Kept as')} "
+            f"{maj.destination(MANUEL, MAINTENANT)}\n"
+        )
+        self.assertIn(ligne, self.sortie)
+        self.assertNotIn(f"\n{ligne}", self.sortie)
+
+    def test_enter_at_the_deletion_deletes_nothing(self):
+        """Entrée prend le défaut de la suppression, non : `rmtree` n'est
+        pas appelé, l'ancien clone reste et la ligne qui dit où il est
+        gardé s'écrit."""
+        self.co.clone_manuel(MANUEL)
+        with mock.patch.object(maj.shutil, "rmtree") as effacer:
+            questions, code = self.jouer(["o", "", ""])
+        effacer.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(questions), 3)
+        self.assertTrue(os.path.isdir(os.path.join(self.ancien, ".git")))
+        self.assertIn(
+            f"\n⚠️  {MANUEL} : {maj.t('Kept as')} "
+            f"{maj.destination(MANUEL, MAINTENANT)}\n",
+            self.sortie,
+        )
+        self.assertNotIn(maj.t("Deleted:"), self.sortie)
 
     def test_no_hand_made_clone_asks_nothing(self):
         questions, code = self.jouer([], cloner=False)

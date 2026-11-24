@@ -2144,34 +2144,30 @@ def _afficher_commande(sortie):
 def executer_resolution(
     ctx,
     resolution,
-    demander=None,
     sortie=print,
     mettre_a_jour_venv=None,
     deployer_commande_claude=None,
 ):
     """Lance `resolution`, sur les éléments que l'utilisateur choisit par
     `choisir_depots` pour les résolutions qui en portent une liste. Rend
-    True si quelque chose a changé. `demander` pose les questions oui/non ;
-    il vaut `input` par défaut, lu à l'appel.
+    True si quelque chose a changé. Les questions oui/non passent par
+    `ui.confirm`, le port lié.
     `mettre_a_jour_venv(choix)` met à jour un venv : celle du
     TODO, qui sait installer un lock et faire le rapport.
     `deployer_commande_claude(commande, gabarit)` déploie une commande
     Claude : celle du TODO, qui sait garder ou demander l'identité git."""
-    demander = demander or input
     if resolution.cle == HOOKS_GIT:
-        return _installer_hooks(ctx, demander, sortie)
+        return _installer_hooks(ctx, sortie)
     if resolution.cle == CLAUDE:
         return _deployer_commandes_claude(
             resolution.depots, sortie, deployer_commande_claude
         )
     if resolution.cle == VENVS_OBSOLETES:
-        return _remplacer_venvs_obsoletes(
-            ctx, resolution.depots, demander, sortie
-        )
+        return _remplacer_venvs_obsoletes(ctx, resolution.depots, sortie)
     if resolution.cle == PAQUETS_DE_TROP:
         return _retirer_paquets(ctx, resolution.depots, sortie)
     if resolution.cle == REGENERER:
-        return _regenerer_manifeste(ctx, resolution.depots, demander, sortie)
+        return _regenerer_manifeste(ctx, resolution.depots, sortie)
     if resolution.cle == MAJ_VENVS:
         return _mettre_a_jour_venvs(
             resolution.depots, sortie, mettre_a_jour_venv
@@ -2183,23 +2179,13 @@ def executer_resolution(
     return False
 
 
-def _oui(demander, question):
-    """Vrai sur un oui explicite à `question` ; Entrée et Ctrl+D valent
-    non."""
-    try:
-        reponse = demander(question)
-    except EOFError:
-        return False
-    return reponse.strip().lower() in ("y", "yes", "o", "oui")
-
-
-def _installer_hooks(ctx, demander, sortie):
+def _installer_hooks(ctx, sortie):
     """Pose les hooks git par todo_etat.installer_hooks_git. Une autre
     valeur de core.hooksPath n'est remplacée que sur un oui."""
     actuel = todo_etat._git(ctx.racine, "config", "--get", "core.hooksPath")
     if actuel and not todo_etat.chemin_hooks_du_depot(ctx.racine, actuel):
         sortie(f"{t('Another hooks path is already set: ')}{actuel}")
-        if not _oui(demander, f"💬 {t('Replace it? (y/N): ')}"):
+        if not ui.confirm(t("Replace it?"), default=False):
             sortie(t("Nothing changed."))
             return False
     reussi, lignes = todo_etat.installer_hooks_git(
@@ -2246,7 +2232,7 @@ def _lancer_dans_le_terminal(ctx):
     return lambda commande: subprocess.run(commande, cwd=ctx.racine).returncode
 
 
-def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
+def _remplacer_venvs_obsoletes(ctx, venvs, sortie, lancer=None):
     """Installe la version du catalogue qui remplace chaque venv choisi si
     son venv manque, puis supprime le venv obsolète : chaque étape sur un
     oui. L'installation rend sa version active ; une installation ratée
@@ -2272,13 +2258,13 @@ def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
                 cle,
                 "--install_dev",
             ]
-            question = (
+            if not ui.confirm(
                 t(
-                    "Install %s? It becomes the active version, and takes a while (y/N): "
+                    "Install %s? It becomes the active version, and takes a while"
                 )
-                % cle
-            )
-            if not _oui(demander, f"💬 {question}"):
+                % cle,
+                default=False,
+            ):
                 sortie(t("Nothing changed."))
                 continue
             sortie(f"   $ {shlex.join(commande)}")
@@ -2290,8 +2276,9 @@ def _remplacer_venvs_obsoletes(ctx, venvs, demander, sortie, lancer=None):
                 continue
             change = True
         chemin = os.path.join(ctx.racine, choix["venv"])
-        question = t("Delete the obsolete venv %s? (y/N): ") % choix["venv"]
-        if not _oui(demander, f"💬 {question}"):
+        if not ui.confirm(
+            t("Delete the obsolete venv %s?") % choix["venv"], default=False
+        ):
             continue
         sortie(f"   $ rm -rf {choix['venv']}")
         shutil.rmtree(chemin, ignore_errors=True)
@@ -2336,7 +2323,7 @@ def _retirer_paquets(ctx, paquets, sortie, lancer=None):
     return change
 
 
-def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
+def _regenerer_manifeste(ctx, depots, sortie, lancer=None):
     """Régénère le manifeste local et synchronise, après confirmation.
     Agit sur tout le checkout : aucun choix de dépôt. `lancer(commande)`
     rend le code de sortie, `subprocess.run` dans le terminal par
@@ -2344,13 +2331,10 @@ def _regenerer_manifeste(ctx, depots, demander, sortie, lancer=None):
     sortie(
         f"{len(depots)} {t('repositories target an older freeze in the local manifest.')}"
     )
-    try:
-        reponse = demander(
-            f"💬 {t('Switch to production: regenerate the local manifest and sync? (y/N): ')}"
-        )
-    except EOFError:
-        reponse = ""
-    if reponse.strip().lower() not in ("y", "yes", "o", "oui"):
+    if not ui.confirm(
+        t("Switch to production: regenerate the local manifest and sync?"),
+        default=False,
+    ):
         sortie(t("Nothing changed."))
         return False
     sortie(f"   $ {COMMANDE_REGENERER}")

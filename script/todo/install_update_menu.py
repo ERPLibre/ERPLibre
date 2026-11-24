@@ -245,8 +245,8 @@ class InstallUpdateMenuMixin:
         """Demande, pour chaque clone fait à la main à un chemin déclaré,
         s'il faut le déplacer ; rien n'est encore déplacé. Rend les
         (chemin, destination) acceptés, ou None quand l'utilisateur, ayant
-        gardé un clone, renonce à synchroniser, ou sur Ctrl+D à l'une des
-        questions."""
+        gardé un clone, renonce à synchroniser (Ctrl+D y vaut non), ou sur
+        Ctrl+D à un déplacement, qui abandonne toute la mise à jour."""
         plan = []
         garde = False
         for chemin in clones_manuels(racine, chemins_declares(racine)):
@@ -255,26 +255,20 @@ class InstallUpdateMenuMixin:
                 f"⚠️  {chemin} : {t('cloned by hand at a path of the manifest, repo sync cannot adopt it and fails on it.')}"
             )
             self._update_decrire_clone(os.path.join(racine, chemin))
-            try:
-                reponse = ui.ask(
-                    f"💬 {t('Move it aside to %s? (y/N): ') % ancien}"
-                )
-            except EOFError:
+            deplacer = ui.confirm(
+                t("Move it aside to %s?") % ancien, default=False, back=True
+            )
+            if deplacer is None:
                 return None
-            if self._is_yes(reponse):
+            if deplacer:
                 plan.append((chemin, ancien))
             else:
                 print(
                     f"   {t('Kept: repo sync will fail on this repository.')}"
                 )
                 garde = True
-        if garde:
-            try:
-                encore = ui.ask(f"💬 {t('Synchronize anyway? (y/N): ')}")
-            except EOFError:
-                return None
-            if not self._is_yes(encore):
-                return None
+        if garde and not ui.confirm(t("Synchronize anyway?"), default=False):
+            return None
         return plan
 
     def _update_decrire_clone(self, clone):
@@ -300,9 +294,10 @@ class InstallUpdateMenuMixin:
         peut donc les écrire. Chaque branche est vérifiée par son commit,
         car `git fetch` rejette sans erreur une ref qu'un clone superficiel
         ne peut pas recevoir. La suppression de l'ancien n'est offerte que
-        si rien ne s'y perdrait. Ctrl+D à l'une des deux questions vaut
-        non : l'ancien clone reste, sans copie ni suppression, et une ligne
-        à part dit où il est gardé."""
+        si rien ne s'y perdrait. Ctrl+D à la copie arrête la reprise de ce
+        clone, sans copie ni question de suppression ; à la suppression, il
+        vaut non. Chaque fois que l'ancien clone reste sans perte à
+        signaler, une ligne à part dit où il est gardé."""
         nouveau = os.path.join(racine, chemin)
         vieux = os.path.join(racine, ancien)
         if not os.path.lexists(nouveau):
@@ -321,13 +316,12 @@ class InstallUpdateMenuMixin:
             )
             return
         anciennes = refs_locales(vieux)
-        try:
-            copier = anciennes and self._is_yes_default_yes(
-                ui.ask(
-                    f"💬 {t('Copy the local branches of %s into the new clone? (Y/n): ') % ancien}"
-                )
-            )
-        except EOFError:
+        copier = anciennes and ui.confirm(
+            t("Copy the local branches of %s into the new clone?") % ancien,
+            default=True,
+            back=True,
+        )
+        if copier is None:
             self._update_garder(chemin, ancien)
             return
         if copier:
@@ -359,26 +353,21 @@ class InstallUpdateMenuMixin:
             for perte in pertes:
                 print(f"   {perte}")
             return
-        try:
-            supprimer = self._is_yes(
-                ui.ask(f"💬 {t('Delete the old clone %s? (y/N): ') % ancien}")
-            )
-        except EOFError:
+        if not ui.confirm(
+            t("Delete the old clone %s?") % ancien, default=False
+        ):
             self._update_garder(chemin, ancien)
             return
-        if supprimer:
-            try:
-                shutil.rmtree(vieux)
-            except OSError as erreur:
-                print(f"❌ {t('Could not delete')} {ancien} : {erreur}")
-                return
-            print(f"✅ {t('Deleted:')} {ancien}")
+        try:
+            shutil.rmtree(vieux)
+        except OSError as erreur:
+            print(f"❌ {t('Could not delete')} {ancien} : {erreur}")
+            return
+        print(f"✅ {t('Deleted:')} {ancien}")
 
     @staticmethod
     def _update_garder(chemin, ancien):
         """Dit, sur sa propre ligne, que le clone de `chemin` reste gardé
-        sous `ancien`. `input` n'écrit pas de saut de ligne sur Ctrl+D :
-        le premier `print` en tient lieu, sinon la ligne suivante
-        s'écrirait à la suite de la question."""
-        print()
+        sous `ancien`. Après Ctrl+D, le port a déjà fini la ligne de la
+        question."""
         print(f"⚠️  {chemin} : {t('Kept as')} {ancien}")
