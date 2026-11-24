@@ -657,7 +657,8 @@ class TestLaReprise(Reprise):
             ):
                 rendu = self.reprendre(efface, "0", auto=True, delai=0.1)
                 self.assertIsNone(rendu)
-                self.assertIn(f"⏱ → {t('Enter')} (n)", self.ecran)
+                non = t("Answer no")
+                self.assertIn(f"⏱ → {t('Enter')} ({non})", self.ecran)
                 self.assertEqual(self.effacements, [])
         self.assertEqual(self.archives(), [])
 
