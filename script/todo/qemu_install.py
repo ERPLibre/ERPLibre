@@ -844,8 +844,7 @@ class QemuInstallMixin:
             "services.xserver.enable = true;",
             "services.xserver.displayManager.lightdm.enable = true;",
             "services.xserver.windowManager.i3.enable = true;",
-            'environment.etc."i3/config".source ='
-            ' "${pkgs.i3}/etc/i3/config";',
+            'environment.etc."i3/config".source = "${pkgs.i3}/etc/i3/config";',
             "services.xserver.windowManager.i3.extraPackages ="
             " [ pkgs.i3status pkgs.i3lock pkgs.dmenu ];",
             'services.displayManager.defaultSession = "none+i3";',
@@ -1254,10 +1253,12 @@ class QemuInstallMixin:
             # ERREUR, alors que son étape finale écrit encore l'autorité, les
             # variables et le sudoers : attendre l'unité, faute de quoi elles
             # arrivent après cette session, qui vivra sans elles.
-            + attente_cloud_final() + "; "
+            + attente_cloud_final()
+            + "; "
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
-            + cache_env_reload() + "; "
+            + cache_env_reload()
+            + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
             # est écrit par cloud-init lui aussi : mesuré sur une VM, la
             # session ssh est acceptée une seconde avant qu'il existe, donc
@@ -1460,7 +1461,9 @@ class QemuInstallMixin:
             # nouveaux miroirs, qui servent les mêmes versions. Sans
             # « || true » : un échec ici laisserait des index que le système
             # ne suit pas.
-            + "sudo pacman -Syu --noconfirm || { " + fail + "}; "
+            + "sudo pacman -Syu --noconfirm || { "
+            + fail
+            + "}; "
             "fi; "
         )
 
@@ -2155,7 +2158,8 @@ class QemuInstallMixin:
             # Le chemin, jamais la valeur : le journal est lisible de tous.
             f"if sudo test -s {pw_file}; then "
             f'echo "     {t("Password kept in the VM, read it with:")} '
-            f'{VM_LOGIN_READ_CMD}"; fi; ' + self._qemu_tunnel_hint(3389, "RDP")
+            f'{VM_LOGIN_READ_CMD}"; fi; '
+            + self._qemu_tunnel_hint(3389, "RDP")
             # xrdp là où il existe, pour une saveur X11 ou en repli. « off » :
             # GNOME Remote Desktop a été retenu mais n'a pas pris, et xrdp,
             # sans session à ouvrir, ne le remplacerait pas.
@@ -2224,8 +2228,7 @@ class QemuInstallMixin:
             lignes += [
                 "services.xrdp.enable = true;",
                 "services.xrdp.openFirewall = true;",
-                "services.xrdp.defaultWindowManager ="
-                f' "{de["x_session"]}";',
+                f'services.xrdp.defaultWindowManager = "{de["x_session"]}";',
                 "security.polkit.extraConfig = ''\n"
                 + self._QEMU_POLKIT_REMOTE
                 + "\n'';",

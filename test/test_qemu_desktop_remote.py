@@ -1292,8 +1292,7 @@ class TestNewFlavoursRun(unittest.TestCase):
             "app-org.kde.krdpserver.service.d"
         )
         self.assertEqual(
-            "[Service]\nExecStart=\n"
-            "ExecStart=/usr/bin/krdpserver --plasma\n",
+            "[Service]\nExecStart=\nExecStart=/usr/bin/krdpserver --plasma\n",
             (d / "erplibre-plasma.conf").read_text(),
         )
         self.assertIn("KRDP_DISABLE_H264=1", (d / "erplibre.conf").read_text())
@@ -1568,8 +1567,7 @@ class TestNewFlavoursRun(unittest.TestCase):
             "</key>\n"
         )
         fond = self.vm.etc(
-            "/usr/share/wallpapers/openSUSEdefault/contents/images/"
-            "default.png"
+            "/usr/share/wallpapers/openSUSEdefault/contents/images/default.png"
         )
         fond.parent.mkdir(parents=True)
         fond.write_text("png")
