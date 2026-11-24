@@ -20,3 +20,22 @@ dans le fichier de configuration. Les versions sont celles d'ERPLibre :
 sert sinon, et REFUSE une base vide que son dossier d'état avait déjà
 initialisée : une restauration qui n'a pas eu lieu ne doit pas être couverte
 par une base neuve.
+
+# erplibre_dist.py — construire un ERPLibre autonome
+
+`erplibre_dist.py --racine <dépôt ERPLibre> --sortie <dossier>` fait d'un
+ERPLibre installé UN dossier qui s'installe sans index, pour un serveur
+d'hébergement qui lit une application dans un seul dépôt. Figer d'abord :
+`make repo_configure_all FREEZE=1` met chaque projet sur son commit figé, et
+la construction refuse un projet qui suit encore sa branche.
+
+Le dossier porte l'arbre Odoo de la version, sans `.git` ni modules
+propriétaires (OPL-1, OEEL-1, « Other proprietary »), une roue par dépendance
+dans `roues/` avec `requirements.lock.txt` qui nomme chacune par son sha256,
+les fichiers de version d'ERPLibre, un `config.conf` dont l'`addons_path` est
+relatif, le lanceur `erplibre_serve.py`, et `PROVENANCE.lock` (le commit de
+chaque projet et les modules exclus). La construction finit par une épreuve :
+un venv neuf, installé en `--no-index --require-hashes`, doit initialiser
+`base` dans une base jetable. Les roues construites depuis les sources lient
+les bibliothèques de l'hôte de construction (libpq, libldap…) : la cible
+exécute le même système.

@@ -117,6 +117,18 @@ def addons_path_de(texte_conf: str) -> str:
     return lecteur.get("options", "addons_path", fallback="").strip()
 
 
+def resoudre_addons_path(chemins: str, racine: Path) -> str:
+    """Les entrées relatives d'un `addons_path` résolues contre `racine` :
+    un livrable se dépose où l'hôte veut, ses chemins le suivent."""
+    rendu = []
+    for entree in (e.strip() for e in chemins.split(",")):
+        if entree:
+            rendu.append(
+                entree if entree.startswith("/") else str(racine / entree)
+            )
+    return ",".join(rendu)
+
+
 def rendre_conf(env, port: int, data_dir: str, addons_path: str) -> str:
     """La configuration d'Odoo, rendue depuis l'environnement.
 
@@ -245,7 +257,9 @@ def principal(argv=None, env=None, executer=subprocess.run, remplacer=None):
         env,
         args.port,
         str(args.etat / "filestore"),
-        addons_path_de(_lit(args.racine / "config.conf")),
+        resoudre_addons_path(
+            addons_path_de(_lit(args.racine / "config.conf")), args.racine
+        ),
     )
     descripteur = os.open(conf, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:

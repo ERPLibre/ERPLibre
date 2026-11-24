@@ -49,3 +49,42 @@ dans le fichier de configuration. Les versions sont celles d'ERPLibre :
 sert sinon, et REFUSE une base vide que son dossier d'état avait déjà
 initialisée : une restauration qui n'a pas eu lieu ne doit pas être couverte
 par une base neuve.
+
+<!-- [en] -->
+# erplibre_dist.py — building a self-contained ERPLibre
+
+`erplibre_dist.py --racine <ERPLibre checkout> --sortie <dir>` turns an
+installed ERPLibre into ONE directory that installs without an index, for a
+hosting server that reads an application from a single repository. Freeze the
+checkout first: `make repo_configure_all FREEZE=1` puts every project on its
+frozen commit, and the build refuses a project that still follows its branch.
+
+The directory holds the Odoo tree of the version without `.git` and without
+proprietary modules (OPL-1, OEEL-1, « Other proprietary »), one wheel per
+dependency in `roues/` with `requirements.lock.txt` naming each by its
+sha256, ERPLibre's version files, a `config.conf` whose `addons_path` is
+relative, the `erplibre_serve.py` launcher, and `PROVENANCE.lock` (the
+commit of each project and the excluded modules). The build ends with a
+proof: a fresh venv installed with `--no-index --require-hashes` must
+initialise `base` in a throwaway database. Wheels built from source link the
+build host's libraries (libpq, libldap…): the target runs the same system.
+
+<!-- [fr] -->
+# erplibre_dist.py — construire un ERPLibre autonome
+
+`erplibre_dist.py --racine <dépôt ERPLibre> --sortie <dossier>` fait d'un
+ERPLibre installé UN dossier qui s'installe sans index, pour un serveur
+d'hébergement qui lit une application dans un seul dépôt. Figer d'abord :
+`make repo_configure_all FREEZE=1` met chaque projet sur son commit figé, et
+la construction refuse un projet qui suit encore sa branche.
+
+Le dossier porte l'arbre Odoo de la version, sans `.git` ni modules
+propriétaires (OPL-1, OEEL-1, « Other proprietary »), une roue par dépendance
+dans `roues/` avec `requirements.lock.txt` qui nomme chacune par son sha256,
+les fichiers de version d'ERPLibre, un `config.conf` dont l'`addons_path` est
+relatif, le lanceur `erplibre_serve.py`, et `PROVENANCE.lock` (le commit de
+chaque projet et les modules exclus). La construction finit par une épreuve :
+un venv neuf, installé en `--no-index --require-hashes`, doit initialiser
+`base` dans une base jetable. Les roues construites depuis les sources lient
+les bibliothèques de l'hôte de construction (libpq, libldap…) : la cible
+exécute le même système.
