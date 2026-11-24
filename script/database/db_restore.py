@@ -30,8 +30,6 @@ sys.path.append(
 from script.database import pg_connexion  # noqa: E402
 from script.execute.execute import redact_secrets
 
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-
 _logger = logging.getLogger(__name__)
 
 
@@ -1377,4 +1375,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # La journalisation se règle ici et non à l'import : un module qui
+    # l'importe garde la sienne.
+    logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
     main()

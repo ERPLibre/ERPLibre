@@ -19,7 +19,11 @@ from script.todo.proxmox_deploy_form import run_proxmox_form  # noqa: E402
 # paquet, son répertoire entre donc à la main dans le chemin.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # setUpModule est lu par unittest dans CE module : l'importer suffit.
-from proxmox_form_context import contexte, setUpModule  # noqa: E402,F401
+from proxmox_form_context import (  # noqa: E402,F401
+    contexte,
+    setUpModule,
+    tearDownModule,
+)
 
 try:
     import textual  # noqa: F401

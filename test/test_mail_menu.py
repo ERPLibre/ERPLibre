@@ -17,7 +17,7 @@ from script.todo.todo_i18n import t
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Argon2 remplacé pour tout le module : voir argon2_rapide.py.
-from argon2_rapide import setUpModule  # noqa: E402,F401
+from argon2_rapide import setUpModule, tearDownModule  # noqa: E402,F401
 
 
 class TestCacheSummary(unittest.TestCase):

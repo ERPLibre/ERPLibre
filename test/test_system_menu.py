@@ -9,6 +9,7 @@ commandes installées là où il tourne.
 """
 
 import asyncio
+import contextlib
 import os
 import sys
 import tempfile
@@ -22,10 +23,23 @@ from script.todo import system_menu as sm  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 
+#: Ce que setUpModule pose, défait par tearDownModule dans l'ordre inverse.
+#: Pas d'addModuleCleanup : pytest ne l'exécute jamais.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
-    ancienne = todo_i18n._current_lang
-    todo_i18n._current_lang = "fr"
-    unittest.addModuleCleanup(setattr, todo_i18n, "_current_lang", ancienne)
+    global _PILE
+    with contextlib.ExitStack() as pile:
+        pile.callback(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "fr"
+        _PILE = pile.pop_all()
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 class TestLesSourcesAbsentes(unittest.TestCase):
@@ -168,8 +182,7 @@ class TestLesFichiersDuSysteme(unittest.TestCase):
         partage = os.path.join(parent, "nfs")
         os.makedirs(os.path.join(partage, "repo"))
         mounts = self.fichier(
-            f"/dev/sda1 {parent} ext4 rw 0 0\n"
-            f"hote:/x {partage} nfs4 rw 0 0\n"
+            f"/dev/sda1 {parent} ext4 rw 0 0\nhote:/x {partage} nfs4 rw 0 0\n"
         )
         parts = sd.partitions(os.path.join(partage, "repo"), mounts)
         marquee = [p for p in parts if p["repo"]]

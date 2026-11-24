@@ -11,6 +11,7 @@ lit rien de la machine qui le lance et n'exécute rien.
 """
 
 import ast
+import contextlib
 import os
 import string
 import sys
@@ -33,10 +34,23 @@ RACINE_FS = {
 }
 
 
+#: Ce que setUpModule pose, défait par tearDownModule dans l'ordre inverse.
+#: Pas d'addModuleCleanup : pytest ne l'exécute jamais.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
-    ancienne = todo_i18n._current_lang
-    todo_i18n._current_lang = "fr"
-    unittest.addModuleCleanup(setattr, todo_i18n, "_current_lang", ancienne)
+    global _PILE
+    with contextlib.ExitStack() as pile:
+        pile.callback(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "fr"
+        _PILE = pile.pop_all()
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 def fichier_swap(chemin="/swapfile", taille=2 * GIO, utilise=100 * MIO):

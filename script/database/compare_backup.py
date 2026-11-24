@@ -11,8 +11,6 @@ import zipfile
 
 from colorama import Fore, Style
 
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-
 _logger = logging.getLogger(__name__)
 
 
@@ -110,4 +108,7 @@ def die(cond, message, code=1):
 
 
 if __name__ == "__main__":
+    # La journalisation se règle ici et non à l'import : un module qui
+    # l'importe garde la sienne.
+    logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
     main()

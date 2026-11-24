@@ -31,6 +31,7 @@ Sans préfixe `test_`, le lanceur unitaire ne le prend pas pour un fichier
 de tests.
 """
 
+import contextlib
 import functools
 import hashlib
 import unittest
@@ -104,7 +105,17 @@ def derivation_rapide(
     return (cle * (hash_len // len(cle) + 1))[:hash_len]
 
 
+# Les remplacements posés par setUpModule, défaits par tearDownModule.
+# addModuleCleanup ne convient pas : pytest ne l'exécute jamais, et le
+# remplacement fuirait dans les modules suivants du même processus.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
-    patch = mock.patch("argon2.low_level.hash_secret_raw", derivation_rapide)
-    patch.start()
-    unittest.addModuleCleanup(patch.stop)
+    _PILE.enter_context(
+        mock.patch("argon2.low_level.hash_secret_raw", derivation_rapide)
+    )
+
+
+def tearDownModule():
+    _PILE.close()

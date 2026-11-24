@@ -34,7 +34,8 @@ def fichier(nom, etat, passage=0, passages=1, tests=(), duree=1.0):
     return f
 
 
-def test(ident, duree, etat="ok", message=""):
+def entree(ident, duree, etat="ok", message=""):
+    """Une entrée de détail par test, au format écrit par unit_file.py."""
     classe, nom = ident.split(".")
     return {
         "id": f"mod.{ident}",
@@ -108,11 +109,11 @@ class TestLesPassagesRepetes(unittest.TestCase):
 class TestLesPlusLents(unittest.TestCase):
     def test_the_slowest_tests_across_files_longest_first(self):
         lanceur = Lanceur(
-            fichier("test_a.py", r.OK, tests=[test("A.t1", 0.2)]),
+            fichier("test_a.py", r.OK, tests=[entree("A.t1", 0.2)]),
             fichier(
                 "test_b.py",
                 r.OK,
-                tests=[test("B.t1", 3.0), test("B.t2", 0.1)],
+                tests=[entree("B.t1", 3.0), entree("B.t2", 0.1)],
             ),
         )
         self.assertEqual(
@@ -122,8 +123,8 @@ class TestLesPlusLents(unittest.TestCase):
 
     def test_a_repeated_test_counts_for_its_longest_run(self):
         lanceur = Lanceur(
-            fichier("test_a.py", r.OK, 0, 2, tests=[test("A.t", 0.5)]),
-            fichier("test_a.py", r.OK, 1, 2, tests=[test("A.t", 1.5)]),
+            fichier("test_a.py", r.OK, 0, 2, tests=[entree("A.t", 0.5)]),
+            fichier("test_a.py", r.OK, 1, 2, tests=[entree("A.t", 1.5)]),
         )
         self.assertEqual(
             r.plus_lents(lanceur, 5), [(1.5, "test_a.py", "mod.A.t")]
@@ -144,12 +145,14 @@ class TestLeJUnit(unittest.TestCase):
                 "test_a.py",
                 r.ECHEC,
                 tests=[
-                    test("A.bon", 0.1),
-                    test(
+                    entree("A.bon", 0.1),
+                    entree(
                         "A.faux", 0.2, "echec", "Traceback\nAssertionError: 1"
                     ),
-                    test("A.casse", 0.3, "erreur", "Traceback\nKeyError: 'x'"),
-                    test("A.saute", 0.0, "ignore", "Textual absent"),
+                    entree(
+                        "A.casse", 0.3, "erreur", "Traceback\nKeyError: 'x'"
+                    ),
+                    entree("A.saute", 0.0, "ignore", "Textual absent"),
                 ],
             )
         )

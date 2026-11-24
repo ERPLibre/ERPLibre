@@ -498,25 +498,41 @@ class TestCacheVide(Base):
         self.assertIn("_cache_autre", odoo.bases)
 
 
+def guetter_attente(test):
+    """Un Event levé dès que db_restore journalise une « attente ».
+
+    Le message est de niveau INFO, et db_restore ne règle la journalisation
+    que lancé comme programme : importé, il hérite de la racine, à WARNING
+    par défaut. Le journal du module passe donc à INFO le temps du test ;
+    handler et niveau sont rendus par addCleanup."""
+    attente = threading.Event()
+
+    class Guetteur(logging.Handler):
+        def emit(self, record):
+            if "attente" in record.getMessage():
+                attente.set()
+
+    journal = db_restore._logger
+    guetteur = Guetteur()
+    test.addCleanup(journal.setLevel, journal.level)
+    journal.setLevel(logging.INFO)
+    journal.addHandler(guetteur)
+    test.addCleanup(journal.removeHandler, guetteur)
+    return attente
+
+
 class TestPassagesSimultanes(Base):
     def test_un_second_passage_attend_au_lieu_de_supprimer(self):
         # A crée le cache vide et extrait encore quand B arrive. Sans
         # verrou, B voit un cache sans tables et le supprime sous A.
         odoo = self.brancher(FauxOdoo())
-        cree, libere, attente = (threading.Event() for _ in range(3))
+        cree, libere = threading.Event(), threading.Event()
+        attente = guetter_attente(self)
 
         def pendant(_nom):
             cree.set()
             libere.wait(10)
 
-        class Guetteur(logging.Handler):
-            def emit(self, record):
-                if "attente" in record.getMessage():
-                    attente.set()
-
-        guetteur = Guetteur()
-        db_restore._logger.addHandler(guetteur)
-        self.addCleanup(db_restore._logger.removeHandler, guetteur)
         erreurs = []
 
         def passage(base):
@@ -548,17 +564,7 @@ class TestVerrousDeMain(Base):
     restauration : ils attendent la fin d'un passage en cours."""
 
     def guetter_attente(self):
-        attente = threading.Event()
-
-        class Guetteur(logging.Handler):
-            def emit(self, record):
-                if "attente" in record.getMessage():
-                    attente.set()
-
-        guetteur = Guetteur()
-        db_restore._logger.addHandler(guetteur)
-        self.addCleanup(db_restore._logger.removeHandler, guetteur)
-        return attente
+        return guetter_attente(self)
 
     def deux_passages(self, odoo, premier, second):
         """Lance `premier`, bloqué en pleine restauration, puis `second` ;

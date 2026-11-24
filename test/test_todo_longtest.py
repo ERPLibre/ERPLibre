@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -706,9 +707,15 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
     def test_destroying_refuses_while_a_descent_runs(self):
         appels = []
-        moteur.autre_descente = lambda: [4242]
-        moteur.dernier_rapport = lambda outil="": appels.append("lu") or {}
-        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+        with (
+            mock.patch.object(moteur, "autre_descente", lambda: [4242]),
+            mock.patch.object(
+                moteur,
+                "dernier_rapport",
+                lambda outil="": appels.append("lu") or {},
+            ),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
             code = self.dp.detruire(self.dp.FAMILLE, None, dry_run=False)
         self.assertEqual(code, 1)
         # Le rapport n'est même pas LU : on ne demande rien, on ne propose

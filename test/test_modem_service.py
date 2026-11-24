@@ -7,6 +7,8 @@ Ce qui se verifie ici sans privilege : le rendu des gabarits, la place des
 secrets, et les commandes construites. Poser une unite demande sudo et
 appartient a la machine, pas a un test.
 """
+
+import contextlib
 import os
 import sys
 import unittest
@@ -21,6 +23,11 @@ from script.todo.sms import spec  # noqa: E402
 SECRET_INVENTE = "secret-invente-du-modem"
 
 
+#: Ce que setUpModule pose, défait par tearDownModule dans l'ordre inverse.
+#: Pas d'addModuleCleanup : pytest ne l'exécute jamais.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
     """Les sources des valeurs vivent dans un dossier jetable.
 
@@ -32,22 +39,25 @@ def setUpModule():
     import tempfile
     from pathlib import Path
 
-    dossier = tempfile.TemporaryDirectory()
-    unittest.addModuleCleanup(dossier.cleanup)
-    racine = Path(dossier.name)
-    for remplacement in (
-        mock.patch.object(
-            service,
-            "chemin_postes",
-            return_value=str(racine / "voip" / "postes"),
-        ),
-        mock.patch.object(spec, "BASE", racine / "sms"),
-    ):
-        remplacement.start()
-        unittest.addModuleCleanup(remplacement.stop)
-    chemin = spec.chemin_secret("modem")
-    chemin.parent.mkdir(parents=True)
-    chemin.write_text(SECRET_INVENTE + "\n", encoding="utf-8")
+    global _PILE
+    with contextlib.ExitStack() as pile:
+        racine = Path(pile.enter_context(tempfile.TemporaryDirectory()))
+        pile.enter_context(
+            mock.patch.object(
+                service,
+                "chemin_postes",
+                return_value=str(racine / "voip" / "postes"),
+            )
+        )
+        pile.enter_context(mock.patch.object(spec, "BASE", racine / "sms"))
+        chemin = spec.chemin_secret("modem")
+        chemin.parent.mkdir(parents=True)
+        chemin.write_text(SECRET_INVENTE + "\n", encoding="utf-8")
+        _PILE = pile.pop_all()
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 class TestGabarits(unittest.TestCase):
@@ -63,7 +73,9 @@ class TestGabarits(unittest.TestCase):
             for ligne in texte.splitlines():
                 if ligne.startswith("#") or not ligne.strip():
                     continue
-                self.assertNotRegex(ligne, r"@[A-Z_]+@", "%s : %s" % (unite, ligne))
+                self.assertNotRegex(
+                    ligne, r"@[A-Z_]+@", "%s : %s" % (unite, ligne)
+                )
 
     def test_un_jeton_inconnu_leve_au_lieu_de_passer(self):
         with mock.patch.object(service, "valeurs", return_value={}):
@@ -90,8 +102,10 @@ class TestGabarits(unittest.TestCase):
         """Un navigateur n'ouvre le micro sans certificat que dans un contexte
         sur, et l'adresse du poste n'en est pas un."""
         self.assertTrue(service.ECOUTE_DEFAUT.startswith("127.0.0.1:"))
-        self.assertIn("-navigateur " + service.ECOUTE_DEFAUT,
-                      service.rendre(service.VOIX))
+        self.assertIn(
+            "-navigateur " + service.ECOUTE_DEFAUT,
+            service.rendre(service.VOIX),
+        )
 
     def test_l_agent_tourne_avec_l_interpreteur_du_depot(self):
         """« python3 » du systeme n'a pas les dependances : l'agent echouerait
@@ -149,14 +163,18 @@ class TestEnvironnement(unittest.TestCase):
         ERPLIBRE_SMS_URL : deux noms pour un seul serveur, et deux valeurs
         differentes enverraient les appels et les SMS a deux endroits."""
         valeurs = service.valeurs_environnement()
-        self.assertEqual(valeurs["ERPLIBRE_ODOO_URL"],
-                         valeurs["ERPLIBRE_SMS_URL"])
+        self.assertEqual(
+            valeurs["ERPLIBRE_ODOO_URL"], valeurs["ERPLIBRE_SMS_URL"]
+        )
 
     def test_une_valeur_absente_refuse_la_pose(self):
         """Poser un fichier incomplet donnerait un service qui demarre et ne
         sert pas, ce qui se diagnostique bien plus tard."""
-        with mock.patch.object(service, "valeurs_environnement",
-                               return_value={"ERPLIBRE_SMS_URL": ""}):
+        with mock.patch.object(
+            service,
+            "valeurs_environnement",
+            return_value={"ERPLIBRE_SMS_URL": ""},
+        ):
             ok, detail = service.poser_environnement()
         self.assertFalse(ok)
         self.assertIn("ERPLIBRE_SMS_URL", detail)
@@ -206,9 +224,11 @@ class TestCommandes(unittest.TestCase):
             appels.append(args)
             return 0, ""
 
-        with mock.patch.object(service, "posee", return_value=True), \
-                mock.patch.object(service, "_run", faux_run), \
-                mock.patch.object(service.subprocess, "run"):
+        with (
+            mock.patch.object(service, "posee", return_value=True),
+            mock.patch.object(service, "_run", faux_run),
+            mock.patch.object(service.subprocess, "run"),
+        ):
             for action in ("enable", "disable"):
                 ok, _detail = service.commander(service.AGENT, action)
                 self.assertTrue(ok, action)
@@ -244,7 +264,6 @@ class TestCommandes(unittest.TestCase):
         self.assertNotIn("sudo", vus[0])
 
 
-
 class TestSoftphoneOdoo(unittest.TestCase):
     """Ce qu'on ecrit dans Odoo pour que le navigateur s'inscrive."""
 
@@ -254,7 +273,9 @@ class TestSoftphoneOdoo(unittest.TestCase):
         self.soft = softphone
 
     def test_le_serveur_se_retrouve_au_lieu_de_se_dedoubler(self):
-        script = self.soft.render_setup_script("1001", "secret", "127.0.0.1:8189")
+        script = self.soft.render_setup_script(
+            "1001", "secret", "127.0.0.1:8189"
+        )
         self.assertIn("search(", script)
         self.assertIn("pbx.write(valeurs)", script)
 
@@ -262,19 +283,22 @@ class TestSoftphoneOdoo(unittest.TestCase):
         """Le defaut du module est « test », ou l'appel n'est pas place : le
         softphone s'inscrit alors et ne sonne jamais."""
         self.assertEqual(self.soft.MODE, "prod")
-        self.assertIn("'prod'",
-                      self.soft.render_setup_script("1001", "s", "127.0.0.1:8189"))
+        self.assertIn(
+            "'prod'",
+            self.soft.render_setup_script("1001", "s", "127.0.0.1:8189"),
+        )
 
     def test_le_domaine_est_l_hote_seul(self):
         """C'est le « realm » que le service annonce dans son defi : un ecart y
         fait refuser un mot de passe juste."""
         script = self.soft.render_setup_script("1001", "s", "127.0.0.1:8189")
-        self.assertIn('"domain": \'127.0.0.1\'', script)
-        self.assertIn('"ws_server": \'ws://127.0.0.1:8189\'', script)
+        self.assertIn("\"domain\": '127.0.0.1'", script)
+        self.assertIn("\"ws_server\": 'ws://127.0.0.1:8189'", script)
 
     def test_un_utilisateur_absent_se_dit_au_lieu_de_passer(self):
-        script = self.soft.render_setup_script("1001", "s", "127.0.0.1:8189",
-                                               login="absent")
+        script = self.soft.render_setup_script(
+            "1001", "s", "127.0.0.1:8189", login="absent"
+        )
         self.assertIn("RESULTAT_ERREUR", script)
 
     def test_le_compte_vient_du_meme_fichier_que_le_service(self):
@@ -284,14 +308,16 @@ class TestSoftphoneOdoo(unittest.TestCase):
 
         def faux_lancer(base, script):
             vus["base"], vus["script"] = base, script
-            return 0, "RESULTAT_PBX=1\nRESULTAT_WS=ws://x\nRESULTAT_POSTE=1001\n"
+            return (
+                0,
+                "RESULTAT_PBX=1\nRESULTAT_WS=ws://x\nRESULTAT_POSTE=1001\n",
+            )
 
         poste, _, mot = service.postes().partition(":")
         ok, detail = self.soft.configurer("une_base", lancer=faux_lancer)
         self.assertTrue(ok, detail)
         self.assertIn(mot, vus["script"])
         self.assertIn(poste, vus["script"])
-
 
 
 class TestPoseConditionnee(unittest.TestCase):

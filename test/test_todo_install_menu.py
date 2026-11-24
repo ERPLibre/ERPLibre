@@ -47,21 +47,35 @@ SONDE_REELLE = TODO.__dict__["_systeme_manquant"].__func__
 PRESENTES_REELLE = TODO.__dict__["_versions_installees_presentes"].__func__
 
 
+#: Ce que setUpModule pose, défait par tearDownModule dans l'ordre inverse.
+#: Pas d'addModuleCleanup : pytest ne l'exécute jamais.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
     # La sonde du système lirait l'hôte : rien ne manque, sauf dans les
     # tests qui disent le contraire.
-    patch = mock.patch.object(
-        TODO, "_systeme_manquant", staticmethod(lambda: [])
-    )
-    patch.start()
-    unittest.addModuleCleanup(patch.stop)
-    # Aucune version installée sur disque, quoi que l'hôte ait : la question
-    # « Mise à jour ou Installation » a ses propres tests.
-    patch = mock.patch.object(
-        TODO, "_versions_installees_presentes", staticmethod(lambda _v: [])
-    )
-    patch.start()
-    unittest.addModuleCleanup(patch.stop)
+    global _PILE
+    with contextlib.ExitStack() as pile:
+        pile.enter_context(
+            mock.patch.object(
+                TODO, "_systeme_manquant", staticmethod(lambda: [])
+            )
+        )
+        # Aucune version installée sur disque, quoi que l'hôte ait : la
+        # question « Mise à jour ou Installation » a ses propres tests.
+        pile.enter_context(
+            mock.patch.object(
+                TODO,
+                "_versions_installees_presentes",
+                staticmethod(lambda _v: []),
+            )
+        )
+        _PILE = pile.pop_all()
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 SANS_INTERACTION = "EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=1 "
