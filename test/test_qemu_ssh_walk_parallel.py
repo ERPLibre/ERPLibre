@@ -15,7 +15,6 @@ import io
 import os
 import shutil
 import signal
-import subprocess
 import sys
 import tempfile
 import threading
@@ -24,6 +23,10 @@ import unittest
 from unittest import mock
 
 sys.argv = ["todo.py"]
+sys.path.insert(0, "test")
+from processus_reels import vivant  # noqa: E402
+
+from script import lib_processus  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 ATTENTE = 5  # secondes avant qu'une barrière non franchie échoue
@@ -39,22 +42,17 @@ def _todo():
     return todo
 
 
-def _popen_fini(stdout):
-    """Un Popen simulé, déjà terminé avec le code 0 et cette sortie."""
-    proc = mock.Mock(returncode=0)
-    proc.communicate.return_value = (stdout, "")
-    proc.poll.return_value = 0
-    return proc
-
-
-def _vivant(pid):
-    """Vrai si `pid` tourne encore ; un zombie compte pour mort."""
-    try:
-        with open(f"/proc/{pid}/stat") as fh:
-            etat = fh.read().rsplit(")", 1)[1].split()[0]
-    except (FileNotFoundError, ProcessLookupError, IndexError):
-        return False
-    return etat != "Z"
+def _faux_ssh(dossier, corps):
+    """Un `ssh` exécutable dans `dossier`, en tête du PATH le temps du test :
+    il tourne comme la vraie sonde, et `corps` y écrit ce qu'il observe."""
+    chemin = os.path.join(dossier, "ssh")
+    with open(chemin, "w") as fh:
+        fh.write("#!/bin/sh\n" + corps)
+    os.chmod(chemin, 0o755)
+    return mock.patch.dict(
+        os.environ,
+        {"PATH": f"{dossier}{os.pathsep}{os.environ.get('PATH', '')}"},
+    )
 
 
 def _walk(todo, aliases):
@@ -152,29 +150,41 @@ class TestQemuSshWalkParallel(unittest.TestCase):
             _walk(todo, aliases)
         self.assertEqual(pic[0], 2)
 
+    def _sonder_avec_faux_ssh(self):
+        """Lance une vraie sonde sur un faux `ssh` qui note son stdin, sa
+        session et SSH_ASKPASS_REQUIRE, puis répond « pas de QEMU »."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        vu = os.path.join(dossier, "vu")
+        patch = _faux_ssh(
+            dossier,
+            f'readlink /proc/self/fd/0 > "{vu}"\n'
+            f'ps -o sid= -p $$ | tr -d " " >> "{vu}"\n'
+            f'echo $$ >> "{vu}"\n'
+            f'echo "$SSH_ASKPASS_REQUIRE" >> "{vu}"\n'
+            'printf "LIBVIRT\\tno\\n"\n',
+        )
+        with patch:
+            resultat = _todo()._qemu_ssh_probe_remote("hote-a")
+        with open(vu) as fh:
+            stdin, sid, pid, askpass = fh.read().split("\n")[:4]
+        return resultat, stdin, sid, pid, askpass
+
     def test_probe_detaches_stdin(self):
         """Une sonde en arrière-plan ne lit pas le clavier pendant qu'une
         question attend sa réponse."""
-        todo = _todo()
-        fini = _popen_fini("LIBVIRT\tno\n")
-        with mock.patch("subprocess.Popen", return_value=fini) as popen:
-            self.assertEqual(
-                todo._qemu_ssh_probe_remote("hote-a"), ("nolibvirt", [])
-            )
-        self.assertIs(popen.call_args.kwargs["stdin"], subprocess.DEVNULL)
+        resultat, stdin, _sid, _pid, _askpass = self._sonder_avec_faux_ssh()
+        self.assertEqual(resultat, ("nolibvirt", []))
+        self.assertEqual(stdin, "/dev/null")
 
     def test_probe_has_no_terminal_to_prompt_on(self):
         """Le ssh d'un ProxyJump ne reçoit pas BatchMode et questionne
-        /dev/tty : la sonde tourne sans terminal de contrôle ni ssh-askpass,
-        pour qu'aucune invite ne s'ouvre pendant que d'autres sondes
-        tournent."""
-        todo = _todo()
-        fini = _popen_fini("LIBVIRT\tno\n")
-        with mock.patch("subprocess.Popen", return_value=fini) as popen:
-            todo._qemu_ssh_probe_remote("hote-a")
-        kwargs = popen.call_args.kwargs
-        self.assertIs(kwargs.get("start_new_session"), True)
-        self.assertEqual(kwargs["env"].get("SSH_ASKPASS_REQUIRE"), "never")
+        /dev/tty : la sonde tourne dans sa propre session, sans terminal de
+        contrôle ni ssh-askpass, pour qu'aucune invite ne s'ouvre pendant
+        que d'autres sondes tournent."""
+        _resultat, _stdin, sid, pid, askpass = self._sonder_avec_faux_ssh()
+        self.assertEqual(sid, pid)
+        self.assertEqual(askpass, "never")
 
 
 class TestQemuSshProbeInterrupt(unittest.TestCase):
@@ -244,20 +254,17 @@ class TestQemuSshProbeInterrupt(unittest.TestCase):
         fin = time.monotonic() + 3
         restants = [p for paire in pids.items() for p in paire]
         while restants and time.monotonic() < fin:
-            restants = [p for p in restants if _vivant(p)]
+            restants = [p for p in restants if vivant(p)]
             time.sleep(0.05)
         self.assertEqual(restants, [])
 
     def test_no_probe_starts_after_the_stop(self):
         """Un niveau arrêté ne lance plus rien : la sonde rend « net »."""
-        from script.todo.qemu_access import _SondesEnCours
-
-        sondes = _SondesEnCours()
+        sondes = lib_processus.Lot()
         sondes.arreter()
-        with mock.patch("subprocess.Popen") as popen:
-            statut, _ = _todo()._qemu_ssh_probe_remote("hote-a", sondes)
+        statut, _ = _todo()._qemu_ssh_probe_remote("hote-a", sondes)
         self.assertEqual(statut, "net")
-        popen.assert_not_called()
+        self.assertEqual(self._pids(), {})
 
 
 if __name__ == "__main__":
