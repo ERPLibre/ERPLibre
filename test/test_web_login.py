@@ -11,6 +11,11 @@ prenait pour un refus, juste après un démarrage d'Odoo.
 
 `run` ne retente avec test/test qu'après un refus, et jamais avec
 `no_try_test`. Les identifiants sont inventés.
+
+`garder_ouvert` demande Entrée seulement quand l'entrée standard est un
+terminal ; sans terminal, il n'appelle jamais input() et attend que la
+fenêtre du navigateur soit fermée. Le pilote est un simulacre ; aucun
+navigateur ne s'ouvre.
 """
 
 import os
@@ -173,6 +178,126 @@ class TestRun(unittest.TestCase):
         rendu, essais, _saisies, _outil = self.lancer([False, False])
         self.assertFalse(rendu)
         self.assertEqual(2, essais)
+
+
+class FauxPiloteFenetres:
+    """Garde sa fenêtre `interrogations` lectures, puis n'en a plus.
+
+    Avec `leve`, la lecture qui suit la fermeture lève au lieu de rendre une
+    liste vide : c'est ce que fait un pilote dont la session a pris fin.
+    """
+
+    def __init__(self, interrogations, leve=False):
+        self.restantes = interrogations
+        self.leve = leve
+        self.lectures = 0
+        self.quit = mock.Mock()
+
+    @property
+    def window_handles(self):
+        self.lectures += 1
+        if self.restantes > 0:
+            self.restantes -= 1
+            return ["fenetre-essai"]
+        if self.leve:
+            raise WebDriverException("session terminée")
+        return []
+
+
+class TestGarderOuvert(unittest.TestCase):
+    def setUp(self):
+        patcheur = mock.patch.object(web_login.time, "sleep")
+        self.sommeil = patcheur.start()
+        self.addCleanup(patcheur.stop)
+        patcheur = mock.patch("builtins.print")
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+    def garder(self, pilote, terminal, saisie=None, headless=False):
+        with (
+            mock.patch.object(
+                web_login, "stdin_est_un_terminal", return_value=terminal
+            ),
+            mock.patch("builtins.input", side_effect=saisie) as entree,
+        ):
+            web_login.garder_ouvert(pilote, headless=headless, pas=0.5)
+        return entree
+
+    def test_avec_un_terminal_demande_entree(self):
+        pilote = FauxPiloteFenetres(3)
+        entree = self.garder(pilote, terminal=True, saisie=[""])
+        entree.assert_called_once()
+        self.assertEqual(0, pilote.lectures)
+        pilote.quit.assert_called_once()
+
+    def test_sans_terminal_attend_la_fermeture_de_la_fenetre(self):
+        pilote = FauxPiloteFenetres(3)
+        entree = self.garder(pilote, terminal=False)
+        entree.assert_not_called()
+        self.assertEqual(4, pilote.lectures)
+        self.assertEqual(3, self.sommeil.call_count)
+        self.sommeil.assert_called_with(0.5)
+        pilote.quit.assert_called_once()
+
+    def test_sans_terminal_une_session_terminee_met_fin_a_l_attente(self):
+        pilote = FauxPiloteFenetres(2, leve=True)
+        entree = self.garder(pilote, terminal=False)
+        entree.assert_not_called()
+        self.assertEqual(3, pilote.lectures)
+
+    def test_sans_terminal_ni_fenetre_visible_n_attend_pas(self):
+        pilote = FauxPiloteFenetres(3)
+        entree = self.garder(pilote, terminal=False, headless=True)
+        entree.assert_not_called()
+        self.assertEqual(0, pilote.lectures)
+        pilote.quit.assert_called_once()
+
+    def test_fin_d_entree_termine_proprement(self):
+        pilote = FauxPiloteFenetres(3)
+        self.garder(pilote, terminal=True, saisie=EOFError)
+        pilote.quit.assert_called_once()
+
+    def test_ctrl_c_au_terminal_termine_proprement(self):
+        pilote = FauxPiloteFenetres(3)
+        self.garder(pilote, terminal=True, saisie=KeyboardInterrupt)
+        pilote.quit.assert_called_once()
+
+    def test_ctrl_c_pendant_l_attente_termine_proprement(self):
+        pilote = FauxPiloteFenetres(10)
+        self.sommeil.side_effect = [None, KeyboardInterrupt]
+        self.garder(pilote, terminal=False)
+        self.assertEqual(2, pilote.lectures)
+        pilote.quit.assert_called_once()
+
+    def test_un_pilote_deja_ferme_ne_fait_pas_echouer_la_sortie(self):
+        pilote = FauxPiloteFenetres(0)
+        pilote.quit.side_effect = WebDriverException("déjà fermé")
+        self.garder(pilote, terminal=False)
+        pilote.quit.assert_called_once()
+
+
+class TestStdinEstUnTerminal(unittest.TestCase):
+    def test_un_tube_n_est_pas_un_terminal(self):
+        lecture, ecriture = os.pipe()
+        self.addCleanup(os.close, ecriture)
+        with open(lecture) as tube, mock.patch.object(sys, "stdin", tube):
+            self.assertFalse(web_login.stdin_est_un_terminal())
+
+    def test_une_entree_absente_ou_fermee_n_est_pas_un_terminal(self):
+        with mock.patch.object(sys, "stdin", None):
+            self.assertFalse(web_login.stdin_est_un_terminal())
+        lecture, ecriture = os.pipe()
+        os.close(ecriture)
+        tube = open(lecture)
+        tube.close()
+        with mock.patch.object(sys, "stdin", tube):
+            self.assertFalse(web_login.stdin_est_un_terminal())
+
+    def test_un_terminal_en_est_un(self):
+        entree = mock.Mock()
+        entree.isatty.return_value = True
+        with mock.patch.object(sys, "stdin", entree):
+            self.assertTrue(web_login.stdin_est_un_terminal())
 
 
 if __name__ == "__main__":
