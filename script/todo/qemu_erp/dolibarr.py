@@ -7,24 +7,28 @@ Le profil d'installation « Dolibarr » installe, dans la VM, une instance de
 développement native sur MariaDB, sans Odoo. Ce module en tient la partie
 pure : la commande du profil, qui le reconnaît par égalité et non par une
 sous-chaîne ; la table système → famille de paquets que juge
-lib_dolibarr.native_support ; les refus d'une spec avant toute création ;
-la commande qui relance l'instance dans l'invité.
+lib_dolibarr.native_support ; la commande qui relance l'instance dans
+l'invité ; les actions du suivi qu'une VM Dolibarr refuse. APP est son
+descripteur dans le registre script.todo.qemu_erp.
+
+Les aides du registre (profile_app, app_of, install_refusals) et ses clés
+APP_ODOO, APP_DOLIBARR sont réexportées ici : elles se lisent aussi sous
+ce module.
 """
 
 import shlex
 
 from script.dolibarr import lib_dolibarr
+from script.todo.qemu_erp import (  # noqa: F401 - réexportés
+    APP_DOLIBARR,
+    APP_ODOO,
+    ErpApp,
+    app_of,
+    install_refusals,
+    profile_app,
+    t,
+)
 
-try:
-    from script.todo.todo_i18n import t
-except Exception:  # pragma: no cover - i18n absent hors du TUI
-
-    def t(key):
-        return key
-
-
-APP_ODOO = "odoo"
-APP_DOLIBARR = "dolibarr"
 INSTANCE = "dolibarr"
 # Port de l'instance de dev dans l'invité, sur 127.0.0.1 seulement ; le
 # suivi l'atteint par un tunnel SSH ouvert sur TUNNEL_PORT de l'hôte.
@@ -70,16 +74,6 @@ DISTRO_FAMILY = {
 }
 
 
-def profile_app(cmd):
-    """APP_DOLIBARR si `cmd` est la commande du profil, sinon APP_ODOO."""
-    return APP_DOLIBARR if (cmd or "").strip() == INSTALL_CMD else APP_ODOO
-
-
-def app_of(entry):
-    """L'application d'une entrée de manifeste ; sans clé « app », Odoo."""
-    return (entry or {}).get("app") or APP_ODOO
-
-
 def distro_refusal(distro):
     """La raison traduite du refus de `distro`, ou une chaîne vide."""
     ok, reason = lib_dolibarr.native_support(
@@ -121,27 +115,48 @@ def credentials_cmd():
     )
 
 
-def install_refusals(spec):
-    """Les raisons de refuser `spec` avant de créer quoi que ce soit.
+def action_refusal(kind, parts):
+    """La raison de refuser l'action `kind` du suivi, ou une chaîne vide.
 
-    Une VM Dolibarr sur un système refusé donne « <nom>: <raison> » ; une
-    spec hors ligne qui contient une VM Dolibarr ajoute OFFLINE_REFUSAL,
-    car la source Dolibarr n'est pas dans le cache. Rend [] sans
-    installation.
-    """
-    install = spec.get("install")
-    if not install:
-        return []
-    refus = []
-    dolibarr = False
-    for vm in spec.get("vms") or []:
-        cmd = vm.get("install_cmd") or install.get("cmd")
-        if profile_app(cmd) != APP_DOLIBARR:
-            continue
-        dolibarr = True
-        raison = distro_refusal(vm.get("distro", ""))
-        if raison:
-            refus.append(f"{vm['name']}: {raison}")
-    if dolibarr and spec.get("offline"):
-        refus.append(t(OFFLINE_REFUSAL))
-    return refus
+    Une VM Dolibarr n'a ni base Odoo à restaurer ni dépendances Python
+    d'Odoo à mettre à jour ; la mise à jour du système et du dépôt git lui
+    sert, elle."""
+    if kind == "dbrestore":
+        return t("Dolibarr VM: no Odoo database to restore.")
+    if kind == "update" and "python" in (parts or ()):
+        return t(
+            "Dolibarr VM: the Python dependencies update is Odoo's; untick it."
+        )
+    return ""
+
+
+def web_hint(ssh, el_dir):
+    """Les lignes qui disent où vérifier l'instance quand le navigateur
+    sort en erreur : `ssh` entre dans la VM, `el_dir` est son clone."""
+    return [
+        t("Dolibarr does not answer in the VM. Check it there:"),
+        f"   {ssh} 'cd {el_dir} && python3 script/dolibarr/run.py status'",
+    ]
+
+
+APP = ErpApp(
+    key=APP_DOLIBARR,
+    name="Dolibarr",
+    port=PORT,
+    tunnel_port=TUNNEL_PORT,
+    restart_button="Restart Dolibarr",
+    restart_title="Restarting Dolibarr",
+    install_cmd=INSTALL_CMD,
+    label=PROFILE_LABEL,
+    dev_only=True,
+    prod_note=PROD_NOTE,
+    offline_refusal=OFFLINE_REFUSAL,
+    distro_refusal=distro_refusal,
+    guest_probe=True,
+    restart_cmd=restart_cmd,
+    credentials_cmd=credentials_cmd,
+    credentials_button="Show the Dolibarr login and password",
+    credentials_title="Dolibarr login",
+    action_refusal=action_refusal,
+    web_hint=web_hint,
+)

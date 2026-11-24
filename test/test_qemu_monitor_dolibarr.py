@@ -23,9 +23,9 @@ sys.path.insert(0, str(RACINE / "test"))
 
 from async_case import AsyncCase  # noqa: E402
 
-from script.todo import qemu_dolibarr as qd  # noqa: E402
 from script.todo import qemu_install_monitor as mon  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
+from script.todo.qemu_erp import dolibarr as qd  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 DOLI = {"name": "vm-d", "ip": "192.0.2.7", "app": "dolibarr"}

@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo import todo_prefs
 from script.todo.deploy_form_lib import (
     VM_LOGIN_READ_CMD,
@@ -540,15 +540,13 @@ class QemuDeployMixin:
                     entry["notes"] = list(notes[name])
                 if (specs or {}).get(name):
                     entry["spec"] = specs[name]
-                # Une VM qui reçoit le profil Dolibarr le dit au suivi, qui
-                # sonde et ouvre alors Dolibarr au lieu d'Odoo. Sans clé, la
-                # VM reste Odoo, comme une entrée écrite avant elle.
-                if (
-                    branch_map.get(name, branch_def)
-                    and qd.profile_app(cmd_map.get(name, cmd_def))
-                    == qd.APP_DOLIBARR
-                ):
-                    entry["app"] = qd.APP_DOLIBARR
+                # Une VM qui reçoit le profil d'un autre ERP qu'Odoo le dit
+                # au suivi, qui sonde et ouvre alors cet ERP au lieu d'Odoo.
+                # Sans clé, la VM reste Odoo, comme une entrée écrite avant
+                # elle.
+                app = erp.profile_app(cmd_map.get(name, cmd_def))
+                if branch_map.get(name, branch_def) and app != erp.APP_ODOO:
+                    entry["app"] = app
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -1447,8 +1445,9 @@ class QemuDeployMixin:
             target = self._qemu_make_target(install_cmd)
             if target:
                 parts += ["--erplibre-make", target]
-            if qd.profile_app(install_cmd) == qd.APP_DOLIBARR:
-                parts += ["--app", qd.APP_DOLIBARR]
+            app = erp.profile_app(install_cmd)
+            if app != erp.APP_ODOO:
+                parts += ["--app", app]
         extra = 0
         if pose_erplibre:
             # ERPLibre dépasse le minimum : +5 Go de disque.
@@ -2782,7 +2781,7 @@ class QemuDeployMixin:
                 systems=[v.get("distro") or "" for v in vms],
             )
             if self._qemu_effective_prod(prod, cmd) != prod:
-                print(f"  {t(qd.PROD_NOTE)}")
+                print(f"  {t(erp.app_for_cmd(cmd).prod_note)}")
                 prod = False
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
@@ -3402,11 +3401,11 @@ class QemuDeployMixin:
 
         Séparée du déploiement lui-même : la spec entière doit tenir dans le
         bloc, et un « with » autour de deux cents lignes déjà indentées se
-        relit mal. Une spec que qemu_dolibarr refuse (VM Dolibarr sur un
-        système qui ne la reçoit pas, ou hors ligne) s'arrête avant toute
-        création, quelle que soit la voie qui l'a produite.
+        relit mal. Une spec que le registre qemu_erp refuse (VM Dolibarr
+        sur un système qui ne la reçoit pas, ou hors ligne) s'arrête avant
+        toute création, quelle que soit la voie qui l'a produite.
         """
-        refus = qd.install_refusals(spec)
+        refus = erp.install_refusals(spec)
         if refus:
             for ligne in refus:
                 print(f"\n❌ {ligne}")

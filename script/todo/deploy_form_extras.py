@@ -30,20 +30,20 @@ l'écran par le rappel `vm_secret_sink` du contexte, qui le pose en mémoire
 du processus todo.
 """
 
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo.deploy_form_lib import (
     FREE,
-    VM_PASSWORD_DEFAULT,
     VM_LOGIN_FILE,
     VM_LOGIN_READ_CMD,
+    VM_PASSWORD_DEFAULT,
     VM_USER_DEFAULT,
     desktop_ram,
     desktops_for,
     desktops_for_fleet,
     generate_vm_password,
     t,
-    vm_login_value_error,
     validate_vm_user,
+    vm_login_value_error,
 )
 
 # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
@@ -306,9 +306,10 @@ class ExtrasMixin:
             value=tab["defaults"].get("prod", False),
             id="f_prod",
         )
-        # Dit pourquoi la case se grise quand le profil commun est
-        # Dolibarr ; _sync_install_deps la montre et la cache.
-        note = Static(t(qd.PROD_NOTE), id="t_prod_note")
+        # Dit pourquoi la case se grise quand le profil commun est celui
+        # d'un ERP dev_only ; _sync_install_deps la montre, la cache, et y
+        # pose le prod_note de cet ERP.
+        note = Static("", id="t_prod_note")
         note.display = False
         yield note
         if tab["app_stores"]:
@@ -801,9 +802,9 @@ class ExtrasMixin:
                 return impose[1]
         return self._profile_cmd()
 
-    def _dolibarr_common(self) -> bool:
-        """Le profil commun d'en haut est-il celui de Dolibarr ?"""
-        return qd.profile_app(self._profile_cmd()) == qd.APP_DOLIBARR
+    def _common_app(self):
+        """Le descripteur qemu_erp du profil commun d'en haut."""
+        return erp.app_for_cmd(self._profile_cmd())
 
     def _prod_value(self) -> bool:
         """La production que la spec reçoit : la coche, sauf quand la case
@@ -815,17 +816,15 @@ class ExtrasMixin:
         return bool(widget.value) and not widget.disabled
 
     def _row_refusal(self, i) -> str:
-        """La raison pour laquelle la rangée `i` ne recevra pas Dolibarr, ou
-        une chaîne vide : seulement quand on installe, que sa commande,
-        propre ou commune, est celle de Dolibarr, et que son système la
-        refuse."""
+        """La raison pour laquelle la rangée `i` ne recevra pas son ERP, ou
+        une chaîne vide : seulement quand on installe, et que l'ERP de sa
+        commande, propre ou commune, refuse son système par son
+        distro_refusal."""
         if i >= len(getattr(self, "rows", ())) or not self._install_state()[0]:
             return ""
         vm = self.rows[i]["vm"]
         cmd = vm.get("install_cmd") or self._row_default_cmd(i)
-        if qd.profile_app(cmd) != qd.APP_DOLIBARR:
-            return ""
-        return qd.distro_refusal(vm.get("distro", ""))
+        return erp.app_for_cmd(cmd).distro_refusal(vm.get("distro", ""))
 
     def _row_profile_index(self, i) -> int:
         """Rang du profil que la rangée doit AFFICHER."""
@@ -1124,21 +1123,25 @@ class ExtrasMixin:
         Le type de VM et le suivi ne sont jamais grisés : le premier est
         l'autre moitié de la décision, le second regarde la VM arriver même
         quand rien ne s'installe. La production se grise aussi quand le
-        profil commun est Dolibarr, qui s'installe en développement, et une
-        ligne dit pourquoi ; sa coche reste telle quelle."""
+        profil commun est celui d'un ERP dev_only (Dolibarr), qui s'installe
+        en développement, et une ligne dit pourquoi ; sa coche reste telle
+        quelle."""
         installe, quelque_chose = self._install_state()
-        dolibarr = installe and self._dolibarr_common()
+        app = self._common_app()
+        dev_seul = installe and app.dev_only
         for cible, actif in (
             ("#f_branch", installe),
             ("#f_profile_install", installe),
-            ("#f_prod", quelque_chose and not dolibarr),
+            ("#f_prod", quelque_chose and not dev_seul),
         ):
             widget = self._widget(cible)
             if widget is not None:
                 widget.disabled = not actif
         note = self._widget("#t_prod_note")
         if note is not None:
-            note.display = dolibarr
+            if dev_seul:
+                note.update(t(app.prod_note))
+            note.display = dev_seul
         # Le magasin, les outils et l'interpréteur Python ont leur PROPRE
         # raison de se griser (architecture, bureau, distribution) : ils
         # composent les deux dans « _render_* », qui a le dernier mot.

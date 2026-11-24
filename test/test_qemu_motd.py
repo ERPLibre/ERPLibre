@@ -928,7 +928,7 @@ class TestMotdDolibarrSection(unittest.TestCase):
         self.assertIn("admin", txt)
 
     def test_the_values_match_the_deploy_side(self):
-        from script.todo import qemu_dolibarr as qd
+        from script.todo.qemu_erp import dolibarr as qd
 
         self.assertEqual(
             (qd.INSTANCE, qd.PORT), (dq.DOLIBARR_INSTANCE, dq.DOLIBARR_PORT)

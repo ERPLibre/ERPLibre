@@ -26085,7 +26085,7 @@ TRANSLATIONS = {
         "fr": "Instance Dolibarr :",
         "en": "Dolibarr instance:",
     },
-    # Dolibarr VM (qemu_dolibarr.py, qemu_install_monitor.py)
+    # Dolibarr VM (qemu_erp/dolibarr.py, qemu_install_monitor.py)
     "Dolibarr (development, MariaDB)": {
         "fr": "Dolibarr (développement, MariaDB)",
         "en": "Dolibarr (development, MariaDB)",

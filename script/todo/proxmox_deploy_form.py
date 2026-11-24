@@ -23,7 +23,7 @@ Le formulaire ne touche à rien : il rend une spec. C'est l'appelant
 import os
 import re
 
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (
@@ -1238,7 +1238,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 return
             # Une VM Dolibarr sur un système qui la refuse, ou hors ligne :
             # refusé sans passage outre, la rangée en porte la raison.
-            refus = qd.install_refusals(spec)
+            refus = erp.install_refusals(spec)
             if refus:
                 self.notify(" — ".join(refus), severity="error", timeout=20)
                 return

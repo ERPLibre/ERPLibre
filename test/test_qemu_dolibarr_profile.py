@@ -16,7 +16,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.dolibarr import lib_dolibarr  # noqa: E402
-from script.todo import qemu_dolibarr as qd  # noqa: E402
+from script.todo.qemu_erp import dolibarr as qd  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 

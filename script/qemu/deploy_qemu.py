@@ -3993,7 +3993,7 @@ def erplibre_guide(
 
 
 # Instance Dolibarr que pose le profil « Dolibarr » de todo.py, et son port
-# dans la VM ; les mêmes valeurs que script/todo/qemu_dolibarr.py.
+# dans la VM ; les mêmes valeurs que script/todo/qemu_erp/dolibarr.py.
 DOLIBARR_INSTANCE = "dolibarr"
 DOLIBARR_PORT = 8080
 

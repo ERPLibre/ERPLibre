@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import click
 
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo import qemu_privilege, todo_journal, todo_prefs
 from script.todo.deploy_form_lib import VM_LOGIN_READ_CMD, VM_USER_DEFAULT
 from script.todo.qemu_privilege import virsh_argv
@@ -1677,12 +1677,12 @@ class ProxmoxMenuMixin:
         quand même — invites textuelles, spec écrite à la main — coupe ce
         pont-ci, ce qui reste vrai pour les VM qui le traversent.
 
-        Une spec que qemu_dolibarr refuse s'arrête avant toute création,
-        comme en QEMU/KVM.
+        Une spec que le registre qemu_erp refuse s'arrête avant toute
+        création, comme en QEMU/KVM.
         """
         from script.todo.qemu_deploy import _SansInternetImpossible
 
-        refus = qd.install_refusals(spec)
+        refus = erp.install_refusals(spec)
         if refus:
             for ligne in refus:
                 print(f"\n❌ {ligne}")
@@ -2669,7 +2669,7 @@ class ProxmoxMenuMixin:
             ),
             no_git_identity=False,
             user=spec.get("user") or VM_USER_DEFAULT,
-            app=qd.profile_app(cmd_install),
+            app=erp.profile_app(cmd_install),
         )
         try:
             fichiers = mod.guide_files(args)

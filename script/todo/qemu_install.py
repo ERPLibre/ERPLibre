@@ -7,7 +7,7 @@ import re
 import shlex
 
 from script.todo import dev_tools
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo.deploy_form_lib import VM_LOGIN_FILE, VM_LOGIN_READ_CMD
 from script.todo.todo_i18n import t
 
@@ -69,7 +69,12 @@ class QemuInstallMixin:
                 t("ERPLibre only (no Odoo)"),
                 "make install_os && ./script/install/install_erplibre.sh",
             ),
-            (t(qd.PROFILE_LABEL), qd.INSTALL_CMD),
+            # Un profil par ERP du registre qui en déclare un.
+            *(
+                (t(app.label), app.install_cmd)
+                for app in erp.REGISTRY
+                if app.install_cmd
+            ),
             (
                 t("ERPLibre mobile (home)"),
                 "make install_os && ./mobile/install_and_run.sh",
@@ -164,9 +169,10 @@ class QemuInstallMixin:
         finale exécutée dans ~/git/erplibre).
 
         Le profil qu'un système impose passe en tête, et devient donc le
-        défaut de la réponse vide. Le profil Dolibarr choisi alors qu'un des
-        `systems` le refuse affiche la raison par système et repose la
-        question ; la réponse vide ne mène jamais à Dolibarr.
+        défaut de la réponse vide. Un profil dont l'ERP refuse un des
+        `systems` (son distro_refusal) affiche la raison par système et
+        repose la question ; la réponse vide vaut le premier profil, jugé
+        de la même façon.
         """
         profiles = self._qemu_install_profiles()
         impose = self._qemu_distro_profile(distro)
@@ -184,9 +190,8 @@ class QemuInstallMixin:
                     choix = profiles[idx]
             except ValueError:
                 pass
-            if qd.profile_app(choix[1]) != qd.APP_DOLIBARR:
-                return choix
-            refus = [(s, qd.distro_refusal(s)) for s in systems]
+            app = erp.app_for_cmd(choix[1])
+            refus = [(s, app.distro_refusal(s)) for s in systems]
             refus = [(s, r) for s, r in refus if r]
             if not refus:
                 return choix
@@ -195,10 +200,11 @@ class QemuInstallMixin:
 
     @staticmethod
     def _qemu_effective_prod(prod, install_cmd):
-        """La production demandée, sauf pour le profil Dolibarr, qui
-        s'installe en développement dans ~/git/erplibre : décidé quand la
-        commande est bâtie, quelle que soit la case du formulaire."""
-        return bool(prod) and qd.profile_app(install_cmd) != qd.APP_DOLIBARR
+        """La production demandée, sauf pour le profil d'un ERP dev_only
+        (Dolibarr), qui s'installe en développement dans ~/git/erplibre :
+        décidé quand la commande est bâtie, quelle que soit la case du
+        formulaire."""
+        return bool(prod) and not erp.app_for_cmd(install_cmd).dev_only
 
     @staticmethod
     def _qemu_install_dir(prod):

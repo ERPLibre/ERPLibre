@@ -22,7 +22,7 @@ from test_todo_deploy_form_parity import (  # noqa: E402
 )
 
 from script.dolibarr import lib_dolibarr  # noqa: E402
-from script.todo import qemu_dolibarr as qd  # noqa: E402
+from script.todo.qemu_erp import dolibarr as qd  # noqa: E402
 
 NIXOS = {
     "distro": "nixos",

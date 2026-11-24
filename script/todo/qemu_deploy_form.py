@@ -34,7 +34,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
-from script.todo import qemu_dolibarr as qd
+from script.todo import qemu_erp as erp
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_history import HistoryMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
@@ -1401,7 +1401,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             # Une VM Dolibarr sur un système qui la refuse, ou hors ligne :
             # refusé sans passage outre, la rangée en porte la raison.
-            refus = qd.install_refusals(spec)
+            refus = erp.install_refusals(spec)
             if refus:
                 self.notify(" — ".join(refus), severity="error", timeout=20)
                 return
