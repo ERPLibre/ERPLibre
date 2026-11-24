@@ -25,6 +25,28 @@ from script.todo.todo_upgrade import TodoUpgrade
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+@contextlib.contextmanager
+def closed_after(count):
+    """Une entrée fermée bornée pour le port scripté : ses `count`
+    premières questions lèvent EOFError, comme Ctrl+D, la suivante
+    AssertionError. Une question qui revient sans fin fait échouer le test
+    au lieu de le bloquer."""
+    from unittest import mock
+
+    from script.todo.ui.port import ScriptedPort
+
+    original, asked = ScriptedPort._answer, []
+
+    def answer(port, message):
+        asked.append(message)
+        if len(asked) > count:
+            raise AssertionError("the question keeps coming back")
+        return original(port, message)
+
+    with mock.patch.object(ScriptedPort, "_answer", answer):
+        yield
+
+
 class PromptCase(unittest.TestCase):
     def setUp(self):
         # PAS set_lang() : il persiste la langue dans env_var.sh, suivi par
@@ -256,7 +278,8 @@ class TestTheBumpQuestion(PromptCase):
                 self.assertEqual(confirms, [confirms[0]] * 3)
 
     def test_a_closed_input_ends_the_question(self):
-        appliques, drift, confirms = self.bump([])
+        with closed_after(1):
+            appliques, drift, confirms = self.bump([])
         self.assertEqual((appliques, drift, len(confirms)), ([], [], 1))
 
     def test_only_a_yes_neutralizes(self):

@@ -38,6 +38,28 @@ from script.todo import auto_ask  # noqa: E402
 from script.todo.todo_upgrade import TodoUpgrade  # noqa: E402
 
 
+@contextlib.contextmanager
+def closed_after(count):
+    """Une entrée fermée bornée pour le port scripté : ses `count`
+    premières questions lèvent EOFError, comme Ctrl+D, la suivante
+    AssertionError. Une question qui revient sans fin fait échouer le test
+    au lieu de le bloquer."""
+    from unittest import mock
+
+    from script.todo.ui.port import ScriptedPort
+
+    original, asked = ScriptedPort._answer, []
+
+    def answer(port, message):
+        asked.append(message)
+        if len(asked) > count:
+            raise AssertionError("the question keeps coming back")
+        return original(port, message)
+
+    with mock.patch.object(ScriptedPort, "_answer", answer):
+        yield
+
+
 class EnvCase(unittest.TestCase):
     def setUp(self):
         avant = {
@@ -939,7 +961,7 @@ class TestTheGatesAreYesNoQuestions(EnvCase):
 
     def test_a_closed_input_ends_each_gate(self):
         for nom, _cle, _defaut, _outil in GATES:
-            with self.subTest(nom=nom):
+            with self.subTest(nom=nom), closed_after(1):
                 events = self.play(nom, [])
                 self.assertEqual(len(self.confirms(events)), 1)
                 self.assertEqual(self.lst_cmd, [])
@@ -1213,7 +1235,7 @@ class TestTheSimplePromptsAreYesNoQuestions(EnvCase):
 
     def test_a_closed_input_ends_each_prompt(self):
         for nom, _cle, _defaut in SIMPLE:
-            with self.subTest(nom=nom):
+            with self.subTest(nom=nom), closed_after(1):
                 _m, agi, events = self.play(nom, [])
                 self.assertEqual(len(self.confirms(events)), 1)
                 self.assertEqual(agi, 0)
@@ -1692,7 +1714,8 @@ class TestTheBumpsOfTheMigration(MigrationRun):
                 )
 
     def test_a_closed_input_ends_the_run(self):
-        issue, asked = self.play([])
+        with closed_after(5):
+            issue, asked = self.play([])
         self.assertIsNone(issue)
         self.assertEqual(len(asked), 5)
         self.assertEqual(self.opened(), [])

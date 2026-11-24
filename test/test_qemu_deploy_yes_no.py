@@ -91,9 +91,13 @@ class TestLaConfirmationFinale(_Base):
         return self.play(call, answers)
 
     def test_a_closed_input_discards_and_ends(self):
-        self.assertFalse(self.confirm([]))
+        # Une troisième question lève AssertionError : une boucle sans fin
+        # fait échouer le test au lieu de le bloquer.
+        loop = AssertionError("the question keeps coming back")
+        self.assertFalse(self.confirm([EOFError()] * 2 + [loop]))
         keep = t("Keep your answers and ask again?")
         self.assertEqual(self.asked(), [(t(self.QUESTION), "y"), (keep, "y")])
+        self.assertEqual(self.port.answers, [loop])
 
     def test_enter_or_a_yes_word_deploys(self):
         for answers in (VIDE, *OUI):

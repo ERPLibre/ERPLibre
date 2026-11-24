@@ -680,15 +680,6 @@ class TestPipePort(unittest.TestCase):
         )
         self.assertEqual(self.out.getvalue(), "⏱30s Go? \n")
 
-    def test_a_captured_countdown_shows_its_time_before_its_whole_text(self):
-        # Comme auto_ask.ask au terminal, et non devant sa dernière ligne.
-        future, asked = self.asking(
-            self.port.ask, "Kept:\nGo? ", "n", "countdown", 30
-        )
-        self.reply(t="cancel", qid=asked["qid"])
-        self.assertEqual(future.result(10), "")
-        self.assertEqual(self.out.getvalue(), "⏱30s Kept:\nGo? \n")
-
         def captured():
             uninstall = legacy.install(self.port)
             try:
@@ -701,6 +692,15 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(asked["kind"], "countdown")
         self.reply(t="cancel", qid=asked["qid"])
         self.assertEqual(future.result(10), "n")
+
+    def test_a_captured_countdown_shows_its_time_before_its_whole_text(self):
+        # Comme auto_ask.ask au terminal, et non devant sa dernière ligne.
+        future, asked = self.asking(
+            self.port.ask, "Kept:\nGo? ", "n", "countdown", 30
+        )
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertEqual(future.result(10), "")
+        self.assertEqual(self.out.getvalue(), "⏱30s Kept:\nGo? \n")
 
     def test_a_confirmation_is_asked_with_its_hint_and_default(self):
         # Un test en échec laisse sa question posée : Ctrl+D la finit.
