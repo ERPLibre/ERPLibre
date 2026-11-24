@@ -24581,6 +24581,512 @@ TRANSLATIONS = {
             "try again."
         ),
     },
+    # Système : mémoire d'échange (swap, zram) et ajout de RAM
+    "Swap memory": {
+        "fr": "💾 Mémoire Swap",
+        "en": "💾 Swap memory",
+    },
+    "State of memory and swap": {
+        "fr": "📊 État de la mémoire et du swap",
+        "en": "📊 State of memory and swap",
+    },
+    "Grow swap": {
+        "fr": "⬆ Agrandir le swap",
+        "en": "⬆ Grow swap",
+    },
+    "Shrink swap": {
+        "fr": "⬇ Réduire le swap",
+        "en": "⬇ Shrink swap",
+    },
+    "zram - enable or resize": {
+        "fr": "🗜 zram - activer ou redimensionner",
+        "en": "🗜 zram - enable or resize",
+    },
+    "zram - disable": {
+        "fr": "⛔ zram - désactiver",
+        "en": "⛔ zram - disable",
+    },
+    "Can memory be added?": {
+        "fr": "🧩 Peut-on ajouter de la mémoire ?",
+        "en": "🧩 Can memory be added?",
+    },
+    "zram": {
+        "fr": "zram",
+        "en": "zram",
+    },
+    "swapfile": {
+        "fr": "fichier",
+        "en": "swapfile",
+    },
+    "partition": {
+        "fr": "partition",
+        "en": "partition",
+    },
+    "priority": {
+        "fr": "priorité",
+        "en": "priority",
+    },
+    "used:": {
+        "fr": "utilisé :",
+        "en": "used:",
+    },
+    "now": {
+        "fr": "actuellement",
+        "en": "now",
+    },
+    "Active swaps": {
+        "fr": "Swaps actifs",
+        "en": "Active swaps",
+    },
+    "At boot:": {
+        "fr": "Au démarrage :",
+        "en": "At boot:",
+    },
+    "Hibernation": {
+        "fr": "Hibernation",
+        "en": "Hibernation",
+    },
+    "Recommendation": {
+        "fr": "Recommandation",
+        "en": "Recommendation",
+    },
+    "Disk swap": {
+        "fr": "Swap sur disque",
+        "en": "Disk swap",
+    },
+    "Done.": {
+        "fr": "Terminé.",
+        "en": "Done.",
+    },
+    "No active swap.": {
+        "fr": "Aucun swap actif.",
+        "en": "No active swap.",
+    },
+    "No zram device.": {
+        "fr": "Aucun appareil zram.",
+        "en": "No zram device.",
+    },
+    "No zram is active.": {
+        "fr": "Aucune zram active.",
+        "en": "No zram is active.",
+    },
+    "Not a size:": {
+        "fr": "Ce n'est pas une taille :",
+        "en": "Not a size:",
+    },
+    "Content to write to": {
+        "fr": "Contenu à écrire dans",
+        "en": "Content to write to",
+    },
+    "created, not configured": {
+        "fr": "créé, non configuré",
+        "en": "created, not configured",
+    },
+    "in use as swap": {
+        "fr": "utilisé comme swap",
+        "en": "in use as swap",
+    },
+    "not in use": {
+        "fr": "inutilisé",
+        "en": "not in use",
+    },
+    "dmidecode failed.": {
+        "fr": "dmidecode a échoué.",
+        "en": "dmidecode failed.",
+    },
+    "from the RAM size, at most 8 GiB": {
+        "fr": "selon la taille de la RAM, 8 Gio au plus",
+        "en": "from the RAM size, at most 8 GiB",
+    },
+    "half the RAM, at most 8 GiB": {
+        "fr": "la moitié de la RAM, 8 Gio au plus",
+        "en": "half the RAM, at most 8 GiB",
+    },
+    "RAM plus its square root, for hibernation": {
+        "fr": "la RAM plus sa racine carrée, pour l'hibernation",
+        "en": "RAM plus its square root, for hibernation",
+    },
+    "NixOS: zramSwap in configuration.nix": {
+        "fr": "NixOS : zramSwap dans configuration.nix",
+        "en": "NixOS: zramSwap in configuration.nix",
+    },
+    "none: this zram was set up by hand and is lost at reboot": {
+        "fr": "aucune : cette zram a été montée à la main et se perd au redémarrage",
+        "en": "none: this zram was set up by hand and is lost at reboot",
+    },
+    "on {mountpoint} ({fstype}), {free} free": {
+        "fr": "sur {mountpoint} ({fstype}), {free} libres",
+        "en": "on {mountpoint} ({fstype}), {free} free",
+    },
+    "{stored} stored, compressed to {compressed}, costs {ram} of RAM (ratio {ratio})": {
+        "fr": "{stored} stockés, compressés en {compressed}, coûtent {ram} de RAM (ratio {ratio})",
+        "en": "{stored} stored, compressed to {compressed}, costs {ram} of RAM (ratio {ratio})",
+    },
+    "Hibernation may resume from this swap.": {
+        "fr": "L'hibernation peut reprendre depuis ce swap.",
+        "en": "Hibernation may resume from this swap.",
+    },
+    "Not configured: no resume= on the kernel command line.": {
+        "fr": "Non configurée : aucun resume= sur la ligne de commande du noyau.",
+        "en": "Not configured: no resume= on the kernel command line.",
+    },
+    "Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.": {
+        "fr": "Redimensionner le swap qui tient l'image d'hibernation casse la reprise tant que resume= et resume_offset= ne sont pas mis à jour.",
+        "en": "Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.",
+    },
+    "zram and disk swap coexist: zram gets priority {priority} and fills first, the disk takes the overflow.": {
+        "fr": "zram et swap sur disque coexistent : la zram reçoit la priorité {priority} et se remplit d'abord, le disque prend le surplus.",
+        "en": "zram and disk swap coexist: zram gets priority {priority} and fills first, the disk takes the overflow.",
+    },
+    "The free disk space lets the swap grow by up to {size}.": {
+        "fr": "L'espace disque libre permet d'agrandir le swap de {size} au plus.",
+        "en": "The free disk space lets the swap grow by up to {size}.",
+    },
+    "Swap number, Enter to cancel: ": {
+        "fr": "Numéro du swap, Entrée pour annuler : ",
+        "en": "Swap number, Enter to cancel: ",
+    },
+    "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: ": {
+        "fr": "Nouvelle taille, en 16G ou 16 Gio, 512M ou 512 Mio (un nombre seul est en Mio), Entrée pour {size} : ",
+        "en": "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: ",
+    },
+    "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: ": {
+        "fr": "Nouvelle taille, en 16G ou 16 Gio, 512M ou 512 Mio (un nombre seul est en Mio), Entrée pour annuler : ",
+        "en": "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: ",
+    },
+    "No disk swap is active: a swapfile is created.": {
+        "fr": "Aucun swap sur disque actif : un fichier d'échange est créé.",
+        "en": "No disk swap is active: a swapfile is created.",
+    },
+    "No disk swap is active: nothing to shrink.": {
+        "fr": "Aucun swap sur disque actif : rien à réduire.",
+        "en": "No disk swap is active: nothing to shrink.",
+    },
+    "Create a swapfile instead? (y/N): ": {
+        "fr": "Créer plutôt un fichier d'échange ? (o/N) : ",
+        "en": "Create a swapfile instead? (y/N): ",
+    },
+    "Current size: {size}, {used} in use.": {
+        "fr": "Taille actuelle : {size}, {used} utilisés.",
+        "en": "Current size: {size}, {used} in use.",
+    },
+    "Largest size the free space allows: {size}.": {
+        "fr": "Plus grande taille que l'espace libre permet : {size}.",
+        "en": "Largest size the free space allows: {size}.",
+    },
+    "Recommended: {size}.": {
+        "fr": "Recommandé : {size}.",
+        "en": "Recommended: {size}.",
+    },
+    "On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.": {
+        "fr": "Sur btrfs, le fichier d'échange va dans un sous-volume à lui : un fichier d'échange bloque les instantanés du sous-volume qui le contient.",
+        "en": "On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.",
+    },
+    "Swapfile path, Enter for {path}: ": {
+        "fr": "Chemin du fichier d'échange, Entrée pour {path} : ",
+        "en": "Swapfile path, Enter for {path}: ",
+    },
+    "zram-generator is not installed: its package is installed first.": {
+        "fr": "zram-generator n'est pas installé : son paquet s'installe d'abord.",
+        "en": "zram-generator is not installed: its package is installed first.",
+    },
+    "Size: {old} → {new}": {
+        "fr": "Taille : {old} → {new}",
+        "en": "Size: {old} → {new}",
+    },
+    "NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.": {
+        "fr": "NixOS se configure de façon déclarative : ajoutez ceci à /etc/nixos/configuration.nix, puis reconstruisez.",
+        "en": "NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.",
+    },
+    "/etc/fstab gets the line « {line} », after a copy to {backup}.": {
+        "fr": "/etc/fstab reçoit la ligne « {line} », après une copie dans {backup}.",
+        "en": "/etc/fstab gets the line « {line} », after a copy to {backup}.",
+    },
+    "Run these commands? sudo asks its password in the terminal. (y/N): ": {
+        "fr": "Lancer ces commandes ? sudo demande son mot de passe dans le terminal. (o/N) : ",
+        "en": "Run these commands? sudo asks its password in the terminal. (y/N): ",
+    },
+    "Command failed:": {
+        "fr": "Commande en échec :",
+        "en": "Command failed:",
+    },
+    "Not run:": {
+        "fr": "Non lancées :",
+        "en": "Not run:",
+    },
+    "The running kernel ({running}) no longer has its modules: the kernel package was updated to {installed}. The zram module loads only after a reboot.": {
+        "fr": "Le noyau en marche ({running}) n'a plus ses modules : le paquet du noyau est passé à {installed}. Le module zram ne se charge qu'après un redémarrage.",
+        "en": "The running kernel ({running}) no longer has its modules: the kernel package was updated to {installed}. The zram module loads only after a reboot.",
+    },
+    "The running kernel ({running}) has no zram module.": {
+        "fr": "Le noyau en marche ({running}) n'a pas de module zram.",
+        "en": "The running kernel ({running}) has no zram module.",
+    },
+    "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.": {
+        "fr": "Conteneur ({virtualization}) : le swap et la zram appartiennent à l'hôte, rien ne se change de l'intérieur.",
+        "en": "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.",
+    },
+    "{path} is a swap partition: a partition cannot be shrunk from here.": {
+        "fr": "{path} est une partition de swap : une partition ne se réduit pas d'ici.",
+        "en": "{path} is a swap partition: a partition cannot be shrunk from here.",
+    },
+    "{service} already manages the zram: change its size in that service's own settings, or disable it (zram - disable) first.": {
+        "fr": "{service} gère déjà la zram : changer sa taille dans les réglages de ce service, ou le désactiver d'abord (zram - désactiver).",
+        "en": "{service} already manages the zram: change its size in that service's own settings, or disable it (zram - disable) first.",
+    },
+    "Adding memory": {
+        "fr": "Ajout de mémoire",
+        "en": "Adding memory",
+    },
+    "Interrupted at:": {
+        "fr": "Interrompu à :",
+        "en": "Interrupted at:",
+    },
+    "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:": {
+        "fr": "{path} n'est plus un swap actif, et son fichier peut manquer ou être incomplet. Pour le reconstruire, lancer :",
+        "en": "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:",
+    },
+    "Reading the memory slots needs root (dmidecode).": {
+        "fr": "Lire les emplacements de mémoire exige root (dmidecode).",
+        "en": "Reading the memory slots needs root (dmidecode).",
+    },
+    "Installed: {installed} in {used_slots} of {slots} slot(s).": {
+        "fr": "Installée : {installed} dans {used_slots} emplacement(s) sur {slots}.",
+        "en": "Installed: {installed} in {used_slots} of {slots} slot(s).",
+    },
+    "Maximum Capacity: {max_capacity}, {max_addable} more than installed.": {
+        "fr": "Capacité maximale : {max_capacity}, {max_addable} de plus que l'installé.",
+        "en": "Maximum Capacity: {max_capacity}, {max_addable} more than installed.",
+    },
+    "The maximum capacity is unknown: larger modules may fit, the board documentation tells.": {
+        "fr": "La capacité maximale est inconnue : des modules plus gros conviennent peut-être, la documentation de la carte le dit.",
+        "en": "The maximum capacity is unknown: larger modules may fit, the board documentation tells.",
+    },
+    "The maximum capacity is unknown: the board documentation tells how much each slot takes.": {
+        "fr": "La capacité maximale est inconnue : la documentation de la carte dit ce que prend chaque emplacement.",
+        "en": "The maximum capacity is unknown: the board documentation tells how much each slot takes.",
+    },
+    "Part of the memory is soldered: only the modules in slots can be replaced.": {
+        "fr": "Une partie de la mémoire est soudée : seuls les modules en emplacement se remplacent.",
+        "en": "Part of the memory is soldered: only the modules in slots can be replaced.",
+    },
+    "More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.": {
+        "fr": "Plus de mémoire est installée que la capacité maximale annoncée par le micrologiciel : ce chiffre est faux.",
+        "en": "More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.",
+    },
+    "Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.": {
+        "fr": "La capacité maximale vient du micrologiciel et peut être sous-estimée : la documentation de la carte a le dernier mot.",
+        "en": "Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.",
+    },
+    "{path} is not an active swap.": {
+        "fr": "{path} n'est pas un swap actif.",
+        "en": "{path} is not an active swap.",
+    },
+    "{path} is a zram device: use the zram entries.": {
+        "fr": "{path} est un appareil zram : passez par les entrées zram.",
+        "en": "{path} is a zram device: use the zram entries.",
+    },
+    "{path} is a swap partition: a partition cannot be resized from here. A swapfile can be created instead, for instance {suggestion}.": {
+        "fr": "{path} est une partition de swap : une partition ne se redimensionne pas d'ici. Un fichier d'échange peut se créer à la place, par exemple {suggestion}.",
+        "en": "{path} is a swap partition: a partition cannot be resized from here. A swapfile can be created instead, for instance {suggestion}.",
+    },
+    "{new} is below the minimum of {floor}.": {
+        "fr": "{new} est sous le minimum de {floor}.",
+        "en": "{new} is below the minimum of {floor}.",
+    },
+    "The swap already has this size ({old}).": {
+        "fr": "Le swap a déjà cette taille ({old}).",
+        "en": "The swap already has this size ({old}).",
+    },
+    "{new} is not larger than the current {old}.": {
+        "fr": "{new} n'est pas plus grand que l'actuel {old}.",
+        "en": "{new} is not larger than the current {old}.",
+    },
+    "{new} is not smaller than the current {old}.": {
+        "fr": "{new} n'est pas plus petit que l'actuel {old}.",
+        "en": "{new} is not smaller than the current {old}.",
+    },
+    "The filesystem {fstype} does not accept a swapfile.": {
+        "fr": "Le système de fichiers {fstype} n'accepte pas de fichier d'échange.",
+        "en": "The filesystem {fstype} does not accept a swapfile.",
+    },
+    "{used} of swap is in use, but the system can absorb only {capacity} ({available} of available memory, minus a margin of {margin}, plus {other_swap_free} free in the other disk swaps): turning it off would exhaust the memory. Close programs, then try again.": {
+        "fr": "{used} de swap sont utilisés, mais le système n'en absorbe que {capacity} ({available} de mémoire disponible, moins une marge de {margin}, plus {other_swap_free} libres dans les autres swaps sur disque) : l'éteindre épuiserait la mémoire. Fermez des programmes, puis réessayez.",
+        "en": "{used} of swap is in use, but the system can absorb only {capacity} ({available} of available memory, minus a margin of {margin}, plus {other_swap_free} free in the other disk swaps): turning it off would exhaust the memory. Close programs, then try again.",
+    },
+    "The free space of {mountpoint} cannot be read.": {
+        "fr": "L'espace libre de {mountpoint} ne se lit pas.",
+        "en": "The free space of {mountpoint} cannot be read.",
+    },
+    "Not enough free disk space: {needed} needed, margin included, {free} free. Largest possible size: {max_size}.": {
+        "fr": "Espace disque insuffisant : {needed} nécessaires, marge comprise, {free} libres. Plus grande taille possible : {max_size}.",
+        "en": "Not enough free disk space: {needed} needed, margin included, {free} free. Largest possible size: {max_size}.",
+    },
+    "Invalid path: {path} (absolute, without ..).": {
+        "fr": "Chemin invalide : {path} (absolu, sans ..).",
+        "en": "Invalid path: {path} (absolute, without ..).",
+    },
+    "{path} is already an active swap.": {
+        "fr": "{path} est déjà un swap actif.",
+        "en": "{path} is already an active swap.",
+    },
+    "{path} already exists: choose another path.": {
+        "fr": "{path} existe déjà : choisissez un autre chemin.",
+        "en": "{path} already exists: choose another path.",
+    },
+    "The directory {parent} does not exist.": {
+        "fr": "Le répertoire {parent} n'existe pas.",
+        "en": "The directory {parent} does not exist.",
+    },
+    "{new} exceeds the zram maximum of {max}, twice the RAM.": {
+        "fr": "{new} dépasse le maximum de zram, {max}, deux fois la RAM.",
+        "en": "{new} exceeds the zram maximum of {max}, twice the RAM.",
+    },
+    "Unknown package manager ({manager}): install zram-generator by hand.": {
+        "fr": "Gestionnaire de paquets inconnu ({manager}) : installez zram-generator à la main.",
+        "en": "Unknown package manager ({manager}): install zram-generator by hand.",
+    },
+    "No zram is active or configured.": {
+        "fr": "Aucune zram n'est active ni configurée.",
+        "en": "No zram is active or configured.",
+    },
+    "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.": {
+        "fr": "L'hibernation reprend depuis ce swap (resume={resume}) : une fois le fichier recréé, resume_offset doit être mis à jour, sinon la reprise échoue.",
+        "en": "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.",
+    },
+    "The swapfile sits in the subvolume of {subvolume}: it blocks the snapshots of that subvolume. A dedicated subvolume, such as /swap, avoids it.": {
+        "fr": "Le fichier d'échange est dans le sous-volume de {subvolume} : il en bloque les instantanés. Un sous-volume dédié, comme /swap, l'évite.",
+        "en": "The swapfile sits in the subvolume of {subvolume}: it blocks the snapshots of that subvolume. A dedicated subvolume, such as /swap, avoids it.",
+    },
+    "This zram is larger than the RAM ({ram}): it pays off only if the data compresses well.": {
+        "fr": "Cette zram dépasse la RAM ({ram}) : elle ne rapporte que si les données se compressent bien.",
+        "en": "This zram is larger than the RAM ({ram}): it pays off only if the data compresses well.",
+    },
+    "These disk swaps have a priority at least equal to zram's, so they fill first: {paths}.": {
+        "fr": "Ces swaps sur disque ont une priorité au moins égale à celle de la zram, ils se remplissent donc d'abord : {paths}.",
+        "en": "These disk swaps have a priority at least equal to zram's, so they fill first: {paths}.",
+    },
+    "These drop-in files redefine zram0 and override the new setting: {paths}.": {
+        "fr": "Ces fichiers conf.d redéfinissent zram0 et l'emportent sur le nouveau réglage : {paths}.",
+        "en": "These drop-in files redefine zram0 and override the new setting: {paths}.",
+    },
+    "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.": {
+        "fr": "zram-tools est aussi installé : les deux outils réclament /dev/zram0. Désactivez zramswap.service.",
+        "en": "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.",
+    },
+    "These files in /etc still configure a zram: {paths}.": {
+        "fr": "Ces fichiers de /etc configurent encore une zram : {paths}.",
+        "en": "These files in /etc still configure a zram: {paths}.",
+    },
+    "Virtual machine ({virtualization}): the hypervisor sets the memory. Increase it from the host.": {
+        "fr": "Machine virtuelle ({virtualization}) : l'hyperviseur fixe la mémoire. Augmentez-la depuis l'hôte.",
+        "en": "Virtual machine ({virtualization}): the hypervisor sets the memory. Increase it from the host.",
+    },
+    "Container ({virtualization}): the host sets its memory limit. Change it from the host.": {
+        "fr": "Conteneur ({virtualization}) : l'hôte fixe sa limite de mémoire. Changez-la depuis l'hôte.",
+        "en": "Container ({virtualization}): the host sets its memory limit. Change it from the host.",
+    },
+    "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.": {
+        "fr": "Les emplacements de mémoire n'ont pas pu être lus : sans dmidecode, rien ne dit si on peut ajouter de la RAM.",
+        "en": "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.",
+    },
+    "Yes: {free_slots} free slot(s) out of {slots}.": {
+        "fr": "Oui : {free_slots} emplacement(s) libre(s) sur {slots}.",
+        "en": "Yes: {free_slots} free slot(s) out of {slots}.",
+    },
+    "Yes, by replacing modules with larger ones: every slot is used, and the board accepts up to {max_capacity}.": {
+        "fr": "Oui, en remplaçant des modules par de plus gros : tous les emplacements sont pris, et la carte accepte jusqu'à {max_capacity}.",
+        "en": "Yes, by replacing modules with larger ones: every slot is used, and the board accepts up to {max_capacity}.",
+    },
+    "No: the memory is at the maximum the board accepts.": {
+        "fr": "Non : la mémoire est au maximum que la carte accepte.",
+        "en": "No: the memory is at the maximum the board accepts.",
+    },
+    "No: the memory is soldered to the board, with no slot.": {
+        "fr": "Non : la mémoire est soudée à la carte, sans emplacement.",
+        "en": "No: the memory is soldered to the board, with no slot.",
+    },
+    # Système : swappiness et ballon virtio
+    "Swappiness": {
+        "fr": "🎚 Swappiness",
+        "en": "🎚 Swappiness",
+    },
+    "{value} is outside what the running kernel ({running}) accepts for vm.swappiness: 0 to {limit}.": {
+        "fr": "{value} sort de ce que le noyau en marche ({running}) accepte pour vm.swappiness : 0 à {limit}.",
+        "en": "{value} is outside what the running kernel ({running}) accepts for vm.swappiness: 0 to {limit}.",
+    },
+    "{value} is outside what vm.page-cluster accepts: 0 to {limit}.": {
+        "fr": "{value} sort de ce que vm.page-cluster accepte : 0 à {limit}.",
+        "en": "{value} is outside what vm.page-cluster accepts: 0 to {limit}.",
+    },
+    "vm.swappiness is {value}: below 60, the kernel drops page cache rather than swap, and the zram stays nearly unused. Swap memory › Swappiness [7] raises it.": {
+        "fr": "vm.swappiness vaut {value} : sous 60, le noyau jette le cache de pages plutôt que de swapper, et la zram reste presque vide. Mémoire Swap › Swappiness [7] la relève.",
+        "en": "vm.swappiness is {value}: below 60, the kernel drops page cache rather than swap, and the zram stays nearly unused. Swap memory › Swappiness [7] raises it.",
+    },
+    "These files also set {key} but are overridden, without effect: {paths}.": {
+        "fr": "Ces fichiers fixent aussi {key} mais sont écrasés, sans effet : {paths}.",
+        "en": "These files also set {key} but are overridden, without effect: {paths}.",
+    },
+    "zram is active or configured: swapping to compressed RAM costs less than reading evicted page cache back from disk. vm.page-cluster 0: zram reads single pages faster than clusters.": {
+        "fr": "La zram est active ou configurée : swapper vers de la RAM compressée coûte moins que relire depuis le disque le cache de pages évincé. vm.page-cluster 0 : la zram lit une page seule plus vite qu'une grappe.",
+        "en": "zram is active or configured: swapping to compressed RAM costs less than reading evicted page cache back from disk. vm.page-cluster 0: zram reads single pages faster than clusters.",
+    },
+    "PostgreSQL is running and the swap is on disk: a low value keeps the database processes in RAM and swaps only as a last resort.": {
+        "fr": "PostgreSQL tourne et le swap est sur disque : une valeur basse garde les processus de la base en RAM et ne swappe qu'en dernier recours.",
+        "en": "PostgreSQL is running and the swap is on disk: a low value keeps the database processes in RAM and swaps only as a last resort.",
+    },
+    "The swap is on disk: the kernel default.": {
+        "fr": "Le swap est sur disque : la valeur par défaut du noyau.",
+        "en": "The swap is on disk: the kernel default.",
+    },
+    "No swap is active or listed in /etc/fstab: vm.swappiness has no effect.": {
+        "fr": "Aucun swap n'est actif ni inscrit dans /etc/fstab : vm.swappiness n'a pas d'effet.",
+        "en": "No swap is active or listed in /etc/fstab: vm.swappiness has no effect.",
+    },
+    "set by {path}": {
+        "fr": "fixée par {path}",
+        "en": "set by {path}",
+    },
+    "kernel default, no file sets it": {
+        "fr": "valeur du noyau, aucun fichier ne la fixe",
+        "en": "kernel default, no file sets it",
+    },
+    "Overridden, without effect:": {
+        "fr": "Écrasés, sans effet :",
+        "en": "Overridden, without effect:",
+    },
+    "{path} sets {value} too: « sysctl --system » applies it, the boot does not.": {
+        "fr": "{path} fixe aussi {value} : « sysctl --system » l'applique, le démarrage non.",
+        "en": "{path} sets {value} too: « sysctl --system » applies it, the boot does not.",
+    },
+    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.": {
+        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne par `virsh setmem <vm> <taille> --live`, jusqu'au maximum <memory> de sa définition ; relever ce maximum exige que la VM soit éteinte.",
+        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.",
+    },
+    "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.": {
+        "fr": "Pas de pilote virtio_balloon : l'hôte ne change la RAM de cette VM que pendant qu'elle est éteinte.",
+        "en": "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.",
+    },
+    "{path} is edited in place, after a copy to {backup}.": {
+        "fr": "{path} est modifié sur place, après une copie dans {backup}.",
+        "en": "{path} is edited in place, after a copy to {backup}.",
+    },
+    "Recommended: {key} = {value}.": {
+        "fr": "Recommandé : {key} = {value}.",
+        "en": "Recommended: {key} = {value}.",
+    },
+    "{key}, 0 to {limit}, Enter for {value}: ": {
+        "fr": "{key}, de 0 à {limit}, Entrée pour {value} : ",
+        "en": "{key}, 0 to {limit}, Enter for {value}: ",
+    },
+    "Not a number:": {
+        "fr": "Ce n'est pas un nombre :",
+        "en": "Not a number:",
+    },
+    "Also set {key} to {value}? (y/N): ": {
+        "fr": "Fixer aussi {key} à {value} ? (o/N) : ",
+        "en": "Also set {key} to {value}? (y/N): ",
+    },
     # Système : rapports et caches du système
     "Measuring": {
         "fr": "Mesure de",

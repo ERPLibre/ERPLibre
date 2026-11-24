@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menu Système : le diagnostic du poste, et l'espace qu'on peut récupérer.
+"""Menu Système : le diagnostic du poste, l'espace qu'on peut récupérer et
+la mémoire d'échange.
 
 Les faits viennent de system_diagnostic et les candidats de
 system_cleanup ; ce fichier les met en phrases, pose les questions et tient
 le formulaire. Rien n'est effacé sans une case cochée ET une confirmation.
+Les plans de swap et de zram viennent de system_swap : ce fichier les
+montre, et ne les lance qu'après un oui.
 
 Mixin de la classe TODO : ses méthodes vivent sur la même instance que
 celles des autres fichiers, elles s'appellent donc par « self. ».
 """
 
+import collections
 import datetime
 import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 
 import click
@@ -26,6 +31,7 @@ from script.todo import (
     system_diagnostic,
     system_gpu,
 )
+from script.todo import system_swap as ss
 from script.todo.todo_i18n import t
 
 # Les jours d'inactivité au-delà desquels un reste de /tmp ou une session
@@ -166,6 +172,15 @@ def _tri_memoire(p):
     if total is None and p.get("regions"):
         total = sum(p["regions"].values())
     return (total is None, -(total or 0), p["pid"])
+
+
+def entier(texte):
+    """`texte` en entier s'il n'est fait que de chiffres ASCII ; None
+    sinon. str.isdigit() accepte aussi « ² » ou les chiffres d'autres
+    écritures, sur lesquels int() lève ValueError."""
+    if texte and texte.isascii() and texte.isdigit():
+        return int(texte)
+    return None
 
 
 def affichable(texte):
@@ -389,9 +404,506 @@ def choisir_en_ligne(candidats):
         return [i for i, c in enumerate(candidats) if c.coche]
     choisis = []
     for morceau in reponse.replace(" ", "").split(","):
-        if morceau.isdigit() and 1 <= int(morceau) <= len(candidats):
-            choisis.append(int(morceau) - 1)
+        numero = entier(morceau)
+        if numero is not None and 1 <= numero <= len(candidats):
+            choisis.append(numero - 1)
     return sorted(set(choisis))
+
+
+# Mémoire d'échange : chaque code que rend system_swap -> sa clé de
+# traduction. Les champs {…} reçoivent les « details » du plan, les tailles
+# déjà écrites par octets().
+RAISONS_SWAP = {
+    "container": (
+        "Container ({virtualization}): the host owns the swap and the zram, "
+        "nothing can be changed from inside."
+    ),
+    "not_active": "{path} is not an active swap.",
+    "zram": "{path} is a zram device: use the zram entries.",
+    "partition": (
+        "{path} is a swap partition: a partition cannot be resized from "
+        "here. A swapfile can be created instead, for instance {suggestion}."
+    ),
+    "partition_shrink": (
+        "{path} is a swap partition: a partition cannot be shrunk from here."
+    ),
+    "below_floor": "{new} is below the minimum of {floor}.",
+    "same_size": "The swap already has this size ({old}).",
+    "not_larger": "{new} is not larger than the current {old}.",
+    "not_smaller": "{new} is not smaller than the current {old}.",
+    "fs_unsupported": "The filesystem {fstype} does not accept a swapfile.",
+    "ram_cannot_absorb": (
+        "{used} of swap is in use, but the system can absorb only "
+        "{capacity} ({available} of available memory, minus a margin of "
+        "{margin}, plus {other_swap_free} free in the other disk swaps): "
+        "turning it off would exhaust the memory. Close programs, then try "
+        "again."
+    ),
+    "disk_unknown": "The free space of {mountpoint} cannot be read.",
+    "disk_full": (
+        "Not enough free disk space: {needed} needed, margin included, "
+        "{free} free. Largest possible size: {max_size}."
+    ),
+    "invalid_path": "Invalid path: {path} (absolute, without ..).",
+    "already_active": "{path} is already an active swap.",
+    "exists": "{path} already exists: choose another path.",
+    "parent_missing": "The directory {parent} does not exist.",
+    "zram_too_large": (
+        "{new} exceeds the zram maximum of {max}, twice the RAM."
+    ),
+    "no_package_manager": (
+        "Unknown package manager ({manager}): install zram-generator by hand."
+    ),
+    "no_zram": "No zram is active or configured.",
+    "zram_reboot_required": (
+        "The running kernel ({running}) no longer has its modules: the "
+        "kernel package was updated to {installed}. The zram module loads "
+        "only after a reboot."
+    ),
+    "zram_unavailable": ("The running kernel ({running}) has no zram module."),
+    "zram_service": (
+        "{service} already manages the zram: change its size in that "
+        "service's own settings, or disable it (zram - disable) first."
+    ),
+    "swappiness_range": (
+        "{value} is outside what the running kernel ({running}) accepts for "
+        "vm.swappiness: 0 to {limit}."
+    ),
+    "page_cluster_range": (
+        "{value} is outside what vm.page-cluster accepts: 0 to {limit}."
+    ),
+}
+
+ALERTES_SWAP = {
+    "hibernation": (
+        "Hibernation resumes from this swap (resume={resume}): once the "
+        "file is recreated, resume_offset must be updated or resuming fails."
+    ),
+    "btrfs_snapshot": (
+        "The swapfile sits in the subvolume of {subvolume}: it blocks the "
+        "snapshots of that subvolume. A dedicated subvolume, such as /swap, "
+        "avoids it."
+    ),
+    "zram_over_ram": (
+        "This zram is larger than the RAM ({ram}): it pays off only if the "
+        "data compresses well."
+    ),
+    "disk_priority": (
+        "These disk swaps have a priority at least equal to zram's, so they "
+        "fill first: {paths}."
+    ),
+    "dropin_overrides": (
+        "These drop-in files redefine zram0 and override the new setting: "
+        "{paths}."
+    ),
+    "zram_tools_conflict": (
+        "zram-tools is also installed: both tools claim /dev/zram0. Disable "
+        "zramswap.service."
+    ),
+    "dropin_etc": "These files in /etc still configure a zram: {paths}.",
+    "low_swappiness": (
+        "vm.swappiness is {value}: below 60, the kernel drops page cache "
+        "rather than swap, and the zram stays nearly unused. Swap memory › "
+        "Swappiness [7] raises it."
+    ),
+    "sysctl_dead": (
+        "These files also set {key} but are overridden, without effect: "
+        "{paths}."
+    ),
+}
+
+# La raison de la swappiness conseillée (recommandation_swappiness).
+RAISONS_SWAPPINESS = {
+    "zram": (
+        "zram is active or configured: swapping to compressed RAM costs less "
+        "than reading evicted page cache back from disk. vm.page-cluster 0: "
+        "zram reads single pages faster than clusters."
+    ),
+    "postgresql": (
+        "PostgreSQL is running and the swap is on disk: a low value keeps the "
+        "database processes in RAM and swaps only as a last resort."
+    ),
+    "default": "The swap is on disk: the kernel default.",
+    "no_swap": (
+        "No swap is active or listed in /etc/fstab: vm.swappiness has no "
+        "effect."
+    ),
+}
+
+VERDICTS_MEMOIRE = {
+    "vm": (
+        "Virtual machine ({virtualization}): the hypervisor sets the memory. "
+        "Increase it from the host."
+    ),
+    "container": (
+        "Container ({virtualization}): the host sets its memory limit. "
+        "Change it from the host."
+    ),
+    "unknown": (
+        "The memory slots could not be read: without dmidecode, nothing "
+        "says whether RAM can be added."
+    ),
+    "free_slots": "Yes: {free_slots} free slot(s) out of {slots}.",
+    "replace": (
+        "Yes, by replacing modules with larger ones: every slot is used, "
+        "and the board accepts up to {max_capacity}."
+    ),
+    "max": "No: the memory is at the maximum the board accepts.",
+    "soldered": "No: the memory is soldered to the board, with no slot.",
+}
+
+TYPES_SWAP = {"file": "swapfile", "partition": "partition", "zram": "zram"}
+
+# Les champs de details qui portent des octets.
+TAILLES_SWAP = {
+    "old",
+    "new",
+    "floor",
+    "used",
+    "available",
+    "margin",
+    "other_swap_free",
+    "capacity",
+    "needed",
+    "free",
+    "max_size",
+    "max",
+    "ram",
+    "installed",
+    "max_capacity",
+    "max_addable",
+    "swap_growth",
+    "size",
+}
+
+
+def _champs(details):
+    """details -> valeurs prêtes pour format_map : octets() pour les
+    tailles, une liste jointe par des virgules, « ? » pour ce qui manque
+    (un champ absent compris)."""
+    valeurs = collections.defaultdict(lambda: "?")
+    for cle, v in details.items():
+        if v is None:
+            continue
+        if cle in TAILLES_SWAP and isinstance(v, (int, float)):
+            valeurs[cle] = octets(v)
+        elif isinstance(v, (list, tuple, set)):
+            valeurs[cle] = ", ".join(affichable(x) for x in v)
+        else:
+            valeurs[cle] = affichable(v)
+    return valeurs
+
+
+def _message(table, code, details):
+    cle = table.get(code)
+    if cle is None:
+        return affichable(code) or "?"
+    return t(cle).format_map(_champs(details))
+
+
+def message_refus(res):
+    """La phrase qui dit pourquoi un plan de system_swap est refusé."""
+    return _message(RAISONS_SWAP, res["reason"], res["details"])
+
+
+def message_alerte(alerte):
+    """La phrase d'une mise en garde ({"code": …, …}) d'un plan."""
+    return _message(ALERTES_SWAP, alerte["code"], alerte)
+
+
+def _persistance(pers, active):
+    """Comment la zram revient au démarrage, en une phrase."""
+    mode = pers["mode"]
+    if mode == "nixos":
+        return t("NixOS: zramSwap in configuration.nix")
+    if mode == "zram-generator":
+        fichier = pers["generator"]["main"] or ", ".join(
+            pers["generator"]["dropins"]
+        )
+        return f"zram-generator ({fichier})"
+    if mode == "zram-tools":
+        return f"zram-tools ({ss.ZRAMSWAP_DEFAULT})"
+    if mode == "service":
+        return affichable(pers.get("service"))
+    if active:
+        return t("none: this zram was set up by hand and is lost at reboot")
+    return t("none")
+
+
+def _setters(setters):
+    """[{path, value}, …] -> « chemin (valeur), … »."""
+    return ", ".join(
+        f"{affichable(s['path'])} ({affichable(s['value'])})" for s in setters
+    )
+
+
+def lignes_sysctl(etat):
+    """vm.swappiness et vm.page-cluster en lignes : la valeur en marche, le
+    fichier qui la fixe au démarrage, les fichiers écrasés, et une mise en
+    garde quand une zram attend une swappiness d'au moins 60. [] si etat
+    ne porte pas de sysctl."""
+    sysctl = etat.get("sysctl")
+    if not sysctl:
+        return []
+    lignes = []
+    for cle in ss.CLES_SYSCTL:
+        info = sysctl.get(cle) or {}
+        valeur = info.get("value")
+        if info.get("source"):
+            source = t("set by {path}").format(path=affichable(info["source"]))
+        else:
+            source = t("kernel default, no file sets it")
+        lignes.append(
+            f"  {cle} : {t('unavailable') if valeur is None else valeur}"
+            f" · {source}"
+        )
+        if info.get("dead"):
+            lignes.append(
+                f"      {t('Overridden, without effect:')}"
+                f" {_setters(info['dead'])}"
+            )
+        hors = info.get("outside_boot")
+        if hors:
+            lignes.append(
+                "      "
+                + t(
+                    "{path} sets {value} too: « sysctl --system » applies "
+                    "it, the boot does not."
+                ).format_map(_champs(hors))
+            )
+    valeur = ss.swappiness_actuelle(etat)
+    if (
+        ss.zram_presente(etat)
+        and valeur is not None
+        and valeur < ss.SWAPPINESS_DEFAUT
+    ):
+        lignes.append(
+            f"  ⚠ {message_alerte({'code': 'low_swappiness', 'value': valeur})}"
+        )
+    return lignes
+
+
+def lignes_swap(etat):
+    """L'état de la mémoire et de la mémoire d'échange en lignes de texte :
+    la RAM, chaque swap actif, la zram et sa persistance, la swappiness,
+    l'hibernation, puis la recommandation."""
+    absent = t("unavailable")
+    mem = etat["memory"]
+    lignes = [
+        f"── {t('Memory')} ──",
+        f"  RAM : {octets(mem['available']) or absent}"
+        f" {t('available of')} {octets(mem['total']) or absent}",
+        f"  {t('Swap')} : {octets(mem['swap_free']) or absent}"
+        f" {t('free of')} {octets(mem['swap_total']) or absent}",
+        "",
+        f"── {t('Active swaps')} ──",
+    ]
+    for s in etat["swaps"]:
+        lignes.append(
+            f"  {affichable(s['path']):<24} {t(TYPES_SWAP[s['type']]):<10}"
+            f" {octets(s['size']):>10} {t('used:')} {octets(s['used']):>10}"
+            f"  {t('priority')} {s['priority']}"
+        )
+        if s.get("fs"):
+            lignes.append(
+                "      "
+                + t("on {mountpoint} ({fstype}), {free} free").format_map(
+                    _champs(
+                        {
+                            "mountpoint": s["fs"]["mountpoint"],
+                            "fstype": s["fs"]["fstype"],
+                            "free": s.get("free"),
+                        }
+                    )
+                )
+            )
+        if s.get("hibernation"):
+            lignes.append(
+                f"      ⚠ {t('Hibernation may resume from this swap.')}"
+            )
+    if not etat["swaps"]:
+        lignes.append(f"  {t('No active swap.')}")
+
+    lignes += ["", "── zram ──"]
+    for z in etat["zram"]:
+        if not z["disksize"]:
+            lignes.append(f"  {z['device']} : {t('created, not configured')}")
+            continue
+        actif = t("in use as swap") if z["active"] else t("not in use")
+        lignes.append(
+            f"  {z['device']} · {octets(z['disksize'])}"
+            f" · {z['algorithm'] or absent} · {actif}"
+        )
+        if z["orig_data"] is not None:
+            ratio = f"{z['ratio']:.1f}" if z["ratio"] else "—"
+            lignes.append(
+                "      "
+                + t(
+                    "{stored} stored, compressed to {compressed}, costs "
+                    "{ram} of RAM (ratio {ratio})"
+                ).format(
+                    stored=octets(z["orig_data"]),
+                    compressed=octets(z["compr_data"]),
+                    ram=octets(z["mem_used"]),
+                    ratio=ratio,
+                )
+            )
+    if not etat["zram"]:
+        lignes.append(f"  {t('No zram device.')}")
+    module = etat.get("zram_module") or {}
+    if module.get("state") == "reboot":
+        lignes.append(
+            "  ⚠ "
+            + message_refus(
+                {
+                    "reason": "zram_reboot_required",
+                    "details": {
+                        "running": module["running"],
+                        "installed": ", ".join(module["installed"]),
+                    },
+                }
+            )
+        )
+    elif module.get("state") == "missing":
+        lignes.append(
+            "  ⚠ "
+            + message_refus(
+                {
+                    "reason": "zram_unavailable",
+                    "details": {"running": module["running"]},
+                }
+            )
+        )
+    pers = etat["persistence"]
+    active = any(z["active"] for z in etat["zram"])
+    lignes.append(f"  {t('At boot:')} {_persistance(pers, active)}")
+    if pers["both"]:
+        lignes.append(f"  ⚠ {message_alerte({'code': 'zram_tools_conflict'})}")
+
+    sysctl = lignes_sysctl(etat)
+    if sysctl:
+        lignes += ["", "── Swappiness ──"] + sysctl
+
+    hib = etat["hibernation"]
+    lignes += ["", f"── {t('Hibernation')} ──"]
+    if hib["resume"]:
+        offset = (
+            f" resume_offset={hib['resume_offset']}"
+            if hib["resume_offset"] is not None
+            else ""
+        )
+        lignes.append(f"  resume={affichable(hib['resume'])}{offset}")
+        lignes.append(
+            f"  ⚠ {t('Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.')}"
+        )
+    else:
+        lignes.append(
+            f"  {t('Not configured: no resume= on the kernel command line.')}"
+        )
+
+    rec = etat["recommendation"]
+    disque = sum(s["size"] for s in ss.cibles_disque(etat))
+    lignes += ["", f"── {t('Recommendation')} ──"]
+    if rec["swap"]:
+        base = (
+            t("RAM plus its square root, for hibernation")
+            if rec["basis"] == "hibernation"
+            else t("from the RAM size, at most 8 GiB")
+        )
+        lignes.append(
+            f"  {t('Disk swap')} : {octets(rec['swap'])} ({base})"
+            f" · {t('now')} {octets(disque)}"
+        )
+        lignes.append(
+            f"  zram : {octets(rec['zram'])}"
+            f" ({t('half the RAM, at most 8 GiB')})"
+        )
+    lignes.append(
+        "  "
+        + t(
+            "zram and disk swap coexist: zram gets priority {priority} and "
+            "fills first, the disk takes the overflow."
+        ).format(priority=ss.PRIORITE_ZRAM)
+    )
+    croissance = ss.croissance_swap(etat)
+    if croissance is not None:
+        lignes.append(
+            "  "
+            + t(
+                "The free disk space lets the swap grow by up to {size}."
+            ).format(size=octets(croissance))
+        )
+    return lignes
+
+
+def lignes_memoire(v):
+    """Le verdict de verdict_memoire() en lignes : la RAM installée et ses
+    emplacements, la réponse, les réserves, et ce que le swap peut encore
+    prendre sur le disque."""
+    valeurs = _champs(v)
+    lignes = [f"── {t('Adding memory')} ──"]
+    lignes.append(f"  RAM : {valeurs['ram']}")
+    if v["installed"] is not None:
+        lignes.append(
+            "  "
+            + t(
+                "Installed: {installed} in {used_slots} of {slots} slot(s)."
+            ).format_map(valeurs)
+        )
+        details = v["types"] + v["form_factors"]
+        if details:
+            lignes.append(f"  {', '.join(affichable(d) for d in details)}")
+        if v["max_capacity"] is not None:
+            lignes.append(
+                "  "
+                + t(
+                    "Maximum Capacity: {max_capacity}, {max_addable} more "
+                    "than installed."
+                ).format_map(valeurs)
+            )
+    lignes.append(f"  → {_message(VERDICTS_MEMOIRE, v['verdict'], v)}")
+    if v.get("balloon"):
+        ballon = t(
+            "The virtio_balloon driver is present: the host can change this "
+            "VM's RAM while it runs with `virsh setmem <vm> <size> --live`, "
+            "up to the <memory> maximum in its definition; raising that "
+            "maximum needs the VM shut off."
+        )
+        lignes.append(f"  {ballon}")
+    elif v.get("balloon") is False:
+        sans_ballon = t(
+            "No virtio_balloon driver: the host changes this VM's RAM only "
+            "while it is shut off."
+        )
+        lignes.append(f"  {sans_ballon}")
+    if v["verdict"] == "max" and v["max_capacity"] is None:
+        lignes.append(
+            f"  {t('The maximum capacity is unknown: larger modules may fit, the board documentation tells.')}"
+        )
+    if v["verdict"] == "free_slots" and v["max_addable"] is None:
+        lignes.append(
+            f"  {t('The maximum capacity is unknown: the board documentation tells how much each slot takes.')}"
+        )
+    if v["partially_soldered"]:
+        lignes.append(
+            f"  {t('Part of the memory is soldered: only the modules in slots can be replaced.')}"
+        )
+    if v["max_understated"]:
+        lignes.append(
+            f"  ⚠ {t('More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.')}"
+        )
+    if v["firmware_note"]:
+        lignes.append(
+            f"  {t('Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.')}"
+        )
+    if v["swap_growth"] is not None:
+        lignes.append(
+            "  "
+            + t(
+                "The free disk space lets the swap grow by up to {size}."
+            ).format(size=octets(v["swap_growth"]))
+        )
+    return lignes
 
 
 class SystemMenuMixin:
@@ -414,6 +926,7 @@ class SystemMenuMixin:
             {"prompt_description": t("Containers - size and cleanup")},
             {"prompt_description": t("CPU memory per process")},
             {"prompt_description": t("GPU memory per process")},
+            {"prompt_description": t("Swap memory")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -437,6 +950,8 @@ class SystemMenuMixin:
                 self._system_cpu()
             elif status == "8":
                 self._system_gpu()
+            elif status == "9":
+                self._system_swap()
             else:
                 print(t("Command not found !"))
 
@@ -473,9 +988,10 @@ class SystemMenuMixin:
                 note = f"✗ {t('not installed, unknown package manager')}"
             print(f"  [{i}] {o['nom']:<8} {note}")
         reponse = input(t("Tool number, Enter for none: ")).strip()
-        if not (reponse.isdigit() and 1 <= int(reponse) <= len(outils)):
+        numero = entier(reponse)
+        if numero is None or not 1 <= numero <= len(outils):
             return
-        outil = outils[int(reponse) - 1]
+        outil = outils[numero - 1]
         if outil["chemin"]:
             commande = [outil["chemin"]] + outil["args"]
         elif nix:
@@ -765,10 +1281,11 @@ class SystemMenuMixin:
         reponse = input(
             t("Numbers to run (e.g. 1,2), Enter for none: ")
         ).strip()
+        numeros = [entier(m) for m in reponse.replace(" ", "").split(",")]
         choisis = [
-            caches[int(m) - 1]
-            for m in reponse.replace(" ", "").split(",")
-            if m.isdigit() and 1 <= int(m) <= len(caches)
+            caches[n - 1]
+            for n in numeros
+            if n is not None and 1 <= n <= len(caches)
         ]
         if not choisis:
             print(f"  {t('Nothing selected.')}")
@@ -847,3 +1364,415 @@ class SystemMenuMixin:
                 self._container_nettoyer_images()
             else:
                 print(t("Command not found !"))
+
+    def _system_swap(self):
+        """Le sous-menu de la mémoire d'échange : l'état, le swap sur
+        disque, la zram, l'ajout de RAM et la swappiness."""
+        choices = [
+            {"prompt_description": t("State of memory and swap")},
+            {"prompt_description": t("Grow swap")},
+            {"prompt_description": t("Shrink swap")},
+            {"prompt_description": t("zram - enable or resize")},
+            {"prompt_description": t("zram - disable")},
+            {"prompt_description": t("Can memory be added?")},
+            {"prompt_description": t("Swappiness")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._system_swap_etat()
+            elif status == "2":
+                self._system_swap_redimensionner("grow")
+            elif status == "3":
+                self._system_swap_redimensionner("shrink")
+            elif status == "4":
+                self._system_swap_zram()
+            elif status == "5":
+                self._system_swap_zram_desactiver()
+            elif status == "6":
+                self._system_swap_memoire()
+            elif status == "7":
+                self._system_swap_swappiness()
+            else:
+                print(t("Command not found !"))
+
+    def _system_swap_etat(self, etat=None):
+        print("\n".join(lignes_swap(etat or ss.etat())))
+        print()
+
+    def _system_swap_choisir(self, cibles):
+        """Le swap sur disque à modifier : le seul s'il n'y en a qu'un,
+        sinon celui dont on tape le numéro ; None pour annuler."""
+        if len(cibles) == 1:
+            return cibles[0]
+        for i, s in enumerate(cibles, 1):
+            print(
+                f"  [{i}] {affichable(s['path']):<24}"
+                f" {t(TYPES_SWAP[s['type']]):<10} {octets(s['size']):>10}"
+                f"  {t('priority')} {s['priority']}"
+            )
+        reponse = input(t("Swap number, Enter to cancel: ")).strip()
+        numero = entier(reponse)
+        if numero is not None and 1 <= numero <= len(cibles):
+            return cibles[numero - 1]
+        return None
+
+    def _system_swap_taille(self, defaut=None):
+        """La taille tapée, en octets ; `defaut` sur Entrée, None pour une
+        saisie vide sans défaut ou qui n'est pas une taille."""
+        if defaut:
+            invite = t(
+                "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: "
+            ).format(size=octets(defaut))
+        else:
+            invite = t(
+                "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: "
+            )
+        reponse = input(invite).strip()
+        if not reponse:
+            return defaut
+        taille = ss.parse_taille(reponse)
+        if taille is None:
+            print(f"  ⚠ {t('Not a size:')} {affichable(reponse)}")
+        return taille
+
+    def _system_swap_redimensionner(self, sens):
+        """Agrandir (sens « grow ») ou réduire (« shrink ») un fichier
+        d'échange actif. Sans swap sur disque, agrandir crée un fichier ;
+        une partition ne se redimensionne pas, et agrandir propose alors un
+        fichier en plus."""
+        etat = ss.etat()
+        refus = ss.refus_conteneur(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        cibles = ss.cibles_disque(etat)
+        if not cibles:
+            if sens == "grow":
+                print(
+                    f"  {t('No disk swap is active: a swapfile is created.')}"
+                )
+                self._system_swap_creer(etat)
+            else:
+                print(f"  {t('No disk swap is active: nothing to shrink.')}")
+            return
+        cible = self._system_swap_choisir(cibles)
+        if cible is None:
+            print(f"  {t('Nothing selected.')}")
+            return
+        if cible["type"] != "file":
+            res = ss.plan_redimensionner(
+                etat, cible["path"], cible["size"], sens
+            )
+            print(f"  ⚠ {message_refus(res)}")
+            if res["reason"] == "partition" and self._is_yes(
+                input(t("Create a swapfile instead? (y/N): "))
+            ):
+                self._system_swap_creer(etat)
+            return
+        print(
+            "  "
+            + t("Current size: {size}, {used} in use.").format(
+                size=octets(cible["size"]), used=octets(cible["used"])
+            )
+        )
+        if sens == "grow" and cible.get("max_size"):
+            print(
+                "  "
+                + t("Largest size the free space allows: {size}.").format(
+                    size=octets(cible["max_size"])
+                )
+            )
+        # /proc/swaps compte un fichier sans sa page d'en-tête : la
+        # comparaison se fait en Mio arrondis, comme celle du plan, pour ne
+        # pas proposer la taille qu'il a déjà.
+        rec = etat["recommendation"]["swap"]
+        defaut = None
+        if rec and (
+            (sens == "grow" and ss.mio(rec) > ss.mio(cible["size"]))
+            or (
+                sens == "shrink"
+                and rec >= ss.PLANCHER_SWAP
+                and ss.mio(rec) < ss.mio(cible["size"])
+            )
+        ):
+            defaut = rec
+            print("  " + t("Recommended: {size}.").format(size=octets(rec)))
+        taille = self._system_swap_taille(defaut)
+        if taille is None:
+            return
+        self._system_swap_appliquer(
+            ss.plan_redimensionner(etat, cible["path"], taille, sens)
+        )
+
+    def _system_swap_creer(self, etat):
+        """Créer un fichier d'échange : son chemin (le défaut tient compte
+        de btrfs), sa taille (la recommandation par défaut), puis le
+        plan."""
+        defaut = ss.chemin_par_defaut(etat)
+        if defaut["reason"] == "btrfs_subvolume":
+            print(
+                f"  {t('On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.')}"
+            )
+        chemin = (
+            input(
+                t("Swapfile path, Enter for {path}: ").format(
+                    path=defaut["path"]
+                )
+            ).strip()
+            or defaut["path"]
+        )
+        taille = self._system_swap_taille(etat["recommendation"]["swap"])
+        if taille is None:
+            return
+        self._system_swap_appliquer(ss.plan_creer(etat, chemin, taille))
+
+    def _system_swap_zram(self):
+        """Activer la zram ou changer sa taille, la recommandation par
+        défaut. Les fichiers de configuration s'écrivent dans un
+        répertoire temporaire de l'utilisateur, que « sudo install »
+        recopie, puis qui disparaît."""
+        etat = ss.etat()
+        refus = ss.refus_zram(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        actives = [z for z in etat["zram"] if z["active"]]
+        for z in actives:
+            print(
+                f"  {z['device']} · {octets(z['disksize'])}"
+                f" · {z['algorithm'] or t('unavailable')}"
+            )
+        if not actives:
+            print(f"  {t('No zram is active.')}")
+        taille = self._system_swap_taille(etat["recommendation"]["zram"])
+        if taille is None:
+            return
+        with tempfile.TemporaryDirectory(prefix="erplibre_zram_") as dossier:
+            res = ss.plan_zram(etat, taille, dossier)
+            if res["ok"] and res["details"].get("install"):
+                print(
+                    f"  {t('zram-generator is not installed: its package is installed first.')}"
+                )
+            self._system_swap_appliquer(res)
+
+    def _system_swap_zram_desactiver(self):
+        etat = ss.etat()
+        with tempfile.TemporaryDirectory(prefix="erplibre_zram_") as dossier:
+            self._system_swap_appliquer(ss.plan_zram_desactiver(etat, dossier))
+
+    def _system_swap_appliquer(self, res):
+        """Le protocole commun des plans de system_swap : le refus et sa
+        raison, ou l'extrait NixOS, ou bien les mises en garde, le contenu
+        des fichiers et chaque commande ; puis, sur un oui, les fichiers
+        écrits et les commandes lancées une à une, arrêtées à la première
+        qui échoue, et l'état relu. Rend vrai si tout a réussi."""
+        if not res["ok"]:
+            print(f"  ⚠ {message_refus(res)}")
+            return False
+        details = res["details"]
+        if "old" in details and "new" in details:
+            print(
+                "  "
+                + t("Size: {old} → {new}").format(
+                    old=octets(details["old"]), new=octets(details["new"])
+                )
+            )
+        for cle, (avant, apres) in details.get("changes", {}).items():
+            print(f"  {cle} : {'?' if avant is None else avant} → {apres}")
+        for alerte in res["warnings"]:
+            print(f"  ⚠ {message_alerte(alerte)}")
+        if res["nix"]:
+            print(
+                f"  {t('NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.')}"
+            )
+            for ligne in res["nix"].splitlines():
+                print(f"    {ligne}")
+            return False
+        if not res["plan"]:
+            print(f"  {t('Nothing to do.')}")
+            return False
+        if details.get("fstab") == "added":
+            print(
+                "  "
+                + t(
+                    "/etc/fstab gets the line « {line} », after a copy to {backup}."
+                ).format_map(_champs(details))
+            )
+        for edite in details.get("edited") or []:
+            print(
+                "  "
+                + t(
+                    "{path} is edited in place, after a copy to {backup}."
+                ).format_map(_champs(edite))
+            )
+        fichiers = dict(res["files"])
+        if details.get("created"):
+            fichiers[details["created"]] = details["content"]
+        for chemin, contenu in fichiers.items():
+            print(f"  {t('Content to write to')} {chemin} :")
+            for ligne in contenu.splitlines() or [""]:
+                print(f"    │ {ligne}")
+        for cmd in res["plan"]:
+            print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+        if not self._is_yes(
+            input(
+                t(
+                    "Run these commands? sudo asks its password in the terminal. (y/N): "
+                )
+            )
+        ):
+            print(f"  {t('Nothing changed.')}")
+            return False
+        for chemin, contenu in res["files"].items():
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(contenu)
+        reussi = True
+        for i, cmd in enumerate(res["plan"]):
+            # Un statut non nul (mot de passe refusé, commande en échec) ou
+            # un Ctrl-C, qui lève KeyboardInterrupt ici, arrêtent le plan :
+            # les commandes suivantes supposent celle-ci faite.
+            try:
+                statut = self.execute.exec_command_live(
+                    shlex.join(cmd), source_erplibre=False
+                )
+                message = t("Command failed:")
+            except KeyboardInterrupt:
+                statut = 1
+                message = t("Interrupted at:")
+            if statut:
+                print(f"\n  ⚠ {message} {shlex.join(cmd)}")
+                suite = res["plan"][i + 1 :]
+                if suite:
+                    print(f"  {t('Not run:')}")
+                    for reste in suite:
+                        print(f"    {shlex.join(reste)}")
+                self._system_swap_reprise(res, i)
+                reussi = False
+                break
+        if reussi:
+            print(f"  ✓ {t('Done.')}")
+        print()
+        # btrfs ne publie l'espace d'un fichier créé qu'à la validation de
+        # sa transaction, 30 secondes au plus par défaut : sans sync, l'état
+        # relu montrerait l'espace libre d'avant la création.
+        os.sync()
+        self._system_swap_etat()
+        return reussi
+
+    def _system_swap_reprise(self, res, echec):
+        """Après l'échec de l'étape `echec`, les commandes qui
+        reconstruisent le swap quand le plan en porte (details
+        recovery_from) et que l'échec suit son extinction."""
+        depuis = res["details"].get("recovery_from")
+        if depuis is None or echec < depuis:
+            return
+        print(
+            "  "
+            + t(
+                "{path} is no longer an active swap, and its file may be "
+                "missing or incomplete. To rebuild it, run:"
+            ).format_map(_champs(res["details"]))
+        )
+        for cmd in res["plan"][depuis:]:
+            print(f"    {shlex.join(cmd)}")
+
+    def _system_swap_memoire(self):
+        """Peut-on ajouter de la RAM ? Dans une VM, l'hyperviseur décide ;
+        sur du matériel, dmidecode lit les emplacements, avec sudo après
+        confirmation, installé d'abord s'il manque."""
+        etat = ss.etat()
+        dmi = None
+        if not etat["virtualization"]:
+            dmi = self._system_swap_dmidecode(etat)
+        print("\n".join(lignes_memoire(ss.verdict_memoire(etat, dmi))))
+        print()
+
+    def _system_swap_dmidecode(self, etat):
+        """La sortie analysée de « dmidecode -t memory », ou None si
+        dmidecode manque sans pouvoir s'installer, si l'on refuse, ou s'il
+        échoue. sudo demande le mot de passe sur le terminal : seule la
+        sortie standard est capturée."""
+        plan = ss.plan_installer_dmidecode(etat)
+        if plan is None:
+            print(
+                f"  ⚠ dmidecode : {t('not installed, unknown package manager')}"
+            )
+            return None
+        if plan:
+            for cmd in plan:
+                print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+            if not self._is_yes(
+                input(t("Install {name}? (y/N): ").format(name="dmidecode"))
+            ):
+                return None
+            for cmd in plan:
+                if self.execute.exec_command_live(
+                    shlex.join(cmd), source_erplibre=False
+                ):
+                    print(f"  ⚠ {t('Installation failed:')} {shlex.join(cmd)}")
+                    return None
+        cmd = ss.commande_dmidecode(etat.get("manager"))
+        print(f"  {t('Reading the memory slots needs root (dmidecode).')}")
+        print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+        if not self._is_yes(
+            input(
+                t("Read them with sudo? The password is asked here. (y/N): ")
+            )
+        ):
+            return None
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+        except (OSError, KeyboardInterrupt):
+            return None
+        if res.returncode != 0:
+            print(f"  ⚠ {t('dmidecode failed.')}")
+            return None
+        return ss.analyser_dmidecode(res.stdout)
+
+    def _system_swap_swappiness(self):
+        """vm.swappiness : la valeur en marche, le fichier qui la fixe et
+        ceux qu'il écrase, la valeur conseillée et sa raison ; puis la
+        valeur tapée (Entrée prend la conseillée), vm.page-cluster 0 en plus
+        quand une zram est là, et le plan de plan_swappiness()."""
+        etat = ss.etat()
+        refus = ss.refus_conteneur(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        for ligne in lignes_sysctl(etat):
+            print(ligne)
+        rec = ss.recommandation_swappiness(etat)
+        print(
+            "  "
+            + t("Recommended: {key} = {value}.").format(
+                key=ss.SWAPPINESS, value=rec["swappiness"]
+            )
+        )
+        print(f"  {_message(RAISONS_SWAPPINESS, rec['reason'], {})}")
+        limite = ss.swappiness_max(etat.get("kernel"))
+        reponse = input(
+            t("{key}, 0 to {limit}, Enter for {value}: ").format(
+                key=ss.SWAPPINESS, limit=limite, value=rec["swappiness"]
+            )
+        ).strip()
+        valeur = entier(reponse) if reponse else rec["swappiness"]
+        if valeur is None:
+            print(f"  ⚠ {t('Not a number:')} {affichable(reponse)}")
+            return
+        page_cluster = None
+        if rec["page_cluster"] is not None and self._is_yes(
+            input(
+                t("Also set {key} to {value}? (y/N): ").format(
+                    key=ss.PAGE_CLUSTER, value=rec["page_cluster"]
+                )
+            )
+        ):
+            page_cluster = rec["page_cluster"]
+        self._system_swap_appliquer(
+            ss.plan_swappiness(etat, valeur, page_cluster)
+        )
