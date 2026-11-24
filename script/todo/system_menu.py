@@ -7,6 +7,8 @@ la mémoire d'échange.
 Les faits viennent de system_diagnostic et les candidats de
 system_cleanup ; ce fichier les met en phrases, pose les questions et tient
 le formulaire. Rien n'est effacé sans une case cochée ET une confirmation.
+Les plans de swap viennent de system_swap : ce fichier les montre, et ne
+les lance qu'après un oui.
 
 Mixin de la classe TODO : ses méthodes vivent sur la même instance que
 celles des autres fichiers, elles s'appellent donc par « self. ».
@@ -397,10 +399,56 @@ def choisir_en_ligne(candidats):
     return sorted(set(choisis))
 
 
-# Mémoire d'échange : chaque code d'alerte -> sa clé de traduction. Les
-# champs {…} reçoivent ceux de l'alerte, les tailles déjà écrites par
-# octets().
+# Mémoire d'échange : chaque code que rend system_swap -> sa clé de
+# traduction. Les champs {…} reçoivent les « details » du plan, les tailles
+# déjà écrites par octets().
+RAISONS_SWAP = {
+    "container": (
+        "Container ({virtualization}): the host owns the swap and the zram, "
+        "nothing can be changed from inside."
+    ),
+    "not_active": "{path} is not an active swap.",
+    "zram": "{path} is a zram device, not a disk swap.",
+    "partition": (
+        "{path} is a swap partition: a partition cannot be resized from "
+        "here. A swapfile can be created instead, for instance {suggestion}."
+    ),
+    "partition_shrink": (
+        "{path} is a swap partition: a partition cannot be shrunk from here."
+    ),
+    "below_floor": "{new} is below the minimum of {floor}.",
+    "same_size": "The swap already has this size ({old}).",
+    "not_larger": "{new} is not larger than the current {old}.",
+    "not_smaller": "{new} is not smaller than the current {old}.",
+    "fs_unsupported": "The filesystem {fstype} does not accept a swapfile.",
+    "ram_cannot_absorb": (
+        "{used} of swap is in use, but the system can absorb only "
+        "{capacity} ({available} of available memory, minus a margin of "
+        "{margin}, plus {other_swap_free} free in the other disk swaps): "
+        "turning it off would exhaust the memory. Close programs, then try "
+        "again."
+    ),
+    "disk_unknown": "The free space of {mountpoint} cannot be read.",
+    "disk_full": (
+        "Not enough free disk space: {needed} needed, margin included, "
+        "{free} free. Largest possible size: {max_size}."
+    ),
+    "invalid_path": "Invalid path: {path} (absolute, without ..).",
+    "already_active": "{path} is already an active swap.",
+    "exists": "{path} already exists: choose another path.",
+    "parent_missing": "The directory {parent} does not exist.",
+}
+
 ALERTES_SWAP = {
+    "hibernation": (
+        "Hibernation resumes from this swap (resume={resume}): once the "
+        "file is recreated, resume_offset must be updated or resuming fails."
+    ),
+    "btrfs_snapshot": (
+        "The swapfile sits in the subvolume of {subvolume}: it blocks the "
+        "snapshots of that subvolume. A dedicated subvolume, such as /swap, "
+        "avoids it."
+    ),
     "zram_tools_conflict": (
         "zram-tools is also installed: both tools claim /dev/zram0. Disable "
         "zramswap.service."
@@ -410,7 +458,19 @@ ALERTES_SWAP = {
 TYPES_SWAP = {"file": "swapfile", "partition": "partition", "zram": "zram"}
 
 # Les champs de details qui portent des octets.
-TAILLES_SWAP = {"free"}
+TAILLES_SWAP = {
+    "old",
+    "new",
+    "floor",
+    "used",
+    "available",
+    "margin",
+    "other_swap_free",
+    "capacity",
+    "needed",
+    "free",
+    "max_size",
+}
 
 
 def _champs(details):
@@ -435,6 +495,11 @@ def _message(table, code, details):
     if cle is None:
         return affichable(code) or "?"
     return t(cle).format_map(_champs(details))
+
+
+def message_refus(res):
+    """La phrase qui dit pourquoi un plan de system_swap est refusé."""
+    return _message(RAISONS_SWAP, res["reason"], res["details"])
 
 
 def message_alerte(alerte):
@@ -1044,10 +1109,12 @@ class SystemMenuMixin:
                 print(t("Command not found !"))
 
     def _system_swap(self):
-        """Le sous-menu de la mémoire d'échange : l'état de la mémoire et
-        du swap."""
+        """Le sous-menu de la mémoire d'échange : l'état et le swap sur
+        disque."""
         choices = [
             {"prompt_description": t("State of memory and swap")},
+            {"prompt_description": t("Grow swap")},
+            {"prompt_description": t("Shrink swap")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -1057,9 +1124,236 @@ class SystemMenuMixin:
                 return False
             elif status == "1":
                 self._system_swap_etat()
+            elif status == "2":
+                self._system_swap_redimensionner("grow")
+            elif status == "3":
+                self._system_swap_redimensionner("shrink")
             else:
                 print(t("Command not found !"))
 
     def _system_swap_etat(self, etat=None):
         print("\n".join(lignes_swap(etat or ss.etat())))
         print()
+
+    def _system_swap_choisir(self, cibles):
+        """Le swap sur disque à modifier : le seul s'il n'y en a qu'un,
+        sinon celui dont on tape le numéro ; None pour annuler."""
+        if len(cibles) == 1:
+            return cibles[0]
+        for i, s in enumerate(cibles, 1):
+            print(
+                f"  [{i}] {affichable(s['path']):<24}"
+                f" {t(TYPES_SWAP[s['type']]):<10} {octets(s['size']):>10}"
+                f"  {t('priority')} {s['priority']}"
+            )
+        reponse = input(t("Swap number, Enter to cancel: ")).strip()
+        if reponse.isdigit() and 1 <= int(reponse) <= len(cibles):
+            return cibles[int(reponse) - 1]
+        return None
+
+    def _system_swap_taille(self, defaut=None):
+        """La taille tapée, en octets ; `defaut` sur Entrée, None pour une
+        saisie vide sans défaut ou qui n'est pas une taille."""
+        if defaut:
+            invite = t(
+                "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: "
+            ).format(size=octets(defaut))
+        else:
+            invite = t(
+                "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: "
+            )
+        reponse = input(invite).strip()
+        if not reponse:
+            return defaut
+        taille = ss.parse_taille(reponse)
+        if taille is None:
+            print(f"  ⚠ {t('Not a size:')} {affichable(reponse)}")
+        return taille
+
+    def _system_swap_redimensionner(self, sens):
+        """Agrandir (sens « grow ») ou réduire (« shrink ») un fichier
+        d'échange actif. Sans swap sur disque, agrandir crée un fichier ;
+        une partition ne se redimensionne pas, et agrandir propose alors un
+        fichier en plus."""
+        etat = ss.etat()
+        refus = ss.refus_conteneur(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        cibles = ss.cibles_disque(etat)
+        if not cibles:
+            if sens == "grow":
+                print(
+                    f"  {t('No disk swap is active: a swapfile is created.')}"
+                )
+                self._system_swap_creer(etat)
+            else:
+                print(f"  {t('No disk swap is active: nothing to shrink.')}")
+            return
+        cible = self._system_swap_choisir(cibles)
+        if cible is None:
+            print(f"  {t('Nothing selected.')}")
+            return
+        if cible["type"] != "file":
+            res = ss.plan_redimensionner(
+                etat, cible["path"], cible["size"], sens
+            )
+            print(f"  ⚠ {message_refus(res)}")
+            if res["reason"] == "partition" and self._is_yes(
+                input(t("Create a swapfile instead? (y/N): "))
+            ):
+                self._system_swap_creer(etat)
+            return
+        print(
+            "  "
+            + t("Current size: {size}, {used} in use.").format(
+                size=octets(cible["size"]), used=octets(cible["used"])
+            )
+        )
+        if sens == "grow" and cible.get("max_size"):
+            print(
+                "  "
+                + t("Largest size the free space allows: {size}.").format(
+                    size=octets(cible["max_size"])
+                )
+            )
+        # /proc/swaps compte un fichier sans sa page d'en-tête : la
+        # comparaison se fait en Mio arrondis, comme celle du plan, pour ne
+        # pas proposer la taille qu'il a déjà.
+        rec = etat["recommendation"]["swap"]
+        defaut = None
+        if rec and (
+            (sens == "grow" and ss.mio(rec) > ss.mio(cible["size"]))
+            or (
+                sens == "shrink"
+                and rec >= ss.PLANCHER_SWAP
+                and ss.mio(rec) < ss.mio(cible["size"])
+            )
+        ):
+            defaut = rec
+            print("  " + t("Recommended: {size}.").format(size=octets(rec)))
+        taille = self._system_swap_taille(defaut)
+        if taille is None:
+            return
+        self._system_swap_appliquer(
+            ss.plan_redimensionner(etat, cible["path"], taille, sens)
+        )
+
+    def _system_swap_creer(self, etat):
+        """Créer un fichier d'échange : son chemin (le défaut tient compte
+        de btrfs), sa taille (la recommandation par défaut), puis le
+        plan."""
+        defaut = ss.chemin_par_defaut(etat)
+        if defaut["reason"] == "btrfs_subvolume":
+            print(
+                f"  {t('On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.')}"
+            )
+        chemin = (
+            input(
+                t("Swapfile path, Enter for {path}: ").format(
+                    path=defaut["path"]
+                )
+            ).strip()
+            or defaut["path"]
+        )
+        taille = self._system_swap_taille(etat["recommendation"]["swap"])
+        if taille is None:
+            return
+        self._system_swap_appliquer(ss.plan_creer(etat, chemin, taille))
+
+    def _system_swap_appliquer(self, res):
+        """Le protocole commun des plans de system_swap : le refus et sa
+        raison, ou l'extrait NixOS, ou bien les mises en garde et chaque
+        commande ; puis, sur un oui, les commandes lancées une à une,
+        arrêtées à la première qui échoue, et l'état relu. Rend vrai si
+        tout a réussi."""
+        if not res["ok"]:
+            print(f"  ⚠ {message_refus(res)}")
+            return False
+        details = res["details"]
+        if "old" in details and "new" in details:
+            print(
+                "  "
+                + t("Size: {old} → {new}").format(
+                    old=octets(details["old"]), new=octets(details["new"])
+                )
+            )
+        for alerte in res["warnings"]:
+            print(f"  ⚠ {message_alerte(alerte)}")
+        if res["nix"]:
+            print(
+                f"  {t('NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.')}"
+            )
+            for ligne in res["nix"].splitlines():
+                print(f"    {ligne}")
+            return False
+        if not res["plan"]:
+            print(f"  {t('Nothing to do.')}")
+            return False
+        if details.get("fstab") == "added":
+            print(
+                "  "
+                + t(
+                    "/etc/fstab gets the line « {line} », after a copy to {backup}."
+                ).format_map(_champs(details))
+            )
+        for cmd in res["plan"]:
+            print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+        if not self._is_yes(
+            input(
+                t(
+                    "Run these commands? sudo asks its password in the terminal. (y/N): "
+                )
+            )
+        ):
+            print(f"  {t('Nothing changed.')}")
+            return False
+        reussi = True
+        for i, cmd in enumerate(res["plan"]):
+            # Un statut non nul (mot de passe refusé, commande en échec) ou
+            # un Ctrl-C, qui lève KeyboardInterrupt ici, arrêtent le plan :
+            # les commandes suivantes supposent celle-ci faite.
+            try:
+                statut = self.execute.exec_command_live(
+                    shlex.join(cmd), source_erplibre=False
+                )
+                message = t("Command failed:")
+            except KeyboardInterrupt:
+                statut = 1
+                message = t("Interrupted at:")
+            if statut:
+                print(f"\n  ⚠ {message} {shlex.join(cmd)}")
+                suite = res["plan"][i + 1 :]
+                if suite:
+                    print(f"  {t('Not run:')}")
+                    for reste in suite:
+                        print(f"    {shlex.join(reste)}")
+                self._system_swap_reprise(res, i)
+                reussi = False
+                break
+        if reussi:
+            print(f"  ✓ {t('Done.')}")
+        print()
+        # btrfs ne publie l'espace d'un fichier créé qu'à la validation de
+        # sa transaction, 30 secondes au plus par défaut : sans sync, l'état
+        # relu montrerait l'espace libre d'avant la création.
+        os.sync()
+        self._system_swap_etat()
+        return reussi
+
+    def _system_swap_reprise(self, res, echec):
+        """Après l'échec de l'étape `echec`, les commandes qui
+        reconstruisent le swap quand le plan en porte (details
+        recovery_from) et que l'échec suit son extinction."""
+        depuis = res["details"].get("recovery_from")
+        if depuis is None or echec < depuis:
+            return
+        print(
+            "  "
+            + t(
+                "{path} is no longer an active swap, and its file may be "
+                "missing or incomplete. To rebuild it, run:"
+            ).format_map(_champs(res["details"]))
+        )
+        for cmd in res["plan"][depuis:]:
+            print(f"    {shlex.join(cmd)}")

@@ -24590,6 +24590,14 @@ TRANSLATIONS = {
         "fr": "📊 État de la mémoire et du swap",
         "en": "📊 State of memory and swap",
     },
+    "Grow swap": {
+        "fr": "⬆ Agrandir le swap",
+        "en": "⬆ Grow swap",
+    },
+    "Shrink swap": {
+        "fr": "⬇ Réduire le swap",
+        "en": "⬇ Shrink swap",
+    },
     "zram": {
         "fr": "zram",
         "en": "zram",
@@ -24634,6 +24642,10 @@ TRANSLATIONS = {
         "fr": "Swap sur disque",
         "en": "Disk swap",
     },
+    "Done.": {
+        "fr": "Terminé.",
+        "en": "Done.",
+    },
     "No active swap.": {
         "fr": "Aucun swap actif.",
         "en": "No active swap.",
@@ -24641,6 +24653,10 @@ TRANSLATIONS = {
     "No zram device.": {
         "fr": "Aucun appareil zram.",
         "en": "No zram device.",
+    },
+    "Not a size:": {
+        "fr": "Ce n'est pas une taille :",
+        "en": "Not a size:",
     },
     "created, not configured": {
         "fr": "créé, non configuré",
@@ -24701,6 +24717,158 @@ TRANSLATIONS = {
     "The free disk space lets the swap grow by up to {size}.": {
         "fr": "L'espace disque libre permet d'agrandir le swap de {size} au plus.",
         "en": "The free disk space lets the swap grow by up to {size}.",
+    },
+    "Swap number, Enter to cancel: ": {
+        "fr": "Numéro du swap, Entrée pour annuler : ",
+        "en": "Swap number, Enter to cancel: ",
+    },
+    "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: ": {
+        "fr": "Nouvelle taille, en 16G ou 16 Gio, 512M ou 512 Mio (un nombre seul est en Mio), Entrée pour {size} : ",
+        "en": "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter for {size}: ",
+    },
+    "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: ": {
+        "fr": "Nouvelle taille, en 16G ou 16 Gio, 512M ou 512 Mio (un nombre seul est en Mio), Entrée pour annuler : ",
+        "en": "New size, as 16G or 16 GiB, 512M or 512 MiB (a bare number is MiB), Enter to cancel: ",
+    },
+    "No disk swap is active: a swapfile is created.": {
+        "fr": "Aucun swap sur disque actif : un fichier d'échange est créé.",
+        "en": "No disk swap is active: a swapfile is created.",
+    },
+    "No disk swap is active: nothing to shrink.": {
+        "fr": "Aucun swap sur disque actif : rien à réduire.",
+        "en": "No disk swap is active: nothing to shrink.",
+    },
+    "Create a swapfile instead? (y/N): ": {
+        "fr": "Créer plutôt un fichier d'échange ? (o/N) : ",
+        "en": "Create a swapfile instead? (y/N): ",
+    },
+    "Current size: {size}, {used} in use.": {
+        "fr": "Taille actuelle : {size}, {used} utilisés.",
+        "en": "Current size: {size}, {used} in use.",
+    },
+    "Largest size the free space allows: {size}.": {
+        "fr": "Plus grande taille que l'espace libre permet : {size}.",
+        "en": "Largest size the free space allows: {size}.",
+    },
+    "Recommended: {size}.": {
+        "fr": "Recommandé : {size}.",
+        "en": "Recommended: {size}.",
+    },
+    "On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.": {
+        "fr": "Sur btrfs, le fichier d'échange va dans un sous-volume à lui : un fichier d'échange bloque les instantanés du sous-volume qui le contient.",
+        "en": "On btrfs, the swapfile goes in a subvolume of its own: a swapfile blocks the snapshots of the subvolume that holds it.",
+    },
+    "Swapfile path, Enter for {path}: ": {
+        "fr": "Chemin du fichier d'échange, Entrée pour {path} : ",
+        "en": "Swapfile path, Enter for {path}: ",
+    },
+    "Size: {old} → {new}": {
+        "fr": "Taille : {old} → {new}",
+        "en": "Size: {old} → {new}",
+    },
+    "NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.": {
+        "fr": "NixOS se configure de façon déclarative : ajoutez ceci à /etc/nixos/configuration.nix, puis reconstruisez.",
+        "en": "NixOS is configured declaratively: add this to /etc/nixos/configuration.nix, then rebuild.",
+    },
+    "/etc/fstab gets the line « {line} », after a copy to {backup}.": {
+        "fr": "/etc/fstab reçoit la ligne « {line} », après une copie dans {backup}.",
+        "en": "/etc/fstab gets the line « {line} », after a copy to {backup}.",
+    },
+    "Run these commands? sudo asks its password in the terminal. (y/N): ": {
+        "fr": "Lancer ces commandes ? sudo demande son mot de passe dans le terminal. (o/N) : ",
+        "en": "Run these commands? sudo asks its password in the terminal. (y/N): ",
+    },
+    "Command failed:": {
+        "fr": "Commande en échec :",
+        "en": "Command failed:",
+    },
+    "Not run:": {
+        "fr": "Non lancées :",
+        "en": "Not run:",
+    },
+    "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.": {
+        "fr": "Conteneur ({virtualization}) : le swap et la zram appartiennent à l'hôte, rien ne se change de l'intérieur.",
+        "en": "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.",
+    },
+    "{path} is a swap partition: a partition cannot be shrunk from here.": {
+        "fr": "{path} est une partition de swap : une partition ne se réduit pas d'ici.",
+        "en": "{path} is a swap partition: a partition cannot be shrunk from here.",
+    },
+    "Interrupted at:": {
+        "fr": "Interrompu à :",
+        "en": "Interrupted at:",
+    },
+    "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:": {
+        "fr": "{path} n'est plus un swap actif, et son fichier peut manquer ou être incomplet. Pour le reconstruire, lancer :",
+        "en": "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:",
+    },
+    "{path} is not an active swap.": {
+        "fr": "{path} n'est pas un swap actif.",
+        "en": "{path} is not an active swap.",
+    },
+    "{path} is a zram device, not a disk swap.": {
+        "fr": "{path} est un appareil zram, pas un swap sur disque.",
+        "en": "{path} is a zram device, not a disk swap.",
+    },
+    "{path} is a swap partition: a partition cannot be resized from here. A swapfile can be created instead, for instance {suggestion}.": {
+        "fr": "{path} est une partition de swap : une partition ne se redimensionne pas d'ici. Un fichier d'échange peut se créer à la place, par exemple {suggestion}.",
+        "en": "{path} is a swap partition: a partition cannot be resized from here. A swapfile can be created instead, for instance {suggestion}.",
+    },
+    "{new} is below the minimum of {floor}.": {
+        "fr": "{new} est sous le minimum de {floor}.",
+        "en": "{new} is below the minimum of {floor}.",
+    },
+    "The swap already has this size ({old}).": {
+        "fr": "Le swap a déjà cette taille ({old}).",
+        "en": "The swap already has this size ({old}).",
+    },
+    "{new} is not larger than the current {old}.": {
+        "fr": "{new} n'est pas plus grand que l'actuel {old}.",
+        "en": "{new} is not larger than the current {old}.",
+    },
+    "{new} is not smaller than the current {old}.": {
+        "fr": "{new} n'est pas plus petit que l'actuel {old}.",
+        "en": "{new} is not smaller than the current {old}.",
+    },
+    "The filesystem {fstype} does not accept a swapfile.": {
+        "fr": "Le système de fichiers {fstype} n'accepte pas de fichier d'échange.",
+        "en": "The filesystem {fstype} does not accept a swapfile.",
+    },
+    "{used} of swap is in use, but the system can absorb only {capacity} ({available} of available memory, minus a margin of {margin}, plus {other_swap_free} free in the other disk swaps): turning it off would exhaust the memory. Close programs, then try again.": {
+        "fr": "{used} de swap sont utilisés, mais le système n'en absorbe que {capacity} ({available} de mémoire disponible, moins une marge de {margin}, plus {other_swap_free} libres dans les autres swaps sur disque) : l'éteindre épuiserait la mémoire. Fermez des programmes, puis réessayez.",
+        "en": "{used} of swap is in use, but the system can absorb only {capacity} ({available} of available memory, minus a margin of {margin}, plus {other_swap_free} free in the other disk swaps): turning it off would exhaust the memory. Close programs, then try again.",
+    },
+    "The free space of {mountpoint} cannot be read.": {
+        "fr": "L'espace libre de {mountpoint} ne se lit pas.",
+        "en": "The free space of {mountpoint} cannot be read.",
+    },
+    "Not enough free disk space: {needed} needed, margin included, {free} free. Largest possible size: {max_size}.": {
+        "fr": "Espace disque insuffisant : {needed} nécessaires, marge comprise, {free} libres. Plus grande taille possible : {max_size}.",
+        "en": "Not enough free disk space: {needed} needed, margin included, {free} free. Largest possible size: {max_size}.",
+    },
+    "Invalid path: {path} (absolute, without ..).": {
+        "fr": "Chemin invalide : {path} (absolu, sans ..).",
+        "en": "Invalid path: {path} (absolute, without ..).",
+    },
+    "{path} is already an active swap.": {
+        "fr": "{path} est déjà un swap actif.",
+        "en": "{path} is already an active swap.",
+    },
+    "{path} already exists: choose another path.": {
+        "fr": "{path} existe déjà : choisissez un autre chemin.",
+        "en": "{path} already exists: choose another path.",
+    },
+    "The directory {parent} does not exist.": {
+        "fr": "Le répertoire {parent} n'existe pas.",
+        "en": "The directory {parent} does not exist.",
+    },
+    "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.": {
+        "fr": "L'hibernation reprend depuis ce swap (resume={resume}) : une fois le fichier recréé, resume_offset doit être mis à jour, sinon la reprise échoue.",
+        "en": "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.",
+    },
+    "The swapfile sits in the subvolume of {subvolume}: it blocks the snapshots of that subvolume. A dedicated subvolume, such as /swap, avoids it.": {
+        "fr": "Le fichier d'échange est dans le sous-volume de {subvolume} : il en bloque les instantanés. Un sous-volume dédié, comme /swap, l'évite.",
+        "en": "The swapfile sits in the subvolume of {subvolume}: it blocks the snapshots of that subvolume. A dedicated subvolume, such as /swap, avoids it.",
     },
     "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.": {
         "fr": "zram-tools est aussi installé : les deux outils réclament /dev/zram0. Désactivez zramswap.service.",

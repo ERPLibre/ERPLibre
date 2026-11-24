@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""La mémoire d'échange : lecture de l'état.
+"""La mémoire d'échange : lecture de l'état, plans de swap.
 
 Chaque test fabrique sa racine (/proc, /sys, /etc) dans un répertoire
-temporaire ; shutil.disk_usage est remplacé, et subprocess.run lève : un
-test ne lit rien de la machine qui le lance et n'exécute rien.
+temporaire ; shutil.disk_usage, shutil.which et les commandes lues sont
+remplacés, et subprocess.run lève : un test ne lit rien de la machine qui
+le lance et n'exécute rien.
 """
 
 import collections
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,10 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo import system_swap as ss  # noqa: E402
+
+# Le vrai subprocess.run, avant que chaque Racine ne le remplace : seul le
+# test qui joue la commande de fstab sur une copie s'en sert.
+REEL_RUN = subprocess.run
 
 MIO = ss.MIO
 GIO = ss.GIO
@@ -50,6 +56,14 @@ OS_RELEASE = {
     "opensuse": 'ID="opensuse-tumbleweed"\nID_LIKE="opensuse suse"\n',
     "nixos": "ID=nixos\n",
 }
+BINAIRE = {
+    "arch": "pacman",
+    "debian": "apt-get",
+    "ubuntu": "apt-get",
+    "fedora": "dnf",
+    "opensuse": "zypper",
+    "nixos": "nix-shell",
+}
 
 
 def swaps(*lignes):
@@ -69,7 +83,10 @@ class Racine:
         test.addCleanup(self.tmp.cleanup)
         self.chemin = self.tmp.name
         self.libre = {}
+        self.binaires = {BINAIRE[distro]}
+        self.sorties = {}
         self.ecrire("/etc/os-release", OS_RELEASE[distro])
+        self.ecrire("/etc/fstab", "/dev/vda1 / ext4 defaults 0 1\n")
         self.ecrire("/proc/cmdline", "root=/dev/vda1 rw quiet\n")
         self.ecrire("/proc/self/mountinfo", MOUNTINFO_EXT4)
         self.ecrire("/proc/swaps", swaps())
@@ -107,16 +124,72 @@ class Racine:
                 raise OSError("absent")
             return Usage(100 * GIO, 0, self.libre[point])
 
+        def commande(args, timeout=5, codes_ok=(0,)):
+            return self.sorties.get(args[0])
+
         def interdit(*a, **k):
             raise AssertionError("subprocess.run appelé pendant un test")
 
         return [
             mock.patch.object(ss.shutil, "disk_usage", side_effect=disk_usage),
+            mock.patch.object(
+                ss.shutil,
+                "which",
+                side_effect=lambda b: (
+                    f"/usr/bin/{b}" if b in self.binaires else None
+                ),
+            ),
+            mock.patch.object(ss, "commande", side_effect=commande),
             mock.patch.object(subprocess, "run", side_effect=interdit),
         ]
 
     def etat(self):
         return ss.etat(self.chemin)
+
+
+class TestParseTaille(unittest.TestCase):
+    def test_accepted_forms(self):
+        self.assertEqual(ss.parse_taille("4G"), 4 * GIO)
+        self.assertEqual(ss.parse_taille("4GiB"), 4 * GIO)
+        self.assertEqual(ss.parse_taille("4 gb"), 4 * GIO)
+        self.assertEqual(ss.parse_taille("512M"), 512 * MIO)
+        self.assertEqual(ss.parse_taille("1.5G"), 1536 * MIO)
+        self.assertEqual(ss.parse_taille("1,5G"), 1536 * MIO)
+        self.assertEqual(ss.parse_taille("2048"), 2 * GIO)
+        self.assertEqual(ss.parse_taille("1T"), 1024 * GIO)
+
+    def test_french_suffixes_and_the_menu_own_output(self):
+        """Le menu écrit « 8.0 Gio » : la recopier doit se relire."""
+        self.assertEqual(ss.parse_taille("8.0 Gio"), 8 * GIO)
+        self.assertEqual(ss.parse_taille("4 Gio"), 4 * GIO)
+        self.assertEqual(ss.parse_taille("4Go"), 4 * GIO)
+        self.assertEqual(ss.parse_taille("512 Mio"), 512 * MIO)
+        self.assertEqual(ss.parse_taille("512mo"), 512 * MIO)
+        self.assertEqual(ss.parse_taille("1 Tio"), 1024 * GIO)
+        self.assertEqual(ss.parse_taille("2Gi"), 2 * GIO)
+
+    def test_rounds_down_to_mib(self):
+        self.assertEqual(ss.parse_taille("1.0001G"), 1024 * MIO)
+
+    def test_rejects_nonsense(self):
+        for texte in (
+            None,
+            "",
+            "abc",
+            "-4G",
+            "0",
+            "0G",
+            "4X",
+            "4 G G",
+            "nan",
+            "inf",
+            "1e3",
+            "100K",
+            "100000T",
+            "4 Gibo",
+            "4 oG",
+        ):
+            self.assertIsNone(ss.parse_taille(texte), texte)
 
 
 class TestLecture(unittest.TestCase):
@@ -214,6 +287,10 @@ class TestLecture(unittest.TestCase):
         self.assertEqual(hib["swap"], 20 * GIO)
         self.assertEqual(hib["basis"], "hibernation")
         self.assertIsNone(rec(None)["swap"])
+
+    def test_btrfs_version(self):
+        self.assertEqual(ss.version_btrfs("btrfs-progs v6.6.3\n"), (6, 6))
+        self.assertIsNone(ss.version_btrfs(None))
 
 
 class TestPersistanceZram(unittest.TestCase):
@@ -335,19 +412,60 @@ class TestEtat(unittest.TestCase):
             "/proc/cmdline", "root=/dev/vda1 resume=UUID=ab resume_offset=9\n"
         )
         r.libre = {"/": 20 * GIO}
+        r.sorties["systemd-detect-virt"] = "none\n"
         e = r.etat()
         self.assertEqual(e["memory"]["total"], 8 * GIO)
         self.assertEqual(e["memory"]["available"], 6 * GIO)
         fichier, zram = e["swaps"]
         self.assertEqual(fichier["fs"]["fstype"], "ext4")
         self.assertEqual(fichier["free"], 20 * GIO)
+        self.assertEqual(fichier["max_size"], fichier["size"] + 19 * GIO)
         self.assertTrue(fichier["hibernation"])
         self.assertFalse(zram["hibernation"])
         self.assertIsNone(zram["fs"])
         self.assertTrue(e["zram"][0]["active"])
         self.assertEqual(e["root_fs"]["mountpoint"], "/")
         self.assertEqual(e["root_free"], 20 * GIO)
+        self.assertEqual(e["manager"], "pacman")
+        self.assertIsNone(e["virtualization"])
+        self.assertFalse(e["btrfs_mkswapfile"])
         self.assertEqual(e["recommendation"]["basis"], "hibernation")
+        self.assertEqual(
+            ss.chemin_par_defaut(e), {"path": "/swapfile", "reason": None}
+        )
+
+    def test_vm_and_btrfs(self):
+        r = Racine(self)
+        r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        r.binaires.add("btrfs")
+        r.sorties["btrfs"] = "btrfs-progs v6.1\n"
+        r.sorties["systemd-detect-virt"] = "kvm\n"
+        e = r.etat()
+        self.assertTrue(e["btrfs_mkswapfile"])
+        self.assertEqual(e["virtualization"], "kvm")
+        self.assertIsNone(e["root_free"])
+        self.assertEqual(ss.chemin_par_defaut(e)["path"], "/swap/swapfile")
+        r.sorties["btrfs"] = "btrfs-progs v5.16.2\n"
+        self.assertFalse(r.etat()["btrfs_mkswapfile"])
+        self.assertFalse(e["container"])
+
+    def test_container_refuses_every_plan(self):
+        """Dans un conteneur, swapon échoue faute de droits : aucun plan ne
+        se propose, pas même la création d'un fichier."""
+        r = Racine(self)
+        r.libre = {"/": 20 * GIO}
+        r.sorties["systemd-detect-virt"] = "lxc\n"
+        r.ecrire("/proc/swaps", swaps(("none", "virtual", 2097148, 0, 0)))
+        e = r.etat()
+        self.assertTrue(e["container"])
+        self.assertEqual(e["virtualization"], "lxc")
+        for res in (
+            ss.plan_redimensionner(e, "none", 4 * GIO, "grow"),
+            ss.plan_creer(e, "/swapfile", 2 * GIO),
+        ):
+            self.assertEqual(res["reason"], "container")
+            self.assertEqual(res["details"]["virtualization"], "lxc")
+            self.assertEqual(res["plan"], [])
 
     def test_swap_growth_uses_swapfile_filesystem(self):
         r = Racine(self)
@@ -358,6 +476,413 @@ class TestEtat(unittest.TestCase):
         self.assertEqual(ss.croissance_swap(r.etat()), 2 * GIO)
         r.libre = {}
         self.assertIsNone(ss.croissance_swap(r.etat()))
+
+
+class TestRedimensionner(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+        self.r.libre = {"/": 20 * GIO, "/data": 3 * GIO}
+
+    def avec(self, *lignes):
+        self.r.ecrire("/proc/swaps", swaps(*lignes))
+        return self.r.etat()
+
+    def test_grow_ext4_uses_fallocate(self):
+        e = self.avec(("/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/swapfile", 4 * GIO, "grow")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["plan"],
+            [
+                ["sudo", "swapoff", "/swapfile"],
+                ["sudo", "rm", "-f", "/swapfile"],
+                ["sudo", "fallocate", "-l", "4096MiB", "/swapfile"],
+                ["sudo", "chmod", "600", "/swapfile"],
+                ["sudo", "mkswap", "/swapfile"],
+                ["sudo", "swapon", "/swapfile"],
+            ],
+        )
+        self.assertEqual(res["details"]["new"], 4 * GIO)
+        self.assertEqual(res["warnings"], [])
+        depuis = res["details"]["recovery_from"]
+        self.assertEqual(
+            res["plan"][depuis], ["sudo", "rm", "-f", "/swapfile"]
+        )
+
+    def test_shrink_keeps_explicit_priority(self):
+        e = self.avec(("/swapfile", "file", 4194300, 0, 10))
+        res = ss.plan_redimensionner(e, "/swapfile", 1 * GIO, "shrink")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["plan"][-1], ["sudo", "swapon", "-p", "10", "/swapfile"]
+        )
+
+    def test_direction_and_floor(self):
+        e = self.avec(("/swapfile", "file", 2097148, 0, -2))
+        r = ss.plan_redimensionner
+        self.assertEqual(
+            r(e, "/swapfile", GIO, "grow")["reason"], "not_larger"
+        )
+        self.assertEqual(
+            r(e, "/swapfile", 3 * GIO, "shrink")["reason"], "not_smaller"
+        )
+        self.assertEqual(r(e, "/swapfile", 2 * GIO)["reason"], "same_size")
+        self.assertEqual(r(e, "/swapfile", 128 * MIO)["reason"], "below_floor")
+        self.assertEqual(r(e, "/nope", 3 * GIO)["reason"], "not_active")
+
+    def test_partition_cannot_be_resized(self):
+        e = self.avec(("/dev/vda3", "partition", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/dev/vda3", 4 * GIO)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason"], "partition")
+        self.assertEqual(res["details"]["suggestion"], "/swapfile")
+        self.assertEqual(res["plan"], [])
+        reduire = ss.plan_redimensionner(e, "/dev/vda3", GIO, "shrink")
+        self.assertEqual(reduire["reason"], "partition_shrink")
+        self.assertNotIn("suggestion", reduire["details"])
+
+    def test_zram_is_refused(self):
+        e = self.avec(("/dev/zram0", "partition", 2097148, 0, 100))
+        self.assertEqual(
+            ss.plan_redimensionner(e, "/dev/zram0", 4 * GIO)["reason"], "zram"
+        )
+
+    def test_ram_cannot_absorb_used_swap(self):
+        self.r.memoire(8 * GIO, 1 * GIO)
+        e = self.avec(("/swapfile", "file", 4194300, 2 * 1024 * 1024, -2))
+        res = ss.plan_redimensionner(e, "/swapfile", 6 * GIO)
+        self.assertEqual(res["reason"], "ram_cannot_absorb")
+        self.assertEqual(res["details"]["used"], 2 * GIO)
+        self.assertEqual(res["details"]["capacity"], GIO - ss.MARGE_MEMOIRE)
+
+    def test_free_space_in_other_disk_swap_counts_but_zram_does_not(self):
+        self.r.memoire(8 * GIO, 1 * GIO)
+        e = self.avec(
+            ("/swapfile", "file", 4194300, 2 * 1024 * 1024, -2),
+            ("/dev/zram0", "partition", 8388604, 0, 100),
+        )
+        self.assertEqual(
+            ss.plan_redimensionner(e, "/swapfile", 6 * GIO)["reason"],
+            "ram_cannot_absorb",
+        )
+        e = self.avec(
+            ("/swapfile", "file", 4194300, 2 * 1024 * 1024, -2),
+            ("/dev/vda3", "partition", 4194300, 0, -3),
+        )
+        self.assertTrue(ss.plan_redimensionner(e, "/swapfile", 6 * GIO)["ok"])
+
+    def test_disk_full(self):
+        e = self.avec(("/data/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/data/swapfile", 5 * GIO, "grow")
+        self.assertEqual(res["reason"], "disk_full")
+        self.assertEqual(res["details"]["free"], 3 * GIO)
+        self.assertEqual(
+            res["details"]["needed"],
+            5 * GIO - 2097148 * 1024 + ss.MARGE_DISQUE,
+        )
+        ok = ss.plan_redimensionner(e, "/data/swapfile", 3584 * MIO, "grow")
+        self.assertTrue(ok["ok"], ok)
+        self.assertIn(
+            ["sudo", "fallocate", "-l", "3584MiB", "/data/swapfile"],
+            ok["plan"],
+        )
+
+    def test_shrink_needs_no_free_space(self):
+        self.r.libre = {}
+        e = self.avec(("/swapfile", "file", 4194300, 0, -2))
+        self.assertTrue(ss.plan_redimensionner(e, "/swapfile", GIO)["ok"])
+        self.assertEqual(
+            ss.plan_redimensionner(e, "/swapfile", 8 * GIO)["reason"],
+            "disk_unknown",
+        )
+
+    def test_btrfs_mkswapfile_or_nocow_fallback(self):
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        self.r.binaires.add("btrfs")
+        self.r.sorties["btrfs"] = "btrfs-progs v6.6.3"
+        e = self.avec(("/swap/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/swap/swapfile", 4 * GIO)
+        self.assertEqual(
+            res["plan"][2:],
+            [
+                [
+                    "sudo",
+                    "btrfs",
+                    "filesystem",
+                    "mkswapfile",
+                    "--size",
+                    "4096m",
+                    "/swap/swapfile",
+                ],
+                ["sudo", "chmod", "600", "/swap/swapfile"],
+                ["sudo", "swapon", "/swap/swapfile"],
+            ],
+        )
+        self.r.sorties["btrfs"] = "btrfs-progs v5.10"
+        e = self.r.etat()
+        res = ss.plan_redimensionner(e, "/swap/swapfile", 4 * GIO)
+        self.assertEqual(
+            [c[1] for c in res["plan"]],
+            [
+                "swapoff",
+                "rm",
+                "truncate",
+                "chattr",
+                "fallocate",
+                "chmod",
+                "mkswap",
+                "swapon",
+            ],
+        )
+
+    def test_other_filesystem_uses_dd(self):
+        self.r.ecrire(
+            "/proc/self/mountinfo",
+            "22 1 254:1 / / rw - f2fs /dev/vda1 rw\n",
+        )
+        e = self.avec(("/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/swapfile", 3 * GIO)
+        self.assertIn(
+            [
+                "sudo",
+                "dd",
+                "if=/dev/zero",
+                "of=/swapfile",
+                "bs=1M",
+                "count=3072",
+                "status=progress",
+            ],
+            res["plan"],
+        )
+
+    def test_unsupported_filesystem(self):
+        self.r.ecrire(
+            "/proc/self/mountinfo",
+            "22 1 0:40 / / rw - zfs pool/root rw\n",
+        )
+        e = self.avec(("/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/swapfile", 3 * GIO)
+        self.assertEqual(res["reason"], "fs_unsupported")
+        self.assertEqual(res["details"]["fstype"], "zfs")
+
+    def test_hibernation_warning(self):
+        self.r.ecrire("/proc/cmdline", "resume=UUID=ab resume_offset=1234\n")
+        e = self.avec(("/swapfile", "file", 2097148, 0, -2))
+        res = ss.plan_redimensionner(e, "/swapfile", 3 * GIO)
+        self.assertTrue(res["ok"])
+        self.assertEqual(
+            res["warnings"], [{"code": "hibernation", "resume": "UUID=ab"}]
+        )
+
+    def test_nixos_gets_a_snippet(self):
+        r = Racine(self, "nixos")
+        r.ecrire("/proc/swaps", swaps(("/swapfile", "file", 2097148, 0, -2)))
+        res = ss.plan_redimensionner(r.etat(), "/swapfile", 3 * GIO)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["reason"], "nixos")
+        self.assertEqual(res["plan"], [])
+        self.assertIn('device = "/swapfile"; size = 3072;', res["nix"])
+
+
+class TestCreer(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+        self.r.libre = {"/": 20 * GIO, "/data": 3 * GIO}
+
+    def test_create_on_ext4_and_add_fstab_line(self):
+        res = ss.plan_creer(
+            self.r.etat(), "/swapfile", 2 * GIO, "20260101-000000"
+        )
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["plan"],
+            [
+                ["sudo", "test", "!", "-e", "/swapfile"],
+                ["sudo", "fallocate", "-l", "2048MiB", "/swapfile"],
+                ["sudo", "chmod", "600", "/swapfile"],
+                ["sudo", "mkswap", "/swapfile"],
+                ["sudo", "swapon", "/swapfile"],
+                [
+                    "sudo",
+                    "cp",
+                    "-a",
+                    "/etc/fstab",
+                    "/etc/fstab.bak-20260101-000000",
+                ],
+                [
+                    "sudo",
+                    "sh",
+                    "-c",
+                    '[ -z "$(tail -c 1 /etc/fstab)" ] || echo >> /etc/fstab; '
+                    "printf '%s\\n' '/swapfile none swap defaults 0 0'"
+                    " >> /etc/fstab",
+                ],
+            ],
+        )
+        self.assertEqual(res["details"]["fstab"], "added")
+
+    @unittest.skipUnless(
+        shutil.which("sh") and shutil.which("tail"), "sh et tail requis"
+    )
+    def test_fstab_append_never_glues_onto_the_last_line(self):
+        """La commande du plan, lancée sur une copie : un fstab sans saut
+        de ligne final, un fstab qui en a un, un fstab vide."""
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        script = res["plan"][-1][3]
+        ligne = "/swapfile none swap defaults 0 0\n"
+        racine_ligne = "UUID=0000-test / ext4 defaults 0 1"
+        cas = {
+            racine_ligne: racine_ligne + "\n" + ligne,
+            racine_ligne + "\n": racine_ligne + "\n" + ligne,
+            "": ligne,
+        }
+        for avant, apres in cas.items():
+            with self.subTest(avant=avant):
+                copie = os.path.join(self.r.chemin, "fstab-copie")
+                with open(copie, "w") as fh:
+                    fh.write(avant)
+                with mock.patch.object(subprocess, "run", new=REEL_RUN):
+                    subprocess.run(
+                        ["sh", "-c", script.replace("/etc/fstab", copie)],
+                        check=True,
+                    )
+                with open(copie) as fh:
+                    self.assertEqual(fh.read(), apres)
+
+    def test_creation_refuses_a_file_it_cannot_see(self):
+        """lexists ne voit pas dans un répertoire non traversable : la
+        première commande, lancée avec sudo, refuse un fichier existant."""
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        self.assertEqual(
+            res["plan"][0], ["sudo", "test", "!", "-e", "/swapfile"]
+        )
+        ecrit = [
+            c for c in res["plan"] if c[1] in ("fallocate", "dd", "mkswap")
+        ]
+        self.assertTrue(ecrit)
+
+    def test_existing_fstab_line_is_not_duplicated(self):
+        self.r.ecrire(
+            "/etc/fstab",
+            "#/swapfile none swap defaults 0 0\n/swapfile none swap sw 0 0\n",
+        )
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        self.assertEqual(res["details"]["fstab"], "present")
+        self.assertFalse(any("/etc/fstab" in c for c in res["plan"]))
+
+    def test_commented_fstab_line_does_not_count(self):
+        self.r.ecrire("/etc/fstab", "# /swapfile none swap defaults 0 0\n")
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        self.assertEqual(res["details"]["fstab"], "added")
+
+    def test_path_with_space_is_escaped_in_fstab(self):
+        os.makedirs(self.r.sous("/swap dir"))
+        res = ss.plan_creer(self.r.etat(), "/swap dir/f", 2 * GIO)
+        self.assertEqual(
+            res["details"]["line"], "/swap\\040dir/f none swap defaults 0 0"
+        )
+        self.assertTrue(
+            ss.dans_fstab(res["details"]["line"] + "\n", "/swap dir/f")
+        )
+
+    def test_btrfs_default_creates_a_subvolume(self):
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        self.r.binaires.add("btrfs")
+        self.r.sorties["btrfs"] = "btrfs-progs v6.6.3"
+        e = self.r.etat()
+        chemin = ss.chemin_par_defaut(e)["path"]
+        res = ss.plan_creer(e, chemin, 2 * GIO, "x")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["plan"][1], ["sudo", "btrfs", "subvolume", "create", "/swap"]
+        )
+        self.assertEqual(
+            res["plan"][2][1:4], ["btrfs", "filesystem", "mkswapfile"]
+        )
+        self.assertEqual(res["warnings"], [])
+
+    def sous_volumes(self, *chemins):
+        """Les répertoires (chemins du système fabriqué) qui passent pour
+        des racines de sous-volume btrfs."""
+        reels = {self.r.sous(c).rstrip("/") for c in chemins}
+        return mock.patch.object(
+            ss,
+            "_est_racine_sous_volume",
+            side_effect=lambda p: p.rstrip("/") in reels,
+        )
+
+    def test_btrfs_plain_directory_warns_about_the_root_subvolume(self):
+        """/swap existe, simple répertoire du sous-volume de « / » : le
+        fichier y bloque les instantanés de la racine."""
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        os.makedirs(self.r.sous("/swap"))
+        with self.sous_volumes():
+            res = ss.plan_creer(self.r.etat(), "/swap/swapfile", 2 * GIO)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["warnings"], [{"code": "btrfs_snapshot", "subvolume": "/"}]
+        )
+
+    def test_btrfs_dedicated_empty_subvolume_does_not_warn(self):
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        os.makedirs(self.r.sous("/swap"))
+        with self.sous_volumes("/swap"):
+            res = ss.plan_creer(self.r.etat(), "/swap/swapfile", 2 * GIO)
+        self.assertEqual(res["warnings"], [])
+
+    def test_btrfs_subvolume_holding_other_files_warns(self):
+        """@home, monté sur /home, porte d'autres fichiers : un swapfile à
+        sa racine en bloque les instantanés."""
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        self.r.libre["/home"] = 20 * GIO
+        self.r.ecrire("/home/user-test/notes.txt", "")
+        with self.sous_volumes("/home"):
+            res = ss.plan_creer(self.r.etat(), "/home/swapfile", 2 * GIO)
+        self.assertEqual(
+            res["warnings"],
+            [{"code": "btrfs_snapshot", "subvolume": "/home"}],
+        )
+
+    def test_btrfs_root_subvolume_warns_about_snapshots(self):
+        self.r.ecrire("/proc/self/mountinfo", MOUNTINFO_BTRFS)
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            res["warnings"], [{"code": "btrfs_snapshot", "subvolume": "/"}]
+        )
+
+    def test_refusals(self):
+        e = self.r.etat()
+        self.r.ecrire("/old_swapfile", "")
+        c = ss.plan_creer
+        self.assertEqual(c(e, "swapfile", GIO)["reason"], "invalid_path")
+        self.assertEqual(c(e, "/a/../swapfile", GIO)["reason"], "invalid_path")
+        self.assertEqual(c(e, "/old_swapfile", GIO)["reason"], "exists")
+        self.assertEqual(c(e, "/swapfile", 100 * MIO)["reason"], "below_floor")
+        self.assertEqual(
+            c(e, "/tmp/swapfile", GIO)["reason"], "fs_unsupported"
+        )
+        self.assertEqual(
+            c(e, "/no/dir/swapfile", GIO)["reason"], "parent_missing"
+        )
+        os.makedirs(self.r.sous("/data"))
+        full = c(e, "/data/swapfile", 3 * GIO)
+        self.assertEqual(full["reason"], "disk_full")
+        self.assertEqual(full["details"]["max_size"], 2 * GIO)
+
+    def test_already_active(self):
+        self.r.ecrire(
+            "/proc/swaps", swaps(("/swapfile", "file", 2097148, 0, -2))
+        )
+        res = ss.plan_creer(self.r.etat(), "/swapfile", 2 * GIO)
+        self.assertEqual(res["reason"], "already_active")
+
+    def test_nixos(self):
+        r = Racine(self, "nixos")
+        res = ss.plan_creer(r.etat(), "/swapfile", 4 * GIO)
+        self.assertEqual(res["reason"], "nixos")
+        self.assertIn("size = 4096;", res["nix"])
+        self.assertIn("nixos-rebuild switch", res["nix"])
 
 
 if __name__ == "__main__":
