@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le sous-menu Mémoire Swap : l'état en lignes, les phrases des refus, le
 protocole des plans (rien sans oui, arrêt au premier échec), le choix du
-swap à modifier.
+swap à modifier et la zram.
 
 L'état est fabriqué et system_swap.etat() le rend tel quel ; les commandes
 passent par un execute factice et subprocess.run est remplacé : un test ne
@@ -11,6 +11,7 @@ lit rien de la machine qui le lance et n'exécute rien.
 """
 
 import ast
+import os
 import string
 import sys
 import tempfile
@@ -186,6 +187,8 @@ class TestLaNavigation(Banc):
             "1": ("_system_swap_etat", ()),
             "2": ("_system_swap_redimensionner", ("grow",)),
             "3": ("_system_swap_redimensionner", ("shrink",)),
+            "4": ("_system_swap_zram", ()),
+            "5": ("_system_swap_zram_desactiver", ()),
         }
         for touche, (methode, args) in attendus.items():
             with (
@@ -200,7 +203,7 @@ class TestLaNavigation(Banc):
         with mock.patch("click.prompt", side_effect=["0"]) as invite:
             self.todo._system_swap()
         self.assertIn("Swap memory", invite.call_args.args[0])
-        self.assertIn("[3] ⬇", invite.call_args.args[0])
+        self.assertIn("[5] ⛔", invite.call_args.args[0])
 
 
 class TestLesTraductions(unittest.TestCase):
@@ -269,9 +272,14 @@ class TestLesTraductions(unittest.TestCase):
             "fstype",
             "mountpoint",
             "parent",
+            "manager",
             "resume",
             "subvolume",
+            "service",
+            "paths",
             "virtualization",
+            "running",
+            "installed",
         }
         for table in (sm.RAISONS_SWAP, sm.ALERTES_SWAP):
             for cle in table.values():
@@ -282,6 +290,27 @@ class TestLesTraductions(unittest.TestCase):
 
 
 class TestLesLignes(unittest.TestCase):
+    def test_state_warns_when_the_zram_module_cannot_load(self):
+        etat = etat_fabrique(
+            "/",
+            zram_module={
+                "state": "reboot",
+                "running": "9.8.7-test",
+                "installed": ["9.9.0-test"],
+            },
+        )
+        texte = "\n".join(sm.lignes_swap(etat))
+        self.assertIn("⚠ Le noyau en marche (9.8.7-test)", texte)
+        etat["zram_module"] = {
+            "state": "missing",
+            "running": "9.8.7-test",
+            "installed": [],
+        }
+        texte = "\n".join(sm.lignes_swap(etat))
+        self.assertIn("n'a pas de module zram", texte)
+        etat["zram_module"]["state"] = "available"
+        self.assertNotIn("module", "\n".join(sm.lignes_swap(etat)))
+
     def test_state_reads_every_section_without_none(self):
         zram = {
             "name": "zram0",
@@ -358,17 +387,19 @@ class TestLeProtocoleDesPlans(Banc):
         self.assertIn("swapDevices", self.texte())
         self.assertIn("nixos-rebuild", self.texte())
 
-    def plan_a_deux(self):
-        return ss._resultat(
+    def plan_avec_fichier(self):
+        tmp = os.path.join(self.tmp.name, "zram-generator.conf")
+        return tmp, ss._resultat(
             True,
             plan=[
-                ["sudo", "mkswap", "/swapfile"],
-                ["sudo", "swapon", "/swapfile"],
+                ["sudo", "install", "-D", "-m", "0644", tmp, "/etc/x.conf"],
+                ["sudo", "systemctl", "daemon-reload"],
             ],
+            files={tmp: "[zram0]\nzram-size = 4096\n"},
         )
 
-    def test_nothing_runs_without_a_yes(self):
-        res = self.plan_a_deux()
+    def test_nothing_runs_nor_is_written_without_a_yes(self):
+        tmp, res = self.plan_avec_fichier()
         for reponse in ("", "n"):
             self.assertFalse(
                 self.lancer(
@@ -376,41 +407,58 @@ class TestLeProtocoleDesPlans(Banc):
                 )
             )
         self.assertEqual(self.lances(), [])
-        self.assertIn("Va exécuter : sudo swapon /swapfile", self.texte())
+        self.assertFalse(os.path.exists(tmp))
+        self.assertIn(
+            "Va exécuter : sudo systemctl daemon-reload", self.texte()
+        )
+        self.assertIn("│ zram-size = 4096", self.texte())
 
-    def test_the_commands_run_one_by_one_after_a_yes(self):
-        res = self.plan_a_deux()
+    def test_files_are_written_before_the_commands_run(self):
+        tmp, res = self.plan_avec_fichier()
+        lus = []
+
+        def executer(cmd, source_erplibre=True):
+            with open(tmp, encoding="utf-8") as fh:
+                lus.append(fh.read())
+            return 0
+
+        self.todo.execute.exec_command_live.side_effect = executer
         self.assertTrue(
             self.lancer("_system_swap_appliquer", self.etat(), ["o"], res)
         )
         self.assertEqual(
-            self.lances(), ["sudo mkswap /swapfile", "sudo swapon /swapfile"]
+            self.lances(),
+            [
+                f"sudo install -D -m 0644 {tmp} /etc/x.conf",
+                "sudo systemctl daemon-reload",
+            ],
         )
+        self.assertEqual(lus[0], "[zram0]\nzram-size = 4096\n")
         for appel in self.todo.execute.exec_command_live.call_args_list:
             self.assertIs(appel.kwargs["source_erplibre"], False)
         self.assertIn("✓ Terminé.", self.texte())
         self.assertIn("── Swaps actifs ──", self.texte())
 
     def test_the_first_failure_stops_the_plan(self):
-        res = self.plan_a_deux()
+        _tmp, res = self.plan_avec_fichier()
         self.todo.execute.exec_command_live.return_value = 1
         self.assertFalse(
             self.lancer("_system_swap_appliquer", self.etat(), ["o"], res)
         )
         self.assertEqual(len(self.lances()), 1)
         texte = self.texte()
-        self.assertIn("⚠ Commande en échec : sudo mkswap", texte)
+        self.assertIn("⚠ Commande en échec : sudo install", texte)
         # La commande en échec n'est pas comptée parmi celles qui ne sont
         # pas lancées ; la suivante l'est.
         apres = texte.split("Non lancées :", 1)[1]
-        self.assertIn("sudo swapon /swapfile", apres)
-        self.assertNotIn("sudo mkswap", apres.split("──", 1)[0])
+        self.assertIn("sudo systemctl daemon-reload", apres)
+        self.assertNotIn("sudo install", apres.split("──", 1)[0])
         self.assertNotIn("✓ Terminé.", texte)
 
     def test_the_state_is_read_again_after_a_sync(self):
         """btrfs publie l'espace d'un fichier créé à la validation de sa
         transaction : le sync précède la relecture de l'état."""
-        res = self.plan_a_deux()
+        _tmp, res = self.plan_avec_fichier()
         ordre = []
         self.sync.side_effect = lambda: ordre.append("sync")
         with mock.patch.object(
@@ -422,16 +470,23 @@ class TestLeProtocoleDesPlans(Banc):
         self.assertEqual(ordre, ["sync", "etat"])
 
     def test_a_failure_on_the_last_command_lists_nothing_left(self):
-        res = self.plan_a_deux()
+        _tmp, res = self.plan_avec_fichier()
         self.todo.execute.exec_command_live.side_effect = [0, 1]
         self.lancer("_system_swap_appliquer", self.etat(), ["o"], res)
-        self.assertIn("⚠ Commande en échec : sudo swapon", self.texte())
+        self.assertIn("⚠ Commande en échec : sudo systemctl", self.texte())
         self.assertNotIn("Non lancées", self.texte())
+
+    def test_a_file_is_announced_as_to_write_before_the_yes(self):
+        """Avant le oui, rien n'est écrit : la phrase le dit au futur."""
+        _tmp, res = self.plan_avec_fichier()
+        self.lancer("_system_swap_appliquer", self.etat(), ["n"], res)
+        self.assertIn("Contenu à écrire dans", self.texte())
+        self.assertNotIn("Contenu écrit", self.texte())
 
     def test_ctrl_c_stops_the_plan_and_shows_the_state(self):
         """Un Ctrl-C pendant une commande arrête le plan comme un échec :
         il ne sort pas de TODO, et l'état relu s'affiche."""
-        res = self.plan_a_deux()
+        _tmp, res = self.plan_avec_fichier()
         self.todo.execute.exec_command_live.side_effect = KeyboardInterrupt
         self.assertFalse(
             self.lancer("_system_swap_appliquer", self.etat(), ["o"], res)
@@ -555,8 +610,9 @@ class TestAgrandirReduire(Banc):
         with mock.patch("builtins.input", side_effect=AssertionError):
             with mock.patch.object(ss, "etat", return_value=etat):
                 self.todo._system_swap_redimensionner("grow")
+                self.todo._system_swap_zram()
         self.assertEqual(self.lances(), [])
-        self.assertEqual(self.texte().count("Conteneur (lxc)"), 1)
+        self.assertEqual(self.texte().count("Conteneur (lxc)"), 2)
 
     def test_no_disk_swap_grow_creates_shrink_says_so(self):
         etat = self.etat()
@@ -604,6 +660,95 @@ class TestCreer(Banc):
             " /etc/fstab.bak-20990101-000000",
             self.texte(),
         )
+
+
+class TestZram(Banc):
+    def test_enable_installs_the_generator_and_writes_its_conf(self):
+        etat = self.etat()
+        lus = {}
+
+        def executer(cmd, source_erplibre=True):
+            if " install -D " in cmd:
+                source = cmd.split()[5]
+                with open(source, encoding="utf-8") as fh:
+                    lus["conf"] = fh.read()
+            return 0
+
+        self.todo.execute.exec_command_live.side_effect = executer
+        self.lancer("_system_swap_zram", etat, ["2G", "o"])
+        lances = self.lances()
+        self.assertTrue(lances[0].startswith("sudo pacman -S"))
+        self.assertIn("zram-generator", lances[0])
+        self.assertEqual(
+            lances[-2:],
+            [
+                "sudo systemctl restart systemd-zram-setup@zram0.service",
+                "sudo systemctl start dev-zram0.swap",
+            ],
+        )
+        self.assertIn("zram-size = 2048", lus["conf"])
+        self.assertIn("swap-priority = 100", lus["conf"])
+        self.assertIn("son paquet s'installe d'abord", self.texte())
+
+    def test_the_temporary_directory_is_removed(self):
+        etat = self.etat()
+        vus = []
+
+        def plan_zram(etat, taille, dossier):
+            vus.append(dossier)
+            return ss._refus("below_floor", floor=64 * MIO, new=taille)
+
+        with mock.patch.object(ss, "plan_zram", side_effect=plan_zram):
+            self.lancer("_system_swap_zram", etat, ["1G"])
+        self.assertFalse(os.path.exists(vus[0]))
+
+    def test_disable_a_manual_zram(self):
+        swap_zram = {
+            "path": "/dev/zram0",
+            "type": "zram",
+            "size": 4 * GIO,
+            "used": 0,
+            "priority": 100,
+            "fs": None,
+            "free": None,
+            "max_size": None,
+            "hibernation": False,
+        }
+        etat = self.etat(swaps=[swap_zram])
+        self.lancer("_system_swap_zram_desactiver", etat, ["o"])
+        self.assertEqual(
+            self.lances(),
+            ["sudo swapoff /dev/zram0", "sudo zramctl --reset /dev/zram0"],
+        )
+
+    def test_another_zram_service_refuses_before_the_size(self):
+        pers = persistance("service")
+        pers["service"] = "zram-config.service"
+        etat = self.etat(persistence=pers)
+        with mock.patch("builtins.input", side_effect=AssertionError):
+            self.lancer("_system_swap_zram", etat, [])
+        self.assertIn("zram-config.service gère déjà la zram", self.texte())
+
+    def test_a_kernel_awaiting_reboot_refuses_before_the_size(self):
+        module = {
+            "state": "reboot",
+            "running": "9.8.7-test",
+            "installed": ["9.9.0-test"],
+        }
+        etat = self.etat(zram_module=module)
+        with mock.patch("builtins.input", side_effect=AssertionError):
+            self.lancer("_system_swap_zram", etat, [])
+        self.assertEqual(self.lances(), [])
+        self.assertIn(
+            "Le noyau en marche (9.8.7-test) n'a plus ses modules",
+            self.texte(),
+        )
+        self.assertIn("9.9.0-test", self.texte())
+
+    def test_disable_without_zram_says_so(self):
+        self.lancer("_system_swap_zram_desactiver", self.etat(), [])
+        self.assertEqual(self.lances(), [])
+        self.assertIn("Aucune zram n'est active ni configurée.", self.texte())
 
 
 if __name__ == "__main__":

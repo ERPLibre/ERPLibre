@@ -16,11 +16,13 @@ les montre, demande confirmation, puis les lance une à une et s'arrête à
 la première qui échoue. Un plan est un dict :
 
     {"ok": bool, "reason": code ou None, "details": {...},
-     "plan": [[argv], ...], "warnings": [{"code": ..., ...}],
-     "nix": texte ou None}
+     "plan": [[argv], ...], "files": {fichier temporaire: contenu},
+     "warnings": [{"code": ..., ...}], "nix": texte ou None}
 
-« nix » porte, sur NixOS, l'extrait de configuration.nix qui remplace
-tout changement impératif.
+« files » est à écrire par le menu AVANT le plan : un fichier de root se
+remplace par « sudo install » depuis un fichier temporaire de
+l'utilisateur, montré avant d'être lancé. « nix » porte, sur NixOS,
+l'extrait de configuration.nix qui remplace tout changement impératif.
 
 Ce module ne rend que des codes et des nombres (octets) ; la phrase et la
 langue appartiennent au menu.
@@ -52,10 +54,15 @@ MARGE_MEMOIRE = 512 * MIO
 MARGE_DISQUE = GIO
 # Plus petit swap sur disque qu'on accepte de créer ou de réduire.
 PLANCHER_SWAP = 256 * MIO
+# Plus petite zram ; au-delà de deux fois la RAM, une zram pleine coûte
+# plus de mémoire qu'elle n'en libère, même bien compressée.
+PLANCHER_ZRAM = 64 * MIO
+FACTEUR_MAX_ZRAM = 2
 # Une taille au-delà est une faute de frappe.
 TAILLE_MAX = 64 * TIO
 
 PRIORITE_ZRAM = 100
+ALGORITHME_ZRAM = "zstd"
 
 CHEMIN_SWAPFILE = "/swapfile"
 # Sur btrfs, un fichier d'échange interdit tout instantané du sous-volume
@@ -82,15 +89,26 @@ DOSSIERS_ZRAM_GENERATOR = (
     "/usr/local/lib/systemd",
     "/usr/lib/systemd",
 )
+# Où vivent les modules du noyau, dans l'ordre de recherche : /lib/modules
+# est souvent un lien vers /usr/lib/modules, qui sert de repli.
+DOSSIERS_MODULES = ("/lib/modules", "/usr/lib/modules")
+ZRAM_GENERATOR_ETC = "/etc/systemd/zram-generator.conf"
 ZRAM_GENERATOR_ETC_D = "/etc/systemd/zram-generator.conf.d"
 BINAIRES_ZRAM_GENERATOR = (
     "/usr/lib/systemd/system-generators/zram-generator",
     "/lib/systemd/system-generators/zram-generator",
     "/usr/local/lib/systemd/system-generators/zram-generator",
 )
+PAQUETS_ZRAM_GENERATOR = {
+    "pacman": "zram-generator",
+    "dnf": "zram-generator",
+    "apt": "systemd-zram-generator",
+    "zypper": "zram-generator",
+}
 # zram-tools, chez Debian et Ubuntu : un service et un fichier de variables.
 ZRAMSWAP_DEFAULT = "/etc/default/zramswap"
 ZRAMSWAP_BINAIRES = ("/usr/sbin/zramswap", "/sbin/zramswap")
+ZRAMSWAP_SERVICE = "zramswap.service"
 # Les autres services qui montent la zram au démarrage, chacun reconnu à
 # ses fichiers : zram-config chez Ubuntu (init-zram-swapping), et
 # systemd-zram-service chez openSUSE, dont le service porte le même nom
@@ -316,6 +334,57 @@ def lire_zram(racine_sys="/sys/block"):
     return appareils
 
 
+def module_zram(racine="/"):
+    """{state, running, installed} : si le noyau en marche peut porter une
+    zram, avant qu'un plan ne l'attende.
+
+    running est la version du noyau en marche (/proc/sys/kernel/osrelease),
+    installed les versions qui ont un dossier de modules. state vaut :
+    loaded (/sys/class/zram-control ou /sys/module/zram existe), builtin
+    (zram dans modules.builtin), available (zram.ko* dans les modules du
+    noyau en marche, que modprobe charge), reboot (le noyau en marche n'a
+    plus de dossier de modules mais d'autres versions en ont : le paquet
+    du noyau a été mis à jour sur disque, et aucun module ne se charge
+    avant un redémarrage), missing (le noyau en marche n'a pas de zram),
+    unknown (aucun dossier de modules lisible, NixOS par exemple).
+
+    Sans ce contrôle, zram-generator écrit dev-zram0.swap même quand le
+    module ne se charge pas, et systemd attend /dev/zram0 jusqu'à son délai
+    de 90 secondes avant d'annoncer une dépendance en échec."""
+    running = (lire(_sous(racine, "/proc/sys/kernel/osrelease")) or "").strip()
+    if not running and racine == "/":
+        running = os.uname().release
+    resultat = {"state": "unknown", "running": running, "installed": []}
+    for chemin in ("/sys/class/zram-control", "/sys/module/zram"):
+        if os.path.exists(_sous(racine, chemin)):
+            resultat["state"] = "loaded"
+            return resultat
+    for base in DOSSIERS_MODULES:
+        dossier = _sous(racine, base)
+        try:
+            versions = sorted(os.listdir(dossier))
+        except OSError:
+            continue
+        resultat["installed"] = [v for v in versions if v != running]
+        if not running or running not in versions:
+            if resultat["installed"]:
+                resultat["state"] = "reboot"
+            continue
+        noyau = os.path.join(dossier, running)
+        builtin = lire(os.path.join(noyau, "modules.builtin")) or ""
+        dep = lire(os.path.join(noyau, "modules.dep")) or ""
+        if re.search(r"/zram\.ko\b", builtin):
+            resultat["state"] = "builtin"
+        elif re.search(r"/zram\.ko(\.\w+)?:", dep) or os.path.isdir(
+            os.path.join(noyau, "kernel", "drivers", "block", "zram")
+        ):
+            resultat["state"] = "available"
+        else:
+            resultat["state"] = "missing"
+        return resultat
+    return resultat
+
+
 def lire_ini(texte):
     """Le format de zram-generator -> {section: {clé: valeur}}. Les
     commentaires (# ou ;) et les lignes hors section sont ignorés."""
@@ -499,7 +568,8 @@ def _libre(racine, point):
 def etat(racine="/"):
     """Tout l'état de la mémoire d'échange, lu sous `racine`.
 
-    {memory, swaps, zram, persistence, hibernation, mounts, root_fs,
+    {memory, swaps, zram, zram_module, persistence, hibernation, mounts,
+    root_fs,
     root_free, fstab, manager, os_id, btrfs_mkswapfile,
     virtualization, container, recommendation, racine}. container est vrai
     quand systemd-detect-virt nomme un conteneur. Chaque swap porte, en plus
@@ -538,6 +608,7 @@ def etat(racine="/"):
         "memory": mem,
         "swaps": swaps,
         "zram": zram,
+        "zram_module": module_zram(racine),
         "persistence": persistance_zram(racine, os_id),
         "hibernation": hib,
         "mounts": montages,
@@ -560,7 +631,7 @@ def etat(racine="/"):
 
 def cibles_disque(etat):
     """Les swaps sur disque actifs (fichiers et partitions), ceux qu'on
-    agrandit ou réduit, sans la zram."""
+    agrandit ou réduit ; la zram a ses propres plans."""
     return [s for s in etat["swaps"] if s["type"] != "zram"]
 
 
@@ -591,12 +662,13 @@ def chemin_par_defaut(etat):
 # ── Plans ───────────────────────────────────────────────────────────────
 
 
-def _resultat(ok, reason=None, plan=None, warnings=None, **d):
+def _resultat(ok, reason=None, plan=None, warnings=None, files=None, **d):
     return {
         "ok": ok,
         "reason": reason,
         "details": d,
         "plan": plan or [],
+        "files": files or {},
         "warnings": warnings or [],
         "nix": None,
     }
@@ -740,15 +812,27 @@ def dans_fstab(texte, chemin):
     return False
 
 
-def extrait_nix(swap):
-    """L'extrait de configuration.nix. swap : (chemin, octets) d'un
-    swapDevices."""
-    chemin, taille = swap
-    lignes = [
-        f'swapDevices = [ {{ device = "{chemin}";'
-        f" size = {taille // MIO}; }} ];",
-        "# sudo nixos-rebuild switch",
-    ]
+def extrait_nix(zram_pourcent=None, swap=None, zram=True):
+    """L'extrait de configuration.nix. zram_pourcent : la zram en
+    pourcentage de la RAM ; swap : (chemin, octets) d'un swapDevices ;
+    zram=False écrit zramSwap.enable = false."""
+    lignes = []
+    if not zram:
+        lignes.append("zramSwap.enable = false;")
+    elif zram_pourcent is not None:
+        lignes += [
+            "zramSwap.enable = true;",
+            f'zramSwap.algorithm = "{ALGORITHME_ZRAM}";',
+            f"zramSwap.memoryPercent = {zram_pourcent};",
+            f"zramSwap.priority = {PRIORITE_ZRAM};",
+        ]
+    if swap:
+        chemin, taille = swap
+        lignes.append(
+            f'swapDevices = [ {{ device = "{chemin}";'
+            f" size = {taille // MIO}; }} ];"
+        )
+    lignes.append("# sudo nixos-rebuild switch")
     return "\n".join(lignes) + "\n"
 
 
@@ -936,3 +1020,375 @@ def plan_creer(etat, chemin, taille, horodatage=None):
         ]
         details.update(fstab="added", backup=copie, line=ligne)
     return _resultat(True, plan=plan, warnings=alertes, **details)
+
+
+def _remplacer_cles(lignes, debut, fin, valeurs):
+    """Dans lignes[debut:fin], remplace la ligne active de chaque clé de
+    `valeurs` ; ajoute après la dernière ligne non vide celles qui
+    manquent. Rend la nouvelle liste."""
+    vues = set()
+    section = lignes[debut:fin]
+    for i, ligne in enumerate(section):
+        cle = ligne.partition("=")[0].strip()
+        actif = ligne.lstrip()[:1] not in ("#", ";")
+        if "=" in ligne and cle in valeurs and actif:
+            section[i] = f"{cle} = {valeurs[cle]}"
+            vues.add(cle)
+    manque = [f"{c} = {v}" for c, v in valeurs.items() if c not in vues]
+    dernier = len(section)
+    while dernier and not section[dernier - 1].strip():
+        dernier -= 1
+    section[dernier:dernier] = manque
+    return lignes[:debut] + section + lignes[fin:]
+
+
+def contenu_zram_generator(
+    texte, taille, algorithme=ALGORITHME_ZRAM, priorite=PRIORITE_ZRAM
+):
+    """`texte` (le zram-generator.conf de départ, ou "") dont la section
+    [zram0] fixe zram-size (en Mio), compression-algorithm et
+    swap-priority. Les commentaires et les autres sections restent."""
+    valeurs = {
+        "zram-size": str(taille // MIO),
+        "compression-algorithm": algorithme,
+        "swap-priority": str(priorite),
+    }
+    lignes = (texte or "").splitlines()
+    debut = next(
+        (i for i, lg in enumerate(lignes) if lg.strip() == "[zram0]"), None
+    )
+    if debut is None:
+        while lignes and not lignes[-1].strip():
+            lignes.pop()
+        if lignes:
+            lignes.append("")
+        lignes.append("[zram0]")
+        lignes += [f"{c} = {v}" for c, v in valeurs.items()]
+        return "\n".join(lignes) + "\n"
+    fin = next(
+        (
+            i
+            for i in range(debut + 1, len(lignes))
+            if lignes[i].strip().startswith("[")
+        ),
+        len(lignes),
+    )
+    return "\n".join(_remplacer_cles(lignes, debut + 1, fin, valeurs)) + "\n"
+
+
+def contenu_zramswap(
+    texte, taille, algorithme=ALGORITHME_ZRAM, priorite=PRIORITE_ZRAM
+):
+    """/etc/default/zramswap avec SIZE (Mio), ALGO et PRIORITY fixés.
+    PERCENT l'emporte sur SIZE dans zramswap : sa ligne active passe en
+    commentaire."""
+    valeurs = {
+        "ALGO": algorithme,
+        "SIZE": str(taille // MIO),
+        "PRIORITY": str(priorite),
+    }
+    sortie = []
+    vues = set()
+    for ligne in (texte or "").splitlines():
+        cle = ligne.partition("=")[0].strip()
+        if "=" in ligne and not ligne.lstrip().startswith("#"):
+            if cle == "PERCENT":
+                sortie.append("#" + ligne)
+                continue
+            if cle in valeurs:
+                sortie.append(f"{cle}={valeurs[cle]}")
+                vues.add(cle)
+                continue
+        sortie.append(ligne)
+    sortie += [f"{c}={v}" for c, v in valeurs.items() if c not in vues]
+    return "\n".join(sortie) + "\n"
+
+
+def _installer_fichier(etat, dossier_tmp, nom_tmp, dest, contenu, stamp):
+    """(plan, files) qui remplacent le fichier de root `dest` par
+    `contenu` : une copie de sauvegarde s'il existe, puis « sudo install »
+    depuis un fichier temporaire de l'utilisateur."""
+    tmp = os.path.join(dossier_tmp, nom_tmp)
+    plan = []
+    if _existe(etat, dest):
+        plan.append(["sudo", "cp", "-a", dest, f"{dest}.bak-{stamp}"])
+    plan.append(["sudo", "install", "-D", "-m", "0644", tmp, dest])
+    return plan, {tmp: contenu}
+
+
+def _plan_paquet(etat, paquets):
+    """Les commandes qui installent le paquet de `paquets` (gestionnaire
+    -> nom) avec le gestionnaire de etat, ou None."""
+    cle = etat.get("manager")
+    paquet = paquets.get(cle)
+    if not paquet:
+        return None
+    install = {c: cmd for c, _, cmd in system_cpu.GESTIONNAIRES}[cle]
+    plan = [list(c) for c in system_cpu.AVANT.get(cle, [])]
+    plan.append(install + [paquet])
+    return plan
+
+
+def refus_zram(etat):
+    """Le refus qui précède toute question sur la taille d'une zram, sinon
+    None : container ; zram_reboot_required quand le noyau en marche a
+    perdu ses modules au profit d'une version plus récente, et
+    zram_unavailable quand il n'a pas de zram (voir module_zram) ; ou
+    zram_service quand un autre service de SERVICES_ZRAM la tient et que
+    zram-generator s'y ajouterait."""
+    conteneur = refus_conteneur(etat)
+    if conteneur:
+        return conteneur
+    module = etat.get("zram_module") or {}
+    if module.get("state") == "reboot":
+        return _refus(
+            "zram_reboot_required",
+            running=module["running"],
+            installed=", ".join(module["installed"]),
+        )
+    if module.get("state") == "missing":
+        return _refus("zram_unavailable", running=module["running"])
+    pers = etat["persistence"]
+    if pers.get("mode") == "service":
+        return _refus("zram_service", service=pers.get("service"))
+    return None
+
+
+def _zram_actives(etat):
+    return [s for s in etat["swaps"] if s["type"] == "zram"]
+
+
+def plan_zram(etat, taille, dossier_tmp, horodatage=None):
+    """Activer la zram, ou la redimensionner, à `taille` octets.
+
+    Outil retenu : zram-generator s'il configure déjà la zram ou s'il est
+    installé seul ; zram-tools s'il est seul présent ; sinon zram-generator,
+    installé d'abord. details.tool le dit, details.install vaut True quand
+    le plan installe le paquet. Refus : container, below_floor,
+    zram_too_large, zram_service (un autre service de SERVICES_ZRAM tient
+    la zram), ram_cannot_absorb (la zram active se vide en RAM au
+    redémarrage du service), no_package_manager, et ceux de refus_zram.
+    Quand le module zram est disponible sans être chargé, « modprobe zram »
+    précède le daemon-reload. warnings : zram_over_ram
+    (plus grande que la RAM), dropin_overrides (un conf.d redéfinit ce
+    qu'on écrit ; paths), zram_tools_conflict (les deux outils visent
+    /dev/zram0), disk_priority (un swap sur disque a une priorité ≥ celle
+    de la zram ; paths). Sur NixOS, plan vide et nix donne zramSwap.
+
+    Avec zram-generator, une zram active que rien ne rend persistante est
+    éteinte et remise à zéro d'abord : le générateur n'écrit pas la taille
+    d'un appareil occupé. Le redémarrage de systemd-zram-setup@zram0
+    n'atteint dev-zram0.swap que si ce swap tourne déjà ; « systemctl
+    start dev-zram0.swap » l'active la première fois et ne change rien
+    ensuite."""
+    refus = refus_zram(etat)
+    if refus:
+        return refus
+    ram = etat["memory"].get("total") or 0
+    taille = taille // MIO * MIO
+    if taille < PLANCHER_ZRAM:
+        return _refus("below_floor", floor=PLANCHER_ZRAM, new=taille)
+    if ram and taille > FACTEUR_MAX_ZRAM * ram:
+        return _refus("zram_too_large", new=taille, max=FACTEUR_MAX_ZRAM * ram)
+    alertes = []
+    if ram and taille > ram:
+        alertes.append({"code": "zram_over_ram", "ram": ram})
+    prioritaires = [
+        s["path"]
+        for s in cibles_disque(etat)
+        if s["priority"] >= PRIORITE_ZRAM
+    ]
+    if prioritaires:
+        alertes.append({"code": "disk_priority", "paths": prioritaires})
+    pers = etat["persistence"]
+    if pers["mode"] == "nixos" or etat.get("manager") == "nix":
+        pourcent = max(1, round(taille * 100 / ram)) if ram else 50
+        res = _resultat(True, warnings=alertes, new=taille, tool="nixos")
+        return _nix(res, extrait_nix(zram_pourcent=pourcent))
+    utilise = sum(s["used"] for s in _zram_actives(etat))
+    cap = _capacite(etat)
+    if utilise > cap["capacity"]:
+        return _refus("ram_cannot_absorb", used=utilise, **cap)
+    stamp = _horodatage(horodatage)
+    racine = etat.get("racine", "/")
+    if pers["mode"] == "zram-tools" or (
+        pers["mode"] is None
+        and pers["zram_tools_installed"]
+        and not pers["generator_installed"]
+    ):
+        texte = lire(_sous(racine, ZRAMSWAP_DEFAULT)) or ""
+        plan, files = _installer_fichier(
+            etat,
+            dossier_tmp,
+            "zramswap",
+            ZRAMSWAP_DEFAULT,
+            contenu_zramswap(texte, taille),
+            stamp,
+        )
+        plan += [
+            ["sudo", "systemctl", "enable", ZRAMSWAP_SERVICE],
+            ["sudo", "systemctl", "restart", ZRAMSWAP_SERVICE],
+        ]
+        return _resultat(
+            True,
+            plan=plan,
+            files=files,
+            warnings=alertes,
+            new=taille,
+            tool="zram-tools",
+            install=False,
+        )
+    plan = []
+    installer = not pers["generator_installed"]
+    if installer:
+        paquet = _plan_paquet(etat, PAQUETS_ZRAM_GENERATOR)
+        if paquet is None:
+            return _refus("no_package_manager", manager=etat.get("manager"))
+        plan += paquet
+    if pers["zram_tools_installed"]:
+        alertes.append({"code": "zram_tools_conflict"})
+    config = pers["generator"]
+    # Écrire dans /etc masque le fichier principal livré ailleurs (les
+    # valeurs par défaut de Fedora) : on part de son contenu.
+    base = lire(_sous(racine, config["main"])) if config["main"] else ""
+    cles = {"zram-size", "compression-algorithm", "swap-priority"}
+    ecrases = [
+        d
+        for d in config["dropins"]
+        if cles & set(lire_ini(lire(_sous(racine, d))).get("zram0", {}))
+    ]
+    if ecrases:
+        alertes.append({"code": "dropin_overrides", "paths": ecrases})
+    etapes, files = _installer_fichier(
+        etat,
+        dossier_tmp,
+        "zram-generator.conf",
+        ZRAM_GENERATOR_ETC,
+        contenu_zram_generator(base or "", taille),
+        stamp,
+    )
+    # Chargé avant le daemon-reload, le module donne au générateur
+    # /sys/class/zram-control, et son échec arrête le plan en une seconde
+    # au lieu des 90 secondes où systemd attend /dev/zram0.
+    if (etat.get("zram_module") or {}).get("state") == "available":
+        etapes.append(["sudo", "modprobe", "zram"])
+    plan += etapes + [["sudo", "systemctl", "daemon-reload"]]
+    if pers["mode"] != "zram-generator":
+        for s in _zram_actives(etat):
+            plan += [
+                ["sudo", "swapoff", s["path"]],
+                ["sudo", "zramctl", "--reset", s["path"]],
+            ]
+    plan += [
+        ["sudo", "systemctl", "restart", "systemd-zram-setup@zram0.service"],
+        ["sudo", "systemctl", "start", "dev-zram0.swap"],
+    ]
+    return _resultat(
+        True,
+        plan=plan,
+        files=files,
+        warnings=alertes,
+        new=taille,
+        tool="zram-generator",
+        install=installer,
+    )
+
+
+def plan_zram_desactiver(etat, dossier_tmp, horodatage=None):
+    """Désactiver la zram, maintenant et au démarrage.
+
+    zram-generator : l'arrêt de dev-zramN.swap et de
+    systemd-zram-setup@zramN d'abord, tant que le générateur produit encore
+    le swap qui dépend du service ; puis un /etc/systemd/zram-generator.conf
+    sans section [zramN] (il n'en crée alors aucune), un fichier vide dans
+    /etc pour masquer chaque conf.d livré ailleurs, et daemon-reload. Dans
+    l'ordre inverse, le swap rechargé sans sa dépendance reste actif, et
+    la remise à zéro de l'appareil occupé échoue. zram-tools et les autres
+    services : « systemctl disable --now ». zram montée à la main :
+    swapoff puis zramctl --reset. details.tool le dit. Refus : container,
+    no_zram, ram_cannot_absorb. warnings : dropin_etc (un conf.d de /etc la
+    configure encore ; paths)."""
+    conteneur = refus_conteneur(etat)
+    if conteneur:
+        return conteneur
+    actives = _zram_actives(etat)
+    pers = etat["persistence"]
+    if pers["mode"] == "nixos" or etat.get("manager") == "nix":
+        res = _resultat(True, tool="nixos")
+        return _nix(res, extrait_nix(zram=False))
+    if not actives and pers["mode"] is None:
+        return _refus("no_zram")
+    utilise = sum(s["used"] for s in actives)
+    cap = _capacite(etat)
+    if utilise > cap["capacity"]:
+        return _refus("ram_cannot_absorb", used=utilise, **cap)
+    stamp = _horodatage(horodatage)
+    racine = etat.get("racine", "/")
+    if pers["mode"] == "zram-generator":
+        actifs = {z["path"].rsplit("/", 1)[-1] for z in actives}
+        noms = sorted(actifs | set(pers["generator_devices"]))
+        plan = [
+            ["sudo", "systemctl", "stop"]
+            + ([f"dev-{n}.swap"] if n in actifs else [])
+            + [f"systemd-zram-setup@{n}.service"]
+            for n in noms
+        ]
+        contenu = (
+            "# zram disabled: without a [zramN] section, zram-generator"
+            " creates no device.\n"
+        )
+        etapes, files = _installer_fichier(
+            etat,
+            dossier_tmp,
+            "zram-generator.conf",
+            ZRAM_GENERATOR_ETC,
+            contenu,
+            stamp,
+        )
+        plan += etapes
+        for d in pers["generator"]["usr_dropins"]:
+            nom = os.path.basename(d)
+            etapes, f = _installer_fichier(
+                etat,
+                dossier_tmp,
+                f"dropin-{nom}",
+                f"{ZRAM_GENERATOR_ETC_D}/{nom}",
+                "",
+                stamp,
+            )
+            plan += etapes
+            files.update(f)
+        alertes = []
+        encore = [
+            d
+            for d in pers["generator"]["etc_dropins"]
+            if any(
+                re.fullmatch(r"zram\d+", s)
+                for s in lire_ini(lire(_sous(racine, d)))
+            )
+        ]
+        if encore:
+            alertes.append({"code": "dropin_etc", "paths": encore})
+        plan.append(["sudo", "systemctl", "daemon-reload"])
+        return _resultat(
+            True,
+            plan=plan,
+            files=files,
+            warnings=alertes,
+            tool="zram-generator",
+        )
+    if pers["mode"] in ("zram-tools", "service"):
+        service = pers.get("service") or ZRAMSWAP_SERVICE
+        return _resultat(
+            True,
+            plan=[["sudo", "systemctl", "disable", "--now", service]],
+            tool=pers["mode"],
+            service=service,
+        )
+    plan = []
+    for s in actives:
+        plan += [
+            ["sudo", "swapoff", s["path"]],
+            ["sudo", "zramctl", "--reset", s["path"]],
+        ]
+    return _resultat(True, plan=plan, tool="manual")

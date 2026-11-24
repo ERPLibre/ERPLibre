@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""La mémoire d'échange : lecture de l'état, plans de swap.
+"""La mémoire d'échange : lecture de l'état, plans de swap et de zram.
 
 Chaque test fabrique sa racine (/proc, /sys, /etc) dans un répertoire
 temporaire ; shutil.disk_usage, shutil.which et les commandes lues sont
@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from unittest import mock
 
@@ -317,9 +318,7 @@ class TestPersistanceZram(unittest.TestCase):
         r.ecrire("/usr/lib/systemd/zram-generator.conf", "[zram0]\n")
         r.ecrire("/etc/systemd/zram-generator.conf", "")
         p = ss.persistance_zram(r.chemin, "fedora")
-        self.assertEqual(
-            p["generator"]["main"], "/etc/systemd/zram-generator.conf"
-        )
+        self.assertEqual(p["generator"]["main"], ss.ZRAM_GENERATOR_ETC)
         self.assertIsNone(p["mode"])
 
     def test_dropins_sorted_and_etc_overrides_same_name(self):
@@ -383,7 +382,7 @@ class TestPersistanceZram(unittest.TestCase):
         )
         self.assertFalse(p["zram_tools_installed"])
         r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
-        r.ecrire("/etc/systemd/zram-generator.conf", "[zram0]\n")
+        r.ecrire(ss.ZRAM_GENERATOR_ETC, "[zram0]\n")
         p = ss.persistance_zram(r.chemin, "opensuse")
         self.assertEqual((p["mode"], p["service"]), ("zram-generator", None))
 
@@ -391,7 +390,7 @@ class TestPersistanceZram(unittest.TestCase):
         r = Racine(self, "debian")
         r.ecrire(ss.ZRAMSWAP_DEFAULT, "PERCENT=50\n")
         r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[1], "")
-        r.ecrire("/etc/systemd/zram-generator.conf", "[zram0]\n")
+        r.ecrire(ss.ZRAM_GENERATOR_ETC, "[zram0]\n")
         p = ss.persistance_zram(r.chemin, "debian")
         self.assertEqual(p["mode"], "zram-generator")
         self.assertTrue(p["both"])
@@ -450,8 +449,8 @@ class TestEtat(unittest.TestCase):
         self.assertFalse(e["container"])
 
     def test_container_refuses_every_plan(self):
-        """Dans un conteneur, swapon échoue faute de droits : aucun plan ne
-        se propose, pas même la création d'un fichier."""
+        """Dans un conteneur, swapon et la zram échouent faute de droits :
+        aucun plan ne se propose, pas même la création d'un fichier."""
         r = Racine(self)
         r.libre = {"/": 20 * GIO}
         r.sorties["systemd-detect-virt"] = "lxc\n"
@@ -462,6 +461,8 @@ class TestEtat(unittest.TestCase):
         for res in (
             ss.plan_redimensionner(e, "none", 4 * GIO, "grow"),
             ss.plan_creer(e, "/swapfile", 2 * GIO),
+            ss.plan_zram(e, 2 * GIO, "/tmp-de-test"),
+            ss.plan_zram_desactiver(e, "/tmp-de-test"),
         ):
             self.assertEqual(res["reason"], "container")
             self.assertEqual(res["details"]["virtualization"], "lxc")
@@ -883,6 +884,495 @@ class TestCreer(unittest.TestCase):
         self.assertEqual(res["reason"], "nixos")
         self.assertIn("size = 4096;", res["nix"])
         self.assertIn("nixos-rebuild switch", res["nix"])
+
+
+class TestContenus(unittest.TestCase):
+    def test_zram_generator_from_scratch(self):
+        self.assertEqual(
+            ss.contenu_zram_generator("", 4 * GIO),
+            "[zram0]\nzram-size = 4096\ncompression-algorithm = zstd\n"
+            "swap-priority = 100\n",
+        )
+
+    def test_zram_generator_keeps_comments_and_other_sections(self):
+        avant = textwrap.dedent("""\
+            # réglages locaux
+            [zram0]
+            # taille
+            zram-size = min(ram, 8192)
+            fs-type = swap
+
+            [zram1]
+            zram-size = 512
+            """)
+        apres = ss.contenu_zram_generator(avant, 2 * GIO)
+        self.assertIn("# réglages locaux", apres)
+        self.assertIn("# taille", apres)
+        self.assertIn("fs-type = swap", apres)
+        sections = ss.lire_ini(apres)
+        self.assertEqual(
+            sections["zram0"],
+            {
+                "zram-size": "2048",
+                "fs-type": "swap",
+                "compression-algorithm": "zstd",
+                "swap-priority": "100",
+            },
+        )
+        self.assertEqual(sections["zram1"], {"zram-size": "512"})
+
+    def test_zram_generator_appends_section(self):
+        apres = ss.contenu_zram_generator("[zram1]\nzram-size = 1\n", GIO)
+        self.assertEqual(ss.lire_ini(apres)["zram0"]["zram-size"], "1024")
+        self.assertEqual(ss.lire_ini(apres)["zram1"]["zram-size"], "1")
+
+    def test_zramswap_comments_percent(self):
+        apres = ss.contenu_zramswap(
+            "# défauts\nALGO=lz4\nPERCENT=50\n#SIZE=256\n", 2 * GIO
+        )
+        self.assertEqual(
+            apres,
+            "# défauts\nALGO=zstd\n#PERCENT=50\n#SIZE=256\nSIZE=2048\n"
+            "PRIORITY=100\n",
+        )
+        self.assertEqual(
+            ss.lire_variables(apres),
+            {"ALGO": "zstd", "SIZE": "2048", "PRIORITY": "100"},
+        )
+
+    def test_nix_snippet(self):
+        texte = ss.extrait_nix(zram_pourcent=50)
+        self.assertIn("zramSwap.enable = true;", texte)
+        self.assertIn("zramSwap.memoryPercent = 50;", texte)
+        self.assertIn("zramSwap.priority = 100;", texte)
+        self.assertIn("zramSwap.enable = false;", ss.extrait_nix(zram=False))
+
+
+class TestModuleZram(unittest.TestCase):
+    """module_zram dit, avant tout plan, si le noyau en marche peut porter
+    une zram. Les versions du noyau sont inventées."""
+
+    TMP = "/tmp-de-test"
+    EN_MARCHE = "9.8.7-test"
+
+    def racine(self):
+        r = Racine(self, "arch")
+        r.ecrire("/proc/sys/kernel/osrelease", self.EN_MARCHE + "\n")
+        return r
+
+    def modules(self, r, version, dep="", builtin=""):
+        r.ecrire(f"/lib/modules/{version}/modules.dep", dep)
+        r.ecrire(f"/lib/modules/{version}/modules.builtin", builtin)
+
+    def test_loaded(self):
+        r = self.racine()
+        os.makedirs(r.sous("/sys/module/zram"))
+        self.assertEqual(ss.module_zram(r.chemin)["state"], "loaded")
+
+    def test_available_loads_with_modprobe_before_the_reload(self):
+        r = self.racine()
+        self.modules(
+            r,
+            self.EN_MARCHE,
+            dep="kernel/drivers/block/zram/zram.ko.zst: kernel/lib/x.ko\n",
+        )
+        self.assertEqual(ss.module_zram(r.chemin)["state"], "available")
+        plan = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")["plan"]
+        i = plan.index(["sudo", "modprobe", "zram"])
+        self.assertEqual(plan[i + 1], ["sudo", "systemctl", "daemon-reload"])
+
+    def test_builtin_needs_no_modprobe(self):
+        r = self.racine()
+        self.modules(
+            r, self.EN_MARCHE, builtin="kernel/drivers/block/zram/zram.ko\n"
+        )
+        self.assertEqual(ss.module_zram(r.chemin)["state"], "builtin")
+        plan = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")["plan"]
+        self.assertNotIn(["sudo", "modprobe", "zram"], plan)
+
+    def test_an_updated_kernel_package_asks_for_a_reboot(self):
+        """Le paquet du noyau mis à jour sur disque emporte les modules du
+        noyau en marche : rien ne se charge avant un redémarrage, et le
+        plan est refusé avant d'installer quoi que ce soit."""
+        r = self.racine()
+        self.modules(r, "9.9.0-test", dep="x/zram.ko.zst:\n")
+        module = ss.module_zram(r.chemin)
+        self.assertEqual(module["state"], "reboot")
+        self.assertEqual(module["installed"], ["9.9.0-test"])
+        res = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason"], "zram_reboot_required")
+        self.assertEqual(res["details"]["running"], self.EN_MARCHE)
+        self.assertEqual(res["details"]["installed"], "9.9.0-test")
+
+    def test_a_kernel_without_zram_is_refused(self):
+        r = self.racine()
+        self.modules(r, self.EN_MARCHE, dep="kernel/fs/ext4/ext4.ko.zst:\n")
+        self.assertEqual(ss.module_zram(r.chemin)["state"], "missing")
+        res = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")
+        self.assertEqual(res["reason"], "zram_unavailable")
+
+    def test_no_module_directory_is_unknown_and_not_refused(self):
+        """NixOS range ses modules ailleurs : l'absence de dossier ne
+        prouve rien, le plan reste proposé."""
+        r = self.racine()
+        self.assertEqual(ss.module_zram(r.chemin)["state"], "unknown")
+        res = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn(["sudo", "modprobe", "zram"], res["plan"])
+
+
+class TestZram(unittest.TestCase):
+    TMP = "/tmp-de-test"
+
+    def test_arch_installs_generator_then_configures(self):
+        r = Racine(self, "arch")
+        res = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["details"]["tool"], "zram-generator")
+        self.assertTrue(res["details"]["install"])
+        tmp = os.path.join(self.TMP, "zram-generator.conf")
+        self.assertEqual(
+            res["plan"],
+            [
+                [
+                    "sudo",
+                    "pacman",
+                    "-S",
+                    "--needed",
+                    "--noconfirm",
+                    "zram-generator",
+                ],
+                [
+                    "sudo",
+                    "install",
+                    "-D",
+                    "-m",
+                    "0644",
+                    tmp,
+                    ss.ZRAM_GENERATOR_ETC,
+                ],
+                ["sudo", "systemctl", "daemon-reload"],
+                [
+                    "sudo",
+                    "systemctl",
+                    "restart",
+                    "systemd-zram-setup@zram0.service",
+                ],
+                ["sudo", "systemctl", "start", "dev-zram0.swap"],
+            ],
+        )
+        self.assertEqual(
+            ss.lire_ini(res["files"][tmp])["zram0"]["zram-size"], "4096"
+        )
+
+    def test_a_manual_zram_is_reset_before_the_generator_takes_it(self):
+        """Une zram montée à la main occupe /dev/zram0 : le générateur
+        n'en écrirait pas la taille. Elle s'éteint et se remet à zéro
+        avant le redémarrage du service."""
+        r = Racine(self, "arch")
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 2097148, 0, 100))
+        )
+        plan = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")["plan"]
+        i = plan.index(
+            [
+                "sudo",
+                "systemctl",
+                "restart",
+                "systemd-zram-setup@zram0.service",
+            ]
+        )
+        self.assertEqual(
+            plan[i - 2 : i],
+            [
+                ["sudo", "swapoff", "/dev/zram0"],
+                ["sudo", "zramctl", "--reset", "/dev/zram0"],
+            ],
+        )
+
+    def test_a_generator_zram_is_only_restarted(self):
+        r = Racine(self, "fedora")
+        r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        r.ecrire("/usr/lib/systemd/zram-generator.conf", "[zram0]\n")
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 2097148, 0, 100))
+        )
+        plan = ss.plan_zram(r.etat(), 4 * GIO, self.TMP, "s")["plan"]
+        self.assertFalse(any(c[1] in ("swapoff", "zramctl") for c in plan))
+        self.assertEqual(
+            plan[-1], ["sudo", "systemctl", "start", "dev-zram0.swap"]
+        )
+
+    def test_another_zram_service_is_not_doubled(self):
+        r = Racine(self, "ubuntu")
+        r.ecrire("/usr/bin/init-zram-swapping", "")
+        res = ss.plan_zram(r.etat(), 2 * GIO, self.TMP)
+        self.assertEqual(res["reason"], "zram_service")
+        self.assertEqual(res["details"]["service"], "zram-config.service")
+        self.assertEqual(res["plan"], [])
+
+    def test_package_names_per_family(self):
+        attendu = {
+            "debian": "systemd-zram-generator",
+            "ubuntu": "systemd-zram-generator",
+            "fedora": "zram-generator",
+            "opensuse": "zram-generator",
+        }
+        for distro, paquet in attendu.items():
+            with self.subTest(distro=distro):
+                r = Racine(self, distro)
+                plan = ss.plan_zram(r.etat(), GIO, self.TMP, "s")["plan"]
+                installs = [c for c in plan if paquet in c]
+                self.assertEqual(len(installs), 1, plan)
+        r = Racine(self, "debian")
+        plan = ss.plan_zram(r.etat(), GIO, self.TMP, "s")["plan"]
+        self.assertEqual(plan[0], ["sudo", "apt-get", "update"])
+
+    def test_fedora_starts_from_usr_lib_and_backs_up_etc(self):
+        r = Racine(self, "fedora")
+        r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        r.ecrire(
+            "/usr/lib/systemd/zram-generator.conf",
+            "[zram0]\nzram-size = min(ram, 8192)\nfs-type = swap\n",
+        )
+        res = ss.plan_zram(r.etat(), 2 * GIO, self.TMP, "s")
+        self.assertFalse(res["details"]["install"])
+        contenu = res["files"][os.path.join(self.TMP, "zram-generator.conf")]
+        self.assertEqual(ss.lire_ini(contenu)["zram0"]["fs-type"], "swap")
+        self.assertEqual(ss.lire_ini(contenu)["zram0"]["zram-size"], "2048")
+        self.assertFalse(any(c[1] == "cp" for c in res["plan"]))
+        r.ecrire(ss.ZRAM_GENERATOR_ETC, "[zram0]\n")
+        res = ss.plan_zram(r.etat(), 2 * GIO, self.TMP, "s")
+        self.assertIn(
+            [
+                "sudo",
+                "cp",
+                "-a",
+                ss.ZRAM_GENERATOR_ETC,
+                ss.ZRAM_GENERATOR_ETC + ".bak-s",
+            ],
+            res["plan"],
+        )
+
+    def test_dropin_override_and_disk_priority_warnings(self):
+        r = Racine(self, "fedora")
+        r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        r.ecrire(
+            "/etc/systemd/zram-generator.conf.d/50-x.conf",
+            "[zram0]\nzram-size = 100\n",
+        )
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/vda3", "partition", 1000, 0, 100))
+        )
+        res = ss.plan_zram(r.etat(), GIO, self.TMP, "s")
+        codes = {a["code"]: a for a in res["warnings"]}
+        self.assertEqual(
+            codes["dropin_overrides"]["paths"],
+            ["/etc/systemd/zram-generator.conf.d/50-x.conf"],
+        )
+        self.assertEqual(codes["disk_priority"]["paths"], ["/dev/vda3"])
+
+    def test_zram_tools(self):
+        r = Racine(self, "debian")
+        r.ecrire(ss.ZRAMSWAP_DEFAULT, "PERCENT=50\n")
+        res = ss.plan_zram(r.etat(), 2 * GIO, self.TMP, "s")
+        self.assertEqual(res["details"]["tool"], "zram-tools")
+        tmp = os.path.join(self.TMP, "zramswap")
+        self.assertIn("SIZE=2048", res["files"][tmp])
+        self.assertEqual(
+            res["plan"],
+            [
+                [
+                    "sudo",
+                    "cp",
+                    "-a",
+                    ss.ZRAMSWAP_DEFAULT,
+                    ss.ZRAMSWAP_DEFAULT + ".bak-s",
+                ],
+                [
+                    "sudo",
+                    "install",
+                    "-D",
+                    "-m",
+                    "0644",
+                    tmp,
+                    ss.ZRAMSWAP_DEFAULT,
+                ],
+                ["sudo", "systemctl", "enable", "zramswap.service"],
+                ["sudo", "systemctl", "restart", "zramswap.service"],
+            ],
+        )
+
+    def test_conflict_when_generator_configured_beside_zram_tools(self):
+        r = Racine(self, "debian")
+        r.ecrire(ss.ZRAMSWAP_DEFAULT, "PERCENT=50\n")
+        r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        r.ecrire(ss.ZRAM_GENERATOR_ETC, "[zram0]\n")
+        res = ss.plan_zram(r.etat(), GIO, self.TMP, "s")
+        self.assertEqual(res["details"]["tool"], "zram-generator")
+        self.assertIn({"code": "zram_tools_conflict"}, res["warnings"])
+
+    def test_nixos(self):
+        r = Racine(self, "nixos")
+        res = ss.plan_zram(r.etat(), 4 * GIO, self.TMP)
+        self.assertEqual(res["plan"], [])
+        self.assertIn("zramSwap.memoryPercent = 50;", res["nix"])
+
+    def test_sizes_and_ram(self):
+        r = Racine(self)
+        e = r.etat()
+        self.assertEqual(
+            ss.plan_zram(e, 32 * MIO, self.TMP)["reason"], "below_floor"
+        )
+        self.assertEqual(
+            ss.plan_zram(e, 17 * GIO, self.TMP)["reason"], "zram_too_large"
+        )
+        over = ss.plan_zram(e, 12 * GIO, self.TMP)
+        self.assertTrue(over["ok"])
+        self.assertEqual(over["warnings"][0]["code"], "zram_over_ram")
+        r.memoire(8 * GIO, 1 * GIO)
+        r.ecrire(
+            "/proc/swaps",
+            swaps(("/dev/zram0", "partition", 4194300, 2 * 1024 * 1024, 100)),
+        )
+        self.assertEqual(
+            ss.plan_zram(r.etat(), 2 * GIO, self.TMP)["reason"],
+            "ram_cannot_absorb",
+        )
+
+    def test_unknown_package_manager(self):
+        r = Racine(self)
+        r.binaires = set()
+        res = ss.plan_zram(r.etat(), GIO, self.TMP)
+        self.assertEqual(res["reason"], "no_package_manager")
+
+
+class TestZramDesactiver(unittest.TestCase):
+    TMP = "/tmp-de-test"
+
+    def test_generator_masks_usr_dropins_and_stops_service(self):
+        r = Racine(self, "fedora")
+        r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        r.ecrire("/usr/lib/systemd/zram-generator.conf", "[zram0]\n")
+        r.ecrire("/usr/lib/systemd/zram-generator.conf.d/10-a.conf", "")
+        r.ecrire(
+            "/etc/systemd/zram-generator.conf.d/20-b.conf",
+            "[zram1]\nzram-size = 10\n",
+        )
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 4194300, 0, 100))
+        )
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP, "s")
+        self.assertTrue(res["ok"], res)
+        principal = os.path.join(self.TMP, "zram-generator.conf")
+        masque = os.path.join(self.TMP, "dropin-10-a.conf")
+        self.assertEqual(ss.lire_ini(res["files"][principal]), {})
+        self.assertEqual(res["files"][masque], "")
+        # L'arrêt précède la configuration et daemon-reload : après le
+        # rechargement, dev-zram0.swap ne dépendrait plus du service.
+        self.assertEqual(
+            res["plan"],
+            [
+                [
+                    "sudo",
+                    "systemctl",
+                    "stop",
+                    "dev-zram0.swap",
+                    "systemd-zram-setup@zram0.service",
+                ],
+                [
+                    "sudo",
+                    "systemctl",
+                    "stop",
+                    "systemd-zram-setup@zram1.service",
+                ],
+                [
+                    "sudo",
+                    "install",
+                    "-D",
+                    "-m",
+                    "0644",
+                    principal,
+                    ss.ZRAM_GENERATOR_ETC,
+                ],
+                [
+                    "sudo",
+                    "install",
+                    "-D",
+                    "-m",
+                    "0644",
+                    masque,
+                    "/etc/systemd/zram-generator.conf.d/10-a.conf",
+                ],
+                ["sudo", "systemctl", "daemon-reload"],
+            ],
+        )
+        self.assertEqual(
+            res["warnings"],
+            [
+                {
+                    "code": "dropin_etc",
+                    "paths": ["/etc/systemd/zram-generator.conf.d/20-b.conf"],
+                }
+            ],
+        )
+
+    def test_zram_tools(self):
+        r = Racine(self, "debian")
+        r.ecrire(ss.ZRAMSWAP_DEFAULT, "SIZE=256\n")
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP)
+        self.assertEqual(
+            res["plan"],
+            [["sudo", "systemctl", "disable", "--now", "zramswap.service"]],
+        )
+
+    def test_other_service_is_disabled(self):
+        r = Racine(self, "opensuse")
+        r.ecrire("/usr/sbin/zramswapon", "")
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 4194300, 0, 100))
+        )
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP)
+        self.assertEqual(res["details"]["tool"], "service")
+        self.assertEqual(
+            res["plan"],
+            [["sudo", "systemctl", "disable", "--now", "zramswap.service"]],
+        )
+
+    def test_manual_and_none(self):
+        r = Racine(self)
+        self.assertEqual(
+            ss.plan_zram_desactiver(r.etat(), self.TMP)["reason"], "no_zram"
+        )
+        r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 4194300, 0, 100))
+        )
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP)
+        self.assertEqual(res["details"]["tool"], "manual")
+        self.assertEqual(
+            res["plan"],
+            [
+                ["sudo", "swapoff", "/dev/zram0"],
+                ["sudo", "zramctl", "--reset", "/dev/zram0"],
+            ],
+        )
+
+    def test_ram_cannot_absorb(self):
+        r = Racine(self)
+        r.memoire(4 * GIO, 1 * GIO)
+        r.ecrire(
+            "/proc/swaps",
+            swaps(("/dev/zram0", "partition", 4194300, 3 * 1024 * 1024, 100)),
+        )
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP)
+        self.assertEqual(res["reason"], "ram_cannot_absorb")
+        self.assertEqual(res["plan"], [])
+
+    def test_nixos(self):
+        r = Racine(self, "nixos")
+        res = ss.plan_zram_desactiver(r.etat(), self.TMP)
+        self.assertIn("zramSwap.enable = false;", res["nix"])
 
 
 if __name__ == "__main__":
