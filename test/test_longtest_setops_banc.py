@@ -5061,16 +5061,27 @@ class TestLeDerouleDeLaReprise(unittest.TestCase):
             "reconstruire",
             "restauration-etat",
             "temoins-etat",
-            "intrants:False",
             "valider",
         ]
         positions = [self.gestes.index(g) for g in ordre]
         self.assertEqual(sorted(positions), positions, self.gestes)
+        # Le retour à la valeur de naissance se fait APRÈS les lectures.
+        retour = (
+            len(self.gestes)
+            - 1
+            - self.gestes[::-1].index(
+                f"intrants:{B.RESTAURATION_A_LA_NAISSANCE}"
+            )
+        )
+        self.assertGreater(retour, self.gestes.index("temoins-etat"))
+        self.assertLess(retour, self.gestes.index("valider"))
 
-    def test_the_restore_switch_comes_back_off_even_when_the_build_fails(self):
+    def test_the_restore_switch_comes_back_to_birth_even_when_the_build_fails(
+        self,
+    ):
         souci, _ = self.joue(echec_reconstruire=True)
         self.assertIn("reconstruire", souci)
-        self.assertEqual([True, False], self.intrants)
+        self.assertEqual([True, B.RESTAURATION_A_LA_NAISSANCE], self.intrants)
 
 
 class TestLeBancTourneSansMoi(unittest.TestCase):
@@ -7033,15 +7044,19 @@ class TestLAdresseDeRecours(unittest.TestCase):
         self.assertEqual("192.0.2.1", lu["dns_amorcage"])
 
 
-class TestUneFlotteNeuveNeRestaurePas(unittest.TestCase):
-    """La flotte du banc naît neuve, sans serveur de sauvegarde au plan. Le
-    moteur interroge pourtant le dépôt des hôtes qui portent `client_backup`
-    avant de créer leur état, et refuse quand il ne le joint pas : la
-    reconstruction s'arrêtait sur l'autorité de certification."""
+class TestUneFlotteNeuveNaitRestaurationActive(unittest.TestCase):
+    """Le moteur amorce le dépôt avant l'autorité : la flotte du banc naît
+    restauration active, et chaque passe éprouve qu'un dépôt neuf répond
+    « rien à restaurer » au lieu de faire refuser la reconstruction."""
 
-    def test_the_bench_turns_restoration_off(self):
-        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
-        self.assertIs(False, lu[B.RESTAURATION_ACTIVE])
+    def test_the_bench_is_born_restoring(self):
+        self.assertIs(True, B.RESTAURATION_A_LA_NAISSANCE)
+        lu = yaml.safe_load(
+            B.texte_intrants_du_banc(
+                "192.0.2.1", B.RESTAURATION_A_LA_NAISSANCE
+            )
+        )
+        self.assertIs(True, lu[B.RESTAURATION_ACTIVE])
 
     def test_the_resolver_and_the_address_are_still_there(self):
         """Contrôle positif : ajouter une clé ne doit pas en perdre une."""

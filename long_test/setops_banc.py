@@ -1719,6 +1719,13 @@ COMPTE_RECETTE = "testmail"
 # le déclarent toujours.
 RESTAURATION_ACTIVE = "client_backup_restauration_active"
 
+# LA FLOTTE NAÎT RESTAURATION ACTIVE. Le moteur amorce le dépôt de l'état
+# avant l'autorité de certification : un dépôt neuf répond alors « rien à
+# restaurer » au lieu d'être injoignable. Chaque passe éprouve ainsi ce
+# chemin-là, celui d'un site reconstruit dont le serveur de sauvegarde est
+# neuf, et la reprise revient à cette valeur, pas à faux.
+RESTAURATION_A_LA_NAISSANCE = True
+
 # L'interrupteur de la vérification que le dépôt rapporte à la supervision.
 VERIFICATION_DEPOT = "serveur_backup_verification_locale"
 
@@ -1798,14 +1805,11 @@ def texte_intrants_du_banc(resolveur, restauration=False):
     `restauration` ne passe à vrai que le temps de la reprise après sinistre
     (voir `joue_la_reprise`), sur une flotte rasée dont le dépôt est resté.
 
-    `RESTAURATION_ACTIVE` À FAUX par défaut, parce que la flotte du banc naît
-    NEUVE à chaque passe. Le moteur, en reconstruisant, interroge le dépôt d'un
-    hôte avant de créer son état ; or il amorce l'autorité de certification
-    AVANT de déployer la cible des sauvegardes, dont le dépôt n'existe donc pas
-    encore. Un dépôt injoignable le fait REFUSER, à raison — conclure « rien à
-    restaurer » ferait naître neuf ce qui attend ailleurs. L'interrupteur est
-    celui que le moteur documente pour « ne jamais restaurer » ; la sauvegarde
-    n'en est pas bloquée.
+    `RESTAURATION_ACTIVE` suit `restauration`, que l'appelant donne :
+    `RESTAURATION_A_LA_NAISSANCE` à la pose et après la reprise, vrai pendant
+    la reprise. Le moteur, en reconstruisant, interroge le dépôt d'un hôte
+    avant de créer son état, et REFUSE un dépôt injoignable — à raison :
+    conclure « rien à restaurer » ferait naître neuf ce qui attend ailleurs.
 
     `VERIFICATION_DEPOT` À VRAI : le dépôt de sauvegarde vérifie ses instantanés
     et le RAPPORTE à la supervision, que le banc pose — voir
@@ -3555,7 +3559,9 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
         os.makedirs(groupe, exist_ok=True)
     except OSError as souci:
         return pose._replace(souci=f"{INTRANTS_BANC} : {souci.strerror}")
-    souci = ecrit_les_intrants(eco, resolveur)
+    souci = ecrit_les_intrants(
+        eco, resolveur, restauration=RESTAURATION_A_LA_NAISSANCE
+    )
     if souci:
         return pose._replace(souci=souci)
 
@@ -5311,9 +5317,15 @@ def joue_la_reprise(
             joue_une_lecture(moteur, env, ETAPE_EMPREINTE, passe, secret, dire)
         )
     finally:
-        retour = ecrit_les_intrants(eco, mesures.resolveur)
+        retour = ecrit_les_intrants(
+            eco, mesures.resolveur, restauration=RESTAURATION_A_LA_NAISSANCE
+        )
     if retour:
-        return f"la restauration n'est pas revenue à faux : {retour}", ()
+        return (
+            "la restauration n'est pas revenue à sa valeur de naissance :"
+            f" {retour}",
+            (),
+        )
     ecarts = ecarts_de_reprise(etat, temoins, avant, apres)
     # LA RECETTE EST REJOUÉE SUR LA FLOTTE RESTAURÉE : elle doit fonctionner,
     # pas seulement porter ses données.
