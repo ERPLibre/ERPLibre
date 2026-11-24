@@ -22993,9 +22993,9 @@ TRANSLATIONS = {
         "fr": "Rien n'est poussé.",
         "en": "Nothing is pushed.",
     },
-    "Apply the upgrade? (y/N): ": {
-        "fr": "Appliquer la mise à niveau ? (o/N) : ",
-        "en": "Apply the upgrade? (y/N): ",
+    "Apply the upgrade?": {
+        "fr": "Appliquer la mise à niveau ?",
+        "en": "Apply the upgrade?",
     },
     "Pass recorded in": {
         "fr": "Passe enregistrée dans",
@@ -23502,13 +23502,13 @@ TRANSLATIONS = {
         "fr": "Rien à tirer : rien à confirmer.",
         "en": "Nothing to pull: nothing to confirm.",
     },
-    "Deepen the shallow clones (network)? (y/N): ": {
-        "fr": "Approfondir les clones superficiels (réseau) ? (o/N) : ",
-        "en": "Deepen the shallow clones (network)? (y/N): ",
+    "Deepen the shallow clones (network)?": {
+        "fr": "Approfondir les clones superficiels (réseau) ?",
+        "en": "Deepen the shallow clones (network)?",
     },
-    "Clone the new repositories? (y/N): ": {
-        "fr": "Cloner les nouveaux dépôts ? (o/N) : ",
-        "en": "Clone the new repositories? (y/N): ",
+    "Clone the new repositories?": {
+        "fr": "Cloner les nouveaux dépôts ?",
+        "en": "Clone the new repositories?",
     },
     "repositories will be pulled.": {
         "fr": "dépôts seront tirés.",
@@ -23522,17 +23522,17 @@ TRANSLATIONS = {
         "fr": "Mis de côté, puis réappliqués :",
         "en": "Stashed, then reapplied:",
     },
-    "Pull the repositories? (y/N): ": {
-        "fr": "Tirer les dépôts ? (o/N) : ",
-        "en": "Pull the repositories? (y/N): ",
+    "Pull the repositories?": {
+        "fr": "Tirer les dépôts ?",
+        "en": "Pull the repositories?",
     },
     "The remote moved since the dry run: nothing was written.": {
         "fr": "Le distant a bougé depuis l'essai à sec : rien n'a été écrit.",
         "en": "The remote moved since the dry run: nothing was written.",
     },
-    "Install the Python dependencies now (poetry install --no-root)? (y/N): ": {
-        "fr": "Installer les dépendances Python maintenant (poetry install --no-root) ? (o/N) : ",
-        "en": "Install the Python dependencies now (poetry install --no-root)? (y/N): ",
+    "Install the Python dependencies now (poetry install --no-root)?": {
+        "fr": "Installer les dépendances Python maintenant (poetry install --no-root) ?",
+        "en": "Install the Python dependencies now (poetry install --no-root)?",
     },
     "To restore:": {
         "fr": "Pour revenir :",

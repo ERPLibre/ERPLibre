@@ -242,6 +242,61 @@ CONFIRM_DEFAULTS = {
         "Only the repositories of the manifests?",
     ): [True],
     (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_appliquer",
+        "Apply the upgrade?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_approfondir",
+        "Deepen the shallow clones (network)?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_geler",
+        "Also freeze the upstream base of each fork (network)?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_geler",
+        "Write these changes to the manifest files?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_publier",
+        "Freeze the versions again now?",
+    ): [True],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_publier_un",
+        "Push to the fork?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_retenir",
+        "Push",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_tirer",
+        "Clone the new repositories?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_tirer",
+        "Deepen the shallow clones (network)?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_tirer",
+        "Install the Python dependencies now (poetry install --no-root)?",
+    ): [False],
+    (
+        "script/todo/git_repo_menu.py",
+        "GitRepoMenuMixin._git_repo_tirer",
+        "Pull the repositories?",
+    ): [False],
+    (
         "script/todo/healthcheck.py",
         "_installer_hooks",
         "Replace it?",

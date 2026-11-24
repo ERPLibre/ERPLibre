@@ -26,6 +26,7 @@ from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
+from script.todo.ui.port import ScriptedPort
 from script.todo.ui.registry import Entry, FromConfig
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
@@ -3821,10 +3822,30 @@ class TestGitRepoMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(3, recuperes)
 
 
+# Les refus d'une question oui/non du menu Repo qui écrit, pousse ou
+# télécharge : Entrée (défaut non), une faute puis Ctrl+D, Ctrl+D seul.
+REFUS_REPO = ([""], ["peut-être", EOFError()], [EOFError()])
+
+
+def confirmations_repo(port):
+    """(texte sans indice, défaut, `back`) de chaque question oui/non
+    posée à `port`, un `ScriptedPort`, dans l'ordre."""
+    return [
+        (e["prompt"], e["default"], e.get("back", False))
+        for e in port.events
+        if e.get("kind") == "confirm"
+    ]
+
+
+def fautes_repo(port):
+    """Les avis de `port` : une faute à une question y est dite."""
+    return [e["text"] for e in port.events if e.get("t") == "notice"]
+
+
 class TestGitRepoApprofondir(unittest.TestCase):
     """Les clones superficiels du diagnostic : une question, non par défaut,
     puis le diagnostic refait sur les clones complétés. `repo_upgrade` est
-    simulé."""
+    simulé ; `self.port` répond aux questions."""
 
     CANDIDAT = {
         "chemin": "odooX.0/odoo",
@@ -3833,10 +3854,10 @@ class TestGitRepoApprofondir(unittest.TestCase):
         "verdict": "non_comparable",
     }
 
-    def _lancer(self, reponse, issue="complet"):
+    def _lancer(self, reponses, issue="complet"):
         from unittest import mock
 
-        from script.todo import git_repo_menu
+        from script.todo import git_repo_menu, ui
 
         class Menu(git_repo_menu.GitRepoMenuMixin):
             pass
@@ -3855,29 +3876,47 @@ class TestGitRepoApprofondir(unittest.TestCase):
                 ru, "passe_diagnostic", return_value=refait
             ) as diagnostic,
             mock.patch.object(ru, "render_diagnostic", return_value=""),
-            mock.patch("builtins.input", return_value=reponse),
+            mock.patch("builtins.input", side_effect=AssertionError),
             mock.patch("builtins.print"),
+            ui.bind(ScriptedPort(reponses)) as self.port,
         ):
             lst = [self.CANDIDAT, {"chemin": "autre"}]
             rendu = Menu()._git_repo_approfondir(lst, "X.0")
         return lst, rendu, approfondir, diagnostic, refait
 
     def test_sans_oui_rien_n_est_lance(self):
-        lst, rendu, approfondir, diagnostic, _refait = self._lancer("")
-        self.assertIs(rendu, lst)
-        approfondir.assert_not_called()
-        diagnostic.assert_not_called()
+        from script.todo.todo_i18n import t
+
+        # Entrée, une faute puis Ctrl+D, Ctrl+D : rien ne se télécharge, et
+        # le « o » qui suit n'est pas lu.
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                lst, rendu, approfondir, diagnostic, _r = self._lancer(
+                    [*refus, "o"]
+                )
+                self.assertIs(rendu, lst)
+                approfondir.assert_not_called()
+                diagnostic.assert_not_called()
+                self.assertEqual(self.port.answers, ["o"])
+        self.assertEqual(
+            confirmations_repo(self.port),
+            [(t("Deepen the shallow clones (network)?"), "n", False)],
+        )
 
     def test_oui_complete_puis_refait_le_diagnostic(self):
-        _lst, rendu, approfondir, diagnostic, refait = self._lancer("o")
+        # Une faute est dite, puis la même question revient.
+        _lst, rendu, approfondir, diagnostic, refait = self._lancer(
+            ["peut-être", "oui"]
+        )
         approfondir.assert_called_once()
         self.assertEqual(approfondir.call_args.args[0], self.CANDIDAT)
         diagnostic.assert_called_once()
         self.assertIs(rendu, refait)
+        self.assertEqual(len(fautes_repo(self.port)), 1)
 
     def test_un_echec_ne_refait_pas_le_diagnostic(self):
         lst, rendu, approfondir, diagnostic, _r = self._lancer(
-            "y", issue="fork_echoue"
+            ["y"], issue="fork_echoue"
         )
         approfondir.assert_called_once()
         diagnostic.assert_not_called()
@@ -3935,12 +3974,15 @@ class TestGitRepoPull(unittest.TestCase):
         installe=({}, 0),
         verrou=None,
         choix=("manifeste", "rebase"),
+        port=None,
     ):
         """Lance l'entrée, `repo_pull` simulé ; `verrou` remplace celui du
         checkout. `choix` répond aux choix du mode et de la stratégie, ou,
         None, les laisse à `ui.choose`, que lit alors `input` avant
-        `reponses`. Rend (passe, installer, input) ; les lignes affichées
-        sont dans `self.affiche`, les choix doublés dans `self.choose`."""
+        `reponses`. `port`, un `ScriptedPort`, répond à la place
+        d'`input` aux questions du port. Rend (passe, installer, input) ;
+        les lignes affichées sont dans `self.affiche`, les choix doublés
+        dans `self.choose`."""
         charge = charge or {
             "horodatage": "20990101T0800",
             "dossier": "tasks/git_repo_pull/20990101T0800",
@@ -3976,6 +4018,7 @@ class TestGitRepoPull(unittest.TestCase):
             ),
             m.patch("builtins.input", side_effect=list(reponses)) as entree,
             m.patch("builtins.print") as affiche,
+            self.menu.ui.bind(port) if port else contextlib.nullcontext(),
         ):
             self.code = self.obj._git_repo_tirer()
         self.affiche = "\n".join(
@@ -3988,10 +4031,21 @@ class TestGitRepoPull(unittest.TestCase):
         passe.assert_not_called()
         entree.assert_not_called()
 
-    def test_non_n_ecrit_rien(self):
-        passe, _i, entree = self.tirer(self.donnees(["x/a"]), ["n"])
-        passe.assert_not_called()
-        self.assertEqual(entree.call_count, 1)
+    def test_aucun_refus_ne_tire(self):
+        # Le « o » qui suit chaque refus, s'il était lu, tirerait.
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                port = ScriptedPort([*refus, "o"])
+                passe, _i, _e = self.tirer(
+                    self.donnees(["x/a"]), [], port=port
+                )
+                passe.assert_not_called()
+                self.assertEqual(self.code, 0)
+                self.assertEqual(port.answers, ["o"])
+                self.assertIn(
+                    self.menu.t("Cancelled: nothing was written."),
+                    self.affiche,
+                )
 
     def test_oui_passe_les_attendus_de_l_essai(self):
         donnees = self.donnees(["x/a"])
@@ -4044,15 +4098,23 @@ class TestGitRepoPull(unittest.TestCase):
         }
 
     def test_installation_refusee_donne_la_commande_gardee(self):
-        self.tirer(
-            self.donnees(["x/a"]), ["y", "n"], self.charge_a_installer()
-        )
-        self.assertIn(
-            "script/git/repo_pull.py --install-deps --confirm X.0"
-            " --pass 20990101T0800",
-            self.affiche,
-        )
-        self.assertNotIn("bin/poetry install", self.affiche)
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                port = ScriptedPort(["o", *refus, "o"])
+                _p, installer, _e = self.tirer(
+                    self.donnees(["x/a"]),
+                    [],
+                    self.charge_a_installer(),
+                    port=port,
+                )
+                installer.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+                self.assertIn(
+                    "script/git/repo_pull.py --install-deps --confirm X.0"
+                    " --pass 20990101T0800",
+                    self.affiche,
+                )
+                self.assertNotIn("bin/poetry install", self.affiche)
 
     def test_installation_echouee_le_dit(self):
         dossier = "tasks/git_repo_pull/20990101T0800"
@@ -4096,6 +4158,28 @@ class TestGitRepoPull(unittest.TestCase):
         )
         self.assertIn(
             self.menu.t("The Python dependencies are installed."), self.affiche
+        )
+
+    def test_chaque_question_dit_son_defaut_et_redemande(self):
+        t = self.menu.t
+        port = ScriptedPort(["", "peut-être", "o", "oui"])
+        passe, _i, entree = self.tirer(
+            self.donnees(["x/a"], ["x/s"], ["x/n"]), [], port=port
+        )
+        entree.assert_not_called()
+        self.assertFalse(passe.call_args.kwargs["approfondir"])
+        self.assertTrue(passe.call_args.kwargs["cloner"])
+        self.assertEqual(
+            confirmations_repo(port),
+            [
+                (t("Deepen the shallow clones (network)?"), "n", False),
+                (t("Clone the new repositories?"), "n", False),
+                (t("Clone the new repositories?"), "n", False),
+                (t("Pull the repositories?"), "n", False),
+            ],
+        )
+        self.assertEqual(
+            fautes_repo(port), [f"{t('Answer yes or no: ')}peut-être"]
         )
 
     def test_rien_a_tirer_apres_les_refus(self):
@@ -4168,6 +4252,63 @@ class TestGitRepoPull(unittest.TestCase):
                 self.diagnostic.assert_not_called()
                 passe.assert_not_called()
                 self.assertEqual(entree.call_count, len(reponses))
+
+
+class TestGitRepoApplyUpgrade(unittest.TestCase):
+    """« Appliquer la mise à niveau » : la passe ne rebase rien sans un oui
+    à sa question, non par défaut. `repo_upgrade` et `repo_apply` sont
+    simulés ; un `ScriptedPort` répond."""
+
+    def _appliquer(self, reponses):
+        from script.todo import git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        ru = git_repo_menu.repo_upgrade
+        ra = git_repo_menu.repo_apply
+        lst = [{"chemin": "x/a", "verdict": "a_rebaser", "revision": "X.0"}]
+        with (
+            patch.object(ru, "version_active", return_value="X.0"),
+            patch.object(ru, "passe_diagnostic", return_value=lst),
+            patch.object(ru, "render_diagnostic", return_value=""),
+            patch.object(
+                Menu, "_git_repo_approfondir", lambda _s, lst, _v: lst
+            ),
+            patch.object(Menu, "_git_repo_resume_passe"),
+            patch.object(ra, "passe_appliquer", return_value=[]) as passe,
+            patch.object(ra, "ecrire_passe", return_value="x") as ecrire,
+            patch("builtins.input", side_effect=AssertionError),
+            redirect_stdout(io.StringIO()) as self.sortie,
+            git_repo_menu.ui.bind(ScriptedPort(reponses)) as port,
+        ):
+            code = Menu()._git_repo_appliquer()
+        return code, passe, ecrire, port
+
+    def test_only_a_yes_rebases(self):
+        # Le « o » qui suit chaque refus, s'il était lu, rebaserait.
+        from script.todo.todo_i18n import t
+
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                code, passe, ecrire, port = self._appliquer([*refus, "o"])
+                self.assertEqual(code, 0)
+                passe.assert_not_called()
+                ecrire.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+                self.assertIn(
+                    t("Cancelled: nothing was written."),
+                    self.sortie.getvalue(),
+                )
+        self.assertEqual(
+            confirmations_repo(port), [(t("Apply the upgrade?"), "n", False)]
+        )
+        _c, passe, ecrire, port = self._appliquer(["peut-être", "oui"])
+        passe.assert_called_once()
+        ecrire.assert_called_once()
+        self.assertEqual(
+            fautes_repo(port), [f"{t('Answer yes or no: ')}peut-être"]
+        )
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):
@@ -4264,42 +4405,75 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
                 self.menu.gel_des_sources(dossier, odoo_version="Y.0"), (0, 0)
             )
 
-    def _geler(self, confirme, amont=False, **kw):
-        """Lance le gel. `amont` répond à la question de la base amont,
-        posée avant la passe à sec ; `confirme`, à celle de l'écriture."""
-        reponses = [confirme] if kw.get("unfreeze") else [amont, confirme]
-        with self.mock.patch.object(
-            self.menu.click, "confirm", side_effect=reponses
-        ) as confirm:
+    def _geler(self, reponses, **kw):
+        """Lance le gel ; `reponses` répondent, par un `ScriptedPort`, à la
+        question de la base amont, posée avant la passe à sec (le gel
+        seul), puis à celle de l'écriture. Rend (code, port)."""
+        with (
+            self.mock.patch("builtins.input", side_effect=AssertionError),
+            self.menu.ui.bind(ScriptedPort(reponses)) as port,
+        ):
             code = self.obj._git_repo_geler(**kw)
-        return code, confirm
+        return code, port
 
     def test_freeze_runs_the_dry_run_and_stops_without_consent(self):
-        code, confirm = self._geler(False)
-        self.assertEqual(code, 0)
-        self.assertEqual(len(self.cmds), 1)
-        self.assertIn("git_freeze_manifest.py --dry-run", self.cmds[0])
-        self.assertEqual(confirm.call_count, 2)
+        # Entrée, une faute puis Ctrl+D, Ctrl+D : seule la passe à sec
+        # tourne ; le « o » qui suit, s'il était lu, écrirait.
+        for unfreeze in (False, True):
+            amont = [] if unfreeze else ["n"]
+            for refus in REFUS_REPO:
+                with self.subTest(unfreeze=unfreeze, refus=refus):
+                    self.cmds.clear()
+                    code, port = self._geler(
+                        [*amont, *refus, "o"], unfreeze=unfreeze
+                    )
+                    self.assertEqual(code, 0)
+                    self.assertEqual(len(self.cmds), 1)
+                    self.assertIn("--dry-run", self.cmds[0])
+                    self.assertEqual(port.answers, ["o"])
 
     def test_freeze_writes_after_consent(self):
-        code, _ = self._geler(True)
+        # « oui » écrit.
+        code, _port = self._geler(["", "oui"])
         self.assertEqual(code, 0)
         self.assertEqual(len(self.cmds), 2)
         self.assertTrue(self.cmds[1].endswith("git_freeze_manifest.py"))
 
     def test_upstream_base_is_off_by_default(self):
-        _code, confirm = self._geler(True)
-        self.assertIs(confirm.call_args_list[0].kwargs["default"], False)
+        t = self.menu.t
+        _code, port = self._geler(["", "o"])
+        self.assertEqual(
+            confirmations_repo(port),
+            [
+                (
+                    t("Also freeze the upstream base of each fork (network)?"),
+                    "n",
+                    False,
+                ),
+                (t("Write these changes to the manifest files?"), "n", False),
+            ],
+        )
         self.assertNotIn("--upstream", " ".join(self.cmds))
 
+    def test_ctrl_d_at_the_upstream_base_answers_no(self):
+        code, port = self._geler([EOFError(), "o"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cmds), 2)
+        self.assertNotIn("--upstream", " ".join(self.cmds))
+        self.assertEqual(port.answers, [])
+
     def test_upstream_base_passes_its_flag_to_both_runs(self):
-        self._geler(True, amont=True)
+        self._geler(["o", "o"])
         self.assertIn("--upstream --dry-run", self.cmds[0])
         self.assertTrue(self.cmds[1].endswith("--upstream"))
 
     def test_unfreeze_asks_nothing_about_the_upstream_base(self):
-        _code, confirm = self._geler(True, unfreeze=True)
-        confirm.assert_called_once()
+        t = self.menu.t
+        _code, port = self._geler(["o"], unfreeze=True)
+        self.assertEqual(
+            confirmations_repo(port),
+            [(t("Write these changes to the manifest files?"), "n", False)],
+        )
         self.assertNotIn("--upstream", " ".join(self.cmds))
 
     def test_header_counts_the_forks_with_an_upstream_base(self):
@@ -4314,7 +4488,7 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertIsNone(self.menu.ligne_du_gel(None, forks))
 
     def test_unfreeze_passes_its_flag_to_both_runs(self):
-        self._geler(True, unfreeze=True)
+        self._geler(["o"], unfreeze=True)
         self.assertIn("--unfreeze --dry-run", self.cmds[0])
         self.assertTrue(self.cmds[1].endswith("--unfreeze"))
 
@@ -4322,14 +4496,14 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         """Seule la question de la base amont, qui précède la passe à sec,
         a été posée : l'écriture n'est pas proposée."""
         self.status = [1]
-        code, confirm = self._geler(True)
+        code, port = self._geler(["n", "o"])
         self.assertEqual(code, 1)
         self.assertEqual(len(self.cmds), 1)
-        confirm.assert_called_once()
+        self.assertEqual(len(confirmations_repo(port)), 1)
         self.status = [1]
-        code, confirm = self._geler(True, unfreeze=True)
+        code, port = self._geler(["o"], unfreeze=True)
         self.assertEqual(code, 1)
-        confirm.assert_not_called()
+        self.assertEqual(confirmations_repo(port), [])
 
     def test_reconfigure_follows_branches_without_the_argument(self):
         self.obj._git_repo_reconfigurer()
@@ -4402,13 +4576,15 @@ class TestGitRepoPublish(unittest.TestCase):
         }
 
     def _publier(
-        self, plan, confirms, prompts=(), saisies=("1",), **remplaces
+        self, plan, saisies=("1",), prompts=(), port=None, **remplaces
     ):
         """Lance la publication, `repo_apply` et les questions remplacés.
 
-        `saisies` répondent, par `input`, aux choix (`ui.choose`) des
-        dépôts, puis du genre de la référence qui retient ; `prompts`, au
-        nom de cette référence ; `remplaces` remplace d'autres fonctions de
+        `saisies` répondent, par `input`, dans l'ordre où elles se posent,
+        aux choix (`ui.choose`) des dépôts et du genre de la référence qui
+        retient, et aux questions oui/non (`ui.confirm`) ; `port`, un
+        `ScriptedPort`, y répond seul. `prompts` répondent au nom
+        de la référence ; `remplaces` remplace d'autres fonctions de
         `repo_apply` (nom=mock). Rend (code, publier, retenir,
         mettre_a_jour_passe, geler) ; l'affichage est dans `self.sortie`."""
         from contextlib import ExitStack
@@ -4432,14 +4608,13 @@ class TestGitRepoPublish(unittest.TestCase):
             for nom, faux in remplaces.items():
                 pile.enter_context(mock.patch.object(self.ra, nom, faux))
             pile.enter_context(
-                mock.patch("builtins.input", side_effect=list(saisies))
-            )
-            self.sortie = pile.enter_context(redirect_stdout(io.StringIO()))
-            pile.enter_context(
-                mock.patch.object(
-                    self.menu.click, "confirm", side_effect=list(confirms)
+                mock.patch(
+                    "builtins.input", side_effect=[] if port else saisies
                 )
             )
+            self.sortie = pile.enter_context(redirect_stdout(io.StringIO()))
+            if port:
+                pile.enter_context(self.menu.ui.bind(port))
             pile.enter_context(
                 mock.patch.object(
                     self.menu.click, "prompt", side_effect=list(prompts)
@@ -4452,14 +4627,23 @@ class TestGitRepoPublish(unittest.TestCase):
         return code, publier, retenir, maj, geler
 
     def test_no_push_without_confirmation(self):
-        code, publier, _r, maj, _g = self._publier(self._plan(), [False])
-        self.assertEqual(code, 0)
-        publier.assert_not_called()
-        maj.assert_not_called()
+        # Le « o » qui suit chaque refus, s'il était lu, pousserait.
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                port = ScriptedPort(["1", *refus, "o"])
+                code, publier, _r, maj, geler = self._publier(
+                    self._plan(), port=port
+                )
+                self.assertEqual(code, 0)
+                publier.assert_not_called()
+                maj.assert_not_called()
+                geler.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
 
     def test_confirmed_push_is_recorded_then_refreeze_offered(self):
+        # « o » et « oui » poussent et gèlent.
         code, publier, _r, maj, geler = self._publier(
-            self._plan(), [True, True]
+            self._plan(), saisies=["1", "o", "oui"]
         )
         self.assertEqual(code, 1)
         publier.assert_called_once()
@@ -4468,24 +4652,36 @@ class TestGitRepoPublish(unittest.TestCase):
         geler.assert_called_once_with()
 
     def test_retention_ref_needs_its_own_confirmation(self):
+        t = self.menu.t
         plan = self._plan(force=True, a_retenir=[self.SHA_A])
-        code, publier, retenir, _m, _g = self._publier(
-            plan,
-            [False],
-            prompts=["ERPLibre/v9.9.9_odooX.0"],
-            saisies=["1", "1"],
+        for refus in REFUS_REPO:
+            with self.subTest(refus=refus):
+                port = ScriptedPort(["1", "1", *refus, "o"])
+                code, publier, retenir, _m, _g = self._publier(
+                    plan, prompts=["ERPLibre/v9.9.9_odooX.0"], port=port
+                )
+                self.assertEqual(code, 0)
+                retenir.assert_not_called()
+                publier.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+        self.assertEqual(
+            confirmations_repo(port),
+            [
+                (
+                    f"{t('Push')} tag ERPLibre/v9.9.9_odooX.0"
+                    f" ({self.SHA_A[:12]}) → fork_origin_amont?",
+                    "n",
+                    False,
+                )
+            ],
         )
-        self.assertEqual(code, 0)
-        retenir.assert_not_called()
-        publier.assert_not_called()
 
     def test_retention_ref_pushed_before_the_forced_push(self):
         plan = self._plan(force=True, a_retenir=[self.SHA_A])
         _c, publier, retenir, _m, _g = self._publier(
             plan,
-            [True, True, False],
+            saisies=["1", "branch", "o", "o", "n"],
             prompts=["X.0_avant"],
-            saisies=["1", "branch"],
         )
         retenir.assert_called_once_with(
             self.mock.ANY,
@@ -4503,7 +4699,7 @@ class TestGitRepoPublish(unittest.TestCase):
         for genre in ("0", EOFError()):
             with self.subTest(genre=genre):
                 code, publier, retenir, maj, _g = self._publier(
-                    plan, [], saisies=["1", genre]
+                    plan, saisies=["1", genre]
                 )
                 self.assertEqual(code, 0)
                 retenir.assert_not_called()
@@ -4514,7 +4710,7 @@ class TestGitRepoPublish(unittest.TestCase):
         """« 0 » revient ; « -1 », « 2 », « 01 » et « x » ne sont pas un
         numéro affiché : chacun se dit, et la question revient."""
         code, publier, _r, _m, _g = self._publier(
-            self._plan(), [], saisies=["-1", "2", "01", "x", "0"]
+            self._plan(), saisies=["-1", "2", "01", "x", "0"]
         )
         self.assertEqual(code, 0)
         publier.assert_not_called()
@@ -4527,7 +4723,7 @@ class TestGitRepoPublish(unittest.TestCase):
         for saisie in ("", "0", EOFError()):
             with self.subTest(saisie=saisie):
                 code, publier, retenir, maj, _g = self._publier(
-                    self._plan(), [], saisies=[saisie]
+                    self._plan(), saisies=[saisie]
                 )
                 self.assertEqual(code, 0)
                 publier.assert_not_called()
@@ -4544,18 +4740,38 @@ class TestGitRepoPublish(unittest.TestCase):
         for saisie in ("all", "tout", "*", "1-2", "2 1"):
             with self.subTest(saisie=saisie):
                 code, publier, _r, _m, _g = self._publier(
-                    self._plan(), [True, True, False], saisies=[saisie]
+                    self._plan(), saisies=[saisie, "o", "o", "n"]
                 )
                 self.assertEqual(code, 2)
                 self.assertEqual(publier.call_count, 2)
 
     def test_a_refused_plan_pushes_nothing_and_asks_nothing(self):
         plan = dict(self._plan(), refus="remote moved")
-        code, publier, retenir, maj, _g = self._publier(plan, [])
+        code, publier, retenir, maj, _g = self._publier(plan)
         self.assertEqual(code, 0)
         publier.assert_not_called()
         retenir.assert_not_called()
         maj.assert_not_called()
+
+    def test_the_refreeze_takes_its_default_but_not_on_ctrl_d(self):
+        # Entrée au regel prend son défaut, oui ; Ctrl+D y vaut non.
+        t = self.menu.t
+        for fin, gele in (("", True), (EOFError(), False)):
+            with self.subTest(fin=fin):
+                port = ScriptedPort(["1", "o", fin])
+                code, publier, _r, _m, geler = self._publier(
+                    self._plan(), port=port
+                )
+                self.assertEqual(code, 1)
+                publier.assert_called_once()
+                self.assertIs(geler.called, gele)
+        self.assertEqual(
+            confirmations_repo(port),
+            [
+                (t("Push to the fork?"), "n", False),
+                (t("Freeze the versions again now?"), "y", False),
+            ],
+        )
 
     def test_a_rebase_finished_outside_the_menu_becomes_publishable(self):
         self.res["etat"] = "conflit"
@@ -4566,7 +4782,7 @@ class TestGitRepoPublish(unittest.TestCase):
 
         faux = self.mock.Mock(side_effect=reconcilier)
         code, publier, _r, _m, _g = self._publier(
-            self._plan(), [True, False], reconcilier_passe=faux
+            self._plan(), saisies=["1", "o", "n"], reconcilier_passe=faux
         )
         faux.assert_called_once()
         self.assertEqual(code, 1)

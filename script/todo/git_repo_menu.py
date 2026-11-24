@@ -285,7 +285,6 @@ class GitRepoMenuMixin:
         """
         from script.git import repo_pull
 
-        oui = ("o", "oui", "y", "yes")
         version = repo_upgrade.version_active(RACINE) or "?"
         mode = ui.choose(
             t("Mode"),
@@ -324,14 +323,14 @@ class GitRepoMenuMixin:
             print(f"⚠️  {avis}")
             for chemin in donnees["plan_superficiel"]:
                 print(f"     {chemin}")
-            reponse = input(
-                f"💬 {t('Deepen the shallow clones (network)? (y/N): ')}"
+            approfondir = ui.confirm(
+                t("Deepen the shallow clones (network)?"), default=False
             )
-            approfondir = reponse.strip().lower() in oui
         cloner = False
         if donnees["plan_nouveaux"]:
-            reponse = input(f"💬 {t('Clone the new repositories? (y/N): ')}")
-            cloner = reponse.strip().lower() in oui
+            cloner = ui.confirm(
+                t("Clone the new repositories?"), default=False
+            )
 
         attendus = list(donnees["attendus"])
         if approfondir:
@@ -361,8 +360,7 @@ class GitRepoMenuMixin:
                 f" {repo_pull.repo_state.MANIFESTE_LOCAL}"
             )
         print(f"   {t('Nothing is pushed.')}")
-        reponse = input(f"💬 {t('Pull the repositories? (y/N): ')}")
-        if reponse.strip().lower() not in oui:
+        if not ui.confirm(t("Pull the repositories?"), default=False):
             print(f"↩️  {t('Cancelled: nothing was written.')}")
             return 0
 
@@ -391,10 +389,6 @@ class GitRepoMenuMixin:
         commande = ".venv.erplibre/bin/python script/git/repo_pull.py"
         deps = charge.get("dependances") or {}
         if deps.get("a_installer"):
-            question = t(
-                "Install the Python dependencies now"
-                " (poetry install --no-root)? (y/N): "
-            )
             plus_tard = (
                 f"     {commande} --install-deps --confirm {version}"
                 + (
@@ -403,7 +397,13 @@ class GitRepoMenuMixin:
                     else ""
                 )
             )
-            if input(f"💬 {question}").strip().lower() in oui:
+            if ui.confirm(
+                t(
+                    "Install the Python dependencies now"
+                    " (poetry install --no-root)?"
+                ),
+                default=False,
+            ):
                 resultat, code_deps = repo_pull.installer_dependances(
                     RACINE, version, charge["horodatage"], en_direct=True
                 )
@@ -533,10 +533,9 @@ class GitRepoMenuMixin:
                 f"     {x['chemin']} ({x['revision']} ·"
                 f" {amont['remote']}/{amont['branche']})"
             )
-        reponse = input(
-            f"💬 {t('Deepen the shallow clones (network)? (y/N): ')}"
-        )
-        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
+        if not ui.confirm(
+            t("Deepen the shallow clones (network)?"), default=False
+        ):
             print(f"↩️  {t('Not deepened: these forks stay out of it.')}")
             return lst
         complets = 0
@@ -672,8 +671,7 @@ class GitRepoMenuMixin:
             )
             print(f"     {x['chemin']} → {branche}{avance}")
         print(f"   {t('Nothing is pushed.')}")
-        reponse = input(f"💬 {t('Apply the upgrade? (y/N): ')}")
-        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
+        if not ui.confirm(t("Apply the upgrade?"), default=False):
             print(f"↩️  {t('Cancelled: nothing was written.')}")
             return 0
 
@@ -949,9 +947,7 @@ class GitRepoMenuMixin:
             print(
                 f"   {t('The manifest still holds the old frozen commits.')}"
             )
-            if click.confirm(
-                t("Freeze the versions again now?"), default=True
-            ):
+            if ui.confirm(t("Freeze the versions again now?"), default=True):
                 self._git_repo_geler()
             else:
                 print(f"   {t('Freeze the versions, then commit manifest/.')}")
@@ -977,7 +973,7 @@ class GitRepoMenuMixin:
         print(f"  {t('Remote:')} {plan['remote']}")
         print(f"  {t('Branch:')} {plan['branche']} → {plan['revision']}")
         print(f"  {ancien} → {plan['nouveau'][:12]} · {genre}")
-        if not click.confirm(t("Push to the fork?"), default=False):
+        if not ui.confirm(t("Push to the fork?"), default=False):
             print(f"  ↩️  {t('Cancelled: the fork branch was not pushed.')}")
             return False
         _out, err, code = repo_apply.publier(chemin, plan)
@@ -1026,10 +1022,10 @@ class GitRepoMenuMixin:
                 plan["revision"], horodatage
             )
         nom = click.prompt(f"  {t('Name')}", default=defaut).strip()
-        question = (
-            f"{t('Push')} {genre} {nom} ({ancien[:12]}) → {plan['remote']}?"
-        )
-        if not nom or not click.confirm(question, default=False):
+        if not nom or not ui.confirm(
+            f"{t('Push')} {genre} {nom} ({ancien[:12]}) → {plan['remote']}?",
+            default=False,
+        ):
             print(f"  ↩️  {t('Cancelled: nothing was pushed.')}")
             return False
         _out, err, code = repo_apply.retenir(
@@ -1099,7 +1095,7 @@ class GitRepoMenuMixin:
             print(f"🫗 {t('Unfreeze the versions')}")
         else:
             print(f"🧊 {t('Freeze the versions')}")
-            if click.confirm(
+            if ui.confirm(
                 t("Also freeze the upstream base of each fork (network)?"),
                 default=False,
             ):
@@ -1117,7 +1113,7 @@ class GitRepoMenuMixin:
             echec = t("Nothing was written; see the messages above.")
             print(f"⚠  {echec} ({status})")
             return status
-        if not click.confirm(
+        if not ui.confirm(
             t("Write these changes to the manifest files?"), default=False
         ):
             print(f"↩️  {t('Cancelled: nothing was written.')}")
