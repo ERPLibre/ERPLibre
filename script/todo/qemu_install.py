@@ -185,7 +185,7 @@ class QemuInstallMixin:
         found = re.findall(r"make\s+(install_odoo\S*)", install_cmd or "")
         return found[-1] if found else ""
 
-    def _qemu_odoo_service_cmd(self, prod=False):
+    def _qemu_odoo_service_cmd(self, prod=False, base_distante=False):
         """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
         service systemd puis l'active. N'est ajouté QUE pour les profils Odoo.
 
@@ -196,6 +196,13 @@ class QemuInstallMixin:
         PROD : ERPLibre sous /opt/erplibre (hors user_home_t) -> le service
         reste CONFINÉ par SELinux ; on restaure les contextes (restorecon)."""
         svc_dir = self._qemu_install_dir(prod)
+        if base_distante:
+            # La base vit sur un serveur dédié : l'unité est celle du lanceur,
+            # qui lit sa connexion dans un fichier d'environnement déposé
+            # avant l'installation (script/remote/erplibre_base.py).
+            from script.remote import erplibre_base
+
+            return erplibre_base.cmd_service(svc_dir)
         selinux_shell = (
             'SELINUX_LINE=""; '  # pas de SELinuxContext (inefficace)
         )

@@ -41,7 +41,7 @@ from script.config import config_file as config_module
 from script.config.config_file import ConfigFile
 from script.lib_valid import (HOST_RE, NAME_RE, SERVER_RE,  # noqa: F401
                               ValidationError)
-from script.remote import appliance_ssh, host_probe
+from script.remote import appliance_ssh, erplibre_base, host_probe
 from script.todo import todo_prefs
 
 # La clé de section, dans les trois fichiers de configuration.
@@ -77,6 +77,17 @@ DEFAULTS = {
     # Non vide ≡ le service est servi derrière nginx, avec un certificat.
     "domain": "",
     "admin_email": "",
+    # La base : « local » (le PostgreSQL que l'installation pose sur la
+    # cible) ou « distant » (un serveur dédié). Le mot de passe n'est JAMAIS
+    # dans la fiche : il est demandé au dépôt du fichier d'environnement.
+    # Voir script/remote/erplibre_base.py.
+    "db_mode": "local",
+    "db_host": "",
+    "db_port": "",
+    "db_user": "",
+    "db_name": "",
+    "db_sslmode": "",
+    "ca_root": "",
     # Ce que la sonde a constaté, et non ce que quelqu'un a saisi. Vide tant
     # que personne n'a sondé — ce qui n'est pas « en panne », et l'écran doit
     # pouvoir dire la différence.
@@ -217,6 +228,9 @@ def validate(target: dict) -> dict:
     valid.path(full, "identity", "Clé privée", required=False)
     valid.path(full, "path", "Chemin distant")
     full.update(validate_service(full.get("domain"), full.get("admin_email")))
+    full.update(erplibre_base.valider_base(full))
+    if full["ca_root"]:
+        valid.path(full, "ca_root", "Racine du site")
 
     _constate(full)
     return full

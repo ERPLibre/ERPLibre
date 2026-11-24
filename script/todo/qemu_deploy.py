@@ -120,6 +120,7 @@ class QemuDeployMixin:
         ai_agent="",
         distro="",
         keep_login=False,
+        base_distante=False,
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -135,7 +136,9 @@ class QemuDeployMixin:
         configuration du projet. `distro` : système de la VM, transmis au bloc
         du bureau, dont les paquets et l'accès distant en dépendent au-delà
         du seul gestionnaire de paquets ; « » quand l'appelant l'ignore.
-        `keep_login` : le bloc GNOME Remote Desktop laisse en place le
+        `base_distante` : la base vit sur un serveur dédié ; le service est
+        celui du lanceur, et son fichier d'environnement doit avoir été déposé
+        (script/remote/erplibre_base.py). `keep_login` : le bloc GNOME Remote Desktop laisse en place le
         fichier du mot de passe après l'avoir relu (voir
         _qemu_grd_remote_cmd)."""
         if not branch:
@@ -199,7 +202,11 @@ class QemuDeployMixin:
             # l'install était rapportée ✅ alors qu'elle avait échoué. « set -e »
             # ne rattrape pas : il n'interrompt pas sur un maillon d'une liste
             # « && ». Les accolades font porter le && sur le bloc entier.
-            svc = self._qemu_odoo_service_cmd(prod).strip().rstrip(";")
+            svc = (
+                self._qemu_odoo_service_cmd(prod, base_distante=base_distante)
+                .strip()
+                .rstrip(";")
+            )
             final_cmd = f"{final_cmd} && {{ {svc}; }}"
         # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
         # unattended-upgrades REDÉMARRE le cluster PostgreSQL sous lui-même —

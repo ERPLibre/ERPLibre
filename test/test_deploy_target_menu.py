@@ -589,12 +589,9 @@ class TestDeclarerUneCibleDeSauvegarde(EcranCase):
             "9",
             self.rang_du_genre(D.KIND_BACKUP),
             "compte@depot.example",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            # Un vide par champ restant du formulaire : nom, genre et
+            # adresse viennent d'être répondus.
+            *[""] * (len(M.CHAMPS) - 3),
             "0",
         )
         self.assertIn("✗", affiche)

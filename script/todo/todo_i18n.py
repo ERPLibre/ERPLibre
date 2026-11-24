@@ -4813,6 +4813,34 @@ TRANSLATIONS = {
         "fr": "Courriel d'administration pour le certificat",
         "en": "Admin email for the certificate",
     },
+    "Database: local or remote (a dedicated server)": {
+        "fr": "Base : local ou distant (un serveur dédié)",
+        "en": "Database: local or remote (a dedicated server)",
+    },
+    "Remote database: host or IP address": {
+        "fr": "Base distante : hôte ou adresse IP",
+        "en": "Remote database: host or IP address",
+    },
+    "Remote database: port (empty: 5432)": {
+        "fr": "Base distante : port (vide : 5432)",
+        "en": "Remote database: port (empty: 5432)",
+    },
+    "Remote database: account": {
+        "fr": "Base distante : compte",
+        "en": "Remote database: account",
+    },
+    "Remote database: database name": {
+        "fr": "Base distante : nom de la base",
+        "en": "Remote database: database name",
+    },
+    "Remote database: TLS mode (empty: verify-full)": {
+        "fr": "Base distante : mode TLS (vide : verify-full)",
+        "en": "Remote database: TLS mode (empty: verify-full)",
+    },
+    "Remote database: site root certificate (local path)": {
+        "fr": "Base distante : certificat racine du site (chemin local)",
+        "en": "Remote database: site root certificate (local path)",
+    },
     "Target refused: ": {"fr": "Cible refusée : ", "en": "Target refused: "},
     "Target saved: ": {
         "fr": "Cible enregistrée : ",

@@ -42,6 +42,13 @@ CHAMPS = (
     ("path", "Remote path where ERPLibre lives"),
     ("domain", "Domain served over HTTPS (empty: not served)"),
     ("admin_email", "Admin email for the certificate"),
+    ("db_mode", "Database: local or remote (a dedicated server)"),
+    ("db_host", "Remote database: host or IP address"),
+    ("db_port", "Remote database: port (empty: 5432)"),
+    ("db_user", "Remote database: account"),
+    ("db_name", "Remote database: database name"),
+    ("db_sslmode", "Remote database: TLS mode (empty: verify-full)"),
+    ("ca_root", "Remote database: site root certificate (local path)"),
 )
 
 # Ce que chaque genre veut dire pour qui remplit la fiche. Le nom technique
