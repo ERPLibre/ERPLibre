@@ -156,6 +156,7 @@ compared with a complete one. The durations of a measured run are not kept.
 make test_unit_coverage                                    # unit tests under coverage
 .venv.erplibre/bin/python script/test/couverture_tui.py    # tree, annotated source, history
 .venv.erplibre/bin/python script/test/couverture.py html --jeu erplibre
+make open_test_coverage JEU=erplibre                       # HTML report in the browser (JEU=odoo: the scenarios)
 ```
 
 TODO › Execute › Development › [11] Coverage gathers the screen, the measured
@@ -216,6 +217,7 @@ retenues.
 make test_unit_coverage                                    # tests unitaires sous couverture
 .venv.erplibre/bin/python script/test/couverture_tui.py    # arbre, source annotée, historique
 .venv.erplibre/bin/python script/test/couverture.py html --jeu erplibre
+make open_test_coverage JEU=erplibre                       # rapport HTML dans le navigateur (JEU=odoo : les scénarios)
 ```
 
 TODO › Exécution › Développement › [11] Couverture regroupe l'écran, les

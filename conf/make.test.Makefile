@@ -48,9 +48,21 @@ test_unit_failed:
 test_unit_coverage:
 	./script/test/run_unit_test.sh --coverage
 
+# Ouvre un rapport HTML de couverture dans le navigateur.
+#   make open_test_coverage JEU=erplibre   suite unitaire (test_unit_coverage)
+#   make open_test_coverage JEU=odoo       scénarios (test_full_fast_coverage)
+# Avec JEU, script/test/couverture.py produit le rapport à partir des
+# données du jeu : sans données, la cible échoue et rien ne s'ouvre. Le
+# chemin du rapport s'affiche toujours, et un navigateur absent ne fait pas
+# échouer la cible, comme sans JEU. Sans JEU : htmlcov/, qu'écrivent les
+# cibles test_addons_code_generator*.
 .PHONY: open_test_coverage
 open_test_coverage:
+ifdef JEU
+	index="$$(./.venv.erplibre/bin/python ./script/test/couverture.py html --jeu $(JEU))" || exit 1; echo "$$index"; $(BROWSER) "$$index" || true
+else
 	-$(BROWSER) htmlcov/index.html
+endif
 
 .PHONY: test
 test:

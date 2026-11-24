@@ -189,8 +189,14 @@ def envelopper(nom, cmd):
 
 def _coverage(nom, *arguments):
     """Lance « coverage <arguments> » par l'interpréteur du jeu, depuis la
-    racine : les chemins relatifs des données s'y résolvent."""
+    racine : les chemins relatifs des données s'y résolvent.
+    RuntimeError si cet interpréteur n'existe pas : un venv absent se dit
+    en une ligne, pas par le FileNotFoundError de subprocess."""
     j = jeu(nom)
+    if not os.path.exists(j.python):
+        raise RuntimeError(
+            f"pas d'interpréteur pour le jeu {nom} : {j.python}"
+        )
     return subprocess.run(
         [j.python, "-m", "coverage", *arguments, f"--rcfile={j.rc}"],
         cwd=RACINE,
@@ -412,6 +418,16 @@ def main(argv=None):
     )
     parser.add_argument("--jeu", default="erplibre", choices=JEUX)
     args = parser.parse_args(argv)
+    try:
+        return _executer(args)
+    except RuntimeError as e:
+        # Le message de coverage (« No data to report. ») suffit ; une
+        # trace Python le noierait.
+        print(f"couverture.py {args.action} : {e}", file=sys.stderr)
+        return 1
+
+
+def _executer(args):
     if args.action == "effacer":
         effacer(args.jeu)
     elif args.action == "combiner":

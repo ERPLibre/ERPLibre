@@ -61,6 +61,7 @@ rapport HTML.
 make test                    # Tests de base + format
 make test_full_fast          # Scénarios du générateur de code, en parallèle
 make test_full_fast_coverage # Avec couverture des modules Odoo
+make open_test_coverage JEU=odoo   # Ouvrir le rapport HTML (JEU=erplibre : suite unitaire ; sans JEU : htmlcov/)
 make test_odoo_scenario S=demo_test   # Un seul scénario
 ```
 Les scénarios passent par `script/test/run_odoo_scenarios.sh` (même moteur
