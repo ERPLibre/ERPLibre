@@ -152,6 +152,55 @@ CHEMINS_BALLON = (
 # disent alors quoi que ce soit.
 HYPERVISEURS_VIRTIO = {"kvm", "qemu"}
 
+# sysctl.d : les répertoires par ordre de priorité. Un fichier masque celui
+# du même nom dans un répertoire plus bas ; les survivants s'appliquent par
+# ordre de nom, quel que soit leur répertoire, et la dernière affectation
+# d'une clé l'emporte. systemd-sysctl lit les quatre premiers au démarrage
+# (et /lib/sysctl.d sur un système à /usr séparé) ; « sysctl --system » de
+# procps lit les cinq, puis /etc/sysctl.conf en dernier.
+DOSSIERS_SYSCTL = (
+    "/etc/sysctl.d",
+    "/run/sysctl.d",
+    "/usr/local/lib/sysctl.d",
+    "/usr/lib/sysctl.d",
+    "/lib/sysctl.d",
+)
+SYSCTL_D_ETC = "/etc/sysctl.d"
+# systemd-sysctl ne lit pas /etc/sysctl.conf : plusieurs distributions le
+# relient en /etc/sysctl.d/99-sysctl.conf pour qu'il s'applique au
+# démarrage. Sans systemd-sysctl, procps l'applique en dernier.
+SYSCTL_CONF = "/etc/sysctl.conf"
+BINAIRES_SYSTEMD_SYSCTL = (
+    "/usr/lib/systemd/systemd-sysctl",
+    "/lib/systemd/systemd-sysctl",
+)
+SWAPPINESS = "vm.swappiness"
+PAGE_CLUSTER = "vm.page-cluster"
+CLES_SYSCTL = (SWAPPINESS, PAGE_CLUSTER)
+# Le fichier créé quand aucun fichier de /etc ne porte déjà la clé : « 99- »
+# le classe après ceux des paquets, « zz- » après les autres « 99- ».
+NOM_SYSCTL = "99-zz-swap.conf"
+# La valeur par défaut du noyau. Sous elle, le noyau préfère jeter le cache
+# de pages plutôt que de swapper, et une zram reste presque vide.
+SWAPPINESS_DEFAUT = 60
+# Avec une zram, swapper coûte une compression en RAM, moins que de relire
+# depuis le disque le cache de pages évincé : 100 pèse les deux à égalité.
+SWAPPINESS_ZRAM = 100
+# Swap sur disque et PostgreSQL : ses processus restent en RAM, le swap ne
+# sert qu'en dernier recours.
+SWAPPINESS_POSTGRESQL = 10
+# Une zram lit une page seule plus vite qu'une grappe : pas de lecture
+# anticipée (2^0 = 1 page).
+PAGE_CLUSTER_ZRAM = 0
+# vm.swappiness accepte 0 à 200 depuis Linux 5.8, 0 à 100 avant.
+SWAPPINESS_MAX = 200
+SWAPPINESS_MAX_ANCIEN = 100
+NOYAU_SWAPPINESS_200 = (5, 8)
+PAGE_CLUSTER_MAX = 31
+# Le nom de processus (/proc/<pid>/comm) du serveur PostgreSQL et de ses
+# processus fils ; « postmaster » chez les versions anciennes.
+COMMS_POSTGRESQL = {"postgres", "postmaster"}
+
 # Les suffixes anglais (K, KB, KiB) et français (Ko, Kio) : le menu écrit
 # ses tailles en « Gio », et une taille recopiée de son affichage se relit.
 SUFFIXES = {
@@ -359,6 +408,15 @@ def lire_zram(racine_sys="/sys/block"):
     return appareils
 
 
+def noyau_en_marche(racine="/"):
+    """La version du noyau en marche (/proc/sys/kernel/osrelease) ; sous
+    la vraie racine, os.uname() la donne quand /proc ne se lit pas."""
+    running = (lire(_sous(racine, "/proc/sys/kernel/osrelease")) or "").strip()
+    if not running and racine == "/":
+        running = os.uname().release
+    return running
+
+
 def module_zram(racine="/"):
     """{state, running, installed} : si le noyau en marche peut porter une
     zram, avant qu'un plan ne l'attende.
@@ -376,9 +434,7 @@ def module_zram(racine="/"):
     Sans ce contrôle, zram-generator écrit dev-zram0.swap même quand le
     module ne se charge pas, et systemd attend /dev/zram0 jusqu'à son délai
     de 90 secondes avant d'annoncer une dépendance en échec."""
-    running = (lire(_sous(racine, "/proc/sys/kernel/osrelease")) or "").strip()
-    if not running and racine == "/":
-        running = os.uname().release
+    running = noyau_en_marche(racine)
     resultat = {"state": "unknown", "running": running, "installed": []}
     for chemin in ("/sys/class/zram-control", "/sys/module/zram"):
         if os.path.exists(_sous(racine, chemin)):
@@ -577,6 +633,167 @@ def recommandation(ram, hibernation=False):
     }
 
 
+def version_noyau(release):
+    """« 6.12.4-arch1-1 » -> (6, 12) ; None sinon."""
+    m = re.match(r"\s*(\d+)\.(\d+)", release or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def swappiness_max(release):
+    """La plus grande vm.swappiness que le noyau `release` accepte. Un
+    noyau inconnu reçoit la borne des anciens : 0 à 100 vaut partout."""
+    version = version_noyau(release)
+    if version and version >= NOYAU_SWAPPINESS_200:
+        return SWAPPINESS_MAX
+    return SWAPPINESS_MAX_ANCIEN
+
+
+def chemin_sysctl(cle):
+    """Le nom d'une clé de sysctl sous sa forme de chemin sous /proc/sys :
+    « vm.swappiness » et « vm/swappiness » -> « vm/swappiness ». Si le
+    premier séparateur est « / », les points suivants font partie d'un nom
+    et restent ; si c'est « . », points et barres s'échangent."""
+    cle = cle.strip()
+    m = re.search(r"[./]", cle)
+    if not m or m.group() == "/":
+        return cle
+    return cle.translate(str.maketrans("./", "/."))
+
+
+def lire_sysctl_conf(texte):
+    """Un fichier de sysctl.d -> {chemin sous /proc/sys: valeur}, la
+    dernière affectation d'une clé l'emportant. Les lignes vides, # et ;
+    sont ignorées ; le « - » de tête (un échec toléré) ne change pas la
+    clé ; une ligne sans « = » (l'exclusion d'un glob) n'affecte rien."""
+    valeurs = {}
+    for ligne in (texte or "").splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne[0] in "#;":
+            continue
+        cle, egal, valeur = ligne.partition("=")
+        if not egal:
+            continue
+        cle = cle.strip()
+        if cle.startswith("-"):
+            cle = cle[1:]
+        valeurs[chemin_sysctl(cle)] = valeur.strip()
+    return valeurs
+
+
+def _cible_lien(racine, chemin, sauts=8):
+    """Le chemin, absolu sous `racine`, que le lien symbolique `chemin`
+    désigne au bout de sa chaîne ; `chemin` lui-même s'il n'est pas un
+    lien. Une cible absolue se résout sous `racine`, pas sur la machine
+    qui exécute."""
+    for _ in range(sauts):
+        try:
+            cible = os.readlink(_sous(racine, chemin))
+        except OSError:
+            return chemin
+        chemin = os.path.normpath(os.path.join(os.path.dirname(chemin), cible))
+    return chemin
+
+
+def lire_sysctl(racine="/"):
+    """vm.swappiness et vm.page-cluster : leur valeur et qui les fixe au
+    démarrage.
+
+    Rend {SWAPPINESS: {...}, PAGE_CLUSTER: {...}, systemd, names}. names
+    liste les noms de tous les fichiers de sysctl.d, systemd dit si
+    systemd-sysctl est installé. Pour chaque clé : value (l'entier lu dans
+    /proc/sys, None s'il ne se lit pas) ; setters, les fichiers qui
+    l'affectent dans l'ordre où ils s'appliquent, chacun {path, link, name,
+    value} : path le fichier réel, link l'entrée de sysctl.d qui y mène par
+    un lien (None sinon), name le nom qui le classe (None pour
+    /etc/sysctl.conf lu en dernier) ; source et source_value, le dernier
+    setter, qui l'emporte (None : la valeur du noyau) ; dead, les setters
+    qu'il écrase ; outside_boot, {path, value} quand /etc/sysctl.conf
+    affecte la clé sans être relié dans sysctl.d alors que systemd-sysctl
+    est là : seul « sysctl --system » l'applique, pas le démarrage.
+
+    /etc/sysctl.d/99-sysctl.conf, lien vers ../sysctl.conf, compte une
+    fois, à la place de son nom."""
+    systemd = any(
+        os.path.exists(_sous(racine, b)) for b in BINAIRES_SYSTEMD_SYSCTL
+    )
+    par_nom = {}
+    for dossier in DOSSIERS_SYSCTL:
+        try:
+            noms = os.listdir(_sous(racine, dossier))
+        except OSError:
+            continue
+        for nom in noms:
+            if nom.endswith(".conf") and not nom.startswith("."):
+                par_nom.setdefault(nom, f"{dossier}/{nom}")
+    fichiers = []
+    for nom in sorted(par_nom):
+        entree = par_nom[nom]
+        reel = _cible_lien(racine, entree)
+        fichiers.append((nom, entree, reel))
+    relie = any(reel == SYSCTL_CONF for _, _, reel in fichiers)
+    conf_a_part = not relie and os.path.isfile(_sous(racine, SYSCTL_CONF))
+    if conf_a_part and not systemd:
+        fichiers.append((None, SYSCTL_CONF, SYSCTL_CONF))
+    lus = {}
+    for _, _, reel in fichiers:
+        if reel not in lus:
+            lus[reel] = lire_sysctl_conf(lire(_sous(racine, reel)))
+    conf = (
+        lire_sysctl_conf(lire(_sous(racine, SYSCTL_CONF)))
+        if conf_a_part and systemd
+        else {}
+    )
+    resultat = {"systemd": systemd, "names": sorted(par_nom)}
+    for cle in CLES_SYSCTL:
+        proc = chemin_sysctl(cle)
+        try:
+            valeur = int(
+                (lire(_sous(racine, f"/proc/sys/{proc}")) or "").strip()
+            )
+        except ValueError:
+            valeur = None
+        setters = [
+            {
+                "path": reel,
+                "link": entree if entree != reel else None,
+                "name": nom,
+                "value": lus[reel][proc],
+            }
+            for nom, entree, reel in fichiers
+            if proc in lus[reel]
+        ]
+        dernier = setters[-1] if setters else None
+        resultat[cle] = {
+            "value": valeur,
+            "setters": setters,
+            "source": dernier and dernier["path"],
+            "source_value": dernier and dernier["value"],
+            "dead": setters[:-1],
+            "outside_boot": (
+                {"path": SYSCTL_CONF, "value": conf[proc]}
+                if proc in conf
+                else None
+            ),
+        }
+    return resultat
+
+
+def postgresql_actif(racine="/"):
+    """Vrai si un processus PostgreSQL tourne : un /proc/<pid>/comm vaut
+    un nom de COMMS_POSTGRESQL."""
+    dossier = _sous(racine, "/proc")
+    try:
+        noms = os.listdir(dossier)
+    except OSError:
+        return False
+    for nom in noms:
+        if nom.isdigit():
+            comm = (lire(os.path.join(dossier, nom, "comm")) or "").strip()
+            if comm in COMMS_POSTGRESQL:
+                return True
+    return False
+
+
 def ballon_virtio(racine="/"):
     """Vrai si le pilote virtio_balloon de l'invité est chargé ou intégré
     au noyau."""
@@ -601,9 +818,11 @@ def etat(racine="/"):
 
     {memory, swaps, zram, zram_module, persistence, hibernation, mounts,
     root_fs, root_free, fstab, manager, os_id, btrfs_mkswapfile,
-    virtualization, container, recommendation, balloon, racine}.
-    container est vrai quand systemd-detect-virt nomme un conteneur ;
-    balloon dit si le pilote virtio_balloon est là. Chaque swap porte, en plus
+    virtualization, container, recommendation, sysctl, kernel, postgresql,
+    balloon, racine}. container est vrai quand systemd-detect-virt nomme un
+    conteneur ; sysctl vient de lire_sysctl(), kernel est la version du
+    noyau en marche, postgresql dit si PostgreSQL tourne, balloon si le
+    pilote virtio_balloon est là. Chaque swap porte, en plus
     de lire_swaps() : fs (son montage, pour un fichier), free (l'espace
     libre de ce montage), max_size (la taille que l'espace libre permet,
     marge déduite) et hibernation (resume= le vise peut-être)."""
@@ -635,11 +854,12 @@ def etat(racine="/"):
     zram = lire_zram(_sous(racine, "/sys/block"))
     for z in zram:
         z["active"] = z["device"] in actives
+    module = module_zram(racine)
     return {
         "memory": mem,
         "swaps": swaps,
         "zram": zram,
-        "zram_module": module_zram(racine),
+        "zram_module": module,
         "persistence": persistance_zram(racine, os_id),
         "hibernation": hib,
         "mounts": montages,
@@ -656,9 +876,25 @@ def etat(racine="/"):
         "recommendation": recommandation(
             mem.get("total"), hibernation=bool(hib["resume"])
         ),
+        "sysctl": lire_sysctl(racine),
+        "kernel": module["running"],
+        "postgresql": postgresql_actif(racine),
         "balloon": ballon_virtio(racine),
         "racine": racine,
     }
+
+
+def swaps_fstab(texte):
+    """Les sources (premier champ, déséchappé) des lignes actives de fstab
+    dont le type est « swap » : le swap configuré au démarrage, actif ou
+    non."""
+    sources = []
+    for ligne in (texte or "").splitlines():
+        champs = ligne.split()
+        if len(champs) >= 3 and not champs[0].startswith("#"):
+            if champs[2] == "swap":
+                sources.append(desechapper(champs[0]))
+    return sources
 
 
 def cibles_disque(etat):
@@ -1190,7 +1426,9 @@ def plan_zram(etat, taille, dossier_tmp, horodatage=None):
     (plus grande que la RAM), dropin_overrides (un conf.d redéfinit ce
     qu'on écrit ; paths), zram_tools_conflict (les deux outils visent
     /dev/zram0), disk_priority (un swap sur disque a une priorité ≥ celle
-    de la zram ; paths). Sur NixOS, plan vide et nix donne zramSwap.
+    de la zram ; paths), low_swappiness (vm.swappiness sous
+    SWAPPINESS_DEFAUT : le noyau se sert à peine de la zram ; value). Sur
+    NixOS, plan vide et nix donne zramSwap.
 
     Avec zram-generator, une zram active que rien ne rend persistante est
     éteinte et remise à zéro d'abord : le générateur n'écrit pas la taille
@@ -1217,6 +1455,9 @@ def plan_zram(etat, taille, dossier_tmp, horodatage=None):
     ]
     if prioritaires:
         alertes.append({"code": "disk_priority", "paths": prioritaires})
+    swappiness = swappiness_actuelle(etat)
+    if swappiness is not None and swappiness < SWAPPINESS_DEFAUT:
+        alertes.append({"code": "low_swappiness", "value": swappiness})
     pers = etat["persistence"]
     if pers["mode"] == "nixos" or etat.get("manager") == "nix":
         pourcent = max(1, round(taille * 100 / ram)) if ram else 50
@@ -1409,6 +1650,210 @@ def plan_zram_desactiver(etat, dossier_tmp, horodatage=None):
             ["sudo", "zramctl", "--reset", s["path"]],
         ]
     return _resultat(True, plan=plan, tool="manual")
+
+
+# ── Swappiness ──────────────────────────────────────────────────────────
+
+
+def swappiness_actuelle(etat):
+    """La vm.swappiness lue dans /proc/sys, ou None."""
+    return ((etat.get("sysctl") or {}).get(SWAPPINESS) or {}).get("value")
+
+
+def zram_presente(etat):
+    """Vrai si une zram sert de swap, ou si zram-generator, zram-tools ou
+    un autre service de SERVICES_ZRAM la monte au démarrage."""
+    if _zram_actives(etat):
+        return True
+    mode = (etat.get("persistence") or {}).get("mode")
+    return mode in ("zram-generator", "zram-tools", "service")
+
+
+def recommandation_swappiness(etat):
+    """{swappiness, page_cluster, reason} : la valeur conseillée et le code
+    de sa raison.
+
+    reason vaut « zram » (une zram active ou configurée : SWAPPINESS_ZRAM,
+    et page_cluster PAGE_CLUSTER_ZRAM), « no_swap » (aucun swap actif ni
+    inscrit dans fstab : la swappiness n'a pas d'effet, et la valeur rendue
+    est celle du noyau),
+    « postgresql » (swap sur disque seulement et PostgreSQL tourne :
+    SWAPPINESS_POSTGRESQL) ou « default » (SWAPPINESS_DEFAUT). page_cluster
+    vaut None hors zram : rien à changer."""
+    if zram_presente(etat):
+        return {
+            "swappiness": SWAPPINESS_ZRAM,
+            "page_cluster": PAGE_CLUSTER_ZRAM,
+            "reason": "zram",
+        }
+    if not cibles_disque(etat) and not swaps_fstab(etat.get("fstab")):
+        reason, valeur = "no_swap", SWAPPINESS_DEFAUT
+    elif etat.get("postgresql"):
+        reason, valeur = "postgresql", SWAPPINESS_POSTGRESQL
+    else:
+        reason, valeur = "default", SWAPPINESS_DEFAUT
+    return {"swappiness": valeur, "page_cluster": None, "reason": reason}
+
+
+def nom_fichier_sysctl(noms, existants=()):
+    """Le nom du fichier à créer dans /etc/sysctl.d : il se classe après
+    chaque nom de `noms` (les fichiers qui affectent déjà la clé) et
+    n'existe dans aucun répertoire de sysctl.d (`existants`), qu'il
+    masquerait.
+
+    NOM_SYSCTL d'abord ; sinon le plus grand nom en jeu, « .conf » ôté,
+    suivi de « _zz-swap.conf » : « _ » se classe après « . », donc
+    « 99-x_zz-swap.conf » après « 99-x.conf ». Chaque tour rend un nom plus
+    grand que le précédent : la boucle s'arrête."""
+    nom = NOM_SYSCTL
+    dernier = max(noms, default="")
+    while nom <= dernier or nom in existants:
+        base = max(nom, dernier)
+        nom = base[: -len(".conf")] + "_zz-swap.conf"
+    return nom
+
+
+def _modifiable(chemin):
+    """Vrai pour un fichier que l'administrateur tient : /etc/sysctl.conf
+    ou un fichier de /etc/sysctl.d. Ceux de /run, /usr/lib et /lib
+    appartiennent à systemd ou aux paquets, qui les réécrivent."""
+    return chemin == SYSCTL_CONF or chemin.startswith(SYSCTL_D_ETC + "/")
+
+
+def expression_sed(cle, valeur):
+    """L'expression de « sed -E » qui remplace la valeur de `cle` sur
+    chaque ligne active qui l'affecte, sous la forme pointée ou en chemin,
+    avec ou sans « - » de tête ; les espaces autour du « = » restent."""
+    nom = cle.split(".", 1)[1]
+    return (
+        rf"s/^([[:space:]]*-?[[:space:]]*vm[./]{nom}"
+        rf"[[:space:]]*=[[:space:]]*).*$/\1{valeur}/"
+    )
+
+
+def extrait_nix_sysctl(valeurs):
+    """L'extrait de configuration.nix qui fixe chaque clé de `valeurs`."""
+    lignes = [f'boot.kernel.sysctl."{c}" = {v};' for c, v in valeurs.items()]
+    lignes.append("# sudo nixos-rebuild switch")
+    return "\n".join(lignes) + "\n"
+
+
+def plan_swappiness(etat, valeur, page_cluster=None, horodatage=None):
+    """Fixer vm.swappiness à `valeur`, et vm.page-cluster à `page_cluster`
+    s'il est donné : maintenant, puis au démarrage.
+
+    « sudo sysctl -w » change la valeur en marche. Pour chaque clé, le
+    fichier qui l'emporte (source de lire_sysctl) est modifié sur place
+    s'il est dans /etc (une copie de sauvegarde d'abord, puis sed -i) ;
+    sinon la clé va dans un nouveau fichier de /etc/sysctl.d dont le nom
+    se classe après chaque fichier qui l'affecte (nom_fichier_sysctl),
+    écrit par « sudo tee ». Un fichier de /run, /usr/lib ou /lib n'est
+    jamais modifié. /etc/sysctl.conf, que « sysctl --system » applique en
+    dernier, est aussi modifié sur place quand il affecte la clé : le
+    démarrage et « sysctl --system » donnent alors la même valeur.
+
+    Refus : container, swappiness_range (hors de 0 à 200, ou à 100 sous
+    Linux 5.8 ; la version vient de etat["kernel"], lue et ajoutée à etat
+    si elle manque), page_cluster_range. warnings : sysctl_dead (des
+    fichiers affectent encore la clé mais sont écrasés ; key, paths).
+    details : changes ({clé: [avant, après]}), edited ([{path, backup}]),
+    created et content (le nouveau fichier, ou None). Sur NixOS, plan vide
+    et nix donne boot.kernel.sysctl."""
+    conteneur = refus_conteneur(etat)
+    if conteneur:
+        return conteneur
+    if "kernel" not in etat:
+        etat["kernel"] = noyau_en_marche(etat.get("racine", "/"))
+    limite = swappiness_max(etat["kernel"])
+    if (
+        isinstance(valeur, bool)
+        or not isinstance(valeur, int)
+        or not 0 <= valeur <= limite
+    ):
+        return _refus(
+            "swappiness_range",
+            value=valeur,
+            limit=limite,
+            running=etat["kernel"] or None,
+        )
+    if page_cluster is not None and (
+        isinstance(page_cluster, bool)
+        or not isinstance(page_cluster, int)
+        or not 0 <= page_cluster <= PAGE_CLUSTER_MAX
+    ):
+        return _refus(
+            "page_cluster_range", value=page_cluster, limit=PAGE_CLUSTER_MAX
+        )
+    voulues = {SWAPPINESS: valeur}
+    if page_cluster is not None:
+        voulues[PAGE_CLUSTER] = page_cluster
+    sysctl = etat.get("sysctl") or {}
+    changes = {
+        c: [(sysctl.get(c) or {}).get("value"), v] for c, v in voulues.items()
+    }
+    if etat.get("manager") == "nix":
+        return _nix(
+            _resultat(True, changes=changes), extrait_nix_sysctl(voulues)
+        )
+    plan = [
+        ["sudo", "sysctl", "-w"] + [f"{c}={v}" for c, v in voulues.items()]
+    ]
+    editions = {}
+    nouvelles = {}
+    apres = []
+    for cle, v in voulues.items():
+        info = sysctl.get(cle) or {}
+        setters = info.get("setters") or []
+        if setters and _modifiable(setters[-1]["path"]):
+            editions.setdefault(setters[-1]["path"], {})[cle] = v
+        else:
+            nouvelles[cle] = v
+            apres += [s["name"] for s in setters if s["name"]]
+        if info.get("outside_boot") or any(
+            s["path"] == SYSCTL_CONF for s in setters
+        ):
+            editions.setdefault(SYSCTL_CONF, {})[cle] = v
+    stamp = _horodatage(horodatage)
+    edites = []
+    for chemin, cles in editions.items():
+        copie = f"{chemin}.bak-{stamp}"
+        sed = ["sudo", "sed", "-i", "-E"]
+        for cle, v in cles.items():
+            sed += ["-e", expression_sed(cle, v)]
+        plan += [["sudo", "cp", "-a", chemin, copie], sed + [chemin]]
+        edites.append({"path": chemin, "backup": copie})
+    cree = contenu = None
+    if nouvelles:
+        nom = nom_fichier_sysctl(apres, sysctl.get("names") or ())
+        cree = f"{SYSCTL_D_ETC}/{nom}"
+        contenu = "".join(f"{c} = {v}\n" for c, v in nouvelles.items())
+        plan.append(
+            [
+                "sudo",
+                "sh",
+                "-c",
+                f"mkdir -p {SYSCTL_D_ETC} && printf %s {shlex.quote(contenu)}"
+                f" | tee {shlex.quote(cree)} > /dev/null",
+            ]
+        )
+    alertes = []
+    for cle in voulues:
+        morts = [
+            f"{s['path']} ({s['value']})"
+            for s in (sysctl.get(cle) or {}).get("setters") or []
+            if cle not in editions.get(s["path"], {})
+        ]
+        if morts:
+            alertes.append({"code": "sysctl_dead", "key": cle, "paths": morts})
+    return _resultat(
+        True,
+        plan=plan,
+        warnings=alertes,
+        changes=changes,
+        edited=edites,
+        created=cree,
+        content=contenu,
+    )
 
 
 # ── Ajout de mémoire vive ───────────────────────────────────────────────

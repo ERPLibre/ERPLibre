@@ -25006,7 +25006,59 @@ TRANSLATIONS = {
         "fr": "Non : la mémoire est soudée à la carte, sans emplacement.",
         "en": "No: the memory is soldered to the board, with no slot.",
     },
-    # Système : ballon virtio
+    # Système : swappiness et ballon virtio
+    "Swappiness": {
+        "fr": "🎚 Swappiness",
+        "en": "🎚 Swappiness",
+    },
+    "{value} is outside what the running kernel ({running}) accepts for vm.swappiness: 0 to {limit}.": {
+        "fr": "{value} sort de ce que le noyau en marche ({running}) accepte pour vm.swappiness : 0 à {limit}.",
+        "en": "{value} is outside what the running kernel ({running}) accepts for vm.swappiness: 0 to {limit}.",
+    },
+    "{value} is outside what vm.page-cluster accepts: 0 to {limit}.": {
+        "fr": "{value} sort de ce que vm.page-cluster accepte : 0 à {limit}.",
+        "en": "{value} is outside what vm.page-cluster accepts: 0 to {limit}.",
+    },
+    "vm.swappiness is {value}: below 60, the kernel drops page cache rather than swap, and the zram stays nearly unused. Swap memory › Swappiness [7] raises it.": {
+        "fr": "vm.swappiness vaut {value} : sous 60, le noyau jette le cache de pages plutôt que de swapper, et la zram reste presque vide. Mémoire Swap › Swappiness [7] la relève.",
+        "en": "vm.swappiness is {value}: below 60, the kernel drops page cache rather than swap, and the zram stays nearly unused. Swap memory › Swappiness [7] raises it.",
+    },
+    "These files also set {key} but are overridden, without effect: {paths}.": {
+        "fr": "Ces fichiers fixent aussi {key} mais sont écrasés, sans effet : {paths}.",
+        "en": "These files also set {key} but are overridden, without effect: {paths}.",
+    },
+    "zram is active or configured: swapping to compressed RAM costs less than reading evicted page cache back from disk. vm.page-cluster 0: zram reads single pages faster than clusters.": {
+        "fr": "La zram est active ou configurée : swapper vers de la RAM compressée coûte moins que relire depuis le disque le cache de pages évincé. vm.page-cluster 0 : la zram lit une page seule plus vite qu'une grappe.",
+        "en": "zram is active or configured: swapping to compressed RAM costs less than reading evicted page cache back from disk. vm.page-cluster 0: zram reads single pages faster than clusters.",
+    },
+    "PostgreSQL is running and the swap is on disk: a low value keeps the database processes in RAM and swaps only as a last resort.": {
+        "fr": "PostgreSQL tourne et le swap est sur disque : une valeur basse garde les processus de la base en RAM et ne swappe qu'en dernier recours.",
+        "en": "PostgreSQL is running and the swap is on disk: a low value keeps the database processes in RAM and swaps only as a last resort.",
+    },
+    "The swap is on disk: the kernel default.": {
+        "fr": "Le swap est sur disque : la valeur par défaut du noyau.",
+        "en": "The swap is on disk: the kernel default.",
+    },
+    "No swap is active or listed in /etc/fstab: vm.swappiness has no effect.": {
+        "fr": "Aucun swap n'est actif ni inscrit dans /etc/fstab : vm.swappiness n'a pas d'effet.",
+        "en": "No swap is active or listed in /etc/fstab: vm.swappiness has no effect.",
+    },
+    "set by {path}": {
+        "fr": "fixée par {path}",
+        "en": "set by {path}",
+    },
+    "kernel default, no file sets it": {
+        "fr": "valeur du noyau, aucun fichier ne la fixe",
+        "en": "kernel default, no file sets it",
+    },
+    "Overridden, without effect:": {
+        "fr": "Écrasés, sans effet :",
+        "en": "Overridden, without effect:",
+    },
+    "{path} sets {value} too: « sysctl --system » applies it, the boot does not.": {
+        "fr": "{path} fixe aussi {value} : « sysctl --system » l'applique, le démarrage non.",
+        "en": "{path} sets {value} too: « sysctl --system » applies it, the boot does not.",
+    },
     "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.": {
         "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne par `virsh setmem <vm> <taille> --live`, jusqu'au maximum <memory> de sa définition ; relever ce maximum exige que la VM soit éteinte.",
         "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.",
@@ -25014,6 +25066,26 @@ TRANSLATIONS = {
     "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.": {
         "fr": "Pas de pilote virtio_balloon : l'hôte ne change la RAM de cette VM que pendant qu'elle est éteinte.",
         "en": "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.",
+    },
+    "{path} is edited in place, after a copy to {backup}.": {
+        "fr": "{path} est modifié sur place, après une copie dans {backup}.",
+        "en": "{path} is edited in place, after a copy to {backup}.",
+    },
+    "Recommended: {key} = {value}.": {
+        "fr": "Recommandé : {key} = {value}.",
+        "en": "Recommended: {key} = {value}.",
+    },
+    "{key}, 0 to {limit}, Enter for {value}: ": {
+        "fr": "{key}, de 0 à {limit}, Entrée pour {value} : ",
+        "en": "{key}, 0 to {limit}, Enter for {value}: ",
+    },
+    "Not a number:": {
+        "fr": "Ce n'est pas un nombre :",
+        "en": "Not a number:",
+    },
+    "Also set {key} to {value}? (y/N): ": {
+        "fr": "Fixer aussi {key} à {value} ? (o/N) : ",
+        "en": "Also set {key} to {value}? (y/N): ",
     },
     # Système : rapports et caches du système
     "Measuring": {
