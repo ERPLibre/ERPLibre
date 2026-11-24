@@ -2438,16 +2438,17 @@ class TODO(
     # Chacune renvoie None pour « garder la valeur actuelle ».
 
     def _confirm_or_discard(self, question):
-        """Confirmation à défaut OUI, avec double validation sur le NON.
-
-        Un « non » distrait ferait perdre toutes les réponses déjà saisies. On
-        ne renonce donc que si l'abandon est confirmé ; sinon on repose la
-        question."""
+        """`question`, une question oui/non sans indice, oui par défaut :
+        True sur un oui. Un non demande s'il faut garder les réponses déjà
+        saisies, oui par défaut, et repose alors `question` ; un non ou
+        Ctrl+D à cette seconde question rend False. Une entrée fermée rend
+        donc False."""
         while True:
-            if self._is_yes_default_yes(input(f"\n{question}")):
+            print()
+            if ui.confirm(question, default=True):
                 return True
-            if self._is_yes(
-                input(f"  {t('Discard everything and start over? (y/N): ')}")
+            if not ui.confirm(
+                t("Keep your answers and ask again?"), default=True
             ):
                 return False
 

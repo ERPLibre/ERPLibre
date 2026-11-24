@@ -87,7 +87,7 @@ CLES = (
     "MAC to give back to the cache",
     "VM gone",
     "Keep this VM out of the download cache",
-    "Keep this VM out of the download cache? (y/N): ",
+    "Keep this VM out of the download cache?",
     # Combler ce qui a manqué hors ligne : l'entrée 9 et ses verdicts.
     "Cache - Fill what offline runs lacked",
     "What offline runs lacked",

@@ -437,6 +437,71 @@ CONFIRM_DEFAULTS = {
         "Run them now?",
     ): [False],
     (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_ask_vm_account",
+        "Keep the password in the VM?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_check_libvirt_group",
+        "Run it now?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_guest_cli",
+        "Generate one now?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "3D acceleration (host GPU), even without a screen?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "Add each VM to ~/.ssh/config?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "Install ERPLibre into ~/git/erplibre on each VM?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "Interactive monitoring dashboard?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "Keep this VM out of the download cache?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_collect_options_cli",
+        "Watch the VMs start (no install)?",
+    ): [True],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_confirm_collisions",
+        "Continue despite these collisions?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_coupure_libre",
+        "Lift it and continue?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_en_ligne_malgre_la_coupure",
+        "Deploy anyway, offline?",
+    ): [False],
+    (
+        "script/todo/qemu_deploy.py",
+        "QemuDeployMixin._qemu_offer_orphan_removal",
+        "Continue anyway?",
+    ): [False],
+    (
         "script/todo/qemu_install_monitor.py",
         "install_cli_browser",
         "Install now?",
@@ -636,6 +701,16 @@ CONFIRM_DEFAULTS = {
         "SystemMenuMixin._system_gpu_sudo",
         "Read them with sudo? The password is asked here.",
     ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._confirm_or_discard",
+        "<dynamique>",
+    ): [True],
+    (
+        "script/todo/todo.py",
+        "TODO._confirm_or_discard",
+        "Keep your answers and ask again?",
+    ): [True],
     (
         "script/todo/todo.py",
         "TODO._shell_install_starship_binary",

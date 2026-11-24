@@ -898,9 +898,9 @@ TRANSLATIONS = {
         "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N, défaut : non) : ",
         "en": "Add this VM to ~/.ssh/config? (y/N, default: no): ",
     },
-    "Add each VM to ~/.ssh/config? (Y/n): ": {
-        "fr": "Ajouter chaque VM à ~/.ssh/config ? (O/n, défaut : oui) : ",
-        "en": "Add each VM to ~/.ssh/config? (Y/n, default: yes): ",
+    "Add each VM to ~/.ssh/config?": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config ?",
+        "en": "Add each VM to ~/.ssh/config?",
     },
     "Waiting for the VM IP (DHCP lease)...": {
         "fr": "Attente de l'IP de la VM (bail DHCP)...",
@@ -6040,9 +6040,9 @@ TRANSLATIONS = {
         "fr": "MAC à rendre au cache",
         "en": "MAC to give back to the cache",
     },
-    "Keep this VM out of the download cache? (y/N): ": {
-        "fr": "Soustraire cette VM au cache de téléchargement ? (o/N) : ",
-        "en": "Keep this VM out of the download cache? (y/N): ",
+    "Keep this VM out of the download cache?": {
+        "fr": "Soustraire cette VM au cache de téléchargement ?",
+        "en": "Keep this VM out of the download cache?",
     },
     "Keep this VM out of the download cache": {
         "fr": "Soustraire cette VM au cache de téléchargement",
@@ -7066,9 +7066,9 @@ TRANSLATIONS = {
         "fr": "La clé publique et sa clé privée sont toutes deux requises :",
         "en": "Both the public key and its private key are required:",
     },
-    "Generate one now? (Y/n): ": {
-        "fr": "En générer une maintenant ? (O/n, défaut : oui) : ",
-        "en": "Generate one now? (Y/n, default: yes): ",
+    "Generate one now?": {
+        "fr": "En générer une maintenant ?",
+        "en": "Generate one now?",
     },
     "Checking the remote port...": {
         "fr": "Vérification du port distant...",
@@ -8107,9 +8107,9 @@ TRANSLATIONS = {
         "fr": "Mot de passe généré, à noter maintenant :",
         "en": "Generated password, note it now:",
     },
-    "Keep the password in the VM? (y/N): ": {
-        "fr": "Garder le mot de passe dans la VM ? (o/N) : ",
-        "en": "Keep the password in the VM? (y/N): ",
+    "Keep the password in the VM?": {
+        "fr": "Garder le mot de passe dans la VM ?",
+        "en": "Keep the password in the VM?",
     },
     "Empty: the default password is kept.": {
         "fr": "Vide : le mot de passe par défaut est gardé.",
@@ -9329,9 +9329,9 @@ TRANSLATIONS = {
         "fr": "actif   :",
         "en": "uptime: ",
     },
-    "Watch the VMs start (no install)": {
-        "fr": "Suivre le démarrage des VM (sans installation)",
-        "en": "Watch the VMs start (no install)",
+    "Watch the VMs start (no install)?": {
+        "fr": "Suivre le démarrage des VM (sans installation) ?",
+        "en": "Watch the VMs start (no install)?",
     },
     "Proxmox VE - Deploy a VM on a remote host": {
         # 🗄 et non 💻 : l'entrée d'à côté déploie sur CETTE machine, celle-ci
@@ -10571,19 +10571,17 @@ TRANSLATIONS = {
         "tourneront pas toutes en même temps.",
         "en": "Total RAM exceeds host free RAM: not all VMs will run at once.",
     },
-    "Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ": {
-        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? "
-        "(O/n, défaut : oui) : ",
-        "en": "Install ERPLibre into ~/git/erplibre on each VM? "
-        "(Y/n, default: yes): ",
+    "Install ERPLibre into ~/git/erplibre on each VM?": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ?",
+        "en": "Install ERPLibre into ~/git/erplibre on each VM?",
     },
-    "Deploy these VMs now? (Y/n): ": {
-        "fr": "Déployer ces VM maintenant ? (O/n, défaut : oui) : ",
-        "en": "Deploy these VMs now? (Y/n, default: yes): ",
+    "Deploy these VMs now?": {
+        "fr": "Déployer ces VM maintenant ?",
+        "en": "Deploy these VMs now?",
     },
-    "Discard everything and start over? (y/N): ": {
-        "fr": "Tout abandonner et recommencer ? (o/N, défaut : non) : ",
-        "en": "Discard everything and start over? (y/N, default: no): ",
+    "Keep your answers and ask again?": {
+        "fr": "Garder vos réponses et redemander ?",
+        "en": "Keep your answers and ask again?",
     },
     "Final review before deployment": {
         "fr": "Récapitulatif final avant déploiement",
@@ -10679,9 +10677,9 @@ TRANSLATIONS = {
         "fr": "L'effacer à la main, ou renommer la VM.",
         "en": "Remove it by hand, or rename the VM.",
     },
-    "Continue despite these collisions? (y/N): ": {
-        "fr": "Continuer malgré ces collisions ? (o/N, défaut : non) : ",
-        "en": "Continue despite these collisions? (y/N, default: no): ",
+    "Continue despite these collisions?": {
+        "fr": "Continuer malgré ces collisions ?",
+        "en": "Continue despite these collisions?",
     },
     "Resolving VM IPs (parallel, emulated boot is slow)...": {
         "fr": "Résolution des IP des VM (en parallèle, le démarrage émulé "
@@ -10744,9 +10742,9 @@ TRANSLATIONS = {
         "fr": "ERPLibre Déploiement (+ QEMU + dev)",
         "en": "ERPLibre Deployment (+ QEMU + dev)",
     },
-    "Interactive monitoring dashboard? (y/N): ": {
-        "fr": "Suivi interactif (dashboard) ? (O/n, défaut : oui) : ",
-        "en": "Interactive monitoring dashboard? (Y/n, default: yes): ",
+    "Interactive monitoring dashboard?": {
+        "fr": "Suivi interactif (dashboard) ?",
+        "en": "Interactive monitoring dashboard?",
     },
     "resolving IP...": {
         "fr": "résolution de l'IP...",
@@ -10808,12 +10806,9 @@ TRANSLATIONS = {
         "fr": "Accélération 3D (GPU de l'hôte), même sans écran",
         "en": "3D acceleration (host GPU), even without a screen",
     },
-    "3D acceleration (host GPU), even without a screen? (y/N): ": {
-        "fr": "Accélération 3D (GPU de l'hôte), même sans écran ? (o/N) : ",
-        "en": (
-            "3D acceleration (host GPU), even without a screen?"
-            " (y/N, default: no): "
-        ),
+    "3D acceleration (host GPU), even without a screen?": {
+        "fr": "Accélération 3D (GPU de l'hôte), même sans écran ?",
+        "en": "3D acceleration (host GPU), even without a screen?",
     },
     # Récupération de fichiers dans le disque d'une VM (libguestfs)
     # Outils d'assistance posés dans une VM au déploiement.
@@ -12053,9 +12048,9 @@ TRANSLATIONS = {
         "fr": "autre qui installe encore sans le suivi.",
         "en": "still installing without the monitor.",
     },
-    "Lift it and continue? (y/N): ": {
-        "fr": "Lever la coupure et continuer ? (o/N) : ",
-        "en": "Lift it and continue? (y/N): ",
+    "Lift it and continue?": {
+        "fr": "Lever la coupure et continuer ?",
+        "en": "Lift it and continue?",
     },
     "The cache upstream stays cut until the last": {
         "fr": "L'amont du cache reste coupé jusqu'à la fin de la",
@@ -12157,9 +12152,9 @@ TRANSLATIONS = {
         "fr": "terminal : l'amont du cache est coupé jusqu'à sa fin.",
         "en": "terminal: the cache upstream is cut until it ends.",
     },
-    "Deploy anyway, offline? (y/N): ": {
-        "fr": "Déployer quand même, hors ligne ? (o/N) : ",
-        "en": "Deploy anyway, offline? (y/N): ",
+    "Deploy anyway, offline?": {
+        "fr": "Déployer quand même, hors ligne ?",
+        "en": "Deploy anyway, offline?",
     },
     "Upstream CUT by an offline deployment still installing,": {
         "fr": "Amont COUPÉ par un déploiement hors ligne qui installe encore,",
@@ -12344,9 +12339,9 @@ TRANSLATIONS = {
         "fr": "Ajouter votre utilisateur au groupe libvirt ?",
         "en": "Add your user to the libvirt group?",
     },
-    "Run it now? (Y/n): ": {
-        "fr": "L'exécuter maintenant ? (O/n) : ",
-        "en": "Run it now? (Y/n): ",
+    "Run it now?": {
+        "fr": "L'exécuter maintenant ?",
+        "en": "Run it now?",
     },
     "Command failed.": {
         "fr": "La commande a échoué.",

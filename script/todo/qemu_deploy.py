@@ -1036,7 +1036,7 @@ class QemuDeployMixin:
         print(f"\n⚠  {t('Kept - the deployment of these VMs will FAIL:')}")
         for name, _path in restants:
             print(f"   {name}")
-        return self._is_yes(input(t("Continue anyway? (y/N): ")))
+        return ui.confirm(t("Continue anyway?"), default=False)
 
     def _qemu_confirm_collisions(self, existing, pending_names):
         """Signale les noms qui heurtent l'existant, et demande confirmation.
@@ -1056,8 +1056,8 @@ class QemuDeployMixin:
                 print(f"   {name:<28.28} {skipped}")
         if orphans:
             return self._qemu_offer_orphan_removal(pending_names)
-        return self._is_yes(
-            input(f"{t('Continue despite these collisions? (y/N): ')}")
+        return ui.confirm(
+            t("Continue despite these collisions?"), default=False
         )
 
     @staticmethod
@@ -1801,7 +1801,7 @@ class QemuDeployMixin:
         cmd = f"sudo usermod -aG libvirt {shlex.quote(user)}"
         print(f"\n   {t('Add your user to the libvirt group?')}")
         print(f"     {cmd}")
-        if not self._is_yes_default_yes(input(t("Run it now? (Y/n): "))):
+        if not ui.confirm(t("Run it now?"), default=True):
             return
         if os.system(cmd) != 0:
             print(f"   ⚠ {t('Command failed.')}")
@@ -2024,7 +2024,7 @@ class QemuDeployMixin:
             self._qemu_print_dry_run(spec["vms"])
             return None
         self._qemu_print_recap(spec, spec.get("existing") or [])
-        if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+        if not self._confirm_or_discard(t("Deploy these VMs now?")):
             # Le clair posé par le formulaire ne survit pas au refus.
             self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
@@ -2490,10 +2490,12 @@ class QemuDeployMixin:
                 sys.__stdout__.flush()
             elif choix == "type":
                 secret = self._qemu_type_vm_password()
-            keep = self._is_yes(
-                ui.ask(f"  {t('Keep the password in the VM? (y/N): ')}")
+            keep = ui.confirm(
+                t("Keep the password in the VM?"), default=False, back=True
             )
         except EOFError:
+            keep = None
+        if keep is None:
             self._qemu_set_vm_secret(None)
             return None
         if keep:
@@ -2639,7 +2641,7 @@ class QemuDeployMixin:
         if not default_key:
             print(f"\n⚠  {t('No SSH public key found in ~/.ssh.')}")
             print(f"   {t('Without one the VMs start with no SSH access.')}")
-            if self._is_yes_default_yes(input(t("Generate one now? (Y/n): "))):
+            if ui.confirm(t("Generate one now?"), default=True):
                 default_key = self._ssh_ensure_key()
         key_hint = default_key or t("none")
         ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
@@ -2713,12 +2715,10 @@ class QemuDeployMixin:
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
-        ans = input(
-            t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
+        ans = ui.confirm(
+            t("Install ERPLibre into ~/git/erplibre on each VM?"), default=True
         )
-        if not self._is_yes_default_yes(ans) and any(
-            v.get("distro") == "proxmox" for v in vms
-        ):
+        if not ans and any(v.get("distro") == "proxmox" for v in vms):
             # C'est par cette étape que passe l'installation de Proxmox : sans
             # elle la VM reste une Debian nue, ce qui n'est pas ce qu'on a
             # demandé en choisissant « Proxmox VE » comme système.
@@ -2729,7 +2729,7 @@ class QemuDeployMixin:
                 f"    {t('Later, in the VM:')}"
                 " sudo ./script/proxmox/install_proxmox.sh"
             )
-        if self._is_yes_default_yes(ans):
+        if ans:
             # [0] à la branche, à dev ou prod (~/git et SELinux relâché, ou
             # /opt et confiné) ou au profil renonce au déploiement, dont
             # rien n'est encore créé.
@@ -2741,8 +2741,8 @@ class QemuDeployMixin:
             if answers is None:
                 return None
             branch, prod, (label, cmd) = answers
-            monitor = self._is_yes_default_yes(
-                input(t("Interactive monitoring dashboard? (y/N): "))
+            monitor = ui.confirm(
+                t("Interactive monitoring dashboard?"), default=True
             )
             install = {
                 "branch": branch,
@@ -2757,24 +2757,23 @@ class QemuDeployMixin:
             # d'état, de débit d'écriture, de RAM et de disque. La question
             # était posée DANS la branche ERPLibre : refuser l'une emportait
             # l'autre sans qu'on l'ait demandé.
-            monitor = self._is_yes_default_yes(
-                input(f"{t('Watch the VMs start (no install)')} ? (O/n) : ")
+            monitor = ui.confirm(
+                t("Watch the VMs start (no install)?"), default=True
             )
 
         # Posée même sans bureau : une VM sans console peut vouloir un
         # virtio-gpu accéléré, et c'est ce que « auto » n'accorde jamais.
-        gpu3d = self._is_yes(
-            input(
-                t("3D acceleration (host GPU), even without a screen? (y/N): ")
-            )
+        gpu3d = ui.confirm(
+            t("3D acceleration (host GPU), even without a screen?"),
+            default=False,
         )
 
         # Posée seulement quand un cache tourne : ailleurs, la réponse ne
         # changerait rien et la question ferait croire le contraire.
         cache_bypass = False
         if self._qemu_cache_active():
-            cache_bypass = self._is_yes(
-                input(t("Keep this VM out of the download cache? (y/N): "))
+            cache_bypass = ui.confirm(
+                t("Keep this VM out of the download cache?"), default=False
             )
 
         # Ces trois réponses n'ont d'objet que si l'outil est coché : les
@@ -2784,8 +2783,8 @@ class QemuDeployMixin:
             return None
         ai_agent, git_name, git_email = ai_tools
 
-        add_ssh_config = self._is_yes_default_yes(
-            input(t("Add each VM to ~/.ssh/config? (Y/n): "))
+        add_ssh_config = ui.confirm(
+            t("Add each VM to ~/.ssh/config?"), default=True
         )
         # Posé après le type de VM : un bureau GNOME ouvre sa session RDP
         # avec ce mot de passe.
@@ -2864,7 +2863,7 @@ class QemuDeployMixin:
         # données jusqu'ici sont rassemblées ici : c'est le dernier point où
         # une erreur de saisie se rattrape sans avoir rien créé.
         self._qemu_print_recap(spec, existing)
-        if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+        if not self._confirm_or_discard(t("Deploy these VMs now?")):
             self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
             return None
@@ -3171,9 +3170,7 @@ class QemuDeployMixin:
             print(f"    {t('This deployment would therefore run offline.')}")
         else:
             return True
-        if not self._is_yes(
-            input(f"  {t('Deploy anyway, offline? (y/N): ')}")
-        ):
+        if not ui.confirm(t("Deploy anyway, offline?"), default=False):
             print(f"  {t('Nothing deployed.')}")
             return False
         return True
@@ -3259,7 +3256,7 @@ class QemuDeployMixin:
         print(f"\n  ⚠ {t('The cache upstream is already cut, and nothing')}")
         print(f"    {t('will lift it: an interrupted deployment, or one')}")
         print(f"    {t('still installing without the monitor.')}")
-        if not self._is_yes(input(f"  {t('Lift it and continue? (y/N): ')}")):
+        if not ui.confirm(t("Lift it and continue?"), default=False):
             print(f"  {t('Nothing deployed.')}")
             return False
         self._qemu_shell(cache_offline.restore_cmd())

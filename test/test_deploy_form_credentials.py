@@ -456,7 +456,7 @@ class TestLesInvites(unittest.TestCase):
 
     def test_the_password_is_a_choice_whose_public_default_is_marked(self):
         self._demande("", "", "")
-        self.assertEqual(["text", "choose", "text"], self._genres())
+        self.assertEqual(["text", "choose", "confirm"], self._genres())
         choix = self.port.events[1]
         self.assertEqual("1", choix["default"])
         self.assertEqual(
