@@ -22,6 +22,7 @@ import json
 import sys
 import tempfile
 import pathlib
+import tarfile
 import unittest
 from pathlib import Path
 
@@ -262,6 +263,150 @@ class TestTheCommandLine(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("⚠", buf.getvalue())
         self.assertNotIn("Traceback", buf.getvalue())
+
+
+def build_archive_bundle(
+    tmp: Path, sources=None, *, ghost=None, file_count=None
+):
+    """Fabrique un faux bundle en ARCHIVE, et la source qui va avec.
+
+    Disposition du plugin de compilation : un `<slug>.tar.gz` aux membres
+    préfixés par « ./ » (`tar -czf … -C <stage> .`) et un index `<slug>
+    .index.json` à côté, tous deux désignés par le manifeste (`archive`,
+    `indexUrl`). Aucun `<slug>/index.json` : l'index n'est trouvable que par
+    `indexUrl`.
+
+    `ghost` : un chemin que l'index promet sans que l'archive le porte.
+    `file_count` : le `fileCount` annoncé par le manifeste, absent si None."""
+    sources = SOURCES if sources is None else sources
+    mobile = tmp / "mobile" / "erplibre_home_mobile"
+    repos = mobile / "dist" / "repos"
+    repos.mkdir(parents=True)
+    slug = "github-com-ERPLibre-odoo"
+    stage = tmp / "stage"
+    index = [{"path": "odoo", "type": "dir"}]
+    for rel, data in sources.items():
+        dst = stage / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(data)
+        index.append({"path": rel, "type": "file", "size": len(data)})
+    if ghost:
+        index.append({"path": ghost, "type": "file", "size": 1})
+    (stage / "index.json").write_text(json.dumps(index))
+    with tarfile.open(repos / f"{slug}.tar.gz", "w:gz") as tar:
+        tar.add(stage, arcname=".")
+    (repos / f"{slug}.index.json").write_text(json.dumps(index))
+    proj = {
+        "url": "https://github.com/ERPLibre/odoo",
+        "name": "odoo",
+        "path": "odoo18.0/odoo",
+        "slug": slug,
+        "revision": "18.0",
+        "archive": f"repos/{slug}.tar.gz",
+        "indexUrl": f"repos/{slug}.index.json",
+    }
+    if file_count is not None:
+        proj["fileCount"] = file_count
+    (repos / "manifest.json").write_text(json.dumps([proj]))
+    for rel, data in sources.items():
+        src = tmp / "odoo18.0/odoo" / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_bytes(data)
+    return mobile
+
+
+class TestTheArchiveLayout(unittest.TestCase):
+    """Un tar.gz par dépôt, désigné par `archive` et `indexUrl`."""
+
+    def test_an_archive_repo_is_counted_as_an_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp)
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(1, rep["archives"])
+        self.assertEqual(0, rep["packs"])
+        self.assertEqual(len(SOURCES), rep["files"])
+
+    def test_the_index_is_found_through_index_url(self):
+        """L'index d'une archive est le fichier voisin que nomme `indexUrl`,
+        relatif à dist/ : le chercher sous `<slug>/index.json` ne trouve
+        rien et déclare absent un transfert complet."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp)
+            repos = mobile / "dist" / "repos"
+            proj = json.loads((repos / "manifest.json").read_text())[0]
+            got = cbt.index_path(repos, proj)
+            self.assertEqual(
+                repos / "github-com-ERPLibre-odoo.index.json", got
+            )
+
+    def test_dot_slash_members_are_read_back_and_compared(self):
+        """L'index porte le chemin nu, l'archive le membre « ./chemin » :
+        sans la correspondance, aucun fichier promis n'est trouvé."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp)
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(len(SOURCES), rep["checked"])
+        self.assertEqual(len(SOURCES), rep["compared"])
+        self.assertEqual(len(SOURCES), rep["present"])
+
+    def test_a_promised_file_missing_from_the_archive_is_named(self):
+        """La présence se prouve pour CHAQUE fichier promis, et non pour le
+        seul échantillon : un fichier que l'échantillon ne tire pas est
+        refusé quand même."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp, ghost="odoo/fantome.py")
+            with unittest.mock.patch.object(cbt, "SAMPLE", 0):
+                with self.assertRaises(FileNotFoundError) as ctx:
+                    cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("odoo/fantome.py", str(ctx.exception))
+
+
+class TestTheAnnouncedFileCount(unittest.TestCase):
+    def test_a_file_count_that_differs_from_the_index_is_refused(self):
+        """Un index plus court que le compte du manifeste est un transfert
+        tronqué que rien d'autre ne signale."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp, file_count=len(SOURCES) + 1)
+            with self.assertRaises(ValueError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        message = str(ctx.exception)
+        self.assertIn("github-com-ERPLibre-odoo", message)
+        self.assertIn(str(len(SOURCES) + 1), message)
+        self.assertIn(str(len(SOURCES)), message)
+
+    def test_a_matching_file_count_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_archive_bundle(tmp, file_count=len(SOURCES))
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(len(SOURCES), rep["files"])
+
+
+class TestARepoWithoutContainer(unittest.TestCase):
+    def test_a_repo_with_neither_archive_nor_pack_names_the_pack(self):
+        """Le refus ne dépend pas de l'échantillon : un dépôt sans conteneur
+        que le tirage ne touche pas est refusé quand même, et le message
+        nomme la tranche ATTENDUE plutôt qu'un motif."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, drop_pack=True)
+            repo_dir = mobile / "dist/repos/github-com-ERPLibre-odoo"
+            index = json.loads((repo_dir / "index.json").read_text())
+            for entry in index:
+                if entry["type"] == "file":
+                    entry["chunk"] = 2
+            (repo_dir / "index.json").write_text(json.dumps(index))
+            with unittest.mock.patch.object(cbt, "SAMPLE", 0):
+                with self.assertRaises(FileNotFoundError) as ctx:
+                    cbt.check(mobile, tmp, min_files=1)
+        message = str(ctx.exception)
+        self.assertIn("github-com-ERPLibre-odoo", message)
+        self.assertIn("pack-002.bin", message)
 
 
 REPO = Path(__file__).resolve().parent.parent
