@@ -887,7 +887,8 @@ class TestTheGatesAreYesNoQuestions(EnvCase):
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     getattr(upgrade, nom)(DB)
-                attendu = "y" if defaut else "n"
+                # Le défaut, dans la langue choisie : l'échéance l'affiche.
+                attendu = "Oui" if defaut else "Non"
                 self.assertEqual(
                     heard, [(attendu, TodoUpgrade.AUTO_DELAY, True)]
                 )
@@ -1190,7 +1191,8 @@ class TestTheSimplePromptsAreYesNoQuestions(EnvCase):
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     agi = migration.act(nom)
-                attendu = "y" if defaut else "n"
+                # Le défaut, dans la langue choisie : l'échéance l'affiche.
+                attendu = "Oui" if defaut else "Non"
                 self.assertEqual(
                     heard, [(attendu, TodoUpgrade.AUTO_DELAY, True)]
                 )
@@ -1494,7 +1496,7 @@ class TestTheRunOfTheMigration(MigrationRun):
             contextlib.redirect_stdout(io.StringIO()),
         ):
             issue = self.run_upgrade(upgrade)
-        self.assertEqual(heard, [("n", TodoUpgrade.AUTO_DELAY, True)])
+        self.assertEqual(heard, [("Non", TodoUpgrade.AUTO_DELAY, True)])
         self.assertIs(issue, Stopped)
         self.assertIn("db_restore.py", self.lst_cmd[0])
         self.assertTrue(self.image_kept())

@@ -835,10 +835,20 @@ class TestPipePort(unittest.TestCase):
         self.assertIs(future.result(10), True)
         timed_out = {"t": "answered", "qid": asked["qid"], "end": "timeout"}
         self.assertEqual(self.received(), timed_out)
-        # Le temps se dit devant l'invite, sous l'écran de la question.
+        # Le temps se dit devant l'invite, sous l'écran de la question, et
+        # la réponse prise, dans la langue choisie.
         self.assertEqual(
-            self.out.getvalue(), "Kept:\n⏱0.2s Go? [Y/n]:  ⏱ → Enter (y)\n"
+            self.out.getvalue(), "Kept:\n⏱0.2s Go? [Y/n]:  ⏱ → Enter (Yes)\n"
         )
+        todo_i18n.use_lang("fr")
+        future, asked = self.asking(
+            self.port.confirm, "Go ?", False, None, 0.2
+        )
+        self.assertIs(future.result(10), False)
+        self.assertTrue(
+            self.out.getvalue().endswith("Go ? [o/N] :  ⏱ → Entrée (Non)\n")
+        )
+        todo_i18n.use_lang("en")
         # Ctrl+D et Annuler valent Entrée, `back` compris : le défaut.
         future, asked = self.asking(
             self.port.confirm, "Go?", False, None, 30, True

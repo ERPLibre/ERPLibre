@@ -208,7 +208,8 @@ class PipePort(port.BasePort):
             self.send(answered)
         if source is None:
             default = message.get("default") or ""
-            detail = f" ({default})" if default else ""
+            shown = port.answer_word(message) if kind == "confirm" else default
+            detail = f" ({shown})" if shown else ""
             self._write(f" ⏱ → {t('Enter')}{detail}\n")
             return default
         if kind == "secret":

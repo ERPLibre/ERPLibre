@@ -235,7 +235,7 @@ class TestTheFilestoreRepairs(_Base):
 
     def test_the_deadline_deletes_nothing(self):
         # Au terminal, l'échéance du compte à rebours d'auto_ask rend le
-        # défaut de la question.
+        # défaut de la question, en un mot de la langue choisie.
         self.auto()
         heard = []
 
@@ -255,8 +255,8 @@ class TestTheFilestoreRepairs(_Base):
         self.assertEqual(
             heard,
             [
-                (f"{purge_question()} [o/N] : ", "n", 7),
-                (f"{t('Go ahead?')} [o/N] : ", "n", 7),
+                (f"{purge_question()} [o/N] : ", "Non", 7),
+                (f"{t('Go ahead?')} [o/N] : ", "Non", 7),
             ],
         )
 

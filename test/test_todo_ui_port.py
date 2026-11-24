@@ -981,9 +981,19 @@ class TestConfirm(unittest.TestCase):
                         "Go?", default, timeout=5
                     )
                     self.assertIs(got, default)
+        # Le défaut passe au compte à rebours dans la langue choisie : c'est
+        # lui que l'échéance affiche.
         self.assertEqual(
-            calls, [("Go? [Y/n]: ", "y", 5), ("Go? [y/N]: ", "n", 5)]
+            calls, [("Go? [Y/n]: ", "Yes", 5), ("Go? [y/N]: ", "No", 5)]
         )
+        todo_i18n.use_lang("fr")
+        with (
+            patch.dict(port.ORIGINAL, {"auto_ask.ask": deadline}),
+            redirect_stdout(io.StringIO()),
+        ):
+            got = port.TerminalPort().confirm("Go ?", True, timeout=5)
+        self.assertIs(got, True)
+        self.assertEqual(calls[-1], ("Go ? [O/n] : ", "Oui", 5))
 
     def test_a_letter_answers_with_itself(self):
         letters = {"b": "go back a step", "t": "see the state"}

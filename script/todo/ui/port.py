@@ -144,6 +144,13 @@ def confirmed(message, answer):
     return word if word in keys else None
 
 
+def answer_word(message) -> str:
+    """Le défaut d'une confirmation (`confirm_question`) en un mot de la
+    langue choisie, Oui ou Non, que `confirmed` relit comme lui : ce
+    qu'affiche l'échéance d'un compte à rebours."""
+    return t("Answer yes") if message["default"] == "y" else t("Answer no")
+
+
 def path_question(start, directory=False) -> dict:
     """Message `ask` de genre `path` : le chemin d'un fichier, ou avec
     `directory` d'un répertoire, à choisir à partir du répertoire `start`,
@@ -531,7 +538,10 @@ class TerminalPort(BasePort):
                 screen = _colour_back(screen)
             print(screen)
         if view.get("timeout_s") is not None:
-            return _countdown(invite, view["default"], view["timeout_s"])
+            default = view["default"]
+            if view.get("kind") == "confirm":
+                default = answer_word(view)  # l'échéance l'affiche
+            return _countdown(invite, default, view["timeout_s"])
         return _line(ORIGINAL.get("input", builtins.input), invite)
 
     def ask(self, text, default=None, kind="text", timeout=None) -> str:
