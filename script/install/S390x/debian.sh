@@ -87,11 +87,15 @@ apt_install_batch() {
 APT_FAILED=""
 GEO_DEV="$(apt_pick libgeographiclib-dev libgeographic-dev)"
 # manifold3d (via to-3mf) et pymupdf n'ont pas de roue s390x : ils se
-# compilent, d'où tbb, cmake et ninja. Un seul lot, une seule reprise.
+# compilent, d'où tbb, cmake et ninja. scipy non plus : sa compilation
+# exige un compilateur Fortran et un BLAS/LAPACK, que meson cherche par
+# pkg-config et sans lesquels elle s'arrête sur « Unknown compiler(s) ».
+# Un seul lot, une seule reprise.
 apt_install_batch rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin \
   proj-data "${GEO_DEV}" freetds-dev freetds-bin libkrb5-dev libssl-dev \
   pkg-config build-essential zlib1g-dev libjpeg-dev libtbb-dev cmake \
-    ninja-build libsqlite3-dev sqlite3 libtiff-dev libcurl4-openssl-dev
+    ninja-build libsqlite3-dev sqlite3 libtiff-dev libcurl4-openssl-dev \
+    gfortran libopenblas-dev
 if [[ -n "${APT_FAILED}" ]]; then
   # Seul un paquet dont dépend la SUITE immédiate est bloquant. Les autres
   # servent des modules Odoo optionnels : les rendre fatals immobiliserait
