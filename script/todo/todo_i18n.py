@@ -21726,13 +21726,9 @@ TRANSLATIONS = {
         "fr": "Docker pose un démon que root possède.",
         "en": "Docker runs a daemon owned by root.",
     },
-    "Use vendor packages? (Y/N): ": {
-        "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
-        "en": "Use vendor packages? (Y/N): ",
-    },
-    "Continue? (Y/N): ": {
-        "fr": "Continuer ? (O/N) : ",
-        "en": "Continue? (Y/N): ",
+    "Use vendor packages?": {
+        "fr": "Prendre les paquets de l'éditeur ?",
+        "en": "Use vendor packages?",
     },
     "Network to inspect (empty to skip)": {
         "fr": "Réseau à inspecter (vide pour passer)",
@@ -21746,9 +21742,9 @@ TRANSLATIONS = {
         "fr": "Version d'Odoo :",
         "en": "Odoo version:",
     },
-    "Rebuild without cache? (Y/N): ": {
-        "fr": "Reconstruire sans cache ? (O/N) : ",
-        "en": "Rebuild without cache? (Y/N): ",
+    "Rebuild without cache?": {
+        "fr": "Reconstruire sans cache ?",
+        "en": "Rebuild without cache?",
     },
     "Start in the background": {
         "fr": "🟢 Démarrer en arrière-plan",
@@ -22002,9 +21998,9 @@ TRANSLATIONS = {
         "fr": "Aucune émulation pour : %s",
         "en": "No emulation for: %s",
     },
-    "Install buildx and QEMU now? (Y/N): ": {
-        "fr": "Installer buildx et QEMU maintenant ? (O/N) : ",
-        "en": "Install buildx and QEMU now? (Y/N): ",
+    "Install buildx and QEMU now?": {
+        "fr": "Installer buildx et QEMU maintenant ?",
+        "en": "Install buildx and QEMU now?",
     },
     "Still no emulation for: %s": {
         "fr": "Toujours aucune émulation pour : %s",
@@ -22054,10 +22050,7 @@ TRANSLATIONS = {
         "fr": "Va effacer :",
         "en": "Will remove:",
     },
-    "Remove? (Y/N): ": {
-        "fr": "Effacer ? (O/N) : ",
-        "en": "Remove? (Y/N): ",
-    },
+    "Remove?": {"fr": "Effacer ?", "en": "Remove?"},
     "Removed:": {
         "fr": "Effacés :",
         "en": "Removed:",
@@ -23946,9 +23939,9 @@ TRANSLATIONS = {
         "fr": "Pas assez d'espace libre pour cette restauration.",
         "en": "Not enough free space for this restore.",
     },
-    "Continue anyway? (Y/N): ": {
-        "fr": "Continuer quand même ? (O/N) : ",
-        "en": "Continue anyway? (Y/N): ",
+    "Continue anyway?": {
+        "fr": "Continuer quand même ?",
+        "en": "Continue anyway?",
     },
     "PostgreSQL did not list the databases.": {
         "fr": "PostgreSQL n'a pas listé les bases.",
@@ -23970,13 +23963,13 @@ TRANSLATIONS = {
         "fr": "La base existe déjà :",
         "en": "The database already exists:",
     },
-    "Drop it and restore over it? (Y/N): ": {
-        "fr": "La supprimer et restaurer par-dessus ? (O/N) : ",
-        "en": "Drop it and restore over it? (Y/N): ",
+    "Drop it and restore over it?": {
+        "fr": "La supprimer et restaurer par-dessus ?",
+        "en": "Drop it and restore over it?",
     },
-    "Neutralize (mail servers, crons)? (Y/N): ": {
-        "fr": "Neutraliser (serveurs de courriel, tâches planifiées) ? (O/N) : ",
-        "en": "Neutralize (mail servers, crons)? (Y/N): ",
+    "Neutralize (mail servers, crons)?": {
+        "fr": "Neutraliser (serveurs de courriel, tâches planifiées) ?",
+        "en": "Neutralize (mail servers, crons)?",
     },
     "A backup from an earlier ERPLibre needs its modules": {
         "fr": "Une sauvegarde d'une version précédente d'ERPLibre doit mettre à jour",
@@ -23986,9 +23979,9 @@ TRANSLATIONS = {
         "fr": "ses modules : sans cela, Odoo refuse de charger la base.",
         "en": "updated: without it, Odoo refuses to load the base.",
     },
-    "Update every module after the restore (-u all)? (y/N): ": {
-        "fr": "Mettre à jour tous les modules après la restauration (-u all) ? (o/N) : ",
-        "en": "Update every module after the restore (-u all)? (y/N): ",
+    "Update every module after the restore (-u all)?": {
+        "fr": "Mettre à jour tous les modules après la restauration (-u all) ?",
+        "en": "Update every module after the restore (-u all)?",
     },
     "A missing column means an earlier ERPLibre backup:": {
         "fr": "Une colonne absente signale une sauvegarde d'une version précédente :",
@@ -24010,9 +24003,9 @@ TRANSLATIONS = {
         "fr": "Cette base a été déplacée : elle garde son UUID d'origine.",
         "en": "This database was moved: it keeps its original UUID.",
     },
-    "Is this database a copy? If unsure, yes. (Y/n): ": {
-        "fr": "Cette base est-elle une copie ? Dans le doute, oui. (O/n) : ",
-        "en": "Is this database a copy? If unsure, yes. (Y/n): ",
+    "Is this database a copy? If unsure, yes.": {
+        "fr": "Cette base est-elle une copie ? Dans le doute, oui.",
+        "en": "Is this database a copy? If unsure, yes.",
     },
     "Copying the backup into the container...": {
         "fr": "Copie de la sauvegarde dans le conteneur...",
@@ -24038,10 +24031,7 @@ TRANSLATIONS = {
         "fr": "La restauration ratée a laissé une base vide :",
         "en": "The failed restore left an empty database:",
     },
-    "Delete it? (Y/N): ": {
-        "fr": "La supprimer ? (O/N) : ",
-        "en": "Delete it? (Y/N): ",
-    },
+    "Delete it?": {"fr": "La supprimer ?", "en": "Delete it?"},
     "No database in this container.": {
         "fr": "Aucune base dans ce conteneur.",
         "en": "No database in this container.",

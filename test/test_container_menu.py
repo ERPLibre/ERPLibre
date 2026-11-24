@@ -1367,6 +1367,100 @@ class TestCtrlDNeLanceRien(Banc):
             todo._container_nettoyage()
         self.assertEqual([], todo.execute.commandes)
 
+    def test_a_la_confirmation_de_l_installation(self):
+        """Ctrl+D à « Continuer ? » vaut non : rien ne s'installe, et TODO
+        ne se ferme pas."""
+        todo = self.todo()
+        with self.reponses(entrees=["1", EOFError(), "o"]):
+            todo._container_install("docker")
+        self.assertEqual([], todo.execute.commandes)
+
+
+class TestLesQuestionsQuiEffacent(Banc):
+    """Les trois nettoyages demandent par `ui.confirm`, défaut non, après
+    avoir nommé ce qui part : Entrée, Ctrl+D, une faute suivie de Ctrl+D
+    n'effacent rien. Chaque réponse est lue, l'indice dit le défaut dans
+    la langue choisie, et la faute est dite avant que la question
+    revienne."""
+
+    FICHE = {"moteur": "docker", "sans_sudo": True}
+    # (geste, réponses qui mènent à la question)
+    GESTES = (
+        ("_container_nettoyage", []),
+        ("_container_nettoyer_images", ["1 2"]),
+        ("_container_nettoyer_projets", ["1"]),
+    )
+    REFUS = {
+        "Entrée": [""],
+        "Ctrl+D": [EOFError()],
+        "faute puis Ctrl+D": ["peut-être", EOFError()],
+    }
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.object(todo_i18n, "_current_lang", "fr"))
+
+    def jouer(self, geste, reponses):
+        """(commandes lancées, invites lues, sortie) de `geste` quand
+        input() répond `reponses` dans l'ordre ; une réponse de trop
+        manque (StopIteration)."""
+        todo = self.todo(self.FICHE)
+        invites = []
+        suite = iter(reponses)
+
+        def repondre(invite=""):
+            invites.append(invite)
+            reponse = next(suite)
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
+
+        runtime = container_menu.container_runtime
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(
+                runtime,
+                "lister_images",
+                return_value=TestNettoyageImages.IMAGES,
+            ),
+            mock.patch.object(
+                runtime, "conteneurs_par_image", return_value={}
+            ),
+            mock.patch.object(
+                runtime,
+                "lister_projets",
+                return_value=TestNettoyageProjets.PROJETS,
+            ),
+            mock.patch.object(
+                runtime,
+                "ressources_projet",
+                return_value=TestNettoyageProjets.RESSOURCES,
+            ),
+            mock.patch("builtins.input", repondre),
+            contextlib.redirect_stdout(sortie),
+        ):
+            getattr(todo, geste)()
+        return todo.execute.commandes, invites, sortie.getvalue()
+
+    def test_aucun_refus_n_efface(self):
+        faute = todo_i18n.t("Answer yes or no: ") + "peut-être"
+        for geste, avant in self.GESTES:
+            for nom, refus in self.REFUS.items():
+                with self.subTest(geste=geste, refus=nom):
+                    commandes, invites, sortie = self.jouer(
+                        geste, [*avant, *refus]
+                    )
+                    self.assertEqual(commandes, [])
+                    self.assertEqual(len(invites), len(avant) + len(refus))
+                    self.assertTrue(invites[-1].endswith(" [o/N] : "))
+                    self.assertEqual(nom.startswith("faute"), faute in sortie)
+
+    def test_oui_efface(self):
+        for geste, avant in self.GESTES:
+            with self.subTest(geste=geste):
+                commandes, _, _ = self.jouer(geste, [*avant, "oui"])
+                self.assertNotEqual(commandes, [])
+
 
 if __name__ == "__main__":
     unittest.main()

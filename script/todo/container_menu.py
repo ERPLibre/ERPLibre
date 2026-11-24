@@ -409,9 +409,7 @@ class ContainerMenuMixin:
                 print(f"\n  {t('Where Docker Inc. packages, rootless mode')}")
                 print(f"  {t('needs ITS packages; elsewhere the installer')}")
                 print(f"  {t('takes the route its distribution offers.')}")
-                if self._is_yes(
-                    input(f"💬 {t('Use vendor packages? (Y/N): ')}")
-                ):
+                if ui.confirm(t("Use vendor packages?"), default=False):
                     cmd.append("--amont")
             else:
                 cmd.append("--groupe")
@@ -419,7 +417,7 @@ class ContainerMenuMixin:
         if compte:
             cmd += ["--compte", compte]
         print(f"\n  {t('Will execute:')} {shlex.join(cmd)}")
-        if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+        if not ui.confirm(t("Continue?"), default=False):
             print(t("Nothing to do."))
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
@@ -499,7 +497,7 @@ class ContainerMenuMixin:
             # deux, le dire AVANT, pendant qu'un disque plein est encore
             # évitable.
             print(f"\n⚠ {t('Several versions: hours of work, tens of GB.')}")
-            if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+            if not ui.confirm(t("Continue?"), default=False):
                 print(t("Nothing to do."))
                 return
         hote = self._container_arch_hote(prefixe)
@@ -558,7 +556,7 @@ class ContainerMenuMixin:
             return
         sans_extra = " --without_extra" if type_install == "standard" else ""
         sans_cache = ""
-        if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
+        if ui.confirm(t("Rebuild without cache?"), default=False):
             sans_cache = " --no-cache"
 
         echecs = []
@@ -701,9 +699,7 @@ class ContainerMenuMixin:
         commande = "sudo bash script/install/install_container.sh --multiarch"
         print(f"\n⚠ {t('No emulation for: %s') % ', '.join(manquantes)}")
         print(f"  {commande}")
-        if not self._is_yes(
-            input(f"💬 {t('Install buildx and QEMU now? (Y/N): ')}")
-        ):
+        if not ui.confirm(t("Install buildx and QEMU now?"), default=False):
             return False
         self.execute.exec_command_live(commande, source_erplibre=False)
         emulees = self._container_plateformes_emulees(prefixe)
@@ -852,7 +848,7 @@ class ContainerMenuMixin:
             fiche, ["system", "prune", "-a", "--volumes"]
         )
         print(f"  {t('Will execute:')} {shlex.join(cmd)}")
-        if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+        if not ui.confirm(t("Continue?"), default=False):
             print(t("Nothing to do."))
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
@@ -933,7 +929,7 @@ class ContainerMenuMixin:
             elif action == "forcer":
                 ligne += f"  ← {t('forced: the name only, the space stays')}"
             print(ligne)
-        if not self._is_yes(input(f"💬 {t('Remove? (Y/N): ')}")):
+        if not ui.confirm(t("Remove?"), default=False):
             print(t("Nothing to do."))
             return
 
@@ -1056,7 +1052,7 @@ class ContainerMenuMixin:
             print(
                 f"\n⚠ {t('Volumes hold the databases: they do not come back.')}"
             )
-        if not self._is_yes(input(f"💬 {t('Remove? (Y/N): ')}")):
+        if not ui.confirm(t("Remove?"), default=False):
             print(t("Nothing to do."))
             return
 
@@ -1268,7 +1264,7 @@ class ContainerMenuMixin:
         libre = sonde["libre_data"]
         if libre is not None and besoin > libre:
             print(f"⚠ {t('Not enough free space for this restore.')}")
-            if not self._is_yes(input(f"💬 {t('Continue anyway? (Y/N): ')}")):
+            if not ui.confirm(t("Continue anyway?"), default=False):
                 print(t("Nothing to do."))
                 return
 
@@ -1289,26 +1285,22 @@ class ContainerMenuMixin:
         if nom in vides:
             etat = t("empty") if vides[nom] else t("with data")
             print(f"⚠ {t('The database already exists:')} {nom} ({etat})")
-            if not self._is_yes(
-                input(f"💬 {t('Drop it and restore over it? (Y/N): ')}")
+            if not ui.confirm(
+                t("Drop it and restore over it?"), default=False
             ):
                 print(t("Nothing to do."))
                 return
             options.append("-f")
             secret_restauration = self._container_mot_de_passe_maitre()
-        if self._is_yes(
-            input(f"💬 {t('Neutralize (mail servers, crons)? (Y/N): ')}")
-        ):
+        if ui.confirm(t("Neutralize (mail servers, crons)?"), default=False):
             options.append("-n")
         # Le défaut du gestionnaire web d'Odoo : une copie reçoit un nouvel
         # UUID, et deux bases ne se disputent pas les services qui les
         # identifient par lui. « Déplacée » garde celui d'origine.
         print(f"  {t('This database is a copy: it gets a new UUID.')}")
         print(f"  {t('This database was moved: it keeps its original UUID.')}")
-        if not self._is_yes_default_yes(
-            input(
-                f"💬 {t('Is this database a copy? If unsure, yes. (Y/n): ')}"
-            )
+        if not ui.confirm(
+            t("Is this database a copy? If unsure, yes."), default=True
         ):
             options.append("--move")
         # Une sauvegarde d'une version précédente du code ne se charge pas
@@ -1316,8 +1308,9 @@ class ContainerMenuMixin:
         # l'exécution, la réponse choisit le script.
         print(f"  {t('A backup from an earlier ERPLibre needs its modules')}")
         print(f"  {t('updated: without it, Odoo refuses to load the base.')}")
-        question = t("Update every module after the restore (-u all)? (y/N): ")
-        mise_a_jour = self._is_yes(input(f"💬 {question}"))
+        mise_a_jour = ui.confirm(
+            t("Update every module after the restore (-u all)?"), default=False
+        )
         script = (
             container_db.RESTAURER_MAJ
             if mise_a_jour
@@ -1332,7 +1325,7 @@ class ContainerMenuMixin:
             f"\n{t('Will execute:')} {action}"
             f" {sonde['data_dir']}/{container_db.TRAVAIL}/{container_db.ZIP}"
         )
-        if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+        if not ui.confirm(t("Continue?"), default=False):
             print(t("Nothing to do."))
             return
 
@@ -1394,7 +1387,7 @@ class ContainerMenuMixin:
         restes = dict(self._container_lister_bases(fiche, conteneur) or [])
         if restes.get(nom):
             print(f"⚠ {t('The failed restore left an empty database:')} {nom}")
-            if self._is_yes(input(f"💬 {t('Delete it? (Y/N): ')}")):
+            if ui.confirm(t("Delete it?"), default=False):
                 self._container_dans(
                     container_db.executer(
                         fiche,

@@ -36,6 +36,81 @@ WRAPPERS = {"show_and_ask", "ask_and_install", "TodoUpgrade.confirm"}
 # (fichier, fonction, première clé t()) → défauts, dans l'ordre du fichier.
 CONFIRM_DEFAULTS = {
     (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_assure_emulation",
+        "Install buildx and QEMU now?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_build_odoo",
+        "Continue?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_build_odoo",
+        "Rebuild without cache?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_install",
+        "Continue?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_install",
+        "Use vendor packages?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_nettoyage",
+        "Continue?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_nettoyer_images",
+        "Remove?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_nettoyer_projets",
+        "Remove?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Continue anyway?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Continue?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Delete it?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Drop it and restore over it?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Is this database a copy? If unsure, yes.",
+    ): [True],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Neutralize (mail servers, crons)?",
+    ): [False],
+    (
+        "script/todo/container_menu.py",
+        "ContainerMenuMixin._container_restaurer_base",
+        "Update every module after the restore (-u all)?",
+    ): [False],
+    (
         "script/todo/qemu_install_monitor.py",
         "install_cli_browser",
         "Install now?",

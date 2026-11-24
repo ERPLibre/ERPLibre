@@ -29,7 +29,7 @@ from unittest import mock
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
-from script.todo import container_db, container_menu  # noqa: E402
+from script.todo import container_db, container_menu, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 MOT_DE_PASSE = "motdepasse-essai-7f3a"
@@ -742,6 +742,62 @@ class TestChoixAvantDeDetruire(BancMenu):
         )
         self.assertEqual(lances, [("SUPPRIMER", ["autre_base"])])
         self.assertIn(("SUPPRIMER", "maitre-invente-78", True), self.secrets)
+
+
+class TestLesQuestionsQuiEffacent(BancMenu):
+    """Restaurer par-dessus une base existante, puis supprimer la base
+    vide qu'un échec laisse : deux questions de `ui.confirm`, défaut non.
+    Entrée, Ctrl+D, une faute suivie de Ctrl+D n'effacent rien et ne
+    demandent pas le mot de passe maître ; l'indice dit le défaut dans la
+    langue choisie, la faute est dite avant que la question revienne."""
+
+    REFUS = {
+        "Entrée": [""],
+        "Ctrl+D": [EOFError()],
+        "faute puis Ctrl+D": ["peut-être", EOFError()],
+    }
+    BASE = [("essai_base", True)]
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.object(todo_i18n, "_current_lang", "fr"))
+        self.faute = container_menu.t("Answer yes or no: ") + "peut-être"
+
+    def test_restaurer_par_dessus(self):
+        for nom, refus in self.REFUS.items():
+            with self.subTest(refus=nom):
+                self.maitre = []
+                lances, sortie = self.lancer(refus, bases=self.BASE)
+                self.assertEqual(lances, [])
+                self.assertEqual(len(self.questions), len(refus))
+                self.assertTrue(self.questions[-1].endswith(" [o/N] : "))
+                self.assertEqual(nom.startswith("faute"), self.faute in sortie)
+
+    def test_supprimer_la_base_vide_d_un_echec(self):
+        avant = ["o", "n", "", "", "o"]
+        for nom, refus in self.REFUS.items():
+            with self.subTest(refus=nom):
+                self.maitre = ["maitre-invente-79"]
+                lances, sortie = self.lancer(
+                    [*avant, *refus], bases=self.BASE, codes={"RESTAURER": 1}
+                )
+                self.assertEqual(
+                    [n for n, _ in lances],
+                    ["RECEVOIR", "RESTAURER", "NETTOYER"],
+                )
+                self.assertEqual(len(self.questions), len(avant) + len(refus))
+                self.assertTrue(self.questions[-1].endswith(" [o/N] : "))
+                self.assertEqual(nom.startswith("faute"), self.faute in sortie)
+
+    def test_la_copie_est_le_defaut_annonce(self):
+        """« Cette base est-elle une copie ? » : Entrée dit oui, l'indice
+        le montre ; Ctrl+D vaut non, la base garde son UUID, et la
+        confirmation finale reste la porte."""
+        lances, _ = self.lancer(["n", "", "", "o"])
+        self.assertTrue(self.questions[1].endswith(" [O/n] : "))
+        self.assertEqual(lances[1], ("RESTAURER", ["essai_base"]))
+        lances, _ = self.lancer(["n", EOFError(), "", "o"])
+        self.assertEqual(lances[1], ("RESTAURER", ["essai_base", "--move"]))
 
 
 if __name__ == "__main__":
