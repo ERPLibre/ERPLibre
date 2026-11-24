@@ -433,6 +433,88 @@ class TestChaqueCleDitSesDeuxLangues(unittest.TestCase):
         self.assertEqual(manques, [], "traductions incomplètes")
 
 
+class TestChaqueCleEstTraduite(unittest.TestCase):
+    """Une clé littérale de t() absente de TRANSLATIONS ne lève rien :
+    t() rend la clé, et l'écran montre l'anglais à qui a choisi le français.
+
+    Le contrôle lit l'arbre de chaque fichier de script/todo, hors
+    todo_i18n.py, et retient t("…") et todo_i18n.t("…") dont le premier
+    argument est une chaîne littérale. Une clé composée à l'exécution
+    échappe au contrôle.
+    """
+
+    RACINE = Path(__file__).resolve().parent.parent
+
+    # Clés lues sans traduction, par fichier. L'ensemble ne fait que
+    # rétrécir : une clé traduite en sort, ce qu'exige
+    # test_the_known_missing_keys_are_still_missing.
+    MISSING_KEYS = {
+        ("script/todo/deploy_form_lib.py", "SSH"),
+        ("script/todo/modem/tui.py", "Ouvrir"),
+        ("script/todo/modem/tui.py", "Annuler"),
+        ("script/todo/proxmox_menu.py", "No Proxmox host."),
+        ("script/todo/proxmox_menu.py", "Step failed"),
+    }
+
+    def _cles_litterales(self):
+        """Chaque (fichier, clé) d'un appel t("…") littéral, dans l'ordre
+        des fichiers, un élément par appel."""
+        lus = []
+        for chemin in sorted((self.RACINE / "script" / "todo").rglob("*.py")):
+            if chemin.name == "todo_i18n.py":
+                continue
+            nom = chemin.relative_to(self.RACINE).as_posix()
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            for noeud in ast.walk(arbre):
+                if not (isinstance(noeud, ast.Call) and noeud.args):
+                    continue
+                fonction = noeud.func
+                if not (
+                    (isinstance(fonction, ast.Name) and fonction.id == "t")
+                    or (
+                        isinstance(fonction, ast.Attribute)
+                        and fonction.attr == "t"
+                        and isinstance(fonction.value, ast.Name)
+                        and fonction.value.id == "todo_i18n"
+                    )
+                ):
+                    continue
+                cle = noeud.args[0]
+                if isinstance(cle, ast.Constant) and isinstance(
+                    cle.value, str
+                ):
+                    lus.append((nom, cle.value))
+        return lus
+
+    def _absentes(self):
+        return {
+            (nom, cle)
+            for nom, cle in self._cles_litterales()
+            if cle not in todo_i18n.TRANSLATIONS
+        }
+
+    def test_the_walk_reads_literal_keys(self):
+        """Sinon un relevé vide passerait le contrôle des clés, et celui
+        de MISSING_KEYS dès que l'ensemble est vide."""
+        self.assertGreater(len(self._cles_litterales()), 4000)
+
+    def test_every_literal_key_is_in_translations(self):
+        self.assertEqual(
+            sorted(self._absentes() - self.MISSING_KEYS),
+            [],
+            "clés t() sans entrée dans TRANSLATIONS",
+        )
+
+    def test_the_known_missing_keys_are_still_missing(self):
+        """Une clé de MISSING_KEYS désormais traduite, ou disparue du
+        fichier, sort de l'ensemble."""
+        self.assertEqual(
+            sorted(self.MISSING_KEYS - self._absentes()),
+            [],
+            "à retirer de MISSING_KEYS",
+        )
+
+
 class TestSessionLanguage(unittest.TestCase):
     """Langue d'un processus qui sert une session à part (worker web)."""
 
