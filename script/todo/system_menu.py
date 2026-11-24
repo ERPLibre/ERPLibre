@@ -864,10 +864,13 @@ def lignes_memoire(v):
     lignes.append(f"  → {_message(VERDICTS_MEMOIRE, v['verdict'], v)}")
     if v.get("balloon"):
         ballon = t(
-            "The virtio_balloon driver is present: the host can change this "
-            "VM's RAM while it runs with `virsh setmem <vm> <size> --live`, "
-            "up to the <memory> maximum in its definition; raising that "
-            "maximum needs the VM shut off."
+            "The virtio_balloon driver is present: the host can change "
+            "this VM's RAM while it runs, up to the <memory> maximum in "
+            "its definition, from TODO › Execute › QEMU/KVM › List VMs › "
+            "Change the state of one or more VMs › Change RAM of a "
+            "running VM (balloon), which runs virsh setmem --live. "
+            "Raising that maximum needs the VM shut off: Adjust hardware "
+            "only, in the same menu."
         )
         lignes.append(f"  {ballon}")
     elif v.get("balloon") is False:
