@@ -85,9 +85,56 @@ def persistance(mode=None, installe=False):
     }
 
 
+def info_sysctl(valeur, setters=(), outside_boot=None):
+    """Une clé de lire_sysctl() : setters est une liste de (chemin,
+    valeur) dans l'ordre où ils s'appliquent."""
+    setters = [
+        {
+            "path": c,
+            "link": None,
+            "name": os.path.basename(c),
+            "value": str(v),
+        }
+        for c, v in setters
+    ]
+    dernier = setters[-1] if setters else None
+    return {
+        "value": valeur,
+        "setters": setters,
+        "source": dernier and dernier["path"],
+        "source_value": dernier and dernier["value"],
+        "dead": setters[:-1],
+        "outside_boot": outside_boot,
+    }
+
+
+def sysctl_fabrique(swappiness=60, page_cluster=3, setters=()):
+    return {
+        ss.SWAPPINESS: info_sysctl(swappiness, setters),
+        ss.PAGE_CLUSTER: info_sysctl(page_cluster),
+        "systemd": True,
+        "names": [os.path.basename(c) for c, _v in setters],
+    }
+
+
+def swap_zram(utilise=0):
+    return {
+        "path": "/dev/zram0",
+        "type": "zram",
+        "size": 4 * GIO,
+        "used": utilise,
+        "priority": 100,
+        "fs": None,
+        "free": None,
+        "max_size": None,
+        "hibernation": False,
+    }
+
+
 def etat_fabrique(racine, swaps=(), zram=(), **autres):
     """Un état complet tel que system_swap.etat() le rend : 8 Gio de RAM,
-    une racine ext4 avec 20 Gio libres, pacman."""
+    une racine ext4 avec 20 Gio libres, pacman, un noyau 6.x, la
+    swappiness par défaut du noyau."""
     swaps = list(swaps)
     etat = {
         "memory": {
@@ -109,6 +156,9 @@ def etat_fabrique(racine, swaps=(), zram=(), **autres):
         "btrfs_mkswapfile": False,
         "virtualization": None,
         "recommendation": ss.recommandation(8 * GIO),
+        "sysctl": sysctl_fabrique(),
+        "kernel": "6.1.0-test",
+        "postgresql": False,
         "balloon": False,
         "racine": racine,
     }
@@ -191,6 +241,7 @@ class TestLaNavigation(Banc):
             "4": ("_system_swap_zram", ()),
             "5": ("_system_swap_zram_desactiver", ()),
             "6": ("_system_swap_memoire", ()),
+            "7": ("_system_swap_swappiness", ()),
         }
         for touche, (methode, args) in attendus.items():
             with (
@@ -206,6 +257,7 @@ class TestLaNavigation(Banc):
             self.todo._system_swap()
         self.assertIn("Swap memory", invite.call_args.args[0])
         self.assertIn("[6] 🧩", invite.call_args.args[0])
+        self.assertIn("[7] 🎚 Swappiness", invite.call_args.args[0])
 
 
 class TestLesTraductions(unittest.TestCase):
@@ -229,6 +281,7 @@ class TestLesTraductions(unittest.TestCase):
                 sm.ALERTES_SWAP,
                 sm.VERDICTS_MEMOIRE,
                 sm.TYPES_SWAP,
+                sm.RAISONS_SWAPPINESS,
             )
             for v in table.values()
         ]
@@ -286,8 +339,16 @@ class TestLesTraductions(unittest.TestCase):
             "used_slots",
             "running",
             "installed",
+            "value",
+            "limit",
+            "key",
         }
-        for table in (sm.RAISONS_SWAP, sm.ALERTES_SWAP, sm.VERDICTS_MEMOIRE):
+        for table in (
+            sm.RAISONS_SWAP,
+            sm.ALERTES_SWAP,
+            sm.VERDICTS_MEMOIRE,
+            sm.RAISONS_SWAPPINESS,
+        ):
             for cle in table.values():
                 champs = {
                     f for _l, f, _s, _c in string.Formatter().parse(cle) if f
@@ -369,6 +430,65 @@ class TestLesLignes(unittest.TestCase):
             "zram-generator (/usr/lib/systemd/zram-generator.conf)", texte
         )
         self.assertIn("Non configurée", texte)
+
+    def test_state_shows_swappiness_and_its_source(self):
+        etat = etat_fabrique(
+            "/inexistant",
+            swaps=[fichier_swap()],
+            sysctl=sysctl_fabrique(
+                swappiness=10,
+                setters=[
+                    ("/usr/lib/sysctl.d/10-vendor.conf", 30),
+                    ("/etc/sysctl.d/60-local.conf", 10),
+                ],
+            ),
+        )
+        etat["sysctl"][ss.SWAPPINESS]["outside_boot"] = {
+            "path": "/etc/sysctl.conf",
+            "value": "15",
+        }
+        texte = "\n".join(sm.lignes_swap(etat))
+        self.assertIn("── Swappiness ──", texte)
+        self.assertIn(
+            "vm.swappiness : 10 · fixée par /etc/sysctl.d/60-local.conf", texte
+        )
+        self.assertIn(
+            "Écrasés, sans effet : /usr/lib/sysctl.d/10-vendor.conf (30)",
+            texte,
+        )
+        self.assertIn(
+            "/etc/sysctl.conf fixe aussi 15 : « sysctl --system »", texte
+        )
+        self.assertIn(
+            "vm.page-cluster : 3 · valeur du noyau, aucun fichier ne la fixe",
+            texte,
+        )
+        # Swap sur disque seulement : une swappiness basse est voulue.
+        self.assertNotIn("Swappiness [7]", texte)
+
+    def test_state_warns_when_zram_meets_a_low_swappiness(self):
+        etat = etat_fabrique(
+            "/inexistant",
+            swaps=[swap_zram()],
+            sysctl=sysctl_fabrique(swappiness=10),
+        )
+        texte = "\n".join(sm.lignes_swap(etat))
+        self.assertIn("⚠ vm.swappiness vaut 10", texte)
+        self.assertIn("Mémoire Swap › Swappiness [7]", texte)
+        # Une zram seulement configurée compte aussi.
+        etat = etat_fabrique(
+            "/inexistant",
+            persistence=persistance("zram-generator", installe=True),
+            sysctl=sysctl_fabrique(swappiness=30),
+        )
+        self.assertIn("Swappiness [7]", "\n".join(sm.lignes_swap(etat)))
+        etat["sysctl"] = sysctl_fabrique(swappiness=100)
+        self.assertNotIn("Swappiness [7]", "\n".join(sm.lignes_swap(etat)))
+
+    def test_state_without_sysctl_has_no_section(self):
+        etat = etat_fabrique("/inexistant")
+        del etat["sysctl"]
+        self.assertNotIn("Swappiness", "\n".join(sm.lignes_swap(etat)))
 
     def test_vm_balloon_sentences(self):
         texte = self.verdict(verdict="vm", virtualization="kvm", balloon=True)
@@ -858,6 +978,98 @@ class TestZram(Banc):
         self.lancer("_system_swap_zram_desactiver", self.etat(), [])
         self.assertEqual(self.lances(), [])
         self.assertIn("Aucune zram n'est active ni configurée.", self.texte())
+
+
+class TestLaSwappiness(Banc):
+    def etat_zram(self):
+        return self.etat(
+            swaps=[swap_zram()],
+            sysctl=sysctl_fabrique(
+                swappiness=10,
+                setters=[("/etc/sysctl.d/60-local.conf", 10)],
+            ),
+        )
+
+    def test_enter_takes_the_recommendation_and_page_cluster(self):
+        self.lancer(
+            "_system_swap_swappiness", self.etat_zram(), ["", "o", "o"]
+        )
+        lances = self.lances()
+        self.assertEqual(
+            lances[0], "sudo sysctl -w vm.swappiness=100 vm.page-cluster=0"
+        )
+        self.assertTrue(
+            lances[1].startswith("sudo cp -a /etc/sysctl.d/60-local.conf")
+        )
+        self.assertTrue(lances[2].startswith("sudo sed -i -E"))
+        self.assertTrue(lances[2].endswith("/etc/sysctl.d/60-local.conf"))
+        # page-cluster n'a pas de setter : il va dans un nouveau fichier.
+        self.assertIn("99-zz-swap.conf", lances[3])
+        texte = self.texte()
+        self.assertIn("Recommandé : vm.swappiness = 100.", texte)
+        self.assertIn("La zram est active ou configurée", texte)
+        self.assertIn("vm.swappiness : 10 → 100", texte)
+        self.assertIn("vm.page-cluster : 3 → 0", texte)
+        self.assertIn(
+            "/etc/sysctl.d/60-local.conf est modifié sur place, après une"
+            " copie dans /etc/sysctl.d/60-local.conf.bak-",
+            texte,
+        )
+        self.assertIn("│ vm.page-cluster = 0", texte)
+
+    def test_no_yes_runs_nothing(self):
+        self.lancer("_system_swap_swappiness", self.etat_zram(), ["", "", ""])
+        self.assertEqual(self.lances(), [])
+        self.assertIn("Rien n'a changé.", self.texte())
+
+    def test_disk_swap_asks_no_page_cluster(self):
+        etat = self.etat(swaps=[fichier_swap()], postgresql=True)
+        self.lancer("_system_swap_swappiness", etat, ["", "o"])
+        self.assertEqual(self.lances()[0], "sudo sysctl -w vm.swappiness=10")
+        texte = self.texte()
+        self.assertIn("PostgreSQL tourne", texte)
+        self.assertIn(
+            "Contenu à écrire dans /etc/sysctl.d/99-zz-swap.conf", texte
+        )
+        self.assertIn("│ vm.swappiness = 10", texte)
+
+    def test_typed_value_and_its_limits(self):
+        etat = self.etat(swaps=[fichier_swap()])
+        self.lancer("_system_swap_swappiness", etat, ["35", "o"])
+        self.assertEqual(self.lances()[0], "sudo sysctl -w vm.swappiness=35")
+        self.todo.execute.exec_command_live.reset_mock()
+        self.lancer("_system_swap_swappiness", etat, ["300"])
+        self.assertEqual(self.lances(), [])
+        self.assertIn("0 à 200", self.texte())
+        self.lancer("_system_swap_swappiness", etat, ["abc"])
+        self.assertIn("Ce n'est pas un nombre : abc", self.texte())
+        self.assertEqual(self.lances(), [])
+        # « ² » passe str.isdigit() mais pas int() : refusé, sans lever.
+        self.lancer("_system_swap_swappiness", etat, ["²"])
+        self.assertIn("Ce n'est pas un nombre : ²", self.texte())
+        self.assertEqual(self.lances(), [])
+
+    def test_no_swap_says_swappiness_has_no_effect(self):
+        self.lancer("_system_swap_swappiness", self.etat(), ["", "n"])
+        self.assertIn("vm.swappiness n'a pas d'effet", self.texte())
+
+    def test_a_container_is_refused_before_any_question(self):
+        etat = self.etat(virtualization="lxc", container=True)
+        with mock.patch("builtins.input", side_effect=AssertionError):
+            with mock.patch.object(ss, "etat", return_value=etat):
+                self.todo._system_swap_swappiness()
+        self.assertEqual(self.lances(), [])
+        self.assertIn("Conteneur (lxc)", self.texte())
+
+    def test_nixos_prints_the_snippet(self):
+        etat = self.etat(swaps=[fichier_swap()], manager="nix")
+        with (
+            mock.patch.object(ss, "etat", return_value=etat),
+            mock.patch("builtins.input", side_effect=["", AssertionError]),
+        ):
+            self.todo._system_swap_swappiness()
+        self.assertEqual(self.lances(), [])
+        self.assertIn('boot.kernel.sysctl."vm.swappiness" = 60;', self.texte())
 
 
 DMIDECODE = """\

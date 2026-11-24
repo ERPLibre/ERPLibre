@@ -113,6 +113,12 @@ class Racine:
             MEMINFO.format(total=total // 1024, available=disponible // 1024),
         )
 
+    def lien(self, chemin, cible):
+        """Un lien symbolique `chemin` -> `cible`, écrit tel quel."""
+        source = self.sous(chemin)
+        os.makedirs(os.path.dirname(source), exist_ok=True)
+        os.symlink(cible, source)
+
     def zram(self, nom, disksize, mm_stat, algo="lzo-rle [zstd] lz4"):
         self.ecrire(f"/sys/block/{nom}/disksize", f"{disksize}\n")
         self.ecrire(f"/sys/block/{nom}/comp_algorithm", algo + "\n")
@@ -464,6 +470,7 @@ class TestEtat(unittest.TestCase):
             ss.plan_creer(e, "/swapfile", 2 * GIO),
             ss.plan_zram(e, 2 * GIO, "/tmp-de-test"),
             ss.plan_zram_desactiver(e, "/tmp-de-test"),
+            ss.plan_swappiness(e, 100, 0),
         ):
             self.assertEqual(res["reason"], "container")
             self.assertEqual(res["details"]["virtualization"], "lxc")
@@ -1577,6 +1584,448 @@ class TestMemoireVive(unittest.TestCase):
         ordinaire : which() ne le voit pas, le fichier si."""
         self.r.ecrire("/usr/sbin/dmidecode", "")
         self.assertEqual(ss.plan_installer_dmidecode(self.r.etat()), [])
+
+
+SYSTEMD_SYSCTL = "/usr/lib/systemd/systemd-sysctl"
+
+
+class TestLectureSysctl(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+        self.r.ecrire("/proc/sys/vm/swappiness", "60\n")
+        self.r.ecrire("/proc/sys/vm/page-cluster", "3\n")
+
+    def sysctl(self):
+        return ss.lire_sysctl(self.r.chemin)
+
+    def test_key_forms(self):
+        self.assertEqual(ss.chemin_sysctl("vm.swappiness"), "vm/swappiness")
+        self.assertEqual(ss.chemin_sysctl("vm/swappiness"), "vm/swappiness")
+        # Après une première barre, le point fait partie du nom.
+        self.assertEqual(
+            ss.chemin_sysctl("net/ipv4/conf/eth9.7/forwarding"),
+            "net/ipv4/conf/eth9.7/forwarding",
+        )
+        self.assertEqual(
+            ss.chemin_sysctl("net.ipv4.conf.eth9/7.forwarding"),
+            "net/ipv4/conf/eth9.7/forwarding",
+        )
+        self.assertEqual(
+            ss.lire_sysctl_conf(
+                "# vm.swappiness = 1\n"
+                "; vm.swappiness = 2\n"
+                "vm.swappiness=3\n"
+                "  -vm/swappiness =  4  \n"
+                "-vm.page-cluster\n"
+                "vm.page-cluster = 0\n"
+            ),
+            {"vm/swappiness": "4", "vm/page-cluster": "0"},
+        )
+
+    def test_kernel_default_when_nothing_sets_it(self):
+        self.r.ecrire("/etc/sysctl.d/10-net.conf", "net.ipv4.ip_forward=1\n")
+        s = self.sysctl()
+        info = s[ss.SWAPPINESS]
+        self.assertEqual(info["value"], 60)
+        self.assertEqual(info["setters"], [])
+        self.assertIsNone(info["source"])
+        self.assertEqual(info["dead"], [])
+        self.assertEqual(s[ss.PAGE_CLUSTER]["value"], 3)
+        self.assertEqual(s["names"], ["10-net.conf"])
+
+    def test_precedence_masking_and_lexicographic_order(self):
+        """Un fichier de /etc masque celui du même nom plus bas ; les
+        survivants s'appliquent par ordre de nom, d'où qu'ils viennent ;
+        la forme en chemin compte comme la forme pointée."""
+        r = self.r
+        r.ecrire("/usr/lib/sysctl.d/10-vendor.conf", "vm.swappiness = 30\n")
+        r.ecrire("/usr/lib/sysctl.d/50-masked.conf", "vm.swappiness = 5\n")
+        r.ecrire("/etc/sysctl.d/50-masked.conf", "# vide : masque\n")
+        r.ecrire("/run/sysctl.d/70-run.conf", "vm/swappiness=40\n")
+        r.ecrire("/run/sysctl.d/80-other.conf", "vm.swappiness = 80\n")
+        r.ecrire("/usr/lib/sysctl.d/80-other.conf", "vm.swappiness = 81\n")
+        r.ecrire("/lib/sysctl.d/90-lib.conf", "vm.page-cluster = 2\n")
+        r.ecrire("/etc/sysctl.d/README", "vm.swappiness = 99\n")
+        r.ecrire("/proc/sys/vm/swappiness", "80\n")
+        s = self.sysctl()
+        info = s[ss.SWAPPINESS]
+        self.assertEqual(
+            [(x["path"], x["value"]) for x in info["setters"]],
+            [
+                ("/usr/lib/sysctl.d/10-vendor.conf", "30"),
+                ("/run/sysctl.d/70-run.conf", "40"),
+                ("/run/sysctl.d/80-other.conf", "80"),
+            ],
+        )
+        self.assertEqual(info["source"], "/run/sysctl.d/80-other.conf")
+        self.assertEqual(info["source_value"], "80")
+        self.assertEqual(
+            [x["path"] for x in info["dead"]],
+            [
+                "/usr/lib/sysctl.d/10-vendor.conf",
+                "/run/sysctl.d/70-run.conf",
+            ],
+        )
+        self.assertEqual(info["value"], 80)
+        self.assertEqual(
+            s[ss.PAGE_CLUSTER]["source"], "/lib/sysctl.d/90-lib.conf"
+        )
+        self.assertEqual(
+            s["names"],
+            [
+                "10-vendor.conf",
+                "50-masked.conf",
+                "70-run.conf",
+                "80-other.conf",
+                "90-lib.conf",
+            ],
+        )
+
+    def test_symlinked_sysctl_conf_counts_once(self):
+        """/etc/sysctl.d/99-sysctl.conf -> ../sysctl.conf : un seul setter,
+        classé à son nom de lien, et rien « hors démarrage »."""
+        r = self.r
+        r.ecrire(SYSTEMD_SYSCTL, "")
+        r.ecrire("/etc/sysctl.conf", "vm.swappiness = 10\n")
+        r.lien("/etc/sysctl.d/99-sysctl.conf", "../sysctl.conf")
+        r.ecrire("/usr/lib/sysctl.d/50-vendor.conf", "vm.swappiness = 30\n")
+        info = self.sysctl()[ss.SWAPPINESS]
+        self.assertEqual(len(info["setters"]), 2)
+        gagnant = info["setters"][-1]
+        self.assertEqual(
+            gagnant,
+            {
+                "path": "/etc/sysctl.conf",
+                "link": "/etc/sysctl.d/99-sysctl.conf",
+                "name": "99-sysctl.conf",
+                "value": "10",
+            },
+        )
+        self.assertIsNone(info["outside_boot"])
+
+    def test_absolute_link_resolves_under_the_root(self):
+        r = self.r
+        r.ecrire("/etc/sysctl.conf", "vm.swappiness = 12\n")
+        r.lien("/etc/sysctl.d/99-sysctl.conf", "/etc/sysctl.conf")
+        info = self.sysctl()[ss.SWAPPINESS]
+        self.assertEqual([x["value"] for x in info["setters"]], ["12"])
+        self.assertEqual(info["source"], "/etc/sysctl.conf")
+
+    def test_unlinked_sysctl_conf_with_and_without_systemd(self):
+        """Sans lien, systemd-sysctl ne lit pas /etc/sysctl.conf : il est
+        « hors démarrage ». Sans systemd-sysctl, procps l'applique en
+        dernier : il l'emporte, même sur un nom qui se classe après."""
+        r = self.r
+        r.ecrire("/etc/sysctl.conf", "vm.swappiness = 15\n")
+        r.ecrire("/etc/sysctl.d/99-zzz.conf", "vm.swappiness = 25\n")
+        info = self.sysctl()[ss.SWAPPINESS]
+        self.assertEqual(info["source"], "/etc/sysctl.conf")
+        self.assertIsNone(info["setters"][-1]["name"])
+        self.assertIsNone(info["outside_boot"])
+        r.ecrire(SYSTEMD_SYSCTL, "")
+        s = self.sysctl()
+        info = s[ss.SWAPPINESS]
+        self.assertTrue(s["systemd"])
+        self.assertEqual(info["source"], "/etc/sysctl.d/99-zzz.conf")
+        self.assertEqual(
+            info["outside_boot"], {"path": "/etc/sysctl.conf", "value": "15"}
+        )
+
+    def test_state_carries_sysctl_kernel_postgresql_and_balloon(self):
+        r = self.r
+        r.ecrire("/proc/sys/kernel/osrelease", "6.1.0-test\n")
+        r.ecrire("/proc/4242/comm", "bash\n")
+        e = r.etat()
+        self.assertEqual(e["kernel"], "6.1.0-test")
+        self.assertFalse(e["postgresql"])
+        self.assertFalse(e["balloon"])
+        self.assertEqual(e["sysctl"][ss.SWAPPINESS]["value"], 60)
+        r.ecrire("/proc/4343/comm", "postgres\n")
+        os.makedirs(r.sous("/sys/module/virtio_balloon"))
+        e = r.etat()
+        self.assertTrue(e["postgresql"])
+        self.assertTrue(e["balloon"])
+
+
+class TestRecommandationSwappiness(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+
+    def test_zram_active_or_configured(self):
+        self.r.ecrire(
+            "/proc/swaps", swaps(("/dev/zram0", "partition", 2097148, 0, 100))
+        )
+        attendu = {"swappiness": 100, "page_cluster": 0, "reason": "zram"}
+        self.assertEqual(ss.recommandation_swappiness(self.r.etat()), attendu)
+        self.r.ecrire("/proc/swaps", swaps())
+        self.r.ecrire(ss.BINAIRES_ZRAM_GENERATOR[0], "")
+        self.r.ecrire(ss.ZRAM_GENERATOR_ETC, "[zram0]\n")
+        self.assertEqual(ss.recommandation_swappiness(self.r.etat()), attendu)
+
+    def test_no_swap(self):
+        rec = ss.recommandation_swappiness(self.r.etat())
+        self.assertEqual(rec["reason"], "no_swap")
+        self.assertIsNone(rec["page_cluster"])
+
+    def test_swap_in_fstab_but_off_is_not_no_swap(self):
+        """Un swap inscrit dans fstab mais éteint revient au prochain
+        démarrage : la swappiness le concernera, la raison n'est donc pas
+        « no_swap ». Une ligne commentée ne compte pas."""
+        self.r.ecrire(
+            "/etc/fstab",
+            "/dev/vda1 / ext4 defaults 0 1\n#/dev/vda3 none swap sw 0 0\n",
+        )
+        rec = ss.recommandation_swappiness(self.r.etat())
+        self.assertEqual(rec["reason"], "no_swap")
+        self.r.ecrire(
+            "/etc/fstab",
+            "/dev/vda1 / ext4 defaults 0 1\n/swap\\040file none swap sw 0 0\n",
+        )
+        self.assertEqual(
+            ss.swaps_fstab(self.r.etat()["fstab"]), ["/swap file"]
+        )
+        rec = ss.recommandation_swappiness(self.r.etat())
+        self.assertEqual(rec["reason"], "default")
+
+    def test_disk_swap_with_and_without_postgresql(self):
+        self.r.ecrire(
+            "/proc/swaps", swaps(("/swapfile", "file", 2097148, 0, -2))
+        )
+        self.assertEqual(
+            ss.recommandation_swappiness(self.r.etat()),
+            {"swappiness": 60, "page_cluster": None, "reason": "default"},
+        )
+        self.r.ecrire("/proc/777/comm", "postgres\n")
+        self.assertEqual(
+            ss.recommandation_swappiness(self.r.etat()),
+            {"swappiness": 10, "page_cluster": None, "reason": "postgresql"},
+        )
+
+
+class TestPlanSwappiness(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+        self.r.ecrire("/proc/sys/kernel/osrelease", "6.1.0-test\n")
+        self.r.ecrire("/proc/sys/vm/swappiness", "60\n")
+        self.r.ecrire("/proc/sys/vm/page-cluster", "3\n")
+
+    def plan(self, valeur=100, page_cluster=None):
+        return ss.plan_swappiness(self.r.etat(), valeur, page_cluster, "s")
+
+    def test_etc_winner_is_edited_in_place_after_a_backup(self):
+        texte = (
+            "# réglage local\n"
+            "vm.swappiness = 10\n"
+            "-vm/swappiness=20\n"
+            "vm.swappiness_other = 3\n"
+        )
+        self.r.ecrire("/etc/sysctl.d/60-local.conf", texte)
+        self.r.ecrire("/usr/lib/sysctl.d/10-vendor.conf", "vm.swappiness=30\n")
+        res = self.plan()
+        self.assertTrue(res["ok"], res)
+        chemin = "/etc/sysctl.d/60-local.conf"
+        self.assertEqual(
+            res["plan"][:2],
+            [
+                ["sudo", "sysctl", "-w", "vm.swappiness=100"],
+                ["sudo", "cp", "-a", chemin, f"{chemin}.bak-s"],
+            ],
+        )
+        sed = res["plan"][2]
+        self.assertEqual(sed[:4], ["sudo", "sed", "-i", "-E"])
+        self.assertEqual(sed[-1], chemin)
+        self.assertEqual(len(res["plan"]), 3)
+        self.assertIsNone(res["details"]["created"])
+        self.assertEqual(
+            res["details"]["edited"],
+            [{"path": chemin, "backup": f"{chemin}.bak-s"}],
+        )
+        self.assertEqual(res["details"]["changes"], {ss.SWAPPINESS: [60, 100]})
+        self.assertEqual(
+            res["warnings"],
+            [
+                {
+                    "code": "sysctl_dead",
+                    "key": ss.SWAPPINESS,
+                    "paths": ["/usr/lib/sysctl.d/10-vendor.conf (30)"],
+                }
+            ],
+        )
+        # L'expression, jouée par le vrai sed sur une copie.
+        copie = os.path.join(self.r.chemin, "copie.conf")
+        with open(copie, "w") as fh:
+            fh.write(texte)
+        REEL_RUN(["sed", "-i", "-E", *sed[4:-1], copie], check=True)
+        with open(copie) as fh:
+            self.assertEqual(
+                fh.read(),
+                "# réglage local\n"
+                "vm.swappiness = 100\n"
+                "-vm/swappiness=100\n"
+                "vm.swappiness_other = 3\n",
+            )
+
+    def test_vendor_winner_gets_a_new_file_that_sorts_after_it(self):
+        """Un fichier de /usr/lib ou de /run ne se modifie pas : un nouveau
+        fichier de /etc/sysctl.d, classé après lui, l'écrase."""
+        self.r.ecrire(
+            "/usr/lib/sysctl.d/99-zzz-vendor.conf", "vm.swappiness = 30\n"
+        )
+        self.r.ecrire("/run/sysctl.d/50-run.conf", "vm.swappiness = 35\n")
+        res = self.plan(100, 0)
+        self.assertTrue(res["ok"], res)
+        nouveau = "/etc/sysctl.d/99-zzz-vendor_zz-swap.conf"
+        self.assertGreater(os.path.basename(nouveau), "99-zzz-vendor.conf")
+        self.assertEqual(res["details"]["created"], nouveau)
+        self.assertEqual(
+            res["details"]["content"],
+            "vm.swappiness = 100\nvm.page-cluster = 0\n",
+        )
+        self.assertEqual(
+            res["plan"][0],
+            ["sudo", "sysctl", "-w", "vm.swappiness=100", "vm.page-cluster=0"],
+        )
+        self.assertEqual(len(res["plan"]), 2)
+        ecriture = res["plan"][1]
+        self.assertEqual(ecriture[:3], ["sudo", "sh", "-c"])
+        self.assertIn(f"| tee {nouveau} > /dev/null", ecriture[3])
+        for cmd in res["plan"]:
+            self.assertFalse(
+                any(a.startswith(("/usr/lib", "/run")) for a in cmd), cmd
+            )
+        self.assertEqual(res["details"]["edited"], [])
+        self.assertEqual(
+            res["warnings"][0]["paths"],
+            [
+                "/run/sysctl.d/50-run.conf (35)",
+                "/usr/lib/sysctl.d/99-zzz-vendor.conf (30)",
+            ],
+        )
+
+    def test_the_new_file_runs_through_a_real_shell(self):
+        """Le contenu, passé à printf par sh -c, arrive tel quel dans le
+        fichier : la commande est jouée sur une copie, sudo ôté."""
+        res = self.plan(100, 0)
+        script = res["plan"][1][3].replace(
+            ss.SYSCTL_D_ETC, os.path.join(self.r.chemin, "etc-sysctl.d")
+        )
+        REEL_RUN(["sh", "-c", script], check=True)
+        cible = os.path.join(self.r.chemin, "etc-sysctl.d", ss.NOM_SYSCTL)
+        with open(cible) as fh:
+            self.assertEqual(
+                fh.read(), "vm.swappiness = 100\nvm.page-cluster = 0\n"
+            )
+
+    def test_file_names(self):
+        self.assertEqual(ss.nom_fichier_sysctl([]), "99-zz-swap.conf")
+        self.assertEqual(
+            ss.nom_fichier_sysctl(["10-a.conf", "99-sysctl.conf"]),
+            "99-zz-swap.conf",
+        )
+        # Un fichier de ce nom existe ailleurs : le créer dans /etc le
+        # masquerait.
+        nom = ss.nom_fichier_sysctl([], ["99-zz-swap.conf"])
+        self.assertEqual(nom, "99-zz-swap_zz-swap.conf")
+        self.assertGreater(nom, "99-zz-swap.conf")
+        nom = ss.nom_fichier_sysctl(["zz-last.conf"], ["zz-last.conf"])
+        self.assertGreater(nom, "zz-last.conf")
+        self.assertTrue(nom.endswith(".conf"))
+
+    def test_no_setter_writes_the_default_file(self):
+        res = self.plan(30)
+        self.assertEqual(
+            res["details"]["created"], f"/etc/sysctl.d/{ss.NOM_SYSCTL}"
+        )
+        self.assertEqual(res["warnings"], [])
+
+    def test_linked_sysctl_conf_is_edited_through_its_real_path(self):
+        self.r.ecrire(SYSTEMD_SYSCTL, "")
+        self.r.ecrire("/etc/sysctl.conf", "vm.swappiness=10\n")
+        self.r.lien("/etc/sysctl.d/99-sysctl.conf", "../sysctl.conf")
+        res = self.plan()
+        self.assertEqual(
+            [e["path"] for e in res["details"]["edited"]],
+            ["/etc/sysctl.conf"],
+        )
+        self.assertIsNone(res["details"]["created"])
+        self.assertEqual(res["plan"][2][-1], "/etc/sysctl.conf")
+
+    def test_unlinked_sysctl_conf_is_edited_too(self):
+        """systemd ne le lit pas au démarrage, mais « sysctl --system »
+        l'applique en dernier : il reçoit la même valeur que le nouveau
+        fichier."""
+        self.r.ecrire(SYSTEMD_SYSCTL, "")
+        self.r.ecrire("/etc/sysctl.conf", "vm.swappiness = 15\n")
+        self.r.ecrire("/usr/lib/sysctl.d/50-vendor.conf", "vm.swappiness=30\n")
+        res = self.plan()
+        self.assertEqual(
+            [e["path"] for e in res["details"]["edited"]],
+            ["/etc/sysctl.conf"],
+        )
+        self.assertEqual(
+            res["details"]["created"], f"/etc/sysctl.d/{ss.NOM_SYSCTL}"
+        )
+
+    def test_page_cluster_goes_to_its_own_winner(self):
+        self.r.ecrire("/etc/sysctl.d/60-local.conf", "vm.swappiness = 10\n")
+        self.r.ecrire("/usr/lib/sysctl.d/10-io.conf", "vm.page-cluster = 4\n")
+        res = self.plan(100, 0)
+        self.assertEqual(
+            [e["path"] for e in res["details"]["edited"]],
+            ["/etc/sysctl.d/60-local.conf"],
+        )
+        self.assertEqual(res["details"]["content"], "vm.page-cluster = 0\n")
+        self.assertEqual(
+            res["details"]["changes"],
+            {ss.SWAPPINESS: [60, 100], ss.PAGE_CLUSTER: [3, 0]},
+        )
+
+    def test_range_follows_the_kernel(self):
+        self.assertTrue(self.plan(200)["ok"])
+        for valeur in (201, -1, "100", True, None, 1.5):
+            res = self.plan(valeur)
+            self.assertEqual(res["reason"], "swappiness_range", valeur)
+        self.assertEqual(self.plan(201)["details"]["limit"], 200)
+        self.r.ecrire("/proc/sys/kernel/osrelease", "5.4.0-test\n")
+        res = self.plan(150)
+        self.assertEqual(res["reason"], "swappiness_range")
+        self.assertEqual(res["details"]["limit"], 100)
+        self.assertEqual(res["details"]["running"], "5.4.0-test")
+        self.assertTrue(self.plan(100)["ok"])
+        self.assertEqual(self.plan(100, 32)["reason"], "page_cluster_range")
+
+    def test_the_kernel_is_read_when_the_state_lacks_it(self):
+        e = self.r.etat()
+        del e["kernel"]
+        self.assertTrue(ss.plan_swappiness(e, 150)["ok"])
+        self.assertEqual(e["kernel"], "6.1.0-test")
+        self.assertEqual(ss.swappiness_max(None), 100)
+        self.assertEqual(ss.swappiness_max("5.8.0"), 200)
+        self.assertEqual(ss.swappiness_max("5.7.19"), 100)
+
+    def test_container_is_refused(self):
+        self.r.sorties["systemd-detect-virt"] = "docker\n"
+        self.assertEqual(self.plan()["reason"], "container")
+
+    def test_nixos_gets_a_snippet(self):
+        r = Racine(self, "nixos")
+        r.ecrire("/proc/sys/kernel/osrelease", "6.1.0-test\n")
+        res = ss.plan_swappiness(r.etat(), 100, 0)
+        self.assertEqual(res["plan"], [])
+        self.assertEqual(res["reason"], "nixos")
+        self.assertIn('boot.kernel.sysctl."vm.swappiness" = 100;', res["nix"])
+        self.assertIn('boot.kernel.sysctl."vm.page-cluster" = 0;', res["nix"])
+        self.assertIn("nixos-rebuild switch", res["nix"])
+
+    def test_zram_plan_warns_about_a_low_swappiness(self):
+        self.r.ecrire("/proc/sys/vm/swappiness", "10\n")
+        res = ss.plan_zram(self.r.etat(), 2 * GIO, "/tmp-de-test", "s")
+        self.assertIn({"code": "low_swappiness", "value": 10}, res["warnings"])
+        self.r.ecrire("/proc/sys/vm/swappiness", "60\n")
+        res = ss.plan_zram(self.r.etat(), 2 * GIO, "/tmp-de-test", "s")
+        self.assertNotIn(
+            "low_swappiness", [a["code"] for a in res["warnings"]]
+        )
 
 
 if __name__ == "__main__":

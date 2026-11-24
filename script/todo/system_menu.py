@@ -465,6 +465,13 @@ RAISONS_SWAP = {
         "{service} already manages the zram: change its size in that "
         "service's own settings, or disable it (zram - disable) first."
     ),
+    "swappiness_range": (
+        "{value} is outside what the running kernel ({running}) accepts for "
+        "vm.swappiness: 0 to {limit}."
+    ),
+    "page_cluster_range": (
+        "{value} is outside what vm.page-cluster accepts: 0 to {limit}."
+    ),
 }
 
 ALERTES_SWAP = {
@@ -494,6 +501,33 @@ ALERTES_SWAP = {
         "zramswap.service."
     ),
     "dropin_etc": "These files in /etc still configure a zram: {paths}.",
+    "low_swappiness": (
+        "vm.swappiness is {value}: below 60, the kernel drops page cache "
+        "rather than swap, and the zram stays nearly unused. Swap memory › "
+        "Swappiness [7] raises it."
+    ),
+    "sysctl_dead": (
+        "These files also set {key} but are overridden, without effect: "
+        "{paths}."
+    ),
+}
+
+# La raison de la swappiness conseillée (recommandation_swappiness).
+RAISONS_SWAPPINESS = {
+    "zram": (
+        "zram is active or configured: swapping to compressed RAM costs less "
+        "than reading evicted page cache back from disk. vm.page-cluster 0: "
+        "zram reads single pages faster than clusters."
+    ),
+    "postgresql": (
+        "PostgreSQL is running and the swap is on disk: a low value keeps the "
+        "database processes in RAM and swaps only as a last resort."
+    ),
+    "default": "The swap is on disk: the kernel default.",
+    "no_swap": (
+        "No swap is active or listed in /etc/fstab: vm.swappiness has no "
+        "effect."
+    ),
 }
 
 VERDICTS_MEMOIRE = {
@@ -596,10 +630,63 @@ def _persistance(pers, active):
     return t("none")
 
 
+def _setters(setters):
+    """[{path, value}, …] -> « chemin (valeur), … »."""
+    return ", ".join(
+        f"{affichable(s['path'])} ({affichable(s['value'])})" for s in setters
+    )
+
+
+def lignes_sysctl(etat):
+    """vm.swappiness et vm.page-cluster en lignes : la valeur en marche, le
+    fichier qui la fixe au démarrage, les fichiers écrasés, et une mise en
+    garde quand une zram attend une swappiness d'au moins 60. [] si etat
+    ne porte pas de sysctl."""
+    sysctl = etat.get("sysctl")
+    if not sysctl:
+        return []
+    lignes = []
+    for cle in ss.CLES_SYSCTL:
+        info = sysctl.get(cle) or {}
+        valeur = info.get("value")
+        if info.get("source"):
+            source = t("set by {path}").format(path=affichable(info["source"]))
+        else:
+            source = t("kernel default, no file sets it")
+        lignes.append(
+            f"  {cle} : {t('unavailable') if valeur is None else valeur}"
+            f" · {source}"
+        )
+        if info.get("dead"):
+            lignes.append(
+                f"      {t('Overridden, without effect:')}"
+                f" {_setters(info['dead'])}"
+            )
+        hors = info.get("outside_boot")
+        if hors:
+            lignes.append(
+                "      "
+                + t(
+                    "{path} sets {value} too: « sysctl --system » applies "
+                    "it, the boot does not."
+                ).format_map(_champs(hors))
+            )
+    valeur = ss.swappiness_actuelle(etat)
+    if (
+        ss.zram_presente(etat)
+        and valeur is not None
+        and valeur < ss.SWAPPINESS_DEFAUT
+    ):
+        lignes.append(
+            f"  ⚠ {message_alerte({'code': 'low_swappiness', 'value': valeur})}"
+        )
+    return lignes
+
+
 def lignes_swap(etat):
     """L'état de la mémoire et de la mémoire d'échange en lignes de texte :
-    la RAM, chaque swap actif, la zram et sa persistance, l'hibernation,
-    puis la recommandation."""
+    la RAM, chaque swap actif, la zram et sa persistance, la swappiness,
+    l'hibernation, puis la recommandation."""
     absent = t("unavailable")
     mem = etat["memory"]
     lignes = [
@@ -692,6 +779,10 @@ def lignes_swap(etat):
     lignes.append(f"  {t('At boot:')} {_persistance(pers, active)}")
     if pers["both"]:
         lignes.append(f"  ⚠ {message_alerte({'code': 'zram_tools_conflict'})}")
+
+    sysctl = lignes_sysctl(etat)
+    if sysctl:
+        lignes += ["", "── Swappiness ──"] + sysctl
 
     hib = etat["hibernation"]
     lignes += ["", f"── {t('Hibernation')} ──"]
@@ -1276,7 +1367,7 @@ class SystemMenuMixin:
 
     def _system_swap(self):
         """Le sous-menu de la mémoire d'échange : l'état, le swap sur
-        disque, la zram, et l'ajout de RAM."""
+        disque, la zram, l'ajout de RAM et la swappiness."""
         choices = [
             {"prompt_description": t("State of memory and swap")},
             {"prompt_description": t("Grow swap")},
@@ -1284,6 +1375,7 @@ class SystemMenuMixin:
             {"prompt_description": t("zram - enable or resize")},
             {"prompt_description": t("zram - disable")},
             {"prompt_description": t("Can memory be added?")},
+            {"prompt_description": t("Swappiness")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -1303,6 +1395,8 @@ class SystemMenuMixin:
                 self._system_swap_zram_desactiver()
             elif status == "6":
                 self._system_swap_memoire()
+            elif status == "7":
+                self._system_swap_swappiness()
             else:
                 print(t("Command not found !"))
 
@@ -1488,6 +1582,8 @@ class SystemMenuMixin:
                     old=octets(details["old"]), new=octets(details["new"])
                 )
             )
+        for cle, (avant, apres) in details.get("changes", {}).items():
+            print(f"  {cle} : {'?' if avant is None else avant} → {apres}")
         for alerte in res["warnings"]:
             print(f"  ⚠ {message_alerte(alerte)}")
         if res["nix"]:
@@ -1507,7 +1603,17 @@ class SystemMenuMixin:
                     "/etc/fstab gets the line « {line} », after a copy to {backup}."
                 ).format_map(_champs(details))
             )
-        for chemin, contenu in res["files"].items():
+        for edite in details.get("edited") or []:
+            print(
+                "  "
+                + t(
+                    "{path} is edited in place, after a copy to {backup}."
+                ).format_map(_champs(edite))
+            )
+        fichiers = dict(res["files"])
+        if details.get("created"):
+            fichiers[details["created"]] = details["content"]
+        for chemin, contenu in fichiers.items():
             print(f"  {t('Content to write to')} {chemin} :")
             for ligne in contenu.splitlines() or [""]:
                 print(f"    │ {ligne}")
@@ -1627,3 +1733,46 @@ class SystemMenuMixin:
             print(f"  ⚠ {t('dmidecode failed.')}")
             return None
         return ss.analyser_dmidecode(res.stdout)
+
+    def _system_swap_swappiness(self):
+        """vm.swappiness : la valeur en marche, le fichier qui la fixe et
+        ceux qu'il écrase, la valeur conseillée et sa raison ; puis la
+        valeur tapée (Entrée prend la conseillée), vm.page-cluster 0 en plus
+        quand une zram est là, et le plan de plan_swappiness()."""
+        etat = ss.etat()
+        refus = ss.refus_conteneur(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        for ligne in lignes_sysctl(etat):
+            print(ligne)
+        rec = ss.recommandation_swappiness(etat)
+        print(
+            "  "
+            + t("Recommended: {key} = {value}.").format(
+                key=ss.SWAPPINESS, value=rec["swappiness"]
+            )
+        )
+        print(f"  {_message(RAISONS_SWAPPINESS, rec['reason'], {})}")
+        limite = ss.swappiness_max(etat.get("kernel"))
+        reponse = input(
+            t("{key}, 0 to {limit}, Enter for {value}: ").format(
+                key=ss.SWAPPINESS, limit=limite, value=rec["swappiness"]
+            )
+        ).strip()
+        valeur = entier(reponse) if reponse else rec["swappiness"]
+        if valeur is None:
+            print(f"  ⚠ {t('Not a number:')} {affichable(reponse)}")
+            return
+        page_cluster = None
+        if rec["page_cluster"] is not None and self._is_yes(
+            input(
+                t("Also set {key} to {value}? (y/N): ").format(
+                    key=ss.PAGE_CLUSTER, value=rec["page_cluster"]
+                )
+            )
+        ):
+            page_cluster = rec["page_cluster"]
+        self._system_swap_appliquer(
+            ss.plan_swappiness(etat, valeur, page_cluster)
+        )
