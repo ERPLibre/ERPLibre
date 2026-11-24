@@ -915,6 +915,50 @@ def sudo_lignes(faits) -> list[str]:
     return lignes
 
 
+# Commandes de paquets Debian qui, sur un terminal, le manipulent et peuvent y
+# rester suspendues. apt-get remet en fin de course les réglages du terminal
+# qu'il a pris au départ (tcsetattr) : s'il n'est plus au premier plan à cet
+# instant — un script de mainteneur, un systemctl lancé par un déclencheur,
+# peut l'avoir pris —, le noyau le suspend (SIGTTOU) et l'appelant attend
+# indéfiniment un processus qui ne reprendra jamais seul. dpkg lance les mêmes
+# scripts de mainteneur.
+APT_TERMINAL_COMMANDS = frozenset({"apt-get", "dpkg"})
+
+# Sans pseudo-terminal entre apt-get et dpkg, apt-get n'a aucun réglage de
+# terminal à prendre ni à rendre.
+APT_NO_PTY = ["-o", "Dpkg::Use-Pty=0"]
+
+# Sans terminal, dpkg ne peut plus demander quoi faire d'un fichier de
+# configuration modifié localement : la question lirait la fin de /dev/null et
+# dpkg échouerait (« EOF on stdin at conffile prompt »). La réponse est fixée
+# d'avance — la version locale est gardée, la nouvelle est posée à côté en
+# .dpkg-dist ; un fichier jamais modifié prend la version du paquet.
+DPKG_KEEP_CONF = ["--force-confdef", "--force-confold"]
+APT_KEEP_CONF = [
+    arg for opt in DPKG_KEEP_CONF for arg in ("-o", f"Dpkg::Options::={opt}")
+]
+
+
+def detach_from_terminal(cmd: list[str]) -> tuple[list[str], int | None]:
+    """Rend (commande, stdin) pour lancer `cmd` hors du terminal si besoin.
+
+    apt-get et dpkg reçoivent /dev/null pour entrée : ni eux ni les scripts
+    de mainteneur qu'ils lancent n'héritent du terminal, donc rien ne peut y
+    être suspendu ni attendre une saisie. apt-get reçoit en plus APT_NO_PTY,
+    et tous deux la réponse aux questions sur les fichiers de configuration.
+    Toute autre commande est rendue telle quelle, avec un stdin None
+    (hérité). La sortie, elle, reste sur le terminal. La liste reçue n'est
+    jamais modifiée.
+    """
+    if not cmd or cmd[0] not in APT_TERMINAL_COMMANDS:
+        return cmd, None
+    if cmd[0] == "apt-get":
+        extra = [*APT_NO_PTY, *APT_KEEP_CONF]
+    else:
+        extra = DPKG_KEEP_CONF
+    return [cmd[0], *extra, *cmd[1:]], subprocess.DEVNULL
+
+
 # --------------------------------------------------------------------------- #
 class Runner:
     """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
@@ -955,6 +999,7 @@ class Runner:
         voulu partout où il n'y a rien à rattraper. Avec, l'appelant décide —
         seul l'appel qui SAIT réessayer autrement doit le demander.
         """
+        cmd, stdin = detach_from_terminal(cmd)
         if privileged and self.use_sudo:
             self._annoncer_sudo()
             cmd = ["sudo", *cmd]
@@ -968,6 +1013,7 @@ class Runner:
             # et l'appelant peut lire ce que l'outil a dit.
             res = subprocess.run(
                 cmd,
+                stdin=stdin,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -976,7 +1022,7 @@ class Runner:
                 print(res.stdout, end="")
             return res.returncode, res.stdout or ""
         try:
-            subprocess.run(cmd, check=check)
+            subprocess.run(cmd, stdin=stdin, check=check)
         except subprocess.CalledProcessError as exc:
             # Sortie propre plutôt qu'une trace Python illisible.
             sys.exit(
