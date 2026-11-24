@@ -254,7 +254,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO › Execute › Test › [5] ERPLibre studio runs the code-generator scenarios from a menu: all of them, one chosen from the active Odoo version's list, the failures of the last run, with coverage, or the purge of the databases an interrupted run left behind. Development › Coverage › [3] runs the same command
 - `make open_test_coverage JEU=erplibre` (or `JEU=odoo`) produces that coverage set's HTML report, prints its path and opens it: without data it fails and opens nothing, and a missing browser (ssh, CI) does not fail it. Without `JEU` it still opens `htmlcov/`
 - `deploy_qemu.py` starts a throwaway domain with the VM's boot settings before any image download or disk write, and stops with the cause — AppArmor, missing firmware, timeout — when libvirt cannot start it; the probe is always removed with its NVRAM. `--no-preflight` skips it, and it does not run without `--boot` (s390x, `--bios`). `Clean up QEMU (orphan files)` offers to remove probes an interrupted deploy left behind
-- TODO › qemu uses the virtio memory balloon: the hardware form of a shut-off VM sets RAM and RAM max separately, keeps the headroom when only the RAM changes and adds a balloon when the max exceeds the RAM
+- TODO › qemu uses the virtio memory balloon: the hardware form of a shut-off VM sets RAM and RAM max separately, keeps the headroom when only the RAM changes and adds a balloon when the max exceeds the RAM; **Change RAM of a running VM (balloon)** moves a running VM's RAM up to its max with `virsh setmem`, refusing a target below the memory the guest uses or one the host cannot cover
 
 <!-- [fr] -->
 
@@ -485,7 +485,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO › Exécution › Test › [5] ERPLibre studio lance les scénarios du générateur de code depuis un menu : tous, un seul choisi dans la liste de la version Odoo active, les échecs du dernier passage, avec couverture, ou la purge des bases laissées par un passage interrompu. Développement › Couverture › [3] lance la même commande
 - `make open_test_coverage JEU=erplibre` (ou `JEU=odoo`) produit le rapport HTML de ce jeu de couverture, affiche son chemin et l'ouvre : sans données, la cible échoue sans rien ouvrir, et sans navigateur (ssh, CI) elle n'échoue pas. Sans `JEU`, elle ouvre toujours `htmlcov/`
 - `deploy_qemu.py` démarre un domaine jetable avec les réglages d'amorçage de la VM avant tout téléchargement d'image ou écriture de disque, et s'arrête sur la cause — AppArmor, firmware absent, délai dépassé — quand libvirt ne peut pas le démarrer ; la sonde est toujours retirée avec sa NVRAM. `--no-preflight` la saute, et elle ne tourne pas sans `--boot` (s390x, `--bios`). `Nettoyer QEMU (fichiers orphelins)` propose de retirer les sondes qu'un déploiement interrompu a laissées
-- TODO › qemu se sert du ballon mémoire virtio : le formulaire matériel d'une VM éteinte règle séparément la RAM et la RAM max, garde la marge quand seule la RAM change et pose un ballon quand le max dépasse la RAM
+- TODO › qemu se sert du ballon mémoire virtio : le formulaire matériel d'une VM éteinte règle séparément la RAM et la RAM max, garde la marge quand seule la RAM change et pose un ballon quand le max dépasse la RAM ; **Changer la RAM d'une VM allumée (ballon)** déplace la RAM d'une VM qui tourne jusqu'à son max par `virsh setmem`, et refuse une cible sous la mémoire occupée par l'invité ou que l'hôte ne peut couvrir
 
 <!-- [en] -->
 ## Changed
