@@ -567,9 +567,8 @@ class TodoUpgrade:
         progression : une étape, « 0 » à « 4 », que la question nomme en
         disant que la progression reprend depuis là ; un palier, « 4.V »,
         nommé comme la liste l'affiche, qui recrée la base intermédiaire ;
-        « n » ou « r », sous leur libellé. Le défaut est non : une réponse
-        vide, toute autre que oui, Ctrl+D ou la fin du compte à rebours ne
-        confirment rien."""
+        « n » ou « r », sous leur libellé. Une question oui/non
+        (`confirm`), non par défaut."""
         if answer in ("n", "r"):
             what = {
                 "n": t("New migration, erase everything"),
@@ -585,11 +584,7 @@ class TodoUpgrade:
                 f"{t('Step')} {answer} : {t('Replay from that step')}"
                 f" ({t('erases the progression of that step and the next ones')})"
             )
-        try:
-            reponse = self.ask(f"💬 {what}. {t('Confirm? (y/N): ')}", "n")
-        except EOFError:
-            return False
-        return reponse.strip().lower() in ("y", "yes", "o", "oui")
+        return self.confirm(f"💬 {what}. {t('Confirm?')}", default=False)
 
     @staticmethod
     def ask_ui():
@@ -928,20 +923,16 @@ class TodoUpgrade:
         activée, elle vaut pour toutes les suivantes, celle-là comprise.
         """
         # L'auto-exécution ne s'active JAMAIS d'elle-même : on efface le
-        # drapeau avant de poser la question, sinon une variable héritée du
-        # shell ferait répondre « oui » à la place de quelqu'un — et cette
-        # réponse-là engage toutes les suivantes.
+        # drapeau avant de poser la question, sans compte à rebours
+        # (`ui.confirm` plutôt que `self.confirm`), sinon une variable
+        # héritée du shell ferait répondre à la place de quelqu'un — et
+        # cette réponse-là engage toutes les suivantes.
         auto_ask.export(False)
-        answer = (
-            auto_ask.ask(
-                f"💬 {t('Auto-run: take the default answer after')}"
-                f" {self.AUTO_DELAY} {t('seconds?')} (y/N) : ",
-                default="n",
-            )
-            .strip()
-            .lower()
+        self.auto_execute = ui.confirm(
+            f"💬 {t('Auto-run: take the default answer after')}"
+            f" {self.AUTO_DELAY} {t('seconds?')}",
+            default=False,
         )
-        self.auto_execute = answer == "y"
         # Dans l'ENVIRONNEMENT, car c'est le seul canal qu'un sous-processus
         # partage avec nous : la moitié des invites d'une migration sont
         # posées par des outils lancés à part — désinstalleur de thème,
@@ -1076,7 +1067,7 @@ class TodoUpgrade:
         confirmée (`confirm_rewind`) : la progression est rembobinée
         jusqu'à elle et écrite, et rend vrai. Faux sans rien écrire sur [0],
         une réponse vide ou Ctrl+D, à la liste ou à la confirmation ; une
-        faute à la liste est dite et la question revient."""
+        faute, à l'une ou à l'autre, est dite et la question revient."""
         ctx = self.resume_context(self.dct_progression)
         options, labels, names = self.step_choices(ctx)
         print()
@@ -3246,12 +3237,7 @@ class TodoUpgrade:
             # 0 : rien à corriger. 2 : l'outil a échoué. Ni l'un ni
             # l'autre ne justifie de rejouer la commande.
             return False
-        reponse = (
-            self.ask(f"💬 {t('Correct them?')} (Y/n) : ", default="y")
-            .strip()
-            .lower()
-        )
-        if reponse not in ("y", "yes", "o"):
+        if not self.confirm(f"💬 {t('Correct them?')}", default=True):
             return False
         status, _cmd = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./{outil} -d {database} --apply",
@@ -3301,12 +3287,7 @@ class TodoUpgrade:
             rapport["groups"]["dead_field"] + (rapport.get("dead_kept") or [])
         )[:6]:
             print(f"   {texte}")
-        reponse = (
-            self.ask(f"💬 {t('Delete them?')} (Y/n) : ", default="y")
-            .strip()
-            .lower()
-        )
-        if reponse not in ("y", "yes", "o"):
+        if not self.confirm(f"💬 {t('Delete them?')}", default=False):
             print(f"ℹ️  {t('Nothing was deleted.')}")
             return
         status, _cmd, sortie = self.todo_upgrade_execute(
@@ -3940,27 +3921,26 @@ class TodoUpgrade:
         # une personnalisation sans avoir montré laquelle. Souvent trois lignes
         # — un id, une largeur de conteneur — mais parfois une page entière, et
         # rien dans l'avertissement ne permet de les distinguer.
+        letters = {"v": t("View the differences"), "w": t("Full screen")}
         while True:
-            answer = (
-                self.ask(
-                    "💬 Neutralize these copies so the upgrade can proceed?"
+            answer = self.confirm(
+                "💬 "
+                + t(
+                    "Neutralize these copies so the upgrade can proceed?"
                     " Their arch is kept and the change is reversible."
-                    " (Y/n, v = view the differences, w = full screen) : ",
-                    default="y",
-                )
-                .strip()
-                .lower()
+                ),
+                default=True,
+                letters=letters,
             )
             if answer == "v":
                 self.show_cow_drift(database_name, next_version, "diff")
                 self.show_cow_drift(database_name, next_version, "shape")
-                continue
-            if answer == "w":
+            elif answer == "w":
                 self.show_cow_drift(database_name, next_version, "tui")
-                continue
-            break
+            else:
+                break
 
-        if answer == "n":
+        if not answer:
             print(
                 "⚠️ -> Skipped. The data migration will very likely stop on"
                 " these views."

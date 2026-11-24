@@ -219,5 +219,52 @@ class TestTheBumpPromptSharesTheSameView(PromptCase):
         self.assertIn("self.show_cow_drift(", source)
 
 
+class TestTheBumpQuestion(PromptCase):
+    """« Neutraliser ces copies ? » au palier, une question oui/non de
+    `TodoUpgrade.confirm`, oui par défaut : « v » et « w » montrent les
+    copies, puis la même question revient."""
+
+    def bump(self, answers):
+        """(commandes lancées, modes montrés, questions posées) après
+        `neutralize_cow_views` sur `answers`, toutes lues."""
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.lst_command_executed = []
+        lst_cmd, drift = [], []
+        upgrade.todo_upgrade_execute = lambda cmd, **kw: (
+            lst_cmd.append(cmd) or (0 if "--apply" in cmd else 1, cmd, [])
+        )
+        upgrade.show_cow_drift = lambda db, v, mode: drift.append(mode)
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(ScriptedPort(list(answers))) as port,
+        ):
+            upgrade.neutralize_cow_views("db", 13)
+        self.assertEqual(port.answers, [])
+        confirms = [e for e in port.events if e.get("kind") == "confirm"]
+        return [c for c in lst_cmd if "--apply" in c], drift, confirms
+
+    def test_v_and_w_show_the_copies_then_ask_again(self):
+        for fin, applique in (["n"], 0), (["o"], 1), ([""], 1):
+            with self.subTest(fin=fin):
+                appliques, drift, confirms = self.bump(["v", "w", *fin])
+                self.assertEqual(len(appliques), applique)
+                self.assertEqual(drift, ["diff", "shape", "tui"])
+                self.assertEqual(confirms, [confirms[0]] * 3)
+
+    def test_a_closed_input_ends_the_question(self):
+        appliques, drift, confirms = self.bump([])
+        self.assertEqual((appliques, drift, len(confirms)), ([], [], 1))
+
+    def test_only_a_yes_neutralizes(self):
+        # « non » et une faute valaient oui : seule « n » refusait.
+        for answers in (["non"], ["no"], ["x", "n"], [EOFError()]):
+            with self.subTest(answers=answers):
+                self.assertEqual(self.bump(answers)[0], [])
+
+
 if __name__ == "__main__":
     unittest.main()

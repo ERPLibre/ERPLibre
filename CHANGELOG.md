@@ -407,6 +407,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Test › Test a module and Test a module with code coverage: at « Keep the temporary database? », no by default, an empty answer and no still drop the test database that the action has just created; Ctrl+D keeps it, where it ended TODO and left the database behind
 - Execute › Code › Update › Upgrade Odoo - Migration Database: « Uninstall them properly before migrating? », asked when a theme is installed, is now no by default, in automatic mode too, where an empty answer and the end of the countdown uninstalled the themes: uninstalling a theme removes its data from the intermediate database, and so from the result
 - Execute › Code › Update › Upgrade Odoo - Migration Database: « Clean the database before testing the pages? » is now no by default, in automatic mode too, where an empty answer and the end of the countdown cleaned it: the cleanup purges models, columns and tables from the database
+- Execute › Code › Update › Upgrade Odoo - Migration Database: « Delete them? », asked at the end of the migration when attachments point at a field that no longer exists, is now no by default, in automatic mode too, where an empty answer and the end of the countdown deleted them: the purge deletes their rows from the database
 
 ## Fixed
 

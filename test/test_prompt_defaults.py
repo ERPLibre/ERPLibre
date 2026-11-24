@@ -162,6 +162,32 @@ class TestEnterMeansTheDefault(EnvCase):
             obj.ask("q : ", default="y")
         self.assertEqual(os.environ.get(auto_ask.ENV_ENABLED), "1")
 
+    def test_a_yes_no_question_of_the_migration_too(self):
+        # Au terminal, hors mode auto : l'invite dit le défaut, [O/n] ou
+        # [o/N], et une réponse vide le prend.
+        from unittest import mock
+
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
+        for nom, cle, defaut in SIMPLE:
+            with self.subTest(nom=nom):
+                migration = SimplePrompt()
+                with (
+                    mock.patch("builtins.input", return_value="") as lu,
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    agi = migration.act(nom)
+                (invite,) = [appel.args[0] for appel in lu.call_args_list]
+                indice = "[O/n] : " if defaut else "[o/N] : "
+                attendu = f"{simple_prompt(nom, cle)} {indice}"
+                if nom != "neutralize_cow_views":
+                    self.assertEqual(invite, attendu)
+                self.assertTrue(invite.startswith(attendu[:-4]), invite)
+                self.assertEqual(agi, int(defaut))
+
 
 class TestTheCountdownSpeaksThePromptsLanguage(EnvCase):
     """« ⏱ → d » nommait une réponse qui n'était PAS au menu.
@@ -338,44 +364,75 @@ class TestTheQuestionThatCannotAnswerItself(EnvCase):
     les autres pendant des heures.
     """
 
-    def answer(self, typed):
-        import builtins
+    def answer(self, *typed):
+        """`auto_execute` après la question, chaque `input` répondu par
+        `typed`, une exception levée ; toute réponse doit être lue."""
+        from unittest import mock
 
         obj = TodoUpgrade.__new__(TodoUpgrade)
-        original = builtins.input
-        builtins.input = lambda prompt="": typed
-        self.addCleanup(setattr, builtins, "input", original)
-        with contextlib.redirect_stdout(io.StringIO()):
+        suite = iter(typed)
+        with (
+            mock.patch("builtins.input", side_effect=suite),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             obj.prompt_auto_execute()
+        self.assertIsNone(next(suite, None), "réponse non lue")
         return obj.auto_execute
+
+    def asked(self, answers, previous=False):
+        """Les événements du port scripté qui répond `answers`, et l'état
+        du mode auto qu'il voyait à chaque question ; `previous`, le mode
+        d'une reprise précédente sur le même objet."""
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        vu = []
+
+        class Port(ScriptedPort):
+            def menu(self, view):
+                vu.append(auto_ask.enabled())
+                return super().menu(view)
+
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.auto_execute = previous
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(Port(list(answers))) as port,
+        ):
+            obj.prompt_auto_execute()
+        self.assertEqual(port.answers, [])
+        return port.events, vu
 
     def test_enter_says_no(self):
         self.assertFalse(self.answer(""))
 
     def test_the_default_is_written_down_not_deduced(self):
-        # `answer == "y"` donnait le bon résultat par accident ; un défaut
-        # explicite dit ce qu'on veut, et se relit.
-        import inspect
-
-        source = inspect.getsource(TodoUpgrade.prompt_auto_execute)
-        self.assertIn('default="n"', source)
+        # Une question oui/non dont le défaut, non, se lit dans le message,
+        # sans compte à rebours : ce n'est pas au délai de l'activer.
+        for previous in (False, True):
+            with self.subTest(previous=previous):
+                events, _vu = self.asked([""], previous)
+                (asked,) = events
+                self.assertEqual(asked["kind"], "confirm")
+                self.assertEqual(asked["default"], "n")
+                self.assertNotIn("timeout_s", asked)
 
     def test_an_inherited_flag_cannot_switch_it_on(self):
         os.environ[auto_ask.ENV_ENABLED] = "1"
         os.environ[auto_ask.ENV_DELAY] = "5"
         self.assertFalse(self.answer(""))
+        self.assertFalse(self.answer(EOFError()))
 
     def test_the_inherited_flag_is_cleared_before_asking(self):
-        import inspect
-
-        source = inspect.getsource(TodoUpgrade.prompt_auto_execute)
-        self.assertLess(
-            source.index("auto_ask.export(False)"),
-            source.index("auto_ask.ask("),
-        )
+        os.environ[auto_ask.ENV_ENABLED] = "1"
+        os.environ[auto_ask.ENV_DELAY] = "5"
+        _events, vu = self.asked(["n"], previous=True)
+        self.assertEqual(vu, [False])
 
     def test_yes_still_says_yes(self):
-        self.assertTrue(self.answer("y"))
+        for typed in ("y", "o", "oui", "YES"):
+            with self.subTest(typed=typed):
+                self.assertTrue(self.answer(typed))
 
 
 class TestEveryPromptAnnouncesTheCountdown(EnvCase):
@@ -419,6 +476,22 @@ class TestEveryPromptAnnouncesTheCountdown(EnvCase):
         texte = self.ask()
         self.assertEqual(texte.count("⏱"), 2)
 
+    def test_a_yes_no_question_announces_it_too(self):
+        # Une question oui/non de la migration, au terminal en mode auto :
+        # le délai avant la question, puis le défaut pris, non.
+        import select
+
+        original = select.select
+        select.select = lambda r, w, x, t: ([], [], [])
+        self.addCleanup(setattr, select, "select", original)
+        migration = SimplePrompt(auto=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(migration.act("prompt_purge_dead_attachments"), 0)
+        texte = out.getvalue()
+        self.assertIn(f"⏱{TodoUpgrade.AUTO_DELAY}s 💬", texte)
+        self.assertEqual(texte.count("⏱"), 2)
+
 
 class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
     """Un `input()` nu ne sait rien du mode auto : il attend, pour toujours.
@@ -442,9 +515,15 @@ class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
         "split_present_missing",
         "prompt_uninstall_missing",
         "todo_upgrade_execute",
+        "confirm_rewind",
+        "prompt_fix_view_type",
+        "prompt_purge_dead_attachments",
+        "neutralize_cow_views",
     )
 
-    def bare_inputs(self, nom):
+    def calls(self, nom, appel):
+        """Les lignes des appels de `nom` dont la fonction, sous
+        `ast.unparse`, est `appel`."""
         chemin = os.path.join(REPO, "script", "todo", "todo_upgrade.py")
         with open(chemin) as handle:
             tree = ast.parse(handle.read())
@@ -457,17 +536,25 @@ class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
         return [
             node.lineno
             for node in ast.walk(cible[0])
-            if isinstance(node, ast.Call)
-            and getattr(node.func, "id", "") == "input"
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == appel
         ]
 
-    def test_none_of_them_asks_outside_the_timer(self):
-        coupables = {
-            nom: self.bare_inputs(nom)
+    def culprits(self, appel):
+        return {
+            nom: self.calls(nom, appel)
             for nom in self.METHODES
-            if self.bare_inputs(nom)
+            if self.calls(nom, appel)
         }
-        self.assertEqual(coupables, {}, "invites hors du mode auto")
+
+    def test_none_of_them_asks_outside_the_timer(self):
+        self.assertEqual(
+            self.culprits("input"), {}, "invites hors du mode auto"
+        )
+
+    def test_their_yes_no_questions_count_down(self):
+        # `ui.confirm` tel quel ne compte pas à rebours en mode auto : une
+        # question oui/non du chemin de migration passe par `self.confirm`.
+        self.assertEqual(self.culprits("ui.confirm"), {})
 
 
 class TestWhereBlockingIsStillRight(unittest.TestCase):
@@ -594,6 +681,82 @@ GATES = (
 YES = (["o"], ["oui"], ["y"], ["YES"])
 # Une faute est dite, puis Ctrl+D vaut non ; Ctrl+D seul aussi.
 REFUSED = (["n"], ["non"], ["peut-être", EOFError()], [EOFError()])
+NEUTRALIZE = (
+    "Neutralize these copies so the upgrade can proceed?"
+    " Their arch is kept and the change is reversible."
+)
+# (méthode, clé de la question, défaut) : les questions oui/non simples de
+# la migration, posées par `TodoUpgrade.confirm`. Un oui rembobine la
+# progression, corrige les vues, purge les pièces jointes mortes ou
+# neutralise les copies COW.
+SIMPLE = (
+    ("confirm_rewind", "Confirm?", False),
+    ("prompt_fix_view_type", "Correct them?", True),
+    ("prompt_purge_dead_attachments", "Delete them?", False),
+    ("neutralize_cow_views", NEUTRALIZE, True),
+)
+
+
+def simple_prompt(nom, cle):
+    """La question de `nom` (SIMPLE) sans indice, dans la langue choisie ;
+    `confirm_rewind` y nomme « n », une nouvelle migration."""
+    from script.todo.todo_i18n import t
+
+    if nom == "confirm_rewind":
+        return f"💬 {t('New migration, erase everything')}. {t(cle)}"
+    return f"💬 {t(cle)}"
+
+
+class SimplePrompt:
+    """Une migration montée pour les questions de SIMPLE, sur la base
+    DB : `todo_upgrade_execute` note chaque commande dans `lst_cmd` sans
+    rien lancer ; l'outil de rapport trouve quelque chose (statut 1),
+    l'application et la purge réussissent ; l'audit des pièces jointes en
+    trouve deux mortes ; `show_cow_drift` note son mode dans `drift`."""
+
+    def __init__(self, auto=False):
+        self.lst_cmd, self.drift = [], []
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.lst_command_executed = []
+        upgrade.todo_upgrade_execute = self.execute
+        upgrade.show_cow_drift = lambda db, v, mode: self.drift.append(mode)
+        if auto:
+            upgrade.auto_execute = True
+        self.upgrade = upgrade
+
+    def execute(self, cmd, get_output=False, **_kw):
+        self.lst_cmd.append(cmd)
+        status = 0 if self.acts(cmd) else 1
+        return (status, cmd, ["DELETE 2"]) if get_output else (status, cmd)
+
+    @staticmethod
+    def acts(cmd):
+        return "--apply" in cmd or cmd.startswith("psql")
+
+    def act(self, nom):
+        """Joue `nom` ; 1 si un oui y a agi (rembobiner, appliquer,
+        purger), 0 sinon."""
+        from unittest import mock
+
+        if nom == "confirm_rewind":
+            return int(self.upgrade.confirm_rewind("n"))
+        rapport = {
+            "dead_ids": [1, 2],
+            "dead_kept_size": 2048,
+            "groups": {"dead_field": []},
+            "dead_kept": [],
+        }
+        with mock.patch.multiple(
+            "script.analyse.check_filestore",
+            audit=lambda database: rapport,
+            purge_dead_sql=lambda r: "DELETE FROM ir_attachment",
+            summarise=lambda groups: [],
+            rows_deleted=lambda sortie: 2,
+        ):
+            args = (DB, 16) if nom == "neutralize_cow_views" else (DB,)
+            getattr(self.upgrade, nom)(*args)
+        return len([cmd for cmd in self.lst_cmd if self.acts(cmd)])
 
 
 class TestTheGatesAreYesNoQuestions(EnvCase):
@@ -921,6 +1084,133 @@ class TestTheGateKeepsItsTextCallers(unittest.TestCase):
         else:
             self.fail("status n'est pas réaffecté après la pause")
         self.assertNotIn(True, relu)
+
+
+class TestTheSimplePromptsAreYesNoQuestions(EnvCase):
+    """Rembobiner, corriger les vues, purger les pièces jointes mortes et
+    neutraliser les copies COW : les questions oui/non de SIMPLE, posées
+    par `TodoUpgrade.confirm` ; « v » et « w » montrent les copies avant
+    de répondre.
+
+    Rembobiner et purger effacent : non par défaut, en mode automatique
+    aussi, où l'échéance du compte à rebours et l'annulation de la page
+    prennent ce défaut. Rien n'est lancé (`SimplePrompt`)."""
+
+    def setUp(self):
+        super().setUp()
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
+
+    def play(self, nom, answers, auto=False):
+        """(migration, actions d'un oui, événements du port scripté) après
+        `nom` joué sur `answers`, qui doivent toutes être lues."""
+        from unittest import mock
+
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        migration = SimplePrompt(auto)
+        with (
+            mock.patch("builtins.input", side_effect=AssertionError),
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(ScriptedPort(list(answers))) as port,
+        ):
+            agi = migration.act(nom)
+        self.assertEqual(port.answers, [])
+        return migration, agi, port.events
+
+    @staticmethod
+    def confirms(events):
+        return [e for e in events if e.get("kind") == "confirm"]
+
+    def test_each_prompt_states_its_default(self):
+        from script.todo.todo_i18n import t
+
+        for nom, cle, defaut in SIMPLE:
+            with self.subTest(nom=nom):
+                (asked,) = self.confirms(self.play(nom, ["n"])[2])
+                prompt = simple_prompt(nom, cle)
+                self.assertEqual(asked["prompt"], prompt)
+                self.assertEqual(asked["default"], "y" if defaut else "n")
+                self.assertNotIn("timeout_s", asked)
+                indice = "[O/n" if defaut else "[o/N"
+                if nom == "neutralize_cow_views":
+                    indice += (
+                        f", v = {t('View the differences')},"
+                        f" w = {t('Full screen')}"
+                    )
+                self.assertEqual(asked["text"], f"{prompt} {indice}] : ")
+
+    def test_a_yes_acts_and_a_refusal_does_nothing(self):
+        from script.todo.todo_i18n import t
+
+        for nom, _cle, defaut in SIMPLE:
+            vide = [([""], defaut)]
+            cases = [(a, False) for a in REFUSED] + [(a, True) for a in YES]
+            for answers, agit in vide + cases:
+                with self.subTest(nom=nom, answers=answers):
+                    _m, agi, events = self.play(nom, answers)
+                    self.assertEqual(agi, int(agit))
+                    fois = 2 if "peut-être" in answers else 1
+                    self.assertEqual(len(self.confirms(events)), fois)
+                    if fois == 2:
+                        self.assertIn(
+                            f"{t('Answer yes or no: ')}peut-être",
+                            [e.get("text") for e in events],
+                        )
+
+    def test_in_auto_mode_the_deadline_takes_the_default(self):
+        # Au terminal, l'échéance du compte à rebours d'auto_ask rend le
+        # défaut : rembobiner et purger n'effacent rien. Le mode
+        # automatique est exporté avant.
+        from unittest import mock
+
+        from script.todo.ui import port
+
+        heard = []
+
+        def deadline(text, default, seconds):
+            heard.append((default, seconds, auto_ask.enabled()))
+            return default
+
+        for nom, _cle, defaut in SIMPLE:
+            with self.subTest(nom=nom):
+                heard.clear()
+                migration = SimplePrompt(auto=True)
+                with (
+                    mock.patch.dict(port.ORIGINAL, {"auto_ask.ask": deadline}),
+                    mock.patch("builtins.input", side_effect=AssertionError),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    agi = migration.act(nom)
+                attendu = "y" if defaut else "n"
+                self.assertEqual(
+                    heard, [(attendu, TodoUpgrade.AUTO_DELAY, True)]
+                )
+                self.assertEqual(agi, int(defaut))
+
+    def test_in_auto_mode_a_cancelled_countdown_takes_the_default(self):
+        # Le journal des tâches change l'annulation d'un compte à rebours
+        # en Entrée ; Ctrl+D y vaut Entrée aussi.
+        for nom, _cle, defaut in SIMPLE:
+            for answers in ([""], [EOFError()]):
+                with self.subTest(nom=nom, answers=answers):
+                    _m, agi, events = self.play(nom, answers, auto=True)
+                    (asked,) = self.confirms(events)
+                    self.assertEqual(
+                        asked["timeout_s"], TodoUpgrade.AUTO_DELAY
+                    )
+                    self.assertEqual(agi, int(defaut))
+
+    def test_a_closed_input_ends_each_prompt(self):
+        for nom, _cle, _defaut in SIMPLE:
+            with self.subTest(nom=nom):
+                _m, agi, events = self.play(nom, [])
+                self.assertEqual(len(self.confirms(events)), 1)
+                self.assertEqual(agi, 0)
 
 
 class TestTheBackupAtTheEnd(unittest.TestCase):

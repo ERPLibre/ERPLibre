@@ -1069,8 +1069,34 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/todo_upgrade.py",
+        "TodoUpgrade.confirm_rewind",
+        "Confirm?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.neutralize_cow_views",
+        "Neutralize these copies so the upgrade can proceed? Their arch is"
+        " kept and the change is reversible.",
+    ): [True],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_auto_execute",
+        "Auto-run: take the default answer after",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
         "TodoUpgrade.prompt_database_cleanup",
         "Clean the database before testing the pages?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_fix_view_type",
+        "Correct them?",
+    ): [True],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_purge_dead_attachments",
+        "Delete them?",
     ): [False],
     (
         "script/todo/todo_upgrade.py",

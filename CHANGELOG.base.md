@@ -646,6 +646,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Test › Test a module and Test a module with code coverage: at « Keep the temporary database? », no by default, an empty answer and no still drop the test database that the action has just created; Ctrl+D keeps it, where it ended TODO and left the database behind
 - Execute › Code › Update › Upgrade Odoo - Migration Database: « Uninstall them properly before migrating? », asked when a theme is installed, is now no by default, in automatic mode too, where an empty answer and the end of the countdown uninstalled the themes: uninstalling a theme removes its data from the intermediate database, and so from the result
 - Execute › Code › Update › Upgrade Odoo - Migration Database: « Clean the database before testing the pages? » is now no by default, in automatic mode too, where an empty answer and the end of the countdown cleaned it: the cleanup purges models, columns and tables from the database
+- Execute › Code › Update › Upgrade Odoo - Migration Database: « Delete them? », asked at the end of the migration when attachments point at a field that no longer exists, is now no by default, in automatic mode too, where an empty answer and the end of the countdown deleted them: the purge deletes their rows from the database
 
 <!-- [fr] -->
 
@@ -835,6 +836,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Test › Tester un module et Tester un module avec couverture de code : à « Conserver la base de données temporaire ? », non par défaut, une réponse vide et non effacent toujours la base de test que l'action vient de créer ; Ctrl+D la garde, là où il terminait TODO en laissant la base derrière lui
 - Exécution › Code › Mise à jour › Mise à jour Odoo - Migration de base de données : « Les désinstaller proprement avant de migrer ? », posée quand un thème est installé, vaut désormais non par défaut, en mode automatique aussi, là où une réponse vide et la fin du compte à rebours désinstallaient les thèmes : désinstaller un thème retire ses données de la base intermédiaire, donc du résultat
 - Exécution › Code › Mise à jour › Mise à jour Odoo - Migration de base de données : « Nettoyer la base avant de tester les pages ? » vaut désormais non par défaut, en mode automatique aussi, là où une réponse vide et la fin du compte à rebours la nettoyaient : le nettoyage purge modèles, colonnes et tables de la base
+- Exécution › Code › Mise à jour › Mise à jour Odoo - Migration de base de données : « Les supprimer ? », posée à la fin de la migration quand des pièces jointes pointent vers un champ qui n'existe plus, vaut désormais non par défaut, en mode automatique aussi, là où une réponse vide et la fin du compte à rebours les supprimaient : la purge efface leurs lignes de la base
 
 <!-- [en] -->
 ## Fixed

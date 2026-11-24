@@ -574,7 +574,7 @@ class TestLaReprise(Reprise):
         self.assertEqual(
             self.invites[-1],
             f"💬 {t('Keep the zip only, ask every question again')}."
-            f" {t('Confirm? (y/N): ')}",
+            f" {t('Confirm?')} {t('[y/N]: ')}",
         )
 
     def test_a_step_by_its_number_or_its_name_rewinds_once_confirmed(self):
@@ -610,19 +610,35 @@ class TestLaReprise(Reprise):
             self.invites[-1],
             f"💬 {t('Step')} 4.15 : Odoo 15.0 —"
             f" {t('rebuilds the intermediate database')}."
-            f" {t('Confirm? (y/N): ')}",
+            f" {t('Confirm?')} {t('[y/N]: ')}",
         )
         self.assertEqual(self.archives(), [])
 
     def test_an_erasing_answer_not_confirmed_changes_nothing(self):
-        """n, r, une étape ou un palier, puis une réponse vide, une faute,
-        « n » ou Ctrl+D à la confirmation : rien d'archivé ni de rembobiné,
-        et la question revient ; [0] quitte ensuite."""
+        """n, r, une étape ou un palier, puis une réponse vide, « n »,
+        « non », Ctrl+D, ou une faute, qui est dite et redemandée, puis
+        « n » ou Ctrl+D à la confirmation : rien d'archivé ni de
+        rembobiné, et la question revient ; [0] quitte ensuite."""
+        refus = ([""], ["n"], ["non"], [EOFError()])
+        refus += (["x", "n"], ["x", EOFError()])
         for efface in ("n", "r", "1", f"{t('Step')} 4.15"):
-            for refus in ("", "x", "n", EOFError()):
-                with self.subTest(efface=efface, refus=refus):
-                    self.assertIsNone(self.reprendre(efface, refus, "0"))
+            for non in refus:
+                with self.subTest(efface=efface, non=non):
+                    self.assertIsNone(self.reprendre(efface, *non, "0"))
                     self.assertEqual(self.effacements, [])
+                    fautes = self.ecran.count(t("Answer yes or no: "))
+                    self.assertEqual(fautes, int("x" in non))
+        self.assertEqual(self.archives(), [])
+
+    def test_ctrl_d_at_the_confirmation_rewinds_nothing(self):
+        """Hors mode automatique, Ctrl+D à la confirmation vaut non : la
+        question de la reprise revient, rien n'est rembobiné."""
+        for efface in ("3", f"{t('Step')} 4.15", "r"):
+            with self.subTest(efface=efface):
+                rendu = self.reprendre(efface, EOFError(), "0")
+                self.assertIsNone(rendu)
+                self.assertNotIn("⏱", self.ecran)
+                self.assertEqual(self.effacements, [])
         self.assertEqual(self.archives(), [])
 
     def test_the_countdown_at_the_confirmation_rewinds_nothing(self):
@@ -685,11 +701,12 @@ class TestLEtapeARejouer(Reprise):
         self.assertTrue(self.invites[-1].startswith(f"💬 {t('Step')} 0 : "))
 
     def test_a_step_not_confirmed_writes_nothing(self):
-        """Une étape, puis une réponse vide, une faute, « n » ou Ctrl+D à
-        la confirmation : rien de rembobiné ni d'écrit."""
-        for refus in ("", "x", "n", EOFError()):
+        """Une étape, puis une réponse vide, « n », Ctrl+D, ou une faute,
+        dite puis redemandée, puis « n » à la confirmation : rien de
+        rembobiné ni d'écrit."""
+        for refus in ([""], ["n"], [EOFError()], ["x", "n"]):
             with self.subTest(refus=refus):
-                self.assertFalse(self.rejouer("1", refus))
+                self.assertFalse(self.rejouer("1", *refus))
                 self.assertEqual(self.effacements, [])
         self.assertFalse(os.path.exists(self.journal))
 

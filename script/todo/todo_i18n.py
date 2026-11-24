@@ -10395,10 +10395,6 @@ TRANSLATIONS = {
         "fr": "arrêter (coupe le courant)",
         "en": "stop (pulls the plug)",
     },
-    "Confirm? (y/N): ": {
-        "fr": "Confirmer ? (o/N) : ",
-        "en": "Confirm? (y/N): ",
-    },
     "Confirm?": {
         "fr": "Confirmer ?",
         "en": "Confirm?",
@@ -12654,6 +12650,18 @@ TRANSLATIONS = {
     "neutralize now, reversible": {
         "fr": "neutraliser maintenant, réversible",
         "en": "neutralize now, reversible",
+    },
+    "Neutralize these copies so the upgrade can proceed?"
+    " Their arch is kept and the change is reversible.": {
+        "fr": "Neutraliser ces copies pour que la migration puisse"
+        " continuer ? Leur arch est conservée et le changement est"
+        " réversible.",
+        "en": "Neutralize these copies so the upgrade can proceed?"
+        " Their arch is kept and the change is reversible.",
+    },
+    "View the differences": {
+        "fr": "Voir les différences",
+        "en": "View the differences",
     },
     "Undo with": {
         "fr": "Annuler avec",

@@ -165,23 +165,30 @@ class TestTheQuestionThatEnablesIt(EnvCase):
         )
         todo_i18n._current_lang = "en"
 
-    def answer(self, typed):
-        import builtins
+    def answer(self, *typed):
+        """(`auto_execute`, écran) après la question, chaque `input`
+        répondu par `typed`, une exception levée ; toute réponse doit
+        être lue."""
         import contextlib
+        from unittest import mock
 
         obj = TodoUpgrade.__new__(TodoUpgrade)
-        original = builtins.input
-        builtins.input = lambda prompt="": typed
-        self.addCleanup(setattr, builtins, "input", original)
+        suite = iter(typed)
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
+        with (
+            mock.patch("builtins.input", side_effect=suite),
+            contextlib.redirect_stdout(out),
+        ):
             obj.prompt_auto_execute()
+        self.assertIsNone(next(suite, None), "réponse non lue")
         return obj.auto_execute, out.getvalue()
 
     def test_yes_turns_it_on(self):
-        on, text = self.answer("y")
-        self.assertTrue(on)
-        self.assertIn("Auto-run on", text)
+        for typed in ("y", "o", "oui", "Yes"):
+            with self.subTest(typed=typed):
+                on, text = self.answer(typed)
+                self.assertTrue(on)
+                self.assertIn("Auto-run on", text)
 
     def test_the_default_is_off(self):
         # Elle prend des décisions à votre place : ce n'est pas le défaut.
@@ -189,8 +196,13 @@ class TestTheQuestionThatEnablesIt(EnvCase):
         self.assertFalse(on)
         self.assertEqual(text, "")
 
-    def test_anything_else_is_off(self):
-        self.assertFalse(self.answer("peut-être")[0])
+    def test_a_typo_is_said_and_asked_again(self):
+        on, text = self.answer("peut-être", "n")
+        self.assertFalse(on)
+        self.assertIn("Answer yes or no: peut-être", text)
+
+    def test_ctrl_d_is_off(self):
+        self.assertFalse(self.answer(EOFError())[0])
 
     def test_the_delay_is_five_seconds(self):
         self.assertEqual(TodoUpgrade.AUTO_DELAY, 5)
