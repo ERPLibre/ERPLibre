@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le sous-menu Mémoire Swap : l'état en lignes, les phrases des refus, le
 protocole des plans (rien sans oui, arrêt au premier échec), le choix du
-swap à modifier et la zram.
+swap à modifier, la zram et le verdict sur l'ajout de RAM.
 
 L'état est fabriqué et system_swap.etat() le rend tel quel ; les commandes
 passent par un execute factice et subprocess.run est remplacé : un test ne
@@ -189,6 +189,7 @@ class TestLaNavigation(Banc):
             "3": ("_system_swap_redimensionner", ("shrink",)),
             "4": ("_system_swap_zram", ()),
             "5": ("_system_swap_zram_desactiver", ()),
+            "6": ("_system_swap_memoire", ()),
         }
         for touche, (methode, args) in attendus.items():
             with (
@@ -203,7 +204,7 @@ class TestLaNavigation(Banc):
         with mock.patch("click.prompt", side_effect=["0"]) as invite:
             self.todo._system_swap()
         self.assertIn("Swap memory", invite.call_args.args[0])
-        self.assertIn("[5] ⛔", invite.call_args.args[0])
+        self.assertIn("[6] 🧩", invite.call_args.args[0])
 
 
 class TestLesTraductions(unittest.TestCase):
@@ -225,6 +226,7 @@ class TestLesTraductions(unittest.TestCase):
             for table in (
                 sm.RAISONS_SWAP,
                 sm.ALERTES_SWAP,
+                sm.VERDICTS_MEMOIRE,
                 sm.TYPES_SWAP,
             )
             for v in table.values()
@@ -278,10 +280,13 @@ class TestLesTraductions(unittest.TestCase):
             "service",
             "paths",
             "virtualization",
+            "free_slots",
+            "slots",
+            "used_slots",
             "running",
             "installed",
         }
-        for table in (sm.RAISONS_SWAP, sm.ALERTES_SWAP):
+        for table in (sm.RAISONS_SWAP, sm.ALERTES_SWAP, sm.VERDICTS_MEMOIRE):
             for cle in table.values():
                 champs = {
                     f for _l, f, _s, _c in string.Formatter().parse(cle) if f
@@ -363,6 +368,68 @@ class TestLesLignes(unittest.TestCase):
             "zram-generator (/usr/lib/systemd/zram-generator.conf)", texte
         )
         self.assertIn("Non configurée", texte)
+
+    def verdict(self, **kw):
+        v = {
+            "verdict": "unknown",
+            "ram": 8 * GIO,
+            "installed": None,
+            "max_capacity": None,
+            "slots": None,
+            "used_slots": None,
+            "free_slots": None,
+            "max_addable": None,
+            "form_factors": [],
+            "types": [],
+            "partially_soldered": False,
+            "max_understated": False,
+            "firmware_note": False,
+            "swap_growth": None,
+            "virtualization": None,
+        }
+        v.update(kw)
+        return "\n".join(sm.lignes_memoire(v))
+
+    def test_each_verdict_reads_a_sentence(self):
+        materiel = dict(
+            installed=8 * GIO,
+            slots=2,
+            used_slots=1,
+            free_slots=1,
+            max_capacity=32 * GIO,
+            max_addable=24 * GIO,
+            types=["DDR4"],
+            form_factors=["SODIMM"],
+            firmware_note=True,
+            swap_growth=19 * GIO,
+        )
+        cas = {
+            "vm": ("Machine virtuelle (kvm)", {"virtualization": "kvm"}),
+            "unknown": ("sans dmidecode", {}),
+            "free_slots": ("Oui : 1 emplacement(s) libre(s) sur 2", materiel),
+            "replace": ("en remplaçant des modules", materiel),
+            "max": ("au maximum", materiel),
+            "soldered": ("soudée", materiel),
+        }
+        for code, (attendu, kw) in cas.items():
+            with self.subTest(code=code):
+                texte = self.verdict(verdict=code, **kw)
+                self.assertIn(attendu, texte)
+                self.assertNotIn("None", texte)
+        texte = self.verdict(verdict="free_slots", **materiel)
+        self.assertIn("DDR4, SODIMM", texte)
+        self.assertIn("24.0 Gio de plus", texte)
+        self.assertIn("micrologiciel", texte)
+        self.assertIn("19.0 Gio", texte)
+        # Le titre de section est sobre comme les autres : l'emoji reste
+        # à l'entrée du menu.
+        self.assertTrue(texte.startswith("── Ajout de mémoire ──"))
+
+    def test_unknown_maximum_is_said(self):
+        texte = self.verdict(
+            verdict="max", installed=8 * GIO, slots=2, used_slots=2
+        )
+        self.assertIn("capacité maximale est inconnue", texte)
 
 
 class TestLeProtocoleDesPlans(Banc):
@@ -749,6 +816,88 @@ class TestZram(Banc):
         self.lancer("_system_swap_zram_desactiver", self.etat(), [])
         self.assertEqual(self.lances(), [])
         self.assertIn("Aucune zram n'est active ni configurée.", self.texte())
+
+
+DMIDECODE = """\
+Handle 0x0010, DMI type 16, 23 bytes
+Physical Memory Array
+\tLocation: System Board Or Motherboard
+\tUse: System Memory
+\tMaximum Capacity: 32 GB
+\tNumber Of Devices: 2
+
+Handle 0x0011, DMI type 17, 40 bytes
+Memory Device
+\tArray Handle: 0x0010
+\tSize: 8 GB
+\tForm Factor: SODIMM
+\tLocator: DIMM A
+\tType: DDR4
+
+Handle 0x0012, DMI type 17, 40 bytes
+Memory Device
+\tArray Handle: 0x0010
+\tSize: No Module Installed
+\tForm Factor: Unknown
+\tLocator: DIMM B
+\tType: Unknown
+"""
+
+
+class TestLaMemoireVive(Banc):
+    def test_a_virtual_machine_reads_nothing(self):
+        etat = self.etat(virtualization="kvm")
+        self.lancer("_system_swap_memoire", etat, [])
+        self.assertIn("Machine virtuelle (kvm)", self.texte())
+
+    def test_dmidecode_runs_with_sudo_after_a_yes(self):
+        etat = self.etat()
+        sortie = mock.Mock(returncode=0, stdout=DMIDECODE)
+        with (
+            mock.patch.object(ss, "plan_installer_dmidecode", return_value=[]),
+            mock.patch.object(
+                sm.subprocess, "run", return_value=sortie
+            ) as run,
+        ):
+            self.lancer("_system_swap_memoire", etat, ["o"])
+        self.assertEqual(
+            run.call_args.args[0], ["sudo", "dmidecode", "-t", "memory"]
+        )
+        self.assertIn("Oui : 1 emplacement(s) libre(s) sur 2", self.texte())
+        self.assertIn("24.0 Gio de plus", self.texte())
+
+    def test_no_yes_no_sudo(self):
+        etat = self.etat()
+        with mock.patch.object(
+            ss, "plan_installer_dmidecode", return_value=[]
+        ):
+            self.lancer("_system_swap_memoire", etat, ["n"])
+        self.assertIn("sans dmidecode", self.texte())
+
+    def test_a_missing_dmidecode_is_installed_first(self):
+        etat = self.etat()
+        plan = [["sudo", "pacman", "-S", "--needed", "dmidecode"]]
+        sortie = mock.Mock(returncode=0, stdout=DMIDECODE)
+        with (
+            mock.patch.object(
+                ss, "plan_installer_dmidecode", return_value=plan
+            ),
+            mock.patch.object(sm.subprocess, "run", return_value=sortie),
+        ):
+            self.lancer("_system_swap_memoire", etat, ["o", "o"])
+        self.assertEqual(self.lances(), ["sudo pacman -S --needed dmidecode"])
+        self.assertIn("Oui :", self.texte())
+
+    def test_a_failed_install_reads_nothing(self):
+        etat = self.etat()
+        self.todo.execute.exec_command_live.return_value = 1
+        plan = [["sudo", "pacman", "-S", "--needed", "dmidecode"]]
+        with mock.patch.object(
+            ss, "plan_installer_dmidecode", return_value=plan
+        ):
+            self.lancer("_system_swap_memoire", etat, ["o"])
+        self.assertIn("L'installation a échoué", self.texte())
+        self.assertIn("sans dmidecode", self.texte())
 
 
 if __name__ == "__main__":

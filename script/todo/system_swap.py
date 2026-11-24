@@ -7,9 +7,9 @@ Deux moitiés.
 
 La LECTURE rend des faits : /proc/swaps, /proc/meminfo, /sys/block/zram*,
 /proc/cmdline, /proc/self/mountinfo, la configuration de zram-generator ou
-de zram-tools. Chaque analyseur prend un texte ou un chemin, et etat() les
-assemble en lisant sous une racine, « / » par défaut : un test fabrique
-son arborescence et la lui donne.
+de zram-tools, la sortie de dmidecode. Chaque analyseur prend un texte ou
+un chemin, et etat() les assemble en lisant sous une racine, « / » par
+défaut : un test fabrique son arborescence et la lui donne.
 
 Les PLANS rendent des listes d'arguments, jamais exécutées ici. Le menu
 les montre, demande confirmation, puis les lance une à une et s'arrête à
@@ -126,6 +126,18 @@ SERVICES_ZRAM = (
     ),
     ("zramswap.service", ("/usr/sbin/zramswapon", "/usr/bin/zramswapon")),
 )
+
+# dmidecode vit dans un sbin, hors du PATH d'un compte ordinaire chez
+# Debian : shutil.which() seul le dirait absent.
+BINAIRES_DMIDECODE = (
+    "/usr/sbin/dmidecode",
+    "/sbin/dmidecode",
+    "/usr/bin/dmidecode",
+)
+
+# Facteur de forme d'une mémoire soudée à la carte : pas de module à
+# ajouter ni à remplacer.
+FORMES_SOUDEES = {"row of chips", "chip"}
 
 # Les suffixes anglais (K, KB, KiB) et français (Ko, Kio) : le menu écrit
 # ses tailles en « Gio », et une taille recopiée de son affichage se relit.
@@ -633,21 +645,6 @@ def cibles_disque(etat):
     """Les swaps sur disque actifs (fichiers et partitions), ceux qu'on
     agrandit ou réduit ; la zram a ses propres plans."""
     return [s for s in etat["swaps"] if s["type"] != "zram"]
-
-
-def croissance_swap(etat):
-    """Les octets que l'espace libre permet d'ajouter au swap : sur le
-    système de fichiers du plus grand fichier d'échange actif, ou de la
-    racine s'il n'y en a pas ; marge déduite, jamais négatif. None si
-    l'espace libre ne se lit pas."""
-    fichiers = [s for s in etat["swaps"] if s["type"] == "file"]
-    if fichiers:
-        libre = max(fichiers, key=lambda s: s["size"]).get("free")
-    else:
-        libre = etat.get("root_free")
-    if libre is None:
-        return None
-    return max(0, libre - MARGE_DISQUE) // MIO * MIO
 
 
 def chemin_par_defaut(etat):
@@ -1392,3 +1389,204 @@ def plan_zram_desactiver(etat, dossier_tmp, horodatage=None):
             ["sudo", "zramctl", "--reset", s["path"]],
         ]
     return _resultat(True, plan=plan, tool="manual")
+
+
+# ── Ajout de mémoire vive ───────────────────────────────────────────────
+
+
+def taille_dmi(texte):
+    """« 16 GB », « 8192 MB », « 2 TB » -> octets ; None pour « No Module
+    Installed », « Unknown », « Not Provided » ou 0. dmidecode écrit GB et
+    MB pour des puissances de 1024."""
+    m = re.fullmatch(r"\s*(\d+)\s*(kB|KB|MB|GB|TB)\s*", texte or "")
+    if not m:
+        return None
+    facteur = {"KB": KIO, "MB": MIO, "GB": GIO, "TB": TIO}[m.group(2).upper()]
+    return int(m.group(1)) * facteur or None
+
+
+def analyser_dmidecode(texte):
+    """Sortie de « dmidecode -t memory » -> {arrays, devices}.
+
+    arrays : [{handle, use, max_capacity, slots}] des Physical Memory
+    Array ; devices : [{array, size, empty, locator, bank, form_factor,
+    type, speed}] des Memory Device. Les matrices qui ne servent pas de
+    mémoire système (vidéo, flash) et leurs modules sont écartés."""
+    blocs = []
+    courant = None
+    for ligne in (texte or "").splitlines():
+        m = re.match(r"Handle (0x[0-9A-Fa-f]+), DMI type (\d+)", ligne)
+        if m:
+            courant = {"handle": m.group(1), "dmi": int(m.group(2))}
+            blocs.append(courant)
+            continue
+        if courant is None:
+            continue
+        if ligne and not ligne[0].isspace() and "titre" not in courant:
+            courant["titre"] = ligne.strip()
+            continue
+        cle, deux, valeur = ligne.strip().partition(":")
+        if deux and ligne.startswith("\t") and not ligne.startswith("\t\t"):
+            courant[cle.strip()] = valeur.strip()
+    matrices = []
+    for b in blocs:
+        if b.get("titre") != "Physical Memory Array":
+            continue
+        if b.get("Use", "System Memory") != "System Memory":
+            continue
+        try:
+            slots = int(b.get("Number Of Devices", ""))
+        except ValueError:
+            slots = None
+        matrices.append(
+            {
+                "handle": b["handle"],
+                "use": b.get("Use"),
+                "max_capacity": taille_dmi(b.get("Maximum Capacity")),
+                "slots": slots,
+            }
+        )
+    systeme = {m["handle"] for m in matrices}
+    modules = []
+    for b in blocs:
+        if b.get("titre") != "Memory Device":
+            continue
+        matrice = b.get("Array Handle")
+        if matrices and matrice not in systeme:
+            continue
+        taille = taille_dmi(b.get("Size"))
+        modules.append(
+            {
+                "array": matrice,
+                "size": taille,
+                "empty": taille is None,
+                "locator": b.get("Locator"),
+                "bank": b.get("Bank Locator"),
+                "form_factor": b.get("Form Factor"),
+                "type": b.get("Type"),
+                "speed": b.get("Speed"),
+            }
+        )
+    return {"arrays": matrices, "devices": modules}
+
+
+def verdict_memoire(etat, dmi=None):
+    """Peut-on ajouter de la RAM ?
+
+    verdict : « vm » (l'hyperviseur la fixe : l'augmenter depuis l'hôte),
+    « unknown » (pas de dmidecode lisible), « free_slots » (des
+    emplacements vides), « replace » (emplacements pleins, la capacité
+    maximale dépasse l'installé : remplacer des modules), « max » (au
+    maximum), « soldered » (mémoire soudée, aucun emplacement).
+
+    Rend aussi installed, max_capacity, slots, used_slots, free_slots,
+    max_addable (octets ajoutables, None si inconnu), form_factors, types,
+    partially_soldered, max_understated (l'installé dépasse le maximum que
+    le micrologiciel annonce, donc ce maximum est faux), firmware_note
+    (max_capacity vient du micrologiciel et peut être sous-estimé),
+    swap_growth (ce que l'espace disque libre permet d'ajouter au swap) et
+    virtualization."""
+    ram = etat["memory"].get("total")
+    res = {
+        "verdict": "unknown",
+        "ram": ram,
+        "installed": None,
+        "max_capacity": None,
+        "slots": None,
+        "used_slots": None,
+        "free_slots": None,
+        "max_addable": None,
+        "form_factors": [],
+        "types": [],
+        "partially_soldered": False,
+        "max_understated": False,
+        "firmware_note": False,
+        "swap_growth": croissance_swap(etat),
+        "virtualization": etat.get("virtualization"),
+    }
+    if etat.get("virtualization"):
+        res["verdict"] = "vm"
+        return res
+    if not dmi or not dmi.get("devices"):
+        return res
+    modules = dmi["devices"]
+    pleins = [m for m in modules if not m["empty"]]
+    vides = [m for m in modules if m["empty"]]
+    soudes = [
+        m for m in pleins if (m["form_factor"] or "").lower() in FORMES_SOUDEES
+    ]
+    installe = sum(m["size"] for m in pleins)
+    capacites = [a["max_capacity"] for a in dmi["arrays"]]
+    maximum = sum(capacites) if capacites and None not in capacites else None
+    res.update(
+        installed=installe,
+        slots=len(modules),
+        used_slots=len(pleins),
+        free_slots=len(vides),
+        form_factors=sorted(
+            {m["form_factor"] for m in pleins if m["form_factor"]}
+        ),
+        types=sorted({m["type"] for m in pleins if m["type"]}),
+        partially_soldered=bool(soudes) and len(soudes) < len(pleins),
+        firmware_note=maximum is not None,
+    )
+    if maximum is not None and installe > maximum:
+        res["max_understated"] = True
+        maximum = None
+    res["max_capacity"] = maximum
+    ajout = None if maximum is None else max(0, maximum - installe)
+    res["max_addable"] = ajout
+    if soudes and len(soudes) == len(pleins) and not vides:
+        res["verdict"] = "soldered"
+    elif vides:
+        res["verdict"] = "max" if ajout == 0 else "free_slots"
+    elif ajout and len(soudes) < len(pleins):
+        res["verdict"] = "replace"
+    else:
+        res["verdict"] = "max"
+    return res
+
+
+def croissance_swap(etat):
+    """Les octets que l'espace libre permet d'ajouter au swap : sur le
+    système de fichiers du plus grand fichier d'échange actif, ou de la
+    racine s'il n'y en a pas ; marge déduite, jamais négatif. None si
+    l'espace libre ne se lit pas."""
+    fichiers = [s for s in etat["swaps"] if s["type"] == "file"]
+    if fichiers:
+        libre = max(fichiers, key=lambda s: s["size"]).get("free")
+    else:
+        libre = etat.get("root_free")
+    if libre is None:
+        return None
+    return max(0, libre - MARGE_DISQUE) // MIO * MIO
+
+
+def commande_dmidecode(manager=None):
+    """La commande qui lit la mémoire installée. dmidecode exige root ; sur
+    NixOS il se lance dans un nix-shell éphémère."""
+    if manager == "nix":
+        return [
+            "nix-shell",
+            "-p",
+            "dmidecode",
+            "--run",
+            "sudo dmidecode -t memory",
+        ]
+    return ["sudo", "dmidecode", "-t", "memory"]
+
+
+def plan_installer_dmidecode(etat):
+    """Les commandes qui installent dmidecode, [] s'il est déjà là ou sur
+    NixOS (commande_dmidecode() le lance sans l'installer), None si le
+    gestionnaire de paquets est inconnu."""
+    racine = etat.get("racine", "/")
+    if (
+        etat.get("manager") == "nix"
+        or shutil.which("dmidecode")
+        or any(os.path.exists(_sous(racine, b)) for b in BINAIRES_DMIDECODE)
+    ):
+        return []
+    return _plan_paquet(
+        etat, dict.fromkeys(("apt", "dnf", "pacman", "zypper"), "dmidecode")
+    )

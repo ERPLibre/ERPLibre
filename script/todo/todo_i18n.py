@@ -24606,6 +24606,10 @@ TRANSLATIONS = {
         "fr": "⛔ zram - désactiver",
         "en": "⛔ zram - disable",
     },
+    "Can memory be added?": {
+        "fr": "🧩 Peut-on ajouter de la mémoire ?",
+        "en": "🧩 Can memory be added?",
+    },
     "zram": {
         "fr": "zram",
         "en": "zram",
@@ -24685,6 +24689,10 @@ TRANSLATIONS = {
     "not in use": {
         "fr": "inutilisé",
         "en": "not in use",
+    },
+    "dmidecode failed.": {
+        "fr": "dmidecode a échoué.",
+        "en": "dmidecode failed.",
     },
     "from the RAM size, at most 8 GiB": {
         "fr": "selon la taille de la RAM, 8 Gio au plus",
@@ -24826,6 +24834,10 @@ TRANSLATIONS = {
         "fr": "{service} gère déjà la zram : changer sa taille dans les réglages de ce service, ou le désactiver d'abord (zram - désactiver).",
         "en": "{service} already manages the zram: change its size in that service's own settings, or disable it (zram - disable) first.",
     },
+    "Adding memory": {
+        "fr": "Ajout de mémoire",
+        "en": "Adding memory",
+    },
     "Interrupted at:": {
         "fr": "Interrompu à :",
         "en": "Interrupted at:",
@@ -24833,6 +24845,38 @@ TRANSLATIONS = {
     "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:": {
         "fr": "{path} n'est plus un swap actif, et son fichier peut manquer ou être incomplet. Pour le reconstruire, lancer :",
         "en": "{path} is no longer an active swap, and its file may be missing or incomplete. To rebuild it, run:",
+    },
+    "Reading the memory slots needs root (dmidecode).": {
+        "fr": "Lire les emplacements de mémoire exige root (dmidecode).",
+        "en": "Reading the memory slots needs root (dmidecode).",
+    },
+    "Installed: {installed} in {used_slots} of {slots} slot(s).": {
+        "fr": "Installée : {installed} dans {used_slots} emplacement(s) sur {slots}.",
+        "en": "Installed: {installed} in {used_slots} of {slots} slot(s).",
+    },
+    "Maximum Capacity: {max_capacity}, {max_addable} more than installed.": {
+        "fr": "Capacité maximale : {max_capacity}, {max_addable} de plus que l'installé.",
+        "en": "Maximum Capacity: {max_capacity}, {max_addable} more than installed.",
+    },
+    "The maximum capacity is unknown: larger modules may fit, the board documentation tells.": {
+        "fr": "La capacité maximale est inconnue : des modules plus gros conviennent peut-être, la documentation de la carte le dit.",
+        "en": "The maximum capacity is unknown: larger modules may fit, the board documentation tells.",
+    },
+    "The maximum capacity is unknown: the board documentation tells how much each slot takes.": {
+        "fr": "La capacité maximale est inconnue : la documentation de la carte dit ce que prend chaque emplacement.",
+        "en": "The maximum capacity is unknown: the board documentation tells how much each slot takes.",
+    },
+    "Part of the memory is soldered: only the modules in slots can be replaced.": {
+        "fr": "Une partie de la mémoire est soudée : seuls les modules en emplacement se remplacent.",
+        "en": "Part of the memory is soldered: only the modules in slots can be replaced.",
+    },
+    "More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.": {
+        "fr": "Plus de mémoire est installée que la capacité maximale annoncée par le micrologiciel : ce chiffre est faux.",
+        "en": "More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.",
+    },
+    "Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.": {
+        "fr": "La capacité maximale vient du micrologiciel et peut être sous-estimée : la documentation de la carte a le dernier mot.",
+        "en": "Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.",
     },
     "{path} is not an active swap.": {
         "fr": "{path} n'est pas un swap actif.",
@@ -24933,6 +24977,30 @@ TRANSLATIONS = {
     "These files in /etc still configure a zram: {paths}.": {
         "fr": "Ces fichiers de /etc configurent encore une zram : {paths}.",
         "en": "These files in /etc still configure a zram: {paths}.",
+    },
+    "Virtual machine ({virtualization}): the hypervisor sets the memory. Increase it from the host.": {
+        "fr": "Machine virtuelle ({virtualization}) : l'hyperviseur fixe la mémoire. Augmentez-la depuis l'hôte.",
+        "en": "Virtual machine ({virtualization}): the hypervisor sets the memory. Increase it from the host.",
+    },
+    "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.": {
+        "fr": "Les emplacements de mémoire n'ont pas pu être lus : sans dmidecode, rien ne dit si on peut ajouter de la RAM.",
+        "en": "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.",
+    },
+    "Yes: {free_slots} free slot(s) out of {slots}.": {
+        "fr": "Oui : {free_slots} emplacement(s) libre(s) sur {slots}.",
+        "en": "Yes: {free_slots} free slot(s) out of {slots}.",
+    },
+    "Yes, by replacing modules with larger ones: every slot is used, and the board accepts up to {max_capacity}.": {
+        "fr": "Oui, en remplaçant des modules par de plus gros : tous les emplacements sont pris, et la carte accepte jusqu'à {max_capacity}.",
+        "en": "Yes, by replacing modules with larger ones: every slot is used, and the board accepts up to {max_capacity}.",
+    },
+    "No: the memory is at the maximum the board accepts.": {
+        "fr": "Non : la mémoire est au maximum que la carte accepte.",
+        "en": "No: the memory is at the maximum the board accepts.",
+    },
+    "No: the memory is soldered to the board, with no slot.": {
+        "fr": "Non : la mémoire est soudée à la carte, sans emplacement.",
+        "en": "No: the memory is soldered to the board, with no slot.",
     },
     # Système : rapports et caches du système
     "Measuring": {

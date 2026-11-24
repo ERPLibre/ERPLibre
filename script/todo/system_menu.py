@@ -486,6 +486,24 @@ ALERTES_SWAP = {
     "dropin_etc": "These files in /etc still configure a zram: {paths}.",
 }
 
+VERDICTS_MEMOIRE = {
+    "vm": (
+        "Virtual machine ({virtualization}): the hypervisor sets the memory. "
+        "Increase it from the host."
+    ),
+    "unknown": (
+        "The memory slots could not be read: without dmidecode, nothing "
+        "says whether RAM can be added."
+    ),
+    "free_slots": "Yes: {free_slots} free slot(s) out of {slots}.",
+    "replace": (
+        "Yes, by replacing modules with larger ones: every slot is used, "
+        "and the board accepts up to {max_capacity}."
+    ),
+    "max": "No: the memory is at the maximum the board accepts.",
+    "soldered": "No: the memory is soldered to the board, with no slot.",
+}
+
 TYPES_SWAP = {"file": "swapfile", "partition": "partition", "zram": "zram"}
 
 # Les champs de details qui portent des octets.
@@ -503,6 +521,11 @@ TAILLES_SWAP = {
     "max_size",
     "max",
     "ram",
+    "installed",
+    "max_capacity",
+    "max_addable",
+    "swap_growth",
+    "size",
 }
 
 
@@ -704,6 +727,62 @@ def lignes_swap(etat):
             + t(
                 "The free disk space lets the swap grow by up to {size}."
             ).format(size=octets(croissance))
+        )
+    return lignes
+
+
+def lignes_memoire(v):
+    """Le verdict de verdict_memoire() en lignes : la RAM installée et ses
+    emplacements, la réponse, les réserves, et ce que le swap peut encore
+    prendre sur le disque."""
+    valeurs = _champs(v)
+    lignes = [f"── {t('Adding memory')} ──"]
+    lignes.append(f"  RAM : {valeurs['ram']}")
+    if v["installed"] is not None:
+        lignes.append(
+            "  "
+            + t(
+                "Installed: {installed} in {used_slots} of {slots} slot(s)."
+            ).format_map(valeurs)
+        )
+        details = v["types"] + v["form_factors"]
+        if details:
+            lignes.append(f"  {', '.join(affichable(d) for d in details)}")
+        if v["max_capacity"] is not None:
+            lignes.append(
+                "  "
+                + t(
+                    "Maximum Capacity: {max_capacity}, {max_addable} more "
+                    "than installed."
+                ).format_map(valeurs)
+            )
+    lignes.append(f"  → {_message(VERDICTS_MEMOIRE, v['verdict'], v)}")
+    if v["verdict"] == "max" and v["max_capacity"] is None:
+        lignes.append(
+            f"  {t('The maximum capacity is unknown: larger modules may fit, the board documentation tells.')}"
+        )
+    if v["verdict"] == "free_slots" and v["max_addable"] is None:
+        lignes.append(
+            f"  {t('The maximum capacity is unknown: the board documentation tells how much each slot takes.')}"
+        )
+    if v["partially_soldered"]:
+        lignes.append(
+            f"  {t('Part of the memory is soldered: only the modules in slots can be replaced.')}"
+        )
+    if v["max_understated"]:
+        lignes.append(
+            f"  ⚠ {t('More memory is installed than the Maximum Capacity the firmware reports: that figure is wrong.')}"
+        )
+    if v["firmware_note"]:
+        lignes.append(
+            f"  {t('Maximum Capacity comes from the firmware and can be understated: the board documentation has the last word.')}"
+        )
+    if v["swap_growth"] is not None:
+        lignes.append(
+            "  "
+            + t(
+                "The free disk space lets the swap grow by up to {size}."
+            ).format(size=octets(v["swap_growth"]))
         )
     return lignes
 
@@ -1167,13 +1246,14 @@ class SystemMenuMixin:
 
     def _system_swap(self):
         """Le sous-menu de la mémoire d'échange : l'état, le swap sur
-        disque et la zram."""
+        disque, la zram, et l'ajout de RAM."""
         choices = [
             {"prompt_description": t("State of memory and swap")},
             {"prompt_description": t("Grow swap")},
             {"prompt_description": t("Shrink swap")},
             {"prompt_description": t("zram - enable or resize")},
             {"prompt_description": t("zram - disable")},
+            {"prompt_description": t("Can memory be added?")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -1191,6 +1271,8 @@ class SystemMenuMixin:
                 self._system_swap_zram()
             elif status == "5":
                 self._system_swap_zram_desactiver()
+            elif status == "6":
+                self._system_swap_memoire()
             else:
                 print(t("Command not found !"))
 
@@ -1461,3 +1543,56 @@ class SystemMenuMixin:
         )
         for cmd in res["plan"][depuis:]:
             print(f"    {shlex.join(cmd)}")
+
+    def _system_swap_memoire(self):
+        """Peut-on ajouter de la RAM ? Dans une VM, l'hyperviseur décide ;
+        sur du matériel, dmidecode lit les emplacements, avec sudo après
+        confirmation, installé d'abord s'il manque."""
+        etat = ss.etat()
+        dmi = None
+        if not etat["virtualization"]:
+            dmi = self._system_swap_dmidecode(etat)
+        print("\n".join(lignes_memoire(ss.verdict_memoire(etat, dmi))))
+        print()
+
+    def _system_swap_dmidecode(self, etat):
+        """La sortie analysée de « dmidecode -t memory », ou None si
+        dmidecode manque sans pouvoir s'installer, si l'on refuse, ou s'il
+        échoue. sudo demande le mot de passe sur le terminal : seule la
+        sortie standard est capturée."""
+        plan = ss.plan_installer_dmidecode(etat)
+        if plan is None:
+            print(
+                f"  ⚠ dmidecode : {t('not installed, unknown package manager')}"
+            )
+            return None
+        if plan:
+            for cmd in plan:
+                print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+            if not self._is_yes(
+                input(t("Install {name}? (y/N): ").format(name="dmidecode"))
+            ):
+                return None
+            for cmd in plan:
+                if self.execute.exec_command_live(
+                    shlex.join(cmd), source_erplibre=False
+                ):
+                    print(f"  ⚠ {t('Installation failed:')} {shlex.join(cmd)}")
+                    return None
+        cmd = ss.commande_dmidecode(etat.get("manager"))
+        print(f"  {t('Reading the memory slots needs root (dmidecode).')}")
+        print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+        if not self._is_yes(
+            input(
+                t("Read them with sudo? The password is asked here. (y/N): ")
+            )
+        ):
+            return None
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+        except (OSError, KeyboardInterrupt):
+            return None
+        if res.returncode != 0:
+            print(f"  ⚠ {t('dmidecode failed.')}")
+            return None
+        return ss.analyser_dmidecode(res.stdout)
