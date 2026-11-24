@@ -7393,5 +7393,230 @@ class TestLHoteDERPLibre(unittest.TestCase):
         self.assertFalse(any(B.HOTE_ERPLIBRE in q for q in sans))
 
 
+class TestLInstallationDERPLibre(unittest.TestCase):
+    """Voie « ssh » : la commande du menu, jouée sur l'hôte par l'inventaire
+    du moteur, puis la santé d'Odoo jugée sur l'hôte."""
+
+    def juge(self, code_http, delai="300"):
+        """Rejoue le VRAI script du juge contre un serveur local qui rend
+        `code_http`, l'adresse et l'attente substituées."""
+        import http.server
+        import socket
+
+        class Rend(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(code_http)
+                self.end_headers()
+
+            def log_message(self, *_a):
+                pass
+
+        prise = socket.socket()
+        prise.bind(("127.0.0.1", 0))
+        port = prise.getsockname()[1]
+        prise.close()
+        serveur = http.server.HTTPServer(("127.0.0.1", port), Rend)
+        fil = threading.Thread(target=serveur.serve_forever, daemon=True)
+        fil.start()
+        self.addCleanup(serveur.shutdown)
+        script = (
+            B.SCRIPT_JUGE_ERPLIBRE.replace(
+                B.SANTE_ERPLIBRE, f"http://127.0.0.1:{port}/web/health"
+            )
+            .replace("+ 300 ))", f"+ {delai} ))")
+            .replace("sleep 10", "sleep 1")
+        )
+        vu = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, timeout=60
+        )
+        return vu.returncode, B.lit_sante_erplibre(vu.stdout)
+
+    def test_the_judge_passes_on_200(self):
+        self.assertEqual((0, "200"), self.juge(200))
+
+    def test_the_judge_fails_and_names_another_code(self):
+        self.assertEqual((1, "503"), self.juge(503, delai="2"))
+
+    def test_the_last_code_printed_is_the_one_read(self):
+        marque = B.MARQUE_SANTE_ERPLIBRE
+        sortie = f"{marque}000\nbruit\n{marque}200"
+        self.assertEqual("200", B.lit_sante_erplibre(sortie))
+        self.assertEqual("", B.lit_sante_erplibre("rien"))
+
+    def test_the_script_runs_by_the_engine_inventory_without_become(self):
+        argv = B.argv_script_sur("/m", B.HOTE_ERPLIBRE, "/s.sh")
+        self.assertEqual("ansible", argv[0])
+        self.assertIn(B.HOTE_ERPLIBRE, argv)
+        self.assertIn(B.chemin_inventaire("/m"), argv)
+        self.assertIn("ansible.builtin.script", argv)
+        self.assertIn("ansible_become=false", argv)
+
+    def test_no_terminal_is_allocated_for_an_unattended_install(self):
+        argv = B.argv_script_sur("/m", B.HOTE_ERPLIBRE, "/s.sh")
+        extra = dict(
+            argv[i + 1].split("=", 1)
+            for i, mot in enumerate(argv)
+            if mot == "-e" and "=" in argv[i + 1]
+        )
+        self.assertEqual("false", extra.get("ansible_ssh_use_tty"))
+
+    def test_the_command_is_the_menu_s_own(self):
+        sys.argv, gardé = ["todo.py"], sys.argv
+        try:
+            from script.todo.todo import TODO
+
+            attendu = TODO.__new__(TODO)._qemu_erplibre_remote_cmd(
+                B.BRANCHE_ERPLIBRE, prod=True
+            )
+        finally:
+            sys.argv = gardé
+        self.assertEqual(attendu, B.commande_installation_erplibre())
+
+    def installe(self, *verdicts):
+        joues, journaux = [], []
+        self.envs = []
+        rendus = iter(verdicts)
+
+        class Faux:
+            def jouer(self_inner, argv, env=None, cwd=None, delai=0):
+                joues.append(os.path.basename(argv[argv.index("-a") + 1]))
+                self.envs.append(env)
+                return next(rendus)
+
+        with (
+            mock.patch.object(B, "runner_du_banc", lambda: Faux()),
+            mock.patch.object(
+                B,
+                "identites_du_moteur",
+                lambda _m: (mock.Mock(etiquette="eti", cle="/c"),),
+            ),
+            mock.patch.object(
+                B,
+                "commande_installation_erplibre",
+                lambda: "echo installe",
+            ),
+            mock.patch.object(
+                B,
+                "ecrit_le_journal",
+                lambda chemin, texte, secret="": journaux.append(chemin) or "",
+            ),
+        ):
+            ecarts = B.installe_et_juge_erplibre(
+                "/m", {}, "voute", dire=lambda *_a: None
+            )
+        return ecarts, joues, journaux
+
+    def test_ansible_called_without_make_gets_the_vault_identities(self):
+        # Verdict ignoré : seul l'environnement transmis est jugé ici.
+        self.installe(B.Fait(2, "x", 1))
+        self.assertEqual("eti@/c", self.envs[0]["ANSIBLE_VAULT_IDENTITY_LIST"])
+
+    def test_vault_identities_come_from_the_engine_census(self):
+        self.assertEqual(
+            {"ANSIBLE_VAULT_IDENTITY_LIST": "a@/k1,b@/k2"},
+            B.env_des_voutes(
+                (
+                    mock.Mock(etiquette="a", cle="/k1"),
+                    mock.Mock(etiquette="b", cle="/k2"),
+                    mock.Mock(etiquette="", cle="/k3"),
+                )
+            ),
+        )
+        self.assertEqual({}, B.env_des_voutes(()))
+
+    def test_a_failed_install_is_an_ecart_and_is_not_judged(self):
+        ecarts, joues, journaux = self.installe(B.Fait(2, "fatal: x", 1))
+        self.assertEqual(1, len(ecarts))
+        self.assertIn("installation", ecarts[0])
+        self.assertEqual([f"{B.CIBLE_INSTALLATION_ERPLIBRE}.sh"], joues)
+        self.assertEqual(1, len(journaux))
+
+    def test_an_install_that_answers_200_has_no_ecart(self):
+        ecarts, joues, journaux = self.installe(
+            B.Fait(0, "ok", 1),
+            B.Fait(0, f"{B.MARQUE_SANTE_ERPLIBRE}200", 1),
+        )
+        self.assertEqual([], ecarts)
+        self.assertEqual(2, len(joues))
+        self.assertEqual(2, len(journaux))
+
+    def test_a_judge_that_reads_another_code_is_an_ecart(self):
+        for verdict in (
+            B.Fait(1, f"{B.MARQUE_SANTE_ERPLIBRE}502", 1),
+            B.Fait(0, f"{B.MARQUE_SANTE_ERPLIBRE}502", 1),
+            B.Fait(0, "", 1),
+        ):
+            with self.subTest(verdict=verdict):
+                ecarts, _j, _jo = self.installe(B.Fait(0, "ok", 1), verdict)
+                self.assertEqual(1, len(ecarts))
+                self.assertIn("/web/health", ecarts[0])
+
+
+class TestERPLibreSurvitALaRecetteRejouee(unittest.TestCase):
+    """Une recette rejouée qui tient efface les recettes d'avant ; elle ne
+    doit pas effacer un ERPLibre qui ne répond pas."""
+
+    def joue(self, erplibre):
+        joues, self.recettes = [], []
+
+        def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
+            joues.append(e.cible)
+            if e.cible == "valider" and rec is not None:
+                rec.clear()
+            return ""
+
+        def reprise(*_a, **k):
+            joues.append(f"reprise:{k.get('erplibre', '')}")
+            return "", ("reprise : ERPLibre : y",) if k.get("erplibre") else ()
+
+        def installe(*_a, **_k):
+            joues.append("installe")
+            return ["ERPLibre : x"]
+
+        for nom, valeur in (
+            ("env_ansible", lambda _m: {}),
+            ("saut_ansible", lambda _m, _t: {}),
+            ("chemins_du_banc", lambda _m: ("f", "s", "e")),
+            ("nom_monte_du_moteur", lambda _m, _e: "fictif"),
+            ("joue_une_etape", etape),
+            ("route_les_zones", lambda *_a, **_k: ""),
+            ("rend_l_espace", lambda *_a, **_k: None),
+            ("joue_la_reprise", reprise),
+            ("installe_et_juge_erplibre", installe),
+        ):
+            correctif = mock.patch.object(B, nom, valeur)
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        souci = B.joue_une_passe(
+            "/f/moteur",
+            mock.Mock(terrain="t", adresse_api=""),
+            None,
+            B.PASSE_VOUTE,
+            "",
+            lambda *a: None,
+            self.recettes,
+            erplibre=erplibre,
+        )
+        self.assertEqual("", souci)
+        return joues
+
+    def test_installed_right_after_the_build(self):
+        joues = self.joue("ssh")
+        self.assertEqual(
+            joues.index("reconstruire") + 1, joues.index("installe")
+        )
+        self.assertIn("reprise:ssh", joues)
+
+    def test_its_ecarts_survive_the_replayed_recipe(self):
+        self.joue("ssh")
+        self.assertIn("ERPLibre : x", self.recettes)
+        self.assertIn("reprise : ERPLibre : y", self.recettes)
+
+    def test_without_erplibre_nothing_is_installed(self):
+        joues = self.joue("")
+        self.assertNotIn("installe", joues)
+        self.assertEqual([], self.recettes)
+
+
 if __name__ == "__main__":
     unittest.main()

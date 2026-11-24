@@ -3452,6 +3452,162 @@ def pose_erplibre(eco, hote_autorite, voie=""):
     )
 
 
+# L'INSTALLATION D'ERPLIBRE, VOIE « ssh ». La commande est celle que le menu
+# de todo envoie à une VM, prise telle quelle : deux copies d'une chaîne
+# d'installation divergent, et c'est la copie du banc qui resterait verte
+# pendant que le produit casse. En `prod` : /opt/erplibre et son service.
+# La branche est celle de PRODUCTION : le banc prouve ce qu'un client
+# installerait, pas une branche de travail.
+BRANCHE_ERPLIBRE = "master"
+DELAI_INSTALLATION_ERPLIBRE = 3 * 3600
+CIBLE_INSTALLATION_ERPLIBRE = "installer-erplibre"
+CIBLE_JUGE_ERPLIBRE = "juger-erplibre"
+SANTE_ERPLIBRE = "http://127.0.0.1:8069/web/health"
+MARQUE_SANTE_ERPLIBRE = "SANTE-ERPLIBRE="
+
+# Le juge, joué SUR l'hôte : la santé d'Odoo par sa boucle locale, attendue
+# cinq minutes, le service venant d'être lancé. Il imprime le dernier code lu,
+# et c'est ce code que le banc lit, pas seulement le code de retour.
+SCRIPT_JUGE_ERPLIBRE = (
+    "#!/bin/bash\n"
+    "fin=$(( $(date +%s) + 300 ))\n"
+    "while :; do\n"
+    "  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10"
+    f" {SANTE_ERPLIBRE})\n"
+    f'  [ "$code" = 200 ] && '
+    f'{{ echo "{MARQUE_SANTE_ERPLIBRE}$code"; exit 0; }}\n'
+    '  [ "$(date +%s)" -ge "$fin" ] && '
+    f'{{ echo "{MARQUE_SANTE_ERPLIBRE}$code"; exit 1; }}\n'
+    "  sleep 10\n"
+    "done\n"
+)
+
+
+def commande_installation_erplibre(branche=BRANCHE_ERPLIBRE):
+    """Le bloc d'installation que le menu de todo envoie, en `prod`."""
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    argv, sys.argv = sys.argv, ["todo.py"]
+    try:
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)._qemu_erplibre_remote_cmd(branche, prod=True)
+    finally:
+        sys.argv = argv
+
+
+def argv_script_sur(moteur, hote, script):
+    """L'argv qui joue le fichier `script` sur `hote`, par l'inventaire du
+    moteur : son compte de connexion, ses clés, son rebond.
+
+    LE MODULE `script` COPIE LE FICHIER ET L'EXÉCUTE, rien ne passe par une
+    ligne de commande citée : la chaîne d'installation porte des guillemets à
+    plusieurs niveaux, qu'un `-a` libre découperait. SANS `become` : la
+    chaîne élève elle-même ce qui doit l'être, comme sur une VM du menu.
+
+    SANS TERMINAL : le connecteur ssh d'Ansible en alloue un par défaut
+    (`-tt`). Sous un terminal, `needrestart`, qu'`unattended-upgrades` pose
+    sur Debian, se croit interactif après chaque `apt-get` et attend une
+    réponse que personne ne donnera ; sans terminal, il se contente de
+    lister. Le banc n'a jamais personne devant l'écran.
+    """
+    return (
+        "ansible",
+        hote,
+        "-i",
+        chemin_inventaire(moteur),
+        "-m",
+        "ansible.builtin.script",
+        "-a",
+        script,
+        "-e",
+        "ansible_become=false",
+        "-e",
+        "ansible_ssh_use_tty=false",
+    )
+
+
+def env_des_voutes(identites):
+    """Les identités de voûte du moteur, pour un `ansible` appelé SANS make.
+
+    Le Makefile du moteur les exporte à chacune de ses cibles ; un appel direct
+    ne les a pas, et l'inventaire, dont les `group_vars` sont chiffrés, ne se
+    lit plus. Elles viennent du recensement du moteur, jamais recomposées.
+    """
+    liste = ",".join(
+        f"{i.etiquette}@{i.cle}"
+        for i in identites or ()
+        if getattr(i, "etiquette", "") and getattr(i, "cle", "")
+    )
+    return {"ANSIBLE_VAULT_IDENTITY_LIST": liste} if liste else {}
+
+
+def lit_sante_erplibre(sortie):
+    """Le dernier code HTTP que le juge a imprimé, ou « »."""
+    codes = re.findall(
+        rf"{re.escape(MARQUE_SANTE_ERPLIBRE)}(\d{{3}})", sortie or ""
+    )
+    return codes[-1] if codes else ""
+
+
+def installe_et_juge_erplibre(moteur, env, passe, secret="", dire=print):
+    """Installe ERPLibre sur son hôte, puis juge sa santé. Rend les écarts.
+
+    UN ÉCART, PAS UN ARRÊT : la flotte est bâtie, et la raser reste dû. Une
+    installation en échec n'est pas jugée — sa cause suffit. Les deux journaux
+    sont déposés, que le geste passe ou non.
+    """
+    import tempfile
+
+    ecarts = []
+    env = dict(env, **env_des_voutes(identites_du_moteur(moteur)))
+    with tempfile.TemporaryDirectory(prefix="banc-erplibre-") as dossier:
+        scripts = {}
+        for nom, texte in (
+            (
+                CIBLE_INSTALLATION_ERPLIBRE,
+                "#!/bin/bash\n" + commande_installation_erplibre() + "\n",
+            ),
+            (CIBLE_JUGE_ERPLIBRE, SCRIPT_JUGE_ERPLIBRE),
+        ):
+            chemin = os.path.join(dossier, f"{nom}.sh")
+            with open(chemin, "w", encoding="utf-8") as fichier:
+                fichier.write(texte)
+            os.chmod(chemin, 0o700)
+            scripts[nom] = chemin
+        for nom, delai in (
+            (CIBLE_INSTALLATION_ERPLIBRE, DELAI_INSTALLATION_ERPLIBRE),
+            (CIBLE_JUGE_ERPLIBRE, 900),
+        ):
+            argv = argv_script_sur(moteur, HOTE_ERPLIBRE, scripts[nom])
+            dire(f"    {nom} sur {HOTE_ERPLIBRE}")
+            vu = runner_du_banc().jouer(argv, env=env, cwd=moteur, delai=delai)
+            souci = ecrit_le_journal(
+                chemin_journal(passe, nom), vu.sortie, secret
+            )
+            if souci:
+                dire(f"      journal non déposé : {souci}")
+            if nom == CIBLE_INSTALLATION_ERPLIBRE and vu.code != 0:
+                ecarts.append(
+                    "ERPLibre : installation en échec — "
+                    + cause_de_l_echec(vu.sortie)
+                )
+                break
+            if nom == CIBLE_JUGE_ERPLIBRE:
+                code = lit_sante_erplibre(vu.sortie)
+                if vu.code != 0 or code != "200":
+                    ecarts.append(
+                        f"ERPLibre : {SANTE_ERPLIBRE} rend « {code or '?'} »"
+                    )
+                else:
+                    dire(f"      ERPLibre répond : {SANTE_ERPLIBRE} → 200")
+    for ecart in ecarts:
+        dire(f"      ⚠ {ecart}")
+    return ecarts
+
+
 def pose_un_service(
     eco,
     hote_autorite,
@@ -5452,15 +5608,26 @@ def joue_une_lecture(
 
 
 def joue_la_reprise(
-    moteur, mesures, eco, env, etapes, passe, secret, dire, recettes
+    moteur,
+    mesures,
+    eco,
+    env,
+    etapes,
+    passe,
+    secret,
+    dire,
+    recettes,
+    erplibre="",
 ):
     """Rase la flotte sauf ses sauvegardes, la reconstruit en restaurant, et
     juge la reprise. Rend (souci, écarts).
 
     Le souci arrête la passe : un geste du moteur a échoué. Les écarts disent
     une reprise qui n'a pas tenu, et la passe va quand même jusqu'au rasage.
-    LA RESTAURATION REVIENT À FAUX QUOI QU'IL ARRIVE : la passe suivante bâtit
-    une flotte neuve, dont le dépôt n'existe pas encore.
+    LA RESTAURATION REVIENT À SA VALEUR DE NAISSANCE QUOI QU'IL ARRIVE.
+
+    Avec `erplibre`, son hôte reconstruit est réinstallé puis jugé : la voie
+    « ssh » n'en sauvegarde rien encore, il renaît neuf.
     """
     par_cible = {e.cible: e for e in etapes}
     raser = par_cible.get("raser")
@@ -5525,7 +5692,9 @@ def joue_la_reprise(
             f" {retour}",
             (),
         )
-    ecarts = ecarts_de_reprise(etat, temoins, avant, apres)
+    ecarts = list(ecarts_de_reprise(etat, temoins, avant, apres))
+    if erplibre:
+        ecarts += installe_et_juge_erplibre(moteur, env, passe, secret, dire)
     # LA RECETTE EST REJOUÉE SUR LA FLOTTE RESTAURÉE : elle doit fonctionner,
     # pas seulement porter ses données.
     souci = joue_une_etape(
@@ -5547,8 +5716,14 @@ def joue_une_passe(
     dire=print,
     recettes=None,
     garder=False,
+    erplibre="",
 ):
     """Joue les cibles du moteur pour une passe. Rend le souci, ou « ».
+
+    `erplibre` : la voie de l'hôte ERPLibre, installé et jugé après chaque
+    reconstruction. Ses écarts rejoignent les recettes EN FIN de passe, comme
+    ceux de la reprise : une recette rejouée qui tient efface celles d'avant,
+    et ne doit pas effacer un ERPLibre qui ne répond pas.
 
     `garder` laisse la flotte DEBOUT : la reprise est jouée, le rasage final
     ne l'est pas, et sa commande est dite pour le faire plus tard. La flotte
@@ -5608,7 +5783,7 @@ def joue_une_passe(
     if souci:
         return souci
 
-    de_la_passe, reprises = [], ()
+    de_la_passe, reprises, d_erplibre = [], (), []
     for etape in etapes[premier:]:
         # LA REPRISE AVANT LE RASAGE FINAL : elle a besoin d'une flotte
         # sauvegardée et de sa cible des sauvegardes, que le rasage emporte.
@@ -5623,6 +5798,7 @@ def joue_une_passe(
                 secret,
                 dire,
                 de_la_passe,
+                erplibre=erplibre,
             )
             if souci:
                 return souci
@@ -5638,6 +5814,11 @@ def joue_une_passe(
         )
         if souci:
             return souci
+        if erplibre and etape.cible == "reconstruire":
+            d_erplibre += installe_et_juge_erplibre(
+                moteur, env, passe, secret, dire
+            )
+    de_la_passe.extend(d_erplibre)
     # LES ÉCARTS DE LA REPRISE APRÈS LES RECETTES : une recette rejouée qui
     # tient remplace celles d'avant, jamais une reprise qui n'a pas tenu.
     de_la_passe.extend(reprises)
@@ -6095,7 +6276,11 @@ def plan(passes, terrain, batir=False, garder=False, erplibre=""):
     ]
     if erplibre:
         etapes.append(
-            (f"hôte ERPLibre {HOTE_ERPLIBRE} : voie « {erplibre} »", "")
+            (
+                f"hôte ERPLibre {HOTE_ERPLIBRE} : voie « {erplibre} »,"
+                " installé et jugé après chaque reconstruction",
+                "~1 h annoncé",
+            )
         )
     etapes += [
         (
@@ -6369,6 +6554,7 @@ def lance(args, passes, terrain):
                 secret,
                 recettes=recettes,
                 garder=passe_gardee(args.garder_la_flotte, passe, passes),
+                erplibre=args.erplibre or "",
             )
             if souci:
                 print(f"\n  ⛔ {expurge(souci, secret)}")
@@ -6646,7 +6832,9 @@ def verdict_des_recettes(recettes, secret="", dire=print):
     if not recettes:
         return SORTIE_OK
     dire(
-        "\n  ⚠ bâtie, déployée et rasée — mais la recette du moteur n'a pas tenu :"
+        # « rasée » n'y est pas : une flotte gardée debout ne l'est pas, et
+        # le rasage est dit par la passe elle-même.
+        "\n  ⚠ bâtie et déployée — mais la recette du moteur n'a pas tenu :"
     )
     for recette in recettes:
         dire(f"     · {expurge(recette, secret)}")
