@@ -34,34 +34,42 @@ PORT = TODO / "ui"
 WRAPPERS = {"show_and_ask", "ask_and_install", "TodoUpgrade.confirm"}
 
 # (fichier, fonction, première clé t()) → défauts, dans l'ordre du fichier.
-# None : l'appel ne passe pas de défaut, que l'enveloppe lit encore par son
-# prédicat `is_yes`.
 CONFIRM_DEFAULTS = {
     (
         "script/todo/qemu_install_monitor.py",
         "install_cli_browser",
-        "Install now? (y/N): ",
-    ): [None],
+        "Install now?",
+    ): [False],
     (
         "script/todo/qemu_manage.py",
         "QemuManageMixin._qemu_install_shrink_tools",
-        "Install them? (y/N): ",
-    ): [None],
+        "Install them?",
+    ): [False],
     (
         "script/todo/todo.py",
         "TODO._shell_install_starship_binary",
-        "Install starship? (y/N): ",
-    ): [None],
+        "Install starship?",
+    ): [False],
     (
         "script/todo/todo.py",
         "TODO._shell_install_starship_binary",
-        "Run the upstream installer? (y/N): ",
-    ): [None],
+        "Run the upstream installer?",
+    ): [False],
+    (
+        "script/todo/todo_install.py",
+        "run_steps",
+        "Upgrade the whole system first?",
+    ): [False],
+    (
+        "script/todo/todo_telemetry.py",
+        "install_sensors",
+        "Install lm-sensors now?",
+    ): [False],
     (
         "script/todo/transform_menu.py",
         "TransformMenuMixin._transform_install_env",
-        "Create it now? (Y/n): ",
-    ): [None],
+        "Create it now?",
+    ): [True],
 }
 
 

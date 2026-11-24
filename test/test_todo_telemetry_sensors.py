@@ -8,13 +8,15 @@ AVANT le paquet, que le nom du paquet suit la famille, que la détection des
 capteurs passe en dernier, et qu'un refus comme un échec arrêtent la suite.
 """
 
+import contextlib
 import io
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from script.todo import todo_install, todo_telemetry
+from script.todo import todo_install, todo_telemetry, ui
 from script.todo.todo_i18n import t
+from script.todo.ui.port import ScriptedPort
 
 
 class TestSensorsInstallSteps(unittest.TestCase):
@@ -85,7 +87,7 @@ class TestInstallSensors(unittest.TestCase):
 
     def test_every_step_is_shown_before_the_question(self):
         _, _, sortie = self._run(["n"])
-        question = sortie.index(t("Install lm-sensors now? (y/N): "))
+        question = sortie.index(t("Install lm-sensors now?"))
         for commande in ("sudo apt-get update", "sudo sensors-detect --auto"):
             self.assertLess(sortie.index(commande), question)
 
@@ -107,6 +109,76 @@ class TestInstallSensors(unittest.TestCase):
         status, lances, _ = self._run(["y"], codes=[0, 256])
         self.assertEqual(status, 256)
         self.assertNotIn("sudo sensors-detect --auto", lances)
+
+
+class TestInstallFromTheSystemView(unittest.TestCase):
+    """[i] de la vue système pose sa question dans le fil qui appelle
+    l'action, par le port qui y est lié, la TUI suspendue. Un fil neuf
+    n'hériterait pas du ContextVar du port : la question n'atteindrait pas
+    le port lié. L'action est appelée directement, hors boucle Textual ;
+    suspend() est un double qui note, le lanceur remplace os.system, le
+    défaut de `run`."""
+
+    ETAPES = [["sudo", "apt-get", "install", "-y", "forged-yesno-pkg"]]
+
+    def _press_i(self, *answers):
+        app = todo_telemetry.run_tui(run_app=False, state={"mode": "system"})
+        app._mode = "system"
+        etat = {"suspendue": False}
+
+        @contextlib.contextmanager
+        def suspend():
+            etat["suspendue"] = True
+            try:
+                yield
+            finally:
+                etat["suspendue"] = False
+
+        class Port(ScriptedPort):
+            def _answer(self, message):
+                message["suspendue"] = etat["suspendue"]
+                return super()._answer(message)
+
+        app.suspend = suspend
+        app.notify = lambda *_args, **_how: None
+        lances = []
+        port = Port(answers)
+        with (
+            patch.object(todo_telemetry, "read_temperature", lambda: None),
+            patch.object(
+                todo_telemetry, "sensors_install_steps", lambda: self.ETAPES
+            ),
+            patch.object(
+                todo_telemetry.install_sensors,
+                "__defaults__",
+                (lambda cmd: lances.append((cmd, etat["suspendue"])) or 0,),
+            ),
+            ui.bind(port),
+            redirect_stdout(io.StringIO()),
+        ):
+            app.action_install_sensors()
+        questions = [
+            (e["kind"], e["default"], e["suspendue"]) for e in port.events
+        ]
+        return lances, questions
+
+    def test_the_question_reaches_the_bound_port(self):
+        for answers in ([""], [], ["n"]):
+            with self.subTest(answers=answers):
+                self.assertEqual(
+                    self._press_i(*answers), ([], [("confirm", "n", True)])
+                )
+
+    def test_a_yes_installs_then_detects(self):
+        lances, questions = self._press_i("o")
+        self.assertEqual(
+            lances,
+            [
+                ("sudo apt-get install -y forged-yesno-pkg", True),
+                ("sudo sensors-detect --auto", True),
+            ],
+        )
+        self.assertEqual(questions, [("confirm", "n", True)])
 
 
 if __name__ == "__main__":

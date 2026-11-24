@@ -755,7 +755,6 @@ class QemuAccessMixin:
         todo_install.run_steps(
             lambda c: self.execute.exec_command_live(c, source_erplibre=False),
             etapes,
-            self._is_yes,
         )
         if shutil.which("virt-viewer"):
             print("  ✅ virt-viewer")

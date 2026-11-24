@@ -1439,9 +1439,7 @@ class QemuManageMixin:
         désormais dans le PATH, ou None."""
         from script.todo import qemu_install_monitor
 
-        return qemu_install_monitor.install_cli_browser(
-            execute=self.execute, is_yes=self._is_yes
-        )
+        return qemu_install_monitor.install_cli_browser(execute=self.execute)
 
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM
@@ -1920,8 +1918,8 @@ class QemuManageMixin:
         status = todo_install.ask_and_install(
             self.execute,
             todo_install.install_steps(paquets),
-            t("Install them? (y/N): "),
-            self._is_yes,
+            t("Install them?"),
+            default=False,
         )
         if status:
             print(f"  {t('Error installing the tools: ')}{status}")

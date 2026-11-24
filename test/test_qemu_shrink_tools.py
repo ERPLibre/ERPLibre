@@ -181,7 +181,7 @@ class TestInstallCommand(ShrinkToolsBase):
         )
         self.assertEqual(ran, ["sudo pacman -S --needed --noconfirm gptfdisk"])
         self.assertEqual(left, [])
-        self.assertIn(t("Upgrade the whole system first? (y/N): "), out)
+        self.assertIn(t("Upgrade the whole system first?"), out)
 
     def test_a_package_is_asked_for_once(self):
         """e2fsck, resize2fs et dumpe2fs sortent du même paquet."""
@@ -203,7 +203,7 @@ class TestInstallCommand(ShrinkToolsBase):
         """
         ran, _, out = self._run("apt-get", ["sgdisk"], answer="n")
         commande = out.index("sudo apt-get install -y gdisk")
-        question = out.index(t("Install them? (y/N): "))
+        question = out.index(t("Install them?"))
         self.assertLess(commande, question)
         self.assertEqual(ran, [])
 

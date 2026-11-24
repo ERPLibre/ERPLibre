@@ -14,13 +14,16 @@ Rien n'est installé : le PATH et /etc/os-release sont simulés.
 """
 
 import io
+import shlex
+import shutil
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from unittest.mock import mock_open, patch
 
 sys.argv = ["todo.py"]
-from script.todo import todo_install  # noqa: E402
+from script.todo import todo_install, ui  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 
 
 def _only(*present):
@@ -159,9 +162,7 @@ class TestAskAndInstall(unittest.TestCase):
             return answer
 
         with patch("builtins.input", demande), redirect_stdout(buf):
-            got = todo_install.ask_and_install(
-                ex, cmd, "Installer? (y/N): ", lambda a: a.strip() == "y"
-            )
+            got = todo_install.ask_and_install(ex, cmd, "Installer?")
         return ex.ran, got, buf.getvalue()
 
     def test_the_command_is_printed_before_the_question(self):
@@ -171,7 +172,7 @@ class TestAskAndInstall(unittest.TestCase):
         )
         self.assertLess(
             out.index("sudo apt-get install -y p"),
-            out.index("Installer? (y/N): "),
+            out.index("Installer?"),
         )
         self.assertEqual(ran, [])
         self.assertIsNone(got)
@@ -242,10 +243,6 @@ class _Exec:
             if cmd.startswith(debut):
                 return code
         return 0
-
-
-def _yes(reponse):
-    return reponse.strip().lower() in ("y", "o")
 
 
 def _answers(*reponses):
@@ -319,8 +316,7 @@ class TestRunSteps(unittest.TestCase):
             got = todo_install.ask_and_install(
                 ex,
                 todo_install.install_steps(["p"], famille=famille),
-                "Installer? (y/N): ",
-                _yes,
+                "Installer?",
             )
         return ex.ran, got, buf.getvalue(), demande.posees
 
@@ -345,16 +341,16 @@ class TestRunSteps(unittest.TestCase):
         self.assertIn("❌", out)
 
     def test_an_empty_answer_never_upgrades_arch_even_for_default_yes(self):
-        # Un appelant dont la règle accepte une réponse vide : l'installation
-        # passe sur Entrée, la mise à jour complète du système non.
+        # Une question d'installation au défaut oui : l'installation passe
+        # sur Entrée, la mise à jour complète du système non.
         ex = _Exec(None)
         demande = _answers("", "")
         with patch("builtins.input", demande), redirect_stdout(io.StringIO()):
             todo_install.ask_and_install(
                 ex,
                 todo_install.install_steps(["p"], famille="pacman"),
-                "Installer? (Y/n): ",
-                lambda r: r.strip().lower() in ("", "o", "oui", "y", "yes"),
+                "Installer?",
+                default=True,
             )
         self.assertNotIn("sudo pacman -Syu --noconfirm", ex.ran)
         self.assertEqual(len(ex.ran), 1)
@@ -396,9 +392,7 @@ class TestRunSteps(unittest.TestCase):
             patch("builtins.input", _answers("y")),
             redirect_stdout(io.StringIO()),
         ):
-            got = todo_install.ask_and_install(
-                ex, "curl -sS x | sh", "Q? ", _yes
-            )
+            got = todo_install.ask_and_install(ex, "curl -sS x | sh", "Q?")
         self.assertEqual(ex.ran, ["curl -sS x | sh"])
         self.assertEqual(got, 0)
 
@@ -523,6 +517,190 @@ class TestCallersRefreshFirst(unittest.TestCase):
                 ["sudo", "apt-get", "install", "-y", "lynx"],
             ],
         )
+
+
+class TestTheFullUpgradeAsksThroughThePort(unittest.TestCase):
+    """La mise à jour complète du système de run_steps est un `confirm`
+    du port, défaut non : Entrée et Ctrl+D la sautent, l'installation
+    part des index présents."""
+
+    def _play(self, *answers):
+        ran = []
+        port = ScriptedPort(answers)
+        with ui.bind(port), redirect_stdout(io.StringIO()):
+            got = todo_install.run_steps(
+                lambda c: ran.append(c) or 0,
+                todo_install.install_steps(["p"], famille="pacman"),
+            )
+        return ran, got, port.events
+
+    def test_enter_and_ctrl_d_skip_it(self):
+        for answers in ([""], []):
+            with self.subTest(answers=answers):
+                ran, got, events = self._play(*answers)
+                self.assertEqual(
+                    ran, ["sudo pacman -S --needed --noconfirm p"]
+                )
+                self.assertEqual(got, 0)
+                self.assertEqual(
+                    [(e["kind"], e["default"]) for e in events],
+                    [("confirm", "n")],
+                )
+
+    def test_a_typed_yes_runs_it_first(self):
+        ran, _, _ = self._play("oui")
+        self.assertEqual(
+            ran,
+            [
+                "sudo pacman -Syu --noconfirm",
+                "sudo pacman -S --needed --noconfirm p",
+            ],
+        )
+
+
+class TestEachCallerAsksThroughThePort(unittest.TestCase):
+    """Chaque appelant de todo_install pose sa question d'installation par
+    `ui.confirm`, au défaut que relève CONFIRM_DEFAULTS
+    (test_todo_yes_no) : Entrée prend ce défaut, Ctrl+D vaut non, une
+    faute est dite puis la question revient. Le double du lanceur note ce
+    qui part : rien sans un oui."""
+
+    STEPS = [
+        ["sudo", "apt-get", "update"],
+        ["sudo", "apt-get", "install", "-y", "forged-yesno-pkg"],
+    ]
+    LAUNCHED = [
+        "sudo apt-get update",
+        "sudo apt-get install -y forged-yesno-pkg",
+    ]
+    ARCH = [
+        ["sudo", "pacman", "-Syu", "--noconfirm"],
+        ["sudo", "pacman", "-S", "--needed", "virt-viewer"],
+    ]
+
+    def _patch(self, target, name, value):
+        self.stack.enter_context(patch.object(target, name, value))
+
+    def _starship_package(self):
+        self._patch(todo_install, "install_steps", lambda _p: self.STEPS)
+        ran = self.todo.execute.ran
+        self._patch(shutil, "which", lambda b: ran and f"/usr/bin/{b}")
+        self.todo._shell_install_starship_binary()
+        return ran
+
+    def _starship_upstream(self):
+        self._patch(todo_install, "install_steps", lambda _p: [])
+        self.todo._shell_install_starship_binary()
+        return self.todo.execute.ran
+
+    def _shrink_tools(self):
+        self._patch(todo_install, "install_steps", lambda _p: self.STEPS)
+        self.todo._qemu_install_shrink_tools(["sgdisk"])
+        return self.todo.execute.ran
+
+    def _qemu_browser(self):
+        from script.todo import qemu_install_monitor as monitor
+
+        self._patch(monitor, "browser_install_command", lambda _b: self.STEPS)
+        self.todo._qemu_install_cli_browser()
+        return self.todo.execute.ran
+
+    def _monitor_browser(self):
+        """Le dashboard du suivi, sans lanceur : chaque étape part par
+        os.system, que le double remplace."""
+        from script.todo import qemu_install_monitor as monitor
+
+        ran = []
+        self._patch(monitor, "browser_install_command", lambda _b: self.STEPS)
+        self._patch(monitor.os, "system", lambda c: ran.append(c) or 0)
+        monitor.install_cli_browser()
+        return ran
+
+    def _virt_viewer(self):
+        """Sans question d'installation : seule la mise à jour complète
+        du système d'Arch se confirme (run_steps)."""
+        self._patch(todo_install, "install_steps", lambda _p: self.ARCH)
+        self._patch(shutil, "which", lambda b: None)
+        self.todo._qemu_ensure_virt_viewer()
+        return self.todo.execute.ran
+
+    def _transform_env(self):
+        from script.todo import transform_setup
+
+        self._patch(transform_setup, "available", lambda fmt=None: True)
+        self._patch(transform_setup, "requetes_access_lisibles", lambda: False)
+        self._patch(
+            transform_setup, "system_packages_steps", lambda: self.STEPS
+        )
+        self.todo._transform_install_env()
+        return self.todo.execute.ran
+
+    def _sensors(self):
+        from script.todo import todo_telemetry
+
+        ran = []
+        todo_telemetry.install_sensors(self.STEPS, run=lambda c: ran.append(c))
+        return ran
+
+    def _callers(self):
+        """(appelant, réponses avant sa question, son défaut, ce qu'un oui
+        lance, ce qu'un non lance)."""
+        from script.todo import dev_tools
+
+        upstream = [dev_tools.STARSHIP_UPSTREAM]
+        arch = [shlex.join(step) for step in self.ARCH]
+        sensors = [*self.LAUNCHED, "sudo sensors-detect --auto"]
+        return (
+            ("_starship_package", [], "n", self.LAUNCHED, []),
+            ("_starship_upstream", [], "n", upstream, []),
+            ("_shrink_tools", [], "n", self.LAUNCHED, []),
+            ("_qemu_browser", [""], "n", self.LAUNCHED, []),
+            ("_monitor_browser", [""], "n", self.LAUNCHED, []),
+            ("_virt_viewer", [], "n", arch, arch[1:]),
+            ("_transform_env", [], "y", self.LAUNCHED, []),
+            ("_sensors", [], "n", sensors, []),
+        )
+
+    def _play(self, caller, answers):
+        """(ce que lance `caller`, ses `confirm`, le niveau de chaque
+        `notice`) quand le port répond `answers`, puis Ctrl+D."""
+        from script.todo.todo import TODO
+
+        port = ScriptedPort(answers)
+        with ExitStack() as self.stack:
+            self.todo = TODO.__new__(TODO)
+            self.todo.execute = _Exec()
+            self._patch(todo_install, "family", lambda: "apt-get")
+            self.stack.enter_context(redirect_stdout(io.StringIO()))
+            self.stack.enter_context(ui.bind(port))
+            ran = getattr(self, caller)()
+        confirms = [e for e in port.events if e.get("kind") == "confirm"]
+        notices = [e["level"] for e in port.events if e.get("t") == "notice"]
+        return ran, [e["default"] for e in confirms], notices
+
+    def test_enter_takes_the_default_of_the_table(self):
+        for caller, before, default, on_yes, on_no in self._callers():
+            with self.subTest(caller=caller):
+                ran, defaults, _ = self._play(caller, [*before, ""])
+                self.assertEqual(ran, on_yes if default == "y" else on_no)
+                self.assertEqual(defaults, [default])
+
+    def test_ctrl_d_launches_nothing_that_needs_a_yes(self):
+        for caller, before, default, _on_yes, on_no in self._callers():
+            with self.subTest(caller=caller):
+                ran, defaults, _ = self._play(caller, before)
+                self.assertEqual(ran, on_no)
+                self.assertEqual(defaults, [default])
+
+    def test_a_wrong_answer_is_said_then_asked_again(self):
+        for caller, before, default, on_yes, _on_no in self._callers():
+            with self.subTest(caller=caller):
+                ran, defaults, notices = self._play(
+                    caller, [*before, "x", "o"]
+                )
+                self.assertEqual(ran, on_yes)
+                self.assertEqual(defaults, [default, default])
+                self.assertEqual(notices, ["error"])
 
 
 if __name__ == "__main__":

@@ -14,8 +14,8 @@ Trois règles que la composante tient à la place des appelants :
 - l'ID de /etc/os-release décide AVANT le PATH. Une machine peut porter
   plusieurs gestionnaires — un poste Debian avec dnf installé pour construire
   un paquet — et c'est l'ID qui dit lequel gouverne le système ;
-- la commande s'affiche AVANT la question. On approuve ce qu'on a lu, pas un
-  « (y/N) » posé à l'aveugle ;
+- la commande s'affiche AVANT la question. On approuve ce qu'on a lu, pas
+  une question posée à l'aveugle ;
 - les index de paquets se rafraîchissent AVANT l'installation
   (install_steps), et un rafraîchissement qui met à jour tout le système se
   confirme à part (run_steps).
@@ -24,6 +24,7 @@ Trois règles que la composante tient à la place des appelants :
 import shlex
 import shutil
 
+from script.todo import ui
 from script.todo.todo_i18n import t
 
 # Les familles, dans l'ordre où le PATH est interrogé quand l'ID de la
@@ -232,32 +233,22 @@ def show_steps(cmd, prefix="  "):
             )
 
 
-def _oui_explicite(reponse) -> bool:
-    """Un oui tapé, rien d'autre : la mise à jour complète du système se
-    refuse par défaut, quelle que soit la règle de l'appelant pour ses
-    propres questions."""
-    return (reponse or "").strip().lower() in ("o", "oui", "y", "yes")
-
-
-def run_steps(run, cmd, is_yes, prefix="  "):
+def run_steps(run, cmd, prefix="  "):
     """Lancer les étapes dans l'ordre. Rend le code de la dernière lancée,
     ou le premier code non nul, ou None si rien n'a tourné.
 
     `run` reçoit la commande en chaîne et rend son code de sortie
     (exec_command_live, os.system). Une mise à jour complète du système se
-    confirme ici, défaut Non : refusée, elle est sautée et l'installation
-    part des index présents. Cette question n'accepte qu'un oui tapé
-    (`_oui_explicite`) : `is_yes`, la règle de l'appelant, peut accepter une
-    réponse vide, et une Entrée réflexe ne doit pas mettre tout le système
-    à jour. `is_yes` reste dans la signature des appelants existants. Un rafraîchissement en échec arrête tout et le
+    confirme ici (`ui.confirm`), défaut non, quel que soit celui de la
+    question d'installation : refusée, elle est sautée et l'installation
+    part des index présents. Un rafraîchissement en échec arrête tout et le
     dit : installer sur des index périmés échouerait plus loin, sans dire
-    pourquoi. Le seul appel à input() est celui de cette confirmation ; un
-    appelant sans terminal ne doit donc pas passer une telle étape.
+    pourquoi.
     """
     status = None
     for etape in as_steps(cmd):
-        if is_full_upgrade(etape) and not _oui_explicite(
-            input(f"{prefix}{t('Upgrade the whole system first? (y/N): ')}")
+        if is_full_upgrade(etape) and not ui.confirm(
+            t("Upgrade the whole system first?"), default=False
         ):
             print(f"{prefix}{t('Package indexes left as they are.')}")
             continue
@@ -271,8 +262,9 @@ def run_steps(run, cmd, is_yes, prefix="  "):
     return status
 
 
-def show_and_ask(cmd, question, is_yes, prefix="  ") -> bool:
-    """Afficher la commande, PUIS demander. True si l'opérateur accepte.
+def show_and_ask(cmd, question, default=False, prefix="  ") -> bool:
+    """Afficher la commande, PUIS demander (`ui.confirm`, au booléen
+    `default`). True si l'opérateur accepte.
 
     L'ordre est le fond de l'affaire : une question posée avant la commande
     fait approuver à l'aveugle. Centralisé ici pour qu'aucun appelant ne
@@ -280,18 +272,18 @@ def show_and_ask(cmd, question, is_yes, prefix="  ") -> bool:
     affichées avant la question.
     """
     show_steps(cmd, prefix=prefix)
-    return bool(is_yes(input(question)))
+    return ui.confirm(question, default=default)
 
 
-def ask_and_install(execute, cmd, question, is_yes, prefix="  "):
+def ask_and_install(execute, cmd, question, default=False, prefix="  "):
     """Proposer puis lancer. Rend le code de sortie, ou None si rien n'a été
     lancé — refus de l'opérateur, ou aucune commande à proposer.
 
     `cmd` est une commande, ou les étapes d'install_steps : une seule
-    question les couvre toutes, sauf la mise à jour complète du système qui
-    se confirme à part (run_steps). `execute` est le lanceur du CLI :
-    exec_command_live REND le code de sortie et ne lève rien, donc
-    l'appelant doit tester ce qui revient.
+    question, au booléen `default`, les couvre toutes, sauf la mise à jour
+    complète du système qui se confirme à part (run_steps). `execute` est
+    le lanceur du CLI : exec_command_live REND le code de sortie et ne lève
+    rien, donc l'appelant doit tester ce qui revient.
     """
     if not as_steps(cmd):
         print(f"{prefix}⚠ {t('no known package manager here.')}")
@@ -299,12 +291,11 @@ def ask_and_install(execute, cmd, question, is_yes, prefix="  "):
         if conseil:
             print(f"{prefix}  {conseil}")
         return None
-    if not show_and_ask(cmd, question, is_yes, prefix=prefix):
+    if not show_and_ask(cmd, question, default, prefix=prefix):
         print(t("Nothing to do."))
         return None
     return run_steps(
         lambda c: execute.exec_command_live(c, source_erplibre=False),
         cmd,
-        is_yes,
         prefix=prefix,
     )

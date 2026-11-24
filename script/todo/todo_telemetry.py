@@ -464,22 +464,17 @@ def install_sensors(etapes, run=os.system):
     dernière étape : run_steps s'arrête au premier code non nul, donc elle
     ne tourne pas sur un paquet qui ne s'est pas installé. `run` reçoit la
     commande en chaîne et rend son code de sortie. Les questions passent
-    par input(), celle d'une mise à jour complète du système comprise
+    par `ui.confirm`, celle d'une mise à jour complète du système comprise
     (run_steps).
     """
-    from script.todo import todo_install
+    from script.todo import todo_install, ui
 
     etapes = list(etapes) + [["sudo", "sensors-detect", "--auto"]]
     print(f"{t('Proposed install command:')}")
     todo_install.show_steps(etapes)
-    if not _is_yes(input(t("Install lm-sensors now? (y/N): "))):
+    if not ui.confirm(t("Install lm-sensors now?"), default=False):
         return None
-    return todo_install.run_steps(run, etapes, _is_yes)
-
-
-def _is_yes(reponse) -> bool:
-    """« Défaut non » : seule une réponse explicite accepte."""
-    return str(reponse or "").strip().lower() in ("o", "oui", "y", "yes")
+    return todo_install.run_steps(run, etapes)
 
 
 def _first_int(path):

@@ -3823,8 +3823,8 @@ class TODO(
             status = todo_install.ask_and_install(
                 self.execute,
                 etapes,
-                t("Install starship? (y/N): "),
-                self._is_yes,
+                t("Install starship?"),
+                default=False,
             )
             if status is None:
                 return
@@ -3834,8 +3834,8 @@ class TODO(
         todo_install.ask_and_install(
             self.execute,
             self._STARSHIP_UPSTREAM,
-            t("Run the upstream installer? (y/N): "),
-            self._is_yes,
+            t("Run the upstream installer?"),
+            default=False,
         )
 
     def _shell_hook_starship(self):

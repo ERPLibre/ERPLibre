@@ -1768,7 +1768,7 @@ def pick_installable_browser():
     )
 
 
-def install_cli_browser(pause=False, execute=None, is_yes=None):
+def install_cli_browser(pause=False, execute=None):
     """Le navigateur CLI à installer (`pick_installable_browser`), ses
     étapes (`browser_install_command` : rafraîchissement des index d'abord)
     montrées puis lancées après un oui (`todo_install.ask_and_install`) :
@@ -1776,8 +1776,8 @@ def install_cli_browser(pause=False, execute=None, is_yes=None):
 
     `execute` lance chaque étape : celui du menu QEMU, dont
     exec_command_live recopie la commande et sa sortie au journal de
-    session ; sans lui, os.system (le dashboard, la TUI suspendue).
-    `is_yes` lit la réponse, un oui tapé par défaut. Avec `pause`, le
+    session ; sans lui, os.system (le dashboard, la TUI suspendue). La
+    question, défaut non, passe par `ui.confirm`. Avec `pause`, le
     dashboard attend Entrée avant de reprendre l'écran."""
     from script.todo import todo_install
 
@@ -1793,19 +1793,14 @@ def install_cli_browser(pause=False, execute=None, is_yes=None):
     rc = todo_install.ask_and_install(
         execute or _OsSystem(),
         etapes,
-        t("Install now? (y/N): "),
-        is_yes or _oui_tape,
+        t("Install now?"),
+        default=False,
         prefix="",
     )
     if pause and rc is not None:
         print(f"\nInstallation terminée (code {rc}).")
         input("Entrée pour continuer… ")
     return browser if shutil.which(browser) else None
-
-
-def _oui_tape(reponse) -> bool:
-    """Un oui tapé, dans l'une ou l'autre langue."""
-    return reponse.strip().lower() in ("o", "oui", "y", "yes")
 
 
 class _OsSystem:

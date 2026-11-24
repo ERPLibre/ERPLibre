@@ -152,8 +152,6 @@ RAW_CALLS = {
     "script/todo/sms/tui.py": 1,
     "script/todo/system_menu.py": 2,
     "script/todo/todo.py": 84,
-    "script/todo/todo_install.py": 2,
-    "script/todo/todo_telemetry.py": 1,
     "script/todo/todo_upgrade.py": 2,
     "script/todo/transform_menu.py": 5,
     "script/todo/ui/navigator.py": 1,

@@ -1246,8 +1246,8 @@ class TransformMenuMixin:
         todo_install.ask_and_install(
             self.execute,
             etapes,
-            t("Create it now? (Y/n): "),
-            self._is_yes_default_yes,
+            t("Create it now?"),
+            default=True,
         )
 
     def _transform_capabilities(self):

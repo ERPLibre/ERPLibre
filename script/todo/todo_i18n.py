@@ -4042,17 +4042,17 @@ TRANSLATIONS = {
         "fr": "Binaire introuvable à : ",
         "en": "Binary not found at: ",
     },
-    "Install starship? (y/N): ": {
-        "fr": "Installer starship ? (o/N) : ",
-        "en": "Install starship? (y/N): ",
+    "Install starship?": {
+        "fr": "Installer starship ?",
+        "en": "Install starship?",
     },
     "No starship package here, falling back upstream.": {
         "fr": "Aucun paquet starship ici, recours à l'installateur amont.",
         "en": "No starship package here, falling back upstream.",
     },
-    "Run the upstream installer? (y/N): ": {
-        "fr": "Lancer l'installateur amont ? (o/N) : ",
-        "en": "Run the upstream installer? (y/N): ",
+    "Run the upstream installer?": {
+        "fr": "Lancer l'installateur amont ?",
+        "en": "Run the upstream installer?",
     },
     "starship is not installed, shell left untouched.": {
         "fr": "starship n'est pas installé, le shell reste intact.",
@@ -8815,9 +8815,9 @@ TRANSLATIONS = {
         "fr": "Commande d'installation proposée :",
         "en": "Proposed install command:",
     },
-    "Install lm-sensors now? (y/N): ": {
-        "fr": "Installer lm-sensors maintenant ? (o/N) : ",
-        "en": "Install lm-sensors now? (y/N): ",
+    "Install lm-sensors now?": {
+        "fr": "Installer lm-sensors maintenant ?",
+        "en": "Install lm-sensors now?",
     },
     "Command failed: ": {
         "fr": "Échec de la commande : ",
@@ -8910,10 +8910,7 @@ TRANSLATIONS = {
         "fr": "Outils manquants pour la réduction sûre :",
         "en": "Missing tools for safe shrink:",
     },
-    "Install them? (y/N): ": {
-        "fr": "Les installer? (y/N) : ",
-        "en": "Install them? (y/N): ",
-    },
+    "Install them?": {"fr": "Les installer ?", "en": "Install them?"},
     "Error installing the tools: ": {
         "fr": "Erreur lors de l'installation des outils : ",
         "en": "Error installing the tools: ",
@@ -9098,10 +9095,7 @@ TRANSLATIONS = {
         "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
         "en": "Unknown package manager; install it manually.",
     },
-    "Install now? (y/N): ": {
-        "fr": "Installer maintenant ? (o/N) : ",
-        "en": "Install now? (y/N): ",
-    },
+    "Install now?": {"fr": "Installer maintenant ?", "en": "Install now?"},
     "w3m — light, renders some HTML": {
         "fr": "w3m — léger, rend un peu de HTML",
         "en": "w3m — light, renders some HTML",
@@ -20993,6 +20987,7 @@ TRANSLATIONS = {
         "fr": "Le créer maintenant ? (O/n) : ",
         "en": "Create it now? (Y/n): ",
     },
+    "Create it now?": {"fr": "Le créer maintenant ?", "en": "Create it now?"},
     "The environment is ready.": {
         "fr": "L'environnement est prêt.",
         "en": "The environment is ready.",
@@ -23598,9 +23593,9 @@ TRANSLATIONS = {
         "fr": "Ce rafraîchissement est une mise à jour complète du système, pas seulement des index de paquets.",
         "en": "This refresh is a full system upgrade, not only the package indexes.",
     },
-    "Upgrade the whole system first? (y/N): ": {
-        "fr": "Mettre d'abord tout le système à jour ? (o/N) : ",
-        "en": "Upgrade the whole system first? (y/N): ",
+    "Upgrade the whole system first?": {
+        "fr": "Mettre d'abord tout le système à jour ?",
+        "en": "Upgrade the whole system first?",
     },
     "Package indexes left as they are.": {
         "fr": "Index de paquets laissés tels quels.",
