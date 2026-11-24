@@ -3,9 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : g\u00e9rer les VM existantes.\n\nLe cycle de vie apr\u00e8s la cr\u00e9ation : lister, allumer et \u00e9teindre, r\u00e9gler le\nmat\u00e9riel, redimensionner (et r\u00e9tr\u00e9cir, ce qui demande de traverser le syst\u00e8me\nde fichiers invit\u00e9 par nbd), effacer, nettoyer les restes, retrouver une\nadresse IP, rouvrir le suivi d'une installation.\n\nC'est le fichier qui appelle \u00ab virsh \u00bb le plus souvent : les helpers qui le\nfont (domstate, dumpxml, c_env) vivent donc ici."""
 
+import collections
 import glob
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -578,6 +580,45 @@ class QemuManageMixin:
             )
             print("    virsh --connect qemu:///system define $v")
 
+    # Les relevés qui expliquent un déploiement raté, lancés AVANT les
+    # autres pour que la cause ouvre le rapport. Ils lisent le journal de
+    # libvirt, lisible sans sudo par les membres de adm, systemd-journal ou
+    # wheel. « -q » manque exprès : il tait l'avis de journalctl disant que
+    # le journal système est illisible, et cet avis EST l'information quand
+    # l'accès manque — les filtres grep le gardent donc aussi. « -p err »
+    # n'écarte que le bruit de niveau warning ; le détail de virt-aa-helper
+    # est journalisé au niveau err, en lignes de suite indentées. Le « guest
+    # agent not responding » qu'une VM en marche répète sans fin est AUSSI
+    # au niveau err, et sa traduction varie avec la langue de l'hôte : la
+    # première sonde le retire par grep avant de borner, sans quoi il
+    # remplit la fenêtre et repousse la vraie cause hors du rapport. Le
+    # « . » remplace l'apostrophe, typographique ou non, que LC_ALL=C lit
+    # en plusieurs octets. Le noyau se lit par « _TRANSPORT=kernel » :
+    # « -k » se limite au démarrage courant, et dmesg est refusé à un
+    # utilisateur ordinaire quand dmesg_restrict vaut 1. « tail -n » borne
+    # chaque section.
+    _DIAG_FAILURE_PROBES = (
+        (
+            "journal libvirt",
+            "journalctl -u libvirtd -u virtqemud -p err -n 400 --no-pager"
+            " -o short-iso 2>&1 | grep -viE"
+            " 'guest agent|agent d.{1,3}accueil|agent invit' | tail -n 80",
+        ),
+        (
+            "journal libvirt (AppArmor, firmware)",
+            "journalctl -u libvirtd -u virtqemud -p err --since '-7 days'"
+            " --no-pager -o short-iso 2>&1 | grep -iE"
+            " 'virt-aa-helper|apparmor|restricted|ovmf|nvram|firmware|loader"
+            "|Hint|Users in groups|insufficient|No journal' | tail -n 40",
+        ),
+        (
+            "AppArmor refusé (noyau)",
+            "journalctl _TRANSPORT=kernel --since '-7 days' --no-pager"
+            ' -o short-iso 2>&1 | grep -E \'apparmor="DENIED".*libvirt'
+            "|Hint|Users in groups|insufficient|No journal' | tail -n 20",
+        ),
+    )
+
     # Les relevés du diagnostic : (titre, commande). Tous en LECTURE — un
     # rapport qui modifie l'hôte n'est plus un rapport, et celui-ci est fait
     # pour être envoyé à quelqu'un qui n'a pas accès à la machine.
@@ -625,15 +666,6 @@ class QemuManageMixin:
         ),
         ("nvidia devices", "ls -l /dev/nvidia* 2>&1"),
         ("gbm backends", "ls -l /usr/lib/gbm/ 2>&1"),
-        # Une sortie vide est ambiguë — fichier absent, ou toutes les clés
-        # en commentaire ? Le dire, puisque « rien de réglé » signifie que
-        # les défauts de libvirt s'appliquent, et c'est une information.
-        (
-            "libvirt qemu.conf",
-            "grep -nE '^[^#]*(user|group|cgroup_device_acl|namespaces)'"
-            " /etc/libvirt/qemu.conf 2>&1 | head -20"
-            " || echo '(aucune clé active : défauts de libvirt)'",
-        ),
         (
             "utilisateur des VM",
             "ps -o user=,comm= -C qemu-system-x86_64 2>&1 | sort -u",
@@ -678,6 +710,41 @@ class QemuManageMixin:
             },
         ),
     )
+
+    # Les journaux de déploiement raté : même base que
+    # qemu_install_monitor.session_dir(), qui n'est PAS appelée ici — elle
+    # crée le dossier, et un diagnostic ne crée rien.
+    _DIAG_LOG_DIR = "~/.erplibre/qemu-install"
+    # Les trois plus récents : un échec plus ancien a déjà été lu ou réglé.
+    _DIAG_LOG_MAX = 3
+    # Les DERNIÈRES lignes d'erreur et la fin du journal : la mémoire reste
+    # bornée quelle que soit la taille du fichier, et un essai repris (le
+    # repli sans 3D) laisse sa dernière tentative en fin de fenêtre.
+    _DIAG_LOG_ERRORS = 15
+    _DIAG_LOG_TAIL = 25
+    # Une ligne de commande virt-install dépasse 1000 caractères : la couper
+    # garde le rapport lisible.
+    _DIAG_LINE_MAX = 400
+    # Les messages des démons sont dans la langue de l'hôte, d'où « error »
+    # et « erreur », « failed » et « Échec ». Le deux-points de « error: »
+    # est voulu : sans lui, un nom de paquet comme « perl-error » passerait
+    # pour une erreur.
+    _DIAG_ERROR_RE = re.compile(
+        r"^ERROR\b|\berror:|\berreur\b|[ÉE]chec|\bfailed\b|denied|DENIED"
+        r"|virt-aa-helper|Traceback",
+        re.IGNORECASE,
+    )
+    # Un journal de déploiement est du texte libre : une option de mot de
+    # passe ou un hachage crypt peut s'y retrouver. Seule leur VALEUR est
+    # masquée, le nom de l'option dit encore ce qui était passé. Une valeur
+    # entre guillemets est masquée en entier, espaces compris, et la clé
+    # d'un JSON (« "password": ») garde son guillemet fermant.
+    _DIAG_SECRET_RE = re.compile(
+        r"(?i)(--?(?:password|passwd|token|secret)[= ]+"
+        r"|(?:password|passwd|token|secret)[\"']?\s*[:=]\s*)"
+        r"('[^']*'|\"[^\"]*\"|\S+)"
+    )
+    _DIAG_HASH_RE = re.compile(r"\$(?:1|5|6|y|2[aby])\$[^\s'\"]+")
 
     def _qemu_diag_offer_tools(self):
         """Propose d'installer les outils dont le relevé manque. Rend un bool
@@ -775,6 +842,56 @@ class QemuManageMixin:
             return ""
         return texte[texte.index("cgroup_device_acl") :]
 
+    def _qemu_diag_qemu_conf(self):
+        """Les clés actives de qemu.conf qui touchent aux droits de QEMU.
+
+        Un résultat vide signifie que les défauts de libvirt s'appliquent, ce
+        qui est une information et se dit. Le fichier est d'abord lu
+        directement, puis par « sudo -n », qui ne demande jamais de mot de
+        passe ; sinon la section dit qu'il est lisible par root seul et donne
+        la commande. La sortie d'erreur de sudo n'est jamais recopiée.
+        """
+        motif = r"^[^#]*(user|group|cgroup_device_acl|namespaces)"
+        commande = (
+            f"grep -nE {shlex.quote(motif)} {self._QEMU_CONF} | head -20"
+        )
+        print(f"$ {commande}")
+        try:
+            with open(
+                self._QEMU_CONF, encoding="utf-8", errors="replace"
+            ) as fh:
+                texte = fh.read()
+        except FileNotFoundError:
+            print("  " + t("File absent: libvirt defaults apply."))
+            return
+        except OSError:
+            texte = None
+            try:
+                res = subprocess.run(
+                    ["sudo", "-n", "cat", self._QEMU_CONF],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=self._qemu_c_env(),
+                )
+                if res.returncode == 0:
+                    texte = res.stdout or ""
+                    print("  " + t("(read through sudo -n)"))
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+            if texte is None:
+                print("  " + t("Readable by root only:") + " sudo " + commande)
+                return
+        lignes = [
+            f"{n}:{ligne}"
+            for n, ligne in enumerate(texte.splitlines(), 1)
+            if re.match(motif, ligne)
+        ][:20]
+        if not lignes:
+            print("  " + t("No active key: libvirt defaults apply."))
+        for ligne in lignes:
+            print(f"  {ligne}")
+
     def _qemu_nvidia_acl_advice(self):
         """Propose la liste de périphériques quand elle explique le blocage.
 
@@ -820,10 +937,14 @@ class QemuManageMixin:
         a été relevé avant, et l'utilisateur se retrouve sans fichier —
         au moment précis où il en a besoin. L'échec devient donc une ligne
         du rapport, ce qui est en soi une information.
+
+        Annonce « … titre » à la console avant de lancer `rendu`, comme
+        _diag_probe : le titre est celui du rapport, pas un message traduit.
         """
         import io
         from contextlib import redirect_stdout
 
+        print(f"  … {titre}")
         tampon = io.StringIO()
         try:
             with redirect_stdout(tampon):
@@ -832,11 +953,290 @@ class QemuManageMixin:
             tampon.write(f"\n({type(exc).__name__}: {exc})\n")
         return f"\n===== {titre} =====\n" + tampon.getvalue()
 
+    def _diag_probe(self, titre, cmd):
+        """Une sonde shell du rapport : son titre, sa commande, sa sortie.
+
+        Rend la section entière, prête à joindre : l'en-tête
+        « ===== titre ===== », la ligne « $ cmd » qui dit comment la
+        reproduire, puis stdout et stderr. Bornée à 30 s et lancée en
+        LC_ALL=C ; une commande qui pend rend « (timeout) », une qui ne
+        se lance pas rend son erreur, et aucune ne lève.
+        """
+        print(f"  … {titre}")
+        entete = f"\n===== {titre} =====\n$ {cmd}\n"
+        try:
+            res = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self._qemu_c_env(),
+            )
+        except subprocess.TimeoutExpired:
+            return entete + "(timeout)\n"
+        except OSError as exc:
+            return entete + f"({exc})\n"
+        return entete + (res.stdout or "") + (res.stderr or "")
+
+    @classmethod
+    def _diag_redact(cls, ligne):
+        """Une ligne de journal prête pour le rapport : valeurs de secret et
+        hachages crypt masqués, longueur coupée à _DIAG_LINE_MAX avec « … ».
+        Pure."""
+        ligne = cls._DIAG_SECRET_RE.sub(lambda m: m.group(1) + "****", ligne)
+        ligne = cls._DIAG_HASH_RE.sub("$…$****", ligne)
+        if len(ligne) > cls._DIAG_LINE_MAX:
+            ligne = ligne[: cls._DIAG_LINE_MAX] + " …"
+        return ligne
+
+    @classmethod
+    def _diag_log_excerpt(cls, chemin):
+        """(lignes d'erreur, dernières lignes) d'un journal, masquées.
+
+        Le fichier est lu ligne à ligne dans deux files bornées : les
+        _DIAG_LOG_ERRORS DERNIÈRES lignes qui ressemblent à une erreur, et
+        les _DIAG_LOG_TAIL dernières lignes non vides. La mémoire reste
+        bornée quelle que soit la taille du fichier. Une OSError remonte :
+        l'appelant en fait une ligne du rapport.
+        """
+        erreurs = collections.deque(maxlen=cls._DIAG_LOG_ERRORS)
+        fin = collections.deque(maxlen=cls._DIAG_LOG_TAIL)
+        with open(chemin, encoding="utf-8", errors="replace") as fh:
+            for brut in fh:
+                ligne = brut.rstrip("\n")
+                if not ligne.strip():
+                    continue
+                fin.append(ligne)
+                if cls._DIAG_ERROR_RE.search(ligne):
+                    erreurs.append(ligne)
+        return (
+            [cls._diag_redact(ln) for ln in erreurs],
+            [cls._diag_redact(ln) for ln in fin],
+        )
+
+    @staticmethod
+    def _diag_mtime(chemin):
+        """Date de modification, ou 0 : un fichier peut disparaître entre la
+        liste et la lecture de sa date."""
+        try:
+            return os.path.getmtime(chemin)
+        except OSError:
+            return 0
+
+    def _qemu_diag_deploy_logs(self):
+        """Les derniers journaux « <vm>-create.log » de déploiement raté.
+
+        Les _DIAG_LOG_MAX plus récents, du plus récent au plus ancien, chacun
+        daté pour qu'un journal ancien se voie comme tel. Rien n'est créé :
+        un dossier absent se dit. Nomme enfin la dernière session
+        d'installation, sans recopier ses journaux — celui de l'invité compte
+        des milliers de lignes et des noms de paquets qui brouillent la
+        recherche d'erreurs.
+        """
+        base = os.path.expanduser(self._DIAG_LOG_DIR)
+        print(
+            f"$ ls -t {self._DIAG_LOG_DIR}/*-create.log"
+            f" | head -{self._DIAG_LOG_MAX}"
+        )
+        if not os.path.isdir(base):
+            print(
+                "  "
+                + t("No failed-deploy log: {path} does not exist.").format(
+                    path=base
+                )
+            )
+            return
+        logs = sorted(
+            glob.glob(os.path.join(base, "*-create.log")),
+            key=self._diag_mtime,
+            reverse=True,
+        )[: self._DIAG_LOG_MAX]
+        if not logs:
+            print(
+                "  " + t("No failed-deploy log in {path}.").format(path=base)
+            )
+        for chemin in logs:
+            quand = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(self._diag_mtime(chemin))
+            )
+            print(f"\n── {chemin} ({quand}) ──")
+            try:
+                erreurs, fin = self._diag_log_excerpt(chemin)
+            except OSError as exc:
+                print(f"  ({exc})")
+                continue
+            if erreurs:
+                print("  " + t("Error lines:"))
+                for ligne in erreurs:
+                    print(f"    {ligne}")
+            print("  " + t("Last lines:"))
+            for ligne in fin:
+                print(f"    {ligne}")
+        # Même règle que qemu_install_monitor.list_install_runs : une
+        # session est un sous-dossier qui porte un session.json.
+        sessions = sorted(
+            d
+            for d in glob.glob(os.path.join(base, "*/"))
+            if os.path.isfile(os.path.join(d, "session.json"))
+        )
+        if sessions:
+            print(
+                "\n  "
+                + t("Latest install session: {path}").format(
+                    path=sessions[-1].rstrip("/")
+                )
+            )
+
+    @staticmethod
+    def _qemu_host_fw_arch():
+        """Architecture de l'hôte telle que l'écrivent les descripteurs de
+        firmware (x86_64, aarch64)."""
+        m = platform.machine()
+        return {"amd64": "x86_64", "arm64": "aarch64"}.get(m, m)
+
+    def _qemu_diag_firmware(self):
+        """Les descripteurs de firmware UEFI, et celui que libvirt retiendra.
+
+        Le lecteur et le choix vivent dans deploy_qemu.py, que le
+        déploiement lit aussi : une seule vérité. Le tableau suit l'ordre
+        de libvirt ; un firmware chargé en mémoire qui passe avant le
+        premier en flash est signalé, car sans « loader.type=pflash » libvirt
+        le retient et virt-aa-helper en refuse le chemin. La section finit
+        sur les chemins de chargeur que libvirt propose (domcapabilities).
+        """
+        arch = self._qemu_host_fw_arch()
+        try:
+            mod = self._qemu_import_module()
+            dossiers = tuple(mod.FIRMWARE_DIRS)
+        except Exception as exc:
+            mod = None
+            print(
+                "  deploy_qemu.py "
+                + t("unreadable: {error}").format(error=exc)
+            )
+        if mod is not None:
+            print("$ ls " + " ".join(d + "/*.json" for d in dossiers))
+            descs = mod.descripteurs_firmware(dossiers)
+            if not descs:
+                print(
+                    "  "
+                    + t("No firmware descriptor in: {dirs}").format(
+                        dirs=", ".join(dossiers)
+                    )
+                )
+            for i, d in enumerate(descs, 1):
+                if d["erreur"]:
+                    print(
+                        f"  {i:>2}  {d['fichier']}  "
+                        + t("unreadable: {error}").format(error=d["erreur"])
+                    )
+                    continue
+                if d["masque"]:
+                    print(
+                        f"  {i:>2}  {d['fichier']}  "
+                        + t("masked by an empty file: {path}").format(
+                            path=d["chemin"]
+                        )
+                    )
+                    continue
+                print(
+                    f"  {i:>2}  {d['fichier']:<36} {d['device']:<7}"
+                    f" {d['mode']:<9} {','.join(d['interfaces']):<6}"
+                    f" {','.join(d['archs']):<8} {d['executable']}"
+                )
+                print(f"      features: {','.join(d['features'])}")
+            if descs:
+                libre = mod.firmware_probable(descs, arch)
+                flash = mod.firmware_probable(descs, arch, pflash_only=True)
+                print()
+                print(
+                    "  "
+                    + t(
+                        "Likely pick, Secure Boot off, any loader type: {file}"
+                    ).format(file=libre["fichier"] if libre else "—")
+                )
+                print(
+                    "  "
+                    + t(
+                        "Likely pick, Secure Boot off, loader.type=pflash:"
+                        " {file}"
+                    ).format(file=flash["fichier"] if flash else "—")
+                )
+                print(
+                    "  "
+                    + t(
+                        "Approximation: libvirt also matches the machine type"
+                        " and SMM or confidential-computing features."
+                    )
+                )
+                if (
+                    libre
+                    and libre["device"] == "memory"
+                    and flash
+                    and libre is not flash
+                ):
+                    print(
+                        "  ⚠ "
+                        + t(
+                            "{memory} (memory, {path}) sorts before {flash}"
+                            " (flash): without loader.type=pflash libvirt"
+                            " picks it, and virt-aa-helper refuses that path"
+                            " (skipped restricted file)."
+                        ).format(
+                            memory=libre["fichier"],
+                            path=libre["executable"],
+                            flash=flash["fichier"],
+                        )
+                    )
+                    print(
+                        "    "
+                        + t(
+                            "VMs created since the pflash restriction are not"
+                            " affected; older VMs keep the firmware recorded"
+                            " in their definition."
+                        )
+                    )
+        # q35 est la machine que virt-install retient pour un invité x86
+        # moderne ; ailleurs, la machine par défaut de l'architecture.
+        cmd = ["virsh", "--connect", "qemu:///system", "domcapabilities"]
+        if arch == "x86_64":
+            cmd += ["--machine", "q35"]
+        print(f"\n$ {shlex.join(cmd)}")
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=self._qemu_c_env(),
+            )
+        except subprocess.TimeoutExpired:
+            print("  (timeout)")
+            return
+        except OSError as exc:
+            print(f"  ({exc})")
+            return
+        if res.returncode != 0:
+            for ligne in (res.stderr or "").splitlines()[:5]:
+                print(f"  {ligne}")
+            return
+        bloc = re.search(r"<loader\b.*?</loader>", res.stdout or "", re.S)
+        valeurs = re.findall(
+            r"<value>(/[^<]+)</value>", bloc.group(0) if bloc else ""
+        )
+        print("  " + t("Loader paths libvirt offers (domcapabilities):"))
+        for valeur in valeurs[:20]:
+            print(f"    {valeur}")
+
     def _qemu_diagnostics(self):
         """Relevé complet de l'hôte, écrit dans un fichier à transmettre.
 
-        Chaque sonde est bornée dans le temps : une commande qui pend ne doit
-        pas retenir le rapport, et son absence est elle-même une information.
+        Les sections qui expliquent un déploiement raté viennent en tête —
+        journaux de déploiement, journal de libvirt, refus AppArmor, choix
+        du firmware UEFI — pour que la cause ouvre le rapport. Chaque sonde
+        est bornée dans le temps : une commande qui pend ne doit pas retenir
+        le rapport, et son absence est elle-même une information.
         """
         import io
         from contextlib import redirect_stdout
@@ -847,23 +1247,21 @@ class QemuManageMixin:
         chemin = os.path.join(dossier, f"qemu-diagnostic-{horo}.log")
         morceaux = [f"# ERPLibre — diagnostic QEMU — {horo}\n"]
         print(f"\n🩺 {t('Collecting the diagnostics...')}")
+        morceaux.append(
+            self._diag_section(
+                "derniers déploiements ratés", self._qemu_diag_deploy_logs
+            )
+        )
+        for titre, cmd in self._DIAG_FAILURE_PROBES:
+            morceaux.append(self._diag_probe(titre, cmd))
+        morceaux.append(
+            self._diag_section("firmware UEFI", self._qemu_diag_firmware)
+        )
         for titre, cmd in self._DIAG_PROBES:
-            print(f"  … {titre}")
-            morceaux.append(f"\n===== {titre} =====\n$ {cmd}\n")
-            try:
-                res = subprocess.run(
-                    cmd,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=self._qemu_c_env(),
-                )
-                morceaux.append((res.stdout or "") + (res.stderr or ""))
-            except subprocess.TimeoutExpired:
-                morceaux.append("(timeout)\n")
-            except OSError as exc:
-                morceaux.append(f"({exc})\n")
+            morceaux.append(self._diag_probe(titre, cmd))
+        morceaux.append(
+            self._diag_section("libvirt qemu.conf", self._qemu_diag_qemu_conf)
+        )
         morceaux.append(self._diag_section("3D", self._qemu_gpu_3d_report))
         morceaux.append(
             self._diag_section("3D par VM", self._qemu_vm_3d_report)

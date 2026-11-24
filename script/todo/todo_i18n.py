@@ -11969,6 +11969,78 @@ TRANSLATIONS = {
         "fr": "Relisez-le avant de le transmettre.",
         "en": "Read it before sharing it.",
     },
+    "No failed-deploy log: {path} does not exist.": {
+        "fr": "Aucun journal de déploiement raté : {path} n'existe pas.",
+        "en": "No failed-deploy log: {path} does not exist.",
+    },
+    "No failed-deploy log in {path}.": {
+        "fr": "Aucun journal de déploiement raté dans {path}.",
+        "en": "No failed-deploy log in {path}.",
+    },
+    "Error lines:": {
+        "fr": "Lignes d'erreur :",
+        "en": "Error lines:",
+    },
+    "Last lines:": {
+        "fr": "Dernières lignes :",
+        "en": "Last lines:",
+    },
+    "Latest install session: {path}": {
+        "fr": "Dernière session d'installation : {path}",
+        "en": "Latest install session: {path}",
+    },
+    "No firmware descriptor in: {dirs}": {
+        "fr": "Aucun descripteur de firmware dans : {dirs}",
+        "en": "No firmware descriptor in: {dirs}",
+    },
+    "unreadable: {error}": {
+        "fr": "illisible : {error}",
+        "en": "unreadable: {error}",
+    },
+    "masked by an empty file: {path}": {
+        "fr": "masqué par un fichier vide : {path}",
+        "en": "masked by an empty file: {path}",
+    },
+    "Likely pick, Secure Boot off, any loader type: {file}": {
+        "fr": "Choix probable, Secure Boot désactivé, tout type de chargeur : {file}",
+        "en": "Likely pick, Secure Boot off, any loader type: {file}",
+    },
+    "Likely pick, Secure Boot off, loader.type=pflash: {file}": {
+        "fr": "Choix probable, Secure Boot désactivé, loader.type=pflash : {file}",
+        "en": "Likely pick, Secure Boot off, loader.type=pflash: {file}",
+    },
+    "Approximation: libvirt also matches the machine type and SMM or confidential-computing features.": {
+        "fr": "Approximation : libvirt compare aussi le type de machine et les exigences SMM ou d'informatique confidentielle.",
+        "en": "Approximation: libvirt also matches the machine type and SMM or confidential-computing features.",
+    },
+    "{memory} (memory, {path}) sorts before {flash} (flash): without loader.type=pflash libvirt picks it, and virt-aa-helper refuses that path (skipped restricted file).": {
+        "fr": "{memory} (mémoire, {path}) se trie avant {flash} (flash) : sans loader.type=pflash, libvirt le retient, et virt-aa-helper refuse ce chemin (skipped restricted file).",
+        "en": "{memory} (memory, {path}) sorts before {flash} (flash): without loader.type=pflash libvirt picks it, and virt-aa-helper refuses that path (skipped restricted file).",
+    },
+    "VMs created since the pflash restriction are not affected; older VMs keep the firmware recorded in their definition.": {
+        "fr": "Les VM créées depuis la restriction pflash n'en souffrent pas ; les plus anciennes gardent le firmware inscrit dans leur définition.",
+        "en": "VMs created since the pflash restriction are not affected; older VMs keep the firmware recorded in their definition.",
+    },
+    "Loader paths libvirt offers (domcapabilities):": {
+        "fr": "Chemins de chargeur proposés par libvirt (domcapabilities) :",
+        "en": "Loader paths libvirt offers (domcapabilities):",
+    },
+    "(read through sudo -n)": {
+        "fr": "(lu par sudo -n)",
+        "en": "(read through sudo -n)",
+    },
+    "Readable by root only:": {
+        "fr": "Lisible par root seul :",
+        "en": "Readable by root only:",
+    },
+    "No active key: libvirt defaults apply.": {
+        "fr": "Aucune clé active : les défauts de libvirt s'appliquent.",
+        "en": "No active key: libvirt defaults apply.",
+    },
+    "File absent: libvirt defaults apply.": {
+        "fr": "Fichier absent : les défauts de libvirt s'appliquent.",
+        "en": "File absent: libvirt defaults apply.",
+    },
     "These tools would complete the report:": {
         "fr": "Ces outils compléteraient le rapport :",
         "en": "These tools would complete the report:",

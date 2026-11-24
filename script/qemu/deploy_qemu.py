@@ -57,6 +57,7 @@ import hashlib
 import hmac
 import http.client
 import ipaddress
+import json
 import os
 import pwd
 import re
@@ -3176,6 +3177,143 @@ UEFI_BOOT = (
     "uefi,firmware.feature0.name=secure-boot,"
     "firmware.feature0.enabled=no,loader.type=pflash"
 )
+
+# Dossiers des descripteurs de firmware QEMU, du plus prioritaire au moins
+# prioritaire : le démon système de libvirt lit sysconfdir puis datadir. Le
+# dossier XDG de l'utilisateur ne sert qu'à qemu:///session, et le
+# déploiement passe par qemu:///system.
+FIRMWARE_DIRS: tuple[str, ...] = (
+    "/etc/qemu/firmware",
+    "/usr/share/qemu/firmware",
+)
+
+# Jeton d'architecture du script → architecture telle que l'écrivent QEMU et
+# les descripteurs de firmware (« targets[].architecture »).
+QEMU_ARCH = {"amd64": "x86_64", "arm64": "aarch64", "s390x": "s390x"}
+
+
+def _descripteur_vide(fichier: str, chemin: str) -> dict:
+    """Un descripteur aux champs neutres : chaque entrée porte toutes les
+    clés, si bien qu'un lecteur n'a jamais à tester leur présence."""
+    return {
+        "fichier": fichier,
+        "chemin": chemin,
+        "device": "",
+        "mode": "",
+        "executable": "",
+        "interfaces": [],
+        "archs": [],
+        "machines": [],
+        "features": [],
+        "masque": False,
+        "erreur": "",
+    }
+
+
+def descripteurs_firmware(
+    dossiers: tuple[str, ...] = FIRMWARE_DIRS,
+) -> list[dict]:
+    """Les descripteurs de firmware QEMU, fusionnés comme libvirt les fusionne.
+
+    Un même nom de fichier dans un dossier plus prioritaire cache celui des
+    dossiers suivants. Un fichier de taille nulle masque le descripteur : il
+    reste dans la liste avec masque=True, pour que le rapport puisse le dire,
+    mais il ne compte plus. Le résultat est trié par nom de fichier, ordre
+    dans lequel libvirt essaie les descripteurs.
+
+    Clés : fichier, chemin, device (« flash », « memory », « kernel » ou
+    « »), mode (mapping.mode, « split » par défaut pour un flash),
+    executable (le fichier de code chargé), interfaces, archs, machines,
+    features, masque, erreur (« » ou le message d'un fichier illisible).
+    Ne lève jamais : un dossier absent est sauté, un fichier illisible ou
+    un JSON invalide — imbriqué au-delà de la limite de récursion compris —
+    devient une entrée dont « erreur » est remplie.
+    """
+    retenus: dict[str, str] = {}
+    for dossier in dossiers:
+        try:
+            noms = os.listdir(dossier)
+        except OSError:
+            continue
+        for nom in noms:
+            if nom.endswith(".json"):
+                retenus.setdefault(nom, os.path.join(dossier, nom))
+    descs = []
+    for fichier in sorted(retenus):
+        chemin = retenus[fichier]
+        d = _descripteur_vide(fichier, chemin)
+        descs.append(d)
+        try:
+            if os.path.getsize(chemin) == 0:
+                d["masque"] = True
+                continue
+            with open(chemin, encoding="utf-8") as fh:
+                brut = json.load(fh)
+            if not isinstance(brut, dict):
+                raise ValueError("objet JSON attendu")
+            mapping = brut.get("mapping") or {}
+            device = str(mapping.get("device") or "")
+            if device == "flash":
+                code = (mapping.get("executable") or {}).get("filename")
+            else:
+                code = mapping.get("filename")
+            cibles = [
+                c for c in brut.get("targets") or [] if isinstance(c, dict)
+            ]
+            d.update(
+                device=device,
+                mode=str(
+                    mapping.get("mode")
+                    or ("split" if device == "flash" else "")
+                ),
+                executable=str(code or ""),
+                interfaces=[str(i) for i in brut.get("interface-types") or []],
+                archs=[str(c.get("architecture", "")) for c in cibles],
+                machines=[
+                    str(m) for c in cibles for m in c.get("machines") or []
+                ],
+                features=[str(f) for f in brut.get("features") or []],
+            )
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            RecursionError,
+        ) as exc:
+            d["erreur"] = str(exc) or type(exc).__name__
+    return descs
+
+
+def firmware_probable(
+    descs: list[dict], arch: str, pflash_only: bool = False
+) -> dict | None:
+    """Le descripteur que libvirt retiendrait pour un amorçage UEFI sans
+    Secure Boot, ou None.
+
+    `arch` s'écrit comme QEMU l'écrit (x86_64, aarch64). Le premier
+    descripteur, dans l'ordre reçu, qui est lisible, non masqué, d'interface
+    « uefi », de cette architecture et sans « secure-boot » — le déploiement
+    désactive Secure Boot, voir UEFI_BOOT. `pflash_only` ajoute la condition
+    de « loader.type=pflash » : un firmware en flash.
+
+    C'est une approximation : libvirt compare aussi les motifs de type de
+    machine, les exigences SMM et les fonctions d'informatique
+    confidentielle, ce que ce choix ne fait pas.
+    """
+    for d in descs:
+        if d.get("erreur") or d.get("masque"):
+            continue
+        if "uefi" not in d.get("interfaces", ()):
+            continue
+        if arch not in d.get("archs", ()):
+            continue
+        if "secure-boot" in d.get("features", ()):
+            continue
+        if pflash_only and d.get("device") != "flash":
+            continue
+        return d
+    return None
 
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
