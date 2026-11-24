@@ -345,6 +345,46 @@ class TestLesReferences(unittest.TestCase):
             dehors = rr.Essai("/ailleurs/test_demo.py", [entree("A::x")], None)
             self.assertEqual(rr.references(dehors, racine), {})
 
+    def test_a_deck_test_is_named_in_the_deck_repository(self):
+        # Le programme du deck est un dépôt cloné sous la racine : ses
+        # tests se nomment par ce dépôt et leur chemin dans le clone, comme
+        # le registre les déclare. Un répertoire voisin reste d'ERPLibre.
+        with tempfile.TemporaryDirectory() as racine:
+            for relatif, attendue in (
+                (
+                    "script/stream_deck/deck/tests/test_demo.py",
+                    "erplibre_streamdeck:tests/test_demo.py::A::test_ok",
+                ),
+                (
+                    "script/stream_deck/deck2/tests/test_demo.py",
+                    "erplibre:script/stream_deck/deck2/tests/test_demo.py"
+                    "::A::test_ok",
+                ),
+            ):
+                with self.subTest(relatif=relatif):
+                    essai = rr.Essai(
+                        os.path.join(racine, *relatif.split("/")),
+                        [entree("A::test_ok")],
+                        None,
+                    )
+                    self.assertEqual(
+                        list(rr.references(essai, racine)), [attendue]
+                    )
+
+    def test_a_declared_deck_test_gets_its_verdict(self):
+        deck = "erplibre_streamdeck:tests/test_demo.py::A::test_ok"
+        faux = FauxRegistre(declarees=[deck])
+        essai = rr.Essai(
+            "/depot/script/stream_deck/deck/tests/test_demo.py",
+            [entree("A::test_ok")],
+            None,
+        )
+        pousser(faux, [essai])
+        self.assertEqual(
+            [args for args, _ in faux.envois()],
+            [["repo_unittest", deck, "passed"]],
+        )
+
     def test_a_failing_subtest_fails_its_test(self):
         essai = rr.Essai(
             "/depot/test/test_demo.py",
@@ -528,7 +568,9 @@ class TestLEnvoi(unittest.TestCase):
             [
                 [
                     ["kind", "=", "repo_unittest"],
+                    "|",
                     ["reference", "=like", "erplibre:%"],
+                    ["reference", "=like", "erplibre_streamdeck:%"],
                 ]
             ],
         )

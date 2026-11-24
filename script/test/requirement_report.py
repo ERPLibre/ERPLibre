@@ -7,8 +7,11 @@ Le registre est une base Odoo où le module `erplibre_devops_requirement`
 liste, pour chaque requis, les tests qui le prouvent. Une preuve faite par
 un test unitaire d'ERPLibre est une ligne de sorte `repo_unittest` dont la
 référence se lit `erplibre:test/<fichier>::<Classe>::<méthode>`, le chemin
-étant relatif à la racine du dépôt. Ce module calcule cette référence pour
-chaque test noté par unit_file.py, puis écrit le verdict par
+étant relatif à la racine du dépôt. Un test d'un autre dépôt cloné sous
+cette racine (DEPOTS_INCLUS) se nomme par ce dépôt et son chemin dans le
+clone : `erplibre_streamdeck:tests/<fichier>::…` pour le programme du deck.
+Ce module calcule cette référence pour chaque test noté par unit_file.py,
+puis écrit le verdict par
 `devops.requirement.test.record_result_by_reference`, en JSON-RPC.
 
 L'envoi lui-même, `Registre.pousser_verdicts`, ne connaît ni unittest ni
@@ -68,6 +71,9 @@ VARIABLES = (
 )
 
 DEPOT = "erplibre"
+# Les clones d'autres dépôts sous la racine, par chemin relatif, avec le
+# nom de dépôt que portent les références de leurs tests.
+DEPOTS_INCLUS = {"script/stream_deck/deck": "erplibre_streamdeck"}
 SORTE = "repo_unittest"
 MODELE = "devops.requirement.test"
 
@@ -106,11 +112,18 @@ class RegistreIndisponible(Exception):
 
 
 def _base(chemin, racine):
-    """`erplibre:<chemin relatif>`, ou None hors de `racine`."""
+    """`<dépôt>:<chemin relatif à son dépôt>`, ou None hors de `racine`.
+
+    Un fichier sous un clone de DEPOTS_INCLUS est de ce dépôt, son chemin
+    relatif au clone ; tout autre fichier sous `racine` est d'ERPLibre."""
     relatif = os.path.relpath(os.path.abspath(chemin), racine)
     if relatif == os.pardir or relatif.startswith(os.pardir + os.sep):
         return None
-    return f"{DEPOT}:{relatif.replace(os.sep, '/')}"
+    relatif = relatif.replace(os.sep, "/")
+    for clone, depot in DEPOTS_INCLUS.items():
+        if relatif.startswith(clone + "/"):
+            return f"{depot}:{relatif[len(clone) + 1 :]}"
+    return f"{DEPOT}:{relatif}"
 
 
 def _verdict(resultat, log, duree):
@@ -124,7 +137,7 @@ def references(essai, racine=RACINE):
     échec ou ignorée n'a pas de méthode : sa clé est le PRÉFIXE de sa
     classe, `<base>::<Classe>::` ; une fixture de module et une panne, celui
     du fichier, `<base>::`. Un sous-test est rangé sous son test. Rend {}
-    pour un fichier hors de `racine`, qui n'a pas de référence `erplibre:`.
+    pour un fichier hors de `racine`, qui n'a pas de référence de dépôt.
     """
     base = _base(essai.chemin, racine)
     if base is None:
@@ -208,7 +221,7 @@ def notes_des_essais(essais, racine=RACINE):
 
     Un essai qui a noté au moins un test est COMPLET : unit_file.py n'écrit
     ses notes qu'une fois tous les tests du fichier passés. Son préfixe,
-    `erplibre:<fichier>::`, a pour libellé le chemin du fichier."""
+    `<dépôt>:<fichier>::`, a pour libellé le chemin du fichier."""
     notes = {}
     complets = {}
     for essai in essais:
@@ -383,14 +396,14 @@ class Registre:
     def pousser(self, essais, racine=None, sortie=None):
         """Envoie le verdict de chaque test unitaire déclaré que les
         `essais` ont noté : `pousser_verdicts` sur les lignes
-        `repo_unittest` du dépôt. `racine` : RACINE par défaut, lue à
-        l'appel."""
+        `repo_unittest` d'ERPLibre et des dépôts de DEPOTS_INCLUS. `racine` :
+        RACINE par défaut, lue à l'appel."""
         racine = racine or RACINE
         notes, complets = notes_des_essais(essais, racine)
         return self.pousser_verdicts(
             notes,
             SORTE,
-            f"{DEPOT}:%",
+            [f"{depot}:%" for depot in (DEPOT, *DEPOTS_INCLUS.values())],
             racine=racine,
             sortie=sortie,
             complets=complets,

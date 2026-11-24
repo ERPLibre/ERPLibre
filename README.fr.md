@@ -277,8 +277,10 @@ time make test_full_fast
 Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
 requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
 Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
-dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
-la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Un
+test du programme du deck, cloné sous `script/stream_deck/deck`, se nomme dans
+son propre dépôt : `erplibre_streamdeck:tests/<fichier>::<Classe>::<méthode>`.
+Après la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
 tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
 aucun appel. Un test déclaré absent d'un fichier qui a tourné jusqu'au bout est
 noté en erreur : il a été renommé ou supprimé, et sa référence est à mettre à
