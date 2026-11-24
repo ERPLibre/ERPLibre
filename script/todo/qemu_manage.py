@@ -1277,10 +1277,29 @@ class QemuManageMixin:
         # adresses : le dire, puisqu'il est fait pour être transmis.
         print(f"   {t('It names this host, its paths and its addresses.')}")
         print(f"   {t('Read it before sharing it.')}")
+        self._qemu_diag_show(chemin, "".join(morceaux))
         # Après l'écriture : le rapport existe même si l'on refuse, et une
         # installation acceptée invite à le refaire, plus complet.
         if self._qemu_diag_offer_tools():
             print(f"\n  {t('Run the diagnostics again for a fuller report.')}")
+
+    def _qemu_diag_show(self, chemin, texte):
+        """Propose d'afficher le rapport `texte` dans le terminal.
+
+        Oui par défaut : le lire sur place évite de quitter le CLI pour
+        ouvrir le fichier. Le texte s'imprime tel quel, sans pager, puis le
+        chemin du fichier est rappelé, l'affichage l'ayant fait défiler.
+        Une entrée fermée (EOF) vaut refus.
+        """
+        try:
+            reponse = input(t("Show the report on screen? (Y/n): "))
+        except EOFError:
+            return
+        if not self._is_yes_default_yes(reponse):
+            return
+        print()
+        print(texte.rstrip("\n"))
+        print(f"\n✅ {t('Report written to: ')}{chemin}")
 
     def _qemu_egl_failed(self, sortie):
         """La sortie accuse-t-elle un EGL inutilisable ?

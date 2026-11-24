@@ -11977,6 +11977,10 @@ TRANSLATIONS = {
         "fr": "Relisez-le avant de le transmettre.",
         "en": "Read it before sharing it.",
     },
+    "Show the report on screen? (Y/n): ": {
+        "fr": "Afficher le rapport à l'écran ? (O/n, défaut : oui) : ",
+        "en": "Show the report on screen? (Y/n, default: yes): ",
+    },
     "No failed-deploy log: {path} does not exist.": {
         "fr": "Aucun journal de déploiement raté : {path} n'existe pas.",
         "en": "No failed-deploy log: {path} does not exist.",

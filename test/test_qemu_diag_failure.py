@@ -12,7 +12,9 @@ Ce que ces tests gardent :
 - les descripteurs de firmware sont fusionnés comme libvirt les fusionne,
   et un firmware en mémoire trié avant le firmware en flash est signalé ;
 - qemu.conf se lit sans jamais recopier un refus de permission ;
-- la sonde shell extraite garde le format du rapport.
+- la sonde shell extraite garde le format du rapport ;
+- le rapport s'affiche à l'écran sur un oui, vide compris, et rien ne
+  s'affiche sur un non ou une entrée fermée.
 """
 
 import importlib.util
@@ -579,6 +581,71 @@ class LaSonde(unittest.TestCase):
         ):
             section = todo._diag_probe("x", "echo hi")
         self.assertEqual("\n===== x =====\n$ echo hi\n(timeout)\n", section)
+
+
+class LAffichage(unittest.TestCase):
+    TEXTE = "# rapport d'essai\nligne-temoin\n"
+    CHEMIN = "/chemin/inexistant/qemu-diagnostic-essai.log"
+
+    def _afficher(self, **input_kw):
+        todo = _todo()
+        with mock.patch("builtins.input", **input_kw) as faux:
+            sortie = _sortie(todo._qemu_diag_show, self.CHEMIN, self.TEXTE)
+        return sortie, faux
+
+    def test_empty_answer_shows_the_report_then_its_path(self):
+        sortie, faux = self._afficher(return_value="")
+        self.assertEqual(
+            t("Show the report on screen? (Y/n): "), faux.call_args.args[0]
+        )
+        self.assertIn("ligne-temoin", sortie)
+        self.assertLess(
+            sortie.index("ligne-temoin"), sortie.index(self.CHEMIN)
+        )
+
+    def test_yes_in_both_languages_shows_it(self):
+        for reponse in ("o", "oui", "y", "YES"):
+            with self.subTest(reponse=reponse):
+                sortie, _ = self._afficher(return_value=reponse)
+                self.assertIn("ligne-temoin", sortie)
+
+    def test_no_shows_nothing(self):
+        sortie, _ = self._afficher(return_value="n")
+        self.assertEqual("", sortie)
+
+    def test_closed_input_shows_nothing(self):
+        sortie, _ = self._afficher(side_effect=EOFError)
+        self.assertEqual("", sortie)
+
+    def test_diagnostics_asks_after_writing_the_file(self):
+        todo = _todo()
+        with tempfile.TemporaryDirectory() as maison:
+            vus = []
+
+            def montrer(chemin, texte):
+                vus.append((chemin, texte, Path(chemin).read_text("utf-8")))
+
+            with (
+                mock.patch.dict(os.environ, {"HOME": maison}),
+                mock.patch.object(QemuManageMixin, "_DIAG_FAILURE_PROBES", ()),
+                mock.patch.object(QemuManageMixin, "_DIAG_PROBES", ()),
+                mock.patch.object(
+                    QemuManageMixin, "_diag_section", return_value="section\n"
+                ),
+                mock.patch.object(
+                    QemuManageMixin, "_qemu_diag_show", side_effect=montrer
+                ),
+                mock.patch.object(
+                    QemuManageMixin,
+                    "_qemu_diag_offer_tools",
+                    return_value=False,
+                ),
+            ):
+                _sortie(todo._qemu_diagnostics)
+        self.assertEqual(1, len(vus))
+        chemin, texte, sur_disque = vus[0]
+        self.assertTrue(chemin.startswith(maison))
+        self.assertEqual(texte, sur_disque)
 
 
 if __name__ == "__main__":
