@@ -2,8 +2,9 @@
 // - text : un champ, le défaut en indication ; Entrée envoie, vide
 //   compris, ce qui vaut le défaut comme au CLI ;
 // - confirm : Oui et Non, le défaut mis en avant ; y, o et n au clavier,
-//   Entrée sur le widget pour le défaut de l'appelant ; à rebours
-//   (`timeout_s`), le temps qui reste, comme un countdown ;
+//   Entrée sur le widget pour le défaut de l'appelant ; dessous, un bouton
+//   par action à lettre ; à rebours (`timeout_s`), le temps qui reste,
+//   comme un countdown ;
 // - typed : un champ ; quand le message porte le texte attendu
 //   (`expected`), Confirmer n'est actif qu'à l'égalité exacte. Aucun bouton
 //   n'envoie ce texte à la place de l'utilisateur ;
@@ -88,18 +89,18 @@ export class QuestionView extends Component {
                         t-esc="env.t('Validate')"/>
                     <button type="button" t-att-disabled="locked" t-on-click="() => this.send(allAnswer)"
                         t-esc="env.t('All')"/>
-                    <button t-foreach="actions" t-as="action" t-key="action.key" type="button" class="entry"
-                        t-att-disabled="locked" t-att-aria-label="action.key + '. ' + (action.speak or action.label)"
-                        t-on-click="() => this.send(action.key)">
-                        <span class="key" t-esc="action.key + '.'"/>
-                        <span t-esc="action.label"/>
-                    </button>
-                    <button t-if="back" type="button" class="entry" t-att-disabled="locked"
-                        t-att-aria-label="'0. ' + (back.speak or back.label)" t-on-click="() => this.send('0')">
-                        <span class="key" t-esc="'0.'"/>
-                        <span t-esc="back.label"/>
-                    </button>
                 </t>
+                <button t-foreach="actions" t-as="action" t-key="action.key" type="button" class="entry"
+                    t-att-disabled="locked" t-att-aria-label="action.key + '. ' + (action.speak or action.label)"
+                    t-on-click="() => this.send(action.key)">
+                    <span class="key" t-esc="action.key + '.'"/>
+                    <span t-esc="action.label"/>
+                </button>
+                <button t-if="back" type="button" class="entry" t-att-disabled="locked"
+                    t-att-aria-label="'0. ' + (back.speak or back.label)" t-on-click="() => this.send('0')">
+                    <span class="key" t-esc="'0.'"/>
+                    <span t-esc="back.label"/>
+                </button>
                 <label class="other">
                     <span t-esc="env.t('Other answer')"/>
                     <input type="text" autocomplete="off" t-model="state.other" t-on-keydown="onOtherKey"/>

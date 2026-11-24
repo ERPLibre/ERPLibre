@@ -5,7 +5,7 @@
 les questions de TODO, et deux ports qui le font.
 
 Un port répond à `menu(view)`, `ask(text, default, kind, timeout)`,
-`secret(text)`, `confirm(text, default, typed, timeout, back)`,
+`secret(text)`, `confirm(text, default, typed, timeout, back, letters)`,
 `choose(text, options, multi, default, labels, letters, names)`,
 `pick_path(start, directory)`, `notice(text, level)`, `run(cmd, **opts)`
 et `open_view(view)`. `menu` et `ask` sont les deux primitives : elles
@@ -100,13 +100,25 @@ def question(kind, text, default=None, timeout=None, **fields) -> dict:
     return message
 
 
-def confirm_question(text, default, timeout=None, back=False) -> dict:
+def confirm_question(
+    text, default, timeout=None, back=False, letters=None
+) -> dict:
     """Message `ask` de genre `confirm` : `text`, puis l'indice de la
     langue choisie et du booléen `default`, [O/n] ou [o/N], [Y/n] ou [y/N],
-    invite comprise ; `prompt` et `speak`, la question sans indice, pour
-    la page et la voix ; `default`, `y` ou `n` ; `timeout_s` pour un compte
-    à rebours ; `back`, vrai, quand Annuler arrête l'action."""
+    invite comprise, qui liste ensuite chaque action de `letters`
+    ({lettre: libellé}) : « [O/n, b = libellé] : » ; `prompt` et `speak`,
+    la question sans indice, pour la page et la voix ; `default`, `y` ou
+    `n` ; `timeout_s` pour un compte à rebours ; `back`, vrai, quand
+    Annuler arrête l'action ; `options`, les actions à lettre, comme celles
+    d'un choix (`choice_question`)."""
     hint = t("[Y/n]: ") if default else t("[y/N]: ")
+    actions = [
+        {"key": key, "label": str(label), "speak": speak(label)}
+        for key, label in (letters or {}).items()
+    ]
+    if actions:
+        listed = ", ".join(f"{a['key']} = {a['label']}" for a in actions)
+        hint = hint.replace("]", f", {listed}]", 1)
     text = str(text).rstrip()
     return question(
         "confirm",
@@ -116,15 +128,20 @@ def confirm_question(text, default, timeout=None, back=False) -> dict:
         prompt=text,
         speak=speak(text),
         **({"back": True} if back else {}),
+        **({"options": actions} if actions else {}),
     )
 
 
 def confirmed(message, answer):
-    """True pour un mot de YES, False pour un mot de NO, sans casse ni
-    blancs aux bouts ; pour une réponse vide, le défaut du message d'une
-    confirmation (`confirm_question`) ; None pour toute autre réponse."""
+    """True pour un mot de YES, False pour un mot de NO, la lettre pour
+    une action du message, sans casse ni blancs aux bouts ; pour une
+    réponse vide, le défaut du message d'une confirmation
+    (`confirm_question`) ; None pour toute autre réponse."""
     word = answer.strip().lower() or message["default"]
-    return True if word in YES else False if word in NO else None
+    if word in YES or word in NO:
+        return word in YES
+    keys = [option["key"] for option in message.get("options", ())]
+    return word if word in keys else None
 
 
 def path_question(start, directory=False) -> dict:
@@ -282,10 +299,18 @@ class BasePort:
         return self.ask(text, kind="secret")
 
     def confirm(
-        self, text, default=None, typed=None, timeout=None, back=False
+        self,
+        text,
+        default=None,
+        typed=None,
+        timeout=None,
+        back=False,
+        letters=None,
     ):
         """True pour un mot de YES, False pour un mot de NO, sans casse ni
         blancs aux bouts ; `default`, un booléen, pour une réponse vide.
+        Une action de `letters` ({lettre: libellé}), tapée seule, sans
+        casse, rend sa lettre.
         Une autre réponse le dit (`notice`) et la même question revient.
         Ctrl+D (EOFError) rend False, ou None avec `back`, que l'appelant
         lit comme l'abandon de toute son action ; une page n'offre Annuler
@@ -304,15 +329,23 @@ class BasePort:
         Ctrl+D, et l'appelant prend l'une et l'autre pour non.
 
         ValueError, avant de demander : sans `typed`, un `default` qui
-        n'est pas un booléen ; `timeout` avec `typed`."""
+        n'est pas un booléen, une lettre hors de a à z ou qui est un mot de
+        YES ou de NO ; `timeout` ou `letters` avec `typed`."""
         if typed is not None:
-            if timeout is not None:
-                raise ValueError("a typed confirmation has no countdown")
+            if timeout is not None or letters:
+                raise ValueError(
+                    "a typed confirmation has no countdown nor letter"
+                )
             message = question("typed", text, expected=typed)
             return self.menu(message).strip() == typed
         if not isinstance(default, bool):
             raise ValueError("a yes/no question states its default")
-        message = confirm_question(text, default, timeout, back)
+        if not all(
+            re.fullmatch("[a-z]+", key) and key not in YES + NO
+            for key in letters or ()
+        ):
+            raise ValueError("letters from a to z, none of yes or no")
+        message = confirm_question(text, default, timeout, back, letters)
         while True:
             try:
                 answer = self.menu(message)

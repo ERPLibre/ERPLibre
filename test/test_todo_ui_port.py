@@ -104,15 +104,15 @@ class TestFacade(unittest.TestCase):
                 seen.append(args)
 
         with ui.bind(Port()):
-            ui.confirm("Go?", True, None, 5, True)
+            ui.confirm("Go?", True, None, 5, True, {"b": "Back"})
             ui.confirm("Go?", default=False, back=True)
             ui.confirm("Type forged:", typed="forged")
         self.assertEqual(
             seen,
             [
-                ("Go?", True, None, 5, True),
-                ("Go?", False, None, None, True),
-                ("Type forged:", None, "forged", None, False),
+                ("Go?", True, None, 5, True, {"b": "Back"}),
+                ("Go?", False, None, None, True, None),
+                ("Type forged:", None, "forged", None, False, None),
             ],
         )
 
@@ -984,6 +984,90 @@ class TestConfirm(unittest.TestCase):
         self.assertEqual(
             calls, [("Go? [Y/n]: ", "y", 5), ("Go? [y/N]: ", "n", 5)]
         )
+
+    def test_a_letter_answers_with_itself(self):
+        letters = {"b": "go back a step", "t": "see the state"}
+        for answer, want in (
+            ("b", "b"),
+            (" T ", "t"),
+            ("o", True),
+            ("", False),
+        ):
+            with self.subTest(answer=answer):
+                got, events = self.confirmed(
+                    [answer], "Go?", False, letters=letters
+                )
+                self.assertEqual((repr(got), len(events)), (repr(want), 1))
+        _, [asked] = self.confirmed(["b"], "Go?", True, letters=letters)
+        self.assertEqual(
+            asked["options"],
+            [{"key": k, "label": v, "speak": v} for k, v in letters.items()],
+        )
+        # Une lettre parmi d'autres mots est une faute ; Ctrl+D, `back` et
+        # l'échéance gardent leur règle.
+        got, events = self.confirmed(
+            ["b t", "t"], "Go?", True, letters=letters
+        )
+        self.assertEqual(
+            (got, events[1]["level"], len(events)), ("t", "error", 3)
+        )
+        self.assertIs(
+            self.confirmed([], "Go?", True, letters=letters)[0], False
+        )
+        back = self.confirmed([], "Go?", True, back=True, letters=letters)
+        self.assertIsNone(back[0])
+        late = self.confirmed(
+            [EOFError()], "Go?", True, timeout=5, letters=letters
+        )
+        self.assertIs(late[0], True)
+
+    def test_a_letter_that_is_yes_or_no_is_refused_before_asking(self):
+        scripted = port.ScriptedPort(["b"])
+        for letter in ("y", "o", "n", "yes", "oui", "no", "non", "B", "1", ""):
+            with self.subTest(letter=letter):
+                with self.assertRaises(ValueError):
+                    scripted.confirm("Go?", True, letters={letter: "Act"})
+        with self.assertRaises(ValueError):
+            scripted.confirm(
+                "Type forged:", typed="forged", letters={"b": "Act"}
+            )
+        self.assertEqual(scripted.events, [])
+
+    def test_letters_are_listed_after_the_hint(self):
+        cases = [
+            (
+                "fr",
+                True,
+                {"b": "revenir d'une étape", "t": "voir l'état"},
+                "Go ? [O/n, b = revenir d'une étape, t = voir l'état] : ",
+            ),
+            ("en", False, {"v": "view it"}, "Go ? [y/N, v = view it]: "),
+        ]
+        for lang, default, letters, shown in cases:
+            with self.subTest(lang=lang):
+                todo_i18n.use_lang(lang)
+                _, [asked] = self.confirmed(
+                    [""], "Go ?", default, letters=letters
+                )
+                self.assertEqual(asked["text"], shown)
+                self.assertEqual(
+                    (asked["prompt"], asked["speak"]), ("Go ?",) * 2
+                )
+        texts = []
+
+        def fake_input(prompt):
+            # Une seule réponse, puis Ctrl+D : une lettre que le port ne
+            # reconnaît plus finit la question au lieu de la reposer.
+            texts.append(prompt)
+            if len(texts) > 1:
+                raise EOFError
+            return "V"
+
+        with patch.dict(port.ORIGINAL, input=fake_input):
+            got = port.TerminalPort().confirm(
+                "Go ?", False, letters={"v": "view it"}
+            )
+        self.assertEqual((got, texts), ("v", ["Go ? [y/N, v = view it]: "]))
 
     def test_the_terminal_prints_the_screen_and_asks_the_last_line(self):
         # Ce que la question efface s'imprime au-dessus d'elle ; `input`

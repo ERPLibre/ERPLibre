@@ -213,8 +213,9 @@ export function choiceBoxes(options) {
     return options.filter((option) => /^[1-9]/.test(option.key));
 }
 
-// Les actions à lettre d'un choix multiple : un bouton chacune, qui envoie
-// sa lettre seule, la réponse que le port attend d'elle.
+// Les actions à lettre d'un choix multiple ou d'une confirmation : un
+// bouton chacune, qui envoie sa lettre seule, la réponse que le port attend
+// d'elle.
 export function choiceActions(options) {
     return options.filter((option) => /^[a-z]/.test(option.key));
 }

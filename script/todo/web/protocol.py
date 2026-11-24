@@ -7,11 +7,13 @@ message entre le worker (fd 3) et le hub.
 Du hub au worker : `hello`, puis `answer {qid, value}` et `cancel {qid}`.
 Du worker au hub (FROM_WORKER) : `menu` et `ask`, les questions, chacune
 avec son `qid`, et `answered {qid}` à la fin de chacune, quelle qu'en soit
-l'issue, avec `key` pour l'entrée choisie d'un menu, `yes` (booléen) pour
-le oui ou le non lu d'une confirmation et `end` (`timeout`, `cancel`) pour
-une question finie sans réponse ; `notice`, `run_start`, `run_end`,
-`open_view`. Une confirmation (`ask` de genre `confirm`) porte `timeout_s`
-quand elle compte à rebours, et `back` quand Annuler y arrête l'action.
+l'issue, avec `key` pour l'entrée choisie d'un menu ou l'action à lettre
+d'une confirmation, `yes` (booléen) pour le oui ou le non lu d'une
+confirmation et `end` (`timeout`, `cancel`) pour une question finie sans
+réponse ; `notice`, `run_start`, `run_end`, `open_view`. Une confirmation
+(`ask` de genre `confirm`) porte `timeout_s` quand elle compte à rebours,
+`back` quand Annuler y arrête l'action, et `options` pour ses actions à
+lettre.
 Le hub relaie ces messages à la page tels quels.
 
 Une ligne du worker tient toujours dans LINE_LIMIT octets, ce que le hub

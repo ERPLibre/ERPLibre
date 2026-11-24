@@ -28,7 +28,8 @@ entrées, `answered` en porte la clé (`key`), d'où que vienne la réponse :
 le hub y ouvre une tâche du journal. Pour un choix, il porte les clés que
 la réponse choisit (`keys`, `port.chosen_keys`), ["0"] pour le retour ;
 aucune pour une réponse invalide. Pour une confirmation, il porte le oui
-ou le non lu (`yes`, `port.confirmed`), aucun pour une réponse invalide.
+ou le non lu (`yes`, `port.confirmed`), ou la lettre d'une action (`key`),
+aucun pour une réponse invalide.
 Pour une question finie sans réponse, il porte `end` : `timeout` à
 l'échéance, `cancel` sur une exception (annulée par la page, Ctrl+D,
 Ctrl+C). Un secret se pose écho coupé, comme `getpass` ; le hub y voit
@@ -53,12 +54,14 @@ MASK = "•••"
 
 def transcript(message, value) -> str:
     """Ce qu'une réponse du canal laisse dans le terminal : « 1 → libellé »
-    pour une entrée de menu ou une option d'un choix, Oui ou Non dans la
-    langue choisie pour une confirmation qui la lit, sinon la valeur."""
+    pour une entrée de menu, une option d'un choix ou une action à lettre,
+    Oui ou Non dans la langue choisie pour une confirmation qui la lit,
+    sinon la valeur."""
     if message.get("kind") == "confirm":
         yes = port.confirmed(message, value)
-        if yes is not None:
+        if isinstance(yes, bool):
             return t("Answer yes") if yes else t("Answer no")
+        value = yes or value
     for item in (*message.get("items", ()), *message.get("options", ())):
         if item["key"] == value.strip():
             return f"{value} → {item['label']}"
@@ -182,7 +185,7 @@ class PipePort(port.BasePort):
             if kind == "confirm" and value is not None:
                 yes = port.confirmed(message, value)
                 if yes is not None:
-                    answered["yes"] = yes
+                    answered["key" if isinstance(yes, str) else "yes"] = yes
             if source is None:
                 answered["end"] = "timeout"
         except BaseException:

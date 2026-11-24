@@ -785,6 +785,36 @@ class TestPipePort(unittest.TestCase):
             "Go? [y/N]: maybe\nAnswer yes or no: maybe\nGo? [y/N]: ",
         )
 
+    def test_a_letter_of_a_confirmation_ends_with_its_key(self):
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        letters = {"b": "Go back", "t": "See the state"}
+        confirm = self.port.confirm
+        future, asked = self.asking(
+            confirm, "Go?", True, None, None, False, letters
+        )
+        self.assertEqual(
+            [(o["key"], o["label"]) for o in asked["options"]],
+            list(letters.items()),
+        )
+        # La page envoie la lettre telle que tapée dans « Autre réponse ».
+        self.reply(t="answer", qid=asked["qid"], value="B")
+        self.assertEqual(future.result(10), "b")
+        answered = {"t": "answered", "qid": asked["qid"], "key": "b"}
+        self.assertEqual(self.received(), answered)
+        future, asked = self.asking(
+            confirm, "Go?", True, None, None, False, letters
+        )
+        os.write(self.master, b"T\n")
+        self.assertEqual(future.result(10), "t")
+        answered = {"t": "answered", "qid": asked["qid"], "key": "t"}
+        self.assertEqual(self.received(), answered)
+        self.assertEqual(
+            self.out.getvalue(),
+            "Go? [Y/n, b = Go back, t = See the state]: b → Go back\n"
+            "Go? [Y/n, b = Go back, t = See the state]: ",
+        )
+
     def test_a_countdown_confirmation_keeps_its_kind_and_ends_on_its_default(
         self,
     ):

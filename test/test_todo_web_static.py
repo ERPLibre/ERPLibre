@@ -1263,6 +1263,18 @@ console.log(JSON.stringify({
 """
 
 
+# Une confirmation qui offre des actions à lettre, telle que le port la
+# pose (MESSAGE, remplacé par son JSON) : les boutons de ses lettres et son
+# texte, sans indice.
+LETTERS_CHECK = r"""
+const asked = MESSAGE;
+console.log(JSON.stringify({
+    actions: m.choiceActions(asked.options).map((o) => [o.key, o.label]),
+    text: m.promptText(asked),
+}));
+"""
+
+
 def _confirms() -> list:
     """Les messages de quatre confirmations posées en anglais par le port :
     sans `back`, avec, à rebours avec `back`, à rebours sans lui ; puis
@@ -1314,6 +1326,33 @@ class TestQuestionWidgets(unittest.TestCase):
         template = TEMPLATE.search(source)[1]
         self.assertIn('t-if="cancels"', template)
         self.assertIn('t-if="countsDown"', template)
+
+    def test_a_letter_of_a_confirmation_is_a_button_below_yes_and_no(self):
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        scripted = port.ScriptedPort()
+        letters = {"b": "Go back", "t": "See the state"}
+        scripted.confirm("Go?", True, letters=letters)
+        [asked] = scripted.events
+        script = LETTERS_CHECK.replace("MESSAGE", json.dumps(asked))
+        self.assertEqual(
+            _node_json(script, "prompt.js"),
+            {
+                "actions": [list(item) for item in letters.items()],
+                "text": "Go?",
+            },
+        )
+        self.assertEqual(port.confirmed(asked, "b"), "b")
+        # Le bouton de chaque lettre sert la confirmation comme le choix :
+        # il n'est pas dans le bloc propre au choix multiple.
+        source = (SRC / "question_view.js").read_text(encoding="utf-8")
+        template = TEMPLATE.search(source)[1]
+        choose_only = re.search(
+            r"<t t-if=\"kind === 'choose'\">(.*?)</t>", template, re.S
+        )[1]
+        self.assertIn('t-foreach="actions"', template)
+        self.assertNotIn('t-foreach="actions"', choose_only)
 
     def test_the_page_shows_every_kind_the_port_asks(self):
         self.assertEqual(self.out["kinds"], list(port.REQUIRES))
