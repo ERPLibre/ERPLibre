@@ -847,6 +847,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Poetry and the venv are given by absolute path to the temporary project it runs from, and a Poetry
   that cannot start is reported with the system error
 - `addons_path` in the generated `config.conf` holds each path once: a manifest that declares `odoo<version>/addons/addons`, which the header of `generate_config.sh` always writes, no longer lists it twice in every regenerated configuration, and a repository or an extra path given twice is written once. With `ignore_odoo_path`, which empties the header, the declared path is kept
+- `script/test/requirement_report.py` records the verdicts of the deck program's tests, run from `script/stream_deck/deck/tests/` by `run_unit_test.sh`, under the deck repository's name, `erplibre_streamdeck:tests/…`, the reference the requirement registry cites: they no longer stay without a verdict
 
 <!-- [fr] -->
 
@@ -1010,6 +1011,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.venv.<version>/bin/poetry` : Poetry et le venv sont donnés par chemin absolu au projet temporaire
   d'où il tourne, et un Poetry qui ne démarre pas est signalé avec l'erreur du système
 - `addons_path` du `config.conf` généré porte chaque chemin une seule fois : un manifeste qui déclare `odoo<version>/addons/addons`, que l'en-tête de `generate_config.sh` écrit toujours, ne le fait plus lister deux fois dans chaque configuration régénérée, et un dépôt ou un chemin extra donné deux fois s'écrit une fois. Avec `ignore_odoo_path`, qui vide l'en-tête, le chemin déclaré est gardé
+- `script/test/requirement_report.py` inscrit les verdicts des tests du programme du deck, lancés depuis `script/stream_deck/deck/tests/` par `run_unit_test.sh`, sous le nom du dépôt du deck, `erplibre_streamdeck:tests/…`, la référence que cite le registre des exigences : ils ne restent plus sans verdict
 
 <!-- [en] -->
 ## Removed

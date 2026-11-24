@@ -527,7 +527,9 @@ time make test_full_fast
 The unit tests can send each test's verdict to the requirement registry of an
 Odoo instance that runs the `erplibre_devops_requirement` module. A requirement
 that a unit test proves lists a *Repository unit test* line with the
-reference `erplibre:test/<file>::<Class>::<method>`. After the suite, the
+reference `erplibre:test/<file>::<Class>::<method>`. A test of the deck program,
+cloned under `script/stream_deck/deck`, is named in its own repository:
+`erplibre_streamdeck:tests/<file>::<Class>::<method>`. After the suite, the
 runner writes the verdict of each declared reference that ran, with one call
 per reference. A test that no requirement cites costs no call. A declared test
 missing from a file that ran to the end is recorded as an error: it was renamed
@@ -545,8 +547,10 @@ history:
 Les tests unitaires peuvent envoyer le verdict de chaque test au registre des
 requis d'une instance Odoo qui porte le module `erplibre_devops_requirement`.
 Un requis prouvé par un test unitaire liste une ligne *Test unitaire de
-dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Après
-la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
+dépôt* avec la référence `erplibre:test/<fichier>::<Classe>::<méthode>`. Un
+test du programme du deck, cloné sous `script/stream_deck/deck`, se nomme dans
+son propre dépôt : `erplibre_streamdeck:tests/<fichier>::<Classe>::<méthode>`.
+Après la suite, le lanceur écrit le verdict de chaque référence déclarée qui a
 tourné, avec un appel par référence. Un test qu'aucun requis ne cite ne coûte
 aucun appel. Un test déclaré absent d'un fichier qui a tourné jusqu'au bout est
 noté en erreur : il a été renommé ou supprimé, et sa référence est à mettre à
