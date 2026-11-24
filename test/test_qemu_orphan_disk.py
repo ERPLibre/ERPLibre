@@ -33,6 +33,9 @@ class PropositionEffacement(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.efface = []
         self.todo._cleanup_delete_files = self._faux_effacement
+        # Aucun domaine défini : sans ce faux, la proposition interrogerait
+        # le vrai virsh de l'hôte.
+        self.todo._qemu_list_domains = lambda: []
 
     def _faux_effacement(self, title, items, prompt):
         self.efface.append([p for _s, p in items])
@@ -72,6 +75,20 @@ class PropositionEffacement(unittest.TestCase):
         ok, efface = self._avec_disques(["vm-a"])
         self.assertTrue(ok)
         self.assertEqual([["/var/lib/libvirt/images/vm-a.qcow2"]], efface)
+
+    def test_a_name_defined_since_the_form_is_not_offered(self):
+        """Le formulaire a lu les domaines à son ouverture : un nom défini
+        depuis porte le disque d'une VM, jamais proposé à l'effacement."""
+        self.todo._qemu_list_domains = lambda: ["vm-a"]
+        self.todo._qemu_orphan_disks = lambda names: [
+            (n, f"/var/lib/libvirt/images/{n}.qcow2") for n in names
+        ]
+        with (
+            mock.patch("builtins.input", lambda *a: "o"),
+            mock.patch("builtins.print"),
+        ):
+            self.todo._qemu_offer_orphan_removal(["vm-a", "vm-b"])
+        self.assertEqual([["/var/lib/libvirt/images/vm-b.qcow2"]], self.efface)
 
     def test_a_kept_disk_asks_again_instead_of_failing(self):
         """Refuser l'effacement mène à un échec certain : le dire et

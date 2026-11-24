@@ -8325,9 +8325,9 @@ TRANSLATIONS = {
         "fr": "existe — ignorée",
         "en": "exists - skipped",
     },
-    "orphan disk - will FAIL": {
-        "fr": "disque orphelin — ÉCHOUERA",
-        "en": "orphan disk - will FAIL",
+    "orphan disk - deletion offered at launch": {
+        "fr": "disque orphelin — effacement proposé au lancement",
+        "en": "orphan disk - deletion offered at launch",
     },
     "press F5 again to confirm": {
         "fr": "F5 à nouveau pour confirmer",

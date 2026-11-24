@@ -63,6 +63,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import socket
 import ssl
 import stat as stat_mod
@@ -5787,6 +5788,262 @@ def create_blank_disk(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Annulation d'un déploiement raté
+# --------------------------------------------------------------------------- #
+def chemin_present(path: Path, use_sudo: bool) -> bool | None:
+    """True/False quand l'existence de `path` est établie, None sinon.
+
+    os.lstat et non Path.exists() : ce dernier rend False sur PermissionError,
+    et un fichier rangé dans un répertoire illisible passerait pour absent —
+    donc pour créé par ce lancement, donc bon à retirer. lstat et non stat :
+    un lien symbolique brisé est une entrée qui existe ; stat le dirait
+    absent, et le rm de l'annulation retirerait le lien d'avant en laissant
+    sa cible, écrite à travers lui. Sur un refus, avec sudo, « sudo -n test
+    -e P -o -L P » tranche de même sans jamais demander de mot de passe ; un
+    sudo qui parle (mot de passe requis) ou qui échoue autrement laisse
+    l'existence inconnue.
+    """
+    try:
+        os.lstat(path)
+        return True
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except PermissionError:
+        if not use_sudo:
+            return None
+    try:
+        res = subprocess.run(
+            ["sudo", "-n", "test", "-e", str(path), "-o", "-L", str(path)],
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode == 0:
+        return True
+    if res.returncode == 1 and not res.stderr.strip():
+        return False
+    return None
+
+
+def domaine_present(name: str, use_sudo: bool) -> bool | None:
+    """True si un domaine `name` existe (persistant ou transitoire).
+
+    False seulement quand virsh dit expressément qu'il n'existe pas ; None
+    quand on ne peut pas l'établir (libvirt injoignable, sudo qui réclame un
+    mot de passe). virsh_out ne convient pas : il rend '' pour « absent »
+    comme pour « injoignable », ce qui ne peut pas fonder une suppression.
+    « sudo -n » et non « sudo » : la vérification ne bloque jamais sur une
+    invite de mot de passe invisible. Quand « sudo -n » ne tranche pas (pas
+    de jeton sudo en cache, cas courant d'un lancement sans root), virsh est
+    relancé sans sudo : un membre du groupe libvirt lit qemu:///system sans
+    privilège. stdin fermé : ni sudo ni l'agent polkit de virsh ne posent de
+    question.
+    """
+    virsh = ["virsh", "-c", LIBVIRT_URI, "domstate", name]
+    essais = [["sudo", "-n", *virsh], virsh] if use_sudo else [virsh]
+    for cmd in essais:
+        try:
+            res = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=c_locale_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if res.returncode == 0:
+            return True
+        if re.search(
+            r"failed to get domain|domain not found",
+            (res.stdout or "") + (res.stderr or ""),
+            re.IGNORECASE,
+        ):
+            return False
+    return None
+
+
+class _SortieTolerante:
+    """Enveloppe de sys.stdout dont l'écriture n'échoue jamais.
+
+    Après un SIGHUP, le terminal n'existe souvent plus : écrire sur stdout
+    lève OSError (EIO, EPIPE). Pendant l'annulation, un message perdu ne
+    coûte rien, alors qu'une écriture qui lève empêcherait le rm et
+    remplacerait l'exception d'origine. Couvre aussi les « $ cmd » que
+    Runner.run affiche avant de lancer.
+    """
+
+    def __init__(self, flux) -> None:
+        self._flux = flux
+
+    def write(self, texte: str) -> int:
+        try:
+            return self._flux.write(texte)
+        except (OSError, ValueError):
+            return len(texte)
+
+    def flush(self) -> None:
+        try:
+            self._flux.flush()
+        except (OSError, ValueError):
+            pass
+
+    def __getattr__(self, nom):
+        return getattr(self._flux, nom)
+
+
+class Defaire:
+    """Défait ce que CE lancement a créé s'il s'arrête avant le domaine.
+
+    Gestionnaire de contexte : `noter(path)` retient un chemin juste avant
+    son écriture, à condition qu'il soit absent à cet instant. Si le bloc
+    sort sur une exception (SystemExit non nul, KeyboardInterrupt, erreur
+    système, SIGTERM/SIGHUP changés en SystemExit), les chemins retenus sont
+    retirés — seulement si virsh affirme qu'aucun domaine de ce nom
+    n'existe. Un chemin présent avant le lancement (--force), un état de
+    domaine illisible ou un domaine existant gardent tout. L'exception
+    d'origine est toujours relevée telle quelle : le code de sortie et le
+    message d'échec restent ceux de l'étape fautive.
+    """
+
+    def __init__(self, name: str, runner: Runner) -> None:
+        self.name = name
+        self.runner = runner
+        # Dans l'ordre de création.
+        self.crees: list[Path] = []
+        self._signaux: dict = {}
+
+    def noter(self, path: Path) -> bool:
+        """Retient `path` s'il est ABSENT maintenant ; rend True s'il l'est.
+
+        En dry-run, rien n'est écrit, donc rien n'est retenu. Une existence
+        inconnue n'est pas retenue : dans le doute, le fichier reste.
+        """
+        if self.runner.dry_run:
+            return False
+        if chemin_present(path, self.runner.use_sudo) is False:
+            self.crees.append(path)
+            return True
+        return False
+
+    def __enter__(self) -> "Defaire":
+        self._signaux = self._poser_signaux()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        """Annule sur échec, puis rend les signaux ; ne masque jamais `exc`.
+
+        Pendant l'annulation, SIGHUP et SIGTERM sont ignorés : fermer un
+        terminal en envoie souvent deux (noyau, puis shell), et le second
+        tuerait le processus avant le rm. Les gestionnaires d'avant ne
+        reviennent qu'à la fin, dans le finally.
+        """
+        try:
+            if exc_type is None:
+                return False
+            if issubclass(exc_type, SystemExit) and exc.code in (0, None):
+                return False
+            self._ignorer_signaux()
+            stdout = sys.stdout
+            if stdout is not None:
+                sys.stdout = _SortieTolerante(stdout)
+            try:
+                self._annuler()
+            except BaseException:
+                # Un second Ctrl+C, un rm qui sort : l'erreur d'origine prime.
+                print("  ↩ Annulation interrompue : fichiers conservés.")
+            finally:
+                sys.stdout = stdout
+            return False
+        finally:
+            self._rendre_signaux()
+
+    @staticmethod
+    def _poser_signaux() -> dict:
+        """Fait de SIGHUP et SIGTERM un SystemExit(128 + signal).
+
+        Le premier signal lève, les suivants sont sans effet ; __exit__ les
+        ignore ensuite pendant l'annulation. Un signal déjà ignoré le reste
+        (« nohup »). Hors du fil principal, signal.signal lève ValueError :
+        rien n'est posé. Même geste que TODO._qemu_signaux_de_sortie, recopié
+        parce que ce script reste autonome.
+        """
+        if threading.current_thread() is not threading.main_thread():
+            return {}
+        deja: list[int] = []
+
+        def sortir(signum, _frame):
+            if deja:
+                return
+            deja.append(signum)
+            raise SystemExit(128 + signum)
+
+        anciens = {}
+        for nom in ("SIGHUP", "SIGTERM"):
+            num = getattr(signal, nom, None)
+            if num is None or signal.getsignal(num) == signal.SIG_IGN:
+                continue
+            try:
+                anciens[num] = signal.signal(num, sortir)
+            except (ValueError, OSError):
+                continue
+        return anciens
+
+    def _ignorer_signaux(self) -> None:
+        """Passe à SIG_IGN les signaux que __enter__ a pris en charge."""
+        for num in self._signaux:
+            try:
+                signal.signal(num, signal.SIG_IGN)
+            except (ValueError, OSError):
+                pass
+
+    def _rendre_signaux(self) -> None:
+        """Remet les gestionnaires d'avant ; None redevient SIG_DFL."""
+        for num, ancien in self._signaux.items():
+            try:
+                signal.signal(
+                    num, signal.SIG_DFL if ancien is None else ancien
+                )
+            except (ValueError, OSError):
+                pass
+        self._signaux = {}
+
+    def _annuler(self) -> None:
+        """Retire les chemins retenus si aucun domaine ne les utilise.
+
+        Trois ou quatre lignes au plus : l'appelant n'affiche souvent que la
+        fin d'un échec, et le message de l'étape fautive doit y rester.
+        check=False : un rm qui échoue ne doit pas remplacer l'erreur
+        d'origine par la sienne.
+        """
+        if not self.crees:
+            return
+        etat = domaine_present(self.name, self.runner.use_sudo)
+        if etat is True:
+            print(
+                f"  ↩ Le domaine « {self.name} » existe : rien n'est retiré"
+                f" (virsh undefine {self.name} pour repartir)."
+            )
+            return
+        if etat is None:
+            print(
+                "  ↩ État du domaine illisible : conservés "
+                + " ".join(str(p) for p in self.crees)
+            )
+            return
+        print("  ↩ Déploiement raté : retrait de ce que ce lancement a créé")
+        for p in self.crees:
+            print(f"    - {p}")
+        self.runner.run(
+            ["rm", "-f", "--", *map(str, self.crees)],
+            privileged=True,
+            check=False,
+        )
+
+
 def network_name(network_arg: str) -> str | None:
     """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
     for part in network_arg.split(","):
@@ -6893,7 +7150,10 @@ def build_parser() -> argparse.ArgumentParser:
     g_run.add_argument(
         "--force",
         action="store_true",
-        help="Écrase le qcow2 de travail existant.",
+        help=(
+            "Écrase le qcow2 de travail existant. Un disque présent avant"
+            " le lancement n'est jamais retiré après un échec ; un domaine libvirt existant est refusé, même avec --force, dès que virsh peut le lire (jeton sudo ou groupe libvirt)."
+        ),
     )
     g_run.add_argument(
         "--no-wait-ip",
@@ -7169,134 +7429,159 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
-    installer: tuple[Path, Path] | None = None
-    if uses_installer(args.distro, args.arch):
-        # Voie debian-installer : aucune image cloud n'existe pour cette
-        # combinaison, on télécharge l'installateur et on part d'un disque nu.
-        cache = args.image_path.parent
-        kernel = cache / f"debian-{args.version}-s390x-kernel"
-        initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
-        initrd = cache / f"{args.name}-initrd.gz"
-        # Le dimensionnement du catalogue vient des images cloud, où le
-        # système est DÉJÀ installé. debian-installer, lui, déplie un système
-        # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
-        # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
-        # manque de mémoire s'y manifeste par un écran figé sans message.
-        # On relève le plancher, en le disant — un réglage explicite plus haut
-        # n'est jamais abaissé.
-        if args.memory < INSTALLER_MIN_RAM:
-            print(
-                f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
-                f" l'installateur (catalogue : {args.memory})."
-            )
-            args.memory = INSTALLER_MIN_RAM
-        print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
-            kernel,
-            args.dry_run,
-            runner=runner,
-        )
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
-            initrd_src,
-            args.dry_run,
-            runner=runner,
+    # Avant toute écriture de disque, même avec --force : virt-install
+    # refuserait ce nom de toute façon, une fois le disque du domaine écrasé.
+    # Un état inconnu (libvirt injoignable) ne bloque pas.
+    if (
+        not args.dry_run
+        and domaine_present(args.name, runner.use_sudo) is True
+    ):
+        sys.exit(
+            f"Le domaine « {args.name} » existe déjà : son disque n'est pas"
+            f" écrasé.\n  virsh undefine {args.name} (puis --force) pour le"
+            " remplacer."
         )
 
-        print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
-        create_blank_disk(disk, args.disk_size, runner, args.force)
-
-        print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
-        static = static_net_plan(
-            network_name(args.network), not args.dry_run, args.name
-        )
-        if static:
+    # Du premier fichier écrit jusqu'à virt-install : un échec retire ce que
+    # ce lancement a créé. Le suivi de l'installateur reste dehors, le
+    # domaine existe alors.
+    with Defaire(args.name, runner) as defaire:
+        installer: tuple[Path, Path] | None = None
+        if uses_installer(args.distro, args.arch):
+            # Voie debian-installer : aucune image cloud n'existe pour cette
+            # combinaison, on télécharge l'installateur et on part d'un disque nu.
+            cache = args.image_path.parent
+            kernel = cache / f"debian-{args.version}-s390x-kernel"
+            initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
+            initrd = cache / f"{args.name}-initrd.gz"
+            # Le dimensionnement du catalogue vient des images cloud, où le
+            # système est DÉJÀ installé. debian-installer, lui, déplie un système
+            # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
+            # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
+            # manque de mémoire s'y manifeste par un écran figé sans message.
+            # On relève le plancher, en le disant — un réglage explicite plus haut
+            # n'est jamais abaissé.
+            if args.memory < INSTALLER_MIN_RAM:
+                print(
+                    f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
+                    f" l'installateur (catalogue : {args.memory})."
+                )
+                args.memory = INSTALLER_MIN_RAM
             print(
-                f"  Adresse fixe retenue : {static['ip']}"
-                f" (passerelle {static['gateway']})"
+                f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x =="
             )
+            download_image(
+                [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
+                kernel,
+                args.dry_run,
+                runner=runner,
+            )
+            download_image(
+                [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
+                initrd_src,
+                args.dry_run,
+                runner=runner,
+            )
+
+            print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
+            defaire.noter(disk)
+            create_blank_disk(disk, args.disk_size, runner, args.force)
+
+            print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
+            static = static_net_plan(
+                network_name(args.network), not args.dry_run, args.name
+            )
+            if static:
+                print(
+                    f"  Adresse fixe retenue : {static['ip']}"
+                    f" (passerelle {static['gateway']})"
+                )
+            else:
+                print(
+                    "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
+                    " la question à l'écran et l'installation s'arrêtera."
+                )
+            # Les fichiers que le late_command copie vers /target voyagent dans
+            # l'initrd : sans eux, ses « cp » échouent en silence (« || true »).
+            defaire.noter(initrd)
+            build_installer_initrd(
+                build_preseed(args, pw_hash, ssh_keys, static),
+                initrd_src,
+                initrd,
+                runner,
+                guide=guide_files(args) + installer_cache_files(args),
+            )
+            installer = (kernel, initrd)
         else:
             print(
-                "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
-                " la question à l'écran et l'installation s'arrêtera."
+                f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
             )
-        # Les fichiers que le late_command copie vers /target voyagent dans
-        # l'initrd : sans eux, ses « cp » échouent en silence (« || true »).
-        build_installer_initrd(
-            build_preseed(args, pw_hash, ssh_keys, static),
-            initrd_src,
-            initrd,
-            runner,
-            guide=guide_files(args) + installer_cache_files(args),
-        )
-        installer = (kernel, initrd)
-    else:
-        print(
-            f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
-        )
-        frais = not image_en_cache(args.image_path)
-        download_image(urls, args.image_path, args.dry_run, runner=runner)
-        verify_pinned_sha256(
-            args.distro, args.image_path, args.dry_run, tuple(urls)
-        )
-        if do_verify:
-            verify_sha256(
-                url,
-                args.image_path,
-                args.dry_run,
-                args.distro,
-                tuple(urls),
-                runner=runner,
-                frais=frais,
+            frais = not image_en_cache(args.image_path)
+            download_image(urls, args.image_path, args.dry_run, runner=runner)
+            verify_pinned_sha256(
+                args.distro, args.image_path, args.dry_run, tuple(urls)
+            )
+            if do_verify:
+                verify_sha256(
+                    url,
+                    args.image_path,
+                    args.dry_run,
+                    args.distro,
+                    tuple(urls),
+                    runner=runner,
+                    frais=frais,
+                )
+
+            print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
+            defaire.noter(disk)
+            prepare_disk(
+                args.image_path, disk, args.disk_size, runner, args.force
             )
 
-        print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
-        prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+            print(f"\n== 4/5 Seed cloud-init {seed} ==")
+            cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
+            defaire.noter(seed)
+            build_seed(
+                cloud_cfg,
+                args.hostname,
+                seed,
+                runner,
+                network_config_for(args.distro),
+            )
 
-        print(f"\n== 4/5 Seed cloud-init {seed} ==")
-        cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-        build_seed(
-            cloud_cfg,
-            args.hostname,
-            seed,
-            runner,
-            network_config_for(args.distro),
-        )
-
-    resolved_osinfo = osinfo_arg(osinfo, args.distro)
-    print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
-    ensure_network(network_name(args.network), runner)
-    # Avant la création, et non après : la VM télécharge dès cloud-init.
-    # Une famille sans magasin de certificats ne peut pas apprendre
-    # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
-    # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
-    # demandé à l'opérateur — c'est le catalogue qui sait.
-    #
-    # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
-    # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
-    # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
-    # RIEN. Les deux issues échouent pour une distribution sans magasin de
-    # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
-    # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
-    # qu'une heure d'installation pour y arriver.
-    sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
-    if sans_magasin and getattr(args, "offline", False):
-        print(
-            f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
-            " l'amont du cache est coupé."
-            "\n    Aucune source ne lui reste : l'exception la priverait du"
-            " magasin, et sans elle"
-            "\n    chaque téléchargement bute sur un certificat inconnu."
-        )
-    elif sans_magasin and not getattr(args, "cache_bypass", False):
-        args.cache_bypass = True
-        print(
-            f"\n  {args.distro} n'a pas de magasin de certificats :"
-            " la VM est soustraite au cache et téléchargera en direct."
-        )
-    cache_bypass_apply(args, runner)
-    virt_install(args, disk, seed, resolved_osinfo, runner, installer)
+        resolved_osinfo = osinfo_arg(osinfo, args.distro)
+        print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
+        ensure_network(network_name(args.network), runner)
+        # Avant la création, et non après : la VM télécharge dès cloud-init.
+        # Une famille sans magasin de certificats ne peut pas apprendre
+        # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
+        # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
+        # demandé à l'opérateur — c'est le catalogue qui sait.
+        #
+        # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
+        # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
+        # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
+        # RIEN. Les deux issues échouent pour une distribution sans magasin de
+        # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
+        # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
+        # qu'une heure d'installation pour y arriver.
+        sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
+        if sans_magasin and getattr(args, "offline", False):
+            print(
+                f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
+                " l'amont du cache est coupé."
+                "\n    Aucune source ne lui reste : l'exception la priverait du"
+                " magasin, et sans elle"
+                "\n    chaque téléchargement bute sur un certificat inconnu."
+            )
+        elif sans_magasin and not getattr(args, "cache_bypass", False):
+            args.cache_bypass = True
+            print(
+                f"\n  {args.distro} n'a pas de magasin de certificats :"
+                " la VM est soustraite au cache et téléchargera en direct."
+            )
+        cache_bypass_apply(args, runner)
+        virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:
         watch_and_restart(args.name, runner)
 

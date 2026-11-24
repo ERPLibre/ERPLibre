@@ -356,7 +356,10 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.
 - `--dry-run` — show the commands without executing anything.
-- `--force` — overwrite the existing working qcow2 disk.
+- `--force` — overwrite the existing working qcow2 disk. Refused while a
+  libvirt domain of that name exists, as long as virsh can read it (cached
+  sudo ticket or `libvirt` group membership). A failed deployment removes the disk
+  and seed it created itself, never a disk that existed before the run.
 - `--gpu` — 3D acceleration by the host GPU: `auto` (default, on when the
   host has a render node), `on` (force), `off` (software rendering).
 - `--gpu-node` — which render node to use, on a multi-GPU host.
@@ -418,7 +421,8 @@ sudo virsh domifaddr <nom-vm>  # adresse IP de la VM / VM IP address
 
 `destroy` only powers the VM off (disk kept); `undefine` removes its
 definition. To fully recreate a VM with the same name, `destroy` + `undefine`
-it first, or redeploy with `--force`.
+it first, then redeploy with `--force` to overwrite its kept disk: while the
+domain is still defined, the deployment is refused, even with `--force`.
 
 ## The VMs' subnet
 

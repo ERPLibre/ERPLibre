@@ -1036,7 +1036,13 @@ class QemuDeployMixin:
 
         Sans cet effacement, deploy_qemu refuse d'écraser et la création
         échoue, après avoir fait attendre.
+
+        Les domaines sont relus ici : le formulaire a calculé ses états sur
+        ceux lus à son ouverture, et le disque d'un domaine défini depuis (un
+        déploiement parallèle, un geste à la main) n'est jamais proposé.
         """
+        definis = set(self._qemu_list_domains())
+        names = [n for n in names if n not in definis]
         orphans = self._qemu_orphan_disks(names)
         if not orphans:
             return True
