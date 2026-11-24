@@ -22,10 +22,13 @@ Deux exigences, donc, et elles sont indissociables :
 import ast
 import contextlib
 import io
+import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
+import zipfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "script", "odoo", "migration"))
@@ -504,6 +507,7 @@ class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
 
     METHODES = (
         "execute_odoo_upgrade",
+        "copy_to_image_db",
         # Appelée DEPUIS execute_odoo_upgrade : c'est par elle que le
         # « validez que le dépôt est prêt » arrivait, et il bloquait.
         "internal_module_upgrade",
@@ -1216,9 +1220,10 @@ class TestTheSimplePromptsAreYesNoQuestions(EnvCase):
 class TestTheBackupAtTheEnd(unittest.TestCase):
     """Au bout de plusieurs heures, l'archive est ce qu'on voulait.
 
-    Trois réponses, trois sens, et le troisième est celui qui piège : « n »
-    refuse, « y » ou Entrée prend le nom horodaté, et TOUT LE RESTE est un
-    nom de fichier. « non.zip » est donc un fichier, pas un refus.
+    Trois réponses, trois sens, et le troisième est celui qui piège : un
+    mot de non refuse, un mot de oui ou Entrée prend le nom horodaté, dans
+    les deux langues, et TOUT LE RESTE est un nom de fichier. « non.zip »
+    est donc un fichier, pas un refus.
     """
 
     TPL = "./odoo_bin.sh db dump x --image"
@@ -1233,10 +1238,20 @@ class TestTheBackupAtTheEnd(unittest.TestCase):
     def test_case_does_not_matter(self):
         self.assertEqual(self.cmd("Y"), self.DEFAUT)
 
+    def test_every_yes_of_both_languages_takes_it(self):
+        for answer in ("o", "oui", "yes", "OUI", " Yes "):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.cmd(answer), self.DEFAUT)
+
     def test_n_refuses(self):
         # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
         self.assertEqual(self.cmd("n"), "")
         self.assertEqual(self.cmd("N"), "")
+
+    def test_every_no_of_both_languages_refuses(self):
+        for answer in ("non", "no", "NON", " No "):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.cmd(answer), "")
 
     def test_anything_else_is_a_filename(self):
         self.assertTrue(self.cmd("archive.zip").endswith(" archive.zip"))
@@ -1254,13 +1269,437 @@ class TestTheBackupAtTheEnd(unittest.TestCase):
         self.assertEqual(self.cmd(None), "")
 
     def test_enter_backs_up_because_the_default_says_so(self):
+        # Le défaut oui, et l'indice du port qui le dit dans la langue
+        # choisie, [O/n] ou [Y/n], suivi du nom de fichier qu'on peut taper.
         import inspect
 
         source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
-        debut = source.index("Export a backup?")
-        fenetre = source[debut : debut + 200]
+        debut = source.index('t("[Y/n]: ")')
+        fenetre = source[debut : debut + 300]
+        self.assertIn("or type filename.zip", fenetre)
+        self.assertIn("Export a backup?", fenetre)
         self.assertIn('default="y"', fenetre)
-        self.assertIn("(Y/n,", fenetre)
+
+
+class Stopped(Exception):
+    """Lancée par le double de `todo_upgrade_execute` : la migration
+    s'arrête à sa première commande."""
+
+
+class MigrationRun(EnvCase):
+    """Une migration reprise de la sauvegarde DB d'Odoo 16, en français,
+    jouée par `execute_odoo_upgrade` dans un répertoire jetable qui tient
+    lieu de checkout. Rien n'est lancé : `execute`, le double de
+    `todo_upgrade_execute`, note la commande, puis lève Stopped."""
+
+    def setUp(self):
+        super().setUp()
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
+        home = self.enterContext(tempfile.TemporaryDirectory())
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(home)
+        os.mkdir("image_db")
+        self.backup = os.path.join(home, f"{DB}.zip")
+        manifest = {"version": "16.0", "modules": {"base": {}}}
+        with zipfile.ZipFile(self.backup, "w") as archive:
+            archive.writestr("manifest.json", json.dumps(manifest))
+        self.image = os.path.join("image_db", f"{DB}.zip")
+        self.lst_cmd = []
+
+    def execute(self, cmd, **_kw):
+        self.lst_cmd.append(cmd)
+        raise Stopped()
+
+    def upgrade(self, auto, **progression):
+        from unittest import mock
+
+        from script.todo import todo_upgrade
+
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {
+            "migration_file": self.backup,
+            "target_odoo_version": "17.0",
+            "config_database_name": DB,
+            "state_1_neutralize_database": True,
+            **progression,
+        }
+        upgrade.lst_command_executed = []
+        upgrade.todo = mock.MagicMock()
+        upgrade.prompt_auto_execute = lambda: None
+        upgrade.ask_ui = lambda: "cli"
+        upgrade.write_config = lambda: None
+        upgrade.open_step_log = lambda msg: None
+        upgrade.switch_odoo = lambda version: None
+        upgrade.check_addons_exist = lambda modules, get_all_info: (
+            ["forged_yesno_module"],
+            [],
+            [],
+            [],
+        )
+        upgrade.todo_upgrade_execute = self.execute
+        if auto:
+            upgrade.auto_execute = True
+        absent = os.path.join(os.getcwd(), "absent.json")
+        self.enterContext(
+            mock.patch.object(
+                todo_upgrade, "UPGRADE_DATABASE_CONFIG_LOG", absent
+            )
+        )
+        versions = ([{"odoo_version": "17.0"}], [], "odoo16.0")
+        self.enterContext(
+            mock.patch.object(
+                todo_upgrade, "get_odoo_version", return_value=versions
+            )
+        )
+        return upgrade
+
+    def run_upgrade(self, upgrade):
+        """Ce que rend la migration, ou Stopped à sa première commande."""
+        try:
+            return upgrade.execute_odoo_upgrade()
+        except Stopped:
+            return Stopped
+
+    def play(self, answers, auto=False, **progression):
+        """(issue, événements du port scripté) de la migration jouée sur
+        `answers`, qui doivent toutes être lues."""
+        from unittest import mock
+
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        upgrade = self.upgrade(auto, **progression)
+        with (
+            mock.patch("builtins.input", side_effect=AssertionError),
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(ScriptedPort(list(answers))) as port,
+        ):
+            issue = self.run_upgrade(upgrade)
+        self.assertEqual(port.answers, [])
+        return issue, [e for e in port.events if e.get("kind") == "confirm"]
+
+
+class TestTheRunOfTheMigration(MigrationRun):
+    """Les questions oui/non du début du déroulé, vers Odoo 17 : installer
+    la version d'Odoo qui manque, continuer malgré des modules manquants,
+    remplacer l'image déjà copiée sous image_db/.
+
+    Remplacer l'image efface l'ancienne : non par défaut. Hors compte à
+    rebours, Ctrl+D arrête la migration, là où un non restaure l'ancienne
+    image ; à rebours, l'échéance et Ctrl+D prennent le défaut."""
+
+    def old_image(self):
+        with open(self.image, "w") as handle:
+            handle.write("forged old image")
+
+    def image_kept(self):
+        with open(self.image, "rb") as handle:
+            return handle.read() == b"forged old image"
+
+    def test_a_missing_odoo_is_installed_only_on_a_yes(self):
+        from script.todo.todo_i18n import t
+
+        cle = "Would you like to install '%s'?"
+        for answers, installe in [([""], False), *REFUSED_RUN, *YES_RUN]:
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                issue, asked = self.play(answers)
+                self.assertEqual(
+                    asked[0]["prompt"], f"💬 {t(cle) % 'odoo16.0'}"
+                )
+                self.assertEqual(asked[0]["default"], "n")
+                if installe:
+                    self.assertIs(issue, Stopped)
+                    self.assertEqual(self.lst_cmd, ["make install_odoo_16"])
+                else:
+                    self.assertIsNone(issue)
+                    self.assertEqual(self.lst_cmd, [])
+
+    def test_missing_modules_stop_the_migration_unless_yes(self):
+        from script.todo.todo_i18n import t
+
+        cle = (
+            "Missing or duplicate module detected at init,"
+            " do you want to continue?"
+        )
+        fait = {"state_0_install_odoo": True}
+        for answers, continue_ in [([""], False), *REFUSED_RUN, *YES_RUN]:
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                if os.path.exists(self.image):
+                    os.remove(self.image)
+                issue, asked = self.play(answers, **fait)
+                self.assertEqual(asked[0]["prompt"], f"💬 {t(cle)}")
+                self.assertEqual(asked[0]["default"], "n")
+                if continue_:
+                    self.assertIs(issue, Stopped)
+                    self.assertIn("db_restore.py", self.lst_cmd[0])
+                else:
+                    self.assertIsNone(issue)
+                    self.assertEqual(self.lst_cmd, [])
+
+    RESUMED = {
+        "state_0_install_odoo": True,
+        "state_0_search_missing_module": True,
+    }
+
+    def test_the_image_is_replaced_only_on_a_yes(self):
+        from script.todo.todo_i18n import t
+
+        cle = "A file already exists, do you want to continue?"
+        refus = [([""], False), (["n"], False), (["non"], False)]
+        refus += [(["peut-être", "n"], False)]
+        for answers, remplace in refus + list(YES_RUN):
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                self.old_image()
+                issue, asked = self.play(answers, **self.RESUMED)
+                self.assertEqual(asked[0]["prompt"], f"💬 {t(cle)}")
+                self.assertEqual(asked[0]["default"], "n")
+                self.assertTrue(asked[0]["back"])
+                self.assertIs(issue, Stopped)
+                self.assertIn("db_restore.py", self.lst_cmd[0])
+                self.assertEqual(self.image_kept(), not remplace)
+
+    def test_ctrl_d_stops_the_migration_and_keeps_the_image(self):
+        for answers in ([EOFError()], ["peut-être", EOFError()]):
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                self.old_image()
+                issue, _asked = self.play(answers, **self.RESUMED)
+                self.assertIsNone(issue)
+                self.assertEqual(self.lst_cmd, [])
+                self.assertTrue(self.image_kept())
+
+    def test_in_auto_mode_the_deadline_keeps_the_image(self):
+        from unittest import mock
+
+        from script.todo.ui import port
+
+        heard = []
+
+        def deadline(text, default, seconds):
+            heard.append((default, seconds, auto_ask.enabled()))
+            return default
+
+        self.old_image()
+        upgrade = self.upgrade(True, **self.RESUMED)
+        with (
+            mock.patch.dict(port.ORIGINAL, {"auto_ask.ask": deadline}),
+            mock.patch("builtins.input", side_effect=AssertionError),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            issue = self.run_upgrade(upgrade)
+        self.assertEqual(heard, [("n", TodoUpgrade.AUTO_DELAY, True)])
+        self.assertIs(issue, Stopped)
+        self.assertIn("db_restore.py", self.lst_cmd[0])
+        self.assertTrue(self.image_kept())
+
+    def test_in_auto_mode_a_cancelled_countdown_keeps_the_image(self):
+        # Le journal des tâches change l'annulation d'un compte à rebours
+        # en Entrée ; Ctrl+D y vaut Entrée aussi : le défaut, non.
+        for answers in ([""], [EOFError()]):
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                self.old_image()
+                issue, asked = self.play(answers, True, **self.RESUMED)
+                self.assertEqual(asked[0]["timeout_s"], TodoUpgrade.AUTO_DELAY)
+                self.assertIs(issue, Stopped)
+                self.assertIn("db_restore.py", self.lst_cmd[0])
+                self.assertTrue(self.image_kept())
+
+
+class TestTheBumpsOfTheMigration(MigrationRun):
+    """Les questions oui/non des paliers et de la fin du déroulé, sur une
+    migration vers Odoo 18 reprise juste avant OpenUpgrade : deux paliers,
+    17 puis 18. À chacun : mettre à jour tous les modules (oui par défaut),
+    ouvrir le serveur avec Selenium (non par défaut, « a » l'ouvre à ce
+    palier et aux suivants sans plus demander). À la fin : tester la
+    migration (non par défaut).
+
+    Ici `execute` réussit chaque commande ; les outils de chaque palier,
+    sa porte d'attente et la sauvegarde finale (une question texte, à
+    laquelle le double répond non) sont des doubles muets."""
+
+    BUMPS = {
+        "target_odoo_version": "18.0",
+        "state_0_install_odoo": True,
+        "state_0_search_missing_module": True,
+        "state_1_restore_database": True,
+        "state_1_update_all": True,
+        "state_2_update_all": True,
+        "state_1_theme_uninstalled": True,
+        "state_1_uninstall_module": True,
+        "state_1_install_module": True,
+        "state_3_clean_database": True,
+        "state_4_clone_odoo_lst": [True, True],
+        "state_4_switch_odoo_lst": [True, True],
+        "state_4_module_migrate_odoo_lst": [True, True],
+        "state_4_uninstall_module": [True, True],
+        "state_4_install_module": [True, True],
+        "state_4_search_missing_module": [True, True],
+        "state_4_fix_migration_odoo_lst": [["forged"], ["forged"]],
+    }
+    TOOLS = (
+        "prompt_cow_prediction",
+        "prompt_database_cleanup",
+        "prompt_smoke_public_url",
+        "snapshot_cow_views",
+        "diff_cow_views",
+        "repair_cow_render",
+        "neutralize_cow_views",
+        "run_on_terminal",
+        "run_captured",
+        "run_tool",
+        "drop_duplicate_index",
+        "restore_config_defaults",
+        "prompt_purge_dead_attachments",
+    )
+    UPGRADE_ALL = "Do you want to upgrade all addons of the database?"
+    SELENIUM = "Open the server with Selenium to test this upgrade?"
+    EVERY = "Open it at EVERY version bump, stop asking"
+    TEST = "Test the migration?"
+
+    def execute(self, cmd, **_kw):
+        self.lst_cmd.append(cmd)
+        return 0, cmd
+
+    def upgrade(self, auto, **progression):
+        """La migration de `MigrationRun`, aux paliers ; gardée dans
+        `self.played` pour lire sa progression et ses appels."""
+        upgrade = super().upgrade(auto, **{**self.BUMPS, **progression})
+        for nom in self.TOOLS:
+            setattr(upgrade, nom, lambda *_a, **_kw: 0)
+        upgrade.get_rename_module = lambda modules, version: list(modules)
+        upgrade.ask_gate = lambda prompt, default="": ""
+        upgrade.ask = lambda prompt, default="": "n"
+        # Le journal, dans l'ordre : ce que chaque écriture de la
+        # progression retient de « a », puis chaque base ouverte.
+        self.journal = []
+        upgrade.write_config = lambda: self.journal.append(
+            upgrade.dct_progression.get("state_4_selenium_every_bump")
+        )
+        upgrade.todo.prompt_execute_selenium_and_run_db.side_effect = (
+            self.journal.append
+        )
+        self.played = upgrade
+        return upgrade
+
+    def opened(self):
+        """Les bases ouvertes avec Selenium, dans l'ordre."""
+        selenium = self.played.todo.prompt_execute_selenium_and_run_db
+        return [call.args[0] for call in selenium.call_args_list]
+
+    def upgraded_all(self):
+        return [cmd for cmd in self.lst_cmd if "update_addons_all.sh" in cmd]
+
+    def test_every_addon_is_upgraded_unless_no(self):
+        from script.todo.todo_i18n import t
+
+        attendre = f" ({t('or wait next version')} 🤖)"
+        for answers, oui in [([""], True), *REFUSED_RUN, *YES_RUN]:
+            with self.subTest(answers=answers):
+                self.lst_cmd.clear()
+                issue, asked = self.play([*answers, "n", *answers, "n", "n"])
+                self.assertIsNone(issue)
+                fois = 1 + answers.count("peut-être")
+                upgrade_all = [a for a in asked if a["default"] == "y"]
+                self.assertEqual(
+                    [a["prompt"] for a in upgrade_all],
+                    [f"💬 {t(self.UPGRADE_ALL)}{attendre}"] * fois
+                    + [f"💬 {t(self.UPGRADE_ALL)}"] * fois,
+                )
+                attendu = [f"./script/addons/update_addons_all.sh {DB}"]
+                self.assertEqual(
+                    self.upgraded_all(),
+                    [f"{attendu[0]}_upgrade_17", f"{attendu[0]}_upgrade_18"]
+                    if oui
+                    else [],
+                )
+
+    def test_selenium_opens_at_a_bump_only_on_a_yes(self):
+        from script.todo.todo_i18n import t
+
+        for answers, oui in [([""], False), *REFUSED_RUN, *YES_RUN]:
+            with self.subTest(answers=answers):
+                issue, asked = self.play(["", *answers, "", *answers, "n"])
+                self.assertIsNone(issue)
+                selenium = [a for a in asked if a.get("options")]
+                fois = 1 + answers.count("peut-être")
+                self.assertEqual(len(selenium), 2 * fois)
+                for question in selenium:
+                    self.assertEqual(
+                        question["prompt"], f"💬 {t(self.SELENIUM)}"
+                    )
+                    self.assertEqual(question["default"], "n")
+                    self.assertEqual(
+                        [o["key"] for o in question["options"]], ["a"]
+                    )
+                    self.assertEqual(
+                        question["options"][0]["label"], t(self.EVERY)
+                    )
+                self.assertEqual(
+                    self.opened(),
+                    [f"{DB}_upgrade_17", f"{DB}_upgrade_18"] if oui else [],
+                )
+                self.assertNotIn(
+                    "state_4_selenium_every_bump", self.played.dct_progression
+                )
+
+    def test_a_opens_selenium_at_every_bump_and_asks_once(self):
+        issue, asked = self.play(["", "a", "", "n"])
+        self.assertIsNone(issue)
+        self.assertEqual(len([a for a in asked if a.get("options")]), 1)
+        self.assertEqual(
+            self.opened(), [f"{DB}_upgrade_17", f"{DB}_upgrade_18"]
+        )
+        self.assertIs(
+            self.played.dct_progression["state_4_selenium_every_bump"], True
+        )
+        # Écrit AVANT d'ouvrir le serveur : une reprise après ce palier ne
+        # repose pas la question.
+        self.assertLess(
+            self.journal.index(True), self.journal.index(f"{DB}_upgrade_17")
+        )
+
+    def test_the_remembered_a_skips_the_question(self):
+        issue, asked = self.play(
+            ["", "", "n"], state_4_selenium_every_bump=True
+        )
+        self.assertIsNone(issue)
+        self.assertEqual([a for a in asked if a.get("options")], [])
+        self.assertEqual(
+            self.opened(), [f"{DB}_upgrade_17", f"{DB}_upgrade_18"]
+        )
+
+    def test_the_migration_is_tested_at_the_end_only_on_a_yes(self):
+        from script.todo.todo_i18n import t
+
+        for answers, oui in [([""], False), *REFUSED_RUN, *YES_RUN]:
+            with self.subTest(answers=answers):
+                issue, asked = self.play(["", "n", "", "n", *answers])
+                self.assertIsNone(issue)
+                self.assertEqual(asked[-1]["prompt"], f"💬 {t(self.TEST)}")
+                self.assertEqual(asked[-1]["default"], "n")
+                self.assertEqual(
+                    self.opened(), [f"{DB}_upgrade_18"] if oui else []
+                )
+
+    def test_a_closed_input_ends_the_run(self):
+        issue, asked = self.play([])
+        self.assertIsNone(issue)
+        self.assertEqual(len(asked), 5)
+        self.assertEqual(self.opened(), [])
+        self.assertEqual(self.upgraded_all(), [])
+
+
+# (réponses, oui) : refus du déroulé, dont Ctrl+D hors `back`, puis oui.
+REFUSED_RUN = tuple((answers, False) for answers in REFUSED)
+YES_RUN = tuple((answers, True) for answers in YES)
 
 
 class TestTheToolsLaunchedApart(unittest.TestCase):
@@ -1346,7 +1785,7 @@ class TestTestingEveryBump(unittest.TestCase):
         source = self.source()
         debut = source.index("state_4_selenium_every_bump")
         fenetre = source[debut : debut + 400]
-        self.assertIn('status = "y"', fenetre)
+        self.assertIn("status = True", fenetre)
 
     def test_it_belongs_to_step_four(self):
         # Le nom porte sa propriété : un retour avant l'étape 4 doit

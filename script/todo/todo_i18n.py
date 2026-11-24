@@ -13059,9 +13059,9 @@ TRANSLATIONS = {
         "fr": "Recherche du bon environnement, lecture du fichier .zip",
         "en": "Find the right environment, read the .zip file",
     },
-    "Would you like to install": {
-        "fr": "Voulez-vous installer",
-        "en": "Would you like to install",
+    "Would you like to install '%s'?": {
+        "fr": "Voulez-vous installer '%s' ?",
+        "en": "Would you like to install '%s'?",
     },
     "You need an installed system before": {
         "fr": "Il faut un système installé avant de",
@@ -13099,13 +13099,11 @@ TRANSLATIONS = {
         "fr": "Module en double",
         "en": "Duplicate module",
     },
-    "Missing or duplicate module detected at init,": {
-        "fr": "Module manquant ou en double détecté à l'init,",
-        "en": "Missing or duplicate module detected at init,",
-    },
-    "do you want to continue?": {
-        "fr": "voulez-vous continuer ?",
-        "en": "do you want to continue?",
+    "Missing or duplicate module detected at init, do you want to continue?": {
+        "fr": "Module manquant ou en double détecté à l'init, voulez-vous"
+        " continuer ?",
+        "en": "Missing or duplicate module detected at init,"
+        " do you want to continue?",
     },
     "Missing or duplicate module detected at init, do": {
         "fr": "Module manquant ou en double détecté à l'init,",
@@ -13131,13 +13129,9 @@ TRANSLATIONS = {
         "fr": "va copier",
         "en": "will copy",
     },
-    "a file already exists, do you want to": {
-        "fr": "un fichier existe déjà, voulez-vous",
-        "en": "a file already exists, do you want to",
-    },
-    "continue?": {
-        "fr": "continuer ?",
-        "en": "continue?",
+    "A file already exists, do you want to continue?": {
+        "fr": "Un fichier existe déjà, voulez-vous continuer ?",
+        "en": "A file already exists, do you want to continue?",
     },
     "Restore the database": {
         "fr": "Restauration de la base",
@@ -13435,25 +13429,21 @@ TRANSLATIONS = {
         "fr": "précédente avant de réessayer.",
         "en": "version before retrying.",
     },
-    "Do you want to upgrade all": {
-        "fr": "Voulez-vous tout mettre à jour",
-        "en": "Do you want to upgrade all",
+    "Do you want to upgrade all addons of the database?": {
+        "fr": "Voulez-vous mettre à jour tous les modules de la base ?",
+        "en": "Do you want to upgrade all addons of the database?",
+    },
+    "or wait next version": {
+        "fr": "ou attendre la version suivante",
+        "en": "or wait next version",
     },
     "Press y/Y to upgrade all addons of the": {
         "fr": "y/Y pour mettre à jour tous les modules de la",
         "en": "Press y/Y to upgrade all addons of the",
     },
-    "Open the server with Selenium": {
-        "fr": "Ouvrir le serveur avec Selenium",
-        "en": "Open the server with Selenium",
-    },
-    "Do you want to test this upgrade? Choose": {
-        "fr": "Voulez-vous tester cette migration ? Choisissez",
-        "en": "Do you want to test this upgrade? Choose",
-    },
-    "or press enter to ignore it": {
-        "fr": "ou Entrée pour ignorer",
-        "en": "or press enter to ignore it",
+    "Open the server with Selenium to test this upgrade?": {
+        "fr": "Ouvrir le serveur avec Selenium pour tester cette migration ?",
+        "en": "Open the server with Selenium to test this upgrade?",
     },
     "Press enter to continue": {
         "fr": "Entrée pour continuer",
@@ -13479,9 +13469,9 @@ TRANSLATIONS = {
         "fr": "Entrée pour continuer",
         "en": "enter to continue",
     },
-    "Test the migration, press y/Y": {
-        "fr": "Tester la migration, y/Y",
-        "en": "Test the migration, press y/Y",
+    "Test the migration?": {
+        "fr": "Tester la migration ?",
+        "en": "Test the migration?",
     },
     "Documentation for this version": {
         "fr": "Documentation de cette version",
@@ -14014,10 +14004,6 @@ TRANSLATIONS = {
     "Enter = reset them onto the module file": {
         "fr": "Entrée = les réinitialiser sur le fichier du module",
         "en": "Enter = reset them onto the module file",
-    },
-    "Enter upgrades all addons of the": {
-        "fr": "Entrée met à jour tous les modules de la",
-        "en": "Enter upgrades all addons of the",
     },
     "Open it at EVERY version bump, stop asking": {
         "fr": "L'ouvrir à CHAQUE palier de version, ne plus demander",

@@ -19,6 +19,7 @@ from script.todo import (
     todo_file_browser,
     ui,
 )
+from script.todo.ui.port import NO, YES
 from script.todo.version_manager import get_odoo_version
 
 try:
@@ -984,13 +985,14 @@ class TodoUpgrade:
             # Renoncer au retour en arrière ne doit pas arrêter la migration :
             # on revient à la même invite, exactement là où l'on était.
 
-    def confirm(self, text, default, letters=None):
+    def confirm(self, text, default, letters=None, back=False):
         """La réponse à la question oui/non `text` (`ui.confirm`), de
         défaut `default` : True, False, ou la lettre d'une action de
         `letters` ({lettre: libellé}). Le mode automatique est exporté
         comme par `ask`, et y compte à rebours AUTO_DELAY secondes avant de
         prendre le défaut, que Ctrl+D y prend aussi ; hors de lui, Ctrl+D
-        vaut non. « b » rembobine (`rewind_to_chosen_step`) puis
+        vaut non, ou None avec `back`, que l'appelant lit comme l'arrêt de
+        la migration. « b » rembobine (`rewind_to_chosen_step`) puis
         lève MigrationRewind, ou, si l'on y renonce, repose la question ;
         « t » montre l'état de la migration puis la repose."""
         auto = getattr(self, "auto_execute", False)
@@ -1000,6 +1002,7 @@ class TodoUpgrade:
                 text,
                 default=default,
                 timeout=self.AUTO_DELAY if auto else None,
+                back=back,
                 letters=letters,
             )
             if answer == "t":
@@ -1023,21 +1026,46 @@ class TodoUpgrade:
         """La commande de sauvegarde à lancer, ou « » pour ne rien faire.
 
         Trois réponses, trois sens, et le troisième est celui qui piège :
-        « n » refuse, « y » ou Entrée prend le nom horodaté, et TOUT LE
-        RESTE est un nom de fichier. Une réponse comme « non.zip » est donc
-        un fichier, pas un refus — d'où la comparaison exacte plutôt qu'un
-        début de mot.
+        un mot de NO du port refuse, un mot de YES ou Entrée prend le nom
+        horodaté, sans casse, et TOUT LE RESTE est un nom de fichier. Une
+        réponse comme « non.zip » est donc un fichier, pas un refus — d'où
+        la comparaison exacte plutôt qu'un début de mot.
 
         Entrée sauvegarde : au bout d'une migration de plusieurs heures,
         l'archive est ce qu'on voulait de toute façon. Mais refuser doit
         rester possible, et avoir un mot pour le dire.
         """
         reponse = (answer or "").strip()
-        if reponse.lower() in ("", "n"):
+        if reponse.lower() in ("", *NO):
             return ""
-        if reponse.lower() == "y":
+        if reponse.lower() in YES:
             return default_cmd
         return f"{template} {reponse}"
+
+    def copy_to_image_db(self, image_db_file_path):
+        """Copier la sauvegarde de la migration en `image_db_file_path`,
+        d'où `db_restore.py` la restaure. Une image déjà là n'est remplacée
+        que sur un oui (`confirm`, non par défaut) : un non la garde, et
+        c'est elle qui se restaure. Rend False quand Ctrl+D, hors compte à
+        rebours, arrête la migration avant toute restauration ; True
+        sinon."""
+        print(
+            f"🤖 {t('will copy')} '{self.file_path}'"
+            f" {t('to')} '{image_db_file_path}'"
+        )
+        if os.path.exists(image_db_file_path):
+            replace = self.confirm(
+                "💬 " + t("A file already exists, do you want to continue?"),
+                default=False,
+                back=True,
+            )
+            if replace is None:
+                return False
+            if not replace:
+                return True
+            os.remove(image_db_file_path)
+        shutil.copy(self.file_path, image_db_file_path)
+        return True
 
     def show_migration_status(self):
         """Ouvrir l'état de la migration, en plein écran.
@@ -1718,11 +1746,12 @@ class TodoUpgrade:
                 iter_range_version = odoo_version_to_install.replace(
                     "odoo", ""
                 ).replace(".0", "")
-                want_continue = self.ask(
-                    f"💬 {t('Would you like to install')}"
-                    f" '{odoo_version_to_install}' (y/Y) : "
-                )
-                if want_continue.strip().lower() != "y":
+                if not self.confirm(
+                    "💬 "
+                    + t("Would you like to install '%s'?")
+                    % odoo_version_to_install,
+                    default=False,
+                ):
                     return
                 self.todo_upgrade_execute(
                     f"make install_odoo_{iter_range_version}"
@@ -1791,11 +1820,14 @@ class TodoUpgrade:
                 if lst_module_duplicate:
                     print(f"{t('Duplicate module')} :")
                     print(lst_module_duplicate)
-                want_continue = self.ask(
-                    f"💬 {t('Missing or duplicate module detected at init,')}"
-                    f" {t('do you want to continue?')} (Y/N) : "
-                )
-                if want_continue.strip().lower() != "y":
+                if not self.confirm(
+                    "💬 "
+                    + t(
+                        "Missing or duplicate module detected at init,"
+                        " do you want to continue?"
+                    ),
+                    default=False,
+                ):
                     return
 
             self.dct_progression["state_0_search_missing_module"] = True
@@ -1850,27 +1882,9 @@ class TodoUpgrade:
         if not self.dct_progression.get("state_1_restore_database"):
             file_name = os.path.basename(self.file_path)
             image_db_file_path = os.path.join("image_db", file_name)
-            str_will_copy = (
-                f"🤖 {t('will copy')} '{self.file_path}'"
-                f" {t('to')} '{image_db_file_path}'"
-            )
             if not shutil._samefile(self.file_path, image_db_file_path):
-                do_copy = False
-                if os.path.exists(image_db_file_path):
-                    status_overwrite_image_db = self.ask(
-                        f"{str_will_copy}, "
-                        f"{t('a file already exists, do you want to')}"
-                        f" {t('continue?')} (y/Y) : "
-                    ).strip()
-                    if status_overwrite_image_db.lower() == "y":
-                        do_copy = True
-                        os.remove(image_db_file_path)
-                else:
-                    print(str_will_copy)
-                    do_copy = True
-
-                if do_copy:
-                    shutil.copy(self.file_path, image_db_file_path)
+                if not self.copy_to_image_db(image_db_file_path):
+                    return
 
             neutralize_arg = ""
             if start_version >= 16 and do_neutralize:
@@ -2944,24 +2958,17 @@ class TodoUpgrade:
                 )
 
                 str_wait_next_version = (
-                    " (or wait next version 🤖)"
+                    f" ({t('or wait next version')} 🤖)"
                     if next_version != lst_next_version[-1]
                     else ""
                 )
 
-                status = (
-                    self.ask(
-                        f"💬 {t('Do you want to upgrade all')}"
-                        f"{str_wait_next_version} ?"
-                        f" (Y/n, {t('Enter upgrades all addons of the')}"
-                        f" {t('database')}) : ",
-                        default="y",
-                    )
-                    .strip()
-                    .lower()
-                )
-
-                if status == "y":
+                if self.confirm(
+                    "💬 "
+                    + t("Do you want to upgrade all addons of the database?")
+                    + str_wait_next_version,
+                    default=True,
+                ):
                     self.todo_upgrade_execute(
                         f"./script/addons/update_addons_all.sh {database_name_upgrade}",
                     )
@@ -3020,34 +3027,32 @@ class TodoUpgrade:
                     f" -d {database_name_upgrade}",
                 )
 
-                print(f"[y] {t('Open the server with Selenium')}")
-                print(f"[a] {t('Open it at EVERY version bump, stop asking')}")
-                # Une migration traverse jusqu'à six paliers. Répondre « y »
-                # à chacun oblige à rester devant ; « a » est la réponse
+                # Une migration traverse jusqu'à six paliers. Répondre oui à
+                # chacun oblige à rester devant ; « a » est la réponse
                 # qu'on donnait de toute façon six fois de suite, dite une
                 # seule fois — et retenue, donc valable après une reprise.
                 if self.dct_progression.get("state_4_selenium_every_bump"):
-                    status = "y"
+                    status = True
                     print(
                         f"ℹ -> {t('Testing every bump, as chosen earlier.')}"
                     )
                 else:
-                    status = (
-                        self.ask(
-                            f"💬 {t('Do you want to test this upgrade? Choose')}"
-                            f" {t('or press enter to ignore it')} : "
-                        )
-                        .strip()
-                        .lower()
+                    every = t("Open it at EVERY version bump, stop asking")
+                    status = self.confirm(
+                        "💬 "
+                        + t(
+                            "Open the server with Selenium to test this upgrade?"
+                        ),
+                        default=False,
+                        letters={"a": every},
                     )
                     if status == "a":
                         self.dct_progression["state_4_selenium_every_bump"] = (
                             True
                         )
                         self.write_config()
-                        status = "y"
                 "make repo_show_status"
-                if status == "y":
+                if status:
                     self.todo.prompt_execute_selenium_and_run_db(
                         database_name_upgrade
                     )
@@ -3083,10 +3088,9 @@ class TodoUpgrade:
         )
         cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
         print(f"✨ {t('A backup can be created')} :\n{cmd_backup}")
+        hint = t("[Y/n]: ").replace("]", f", {t('or type filename.zip')}]", 1)
         status = self.ask(
-            f"💬 {t('Export a backup?')}"
-            f" (Y/n, {t('or type filename.zip')}) : ",
-            default="y",
+            f"💬 {t('Export a backup?')} {hint}", default="y"
         ).strip()
         cmd_backup = self.backup_command(
             status, cmd_backup_template, cmd_backup
@@ -3094,8 +3098,7 @@ class TodoUpgrade:
         if cmd_backup:
             self.todo_upgrade_execute(cmd_backup)
 
-        status = self.ask(f"💬 {t('Test the migration, press y/Y')} : ")
-        if status.lower().strip() == "y":
+        if self.confirm(f"💬 {t('Test the migration?')}", default=False):
             self.todo.prompt_execute_selenium_and_run_db(database_name_upgrade)
 
     def _prompt_on_error(self, database_name, defaut, repare):

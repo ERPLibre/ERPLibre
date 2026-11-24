@@ -1074,6 +1074,37 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/todo_upgrade.py",
+        "TodoUpgrade.copy_to_image_db",
+        "A file already exists, do you want to continue?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.execute_odoo_upgrade",
+        "Do you want to upgrade all addons of the database?",
+    ): [True],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.execute_odoo_upgrade",
+        "Missing or duplicate module detected at init, do you want to"
+        " continue?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.execute_odoo_upgrade",
+        "Open the server with Selenium to test this upgrade?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.execute_odoo_upgrade",
+        "Test the migration?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.execute_odoo_upgrade",
+        "Would you like to install '%s'?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
         "TodoUpgrade.neutralize_cow_views",
         "Neutralize these copies so the upgrade can proceed? Their arch is"
         " kept and the change is reversible.",

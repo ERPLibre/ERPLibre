@@ -114,17 +114,18 @@ class TestTheDatabaseMigrationSpeaksFrench(unittest.TestCase):
 
     def test_no_english_sentence_is_displayed_raw(self):
         tree, path = self.driver()
+        # `copy_to_image_db` affiche l'étape 1 du déroulé : même langue.
         target = [
             node
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef)
-            and node.name == "execute_odoo_upgrade"
+            and node.name in ("execute_odoo_upgrade", "copy_to_image_db")
         ]
-        self.assertEqual(len(target), 1, "fonction introuvable")
+        self.assertEqual(len(target), 2, "fonction introuvable")
         left = [
             text
             for _, text in displayed_strings(path)
-            if target[0].lineno <= _ <= target[0].end_lineno
+            if any(f.lineno <= _ <= f.end_lineno for f in target)
             # Ponctuation d'invite : « (y/Y) : » n'est pas une phrase.
             and len(text.split()) > 2
         ]
