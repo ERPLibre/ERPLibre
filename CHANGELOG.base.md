@@ -688,6 +688,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 <!-- [en] -->
 
+- `script/selenium/web_login.py` started without a terminal — the auto-login of the ERPLibre Home GNOME extension — no longer blocks on its final `input()` nor exits on an `EOFError` traceback that closed the browser: it keeps the browser open until its last window is closed, then exits 0; `--headless` does not wait. With a terminal it still waits for Enter, and Ctrl+C or an end of input exit cleanly
 - The install launcher warns « libvirt unreachable » only when libvirt really refuses: a VM not yet started no longer triggers it, and a session opened before joining the libvirt group reaches libvirt through `sg libvirt`, or `newgrp` where sg is missing (Arch), so the VM's moving address is followed again
 - An interrupted database restore (`ctrl+C`, dropped connection) still starts the erplibre service again if it was running, and the VM actions run with a terminal (`ssh -t`): sudo can ask its password, and a changed Odoo master password is no longer echoed
 - The macOS installer creates the PostgreSQL role from the current account, as Homebrew's PostgreSQL runs under it, with the keg-only `postgresql@15` binaries put on the `PATH`, instead of a `su - postgres` that always failed silently, and stops with the command to type when it cannot
@@ -849,6 +850,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- `script/selenium/web_login.py` lancé sans terminal — l'auto-connexion de l'extension GNOME ERPLibre Home — ne bloque plus sur son `input()` final ni ne sort sur une trace d'appel `EOFError` en fermant le navigateur : il garde le navigateur ouvert jusqu'à la fermeture de sa dernière fenêtre, puis sort à 0 ; `--headless` n'attend pas. Avec un terminal, il attend toujours Entrée, et Ctrl+C comme une fin d'entrée sortent proprement
 - Le lanceur d'installation n'avertit « libvirt injoignable » que si libvirt refuse vraiment : une VM pas encore démarrée ne le déclenche plus, et une session ouverte avant l'ajout au groupe libvirt joint libvirt par `sg libvirt`, ou `newgrp` là où sg manque (Arch), si bien que l'adresse mouvante de la VM est de nouveau suivie
 - Une restauration de base interrompue (`ctrl+C`, connexion coupée) relance quand même le service erplibre s'il tournait, et les actions VM tournent avec un terminal (`ssh -t`) : sudo peut demander son mot de passe, et un mot de passe maître d'Odoo changé ne s'affiche plus en clair
 - L'installeur macOS crée le rôle PostgreSQL depuis le compte courant, sous lequel tourne le PostgreSQL de Homebrew, les commandes de `postgresql@15`, non liées par Homebrew, ajoutées au `PATH`, au lieu d'un `su - postgres` qui échouait toujours en silence, et s'arrête avec la commande à taper quand il n'y parvient pas

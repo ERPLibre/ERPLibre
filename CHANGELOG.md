@@ -333,6 +333,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Fixed
 
+- `script/selenium/web_login.py` started without a terminal — the auto-login of the ERPLibre Home GNOME extension — no longer blocks on its final `input()` nor exits on an `EOFError` traceback that closed the browser: it keeps the browser open until its last window is closed, then exits 0; `--headless` does not wait. With a terminal it still waits for Enter, and Ctrl+C or an end of input exit cleanly
 - The install launcher warns « libvirt unreachable » only when libvirt really refuses: a VM not yet started no longer triggers it, and a session opened before joining the libvirt group reaches libvirt through `sg libvirt`, or `newgrp` where sg is missing (Arch), so the VM's moving address is followed again
 - An interrupted database restore (`ctrl+C`, dropped connection) still starts the erplibre service again if it was running, and the VM actions run with a terminal (`ssh -t`): sudo can ask its password, and a changed Odoo master password is no longer echoed
 - The macOS installer creates the PostgreSQL role from the current account, as Homebrew's PostgreSQL runs under it, with the keg-only `postgresql@15` binaries put on the `PATH`, instead of a `su - postgres` that always failed silently, and stops with the command to type when it cannot

@@ -338,6 +338,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Corrigé
 
+- `script/selenium/web_login.py` lancé sans terminal — l'auto-connexion de l'extension GNOME ERPLibre Home — ne bloque plus sur son `input()` final ni ne sort sur une trace d'appel `EOFError` en fermant le navigateur : il garde le navigateur ouvert jusqu'à la fermeture de sa dernière fenêtre, puis sort à 0 ; `--headless` n'attend pas. Avec un terminal, il attend toujours Entrée, et Ctrl+C comme une fin d'entrée sortent proprement
 - Le lanceur d'installation n'avertit « libvirt injoignable » que si libvirt refuse vraiment : une VM pas encore démarrée ne le déclenche plus, et une session ouverte avant l'ajout au groupe libvirt joint libvirt par `sg libvirt`, ou `newgrp` là où sg manque (Arch), si bien que l'adresse mouvante de la VM est de nouveau suivie
 - Une restauration de base interrompue (`ctrl+C`, connexion coupée) relance quand même le service erplibre s'il tournait, et les actions VM tournent avec un terminal (`ssh -t`) : sudo peut demander son mot de passe, et un mot de passe maître d'Odoo changé ne s'affiche plus en clair
 - L'installeur macOS crée le rôle PostgreSQL depuis le compte courant, sous lequel tourne le PostgreSQL de Homebrew, les commandes de `postgresql@15`, non liées par Homebrew, ajoutées au `PATH`, au lieu d'un `su - postgres` qui échouait toujours en silence, et s'arrête avec la commande à taper quand il n'y parvient pas
