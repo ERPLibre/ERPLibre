@@ -13,6 +13,10 @@ if [[ -d "${MODULE_PATH}" ]]; then
     echo -e "${Green}SUCCESS${Color_Off} ${MODULE_PATH} exists."
 else
     echo -e "${Red}ERROR${Color_Off} ${MODULE_PATH} is missing."
+    # Le lanceur des scénarios juge au code de retour : un module absent
+    # est un échec, pas seulement une ligne ERROR.
+    rm -rf "${tmp_dir}"
+    exit 1
 fi
 
 rm -rf "${tmp_dir}"

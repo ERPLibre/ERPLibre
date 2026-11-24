@@ -5,6 +5,8 @@
             "test_name": "helloworld_test",
             "sequence": 10,
             "script": "./test/code_generator/hello_world.sh",
+            "script_coverage": "./test/code_generator/coverage_hello_world.sh",
+            "origin_file_to_restore": "./odoo18.0/addons/TechnoLibre_odoo-code-generator-template/code_generator_demo/hooks.py",
             "restore_db_image_name": "odoo18.0_base",
             "note": "Test helloword_test Will cause conflict with the other because write in code_generator_demo/hooks.py"
         },
@@ -118,7 +120,7 @@
             "test_name": "code_generator_template_demo_sysadmin_cron",
             "path_module_check": "./odoo18.0/addons/OCA_server-tools",
             "generated_module": "code_generator_auto_backup",
-            "generated_path": "./odoo18.0/addons/OCA_server-tools/",
+            "generate_path": "./odoo18.0/addons/OCA_server-tools/",
             "tested_module": "code_generator_template_demo_sysadmin_cron",
             "search_class_module": "auto_backup",
             "init_module_name": "auto_backup",

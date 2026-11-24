@@ -12,7 +12,8 @@
             "test_name": "code_generator_theme_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "theme_website_demo_code_generator",
-            "tested_module": "code_generator_demo_theme_website"
+            "tested_module": "code_generator_demo_theme_website",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -20,14 +21,16 @@
             "test_name": "code_generator_demo_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "code_generator_demo",
-            "tested_module": "code_generator_demo"
+            "tested_module": "code_generator_demo",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
             "test_name": "code_generator_data_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_helpdesk_data",
-            "tested_module": "code_generator_demo_export_helpdesk"
+            "tested_module": "code_generator_demo_export_helpdesk",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -35,14 +38,16 @@
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_website_data",
             "tested_module": "code_generator_demo_export_website",
-            "note": "Merge to code_generator_data_test when fix double export data."
+            "note": "Merge to code_generator_data_test when fix double export data.",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
             "test_name": "code_generator_inherit_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_internal_inherit",
-            "tested_module": "code_generator_demo_internal_inherit"
+            "tested_module": "code_generator_demo_internal_inherit",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -51,7 +56,8 @@
             "generated_module": "code_generator_demo_internal",
             "tested_module": "code_generator_template_demo_internal",
             "search_class_module": "demo_internal",
-            "init_module_name": "demo_internal"
+            "init_module_name": "demo_internal",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -60,7 +66,8 @@
             "generated_module": "code_generator_demo_portal",
             "tested_module": "code_generator_template_demo_portal",
             "search_class_module": "demo_portal",
-            "init_module_name": "demo_portal"
+            "init_module_name": "demo_portal",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -70,7 +77,8 @@
             "generated_module": "code_generator_demo_mariadb_sql_example_1",
             "tested_module": "code_generator_template_demo_mariadb_sql_example_1",
             "search_class_module": "demo_mariadb_sql_example_1",
-            "init_module_name": "code_generator_portal,demo_mariadb_sql_example_1"
+            "init_module_name": "code_generator_portal,demo_mariadb_sql_example_1",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -80,7 +88,8 @@
             "generated_module": "demo_mariadb_sql_example_1",
             "tested_module": "code_generator_migrator_demo_mariadb_sql_example_1",
             "script_after_init_check": "./script/database/restore_mariadb_sql_example_1.sh",
-            "init_module_name": "code_generator_portal"
+            "init_module_name": "code_generator_portal",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -89,7 +98,8 @@
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_mariadb_sql_example_1",
             "tested_module": "code_generator_demo_mariadb_sql_example_1",
-            "init_module_name": "code_generator_portal"
+            "init_module_name": "code_generator_portal",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -98,7 +108,8 @@
             "generated_module": "code_generator_demo_internal_inherit",
             "tested_module": "code_generator_template_demo_internal_inherit",
             "search_class_module": "demo_internal_inherit",
-            "init_module_name": "demo_internal_inherit"
+            "init_module_name": "demo_internal_inherit",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -106,11 +117,12 @@
             "test_name": "code_generator_template_demo_sysadmin_cron",
             "path_module_check": "./odoo12.0/addons/OCA_server-tools",
             "generated_module": "code_generator_auto_backup",
-            "generated_path": "./odoo12.0/addons/OCA_server-tools/",
+            "generate_path": "./odoo12.0/addons/OCA_server-tools/",
             "tested_module": "code_generator_template_demo_sysadmin_cron",
             "search_class_module": "auto_backup",
             "init_module_name": "auto_backup",
-            "install_path": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template"
+            "install_path": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -127,7 +139,8 @@
             "test_name": "code_generator_demo_generic_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_internal,demo_portal",
-            "tested_module": "code_generator_demo_internal,code_generator_demo_portal"
+            "tested_module": "code_generator_demo_internal,code_generator_demo_portal",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
@@ -137,20 +150,23 @@
             "tested_module": "code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_demo_website_multiple_snippet",
             "file_to_restore": "demo_portal/i18n/demo_portal.pot,demo_portal/i18n/fr_CA.po",
             "file_to_restore_origin": true,
-            "note": "Because code_generator_demo_website_multiple_snippet depend on code_generator_demo_portal, it will execute it and this delete file demo_portal/i18n/demo_portal.pot and demo_portal/i18n/fr_CA.po"
+            "note": "Because code_generator_demo_website_multiple_snippet depend on code_generator_demo_portal, it will execute it and this delete file demo_portal/i18n/demo_portal.pot and demo_portal/i18n/fr_CA.po",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
             "test_name": "demo_test",
             "path_module_check": "./odoo12.0/addons/TechnoLibre_odoo-code-generator-template",
-            "init_module_name": "demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet"
+            "init_module_name": "demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet",
+            "restore_db_image_name": "odoo12.0_base"
         },
         {
             "run_test_exec": true,
             "test_name": "code_generator_auto_backup_test",
             "path_module_check": "./odoo12.0/addons/OCA_server-tools/auto_backup",
             "generated_module": "auto_backup",
-            "tested_module": "code_generator_auto_backup"
+            "tested_module": "code_generator_auto_backup",
+            "restore_db_image_name": "odoo12.0_base"
         }
     ]
 }
