@@ -24946,6 +24946,10 @@ TRANSLATIONS = {
         "fr": "Machine virtuelle ({virtualization}) : l'hyperviseur fixe la mémoire. Augmentez-la depuis l'hôte.",
         "en": "Virtual machine ({virtualization}): the hypervisor sets the memory. Increase it from the host.",
     },
+    "Container ({virtualization}): the host sets its memory limit. Change it from the host.": {
+        "fr": "Conteneur ({virtualization}) : l'hôte fixe sa limite de mémoire. Changez-la depuis l'hôte.",
+        "en": "Container ({virtualization}): the host sets its memory limit. Change it from the host.",
+    },
     "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.": {
         "fr": "Les emplacements de mémoire n'ont pas pu être lus : sans dmidecode, rien ne dit si on peut ajouter de la RAM.",
         "en": "The memory slots could not be read: without dmidecode, nothing says whether RAM can be added.",
@@ -24965,6 +24969,15 @@ TRANSLATIONS = {
     "No: the memory is soldered to the board, with no slot.": {
         "fr": "Non : la mémoire est soudée à la carte, sans emplacement.",
         "en": "No: the memory is soldered to the board, with no slot.",
+    },
+    # Système : ballon virtio
+    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.": {
+        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne par `virsh setmem <vm> <taille> --live`, jusqu'au maximum <memory> de sa définition ; relever ce maximum exige que la VM soit éteinte.",
+        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.",
+    },
+    "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.": {
+        "fr": "Pas de pilote virtio_balloon : l'hôte ne change la RAM de cette VM que pendant qu'elle est éteinte.",
+        "en": "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.",
     },
     # Système : rapports et caches du système
     "Measuring": {

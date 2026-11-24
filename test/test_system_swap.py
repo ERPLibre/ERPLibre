@@ -1542,6 +1542,36 @@ class TestMemoireVive(unittest.TestCase):
         self.r.binaires = set()
         self.assertIsNone(ss.plan_installer_dmidecode(self.r.etat()))
 
+    def test_vm_balloon_driver(self):
+        """Le pilote virtio_balloon de l'invité se lit sous /sys/bus/virtio
+        ou /sys/module ; hors VM, la question ne se pose pas."""
+        self.r.sorties["systemd-detect-virt"] = "kvm\n"
+        self.assertIs(ss.verdict_memoire(self.r.etat())["balloon"], False)
+        os.makedirs(self.r.sous("/sys/module/virtio_balloon"))
+        self.assertIs(ss.verdict_memoire(self.r.etat())["balloon"], True)
+        shutil.rmtree(self.r.sous("/sys/module/virtio_balloon"))
+        os.makedirs(self.r.sous("/sys/bus/virtio/drivers/virtio_balloon"))
+        self.assertIs(ss.verdict_memoire(self.r.etat())["balloon"], True)
+        self.r.sorties["systemd-detect-virt"] = "none\n"
+        self.assertIsNone(ss.verdict_memoire(self.r.etat())["balloon"])
+
+    def test_balloon_is_unknown_outside_a_virtio_hypervisor(self):
+        """Un conteneur n'a pas de RAM de VM, VMware et Hyper-V ont leur
+        propre pilote de ballon : balloon reste None, même si le module
+        virtio_balloon est intégré au noyau de l'invité."""
+        os.makedirs(self.r.sous("/sys/module/virtio_balloon"))
+        for virt, verdict in (
+            ("docker", "container"),
+            ("lxc", "container"),
+            ("vmware", "vm"),
+            ("microsoft", "vm"),
+        ):
+            with self.subTest(virt=virt):
+                self.r.sorties["systemd-detect-virt"] = f"{virt}\n"
+                v = ss.verdict_memoire(self.r.etat())
+                self.assertEqual(v["verdict"], verdict)
+                self.assertIsNone(v["balloon"])
+
     def test_dmidecode_in_sbin_outside_the_path_is_installed(self):
         """Chez Debian, /usr/sbin n'est pas dans le PATH d'un compte
         ordinaire : which() ne le voit pas, le fichier si."""

@@ -109,6 +109,7 @@ def etat_fabrique(racine, swaps=(), zram=(), **autres):
         "btrfs_mkswapfile": False,
         "virtualization": None,
         "recommendation": ss.recommandation(8 * GIO),
+        "balloon": False,
         "racine": racine,
     }
     etat.update(autres)
@@ -369,6 +370,37 @@ class TestLesLignes(unittest.TestCase):
         )
         self.assertIn("Non configurée", texte)
 
+    def test_vm_balloon_sentences(self):
+        texte = self.verdict(verdict="vm", virtualization="kvm", balloon=True)
+        self.assertIn("pendant qu'elle tourne", texte)
+        self.assertIn("virsh setmem <vm> <taille> --live", texte)
+        self.assertNotIn("TODO › Exécution", texte)
+        texte = self.verdict(verdict="vm", virtualization="kvm", balloon=False)
+        self.assertIn("que pendant qu'elle est éteinte", texte)
+        texte = self.verdict(verdict="unknown")
+        self.assertNotIn("virtio_balloon", texte)
+
+    def test_container_reads_no_balloon_sentence(self):
+        """Un conteneur n'est pas une VM : sa limite est un cgroup, aucune
+        phrase sur le ballon ne s'y applique. Une VM VMware n'a pas de
+        ballon virtio : rien n'est dit non plus."""
+        for virt, conteneur in (("docker", True), ("vmware", False)):
+            with self.subTest(virt=virt):
+                etat = etat_fabrique(
+                    "/inexistant",
+                    virtualization=virt,
+                    container=conteneur,
+                    balloon=False,
+                )
+                texte = "\n".join(sm.lignes_memoire(ss.verdict_memoire(etat)))
+                self.assertNotIn("virtio_balloon", texte)
+        etat = etat_fabrique(
+            "/inexistant", virtualization="docker", container=True
+        )
+        texte = "\n".join(sm.lignes_memoire(ss.verdict_memoire(etat)))
+        self.assertIn("Conteneur (docker)", texte)
+        self.assertNotIn("Machine virtuelle", texte)
+
     def test_integer_input_takes_ascii_digits_only(self):
         self.assertEqual(sm.entier("42"), 42)
         for texte in ("", "²", "٣", "-1", "1.5", " 1"):
@@ -411,6 +443,10 @@ class TestLesLignes(unittest.TestCase):
         )
         cas = {
             "vm": ("Machine virtuelle (kvm)", {"virtualization": "kvm"}),
+            "container": (
+                "Conteneur (docker) : l'hôte fixe sa limite",
+                {"virtualization": "docker"},
+            ),
             "unknown": ("sans dmidecode", {}),
             "free_slots": ("Oui : 1 emplacement(s) libre(s) sur 2", materiel),
             "replace": ("en remplaçant des modules", materiel),

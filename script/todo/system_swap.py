@@ -139,6 +139,19 @@ BINAIRES_DMIDECODE = (
 # ajouter ni à remplacer.
 FORMES_SOUDEES = {"row of chips", "chip"}
 
+# Le pilote de ballon virtio de l'invité : présent, l'hôte peut changer la
+# RAM d'une VM allumée, jusqu'au maximum de sa définition.
+CHEMINS_BALLON = (
+    "/sys/bus/virtio/drivers/virtio_balloon",
+    "/sys/module/virtio_balloon",
+)
+
+# Les hyperviseurs, tels que systemd-detect-virt les nomme, dont l'invité
+# reçoit un ballon virtio. Ailleurs le ballon a un autre pilote (VMware,
+# Hyper-V) ou n'existe pas (conteneur) : ni sa présence ni son absence ne
+# disent alors quoi que ce soit.
+HYPERVISEURS_VIRTIO = {"kvm", "qemu"}
+
 # Les suffixes anglais (K, KB, KiB) et français (Ko, Kio) : le menu écrit
 # ses tailles en « Gio », et une taille recopiée de son affichage se relit.
 SUFFIXES = {
@@ -564,6 +577,12 @@ def recommandation(ram, hibernation=False):
     }
 
 
+def ballon_virtio(racine="/"):
+    """Vrai si le pilote virtio_balloon de l'invité est chargé ou intégré
+    au noyau."""
+    return any(os.path.exists(_sous(racine, c)) for c in CHEMINS_BALLON)
+
+
 def version_btrfs(texte):
     """« btrfs-progs v6.6.3 » -> (6, 6) ; None sinon."""
     m = re.search(r"v(\d+)\.(\d+)", texte or "")
@@ -581,10 +600,10 @@ def etat(racine="/"):
     """Tout l'état de la mémoire d'échange, lu sous `racine`.
 
     {memory, swaps, zram, zram_module, persistence, hibernation, mounts,
-    root_fs,
-    root_free, fstab, manager, os_id, btrfs_mkswapfile,
-    virtualization, container, recommendation, racine}. container est vrai
-    quand systemd-detect-virt nomme un conteneur. Chaque swap porte, en plus
+    root_fs, root_free, fstab, manager, os_id, btrfs_mkswapfile,
+    virtualization, container, recommendation, balloon, racine}.
+    container est vrai quand systemd-detect-virt nomme un conteneur ;
+    balloon dit si le pilote virtio_balloon est là. Chaque swap porte, en plus
     de lire_swaps() : fs (son montage, pour un fichier), free (l'espace
     libre de ce montage), max_size (la taille que l'espace libre permet,
     marge déduite) et hibernation (resume= le vise peut-être)."""
@@ -637,6 +656,7 @@ def etat(racine="/"):
         "recommendation": recommandation(
             mem.get("total"), hibernation=bool(hib["resume"])
         ),
+        "balloon": ballon_virtio(racine),
         "racine": racine,
     }
 
@@ -1474,6 +1494,7 @@ def verdict_memoire(etat, dmi=None):
     """Peut-on ajouter de la RAM ?
 
     verdict : « vm » (l'hyperviseur la fixe : l'augmenter depuis l'hôte),
+    « container » (l'hôte fixe la limite de mémoire du conteneur),
     « unknown » (pas de dmidecode lisible), « free_slots » (des
     emplacements vides), « replace » (emplacements pleins, la capacité
     maximale dépasse l'installé : remplacer des modules), « max » (au
@@ -1484,8 +1505,11 @@ def verdict_memoire(etat, dmi=None):
     partially_soldered, max_understated (l'installé dépasse le maximum que
     le micrologiciel annonce, donc ce maximum est faux), firmware_note
     (max_capacity vient du micrologiciel et peut être sous-estimé),
-    swap_growth (ce que l'espace disque libre permet d'ajouter au swap) et
-    virtualization."""
+    swap_growth (ce que l'espace disque libre permet d'ajouter au swap),
+    virtualization et balloon : dans une VM de HYPERVISEURS_VIRTIO, vrai
+    si le pilote virtio_balloon de l'invité est là (l'hôte peut alors
+    changer sa RAM pendant qu'elle tourne), faux sinon ; None ailleurs,
+    conteneur et autres hyperviseurs compris."""
     ram = etat["memory"].get("total")
     res = {
         "verdict": "unknown",
@@ -1503,9 +1527,13 @@ def verdict_memoire(etat, dmi=None):
         "firmware_note": False,
         "swap_growth": croissance_swap(etat),
         "virtualization": etat.get("virtualization"),
+        "balloon": None,
     }
-    if etat.get("virtualization"):
-        res["verdict"] = "vm"
+    virt = etat.get("virtualization")
+    if virt:
+        res["verdict"] = "container" if etat.get("container") else "vm"
+        if virt in HYPERVISEURS_VIRTIO and not etat.get("container"):
+            res["balloon"] = bool(etat.get("balloon"))
         return res
     if not dmi or not dmi.get("devices"):
         return res
