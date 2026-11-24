@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""La mémoire d'échange : lecture de l'état, plans de swap et de zram.
+"""La mémoire d'échange : lecture de l'état, plans de swap et de zram,
+verdict sur l'ajout de RAM.
 
 Chaque test fabrique sa racine (/proc, /sys, /etc) dans un répertoire
 temporaire ; shutil.disk_usage, shutil.which et les commandes lues sont
@@ -467,16 +468,6 @@ class TestEtat(unittest.TestCase):
             self.assertEqual(res["reason"], "container")
             self.assertEqual(res["details"]["virtualization"], "lxc")
             self.assertEqual(res["plan"], [])
-
-    def test_swap_growth_uses_swapfile_filesystem(self):
-        r = Racine(self)
-        r.libre = {"/": 10 * GIO, "/data": 3 * GIO}
-        r.ecrire(
-            "/proc/swaps", swaps(("/data/swapfile", "file", 2097148, 0, -2))
-        )
-        self.assertEqual(ss.croissance_swap(r.etat()), 2 * GIO)
-        r.libre = {}
-        self.assertIsNone(ss.croissance_swap(r.etat()))
 
 
 class TestRedimensionner(unittest.TestCase):
@@ -1373,6 +1364,189 @@ class TestZramDesactiver(unittest.TestCase):
         r = Racine(self, "nixos")
         res = ss.plan_zram_desactiver(r.etat(), self.TMP)
         self.assertIn("zramSwap.enable = false;", res["nix"])
+
+
+def module(
+    handle, taille, locator, forme="DIMM", type_="DDR4", array="0x0010"
+):
+    return textwrap.dedent(f"""\
+        Handle {handle}, DMI type 17, 92 bytes
+        Memory Device
+        \tArray Handle: {array}
+        \tSize: {taille}
+        \tForm Factor: {forme}
+        \tLocator: {locator}
+        \tBank Locator: BANK 0
+        \tType: {type_}
+        \tSpeed: 3200 MT/s
+
+        """)
+
+
+def matrice(maximum, n, handle="0x0010", use="System Memory"):
+    return textwrap.dedent(f"""\
+        Handle {handle}, DMI type 16, 23 bytes
+        Physical Memory Array
+        \tLocation: System Board Or Motherboard
+        \tUse: {use}
+        \tMaximum Capacity: {maximum}
+        \tNumber Of Devices: {n}
+
+        """)
+
+
+ENTETE = "# dmidecode 3.6\nGetting SMBIOS data from sysfs.\n\n"
+
+
+class TestMemoireVive(unittest.TestCase):
+    def setUp(self):
+        self.r = Racine(self)
+        self.r.libre = {"/": 10 * GIO}
+
+    def verdict(self, texte):
+        return ss.verdict_memoire(self.r.etat(), ss.analyser_dmidecode(texte))
+
+    def test_parse(self):
+        dmi = ss.analyser_dmidecode(
+            ENTETE
+            + matrice("64 GB", 4)
+            + matrice("16 MB", 1, handle="0x0020", use="Flash Memory")
+            + module("0x0011", "16 GB", "DIMM A1")
+            + module(
+                "0x0012",
+                "No Module Installed",
+                "DIMM A2",
+                "Unknown",
+                "Unknown",
+            )
+            + module("0x0021", "16 MB", "FLASH", array="0x0020")
+        )
+        self.assertEqual(
+            dmi["arrays"],
+            [
+                {
+                    "handle": "0x0010",
+                    "use": "System Memory",
+                    "max_capacity": 64 * GIO,
+                    "slots": 4,
+                }
+            ],
+        )
+        self.assertEqual(len(dmi["devices"]), 2)
+        self.assertEqual(dmi["devices"][0]["size"], 16 * GIO)
+        self.assertEqual(dmi["devices"][0]["locator"], "DIMM A1")
+        self.assertTrue(dmi["devices"][1]["empty"])
+
+    def test_sizes(self):
+        self.assertEqual(ss.taille_dmi("8192 MB"), 8 * GIO)
+        self.assertEqual(ss.taille_dmi("2 TB"), 2 * ss.TIO)
+        self.assertIsNone(ss.taille_dmi("No Module Installed"))
+        self.assertIsNone(ss.taille_dmi("Unknown"))
+        self.assertIsNone(ss.taille_dmi("0 MB"))
+
+    def test_free_slots(self):
+        v = self.verdict(
+            matrice("64 GB", 2)
+            + module("0x0011", "16 GB", "DIMM A1")
+            + module("0x0012", "No Module Installed", "DIMM A2", "Unknown")
+        )
+        self.assertEqual(v["verdict"], "free_slots")
+        self.assertEqual(v["installed"], 16 * GIO)
+        self.assertEqual(v["max_addable"], 48 * GIO)
+        self.assertEqual(
+            (v["slots"], v["used_slots"], v["free_slots"]), (2, 1, 1)
+        )
+        self.assertEqual(v["types"], ["DDR4"])
+        self.assertTrue(v["firmware_note"])
+        self.assertEqual(v["swap_growth"], 9 * GIO)
+
+    def test_replace_modules(self):
+        v = self.verdict(
+            matrice("64 GB", 2)
+            + module("0x0011", "8 GB", "DIMM A1")
+            + module("0x0012", "8 GB", "DIMM A2")
+        )
+        self.assertEqual(v["verdict"], "replace")
+        self.assertEqual(v["max_addable"], 48 * GIO)
+
+    def test_at_maximum(self):
+        v = self.verdict(
+            matrice("32 GB", 2)
+            + module("0x0011", "16 GB", "DIMM A1")
+            + module("0x0012", "16 GB", "DIMM A2")
+        )
+        self.assertEqual(v["verdict"], "max")
+        self.assertEqual(v["max_addable"], 0)
+
+    def test_soldered(self):
+        v = self.verdict(
+            matrice("16 GB", 1)
+            + module("0x0011", "16 GB", "Onboard", forme="Row Of Chips")
+        )
+        self.assertEqual(v["verdict"], "soldered")
+
+    def test_partially_soldered_replaces_the_socketed_module(self):
+        v = self.verdict(
+            matrice("40 GB", 2)
+            + module("0x0011", "8 GB", "Onboard", forme="Row Of Chips")
+            + module("0x0012", "8 GB", "DIMM B")
+        )
+        self.assertEqual(v["verdict"], "replace")
+        self.assertTrue(v["partially_soldered"])
+
+    def test_understated_maximum(self):
+        v = self.verdict(
+            matrice("8 GB", 2)
+            + module("0x0011", "16 GB", "DIMM A1")
+            + module("0x0012", "No Module Installed", "DIMM A2", "Unknown")
+        )
+        self.assertTrue(v["max_understated"])
+        self.assertIsNone(v["max_capacity"])
+        self.assertEqual(v["verdict"], "free_slots")
+        self.assertIsNone(v["max_addable"])
+
+    def test_vm_and_unknown(self):
+        self.r.sorties["systemd-detect-virt"] = "qemu\n"
+        v = ss.verdict_memoire(self.r.etat())
+        self.assertEqual(v["verdict"], "vm")
+        self.assertEqual(v["virtualization"], "qemu")
+        self.r.sorties["systemd-detect-virt"] = "none\n"
+        self.assertEqual(
+            ss.verdict_memoire(self.r.etat(), None)["verdict"], "unknown"
+        )
+        self.assertEqual(self.verdict("")["verdict"], "unknown")
+
+    def test_swap_growth_uses_swapfile_filesystem(self):
+        self.r.libre = {"/": 10 * GIO, "/data": 3 * GIO}
+        self.r.ecrire(
+            "/proc/swaps", swaps(("/data/swapfile", "file", 2097148, 0, -2))
+        )
+        self.assertEqual(ss.croissance_swap(self.r.etat()), 2 * GIO)
+        self.r.libre = {}
+        self.assertIsNone(ss.croissance_swap(self.r.etat()))
+
+    def test_dmidecode_commands(self):
+        self.assertEqual(
+            ss.commande_dmidecode("apt"), ["sudo", "dmidecode", "-t", "memory"]
+        )
+        self.assertEqual(
+            ss.commande_dmidecode("nix")[:3], ["nix-shell", "-p", "dmidecode"]
+        )
+        e = self.r.etat()
+        self.assertEqual(
+            ss.plan_installer_dmidecode(e),
+            [["sudo", "pacman", "-S", "--needed", "--noconfirm", "dmidecode"]],
+        )
+        self.r.binaires.add("dmidecode")
+        self.assertEqual(ss.plan_installer_dmidecode(e), [])
+        self.r.binaires = set()
+        self.assertIsNone(ss.plan_installer_dmidecode(self.r.etat()))
+
+    def test_dmidecode_in_sbin_outside_the_path_is_installed(self):
+        """Chez Debian, /usr/sbin n'est pas dans le PATH d'un compte
+        ordinaire : which() ne le voit pas, le fichier si."""
+        self.r.ecrire("/usr/sbin/dmidecode", "")
+        self.assertEqual(ss.plan_installer_dmidecode(self.r.etat()), [])
 
 
 if __name__ == "__main__":
