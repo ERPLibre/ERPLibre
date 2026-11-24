@@ -1100,6 +1100,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ctrl+D at a question of Install › Update › Resynchronize the repositories with the manifests no longer leaves the next clones aside, where TODO ended on an error: before the synchronization it gives up and moves nothing; after it, it means no for the clone asked about, whose old clone is kept with a line that says where, and each next moved clone is still put back at its path or offered for copy
 - Ctrl+D at a TODO question ends the prompt line: what follows no longer prints on it
 - Execute › Deploy › QEMU/KVM › Deploy VM(s) (one or many), at the prompts: a no or Ctrl+D at « Continue despite these collisions? », or at the orphan disks kept, gives up and drops the VM account password from TODO's memory, as a no to the final confirmation does; it stayed there after the deployment was given up
+- Assistant › Modem › Probe the audio path, under Sound and devices: the PCM mode to try is chosen from a list of the three modes, by its number in the list, [1] to [3], where it was typed as 0 to 2, the mode kept marked as the default; a typo is said and the question comes back, where it silently probed the mode kept, and [0] or Ctrl+D goes back without placing the call
 
 <!-- [fr] -->
 
@@ -1360,6 +1361,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ctrl+D à une question d'Installation › Mise à jour › Resynchroniser les dépôts avec les manifestes ne laisse plus les clones suivants à l'écart, là où TODO s'arrêtait sur une erreur : avant la synchronisation, il renonce et ne déplace rien ; après, il vaut non pour le clone visé, dont l'ancien clone est gardé, avec une ligne qui dit où, et chaque clone déplacé suivant est encore remis à son chemin ou proposé à la copie
 - Ctrl+D à une question de TODO finit la ligne de l'invite : la suite ne s'écrit plus à sa suite
 - Exécution › Déployer › QEMU/KVM › Déployer une ou plusieurs VM, aux invites : un non ou Ctrl+D à « Continuer malgré ces collisions ? », ou aux disques orphelins gardés, renonce et retire de la mémoire de TODO le mot de passe du compte de la VM, comme un non à la confirmation finale ; il y restait après l'abandon du déploiement
+- Assistant › Modem › Sonder le chemin audio, sous Son et peripheriques : le mode PCM à essayer se choisit dans la liste des trois modes, par son numéro dans la liste, de [1] à [3], là où il se tapait de 0 à 2, le mode retenu marqué par défaut ; une faute est dite et la question revient, là où elle sondait en silence le mode retenu, et [0] ou Ctrl+D revient sans appeler
 
 <!-- [en] -->
 ## Removed

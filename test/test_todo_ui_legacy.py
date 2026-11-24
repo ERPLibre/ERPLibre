@@ -133,7 +133,7 @@ RAW_CALLS = {
     "script/todo/git_repo_menu.py": 4,
     "script/todo/kdbx_manager.py": 1,
     "script/todo/mail/menu.py": 13,
-    "script/todo/modem/menu.py": 12,
+    "script/todo/modem/menu.py": 11,
     "script/todo/proxmox_menu.py": 3,
     "script/todo/qemu_access.py": 4,
     "script/todo/qemu_cache_menu.py": 6,

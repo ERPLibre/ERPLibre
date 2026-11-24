@@ -791,9 +791,11 @@ class TestLesQuestionsOuiNon(unittest.TestCase):
                 )
             self.assertEqual(confirmations(self.port), [(t(cle), "n", False)])
 
-    def _sonder(self, reponses):
-        """Une sonde du mode PCM 2, une annonce jouee ; la descente se
-        mesure muette. Rend les doubles de la sonde et du mode pose."""
+    def _sonder(self, reponses, mode=2):
+        """Une sonde, le mode PCM `mode` retenu, une annonce jouee ; la
+        descente se mesure muette. Le port repond `reponses`, au choix du
+        mode puis aux questions oui/non. Rend les doubles de la sonde et du
+        mode pose."""
         resultat = {
             "decroche": True,
             "voix_usb_ouverte": True,
@@ -804,7 +806,7 @@ class TestLesQuestionsOuiNon(unittest.TestCase):
                 pile,
                 menu.sipgo_mod,
                 installe=True,
-                mode_pcm=2,
+                mode_pcm=mode,
                 commande_sonde=["x"],
             )
             self._doubles(pile, menu.calls_mod, numero_valide=NUMERO)
@@ -815,20 +817,20 @@ class TestLesQuestionsOuiNon(unittest.TestCase):
                 sonder=(0, json.dumps(resultat), ""),
                 poser_mode_pcm=None,
             )
-            self._lancer(menu._sonder_audio, reponses, saisies=["f", ""])
+            self._lancer(menu._sonder_audio, reponses, saisies=["f"])
         return doubles["sonder"], doubles["poser_mode_pcm"]
 
     def test_la_sonde_audio(self):
         t = menu.t
         for refus in REFUS:
             with self.subTest(composer=refus):
-                sonder, poser = self._sonder([*refus, "o"])
+                sonder, poser = self._sonder(["", *refus, "o"])
                 sonder.assert_not_called()
                 poser.assert_not_called()
         # La montee entendue ? Un refus ne pose aucun mode.
         for refus in REFUS:
             with self.subTest(entendue=refus):
-                sonder, poser = self._sonder(["o", *refus, "o"])
+                sonder, poser = self._sonder(["", "o", *refus, "o"])
                 sonder.assert_called_once()
                 poser.assert_not_called()
                 self.assertEqual(self.port.answers, ["o"])
@@ -839,8 +841,44 @@ class TestLesQuestionsOuiNon(unittest.TestCase):
                 (t("modem_probe_heard"), "n", False),
             ],
         )
-        _sonder, poser = self._sonder(["o", "oui"])
+        _sonder, poser = self._sonder(["", "o", "oui"])
         poser.assert_called_once_with(2)
+
+    def test_le_mode_pcm_se_choisit_dans_une_liste(self):
+        """Le mode PCM se choisit parmi les trois, le mode retenu par
+        defaut ; une faute est dite et la question revient ; [0] et Ctrl+D
+        reviennent sans rien demander d'autre ni appeler personne."""
+        for retour in ("0", EOFError()):
+            with self.subTest(retour=retour):
+                sonder, poser = self._sonder([retour, "o"])
+                sonder.assert_not_called()
+                poser.assert_not_called()
+                self.assertEqual(confirmations(self.port), [])
+                self.assertEqual(self.port.answers, ["o"])
+        sonder, poser = self._sonder(["peut-etre", "2", "o", "oui"], mode=0)
+        sonder.assert_called_once_with(NUMERO, 1, "/forged/a.wav")
+        poser.assert_called_once_with(1)
+        choix = [e for e in self.port.events if e.get("kind") == "choose"]
+        self.assertEqual(len(choix), 2)
+        self.assertEqual(choix[0], choix[1])
+        self.assertEqual(choix[0]["default"], "1")
+        self.assertEqual(
+            [o["label"] for o in choix[0]["options"]],
+            [
+                f"PCM 0 {menu.t('(default)')}",
+                "PCM 1",
+                "PCM 2",
+                menu.t("Back"),
+            ],
+        )
+        fautes = [e for e in self.port.events if e.get("t") == "notice"]
+        self.assertEqual(
+            [e["text"] for e in fautes],
+            [f"{menu.t('Invalid choice: ')}peut-etre"],
+        )
+        # Une reponse vide prend le mode retenu.
+        sonder, _poser = self._sonder(["", "o", "non"], mode=1)
+        sonder.assert_called_once_with(NUMERO, 1, "/forged/a.wav")
 
     def test_basculer_l_uac(self):
         with (

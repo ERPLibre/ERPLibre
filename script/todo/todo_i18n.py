@@ -4800,8 +4800,8 @@ TRANSLATIONS = {
         "en": "card held by another program (%s)",
     },
     "modem_probe_mode": {
-        "fr": "Mode PCM a essayer, 0 a 2 (vide = %s)",
-        "en": "PCM mode to try, 0 to 2 (empty = %s)",
+        "fr": "Mode PCM a essayer",
+        "en": "PCM mode to try",
     },
     "modem_probe_down": {
         "fr": "Descente (voix du correspondant)",

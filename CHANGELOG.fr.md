@@ -673,6 +673,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ctrl+D à une question d'Installation › Mise à jour › Resynchroniser les dépôts avec les manifestes ne laisse plus les clones suivants à l'écart, là où TODO s'arrêtait sur une erreur : avant la synchronisation, il renonce et ne déplace rien ; après, il vaut non pour le clone visé, dont l'ancien clone est gardé, avec une ligne qui dit où, et chaque clone déplacé suivant est encore remis à son chemin ou proposé à la copie
 - Ctrl+D à une question de TODO finit la ligne de l'invite : la suite ne s'écrit plus à sa suite
 - Exécution › Déployer › QEMU/KVM › Déployer une ou plusieurs VM, aux invites : un non ou Ctrl+D à « Continuer malgré ces collisions ? », ou aux disques orphelins gardés, renonce et retire de la mémoire de TODO le mot de passe du compte de la VM, comme un non à la confirmation finale ; il y restait après l'abandon du déploiement
+- Assistant › Modem › Sonder le chemin audio, sous Son et peripheriques : le mode PCM à essayer se choisit dans la liste des trois modes, par son numéro dans la liste, de [1] à [3], là où il se tapait de 0 à 2, le mode retenu marqué par défaut ; une faute est dite et la question revient, là où elle sondait en silence le mode retenu, et [0] ou Ctrl+D revient sans appeler
 
 ## Retiré
 

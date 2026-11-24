@@ -1096,9 +1096,15 @@ def _sonder_audio():
         print("  " + t("modem_number_invalid"))
         return
 
-    courant = sipgo_mod.mode_pcm()
-    saisi = input("  " + t("modem_probe_mode") % courant + " : ").strip()
-    mode = int(saisi) if saisi.isdigit() and 0 <= int(saisi) <= 2 else courant
+    modes = [0, 1, 2]
+    mode = ui.choose(
+        t("modem_probe_mode"),
+        modes,
+        default=sipgo_mod.mode_pcm(),
+        labels=[f"PCM {m}" for m in modes],
+    )
+    if mode is None:
+        return
     annonce = _choisir_annonce()
     if annonce is None:
         return

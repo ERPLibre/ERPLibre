@@ -667,6 +667,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ctrl+D at a question of Install › Update › Resynchronize the repositories with the manifests no longer leaves the next clones aside, where TODO ended on an error: before the synchronization it gives up and moves nothing; after it, it means no for the clone asked about, whose old clone is kept with a line that says where, and each next moved clone is still put back at its path or offered for copy
 - Ctrl+D at a TODO question ends the prompt line: what follows no longer prints on it
 - Execute › Deploy › QEMU/KVM › Deploy VM(s) (one or many), at the prompts: a no or Ctrl+D at « Continue despite these collisions? », or at the orphan disks kept, gives up and drops the VM account password from TODO's memory, as a no to the final confirmation does; it stayed there after the deployment was given up
+- Assistant › Modem › Probe the audio path, under Sound and devices: the PCM mode to try is chosen from a list of the three modes, by its number in the list, [1] to [3], where it was typed as 0 to 2, the mode kept marked as the default; a typo is said and the question comes back, where it silently probed the mode kept, and [0] or Ctrl+D goes back without placing the call
 
 ## Removed
 
