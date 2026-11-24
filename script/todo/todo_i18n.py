@@ -2862,9 +2862,9 @@ TRANSLATIONS = {
         "fr": "Collez le jeton (masqué, Entrée pour annuler) : ",
         "en": "Paste the token (hidden, Enter to cancel): ",
     },
-    "Store it in the ERPLibre KeePass vault? (Y/n): ": {
-        "fr": "Le ranger dans le coffre KeePass d'ERPLibre ? (O/n) : ",
-        "en": "Store it in the ERPLibre KeePass vault? (Y/n): ",
+    "Store it in the ERPLibre KeePass vault?": {
+        "fr": "Le ranger dans le coffre KeePass d'ERPLibre ?",
+        "en": "Store it in the ERPLibre KeePass vault?",
     },
     "Stored in the vault:": {
         "fr": "Rangé dans le coffre :",
@@ -2887,17 +2887,17 @@ TRANSLATIONS = {
         "fr": "Il manque peut-être au jeton un droit pour cette action.",
         "en": "The token may lack a right for this action.",
     },
-    "Configure a GitHub token now? (y/N): ": {
-        "fr": "Configurer un jeton GitHub maintenant ? (o/N) : ",
-        "en": "Configure a GitHub token now? (y/N): ",
+    "Configure a GitHub token now?": {
+        "fr": "Configurer un jeton GitHub maintenant ?",
+        "en": "Configure a GitHub token now?",
     },
-    "Configure another GitHub token? (y/N): ": {
-        "fr": "Configurer un autre jeton GitHub ? (o/N) : ",
-        "en": "Configure another GitHub token? (y/N): ",
+    "Configure another GitHub token?": {
+        "fr": "Configurer un autre jeton GitHub ?",
+        "en": "Configure another GitHub token?",
     },
-    "Only the repositories of the manifests? (Y/n): ": {
-        "fr": "Seulement les dépôts des manifestes ? (O/n) : ",
-        "en": "Only the repositories of the manifests? (Y/n): ",
+    "Only the repositories of the manifests?": {
+        "fr": "Seulement les dépôts des manifestes ?",
+        "en": "Only the repositories of the manifests?",
     },
     "Querying GitHub for each pull request…": {
         "fr": "Interrogation de GitHub pour chaque pull request…",
@@ -2939,9 +2939,9 @@ TRANSLATIONS = {
         "fr": "dépôt du manifeste",
         "en": "manifest repository",
     },
-    "Open it as a draft? (y/N): ": {
-        "fr": "L'ouvrir en brouillon ? (o/N) : ",
-        "en": "Open it as a draft? (y/N): ",
+    "Open it as a draft?": {
+        "fr": "L'ouvrir en brouillon ?",
+        "en": "Open it as a draft?",
     },
     "open pull requests": {
         "fr": "pull requests ouvertes",

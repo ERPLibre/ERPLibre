@@ -5,6 +5,7 @@
 jeton à granularité fine, adhésion à l'organisation, jeton refusé, et le
 menu qui le vérifie une fois par organisation. GitHub est faux."""
 
+import contextlib
 import sys
 import unittest
 from unittest import mock
@@ -13,8 +14,31 @@ sys.argv = ["todo.py"]
 from script.git import github_fork as gf  # noqa: E402
 from script.git import manifest_repo as mr  # noqa: E402
 from script.todo import git_fork_menu as gm  # noqa: E402
-from script.todo import todo_i18n  # noqa: E402
+from script.todo import todo_i18n, ui  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 from test.test_pull_requests import Reponse, Session  # noqa: E402
+
+
+def par_le_port(test, reponses):
+    """Le port scripté qui répond `reponses`, lié jusqu'à la fin de
+    `test` ; `input` y lève EOFError, comme une entrée fermée."""
+    port = ScriptedPort(reponses)
+    pile = contextlib.ExitStack()
+    pile.enter_context(ui.bind(port))
+    pile.enter_context(mock.patch("builtins.input", side_effect=EOFError))
+    test.addCleanup(pile.close)
+    return port
+
+
+def confirmations(port):
+    """(texte sans indice, défaut, `back`) de chaque question oui/non
+    posée au port, dans l'ordre."""
+    return [
+        (e["prompt"], e["default"], e.get("back", False))
+        for e in port.events
+        if e.get("kind") == "confirm"
+    ]
 
 
 class AvecEntetes(Reponse):
@@ -183,6 +207,42 @@ class TestLeMenu(unittest.TestCase):
         client, questions, _texte = self.client(Client(refuse=True), ["n"])
         self.assertEqual((client, questions), (None, 1))
 
+    def test_a_problem_asks_through_the_port_and_a_typo_again(self):
+        port = par_le_port(self, ["n", "peut-être", "o"])
+        faux = Client(adhesion=("absent", None))
+        with (
+            mock.patch.object(gm.github_fork, "jeton", return_value="x"),
+            mock.patch.object(
+                gm.github_fork, "ClientGitHub", return_value=faux
+            ),
+            mock.patch("builtins.print"),
+        ):
+            self.assertIs(self.todo._git_client("Org"), faux)
+        self.assertEqual(
+            confirmations(port),
+            [
+                (t("Configure another GitHub token?"), "n", False),
+                (t("Continue anyway?"), "n", False),
+                (t("Continue anyway?"), "n", False),
+            ],
+        )
+
+    def test_ctrl_d_at_offering_the_assistant_answers_no(self):
+        port = par_le_port(self, [EOFError()])
+        with (
+            mock.patch.object(gm.github_fork, "jeton", return_value=""),
+            mock.patch.object(
+                type(self.todo), "_git_assistant_jeton"
+            ) as assistant,
+            mock.patch("builtins.print"),
+        ):
+            self.assertIsNone(self.todo._git_client())
+        assistant.assert_not_called()
+        self.assertEqual(
+            confirmations(port),
+            [(t("Configure a GitHub token now?"), "n", False)],
+        )
+
     def test_the_check_entry_shows_account_and_scopes(self):
         with (
             mock.patch.object(gm.github_fork, "jeton", return_value="x"),
@@ -314,6 +374,18 @@ class TestLeCoffre(unittest.TestCase):
         self.assertIn("Administration", texte)
         self.assertEqual(self.todo._git_jeton_du_coffre(), "neuf")
         self.assertEqual(self.todo._git_jeton(), "neuf")
+
+    def test_ctrl_d_at_storing_keeps_the_token_for_the_session(self):
+        port = par_le_port(self, [EOFError()])
+        jeton, texte = self.assistant("neuf", [])
+        self.assertEqual(jeton, "neuf")
+        self.assertEqual(self.todo._git_jeton_du_coffre(), "")
+        self.assertEqual(self.todo._git_jeton(), "neuf")
+        self.assertNotIn("Rangé dans le coffre", texte)
+        self.assertEqual(
+            confirmations(port),
+            [(t("Store it in the ERPLibre KeePass vault?"), "y", False)],
+        )
 
     def test_a_refused_or_empty_token_is_neither_kept_nor_stored(self):
         self.assertEqual(

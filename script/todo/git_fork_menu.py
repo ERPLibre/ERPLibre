@@ -973,8 +973,8 @@ class GitForkMenuMixin:
         dernière confirmation qui en dit le nombre. Ils se cochent par le
         choix multiple de `ui.choose` : numéro, plage, « tout » ou nom
         complet sur GitHub. Rend le nombre archivé ; 0 pour [0], une
-        réponse vide, Ctrl+D au choix ou à la confirmation, et tout ce qui
-        n'est pas un oui ; None pour une organisation vide ou Ctrl+D à
+        réponse vide ou Ctrl+D au choix, et un non à la confirmation, que
+        Ctrl+D y vaut aussi ; None pour une organisation vide ou Ctrl+D à
         l'organisation, avant tout client GitHub, et aussi quand il n'y a
         pas de client, quand GitHub ne répond pas ou ne connaît pas
         l'organisation."""
@@ -1015,11 +1015,10 @@ class GitForkMenuMixin:
         )
         if not choisis:
             return 0
-        reponse = self._git_repondre(
-            f"{t('Archive these repositories on GitHub')}"
-            f" ({len(choisis)}) ? (y/N) : "
-        )
-        if not self._is_yes(reponse or ""):
+        if not ui.confirm(
+            f"{t('Archive these repositories on GitHub')} ({len(choisis)}) ?",
+            default=False,
+        ):
             return 0
         archives = 0
         for depot in choisis:
@@ -1139,8 +1138,8 @@ class GitForkMenuMixin:
             return None
         self._git_jeton_session = jeton
         self.__dict__.pop("_git_jetons_verifies", None)
-        if self._is_yes_default_yes(
-            input(t("Store it in the ERPLibre KeePass vault? (Y/n): "))
+        if ui.confirm(
+            t("Store it in the ERPLibre KeePass vault?"), default=True
         ):
             if self._git_ranger_jeton(jeton):
                 print(
@@ -1154,9 +1153,9 @@ class GitForkMenuMixin:
         return jeton
 
     def _git_proposer_assistant(self, question):
-        """Pose `question` (o/N) et lance l'assistant sur un oui. Rend le
-        jeton qu'il a posé, ou None."""
-        if not self._is_yes(input(t(question))):
+        """Pose `question`, défaut non, et lance l'assistant sur un oui.
+        Rend le jeton qu'il a posé, ou None."""
+        if not ui.confirm(question, default=False):
             return None
         return self._git_assistant_jeton()
 
@@ -1167,9 +1166,7 @@ class GitForkMenuMixin:
         print(f"❌ GitHub : {exc}")
         if getattr(exc, "statut", None) in (401, 403):
             print(f"  {t('The token may lack a right for this action.')}")
-            self._git_proposer_assistant(
-                "Configure a GitHub token now? (y/N): "
-            )
+            self._git_proposer_assistant(t("Configure a GitHub token now?"))
 
     def _git_client(self, organisation=None):
         """Le client GitHub du jeton de la session, ou None (et le dit).
@@ -1184,7 +1181,7 @@ class GitForkMenuMixin:
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
             jeton = self._git_proposer_assistant(
-                "Configure a GitHub token now? (y/N): "
+                t("Configure a GitHub token now?")
             )
             if not jeton:
                 return None
@@ -1200,14 +1197,12 @@ class GitForkMenuMixin:
             return None
         problemes = self._git_afficher_jeton(rapport, silencieux=True)
         if problemes and self._git_proposer_assistant(
-            "Configure another GitHub token? (y/N): "
+            t("Configure another GitHub token?")
         ):
             return self._git_client(organisation)
         if "jeton_refuse" in rapport["codes"]:
             return None
-        if problemes and not self._is_yes(
-            input(t("Continue anyway? (y/N): "))
-        ):
+        if problemes and not ui.confirm(t("Continue anyway?"), default=False):
             return None
         verifies.add(cle)
         return client
@@ -1246,7 +1241,7 @@ class GitForkMenuMixin:
         if not jeton:
             print(f"⚠ {t(MESSAGE_JETON)}")
             jeton = self._git_proposer_assistant(
-                "Configure a GitHub token now? (y/N): "
+                t("Configure a GitHub token now?")
             )
             if not jeton:
                 return None
@@ -1262,9 +1257,7 @@ class GitForkMenuMixin:
             return None
         problemes = self._git_afficher_jeton(rapport)
         if problemes:
-            self._git_proposer_assistant(
-                "Configure another GitHub token? (y/N): "
-            )
+            self._git_proposer_assistant(t("Configure another GitHub token?"))
         return problemes
 
     def _git_lister_pull_requests(self):
@@ -1300,9 +1293,9 @@ class GitForkMenuMixin:
         if not version:
             print(f"❌ {t('No Odoo version found')}")
             return None
-        tous = input(
-            t("Only the repositories of the manifests? (Y/n): ")
-        ).strip().lower() in ("n", "no", "non")
+        tous = not ui.confirm(
+            t("Only the repositories of the manifests?"), default=True
+        )
         client = self._git_client()
         if client is None:
             return None
@@ -1374,13 +1367,14 @@ class GitForkMenuMixin:
         )
         if corps is None:
             return None
-        brouillon = self._git_repondre(t("Open it as a draft? (y/N): "))
+        brouillon = ui.confirm(
+            t("Open it as a draft?"), default=False, back=True
+        )
         if brouillon is None:
             return None
-        reponse = self._git_repondre(
-            f"{t('Open the pull request on')} {depot} ? (y/N): "
-        )
-        if reponse is None or not self._is_yes(reponse):
+        if not ui.confirm(
+            f"{t('Open the pull request on')} {depot} ?", default=False
+        ):
             return None
         client = self._git_client()
         if client is None:
@@ -1393,7 +1387,7 @@ class GitForkMenuMixin:
                 base,
                 titre or sujet,
                 corps or corps_propose,
-                self._is_yes(brouillon),
+                brouillon,
             )
         except (github_fork.ErreurGitHub, ValueError) as exc:
             if isinstance(exc, github_fork.ErreurGitHub):

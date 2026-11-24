@@ -158,8 +158,28 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_assistant_jeton",
+        "Store it in the ERPLibre KeePass vault?",
+    ): [True],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_client",
+        "Continue anyway?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
         "GitForkMenuMixin._git_creer_branche_plusieurs",
         "Push it to each project's remote?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_creer_pull_request",
+        "Open it as a draft?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_creer_pull_request",
+        "Open the pull request on",
     ): [False],
     (
         "script/todo/git_fork_menu.py",
@@ -178,6 +198,11 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_forks_orphelins",
+        "Archive these repositories on GitHub",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
         "GitForkMenuMixin._git_nettoyer_branches",
         "Also ask GitHub for branches merged by squash?",
     ): [False],
@@ -193,6 +218,11 @@ CONFIRM_DEFAULTS = {
     ): [True],
     (
         "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_proposer_assistant",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
         "GitForkMenuMixin._git_question_gel",
         "Freeze it on the head of the branch?",
     ): ["état"],
@@ -206,6 +236,11 @@ CONFIRM_DEFAULTS = {
         "GitForkMenuMixin._git_retirer_depot",
         "Remove the local clone too? repo keeps it if it holds uncommitted work.",
     ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_statut_mes_pull_requests",
+        "Only the repositories of the manifests?",
+    ): [True],
     (
         "script/todo/healthcheck.py",
         "_installer_hooks",

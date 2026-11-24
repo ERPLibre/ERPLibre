@@ -165,6 +165,21 @@ class TestLeMenu(unittest.TestCase):
         self.assertIn("✓ Org/b", texte)
         self.assertIn("(2)", port.events[-1]["text"])
 
+    def test_a_typo_at_the_confirmation_is_said_and_asked_again(self):
+        client = mock.Mock()
+        code, _t, port, _f = self.lancer(
+            ["Org", "all", "peut-être", "oui"], client
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(client.archiver.call_count, 2)
+        question = [e for e in port.events if e.get("kind") == "confirm"]
+        self.assertEqual(
+            [(e["prompt"], e["default"], "back" in e) for e in question],
+            [("Archiver ces dépôts sur GitHub (2) ?", "n", False)] * 2,
+        )
+        avis = [e["text"] for e in port.events if e.get("t") == "notice"]
+        self.assertEqual(avis, ["Répondez o/oui ou n/non : peut-être"])
+
     def test_a_fork_is_checked_by_its_full_name(self):
         client = mock.Mock()
         code, _t, _p, _f = self.lancer(["Org", "Org/b", "o"], client)

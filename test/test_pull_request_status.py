@@ -249,6 +249,58 @@ class TestLeMenu(unittest.TestCase):
                 self.assertEqual(todo._git_statut_mes_pull_requests(), 0)
             appel.assert_called_once_with(client, "moi", depots)
 
+    def test_a_typo_is_said_and_asked_again(self):
+        """Une faute ne vaut plus « seulement les manifestes » : elle est
+        dite, puis la même question revient ; Ctrl+D vaut non, tous les
+        dépôts, sans rien écrire."""
+        from script.todo import ui
+        from script.todo.todo import TODO
+        from script.todo.ui.port import ScriptedPort
+
+        todo = TODO.__new__(TODO)
+        client = mock.Mock()
+        client.utilisateur.return_value = "moi"
+        for reponses, depots in (
+            (["peut-être", "n"], None),
+            (["peut-être", ""], {"oca/web"}),
+            ([EOFError()], None),
+        ):
+            port = ScriptedPort(reponses)
+            with (
+                self.subTest(reponses=reponses),
+                mock.patch.object(
+                    gm.repo_upgrade, "version_active", return_value="18.0"
+                ),
+                mock.patch.object(TODO, "_git_client", return_value=client),
+                mock.patch.object(
+                    gm.manifest_repo,
+                    "depots_des_manifestes",
+                    return_value={"oca/web"},
+                ),
+                mock.patch.object(
+                    gm.manifest_repo, "statut_pull_requests", return_value=[]
+                ) as appel,
+                mock.patch("builtins.input", side_effect=EOFError),
+                mock.patch("builtins.print"),
+                ui.bind(port),
+            ):
+                self.assertEqual(todo._git_statut_mes_pull_requests(), 0)
+                appel.assert_called_once_with(client, "moi", depots)
+                question = [
+                    (e["prompt"], e["default"], "back" in e)
+                    for e in port.events
+                    if e.get("kind") == "confirm"
+                ]
+                self.assertEqual(
+                    question[0],
+                    (
+                        gm.t("Only the repositories of the manifests?"),
+                        "y",
+                        False,
+                    ),
+                )
+                self.assertEqual(port.answers, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1458,6 +1458,36 @@ class TestLaPullRequest(LeMenuGit):
                 double.ouvrir_pull_request.assert_not_called()
                 self.assertEqual(port.answers, ["o"])
 
+    def test_the_draft_after_a_typo_then_each_default(self):
+        retour, double, port, _c = self.ouvrir(
+            ["", "", "", "peut-être", "o", "o"]
+        )
+        self.assertIs(double.ouvrir_pull_request.call_args.args[6], True)
+        self.assertEqual(
+            confirmations(port),
+            [
+                (t("Open it as a draft?"), "n", True),
+                (t("Open it as a draft?"), "n", True),
+                (
+                    f"{t('Open the pull request on')} AmontBrume/lune ?",
+                    "n",
+                    False,
+                ),
+            ],
+        )
+        self.assertEqual(len(fautes(port)), 1)
+
+    def test_no_pull_request_is_opened_without_a_yes(self):
+        for refus in REFUS:
+            with self.subTest(refus=refus):
+                retour, double, port, client = self.ouvrir(
+                    ["", "", "", "", *refus, "o"]
+                )
+                self.assertIsNone(retour)
+                client.assert_not_called()
+                double.ouvrir_pull_request.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+
 
 class TestLeRepertoireExistant(LeMenuGit):
     """Ajouter un dépôt depuis un répertoire existant : un clone non
