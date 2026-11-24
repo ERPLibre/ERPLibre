@@ -12,7 +12,9 @@ et `open_view(view)`. `menu` et `ask` sont les deux primitives : elles
 montrent leur texte tel quel et rendent la ligne répondue, sans son saut
 de ligne. Une ligne vide rend "" et laisse le défaut à l'appelant, comme
 `input` ; seul un compte à rebours (`kind="countdown"`, ou un message qui
-porte `timeout_s`) rend `default` à l'échéance. `menu` pose un message
+porte `timeout_s`) rend `default` à l'échéance ; pour une confirmation,
+le terminal rend ce défaut en un mot de la langue (`answer_word`), le
+canal web en y ou n, que `confirmed` relit tous deux. `menu` pose un message
 déjà fait : un `menu`, ou l'`ask` que construisent `confirm`, `choose` et
 `pick_path`. `BasePort` en déduit les autres questions.
 

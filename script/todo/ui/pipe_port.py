@@ -33,8 +33,9 @@ aucun pour une réponse invalide.
 Pour une question finie sans réponse, il porte `end` : `timeout` à
 l'échéance, `cancel` sur une exception (annulée par la page, Ctrl+D,
 Ctrl+C), sauf pour une confirmation sans `back`, où Annuler et Ctrl+D
-valent non : `yes` faux. Annuler et Ctrl+D finissent la ligne de
-l'invite. Un secret se pose écho coupé, comme `getpass` ; le hub y voit
+valent non : `yes` faux. Hors d'un compte à rebours, Annuler et Ctrl+D
+finissent la ligne de l'invite ; pendant un compte à rebours, Ctrl+D au
+terminal la laisse ouverte, comme `auto_ask.ask`. Un secret se pose écho coupé, comme `getpass` ; le hub y voit
 l'invite d'un mot de passe. Après une réponse
 venue du canal, le terminal en montre la transcription sur la ligne de la
 question : l'entrée choisie d'un menu, Oui ou Non pour une confirmation,
