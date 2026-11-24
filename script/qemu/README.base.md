@@ -927,7 +927,7 @@ a device already in use.
   out); attach a device to a VM; detach it; show the USB devices of a VM
   (each view, USB controllers, display order, redirection slots).
 - *Device on this workstation (SPICE)* — open `virt-viewer` with USB
-  redirection; enable SPICE USB redirection on a VM.
+  redirection; enable SPICE USB redirection on a VM; disable it.
 - *Replug* — auto-reattach on replug (udev rule, device mapping); restart a
   USB device of a VM (detach, reattach).
 
@@ -1022,6 +1022,12 @@ redefined, then started again. *Open virt-viewer with USB redirection* then
 launches `virt-viewer` with the auto-redirect filter for `0fd9`, so a deck
 plugged into the workstation follows the window; other devices are picked by
 hand in **File › USB device selection**.
+
+*Disable SPICE USB redirection on a VM* removes the `spicevmc` redirection
+slots and the vendor filter, the same way: at the next start, with your
+consent to stop a running VM. The SPICE display, the USB controller and the
+agent channel stay — they also serve the screen and the clipboard — and so
+does every device passed directly as a `<hostdev>`.
 
 ### Restart a device
 
@@ -1214,7 +1220,8 @@ libvirt refuse de démarrer une seconde VM qui le tient, et
   détacher ; voir les périphériques USB d'une VM (chaque vue, contrôleurs
   USB, ordre des affichages, emplacements de redirection).
 - *Périphérique sur ce poste (SPICE)* — ouvrir `virt-viewer` avec la
-  redirection USB ; activer la redirection USB SPICE sur une VM.
+  redirection USB ; activer la redirection USB SPICE sur une VM ; la
+  désactiver.
 - *Rebranchement* — rattachement auto au rebranchement (règle udev,
   correspondance) ; redémarrer un périphérique USB d'une VM (détacher,
   rattacher).
@@ -1314,6 +1321,13 @@ relancée. *Ouvrir virt-viewer avec la redirection USB* lance ensuite
 `virt-viewer` avec le filtre de redirection automatique de `0fd9` : un deck
 branché sur le poste suit la fenêtre ; les autres périphériques se choisissent
 à la main dans **File › USB device selection**.
+
+*Désactiver la redirection USB SPICE d'une VM* retire les emplacements de
+redirection `spicevmc` et le filtre de vendeurs, de la même façon : au
+démarrage suivant, avec votre accord pour arrêter une VM en marche.
+L'affichage SPICE, le contrôleur USB et le canal de l'agent restent — ils
+servent aussi l'écran et le presse-papiers —, comme tout périphérique passé
+directement par un `<hostdev>`.
 
 ### Redémarrer un périphérique
 

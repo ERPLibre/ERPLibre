@@ -25171,6 +25171,22 @@ TRANSLATIONS = {
         "fr": "🔀 Activer la redirection USB SPICE sur une VM",
         "en": "🔀 Enable SPICE USB redirection on a VM",
     },
+    "Disable SPICE USB redirection on a VM": {
+        "fr": "🚫 Désactiver la redirection USB SPICE d'une VM",
+        "en": "🚫 Disable SPICE USB redirection on a VM",
+    },
+    "SPICE USB redirection is not set up.": {
+        "fr": "La redirection USB SPICE n'est pas en place.",
+        "en": "SPICE USB redirection is not set up.",
+    },
+    "SPICE USB redirection disabled.": {
+        "fr": "Redirection USB SPICE désactivée.",
+        "en": "SPICE USB redirection disabled.",
+    },
+    "Remove {n} SPICE USB redirection slot(s)": {
+        "fr": "Retirer {n} emplacement(s) de redirection USB SPICE",
+        "en": "Remove {n} SPICE USB redirection slot(s)",
+    },
     "Replug": {
         "fr": "🔁 Rebranchement",
         "en": "🔁 Replug",

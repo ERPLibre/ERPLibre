@@ -80,6 +80,7 @@ class QemuUsbMixin:
             {"section": t("Device on this workstation (SPICE)")},
             {"prompt_description": t("Open virt-viewer with USB redirection")},
             {"prompt_description": t("Enable SPICE USB redirection on a VM")},
+            {"prompt_description": t("Disable SPICE USB redirection on a VM")},
             {"section": t("Replug")},
             {
                 "prompt_description": t(
@@ -111,8 +112,10 @@ class QemuUsbMixin:
             elif status == "6":
                 self._qemu_usb_enable_spice()
             elif status == "7":
-                self._qemu_usb_autoreattach()
+                self._qemu_usb_disable_spice()
             elif status == "8":
+                self._qemu_usb_autoreattach()
+            elif status == "9":
                 self._qemu_usb_restart()
             else:
                 print(t("Command not found !"))
@@ -791,7 +794,7 @@ class QemuUsbMixin:
             print(f"  {t('Allowed vendors:')} {', '.join(allowed)}")
 
     # -------------------------------------------------------------- #
-    # [5] et [6] : périphérique sur ce poste, redirection SPICE
+    # [5] à [7] : périphérique sur ce poste, redirection SPICE
 
     def _qemu_usb_viewer(self):
         """Ouvre virt-viewer en redirigeant d'office les decks de ce poste.
@@ -872,21 +875,61 @@ class QemuUsbMixin:
             "Redirect only Stream Decks (vendor {vendor})? (y/N): "
         ).format(vendor=qu.DECK_VENDOR)
         vendors = (qu.DECK_VENDOR,) if self._is_yes(input(question)) else None
+        self._qemu_usb_redefine(
+            target,
+            info,
+            lambda xml: qu.spice_usbredir_plan(
+                xml, target["domain"], target["uri"], allow_vendors=vendors
+            ),
+            t("SPICE USB redirection is already set up."),
+            t("SPICE USB redirection enabled."),
+        )
+
+    def _qemu_usb_disable_spice(self):
+        """Retire de la définition la redirection USB SPICE.
+
+        spice_usbredir_disable_plan() retire les emplacements spicevmc et
+        le filtre de vendeurs, et garde l'affichage SPICE, le contrôleur USB
+        et le canal de l'agent : les <hostdev> passés directement ne
+        changent pas. Comme l'activation, le changement ne vaut qu'au
+        démarrage suivant : une VM en marche est arrêtée sur accord, puis
+        relancée."""
+        target = self._qemu_usb_pick_target()
+        if not target:
+            return
+        info = self._qemu_usb_read(target)
+        if not info:
+            return
+        self._qemu_usb_redefine(
+            target,
+            info,
+            lambda xml: qu.spice_usbredir_disable_plan(
+                xml, target["domain"], target["uri"]
+            ),
+            t("SPICE USB redirection is not set up."),
+            t("SPICE USB redirection disabled."),
+        )
+
+    def _qemu_usb_redefine(self, target, info, make_steps, nothing, done):
+        """Redéfinit la VM par le plan que `make_steps` tire de sa config.
+
+        make_steps(config_xml) rend des étapes « virsh define » ; il peut
+        lever ValueError, affichée telle quelle. Sans étape, `nothing` est
+        affiché et rien ne part. Une VM en marche est arrêtée sur accord —
+        un changement d'affichage ou d'emplacement ne vaut qu'au démarrage
+        —, sa config relue et le plan refait sur elle, puis la VM est
+        relancée même quand la redéfinition est refusée ou échoue. `done`
+        est affiché après une redéfinition réussie."""
         try:
-            steps = qu.spice_usbredir_plan(
-                info["config_xml"],
-                target["domain"],
-                target["uri"],
-                allow_vendors=vendors,
-            )
+            steps = make_steps(info["config_xml"])
         except ValueError as exc:
             print(f"  ⚠ {exc}")
             return
         if not steps:
-            print(f"  ✅ {t('SPICE USB redirection is already set up.')}")
+            print(f"  ✅ {nothing}")
             return
         for change in steps[0]["changes"]:
-            print(f"  + {change}")
+            print(f"  ± {change}")
         was_running = info["domstate"] != "shut off"
         if was_running:
             print(f"\n  {t('The VM must be shut off: a display change')}")
@@ -903,12 +946,7 @@ class QemuUsbMixin:
             info = self._qemu_usb_read(target)
             if not info:
                 return
-            steps = qu.spice_usbredir_plan(
-                info["config_xml"],
-                target["domain"],
-                target["uri"],
-                allow_vendors=vendors,
-            )
+            steps = make_steps(info["config_xml"])
         print(f"\n{t('Will execute:')}")
         runnable = self._qemu_usb_show_plan(target, steps)
         if runnable and not self._is_yes(
@@ -918,7 +956,7 @@ class QemuUsbMixin:
             runnable = []
         ok = self._qemu_usb_run_steps(target, runnable) if runnable else False
         if ok:
-            print(f"✅ {t('SPICE USB redirection enabled.')}")
+            print(f"✅ {done}")
         if was_running:
             argv = self._qemu_usb_prefix(target) + qu.virsh_uri_argv(
                 target["uri"], "start", target["domain"]
@@ -926,7 +964,7 @@ class QemuUsbMixin:
             self._qemu_usb_exec(shlex.join(argv))
 
     # -------------------------------------------------------------- #
-    # [7] Rattachement au rebranchement
+    # [8] Rattachement au rebranchement
 
     @staticmethod
     def _qemu_usb_host_cli(jump=""):

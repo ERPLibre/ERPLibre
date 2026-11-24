@@ -478,7 +478,7 @@ a device already in use.
   out); attach a device to a VM; detach it; show the USB devices of a VM
   (each view, USB controllers, display order, redirection slots).
 - *Device on this workstation (SPICE)* — open `virt-viewer` with USB
-  redirection; enable SPICE USB redirection on a VM.
+  redirection; enable SPICE USB redirection on a VM; disable it.
 - *Replug* — auto-reattach on replug (udev rule, device mapping); restart a
   USB device of a VM (detach, reattach).
 
@@ -573,6 +573,12 @@ redefined, then started again. *Open virt-viewer with USB redirection* then
 launches `virt-viewer` with the auto-redirect filter for `0fd9`, so a deck
 plugged into the workstation follows the window; other devices are picked by
 hand in **File › USB device selection**.
+
+*Disable SPICE USB redirection on a VM* removes the `spicevmc` redirection
+slots and the vendor filter, the same way: at the next start, with your
+consent to stop a running VM. The SPICE display, the USB controller and the
+agent channel stay — they also serve the screen and the clipboard — and so
+does every device passed directly as a `<hostdev>`.
 
 ### Restart a device
 

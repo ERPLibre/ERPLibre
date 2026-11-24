@@ -1094,6 +1094,73 @@ def spice_usbredir_plan(
     ]
 
 
+def spice_usbredir_disable_xml(domain_xml: str):
+    """Le XML du domaine SANS la redirection USB SPICE, et la liste des
+    changements (textes lisibles). Idempotent : sur un XML qui n'en porte
+    pas, rend le XML d'entrée inchangé et une liste vide.
+
+    Retire les <redirdev bus='usb' type='spicevmc'/> et le <redirfilter>.
+    Garde l'affichage SPICE, le contrôleur USB et le canal de l'agent :
+    l'affichage et le canal servent aussi l'écran et le presse-papiers, et
+    le contrôleur porte les <hostdev> passés directement. Une redirection
+    par un autre type que spicevmc n'est pas touchée.
+
+    Entrée : le XML de la CONFIG, à redéfinir par « virsh define » ; les
+    emplacements ne disparaissent qu'au démarrage suivant. ValueError pour
+    un XML illisible.
+    """
+    root = _root(domain_xml)
+    if root is None:
+        raise ValueError("spice_usbredir_disable_xml: unreadable domain XML")
+    _register_namespaces(domain_xml)
+    root = ET.fromstring(domain_xml)
+    devices = root.find("devices")
+    if devices is None:
+        return domain_xml, []
+    changes = []
+    slots = [
+        r
+        for r in devices.findall("redirdev")
+        if r.get("bus", "usb") == "usb" and r.get("type") == "spicevmc"
+    ]
+    for r in slots:
+        _remove(devices, r)
+    if slots:
+        changes.append(
+            t("Remove {n} SPICE USB redirection slot(s)").format(n=len(slots))
+        )
+    current = devices.find("redirfilter")
+    if current is not None:
+        _remove(devices, current)
+        changes.append(t("Remove the USB redirection filter"))
+    if not changes:
+        return domain_xml, []
+    return ET.tostring(root, encoding="unicode") + "\n", changes
+
+
+def spice_usbredir_disable_plan(
+    domain_xml: str, domain: str, uri: str = DEFAULT_URI
+) -> list:
+    """Plan qui redéfinit le domaine sans la redirection USB SPICE : une
+    étape « virsh define » (view "config"), ou [] quand il n'y a rien à
+    retirer. Même format que spice_usbredir_plan(). Effet au prochain
+    démarrage de la VM. Lève ValueError comme spice_usbredir_disable_xml."""
+    new_xml, changes = spice_usbredir_disable_xml(domain_xml)
+    if not changes:
+        return []
+    return [
+        {
+            "what": t("Redefine {domain}: {changes}").format(
+                domain=domain, changes="; ".join(changes)
+            ),
+            "view": "config",
+            "argv": define_argv(uri),
+            "xml": new_xml,
+            "changes": changes,
+        }
+    ]
+
+
 def usbredir_filter(vendors=(DECK_VENDOR,)) -> str:
     """Filtre spice-gtk qui autorise ces vendeurs et refuse le reste.
 
