@@ -293,6 +293,7 @@ class QemuManageMixin:
         print(f"  [1] {t('Open (start)')}")
         print(f"  [2] {t('Close (shut down)')}")
         print(f"  [3] {t('Adjust hardware only (vCPU, RAM, 3D)')}")
+        print(f"  [4] {t('Change RAM of a running VM (balloon)')}")
         st = input(t("Choice: ")).strip()
         if st == "1":
             action, verb = "start", t("start")
@@ -300,6 +301,9 @@ class QemuManageMixin:
             action, verb = "shutdown", t("shut down")
         elif st == "3":
             self._qemu_adjust_hardware(resolved)
+            return
+        elif st == "4":
+            self._qemu_balloon_live(resolved)
             return
         else:
             print(t("Cancelled."))
@@ -1061,6 +1065,18 @@ class QemuManageMixin:
             print(f"\n  {r['name']} — {hw.hw_summary(r)}")
             vcpus = input(f"    vCPU [{r.get('vcpus')}] : ")
             ram = input(f"    RAM [{hw.fmt_mib(r.get('mem_mib'))}] : ")
+            # Le plafond n'est demandé que si la RAM vient d'être saisie, ou
+            # si la VM a déjà une marge au-dessus d'elle : une réponse vide à
+            # la RAM laisse sinon la mémoire entière en l'état, sans question
+            # de plus.
+            max_ram = ""
+            if ram.strip() or (r.get("max_mem_mib") or 0) > (
+                r.get("mem_mib") or 0
+            ):
+                max_ram = input(
+                    f"    {t('RAM max')} [{hw.fmt_mib(r.get('max_mem_mib'))}]"
+                    " : "
+                )
             reason = hw.gpu_allowed(r, node)
             if reason:
                 print(f"    ⚠ {t('3D acceleration (host GPU)')} : {reason}")
@@ -1088,9 +1104,153 @@ class QemuManageMixin:
                     labels=[lab for _tok, lab in reseaux],
                 )
             want[r["name"]] = hw.build_want(
-                r, vcpus, ram, gpu, auto, cpu=cpu, heads=heads, net=net
+                r,
+                vcpus,
+                ram,
+                gpu,
+                auto,
+                cpu=cpu,
+                heads=heads,
+                net=net,
+                max_ram=max_ram,
             )
         return want
+
+    @staticmethod
+    def _qemu_dommemstat_raw(name):
+        """Sortie brute de « virsh dommemstat », ou '' (VM éteinte, erreur).
+
+        Lecture seule : sans « --period », dommemstat ne modifie rien. Nom
+        distinct de _qemu_dommemstat, qui rend (utilisée, totale) au tableau
+        des VM et pose la période de collecte sans la demander."""
+        try:
+            res = subprocess.run(
+                virsh_argv("dommemstat", name),
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=QemuManageMixin._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return res.stdout if res.returncode == 0 else ""
+
+    @staticmethod
+    def _qemu_host_mem_available():
+        """MemAvailable de l'hôte, en Mio ; 0 si /proc/meminfo est illisible."""
+        from script.todo import qemu_hardware as hw
+
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as fh:
+                return hw.meminfo_available_mib(fh.read())
+        except OSError:
+            return 0
+
+    def _qemu_run_shown(self, argv):
+        """Affiche une commande sudo/virsh, demande o/N, puis la lance.
+
+        Rend True si elle a été lancée et a rendu 0 ; un refus ou un code
+        non nul rend False, et le code est affiché. PATH assaini comme pour
+        virt-xml : une commande système ne doit pas s'amorcer sur le venv."""
+        cmd = sudo_prefix() + " ".join(shlex.quote(c) for c in argv)
+        print(f"\n{t('Will execute:')} {cmd}")
+        if not self._is_yes(input(t("Apply these changes? (y/N): "))):
+            print(t("Cancelled."))
+            return False
+        rc = self.execute.exec_command_live(
+            cmd, source_erplibre=False, new_env={"PATH": system_path()}
+        )
+        if rc != 0:
+            print(f"  ⚠ {t('Command failed.')} {t('exit code:')} {rc}")
+            return False
+        return True
+
+    def _qemu_balloon_live(self, names):
+        """Change la RAM de VM ALLUMÉES par le ballon virtio.
+
+        Le ballon déplace la RAM entre ~0 et le plafond <memory> fixé au
+        démarrage. Le plafond retenu est le plus bas de la vue vivante et de
+        la définition : une définition modifiée pendant que la VM tourne ne
+        vaut qu'au prochain démarrage, et « --config » y écrit aussi la
+        cible. Sans compteurs du pilote invité, la mémoire occupée n'est pas
+        connue : la collecte est proposée (o/N), puis relue après quelques
+        secondes. Chaque modification est montrée avant d'être lancée.
+        """
+        from script.todo import qemu_hardware as hw
+
+        for name in names:
+            print(f"\n── {name} ──")
+            if self._qemu_domstate(name) != "running":
+                print(f"  ⚠ {t('Not running, RAM left untouched:')} {name}")
+                continue
+            state = hw.hw_state(self._qemu_dumpxml(name, inactive=False))
+            if not state.get("name"):
+                print(f"  ⚠ {t('Unreadable VM definition.')}")
+                continue
+            persistant = hw.hw_state(self._qemu_dumpxml(name))
+            plafonds = [
+                m
+                for m in (
+                    state.get("max_mem_mib"),
+                    persistant.get("max_mem_mib"),
+                )
+                if m
+            ]
+            if plafonds:
+                state["max_mem_mib"] = min(plafonds)
+            if not state.get("balloon"):
+                print(f"  ⚠ {t('this VM has no balloon device')}")
+                continue
+            stats = hw.parse_dommemstat(self._qemu_dommemstat_raw(name))
+            if not hw.guest_reports(stats, time.time()):
+                print(
+                    f"  ⚠ {t('the guest balloon driver reports no statistics')}"
+                )
+                if not self._qemu_run_shown(hw.period_cmd(name)):
+                    continue
+                # Une période de 5 s : le premier rapport arrive avant 6 s.
+                time.sleep(6)
+                stats = hw.parse_dommemstat(self._qemu_dommemstat_raw(name))
+                if not hw.guest_reports(stats, time.time()):
+                    print(
+                        f"  ⚠ {t('still no statistics from the guest:')}"
+                        f" {t('RAM left untouched')}"
+                    )
+                    continue
+            actual = (stats.get("actual") or 0) // 1024
+            used = (
+                max(0, stats.get("actual", 0) - stats.get("usable", 0)) // 1024
+            )
+            print(
+                f"  RAM {hw.fmt_mib(actual)}"
+                f" · {t('RAM max')} {hw.fmt_mib(state.get('max_mem_mib'))}"
+                f" · {t('used by the guest')} {hw.fmt_mib(used)}"
+            )
+            want = hw.parse_ram(input(f"  {t('New RAM (e.g. 6G):')} "))
+            if not want:
+                print(t("Cancelled."))
+                continue
+            plan = hw.live_ram_plan(
+                state,
+                stats,
+                want,
+                self._qemu_host_mem_available(),
+                time.time(),
+            )
+            for warning in plan["warnings"]:
+                print(f"  ⚠ {warning}")
+            if not plan["ok"]:
+                print(f"  ⚠ {plan['reason']}")
+                continue
+            print(f"  - {plan['what']}")
+            if not self._qemu_run_shown(plan["cmd"]):
+                continue
+            time.sleep(2)
+            after = hw.parse_dommemstat(self._qemu_dommemstat_raw(name))
+            print(
+                f"  {t('Balloon now at:')}"
+                f" {hw.fmt_mib((after.get('actual') or 0) // 1024)}"
+            )
 
     @staticmethod
     def _qemu_dominfo(name):

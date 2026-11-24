@@ -25059,9 +25059,9 @@ TRANSLATIONS = {
         "fr": "{path} fixe aussi {value} : « sysctl --system » l'applique, le démarrage non.",
         "en": "{path} sets {value} too: « sysctl --system » applies it, the boot does not.",
     },
-    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.": {
-        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne par `virsh setmem <vm> <taille> --live`, jusqu'au maximum <memory> de sa définition ; relever ce maximum exige que la VM soit éteinte.",
-        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.",
+    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs, up to the <memory> maximum in its definition, from TODO › Execute › QEMU/KVM › List VMs › Change the state of one or more VMs › Change RAM of a running VM (balloon), which runs virsh setmem --live. Raising that maximum needs the VM shut off: Adjust hardware only, in the same menu.": {
+        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne, jusqu'au maximum <memory> de sa définition, depuis TODO › Exécution › QEMU/KVM › Lister les VM › Changer l'état d'une ou plusieurs VM › Changer la RAM d'une VM allumée (ballon), qui lance virsh setmem --live. Relever ce maximum exige la VM éteinte : Régler le matériel seulement, dans le même menu.",
+        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs, up to the <memory> maximum in its definition, from TODO › Execute › QEMU/KVM › List VMs › Change the state of one or more VMs › Change RAM of a running VM (balloon), which runs virsh setmem --live. Raising that maximum needs the VM shut off: Adjust hardware only, in the same menu.",
     },
     "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.": {
         "fr": "Pas de pilote virtio_balloon : l'hôte ne change la RAM de cette VM que pendant qu'elle est éteinte.",
@@ -26138,6 +26138,115 @@ TRANSLATIONS = {
     "USB passthrough, emulated deck: run it": {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
+    },
+    # Ballon mémoire virtio : RAM max, et RAM d'une VM allumée.
+    "RAM max": {
+        "fr": "RAM max",
+        "en": "RAM max",
+    },
+    "below the RAM of the VM": {
+        "fr": "sous la RAM de la VM",
+        "en": "below the RAM of the VM",
+    },
+    "Balloon": {
+        "fr": "Ballon",
+        "en": "Balloon",
+    },
+    "balloon": {
+        "fr": "ballon",
+        "en": "balloon",
+    },
+    "no balloon": {
+        "fr": "sans ballon",
+        "en": "no balloon",
+    },
+    "balloon: the guest reserves ~1.6% of the max": {
+        "fr": "ballon : l'invité réserve ~1,6 % du max",
+        "en": "balloon: the guest reserves ~1.6% of the max",
+    },
+    "this VM has no balloon device": {
+        "fr": "cette VM n'a pas de ballon mémoire",
+        "en": "this VM has no balloon device",
+    },
+    "the guest balloon driver reports no statistics": {
+        "fr": "le pilote du ballon dans l'invité ne publie aucun relevé",
+        "en": "the guest balloon driver reports no statistics",
+    },
+    "unreadable RAM value": {
+        "fr": "valeur de RAM illisible",
+        "en": "unreadable RAM value",
+    },
+    "above the RAM max of the VM": {
+        "fr": "au-dessus de la RAM max de la VM",
+        "en": "above the RAM max of the VM",
+    },
+    "raise the max with the VM shut off (hardware form)": {
+        "fr": "relever le max VM éteinte (formulaire matériel)",
+        "en": "raise the max with the VM shut off (hardware form)",
+    },
+    "below the memory the guest uses, plus a margin": {
+        "fr": "sous la mémoire occupée par l'invité, marge comprise",
+        "en": "below the memory the guest uses, plus a margin",
+    },
+    "the host lacks available memory": {
+        "fr": "l'hôte manque de mémoire disponible",
+        "en": "the host lacks available memory",
+    },
+    "the guest gives memory back gradually: read the new value": {
+        "fr": "l'invité rend la mémoire peu à peu : lire la nouvelle valeur",
+        "en": "the guest gives memory back gradually: read the new value",
+    },
+    "Change RAM of a running VM (balloon)": {
+        "fr": "Changer la RAM d'une VM allumée (ballon)",
+        "en": "Change RAM of a running VM (balloon)",
+    },
+    "Not running, RAM left untouched:": {
+        "fr": "Pas allumée, RAM laissée telle quelle :",
+        "en": "Not running, RAM left untouched:",
+    },
+    "still no statistics from the guest:": {
+        "fr": "toujours aucun relevé de l'invité :",
+        "en": "still no statistics from the guest:",
+    },
+    "RAM left untouched": {
+        "fr": "RAM laissée telle quelle",
+        "en": "RAM left untouched",
+    },
+    "used by the guest": {
+        "fr": "occupée par l'invité",
+        "en": "used by the guest",
+    },
+    "New RAM (e.g. 6G):": {
+        "fr": "Nouvelle RAM (ex. 6G) :",
+        "en": "New RAM (e.g. 6G):",
+    },
+    "Balloon now at:": {
+        "fr": "Ballon maintenant à :",
+        "en": "Balloon now at:",
+    },
+    "RAM max (balloon): unreadable value": {
+        "fr": "RAM max (ballon) : valeur illisible",
+        "en": "RAM max (balloon): unreadable value",
+    },
+    "RAM max (balloon) is below the RAM of a VM": {
+        "fr": "La RAM max (ballon) est sous la RAM d'une VM",
+        "en": "RAM max (balloon) is below the RAM of a VM",
+    },
+    "RAM max (balloon): empty = RAM": {
+        "fr": "RAM max (ballon) : vide = RAM",
+        "en": "RAM max (balloon): empty = RAM",
+    },
+    "Above the RAM, the VM can grow up to it without a reboot; the guest reserves ~1.6% of it.": {
+        "fr": "Au-dessus de la RAM, la VM peut y monter sans redémarrer ; l'invité en réserve ~1,6 %.",
+        "en": "Above the RAM, the VM can grow up to it without a reboot; the guest reserves ~1.6% of it.",
+    },
+    "RAM max (balloon)": {
+        "fr": "RAM max (ballon)",
+        "en": "RAM max (balloon)",
+    },
+    "RAM max (balloon), empty = RAM (e.g. 8G): ": {
+        "fr": "RAM max (ballon), vide = RAM (ex. 8G) : ",
+        "en": "RAM max (balloon), empty = RAM (e.g. 8G): ",
     },
 }
 

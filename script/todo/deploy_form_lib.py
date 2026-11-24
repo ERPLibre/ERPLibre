@@ -164,6 +164,39 @@ def parse_ram(value):
     return mib if mib > 0 else 0
 
 
+def balloon_max(value, vms, floor=0, desktop=""):
+    """Champ « RAM max (ballon) » -> (Mo, message d'erreur).
+
+    Vide : (0, "") — pas de plafond, la VM démarre comme avant. Lu par
+    parse_ram, il doit couvrir la RAM de CHAQUE VM : un plafond sous la RAM
+    serait refusé par libvirt (currentMemory > memory). Une VM dont la RAM
+    l'égale le reçoit sans marge, c'est-à-dire sans changement.
+
+    La RAM comparée est celle que recevra la VM, plancher d'un bureau
+    compris (`desktop_ram` avec `floor`, `desktop` étant le type commun
+    d'une VM qui n'en porte pas) : _qemu_build_deploy_parts compare le
+    plafond à cette valeur-là et l'abandonne s'il ne la dépasse pas.
+    """
+    if not str(value or "").strip():
+        return 0, ""
+    mib = parse_ram(value)
+    if not mib:
+        return 0, t("RAM max (balloon): unreadable value")
+    rams = [
+        positive_int(
+            desktop_ram(vm.get("ram"), vm.get("desktop", desktop), floor), 0
+        )
+        for vm in vms or ()
+    ]
+    plus_haute = max(rams, default=0)
+    if mib < plus_haute:
+        return 0, (
+            t("RAM max (balloon) is below the RAM of a VM")
+            + f" ({mib} < {plus_haute} Mo)"
+        )
+    return mib, ""
+
+
 def apply_profile(
     entries, profile, base_vcpus, host_cpu, custom=None, desktop=""
 ):
@@ -864,6 +897,9 @@ def build_spec(vms, domains, form):
         # les pose sur les seules VM graphiques (usb_receiver).
         "usb_hostdev": list(form.get("usb_hostdev") or ()),
         "spice_usbredir": bool(form.get("spice_usbredir", False)),
+        # Au niveau du déploiement : le plafond du ballon, en Mo, 0 sans
+        # plafond. La commande d'une VM ne le reçoit que s'il dépasse sa RAM.
+        "max_ram": form.get("max_ram", 0),
         # Au niveau du déploiement : l'agent choisi et l'identité git valent
         # pour tout le parc, comme le fuseau ou le magasin d'applications.
         "ai_agent": form.get("ai_agent", ""),

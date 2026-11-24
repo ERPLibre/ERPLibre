@@ -493,8 +493,13 @@ class TestLesLignes(unittest.TestCase):
     def test_vm_balloon_sentences(self):
         texte = self.verdict(verdict="vm", virtualization="kvm", balloon=True)
         self.assertIn("pendant qu'elle tourne", texte)
-        self.assertIn("virsh setmem <vm> <taille> --live", texte)
-        self.assertNotIn("TODO › Exécution", texte)
+        self.assertIn(
+            "TODO › Exécution › QEMU/KVM › Lister les VM › Changer l'état"
+            " d'une ou plusieurs VM › Changer la RAM d'une VM allumée"
+            " (ballon)",
+            texte,
+        )
+        self.assertIn("Régler le matériel seulement", texte)
         texte = self.verdict(verdict="vm", virtualization="kvm", balloon=False)
         self.assertIn("que pendant qu'elle est éteinte", texte)
         texte = self.verdict(verdict="unknown")
