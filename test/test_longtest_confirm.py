@@ -40,7 +40,7 @@ def menu(reponse=True):
     todo = TODO.__new__(TODO)
     todo.execute = FauxExecute()
     return todo, mock.patch(
-        "script.todo.longtest_menu.click.confirm", return_value=reponse
+        "script.todo.longtest_menu.ui.confirm", return_value=reponse
     )
 
 

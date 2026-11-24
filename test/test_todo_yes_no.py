@@ -36,6 +36,16 @@ WRAPPERS = {"show_and_ask", "ask_and_install", "TodoUpgrade.confirm"}
 # (fichier, fonction, première clé t()) → défauts, dans l'ordre du fichier.
 CONFIRM_DEFAULTS = {
     (
+        "script/todo/assistant_menu.py",
+        "AssistantMenuMixin._llm_keep",
+        "Keep them all?",
+    ): [False],
+    (
+        "script/todo/assistant_menu.py",
+        "AssistantMenuMixin._llm_sweep_cidr",
+        "<dynamique>",
+    ): [False],
+    (
         "script/todo/container_menu.py",
         "ContainerMenuMixin._container_assure_emulation",
         "Install buildx and QEMU now?",
@@ -337,6 +347,16 @@ CONFIRM_DEFAULTS = {
         "Delete the old clone %s?",
     ): [False],
     (
+        "script/todo/longtest_menu.py",
+        "LongTestMenuMixin._longtest_defaire",
+        "Destroy all that?",
+    ): [False],
+    (
+        "script/todo/longtest_menu.py",
+        "LongTestMenuMixin._longtest_run",
+        "<dynamique>",
+    ): [False],
+    (
         "script/todo/mail/menu.py",
         "_cache_size_and_purge",
         "mail_purge_confirm",
@@ -416,6 +436,46 @@ CONFIRM_DEFAULTS = {
         "_sonder_audio",
         "modem_probe_heard",
     ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_add_hostkey",
+        "Record it?",
+    ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_change_state",
+        "Confirm?",
+    ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_cleanup",
+        "Free them?",
+    ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_confirm_spec",
+        "Deploy this VM now?",
+    ): [True],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_delete",
+        "Apply: %s?",
+    ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_delete",
+        "Confirm for real?",
+    ): [False],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_deploy_prompts",
+        "Deploy this VM now?",
+    ): [True],
+    (
+        "script/todo/proxmox_menu.py",
+        "ProxmoxMenuMixin._pve_deploy_prompts",
+        "Install ERPLibre on it?",
+    ): [True],
     (
         "script/todo/python_menu.py",
         "PythonMenuMixin._poetry_drift_actif",
@@ -805,6 +865,41 @@ CONFIRM_DEFAULTS = {
         "script/todo/transform_menu.py",
         "TransformMenuMixin._transform_install_env",
         "Create it now?",
+    ): [True],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_ask_flag",
+        "<dynamique>",
+    ): ["état"],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_connect",
+        "Connect it again?",
+    ): [False],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_connect",
+        "Run this plan?",
+    ): [False],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_delete_profile",
+        "Delete profile « %s »?",
+    ): [False],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_edit_profile",
+        "Advanced settings?",
+    ): [False],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_install",
+        "Install it as well?",
+    ): [False],
+    (
+        "script/todo/vpn_menu.py",
+        "VpnMenuMixin._vpn_select_xml",
+        "Browse it?",
     ): [True],
 }
 

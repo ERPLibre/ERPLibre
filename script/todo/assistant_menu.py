@@ -20,10 +20,10 @@ collée valant « 0 » déclenche alors une entrée de menu. La conversation lit
 donc par `input()`, sur une invite d'une seule ligne, et toute commande porte
 une barre oblique initiale.
 
-`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, et `ui.choose`
-laisse passer Ctrl+C, que seul `__main__` rattrape au-delà du menu : sans
-capture locale, une interruption pendant une réponse terminerait le CLI
-entier. Chaque question d'ici l'attrape et rend la main au menu.
+`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, et `ui.choose` comme
+`ui.confirm` laissent passer Ctrl+C, que seul `__main__` rattrape au-delà du
+menu : sans capture locale, une interruption pendant une réponse terminerait
+le CLI entier. Chaque question d'ici l'attrape et rend la main au menu.
 
 Le dépôt n'a ni pager, ni progression sur place : la sortie s'ajoute ligne à
 ligne. Une réponse longue se ferme sur une ligne de pied, jamais sur un
@@ -581,23 +581,20 @@ class AssistantMenuMixin:
             len(llm_fp.PORTS),
             cidr,
         )
-        rappel = (
-            f", « v » = {self._llm_count(len(deja_vus), 'host', 'hosts')}"
+        lettres = (
+            {"v": self._llm_count(len(deja_vus), "host", "hosts")}
             if deja_vus
-            else ""
+            else None
         )
         try:
-            reponse = click.prompt(f"{question} (o/N{rappel})")
-        except (KeyboardInterrupt, click.exceptions.Abort):
+            reponse = ui.confirm(question, default=False, letters=lettres)
+        except KeyboardInterrupt:
             print()
             return
-        cibles = toutes
-        restreint = False
-        if reponse.strip().lower() == "v" and deja_vus:
-            cibles = deja_vus
-            restreint = True
-        elif not self._is_yes(reponse):
+        if not reponse:
             return
+        restreint = reponse == "v"
+        cibles = deja_vus if restreint else toutes
         self._llm_probe_and_keep(cibles, cible=cidr, restreint=restreint)
 
     @staticmethod
@@ -751,11 +748,11 @@ class AssistantMenuMixin:
         n'a nommées, et elle est plus sensible que le serveur voulu.
         """
         try:
-            reponse = click.prompt(f"{t('Keep them all')} (o/N)")
-        except (KeyboardInterrupt, click.exceptions.Abort):
+            garder = ui.confirm(t("Keep them all?"), default=False)
+        except KeyboardInterrupt:
             print()
             return
-        if not self._is_yes(reponse):
+        if not garder:
             print(t("nothing kept"))
             return
         connus = llm_servers.load(get_config=self._llm_get_config)

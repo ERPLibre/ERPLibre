@@ -8,7 +8,7 @@ l'hyperviseur est ailleurs. On choisit donc l'hôte, on le vérifie, et tout
 part par SSH — voir script/proxmox/README.md.
 
 Mixin : ses méthodes vivent sur la classe TODO, elles peuvent donc appeler
-librement les helpers généraux (self._is_yes, self.fill_help_info) et ceux du
+librement les helpers généraux (self.fill_help_info) et ceux du
 menu QEMU (self._qemu_prompt_distro, self._qemu_install_erplibre_monitored),
 qu'elles réutilisent volontairement plutôt que de les redire."""
 
@@ -258,7 +258,7 @@ class ProxmoxMenuMixin:
         port = resolu.get("port") or host.get("port") or "22"
         print(f"\n  ⚠ {t('SSH does not know this host key yet.')}")
         print(f"  {t('Would record:')} ssh-keyscan -p {port} {nom}")
-        if not self._is_yes(input(f"  {t('Record it?')} (o/N) : ")):
+        if not ui.confirm(t("Record it?"), default=False):
             return False
         try:
             res = subprocess.run(
@@ -536,7 +536,7 @@ class ProxmoxMenuMixin:
             f"\n  {verbe} : "
             + ", ".join(f"{vm['name']} ({vm['vmid']})" for vm in choisies)
         )
-        if not self._is_yes(input(t("Confirm? (y/N): "))):
+        if not ui.confirm(t("Confirm?"), default=False):
             print(t("Cancelled."))
             return
         # Un ssh par VM, _PVE_PARALLELE à la fois : Proxmox verrouille
@@ -645,10 +645,10 @@ class ProxmoxMenuMixin:
             return
         noms = ", ".join(f"{v['vmid']} ({v['name']})" for v in vms)
         print(f"\n  ⚠ {t('This also destroys their disks and backups.')}")
-        if not self._is_yes(input(f"{t('Apply:')} {noms} ? (o/N) : ")):
+        if not ui.confirm(t("Apply: %s?") % noms, default=False):
             print(t("Cancelled."))
             return
-        if not self._is_yes(input(t("Confirm for real? (y/N): "))):
+        if not ui.confirm(t("Confirm for real?"), default=False):
             print(t("Cancelled."))
             return
         for vm in vms:
@@ -677,7 +677,7 @@ class ProxmoxMenuMixin:
         for volid, taille in orphelins:
             print(f"  {volid:<48} {taille / (1 << 30):>8.1f} Go")
         print(f"  {t('Total:')} {total / (1 << 30):.1f} Go")
-        if not self._is_yes(input(f"{t('Free them?')} (o/N) : ")):
+        if not ui.confirm(t("Free them?"), default=False):
             print(t("Cancelled."))
             return
         for volid, _taille in orphelins:
@@ -2336,9 +2336,8 @@ class ProxmoxMenuMixin:
                 spec["install"].get("branch") or ""
             ):
                 print(f"  {ligne}")
-        return self._is_yes_default_yes(
-            input(f"\n{t('Deploy this VM now? (Y/n): ')}")
-        )
+        print()
+        return ui.confirm(t("Deploy this VM now?"), default=True)
 
     def _pve_after_create(
         self,
@@ -2810,9 +2809,8 @@ class ProxmoxMenuMixin:
             for cmd in etapes:
                 print(f"  {cmd}")
             return
-        if not self._is_yes_default_yes(
-            input(f"\n{t('Deploy this VM now? (Y/n): ')}")
-        ):
+        print()
+        if not ui.confirm(t("Deploy this VM now?"), default=True):
             print(t("Cancelled."))
             return
         if cle_locale and not self._pve_push_key(cle_locale):
@@ -2843,9 +2841,8 @@ class ProxmoxMenuMixin:
         # « pve » (donc aucune colonne vivante dans le suivi), pas de
         # sommaire.
         install = None
-        if self._is_yes_default_yes(
-            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
-        ):
+        print()
+        if ui.confirm(t("Install ERPLibre on it?"), default=True):
             # La VM existe déjà : [0] à la branche ou au profil n'y installe
             # rien, et l'épilogue continue.
             answers = self._qemu_install_questions(distro, ask_prod=False)

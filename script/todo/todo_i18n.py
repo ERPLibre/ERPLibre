@@ -9551,9 +9551,9 @@ TRANSLATIONS = {
         "fr": "L'adresse écrite n'est peut-être pas celle qu'il faut à pmxcfs.",
         "en": "The address written may not be the one pmxcfs needs.",
     },
-    "Destroy all that? (y/N): ": {
-        "fr": "Détruire tout cela ? (o/N) : ",
-        "en": "Destroy all that? (y/N): ",
+    "Destroy all that?": {
+        "fr": "Détruire tout cela ?",
+        "en": "Destroy all that?",
     },
     "Long tests - real VMs, hours": {
         "fr": "⏳ Tests longs - vraies VM, des heures",
@@ -9853,9 +9853,9 @@ TRANSLATIONS = {
         "fr": "clé SSH ->",
         "en": "SSH key ->",
     },
-    "Deploy this VM now? (Y/n): ": {
-        "fr": "Déployer cette VM maintenant ? (O/n) : ",
-        "en": "Deploy this VM now? (Y/n): ",
+    "Deploy this VM now?": {
+        "fr": "Déployer cette VM maintenant ?",
+        "en": "Deploy this VM now?",
     },
     "SSH key unreadable:": {
         "fr": "Clé SSH illisible :",
@@ -9877,9 +9877,9 @@ TRANSLATIONS = {
         "fr": "Pas encore d'adresse. Réessayer avec [6] plus tard.",
         "en": "No address yet. Try [6] later.",
     },
-    "Install ERPLibre on it? (Y/n): ": {
-        "fr": "Y installer ERPLibre ? (O/n) : ",
-        "en": "Install ERPLibre on it? (Y/n): ",
+    "Install ERPLibre on it?": {
+        "fr": "Y installer ERPLibre ?",
+        "en": "Install ERPLibre on it?",
     },
     "No address from the guest agent.": {
         "fr": "Aucune adresse rendue par l'agent invité.",
@@ -10151,17 +10151,9 @@ TRANSLATIONS = {
         "fr": "éteindre",
         "en": "shut down",
     },
-    "Apply:": {
-        "fr": "Appliquer :",
-        "en": "Apply:",
-    },
     "Apply: %s?": {
         "fr": "Appliquer : %s ?",
         "en": "Apply: %s?",
-    },
-    "Confirm for real? (y/N): ": {
-        "fr": "Confirmer pour de vrai ? (o/N) : ",
-        "en": "Confirm for real? (y/N): ",
     },
     "Confirm for real?": {
         "fr": "Confirmer pour de vrai ?",
@@ -10420,6 +10412,10 @@ TRANSLATIONS = {
     "Confirm? (y/N): ": {
         "fr": "Confirmer ? (o/N) : ",
         "en": "Confirm? (y/N): ",
+    },
+    "Confirm?": {
+        "fr": "Confirmer ?",
+        "en": "Confirm?",
     },
     "Creating the bridge on the host…": {
         "fr": "Création du pont sur l'hôte…",
@@ -19780,21 +19776,21 @@ TRANSLATIONS = {
         "fr": "Trouvé",
         "en": "Found",
     },
-    "Browse it? (Y/n)": {
-        "fr": "Le parcourir ? (O/n)",
-        "en": "Browse it? (Y/n)",
+    "Browse it?": {
+        "fr": "Le parcourir ?",
+        "en": "Browse it?",
     },
-    "Install it as well? (y/N)": {
-        "fr": "L'installer aussi ? (o/N)",
-        "en": "Install it as well? (y/N)",
+    "Install it as well?": {
+        "fr": "L'installer aussi ?",
+        "en": "Install it as well?",
     },
     "This profile is already connected.": {
         "fr": "Ce profil est déjà connecté.",
         "en": "This profile is already connected.",
     },
-    "Connect it again? (y/N)": {
-        "fr": "Le reconnecter quand même ? (o/N)",
-        "en": "Connect it again? (y/N)",
+    "Connect it again?": {
+        "fr": "Le reconnecter quand même ?",
+        "en": "Connect it again?",
     },
     "This profile is not connected. Disconnecting still clears the state"
     " a dead tunnel left behind.": {
@@ -19964,9 +19960,9 @@ TRANSLATIONS = {
         "fr": "Profil supprimé.",
         "en": "Profile deleted.",
     },
-    "Delete profile": {
-        "fr": "Supprimer le profil",
-        "en": "Delete profile",
+    "Delete profile « %s »?": {
+        "fr": "Supprimer le profil « %s » ?",
+        "en": "Delete profile « %s »?",
     },
     "Next step: store its secrets in the vault.": {
         "fr": "Étape suivante : déposer ses secrets dans le coffre.",
@@ -19988,9 +19984,9 @@ TRANSLATIONS = {
         "fr": "L'installation demande sudo.",
         "en": "The installation requires sudo.",
     },
-    "Run this plan? (y/N): ": {
-        "fr": "Exécuter ce plan ? (o/N) : ",
-        "en": "Run this plan? (y/N): ",
+    "Run this plan?": {
+        "fr": "Exécuter ce plan ?",
+        "en": "Run this plan?",
     },
     "No vault: nothing stored.": {
         "fr": "Pas de coffre : rien n'a été déposé.",
@@ -20132,9 +20128,9 @@ TRANSLATIONS = {
         "fr": "Envoyer aussi les requêtes DNS dans le tunnel ?",
         "en": "Also send DNS queries through the tunnel?",
     },
-    "Advanced settings? (y/N)": {
-        "fr": "Réglages avancés ? (o/N)",
-        "en": "Advanced settings? (y/N)",
+    "Advanced settings?": {
+        "fr": "Réglages avancés ?",
+        "en": "Advanced settings?",
     },
     "No secret to store: this one authenticates over SSH.": {
         "fr": "Aucun secret à déposer : celui-là s'authentifie par SSH.",
@@ -20466,9 +20462,9 @@ TRANSLATIONS = {
         "fr": "Garder ce serveur ?",
         "en": "Keep this server?",
     },
-    "Keep them all": {
-        "fr": "Les garder tous",
-        "en": "Keep them all",
+    "Keep them all?": {
+        "fr": "Les garder tous ?",
+        "en": "Keep them all?",
     },
     "Sweeping the network reaches machines you did not name.": {
         "fr": (

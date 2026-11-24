@@ -16,8 +16,6 @@ rien pendant tout ce temps.
 
 import os
 
-import click
-
 from script.todo import ui
 from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
@@ -98,7 +96,7 @@ class LongTestMenuMixin:
             # répondre oui à autre chose que ce qui va arriver.
             avertissement, question = self._longtest_question(args)
             print(f"  {t(avertissement)}")
-            if not click.confirm(t(question)):
+            if not ui.confirm(t(question), default=False):
                 return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -152,7 +150,8 @@ class LongTestMenuMixin:
         """
         for script in SCRIPTS_DEFAISABLES:
             self._longtest_run(script, "--detruire --dry-run", demander=False)
-            if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
+            print()
+            if ui.confirm(t("Destroy all that?"), default=False):
                 self._longtest_run(script, "--detruire", demander=False)
 
     def _longtest_depart_nixos(self):

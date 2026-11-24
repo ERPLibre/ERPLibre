@@ -856,21 +856,20 @@ class TestLAssistantDesTests(unittest.TestCase):
                 lancees.append(cmd)
 
         it = iter(reponses)
-        # Les doubles de `ui.confirm` et de `click.confirm` comptent ensemble
-        # les questions oui/non, celle de `_longtest_run` comprise si
-        # `demander=False` venait à manquer : une en tout, pas une par essai.
-        # Les choix répondent par input ; épuisées, les réponses sont vides.
+        # Le double de `ui.confirm` compte les questions oui/non, celle de
+        # `_longtest_run` comprise si `demander=False` venait à manquer : une
+        # en tout, pas une par essai. Les choix répondent par input ;
+        # épuisées, les réponses sont vides.
         with (
             mock.patch("builtins.input", side_effect=lambda *a: next(it, "")),
             mock.patch(
                 "script.todo.ui.confirm", return_value=True
             ) as confirme,
-            mock.patch("click.confirm", return_value=True) as click_confirme,
             contextlib.redirect_stdout(io.StringIO()) as sortie,
         ):
             Faux()._cache_assistant()
         self.sortie = sortie.getvalue()
-        return lancees, confirme.call_count + click_confirme.call_count
+        return lancees, confirme.call_count
 
     def test_les_trois_lancent_trois_commandes(self):
         lancees, _c = self.assistant(["tout", "1", "2"])

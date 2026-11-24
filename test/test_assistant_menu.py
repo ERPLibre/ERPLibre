@@ -33,7 +33,9 @@ from unittest.mock import patch
 
 import click
 
+from script.todo import todo_i18n, ui
 from script.todo.todo_i18n import t
+from script.todo.ui.port import ScriptedPort
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -266,7 +268,8 @@ class Balayage(unittest.TestCase):
                     {"n": len(adresses), "kw": kw}
                 ),
             ),
-            patch("click.prompt", side_effect=["198.51.100.0/24", "o"]),
+            patch("click.prompt", side_effect=["198.51.100.0/24"]),
+            ui.bind(ScriptedPort(["o"])),
         ):
             todo._llm_search_cidr()
         self.assertEqual(vus.get("n"), 254)
@@ -294,7 +297,7 @@ class Balayage(unittest.TestCase):
                     {"n": len(adresses), "kw": kw}
                 ),
             ),
-            patch("click.prompt", side_effect=["o"]),
+            ui.bind(ScriptedPort(["o"])),
         ):
             todo._llm_sweep_cidr("198.51.100.0/24")
         self.assertEqual(vus.get("n"), 254)
@@ -318,11 +321,117 @@ class Balayage(unittest.TestCase):
                     {"n": len(adresses), "kw": kw}
                 ),
             ),
-            patch("click.prompt", side_effect=["v"]),
+            ui.bind(ScriptedPort(["v"])),
         ):
             todo._llm_sweep_cidr("198.51.100.0/24")
         self.assertEqual(vus.get("n"), 1)
         self.assertTrue(vus["kw"]["restreint"])
+
+    def _oui_non(self, call, reponses):
+        """(le `ScriptedPort` qui a répondu `reponses` aux questions de
+        `call`, sa sortie), en français."""
+        sauve = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", sauve)
+        todo_i18n.use_lang("fr")
+        sortie = io.StringIO()
+        with (
+            patch("click.prompt", side_effect=AssertionError),
+            ui.bind(ScriptedPort(list(reponses))) as port,
+            redirect_stdout(sortie),
+        ):
+            call()
+        return port, sortie.getvalue()
+
+    def test_le_balayage_attend_un_oui(self):
+        """Entrée, n, une faute puis Ctrl+D et Ctrl+D ne balaient rien, et
+        Ctrl+C rend la main au menu ; « v » n'est une réponse que quand
+        des hôtes ont déjà été vus."""
+        from script.todo.assistant import discover as llm_disc
+        from script.todo.assistant import fingerprint as llm_fp
+
+        voisin = "198.51.100.1 dev lien0 lladdr aa:bb:cc:dd:ee:01 REACHABLE"
+        for voisinage, reponses in (
+            ("", [""]),
+            ("", ["n"]),
+            ("", ["v", EOFError()]),
+            (voisin, ["non"]),
+            ("", ["peut-être", EOFError()]),
+            ("", [EOFError()]),
+            ("", [KeyboardInterrupt()]),
+        ):
+            with self.subTest(voisinage=voisinage, reponses=reponses):
+                todo = self._todo()
+                with (
+                    patch.object(llm_disc, "run_ip", return_value=voisinage),
+                    patch.object(
+                        todo,
+                        "_qemu_host_addresses",
+                        staticmethod(lambda: set()),
+                    ),
+                    patch.object(todo, "_llm_probe_and_keep") as sonde,
+                ):
+                    port, sortie = self._oui_non(
+                        lambda o=todo: o._llm_sweep_cidr("198.51.100.0/24"),
+                        reponses,
+                    )
+                sonde.assert_not_called()
+                self.assertEqual(port.answers, [])
+                questions = [
+                    e for e in port.events if e.get("kind") == "confirm"
+                ]
+                attendue = t("Sweep %s addresses × %s ports on %s?") % (
+                    254,
+                    len(llm_fp.PORTS),
+                    "198.51.100.0/24",
+                )
+                self.assertEqual(questions[0]["prompt"], attendue)
+                self.assertEqual(questions[0]["default"], "n")
+                lettres = [o["key"] for o in questions[0].get("options", [])]
+                self.assertEqual(lettres, ["v"] if voisinage else [])
+                if reponses[0] in ("v", "peut-être"):
+                    self.assertEqual(len(questions), 2)
+                    self.assertIn(
+                        f"{t('Answer yes or no: ')}{reponses[0]}",
+                        [e.get("text") for e in port.events],
+                    )
+
+    def test_garder_les_serveurs_attend_un_oui(self):
+        """Seul un oui écrit les serveurs reconnus sur le disque."""
+        import types
+
+        from script.todo.assistant import servers as llm_servers
+
+        empreinte = types.SimpleNamespace(software="forged", models=[])
+        trouves = [("198.51.100.1", 11434, empreinte)]
+        for reponses, garde in (
+            ([""], False),
+            (["peut-être", EOFError()], False),
+            ([EOFError()], False),
+            (["o"], True),
+            (["YES"], True),
+        ):
+            with self.subTest(reponses=reponses):
+                todo = self._todo()
+                with (
+                    patch.object(llm_servers, "load", return_value=[]),
+                    patch.object(llm_servers, "save") as ecrit,
+                ):
+                    port, sortie = self._oui_non(
+                        lambda o=todo: o._llm_keep(trouves), reponses
+                    )
+                self.assertEqual(ecrit.called, garde)
+                self.assertEqual(port.answers, [])
+                questions = [
+                    (e["prompt"], e["default"])
+                    for e in port.events
+                    if e.get("kind") == "confirm"
+                ]
+                fois = 2 if "peut-être" in reponses else 1
+                self.assertEqual(
+                    questions, [(t("Keep them all?"), "n")] * fois
+                )
+                if not garde:
+                    self.assertIn(t("nothing kept"), sortie)
 
     def test_un_balayage_restreint_sans_trouvaille_le_dit(self):
         """« Aucun serveur sur ce /24 » après une adresse regardée est un

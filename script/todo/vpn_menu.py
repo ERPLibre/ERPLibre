@@ -197,7 +197,7 @@ class VpnMenuMixin:
         # une interface qui existait déjà.
         if self._vpn_is_up(profiles.load(name)):
             print(f"\n! {t('This profile is already connected.')}")
-            if not self._is_yes(input(f"{t('Connect it again? (y/N)')} : ")):
+            if not ui.confirm(t("Connect it again?"), default=False):
                 return
         # Lu UNE fois pour les deux exécutions qui suivent.
         secrets_env = self._vpn_secrets_env(name)
@@ -205,7 +205,8 @@ class VpnMenuMixin:
         # /etc/ipsec.conf et la table de routage. Le voir avant coûte une
         # touche et évite de découvrir une faute de frappe dans un journal.
         self._vpn_cli(f"up --profile {name} --dry-run", secrets_env)
-        if not self._is_yes(input(f"\n{t('Run this plan? (y/N): ')}")):
+        print()
+        if not ui.confirm(t("Run this plan?"), default=False):
             return
         self._vpn_cli(f"up --profile {name}", secrets_env)
 
@@ -246,7 +247,7 @@ class VpnMenuMixin:
         options = ""
         if driver_cls is DRIVERS.get("openconnect") and not _sso_helper_seen():
             print(f"\n{t(SSO_HELPER_NOTE)}")
-            if self._is_yes(input(f"{t('Install it as well? (y/N)')} : ")):
+            if ui.confirm(t("Install it as well?"), default=False):
                 options = " --with-sso"
         print(f"\n{t('The installation requires sudo.')}")
         self._vpn_cli(f"install --driver {driver_cls.name}{options}")
@@ -389,7 +390,7 @@ class VpnMenuMixin:
         )
         if todo_file_browser is not None and start:
             print(f"  {t('Found')} : {start}")
-            if self._is_yes(input(f"{t('Browse it? (Y/n)')} : ") or "o"):
+            if ui.confirm(t("Browse it?"), default=True):
                 self._xml_path = ""
                 browser = todo_file_browser.FileBrowser(
                     start, self._on_xml_selected
@@ -504,7 +505,7 @@ class VpnMenuMixin:
             t("Witness address reachable only through the tunnel (optional)"),
             draft.get("probe", ""),
         )
-        if self._is_yes(input(f"{t('Advanced settings? (y/N)')} : ")):
+        if ui.confirm(t("Advanced settings?"), default=False):
             if driver_cls.uses_mtu:
                 draft["mtu"] = self._vpn_ask(
                     t("MTU"), str(draft.get("mtu", 1280))
@@ -580,9 +581,7 @@ class VpnMenuMixin:
         name = self._vpn_select_profile()
         if not name:
             return
-        if not self._is_yes(
-            input(f"{t('Delete profile')} « {name} » ? (y/N) : ")
-        ):
+        if not ui.confirm(t("Delete profile « %s »?") % name, default=False):
             return
         if profiles.delete(name):
             print(f"✓ {t('Profile deleted.')}")
@@ -696,16 +695,13 @@ class VpnMenuMixin:
     # ------------------------------------------------------------------
     @staticmethod
     def _vpn_ask_flag(label, current):
-        """Question oui/non dont le défaut est la valeur ACTUELLE.
-
-        Une réponse vide garde ce qui est en place : rééditer un profil pour
-        changer une route ne doit pas remettre le mode de routage à zéro.
-        """
-        answer = input(f"{label} [{'O/n' if current else 'o/N'}] : ")
-        answer = answer.strip().lower()
-        if not answer:
-            return bool(current)
-        return answer in ("y", "yes", "o", "oui")
+        """Question oui/non dont le défaut est `current`, la valeur ACTUELLE,
+        que l'indice dit : une réponse vide et Ctrl+D la rendent. Rééditer un
+        profil pour changer une route ne remet pas le mode de routage à
+        zéro."""
+        state = bool(current)
+        answer = ui.confirm(label, default=state, back=True)
+        return state if answer is None else answer
 
     @staticmethod
     def _vpn_ask(label, default):

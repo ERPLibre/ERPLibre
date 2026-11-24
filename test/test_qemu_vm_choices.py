@@ -96,10 +96,9 @@ class TestChangerLEtat(_Cas):
                     self.assertIn(f"{t('Invalid choice: ')}{answer}", out)
                 # La confirmation nomme les deux VM avant son premier oui.
                 if answers[-1] == "n":
-                    self.assertIn(
-                        "forged_vm_a, forged_vm_b",
-                        [p for p in self.asked if t("Apply:") in p][0],
-                    )
+                    summary = f"{t('shut down')} -> forged_vm_a, forged_vm_b"
+                    question = t("Apply: %s?") % summary
+                    self.assertTrue(any(question in p for p in self.asked))
 
     def test_a_name_or_all_picks_the_vms_to_stop(self):
         self.play("_qemu_change_state", "forged_vm_b", "2", "o", "o")
