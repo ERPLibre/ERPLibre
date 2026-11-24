@@ -222,7 +222,7 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
 # Distros déployables par architecture :
 # - s390x (IBM Z)  : la liste ci-dessous ; Debian par debian-installer, faute
-#   d'image cloud. Ni Arch (x86 seulement), ni NixOS, ni Proxmox.
+#   d'image cloud ; Arch par son portage communautaire. Ni NixOS, ni Proxmox.
 # - arm64/aarch64  : voir ARM64_DISTROS (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
 S390X_DISTROS: tuple[str, ...] = (
@@ -234,7 +234,8 @@ S390X_DISTROS: tuple[str, ...] = (
     # Arch ne publie AUCUNE image s390x : geo.mirror.pkgbuild.com ne sert que
     # x86_64. Celle-ci vient du portage communautaire archlinux-s390x, qui la
     # bâtit avec cloud-init — donc elle se déploie comme toutes les autres,
-    # sans voie particulière. Son adresse se règle par EL_ARCH_S390X_BASE.
+    # sans voie particulière. Son adresse se règle par EL_ARCH_S390X_BASE,
+    # obligatoire : voir arch_s390x_base().
     "arch",
     # Debian n'a PAS d'image cloud s390x, et n'en aura pas par cette voie :
     # vérifié sur cloud.debian.org, les arborescences bookworm et trixie ne
@@ -627,12 +628,41 @@ def spice_usbredir_graphics(args: argparse.Namespace, graphics: str) -> list:
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 # L'image s390x d'Arch n'existe pas en amont : elle est produite par le
-# portage archlinux-s390x. Par defaut elle est servie par l'hote qui fait
-# deja tourner le depot pacman du portage, sur le pont libvirt ; un serveur
-# ailleurs se designe par EL_ARCH_S390X_BASE, sans toucher au code.
-ARCH_S390X_BASE = os.environ.get(
-    "EL_ARCH_S390X_BASE", "http://192.168.123.1:8081/images"
-)
+# portage archlinux-s390x, avec cloud-init, et servie par l'hôte qui en
+# héberge les artefacts. Aucune adresse par défaut : EL_ARCH_S390X_BASE
+# désigne ce serveur, et son absence arrête le déploiement d'Arch sur s390x
+# avant tout téléchargement (voir arch_s390x_refusal).
+ARCH_S390X_ENV = "EL_ARCH_S390X_BASE"
+ARCH_S390X_IMAGE = "Arch-Linux-s390x-cloudimg.qcow2"
+
+
+def arch_s390x_base() -> str:
+    """URL de base qui sert ARCH_S390X_IMAGE, lue dans EL_ARCH_S390X_BASE au
+    moment de l'appel ; "" quand la variable est absente ou vide.
+
+    Lue à l'appel et non à l'import : importer le module, lister les distros
+    ou déployer une autre image ne dépend jamais de la variable. La barre
+    oblique finale est retirée, pour que « …/images » et « …/images/ »
+    donnent la même URL d'image."""
+    return os.environ.get(ARCH_S390X_ENV, "").strip().rstrip("/")
+
+
+def arch_s390x_refusal(distro: str, arch: str) -> str:
+    """Pourquoi Arch s390x ne peut pas être déployée ; "" sinon.
+
+    Ne concerne que le couple (arch, s390x) : toute autre distribution ou
+    architecture rend "" sans lire l'environnement."""
+    if distro != "arch" or arch != "s390x" or arch_s390x_base():
+        return ""
+    return (
+        f"Erreur : {ARCH_S390X_ENV} n'est pas défini.\n"
+        "  Arch Linux ne publie aucune image s390x : celle-ci vient du"
+        " portage archlinux-s390x.\n"
+        f"  {ARCH_S390X_ENV} doit donner l'URL de base d'un serveur qui"
+        f" sert {ARCH_S390X_IMAGE},\n"
+        f"  par exemple : {ARCH_S390X_ENV}=http://<hôte>:<port>/images"
+    )
+
 
 # Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
 # qui bouge changerait le système de base d'un déploiement à l'autre, et
@@ -824,8 +854,12 @@ def image_candidates(
         ]
     if distro == "arch":
         if arch == "s390x":
-            # Pas d'amont : voir ARCH_S390X_BASE.
-            return [f"{ARCH_S390X_BASE}/Arch-Linux-s390x-cloudimg.qcow2"]
+            # Pas d'amont : voir arch_s390x_base(). Sans la variable, cet
+            # appel s'arrête plutôt que de rendre une URL sans hôte.
+            refus = arch_s390x_refusal(distro, arch)
+            if refus:
+                sys.exit(refus)
+            return [f"{arch_s390x_base()}/{ARCH_S390X_IMAGE}"]
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
     if distro == "nixos":
@@ -8005,6 +8039,11 @@ def main() -> None:
             f"Architecture {args.arch} indisponible pour {args.distro!r} : "
             f"images cloud publiées seulement pour {', '.join(supported)}."
         )
+    # Arch s390x n'a pas d'amont : sans EL_ARCH_S390X_BASE, main() s'arrête
+    # ici, avant toute création de disque ou de VM.
+    refus_arch = arch_s390x_refusal(args.distro, args.arch)
+    if refus_arch:
+        sys.exit(refus_arch)
     # Toutes les versions d'une distro ne sont pas publiées sur toutes les
     # architectures : le dire ici plutôt que d'échouer au téléchargement.
     ok_versions = arch_versions(args.distro, args.arch, versions)
