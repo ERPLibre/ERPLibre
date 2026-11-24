@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menu Système : le diagnostic du poste, et l'espace qu'on peut récupérer.
+"""Menu Système : le diagnostic du poste, l'espace qu'on peut récupérer et
+la mémoire d'échange.
 
 Les faits viennent de system_diagnostic et les candidats de
 system_cleanup ; ce fichier les met en phrases, pose les questions et tient
@@ -11,6 +12,7 @@ Mixin de la classe TODO : ses méthodes vivent sur la même instance que
 celles des autres fichiers, elles s'appellent donc par « self. ».
 """
 
+import collections
 import datetime
 import os
 import shlex
@@ -26,6 +28,7 @@ from script.todo import (
     system_diagnostic,
     system_gpu,
 )
+from script.todo import system_swap as ss
 from script.todo.todo_i18n import t
 
 # Les jours d'inactivité au-delà desquels un reste de /tmp ou une session
@@ -394,6 +397,195 @@ def choisir_en_ligne(candidats):
     return sorted(set(choisis))
 
 
+# Mémoire d'échange : chaque code d'alerte -> sa clé de traduction. Les
+# champs {…} reçoivent ceux de l'alerte, les tailles déjà écrites par
+# octets().
+ALERTES_SWAP = {
+    "zram_tools_conflict": (
+        "zram-tools is also installed: both tools claim /dev/zram0. Disable "
+        "zramswap.service."
+    ),
+}
+
+TYPES_SWAP = {"file": "swapfile", "partition": "partition", "zram": "zram"}
+
+# Les champs de details qui portent des octets.
+TAILLES_SWAP = {"free"}
+
+
+def _champs(details):
+    """details -> valeurs prêtes pour format_map : octets() pour les
+    tailles, une liste jointe par des virgules, « ? » pour ce qui manque
+    (un champ absent compris)."""
+    valeurs = collections.defaultdict(lambda: "?")
+    for cle, v in details.items():
+        if v is None:
+            continue
+        if cle in TAILLES_SWAP and isinstance(v, (int, float)):
+            valeurs[cle] = octets(v)
+        elif isinstance(v, (list, tuple, set)):
+            valeurs[cle] = ", ".join(affichable(x) for x in v)
+        else:
+            valeurs[cle] = affichable(v)
+    return valeurs
+
+
+def _message(table, code, details):
+    cle = table.get(code)
+    if cle is None:
+        return affichable(code) or "?"
+    return t(cle).format_map(_champs(details))
+
+
+def message_alerte(alerte):
+    """La phrase d'une mise en garde ({"code": …, …}) d'un plan."""
+    return _message(ALERTES_SWAP, alerte["code"], alerte)
+
+
+def _persistance(pers, active):
+    """Comment la zram revient au démarrage, en une phrase."""
+    mode = pers["mode"]
+    if mode == "nixos":
+        return t("NixOS: zramSwap in configuration.nix")
+    if mode == "zram-generator":
+        fichier = pers["generator"]["main"] or ", ".join(
+            pers["generator"]["dropins"]
+        )
+        return f"zram-generator ({fichier})"
+    if mode == "zram-tools":
+        return f"zram-tools ({ss.ZRAMSWAP_DEFAULT})"
+    if mode == "service":
+        return affichable(pers.get("service"))
+    if active:
+        return t("none: this zram was set up by hand and is lost at reboot")
+    return t("none")
+
+
+def lignes_swap(etat):
+    """L'état de la mémoire et de la mémoire d'échange en lignes de texte :
+    la RAM, chaque swap actif, la zram et sa persistance, l'hibernation,
+    puis la recommandation."""
+    absent = t("unavailable")
+    mem = etat["memory"]
+    lignes = [
+        f"── {t('Memory')} ──",
+        f"  RAM : {octets(mem['available']) or absent}"
+        f" {t('available of')} {octets(mem['total']) or absent}",
+        f"  {t('Swap')} : {octets(mem['swap_free']) or absent}"
+        f" {t('free of')} {octets(mem['swap_total']) or absent}",
+        "",
+        f"── {t('Active swaps')} ──",
+    ]
+    for s in etat["swaps"]:
+        lignes.append(
+            f"  {affichable(s['path']):<24} {t(TYPES_SWAP[s['type']]):<10}"
+            f" {octets(s['size']):>10} {t('used:')} {octets(s['used']):>10}"
+            f"  {t('priority')} {s['priority']}"
+        )
+        if s.get("fs"):
+            lignes.append(
+                "      "
+                + t("on {mountpoint} ({fstype}), {free} free").format_map(
+                    _champs(
+                        {
+                            "mountpoint": s["fs"]["mountpoint"],
+                            "fstype": s["fs"]["fstype"],
+                            "free": s.get("free"),
+                        }
+                    )
+                )
+            )
+        if s.get("hibernation"):
+            lignes.append(
+                f"      ⚠ {t('Hibernation may resume from this swap.')}"
+            )
+    if not etat["swaps"]:
+        lignes.append(f"  {t('No active swap.')}")
+
+    lignes += ["", "── zram ──"]
+    for z in etat["zram"]:
+        if not z["disksize"]:
+            lignes.append(f"  {z['device']} : {t('created, not configured')}")
+            continue
+        actif = t("in use as swap") if z["active"] else t("not in use")
+        lignes.append(
+            f"  {z['device']} · {octets(z['disksize'])}"
+            f" · {z['algorithm'] or absent} · {actif}"
+        )
+        if z["orig_data"] is not None:
+            ratio = f"{z['ratio']:.1f}" if z["ratio"] else "—"
+            lignes.append(
+                "      "
+                + t(
+                    "{stored} stored, compressed to {compressed}, costs "
+                    "{ram} of RAM (ratio {ratio})"
+                ).format(
+                    stored=octets(z["orig_data"]),
+                    compressed=octets(z["compr_data"]),
+                    ram=octets(z["mem_used"]),
+                    ratio=ratio,
+                )
+            )
+    if not etat["zram"]:
+        lignes.append(f"  {t('No zram device.')}")
+    pers = etat["persistence"]
+    active = any(z["active"] for z in etat["zram"])
+    lignes.append(f"  {t('At boot:')} {_persistance(pers, active)}")
+    if pers["both"]:
+        lignes.append(f"  ⚠ {message_alerte({'code': 'zram_tools_conflict'})}")
+
+    hib = etat["hibernation"]
+    lignes += ["", f"── {t('Hibernation')} ──"]
+    if hib["resume"]:
+        offset = (
+            f" resume_offset={hib['resume_offset']}"
+            if hib["resume_offset"] is not None
+            else ""
+        )
+        lignes.append(f"  resume={affichable(hib['resume'])}{offset}")
+        lignes.append(
+            f"  ⚠ {t('Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.')}"
+        )
+    else:
+        lignes.append(
+            f"  {t('Not configured: no resume= on the kernel command line.')}"
+        )
+
+    rec = etat["recommendation"]
+    disque = sum(s["size"] for s in ss.cibles_disque(etat))
+    lignes += ["", f"── {t('Recommendation')} ──"]
+    if rec["swap"]:
+        base = (
+            t("RAM plus its square root, for hibernation")
+            if rec["basis"] == "hibernation"
+            else t("from the RAM size, at most 8 GiB")
+        )
+        lignes.append(
+            f"  {t('Disk swap')} : {octets(rec['swap'])} ({base})"
+            f" · {t('now')} {octets(disque)}"
+        )
+        lignes.append(
+            f"  zram : {octets(rec['zram'])}"
+            f" ({t('half the RAM, at most 8 GiB')})"
+        )
+    lignes.append(
+        "  "
+        + t(
+            "zram and disk swap coexist: zram gets priority {priority} and "
+            "fills first, the disk takes the overflow."
+        ).format(priority=ss.PRIORITE_ZRAM)
+    )
+    croissance = ss.croissance_swap(etat)
+    if croissance is not None:
+        lignes.append(
+            "  "
+            + t(
+                "The free disk space lets the swap grow by up to {size}."
+            ).format(size=octets(croissance))
+        )
+    return lignes
+
+
 class SystemMenuMixin:
     def prompt_execute_system(self):
         print(f"🤖 {t('System and disk space!')}")
@@ -414,6 +606,7 @@ class SystemMenuMixin:
             {"prompt_description": t("Containers - size and cleanup")},
             {"prompt_description": t("CPU memory per process")},
             {"prompt_description": t("GPU memory per process")},
+            {"prompt_description": t("Swap memory")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -437,6 +630,8 @@ class SystemMenuMixin:
                 self._system_cpu()
             elif status == "8":
                 self._system_gpu()
+            elif status == "9":
+                self._system_swap()
             else:
                 print(t("Command not found !"))
 
@@ -847,3 +1042,24 @@ class SystemMenuMixin:
                 self._container_nettoyer_images()
             else:
                 print(t("Command not found !"))
+
+    def _system_swap(self):
+        """Le sous-menu de la mémoire d'échange : l'état de la mémoire et
+        du swap."""
+        choices = [
+            {"prompt_description": t("State of memory and swap")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._system_swap_etat()
+            else:
+                print(t("Command not found !"))
+
+    def _system_swap_etat(self, etat=None):
+        print("\n".join(lignes_swap(etat or ss.etat())))
+        print()
