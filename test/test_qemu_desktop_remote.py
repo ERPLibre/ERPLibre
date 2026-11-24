@@ -279,6 +279,10 @@ class _Invite:
         "unconfined_service_transition_to_unconfined_user",
         "/etc/tigervnc/vncserver.users",
         "/etc/sysconfig/displaymanager",
+        "/usr/share/lightdm",
+        "/etc/xdg/lightdm",
+        "/etc/lightdm/lightdm-gtk-greeter.conf",
+        "/usr/share/xfce4/backdrops",
     )
 
     def etc(self, chemin):
@@ -1582,6 +1586,275 @@ class TestNewFlavoursRun(unittest.TestCase):
             ovr.read_text(),
         )
         self.assertIn(f"glib-compile-schemas {schemas}", log)
+
+    def _gnome_schemas(self, version="GNOME Shell 40.10"):
+        """Le schéma de GNOME Shell, un gnome-shell qui dit sa version, et
+        glib-compile-schemas : la VM après l'installation de GNOME."""
+        self.vm.stub("dnf")
+        self.vm.stub("gnome-shell", f'echo "{version}"', log=False)
+        self.vm.stub("glib-compile-schemas")
+        self.vm.grdctl(systeme=False)
+        schemas = self.vm.etc("/usr/share/glib-2.0/schemas")
+        schemas.mkdir(parents=True)
+        (schemas / "org.gnome.shell.gschema.xml").write_text("<schemalist/>")
+        return schemas, schemas / "90_erplibre-gnome-welcome.gschema.override"
+
+    def test_the_gnome_welcome_dialog_is_marked_shown(self):
+        """GNOME 40 (EL 9) ouvre la visite guidée à la première session ;
+        la clé reçoit la version installée, comme le shell l'écrirait."""
+        schemas, ovr = self._gnome_schemas()
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="almalinux", version="9"), "almalinux"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(
+            "[org.gnome.shell]\nwelcome-dialog-last-shown-version='40.10'\n",
+            ovr.read_text(),
+        )
+        self.assertIn(f"glib-compile-schemas {schemas}", log)
+        self.assertNotIn(t("GNOME welcome dialog left enabled"), out)
+
+    def test_an_existing_gnome_welcome_override_is_kept(self):
+        schemas, ovr = self._gnome_schemas()
+        ovr.write_text("# réglée par l'administrateur\n")
+        rc, out, log = self.vm.run(
+            _cmd("gnome", distro="almalinux", version="9"), "almalinux"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual("# réglée par l'administrateur\n", ovr.read_text())
+        self.assertNotIn(f"glib-compile-schemas {schemas}", log)
+
+    def test_without_the_shell_schema_nothing_is_written(self):
+        schemas, ovr = self._gnome_schemas()
+        (schemas / "org.gnome.shell.gschema.xml").unlink()
+        rc, out, _log = self.vm.run(
+            _cmd("gnome", distro="almalinux", version="9"), "almalinux"
+        )
+        self.assertEqual(0, rc, out)
+        self.assertFalse(ovr.exists())
+
+    def test_only_gnome_gets_the_welcome_override(self):
+        self.assertNotIn(
+            "welcome-dialog-last-shown-version",
+            _cmd("xfce", distro="fedora", version="44"),
+        )
+        self.assertIn(
+            "welcome-dialog-last-shown-version",
+            _cmd("gnome", distro="fedora", version="44"),
+        )
+
+    def _plasma_welcome(self, deja=""):
+        """plasma-welcome, qui ne dit sa version que sur la plateforme
+        « offscreen », et kreadconfig6/kwriteconfig6 sur un fichier
+        « clé=valeur » du test. `deja` : lignes déjà posées."""
+        self.vm.stub("dnf")
+        rc = Path(self._tmp.name) / "plasma-welcomerc"
+        if deja:
+            rc.write_text(deja)
+        self.vm.stub(
+            "plasma-welcome",
+            '[ "$QT_QPA_PLATFORM" = offscreen ] || exit 134; '
+            'echo "plasma-welcome 6.7.5"',
+        )
+        self.vm.stub("timeout", 'shift; exec "$@"', log=False)
+        # Les autres fichiers (KRdp, kscreenlocker) ne sont pas suivis ici.
+        welcome = (
+            'a="$*"; case "$a" in *plasma-welcomerc*) '
+            "k=${a##*--key }; k=${k%% *}; "
+        )
+        self.vm.stub(
+            "kreadconfig6",
+            welcome + f'sed -n "s/^$k=//p" {rc} 2>/dev/null;; esac',
+        )
+        self.vm.stub(
+            "kwriteconfig6",
+            welcome + f"touch {rc}; "
+            f'sed -i "/^$k=/d" {rc}; echo "$k=${{@: -1}}" >> {rc};; esac',
+        )
+        return rc
+
+    def test_the_plasma_welcome_center_is_marked_seen(self):
+        """Le Centre d'accueil s'ouvre à la première session tant que
+        LastSeenVersion est vide, et la reprise de session le rouvre
+        ensuite ; ShowUpdatePage coupe sa page des nouveautés."""
+        rc = self._plasma_welcome()
+        code, out, log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            "LastSeenVersion=6.7.5\nShowUpdatePage=false\n", rc.read_text()
+        )
+        self.assertTrue(
+            [ln for ln in log if "ShowUpdatePage --type bool false" in ln]
+        )
+        self.assertNotIn(t("Plasma welcome center left enabled"), out)
+        # Posé avant le démarrage du gestionnaire d'affichage, qui ouvre la
+        # session d'office.
+        self.assertLess(
+            _indice(log, "kwriteconfig6"),
+            _indice(log, "systemctl start display-manager.service"),
+        )
+
+    def test_a_seen_version_is_kept(self):
+        rc = self._plasma_welcome(deja="LastSeenVersion=6.6.0\n")
+        code, out, log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            "LastSeenVersion=6.6.0\nShowUpdatePage=false\n", rc.read_text()
+        )
+        self.assertFalse(
+            [
+                ln
+                for ln in log
+                if "kwriteconfig6" in ln and "LastSeenVersion" in ln
+            ]
+        )
+
+    def test_a_set_update_page_is_kept(self):
+        """Un ShowUpdatePage déjà posé, même à true, reste tel quel."""
+        rc = self._plasma_welcome(
+            deja="ShowUpdatePage=true\nLastSeenVersion=6.6.0\n"
+        )
+        code, out, log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            "ShowUpdatePage=true\nLastSeenVersion=6.6.0\n", rc.read_text()
+        )
+        self.assertFalse(
+            [ln for ln in log if "kwriteconfig6 --file plasma-welcomerc" in ln]
+        )
+
+    def test_a_refused_update_page_only_warns(self):
+        self._plasma_welcome(deja="LastSeenVersion=6.6.0\n")
+        self.vm.stub("kwriteconfig6", "exit 1")
+        code, out, _log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertIn(t("Plasma welcome center left enabled"), out)
+
+    def test_a_silent_plasma_welcome_only_warns(self):
+        self._plasma_welcome()
+        self.vm.stub("plasma-welcome", "exit 134")
+        code, out, _log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertIn(t("Plasma welcome center left enabled"), out)
+
+    def test_without_plasma_welcome_nothing_is_written(self):
+        rc = self._plasma_welcome()
+        (self.vm.bin / "plasma-welcome").unlink()
+        code, out, _log = self.vm.run(
+            _cmd("plasma", distro="almalinux", version="10"), "almalinux"
+        )
+        self.assertEqual(0, code, out)
+        self.assertFalse(rc.exists())
+        self.assertNotIn(t("Plasma welcome center left enabled"), out)
+
+    def test_ubuntu_xfce_brings_the_wallpaper_its_xfdesktop_names(self):
+        """Le xfdesktop d'Ubuntu nomme xubuntu-wallpaper.png ; Debian garde
+        le sien, livré par xfdesktop4-data."""
+        self._xrdp_apt()
+        rc, out, log = self.vm.run(
+            _cmd("xfce", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertIn("xubuntu-wallpapers", " ".join(log))
+        self.assertNotIn(
+            "xubuntu-wallpapers", _cmd("xfce", distro="debian", version="13")
+        )
+
+    def _greeter(self, background, fond=True):
+        """01_ubuntu.conf qui nomme `background`, un « install » qui écrit
+        vraiment, et, si `fond`, le fond de xubuntu-wallpapers."""
+        self._xrdp_apt()
+        self.vm.stub(
+            "install", 'mkdir -p "$(dirname "${@: -1}")"; cat > "${@: -1}"'
+        )
+        d = self.vm.etc("/usr/share/lightdm") / "lightdm-gtk-greeter.conf.d"
+        d.mkdir(parents=True)
+        (d / "01_ubuntu.conf").write_text(
+            f"[greeter]\nbackground={background}\ntheme-name=Ambiance\n"
+        )
+        wp = (
+            self.vm.etc("/usr/share/xfce4/backdrops") / "xubuntu-wallpaper.png"
+        )
+        if fond:
+            wp.parent.mkdir(parents=True)
+            wp.write_text("png")
+        ovr = (
+            self.vm.etc("/etc/xdg/lightdm")
+            / "lightdm-gtk-greeter.conf.d"
+            / "90-erplibre-background.conf"
+        )
+        return wp, ovr
+
+    def test_a_missing_greeter_background_is_replaced(self):
+        """Le fond d'Ubuntu (ubuntu-wallpapers) manque : l'écran de
+        connexion est noir sans le fichier que le bloc écrit."""
+        absent = Path(self._tmp.name) / "warty-final-ubuntu.png"
+        wp, ovr = self._greeter(absent)
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(f"[greeter]\nbackground={wp}\n", ovr.read_text())
+
+    def test_a_present_greeter_background_or_a_colour_is_kept(self):
+        present = Path(self._tmp.name) / "fond.png"
+        present.write_text("png")
+        for valeur in (present, "#2e3440"):
+            with self.subTest(background=valeur):
+                self.setUp()
+                _wp, ovr = self._greeter(valeur)
+                rc, out, _log = self.vm.run(
+                    _cmd("xfce", distro="ubuntu", version="26.04")
+                )
+                self.assertEqual(0, rc, out)
+                self.assertFalse(ovr.exists())
+
+    def test_without_any_fallback_the_greeter_gets_a_colour(self):
+        """i3 n'installe aucun fond : le greeter reçoit une couleur unie,
+        qu'il affiche, plutôt que son noir par défaut."""
+        _wp, ovr = self._greeter(Path(self._tmp.name) / "absent.png", False)
+        rc, out, _log = self.vm.run(
+            _cmd("i3", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        couleur = TODO._QEMU_GREETER_COLOUR
+        self.assertRegex(couleur, r"^#[0-9a-f]{6}$")
+        self.assertNotEqual("#000000", couleur)
+        self.assertEqual(f"[greeter]\nbackground={couleur}\n", ovr.read_text())
+
+    def test_a_greeter_without_background_gets_one(self):
+        """Aucune clé « background » : le greeter serait noir."""
+        wp, ovr = self._greeter("", True)
+        d = self.vm.etc("/usr/share/lightdm") / "lightdm-gtk-greeter.conf.d"
+        (d / "01_ubuntu.conf").write_text("[greeter]\ntheme-name=Ambiance\n")
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(f"[greeter]\nbackground={wp}\n", ovr.read_text())
+
+    def test_an_existing_greeter_override_is_kept(self):
+        """Même quand il nomme lui-même un fond absent : le fichier, une
+        fois là, appartient à l'administrateur."""
+        _wp, ovr = self._greeter(Path(self._tmp.name) / "absent.png")
+        ovr.parent.mkdir(parents=True)
+        texte = f"[greeter]\nbackground={self._tmp.name}/choisi.png\n"
+        ovr.write_text(texte)
+        rc, out, _log = self.vm.run(
+            _cmd("xfce", distro="ubuntu", version="26.04")
+        )
+        self.assertEqual(0, rc, out)
+        self.assertEqual(texte, ovr.read_text())
 
     def test_xrdp_selinux_is_left_alone_when_present_or_without_selinux(self):
         self.vm.stub("dnf")

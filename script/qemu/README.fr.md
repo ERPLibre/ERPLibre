@@ -177,6 +177,20 @@ ssh erplibre@<IP>
 
 L'utilisateur par défaut est `erplibre` (modifiable avec `--user`).
 
+Au premier démarrage, cloud-init masque `mcelog.service`. mcelog est le
+démon qui recueille auprès du noyau les exceptions de vérification machine
+(« machine check ») du processeur — les erreurs matérielles que signalent le
+CPU, la mémoire et les caches — pour les journaliser. Dans une VM, le
+processeur virtuel ne lui expose aucun signalement de ces exceptions qu'il
+puisse exploiter : mcelog refuse de démarrer, pour une raison qui dépend du
+processeur de l'hôte (sur un AMD, il renvoie au module `edac_mce_amd`), et
+l'unité échoue ; elle ne fait que polluer `systemctl --failed` et la ligne
+« Failed Units » de chaque connexion. Sur Fedora, AlmaLinux et Rocky, le masque est posé sans
+condition, car l'image cloud n'a pas mcelog et les groupes des bureaux
+l'apportent ensuite (`dnf` peut alors afficher « Failed to preset unit …
+is masked », ce qui est attendu) ; ailleurs, seulement là où l'unité existe.
+`sudo systemctl unmask mcelog.service` l'annule.
+
 ## VM graphiques
 
 Une VM graphique se choisit dans le formulaire de déploiement du menu TODO
@@ -232,7 +246,18 @@ la VM, xorgxrdp 0.9 relit de faux pixels. Sur openSUSE, le booléen SELinux
 `unconfined_service_transition_to_unconfined_user` permet à xrdp d'ouvrir la
 session de l'utilisateur. Une règle polkit laisse le compte de la VM créer le
 profil couleur et piloter le réseau depuis une session xrdp, où une demande
-de mot de passe couvrirait sinon le bureau. Cinnamon n'est pas proposé sur
+de mot de passe couvrirait sinon le bureau. La boîte de bienvenue de GNOME
+(l'offre de visite guidée de gnome-tour) et le Centre d'accueil de Plasma
+sont marqués comme déjà vus avant la première session : une session xrdp
+survit à la déconnexion, et une boîte que personne ne ferme revient à
+chaque reconnexion ; la reprise de session de Plasma, elle, rouvre son
+Centre d'accueil à chaque connexion ; sa page des nouveautés après une mise
+à jour de Plasma est coupée elle aussi (`ShowUpdatePage=false`). Sur Ubuntu,
+Xfce reçoit `xubuntu-wallpapers`, qui livre le fond que son xfdesktop nomme
+par défaut. Le greeter GTK de LightDM, dont le fond par défaut d'Ubuntu
+vient avec les 65 Mo d'`ubuntu-wallpapers`, est dirigé vers un fond installé
+quand le fichier nommé manque ou qu'aucun n'est nommé, et vers une couleur
+unie quand la saveur n'installe aucun fond (i3). Cinnamon n'est pas proposé sur
 Tumbleweed, dont les paquets le bloquent au démarrage. Le module NixOS coupe aussi NetworkManager, que GNOME, Cinnamon et COSMIC
 activeraient par-dessus la configuration réseau de l'image.
 

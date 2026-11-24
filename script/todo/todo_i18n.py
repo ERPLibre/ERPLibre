@@ -7879,6 +7879,18 @@ TRANSLATIONS = {
         "fr": "locale non installée",
         "en": "locale not installed",
     },
+    "GNOME welcome dialog left enabled": {
+        "fr": "boîte de bienvenue de GNOME laissée active",
+        "en": "GNOME welcome dialog left enabled",
+    },
+    "Plasma welcome center left enabled": {
+        "fr": "centre d'accueil de Plasma laissé actif",
+        "en": "Plasma welcome center left enabled",
+    },
+    "login screen background not set": {
+        "fr": "fond de l'écran de connexion non posé",
+        "en": "login screen background not set",
+    },
     "Xfce volume plugin not installed": {
         "fr": "greffon de volume de Xfce non installé",
         "en": "Xfce volume plugin not installed",

@@ -552,7 +552,16 @@ class QemuInstallMixin:
         "xfce": {
             "label": "Xfce",
             "probe": "xfce4-session",
-            "apt": "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter dbus-x11",
+            # Le xfdesktop 4.20 d'Ubuntu nomme par défaut
+            # /usr/share/xfce4/backdrops/xubuntu-wallpaper.png, que seul
+            # xubuntu-wallpapers livre : sans lui, le bureau est noir. Le
+            # greeter y trouve aussi son fond (_qemu_greeter_background_cmd).
+            "apt": {
+                "*": "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter "
+                "dbus-x11",
+                "ubuntu": "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter "
+                "dbus-x11 xubuntu-wallpapers",
+            },
             # EPEL 9 n'a que le groupe xfce-desktop, qui nomme gdm par défaut.
             "dnf": {
                 "*": "@xfce-desktop-environment",
@@ -2428,6 +2437,12 @@ class QemuInstallMixin:
                 out += self._qemu_polkit_remote_cmd()
             if flavour == "cinnamon":
                 out += self._qemu_cinnamon_wallpaper_cmd()
+            if flavour == "gnome":
+                out += self._qemu_gnome_welcome_cmd()
+            if self._qemu_desktop_value(de, "service", distro, version) == (
+                "lightdm"
+            ):
+                out += self._qemu_greeter_background_cmd()
             if flavour == "xfce" and distro == "opensuse":
                 ko = t("Xfce volume plugin not installed")
                 out += (
@@ -2436,6 +2451,8 @@ class QemuInstallMixin:
                     "xfce4-panel-plugin-pulseaudio >/dev/null 2>&1 "
                     f'|| echo "   ⚠ {ko}"; '
                 )
+        if flavour == "plasma":
+            out += self._qemu_plasma_welcome_cmd()
         if remote == "krdp":
             from script.qemu.deploy_qemu import KRDP_PORTAL_RACE
 
@@ -2598,6 +2615,125 @@ class QemuInstallMixin:
             '\\npicture-uri=\'file://%s\'\\n" "$EL_WP" '
             f"| sudo tee {ovr} >/dev/null && sudo glib-compile-schemas {sch}; "
             "fi; fi; "
+        )
+
+    def _qemu_gnome_welcome_cmd(self):
+        """Bloc shell : la boîte « Bienvenue » de GNOME Shell (la visite
+        guidée de gnome-tour) ne s'ouvre pas à la première session.
+
+        GNOME Shell 40 et suivants l'ouvrent à l'ouverture d'une session tant
+        que la clé org.gnome.shell welcome-dialog-last-shown-version est
+        antérieure à la dernière version de la visite (« 40.beta »), puis y
+        écrivent leur version. Une session xrdp survit à la déconnexion : la
+        boîte, que personne n'a fermée, est encore là à chaque reconnexion.
+
+        Une surcharge de schéma donne à la clé, par défaut, la version de
+        gnome-shell installée — la valeur que le shell écrirait. Elle ne
+        demande ni bus de session ni profil dconf, que l'installation, hors
+        session, n'a pas ; une valeur que le compte a déjà écrite garde la
+        priorité. Rien n'est écrit sans le schéma de GNOME Shell, ni quand la
+        surcharge existe déjà."""
+        sch = "/usr/share/glib-2.0/schemas"
+        ovr = f"{sch}/90_erplibre-gnome-welcome.gschema.override"
+        ko = t("GNOME welcome dialog left enabled")
+        return (
+            f"if [ -f {sch}/org.gnome.shell.gschema.xml ] "
+            f"&& [ ! -e {ovr} ]; then "
+            "EL_GSV=$(gnome-shell --version 2>/dev/null | awk '{print $NF}'); "
+            'if [ -n "$EL_GSV" ]; then '
+            'printf "[org.gnome.shell]\\nwelcome-dialog-last-shown-version='
+            '\'%s\'\\n" "$EL_GSV" '
+            f"| sudo tee {ovr} >/dev/null && sudo glib-compile-schemas {sch} "
+            f'|| echo "   ⚠ {ko}"; fi; fi; '
+        )
+
+    def _qemu_plasma_welcome_cmd(self):
+        """Bloc shell : le Centre d'accueil de Plasma (plasma-welcome) ne
+        s'ouvre ni à la première session du compte de la VM, ni sur sa page
+        des nouveautés après une mise à jour de Plasma.
+
+        Son module kded lit le groupe [General] de
+        ~/.config/plasma-welcomerc. Il lance le Centre d'accueil quand la
+        clé LastSeenVersion est vide (première session), puis y écrit la
+        version installée ; quand elle est antérieure à cette version, il
+        ouvre la page des nouveautés, sauf si ShowUpdatePage vaut false.
+        Ouvert une fois, la reprise de session de Plasma le rouvre ensuite à
+        chaque connexion : les clés doivent être posées avant le démarrage
+        du gestionnaire d'affichage, qui ouvre la session d'office (KRdp).
+
+        LastSeenVersion reçoit la version que rend « plasma-welcome
+        --version », lancé sur la plateforme Qt « offscreen » : sans écran,
+        il s'arrête avant de répondre. ShowUpdatePage reçoit false. Le
+        paquet reste en place, et le menu l'ouvre toujours.
+
+        Chaque clé n'est écrite que si elle est absente : une valeur déjà
+        posée n'est pas touchée. Sans plasma-welcome ou sans kwriteconfig6,
+        rien ne se fait."""
+        ko = t("Plasma welcome center left enabled")
+        grp = "--file plasma-welcomerc --group General"
+        vue = f"{grp} --key LastSeenVersion"
+        maj = f"{grp} --key ShowUpdatePage"
+        return (
+            "if command -v plasma-welcome >/dev/null 2>&1 "
+            "&& command -v kwriteconfig6 >/dev/null 2>&1; then "
+            f'if [ -z "$(kreadconfig6 {vue} 2>/dev/null)" ]; then '
+            "EL_PWV=$(QT_QPA_PLATFORM=offscreen timeout 30 plasma-welcome "
+            "--version 2>/dev/null | awk '{print $NF}'); "
+            f'if [ -z "$EL_PWV" ] || ! kwriteconfig6 {vue} "$EL_PWV"; '
+            f'then echo "   ⚠ {ko}"; fi; fi; '
+            f'if [ -z "$(kreadconfig6 {maj} 2>/dev/null)" ] '
+            f"&& ! kwriteconfig6 {maj} --type bool false; "
+            f'then echo "   ⚠ {ko}"; fi; fi; '
+        )
+
+    # Fonds que le greeter de LightDM reçoit quand le sien manque, le premier
+    # présent gagne : celui de xubuntu-wallpapers (Ubuntu), puis ceux de
+    # xfdesktop4-data (Debian, Ubuntu). Sans aucun d'eux — i3, qui n'installe
+    # pas de fond —, la couleur unie : le greeter accepte « #rrggbb » à la
+    # place d'un chemin, et sa valeur par défaut est le noir.
+    _QEMU_GREETER_BACKGROUNDS = (
+        "/usr/share/xfce4/backdrops/xubuntu-wallpaper.png",
+        "/usr/share/backgrounds/xfce/xfce-x.svg",
+        "/usr/share/backgrounds/xfce/xfce-teal.svg",
+    )
+    _QEMU_GREETER_COLOUR = "#3465a4"
+
+    def _qemu_greeter_background_cmd(self):
+        """Bloc shell : un fond pour lightdm-gtk-greeter quand le sien manque.
+
+        Le greeter lit, dans cet ordre, les fichiers de
+        /usr/share/lightdm/lightdm-gtk-greeter.conf.d, ceux de
+        /etc/xdg/lightdm/lightdm-gtk-greeter.conf.d, puis
+        /etc/lightdm/lightdm-gtk-greeter.conf : la dernière clé
+        « background » gagne, et sans elle le fond est noir. Celle d'Ubuntu
+        (01_ubuntu.conf) nomme /usr/share/backgrounds/warty-final-ubuntu.png,
+        du paquet ubuntu-wallpapers, que l'image cloud n'a pas : l'écran de
+        connexion est alors noir aussi.
+
+        Quand aucune clé ne nomme de fond, ou que la valeur retenue est un
+        chemin absent, un fichier de /etc/xdg/lightdm/lightdm-gtk-greeter.conf.d
+        nomme le premier fond présent de _QEMU_GREETER_BACKGROUNDS, à défaut
+        la couleur _QEMU_GREETER_COLOUR : le greeter reçoit toujours une
+        valeur qu'il affiche. Une couleur (« #rrggbb ») ou un fichier présent
+        ne change rien. Le fichier n'est jamais réécrit, et
+        /etc/lightdm/lightdm-gtk-greeter.conf, lu après lui, garde le dernier
+        mot."""
+        g = "lightdm/lightdm-gtk-greeter.conf.d"
+        ovr = f"/etc/xdg/{g}/90-erplibre-background.conf"
+        ko = t("login screen background not set")
+        return (
+            f"if [ -d /usr/share/{g} ] && [ ! -e {ovr} ]; then "
+            f"EL_GBG=$(cat /usr/share/{g}/*.conf /etc/xdg/{g}/*.conf "
+            "/etc/lightdm/lightdm-gtk-greeter.conf 2>/dev/null "
+            "| sed -n 's/^[[:space:]]*background[[:space:]]*=[[:space:]]*//p' "
+            "| tail -1); "
+            'case "$EL_GBG" in ""|/*) if [ ! -e "$EL_GBG" ]; then '
+            f"EL_WP='{self._QEMU_GREETER_COLOUR}'; "
+            f"for f in {' '.join(self._QEMU_GREETER_BACKGROUNDS)}; do "
+            '[ -r "$f" ] && { EL_WP=$f; break; }; done; '
+            "printf '[greeter]\\nbackground=%s\\n' \"$EL_WP\" "
+            f"| sudo install -D -m 644 /dev/stdin {ovr} "
+            f'|| echo "   ⚠ {ko}"; fi;; esac; fi; '
         )
 
     def _qemu_autologin_cmd(self, service, sessions):

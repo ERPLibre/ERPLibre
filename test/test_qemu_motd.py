@@ -923,5 +923,89 @@ class TestDesktopFlag(unittest.TestCase):
         self.assertIn("ssh -L 5901:<ip>:5900", motd)
 
 
+@unittest.skipIf(yaml is None, "PyYAML absent")
+class TestMcelogMasked(unittest.TestCase):
+    """mcelog.service, qui échoue dans une VM faute de signalement « machine
+    check » exploitable, est masqué par le runcmd : toujours sur la famille dnf, dont les bureaux
+    l'apportent après le premier démarrage ; ailleurs si l'unité existe.
+
+    L'élément de runcmd est EXÉCUTÉ par /bin/sh, comme cloud-init le fait,
+    contre un faux systemctl qui note ses appels."""
+
+    def _items(self, distro, version):
+        args = dq.build_parser().parse_args(
+            ["--distro", distro, "--version", version, "--hostname", "x"]
+        )
+        runcmd = yaml.safe_load(dq.build_cloud_config(args, None, []))[
+            "runcmd"
+        ]
+        return [c for c in runcmd if "mcelog" in str(c)]
+
+    def _run(self, item, unit_exists, systemctl_rc=0):
+        import shutil
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "log")
+            sc = os.path.join(tmp, "systemctl")
+            with open(sc, "w") as fh:
+                fh.write(
+                    "#!/bin/sh\n"
+                    f'echo "$*" >> {log}\n'
+                    'case "$1" in cat) '
+                    f"{'exit 0' if unit_exists else 'exit 1'};; esac\n"
+                    f"exit {systemctl_rc}\n"
+                )
+            os.chmod(sc, 0o755)
+            res = subprocess.run(
+                [shutil.which("sh"), "-c", item],
+                env={"PATH": tmp},
+                capture_output=True,
+                text=True,
+            )
+            journal = open(log).read() if os.path.exists(log) else ""
+        return res.returncode, journal
+
+    def test_the_dnf_family_masks_before_the_unit_exists(self):
+        for distro, version in (
+            ("fedora", "44"),
+            ("almalinux", "9"),
+            ("almalinux", "10"),
+            ("rocky", "10"),
+        ):
+            with self.subTest(distro=distro):
+                (item,) = self._items(distro, version)
+                rc, journal = self._run(item, unit_exists=False)
+                self.assertEqual(0, rc)
+                self.assertIn("mask mcelog.service", journal)
+                self.assertIn("reset-failed mcelog.service", journal)
+
+    def test_elsewhere_only_an_existing_unit_is_masked(self):
+        for distro, version in (
+            ("ubuntu", "26.04"),
+            ("debian", "13"),
+            ("opensuse", "16.0"),
+            ("arch", "latest"),
+        ):
+            with self.subTest(distro=distro):
+                (item,) = self._items(distro, version)
+                rc, journal = self._run(item, unit_exists=False)
+                self.assertEqual(0, rc)
+                self.assertNotIn("mask", journal)
+                rc, journal = self._run(item, unit_exists=True)
+                self.assertEqual(0, rc)
+                self.assertIn("mask mcelog.service", journal)
+
+    def test_a_refusing_systemctl_never_fails_runcmd(self):
+        (item,) = self._items("fedora", "44")
+        rc, _ = self._run(item, unit_exists=True, systemctl_rc=1)
+        self.assertEqual(0, rc)
+
+    def test_nixos_gets_nothing(self):
+        """/etc/systemd y est en lecture seule."""
+        self.assertEqual([], self._items("nixos", "26.05"))
+
+
 if __name__ == "__main__":
     unittest.main()

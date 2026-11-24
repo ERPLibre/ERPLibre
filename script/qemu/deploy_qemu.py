@@ -4447,6 +4447,48 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     return files
 
 
+def mcelog_runcmd(distro: str) -> list[str]:
+    """Élément de « runcmd » qui masque mcelog.service dans la VM.
+
+    mcelog est le démon qui recueille auprès du noyau les exceptions de
+    vérification machine (« machine check ») du processeur — les erreurs
+    matérielles que signalent le CPU, la mémoire et les caches — pour les
+    journaliser. Dans une VM, le processeur virtuel ne lui expose aucun
+    signalement de ces exceptions qu'il puisse exploiter : mcelog refuse de
+    démarrer, pour une raison qui dépend du processeur de l'hôte (sur un
+    AMD, il renvoie au module edac_mce_amd), et l'unité échoue. Elle ne
+    fait alors que remplir « systemctl --failed » et l'avertissement
+    « Failed Units » de chaque connexion.
+
+    Masquée, l'unité ne démarre plus, et un paquet installé plus tard ne
+    peut pas l'activer : son « systemctl preset » refuse une unité masquée.
+    Le masque est donc posé :
+
+    - sur la famille dnf (Fedora, AlmaLinux, Rocky) sans condition : l'image
+      cloud n'a pas mcelog, ce sont les groupes des bureaux qui l'apportent,
+      après ce premier démarrage ;
+    - ailleurs, seulement si l'unité existe déjà, pour ne laisser aucun
+      lien vers /dev/null au nom d'un paquet que le système n'a pas.
+
+    Rien sur NixOS : /etc/systemd y est en lecture seule, et mcelog n'y
+    tourne que déclaré. L'arrêt et « reset-failed » effacent un échec déjà
+    survenu avant runcmd. Rien ici ne fait échouer runcmd."""
+    famille = DISTRO_PKG.get(distro, "")
+    if famille == "nix":
+        return []
+    masque = (
+        "systemctl mask mcelog.service >/dev/null 2>&1;"
+        " systemctl stop mcelog.service 2>/dev/null;"
+        " systemctl reset-failed mcelog.service 2>/dev/null; true"
+    )
+    if famille == "dnf":
+        return [f"  - {masque}"]
+    return [
+        "  - if systemctl cat mcelog.service >/dev/null 2>&1; then"
+        f" {masque}; fi"
+    ]
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -4574,6 +4616,9 @@ def build_cloud_config(
         # échec à effacer, la commande ne fait rien.
         "  - systemctl reset-failed systemd-firstboot.service 2>/dev/null"
         " || true",
+    ]
+    lines += mcelog_runcmd(distro)
+    lines += [
         # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
         #
         # Son installation tire plusieurs paquets de virtualisation, et sur une

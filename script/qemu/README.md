@@ -149,6 +149,18 @@ ssh erplibre@<IP>
 
 The default user is `erplibre` (change it with `--user`).
 
+At first boot, cloud-init masks `mcelog.service`. mcelog is the daemon that
+collects the processor's machine-check exceptions — hardware errors reported
+by the CPU, the memory and the caches — from the kernel and logs them. In a
+VM, the virtual CPU exposes no machine-check reporting it can use: mcelog
+refuses to start, for a reason that depends on the host's processor (on AMD,
+it asks for the `edac_mce_amd` module instead), so the unit fails and only
+pollutes `systemctl --failed` and the "Failed Units" line of every login. On
+Fedora, AlmaLinux and Rocky the mask is set unconditionally, because the
+cloud image lacks mcelog and the desktop groups bring it later (`dnf` may
+then print "Failed to preset unit … is masked", which is expected); elsewhere
+only where the unit exists. `sudo systemctl unmask mcelog.service` undoes it.
+
 ## Graphical VMs
 
 A graphical VM is chosen in the TODO deploy form or its questions; the
@@ -204,7 +216,17 @@ xorgxrdp 0.9 reads back wrong pixels. On openSUSE, the SELinux boolean
 `unconfined_service_transition_to_unconfined_user` lets xrdp open the user
 session. A polkit rule lets the VM account create the colour profile and
 control the network from an xrdp session, where a password prompt would
-otherwise cover the desktop. Cinnamon is not offered on Tumbleweed, whose
+otherwise cover the desktop. GNOME's welcome dialog (the gnome-tour offer)
+and Plasma's Welcome Center are marked as already seen before the first
+session: an xrdp session outlives the disconnection, so a dialog nobody
+closes comes back at every reconnection, and Plasma's session restore
+reopens its Welcome Center at every login; its "what's new" page after a
+Plasma upgrade is turned off too (`ShowUpdatePage=false`). On Ubuntu, Xfce
+gets `xubuntu-wallpapers`, which ships the backdrop its xfdesktop names by
+default. LightDM's GTK greeter, whose Ubuntu default background comes with
+the 65 MB `ubuntu-wallpapers`, is pointed at an installed wallpaper when the
+named file is missing or none is named, and at a solid colour when the
+flavour installs none (i3). Cinnamon is not offered on Tumbleweed, whose
 packages hang it at start. The NixOS module also
 turns NetworkManager off, which GNOME, Cinnamon and COSMIC would enable over
 the image's network configuration.
