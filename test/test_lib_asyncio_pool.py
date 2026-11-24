@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le pool de coroutines, et les deux retraits d'asyncio qui le tuaient.
 
-Le drapeau `--max_process` de `run_parallel_test.py` et de
-`show_evolution_module.py` passe par cette classe, et elle ne pouvait plus
+Le drapeau `--max_process` de `show_evolution_module.py` passe par cette
+classe, et elle ne pouvait plus
 tourner du tout : `asyncio.get_event_loop()` LÈVE hors d'une loop en marche
 depuis Python 3.14, ce qui rendait l'instanciation impossible, et le mot-clé
 `loop=` a été RETIRÉ d'`asyncio.wait` en Python 3.10, ce qui lève un

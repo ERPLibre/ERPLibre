@@ -19,7 +19,6 @@ pykeepass
 cryptography
 keyring
 click
-aioshutil
 openai
 humanize
 requests
