@@ -35,11 +35,10 @@ from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 QUESTION_SYSTEME = todo_module.t(
-    "First system installation? Installs the system packages first (y/N): "
-).strip()
-QUESTION_SYSTEME_OUI = todo_module.t(
-    "First system installation? Installs the system packages first (Y/n): "
-).strip()
+    "First system installation? Installs the system packages first"
+)
+QUESTION_SYSTEME_OUI = f"{QUESTION_SYSTEME} {todo_module.t('[Y/n]: ')}"
+QUESTION_SYSTEME_NON = f"{QUESTION_SYSTEME} {todo_module.t('[y/N]: ')}"
 QUESTION_SUITE = todo_module.t("Rest of the installation:")
 
 
@@ -370,7 +369,7 @@ class TestOrdreDesQuestions(Banc):
 
     def test_enter_skips_the_system_when_nothing_is_missing(self):
         questions, commandes = self.jouer(["1", "1", "1", "", "1"])
-        self.assertIn(QUESTION_SYSTEME, questions[3])
+        self.assertIn(QUESTION_SYSTEME_NON, questions[3])
         self.assertNotIn(
             "./script/version/update_env_version.py --install", commandes
         )
@@ -602,7 +601,7 @@ class TestIdentiteGit(Banc):
         questions, commandes = self.jouer(["1", "1", "1", "n", "1", "n"])
         self.assertIn(QUESTION_SYSTEME, questions[3])
         self.assertIn(QUESTION_SUITE, self.ecran)
-        self.assertIn(todo_module.t("Configure it now? (Y/n): "), questions[5])
+        self.assertIn(todo_module.t("Configure it now?"), questions[5])
         self.assertEqual(self.ecrits, [])
         self.assertTrue(any("--install_dev" in c for c in commandes))
 
@@ -1152,7 +1151,7 @@ class TestPycharmFerme(unittest.TestCase):
         # Ni PyCharm, ni l'attente, ni la commande d'installation.
         evenements = self._parcours(None, pycharm=EOFError())
         questions = [v for k, v in evenements if k == "question"]
-        self.assertIn(todo_module.t("Open PyCharm? (y/N): "), questions[-1])
+        self.assertIn(todo_module.t("Open PyCharm?"), questions[-1])
         self.assertEqual([v for k, v in evenements if k == "lance"], [])
         ecran = "".join(v for k, v in evenements if k == "ecran")
         self.assertIn(t("Nothing to do."), ecran)

@@ -424,25 +424,23 @@ class TODO(
         l'identité git, et un retour à l'une d'elles ne laisse rien
         d'installé.
 
-        Entrée vaut oui quand _systeme_manquant trouve un manque, qui est
+        Le défaut est oui quand _systeme_manquant trouve un manque, qui est
         nommé ; non quand tout est là."""
         manque = self._systeme_manquant()
         if manque:
             print(f"⚠  {t('System packages missing:')} {', '.join(manque)}")
-        try:
-            if manque:
-                return self._is_yes_default_yes(
-                    ui.ask(
-                        f"💬 {t('First system installation? Installs the system packages first (Y/n): ')}"
-                    )
-                )
-            return self._is_yes(
-                ui.ask(
-                    f"💬 {t('First system installation? Installs the system packages first (y/N): ')}"
-                )
+            return ui.confirm(
+                t(
+                    "First system installation? Installs the system packages first"
+                ),
+                default=True,
+                back=True,
             )
-        except EOFError:
-            return None
+        return ui.confirm(
+            t("First system installation? Installs the system packages first"),
+            default=False,
+            back=True,
+        )
 
     @staticmethod
     def _systeme_manquant():
@@ -600,11 +598,10 @@ class TODO(
         if (has_pycharm or has_pycharm_community) and not os.path.exists(
             ".idea"
         ):
-            try:
-                ouvrir = ui.ask(f"💬 {t('Open PyCharm? (y/N): ')}")
-            except EOFError:
+            ouvrir = ui.confirm(t("Open PyCharm?"), default=False, back=True)
+            if ouvrir is None:
                 return None
-            if self._is_yes(ouvrir):
+            if ouvrir:
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
 
                 cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
@@ -984,11 +981,12 @@ class TODO(
         print(
             f"⚠  {t('No git identity (user.name, user.email): repo init would ask for it.')}"
         )
-        try:
-            configurer = ui.ask(f"💬 {t('Configure it now? (Y/n): ')}")
-        except EOFError:
+        configurer = ui.confirm(
+            t("Configure it now?"), default=True, back=True
+        )
+        if configurer is None:
             return False
-        if not self._is_yes_default_yes(configurer):
+        if not configurer:
             print(t("Skipped: the installation will not ask for it."))
             return True
         nom = courriel = ""
@@ -1005,11 +1003,12 @@ class TODO(
             if courriel is None:
                 return False
             print(f"{t('Your identity is:')} {nom} <{courriel}>")
-            try:
-                correcte = ui.ask(f"💬 {t('Is this correct? (y/N): ')}")
-            except EOFError:
+            correcte = ui.confirm(
+                t("Is this correct?"), default=False, back=True
+            )
+            if correcte is None:
                 return False
-            if self._is_yes(correcte):
+            if correcte:
                 break
         self._ecrire_identite_git(nom, courriel)
         return True
@@ -1436,9 +1435,9 @@ class TODO(
                 "{n} web sessions are running a command. Stop them anyway?"
             )
             try:
-                sure = click.confirm(question.format(n=running), default=False)
-            except click.exceptions.Abort:
-                # Ctrl+C ou Ctrl+D à la question vaut « non ».
+                sure = ui.confirm(question.format(n=running), default=False)
+            except KeyboardInterrupt:
+                # Ctrl+C à la question vaut « non », comme Ctrl+D.
                 print()
                 return
             if not sure:
@@ -1794,7 +1793,7 @@ class TODO(
         """Lance `instance`, une entrée de `instance` dans todo.json : sa
         cible make ne tourne que si l'on veut une nouvelle instance, puis
         sa base s'ouvre (`exec_run_db`)."""
-        new = click.confirm(t("Do you want a new instance?"))
+        new = ui.confirm(t("Do you want a new instance?"), default=False)
         self.execute_from_configuration(
             instance, exec_run_db=True, ignore_makefile=not new
         )
@@ -2102,8 +2101,8 @@ class TODO(
         print(f"\n🖥  {t('virt-manager detected')}")
         for uri in uris:
             print(f"     {uri}")
-        if not self._is_yes_default_yes(
-            input(t("Add the missing connections to virt-manager? (Y/n): "))
+        if not ui.confirm(
+            t("Add the missing connections to virt-manager?"), default=True
         ):
             return
         # Le nom affiché est posé AVANT l'ajout à la liste : virt-manager le
@@ -2682,7 +2681,9 @@ class TODO(
             f" bash {script_path}"
         )
         print(f"\n{t('Will execute:')} {cmd}\n")
-        if not click.confirm(t("Install the QEMU download cache?")):
+        if not ui.confirm(
+            t("Install the QEMU download cache?"), default=False
+        ):
             return
 
         print(
@@ -2940,14 +2941,14 @@ class TODO(
                 f" {t('of')} {host}"
             )
             print(f"    {t('Start the service there, or continue anyway.')}")
-            if not self._is_yes(input(t("Continue anyway? (y/N): "))):
+            if not ui.confirm(t("Continue anyway?"), default=False):
                 return
         elif listening is None:
             print(f"  ℹ️  {t('Could not probe the remote port; going on.')}")
 
         if not self._port_is_free(local):
             print(f"  ⚠ {t('Local port already in use:')} {local}")
-            if not self._is_yes(input(t("Try anyway? (y/N): "))):
+            if not ui.confirm(t("Try anyway?"), default=False):
                 return
         if local != remote:
             # Odoo redirige d'après web.base.url : un port local différent
@@ -3293,7 +3294,7 @@ class TODO(
                 port = libre
             else:
                 print(f"  ⚠ {t('Local port already in use:')} {port}")
-                if not self._is_yes(input(t("Try anyway? (y/N): "))):
+                if not ui.confirm(t("Try anyway?"), default=False):
                     return
 
         cmd = f"ssh -D {port} -N -C {shlex.quote(cible)}"
@@ -3644,7 +3645,7 @@ class TODO(
         actuel = self._git_hooks_path(racine)
         if actuel and not todo_etat.chemin_hooks_du_depot(racine, actuel):
             print(f"{t('Another hooks path is already set: ')}{actuel}")
-            if not self._is_yes(input(t("Replace it? (y/Y): "))):
+            if not ui.confirm(t("Replace it?"), default=False):
                 print(t("Nothing to do."))
                 return
         reussi, lignes = todo_etat.installer_hooks_git(
@@ -4027,7 +4028,7 @@ class TODO(
                 "This file is versioned: the change applies to every clone once committed."
             )
         )
-        if self._is_yes(input(t("Write it? (y/Y): "))):
+        if ui.confirm(t("Write it?"), default=False):
             claude_reglages.ecrire(self._claude_context_root(), neuf)
             print(t("File written."))
         else:
@@ -4225,16 +4226,14 @@ class TODO(
         if not perimees:
             return
         print()
-        if self._is_yes(input(t("Show the differences? [o/N] "))):
+        if ui.confirm(t("Show the differences?"), default=False):
             for nom, diff in perimees:
                 print(f"\n/{nom}")
                 for ligne in diff:
                     print(ligne.rstrip("\n"))
         print()
-        question = t("Redeploy the %s outdated command(s)? [o/N] ") % len(
-            perimees
-        )
-        if not self._is_yes(input(question)):
+        question = t("Redeploy the %s outdated command(s)?") % len(perimees)
+        if not ui.confirm(question, default=False):
             print(t("Nothing to do."))
             return
         for nom, _ in perimees:
@@ -4387,8 +4386,9 @@ class TODO(
 
         if os.path.exists(dest_file):
             print(f"{t('File already exists: ')}{dest_file}")
-            overwrite = input(t("Do you want to overwrite the file? (y/Y): "))
-            if not self._is_yes(overwrite):
+            if not ui.confirm(
+                t("Do you want to overwrite the file?"), default=False
+            ):
                 print(t("Nothing to do."))
                 return
 
@@ -4524,7 +4524,7 @@ class TODO(
         for nom, raison in self._CLAUDE_PREFERRED_PLUGINS:
             print(f"  {nom:<18} {t(raison)}")
         print("-" * 62)
-        if not self._is_yes(input(t("Install these plugins? (y/Y): "))):
+        if not ui.confirm(t("Install these plugins?"), default=False):
             print(t("Nothing to do."))
             return
         for nom, _ in self._CLAUDE_PREFERRED_PLUGINS:
@@ -4555,7 +4555,7 @@ class TODO(
         if not nom:
             print(t("Nothing to do."))
             return
-        if not self._is_yes(input(t("Uninstall this plugin? (y/Y): "))):
+        if not ui.confirm(t("Uninstall this plugin?"), default=False):
             print(t("Nothing to do."))
             return
         self._claude_plugin_exec(f"uninstall {shlex.quote(nom)}")

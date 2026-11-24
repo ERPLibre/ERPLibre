@@ -5490,14 +5490,15 @@ class TestRunMenu(unittest.TestCase):
             patch.object(TODO, "execute_from_configuration", run),
             patch.object(TODO, "callback_execute_custom_database") as db,
             patch.object(TODO, "callback_make_mobile_home") as mobile,
-            patch("click.confirm", return_value=new) as confirm,
+            patch("script.todo.todo.ui.confirm", return_value=new) as confirm,
             patch("click.prompt", side_effect=[*answers, "0"]),
             redirect_stdout(io.StringIO()) as out,
         ):
             self.assertIs(self.todo.prompt_execute_instance(), False)
         self.assertEqual(
             confirm.call_args_list,
-            [call("Do you want a new instance?")] * confirm.call_count,
+            [call("Do you want a new instance?", default=False)]
+            * confirm.call_count,
         )
         calls = (confirm.call_count, db.call_count, mobile.call_count)
         return ran, calls, out.getvalue()

@@ -868,6 +868,21 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/todo.py",
+        "TODO._claude_install_preferred_plugins",
+        "Install these plugins?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._claude_plugin_uninstall",
+        "Uninstall this plugin?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._claude_reglages_ecrire",
+        "Write it?",
+    ): [False],
+    (
+        "script/todo/todo.py",
         "TODO._confirm_or_discard",
         "<dynamique>",
     ): [True],
@@ -878,6 +893,71 @@ CONFIRM_DEFAULTS = {
     ): [True],
     (
         "script/todo/todo.py",
+        "TODO._demander_systeme",
+        "First system installation? Installs the system packages first",
+    ): [True, False],
+    (
+        "script/todo/todo.py",
+        "TODO._deploy_port_forward",
+        "Continue anyway?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._deploy_port_forward",
+        "Try anyway?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._deploy_qemu_cache",
+        "Install the QEMU download cache?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._deploy_socks_proxy",
+        "Try anyway?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._git_install_hooks",
+        "Replace it?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._install_system_step",
+        "Open PyCharm?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._list_claude_commands",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._list_claude_commands",
+        "Show the differences?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._proposer_identite_git",
+        "Configure it now?",
+    ): [True],
+    (
+        "script/todo/todo.py",
+        "TODO._proposer_identite_git",
+        "Is this correct?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._run_instance",
+        "Do you want a new instance?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._setup_claude_command",
+        "Do you want to overwrite the file?",
+    ): [False],
+    (
+        "script/todo/todo.py",
         "TODO._shell_install_starship_binary",
         "Install starship?",
     ): [False],
@@ -886,6 +966,16 @@ CONFIRM_DEFAULTS = {
         "TODO._shell_install_starship_binary",
         "Run the upstream installer?",
     ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._todo_web_stop",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._virt_manager_offer",
+        "Add the missing connections to virt-manager?",
+    ): [True],
     (
         "script/todo/todo_install.py",
         "run_steps",

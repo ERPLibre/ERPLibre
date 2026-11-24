@@ -167,11 +167,11 @@ class TestCommandeProduite(unittest.TestCase):
 class TestLInstallationNeSannonceQueSiElleAEuLieu(unittest.TestCase):
     """Un code de sortie non nul n'est pas une réussite.
 
-    Vécu : l'installateur est mort sur « réseau libvirt default introuvable »,
-    a rendu 1, et l'entrée a imprimé « Cache de téléchargement QEMU installé
-    et démarré » juste en dessous, avec le chemin d'une autorité qui n'existe
-    pas. Un succès annoncé à tort coûte plus qu'une panne : on cherche
-    ensuite partout sauf là où elle est.
+    Un installateur qui meurt, réseau libvirt absent par exemple, rend 1
+    sans rien lever : l'entrée n'annonce alors ni « installé et démarré »
+    ni le chemin d'une autorité qui n'existe pas. Un succès annoncé à tort
+    coûte plus qu'une panne : on cherche ensuite partout sauf là où elle
+    est.
     """
 
     def _installer(self, code):
@@ -179,15 +179,12 @@ class TestLInstallationNeSannonceQueSiElleAEuLieu(unittest.TestCase):
         import contextlib
         import io
 
-        import click
-
         todo = TODO.__new__(TODO)
         todo.execute = mock.Mock()
         todo.execute.exec_command_live = mock.Mock(return_value=code)
-        with (
-            mock.patch("builtins.input", return_value=""),
-            mock.patch.object(click, "confirm", return_value=True),
-        ):
+        # Les deux ports et le répertoire par défaut, puis « o » à la
+        # question oui/non.
+        with mock.patch("builtins.input", side_effect=["", "", "", "o"]):
             with contextlib.redirect_stdout(io.StringIO()) as sortie:
                 todo._deploy_qemu_cache()
         return sortie.getvalue()

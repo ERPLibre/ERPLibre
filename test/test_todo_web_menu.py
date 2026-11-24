@@ -27,8 +27,9 @@ from unittest.mock import Mock, patch
 
 import click
 
-from script.todo import todo_i18n, todo_telemetry
+from script.todo import todo_i18n, todo_telemetry, ui
 from script.todo.todo import TODO, VENV_ERPLIBRE, new_path
+from script.todo.ui.port import ScriptedPort
 from script.todo.web import desktop, launcher, paths
 
 URL = "http://127.0.0.1:43817/"
@@ -299,58 +300,76 @@ class TestTelemetryWeb(MenuCase):
 
 
 class TestWebStop(MenuCase):
-    def stop(self, status, confirm=True, stopped=True):
-        # Un double lève l'exception que porte son side_effect et rend toute
-        # autre valeur : `confirm` et `stopped` sont l'une ou l'autre.
+    def stop(self, status, answers=("o",), stopped=True):
+        # `answers` répondent à la question, dans l'ordre, par un
+        # ScriptedPort (`self.port`) ; le double de l'arrêt lève l'exception
+        # que porte son side_effect et rend toute autre valeur.
         with (
             patch.object(launcher, "status", return_value=status),
             patch.object(launcher, "stop", side_effect=[stopped]) as stop,
-            patch("click.confirm", side_effect=[confirm]) as question,
+            ui.bind(ScriptedPort(list(answers))) as self.port,
         ):
             lines = self.printed(self.todo._todo_web_stop)
-        return lines, stop, question
+        return lines, stop
+
+    def asked(self):
+        return [
+            (e["prompt"], e["default"])
+            for e in self.port.events
+            if e.get("kind") == "confirm"
+        ]
 
     def test_a_stopped_hub_is_left_alone(self):
-        lines, stop, question = self.stop(None)
+        lines, stop = self.stop(None)
         self.assertEqual(lines, ["ℹ️ The web interface is not running."])
         stop.assert_not_called()
-        question.assert_not_called()
+        self.assertEqual(self.asked(), [])
 
     def test_an_idle_hub_stops_without_a_question(self):
-        lines, stop, question = self.stop(RUNNING)
+        lines, stop = self.stop(RUNNING)
         self.assertEqual(lines, ["⏹️ Web interface stopped"])
         stop.assert_called_once_with(new_path)
-        question.assert_not_called()
+        self.assertEqual(self.asked(), [])
 
     def test_running_sessions_ask_first_and_no_stops_nothing(self):
+        # Défaut non : une réponse vide, n, une faute puis Ctrl+D, Ctrl+D
+        # n'arrêtent rien ; o, oui, y, yes arrêtent.
         busy = dict(RUNNING, running=2)
-        lines, stop, question = self.stop(busy, confirm=False)
-        self.assertEqual(lines, [])
-        stop.assert_not_called()
-        question.assert_called_once_with(
-            "2 web sessions are running a command. Stop them anyway?",
-            default=False,
-        )
-        lines, stop, _ = self.stop(busy, confirm=True)
-        self.assertEqual(lines, ["⏹️ Web interface stopped"])
-        stop.assert_called_once_with(new_path)
+        question = "2 web sessions are running a command. Stop them anyway?"
+        for answers, stopped in (
+            ([""], False),
+            (["n"], False),
+            (["maybe", EOFError()], False),
+            ([EOFError()], False),
+            (["o"], True),
+            (["oui"], True),
+            (["y"], True),
+            (["YES"], True),
+        ):
+            with self.subTest(answers=answers):
+                lines, stop = self.stop(busy, answers)
+                self.assertEqual(stop.called, stopped)
+                fois = 2 if "maybe" in answers else 1
+                self.assertEqual(self.asked(), [(question, "n")] * fois)
+                self.assertEqual(self.port.answers, [])
+                if stopped:
+                    self.assertEqual(lines, ["⏹️ Web interface stopped"])
 
-    def test_ctrl_c_or_ctrl_d_at_the_question_stops_nothing(self):
-        # click.confirm lève Abort pour l'un comme pour l'autre.
+    def test_ctrl_c_at_the_question_stops_nothing(self):
         busy = dict(RUNNING, running=1)
-        lines, stop, _ = self.stop(busy, confirm=click.exceptions.Abort())
+        lines, stop = self.stop(busy, [KeyboardInterrupt()])
         self.assertEqual(lines, [""])
         stop.assert_not_called()
 
     def test_a_hub_still_answering_is_not_announced_stopped(self):
-        lines, stop, _ = self.stop(RUNNING, stopped=False)
+        lines, stop = self.stop(RUNNING, stopped=False)
         self.assertEqual(lines, [])
         stop.assert_called_once_with(new_path)
 
     def test_an_interrupted_or_failed_stop_stays_in_the_menu(self):
-        lines, _, _ = self.stop(RUNNING, stopped=KeyboardInterrupt())
+        lines, _ = self.stop(RUNNING, stopped=KeyboardInterrupt())
         self.assertEqual(lines, [""])
-        lines, _, _ = self.stop(RUNNING, stopped=OSError("forged"))
+        lines, _ = self.stop(RUNNING, stopped=OSError("forged"))
         self.assertEqual(lines, ["Command failed: forged"])
 
     def test_ctrl_c_during_the_status_probe_stays_in_the_menu(self):

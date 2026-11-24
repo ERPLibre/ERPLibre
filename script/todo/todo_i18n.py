@@ -1816,9 +1816,9 @@ TRANSLATIONS = {
         "fr": "Mode non interactif : le menu de TODO demande quelqu'un au clavier. Utilisez : ./todo.sh install --non-interactive --help",
         "en": "Non-interactive mode: the TODO menu needs someone at the keyboard. Use: ./todo.sh install --non-interactive --help",
     },
-    "First system installation? Installs the system packages first (y/N): ": {
-        "fr": "Première installation du système ? Installe d'abord les paquets du système (o/N) : ",
-        "en": "First system installation? Installs the system packages first (y/N): ",
+    "First system installation? Installs the system packages first": {
+        "fr": "Première installation du système ? Installe d'abord les paquets du système",
+        "en": "First system installation? Installs the system packages first",
     },
     "Rest of the installation:": {
         "fr": "Suite de l'installation :",
@@ -1852,10 +1852,7 @@ TRANSLATIONS = {
         "fr": "Attendez la fin de l'installation du système avant de continuer.",
         "en": "Wait for the system installation to finish before continuing.",
     },
-    "Open PyCharm? (y/N): ": {
-        "fr": "Ouvrir PyCharm ? (o/N) : ",
-        "en": "Open PyCharm? (y/N): ",
-    },
+    "Open PyCharm?": {"fr": "Ouvrir PyCharm ?", "en": "Open PyCharm?"},
     "PyCharm is still running: close it before continuing.": {
         "fr": "PyCharm tourne encore : fermez-le avant de continuer.",
         "en": "PyCharm is still running: close it before continuing.",
@@ -1896,9 +1893,9 @@ TRANSLATIONS = {
         "fr": "Aucune identité git (user.name, user.email) : repo init la demanderait.",
         "en": "No git identity (user.name, user.email): repo init would ask for it.",
     },
-    "Configure it now? (Y/n): ": {
-        "fr": "La configurer maintenant ? (O/n) : ",
-        "en": "Configure it now? (Y/n): ",
+    "Configure it now?": {
+        "fr": "La configurer maintenant ?",
+        "en": "Configure it now?",
     },
     "System packages missing:": {
         "fr": "Paquets du système manquants :",
@@ -1907,10 +1904,6 @@ TRANSLATIONS = {
     "PostgreSQL role of this account": {
         "fr": "rôle PostgreSQL de ce compte",
         "en": "PostgreSQL role of this account",
-    },
-    "First system installation? Installs the system packages first (Y/n): ": {
-        "fr": "Première installation du système ? Installe d'abord les paquets du système (O/n) : ",
-        "en": "First system installation? Installs the system packages first (Y/n): ",
     },
     "Skipped: the installation will not ask for it.": {
         "fr": "Ignoré : l'installation ne la demandera pas.",
@@ -1932,10 +1925,7 @@ TRANSLATIONS = {
         "fr": "Votre identité :",
         "en": "Your identity is:",
     },
-    "Is this correct? (y/N): ": {
-        "fr": "Est-ce correct ? (o/N) : ",
-        "en": "Is this correct? (y/N): ",
-    },
+    "Is this correct?": {"fr": "Est-ce correct ?", "en": "Is this correct?"},
     "Git identity saved.": {
         "fr": "Identité git enregistrée.",
         "en": "Git identity saved.",
@@ -3454,10 +3444,7 @@ TRANSLATIONS = {
         "fr": "Ce fichier est versionné : le changement vaut pour chaque clone une fois commité.",
         "en": "This file is versioned: the change applies to every clone once committed.",
     },
-    "Write it? (y/Y): ": {
-        "fr": "L'écrire ? (o/O) : ",
-        "en": "Write it? (y/Y): ",
-    },
+    "Write it?": {"fr": "L'écrire ?", "en": "Write it?"},
     "File written.": {
         "fr": "Fichier écrit.",
         "en": "File written.",
@@ -4076,10 +4063,6 @@ TRANSLATIONS = {
         "fr": "Un autre chemin de hooks est déjà configuré : ",
         "en": "Another hooks path is already set: ",
     },
-    "Replace it? (y/Y): ": {
-        "fr": "Le remplacer? (y/Y) : ",
-        "en": "Replace it? (y/Y): ",
-    },
     "Execution bit added: ": {
         "fr": "Bit d'exécution ajouté : ",
         "en": "Execution bit added: ",
@@ -4397,9 +4380,9 @@ TRANSLATIONS = {
         "fr": "écrire, améliorer et évaluer les skills du dépôt",
         "en": "write, improve and evaluate the repository skills",
     },
-    "Install these plugins? (y/Y): ": {
-        "fr": "Installer ces plugins ? (o/O) : ",
-        "en": "Install these plugins? (y/Y): ",
+    "Install these plugins?": {
+        "fr": "Installer ces plugins ?",
+        "en": "Install these plugins?",
     },
     "Already installed, skipped.": {
         "fr": "Déjà installé, ignoré.",
@@ -4425,9 +4408,9 @@ TRANSLATIONS = {
         "fr": "Aucun plugin ne correspond à ce mot-clé.",
         "en": "No plugin matches this keyword.",
     },
-    "Uninstall this plugin? (y/Y): ": {
-        "fr": "Désinstaller ce plugin ? (o/O) : ",
-        "en": "Uninstall this plugin? (y/Y): ",
+    "Uninstall this plugin?": {
+        "fr": "Désinstaller ce plugin ?",
+        "en": "Uninstall this plugin?",
     },
     "A restart of Claude Code applies the change.": {
         "fr": "Un redémarrage de Claude Code applique le changement.",
@@ -4465,13 +4448,13 @@ TRANSLATIONS = {
         "fr": "Une commande non installée se déploie depuis ce menu.",
         "en": "A command not installed is deployed from this menu.",
     },
-    "Show the differences? [o/N] ": {
-        "fr": "Afficher les différences ? [o/N] ",
-        "en": "Show the differences? [y/N] ",
+    "Show the differences?": {
+        "fr": "Afficher les différences ?",
+        "en": "Show the differences?",
     },
-    "Redeploy the %s outdated command(s)? [o/N] ": {
-        "fr": "Redéployer les %s commande(s) périmée(s) ? [o/N] ",
-        "en": "Redeploy the %s outdated command(s)? [y/N] ",
+    "Redeploy the %s outdated command(s)?": {
+        "fr": "Redéployer les %s commande(s) périmée(s) ?",
+        "en": "Redeploy the %s outdated command(s)?",
     },
     "Claude Code custom commands:": {
         "fr": "Commandes personnalisées Claude Code :",
@@ -4481,9 +4464,9 @@ TRANSLATIONS = {
         "fr": "Le fichier existe déjà : ",
         "en": "File already exists: ",
     },
-    "Do you want to overwrite the file? (y/Y): ": {
-        "fr": "Voulez-vous écraser le fichier? (y/Y) : ",
-        "en": "Do you want to overwrite the file? (y/Y): ",
+    "Do you want to overwrite the file?": {
+        "fr": "Voulez-vous écraser le fichier ?",
+        "en": "Do you want to overwrite the file?",
     },
     "Nothing to do.": {
         "fr": "Rien à faire.",
@@ -7082,10 +7065,6 @@ TRANSLATIONS = {
         "fr": "Démarrer le service là-bas, ou continuer quand même.",
         "en": "Start the service there, or continue anyway.",
     },
-    "Continue anyway? (y/N): ": {
-        "fr": "Continuer quand même ? (o/N, défaut : non) : ",
-        "en": "Continue anyway? (y/N, default: no): ",
-    },
     "Could not probe the remote port; going on.": {
         "fr": "Impossible de sonder le port distant ; on continue.",
         "en": "Could not probe the remote port; going on.",
@@ -7098,10 +7077,7 @@ TRANSLATIONS = {
         "fr": "on prend le port",
         "en": "using port",
     },
-    "Try anyway? (y/N): ": {
-        "fr": "Essayer quand même ? (o/N, défaut : non) : ",
-        "en": "Try anyway? (y/N, default: no): ",
-    },
+    "Try anyway?": {"fr": "Essayer quand même ?", "en": "Try anyway?"},
     "Local port differs from the remote one.": {
         "fr": "Le port local diffère du port distant.",
         "en": "Local port differs from the remote one.",
@@ -7282,11 +7258,9 @@ TRANSLATIONS = {
         "fr": "virt-manager : toutes les connexions sont déjà là",
         "en": "virt-manager: every connection already there",
     },
-    "Add the missing connections to virt-manager? (Y/n): ": {
-        "fr": "Ajouter les connexions manquantes à virt-manager ? "
-        "(O/n, défaut : oui) : ",
-        "en": "Add the missing connections to virt-manager? "
-        "(Y/n, default: yes): ",
+    "Add the missing connections to virt-manager?": {
+        "fr": "Ajouter les connexions manquantes à virt-manager ?",
+        "en": "Add the missing connections to virt-manager?",
     },
     "Restart virt-manager to see the new connections": {
         "fr": "Redémarrer virt-manager pour voir les nouvelles connexions",
