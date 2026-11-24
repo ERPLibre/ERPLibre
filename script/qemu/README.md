@@ -97,7 +97,7 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (default), `tumbleweed` | ✔ | ✔ | ✔ |
-| arch | `latest` | ✔ | — | — |
+| arch | `latest` | ✔ | — | ✔ (archlinux-s390x port, `EL_ARCH_S390X_BASE`) |
 | proxmox | `9` | ✔ | ✔ | — |
 
 Fedora publishes s390x on a separate tree (`fedora-secondary`), so its

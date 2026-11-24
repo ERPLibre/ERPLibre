@@ -17,16 +17,16 @@ packages, more memory, more time, and a few features left out.
 
 | System | Versions on s390x | How the VM is installed | Notes |
 |---|---|---|---|
-| Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 builds qpdf from source |
+| Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 and 25.10 build qpdf from source |
 | Debian | 12, 13 | debian-installer (no s390x cloud image) | 12 builds qpdf and PROJ from source |
 | Fedora | 44, 45 | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture, published on a separate tree: a release is offered once its s390x Cloud image is published there |
 | AlmaLinux | 9, 10 | cloud image | Rust below 1.95 (1.92 on 10) → completed by rustup; qpdf built from source (EL9 ships 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | cloud image | same as AlmaLinux |
-| openSUSE | Leap 16.0, Tumbleweed | cloud image | Leap 16.0 builds qpdf (11.10 shipped); Tumbleweed's qpdf is recent enough; distribution Python used |
+| openSUSE | Leap 16.0, Tumbleweed | cloud image | qpdf built from source when the shipped one is below the threshold of `script/install/S390x/lib_qpdf.sh` (Leap 16.0 ships 11.10); distribution Python used |
+| Arch Linux | latest | cloud image from the community archlinux-s390x port | no upstream s390x image: `EL_ARCH_S390X_BASE` must give the base URL of a server serving `Arch-Linux-s390x-cloudimg.qcow2`, otherwise the deployment stops |
 
-**Not supported on s390x:** Arch Linux (no official s390x image, the project
-targets x86_64), NixOS (the only cloud image, built by a third party, is
-x86_64 only), Proxmox VE (its repository has no s390x index). Ubuntu 20.04 and
+**Not supported on s390x:** NixOS (the only cloud image, built by a third
+party, is x86_64 only), Proxmox VE (its repository has no s390x index). Ubuntu 20.04 and
 22.04 are refused on every architecture: pikepdf needs qpdf 12.2 built in
 C++20, and focal ships GCC 9 with no g++-10 for s390x.
 

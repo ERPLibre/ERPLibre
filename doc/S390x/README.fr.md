@@ -18,16 +18,16 @@ fonctions laissées de côté.
 
 | Système | Versions sur s390x | Installation de la VM | Remarques |
 |---|---|---|---|
-| Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 compile qpdf depuis les sources |
+| Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 et 25.10 compilent qpdf depuis les sources |
 | Debian | 12, 13 | debian-installer (aucune image cloud s390x) | 12 compile qpdf et PROJ depuis les sources |
 | Fedora | 44, 45 | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora, publiée sur une arborescence à part : une version n'est proposée qu'une fois son image Cloud s390x publiée là |
 | AlmaLinux | 9, 10 | image cloud | Rust sous 1.95 (1.92 en 10) → complété par rustup ; qpdf compilé depuis les sources (EL9 livre 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | image cloud | comme AlmaLinux |
-| openSUSE | Leap 16.0, Tumbleweed | image cloud | Leap 16.0 compile qpdf (11.10 livré) ; le qpdf de Tumbleweed est assez récent ; Python de la distribution utilisé |
+| openSUSE | Leap 16.0, Tumbleweed | image cloud | qpdf compilé depuis les sources quand celui livré est sous le seuil de `script/install/S390x/lib_qpdf.sh` (Leap 16.0 livre 11.10) ; Python de la distribution utilisé |
+| Arch Linux | latest | image cloud du portage communautaire archlinux-s390x | aucune image s390x en amont : `EL_ARCH_S390X_BASE` doit donner l'URL de base d'un serveur qui sert `Arch-Linux-s390x-cloudimg.qcow2`, sinon le déploiement s'arrête |
 
-**Non pris en charge sur s390x :** Arch Linux (aucune image s390x officielle,
-le projet vise x86_64), NixOS (la seule image cloud, construite par un tiers,
-n'existe qu'en x86_64), Proxmox VE (son dépôt n'a aucun index s390x). Ubuntu
+**Non pris en charge sur s390x :** NixOS (la seule image cloud, construite
+par un tiers, n'existe qu'en x86_64), Proxmox VE (son dépôt n'a aucun index s390x). Ubuntu
 20.04 et 22.04 sont refusés sur toutes les architectures : pikepdf exige
 qpdf 12.2 compilé en C++20, et focal livre GCC 9, sans g++-10 pour s390x.
 
