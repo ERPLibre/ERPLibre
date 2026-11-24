@@ -52,3 +52,58 @@ export ERPLIBRE_REQUIREMENT_RUNNER_PASSWORD=<runner password>
 - The account belongs to the group "Requirement test runner" or is a system
   user. Its credentials go through environment variables only: any user on
   the machine can read a process's arguments.
+
+# Test runners and code coverage
+
+One engine, `script/test/lanceur.py`, runs every test campaign. Each item —
+a unit-test file, a slice of a slow one, an Odoo scenario — runs in its own
+session (`script/lib_processus.py`), reads `/dev/null`, writes its log to a
+file and gets its own `TMPDIR`; what it leaves there is counted, named and
+removed. At the timeout, or on Ctrl+C, its whole process group receives
+SIGTERM, then SIGKILL after the campaign's grace period. Phases run in
+order, with a barrier between them; within a phase the longest items start
+first, from the durations of the previous run. Only one campaign runs at a
+time: both share the PostgreSQL server.
+
+| Campaign | Command | Items |
+|---|---|---|
+| Unit tests | `./script/test/run_unit_test.sh` | every `test/test_*.py`, no database, no Odoo, no VM |
+| Odoo scenarios | `./script/test/run_odoo_scenarios.sh` (`make test_full_fast`) | entries of `config_testcase.odoo<version>.json` |
+
+```bash
+./script/test/run_unit_test.sh --tui                 # table of files, log of the selected one
+./script/test/run_unit_test.sh --changed --failed     # what a change reaches, what failed last time
+./script/test/run_unit_test.sh -k proxy               # tests whose name contains « proxy »
+./script/test/run_unit_test.sh --ordre-aleatoire      # shuffled order, replayable seed printed
+./script/test/run_odoo_scenarios.sh --scenario=demo_test --tui
+./script/test/run_odoo_scenarios.sh --purge           # drop leftover scenario databases
+```
+
+Code coverage has two sets, each with its interpreter and configuration:
+`erplibre` (script/, long_test/, docker/, measured by the unit tests,
+`conf/coverage.erplibre.toml`) and `odoo` (the code generator, measured by
+the scenarios, `conf/coverage.odoo.cfg`). `--coverage` on either runner
+measures each item under `coverage run -p` — the Python subprocesses it
+starts included — then merges the data, writes the JSON report and appends
+the run to the history in `~/.cache/erplibre/couverture/<set>/`. A partial
+run (`--changed`, `--failed`, `-k`, named files) is marked as such and never
+compared with a complete one. The durations of a measured run are not kept.
+
+```bash
+make test_unit_coverage                                    # unit tests under coverage
+.venv.erplibre/bin/python script/test/couverture_tui.py    # tree, annotated source, history
+.venv.erplibre/bin/python script/test/couverture.py html --jeu erplibre
+```
+
+TODO › Execute › Development › [11] Coverage gathers the screen, the measured
+runs, the HTML report and the erasing of a set's data.
+
+What coverage does not see: a Python subprocess started with an environment
+rebuilt from scratch or through a literal `python3` outside the venv, and code
+that a test only reads (regex, AST) without running it.
+
+Writing tests that keep the suite healthy: `test/test_suite_hygiene.py`
+refuses a module-level helper named `test*`, `addModuleCleanup` (pytest never
+runs it), and `logging.basicConfig` at import in a test file. Patch with
+`mock.patch` as a context or with `addCleanup`, never by bare assignment; a
+test that creates a real machine belongs in `long_test/`.

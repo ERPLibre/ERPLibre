@@ -44,13 +44,29 @@ avec `sudo`, `pgrep` et `pkill` bouchonnés — quelques secondes. Le lanceur
 annonce sa dépendance à `mobile/erplibre_home_mobile` : absent, les tests du
 transfert mobile se déclarent ignorés au lieu de passer en silence.
 
+```bash
+./script/test/run_unit_test.sh --coverage      # + couverture (make test_unit_coverage)
+./script/test/run_unit_test.sh -k MOTIF        # seulement les tests dont le nom contient MOTIF
+./script/test/run_unit_test.sh --ordre-aleatoire   # ordre mélangé, graine imprimée
+.venv.erplibre/bin/python script/test/couverture_tui.py   # suivi de la couverture
+```
+`--coverage` mesure script/, long_test/ et docker/, sous-processus Python
+compris, et ajoute le passage à l'historique
+(`~/.cache/erplibre/couverture/erplibre/`). TODO › Exécution ›
+Développement › [11] Couverture regroupe la TUI, les passages mesurés et le
+rapport HTML.
+
 ### Suite complète (base de données requise)
 ```bash
 make test                    # Tests de base + format
-make test_full_fast          # Tests complets en parallèle
-make test_full_fast_coverage # Avec couverture de code
-make open_test_coverage      # Ouvrir le rapport HTML de couverture
+make test_full_fast          # Scénarios du générateur de code, en parallèle
+make test_full_fast_coverage # Avec couverture des modules Odoo
+make test_odoo_scenario S=demo_test   # Un seul scénario
 ```
+Les scénarios passent par `script/test/run_odoo_scenarios.sh` (même moteur
+que la suite unitaire : délai, Ctrl+C qui supprime les bases du passage,
+`--tui`, `--failed`, `--junit`). Les scénarios sont décrits dans
+`script/test/config_testcase.odoo<version>.json`, validé au chargement.
 
 ### Tester un module spécifique
 ```bash
