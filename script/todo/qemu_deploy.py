@@ -1141,9 +1141,14 @@ class QemuDeployMixin:
                 vm.get("desktop", spec.get("desktop")),
                 self.QEMU_DESKTOP_MIN_RAM_MB,
             )
+            plafond = spec.get("max_ram") or 0
+            if isinstance(ram, int) and plafond > ram:
+                ram = f"{ram}Mo (max {plafond})"
+            else:
+                ram = f"{ram}Mo"
             print(
                 f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
-                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {ram}Mo  "
+                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {ram}  "
                 f"{t('disk')} {gigs}G"
                 + (f"  ⟵ {' · '.join(apart)}" if apart else "")
             )
@@ -1334,9 +1339,14 @@ class QemuDeployMixin:
         password_hash="",
         usb_hostdev=(),
         spice_usbredir=False,
+        max_ram=0,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel).
+
+        `max_ram` : plafond de RAM du ballon, en Mo. Passé en « --max-memory »
+        seulement s'il dépasse la RAM retenue, plancher d'un bureau compris ;
+        sinon la commande reste celle d'avant, sans l'option.
 
         `user` : compte créé par cloud-init ; vide, VM_USER_DEFAULT.
         `password_hash` : empreinte SHA-512 crypt de son mot de passe, passée
@@ -1367,6 +1377,14 @@ class QemuDeployMixin:
             "--user",
             user or VM_USER_DEFAULT,
         ]
+        try:
+            plafond = int(max_ram or 0)
+            if plafond <= int(eram):
+                plafond = 0
+        except (TypeError, ValueError):
+            plafond = 0
+        if plafond:
+            parts += ["--max-memory", str(plafond)]
         if password_hash:
             parts += ["--password-hash", password_hash]
         if not dry_run:
@@ -1534,6 +1552,9 @@ class QemuDeployMixin:
                 else ()
             ),
             spice_usbredir=bool(spec.get("spice_usbredir")),
+            # Au niveau du déploiement, comme la 3D : un plafond pour tout le
+            # parc, ignoré pour une VM dont la RAM l'atteint déjà.
+            max_ram=spec.get("max_ram") or 0,
         )
         if sudo_n and parts[:1] == ["sudo"]:
             parts.insert(1, "-n")
@@ -2679,6 +2700,28 @@ class QemuDeployMixin:
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
         return answer or default
 
+    def _qemu_ask_max_ram(self, vms, desktop=""):
+        """Invite « RAM max (ballon) » de la CLI. Rend des Mo, 0 si vide.
+
+        Même règle que le champ du formulaire : `balloon_max`, plancher d'un
+        bureau compris. Une valeur refusée affiche la raison et repose la
+        question ; une réponse vide garde la RAM comme plafond."""
+        from script.todo.deploy_form_lib import balloon_max
+
+        aide = t(
+            "Above the RAM, the VM can grow up to it without a reboot;"
+            " the guest reserves ~1.6% of it."
+        )
+        print(f"  {aide}")
+        while True:
+            raw = input(t("RAM max (balloon), empty = RAM (e.g. 8G): "))
+            mib, erreur = balloon_max(
+                raw, vms, self.QEMU_DESKTOP_MIN_RAM_MB, desktop
+            )
+            if not erreur:
+                return mib
+            print(f"  ⚠ {erreur}")
+
     def _qemu_collect_options_cli(self, vms, res_label):
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
@@ -2854,6 +2897,8 @@ class QemuDeployMixin:
             except ValueError:
                 parallelism = default_par
 
+        max_ram = self._qemu_ask_max_ram(pending, desktop)
+
         spec = {
             "res_label": res_label,
             "vms": pending,
@@ -2882,6 +2927,8 @@ class QemuDeployMixin:
             "user": vm_user,
             "login_default": login_default,
             "keep_login_in_vm": keep_login,
+            # Plafond du ballon, en Mo ; 0 : la RAM est aussi le plafond.
+            "max_ram": max_ram,
         }
 
         # 6) Récapitulatif final, puis confirmation. Toutes les réponses

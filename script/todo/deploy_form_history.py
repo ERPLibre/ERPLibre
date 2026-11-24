@@ -83,6 +83,7 @@ FIELD_NAMES = {
     "f_git_name": "Name for git",
     "f_git_email": "Email for git",
     "f_vm_user": "VM user",
+    "f_max_ram": "RAM max (balloon)",
 }
 
 # Les champs d'une surcharge, tels que la liste les nomme.
