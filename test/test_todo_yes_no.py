@@ -13,16 +13,25 @@ l'expression. Les appels des enveloppes de WRAPPERS, qui posent leur
 question par `ui.confirm`, entrent de même, leur défaut lu sur `default=`
 au site appelant ; le `ui.confirm` d'une enveloppe n'a pas de ligne. Un
 défaut qui change, une question qui naît ou part, change la table dans le
-même commit.
+même commit. Le défaut est un booléen littéral, `typed` pour une
+confirmation tapée, ou l'état pour les seules fonctions de
+STATE_DEFAULTS.
+
+Deux gardes ferment la porte aux règles écrites hors du port : aucun
+texte ne porte d'indice oui/non hors de HINTED_TEXTS, et aucune réponse
+lue n'est comparée à un mot oui/non hors de YES_NO_COMPARES. Chaque table
+ne fait que baisser.
 """
 
 import ast
 import os
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from script.todo import auto_ask
+from script.todo.todo_i18n import TRANSLATIONS
 
 REPO = Path(__file__).resolve().parent.parent
 TODO = REPO / "script" / "todo"
@@ -32,6 +41,14 @@ PORT = TODO / "ui"
 # tout appel de ce nom ; « Classe.méthode », `self.méthode(` dans une
 # méthode de cette classe.
 WRAPPERS = {"show_and_ask", "ask_and_install", "TodoUpgrade.confirm"}
+
+# Les fonctions dont le défaut est un état qu'elles reçoivent : celui de
+# la VM, du profil VPN, ou du gel que propose l'appelant.
+STATE_DEFAULTS = {
+    "GitForkMenuMixin._git_question_gel",
+    "QemuManageMixin._qemu_ask_bool",
+    "VpnMenuMixin._vpn_ask_flag",
+}
 
 # (fichier, fonction, première clé t()) → défauts, dans l'ordre du fichier.
 CONFIRM_DEFAULTS = {
@@ -1236,6 +1253,123 @@ CONFIRM_DEFAULTS = {
     ): [True],
 }
 
+# Un indice oui/non : deux lettres de réponse séparées d'une barre, « y/N »
+# ou « [O/n] », une lettre seule entre crochets ou parenthèses, « (Y) », ou
+# un défaut nommé, « , default: N », « (défaut : non) ». « default: » suivi
+# d'une valeur qui n'est pas un oui/non n'en est pas un.
+HINT = re.compile(
+    r"\b[yo]\s*/\s*[yno]\b"
+    r"|[\[(][yo][\])]"
+    r"|[(,]\s*(?:default|défaut)\s*:\s*(?:yes|no|oui|non|[yno])\b",
+    re.IGNORECASE,
+)
+
+# Les clés de TRANSLATIONS à indice qu'aucune constante de script/ ne lit.
+DEAD_HINT_KEYS = {
+    "Add this VM to ~/.ssh/config? (y/N): ",
+    "First system installation? (Y/N)",
+    "Open Pycharm? (Y/N): ",
+    "Create the SSH key if missing and deploy it? (Y/n): ",
+    "Install libguestfs-tools now? (y/N): ",
+    "Show advanced info (vCPU, RAM, disk)? (y/N): ",
+    "Also delete the cached base images? (y/N): ",
+    "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ",
+    "No SSH key found. Set a password instead? (Y/n): ",
+    "Overwrite existing VM disk if present? (y/N): ",
+    "Press y/Y to upgrade all addons of the",
+    "Press y/Y or type filename.zip to export, or",
+    "Compare with the module source? (Y/n): ",
+    "Advanced settings (MTU, L2TP port, DNS)? (y/N)",
+}
+
+# Les textes qui portent un indice oui/non, clés de TRANSLATIONS ou
+# littéraux d'une question, chacun avec ce qui le tient hors du port. La
+# table ne fait que baisser : une question neuve passe par `ui.confirm`,
+# dont le texte ne porte pas d'indice.
+HINTED_TEXTS = {
+    "[Y/n]: ": (
+        "l'indice que le port ajoute à une confirmation, et que « Export a"
+        " backup? » (execute_odoo_upgrade, question texte) reprend pour son"
+        " propre indice"
+    ),
+    "[y/N]: ": "l'indice que le port ajoute à une confirmation",
+    "Install it now? (Y/n): ": (
+        "textual_setup.ensure, que des scripts lancés à part appellent"
+        " avec leur propre `ask`"
+    ),
+    "Create it now? (Y/n): ": (
+        "transform_setup.create et ensure, que des scripts lancés à part"
+        " appellent avec leur propre `ask`"
+    ),
+    "Type 'oui' to confirm (default: no): ": (
+        "_confirm_drop, une confirmation tapée en toutes lettres"
+    ),
+    "Run it now? [y/o/N] ": (
+        "l'amorçage de todo.py, sous le Python du système, avant que `ui`"
+        " puisse s'importer"
+    ),
+    **dict.fromkeys(DEAD_HINT_KEYS, "aucune constante de script/ ne la lit"),
+}
+
+# Les appels qui rendent une réponse tapée, et ceux qui posent une
+# question : les premiers, plus les confirmations.
+ANSWER_ASKS = {
+    "input",
+    "ui.ask",
+    "click.prompt",
+    "self.ask",
+    "self.ask_gate",
+    "auto_ask.ask",
+}
+QUESTIONS = ANSWER_ASKS | {"ui.confirm", "click.confirm", "self.confirm"}
+# Les mots d'un oui ou d'un non, que seul le port lit.
+YES_NO_WORDS = {"y", "yes", "o", "oui", "n", "no", "non"}
+# Les méthodes qui gardent une réponse lue telle qu'elle : la comparaison
+# de `réponse.strip().lower()` porte toujours sur la réponse.
+KEEPS_ANSWER = {"strip", "lstrip", "rstrip", "lower", "casefold"}
+# Les opérateurs d'une comparaison ; `startswith` en est une aussi.
+COMPARE_OPS = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
+
+# Les fonctions qui comparent une réponse lue à un mot oui/non, chacune
+# avec la raison qui la tient hors du port. La table ne fait que baisser.
+YES_NO_COMPARES = {
+    ("script/todo/database_manager.py", "_confirm_drop"): (
+        "une confirmation tapée : « oui » ou « yes » en toutes lettres"
+    ),
+    ("script/todo/qemu_deploy.py", "_qemu_collect_options_cli"): (
+        "« n » y est une valeur, le plafond des cœurs de l'hôte"
+    ),
+    ("script/todo/todo.py", "_bootstrap"): (
+        "l'amorçage, sous le Python du système, avant que `ui` puisse"
+        " s'importer"
+    ),
+    ("script/todo/todo.py", "_telemetry_tui_loop"): (
+        "une pause : « r » ou oui revient au suivi, Entrée quitte"
+    ),
+    ("script/todo/todo_upgrade.py", "execute_odoo_upgrade"): (
+        "« n » = aucun, dans la liste des modules manquants à supprimer"
+    ),
+    ("script/todo/todo_upgrade.py", "prompt_reset_stale_cow_views"): (
+        "« n » = aucune, dans la liste des vues à réinitialiser"
+    ),
+}
+
+# Des fonctions qui comparent à un mot oui/non une valeur qui n'est pas
+# une réponse lue : une sortie de commande, un champ, une unité (« o »,
+# l'octet), une lettre de l'invite. La garde ne les voit pas.
+NOT_ANSWERS = {
+    ("script/todo/assistant_menu.py", "_llm_gpt_catalogue"),
+    ("script/todo/container_runtime.py", "rootless"),
+    ("script/todo/install_non_interactif.py", "lire_reponses"),
+    ("script/todo/proxmox_deploy_form.py", "on_button_pressed"),
+    ("script/todo/qemu_access.py", "_qemu_ssh_probe_remote"),
+    ("script/todo/qemu_cache_menu.py", "_cache_humain"),
+    ("script/todo/qemu_deploy.py", "_qemu_sudo_lines"),
+    ("script/todo/qemu_hardware.py", "hw_state"),
+    ("script/todo/system_menu.py", "octets"),
+    ("script/todo/ui/legacy.py", "confirm_default"),
+}
+
 
 def _key(call) -> str:
     """La première clé `t("…")` des arguments de `call`, hors `default=`,
@@ -1329,6 +1463,178 @@ def survey() -> dict:
     return rows
 
 
+def guarded_files() -> list:
+    """Les fichiers dont les questions oui/non passent par le port :
+    `script/todo` hors de `ui/port.py`, et l'analyse de migration, que
+    TODO lance dans son propre processus."""
+    paths = [p for p in sorted(TODO.rglob("*.py")) if p != PORT / "port.py"]
+    analyse = REPO / "script" / "analyse" / "check_migration_quality_tui.py"
+    return [*paths, analyse]
+
+
+def _dotted(node) -> str:
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def hinted_literals(source) -> set:
+    """Les chaînes littérales à indice des arguments des questions
+    (QUESTIONS) de `source` : clés `t("…")` et morceaux de f-string
+    compris, une chaîne passée par un nom non."""
+    found = set()
+    for call in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(call, ast.Call) and _dotted(call.func) in QUESTIONS
+        ):
+            continue
+        for value in [*call.args, *(kw.value for kw in call.keywords)]:
+            found |= {
+                node.value
+                for node in ast.walk(value)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and HINT.search(node.value)
+            }
+    return found
+
+
+def hinted_texts() -> set:
+    """Les clés de TRANSLATIONS dont la clé ou une traduction porte un
+    indice, et les littéraux à indice des questions de guarded_files."""
+    found = {
+        key
+        for key, texts in TRANSLATIONS.items()
+        if any(HINT.search(text) for text in (key, *texts.values()))
+    }
+    for path in guarded_files():
+        found |= hinted_literals(path.read_text(encoding="utf-8"))
+    return found
+
+
+def _own_nodes(scope):
+    """Les nœuds de `scope`, une fonction ou un module, sans ceux des
+    fonctions et classes qu'il définit : chacune a ses propres noms."""
+    nested = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+    stack = [n for n in scope.body if not isinstance(n, nested)]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(
+            n for n in ast.iter_child_nodes(node) if not isinstance(n, nested)
+        )
+
+
+def _answer_of(node):
+    """`node` sans ce qui garde la réponse telle qu'elle : les méthodes de
+    KEEPS_ANSWER, l'indice `[0]`, la valeur d'un `:=`."""
+    while True:
+        func = getattr(node, "func", None)
+        if isinstance(func, ast.Attribute) and func.attr in KEEPS_ANSWER:
+            node = func.value
+        elif isinstance(node, ast.Subscript) and (
+            isinstance(node.slice, ast.Constant) and node.slice.value == 0
+        ):
+            node = node.value
+        elif isinstance(node, ast.NamedExpr):
+            node = node.value
+        else:
+            return node
+
+
+def _reads_answer(node, names) -> bool:
+    """Vrai quand `node` est une réponse lue : un appel d'ANSWER_ASKS, ou
+    un nom de `names`, au travers de _answer_of. Un `or` ou un `and` en
+    est une dès qu'une de ses valeurs l'est : `input() or "n"` rend la
+    réponse quand elle n'est pas vide."""
+    node = _answer_of(node)
+    if isinstance(node, ast.BoolOp):
+        return any(_reads_answer(value, names) for value in node.values)
+    if isinstance(node, ast.Call):
+        return _dotted(node.func) in ANSWER_ASKS
+    return isinstance(node, ast.Name) and node.id in names
+
+
+def _is_yes_no(node) -> bool:
+    """Vrai pour une constante, ou un tuple, une liste, un ensemble de
+    constantes, dont l'une est un mot de YES_NO_WORDS."""
+    items = [node]
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        items = node.elts
+    if not items or not all(isinstance(i, ast.Constant) for i in items):
+        return False
+    return any(
+        isinstance(i.value, str) and i.value.lower() in YES_NO_WORDS
+        for i in items
+    )
+
+
+def _answer_names(nodes) -> set:
+    """Les noms que `nodes` assignent depuis une réponse lue, de proche en
+    proche : `a = input()`, puis `b = a.strip()`."""
+    assigned = []
+    for node in nodes:
+        if isinstance(node, ast.Assign):
+            assigned += [(target, node.value) for target in node.targets]
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)) and node.value:
+            assigned.append((node.target, node.value))
+    names, grown = set(), True
+    while grown:
+        grown = False
+        for target, value in assigned:
+            if not isinstance(target, ast.Name) or target.id in names:
+                continue
+            if _reads_answer(value, names):
+                names.add(target.id)
+                grown = True
+    return names
+
+
+def _compared(node):
+    """Les côtés que `node` compare : ceux de `==`, `!=`, `in`, `not in`,
+    et `a.startswith(b)`, qui compare le début de `a` à `b` ; None pour
+    tout autre nœud."""
+    if isinstance(node, ast.Compare):
+        if all(isinstance(op, COMPARE_OPS) for op in node.ops):
+            return [node.left, *node.comparators]
+        return None
+    func = getattr(node, "func", None)
+    if isinstance(func, ast.Attribute) and func.attr == "startswith":
+        return [func.value, *node.args]
+    return None
+
+
+def yes_no_compares(source) -> dict:
+    """(fonction, ligne) → vrai quand la comparaison porte sur une réponse
+    lue, pour chaque comparaison de `source` (_compared) dont un côté est
+    un mot oui/non (_is_yes_no). Une réponse lue : un appel
+    d'ANSWER_ASKS, ou un nom que la MÊME fonction en assigne ; un
+    paramètre n'en est pas une, il porte une valeur lue ailleurs. Le code
+    hors de toute fonction compte sous `<module>`."""
+    tree = ast.parse(source)
+    scopes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    found = {}
+    for scope in [tree, *scopes]:
+        nodes = list(_own_nodes(scope))
+        names = _answer_names(nodes)
+        for node in nodes:
+            sides = _compared(node) or []
+            if any(_is_yes_no(side) for side in sides):
+                where = getattr(scope, "name", "<module>")
+                found[(where, node.lineno)] = any(
+                    _reads_answer(side, names) for side in sides
+                )
+    return found
+
+
 SAMPLE = """
 def wipe(name, state):
     ui.confirm(t("Delete it?"), default=False)
@@ -1375,7 +1681,201 @@ class TestConfirmDefaults(unittest.TestCase):
         )
 
     def test_every_confirm_states_its_default(self):
-        self.assertEqual(survey(), CONFIRM_DEFAULTS)
+        rows = survey()
+        self.assertEqual(rows, CONFIRM_DEFAULTS)
+        for (_path, where, key), defaults in rows.items():
+            with self.subTest(where=where, key=key):
+                self.assertIsNone(HINT.search(key), "the port writes it")
+                if where in STATE_DEFAULTS:
+                    self.assertEqual(set(defaults), {"état"})
+                    continue
+                self.assertTrue(
+                    all(d == "typed" or type(d) is bool for d in defaults),
+                    f"{defaults}: say True or False",
+                )
+
+
+HINTS = """
+def ask(self, name):
+    ui.confirm(t("Wipe it? (y/N): "), default=False)
+    ui.ask(f"{name} " + t("Keep it, default: yes"))
+    input("Go? [o/N] ")
+    self.ask_gate(t("Purge? (Y/n, b, t)"), default="y")
+    click.prompt(t("Depth (1 = these only, default:"))
+    print(t("Shown, not asked (y/N)"))
+    hint = "(y/N)"
+    input(t("Asked through a name") + hint)
+"""
+
+# Le code où la garde des comparaisons lit chaque forme : `a`, réponse lue
+# en clair, épluchée, par `:=`, avec un défaut par `or`, ou l'appel
+# lui-même, comparée ou par `startswith` ; un paramètre, une valeur qui
+# n'est pas lue, un autre mot et une fonction imbriquée non.
+COMPARES = """
+x = input("?")
+x == "n"
+
+def plain():
+    a = input("?")
+    a == "y"
+
+def peeled(self):
+    a = self.ask("?").strip().lower()
+    b = a.strip()
+    b in ("o", "oui")
+
+def first(self):
+    self.ask_gate("?")[0] != "n"
+
+def walrus():
+    if (a := click.prompt("?")) not in {"yes", "r"}:
+        pass
+
+def listed():
+    a = ui.ask("?")
+    a.lower() in ["non"]
+
+def auto():
+    auto_ask.ask("?", "y") == "yes"
+
+def defaulted():
+    a = (input("?") or "n").strip().lower()
+    a in ("y", "o")
+
+def prefixed(self):
+    a = self.ask("?")
+    a.lower().startswith(("y", "o"))
+
+def parameter(answer):
+    answer == "y"
+
+def value(sortie):
+    unite = sortie.split()[0]
+    unite == "o"
+    sortie.startswith("n")
+
+def other_word():
+    a = input("?")
+    a == "a"
+
+def nested():
+    a = input("?")
+    def inner():
+        a == "y"
+"""
+
+
+class TestYesNoGuards(unittest.TestCase):
+    def test_the_hint_reads_each_form(self):
+        hinted = [
+            "Wipe it? (y/N): ",
+            "Go? [O/n] : ",
+            "Purge? (Y/n, b, t)",
+            "Run it now? [y/o/N] ",
+            "Install it (Y)",
+            "Press y/Y to go on",
+            "Keep it, default: N",
+            "Type it (default: no): ",
+            "Le garder (o/N, défaut : non) : ",
+        ]
+        for text in hinted:
+            with self.subTest(text=text):
+                self.assertIsNotNone(HINT.search(text))
+        plain = [
+            "Depth (1 = these machines only, default:",
+            "Port (default: 8069): ",
+            "TCP/IP",
+            "Enter = all, n = none",
+            "[n] limit to host cores",
+            "Option (a)",
+        ]
+        for text in plain:
+            with self.subTest(text=text):
+                self.assertIsNone(HINT.search(text))
+
+    def test_the_hint_is_read_in_what_a_question_is_given(self):
+        self.assertEqual(
+            hinted_literals(HINTS),
+            {
+                "Wipe it? (y/N): ",
+                "Keep it, default: yes",
+                "Go? [o/N] ",
+                "Purge? (Y/n, b, t)",
+            },
+        )
+
+    def test_no_text_carries_a_yes_no_hint(self):
+        found, listed = hinted_texts(), set(HINTED_TEXTS)
+        self.assertEqual(
+            sorted(found - listed), [], "ask through ui.confirm, it hints"
+        )
+        self.assertEqual(
+            sorted(listed - found), [], "remove these from HINTED_TEXTS"
+        )
+
+    def test_the_dead_hint_keys_are_read_by_no_constant(self):
+        read = set()
+        for path in sorted((REPO / "script").rglob("*.py")):
+            if path == TODO / "todo_i18n.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            read |= {
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant)
+                and node.value in DEAD_HINT_KEYS
+            }
+        self.assertEqual(sorted(read), [])
+        self.assertLessEqual(DEAD_HINT_KEYS, set(TRANSLATIONS))
+
+    def test_the_compare_guard_reads_each_form(self):
+        by_scope = {}
+        for (where, _line), reads in yes_no_compares(COMPARES).items():
+            by_scope.setdefault(where, set()).add(reads)
+        self.assertEqual(
+            by_scope,
+            {
+                "<module>": {True},
+                "plain": {True},
+                "peeled": {True},
+                "first": {True},
+                "walrus": {True},
+                "listed": {True},
+                "auto": {True},
+                "defaulted": {True},
+                "prefixed": {True},
+                "parameter": {False},
+                "value": {False},
+                "inner": {False},
+            },
+        )
+
+    def test_no_answer_is_compared_to_yes_or_no(self):
+        found = set()
+        for path in guarded_files():
+            rel = path.relative_to(REPO).as_posix()
+            compares = yes_no_compares(path.read_text(encoding="utf-8"))
+            found |= {
+                (rel, where) for (where, _), read in compares.items() if read
+            }
+        listed = set(YES_NO_COMPARES)
+        self.assertEqual(
+            sorted(found - listed), [], "ask through ui.confirm instead"
+        )
+        self.assertEqual(
+            sorted(listed - found), [], "remove these from YES_NO_COMPARES"
+        )
+
+    def test_values_that_are_not_answers_are_not_seen(self):
+        for rel, function in sorted(NOT_ANSWERS):
+            with self.subTest(rel=rel, function=function):
+                source = (REPO / rel).read_text(encoding="utf-8")
+                reads = {
+                    read
+                    for (where, _), read in yes_no_compares(source).items()
+                    if where == function
+                }
+                self.assertEqual(reads, {False})
 
 
 class TestCountdownOnlyInAutoMode(unittest.TestCase):

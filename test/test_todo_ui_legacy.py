@@ -170,7 +170,7 @@ NUMBERED_LOOPS = {
 FIXED_ENTRY = re.compile(r"\[([0-9A-Za-z])\]")
 # Les questions d'une boucle de menu : celles de ASKS, et celles de
 # script.todo.ui, où RAW_CALLS envoie toute question neuve.
-LOOP_ASKS = ASKS | {"ui.ask", "ui.menu", "ui.choose"}
+LOOP_ASKS = ASKS | {"ui.ask", "ui.menu", "ui.choose", "ui.confirm"}
 # Les comparaisons qui égalent une réponse à un numéro.
 MATCHES = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
 
