@@ -24,6 +24,7 @@ sys.path.append(
 
 from script.analyse import check_migration_quality as quality  # noqa: E402
 from script.todo import migration_status as status  # noqa: E402
+from script.todo import ui  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -724,23 +725,6 @@ def read_run_log(chemin, limite=4000):
     return lst[-limite:], len(lst)
 
 
-def ask_yes(question, defaut=True):
-    """Poser une question fermée dans le terminal rendu. Entrée = défaut.
-
-    `input()` et non une boîte de dialogue : on est DÉJÀ sorti de l'écran
-    quand la question se pose, et y rentrer pour un oui/non ferait
-    clignoter tout l'affichage entre deux commandes.
-    """
-    suffixe = " [O/n] " if defaut else " [o/N] "
-    try:
-        reponse = input(question + suffixe).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return False
-    if not reponse:
-        return defaut
-    return reponse[0] in ("o", "y")
-
-
 def run_with_switch(command, switch, wait=True, capture=None):
     """Lancer, en proposant d'abord de basculer le checkout s'il le faut.
 
@@ -751,6 +735,8 @@ def run_with_switch(command, switch, wait=True, capture=None):
 
     On DEMANDE au lieu de basculer d'office : `make switch_odoo_16` change
     le checkout entier, et quelqu'un peut être en train d'y travailler.
+    Ctrl+C, à une question ou pendant la bascule, abandonne sans rien
+    lancer de plus : il fermerait sinon l'écran suspendu entier.
     """
     if switch:
         version, cible = switch
@@ -768,14 +754,27 @@ def run_with_switch(command, switch, wait=True, capture=None):
             f"  {t('opening it with the wrong version writes before it fails.')}"
         )
         print()
-        if not ask_yes(f"  {t('run')} « make {cible} » {t('first?')}"):
-            print(f"  {t('left as is — the test will refuse and return 2.')}")
-        else:
-            code, _tourne = run_in_terminal(f"make {cible}", wait=False)
-            if code:
-                print(status.paint(f"  ✗ make {cible} → {code}", "fail", True))
-                if not ask_yes(f"  {t('run the test anyway?')}", defaut=False):
-                    return None, False
+        try:
+            if not ui.confirm(
+                f"  {t('run')} « make {cible} » {t('first?')}", default=True
+            ):
+                print(
+                    f"  {t('left as is — the test will refuse and return 2.')}"
+                )
+            else:
+                code, _tourne = run_in_terminal(f"make {cible}", wait=False)
+                if code:
+                    print(
+                        status.paint(
+                            f"  ✗ make {cible} → {code}", "fail", True
+                        )
+                    )
+                    if not ui.confirm(
+                        f"  {t('run the test anyway?')}", default=False
+                    ):
+                        return None, False
+        except KeyboardInterrupt:
+            return None, False
     return run_in_terminal(command, wait=wait, capture=capture)
 
 

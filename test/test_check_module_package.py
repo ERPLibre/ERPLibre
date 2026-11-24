@@ -663,13 +663,10 @@ class TestTheInstallOffer(unittest.TestCase):
 
     def setUp(self):
         from script.odoo.migration import database_cleanup
-        from script.todo import auto_ask
         from script.todo import todo as todo_module
 
         self.cleanup = database_cleanup
-        self.auto_ask = auto_ask
         self.vraie_garde = database_cleanup.require_matching_version
-        self.vrai_ask = auto_ask.ask
         database_cleanup.require_matching_version = lambda base: None
 
         self.lancees = []
@@ -686,35 +683,42 @@ class TestTheInstallOffer(unittest.TestCase):
 
     def tearDown(self):
         self.cleanup.require_matching_version = self.vraie_garde
-        self.auto_ask.ask = self.vrai_ask
+
+    def entrees(self, reponses=(), liste=()):
+        """Un double d'`input` : une invite qui finit par l'indice oui/non
+        reçoit la réponse suivante de `reponses`, et s'ajoute à
+        `self.demandes` ; toute autre, celle de `liste`. `self.lues` garde
+        chaque invite. Une réponse qui est une exception est levée ;
+        au-delà de la dernière, Ctrl+D."""
+        oui_non, choix = list(reponses), list(liste)
+        self.demandes, self.lues = [], []
+
+        def faux_input(invite=""):
+            self.lues.append(invite)
+            file = choix
+            if invite.endswith(todo_i18n.t("[y/N]: ")):
+                self.demandes.append(invite)
+                file = oui_non
+            if not file:
+                raise EOFError
+            reponse = file.pop(0)
+            if isinstance(reponse, BaseException):
+                raise reponse
+            return reponse
+
+        return patch("builtins.input", faux_input)
 
     def joue(self, *reponses, liste=()):
         """Rendre TOUT ce que l'utilisateur voit : sortie ET invites.
 
         Les deux questions oui/non reçoivent `reponses`, et la liste des
-        modules, un choix qui lit par `input`, reçoit `liste`. Le texte
-        d'une question oui/non ne passe pas par stdout — il est l'argument
-        de `ask`, qu'un vrai `input()` affiche. Ne regarder que stdout
-        laisserait une invite muette passer pour correcte.
+        modules, un choix, reçoit `liste` ; les trois lisent par `input`.
+        Le texte d'une question oui/non ne passe pas par stdout — il est
+        l'invite d'`input`, qu'un vrai `input()` affiche. Ne regarder que
+        stdout laisserait une invite muette passer pour correcte.
         """
-        file = list(reponses)
-        self.demandes = []
-
-        def faux_ask(prompt, default="", seconds=None):
-            # Le VRAI `ask` rend le défaut quand la réponse est vide. Un
-            # faux qui rend la chaîne vide telle quelle ne teste pas le
-            # défaut du tout : basculer celui de « n » à « y » passerait
-            # alors inaperçu, et Entrée installerait.
-            self.demandes.append(prompt)
-            reponse = file.pop(0) if file else ""
-            return reponse or default
-
-        self.auto_ask.ask = faux_ask
         tampon = io.StringIO()
-        with (
-            patch("builtins.input", side_effect=list(liste)),
-            redirect_stdout(tampon),
-        ):
+        with self.entrees(reponses, liste), redirect_stdout(tampon):
             self.obj._analyse_offer_install("ma_base", self.RAPPORT)
         return tampon.getvalue() + "\n".join(self.demandes)
 
@@ -803,22 +807,14 @@ class TestTheInstallOffer(unittest.TestCase):
         # Un Odoo 18 lancé sur une base 12 la RÉÉCRIT avant d'échouer :
         # ce refus doit précéder la moindre question.
         self.cleanup.require_matching_version = lambda base: "18.0 vs 12.0"
-        demandes = []
-        self.auto_ask.ask = lambda p, default="", seconds=None: (
-            demandes.append(p) or "y"
-        )
         tampon = io.StringIO()
-        with redirect_stdout(tampon):
+        with self.entrees(["y", "y"], ["1"]), redirect_stdout(tampon):
             self.obj._analyse_offer_install("ma_base", self.RAPPORT)
         self.assertEqual(self.lancees, [])
-        self.assertEqual(demandes, [])
+        self.assertEqual(self.lues, [])
         self.assertIn("18.0 vs 12.0", tampon.getvalue())
 
     def test_nothing_installable_asks_nothing_at_all(self):
-        demandes = []
-        self.auto_ask.ask = lambda p, default="", seconds=None: (
-            demandes.append(p) or "y"
-        )
         rien = {
             "lines": [
                 {
@@ -831,9 +827,9 @@ class TestTheInstallOffer(unittest.TestCase):
                 }
             ]
         }
-        with redirect_stdout(io.StringIO()):
+        with self.entrees(["y", "y"], ["1"]), redirect_stdout(io.StringIO()):
             self.obj._analyse_offer_install("ma_base", rien)
-        self.assertEqual(demandes, [])
+        self.assertEqual(self.lues, [])
         self.assertEqual(self.lancees, [])
 
     def test_it_says_how_many_it_could_not_offer(self):

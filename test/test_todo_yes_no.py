@@ -868,6 +868,16 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/todo.py",
+        "TODO._analyse_offer_install",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._analyse_offer_install",
+        "Go ahead?",
+    ): [False],
+    (
+        "script/todo/todo.py",
         "TODO._claude_install_preferred_plugins",
         "Install these plugins?",
     ): [False],
@@ -918,8 +928,24 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/todo.py",
+        "TODO._filestore_purge_dead",
+        "<dynamique>",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._filestore_tidy_nested",
+        "Go ahead?",
+    ): [False],
+    (
+        "script/todo/todo.py",
         "TODO._git_install_hooks",
         "Replace it?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._image_db_choose_version",
+        "The images are generated with the active Odoo: switch to"
+        " Odoo %s now (make switch_odoo_%s)?",
     ): [False],
     (
         "script/todo/todo.py",
@@ -936,6 +962,26 @@ CONFIRM_DEFAULTS = {
         "TODO._list_claude_commands",
         "Show the differences?",
     ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._monitoring_anonymize_options",
+        "Anonymise the logins too?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._monitoring_anonymize_options",
+        "Keep the digit count?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO._monitoring_image_name",
+        "db_restore only reads image_db/. Link it there (%s)?",
+    ): [True],
+    (
+        "script/todo/todo.py",
+        "TODO._monitoring_restore",
+        "Neutralize the database?",
+    ): [True],
     (
         "script/todo/todo.py",
         "TODO._proposer_identite_git",
@@ -976,6 +1022,41 @@ CONFIRM_DEFAULTS = {
         "TODO._virt_manager_offer",
         "Add the missing connections to virt-manager?",
     ): [True],
+    (
+        "script/todo/todo.py",
+        "TODO.callback_make_mobile_home",
+        "Android Studio is needed: change the menu picture?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.callback_make_mobile_home",
+        "Compile with debug information?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.callback_make_mobile_home",
+        "Do you want to personalize the mobile application?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.callback_make_mobile_home",
+        "mobile_lan_cleartext_ask",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.execute_test_module",
+        "Keep the temporary database?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.upgrade_poetry",
+        "Install the new dependencies in the Odoo venv now?",
+    ): [False],
+    (
+        "script/todo/todo.py",
+        "TODO.upgrade_poetry",
+        "The update needs your git repositories: fetch them all first?",
+    ): [False],
     (
         "script/todo/todo_install.py",
         "run_steps",

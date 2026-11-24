@@ -19,6 +19,7 @@ import tempfile
 import unittest
 import zipfile
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -509,11 +510,8 @@ class TestTheRepairMenu(unittest.TestCase):
     """
 
     def setUp(self):
-        from script.todo import auto_ask
         from script.todo import todo as todo_module
 
-        self.auto_ask = auto_ask
-        self.vrai_ask = auto_ask.ask
         self.lancees = []
         self.obj = todo_module.TODO.__new__(todo_module.TODO)
 
@@ -525,17 +523,22 @@ class TestTheRepairMenu(unittest.TestCase):
 
         self.obj.execute = type("E", (), {"exec_command_live": faux_exec})()
 
-    def tearDown(self):
-        self.auto_ask.ask = self.vrai_ask
-
     def repond(self, *reponses):
+        """Les réponses aux questions oui/non, lues par `input` ; chaque
+        invite lue s'ajoute à `self.demandes`, et Ctrl+D suit la
+        dernière réponse."""
         file = list(reponses)
+        self.demandes = []
 
-        def faux(prompt, default="", seconds=None):
-            reponse = file.pop(0) if file else ""
-            return reponse or default
+        def faux(invite=""):
+            self.demandes.append(invite)
+            if not file:
+                raise EOFError
+            return file.pop(0)
 
-        self.auto_ask.ask = faux
+        patcher = patch("builtins.input", faux)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def rapport(self, morts=(), ids=()):
         groupes = {v: [] for v in fs.VERDICTS}
@@ -570,13 +573,10 @@ class TestTheRepairMenu(unittest.TestCase):
         self.assertIn("WHERE id IN (3)", self.lancees[0])
 
     def test_nothing_dead_asks_nothing(self):
-        demandes = []
-        self.auto_ask.ask = lambda p, default="", seconds=None: (
-            demandes.append(p) or "y"
-        )
+        self.repond("y")
         with redirect_stdout(io.StringIO()):
             self.obj._filestore_purge_dead("db", self.rapport())
-        self.assertEqual(demandes, [])
+        self.assertEqual(self.demandes, [])
         self.assertEqual(self.lancees, [])
 
     def test_the_menu_offers_both_repairs(self):
@@ -591,7 +591,10 @@ class TestTheRepairMenu(unittest.TestCase):
         self.assertIn("_filestore_tidy_nested", src)
         # Le garde du défaut doit rester collé à la question : c'est lui
         # qui empêche Entrée de supprimer.
-        self.assertIn('auto_ask.ask(question, default="n")', src)
+        self.assertIn(
+            "ui.confirm(question, default=False, timeout=auto_ask.seconds())",
+            src,
+        )
 
     def test_a_delete_that_changed_nothing_is_NOT_a_success(self):
         # « DELETE 0 » se félicitait d'avoir supprimé. Rejouer une purge
@@ -717,11 +720,8 @@ class TestTheReportIsRereadAfterARepair(unittest.TestCase):
 
 class TestTidyingForReal(unittest.TestCase):
     def setUp(self):
-        from script.todo import auto_ask
         from script.todo import todo as todo_module
 
-        self.auto_ask = auto_ask
-        self.vrai_ask = auto_ask.ask
         self.racine = tempfile.mkdtemp()
         self.base = os.path.join(self.racine, "ma_base")
         for chemin, contenu in (
@@ -736,12 +736,13 @@ class TestTidyingForReal(unittest.TestCase):
         self.obj = todo_module.TODO.__new__(todo_module.TODO)
 
     def tearDown(self):
-        self.auto_ask.ask = self.vrai_ask
         shutil.rmtree(self.racine, ignore_errors=True)
 
     def test_refusing_leaves_every_file_where_it_was(self):
-        self.auto_ask.ask = lambda p, default="", seconds=None: "n"
-        with redirect_stdout(io.StringIO()):
+        with (
+            patch("builtins.input", return_value="n"),
+            redirect_stdout(io.StringIO()),
+        ):
             self.obj._filestore_tidy_nested({"root": self.base})
         self.assertTrue(
             os.path.isfile(
@@ -750,8 +751,10 @@ class TestTidyingForReal(unittest.TestCase):
         )
 
     def test_accepting_moves_up_and_removes_the_nest(self):
-        self.auto_ask.ask = lambda p, default="", seconds=None: "y"
-        with redirect_stdout(io.StringIO()):
+        with (
+            patch("builtins.input", return_value="y"),
+            redirect_stdout(io.StringIO()),
+        ):
             self.obj._filestore_tidy_nested({"root": self.base})
         self.assertTrue(
             os.path.isfile(os.path.join(self.base, "bb", "absent"))

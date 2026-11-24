@@ -4902,14 +4902,10 @@ class TODO(
         for texte in filestore.summarise(lignes):
             print(f"   {texte}")
         question = (
-            f"💬 {t('Delete these')} {len(lignes)}"
-            f" {t('attachment row(s) for good?')} (y/N) : "
+            f"{t('Delete these')} {len(lignes)}"
+            f" {t('attachment row(s) for good?')}"
         )
-        if auto_ask.ask(question, default="n").strip().lower() not in (
-            "y",
-            "yes",
-            "o",
-        ):
+        if not ui.confirm(question, default=False, timeout=auto_ask.seconds()):
             print(f"ℹ️  {t('Nothing was deleted.')}")
             return False
         status, sortie = self.execute.exec_command_live(
@@ -4949,9 +4945,9 @@ class TODO(
         print(f"   {len(remonter)} {t('file(s) to move up')}")
         print(f"   {len(doublons)} {t('pure duplicate(s) to delete')}")
         print(f"   {t('Directory:')} {filestore.nested_dir(rapport)}")
-        if auto_ask.ask(
-            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
-        ).strip().lower() not in ("y", "yes", "o"):
+        if not ui.confirm(
+            t("Go ahead?"), default=False, timeout=auto_ask.seconds()
+        ):
             print(f"ℹ️  {t('Nothing was moved.')}")
             return False
         deplaces, effaces = 0, 0
@@ -5005,15 +5001,10 @@ class TODO(
         print()
         detail = f" ({autres} {t('need repair first')})" if autres else ""
         question = (
-            f"💬 {t('Install some of the')} {len(candidats)}"
+            f"{t('Install some of the')} {len(candidats)}"
             f" {t('suggested module(s) waiting in this database?')}{detail}"
-            f" (y/N) : "
         )
-        if auto_ask.ask(question, default="n").strip().lower() not in (
-            "y",
-            "yes",
-            "o",
-        ):
+        if not ui.confirm(question, default=False, timeout=auto_ask.seconds()):
             return
 
         print()
@@ -5031,9 +5022,9 @@ class TODO(
         print()
         print(f"   {t('About to install into')} {database} :")
         print(f"       {', '.join(choisis)}")
-        if auto_ask.ask(
-            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
-        ).strip().lower() not in ("y", "yes", "o"):
+        if not ui.confirm(
+            t("Go ahead?"), default=False, timeout=auto_ask.seconds()
+        ):
             print(f"ℹ️  {t('Nothing selected.')}")
             return
         self.execute.exec_command_live(
@@ -5509,14 +5500,14 @@ class TODO(
         # Les logins RESTENT par défaut : on anonymise pour pouvoir
         # partager une copie UTILISABLE, et tout randomiser empêcherait
         # quiconque de s'y connecter.
-        if self._is_yes(input(f"💬 {t('Anonymise the logins too? (y/N): ')}")):
+        if ui.confirm(t("Anonymise the logins too?"), default=False):
             extra.append("--include-logins")
         # Le calibre échange une garantie contre une autre : l'étendue
         # mesurée protège les bornes que le CODE d'Odoo impose — une heure
         # de la journée, une probabilité — et la largeur sert un export
         # relu à l'œil. L'invite le dit avant de demander.
         print(f"   {t('Keeping the digit count drops the measured extent.')}")
-        if self._is_yes(input(f"💬 {t('Keep the digit count? (y/N): ')}")):
+        if ui.confirm(t("Keep the digit count?"), default=False):
             extra.append("--keep-digits")
         mots = input(
             f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
@@ -5653,7 +5644,7 @@ class TODO(
         aucune trace : `database.is_neutralized` absent, des crons encore
         actifs, un domaine de courriel toujours en place. Poser la question,
         recevoir oui et ne rien vérifier reproduit exactement cette illusion
-        — on relit donc la base.
+        — on relit donc la base. Ctrl+D à cette question ne restaure rien.
         """
         from script.analyse import monitoring
 
@@ -5666,13 +5657,13 @@ class TODO(
         ).strip()
         database = database or defaut
 
-        neutralise = (
-            input(f"💬 {t('Neutralize the database (Y/n, default: Y)? ')}")
-            .strip()
-            .lower()
+        neutralise = ui.confirm(
+            t("Neutralize the database?"), default=True, back=True
         )
+        if neutralise is None:
+            return None
         more_arg = ""
-        if neutralise != "n":
+        if neutralise:
             more_arg = "--neutralize "
             database += "_neutralize"
         else:
@@ -5737,15 +5728,10 @@ class TODO(
         if os.path.exists(cible):
             print(f"ℹ️  {t('Using the file already in image_db: ')}{cible}")
             return nom
-        answer = (
-            input(
-                f"💬 {t('db_restore only reads image_db/. Link it there')}"
-                f" ({cible}) (Y/n)? "
-            )
-            .strip()
-            .lower()
-        )
-        if answer == "n":
+        if not ui.confirm(
+            t("db_restore only reads image_db/. Link it there (%s)?") % cible,
+            default=True,
+        ):
             return None
         try:
             os.makedirs(image_db, exist_ok=True)
@@ -5855,14 +5841,13 @@ class TODO(
             )
             return None
         majeure = version.split(".")[0]
-        if not self._is_yes(
-            input(
-                t(
-                    "The images are generated with the active Odoo: switch to"
-                    " Odoo %s now (make switch_odoo_%s)? [y/N] "
-                )
-                % (version, majeure)
+        if not ui.confirm(
+            t(
+                "The images are generated with the active Odoo: switch to"
+                " Odoo %s now (make switch_odoo_%s)?"
             )
+            % (version, majeure),
+            default=False,
         ):
             return None
         status = self.execute.exec_command_live(
@@ -6279,10 +6264,12 @@ class TODO(
         else:
             print(f"\n❌ {t('Tests failed with return code')} {status_code}")
 
-        # Step 4: Cleanup
-        keep_input = input(t("Keep the temporary database? (y/N): "))
-        keep = self._is_yes(keep_input)
-        if keep:
+        # Step 4: Cleanup. Entrée et « non » effacent la base que cette
+        # action vient de créer ; Ctrl+D (None) la garde.
+        keep = ui.confirm(
+            t("Keep the temporary database?"), default=False, back=True
+        )
+        if keep is not False:
             print(f"{t('Database kept')}: {db_name}")
         else:
             print(
@@ -6584,10 +6571,10 @@ class TODO(
             source_erplibre=False,
         )
         # TODO maybe autodetect to update it
-        git_repo_update_input = input(
-            "💬 Would you like to fetch all your git repositories, you need it (y/Y) : "
-        )
-        if self._is_yes(git_repo_update_input):
+        if ui.confirm(
+            t("The update needs your git repositories: fetch them all first?"),
+            default=False,
+        ):
             status = self.execute.exec_command_live(
                 f"./script/manifest/update_manifest_local_dev.sh",
                 source_erplibre=False,
@@ -6612,10 +6599,9 @@ class TODO(
             print(t("The Poetry update failed: the venv is left unchanged."))
             return
         # Le nouveau verrou n'est pas encore dans le venv d'Odoo.
-        if self._is_yes(
-            input(
-                t("Install the new dependencies in the Odoo venv now? [y/N] ")
-            )
+        if ui.confirm(
+            t("Install the new dependencies in the Odoo venv now?"),
+            default=False,
         ):
             self.execute.exec_command_live(
                 "EL_PHASE=poetry ./script/install/install_locally.sh",
@@ -6729,10 +6715,10 @@ class TODO(
         do_debug = default_debug
         do_change_picture_menu = False
 
-        do_personalize = input(
-            "Do you want to personalize the mobile application (Y) : "
-        )
-        if self._is_yes(do_personalize):
+        if ui.confirm(
+            t("Do you want to personalize the mobile application?"),
+            default=False,
+        ):
             project_name = (
                 input(
                     f'Your project name (Separate by space in title), default "{default_project_name}" : '
@@ -6757,14 +6743,12 @@ class TODO(
                 ).strip()
                 or default_project_note_subject
             )
-            do_debug = self._is_yes(
-                input("Compilation with debug information, default No (Y) : ")
+            do_debug = ui.confirm(
+                t("Compile with debug information?"), default=False
             )
-            do_change_picture_menu = self._is_yes(
-                input(
-                    "Want to change picture from menu, you need"
-                    " android-studio (Y) : "
-                )
+            do_change_picture_menu = ui.confirm(
+                t("Android Studio is needed: change the menu picture?"),
+                default=False,
             )
 
         # Rename with script bash
@@ -6819,7 +6803,9 @@ class TODO(
         # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
         # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
         print(t("mobile_lan_cleartext_warning"))
-        do_lan_cleartext = self._is_yes(input(t("mobile_lan_cleartext_ask")))
+        do_lan_cleartext = ui.confirm(
+            t("mobile_lan_cleartext_ask"), default=False
+        )
         commande = "./mobile/compile_and_run.sh"
         if do_lan_cleartext:
             commande += " --lan-cleartext"

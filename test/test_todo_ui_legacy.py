@@ -120,7 +120,7 @@ RAW_PROMPTS = {
     "getpass.getpass",
 }
 RAW_CALLS = {
-    "script/analyse/check_migration_quality_tui.py": 2,
+    "script/analyse/check_migration_quality_tui.py": 1,
     "script/odoo/migration/check_stale_scss.py": 1,
     "script/odoo/migration/smoke_public_url.py": 1,
     "script/qemu/deploy_qemu.py": 3,
@@ -145,7 +145,7 @@ RAW_CALLS = {
     "script/todo/seal_menu.py": 6,
     "script/todo/sms/menu.py": 2,
     "script/todo/sms/tui.py": 1,
-    "script/todo/todo.py": 68,
+    "script/todo/todo.py": 56,
     "script/todo/todo_upgrade.py": 2,
     "script/todo/transform_menu.py": 3,
     "script/todo/ui/navigator.py": 1,

@@ -336,9 +336,13 @@ TRANSLATIONS = {
         "fr": "La mise à jour Poetry a échoué : le venv reste tel quel.",
         "en": "The Poetry update failed: the venv is left unchanged.",
     },
-    "Install the new dependencies in the Odoo venv now? [y/N] ": {
-        "fr": "Installer maintenant les nouvelles dépendances dans le venv d'Odoo ? [o/N] ",
-        "en": "Install the new dependencies in the Odoo venv now? [y/N] ",
+    "Install the new dependencies in the Odoo venv now?": {
+        "fr": "Installer maintenant les nouvelles dépendances dans le venv d'Odoo ?",
+        "en": "Install the new dependencies in the Odoo venv now?",
+    },
+    "The update needs your git repositories: fetch them all first?": {
+        "fr": "La mise à jour a besoin de vos dépôts git : les récupérer tous d'abord ?",
+        "en": "The update needs your git repositories: fetch them all first?",
     },
     "To install them later: %s": {
         "fr": "Pour les installer plus tard : %s",
@@ -348,9 +352,9 @@ TRANSLATIONS = {
         "fr": "Odoo %s n'est pas installé : installez-le d'abord (TODO › Installation).",
         "en": "Odoo %s is not installed: install it first (TODO › Installation).",
     },
-    "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)? [y/N] ": {
-        "fr": "Les images se génèrent avec l'Odoo actif : passer à Odoo %s maintenant (make switch_odoo_%s) ? [o/N] ",
-        "en": "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)? [y/N] ",
+    "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)?": {
+        "fr": "Les images se génèrent avec l'Odoo actif : passer à Odoo %s maintenant (make switch_odoo_%s) ?",
+        "en": "The images are generated with the active Odoo: switch to Odoo %s now (make switch_odoo_%s)?",
     },
     "GNU parallel is missing: install the « parallel » package.": {
         "fr": "GNU parallel manque : installez le paquet « parallel ».",
@@ -2096,8 +2100,20 @@ TRANSLATIONS = {
         ),
     },
     "mobile_lan_cleartext_ask": {
-        "fr": "APK de demonstration, HTTP en clair tolere, defaut Non (Y) : ",
-        "en": "Demonstration APK, plain HTTP tolerated, default No (Y): ",
+        "fr": "APK de demonstration, HTTP en clair tolere ?",
+        "en": "Demonstration APK, plain HTTP tolerated?",
+    },
+    "Do you want to personalize the mobile application?": {
+        "fr": "Personnaliser l'application mobile ?",
+        "en": "Do you want to personalize the mobile application?",
+    },
+    "Compile with debug information?": {
+        "fr": "Compiler avec les informations de débogage ?",
+        "en": "Compile with debug information?",
+    },
+    "Android Studio is needed: change the menu picture?": {
+        "fr": "Il faut Android Studio : changer l'image du menu ?",
+        "en": "Android Studio is needed: change the menu picture?",
     },
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
@@ -2277,9 +2293,9 @@ TRANSLATIONS = {
         "fr": "Suppression de la base de données temporaire",
         "en": "Cleaning up temporary database",
     },
-    "Keep the temporary database? (y/N): ": {
-        "fr": "Conserver la base de données temporaire? (o/N, défaut : non) : ",
-        "en": "Keep the temporary database? (y/N, default: no): ",
+    "Keep the temporary database?": {
+        "fr": "Conserver la base de données temporaire ?",
+        "en": "Keep the temporary database?",
     },
     "Database kept": {
         "fr": "Base de données conservée",
@@ -18987,10 +19003,6 @@ TRANSLATIONS = {
         "fr": "Nom de la base (défaut=",
         "en": "Database name (default=",
     },
-    "Neutralize the database (Y/n, default: Y)? ": {
-        "fr": "Neutraliser la base (O/n, défaut : O) ? ",
-        "en": "Neutralize the database (Y/n, default: Y)? ",
-    },
     "Neutralize the database?": {
         "fr": "Neutraliser la base ?",
         "en": "Neutralize the database?",
@@ -19047,9 +19059,9 @@ TRANSLATIONS = {
         "fr": "Le téléchargement n'a pas produit de fichier utilisable.",
         "en": "The download did not produce a usable file.",
     },
-    "db_restore only reads image_db/. Link it there": {
-        "fr": "db_restore ne lit que image_db/. Y poser un lien",
-        "en": "db_restore only reads image_db/. Link it there",
+    "db_restore only reads image_db/. Link it there (%s)?": {
+        "fr": "db_restore ne lit que image_db/. Y poser un lien (%s) ?",
+        "en": "db_restore only reads image_db/. Link it there (%s)?",
     },
     "Using the file already in image_db: ": {
         "fr": "On prend le fichier déjà dans image_db : ",
@@ -20888,9 +20900,9 @@ TRANSLATIONS = {
         "fr": "Pris tel quel :",
         "en": "Taken as given:",
     },
-    "Anonymise the logins too? (y/N): ": {
-        "fr": "Anonymiser aussi les identifiants de connexion ? (o/N) : ",
-        "en": "Anonymise the logins too? (y/N): ",
+    "Anonymise the logins too?": {
+        "fr": "Anonymiser aussi les identifiants de connexion ?",
+        "en": "Anonymise the logins too?",
     },
     "Keeping the digit count drops the measured extent.": {
         "fr": "Garder le nombre de chiffres abandonne l'étendue mesurée.",
@@ -21176,10 +21188,6 @@ TRANSLATIONS = {
     "left in clear, numeric and unique:": {
         "fr": "laissée(s) en clair, numérique(s) et unique(s) :",
         "en": "left in clear, numeric and unique:",
-    },
-    "Keep the digit count? (y/N): ": {
-        "fr": "Garder le nombre de chiffres ? (o/N) : ",
-        "en": "Keep the digit count? (y/N): ",
     },
     "Keep the digit count?": {
         "fr": "Garder le nombre de chiffres ?",
