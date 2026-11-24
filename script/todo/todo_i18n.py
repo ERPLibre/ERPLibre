@@ -26632,6 +26632,31 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # Ballon mémoire virtio : RAM max.
+    "RAM max": {
+        "fr": "RAM max",
+        "en": "RAM max",
+    },
+    "below the RAM of the VM": {
+        "fr": "sous la RAM de la VM",
+        "en": "below the RAM of the VM",
+    },
+    "Balloon": {
+        "fr": "Ballon",
+        "en": "Balloon",
+    },
+    "balloon": {
+        "fr": "ballon",
+        "en": "balloon",
+    },
+    "no balloon": {
+        "fr": "sans ballon",
+        "en": "no balloon",
+    },
+    "balloon: the guest reserves ~1.6% of the max": {
+        "fr": "ballon : l'invité réserve ~1,6 % du max",
+        "en": "balloon: the guest reserves ~1.6% of the max",
+    },
 }
 
 
