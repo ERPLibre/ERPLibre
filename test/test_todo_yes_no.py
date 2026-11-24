@@ -142,6 +142,71 @@ CONFIRM_DEFAULTS = {
         "Neutralize the copy?",
     ): [True],
     (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_ajouter_depot",
+        "Add it without checking the branch?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_ajouter_depot",
+        "Fork it for an organisation now?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_ajouter_existant",
+        "Set it aside (renamed, kept) and let repo clone it now?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_creer_branche_plusieurs",
+        "Push it to each project's remote?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_fork_organisation",
+        "Add the upstream remote to the local clone now?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_fork_organisation",
+        "Change the manifest to take this fork?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_fork_organisation",
+        "Fork it?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_nettoyer_branches",
+        "Also ask GitHub for branches merged by squash?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_nettoyer_branches",
+        "Delete these local branches?",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_nettoyer_branches",
+        "Fetch the remotes first, with prune?",
+    ): [True],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_question_gel",
+        "Freeze it on the head of the branch?",
+    ): ["état"],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_retirer_depot",
+        "Remove from the manifest",
+    ): [False],
+    (
+        "script/todo/git_fork_menu.py",
+        "GitForkMenuMixin._git_retirer_depot",
+        "Remove the local clone too? repo keeps it if it holds uncommitted work.",
+    ): [False],
+    (
         "script/todo/healthcheck.py",
         "_installer_hooks",
         "Replace it?",

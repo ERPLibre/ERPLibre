@@ -2368,9 +2368,9 @@ TRANSLATIONS = {
         "fr": "📁 Ajouter un dépôt depuis un répertoire existant",
         "en": "📁 Add a repository from an existing directory",
     },
-    "Add it without checking the branch? (y/N): ": {
-        "fr": "L'ajouter sans vérifier la branche ? (o/N) : ",
-        "en": "Add it without checking the branch? (y/N): ",
+    "Add it without checking the branch?": {
+        "fr": "L'ajouter sans vérifier la branche ?",
+        "en": "Add it without checking the branch?",
     },
     "Commit private/, then synchronise the repositories to clone it.": {
         "fr": (
@@ -2457,14 +2457,12 @@ TRANSLATIONS = {
         "fr": "Lecture des branches sur l'hôte, sans cloner…",
         "en": "Reading the branches on the host, without cloning…",
     },
-    "Set it aside (renamed, kept) and let repo clone it now? (y/N): ": {
+    "Set it aside (renamed, kept) and let repo clone it now?": {
         "fr": (
             "Le mettre de côté (renommé, gardé) et laisser repo le cloner "
-            "maintenant ? (o/N) : "
+            "maintenant ?"
         ),
-        "en": (
-            "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
-        ),
+        "en": "Set it aside (renamed, kept) and let repo clone it now?",
     },
     "URL of the repository to add: ": {
         "fr": "URL du dépôt à ajouter : ",
@@ -2503,9 +2501,9 @@ TRANSLATIONS = {
         "fr": "🌳 Créer la même branche dans plusieurs dépôts",
         "en": "🌳 Create the same branch in several repositories",
     },
-    "Push it to each project's remote? (y/N): ": {
-        "fr": "La pousser vers le remote de chaque projet ? (o/N) : ",
-        "en": "Push it to each project's remote? (y/N): ",
+    "Push it to each project's remote?": {
+        "fr": "La pousser vers le remote de chaque projet ?",
+        "en": "Push it to each project's remote?",
     },
     "🔭 Add the upstream remote of a repository": {
         "fr": "🔭 Ajouter le remote amont d'un dépôt",
@@ -2604,16 +2602,13 @@ TRANSLATIONS = {
         "fr": "🧹 Nettoyer les branches fusionnées d'un dépôt",
         "en": "🧹 Clean the merged branches of a repository",
     },
-    "Fetch the remotes first, with prune? (Y/n): ": {
-        "fr": "Récupérer d'abord les remotes, avec prune ? (O/n) : ",
-        "en": "Fetch the remotes first, with prune? (Y/n): ",
+    "Fetch the remotes first, with prune?": {
+        "fr": "Récupérer d'abord les remotes, avec prune ?",
+        "en": "Fetch the remotes first, with prune?",
     },
-    "Also ask GitHub for branches merged by squash? (y/N): ": {
-        "fr": (
-            "Demander aussi à GitHub les branches fusionnées par squash ? "
-            "(o/N) : "
-        ),
-        "en": "Also ask GitHub for branches merged by squash? (y/N): ",
+    "Also ask GitHub for branches merged by squash?": {
+        "fr": "Demander aussi à GitHub les branches fusionnées par squash ?",
+        "en": "Also ask GitHub for branches merged by squash?",
     },
     "The clone knows no base branch: fetch it first.": {
         "fr": (
@@ -2634,9 +2629,9 @@ TRANSLATIONS = {
         "fr": "local",
         "en": "local",
     },
-    "Delete these local branches? (y/N): ": {
-        "fr": "Supprimer ces branches locales ? (o/N) : ",
-        "en": "Delete these local branches? (y/N): ",
+    "Delete these local branches?": {
+        "fr": "Supprimer ces branches locales ?",
+        "en": "Delete these local branches?",
     },
     "Delete these branches on the server": {
         "fr": "Supprimer ces branches sur le serveur",
@@ -2648,15 +2643,15 @@ TRANSLATIONS = {
     },
     (
         "Remove the local clone too? repo keeps it if it holds uncommitted "
-        "work. (y/N): "
+        "work."
     ): {
         "fr": (
             "Retirer aussi le clone local ? repo le garde s'il porte du "
-            "travail non committé. (o/N) : "
+            "travail non committé."
         ),
         "en": (
             "Remove the local clone too? repo keeps it if it holds "
-            "uncommitted work. (y/N): "
+            "uncommitted work."
         ),
     },
     "Commit manifest/.": {
@@ -2995,13 +2990,13 @@ TRANSLATIONS = {
         "fr": "Description (Entrée : la liste des commits)",
         "en": "Description (Enter: the list of commits)",
     },
-    "Fork it for an organisation now? (y/N): ": {
-        "fr": "Le forker pour une organisation maintenant ? (o/N) : ",
-        "en": "Fork it for an organisation now? (y/N): ",
+    "Fork it for an organisation now?": {
+        "fr": "Le forker pour une organisation maintenant ?",
+        "en": "Fork it for an organisation now?",
     },
-    "Add the upstream remote to the local clone now? (y/N): ": {
-        "fr": "Ajouter le remote amont au clone local maintenant ? (o/N) : ",
-        "en": "Add the upstream remote to the local clone now? (y/N): ",
+    "Add the upstream remote to the local clone now?": {
+        "fr": "Ajouter le remote amont au clone local maintenant ?",
+        "en": "Add the upstream remote to the local clone now?",
     },
     "GitHub URL of the repository to add: ": {
         "fr": "URL GitHub du dépôt à ajouter : ",
@@ -3067,13 +3062,9 @@ TRANSLATIONS = {
         "fr": "Branche à suivre",
         "en": "Branch to follow",
     },
-    "Freeze it on the head of the branch? (Y/n): ": {
-        "fr": "Le geler sur la tête de la branche ? (O/n) : ",
-        "en": "Freeze it on the head of the branch? (Y/n): ",
-    },
-    "Freeze it on the head of the branch? (y/N): ": {
-        "fr": "Le geler sur la tête de la branche ? (o/N) : ",
-        "en": "Freeze it on the head of the branch? (y/N): ",
+    "Freeze it on the head of the branch?": {
+        "fr": "Le geler sur la tête de la branche ?",
+        "en": "Freeze it on the head of the branch?",
     },
     "Filter (part of the path or of the repository), Enter for all: ": {
         "fr": "Filtre (partie du chemin ou du dépôt), Entrée pour tout : ",
@@ -3138,9 +3129,9 @@ TRANSLATIONS = {
             " (env_var.sh is versioned)."
         ),
     },
-    "Fork it? (y/N): ": {
-        "fr": "Forker ? (o/N) : ",
-        "en": "Fork it? (y/N): ",
+    "Fork it?": {
+        "fr": "Forker ?",
+        "en": "Fork it?",
     },
     "Waiting for GitHub to create the fork…": {
         "fr": "Attente de la création du fork par GitHub…",
@@ -3166,9 +3157,9 @@ TRANSLATIONS = {
         "fr": "Branche créée dans le fork :",
         "en": "Branch created in the fork:",
     },
-    "Change the manifest to take this fork? (y/N): ": {
-        "fr": "Modifier le manifeste pour prendre ce fork ? (o/N) : ",
-        "en": "Change the manifest to take this fork? (y/N): ",
+    "Change the manifest to take this fork?": {
+        "fr": "Modifier le manifeste pour prendre ce fork ?",
+        "en": "Change the manifest to take this fork?",
     },
     "Versions whose manifest clones this repository:": {
         "fr": "Versions dont le manifeste clone ce dépôt :",

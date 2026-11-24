@@ -180,8 +180,8 @@ class GitForkMenuMixin:
         """Le parcours complet ; rend 0, ou 2 sur un refus ou une erreur.
         `preselection` saute le choix du projet, dans `version`. Un retour
         au choix de l'amont ou des branches, ou Ctrl+D à une question qui
-        suit, rend 0 : rien n'est forké avant « Fork it? », et aucun
-        manifeste n'est réécrit avant le choix des versions."""
+        suit, où il vaut non, rend 0 : rien n'est forké avant « Fork it? »,
+        et aucun manifeste n'est réécrit avant le choix des versions."""
         version = version or repo_upgrade.version_active(RACINE)
         if not version:
             print(f"❌ {t('No Odoo version found')}")
@@ -215,8 +215,7 @@ class GitForkMenuMixin:
             f"  {proprietaire}/{depot} → {organisation}/{depot}"
             f" · {t('all branches') if toutes else branche}"
         )
-        reponse = self._git_repondre(t("Fork it? (y/N): "))
-        if reponse is None or not self._is_yes(reponse):
+        if not ui.confirm(t("Fork it?"), default=False):
             return 0
         print(f"  {t('Waiting for GitHub to create the fork…')}")
         try:
@@ -233,10 +232,9 @@ class GitForkMenuMixin:
                 f"  ✓ {t('Branch created in the fork:')}"
                 f" {posee[0]} @ {posee[1][:12]}"
             )
-        reponse = self._git_repondre(
-            t("Change the manifest to take this fork? (y/N): ")
-        )
-        if reponse is None or not self._is_yes(reponse):
+        if not ui.confirm(
+            t("Change the manifest to take this fork?"), default=False
+        ):
             return 0
         par_version = versions_du_depot(proprietaire, depot)
         print(
@@ -276,10 +274,9 @@ class GitForkMenuMixin:
         )
         if version not in changees:
             return 0
-        reponse = self._git_repondre(
-            t("Add the upstream remote to the local clone now? (y/N): ")
-        )
-        if reponse is not None and self._is_yes(reponse):
+        if ui.confirm(
+            t("Add the upstream remote to the local clone now?"), default=False
+        ):
             self._git_amont_de(version, projet.get("path"))
         return 0
 
@@ -362,21 +359,18 @@ class GitForkMenuMixin:
     def _git_question_gel(self, defaut):
         """La réponse à « le geler ? », `defaut` sur Entrée, None sur
         Ctrl+D : rien n'est encore écrit, l'appelant revient."""
-        invite = (
-            "Freeze it on the head of the branch? (Y/n): "
-            if defaut
-            else "Freeze it on the head of the branch? (y/N): "
+        return ui.confirm(
+            t("Freeze it on the head of the branch?"),
+            default=defaut,
+            back=True,
         )
-        reponse = self._git_repondre(t(invite))
-        if reponse is None:
-            return None
-        return self._is_yes(reponse) if reponse else defaut
 
     def _git_ajouter_depot(self):
         """Ajoute un dépôt au manifeste public ou privé de la version
         choisie, sur la branche que l'hôte annonce, puis propose de forker
         un dépôt GitHub public. Rend 0, ou 2 sur un refus ; Ctrl+D, à
-        chaque question après l'URL, rend 0 sans rien écrire de plus."""
+        chaque question après l'URL, revient sans rien écrire de plus : 0,
+        sauf à « l'ajouter sans vérifier la branche ? », où il vaut non."""
         url = input(t("URL of the repository to add: ")).strip()
         if not url:
             return 0
@@ -397,12 +391,9 @@ class GitForkMenuMixin:
             print(
                 f"⚠ {t('Host unreachable, or a private repository git cannot read without credentials.')}"
             )
-            reponse = self._git_repondre(
-                t("Add it without checking the branch? (y/N): ")
-            )
-            if reponse is None:
-                return 0
-            if not self._is_yes(reponse):
+            if not ui.confirm(
+                t("Add it without checking the branch?"), default=False
+            ):
                 return 2
         else:
             print(
@@ -452,10 +443,7 @@ class GitForkMenuMixin:
         )
         if prive or not github_fork.depot_github(url):
             return 0
-        reponse = self._git_repondre(
-            t("Fork it for an organisation now? (y/N): ")
-        )
-        if reponse is not None and self._is_yes(reponse):
+        if ui.confirm(t("Fork it for an organisation now?"), default=False):
             _remotes, liste = projets_github(version)
             choix = next(
                 (r for r in liste if r[0].get("path") == plan["path"]), None
@@ -603,12 +591,10 @@ class GitForkMenuMixin:
         print(
             f"  {t('repo sync refuses a clone it did not make: it must be set aside and cloned again by repo.')}"
         )
-        reponse = self._git_repondre(
-            t(
-                "Set it aside (renamed, kept) and let repo clone it now? (y/N): "
-            )
-        )
-        if reponse is not None and self._is_yes(reponse):
+        if ui.confirm(
+            t("Set it aside (renamed, kept) and let repo clone it now?"),
+            default=False,
+        ):
             try:
                 copie = manifest_repo.mettre_de_cote(chemin, RACINE)
             except ValueError as exc:
@@ -693,12 +679,11 @@ class GitForkMenuMixin:
         )
         if depart is None:
             return None
-        pousser = self._git_repondre(
-            t("Push it to each project's remote? (y/N): ")
+        pousser = ui.confirm(
+            t("Push it to each project's remote?"), default=False, back=True
         )
         if pousser is None:
             return None
-        pousser = self._is_yes(pousser)
         print(f"  {len(choisis)} {t('repositories, in parallel…')}")
         resultats = manifest_repo.brancher_plusieurs(
             [
@@ -779,10 +764,10 @@ class GitForkMenuMixin:
         if choix is None:
             return 0
         version, projet = choix
-        reponse = self._git_repondre(
-            f"{t('Remove from the manifest')} {version} : {projet['path']} ? (y/N): "
-        )
-        if reponse is None or not self._is_yes(reponse):
+        if not ui.confirm(
+            f"{t('Remove from the manifest')} {version} : {projet['path']} ?",
+            default=False,
+        ):
             return 0
         try:
             fichier, _p, remote = manifest_repo.retirer_depot(
@@ -794,14 +779,13 @@ class GitForkMenuMixin:
         print(
             f"  ✓ {os.path.relpath(fichier, RACINE)}{' · remote ' + remote if remote else ''}"
         )
-        local = version == repo_upgrade.version_active(RACINE) and (
-            self._git_repondre(
-                t(
-                    "Remove the local clone too? repo keeps it if it holds uncommitted work. (y/N): "
-                )
-            )
-        )
-        if local and self._is_yes(local):
+        if version == repo_upgrade.version_active(RACINE) and ui.confirm(
+            t(
+                "Remove the local clone too? repo keeps it if it holds"
+                " uncommitted work."
+            ),
+            default=False,
+        ):
             return self._git_lancer(
                 manifest_repo.commandes_synchro(RACINE, local=True)
             )
@@ -861,19 +845,20 @@ class GitForkMenuMixin:
         if choix is None:
             return None
         remotes, projet, chemin = choix
-        fetch = self._git_repondre(
-            t("Fetch the remotes first, with prune? (Y/n): ")
+        fetch = ui.confirm(
+            t("Fetch the remotes first, with prune?"), default=True, back=True
         )
         if fetch is None:
             return None
-        fetch = self._is_yes_default_yes(fetch)
-        squash = self._git_repondre(
-            t("Also ask GitHub for branches merged by squash? (y/N): ")
+        squash = ui.confirm(
+            t("Also ask GitHub for branches merged by squash?"),
+            default=False,
+            back=True,
         )
         if squash is None:
             return None
         client = None
-        if self._is_yes(squash):
+        if squash:
             client = self._git_client()
             if client is None:
                 return None
@@ -902,15 +887,16 @@ class GitForkMenuMixin:
             print(f"── {remote or t('local')}")
             for nom, motif in noms.items():
                 print(f"  {nom} ({motif})")
-            question = (
-                t("Delete these local branches? (y/N): ")
+            supprimer = ui.confirm(
+                t("Delete these local branches?")
                 if remote is None
-                else f"{t('Delete these branches on the server')} {remote} ? (y/N) : "
+                else f"{t('Delete these branches on the server')} {remote} ?",
+                default=False,
+                back=True,
             )
-            reponse = self._git_repondre(question)
-            if reponse is None:
+            if supprimer is None:
                 return supprimees
-            if not self._is_yes(reponse):
+            if not supprimer:
                 continue
             resultats = manifest_repo.supprimer_branches(
                 chemin,

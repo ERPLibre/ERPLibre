@@ -491,6 +491,24 @@ LECTEURS = {
 }
 # Les trois retours d'un choix sans défaut : [0], une réponse vide, Ctrl+D.
 RETOURS = ("0", "", EOFError())
+# Les refus d'une question oui/non qui efface : Entrée (défaut non), une
+# faute puis Ctrl+D, Ctrl+D seul.
+REFUS = ([""], ["peut-être", EOFError()], [EOFError()])
+
+
+def confirmations(port):
+    """(texte sans indice, défaut, `back`) de chaque question oui/non
+    posée au port, dans l'ordre."""
+    return [
+        (e["prompt"], e["default"], e.get("back", False))
+        for e in port.events
+        if e.get("kind") == "confirm"
+    ]
+
+
+def fautes(port):
+    """Les avis du port : une faute à une question y est dite."""
+    return [e["text"] for e in port.events if e.get("t") == "notice"]
 
 
 class TestCtrlDALaSaisie(unittest.TestCase):
@@ -532,6 +550,8 @@ class LeMenuGit(unittest.TestCase):
         ajoute="odoo18.0/addons/outils",
         navigateur=None,
         cibles=None,
+        gel=False,
+        plan=None,
     ):
         """(retour de `methode(*args)`, double de manifest_repo, port,
         fabrique du client GitHub). `branches` faux : l'hôte ne dit pas
@@ -540,8 +560,10 @@ class LeMenuGit(unittest.TestCase):
         clones que le manifeste ne déclare pas ; `ajoute`, le chemin du
         projet qu'écrit `ajouter_depot` ; `navigateur`, le module du
         navigateur de fichiers, None comme sans urwid ; `cibles`, les
-        cibles de pull request, deux dépôts distincts par défaut. Le double
-        de `print` reste dans `self.imprime`."""
+        cibles de pull request, deux dépôts distincts par défaut ; `gel`,
+        le gel proposé par défaut ; `plan`, ce que rend `plan_nettoyage`,
+        une branche locale fusionnée par défaut. Le double de `print`
+        reste dans `self.imprime`."""
         from script.todo import ui
         from script.todo.todo import TODO
         from script.todo.ui.port import ScriptedPort
@@ -560,7 +582,7 @@ class LeMenuGit(unittest.TestCase):
         }
         double.remotes_du_clone.return_value = ["origin"]
         double.branche_proposee.return_value = "18.0"
-        double.gel_par_defaut.return_value = False
+        double.gel_par_defaut.return_value = gel
         double.ajouter_depot.return_value = (
             os.path.join(gm.RACINE, "manifest", "default.dev.xml"),
             {"path": ajoute, "remote": "r", "revision": "b"},
@@ -571,7 +593,7 @@ class LeMenuGit(unittest.TestCase):
             LUNE,
             None,
         )
-        double.plan_nettoyage.return_value = (
+        double.plan_nettoyage.return_value = plan or (
             ["18.0"],
             {},
             {"locales": {"fini": "fusion"}, "distantes": {}},
@@ -592,6 +614,9 @@ class LeMenuGit(unittest.TestCase):
             "amont": ("AmontBrume/lune", "18.0"),
         }
         double.resume_commits.return_value = ("sujet", "corps")
+        double.supprimer_branches.return_value = []
+        double.brancher_plusieurs.return_value = []
+        double.commandes_synchro.return_value = []
         port = ScriptedPort(reponses)
         lu = ({"18.0", "main"}, "18.0") if branches else None
         with (
@@ -938,12 +963,13 @@ class TestCtrlDApresLeChoix(LeMenuGit):
         double.supprimer_branches.assert_not_called()
 
     def test_add_a_repository_at_each_question_before_writing(self):
-        # Ctrl+D à la branche, au gel, puis à « l'ajouter sans vérifier » ;
-        # le « o » qui suit, s'il était lu, mènerait jusqu'à l'écriture.
-        for reponses, branches in (
-            (["", "1", EOFError()], True),
-            (["", "1", "", EOFError()], True),
-            (["", "1", EOFError()], False),
+        # Ctrl+D à la branche et au gel (`back`) revient, 0 ; à « l'ajouter
+        # sans vérifier », il vaut non, le refus, 2. Le « o » qui suit,
+        # s'il était lu, mènerait jusqu'à l'écriture.
+        for reponses, branches, code in (
+            (["", "1", EOFError()], True, 0),
+            (["", "1", "", EOFError()], True, 0),
+            (["", "1", EOFError()], False, 2),
         ):
             with self.subTest(reponses=reponses, branches=branches):
                 retour, double, port, _f = self.lancer(
@@ -952,7 +978,7 @@ class TestCtrlDApresLeChoix(LeMenuGit):
                     saisies=[URL_AJOUT],
                     branches=branches,
                 )
-                self.assertEqual(retour, 0)
+                self.assertEqual(retour, code)
                 double.ajouter_depot.assert_not_called()
                 self.assertEqual(port.answers, ["o"])
 
@@ -989,6 +1015,180 @@ class TestCtrlDApresLeChoix(LeMenuGit):
         )
         self.assertEqual(retour, 0)
         double.ajouter_existant.assert_not_called()
+
+
+class TestLesQuestionsOuiNon(LeMenuGit):
+    """Chaque question oui/non du menu passe par `ui.confirm`, qui dit son
+    défaut au port et, avec `back`, que Ctrl+D arrête toute l'action ; une
+    faute est dite et la même question revient ; ce qui efface ne part ni
+    sur Entrée, ni sur une faute suivie de Ctrl+D, ni sur Ctrl+D."""
+
+    def test_the_freeze_takes_the_default_of_the_version(self):
+        # Entrée au gel prend le défaut de la version ; non au fork.
+        for gel in (True, False):
+            with self.subTest(gel=gel):
+                retour, double, port, _f = self.lancer(
+                    "_git_ajouter_depot",
+                    ["", "1", "", "", "n"],
+                    saisies=[URL_AJOUT],
+                    gel=gel,
+                )
+                self.assertEqual(retour, 0)
+                self.assertIs(double.ajouter_depot.call_args.args[3], gel)
+                self.assertEqual(
+                    confirmations(port),
+                    [
+                        (
+                            t("Freeze it on the head of the branch?"),
+                            "y" if gel else "n",
+                            True,
+                        ),
+                        (t("Fork it for an organisation now?"), "n", False),
+                    ],
+                )
+
+    def test_a_typo_at_the_freeze_is_said_and_asked_again(self):
+        retour, double, port, _f = self.lancer(
+            "_git_ajouter_depot",
+            ["", "1", "", "peut-être", "o", "n"],
+            saisies=[URL_AJOUT],
+        )
+        self.assertEqual(retour, 0)
+        self.assertIs(double.ajouter_depot.call_args.args[3], True)
+        self.assertEqual(fautes(port), [f"{t('Answer yes or no: ')}peut-être"])
+        self.assertEqual(port.answers, [])
+
+    def test_an_unchecked_repository_is_added_after_a_yes(self):
+        retour, double, port, _f = self.lancer(
+            "_git_ajouter_depot",
+            ["", "1", "peut-être", "oui", "", "n"],
+            saisies=[URL_AJOUT],
+            branches=False,
+        )
+        self.assertEqual(retour, 0)
+        self.assertIs(double.ajouter_depot.call_args.kwargs["verifier"], False)
+        self.assertEqual(
+            confirmations(port)[0],
+            (t("Add it without checking the branch?"), "n", False),
+        )
+        self.assertEqual(len(fautes(port)), 1)
+
+    def test_removing_needs_a_yes_at_each_question(self):
+        # Le « o » qui suit chaque refus, s'il était lu, retirerait.
+        avant = ["", "", "1"]
+        for refus in REFUS:
+            with self.subTest(manifeste=refus):
+                retour, double, port, _f = self.lancer(
+                    "_git_retirer_depot", [*avant, *refus, "o"]
+                )
+                self.assertEqual(retour, 0)
+                double.retirer_depot.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+            with self.subTest(clone=refus):
+                retour, double, port, _f = self.lancer(
+                    "_git_retirer_depot", [*avant, "o", *refus, "o"]
+                )
+                self.assertEqual(retour, 0)
+                double.retirer_depot.assert_called_once_with(
+                    "18.0", LUNE["path"]
+                )
+                double.executer.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+        _r, double, port, _f = self.lancer(
+            "_git_retirer_depot", [*avant, "oui", "o"]
+        )
+        double.executer.assert_called_once()
+        self.assertEqual(
+            confirmations(port),
+            [
+                (
+                    f"{t('Remove from the manifest')} 18.0 : {LUNE['path']} ?",
+                    "n",
+                    False,
+                ),
+                (
+                    t(
+                        "Remove the local clone too? repo keeps it if it"
+                        " holds uncommitted work."
+                    ),
+                    "n",
+                    False,
+                ),
+            ],
+        )
+
+    PLAN = (
+        ["18.0"],
+        {},
+        {
+            "locales": {"fini": "fusion"},
+            "distantes": {"perso": {"vieille": "fusion"}},
+        },
+    )
+
+    def nettoyer(self, reponses):
+        """`_git_nettoyer_branches` sur LUNE, une branche locale et une
+        du remote « perso » à supprimer ; `reponses` après le choix du
+        clone."""
+        return self.lancer(
+            "_git_nettoyer_branches", ["", "1", *reponses], plan=self.PLAN
+        )
+
+    def test_cleaning_states_each_default_and_deletes_only_on_a_yes(self):
+        retour, double, port, _f = self.nettoyer(["", "", "o", "oui"])
+        self.assertEqual(retour, 0)
+        # Entrée au fetch : avec prune ; au squash : sans client GitHub.
+        self.assertIs(double.plan_nettoyage.call_args.args[4], True)
+        self.assertIsNone(double.plan_nettoyage.call_args.args[3])
+        self.assertEqual(double.supprimer_branches.call_count, 2)
+        self.assertEqual(
+            confirmations(port),
+            [
+                (t("Fetch the remotes first, with prune?"), "y", True),
+                (
+                    t("Also ask GitHub for branches merged by squash?"),
+                    "n",
+                    True,
+                ),
+                (t("Delete these local branches?"), "n", True),
+                (
+                    f"{t('Delete these branches on the server')} perso ?",
+                    "n",
+                    True,
+                ),
+            ],
+        )
+
+    def test_no_branch_is_deleted_without_a_yes(self):
+        # Entrée et une faute puis Ctrl+D à chaque groupe ; Ctrl+D au
+        # groupe local arrête tout, sans poser la question du serveur.
+        for local, serveur in (
+            ([""], [""]),
+            (["peut-être", EOFError()], []),
+            ([EOFError()], []),
+            (["n"], ["peut-être", EOFError()]),
+            (["n"], [EOFError()]),
+        ):
+            with self.subTest(local=local, serveur=serveur):
+                retour, double, port, _f = self.nettoyer(
+                    ["", "", *local, *serveur, "o"]
+                )
+                self.assertEqual(retour, 0)
+                double.supprimer_branches.assert_not_called()
+                self.assertEqual(port.answers, ["o"])
+
+    def test_pushing_the_new_branch_after_a_typo(self):
+        retour, double, port, _f = self.lancer(
+            "_git_creer_branche_plusieurs",
+            ["all", "b", "", "peut-être", "o"],
+        )
+        self.assertEqual(retour, 0)
+        self.assertIs(double.brancher_plusieurs.call_args.args[3], True)
+        self.assertEqual(
+            confirmations(port),
+            [(t("Push it to each project's remote?"), "n", True)] * 2,
+        )
+        self.assertEqual(len(fautes(port)), 1)
 
 
 class TestLesOptionsDuFork(LeMenuGit):
@@ -1121,6 +1321,36 @@ class TestLesOptionsDuFork(LeMenuGit):
                 double.forker.assert_called_once()
                 double.prendre_le_fork.assert_not_called()
                 self.assertEqual(port.answers, ["17.0"])
+
+    def test_each_question_of_the_fork_states_its_default(self):
+        retour, double, port, _c, amont_de = self.forker(
+            ["", "", "o", "oui", "", "o"]
+        )
+        self.assertEqual(retour, 0)
+        double.prendre_le_fork.assert_called_once()
+        amont_de.assert_called_once()
+        self.assertEqual(
+            confirmations(port),
+            [
+                (t("Fork it?"), "n", False),
+                (t("Change the manifest to take this fork?"), "n", False),
+                (
+                    t("Add the upstream remote to the local clone now?"),
+                    "n",
+                    False,
+                ),
+            ],
+        )
+
+    def test_a_typo_at_fork_it_is_said_and_asked_again(self):
+        retour, double, port, _c, _a = self.forker(
+            ["", "", "peut-être", "o", EOFError(), "17.0"]
+        )
+        self.assertEqual(retour, 0)
+        double.forker.assert_called_once()
+        double.prendre_le_fork.assert_not_called()
+        self.assertEqual(fautes(port), [f"{t('Answer yes or no: ')}peut-être"])
+        self.assertEqual(port.answers, ["17.0"])
 
     def test_ctrl_d_at_the_upstream_remote_adds_none(self):
         for reponse, ajoute in ((EOFError(), False), ("o", True)):
@@ -1329,6 +1559,32 @@ class TestLeRepertoireExistant(LeMenuGit):
             [o["key"] for o in self.choix(port)[0]["options"]], ["1", "0"]
         )
         double.lire_clone.assert_called_once()
+
+    def test_a_typo_at_set_aside_is_said_and_asked_again(self):
+        retour, double, port, _pa, lance = self.ajouter(
+            ["1", "1", "", "peut-être", "o"]
+        )
+        self.assertEqual(retour, 0)
+        double.mettre_de_cote.assert_called_once()
+        lance.assert_called_once()
+        self.assertEqual(
+            confirmations(port),
+            [
+                (t("Freeze it on the head of the branch?"), "n", True),
+                *[
+                    (
+                        t(
+                            "Set it aside (renamed, kept) and let repo clone"
+                            " it now?"
+                        ),
+                        "n",
+                        False,
+                    )
+                ]
+                * 2,
+            ],
+        )
+        self.assertEqual(len(fautes(port)), 1)
 
     def test_ctrl_d_at_set_aside_moves_nothing(self):
         for reponse, mis_de_cote in ((EOFError(), False), ("o", True)):
