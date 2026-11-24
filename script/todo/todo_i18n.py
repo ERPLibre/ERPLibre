@@ -19040,26 +19040,28 @@ TRANSLATIONS = {
         "fr": "Neutraliser la base (O/n, défaut : O) ? ",
         "en": "Neutralize the database (Y/n, default: Y)? ",
     },
+    "Neutralize the database?": {
+        "fr": "Neutraliser la base ?",
+        "en": "Neutralize the database?",
+    },
     "Keep a _cache_ copy, not neutralized, to speed up the next restore"
-    " of this image (y/N, default: N)? ": {
+    " of this image?": {
         "fr": "Garder une copie _cache_, non neutralisée, pour accélérer la"
-        " prochaine restauration de cette image (o/N, défaut : N) ? ",
+        " prochaine restauration de cette image ?",
         "en": "Keep a _cache_ copy, not neutralized, to speed up the next"
-        " restore of this image (y/N, default: N)? ",
+        " restore of this image?",
     },
-    "Update all addons before neutralizing (y/N, default: N)? ": {
-        "fr": "Mettre à jour tous les modules avant la neutralisation"
-        " (o/N, défaut : N) ? ",
-        "en": "Update all addons before neutralizing (y/N, default: N)? ",
+    "Update all addons before neutralizing?": {
+        "fr": "Mettre à jour tous les modules avant la neutralisation ?",
+        "en": "Update all addons before neutralizing?",
     },
-    "Update all addons after neutralizing (y/N, default: N)? ": {
-        "fr": "Mettre à jour tous les modules après la neutralisation"
-        " (o/N, défaut : N) ? ",
-        "en": "Update all addons after neutralizing (y/N, default: N)? ",
+    "Update all addons after neutralizing?": {
+        "fr": "Mettre à jour tous les modules après la neutralisation ?",
+        "en": "Update all addons after neutralizing?",
     },
-    "Update all addons (y/N, default: N)? ": {
-        "fr": "Mettre à jour tous les modules (o/N, défaut : N) ? ",
-        "en": "Update all addons (y/N, default: N)? ",
+    "Update all addons?": {
+        "fr": "Mettre à jour tous les modules ?",
+        "en": "Update all addons?",
     },
     "Step failed, the next ones are skipped:": {
         "fr": "Étape en échec, les suivantes sont sautées :",
@@ -19470,9 +19472,9 @@ TRANSLATIONS = {
         "fr": "Nom de la copie (défaut=",
         "en": "Name of the copy (default=",
     },
-    "Neutralize the copy (Y/n)? ": {
-        "fr": "Neutraliser la copie (O/n) ? ",
-        "en": "Neutralize the copy (Y/n)? ",
+    "Neutralize the copy?": {
+        "fr": "Neutraliser la copie ?",
+        "en": "Neutralize the copy?",
     },
     "The copy will keep its scheduled actions, its": {
         "fr": "La copie gardera ses actions planifiées, son",

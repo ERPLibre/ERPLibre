@@ -16,19 +16,6 @@ from script.todo.todo_i18n import t
 _logger = logging.getLogger(__name__)
 
 
-def _oui(reponse):
-    """« Défaut non » : seule une réponse explicite accepte, FR ou EN."""
-    return reponse.strip().lower() in ("y", "yes", "o", "oui")
-
-
-def _non(reponse):
-    """« Défaut oui » : seule une réponse explicite refuse, FR ou EN.
-
-    « non » compte : comparer à « n » seul ferait de « non » un oui.
-    """
-    return reponse.strip().lower() in ("n", "no", "non")
-
-
 try:
     from script.todo import todo_file_browser
     from script.todo.ui.navigator import navigate
@@ -275,7 +262,7 @@ class DatabaseManager:
 
     def _restore_commands(self, file_name, database_name):
         """Poser toutes les questions, puis rendre les commandes, dans
-        l'ordre ; None sur Ctrl+D (EOFError) à l'une d'elles.
+        l'ordre ; None sur Ctrl+D à l'une d'elles (`back`).
 
         Les questions viennent AVANT la première commande : la restauration
         et les mises à jour durent, et l'on peut s'éloigner une fois la
@@ -288,51 +275,41 @@ class DatabaseManager:
         La mise à jour « avant » se place entre les deux : ces modules
         s'installent alors sur des modules déjà au niveau du code.
         """
-        try:
-            cache = _oui(
-                ui.ask(
-                    "\U0001f4ac "
-                    + t(
-                        "Keep a _cache_ copy, not neutralized, to speed up"
-                        " the next restore of this image (y/N, default: N)? "
-                    )
-                )
+        cache = ui.confirm(
+            t(
+                "Keep a _cache_ copy, not neutralized, to speed up the next"
+                " restore of this image?"
+            ),
+            default=False,
+            back=True,
+        )
+        if cache is None:
+            return None
+        neutraliser = ui.confirm(
+            t("Neutralize the database?"), default=True, back=True
+        )
+        if neutraliser is None:
+            return None
+        if neutraliser:
+            avant = ui.confirm(
+                t("Update all addons before neutralizing?"),
+                default=False,
+                back=True,
             )
-            neutraliser = not _non(
-                ui.ask(
-                    "\U0001f4ac "
-                    + t("Neutralize the database (Y/n, default: Y)? ")
-                )
+            if avant is None:
+                return None
+            apres = ui.confirm(
+                t("Update all addons after neutralizing?"),
+                default=False,
+                back=True,
             )
-            if neutraliser:
-                avant = _oui(
-                    ui.ask(
-                        "\U0001f4ac "
-                        + t(
-                            "Update all addons before neutralizing"
-                            " (y/N, default: N)? "
-                        )
-                    )
-                )
-                apres = _oui(
-                    ui.ask(
-                        "\U0001f4ac "
-                        + t(
-                            "Update all addons after neutralizing"
-                            " (y/N, default: N)? "
-                        )
-                    )
-                )
-                database_name += "_neutralize"
-            else:
-                avant = False
-                apres = _oui(
-                    ui.ask(
-                        "\U0001f4ac "
-                        + t("Update all addons (y/N, default: N)? ")
-                    )
-                )
-        except EOFError:
+            database_name += "_neutralize"
+        else:
+            avant = False
+            apres = ui.confirm(
+                t("Update all addons?"), default=False, back=True
+            )
+        if apres is None:
             return None
 
         restore = (
@@ -369,7 +346,8 @@ class DatabaseManager:
         replie sur le `smtp_server` de la configuration quand elle n'a
         aucun serveur de courriel, et garde ses clés de paiement vivantes.
         Le défaut à « oui » est le seul qui protège celui qui appuie sur
-        Entrée.
+        Entrée ; Ctrl+D (`back`) ne copie rien, là où un non copierait
+        sans neutraliser.
         """
         source = self.select_database()
         if not source:
@@ -380,12 +358,11 @@ class DatabaseManager:
         ).strip()
         cible = cible or defaut
 
-        reponse = (
-            input(f"\U0001f4ac {t('Neutralize the copy (Y/n)? ')}")
-            .strip()
-            .lower()
+        neutraliser = ui.confirm(
+            t("Neutralize the copy?"), default=True, back=True
         )
-        neutraliser = reponse != "n"
+        if neutraliser is None:
+            return
         if not neutraliser:
             print(
                 f"⚠️  {t('The copy will keep its scheduled actions, its')}"

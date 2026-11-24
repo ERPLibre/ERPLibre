@@ -1201,6 +1201,45 @@ class TestTheDatabaseListGoesBack(unittest.TestCase):
             self.todo.db_manager.duplicate_database
         )
 
+    def test_neutralizing_the_copy_is_a_yes_no_question(self):
+        """« Neutraliser la copie ? », défaut oui : Entrée et un oui
+        neutralisent ; « no » et « non » copient sans neutraliser ; une
+        faute est dite, puis Ctrl+D, comme Ctrl+D seul, ne copie rien
+        (back) : un non y ferait une copie active d'une base."""
+        copie = "python3 ./script/database/db_duplicate.py -s forged_db_a"
+        for answers, attendu in (
+            (("",), " --neutralize"),
+            (("oui",), " --neutralize"),
+            (("no",), ""),
+            (("non",), ""),
+            ((EOFError(),), None),
+            (("peut-être", EOFError()), None),
+        ):
+            with self.subTest(answers=answers):
+                self.commands.clear()
+                sortie = io.StringIO()
+                with (
+                    patch(
+                        "builtins.input",
+                        side_effect=["1", "forged_yesno_db", *answers],
+                    ) as asked,
+                    patch.object(
+                        self.todo.db_manager, "_report_neutralize"
+                    ) as relu,
+                    redirect_stdout(sortie),
+                ):
+                    self.todo.db_manager.duplicate_database()
+                self.assertEqual(asked.call_count, 2 + len(answers))
+                lances = ["./odoo_bin.sh db list"]
+                if attendu is not None:
+                    lances.append(f"{copie} -d forged_yesno_db{attendu}")
+                self.assertEqual(self.commands, lances)
+                self.assertEqual(relu.called, bool(attendu))
+                faute = todo_i18n.t("Answer yes or no: ") + "peut-être"
+                self.assertEqual(
+                    "peut-être" in answers, faute in sortie.getvalue()
+                )
+
     def test_a_backup_writes_no_zip(self):
         self.assert_nothing_after_the_list(
             self.todo.db_manager.create_backup_from_database
@@ -1527,24 +1566,71 @@ class TestRestoreFromDatabase(unittest.TestCase):
             todo.db_manager.restore_from_database()
         return questions
 
-    def test_every_yes_no_question_shows_its_default(self):
-        # Avec et sans neutralisation : les quatre questions oui/non
-        # possibles, chacune avec son défaut en toutes lettres.
-        for reponses, attendu in (
-            (["1", "backup", "mydb", "", "", "", ""], 4),
-            (["1", "backup", "mydb", "", "n", ""], 3),
+    def confirmations(self, reponses, langue="fr"):
+        """(défaut, texte) de chaque question oui/non de la restauration
+        quand un `ScriptedPort` répond `reponses`, dans `langue`, et les
+        événements du port."""
+        scripted = port.ScriptedPort(reponses)
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        with (
+            patch.object(todo_i18n, "_current_lang", langue),
+            ui.bind(scripted),
+            redirect_stdout(io.StringIO()),
         ):
-            with self.subTest(reponses=reponses):
-                oui_non = [
-                    q
-                    for q in self.questions_posees(reponses)
-                    if re.search(r"\((o|O|y|Y)/(n|N)", q)
-                ]
-                self.assertEqual(attendu, len(oui_non), oui_non)
-                for question in oui_non:
-                    self.assertRegex(
-                        question, r"(défaut : [ON]|default: [YN])", question
-                    )
+            todo.db_manager.restore_from_database()
+        oui_non = [
+            (e["default"], e["text"])
+            for e in scripted.events
+            if e.get("kind") == "confirm"
+        ]
+        return oui_non, scripted.events
+
+    def test_every_yes_no_question_shows_its_default(self):
+        # Avec et sans neutralisation : les questions oui/non possibles,
+        # chacune un `confirm` du port, son défaut dans l'indice de la
+        # langue choisie : cache non, neutraliser oui, mises à jour non.
+        for reponses, attendu in (
+            (["1", "backup", "mydb", "", "", "", ""], ["n", "y", "n", "n"]),
+            (["1", "backup", "mydb", "", "n", ""], ["n", "y", "n"]),
+        ):
+            for langue, indices in (
+                ("fr", {"y": " [O/n] : ", "n": " [o/N] : "}),
+                ("en", {"y": " [Y/n]: ", "n": " [y/N]: "}),
+            ):
+                with self.subTest(reponses=reponses, langue=langue):
+                    oui_non, _ = self.confirmations(reponses, langue)
+                    self.assertEqual([d for d, _ in oui_non], attendu)
+                    for defaut, texte in oui_non:
+                        self.assertTrue(texte.endswith(indices[defaut]), texte)
+
+    def test_a_typo_is_said_and_asked_again(self):
+        # « peut-être » au cache, puis Entrée : la faute est dite, la même
+        # question revient, et ne vaut ni oui ni non.
+        oui_non, events = self.confirmations(
+            ["1", "backup", "mydb", "peut-être", "", "", "", ""]
+        )
+        self.assertEqual(oui_non[0], oui_non[1])
+        self.assertEqual(len(oui_non), 5)
+        self.assertEqual(
+            [e["level"] for e in events if e.get("t") == "notice"], ["error"]
+        )
+
+    def test_ctrl_d_at_each_yes_no_returns_none(self):
+        # Ctrl+D à chacune des questions oui/non (back) : None, aucune
+        # question de plus ; la restauration n'a pas encore commencé.
+        for oui_non in (["", "y", "o", "o"], ["", "n", "y"]):
+            for k in range(len(oui_non)):
+                with self.subTest(oui_non=oui_non, ctrl_d=k):
+                    scripted = port.ScriptedPort(oui_non[:k])
+                    todo = TODO()
+                    with ui.bind(scripted), redirect_stdout(io.StringIO()):
+                        commandes = todo.db_manager._restore_commands(
+                            "backup.zip", "mydb"
+                        )
+                    self.assertIsNone(commandes)
+                    self.assertEqual(len(scripted.events), k + 1)
 
     def test_the_whole_flow_speaks_one_language(self):
         # Tout ce que la restauration montre — menu de la source, questions,

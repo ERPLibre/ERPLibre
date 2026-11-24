@@ -111,6 +111,37 @@ CONFIRM_DEFAULTS = {
         "Update every module after the restore (-u all)?",
     ): [False],
     (
+        "script/todo/database_manager.py",
+        "DatabaseManager._restore_commands",
+        "Keep a _cache_ copy, not neutralized, to speed up the next restore"
+        " of this image?",
+    ): [False],
+    (
+        "script/todo/database_manager.py",
+        "DatabaseManager._restore_commands",
+        "Neutralize the database?",
+    ): [True],
+    (
+        "script/todo/database_manager.py",
+        "DatabaseManager._restore_commands",
+        "Update all addons after neutralizing?",
+    ): [False],
+    (
+        "script/todo/database_manager.py",
+        "DatabaseManager._restore_commands",
+        "Update all addons before neutralizing?",
+    ): [False],
+    (
+        "script/todo/database_manager.py",
+        "DatabaseManager._restore_commands",
+        "Update all addons?",
+    ): [False],
+    (
+        "script/todo/database_manager.py",
+        "DatabaseManager.duplicate_database",
+        "Neutralize the copy?",
+    ): [True],
+    (
         "script/todo/qemu_install_monitor.py",
         "install_cli_browser",
         "Install now?",
