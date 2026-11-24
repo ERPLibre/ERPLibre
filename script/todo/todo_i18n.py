@@ -10510,6 +10510,42 @@ TRANSLATIONS = {
         "fr": "Effacement terminé.",
         "en": "Deletion done.",
     },
+    "Reinstall QEMU/libvirt on this host (force, repair)": {
+        "fr": "🔧 Réinstaller QEMU/libvirt sur cet hôte (forcer, réparer)",
+        "en": "🔧 Reinstall QEMU/libvirt on this host (force, repair)",
+    },
+    "Reinstall QEMU/libvirt on this host": {
+        "fr": "Réinstaller QEMU/libvirt sur cet hôte",
+        "en": "Reinstall QEMU/libvirt on this host",
+    },
+    "Every QEMU/libvirt package is reinstalled, even": {
+        "fr": "Tous les paquets QEMU/libvirt sont réinstallés, même",
+        "en": "Every QEMU/libvirt package is reinstalled, even",
+    },
+    "when present, then the service, the libvirt group": {
+        "fr": "présents, puis le service, le groupe libvirt",
+        "en": "when present, then the service, the libvirt group",
+    },
+    "and the « default » network are checked again.": {
+        "fr": "et le réseau « default » sont revérifiés.",
+        "en": "and the « default » network are checked again.",
+    },
+    "QEMU/libvirt reinstalled, host ready.": {
+        "fr": "QEMU/libvirt réinstallé, hôte prêt.",
+        "en": "QEMU/libvirt reinstalled, host ready.",
+    },
+    "Reinstallation failed (exit code": {
+        "fr": "Réinstallation échouée (code de sortie",
+        "en": "Reinstallation failed (exit code",
+    },
+    "Follow the instructions printed above, then rerun.": {
+        "fr": "Suivez les consignes affichées plus haut, puis relancez.",
+        "en": "Follow the instructions printed above, then rerun.",
+    },
+    "Force the reinstallation now? (y/N): ": {
+        "fr": "Forcer la réinstallation maintenant ? (o/N, défaut : non) : ",
+        "en": "Force the reinstallation now? (y/N, default: no): ",
+    },
     "Clean up QEMU (orphan files)": {
         "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
         "en": "🧹 Clean up QEMU (orphan files)",

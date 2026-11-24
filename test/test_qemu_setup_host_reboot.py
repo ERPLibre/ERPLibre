@@ -147,7 +147,7 @@ class ConsentInTheCallers(unittest.TestCase):
 
     @staticmethod
     def _commande_hote():
-        """La chaîne assignée à « cmd » dans _qemu_ensure_tools.
+        """La chaîne assignée à « cmd » dans _qemu_run_setup_host.
 
         Lue par l'arbre syntaxique et non par le texte : un commentaire qui
         NOMME le drapeau pour expliquer son absence est légitime, et une
@@ -161,7 +161,7 @@ class ConsentInTheCallers(unittest.TestCase):
         for node in ast.walk(ast.parse(source)):
             if (
                 isinstance(node, ast.FunctionDef)
-                and node.name == "_qemu_ensure_tools"
+                and node.name == "_qemu_run_setup_host"
             ):
                 for stmt in ast.walk(node):
                     if (
@@ -169,7 +169,7 @@ class ConsentInTheCallers(unittest.TestCase):
                         and getattr(stmt.targets[0], "id", "") == "cmd"
                     ):
                         return ast.literal_eval(stmt.value)
-        raise AssertionError("cmd introuvable dans _qemu_ensure_tools")
+        raise AssertionError("cmd introuvable dans _qemu_run_setup_host")
 
     def test_the_host_menu_never_assumes_the_reboot(self):
         cmd = self._commande_hote()
