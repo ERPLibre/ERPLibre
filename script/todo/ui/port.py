@@ -5,15 +5,16 @@
 les questions de TODO, et deux ports qui le font.
 
 Un port répond à `menu(view)`, `ask(text, default, kind, timeout)`,
-`secret(text)`, `confirm(text, default, typed)`, `choose(text, options,
-multi, default, labels, letters, names)`, `pick_path(start, directory)`,
-`notice(text, level)`, `run(cmd, **opts)` et `open_view(view)`. `menu`
-et `ask` sont les deux primitives : elles montrent leur texte tel quel
-et rendent la ligne répondue, sans son saut de ligne. Une ligne vide
-rend "" et laisse le défaut à l'appelant, comme `input` ; seul le compte
-à rebours (`kind="countdown"`) rend `default` à l'échéance. `menu` pose
-un message déjà fait : un `menu`, ou l'`ask` que construisent `choose`
-et `pick_path`. `BasePort` en déduit les autres questions.
+`secret(text)`, `confirm(text, default, typed, timeout, back)`,
+`choose(text, options, multi, default, labels, letters, names)`,
+`pick_path(start, directory)`, `notice(text, level)`, `run(cmd, **opts)`
+et `open_view(view)`. `menu` et `ask` sont les deux primitives : elles
+montrent leur texte tel quel et rendent la ligne répondue, sans son saut
+de ligne. Une ligne vide rend "" et laisse le défaut à l'appelant, comme
+`input` ; seul un compte à rebours (`kind="countdown"`, ou un message qui
+porte `timeout_s`) rend `default` à l'échéance. `menu` pose un message
+déjà fait : un `menu`, ou l'`ask` que construisent `confirm`, `choose` et
+`pick_path`. `BasePort` en déduit les autres questions.
 
 Chaque question est aussi un message `todo.v1` (`question`, `menu_view`) :
 `speak`, un libellé court pour la voix ; `requires`, les capacités qu'un
@@ -83,8 +84,7 @@ def speak(text) -> str:
 def question(kind, text, default=None, timeout=None, **fields) -> dict:
     """Message `ask` d'une question de genre `kind` (une clé de REQUIRES) ;
     `timeout_s` pour un compte à rebours ; `fields` s'y ajoutent, ou
-    remplacent `speak`. Une confirmation se répond par `y` ou `n`, que
-    `_is_yes` et `_is_no` de TODO lisent déjà."""
+    remplacent `speak`."""
     message = {
         "t": "ask",
         "kind": kind,
@@ -98,6 +98,33 @@ def question(kind, text, default=None, timeout=None, **fields) -> dict:
         message["timeout_s"] = timeout
     message.update(fields)
     return message
+
+
+def confirm_question(text, default, timeout=None, back=False) -> dict:
+    """Message `ask` de genre `confirm` : `text`, puis l'indice de la
+    langue choisie et du booléen `default`, [O/n] ou [o/N], [Y/n] ou [y/N],
+    invite comprise ; `prompt` et `speak`, la question sans indice, pour
+    la page et la voix ; `default`, `y` ou `n` ; `timeout_s` pour un compte
+    à rebours ; `back`, vrai, quand Annuler arrête l'action."""
+    hint = t("[Y/n]: ") if default else t("[y/N]: ")
+    text = str(text).rstrip()
+    return question(
+        "confirm",
+        f"{text} {hint}",
+        "y" if default else "n",
+        timeout,
+        prompt=text,
+        speak=speak(text),
+        **({"back": True} if back else {}),
+    )
+
+
+def confirmed(message, answer):
+    """True pour un mot de YES, False pour un mot de NO, sans casse ni
+    blancs aux bouts ; pour une réponse vide, le défaut du message d'une
+    confirmation (`confirm_question`) ; None pour toute autre réponse."""
+    word = answer.strip().lower() or message["default"]
+    return True if word in YES else False if word in NO else None
 
 
 def path_question(start, directory=False) -> dict:
@@ -254,29 +281,49 @@ class BasePort:
     def secret(self, text) -> str:
         return self.ask(text, kind="secret")
 
-    def confirm(self, text, default=False, typed=None) -> bool:
-        """Vrai pour oui. Avec `typed`, vrai seulement si la réponse est ce
-        texte exact : la question, un `ask` de genre `typed` posé par
-        `menu`, le porte (`expected`) pour qu'une page n'active sa réponse
-        qu'à l'égalité, et c'est ici qu'elle se vérifie. Une page n'y offre
-        donc aucun « non » : son Annuler lève EOFError (Abort sous click),
-        comme Ctrl+D, et l'appelant prend l'une et l'autre pour non. Sans
-        `typed`, redemande jusqu'à oui, non ou Entrée (le défaut)."""
+    def confirm(
+        self, text, default=None, typed=None, timeout=None, back=False
+    ):
+        """True pour un mot de YES, False pour un mot de NO, sans casse ni
+        blancs aux bouts ; `default`, un booléen, pour une réponse vide.
+        Une autre réponse le dit (`notice`) et la même question revient.
+        Ctrl+D (EOFError) rend False, ou None avec `back`, que l'appelant
+        lit comme l'abandon de toute son action ; une page n'offre Annuler
+        qu'avec `back`, où il rend None. Avec `timeout`, en secondes, un
+        compte à rebours rend le défaut à l'échéance, et Ctrl+D comme
+        Annuler y valent Entrée : le défaut, `back` compris. Ce compte à
+        rebours et `back` sont les deux seules exceptions à « Ctrl+D vaut
+        non ». Ctrl+C passe. La question, un `ask` de genre `confirm`
+        (`confirm_question`), est posée par `menu`.
+
+        Avec `typed`, vrai seulement si la réponse est ce texte exact : la
+        question, un `ask` de genre `typed` posé par `menu`, le porte
+        (`expected`) pour qu'une page n'active sa réponse qu'à l'égalité,
+        et c'est ici qu'elle se vérifie. Une page n'y offre donc aucun
+        « non » : son Annuler lève EOFError (Abort sous click), comme
+        Ctrl+D, et l'appelant prend l'une et l'autre pour non.
+
+        ValueError, avant de demander : sans `typed`, un `default` qui
+        n'est pas un booléen ; `timeout` avec `typed`."""
         if typed is not None:
+            if timeout is not None:
+                raise ValueError("a typed confirmation has no countdown")
             message = question("typed", text, expected=typed)
             return self.menu(message).strip() == typed
-        hint = "[Y/n]" if default else "[y/N]"
+        if not isinstance(default, bool):
+            raise ValueError("a yes/no question states its default")
+        message = confirm_question(text, default, timeout, back)
         while True:
-            answer = self.ask(
-                f"{text} {hint}: ", "y" if default else "n", "confirm"
-            )
-            answer = answer.strip().lower()
-            if answer in YES:
-                return True
-            if answer in NO:
-                return False
-            if not answer:
-                return default
+            try:
+                answer = self.menu(message)
+            except EOFError:
+                if timeout is not None:
+                    return default
+                return None if back else False
+            verdict = confirmed(message, answer)
+            if verdict is not None:
+                return verdict
+            self.notice(f"{t('Answer yes or no: ')}{answer.strip()}", "error")
 
     def choose(
         self,
@@ -427,6 +474,15 @@ def _line(read, *args) -> str:
         raise
 
 
+def _countdown(text, default, timeout) -> str:
+    """La réponse au compte à rebours d'auto_ask d'origine, `default` à
+    l'échéance de `timeout` secondes."""
+    from script.todo import auto_ask
+
+    countdown = ORIGINAL.get("auto_ask.ask", auto_ask.ask)
+    return _line(countdown, text, default or "", timeout)
+
+
 class TerminalPort(BasePort):
     """Le terminal, comme au CLI : `input`, `getpass` et le compte à
     rebours d'auto_ask d'origine, `print`, `Execute.exec_command_live`."""
@@ -434,22 +490,22 @@ class TerminalPort(BasePort):
     def menu(self, view) -> str:
         """Les lignes du texte de `view` s'impriment, sauf la dernière,
         l'invite, seule passée à `input` : un double d'`input` qui
-        n'écrit pas son invite laisse l'écran à la sortie."""
+        n'écrit pas son invite laisse l'écran à la sortie. Un message qui
+        porte `timeout_s` passe son invite au compte à rebours."""
         screen, cut, invite = view["text"].rpartition("\n")
         if cut:
             if view.get("kind") == "choose":
                 screen = _colour_back(screen)
             print(screen)
+        if view.get("timeout_s") is not None:
+            return _countdown(invite, view["default"], view["timeout_s"])
         return _line(ORIGINAL.get("input", builtins.input), invite)
 
     def ask(self, text, default=None, kind="text", timeout=None) -> str:
         if kind == "secret":
             return _line(ORIGINAL.get("getpass", getpass.getpass), text)
         if kind == "countdown":
-            from script.todo import auto_ask
-
-            countdown = ORIGINAL.get("auto_ask.ask", auto_ask.ask)
-            return _line(countdown, text, default or "", timeout)
+            return _countdown(text, default, timeout)
         return _line(ORIGINAL.get("input", builtins.input), text)
 
     def pick_path(self, start, directory=False):

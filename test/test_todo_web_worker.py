@@ -680,6 +680,15 @@ class TestPipePort(unittest.TestCase):
         )
         self.assertEqual(self.out.getvalue(), "⏱30s Go? \n")
 
+    def test_a_captured_countdown_shows_its_time_before_its_whole_text(self):
+        # Comme auto_ask.ask au terminal, et non devant sa dernière ligne.
+        future, asked = self.asking(
+            self.port.ask, "Kept:\nGo? ", "n", "countdown", 30
+        )
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertEqual(future.result(10), "")
+        self.assertEqual(self.out.getvalue(), "⏱30s Kept:\nGo? \n")
+
         def captured():
             uninstall = legacy.install(self.port)
             try:
@@ -692,6 +701,124 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(asked["kind"], "countdown")
         self.reply(t="cancel", qid=asked["qid"])
         self.assertEqual(future.result(10), "n")
+
+    def test_a_confirmation_is_asked_with_its_hint_and_default(self):
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        future, asked = self.asking(self.port.confirm, "Go?", True)
+        self.assertEqual(
+            (asked["t"], asked["kind"], asked["text"], asked["prompt"]),
+            ("ask", "confirm", "Go? [Y/n]: ", "Go?"),
+        )
+        self.assertEqual(asked["default"], "y")
+        self.reply(t="answer", qid=asked["qid"], value="y")
+        self.assertIs(future.result(10), True)
+        answered = {"t": "answered", "qid": asked["qid"], "yes": True}
+        self.assertEqual(self.received(), answered)
+        # Tapée, la réponse s'affiche par l'écho : rien n'est transcrit.
+        future, asked = self.asking(self.port.confirm, "Go?", True)
+        os.write(self.master, b"NON\n")
+        self.assertIs(future.result(10), False)
+        answered = {"t": "answered", "qid": asked["qid"], "yes": False}
+        self.assertEqual(self.received(), answered)
+        # Entrée de la page prend le défaut, transcrit dans la langue.
+        todo_i18n.use_lang("fr")
+        future, asked = self.asking(self.port.confirm, "Go ?", False)
+        self.reply(t="answer", qid=asked["qid"], value="")
+        self.assertIs(future.result(10), False)
+        answered = {"t": "answered", "qid": asked["qid"], "yes": False}
+        self.assertEqual(self.received(), answered)
+        future, asked = self.asking(self.port.confirm, "Go ?", False)
+        self.reply(t="answer", qid=asked["qid"], value="o")
+        self.assertIs(future.result(10), True)
+        self.assertEqual(
+            self.out.getvalue(),
+            "Go? [Y/n]: Yes\nGo? [Y/n]: Go ? [o/N] : Non\nGo ? [o/N] : Oui\n",
+        )
+
+    def test_ctrl_d_is_no_and_cancel_with_back_is_none(self):
+        future, asked = self.asking(self.port.confirm, "Go?", True)
+        self.assertNotIn("back", asked)
+        os.write(self.master, b"\x04")
+        self.assertIs(future.result(10), False)
+        closed = {"t": "answered", "qid": asked["qid"], "end": "cancel"}
+        self.assertEqual(self.received(), closed)
+        # Annuler, que la page n'offre qu'avec `back`, vaut sinon non.
+        future, asked = self.asking(self.port.confirm, "Go?", True)
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertIs(future.result(10), False)
+        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+        future, asked = self.asking(
+            self.port.confirm, "Go?", True, None, None, True
+        )
+        self.assertIs(asked["back"], True)
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertIsNone(future.result(10))
+        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+        future, asked = self.asking(
+            self.port.confirm, "Go?", True, None, None, True
+        )
+        os.write(self.master, b"\x04")
+        self.assertIsNone(future.result(10))
+
+    def test_an_invalid_confirmation_asks_again_with_a_new_qid(self):
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        future, asked = self.asking(self.port.confirm, "Go?", False)
+        self.reply(t="answer", qid=asked["qid"], value="maybe")
+        self.assertEqual(
+            self.received(), {"t": "answered", "qid": asked["qid"]}
+        )
+        refused = {"t": "notice", "text": "Answer yes or no: maybe"}
+        self.assertEqual(self.received(), dict(refused, level="error"))
+        again = self.received()
+        self.assertEqual(
+            (again["kind"], again["qid"], again["text"]),
+            ("confirm", asked["qid"] + 1, asked["text"]),
+        )
+        os.write(self.master, b" oui \n")
+        self.assertIs(future.result(10), True)
+        answered = {"t": "answered", "qid": again["qid"], "yes": True}
+        self.assertEqual(self.received(), answered)
+        self.assertEqual(
+            self.out.getvalue(),
+            "Go? [y/N]: maybe\nAnswer yes or no: maybe\nGo? [y/N]: ",
+        )
+
+    def test_a_countdown_confirmation_keeps_its_kind_and_ends_on_its_default(
+        self,
+    ):
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        future, asked = self.asking(
+            self.port.confirm, "Kept:\nGo?", True, None, 0.2
+        )
+        self.assertEqual(
+            (asked["kind"], asked["timeout_s"], asked["default"]),
+            ("confirm", 0.2, "y"),
+        )
+        self.assertIs(future.result(10), True)
+        timed_out = {"t": "answered", "qid": asked["qid"], "end": "timeout"}
+        self.assertEqual(self.received(), timed_out)
+        # Le temps se dit devant l'invite, sous l'écran de la question.
+        self.assertEqual(
+            self.out.getvalue(), "Kept:\n⏱0.2s Go? [Y/n]:  ⏱ → Enter (y)\n"
+        )
+        # Ctrl+D et Annuler valent Entrée, `back` compris : le défaut.
+        future, asked = self.asking(
+            self.port.confirm, "Go?", False, None, 30, True
+        )
+        os.write(self.master, b"\x04")
+        self.assertIs(future.result(10), False)
+        answered = {"t": "answered", "qid": asked["qid"], "yes": False}
+        self.assertEqual(self.received(), answered)
+        future, asked = self.asking(
+            self.port.confirm, "Go?", True, None, 30, True
+        )
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertIs(future.result(10), True)
+        answered = {"t": "answered", "qid": asked["qid"], "yes": True}
+        self.assertEqual(self.received(), answered)
 
     def test_a_menu_answer_shows_its_entry(self):
         item = {"key": "1", "label": "Execute", "section": None}

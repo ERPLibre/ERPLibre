@@ -11,8 +11,9 @@ de deux réponses :
   `qid` étant ignorée ; annuler lève EOFError, comme Ctrl+D ;
 - dans le terminal, une ligne tapée ; Ctrl+D sur une ligne vide lève
   EOFError, et Ctrl+C KeyboardInterrupt, comme `input`.
-À un compte à rebours, Ctrl+D comme `cancel` vaut Entrée, comme dans
-`auto_ask.ask` : la question rend "", dont l'appelant fait son défaut.
+À un compte à rebours, une question qui porte `timeout_s`, Ctrl+D comme
+`cancel` vaut Entrée, comme dans `auto_ask.ask` : la question rend "",
+dont l'appelant fait son défaut.
 Le terminal répond donc à toute question (`fallback: pty`), et le canal
 fermé, il répond seul. Les `qid` partent d'une base propre au processus :
 une réponse tardive faite au worker d'avant une relance ne répond pas au
@@ -26,13 +27,15 @@ la suite d'un collage qu'il retient. Pour un menu répondu par l'une de ses
 entrées, `answered` en porte la clé (`key`), d'où que vienne la réponse :
 le hub y ouvre une tâche du journal. Pour un choix, il porte les clés que
 la réponse choisit (`keys`, `port.chosen_keys`), ["0"] pour le retour ;
-aucune pour une réponse invalide. Pour une question finie sans réponse,
-il porte `end` : `timeout` à l'échéance, `cancel` sur une exception
-(annulée par la page, Ctrl+D, Ctrl+C). Un secret se pose écho coupé, comme
-`getpass` ; le hub y voit l'invite d'un mot de passe. Après une réponse
+aucune pour une réponse invalide. Pour une confirmation, il porte le oui
+ou le non lu (`yes`, `port.confirmed`), aucun pour une réponse invalide.
+Pour une question finie sans réponse, il porte `end` : `timeout` à
+l'échéance, `cancel` sur une exception (annulée par la page, Ctrl+D,
+Ctrl+C). Un secret se pose écho coupé, comme `getpass` ; le hub y voit
+l'invite d'un mot de passe. Après une réponse
 venue du canal, le terminal en montre la transcription sur la ligne de la
-question : l'entrée choisie d'un menu, sinon la valeur ; un secret y
-laisse MASK, quel que soit son chemin.
+question : l'entrée choisie d'un menu, Oui ou Non pour une confirmation,
+sinon la valeur ; un secret y laisse MASK, quel que soit son chemin.
 """
 
 import os
@@ -50,7 +53,12 @@ MASK = "•••"
 
 def transcript(message, value) -> str:
     """Ce qu'une réponse du canal laisse dans le terminal : « 1 → libellé »
-    pour une entrée de menu ou une option d'un choix, sinon la valeur."""
+    pour une entrée de menu ou une option d'un choix, Oui ou Non dans la
+    langue choisie pour une confirmation qui la lit, sinon la valeur."""
+    if message.get("kind") == "confirm":
+        yes = port.confirmed(message, value)
+        if yes is not None:
+            return t("Answer yes") if yes else t("Answer no")
     for item in (*message.get("items", ()), *message.get("options", ())):
         if item["key"] == value.strip():
             return f"{value} → {item['label']}"
@@ -148,7 +156,11 @@ class PipePort(port.BasePort):
         message["qid"] = qid = self.qid
         kind, timeout = message.get("kind"), message.get("timeout_s")
         text = message["text"]
-        if kind == "countdown":
+        if kind == "confirm" and timeout is not None:
+            # Comme TerminalPort.menu, le temps se dit devant l'invite.
+            screen, cut, invite = text.rpartition("\n")
+            text = f"{screen}{cut}⏱{timeout:g}s {invite}"
+        elif timeout is not None:
             text = f"⏱{timeout:g}s {text}"
         _flush_input(self.tty)
         self.typed = b""
@@ -159,7 +171,7 @@ class PipePort(port.BasePort):
         try:
             self._write(text)
             self.send(message)
-            source, value = self._wait(qid, timeout, kind == "countdown")
+            source, value = self._wait(qid, timeout, timeout is not None)
             keys = [item["key"] for item in message.get("items", ())]
             if value is not None and value.strip() in keys:
                 answered["key"] = value.strip()
@@ -167,6 +179,10 @@ class PipePort(port.BasePort):
                 chosen = port.chosen_keys(message, value)
                 if chosen is not None:
                     answered["keys"] = chosen
+            if kind == "confirm" and value is not None:
+                yes = port.confirmed(message, value)
+                if yes is not None:
+                    answered["yes"] = yes
             if source is None:
                 answered["end"] = "timeout"
         except BaseException:

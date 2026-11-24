@@ -3,7 +3,8 @@
 // section, speak}], speak…} ; ses entrées se groupent par section, l'entrée
 // 0 à part, et se choisissent au clavier comme au CLI. Une question est le
 // message `ask` : {qid, kind, text, default, timeout_s?, options?, multi?,
-// expected?}. Une réponse est ce que le hub accepte de porter au worker.
+// expected?, prompt?, back?}. Une réponse est ce que le hub accepte de
+// porter au worker.
 import {fold} from "./model.js";
 
 // Au-delà de FILTER_FROM entrées, 0 non comprise, le menu offre un filtre.
@@ -219,8 +220,28 @@ export function choiceActions(options) {
 }
 
 // Le texte d'une question sans ce que son widget montre déjà : pour un
-// choix, sa question seule (`prompt`), sans ses entrées ni son invite.
+// choix, sa question seule (`prompt`), sans ses entrées ni son invite ; pour
+// une confirmation du port, sa question sans l'indice de son défaut. Une
+// confirmation de la capture, sans `prompt`, montre son texte entier.
 export function promptText(question) {
-    const text = question.kind === "choose" ? question.prompt : question.text;
+    const text = question.kind === "choose" ? question.prompt
+        : question.kind === "confirm" ? question.prompt ?? question.text
+        : question.text;
     return String(text ?? "").trimEnd();
+}
+
+// Vrai pour une question qui compte à rebours : celle de la capture
+// (`countdown`), ou toute question qui porte `timeout_s`.
+export function countsDown(question) {
+    return question.kind === "countdown" || question.timeout_s != null;
+}
+
+// Vrai quand le widget offre Annuler. Une confirmation du port (qui porte
+// `prompt`) ne l'offre que si Annuler y arrête l'action (`back`) et qu'elle
+// ne compte pas à rebours : sinon Oui et Non suffisent, et Annuler y
+// vaudrait non ou le défaut. Une confirmation de la capture le garde : il y
+// lève EOFError, Abort sous click, comme Ctrl+D.
+export function offersCancel(question) {
+    return question.kind !== "confirm" || question.prompt === undefined
+        || (question.back === true && !countsDown(question));
 }

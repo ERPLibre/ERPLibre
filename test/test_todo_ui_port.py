@@ -90,11 +90,31 @@ class TestFacade(unittest.TestCase):
             self.assertEqual(ui.ask("Name: "), "x")
             self.assertEqual(ui.choose("Which?", ["a"]), "a")
             self.assertEqual(ui.menu(view), "2")
-            self.assertTrue(ui.confirm("Go?"))
+            self.assertTrue(ui.confirm("Go?", default=True))
             self.assertIsNone(ui.pick_path(_forged_dir(self)))
             with self.assertRaises(EOFError):
                 ui.secret("Password: ")
         self.assertEqual(ended, [1] * 6)
+
+    def test_confirm_passes_each_argument_to_the_bound_port(self):
+        seen = []
+
+        class Port(port.ScriptedPort):
+            def confirm(self, *args):
+                seen.append(args)
+
+        with ui.bind(Port()):
+            ui.confirm("Go?", True, None, 5, True)
+            ui.confirm("Go?", default=False, back=True)
+            ui.confirm("Type forged:", typed="forged")
+        self.assertEqual(
+            seen,
+            [
+                ("Go?", True, None, 5, True),
+                ("Go?", False, None, None, True),
+                ("Type forged:", None, "forged", None, False),
+            ],
+        )
 
     def test_two_threads_keep_distinct_ports(self):
         both_bound = threading.Barrier(2, timeout=10)
@@ -313,16 +333,20 @@ class TestScriptedPort(unittest.TestCase):
         self.assertEqual(scripted.events[4]["opts"], {"quiet": True})
 
     def test_confirm_and_choose_ask_again_until_they_can_answer(self):
+        _english(self)
         scripted = port.ScriptedPort(["maybe", "o", "", "yes", "no"])
-        self.assertTrue(scripted.confirm("Go?"))
-        self.assertFalse(scripted.confirm("Go?"))
+        self.assertTrue(scripted.confirm("Go?", default=False))
+        self.assertFalse(scripted.confirm("Go?", default=False))
         self.assertFalse(scripted.confirm("Delete?", typed="forged"))
         self.assertTrue(scripted.confirm("Delete?", typed="no"))
         texts = [e["text"] for e in scripted.events]
-        self.assertEqual(texts[:3], ["Go? [y/N]: "] * 3)
+        self.assertEqual(
+            texts[:4],
+            ["Go? [y/N]: ", "Answer yes or no: maybe", *["Go? [y/N]: "] * 2],
+        )
         self.assertEqual(scripted.events[0]["default"], "n")
-        self.assertEqual(scripted.events[3]["kind"], "typed")
-        _english(self)
+        self.assertEqual(scripted.events[1]["level"], "error")
+        self.assertEqual(scripted.events[4]["kind"], "typed")
         scripted = port.ScriptedPort(["4", "2", "1, 3"])
         options = ["alpha", "beta", "gamma"]
         self.assertEqual(scripted.choose("Which?", options), "beta")
@@ -795,6 +819,198 @@ class TestChoose(unittest.TestCase):
         with ui.bind(scripted):
             self.assertEqual(ui.choose("?", [1, 2], default=2, **rules), 2)
             self.assertEqual(ui.choose("?", [1, 2], default=2, **rules), 1)
+
+
+class TestConfirm(unittest.TestCase):
+    """Les règles B d'une question oui/non, les mêmes à chaque question de
+    TODO : o, oui, y, yes et n, non, no dans les deux langues, sans casse ;
+    l'indice du défaut dans la langue choisie, que le port ajoute ; une
+    réponse vide qui prend le défaut ; une faute dite, puis la même
+    question ; Ctrl+D qui vaut non, None avec `back`, le défaut au compte
+    à rebours ; Ctrl+C qui passe."""
+
+    def setUp(self):
+        _english(self)
+
+    def confirmed(self, answers, *args, **rules):
+        """(ce que rend la question, les événements du port) quand elle
+        reçoit `answers`, puis Ctrl+D."""
+        scripted = port.ScriptedPort(answers)
+        return scripted.confirm(*args, **rules), scripted.events
+
+    def test_yes_and_no_in_either_language_and_any_case(self):
+        yes = ("o", "oui", "y", "yes", "OUI", "Yes", " o ", "O\t")
+        no = ("n", "non", "no", "NON", "No", " n ")
+        for lang in ("fr", "en"):
+            todo_i18n.use_lang(lang)
+            for answer in yes + no:
+                for default in (True, False):
+                    with self.subTest(
+                        lang=lang, answer=answer, default=default
+                    ):
+                        got, events = self.confirmed([answer], "Go?", default)
+                        self.assertIs(got, answer in yes)
+                        self.assertEqual(len(events), 1)
+
+    def test_the_port_shows_the_hint_of_the_language_and_default(self):
+        cases = [
+            ("fr", "Go ?", True, "Go ? [O/n] : ", "y"),
+            ("fr", "Go ?", False, "Go ? [o/N] : ", "n"),
+            ("en", "Go?", True, "Go? [Y/n]: ", "y"),
+            ("en", "Go?", False, "Go? [y/N]: ", "n"),
+        ]
+        for lang, text, default, shown, value in cases:
+            with self.subTest(lang=lang, default=default):
+                todo_i18n.use_lang(lang)
+                _, [asked] = self.confirmed([""], text, default)
+                self.assertEqual(
+                    (asked["t"], asked["kind"], asked["text"]),
+                    ("ask", "confirm", shown),
+                )
+                # La page et la voix lisent la question sans son indice.
+                self.assertEqual(
+                    (asked["prompt"], asked["speak"], asked["default"]),
+                    (text, text, value),
+                )
+                self.assertEqual(asked["requires"], [])
+                self.assertNotIn("timeout_s", asked)
+                self.assertNotIn("back", asked)
+
+    def test_every_question_states_its_default(self):
+        # Refusé avant la question : un défaut qui n'est pas un booléen,
+        # qu'une valeur de protocole ou un entier ferait lire à l'envers.
+        scripted = port.ScriptedPort(["y"])
+        for default in (None, "n", "y", 0, 1):
+            with self.subTest(default=default):
+                with self.assertRaises(ValueError):
+                    scripted.confirm("Go?", default)
+        with self.assertRaises(ValueError):
+            scripted.confirm("Go?")
+        with self.assertRaises(ValueError):
+            scripted.confirm("Type forged:", typed="forged", timeout=5)
+        self.assertEqual(scripted.events, [])
+
+    def test_a_blank_answer_takes_the_default_both_ways(self):
+        for blank in ("", "  \t"):
+            for default in (True, False):
+                with self.subTest(blank=blank, default=default):
+                    got, events = self.confirmed([blank], "Go?", default)
+                    self.assertIs(got, default)
+                    self.assertEqual(len(events), 1)
+
+    def test_an_invalid_answer_says_so_and_asks_again(self):
+        for answer in ("maybe", "1", "oui non", "yy", "0"):
+            with self.subTest(answer=answer):
+                got, events = self.confirmed([answer, "n"], "Go?", True)
+                self.assertIs(got, False)
+                asked, refused, again = events
+                self.assertEqual(
+                    refused,
+                    {
+                        "t": "notice",
+                        "text": f"Answer yes or no: {answer}",
+                        "level": "error",
+                    },
+                )
+                self.assertEqual(again, asked)
+        todo_i18n.use_lang("fr")
+        _, events = self.confirmed([" peut-être ", "o"], "Go ?", False)
+        self.assertEqual(
+            events[1]["text"], "Répondez o/oui ou n/non : peut-être"
+        )
+
+    def test_ctrl_d_is_no_even_when_the_default_is_yes(self):
+        # Ctrl+D au terminal, Annuler de la page, un port scripté épuisé ;
+        # après une faute aussi. Ctrl+C passe.
+        cases = (([EOFError()], 1), ([], 1), (["maybe", EOFError()], 3))
+        for answers, asked in cases:
+            for default in (True, False):
+                with self.subTest(answers=answers, default=default):
+                    got, events = self.confirmed(answers, "Go?", default)
+                    self.assertIs(got, False)
+                    self.assertEqual(len(events), asked)
+        with self.assertRaises(KeyboardInterrupt):
+            self.confirmed([KeyboardInterrupt()], "Go?", False)
+
+    def test_ctrl_d_with_back_is_none(self):
+        for default in (True, False):
+            with self.subTest(default=default):
+                got, [asked] = self.confirmed(
+                    [EOFError()], "Go?", default, back=True
+                )
+                self.assertIsNone(got)
+                self.assertIs(asked["back"], True)
+        # Elle répond oui et non comme toute autre.
+        self.assertIs(self.confirmed(["o"], "Go?", False, back=True)[0], True)
+        self.assertIs(self.confirmed([""], "Go?", False, back=True)[0], False)
+
+    def test_a_countdown_takes_the_default_at_its_end(self):
+        _, [asked] = self.confirmed(["y"], "Go?", False, timeout=5)
+        self.assertEqual(
+            (asked["kind"], asked["timeout_s"], asked["default"]),
+            ("confirm", 5, "n"),
+        )
+        # Ctrl+D au compte à rebours vaut Entrée, `back` compris.
+        for default in (True, False):
+            for back in (False, True):
+                with self.subTest(default=default, back=back):
+                    got, _ = self.confirmed(
+                        [EOFError()], "Go?", default, timeout=5, back=back
+                    )
+                    self.assertIs(got, default)
+        calls = []
+
+        def deadline(text, default, seconds):
+            calls.append((text, default, seconds))
+            return default
+
+        def closed(text, default, seconds):
+            # Un stdin fermé, en mode automatique, rend une ligne vide.
+            return ""
+
+        for countdown in (deadline, closed):
+            for default in (True, False):
+                with (
+                    self.subTest(
+                        countdown=countdown.__name__, default=default
+                    ),
+                    patch.dict(port.ORIGINAL, {"auto_ask.ask": countdown}),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    got = port.TerminalPort().confirm(
+                        "Go?", default, timeout=5
+                    )
+                    self.assertIs(got, default)
+        self.assertEqual(
+            calls, [("Go? [Y/n]: ", "y", 5), ("Go? [y/N]: ", "n", 5)]
+        )
+
+    def test_the_terminal_prints_the_screen_and_asks_the_last_line(self):
+        # Ce que la question efface s'imprime au-dessus d'elle ; `input`
+        # ne reçoit que la dernière ligne, l'indice compris. Un double
+        # d'`input` posé par un test y répond aussi.
+        text = "Deleted:\n  forged_yesno_db\nDelete them?"
+        texts = []
+
+        def fake_input(prompt):
+            texts.append(prompt)
+            return "oui"
+
+        out = io.StringIO()
+        with patch.dict(port.ORIGINAL, input=fake_input), redirect_stdout(out):
+            self.assertIs(port.TerminalPort().confirm(text, False), True)
+        self.assertEqual(texts, ["Delete them? [y/N]: "])
+        self.assertEqual(out.getvalue(), "Deleted:\n  forged_yesno_db\n")
+        self.assertNotIn("input", port.ORIGINAL)
+        with (
+            patch("builtins.input", return_value="n") as typed,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIs(port.TerminalPort().confirm(text, True), False)
+        typed.assert_called_once_with("Delete them? [Y/n]: ")
+        _, [asked] = self.confirmed([""], text, False)
+        self.assertEqual(asked["prompt"], text)
+        self.assertEqual(asked["speak"], "Delete them?")
 
 
 class TestMessages(unittest.TestCase):

@@ -1658,7 +1658,8 @@ class TestRecorder(StoreCase):
     def test_a_countdown_cancelled_by_the_page_is_its_default(self):
         # Annuler un compte à rebours vaut Entrée, comme Ctrl+D au
         # terminal : le worker prend le défaut, que le journal dit, masqué
-        # comme toute réponse. Une autre question annulée reste annulée.
+        # comme toute réponse. Une question sans `timeout_s` annulée reste
+        # annulée.
         self.start()
         asks = [
             (2, "countdown", "Upgrade now? (y/n) ", "y"),
@@ -1668,7 +1669,9 @@ class TestRecorder(StoreCase):
         ]
         for qid, kind, text, default in asks:
             ask = {"t": "ask", "qid": qid, "kind": kind, "text": text}
-            self.rec.worker(dict(ask, default=default, timeout_s=5))
+            if kind == "countdown":
+                ask["timeout_s"] = 5
+            self.rec.worker(dict(ask, default=default))
             self.rec.page({"t": "cancel", "qid": qid})
             self.rec.worker({"t": "answered", "qid": qid})
         self.rec.end()
@@ -1679,6 +1682,36 @@ class TestRecorder(StoreCase):
                 {"t": "answer", "value": "y"},
                 {"t": "answer", "value": ""},
                 {"t": "answer", "value": "•••"},
+                {"t": "cancel"},
+            ],
+        )
+
+    def test_a_confirmation_keeps_its_yes_or_no(self):
+        # Le journal garde la décision que le worker a lue, d'où que vienne
+        # la réponse. Annuler une confirmation à rebours vaut Entrée, son
+        # défaut ; sans compte à rebours, elle reste annulée.
+        self.start()
+        cases = [
+            (2, {"default": "y", "timeout_s": 5}, "cancel", {"yes": True}),
+            (3, {"default": "n"}, "answer", {"yes": True}),
+            (4, {"default": "y"}, None, {"yes": False}),
+            (5, {"default": "n", "back": True}, "cancel", {"end": "cancel"}),
+        ]
+        for qid, fields, reply, end in cases:
+            text = "Go? [Y/n]: "
+            ask = {"t": "ask", "qid": qid, "kind": "confirm", "text": text}
+            self.rec.worker(dict(ask, **fields))
+            if reply is not None:
+                self.rec.page({"t": reply, "qid": qid, "value": "o"})
+            self.rec.worker({"t": "answered", "qid": qid, **end})
+        self.rec.end()
+        ends = [d for s, d in self.records()[1] if d["t"] != "ask"]
+        self.assertEqual(
+            ends,
+            [
+                {"t": "answer", "value": "y", "yes": True},
+                {"t": "answer", "value": "o", "yes": True},
+                {"t": "answered", "yes": False},
                 {"t": "cancel"},
             ],
         )

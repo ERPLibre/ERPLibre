@@ -83,6 +83,41 @@ class TestRecordingPort(unittest.TestCase):
         )
         self.assertNotIn("hunter2", sink.getvalue())
 
+    def test_a_confirmation_is_recorded_and_ctrl_d_is_no(self):
+        # La question passe par `menu`, qui l'écrit avec sa réponse ;
+        # Ctrl+D s'y écrit `cancel`, et la question rend non.
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        typed = iter(["oui", EOFError()])
+
+        def fake_input(text):
+            answer = next(typed)
+            if isinstance(answer, BaseException):
+                raise answer
+            return answer
+
+        sink = io.StringIO()
+        recording = record.RecordingPort(sink)
+        self.enterContext(redirect_stdout(io.StringIO()))
+        self.enterContext(patch.dict(port.ORIGINAL, input=fake_input))
+        self.assertIs(recording.confirm("Go?", False), True)
+        self.assertIs(recording.confirm("Go?", True), False)
+        events = [json.loads(line) for line in sink.getvalue().splitlines()]
+        brief = [
+            (e["t"], e.get("qid"), e.get("text"), e.get("value"))
+            for e in events
+        ]
+        self.assertEqual(
+            brief,
+            [
+                ("ask", 1, "Go? [y/N]: ", None),
+                ("answer", 1, None, "oui"),
+                ("ask", 2, "Go? [Y/n]: ", None),
+                ("cancel", 2, None, None),
+            ],
+        )
+
     def test_what_is_written_is_redacted_and_a_secret_default_masked(self):
         url = "https://forged:hunter2@forged/repo.git"
         prompt = "Mirror for --token forged-secret: "

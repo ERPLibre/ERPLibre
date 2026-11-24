@@ -71,8 +71,8 @@ def secret(text) -> str:
     return _asked(current().secret, text)
 
 
-def confirm(text, default=False, typed=None) -> bool:
-    return _asked(current().confirm, text, default, typed)
+def confirm(text, default=None, typed=None, timeout=None, back=False):
+    return _asked(current().confirm, text, default, typed, timeout, back)
 
 
 def choose(

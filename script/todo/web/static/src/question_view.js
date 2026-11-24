@@ -2,7 +2,8 @@
 // - text : un champ, le défaut en indication ; Entrée envoie, vide
 //   compris, ce qui vaut le défaut comme au CLI ;
 // - confirm : Oui et Non, le défaut mis en avant ; y, o et n au clavier,
-//   Entrée sur le widget pour le défaut de l'appelant ;
+//   Entrée sur le widget pour le défaut de l'appelant ; à rebours
+//   (`timeout_s`), le temps qui reste, comme un countdown ;
 // - typed : un champ ; quand le message porte le texte attendu
 //   (`expected`), Confirmer n'est actif qu'à l'égalité exacte. Aucun bouton
 //   n'envoie ce texte à la place de l'utilisateur ;
@@ -18,11 +19,12 @@
 //   Tout, qui les prend toutes, un bouton par action à lettre et l'entrée
 //   0, le retour (un choix simple est un menu : MenuView).
 // Une confirmation et un choix gardent le champ « Autre réponse ». Chaque
-// widget a un nom accessible tiré de `speak`, et Annuler, qui fait ce que
-// fait Ctrl+D au terminal : la question finit sans réponse (EOFError,
-// Abort sous click), sauf un compte à rebours, où il vaut Entrée et donne
-// le défaut. L'Entrée qui valide une composition (IME) ne valide pas le
-// champ. Comme MenuView, il répond pour le qid qu'il montre
+// widget a un nom accessible tiré de `speak`, et Annuler (une confirmation
+// du port seulement avec `back`, hors compte à rebours : `offersCancel`),
+// qui fait ce que fait Ctrl+D au terminal : la question finit sans réponse
+// (EOFError, Abort sous click), sauf un compte à rebours, où il vaut
+// Entrée et donne le défaut. L'Entrée qui valide une composition (IME) ne
+// valide pas le champ. Comme MenuView, il répond pour le qid qu'il montre
 // (`answer(qid, valeur)`, `cancel(qid)`), jamais dans les ARM ms qui
 // suivent son apparition ni d'une touche tenue qui se répète ; le clavier
 // va à son champ, ou au widget lui-même, jamais à un bouton qu'une frappe
@@ -37,7 +39,9 @@ import {
     choiceValue,
     composing,
     confirmKey,
+    countsDown,
     keyCounts,
+    offersCancel,
     promptText,
     secondsLeft,
     sendable,
@@ -57,6 +61,7 @@ export class QuestionView extends Component {
                     t-att-disabled="locked" t-on-click="() => this.send('y')" t-esc="env.t('Answer yes')"/>
                 <button type="button" t-att-class="{default: props.question.default === 'n'}"
                     t-att-disabled="locked" t-on-click="() => this.send('n')" t-esc="env.t('Answer no')"/>
+                <span t-if="countsDown" class="countdown" role="timer" t-esc="countdownText"/>
             </div>
             <div t-elif="kind === 'choose'" class="entries">
                 <label t-foreach="boxes" t-as="option" t-key="option.key" class="entry">
@@ -72,7 +77,7 @@ export class QuestionView extends Component {
                 <input t-else="" type="text" class="field" autocomplete="off" t-ref="field" t-model="state.value"
                     t-att-placeholder="props.question.default or ''"
                     t-att-aria-label="props.question.speak or env.t('TODO question')" t-on-keydown="onFieldKey"/>
-                <span t-if="kind === 'countdown'" class="countdown" role="timer" t-esc="countdownText"/>
+                <span t-if="countsDown" class="countdown" role="timer" t-esc="countdownText"/>
                 <button type="button" t-att-disabled="locked or !ready" t-on-click="submit" t-esc="submitLabel"/>
                 <button type="button" t-att-disabled="locked" t-on-click="cancel" t-esc="env.t('Cancel')"/>
                 <span t-if="kind === 'secret'" class="dropped" role="status" t-esc="refusedText"/>
@@ -101,7 +106,8 @@ export class QuestionView extends Component {
                 </label>
                 <button type="button" t-att-disabled="locked or !canSendOther" t-on-click="sendOther"
                     t-esc="env.t('Send')"/>
-                <button type="button" t-att-disabled="locked" t-on-click="cancel" t-esc="env.t('Cancel')"/>
+                <button t-if="cancels" type="button" t-att-disabled="locked" t-on-click="cancel"
+                    t-esc="env.t('Cancel')"/>
             </div>
         </section>`;
 
@@ -125,7 +131,7 @@ export class QuestionView extends Component {
         onMounted(() => {
             this.shownAt = performance.now();
             this.arming = setTimeout(() => (this.state.armed = true), ARM);
-            if (this.kind === "countdown") {
+            if (this.countsDown) {
                 this.ticker = setInterval(() => (this.state.now = Date.now()), TICK);
             }
         });
@@ -146,6 +152,14 @@ export class QuestionView extends Component {
 
     get kind() {
         return this.props.question.kind;
+    }
+
+    get countsDown() {
+        return countsDown(this.props.question);
+    }
+
+    get cancels() {
+        return offersCancel(this.props.question);
     }
 
     get text() {

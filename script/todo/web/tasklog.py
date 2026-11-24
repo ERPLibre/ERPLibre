@@ -1203,7 +1203,10 @@ class Recorder:
             self._open(menu, message.get("key"))
         elif self.task is not None and qid in self.asks:
             ask, given = self.asks.pop(qid), self.given.pop(qid, None)
-            self._event(self._answer(ask, given, message.get("end")))
+            event = self._answer(ask, given, message.get("end"))
+            if isinstance(message.get("yes"), bool):
+                event["yes"] = message["yes"]  # le oui ou le non lu
+            self._event(event)
             if _hides(ask):
                 self.held.append(SHOW)
 
@@ -1257,9 +1260,10 @@ class Recorder:
         """L'événement de la fin de `ask`, secret compris : `cancel`
         annulée par la page, ou quand le worker la dit finie sans réponse
         (`end`, `cancel` ou `timeout`, dans `answered`), `timeout` à son
-        échéance. Un compte à rebours annulé par la page vaut Entrée, comme
-        Ctrl+D au terminal : le worker prend le défaut de la question, que
-        l'événement donne comme la réponse de la page. Répondue : un
+        échéance. Un compte à rebours (une question qui porte `timeout_s`)
+        annulé par la page vaut Entrée, comme Ctrl+D au terminal : le
+        worker prend le défaut de la question, que l'événement donne comme
+        la réponse de la page. Répondue : un
         secret, `answer` MASK, d'où que vienne la réponse ; au terminal,
         `answered`, sans valeur, que l'écho montre déjà dans la sortie, où
         HIDE et SHOW la cachent sous `_hides` ; par la page, sa valeur, ou
@@ -1269,7 +1273,7 @@ class Recorder:
         if end in ("cancel", "timeout"):
             return {"t": end}
         if given is not None and given.get("t") == "cancel":
-            if ask.get("kind") != "countdown":
+            if ask.get("timeout_s") is None:
                 return {"t": "cancel"}
             given = {"t": "answer", "value": ask.get("default") or ""}
         if ask.get("kind") == "secret":

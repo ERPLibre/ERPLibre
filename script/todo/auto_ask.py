@@ -56,6 +56,12 @@ def delay():
     return value if value > 0 else DEFAULT_DELAY
 
 
+def seconds():
+    """Le délai du compte à rebours en mode auto, None hors de lui : le
+    `timeout` d'une question qui ne compte à rebours qu'en mode auto."""
+    return delay() if enabled() else None
+
+
 def export(on, seconds=None):
     """Poser le mode auto dans l'environnement, pour tout ce qu'on lancera.
 

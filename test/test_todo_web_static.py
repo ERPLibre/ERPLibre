@@ -1248,11 +1248,72 @@ console.log(JSON.stringify({
 """
 
 
+# Des confirmations telles que le port les pose (MESSAGES, remplacé par leur
+# JSON) : sans `back`, avec, à rebours avec `back`, à rebours sans lui, et
+# une de la capture ; puis un compte à rebours de la capture et une question
+# texte.
+CONFIRM_CHECK = r"""
+const asked = [...MESSAGES, {kind: "countdown", text: "Go? ", timeout_s: 5},
+    {kind: "text", text: "Name: "}];
+console.log(JSON.stringify({
+    texts: asked.map(m.promptText),
+    counts: asked.map(m.countsDown),
+    cancel: asked.map(m.offersCancel),
+}));
+"""
+
+
+def _confirms() -> list:
+    """Les messages de quatre confirmations posées en anglais par le port :
+    sans `back`, avec, à rebours avec `back`, à rebours sans lui ; puis
+    celui d'une invite y/N que la capture pose, sans `prompt`."""
+    saved = todo_i18n._current_lang
+    try:
+        todo_i18n.use_lang("en")
+        scripted = port.ScriptedPort()
+        cases = ((None, False), (None, True), (5, True), (5, False))
+        for timeout, back in cases:
+            scripted.confirm("Kept:\nGo?", True, None, timeout, back)
+        captured = port.question("confirm", "Purge stale rows? (y/N): ", "n")
+        return [*scripted.events, captured]
+    finally:
+        todo_i18n._current_lang = saved
+
+
 @unittest.skipUnless(shutil.which("node"), "node absent")
 class TestQuestionWidgets(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.out = _node_json(QUESTION_CHECK, "prompt.js")
+        script = CONFIRM_CHECK.replace("MESSAGES", json.dumps(_confirms()))
+        cls.confirms = _node_json(script, "prompt.js")
+
+    def test_a_confirmation_shows_its_question_without_its_hint(self):
+        self.assertEqual(self.confirms["texts"][:4], ["Kept:\nGo?"] * 4)
+        # La capture, sans `prompt`, montre son texte, invite comprise.
+        self.assertEqual(
+            self.confirms["texts"][4:],
+            ["Purge stale rows? (y/N):", "Go?", "Name:"],
+        )
+
+    def test_a_confirmation_with_a_timeout_counts_down(self):
+        self.assertEqual(
+            self.confirms["counts"],
+            [False, False, True, True, False, True, False],
+        )
+
+    def test_cancel_is_offered_on_a_confirmation_only_with_back(self):
+        # Sans `back`, Oui et Non suffisent ; à rebours, l'échéance prend
+        # le défaut. Une confirmation de la capture garde Annuler, qui y lève
+        # EOFError, comme les autres questions.
+        self.assertEqual(
+            self.confirms["cancel"],
+            [False, True, False, False, True, True, True],
+        )
+        source = (SRC / "question_view.js").read_text(encoding="utf-8")
+        template = TEMPLATE.search(source)[1]
+        self.assertIn('t-if="cancels"', template)
+        self.assertIn('t-if="countsDown"', template)
 
     def test_the_page_shows_every_kind_the_port_asks(self):
         self.assertEqual(self.out["kinds"], list(port.REQUIRES))

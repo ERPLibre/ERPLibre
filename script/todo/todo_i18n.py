@@ -16369,6 +16369,12 @@ TRANSLATIONS = {
         "fr": "Plusieurs : 1 3, 2-5 ou tout ; vide pour aucun : ",
         "en": "Several: 1 3, 2-5 or all; empty for none: ",
     },
+    "[Y/n]: ": {"fr": "[O/n] : ", "en": "[Y/n]: "},
+    "[y/N]: ": {"fr": "[o/N] : ", "en": "[y/N]: "},
+    "Answer yes or no: ": {
+        "fr": "Répondez o/oui ou n/non : ",
+        "en": "Answer yes or no: ",
+    },
     "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
     "Odoo backup .zip to inspect, without restoring it": {
         "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
