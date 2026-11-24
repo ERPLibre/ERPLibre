@@ -141,12 +141,14 @@ class LeManifeste(unittest.TestCase):
 
     def test_only_its_own_list_names_it(self):
         """Les listes générales entrent dans toute fusion, celle d'un
-        serveur Odoo comprise."""
+        serveur Odoo comprise ; celle du Stream Deck n'a pas à l'amener :
+        la base d'ERPLibre Home s'installe sans le deck."""
         for liste, nomme in (
             (LISTE, True),
             ("git_manifest.csv", False),
             ("git_manifest_mobile.csv", False),
             ("git_manifest_odoo.csv", False),
+            ("git_manifest_streamdeck.csv", False),
         ):
             with self.subTest(liste=liste):
                 with open(ROOT / "conf" / liste, encoding="utf-8") as fh:

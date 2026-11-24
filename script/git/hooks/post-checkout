@@ -4,11 +4,11 @@
 #
 # Hook post-checkout : avertit quand un changement de commit a touché un
 # dépôt à part cloné dans le checkout et qu'ERPLibre ignore, l'extension
-# GNOME. git tient les fichiers ignorés pour jetables : extraire un commit
-# qui suit encore le chemin d'un tel clone écrit ses versions par-dessus
-# les fichiers du clone, sans rien demander, et revenir sur un commit qui
-# ne le suit plus les supprime. La session GNOME charge l'extension depuis
-# ce répertoire.
+# GNOME ou les jeux du Stream Deck. git tient les fichiers ignorés pour
+# jetables : extraire un commit qui suit encore le chemin d'un de ces
+# clones écrit ses versions par-dessus les fichiers du clone, sans rien
+# demander, et revenir sur un commit qui ne le suit plus les supprime. La
+# session GNOME charge l'extension depuis ce répertoire.
 #
 # Le hook n'avertit que lorsque l'ancien ou le nouveau commit suit le
 # chemin, et ne restaure rien : il ne distingue pas un écrasement d'une
@@ -28,7 +28,7 @@ suit() {
     git -C "${racine}" cat-file -e "${1}:${2}" 2>/dev/null
 }
 
-for chemin in script/gnome-extension/erplibre_home; do
+for chemin in script/gnome-extension/erplibre_home script/stream_deck/games; do
     [ -e "${racine}/${chemin}/.git" ] || continue
     if suit "${2}" "${chemin}"; then
         echo "[ERPLibre] ${chemin}/: this commit tracks it, so its" \

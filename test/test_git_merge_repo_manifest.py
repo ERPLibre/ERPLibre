@@ -20,8 +20,9 @@ Et, dans une copie de conf/ et manifest/ sans mobile/ ni .repo/ :
   version d'Odoo et sans ligne d'erreur ;
 - l'extension GNOME n'entre dans la fusion que si
   script/gnome-extension/erplibre_home existe, ou avec
-  --with_erplibre_home, comme le mobile ; le programme du deck, que si
-  script/stream_deck/deck existe, ou avec --with_streamdeck.
+  --with_erplibre_home, comme le mobile ; le programme du deck et les jeux
+  du Stream Deck, que si script/stream_deck/deck ou
+  script/stream_deck/games existe, ou avec --with_streamdeck.
 """
 
 import os
@@ -32,6 +33,8 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from script.git.git_merge_repo_manifest import common_input_paths
 
 RACINE = Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script" / "git" / "git_merge_repo_manifest.py"
@@ -132,12 +135,16 @@ def chemins(manifeste):
 
 
 class LaVersionDOdoo(unittest.TestCase):
-    def fusionner(self, contenu, deck=False, options=(), extension=False):
+    def fusionner(
+        self, contenu, jeux=False, options=(), extension=False, deck=False
+    ):
         with tempfile.TemporaryDirectory() as dossier:
             for nom in ("conf", "manifest"):
                 shutil.copytree(RACINE / nom, Path(dossier, nom))
             if contenu is not None:
                 Path(dossier, ".odoo-version").write_text(contenu)
+            if jeux:
+                Path(dossier, "script/stream_deck/games").mkdir(parents=True)
             if deck:
                 Path(dossier, "script/stream_deck/deck").mkdir(parents=True)
             if extension:
@@ -178,17 +185,37 @@ class LeProgrammeDuDeck(unittest.TestCase):
             (None, False, ("--with_streamdeck",), True),
         ):
             with self.subTest(odoo=contenu, deck=deck, options=options):
-                _sortie, projets = self.fusionner(contenu, deck, options)
+                _sortie, projets = self.fusionner(
+                    contenu, options=options, deck=deck
+                )
                 self.assertEqual(attendu, self.DECK in projets)
+
+
+class LesJeuxDuStreamDeck(unittest.TestCase):
+    JEUX = "script/stream_deck/games"
+    fusionner = LaVersionDOdoo.fusionner
+
+    def test_they_come_only_with_their_directory_or_the_option(self):
+        for contenu, jeux, options, attendu in (
+            (None, False, (), False),
+            (VERSION, False, (), False),
+            (None, True, (), True),
+            (VERSION, True, (), True),
+            (None, False, ("--with_streamdeck",), True),
+        ):
+            with self.subTest(odoo=contenu, jeux=jeux, options=options):
+                _sortie, projets = self.fusionner(contenu, jeux, options)
+                self.assertEqual(attendu, self.JEUX in projets)
 
 
 class LExtensionGnome(unittest.TestCase):
     """Le manifeste de l'extension n'entre qu'avec son répertoire ou
-    --with_erplibre_home, indépendamment de celui du deck : la base
+    --with_erplibre_home, indépendamment de celui du deck et des jeux : la
     d'ERPLibre Home s'installe sans le Stream Deck."""
 
     EXTENSION = "script/gnome-extension/erplibre_home"
     DECK = LeProgrammeDuDeck.DECK
+    JEUX = LesJeuxDuStreamDeck.JEUX
     fusionner = LaVersionDOdoo.fusionner
 
     def test_it_comes_only_with_its_directory_or_the_option(self):
@@ -209,16 +236,23 @@ class LExtensionGnome(unittest.TestCase):
                 self.assertEqual(attendu, self.EXTENSION in projets)
 
     def test_the_deck_does_not_bring_it_nor_it_the_deck(self):
-        _sortie, projets = self.fusionner(None, True, ())
+        _sortie, projets = self.fusionner(None, deck=True)
         self.assertNotIn(self.EXTENSION, projets)
         _sortie, projets = self.fusionner(None, False, (), extension=True)
         self.assertNotIn(self.DECK, projets)
 
+    def test_the_games_do_not_bring_it_nor_it_the_games(self):
+        _sortie, projets = self.fusionner(None, True, ())
+        self.assertNotIn(self.EXTENSION, projets)
+        _sortie, projets = self.fusionner(None, False, (), extension=True)
+        self.assertNotIn(self.JEUX, projets)
+
 
 class LeGelDErplibreHome(unittest.TestCase):
-    """En mode --freeze, l'extension et le deck prennent le commit de leur
-    freeze-revision, comme le mobile : leurs fragments sont communs à toutes
-    les versions d'Odoo, et leur gel serait sinon retiré avant la fusion."""
+    """En mode --freeze, l'extension, le deck et les jeux prennent le commit
+    de leur freeze-revision, comme le mobile : leurs fragments sont communs
+    à toutes les versions d'Odoo, et leur gel serait sinon retiré avant la
+    fusion."""
 
     PROJETS = {
         "script/gnome-extension/erplibre_home": (
@@ -226,6 +260,9 @@ class LeGelDErplibreHome(unittest.TestCase):
         ),
         "script/stream_deck/deck": (
             "manifest/git_manifest_erplibre_streamdeck_deck.xml"
+        ),
+        "script/stream_deck/games": (
+            "manifest/git_manifest_streamdeck_game.xml"
         ),
     }
 
@@ -260,6 +297,12 @@ class LeGelDErplibreHome(unittest.TestCase):
                 self.assertRegex(
                     self.gel_du_fragment(fragment) or "", r"^[0-9a-f]{40}$"
                 )
+
+    def test_their_fragments_are_common_ones(self):
+        communs = common_input_paths(str(RACINE))
+        for fragment in self.PROJETS.values():
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, communs)
 
     def test_the_freeze_applies_them_and_a_plain_merge_follows_main(self):
         geles = self.revisions_fusionnees(("--freeze",))

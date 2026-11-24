@@ -31,8 +31,8 @@ DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
 # Les listes des manifestes qu'ERPLibre déclare pour lui-même, hors versions
-# d'Odoo : le mobile, le programme du deck et l'extension GNOME, entre
-# autres.
+# d'Odoo : le mobile, le programme du deck, les jeux du Stream Deck et
+# l'extension GNOME, entre autres.
 DECLARED_MANIFEST_LISTS = tuple(
     os.path.join("conf", nom)
     for nom in (
@@ -242,8 +242,9 @@ class GitTool:
         Le manifeste local ne liste que ce que Google Repo a synchronisé à
         sa dernière exécution. Un checkout sans .repo, ou dont le manifeste
         local est antérieur à un projet, porte pourtant ce projet quand
-        install_erplibre_home.sh l'a cloné : le programme du deck dans
-        script/stream_deck/deck, notamment. Un projet absent du disque, ou
+        install_erplibre_home.sh l'a cloné : le programme du deck et les jeux
+        du Stream Deck dans script/stream_deck/deck et
+        script/stream_deck/games, notamment. Un projet absent du disque, ou
         un répertoire sans .git, n'est pas ajouté.
         """
         connus = {repo.get("name") for repo in repos}

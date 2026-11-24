@@ -47,10 +47,12 @@ DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
-# Le programme du deck : comme le mobile, son manifeste n'entre que si son
-# répertoire existe (install_erplibre_home.sh --stream-deck l'y pose par
-# repo sync) ou avec --with_streamdeck. Un serveur Odoo ne l'a pas.
+# Le programme du deck et les jeux du Stream Deck : comme le mobile, leur
+# liste n'entre que si l'un de leurs répertoires existe
+# (install_erplibre_home.sh --stream-deck les y pose par repo sync) ou avec
+# --with_streamdeck. Un serveur Odoo ne les a pas.
 STREAMDECK_DECK_PATH = os.path.join("script", "stream_deck", "deck")
+STREAMDECK_GAMES_PATH = os.path.join("script", "stream_deck", "games")
 # L'extension GNOME ERPLibre Home, de même : son manifeste n'entre que si son
 # répertoire existe (install_erplibre_home.sh l'y pose par repo sync) ou
 # avec --with_erplibre_home. Sa liste est à part de celle du Stream Deck : la
@@ -99,7 +101,7 @@ def get_config(argv=None):
     parser.add_argument(
         "--with_streamdeck",
         action="store_true",
-        help="Add the Stream Deck manifest list (the deck program)",
+        help="Add the Stream Deck manifest list (deck program and games)",
     )
     parser.add_argument(
         "--with_erplibre_home",
@@ -267,10 +269,10 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    le programme du deck, l'extension GNOME, les modules extra. Un
-    fichier cité deux fois n'est gardé qu'à sa PREMIÈRE place, et l'ordre
-    est celui de la liste : lors de la fusion, le dernier fichier qui
-    définit un projet l'emporte.
+    le programme du deck et les jeux du Stream Deck, l'extension GNOME,
+    les modules extra. Un fichier cité deux fois n'est gardé qu'à sa
+    PREMIÈRE place, et l'ordre est celui de la liste : lors de la fusion,
+    le dernier fichier qui définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
@@ -283,7 +285,9 @@ def default_input_paths(
             with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             with_mobile = True
-        if os.path.isdir(STREAMDECK_DECK_PATH):
+        if os.path.isdir(STREAMDECK_DECK_PATH) or os.path.isdir(
+            STREAMDECK_GAMES_PATH
+        ):
             with_streamdeck = True
         if os.path.isdir(ERPLIBRE_HOME_EXTENSION_PATH):
             with_erplibre_home = True
@@ -408,9 +412,9 @@ def print_missing_freeze(manquants, fichiers=None):
 def common_input_paths(racine=""):
     """Les fragments communs à toutes les versions d'Odoo, dans leur ordre :
     ceux que listent les CSV de conf/, sans les manifestes privés. Ceux
-    d'ERPLibre Home (l'extension GNOME, le programme du deck) en sont,
-    même quand la fusion ne les lit pas faute de leur répertoire : leur
-    gel ne dépend d'aucune version d'Odoo.
+    d'ERPLibre Home (l'extension GNOME, le programme du deck, les jeux du
+    Stream Deck) en sont, même quand la fusion ne les lit pas faute de
+    leur répertoire : leur gel ne dépend d'aucune version d'Odoo.
 
     Les CSV se lisent sous `racine` (le dossier courant par défaut) ; les
     chemins rendus restent tels que les CSV les écrivent, relatifs à elle.

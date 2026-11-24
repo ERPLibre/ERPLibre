@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Les jeux du Stream Deck sont un dépôt à part, cloné dans
+script/stream_deck/games/ ; le programme du deck et ses outils en forment un
+autre, cloné dans script/stream_deck/deck/.
+
+Ce que ces tests gardent :
+
+- ERPLibre ne suit aucun fichier de games/, qu'il ignore, ni aucun jeu à
+  côté du programme du deck ; le programme du deck, le contrôleur et le
+  service ne lisent rien de games/ ;
+- le manifeste des jeux suit leur branche main, à leur chemin, dans le
+  groupe streamdeck, sous le remote TechnoLibre du mobile ; seule
+  conf/git_manifest_streamdeck.csv le nomme, que git_merge_repo_manifest.py
+  ne lit que si les jeux sont là ou avec --with_streamdeck, comme pour le
+  mobile : un serveur Odoo ne les clone pas ;
+- games_contract porte une version MAJEUR.MINEUR, et des jeux clonés dont
+  la version MAJEURE diffère font échouer la suite ;
+- l'extension GNOME parle à la galerie sur le port 8042, celui que la
+  galerie du clone sert, avec l'en-tête d'action qu'elle exige, tels que
+  les énonce le CONTRACT.md de l'extension ;
+- la galerie trouve exactement les jeux du clone.
+
+Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque ;
+ce qui lit l'extension GNOME, ou le programme du deck, quand son clone
+manque.
+Les jeux eux-mêmes se testent dans leur dépôt (tests/test_contract.py).
+"""
+
+import csv
+import importlib.util
+import re
+import subprocess
+import sys
+import unittest
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from erplibre_home_extension import (  # noqa: E402
+    SANS_EXTENSION,
+    valeur_du_contrat,
+)
+from streamdeck_deck import DECK, PRESENT, SANS_DECK  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+DECK_DIR = ROOT / "script" / "stream_deck"
+GAMES_DIR = DECK_DIR / "games"
+GAMES_PATH = "script/stream_deck/games"
+MANIFESTE = "manifest/git_manifest_streamdeck_game.xml"
+CONTRAT = DECK_DIR / "games_contract"
+
+SANS_JEUX = unittest.skipUnless(
+    (GAMES_DIR / "games_cli.py").is_file(),
+    "script/stream_deck/games/ absent : make erplibre_home_streamdeck_install",
+)
+
+
+def git(*args):
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True
+    )
+
+
+def charger(nom, chemin):
+    """Charge un module par son chemin : games/ n'est pas un paquet."""
+    spec = importlib.util.spec_from_file_location(nom, chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class LaFrontiere(unittest.TestCase):
+    def test_erplibre_tracks_nothing_under_games(self):
+        suivis = git("ls-files", GAMES_PATH)
+        self.assertEqual(0, suivis.returncode, suivis.stderr)
+        self.assertEqual("", suivis.stdout)
+
+    def test_the_games_directory_is_ignored(self):
+        for chemin in (GAMES_PATH + "/games_cli.py", GAMES_PATH + "/save/x"):
+            with self.subTest(chemin=chemin):
+                self.assertEqual(
+                    0, git("check-ignore", "-q", chemin).returncode
+                )
+
+    def test_the_former_save_directory_stays_ignored(self):
+        """Un checkout qui n'a pas encore déplacé les sauvegardes des jeux
+        les garde sous script/stream_deck/save/ sans les voir dans
+        git status."""
+        self.assertEqual(
+            0,
+            git("check-ignore", "-q", "script/stream_deck/save/x").returncode,
+        )
+
+    def test_no_game_is_left_next_to_the_deck_program(self):
+        self.assertEqual(
+            "", git("ls-files", "script/stream_deck/game_*.py").stdout
+        )
+
+    @SANS_DECK
+    def test_the_assets_stay_with_the_controller(self):
+        self.assertTrue((DECK / "Assets").is_dir())
+        self.assertTrue((DECK / "erplibre_controller.py").is_file())
+
+    def test_the_deck_program_controller_and_service_never_read_games(self):
+        """Le programme du deck, le contrôleur, le verrou et le point
+        d'entrée du service tournent sans games/ : un chemin vers les jeux
+        dans l'un d'eux les rendrait dépendants d'un clone que seul le
+        niveau Stream Deck pose. Les fichiers du clone du deck ne se lisent
+        que quand il est là."""
+        motif = re.compile(
+            r"games_cli|DECK_GAMES_DIR|deck_games_present"
+            r"|stream_deck/games|[\"'/]games[\"'/]"
+        )
+        fichiers = [ROOT / "script/install/erplibre_home_deck.sh"]
+        if PRESENT:
+            paquet = sorted((DECK / "erplibre_streamdeck").rglob("*.py"))
+            self.assertTrue(paquet)
+            fichiers += paquet + [
+                DECK / "erplibre_controller.py",
+                DECK / "deck_lock.py",
+            ]
+        for fichier in fichiers:
+            with self.subTest(fichier=str(fichier.relative_to(ROOT))):
+                texte = fichier.read_text(encoding="utf-8")
+                self.assertEqual([], motif.findall(texte))
+
+
+class LeManifeste(unittest.TestCase):
+    def setUp(self):
+        self.racine = ET.parse(ROOT / MANIFESTE).getroot()
+        (self.projet,) = [
+            p
+            for p in self.racine.iter("project")
+            if p.get("path") == GAMES_PATH
+        ]
+
+    def test_it_follows_the_main_branch_of_the_games(self):
+        """Une version MAJEURE du contrat qui change sur main touche tout
+        checkout à sa prochaine mise à jour : LeContrat le surveille."""
+        remotes = {
+            r.get("name"): r.get("fetch") for r in self.racine.iter("remote")
+        }
+        self.assertEqual("streamdeck_game.git", self.projet.get("name"))
+        self.assertEqual(
+            "https://github.com/TechnoLibre/",
+            remotes[self.projet.get("remote")],
+        )
+        self.assertEqual("main", self.projet.get("revision"))
+
+    def test_it_belongs_to_the_streamdeck_group(self):
+        """Les init de repo qui nomment leurs groupes prennent les jeux
+        par streamdeck ; un projet hors de ce groupe en sortirait, et repo
+        supprimerait son répertoire."""
+        groupes = self.projet.get("groups", "").split(",")
+        self.assertIn("streamdeck", groupes)
+
+    def test_its_remote_is_named_technolibre_like_the_mobile(self):
+        """repo nomme le remote git d'un projet d'après celui du
+        manifeste : la documentation donne « git fetch TechnoLibre main »
+        pour un checkout de repo, comme pour le mobile."""
+        self.assertEqual("TechnoLibre", self.projet.get("remote"))
+        mobile = ET.parse(ROOT / "manifest/git_manifest_mobile_home.xml")
+        remotes_du_mobile = {
+            r.get("name"): r.get("fetch")
+            for r in mobile.getroot().iter("remote")
+        }
+        (remote,) = [
+            r
+            for r in self.racine.iter("remote")
+            if r.get("name") == "TechnoLibre"
+        ]
+        self.assertEqual(remotes_du_mobile["TechnoLibre"], remote.get("fetch"))
+
+    def test_only_the_streamdeck_list_names_it(self):
+        """Les listes générales entrent dans toute fusion, celle d'un
+        serveur Odoo comprise ; la liste du Stream Deck n'y entre que pour
+        un checkout qui a les jeux."""
+        for liste, nomme in (
+            ("git_manifest_streamdeck.csv", True),
+            ("git_manifest.csv", False),
+            ("git_manifest_mobile.csv", False),
+            ("git_manifest_odoo.csv", False),
+        ):
+            with self.subTest(liste=liste):
+                with open(ROOT / "conf" / liste, encoding="utf-8") as fh:
+                    fichiers = [
+                        ligne["filepath"] for ligne in csv.DictReader(fh)
+                    ]
+                self.assertEqual(nomme, MANIFESTE in fichiers)
+
+
+class LeContrat(unittest.TestCase):
+    def majeure(self, version):
+        self.assertRegex(version, r"^\d+\.\d+$")
+        return version.split(".")[0]
+
+    def test_games_contract_holds_one_version(self):
+        self.majeure(CONTRAT.read_text(encoding="utf-8").strip())
+
+    @SANS_JEUX
+    def test_the_cloned_games_share_its_major(self):
+        """Une MAJEURE qui diffère : ERPLibre et les jeux ne s'entendent
+        plus sur CONTRACT.md ; main des jeux a changé de MAJEURE sans que
+        games_contract suive."""
+        attendue = CONTRAT.read_text(encoding="utf-8").strip()
+        clonee = charger(
+            "games_cli", GAMES_DIR / "games_cli.py"
+        ).CONTRACT_VERSION
+        self.assertEqual(self.majeure(attendue), self.majeure(clonee))
+
+
+def port_de_l_extension():
+    """Le port de la galerie selon le CONTRACT.md de l'extension, que
+    contract.test.js tient à GALLERY_URL de controller.js."""
+    return int(valeur_du_contrat(r"`http://localhost:(\d+)`"))
+
+
+class LePortDeLaGalerie(unittest.TestCase):
+    """Contrat des jeux : la galerie sert sur 8042, et l'extension GNOME l'y
+    cherche. Un port qui diverge montre la galerie hors ligne dans le menu
+    de l'extension alors qu'elle tourne."""
+
+    @SANS_EXTENSION
+    def test_the_extension_talks_to_the_gallery_on_8042(self):
+        self.assertEqual(8042, port_de_l_extension())
+
+    @SANS_JEUX
+    @SANS_EXTENSION
+    def test_the_extension_talks_on_the_port_the_gallery_serves(self):
+        galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
+        self.assertEqual(galerie.PORT, port_de_l_extension())
+
+
+@SANS_JEUX
+@SANS_EXTENSION
+class LEnTeteDActionDeLaGalerie(unittest.TestCase):
+    """Une route de la galerie qui agit exige un en-tête (contrat 2.0) :
+    l'extension GNOME l'envoie à /launch/<id>, sous le nom et avec la
+    valeur que son CONTRACT.md énonce et que la galerie du clone attend."""
+
+    def test_the_extension_sends_the_header_the_gallery_requires(self):
+        galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
+        nom, valeur = valeur_du_contrat(r"header `([\w-]+): (\w+)`")
+        self.assertEqual(galerie.GameHandler.ACTION_HEADER, nom)
+        self.assertEqual("1", valeur)
+
+
+@SANS_JEUX
+class LesVraisScans(unittest.TestCase):
+    """Sans simulation : un chemin oublié ne montre qu'une liste vide."""
+
+    def jeux_du_clone(self):
+        return sorted(str(p) for p in GAMES_DIR.glob("game_*.py"))
+
+    def test_the_gallery_lists_the_games_and_not_the_tiler(self):
+        """Le vrai glob de la galerie ; seul « --meta » est simulé, car
+        les jeux n'y répondent que sous .venv.streamdeck, qui porte leurs
+        dépendances."""
+        galerie = charger("gallery_server", GAMES_DIR / "gallery_server.py")
+        scannes = []
+
+        def meta(argv, **_kw):
+            scannes.append(argv[1])
+            return subprocess.CompletedProcess(argv, 0, '{"name": "x"}', "")
+
+        with mock.patch.object(galerie.subprocess, "run", side_effect=meta):
+            ids = {g["id"] for g in galerie._scan_games()}
+        self.assertEqual(self.jeux_du_clone(), sorted(scannes))
+        self.assertIn("snake", ids)
+        self.assertNotIn("tiler", ids)
+        self.assertEqual(ROOT, Path(galerie.ERPLIBRE_DIR))
+
+
+if __name__ == "__main__":
+    unittest.main()
