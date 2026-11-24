@@ -822,7 +822,7 @@ class TestChoose(unittest.TestCase):
 
 
 class TestConfirm(unittest.TestCase):
-    """Les règles B d'une question oui/non, les mêmes à chaque question de
+    """Les règles d'une question oui/non, les mêmes à chaque question de
     TODO : o, oui, y, yes et n, non, no dans les deux langues, sans casse ;
     l'indice du défaut dans la langue choisie, que le port ajoute ; une
     réponse vide qui prend le défaut ; une faute dite, puis la même

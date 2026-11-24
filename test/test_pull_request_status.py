@@ -250,9 +250,8 @@ class TestLeMenu(unittest.TestCase):
             appel.assert_called_once_with(client, "moi", depots)
 
     def test_a_typo_is_said_and_asked_again(self):
-        """Une faute ne vaut plus « seulement les manifestes » : elle est
-        dite, puis la même question revient ; Ctrl+D vaut non, tous les
-        dépôts, sans rien écrire."""
+        """Une faute est dite, puis la même question revient ; Ctrl+D vaut
+        non, tous les dépôts, sans rien écrire."""
         from script.todo import ui
         from script.todo.todo import TODO
         from script.todo.ui.port import ScriptedPort

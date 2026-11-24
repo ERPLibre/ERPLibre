@@ -1277,12 +1277,12 @@ HINTED_TEXTS = {
     ),
     "[y/N]: ": "l'indice que le port ajoute à une confirmation",
     "Install it now? (Y/n): ": (
-        "textual_setup.ensure, que des scripts lancés à part appellent"
-        " avec leur propre `ask`"
+        "textual_setup.ensure, partagé par TODO et des scripts lancés à"
+        " part, qui lit `input` par défaut"
     ),
     "Create it now? (Y/n): ": (
-        "transform_setup.create et ensure, que des scripts lancés à part"
-        " appellent avec leur propre `ask`"
+        "transform_setup.create et ensure, que n'appelle que"
+        " transform_menu, et qui lisent `input` par défaut"
     ),
     "Type 'oui' to confirm (default: no): ": (
         "_confirm_drop, une confirmation tapée en toutes lettres"

@@ -651,8 +651,8 @@ class TestTheQualityScreenSwitch(_Base):
     """Rejouer un test de l'écran de qualité sur un palier d'une autre
     version : « make switch_odoo_N d'abord ? », oui par défaut, puis, si la
     bascule échoue, « lancer le test quand même ? », non par défaut.
-    « ok » et « yolo » ne valent plus oui. Ctrl+C abandonne sans rien
-    lancer de plus."""
+    Seuls o, oui, y et yes valent oui ; « ok » et « yolo » sont une faute,
+    dite puis redemandée. Ctrl+C abandonne sans rien lancer de plus."""
 
     def run_test(self, make_code=0, make_raises=None):
         """`make_raises`, une exception que la bascule lève au lieu de
