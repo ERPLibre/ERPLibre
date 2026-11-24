@@ -25552,9 +25552,9 @@ TRANSLATIONS = {
         "fr": "{path} fixe aussi {value} : « sysctl --system » l'applique, le démarrage non.",
         "en": "{path} sets {value} too: « sysctl --system » applies it, the boot does not.",
     },
-    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.": {
-        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne par `virsh setmem <vm> <taille> --live`, jusqu'au maximum <memory> de sa définition ; relever ce maximum exige que la VM soit éteinte.",
-        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs with `virsh setmem <vm> <size> --live`, up to the <memory> maximum in its definition; raising that maximum needs the VM shut off.",
+    "The virtio_balloon driver is present: the host can change this VM's RAM while it runs, up to the <memory> maximum in its definition, from TODO › Execute › QEMU/KVM › List VMs › Change the state of one or more VMs › Change RAM of a running VM (balloon), which runs virsh setmem --live. Raising that maximum needs the VM shut off: Adjust hardware only, in the same menu.": {
+        "fr": "Le pilote virtio_balloon est là : l'hôte peut changer la RAM de cette VM pendant qu'elle tourne, jusqu'au maximum <memory> de sa définition, depuis TODO › Exécution › QEMU/KVM › Lister les VM › Changer l'état d'une ou plusieurs VM › Changer la RAM d'une VM allumée (ballon), qui lance virsh setmem --live. Relever ce maximum exige la VM éteinte : Régler le matériel seulement, dans le même menu.",
+        "en": "The virtio_balloon driver is present: the host can change this VM's RAM while it runs, up to the <memory> maximum in its definition, from TODO › Execute › QEMU/KVM › List VMs › Change the state of one or more VMs › Change RAM of a running VM (balloon), which runs virsh setmem --live. Raising that maximum needs the VM shut off: Adjust hardware only, in the same menu.",
     },
     "No virtio_balloon driver: the host changes this VM's RAM only while it is shut off.": {
         "fr": "Pas de pilote virtio_balloon : l'hôte ne change la RAM de cette VM que pendant qu'elle est éteinte.",
