@@ -252,6 +252,12 @@ class TestGarderOuvert(unittest.TestCase):
         self.assertEqual(0, pilote.lectures)
         pilote.quit.assert_called_once()
 
+    def test_headless_avec_un_terminal_demande_encore_entree(self):
+        pilote = FauxPiloteFenetres(3)
+        entree = self.garder(pilote, terminal=True, saisie=[""], headless=True)
+        entree.assert_called_once()
+        self.assertEqual(0, pilote.lectures)
+
     def test_fin_d_entree_termine_proprement(self):
         pilote = FauxPiloteFenetres(3)
         self.garder(pilote, terminal=True, saisie=EOFError)
@@ -298,6 +304,35 @@ class TestStdinEstUnTerminal(unittest.TestCase):
         entree.isatty.return_value = True
         with mock.patch.object(sys, "stdin", entree):
             self.assertTrue(web_login.stdin_est_un_terminal())
+
+
+class TestMain(unittest.TestCase):
+    """main() confie la fin de session à garder_ouvert, sans input() direct."""
+
+    def lancer(self, *options):
+        outil = mock.Mock()
+        with (
+            mock.patch.object(sys, "argv", ["web_login.py", *options]),
+            mock.patch.object(
+                web_login.selenium_lib, "SeleniumLib", return_value=outil
+            ),
+            mock.patch.object(web_login, "run") as executer,
+            mock.patch.object(web_login, "garder_ouvert") as garder,
+            mock.patch("builtins.input") as entree,
+        ):
+            rendu = web_login.main()
+        return rendu, outil, executer, garder, entree
+
+    def test_main_garde_le_navigateur_par_garder_ouvert(self):
+        rendu, outil, executer, garder, entree = self.lancer()
+        self.assertEqual(0, rendu)
+        executer.assert_called_once()
+        garder.assert_called_once_with(outil.driver, headless=False)
+        entree.assert_not_called()
+
+    def test_main_transmet_headless(self):
+        _rendu, outil, _executer, garder, _entree = self.lancer("--headless")
+        garder.assert_called_once_with(outil.driver, headless=True)
 
 
 if __name__ == "__main__":
