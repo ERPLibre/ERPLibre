@@ -1368,6 +1368,7 @@ class TODO(
         "prompt_execute_container": "Docker / Podman",
         "prompt_execute_system": "System",
         "_system_conteneurs": "Containers",
+        "_system_swap": "Swap memory",
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",

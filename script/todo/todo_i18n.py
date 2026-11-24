@@ -24581,6 +24581,131 @@ TRANSLATIONS = {
             "try again."
         ),
     },
+    # Système : mémoire d'échange (swap, zram) et ajout de RAM
+    "Swap memory": {
+        "fr": "💾 Mémoire Swap",
+        "en": "💾 Swap memory",
+    },
+    "State of memory and swap": {
+        "fr": "📊 État de la mémoire et du swap",
+        "en": "📊 State of memory and swap",
+    },
+    "zram": {
+        "fr": "zram",
+        "en": "zram",
+    },
+    "swapfile": {
+        "fr": "fichier",
+        "en": "swapfile",
+    },
+    "partition": {
+        "fr": "partition",
+        "en": "partition",
+    },
+    "priority": {
+        "fr": "priorité",
+        "en": "priority",
+    },
+    "used:": {
+        "fr": "utilisé :",
+        "en": "used:",
+    },
+    "now": {
+        "fr": "actuellement",
+        "en": "now",
+    },
+    "Active swaps": {
+        "fr": "Swaps actifs",
+        "en": "Active swaps",
+    },
+    "At boot:": {
+        "fr": "Au démarrage :",
+        "en": "At boot:",
+    },
+    "Hibernation": {
+        "fr": "Hibernation",
+        "en": "Hibernation",
+    },
+    "Recommendation": {
+        "fr": "Recommandation",
+        "en": "Recommendation",
+    },
+    "Disk swap": {
+        "fr": "Swap sur disque",
+        "en": "Disk swap",
+    },
+    "No active swap.": {
+        "fr": "Aucun swap actif.",
+        "en": "No active swap.",
+    },
+    "No zram device.": {
+        "fr": "Aucun appareil zram.",
+        "en": "No zram device.",
+    },
+    "created, not configured": {
+        "fr": "créé, non configuré",
+        "en": "created, not configured",
+    },
+    "in use as swap": {
+        "fr": "utilisé comme swap",
+        "en": "in use as swap",
+    },
+    "not in use": {
+        "fr": "inutilisé",
+        "en": "not in use",
+    },
+    "from the RAM size, at most 8 GiB": {
+        "fr": "selon la taille de la RAM, 8 Gio au plus",
+        "en": "from the RAM size, at most 8 GiB",
+    },
+    "half the RAM, at most 8 GiB": {
+        "fr": "la moitié de la RAM, 8 Gio au plus",
+        "en": "half the RAM, at most 8 GiB",
+    },
+    "RAM plus its square root, for hibernation": {
+        "fr": "la RAM plus sa racine carrée, pour l'hibernation",
+        "en": "RAM plus its square root, for hibernation",
+    },
+    "NixOS: zramSwap in configuration.nix": {
+        "fr": "NixOS : zramSwap dans configuration.nix",
+        "en": "NixOS: zramSwap in configuration.nix",
+    },
+    "none: this zram was set up by hand and is lost at reboot": {
+        "fr": "aucune : cette zram a été montée à la main et se perd au redémarrage",
+        "en": "none: this zram was set up by hand and is lost at reboot",
+    },
+    "on {mountpoint} ({fstype}), {free} free": {
+        "fr": "sur {mountpoint} ({fstype}), {free} libres",
+        "en": "on {mountpoint} ({fstype}), {free} free",
+    },
+    "{stored} stored, compressed to {compressed}, costs {ram} of RAM (ratio {ratio})": {
+        "fr": "{stored} stockés, compressés en {compressed}, coûtent {ram} de RAM (ratio {ratio})",
+        "en": "{stored} stored, compressed to {compressed}, costs {ram} of RAM (ratio {ratio})",
+    },
+    "Hibernation may resume from this swap.": {
+        "fr": "L'hibernation peut reprendre depuis ce swap.",
+        "en": "Hibernation may resume from this swap.",
+    },
+    "Not configured: no resume= on the kernel command line.": {
+        "fr": "Non configurée : aucun resume= sur la ligne de commande du noyau.",
+        "en": "Not configured: no resume= on the kernel command line.",
+    },
+    "Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.": {
+        "fr": "Redimensionner le swap qui tient l'image d'hibernation casse la reprise tant que resume= et resume_offset= ne sont pas mis à jour.",
+        "en": "Resizing the swap that holds the hibernation image breaks resuming until resume= and resume_offset= are updated.",
+    },
+    "zram and disk swap coexist: zram gets priority {priority} and fills first, the disk takes the overflow.": {
+        "fr": "zram et swap sur disque coexistent : la zram reçoit la priorité {priority} et se remplit d'abord, le disque prend le surplus.",
+        "en": "zram and disk swap coexist: zram gets priority {priority} and fills first, the disk takes the overflow.",
+    },
+    "The free disk space lets the swap grow by up to {size}.": {
+        "fr": "L'espace disque libre permet d'agrandir le swap de {size} au plus.",
+        "en": "The free disk space lets the swap grow by up to {size}.",
+    },
+    "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.": {
+        "fr": "zram-tools est aussi installé : les deux outils réclament /dev/zram0. Désactivez zramswap.service.",
+        "en": "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.",
+    },
     # Système : rapports et caches du système
     "Measuring": {
         "fr": "Mesure de",
