@@ -24,7 +24,7 @@ Les faits :
 - lock_running : bool, le PID de lock désigne encore le processus qui a
   écrit le verrou (deck_lock.holder_running) ; faux quand il est libre ;
 - lock_pids : [pid] des processus qui ont le verrou ouvert, [] quand il
-  est libre ;
+  est libre ; pour un jeu, tout son arbre, l'enveloppe fût-elle morte ;
 - decks : les périphériques USB du vendeur 0fd9, triés par chemin sysfs,
   chacun {"product": nom annoncé, "" s'il manque ; "id_product" ;
   "model": nom du modèle d'après streamdeck_models, "" s'il est inconnu ;
@@ -510,6 +510,11 @@ def status_lines(facts):
         )
     else:
         decks = t("Decks plugged in: none")
+    valeur_jeux = facts["settings"].get("GAMES", "on")
+    if valeur_jeux in service.GAMES_VALUES:
+        jeux = "%s %s" % (t("Games:"), valeur_jeux)
+    else:
+        jeux = "%s %r" % (t("Games: unknown value"), valeur_jeux)
     coupes = service.plugins_off(facts["settings"])
     lignes_plugins = (
         ["%s %s" % (t("Plugins off:"), ", ".join(coupes))] if coupes else []
@@ -525,6 +530,7 @@ def status_lines(facts):
         ligne_ext,
         indicateurs,
         unite,
+        jeux,
         *lignes_plugins,
         *lignes_rafraichissement,
         verrou,
@@ -599,6 +605,14 @@ def diagnosis_lines(facts):
             (t("The deck program is not installed"), STREAMDECK_INSTALL)
         )
         return problemes
+    valeur_jeux = facts["settings"].get("GAMES", "on")
+    if valeur_jeux not in service.GAMES_VALUES:
+        problemes.append(
+            (
+                "%s %r" % (t("Unknown GAMES value:"), valeur_jeux),
+                t("TODO › ERPLibre Home › Games on/off"),
+            )
+        )
     for identifiant in service.plugins_off(facts["settings"]):
         if identifiant not in facts["plugin_ids"]:
             problemes.append(
@@ -645,9 +659,17 @@ def diagnosis_lines(facts):
             # l'auteur du verrou : parti, il a pu être repris par un autre
             # processus. Les processus qui tiennent le verrou le remplacent.
             nomme = [pid] if facts["lock_running"] else []
-            pids = nomme or facts["lock_pids"]
-            ferme = t("close it")
-            sinon = t("close it, or:")
+            if detenteur == "game":
+                # Fermer le jeu le laisse finir proprement ; le dernier
+                # recours vise chaque processus qui tient le verrou, car
+                # l'enveloppe que le verrou nomme peut être déjà morte.
+                pids = facts["lock_pids"] or nomme
+                ferme = t("close the game")
+                sinon = t("close the game; as a last resort:")
+            else:
+                pids = nomme or facts["lock_pids"]
+                ferme = t("close it")
+                sinon = t("close it, or:")
             if pids:
                 remede = "%s kill %s" % (
                     sinon,

@@ -63,6 +63,7 @@ class LaLecture(unittest.TestCase):
             {
                 "DECK_PROGRAM": "tiler",
                 "RESTART_AFTER_GAME": "yes",
+                "GAMES": "on",
                 "DECK_PLUGINS_OFF": "",
                 "DECK_SESSION_REFRESH_SEC": "1",
             },
@@ -134,6 +135,74 @@ class LaLecture(unittest.TestCase):
                         lu,
                         service.read_settings(str(chemin)),
                     )
+
+
+class LesJeux(unittest.TestCase):
+    """GAMES : on ou absent active les jeux, off les coupe, toute autre
+    valeur les coupe aussi ; le shell et Python disent la même chose."""
+
+    def shell(self, contenu, env=None):
+        with tempfile.TemporaryDirectory() as dossier:
+            base = Path(dossier)
+            environ = {
+                k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"
+            }
+            environ.update({"HOME": dossier, "BIB": str(BIBLIOTHEQUE)})
+            environ.update(env or {})
+            conf = (
+                Path(environ.get("XDG_CONFIG_HOME") or base / ".config")
+                / "erplibre-home/streamdeck.conf"
+            )
+            if contenu is not None:
+                conf.parent.mkdir(parents=True, exist_ok=True)
+                conf.write_bytes(contenu.encode("utf-8"))
+            fini = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    '. "$BIB"; deck_games_enabled; echo "rc=$?";'
+                    " deck_games_message",
+                ],
+                capture_output=True,
+                text=True,
+                env=environ,
+                timeout=30,
+            )
+            lu = service.read_settings(str(conf))
+        return fini.stdout, lu
+
+    def test_on_off_missing_and_unknown(self):
+        cas = (
+            (None, "rc=0", True),
+            ("GAMES=on\n", "rc=0", True),
+            ("GAMES=off\n", "rc=1", False),
+            ("GAMES=\n", "rc=2", False),
+            ("GAMES=yes\n", "rc=2", False),
+            ("GAMES=on\r\n", "rc=2", False),
+        )
+        for contenu, code, actif in cas:
+            with self.subTest(contenu=contenu):
+                sortie, lu = self.shell(contenu)
+                self.assertIn(code, sortie)
+                self.assertEqual(actif, service.games_enabled(lu))
+
+    def test_the_message_names_the_setting_and_the_way_back(self):
+        sortie, _ = self.shell("GAMES=off\n")
+        self.assertIn("GAMES=off", sortie)
+        self.assertIn("streamdeck.conf", sortie)
+        self.assertIn("TODO › ERPLibre Home › Games on/off", sortie)
+
+    def test_the_message_shows_a_carriage_return_instead_of_obeying_it(self):
+        sortie, _ = self.shell("GAMES=on\r\n")
+        message = sortie.split("rc=2", 1)[1]
+        self.assertIn("GAMES=on\\r", message)
+        self.assertNotIn("\r", message)
+
+    def test_xdg_config_home_wins(self):
+        with tempfile.TemporaryDirectory() as autre:
+            sortie, _ = self.shell("GAMES=off\n", {"XDG_CONFIG_HOME": autre})
+        self.assertIn("rc=1", sortie)
+        self.assertIn(autre, sortie)
 
 
 class LaPeriodeDeRafraichissement(unittest.TestCase):

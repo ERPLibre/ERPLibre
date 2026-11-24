@@ -8,11 +8,10 @@ pilote lui envoie, et TODO écrit le même fichier par son menu ERPLibre
 Home.
 Ce que ces tests gardent :
 
-- chaque réglage piloté qu'erplibre_home_service écrit figure au tableau
-  du CONTRACT.md de l'extension, sous la même ligne du fichier, avec les
-  mêmes programmes, bornes de la période et motif d'identifiant de
-  plugin ; une ligne du tableau qu'ERPLibre n'écrit pas reste aux soins
-  de l'extension ;
+- le tableau des réglages pilotés du CONTRACT.md de l'extension égale les
+  constantes d'erplibre_home_service : clé du fil et ligne du fichier,
+  programmes, valeurs de GAMES, bornes de la période, motif d'identifiant
+  de plugin ;
 - sur les fixtures partagées du clone, settings_text et write_settings
   rendent, octet pour octet, ce que l'extension écrit : les deux écrivains
   du même fichier n'en perdent pas des lignes différentes ;
@@ -119,14 +118,13 @@ class LeContratDuPilote(unittest.TestCase):
         tableau = reglages_du_contrat()
         self.assertEqual(
             service.CONFIG_LINES,
-            {
-                cle: ligne
-                for cle, (ligne, _valeurs) in tableau.items()
-                if cle in service.CONFIG_LINES
-            },
+            {cle: ligne for cle, (ligne, _valeurs) in tableau.items()},
         )
         self.assertEqual(
             service.PROGRAMS, tuple(en_ticks(tableau["deck_program"][1]))
+        )
+        self.assertEqual(
+            service.GAMES_VALUES, tuple(en_ticks(tableau["games"][1]))
         )
         bornes = re.findall(
             r"\d+(?:\.\d+)?", tableau["session_refresh_sec"][1]
@@ -184,7 +182,6 @@ class LeContratDuPilote(unittest.TestCase):
     ):
         """Les lignes de chaque fixture viennent de ses valeurs du fil par
         le tableau, et les deux écrivains en tirent les mêmes octets."""
-        tableau = reglages_du_contrat()
         fixtures = fixtures_de_reglages()
         self.assertTrue(fixtures)
         for nom, octets, reglages, maj, attendu in fixtures:
@@ -192,7 +189,7 @@ class LeContratDuPilote(unittest.TestCase):
             with self.subTest(fixture=nom):
                 self.assertEqual(
                     {
-                        tableau[cle][0]: ligne_du_fil(valeur)
+                        service.CONFIG_LINES[cle]: ligne_du_fil(valeur)
                         for cle, valeur in reglages.items()
                     },
                     maj,
@@ -603,11 +600,7 @@ def ecrire_pilote(dossier, contenu):
     return chemin
 
 
-PILOTE = {
-    "destination": DESTINATION,
-    "revision": 4,
-    "locked": ["plugins_off"],
-}
+PILOTE = {"destination": DESTINATION, "revision": 4, "locked": ["games"]}
 
 MAUVAIS_PILOTES = (
     "",
@@ -620,7 +613,7 @@ MAUVAIS_PILOTES = (
     {"destination": 3, "revision": 4, "locked": []},
     {"destination": DESTINATION, "revision": "4", "locked": []},
     {"destination": DESTINATION, "revision": True, "locked": []},
-    {"destination": DESTINATION, "revision": 4, "locked": "plugins_off"},
+    {"destination": DESTINATION, "revision": 4, "locked": "games"},
     {"destination": DESTINATION, "revision": 4, "locked": [1]},
     {"destination": DESTINATION, "revision": 4},
     {"destination": "x" * 70000, "revision": 4, "locked": []},
@@ -667,12 +660,7 @@ class LeFichierPilote(unittest.TestCase):
                 {
                     "destination": "Odoo\x1b[2J\nde test",
                     "revision": 2,
-                    "locked": [
-                        "key_layouts",
-                        "plugins_off",
-                        "plugins_off",
-                        "later",
-                    ],
+                    "locked": ["key_layouts", "games", "games", "later"],
                     "extra": True,
                 },
             )
@@ -681,7 +669,7 @@ class LeFichierPilote(unittest.TestCase):
             {
                 "destination": "Odoo?[2J?de test",
                 "revision": 2,
-                "locked": ["plugins_off"],
+                "locked": ["games"],
             },
             pilote,
         )
@@ -705,6 +693,7 @@ class ExecuteFactice:
 # fichier vide.
 ENTREES = (
     ("deck_program", "_streamdeck_program", ("2",), "DECK_PROGRAM=controller"),
+    ("games", "_streamdeck_games_setting", ("2",), "GAMES=off"),
     (
         "plugins_off",
         "_streamdeck_plugins_setting",
@@ -779,8 +768,8 @@ class LAvertissementDuMenu(unittest.TestCase):
 
     def test_the_warning_is_translated(self):
         todo_i18n._current_lang = "fr"
-        self.piloter(["deck_program"])
-        sortie = self.jouer("_streamdeck_program", ("2",))
+        self.piloter(["games"])
+        sortie = self.jouer("_streamdeck_games_setting", ("2",))
         self.assertIn(
             "Réglage verrouillé par Odoo (%s) : il sera reproposé."
             % DESTINATION,
@@ -817,11 +806,9 @@ class LAvertissementDuMenu(unittest.TestCase):
                     ecrire_pilote(self.home / ".local/state", contenu)
                 if self.reglages.exists():
                     self.reglages.unlink()
-                sortie = self.jouer("_streamdeck_program", ("2",))
+                sortie = self.jouer("_streamdeck_games_setting", ("2",))
                 self.assertNotIn("locked by Odoo", sortie)
-                self.assertEqual(
-                    "DECK_PROGRAM=controller\n", self.reglages.read_text()
-                )
+                self.assertEqual("GAMES=off\n", self.reglages.read_text())
 
     def installer(self, reponses):
         """L'installation Stream Deck de TODO sur un poste dont les
@@ -844,18 +831,18 @@ class LAvertissementDuMenu(unittest.TestCase):
         autre programme que celui en place, verrouillé, se dit avant de
         partir, et l'installation part quand même."""
         self.piloter(["deck_program"])
-        sortie, commandes = self.installer(("2", "", ""))
+        sortie, commandes = self.installer(("2", "", "", ""))
         self.assertEqual(1, sortie.splitlines().count(AVERTISSEMENT))
         self.assertEqual(1, len(commandes))
         self.assertIn("--deck-program=controller", commandes[0])
 
     def test_the_stream_deck_install_keeping_the_program_does_not_warn(self):
         for verrouilles, reponses in (
-            (["deck_program"], ("", "", "")),
-            (["deck_program"], ("1", "", "")),
+            (["deck_program"], ("", "", "", "")),
+            (["deck_program"], ("1", "", "", "")),
             (
                 [k for k in service.CONFIG_LINES if k != "deck_program"],
-                ("2", "", ""),
+                ("2", "", "", ""),
             ),
         ):
             with self.subTest(verrouilles=verrouilles, reponses=reponses):

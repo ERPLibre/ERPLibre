@@ -97,6 +97,7 @@ def faits(**changes):
         "settings": {
             "DECK_PROGRAM": "tiler",
             "RESTART_AFTER_GAME": "yes",
+            "GAMES": "on",
             "DECK_PLUGINS_OFF": "",
             "DECK_SESSION_REFRESH_SEC": "1",
         },
@@ -372,6 +373,7 @@ class LaCollecte(unittest.TestCase):
                 "settings": {
                     "DECK_PROGRAM": "tiler",
                     "RESTART_AFTER_GAME": "yes",
+                    "GAMES": "on",
                     "DECK_PLUGINS_OFF": "",
                     "DECK_SESSION_REFRESH_SEC": "1",
                 },
@@ -428,11 +430,11 @@ class LaCollecte(unittest.TestCase):
         os.chmod(chemin.parent, 0o700)
         tenu = open(chemin, "w", encoding="utf-8")
         self.addCleanup(tenu.close)
-        tenu.write("777 controller\n")
+        tenu.write("777 game\n")
         tenu.flush()
         fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
         recu = self.collecter({})
-        self.assertEqual(("777", "controller"), recu["lock"])
+        self.assertEqual(("777", "game"), recu["lock"])
         self.assertEqual([os.getpid()], recu["lock_pids"])
 
     @SANS_DECK
@@ -447,10 +449,10 @@ class LaCollecte(unittest.TestCase):
         with open("/proc/%d/stat" % moi, encoding="utf-8") as fh:
             depart = int(fh.read().rsplit(")", 1)[1].split()[19])
         for texte, attendu in (
-            ("%d tiler %d\n" % (moi, depart), True),
-            ("%d tiler %d\n" % (moi, depart + 1), False),
-            ("%d tiler\n" % moi, True),
-            ("4000000000 tiler\n", False),
+            ("%d game %d\n" % (moi, depart), True),
+            ("%d game %d\n" % (moi, depart + 1), False),
+            ("%d game\n" % moi, True),
+            ("4000000000 game\n", False),
         ):
             with self.subTest(texte=texte):
                 with open(chemin, "w", encoding="utf-8") as tenu:
@@ -460,6 +462,31 @@ class LaCollecte(unittest.TestCase):
                     recu = self.collecter({})
                 self.assertEqual(texte.split()[:2], list(recu["lock"]))
                 self.assertEqual(attendu, recu["lock_running"])
+
+    @SANS_DECK
+    def test_only_the_main_lock_is_read_never_the_inner_one(self):
+        """deck.inner, tenu dans un jeu à côté du verrou, ne dit pas qui
+        tient le deck : l'état le dit libre et la diagnostic ne propose
+        aucun « kill » quand seul deck.inner est tenu."""
+        todo_i18n._current_lang = "en"
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+        interieur = self.tmp / "deck.inner"
+        os.chmod(self.tmp, 0o700)
+        tenu = open(interieur, "w", encoding="utf-8")
+        self.addCleanup(tenu.close)
+        tenu.write("%d tiler\n" % os.getpid())
+        tenu.flush()
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        recu = self.collecter({})
+        self.assertIsNone(recu["lock"])
+        self.assertFalse(recu["lock_running"])
+        self.assertEqual([], recu["lock_pids"])
+        self.assertIn("Deck lock: free", statut.status_lines(recu))
+        verrou = {k: recu[k] for k in ("lock", "lock_running", "lock_pids")}
+        problemes = statut.diagnosis_lines(
+            faits(unit_active="failed", **verrou)
+        )
+        self.assertNotIn("kill", repr(problemes))
 
 
 class LeNiveauInstalle(unittest.TestCase):
@@ -519,6 +546,7 @@ class LEtat(unittest.TestCase):
                 "Extension: active",
                 "Indicators: all mounted",
                 "Service: enabled, active, program tiler",
+                "Games: on",
                 "Deck lock: held by tiler (PID 4242)",
                 "Decks plugged in: Stream Deck MK.2",
                 "udev rule: present",
@@ -547,6 +575,7 @@ class LEtat(unittest.TestCase):
                 "Extension: state 3, error: boom",
                 "Indicators: failed to mount: device",
                 "Service: not installed",
+                "Games: on",
                 "Deck lock: free",
                 "Decks plugged in: 006c",
                 "udev rule: missing",
@@ -596,9 +625,9 @@ class LEtat(unittest.TestCase):
 
     def test_a_lock_naming_a_process_gone_says_so(self):
         self.assertIn(
-            "Deck lock: held by controller (PID 777, no longer running)",
+            "Deck lock: held by game (PID 777, no longer running)",
             statut.status_lines(
-                faits(lock=("777", "controller"), lock_running=False)
+                faits(lock=("777", "game"), lock_running=False)
             ),
         )
 
@@ -617,7 +646,7 @@ class LEtat(unittest.TestCase):
         self.assertEqual(
             "Indicators: journal not readable by this user", lignes[2]
         )
-        self.assertEqual("Decks plugged in: none", lignes[5])
+        self.assertEqual("Decks plugged in: none", lignes[6])
 
     def test_a_journal_with_lines_but_no_enabled_stays_not_read(self):
         lignes = statut.status_lines(
@@ -639,13 +668,24 @@ class LEtat(unittest.TestCase):
         self.assertIn("systemd-journal", statut.JOURNAL_HINT)
         self.assertIn("persistent", statut.JOURNAL_HINT)
 
+    def test_status_shows_games_even_without_a_unit(self):
+        f = faits(unit_file=False)
+        f["settings"] = dict(f["settings"], GAMES="off")
+        self.assertIn("Games: off", statut.status_lines(f))
+
+    def test_status_shows_a_carriage_return_visibly(self):
+        f = faits()
+        f["settings"] = dict(f["settings"], GAMES="on\r")
+        self.assertIn("Games: unknown value 'on\\r'", statut.status_lines(f))
+
     def test_status_lists_the_plugins_that_are_off(self):
         f = faits()
         f["settings"] = dict(
             f["settings"], DECK_PLUGINS_OFF=" tiling , ,sound,"
         )
         lignes = statut.status_lines(f)
-        self.assertEqual("Plugins off: tiling, sound", lignes[4])
+        self.assertEqual("Games: on", lignes[4])
+        self.assertEqual("Plugins off: tiling, sound", lignes[5])
 
     def test_status_has_no_plugin_line_when_none_is_off(self):
         self.assertFalse(
@@ -828,11 +868,44 @@ class LeDiagnostic(unittest.TestCase):
             problemes,
         )
 
+    def test_a_game_is_closed_first_and_killed_as_a_whole(self):
+        """Tuer le seul PID du verrou laisserait le jeu sur le deck quand
+        l'enveloppe est déjà morte : le dernier recours nomme chaque
+        processus qui tient le verrou."""
+        problemes = statut.diagnosis_lines(
+            faits(
+                unit_active="inactive",
+                lock=("777", "game"),
+                lock_pids=[777, 778, 779],
+            )
+        )
+        self.assertIn(
+            (
+                "The deck is held by game (PID 777)",
+                "close the game; as a last resort: kill 777 778 779",
+            ),
+            problemes,
+        )
+
+    def test_a_game_with_no_process_found_names_the_lock_pid(self):
+        self.assertIn(
+            "close the game; as a last resort: kill 777",
+            self.corrections(
+                unit_active="inactive", lock=("777", "game"), lock_pids=[]
+            ),
+        )
+
     def test_a_pid_no_longer_running_is_never_killed(self):
         """Le PID du verrou peut désigner un processus parti, ou repris par
         un autre : la diagnostic ne propose « kill » que sur les processus
         qui tiennent le verrou, et rien quand elle n'en trouve aucun."""
         cas = (
+            (
+                ("777", "game"),
+                [778],
+                "close the game; as a last resort: kill 778",
+            ),
+            (("777", "game"), [], "close the game"),
             (("777", "controller"), [778], "close it, or: kill 778"),
             (("777", "controller"), [], "close it"),
         )
@@ -873,6 +946,17 @@ class LeDiagnostic(unittest.TestCase):
             self.corrections(
                 settings={"DECK_PROGRAM": "none"}, unit_active="inactive"
             ),
+        )
+
+    def test_diagnosis_names_an_unknown_games_value(self):
+        f = faits(unit_file=False)
+        f["settings"] = dict(f["settings"], GAMES="yes")
+        self.assertIn(
+            (
+                "Unknown GAMES value: 'yes'",
+                "TODO › ERPLibre Home › Games on/off",
+            ),
+            statut.diagnosis_lines(f),
         )
 
     def test_diagnosis_names_an_unknown_plugin_id(self):

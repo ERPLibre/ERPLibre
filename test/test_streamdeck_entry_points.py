@@ -29,6 +29,9 @@ Ce que ces tests gardent :
 - les cibles de tests du deck lancent sa suite depuis la racine du clone ;
 - la galerie lance un jeu sous son propre interpréteur, cité pour bash, et
   toute sa boucle de parties dans une seule passation du deck ;
+- le menu TODO lance un jeu sous le python du venv, à travers la passation
+  du deck, et sans venv il le dit dans la langue de l'utilisateur sans rien
+  lancer ;
 - launch_game.sh, que rien n'appelait, n'existe plus ;
 - le programme du deck refuse --meta, l'option qui fait reconnaître un jeu
   à la galerie.
@@ -44,6 +47,7 @@ contrôleur, et requirements.txt, se testent dans le dépôt du deck
 (tests/test_entry_points.py).
 """
 
+import contextlib
 import importlib.util
 import io
 import os
@@ -62,6 +66,10 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from streamdeck_checkout import copier_depot  # noqa: E402
 from streamdeck_deck import DECK, SANS_DECK  # noqa: E402
+
+sys.argv = ["todo.py"]
+from script.todo import todo as todo_mod  # noqa: E402
+from script.todo import todo_i18n  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = ROOT / "conf" / "make.streamdeck.Makefile"
@@ -843,6 +851,265 @@ class TestTheDeckProgramIsNotAGame(unittest.TestCase):
         for source in (DECK / "erplibre_streamdeck").rglob("*.py"):
             texte = source.read_text(encoding="utf-8")
             self.assertNotIn("GAME_META", texte, str(source))
+
+
+class TestTodoGamesLauncher(unittest.TestCase):
+    """Le menu des jeux, sur un venv simulé : un faux python exécutable
+    quand il est présent, un chemin qui n'existe pas quand il manque."""
+
+    JEU = "/srv/jeux de test/game_demo.py"
+
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.present = os.path.join(dossier.name, "python")
+        with open(self.present, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(self.present, 0o755)
+        self.absent = os.path.join(dossier.name, "absent", "python")
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+
+    def menu(self, python, reponses=("1", "0")):
+        """Joue le menu des jeux ; rend (todo, rendu, sortie)."""
+        todo = todo_mod.TODO.__new__(todo_mod.TODO)
+        todo._scan_streamdeck_games = mock.Mock(
+            return_value=[
+                {
+                    "name": "Demo",
+                    "description": "Demo — demo",
+                    "path": self.JEU,
+                }
+            ]
+        )
+        todo.fill_help_info = lambda choices: ""
+        todo.execute = mock.Mock()
+        sortie = io.StringIO()
+        with (
+            mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", self.present),
+            mock.patch.object(
+                todo_mod.click, "prompt", side_effect=list(reponses)
+            ),
+            contextlib.redirect_stdout(sortie),
+        ):
+            rendu = todo.prompt_execute_streamdeck_games()
+        return todo, rendu, sortie.getvalue()
+
+    def test_missing_games_say_how_to_install_them_and_scan_nothing(self):
+        for langue, attendu in (
+            (
+                "en",
+                "Stream Deck games are not installed"
+                " (no games_cli.py in script/stream_deck/games/):"
+                " make erplibre_home_streamdeck_install",
+            ),
+            (
+                "fr",
+                "Les jeux Stream Deck ne sont pas installés"
+                " (pas de games_cli.py dans script/stream_deck/games/) :"
+                " make erplibre_home_streamdeck_install",
+            ),
+        ):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                with (
+                    mock.patch.object(
+                        todo_mod, "VENV_STREAMDECK_PYTHON", self.present
+                    ),
+                    mock.patch.object(
+                        todo_mod, "STREAMDECK_GAMES_CLI", self.absent
+                    ),
+                    mock.patch.object(
+                        todo_mod.TODO, "_scan_streamdeck_games"
+                    ) as scan,
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+                ):
+                    self.assertFalse(todo.prompt_execute_streamdeck_games())
+                scan.assert_not_called()
+                self.assertEqual(attendu, out.getvalue().strip())
+
+    def test_the_games_cli_witness_is_the_one_of_the_checkout(self):
+        self.assertEqual(
+            str(GAMES_DIR / "games_cli.py"), todo_mod.STREAMDECK_GAMES_CLI
+        )
+
+    def test_games_off_says_so_and_scans_nothing(self):
+        for langue, attendu in (
+            (
+                "en",
+                "Stream Deck games are disabled (GAMES): enable them in"
+                " TODO › ERPLibre Home › Games on/off, or set GAMES=on in ",
+            ),
+            (
+                "fr",
+                "Les jeux Stream Deck sont désactivés (GAMES) : activez-les"
+                " dans TODO › ERPLibre Home › Jeux on/off, ou mettez GAMES=on"
+                " dans ",
+            ),
+        ):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                with (
+                    mock.patch.object(
+                        todo_mod.os, "access", return_value=True
+                    ),
+                    mock.patch.object(
+                        todo_mod, "STREAMDECK_GAMES_CLI", self.present
+                    ),
+                    mock.patch.object(
+                        todo_mod.service,
+                        "read_settings",
+                        return_value={"GAMES": "off"},
+                    ),
+                    mock.patch.object(
+                        todo_mod.TODO, "_scan_streamdeck_games"
+                    ) as scan,
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+                ):
+                    self.assertFalse(todo.prompt_execute_streamdeck_games())
+                scan.assert_not_called()
+                self.assertIn(attendu, out.getvalue())
+                self.assertIn(todo_mod.service.settings_path(), out.getvalue())
+
+    def refus_des_jeux(self, python, valeur):
+        """Joue le menu des jeux avec `python` pour venv et GAMES=`valeur`
+        dans les réglages ; rend (rendu, sortie, scan)."""
+        todo = todo_mod.TODO.__new__(todo_mod.TODO)
+        with (
+            mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", self.present),
+            mock.patch.object(
+                todo_mod.service,
+                "read_settings",
+                return_value={"GAMES": valeur},
+            ),
+            mock.patch.object(
+                todo_mod.TODO, "_scan_streamdeck_games", return_value=[]
+            ) as scan,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            rendu = todo.prompt_execute_streamdeck_games()
+        return rendu, out.getvalue(), scan
+
+    def test_an_unknown_games_value_is_refused_too(self):
+        todo_i18n._current_lang = "en"
+        for valeur in ("yes", ""):
+            with self.subTest(valeur=valeur):
+                rendu, sortie, scan = self.refus_des_jeux(self.present, valeur)
+                self.assertFalse(rendu)
+                self.assertIn("Stream Deck games are disabled (GAMES)", sortie)
+                scan.assert_not_called()
+
+    def test_the_venv_is_checked_before_the_games_setting(self):
+        """Sans venv, le menu dit d'abord comment l'installer : GAMES=on
+        n'y suffirait pas."""
+        todo_i18n._current_lang = "en"
+        rendu, sortie, scan = self.refus_des_jeux(self.absent, "off")
+        self.assertFalse(rendu)
+        self.assertEqual(MESSAGE_SANS_VENV, sortie.strip())
+        scan.assert_not_called()
+
+    def test_a_game_is_described_by_its_file_name_key(self):
+        """game_<id>.py prend la description de la clé i18n « game_<id> »,
+        dans la langue de l'utilisateur ; sans clé, la première ligne de
+        sa docstring."""
+        with tempfile.TemporaryDirectory() as tmp:
+            chemins = []
+            for nom in ("game_2048.py", "game_exemple_sans_cle.py"):
+                chemin = os.path.join(tmp, nom)
+                with open(chemin, "w", encoding="utf-8") as f:
+                    f.write('"""\nLa docstring du jeu.\n"""\n')
+                chemins.append(chemin)
+            for langue in ("en", "fr"):
+                with self.subTest(langue=langue):
+                    todo_i18n._current_lang = langue
+                    todo = todo_mod.TODO.__new__(todo_mod.TODO)
+                    with mock.patch("glob.glob", return_value=chemins):
+                        jeux = todo._scan_streamdeck_games()
+                    attendu = todo_i18n.TRANSLATIONS["game_2048"][langue]
+                    self.assertEqual(
+                        [
+                            f"2048 — {attendu}",
+                            "Exemple Sans Cle — La docstring du jeu.",
+                        ],
+                        [j["description"] for j in jeux],
+                    )
+
+    def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
+        todo = todo_mod.TODO.__new__(todo_mod.TODO)
+        mots = shlex.split(todo._streamdeck_game_command(self.JEU))
+        self.assertEqual(
+            mots,
+            [
+                str(
+                    ROOT
+                    / "script/install/erplibre_home_streamdeck_handover.sh"
+                ),
+                str(ROOT / ".venv.streamdeck/bin/python"),
+                self.JEU,
+            ],
+        )
+
+    def test_the_menu_runs_the_chosen_game_with_that_command(self):
+        todo, rendu, _sortie = self.menu(self.present)
+        self.assertFalse(rendu)
+        todo.execute.exec_command_live.assert_called_once_with(
+            f"{shlex.quote(todo_mod.ERPLIBRE_HOME_STREAMDECK_HANDOVER)}"
+            f" {shlex.quote(self.present)} {shlex.quote(self.JEU)}",
+            source_erplibre=False,
+            recap=False,
+        )
+
+    @SANS_DECK
+    def test_the_command_really_runs_the_game(self):
+        """La commande, jouée par bash : la passation, sans unité, lance
+        le python du venv sur le jeu. Elle tourne dans une copie réduite du
+        dépôt, avec un faux games/."""
+        with tempfile.TemporaryDirectory(prefix="jeu demo ") as tmp:
+            env, _journal = environnement_isole(tmp, unite_active=False)
+            python = os.path.join(tmp, "python")
+            with open(python, "w", encoding="utf-8") as f:
+                f.write('#!/bin/sh\necho "$1"\n')
+            os.chmod(python, 0o755)
+            passation = copier_depot(os.path.join(tmp, "depot")) / (
+                "script/install/erplibre_home_streamdeck_handover.sh"
+            )
+            todo = todo_mod.TODO.__new__(todo_mod.TODO)
+            with (
+                mock.patch.object(todo_mod, "VENV_STREAMDECK_PYTHON", python),
+                mock.patch.object(
+                    todo_mod,
+                    "ERPLIBRE_HOME_STREAMDECK_HANDOVER",
+                    str(passation),
+                ),
+            ):
+                commande = todo._streamdeck_game_command(self.JEU)
+            res = subprocess.run(
+                ["bash", "-c", commande],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertEqual(self.JEU, res.stdout.strip())
+
+    def test_without_the_venv_it_says_so_and_launches_nothing(self):
+        attendus = {
+            "en": MESSAGE_SANS_VENV,
+            "fr": "ERPLibre Home Stream Deck n'est pas installé :"
+            " make erplibre_home_streamdeck_install",
+        }
+        for langue, message in attendus.items():
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                todo, rendu, sortie = self.menu(self.absent, reponses=())
+                self.assertFalse(rendu)
+                self.assertIn(message, sortie)
+                todo.execute.exec_command_live.assert_not_called()
+                todo._scan_streamdeck_games.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ Ce que ces tests gardent :
 - l'extension GNOME parle à la galerie sur le port 8042, celui que la
   galerie du clone sert, avec l'en-tête d'action qu'elle exige, tels que
   les énonce le CONTRACT.md de l'extension ;
-- la galerie trouve exactement les jeux du clone.
+- le menu TODO et la galerie trouvent exactement les jeux du clone.
 
 Ce qui lit les vrais jeux est sauté, avec sa raison, quand games/ manque ;
 ce qui lit l'extension GNOME, ou le programme du deck, quand son clone
@@ -51,6 +51,8 @@ GAMES_DIR = DECK_DIR / "games"
 GAMES_PATH = "script/stream_deck/games"
 MANIFESTE = "manifest/git_manifest_streamdeck_game.xml"
 CONTRAT = DECK_DIR / "games_contract"
+sys.argv = ["todo.py"]
+from script.todo import todo as todo_mod  # noqa: E402
 
 SANS_JEUX = unittest.skipUnless(
     (GAMES_DIR / "games_cli.py").is_file(),
@@ -254,6 +256,12 @@ class LesVraisScans(unittest.TestCase):
 
     def jeux_du_clone(self):
         return sorted(str(p) for p in GAMES_DIR.glob("game_*.py"))
+
+    def test_todo_finds_exactly_the_games_of_games_dir(self):
+        todo = todo_mod.TODO.__new__(todo_mod.TODO)
+        trouves = sorted(g["path"] for g in todo._scan_streamdeck_games())
+        self.assertNotEqual([], trouves)
+        self.assertEqual(self.jeux_du_clone(), trouves)
 
     def test_the_gallery_lists_the_games_and_not_the_tiler(self):
         """Le vrai glob de la galerie ; seul « --meta » est simulé, car
