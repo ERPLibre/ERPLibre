@@ -39,8 +39,8 @@ ${DNF} \
   krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
   GeographicLib-devel pkgconf-pkg-config cmake
 
-# qpdf : pikepdf en exige 12.2.0, et le paquet de la distribution ne le donne
-# que sur Fedora. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
+# qpdf : pikepdf en exige ${EL_QPDF_MIN} (S390x/lib_qpdf.sh), que le paquet de
+# la distribution ne donne pas toujours. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
 # cents lignes de g++ sans un mot sur qpdf ; EL10 livre 11.9.
 #
 # On ne pose donc « qpdf-devel » QUE s'il atteint le seuil, au lieu de le

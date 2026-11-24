@@ -4,30 +4,31 @@
 #
 # Bibliothèque SOURÇABLE : garantir un qpdf assez récent pour pikepdf.
 #
-# pikepdf 10 déclare QPDF_MIN_VERSION = "12.2.0" et se lie à la bibliothèque
+# pikepdf déclare QPDF_MIN_VERSION (« 12.4.2 » en 10.17) et se lie à la bibliothèque
 # C++ de la distribution. Là où PyPI publie une roue, rien de tout cela ne
 # s'exécute ; sur s390x il n'y en a aucune, pikepdf compile, et une version
 # trop ancienne le fait échouer sur des en-têtes qui n'existent pas encore
 # (« qpdf/QPDFJob.hh », apparu en 10.6 ; « qpdf/QPDFLogger.hh », en 11.0) puis
-# sur des constantes renommées. Le message ne nomme jamais qpdf : on lit trois
-# cents lignes de g++ avant de comprendre.
+# sur des constantes renommées ou des méthodes absentes
+# (« QPDFAcroFormDocumentHelper::validate », apparue en 12.4). Le message ne
+# nomme jamais qpdf : on lit trois cents lignes de g++ avant de comprendre.
+# Le seuil suit donc le pikepdf du lock : à relever quand celui-ci monte.
 #
 # Aucune famille n'est à jour partout, d'où le seuil plutôt qu'une liste de
 # distributions : Ubuntu 24.04 livre 11.9, AlmaLinux et Rocky 9 livrent 10.3
-# (sans même QPDFJob.hh), leurs 10 livrent 11.9 ; Ubuntu 25.10, Fedora 43 et
-# Tumbleweed dépassent le seuil et ne compilent rien.
+# (sans même QPDFJob.hh), leurs 10 livrent 11.9, Ubuntu 25.10 livre 12.2.0.
 #
 # Ce fichier existe parce que le bloc vivait en double : corrigé côté apt, il
 # ne l'était pas côté dnf, et EL9 est ressorti sur exactement le même mur le
 # lendemain. Le seuil, la version et la façon de bâtir sont désormais écrits
 # UNE fois pour les trois familles de paquets.
 
-EL_QPDF_MIN=12.2.0
-EL_QPDF_VER=12.3.2
+EL_QPDF_MIN=12.4.2
+EL_QPDF_VER=12.4.2
 
 # Vrai si la version passée en argument atteint le seuil. « sort -V » est le
 # seul comparateur de versions disponible partout sans dépendance, mais il
-# classe « 12.2 » AVANT « 12.2.0 » — un paquet numéroté sur deux composantes
+# classe « 12.4 » AVANT « 12.4.0 » — un paquet numéroté sur deux composantes
 # aurait donc déclenché une compilation d'une demi-heure pour rien. On complète
 # les composantes manquantes avant de comparer.
 el_qpdf_ge_min() {

@@ -129,8 +129,8 @@ if [ ! -e "${CLANG_LIB_DIR}/libclang.so" ]; then
     echo "Attention : libclang introuvable, la compilation de pymupdf va echouer."
   fi
 fi
-# pikepdf se lie a qpdf, dont il exige 12.2.0 au minimum. Ubuntu 24.04 en
-# livre 11.9.0 ; 25.10 et 26.04 passent, d'ou le partage observe. Le detail
+# pikepdf se lie a qpdf, dont il exige ${EL_QPDF_MIN} au minimum. Ubuntu
+# 24.04 en livre 11.9.0, 25.10 en livre 12.2.0 : tous deux compilent. Le detail
 # -- seuil, version batie, chemin d'installation -- est dans S390x/lib_qpdf.sh,
 # partage avec les scripts dnf et zypper qui butaient sur le meme mur.
 el_qpdf_ensure
