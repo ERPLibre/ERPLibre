@@ -501,6 +501,10 @@ VERDICTS_MEMOIRE = {
         "Virtual machine ({virtualization}): the hypervisor sets the memory. "
         "Increase it from the host."
     ),
+    "container": (
+        "Container ({virtualization}): the host sets its memory limit. "
+        "Change it from the host."
+    ),
     "unknown": (
         "The memory slots could not be read: without dmidecode, nothing "
         "says whether RAM can be added."
@@ -767,6 +771,20 @@ def lignes_memoire(v):
                 ).format_map(valeurs)
             )
     lignes.append(f"  → {_message(VERDICTS_MEMOIRE, v['verdict'], v)}")
+    if v.get("balloon"):
+        ballon = t(
+            "The virtio_balloon driver is present: the host can change this "
+            "VM's RAM while it runs with `virsh setmem <vm> <size> --live`, "
+            "up to the <memory> maximum in its definition; raising that "
+            "maximum needs the VM shut off."
+        )
+        lignes.append(f"  {ballon}")
+    elif v.get("balloon") is False:
+        sans_ballon = t(
+            "No virtio_balloon driver: the host changes this VM's RAM only "
+            "while it is shut off."
+        )
+        lignes.append(f"  {sans_ballon}")
     if v["verdict"] == "max" and v["max_capacity"] is None:
         lignes.append(
             f"  {t('The maximum capacity is unknown: larger modules may fit, the board documentation tells.')}"
