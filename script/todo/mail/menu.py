@@ -783,7 +783,7 @@ def _cache_size_and_purge(todo) -> None:
     account, _ = _pick_account()
     if account is None:
         return
-    if input(t("mail_purge_confirm")).strip().lower() not in ("o", "y"):
+    if not ui.confirm(t("mail_purge_confirm"), default=False):
         return
     store = Store(account, secrets=secret_store_for(todo))
     try:

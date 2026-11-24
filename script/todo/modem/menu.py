@@ -21,8 +21,6 @@ import signal
 import subprocess
 import sys
 
-import click
-
 from script.todo import ui
 from script.todo.menus import modem as menus_modem
 from script.todo.modem import asterisk as ast_mod
@@ -30,8 +28,8 @@ from script.todo.modem import audio as audio_mod
 from script.todo.modem import calls as calls_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import diagnostic as diag_mod
-from script.todo.modem import messaging as sms_mod
 from script.todo.modem import messagerie_vocale as mv_mod
+from script.todo.modem import messaging as sms_mod
 from script.todo.modem import repondeur as rep_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
@@ -234,7 +232,7 @@ def _etat_detaille():
 
 def _diagnostic():
     print("  " + t("modem_diag_warn"))
-    if not click.confirm("  " + t("modem_continue"), default=False):
+    if not ui.confirm(t("modem_continue"), default=False):
         return
     brut, conclusions = diag_mod.sonder()
     print()
@@ -290,9 +288,7 @@ def _appeler():
         return
     # La confirmation répète le numéro NORMALISÉ : c'est lui qui partira, pas
     # la suite de chiffres telle qu'elle a été tapée.
-    if not click.confirm(
-        f"  {t('modem_call_confirm')} +{norm} ?", default=False
-    ):
+    if not ui.confirm(f"{t('modem_call_confirm')} +{norm} ?", default=False):
         return
     ok, sortie = calls_mod.appeler(norm)
     print("  " + ("✔ " if ok else "✖ ") + (sortie or "").strip()[:300])
@@ -543,13 +539,13 @@ def _repondeur_recuperer(todo):
     if un_message:
         if mv_mod.lire()["etat"] != mv_mod.ATTENTE:
             print("  " + t("modem_ans_fetch_no_flag"))
-            if not click.confirm("  " + t("modem_continue"), default=False):
+            if not ui.confirm(t("modem_continue"), default=False):
                 return
-        if not click.confirm("  " + t("modem_continue"), default=False):
+        if not ui.confirm(t("modem_continue"), default=False):
             return
     else:
         print("  " + t("modem_ans_fetch_reperage"))
-        if not click.confirm("  " + t("modem_continue"), default=True):
+        if not ui.confirm(t("modem_continue"), default=True):
             return
     # Le coffre EN DERNIER, une fois seulement que l'effacement est annonce et
     # accepte : deverrouiller ses mots de passe pour decouvrir ensuite ce que
@@ -655,7 +651,7 @@ def _repondeur_messages_recuperes(messages):
     if not succes:
         print("  " + plainte)
         return
-    if input("  " + t("modem_ans_delete") + " > ").strip().lower() in ("o", "y"):
+    if ui.confirm(t("modem_ans_delete"), default=False):
         rec_mod.effacer_message(message)
         print("  " + t("modem_ans_deleted"))
         print("  " + t("modem_ans_full_kept") % (message.get("enregistrement_complet") or "?"))
@@ -712,10 +708,7 @@ def _repondeur_messages_erplibre():
     if not succes:
         print("  " + plainte)
         return
-    if input("  " + t("modem_ans_delete") + " > ").strip().lower() in (
-        "o",
-        "y",
-    ):
+    if ui.confirm(t("modem_ans_delete"), default=False):
         rep_mod.effacer(message)
         print("  " + t("modem_ans_deleted"))
 
@@ -975,7 +968,7 @@ def _appel_voip(todo):
     voix_ok, motif = calls_mod.voix_disponible()
     if not voix_ok:
         print("  ⚠  " + motif)
-        if not click.confirm("  " + t("modem_continue"), default=False):
+        if not ui.confirm(t("modem_continue"), default=False):
             return
 
     brut = input("  " + t("modem_number") + " : ").strip()
@@ -988,13 +981,13 @@ def _appel_voip(todo):
     if annonce is None:
         return
     annonce = annonce or None
-    combine = click.confirm("  " + t("voip_handset_ask"), default=False)
+    combine = ui.confirm(t("voip_handset_ask"), default=False)
     micro = False
     if combine:
         # L'écho n'est pas traité : le dire AVANT, pas quand le correspondant
         # s'entend revenir et croit à une panne.
         print("  ⚠  " + t("voip_handset_echo"))
-        micro = click.confirm("  " + t("voip_mic_ask"), default=False)
+        micro = ui.confirm(t("voip_mic_ask"), default=False)
 
     args = sipgo_mod.commande_appel(norm, annonce, combine, micro=micro)
     # On MONTRE la commande avant de la lancer : c'est le dernier moment où
@@ -1004,9 +997,7 @@ def _appel_voip(todo):
     # seul argument -c, qu'un shell redécouperait sans les guillemets.
     ligne = shlex.join(args)
     print("  " + t("Will execute:") + " " + ligne)
-    if not click.confirm(
-        f"  {t('modem_call_confirm')} +{norm} ?", default=False
-    ):
+    if not ui.confirm(f"{t('modem_call_confirm')} +{norm} ?", default=False):
         return
 
     if combine:
@@ -1041,11 +1032,11 @@ def _essai_combine():
     voix_ok, motif = calls_mod.voix_disponible()
     if not voix_ok:
         print("  ⚠  " + motif)
-        if not click.confirm("  " + t("modem_continue"), default=False):
+        if not ui.confirm(t("modem_continue"), default=False):
             return
     print("  " + t("modem_audio_try_intro"))
     print()
-    micro = click.confirm("  " + t("voip_mic_ask"), default=False)
+    micro = ui.confirm(t("voip_mic_ask"), default=False)
     print("  " + t("voip_handset_hint"))
     _lancer_interruptible(sipgo_mod.commande_essai_audio(micro))
 
@@ -1072,12 +1063,14 @@ def _regle_audio():
     print()
     if posee:
         print("  ⚠  " + t("modem_audio_rule_ask_off_warn"))
-        question = t("modem_audio_rule_ask_off")
-    else:
-        question = t("modem_audio_rule_ask_on")
     # Defaut a « non » dans les deux sens : ni poser ni retirer ne doit
     # arriver par une frappe distraite.
-    if not click.confirm("  " + question, default=False):
+    if not ui.confirm(
+        t("modem_audio_rule_ask_off")
+        if posee
+        else t("modem_audio_rule_ask_on"),
+        default=False,
+    ):
         print("  " + t("modem_audio_unchanged"))
         return
     ok, message = audio_mod.retirer() if posee else audio_mod.poser()
@@ -1114,9 +1107,7 @@ def _sonder_audio():
     args = sipgo_mod.commande_sonde(norm, mode, annonce)
     print()
     print("  " + t("Will execute:") + " " + shlex.join(args))
-    if not click.confirm(
-        f"  {t('modem_call_confirm')} +{norm} ?", default=False
-    ):
+    if not ui.confirm(f"{t('modem_call_confirm')} +{norm} ?", default=False):
         return
 
     code, sortie, journal = sipgo_mod.sonder(norm, mode, annonce)
@@ -1150,7 +1141,7 @@ def _sonder_audio():
 
     # La montee ne se mesure pas ici : on la demande.
     if annonce:
-        montee = click.confirm("  " + t("modem_probe_heard"), default=False)
+        montee = ui.confirm(t("modem_probe_heard"), default=False)
     else:
         montee = False
     if descente.get("vivant") or montee:
@@ -1187,8 +1178,10 @@ def _basculer_uac():
     )
     print("  " + t("modem_uac_warn"))
     cible = not actif
-    question = t("modem_uac_enable") if cible else t("modem_uac_disable")
-    if not click.confirm("  " + question, default=False):
+    if not ui.confirm(
+        t("modem_uac_enable") if cible else t("modem_uac_disable"),
+        default=False,
+    ):
         return
     ok, message = diag_mod.activer_uac(cible)
     print("  " + ("✔ " if ok else "✖ ") + message)

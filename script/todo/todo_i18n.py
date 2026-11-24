@@ -5645,8 +5645,8 @@ TRANSLATIONS = {
         "en": "▶ Message to play",
     },
     "modem_ans_delete": {
-        "fr": "Effacer ce message ? (o/N)",
-        "en": "Delete this message? (y/N)",
+        "fr": "Effacer ce message ?",
+        "en": "Delete this message?",
     },
     "modem_ans_deleted": {
         "fr": "Message efface.",
@@ -16819,8 +16819,8 @@ TRANSLATIONS = {
         ),
     },
     "sms_pair_confirm": {
-        "fr": "Poser la configuration sur le telephone ? [o/N]",
-        "en": "Write the configuration onto the phone? [y/N]",
+        "fr": "Poser la configuration sur le telephone ?",
+        "en": "Write the configuration onto the phone?",
     },
     "sms_pair_no_adb": {
         "fr": "adb est absent : installe les outils de plateforme Android.",
@@ -16939,8 +16939,8 @@ TRANSLATIONS = {
         "en": "Demonstration complete.",
     },
     "sms_confirm_reset": {
-        "fr": "Detruire la VM et oublier le secret ? [o/N] ",
-        "en": "Destroy the VM and forget the secret? [y/N] ",
+        "fr": "Detruire la VM et oublier le secret ?",
+        "en": "Destroy the VM and forget the secret?",
     },
     "sms_ask_number": {
         "fr": "Numero destinataire (format +1514...) : ",
@@ -16977,8 +16977,8 @@ TRANSLATIONS = {
         "en": "provider set to the mobile gateway",
     },
     "sms_confirm_mobile": {
-        "fr": "Les trois valeurs sont saisies et la passerelle demarree ? [o/N] ",
-        "en": "Are the three values entered and the gateway started? [y/N] ",
+        "fr": "Les trois valeurs sont saisies et la passerelle demarree ?",
+        "en": "Are the three values entered and the gateway started?",
     },
     "sms_mobile_pending": {
         "fr": "Etape laissee en attente.",
@@ -17271,8 +17271,8 @@ TRANSLATIONS = {
         ),
     },
     "sms_call_confirm": {
-        "fr": "Appeler ce numero maintenant ? [o/N]",
-        "en": "Call this number now? [y/N]",
+        "fr": "Appeler le %s maintenant ?",
+        "en": "Call %s now?",
     },
     "sms_call_queued": {
         "fr": "Appel en file. Le telephone composera au prochain cycle.",
@@ -17435,8 +17435,8 @@ TRANSLATIONS = {
         "en": "Template written to",
     },
     "mail_purge_confirm": {
-        "fr": "Effacer tout le cache de ce compte ? (o/N) ",
-        "en": "Erase this account's whole cache? (y/N) ",
+        "fr": "Effacer tout le cache de ce compte ?",
+        "en": "Erase this account's whole cache?",
     },
     "mail_purged": {"fr": "Cache effacé.", "en": "Cache erased."},
     "mail_no_vault": {

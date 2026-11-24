@@ -337,6 +337,86 @@ CONFIRM_DEFAULTS = {
         "Delete the old clone %s?",
     ): [False],
     (
+        "script/todo/mail/menu.py",
+        "_cache_size_and_purge",
+        "mail_purge_confirm",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_appel_voip",
+        "modem_call_confirm",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_appel_voip",
+        "modem_continue",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_appel_voip",
+        "voip_handset_ask",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_appel_voip",
+        "voip_mic_ask",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_appeler",
+        "modem_call_confirm",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_basculer_uac",
+        "modem_uac_enable",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_diagnostic",
+        "modem_continue",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_essai_combine",
+        "modem_continue",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_essai_combine",
+        "voip_mic_ask",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_regle_audio",
+        "modem_audio_rule_ask_off",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_repondeur_messages_erplibre",
+        "modem_ans_delete",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_repondeur_messages_recuperes",
+        "modem_ans_delete",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_repondeur_recuperer",
+        "modem_continue",
+    ): [False, False, True],
+    (
+        "script/todo/modem/menu.py",
+        "_sonder_audio",
+        "modem_call_confirm",
+    ): [False],
+    (
+        "script/todo/modem/menu.py",
+        "_sonder_audio",
+        "modem_probe_heard",
+    ): [False],
+    (
         "script/todo/python_menu.py",
         "PythonMenuMixin._poetry_drift_actif",
         "Update the venv to match the lock?",
@@ -365,6 +445,26 @@ CONFIRM_DEFAULTS = {
         "script/todo/qemu_manage.py",
         "QemuManageMixin._qemu_install_shrink_tools",
         "Install them?",
+    ): [False],
+    (
+        "script/todo/sms/menu.py",
+        "_appairer_par_usb",
+        "sms_pair_confirm",
+    ): [False],
+    (
+        "script/todo/sms/menu.py",
+        "_place_test_call",
+        "sms_call_confirm",
+    ): [False],
+    (
+        "script/todo/sms/menu.py",
+        "_reset",
+        "sms_confirm_reset",
+    ): [False],
+    (
+        "script/todo/sms/menu.py",
+        "_step_mobile",
+        "sms_confirm_mobile",
     ): [False],
     (
         "script/todo/system_menu.py",

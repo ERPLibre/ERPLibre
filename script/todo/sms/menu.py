@@ -156,8 +156,7 @@ def _appairer_par_usb(state) -> None:
     """
     print(f"  {t('sms_pair_target')} : {url_pour_le_telephone(state.spec)}")
     print(f"  {t('sms_pair_warning')}")
-    reponse = input(f"  {t('sms_pair_confirm')} ").strip().lower()
-    if reponse not in ("o", "y", "oui", "yes"):
+    if not ui.confirm(t("sms_pair_confirm"), default=False):
         return
     ok, detail = poser_la_config_par_usb(state)
     print(f"  {'✅' if ok else '❌'} {detail}")
@@ -231,8 +230,7 @@ def _place_test_call(todo, state) -> None:
         print(f"  ❌ {t('sms_call_no_number')}")
         return
     print(f"  {t('sms_call_warning')}")
-    reponse = input(f"  {t('sms_call_confirm')} [{numero}] ").strip().lower()
-    if reponse not in ("o", "y", "oui", "yes"):
+    if not ui.confirm(t("sms_call_confirm") % numero, default=False):
         return
 
     identifiant = _uuid.uuid4().hex
@@ -558,8 +556,7 @@ def _step_mobile(state):
         ok, detail = runner.adb_reverse(state.spec)
         print(f"  {'✅' if ok else '⚠️ '} {detail}")
     print()
-    reponse = input(f"  {t('sms_confirm_mobile')}").strip().lower()
-    if reponse not in ("o", "y", "oui", "yes"):
+    if not ui.confirm(t("sms_confirm_mobile"), default=False):
         return False, t("sms_mobile_pending")
     return _attendre_interrogation(state)
 
@@ -746,8 +743,7 @@ def _reset(todo, state) -> None:
     laisser une VM orpheline consommer 20 Go serait le pire souvenir qu'une
     démonstration puisse laisser.
     """
-    reponse = input(f"  {t('sms_confirm_reset')}").strip().lower()
-    if reponse not in ("o", "y", "oui", "yes"):
+    if not ui.confirm(t("sms_confirm_reset"), default=False):
         return
     import subprocess
 

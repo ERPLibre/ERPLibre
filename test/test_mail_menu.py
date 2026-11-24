@@ -774,6 +774,48 @@ class TestCacheSizeAndPurge(unittest.TestCase):
 
         self.assertFalse(store.root.exists())
 
+    def test_the_purge_asks_yes_or_no_default_no(self):
+        # Entrée, une faute puis Ctrl+D et Ctrl+D ne purgent rien ; o, oui,
+        # y et yes purgent, dans les deux langues. `input` n'est pas lu.
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+        refus = ([""], ["peut-être", EOFError()], [EOFError()])
+        oui = (["o"], ["oui"], ["y"], ["YES"])
+        with (
+            patch.object(menu, "_load_accounts", return_value=[account]),
+            patch.object(menu, "secret_store_for"),
+            patch.object(Store, "open"),
+            patch.object(Store, "close"),
+            patch.object(Store, "purge_all") as purge,
+            patch("builtins.input", side_effect=AssertionError),
+            patch("builtins.print"),
+        ):
+            for answers in refus:
+                with (
+                    self.subTest(answers=answers),
+                    ui.bind(ScriptedPort(["1", *answers, "o"])) as port,
+                ):
+                    menu._cache_size_and_purge(MagicMock())
+                self.assertEqual(port.answers, ["o"])
+            purge.assert_not_called()
+            for answers in oui:
+                with ui.bind(ScriptedPort(["1", *answers])) as port:
+                    menu._cache_size_and_purge(MagicMock())
+            self.assertEqual(purge.call_count, len(oui))
+        self.assertEqual(
+            [
+                (e["prompt"], e["default"])
+                for e in port.events
+                if e.get("kind") == "confirm"
+            ],
+            [(menu.t("mail_purge_confirm"), "n")],
+        )
+
 
 class TestEnsureKdbx(unittest.TestCase):
     """`_ensure_kdbx` offre de créer un nouveau kdbx ou d'en choisir un

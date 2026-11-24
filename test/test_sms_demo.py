@@ -2200,5 +2200,141 @@ class TestMateriel(SmsDemoBase):
         self.assertNotIn("application mobile", annonce.lower())
 
 
+class TestLesQuestionsOuiNon(SmsDemoBase):
+    """Les quatre questions oui/non de la demonstration passent par
+    `ui.confirm`, non par defaut : Entree, une faute puis Ctrl+D et Ctrl+D
+    n'ecrivent rien sur le telephone, n'appellent personne, n'attendent
+    rien et ne detruisent rien ; o, oui, y et yes y repondent oui.
+    `self.port`, un `ScriptedPort`, repond ; `input` n'est jamais lu."""
+
+    REFUS = ([""], ["peut-etre", EOFError()], [EOFError()])
+
+    def _lancer(self, fonction, reponses, *args):
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        with (
+            mock.patch("builtins.input", side_effect=AssertionError),
+            mock.patch("builtins.print"),
+            ui.bind(ScriptedPort(list(reponses))) as self.port,
+        ):
+            return fonction(*args)
+
+    def _question(self, cle, *valeurs):
+        """L'unique question posee : son texte sans indice, defaut non."""
+        from script.todo.sms import menu
+
+        texte = menu.t(cle) % valeurs if valeurs else menu.t(cle)
+        self.assertEqual(
+            [
+                (e["prompt"], e["default"])
+                for e in self.port.events
+                if e.get("kind") == "confirm"
+            ],
+            [(texte, "n")],
+        )
+
+    def test_poser_la_configuration_par_le_cable(self):
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load("mobile")
+        with (
+            mock.patch.object(
+                menu, "url_pour_le_telephone", return_value="http://forged"
+            ),
+            mock.patch.object(
+                menu, "poser_la_config_par_usb", return_value=(True, "")
+            ) as pose,
+        ):
+            for refus in self.REFUS:
+                with self.subTest(refus=refus):
+                    self._lancer(menu._appairer_par_usb, [*refus, "o"], etat)
+                    self.assertEqual(self.port.answers, ["o"])
+            pose.assert_not_called()
+            self._lancer(menu._appairer_par_usb, ["oui"], etat)
+            pose.assert_called_once_with(etat)
+        self._question("sms_pair_confirm")
+
+    def test_l_appel_d_essai(self):
+        from dataclasses import replace
+
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        etat.spec = replace(etat.spec, test_number="+19990001122")
+        fait = mock.Mock(stdout="", stderr="forged")
+        with mock.patch.object(menu, "_backend") as dos:
+            dos.return_value._run_odoo.return_value = fait
+            for refus in self.REFUS:
+                with self.subTest(refus=refus):
+                    self._lancer(
+                        menu._place_test_call, [*refus, "o"], None, etat
+                    )
+                    self.assertEqual(self.port.answers, ["o"])
+            dos.assert_not_called()
+            self._lancer(menu._place_test_call, ["yes"], None, etat)
+            dos.assert_called_once_with(etat)
+        self._question("sms_call_confirm", "+19990001122")
+
+    def test_le_telephone_pret(self):
+        from script.todo.sms import appairage, menu
+
+        etat = self.spec_mod.load("mobile")
+        with (
+            mock.patch.object(
+                appairage, "possible", return_value=(False, "forged")
+            ),
+            mock.patch.object(
+                menu.runner, "mobile_instructions", return_value=""
+            ),
+            mock.patch.object(
+                menu.runner, "adb_reverse", return_value=(True, "")
+            ),
+            mock.patch.object(
+                menu.local_backend, "start_server", return_value=(True, "")
+            ),
+            mock.patch.object(
+                menu, "_attendre_interrogation", return_value=(True, "")
+            ) as attendre,
+        ):
+            for refus in self.REFUS:
+                with self.subTest(refus=refus):
+                    rendu = self._lancer(
+                        menu._step_mobile, [*refus, "o"], etat
+                    )
+                    self.assertEqual(
+                        rendu, (False, menu.t("sms_mobile_pending"))
+                    )
+                    self.assertEqual(self.port.answers, ["o"])
+            attendre.assert_not_called()
+            self.assertEqual(
+                self._lancer(menu._step_mobile, ["y"], etat), (True, "")
+            )
+            attendre.assert_called_once_with(etat)
+        self._question("sms_confirm_mobile")
+
+    def test_detruire_la_demonstration(self):
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        with (
+            mock.patch.object(
+                menu.local_backend, "stop_server", return_value=(True, "")
+            ) as arreter,
+            mock.patch("subprocess.run") as lancer,
+            mock.patch.object(menu.spec_mod, "forget_secret") as oublier,
+        ):
+            for refus in self.REFUS:
+                with self.subTest(refus=refus):
+                    self._lancer(menu._reset, [*refus, "o"], None, etat)
+                    self.assertEqual(self.port.answers, ["o"])
+            for double in (arreter, lancer, oublier):
+                double.assert_not_called()
+            self._lancer(menu._reset, ["OUI"], None, etat)
+            oublier.assert_called_once_with(etat.spec.materiel)
+            self.assertEqual(lancer.call_args.args[0][0], "dropdb")
+        self._question("sms_confirm_reset")
+
+
 if __name__ == "__main__":
     unittest.main()
