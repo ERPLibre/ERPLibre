@@ -7,8 +7,8 @@ la mémoire d'échange.
 Les faits viennent de system_diagnostic et les candidats de
 system_cleanup ; ce fichier les met en phrases, pose les questions et tient
 le formulaire. Rien n'est effacé sans une case cochée ET une confirmation.
-Les plans de swap viennent de system_swap : ce fichier les montre, et ne
-les lance qu'après un oui.
+Les plans de swap et de zram viennent de system_swap : ce fichier les
+montre, et ne les lance qu'après un oui.
 
 Mixin de la classe TODO : ses méthodes vivent sur la même instance que
 celles des autres fichiers, elles s'appellent donc par « self. ».
@@ -20,6 +20,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 
 import click
@@ -408,7 +409,7 @@ RAISONS_SWAP = {
         "nothing can be changed from inside."
     ),
     "not_active": "{path} is not an active swap.",
-    "zram": "{path} is a zram device, not a disk swap.",
+    "zram": "{path} is a zram device: use the zram entries.",
     "partition": (
         "{path} is a swap partition: a partition cannot be resized from "
         "here. A swapfile can be created instead, for instance {suggestion}."
@@ -437,6 +438,23 @@ RAISONS_SWAP = {
     "already_active": "{path} is already an active swap.",
     "exists": "{path} already exists: choose another path.",
     "parent_missing": "The directory {parent} does not exist.",
+    "zram_too_large": (
+        "{new} exceeds the zram maximum of {max}, twice the RAM."
+    ),
+    "no_package_manager": (
+        "Unknown package manager ({manager}): install zram-generator by hand."
+    ),
+    "no_zram": "No zram is active or configured.",
+    "zram_reboot_required": (
+        "The running kernel ({running}) no longer has its modules: the "
+        "kernel package was updated to {installed}. The zram module loads "
+        "only after a reboot."
+    ),
+    "zram_unavailable": ("The running kernel ({running}) has no zram module."),
+    "zram_service": (
+        "{service} already manages the zram: change its size in that "
+        "service's own settings, or disable it (zram - disable) first."
+    ),
 }
 
 ALERTES_SWAP = {
@@ -449,10 +467,23 @@ ALERTES_SWAP = {
         "snapshots of that subvolume. A dedicated subvolume, such as /swap, "
         "avoids it."
     ),
+    "zram_over_ram": (
+        "This zram is larger than the RAM ({ram}): it pays off only if the "
+        "data compresses well."
+    ),
+    "disk_priority": (
+        "These disk swaps have a priority at least equal to zram's, so they "
+        "fill first: {paths}."
+    ),
+    "dropin_overrides": (
+        "These drop-in files redefine zram0 and override the new setting: "
+        "{paths}."
+    ),
     "zram_tools_conflict": (
         "zram-tools is also installed: both tools claim /dev/zram0. Disable "
         "zramswap.service."
     ),
+    "dropin_etc": "These files in /etc still configure a zram: {paths}.",
 }
 
 TYPES_SWAP = {"file": "swapfile", "partition": "partition", "zram": "zram"}
@@ -470,6 +501,8 @@ TAILLES_SWAP = {
     "needed",
     "free",
     "max_size",
+    "max",
+    "ram",
 }
 
 
@@ -593,6 +626,30 @@ def lignes_swap(etat):
             )
     if not etat["zram"]:
         lignes.append(f"  {t('No zram device.')}")
+    module = etat.get("zram_module") or {}
+    if module.get("state") == "reboot":
+        lignes.append(
+            "  ⚠ "
+            + message_refus(
+                {
+                    "reason": "zram_reboot_required",
+                    "details": {
+                        "running": module["running"],
+                        "installed": ", ".join(module["installed"]),
+                    },
+                }
+            )
+        )
+    elif module.get("state") == "missing":
+        lignes.append(
+            "  ⚠ "
+            + message_refus(
+                {
+                    "reason": "zram_unavailable",
+                    "details": {"running": module["running"]},
+                }
+            )
+        )
     pers = etat["persistence"]
     active = any(z["active"] for z in etat["zram"])
     lignes.append(f"  {t('At boot:')} {_persistance(pers, active)}")
@@ -1109,12 +1166,14 @@ class SystemMenuMixin:
                 print(t("Command not found !"))
 
     def _system_swap(self):
-        """Le sous-menu de la mémoire d'échange : l'état et le swap sur
-        disque."""
+        """Le sous-menu de la mémoire d'échange : l'état, le swap sur
+        disque et la zram."""
         choices = [
             {"prompt_description": t("State of memory and swap")},
             {"prompt_description": t("Grow swap")},
             {"prompt_description": t("Shrink swap")},
+            {"prompt_description": t("zram - enable or resize")},
+            {"prompt_description": t("zram - disable")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -1128,6 +1187,10 @@ class SystemMenuMixin:
                 self._system_swap_redimensionner("grow")
             elif status == "3":
                 self._system_swap_redimensionner("shrink")
+            elif status == "4":
+                self._system_swap_zram()
+            elif status == "5":
+                self._system_swap_zram_desactiver()
             else:
                 print(t("Command not found !"))
 
@@ -1261,12 +1324,46 @@ class SystemMenuMixin:
             return
         self._system_swap_appliquer(ss.plan_creer(etat, chemin, taille))
 
+    def _system_swap_zram(self):
+        """Activer la zram ou changer sa taille, la recommandation par
+        défaut. Les fichiers de configuration s'écrivent dans un
+        répertoire temporaire de l'utilisateur, que « sudo install »
+        recopie, puis qui disparaît."""
+        etat = ss.etat()
+        refus = ss.refus_zram(etat)
+        if refus:
+            print(f"  ⚠ {message_refus(refus)}")
+            return
+        actives = [z for z in etat["zram"] if z["active"]]
+        for z in actives:
+            print(
+                f"  {z['device']} · {octets(z['disksize'])}"
+                f" · {z['algorithm'] or t('unavailable')}"
+            )
+        if not actives:
+            print(f"  {t('No zram is active.')}")
+        taille = self._system_swap_taille(etat["recommendation"]["zram"])
+        if taille is None:
+            return
+        with tempfile.TemporaryDirectory(prefix="erplibre_zram_") as dossier:
+            res = ss.plan_zram(etat, taille, dossier)
+            if res["ok"] and res["details"].get("install"):
+                print(
+                    f"  {t('zram-generator is not installed: its package is installed first.')}"
+                )
+            self._system_swap_appliquer(res)
+
+    def _system_swap_zram_desactiver(self):
+        etat = ss.etat()
+        with tempfile.TemporaryDirectory(prefix="erplibre_zram_") as dossier:
+            self._system_swap_appliquer(ss.plan_zram_desactiver(etat, dossier))
+
     def _system_swap_appliquer(self, res):
         """Le protocole commun des plans de system_swap : le refus et sa
-        raison, ou l'extrait NixOS, ou bien les mises en garde et chaque
-        commande ; puis, sur un oui, les commandes lancées une à une,
-        arrêtées à la première qui échoue, et l'état relu. Rend vrai si
-        tout a réussi."""
+        raison, ou l'extrait NixOS, ou bien les mises en garde, le contenu
+        des fichiers et chaque commande ; puis, sur un oui, les fichiers
+        écrits et les commandes lancées une à une, arrêtées à la première
+        qui échoue, et l'état relu. Rend vrai si tout a réussi."""
         if not res["ok"]:
             print(f"  ⚠ {message_refus(res)}")
             return False
@@ -1297,6 +1394,10 @@ class SystemMenuMixin:
                     "/etc/fstab gets the line « {line} », after a copy to {backup}."
                 ).format_map(_champs(details))
             )
+        for chemin, contenu in res["files"].items():
+            print(f"  {t('Content to write to')} {chemin} :")
+            for ligne in contenu.splitlines() or [""]:
+                print(f"    │ {ligne}")
         for cmd in res["plan"]:
             print(f"  {t('Will execute:')} {shlex.join(cmd)}")
         if not self._is_yes(
@@ -1308,6 +1409,9 @@ class SystemMenuMixin:
         ):
             print(f"  {t('Nothing changed.')}")
             return False
+        for chemin, contenu in res["files"].items():
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(contenu)
         reussi = True
         for i, cmd in enumerate(res["plan"]):
             # Un statut non nul (mot de passe refusé, commande en échec) ou

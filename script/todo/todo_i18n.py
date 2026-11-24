@@ -24562,6 +24562,14 @@ TRANSLATIONS = {
         "fr": "⬇ Réduire le swap",
         "en": "⬇ Shrink swap",
     },
+    "zram - enable or resize": {
+        "fr": "🗜 zram - activer ou redimensionner",
+        "en": "🗜 zram - enable or resize",
+    },
+    "zram - disable": {
+        "fr": "⛔ zram - désactiver",
+        "en": "⛔ zram - disable",
+    },
     "zram": {
         "fr": "zram",
         "en": "zram",
@@ -24618,9 +24626,17 @@ TRANSLATIONS = {
         "fr": "Aucun appareil zram.",
         "en": "No zram device.",
     },
+    "No zram is active.": {
+        "fr": "Aucune zram active.",
+        "en": "No zram is active.",
+    },
     "Not a size:": {
         "fr": "Ce n'est pas une taille :",
         "en": "Not a size:",
+    },
+    "Content to write to": {
+        "fr": "Contenu à écrire dans",
+        "en": "Content to write to",
     },
     "created, not configured": {
         "fr": "créé, non configuré",
@@ -24726,6 +24742,10 @@ TRANSLATIONS = {
         "fr": "Chemin du fichier d'échange, Entrée pour {path} : ",
         "en": "Swapfile path, Enter for {path}: ",
     },
+    "zram-generator is not installed: its package is installed first.": {
+        "fr": "zram-generator n'est pas installé : son paquet s'installe d'abord.",
+        "en": "zram-generator is not installed: its package is installed first.",
+    },
     "Size: {old} → {new}": {
         "fr": "Taille : {old} → {new}",
         "en": "Size: {old} → {new}",
@@ -24750,6 +24770,14 @@ TRANSLATIONS = {
         "fr": "Non lancées :",
         "en": "Not run:",
     },
+    "The running kernel ({running}) no longer has its modules: the kernel package was updated to {installed}. The zram module loads only after a reboot.": {
+        "fr": "Le noyau en marche ({running}) n'a plus ses modules : le paquet du noyau est passé à {installed}. Le module zram ne se charge qu'après un redémarrage.",
+        "en": "The running kernel ({running}) no longer has its modules: the kernel package was updated to {installed}. The zram module loads only after a reboot.",
+    },
+    "The running kernel ({running}) has no zram module.": {
+        "fr": "Le noyau en marche ({running}) n'a pas de module zram.",
+        "en": "The running kernel ({running}) has no zram module.",
+    },
     "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.": {
         "fr": "Conteneur ({virtualization}) : le swap et la zram appartiennent à l'hôte, rien ne se change de l'intérieur.",
         "en": "Container ({virtualization}): the host owns the swap and the zram, nothing can be changed from inside.",
@@ -24757,6 +24785,10 @@ TRANSLATIONS = {
     "{path} is a swap partition: a partition cannot be shrunk from here.": {
         "fr": "{path} est une partition de swap : une partition ne se réduit pas d'ici.",
         "en": "{path} is a swap partition: a partition cannot be shrunk from here.",
+    },
+    "{service} already manages the zram: change its size in that service's own settings, or disable it (zram - disable) first.": {
+        "fr": "{service} gère déjà la zram : changer sa taille dans les réglages de ce service, ou le désactiver d'abord (zram - désactiver).",
+        "en": "{service} already manages the zram: change its size in that service's own settings, or disable it (zram - disable) first.",
     },
     "Interrupted at:": {
         "fr": "Interrompu à :",
@@ -24770,9 +24802,9 @@ TRANSLATIONS = {
         "fr": "{path} n'est pas un swap actif.",
         "en": "{path} is not an active swap.",
     },
-    "{path} is a zram device, not a disk swap.": {
-        "fr": "{path} est un appareil zram, pas un swap sur disque.",
-        "en": "{path} is a zram device, not a disk swap.",
+    "{path} is a zram device: use the zram entries.": {
+        "fr": "{path} est un appareil zram : passez par les entrées zram.",
+        "en": "{path} is a zram device: use the zram entries.",
     },
     "{path} is a swap partition: a partition cannot be resized from here. A swapfile can be created instead, for instance {suggestion}.": {
         "fr": "{path} est une partition de swap : une partition ne se redimensionne pas d'ici. Un fichier d'échange peut se créer à la place, par exemple {suggestion}.",
@@ -24826,6 +24858,18 @@ TRANSLATIONS = {
         "fr": "Le répertoire {parent} n'existe pas.",
         "en": "The directory {parent} does not exist.",
     },
+    "{new} exceeds the zram maximum of {max}, twice the RAM.": {
+        "fr": "{new} dépasse le maximum de zram, {max}, deux fois la RAM.",
+        "en": "{new} exceeds the zram maximum of {max}, twice the RAM.",
+    },
+    "Unknown package manager ({manager}): install zram-generator by hand.": {
+        "fr": "Gestionnaire de paquets inconnu ({manager}) : installez zram-generator à la main.",
+        "en": "Unknown package manager ({manager}): install zram-generator by hand.",
+    },
+    "No zram is active or configured.": {
+        "fr": "Aucune zram n'est active ni configurée.",
+        "en": "No zram is active or configured.",
+    },
     "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.": {
         "fr": "L'hibernation reprend depuis ce swap (resume={resume}) : une fois le fichier recréé, resume_offset doit être mis à jour, sinon la reprise échoue.",
         "en": "Hibernation resumes from this swap (resume={resume}): once the file is recreated, resume_offset must be updated or resuming fails.",
@@ -24834,9 +24878,25 @@ TRANSLATIONS = {
         "fr": "Le fichier d'échange est dans le sous-volume de {subvolume} : il en bloque les instantanés. Un sous-volume dédié, comme /swap, l'évite.",
         "en": "The swapfile sits in the subvolume of {subvolume}: it blocks the snapshots of that subvolume. A dedicated subvolume, such as /swap, avoids it.",
     },
+    "This zram is larger than the RAM ({ram}): it pays off only if the data compresses well.": {
+        "fr": "Cette zram dépasse la RAM ({ram}) : elle ne rapporte que si les données se compressent bien.",
+        "en": "This zram is larger than the RAM ({ram}): it pays off only if the data compresses well.",
+    },
+    "These disk swaps have a priority at least equal to zram's, so they fill first: {paths}.": {
+        "fr": "Ces swaps sur disque ont une priorité au moins égale à celle de la zram, ils se remplissent donc d'abord : {paths}.",
+        "en": "These disk swaps have a priority at least equal to zram's, so they fill first: {paths}.",
+    },
+    "These drop-in files redefine zram0 and override the new setting: {paths}.": {
+        "fr": "Ces fichiers conf.d redéfinissent zram0 et l'emportent sur le nouveau réglage : {paths}.",
+        "en": "These drop-in files redefine zram0 and override the new setting: {paths}.",
+    },
     "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.": {
         "fr": "zram-tools est aussi installé : les deux outils réclament /dev/zram0. Désactivez zramswap.service.",
         "en": "zram-tools is also installed: both tools claim /dev/zram0. Disable zramswap.service.",
+    },
+    "These files in /etc still configure a zram: {paths}.": {
+        "fr": "Ces fichiers de /etc configurent encore une zram : {paths}.",
+        "en": "These files in /etc still configure a zram: {paths}.",
     },
     # Système : rapports et caches du système
     "Measuring": {
