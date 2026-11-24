@@ -2756,6 +2756,21 @@ TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 # la lecture Proxmox, elle, ne crée que des VM x86.
 FIRMWARE_IMPOSE: dict[str, str] = {"fedora": "bios", "nixos": "uefi"}
 
+# Démarrage UEFI des VM, x86 comme arm64. Secure Boot désactivé : voir
+# virt_install(). « loader.type=pflash » restreint la sélection
+# automatique de libvirt aux firmwares en flash, avec leurs variables NVRAM.
+# Sans elle, libvirt parcourt les descripteurs de /usr/share/qemu/firmware/
+# par ordre de nom et retient le premier qui convient : un firmware chargé en
+# mémoire (type « rom », celui d'AMD SEV ou d'Intel TDX) peut passer avant
+# le firmware ordinaire — « 60-edk2-x86_64-amdsev.json » se trie avant
+# « 60-edk2-x86_64.json ». virt-aa-helper refuse alors ce chemin
+# (« skipped restricted file »), le profil AppArmor ne se charge pas, la VM
+# ne démarre pas et son disque reste sans domaine.
+UEFI_BOOT = (
+    "uefi,firmware.feature0.name=secure-boot,"
+    "firmware.feature0.enabled=no,loader.type=pflash"
+)
+
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
     """Faut-il amorcer en BIOS hérité ?
@@ -5939,8 +5954,7 @@ def virt_install(
             "--machine",
             "virt",
             "--boot",
-            "uefi,firmware.feature0.name=secure-boot,"
-            "firmware.feature0.enabled=no",
+            UEFI_BOOT,
         ]
     elif not args.bios:
         # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
@@ -5949,11 +5963,7 @@ def virt_install(
         # certaines distributions exigent — voir FIRMWARE_IMPOSE.
         # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
         # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
-        cmd += [
-            "--boot",
-            "uefi,firmware.feature0.name=secure-boot,"
-            "firmware.feature0.enabled=no",
-        ]
+        cmd += ["--boot", UEFI_BOOT]
     if emulated:
         # Architecture différente de l'hôte -> émulation logicielle TCG
         # (pas de KVM). LENT.
