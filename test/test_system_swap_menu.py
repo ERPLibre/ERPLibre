@@ -369,6 +369,12 @@ class TestLesLignes(unittest.TestCase):
         )
         self.assertIn("Non configurée", texte)
 
+    def test_integer_input_takes_ascii_digits_only(self):
+        self.assertEqual(sm.entier("42"), 42)
+        for texte in ("", "²", "٣", "-1", "1.5", " 1"):
+            with self.subTest(texte=texte):
+                self.assertIsNone(sm.entier(texte))
+
     def verdict(self, **kw):
         v = {
             "verdict": "unknown",
