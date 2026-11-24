@@ -33,6 +33,7 @@ sys.path.insert(0, RACINE)
 
 from script.proxmox import nesting  # noqa: E402
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.todo import qemu_privilege  # noqa: E402
 
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
@@ -43,6 +44,7 @@ SCRIPTS = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "qemu_cache.py",
+    "call_infra.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur
@@ -70,6 +72,22 @@ def drapeaux_cache():
     if os.path.isfile(CACHE_CA):
         return ["--cache-ca", CACHE_CA]
     return ["--cache-bypass"]
+
+
+def virsh_local(*args, invite=False):
+    """Argv d'un virsh sur qemu:///system de CETTE machine.
+
+    Sans sudo quand la socket répond à l'utilisateur — le groupe libvirt
+    actif dans la session suffit à lire, détruire et retirer un domaine.
+    Sinon sudo, et « -n » sauf si `invite` ET qu'un terminal est là : une
+    lecture ne doit jamais attendre un mot de passe, et sans terminal
+    personne ne le tapera. L'URI est toujours explicite : implicite, un
+    utilisateur viserait qemu:///session, où aucun de ces domaines n'existe.
+    """
+    argv = qemu_privilege.virsh_argv(*args)
+    if argv[0] == "sudo" and not (invite and sys.stdin.isatty()):
+        argv.insert(1, "-n")
+    return argv
 
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
@@ -173,12 +191,53 @@ def module_qemu():
     return mod
 
 
-def cle_publique():
+def cle_publique(creer=True):
+    """La clé publique que reçoivent les VM : la clé par défaut de
+    l'utilisateur, sinon une clé propre aux tests longs. Sans clé, une VM
+    démarre sans accès ssh et chaque test échoue à l'attente de ssh. Les
+    appelants dérivent la clé privée en ôtant « .pub ». `creer` faux (un
+    essai à blanc) rend le chemin de la clé propre sans la créer."""
     for nom in ("id_ed25519.pub", "id_rsa.pub"):
         chemin = os.path.expanduser(f"~/.ssh/{nom}")
         if os.path.exists(chemin):
             return chemin
-    return ""
+    return cle_jetable(creer=creer)
+
+
+def cle_jetable(dossier="~/.erplibre/longtest/ssh", creer=True):
+    """Une paire ed25519 sans phrase de passe, créée au premier appel dans
+    un dossier 0700 hors de ~/.ssh, puis réutilisée : elle n'ouvre que les
+    VM jetables et ne change pas l'identité ssh de l'utilisateur. Rend le
+    chemin de la clé publique, ou "" quand ssh-keygen échoue ; `creer`
+    faux rend ce chemin sans rien écrire ni lancer."""
+    dossier = os.path.expanduser(dossier)
+    prive = os.path.join(dossier, "id_ed25519")
+    if os.path.exists(prive + ".pub") or not creer:
+        return prive + ".pub"
+    try:
+        os.makedirs(dossier, mode=0o700, exist_ok=True)
+        fini = subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "erplibre-longtest",
+                "-f",
+                prive,
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if fini.returncode != 0 or not os.path.exists(prive + ".pub"):
+        return ""
+    return prive + ".pub"
 
 
 def nom_etage(niveau, base):
@@ -354,12 +413,10 @@ class Descente:
         session longue.
 
         `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
-        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
-        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
-        4 d'un coup ; la descente a attendu son délai entier — quarante
-        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
-        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
-        lente, sa MAISON n'existait plus.
+        répondre, on abandonne tout de suite. Un parent qui redémarre éteint
+        tous les étages qu'il porte : attendre l'enfant jusqu'au bout du
+        délai rendrait « jamais joignable en ssh » pour une machine qui
+        n'est pas lente, mais dont l'hôte n'existe plus.
         """
         if self.dry_run:
             return 0
@@ -474,12 +531,9 @@ class Descente:
     def creer_etage1(self, res):
         """Une VM locale, par la CLI QEMU/KVM. Le seul étage sur du métal."""
         nom = self.nom_etage(1)
-        # SOUS SUDO, comme le menu le fait : le dossier des images
-        # appartient à root en 755 sur une installation ordinaire de libvirt,
-        # et la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
-        # d'avoir rien créé. Jamais à blanc — un essai qui n'écrit rien n'a
-        # aucune raison de demander un mot de passe.
-        argv = ([] if self.dry_run else ["sudo"]) + [
+        # SANS sudo : la CLI écrit le disque et le seed par l'API des volumes
+        # de libvirt, et ne préfixe de sudo que la commande qui exige root.
+        argv = [
             os.path.join(RACINE, ".venv.erplibre/bin/python"),
             os.path.join(RACINE, "script/qemu/deploy_qemu.py"),
             "--distro",
@@ -506,9 +560,8 @@ class Descente:
             return None
         # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
         # « ssh deep-pve-1 » rend « Name or service not known » et la descente
-        # attendait son plein délai avant de conclure « jamais joignable » —
-        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
-        # lancement réel.
+        # attend son plein délai avant de conclure « jamais joignable » — sur
+        # une VM qui répond parfaitement à son adresse.
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
@@ -533,7 +586,7 @@ class Descente:
         """
         try:
             res = subprocess.run(
-                ["sudo", "-n", "virsh", "domuuid", nom],
+                virsh_local("domuuid", nom),
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -660,9 +713,9 @@ class Descente:
                     self.etages.append(etage)
                     return self.rapport(interrompu=True)
 
-            # En dry-run, aucune étape n'a été mesurée : les marquer
-            # « atteintes » produisait un rapport indiscernable d'une vraie
-            # réussite, JSON compris, et un code de sortie 0.
+            # En dry-run, aucune étape n'est mesurée : les marquer
+            # « atteintes » rendrait un rapport indiscernable d'une vraie
+            # réussite, JSON compris, avec un code de sortie 0.
             etage["etape"] = "plan" if self.dry_run else "termine"
             etage["ok"] = not self.dry_run
             etage["secondes"] = int(time.time() - debut)
@@ -934,8 +987,8 @@ def profondeur_de(cible):
     """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
 
     C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
-    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
-    entrées, un ProxyJump par étage.
+    pour les hôtes que ce dépôt déploie : il écrit lui-même ces entrées, un
+    ProxyJump par étage.
     """
     try:
         from script.todo.todo import TODO
@@ -1187,6 +1240,37 @@ def a_defaire(rapport, nom_base=""):
     ]
 
 
+def rafraichir_pools():
+    """Fait relire leur répertoire aux pools libvirt actifs. Rend sans rien
+    dire, réussite ou non.
+
+    « undefine --remove-all-storage » ne retire que les disques que libvirt
+    connaît comme volumes. Un disque écrit hors libvirt (par root, sous
+    sudo) n'en est un qu'après relecture de son pool ; sinon libvirt le
+    déclare non géré et le laisse, en root 0600, hors de portée de
+    l'utilisateur. Ce n'est qu'une relecture : un échec n'empêche pas la
+    destruction, il laisse seulement ce disque-là.
+    """
+    try:
+        pools = subprocess.run(
+            virsh_local("pool-list", "--name"),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if pools.returncode:
+            return
+        for pool in pools.stdout.split():
+            subprocess.run(
+                virsh_local("pool-refresh", pool),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+
 def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     """Le domaine libvirt du premier étage — le SEUL qui en soit un.
 
@@ -1208,7 +1292,7 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
     # faisait — `nom_etage(1)` — et le repli désignait la machine numéro 1 de
     # la pile, quelle que soit celle dont parlait le rapport.
     existe = subprocess.run(
-        ["sudo", "-n", "virsh", "dominfo", nom],
+        virsh_local("dominfo", nom),
         capture_output=True,
         text=True,
         env=dict(os.environ, LC_ALL="C"),
@@ -1257,18 +1341,22 @@ def detruire_etage1(journal, nom, dry_run=False, attendu=None, cree=True):
             f"    [à blanc] virsh undefine {nom} --remove-all-storage", journal
         )
         return True
+    # Les gestes visent l'UUID vérifié quand il y en a un : entre la
+    # vérification et le geste, le nom peut être passé à un autre domaine.
+    cible = attendu or nom
+    rafraichir_pools()
+    # « --remove-all-storage » retire les VOLUMES du domaine — disque dans
+    # son pool, seed dans le sien — et laisse l'image de base du cache, qui
+    # n'est pas un disque du domaine.
     subprocess.run(
-        ["sudo", "virsh", "destroy", nom], capture_output=True, text=True
+        virsh_local("destroy", cible, invite=True),
+        capture_output=True,
+        text=True,
     )
     res = subprocess.run(
-        [
-            "sudo",
-            "virsh",
-            "undefine",
-            nom,
-            "--nvram",
-            "--remove-all-storage",
-        ],
+        virsh_local(
+            "undefine", cible, "--nvram", "--remove-all-storage", invite=True
+        ),
         capture_output=True,
         text=True,
     )
@@ -1301,7 +1389,7 @@ def racines_du_rapport(rapport, nom_base=""):
     return racines or [(nom_etage(1, nom_base), None, True)]
 
 
-def detruire(famille, journal=None, dry_run=False):
+def detruire(famille, journal=None, dry_run=False, avant=None):
     """Défait ce que le DERNIER rapport dit avoir créé, du plus profond.
 
     Rien d'autre : chaque machine visée est nommée par le rapport, avec
@@ -1309,6 +1397,12 @@ def detruire(famille, journal=None, dry_run=False):
     nom. Les étages imbriqués partent d'abord, chez leur parent, puis CHAQUE
     machine de niveau 1 (racines_du_rapport). Une seule confirmation couvre
     le tout.
+
+    `avant(a_blanc)` : ce que l'appelant défait hors des VM (bases,
+    processus), sous les mêmes garde-fous. Il n'est appelé ni quand une
+    descente tourne ni sans rapport ; avec `dry_run`, il l'est à blanc
+    (`a_blanc` vrai) après la liste des VM ; sinon après la confirmation,
+    avant la première VM, et jamais sur un refus.
 
     Rend 0 quand toutes les racines sont défaites, 1 quand une descente
     tourne, quand la confirmation est refusée ou quand une racine reste
@@ -1355,6 +1449,8 @@ def detruire(famille, journal=None, dry_run=False):
     for nom, _uuid, _cree in racines:
         dire(f"    étage  1  {nom} (libvirt)", journal)
     if dry_run:
+        if avant is not None:
+            avant(True)
         dire("\n  --dry-run : rien ne sera détruit.", journal)
         return 0
     # Une confirmation, parce que « --purge » emporte les disques et que le
@@ -1363,6 +1459,8 @@ def detruire(famille, journal=None, dry_run=False):
     if reponse != "OUI":
         dire("  annulé.", journal)
         return 1
+    if avant is not None:
+        avant(False)
     faits = sum(
         1
         for niveau, parent_alias, identite, nom in liste

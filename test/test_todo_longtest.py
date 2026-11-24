@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -239,10 +240,9 @@ class TestLEssaiABlanc(unittest.TestCase):
         """Chaque étage annoncé est plus étroit que son parent, sur les trois
         ressources.
 
-        Deux vCPU à chaque étage imbriqué donnaient un parent aussi étroit que
-        son enfant : cent pour cent de surengagement, et l'hyperviseur à servir
-        par-dessus. Mesuré : l'installation de l'étage 4 dépassait 2 h 50
-        contre 793 s pour l'étage 3."""
+        Un étage imbriqué aussi large que son parent le surengage de cent
+        pour cent, l'hyperviseur à servir par-dessus : l'installation d'un
+        étage profond ne finit plus dans un délai utile."""
         # Par expression exacte : la ligne « machine : … Mo … Go » du haut
         # contient les mêmes unités et décalait l'index d'un cran.
         import re
@@ -406,14 +406,13 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
 
 
 class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
-    """Le rapport ne s'écrivait qu'à la FIN de la descente.
+    """Le rapport s'écrit au fil de la descente, pas à sa fin.
 
-    Constaté : une descente de dix étages arrêtée pendant l'installation du
-    quatrième laissait quatre machines réelles, et « --detruire » répondait
-    « aucun rapport de descente : rien à défaire ». Le seul enregistrement du
-    couple (alias du parent, VMID) mourait avec le processus — il fallait
-    retrouver ces VM à la main, c'est-à-dire par leur nom, ce que tout le
-    reste de ce fichier s'applique à ne pas faire.
+    Une descente arrêtée pendant l'installation d'un étage laisse des
+    machines réelles, et « --detruire » ne les retrouve que par le rapport :
+    lui seul garde le couple (alias du parent, VMID). Écrit à la fin, il
+    meurt avec le processus, et ces VM ne se retrouvent plus que par leur
+    nom, ce que tout le reste de ce fichier s'applique à ne pas faire.
     """
 
     def setUp(self):
@@ -564,9 +563,9 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp.descente_vivante(999999999))
 
     def test_a_shell_that_merely_names_the_script_is_not_a_descent(self):
-        """Constaté sur la machine : un « pgrep -f deep_proxmox.py » posé dans
-        une boucle de surveillance donnait un shell dont la ligne de commande
-        contient le motif, et deux faux positifs sur trois."""
+        """Un shell dont la ligne de commande contient le motif, comme une
+        boucle de surveillance autour de « pgrep -f deep_proxmox.py », n'est
+        pas une descente : le motif seul donne des faux positifs."""
         import subprocess
 
         faux = subprocess.Popen(
@@ -868,21 +867,78 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         self.addCleanup(
             setattr, moteur.Descente, "uuid_libvirt", self.vrai_uuid
         )
+        # La socket répond sans sudo : la forme d'argv ne dépend plus du
+        # poste qui lance le test.
+        patch = mock.patch.object(
+            moteur.qemu_privilege, "needs_sudo", return_value=False
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
         self.lances = []
+        self.argvs = []
 
     def _virsh(self, dominfo=0, erreur="error: failed to get domain 'x'"):
         import types
 
         def faux(argv, **kw):
+            self.argvs.append(list(argv))
             self.lances.append(" ".join(argv[2:]))
             code = dominfo if "dominfo" in argv else 0
             return types.SimpleNamespace(
                 returncode=code,
-                stdout="",
+                stdout="default\niso\n" if "pool-list" in argv else "",
                 stderr=erreur if code else "",
             )
 
         self.dp.subprocess.run = faux
+
+    def _verbes(self):
+        return [
+            (argv[argv.index("qemu:///system") + 1], argv)
+            for argv in self.argvs
+        ]
+
+    def test_destroy_and_undefine_target_the_checked_uuid(self):
+        """Entre la vérification et le geste, le nom peut changer de
+        machine : viser l'UUID vérifié ferme cette fenêtre."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        gestes = {v: a for v, a in self._verbes() if v in ("destroy", "undefine")}
+        self.assertEqual({"destroy", "undefine"}, set(gestes))
+        for argv in gestes.values():
+            self.assertIn("LE-NOTRE", argv)
+            self.assertNotIn("deep-pve-1", argv)
+
+    def test_an_old_report_still_targets_the_name(self):
+        self._virsh()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1")
+        gestes = [a for v, a in self._verbes() if v == "undefine"]
+        self.assertIn("deep-pve-1", gestes[0])
+
+    def test_pools_are_refreshed_before_the_undefine(self):
+        """Un disque posé hors libvirt (sous root) n'est un volume qu'après
+        relecture de son pool : sans elle, --remove-all-storage le laisse,
+        en root 0600, hors de portée de l'utilisateur."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        verbes = [
+            (v, a[-1]) if v == "pool-refresh" else v
+            for v, a in self._verbes()
+        ]
+        self.assertIn(("pool-refresh", "default"), verbes)
+        self.assertIn(("pool-refresh", "iso"), verbes)
+        self.assertLess(
+            verbes.index(("pool-refresh", "iso")), verbes.index("undefine")
+        )
 
     def test_a_homonym_with_another_uuid_is_left_alone(self):
         self._virsh()
@@ -915,6 +971,48 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             ),
             self.lances,
         )
+
+    def test_no_sudo_when_the_socket_answers(self):
+        """Le groupe libvirt actif suffit à lire, détruire et retirer : aucun
+        argv ne porte sudo, et chacun vise qemu:///system explicitement —
+        implicite, l'utilisateur interrogerait qemu:///session, vide."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        self.assertTrue(self.argvs)
+        for argv in self.argvs:
+            self.assertNotIn("sudo", argv)
+            self.assertEqual(
+                argv[:3], ["virsh", "--connect", "qemu:///system"]
+            )
+
+    def test_sudo_only_when_the_socket_refuses(self):
+        """Sans la socket, sudo revient — « -n » sur la lecture, qui ne doit
+        jamais attendre de mot de passe, et sur tout geste sans terminal."""
+        self._virsh()
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
+        with (
+            mock.patch.object(
+                moteur.qemu_privilege, "needs_sudo", return_value=True
+            ),
+            mock.patch.object(
+                moteur.sys, "stdin", mock.Mock(isatty=lambda: True)
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.dp.detruire_etage1(None, "deep-pve-1", attendu="LE-NOTRE")
+        par_verbe = {
+            argv[argv.index("qemu:///system") + 1]: argv[:2]
+            for argv in self.argvs
+        }
+        self.assertEqual(par_verbe["dominfo"], ["sudo", "-n"])
+        self.assertEqual(par_verbe["destroy"], ["sudo", "virsh"])
+        self.assertEqual(par_verbe["undefine"], ["sudo", "virsh"])
 
     def test_an_old_report_without_a_uuid_says_so(self):
         """On procède alors par le nom, faute de mieux — mais on le DIT,
@@ -1325,10 +1423,35 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         panne : un test long absent du VERROU laisse une autre descente
         détruire ses machines pendant qu'il tourne ; absent du DÉFAIRE, il
         laisse ses VM derrière lui, sans rien pour les reprendre."""
-        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+        from script.todo.longtest_menu import (
+            SCRIPTS_DEFAISABLES,
+            SCRIPTS_DESCENTE,
+        )
 
-        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DEFAISABLES))
+        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DESCENTE))
+        self.assertLessEqual(set(SCRIPTS_DESCENTE), set(SCRIPTS_DEFAISABLES))
         self.assertIn("install_nixos.py", moteur.SCRIPTS)
+
+    def test_the_call_infra_question_counts_its_vms(self):
+        """Le test de l'infrastructure d'appel crée une VM par course :
+        son avertissement en dit le nombre et nomme chaque scénario, et
+        l'option qui ne lance qu'un moteur, dans les deux langues."""
+        from script.todo import todo_i18n
+
+        avertissement, _q = self.todo._longtest_question("", "call_infra.py")
+        textes = todo_i18n.TRANSLATIONS[avertissement]
+        for langue, nombre in (("en", "nine VMs"), ("fr", "neuf VM")):
+            with self.subTest(langue=langue):
+                texte = textes[langue]
+                self.assertIn(nombre, texte)
+                for mot in (
+                    "Docker",
+                    "Podman",
+                    "migration",
+                    "conteneur",
+                    "--moteur",
+                ):
+                    self.assertIn(mot, texte)
 
     def test_the_host_options_are_built_from_the_host_dict(self):
         self.assertEqual(
@@ -1398,11 +1521,10 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
 class TestAucuneEtapeNeRepondNone(unittest.TestCase):
     """Une étape qui rend None dit « non » à l'appelant, sans dire pourquoi.
 
-    Vécu : l'extraction du moteur avait coupé `preparer_systeme` sur le
-    « return False » de sa boucle, sans son « return True » final. La descente
-    affichait « ✗ étage 1 systeme » et pas une ligne de cause — et l'essai à
-    blanc ne pouvait pas le voir, puisqu'il sort avant. Les deux piles étaient
-    cassées, aucun test ne l'a vu."""
+    Une étape coupée après le « return False » de sa boucle, sans son
+    « return True » final, rend None : la descente affiche l'étage en échec
+    sans une ligne de cause, et l'essai à blanc, qui sort avant, ne peut pas
+    le voir. Chaque crochet rend donc un booléen, sur chaque pile."""
 
     CROCHETS = (
         "preparer_parent",
@@ -1823,11 +1945,10 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         self.assertNotIn("⚠", texte)
 
     def test_unreachable_levels_go_with_the_root_disk(self):
-        """Mesuré sur un arbre réel : les étages 3 et 4 étaient injoignables
-        — leur parent était éteint — et le compte disait « 2 / 4, il reste des
-        machines ». Or « virsh undefine --remove-all-storage » sur l'étage 1
-        efface le disque où ils VIVENT. L'avertissement était faux dans
-        l'autre sens, et un avertissement faux ne se lit plus."""
+        """Des étages injoignables, leur parent éteint, partent avec le
+        disque racine : « virsh undefine --remove-all-storage » sur l'étage 1
+        efface le disque où ils vivent. Le compte ne dit donc pas qu'il reste
+        des machines : un avertissement faux ne se lit plus."""
         self.dp.FAMILLE.detruire_une = lambda *a, **k: False
         code, texte = self._lancer(etage1_ok=True, une=False)
         self.assertEqual(code, 0)
@@ -1972,10 +2093,56 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
         moteur.detruire_etage1 = espion
         return appels
 
-    def _lancer(self, dry_run=False):
+    def _lancer(self, dry_run=False, avant=None):
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            code = moteur.detruire(self.famille, None, dry_run=dry_run)
+            code = moteur.detruire(
+                self.famille, None, dry_run=dry_run, avant=avant
+            )
         return code, sortie.getvalue()
+
+    def test_the_caller_undoes_its_own_after_the_yes_before_any_vm(self):
+        self._rapport(self.ALPHA)
+        appels = self._espionner_etage1()
+        vu = []
+        code, _ = self._lancer(
+            avant=lambda a_blanc: vu.append(
+                (a_blanc, len(self.questions), len(appels))
+            )
+        )
+        self.assertEqual(code, 0)
+        # Après l'unique confirmation, avant la première VM.
+        self.assertEqual(vu, [(False, 1, 0)])
+
+    def test_a_refused_confirmation_lets_the_caller_undo_nothing(self):
+        self._rapport(self.ALPHA)
+        self._espionner_etage1()
+        import builtins
+
+        builtins.input = lambda prompt="": "non"
+        vu = []
+        code, _ = self._lancer(avant=vu.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(vu, [])
+
+    def test_a_running_descent_lets_the_caller_undo_nothing(self):
+        self._rapport(self.ALPHA)
+        self._espionner_etage1()
+        moteur.autre_descente = lambda: [4242]
+        vu = []
+        code, _ = self._lancer(avant=vu.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(vu, [])
+        self.assertEqual(self.questions, [])
+
+    def test_a_dry_run_lets_the_caller_list_without_asking(self):
+        self._rapport(self.ALPHA)
+        appels = self._espionner_etage1()
+        vu = []
+        code, _ = self._lancer(dry_run=True, avant=vu.append)
+        self.assertEqual(code, 0)
+        self.assertEqual(vu, [True])
+        self.assertEqual(self.questions, [])
+        self.assertEqual(appels, [])
 
     def test_every_level_one_entry_is_destroyed_by_its_uuid(self):
         self._rapport(self.ALPHA, self.BETA)
@@ -2016,7 +2183,8 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
 
     def test_virsh_undefines_each_root_after_checking_its_uuid(self):
         """La vraie detruire_etage1, virsh bouchonné : chaque racine est
-        lue (dominfo, UUID) puis effacée sous SON nom."""
+        lue (dominfo, UUID) puis effacée par l'UUID vérifié : son nom a pu
+        passer à un autre domaine entre-temps."""
         import types
 
         lances = []
@@ -2033,11 +2201,13 @@ class TestDetruireChaqueEtage1(unittest.TestCase):
             }.get(nom, "")
         )
         self._rapport(self.ALPHA, self.BETA)
-        code, texte = self._lancer()
-        effaces = [
-            argv[3] for argv in lances if argv[1:3] == ["virsh", "undefine"]
-        ]
-        self.assertEqual(effaces, ["essai-sd-alpha", "essai-sd-beta"])
+        with mock.patch.object(
+            moteur.qemu_privilege, "needs_sudo", return_value=False
+        ):
+            code, texte = self._lancer()
+        undefine = ["virsh", "--connect", "qemu:///system", "undefine"]
+        effaces = [argv[4] for argv in lances if argv[:4] == undefine]
+        self.assertEqual(effaces, ["uuid-alpha", "uuid-beta"])
         self.assertEqual(code, 0)
         self.assertIn("2 / 2 défait(s)", texte)
 

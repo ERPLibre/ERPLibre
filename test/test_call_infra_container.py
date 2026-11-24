@@ -1,0 +1,1549 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
+"""`script/todo/call_infra_container.py` : constantes des conteneurs, sonde
+des moteurs, fichier compose, commandes du moteur et paquets à ajouter.
+
+La sonde est jouée dans un bac à sable : un dossier temporaire tient lieu
+de racine, et le PATH ne contient QUE des bouchons et des liens vers
+quelques outils de base (`sh`, `awk`, `sed`...). Aucun vrai `docker`,
+`podman`, `runuser` ni `systemctl` n'est joignable : chaque bouchon note
+son argv dans un journal, et les assertions lisent ce journal. Toutes les
+valeurs sont inventées.
+"""
+
+import ast
+import base64
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+from script.todo import call_infra as ci
+from script.todo import call_infra_container as cc
+from script.todo import container_runtime as cr
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def b64(text):
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
+COTURN_REF = (
+    "docker.io/coturn/coturn:4.18.0@sha256:"
+    "bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3"
+)
+NTFY_REF = (
+    "docker.io/binwiederhier/ntfy:v2.36.0@sha256:"
+    "fb48c413eb11d50339962b5d62cddce0f800e7f77c626d638a7c20cb7e9c4465"
+)
+
+# Identifiants d'image inventés, de la forme que rendent les moteurs.
+COTURN_ID = "c0" * 32
+NTFY_ID = "f1" * 32
+OTHER_ID = "0e" * 32
+
+PROBE_PAIRS = [
+    ("ENGINE", "docker 26.1.5"),
+    ("ENGINE", "podman 5.4.2"),
+    ("COMPOSE", "docker docker compose"),
+    ("COMPOSE", "podman podman-compose"),
+    ("DOCKER_SERVICE", "active enabled"),
+    ("PODMAN_RESTART", "disabled"),
+    ("UNPRIV_PORT", "1024"),
+    ("ACCOUNT", "turnserver 998 998"),
+    ("ACCOUNT", "ntfy 997 997"),
+    ("ROOTLESS", "0 0 0 1 -"),
+    ("USER_BUS", "1"),
+    ("CONTAINER", "erplibre-call-coturn docker 0 running " + COTURN_REF),
+    ("IMAGE", "docker 0 " + COTURN_REF),
+    ("NTFY_HOST", "2.11.0"),
+    ("SQLITE", "1"),
+    ("COMPOSE_FILE", b64("# erplibre-call: managed\n")),
+]
+
+
+def rootless_block(**changes):
+    block = {
+        "engine": "podman",
+        "rootless": True,
+        "account": "erplibre-call",
+        "uid": 990,
+        "compose": ["podman-compose"],
+        "compose_file": cc.COMPOSE_FILE,
+        "project": cc.PROJECT,
+    }
+    block.update(changes)
+    return block
+
+
+def rootful_block(**changes):
+    block = {
+        "engine": "docker",
+        "rootless": False,
+        "account": None,
+        "uid": None,
+        "compose": ["docker", "compose"],
+        "compose_file": cc.COMPOSE_FILE,
+        "project": cc.PROJECT,
+    }
+    block.update(changes)
+    return block
+
+
+def container_state(block=None, **services):
+    records = {
+        "coturn": {
+            "container": "erplibre-call-coturn",
+            "account": "turnserver",
+            "uid": 998,
+            "gid": 998,
+        },
+        "ntfy": {
+            "container": "erplibre-call-ntfy",
+            "account": "ntfy",
+            "uid": 997,
+            "gid": 997,
+        },
+    }
+    for svc, changes in services.items():
+        records[svc].update(changes)
+    return {
+        "version": 2,
+        "method": "container",
+        "container": block if block is not None else rootful_block(),
+        "services": records,
+    }
+
+
+class TestConstants(unittest.TestCase):
+    def test_pinned_images(self):
+        self.assertEqual(cc.IMAGES, {"coturn": COTURN_REF, "ntfy": NTFY_REF})
+        self.assertEqual(
+            cc.IMAGE_VERSIONS, {"coturn": "4.18.0", "ntfy": "2.36.0"}
+        )
+
+    def test_fixed_names(self):
+        self.assertEqual(cc.PROJECT, "erplibre-call")
+        self.assertEqual(
+            cc.CONTAINERS,
+            {"coturn": "erplibre-call-coturn", "ntfy": "erplibre-call-ntfy"},
+        )
+        self.assertEqual(cc.COMPOSE_FILE, "/etc/erplibre-call/compose.yml")
+        self.assertEqual(cc.ROOTLESS_ACCOUNT, "erplibre-call")
+        self.assertEqual(cc.ROOTLESS_HOME, "/var/lib/erplibre-call-podman")
+        self.assertEqual(cc.COTURN_ACCOUNTS, ("turnserver", "erplibre-coturn"))
+        self.assertEqual(cc.NTFY_ACCOUNT, "ntfy")
+        self.assertTrue(cc.ACCOUNT_RE.match("erplibre-coturn"))
+        self.assertFalse(cc.ACCOUNT_RE.match("Root"))
+        self.assertFalse(cc.ACCOUNT_RE.match("-x"))
+        self.assertFalse(cc.ACCOUNT_RE.match("ntfy\n"))
+
+    def test_engines_are_the_local_runtime_ones(self):
+        self.assertEqual(cc.ENGINES, cr.MOTEURS)
+
+    def test_compose_providers_follow_the_local_order_without_podman_compose_wrapper(
+        self,
+    ):
+        # Docker : le greffon v2, puis le binaire ; Podman : podman-compose
+        # appelé directement, jamais le relais « podman compose ».
+        self.assertEqual(
+            cc.COMPOSE_PROVIDERS["docker"],
+            tuple(tuple(c) for c in cr.COMPOSE["docker"]),
+        )
+        self.assertEqual(
+            cc.COMPOSE_PROVIDERS["podman"], (("podman-compose",),)
+        )
+
+    def test_mount_paths_are_the_packages_paths(self):
+        self.assertEqual(cc.COTURN_DATA_DIR, os.path.dirname(ci.COTURN_DB))
+        self.assertEqual(cc.COTURN_TLS_DIR, ci.COTURN_TLS_DIR)
+        self.assertEqual(cc.NTFY_CONFIG_DIR, os.path.dirname(ci.NTFY_CONFIG))
+        self.assertEqual(cc.NTFY_DATA_DIR, os.path.dirname(ci.NTFY_AUTH_FILE))
+        self.assertEqual(cc.NTFY_CACHE_DIR, "/var/cache/ntfy")
+        self.assertTrue(ci.NTFY_TLS_DIR.startswith(cc.NTFY_CONFIG_DIR + "/"))
+        self.assertEqual(cc.MANAGED_LINE, ci.MARKER)
+
+
+class TestParseEngineLines(unittest.TestCase):
+    def test_full_probe(self):
+        facts = cc.parse_engine_lines(PROBE_PAIRS)
+        self.assertEqual(
+            facts.engines, {"docker": "26.1.5", "podman": "5.4.2"}
+        )
+        self.assertEqual(
+            facts.compose,
+            {"docker": ("docker", "compose"), "podman": ("podman-compose",)},
+        )
+        self.assertEqual(facts.docker_service, ("active", "enabled"))
+        self.assertEqual(facts.podman_restart, "disabled")
+        self.assertEqual(facts.unpriv_port_start, 1024)
+        self.assertEqual(
+            facts.accounts, {"turnserver": (998, 998), "ntfy": (997, 997)}
+        )
+        # Sans compte rootless, rien à dire de lui ; newuidmap reste su.
+        self.assertIsNone(facts.rootless)
+        self.assertTrue(facts.newuidmap)
+        self.assertTrue(facts.user_bus)
+        self.assertEqual(
+            facts.containers,
+            (
+                (
+                    "erplibre-call-coturn",
+                    "docker",
+                    False,
+                    "running",
+                    COTURN_REF,
+                ),
+            ),
+        )
+        self.assertEqual(facts.images, (("docker", False, COTURN_REF),))
+        self.assertEqual(facts.ntfy_host_version, "2.11.0")
+        self.assertTrue(facts.sqlite3)
+        self.assertEqual(facts.compose_text, "# erplibre-call: managed\n")
+
+    def test_rootless_account_facts(self):
+        pairs = [
+            ("ACCOUNT", "erplibre-call 990 990"),
+            ("ROOTLESS", "1 1 1 1 enabled"),
+            ("CONTAINER", "erplibre-call-ntfy podman 1 exited " + NTFY_REF),
+            ("IMAGE", "podman 1 " + NTFY_REF),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertEqual(
+            facts.rootless,
+            {
+                "subuid": True,
+                "subgid": True,
+                "linger": True,
+                "newuidmap": True,
+                "user_restart": "enabled",
+            },
+        )
+        self.assertEqual(
+            facts.containers,
+            (("erplibre-call-ntfy", "podman", True, "exited", NTFY_REF),),
+        )
+        self.assertEqual(facts.images, (("podman", True, NTFY_REF),))
+
+    def test_image_ids_in_each_engine_form(self):
+        # Docker rend « sha256:<hex> », Podman l'hexadécimal seul ; la
+        # forme sans identifiant (« - », ou une sonde plus ancienne) n'en
+        # pose aucun.
+        pairs = [
+            (
+                "CONTAINER",
+                "erplibre-call-coturn docker 0 running coturn/coturn:4.18.0"
+                " sha256:" + COTURN_ID,
+            ),
+            ("IMAGE", "docker 0 " + COTURN_REF + " sha256:" + COTURN_ID),
+            (
+                "CONTAINER",
+                "erplibre-call-ntfy podman 1 running "
+                "docker.io/binwiederhier/ntfy@"
+                + NTFY_REF.split("@")[1]
+                + " "
+                + NTFY_ID,
+            ),
+            ("IMAGE", "podman 1 " + NTFY_REF + " " + NTFY_ID),
+            ("CONTAINER", "erplibre-call-ntfy podman 0 running x -"),
+            ("IMAGE", "podman 0 " + NTFY_REF + " -"),
+            ("CONTAINER", "erplibre-call-coturn podman 0 running y"),
+            ("CONTAINER", "mon-coturn docker 0 running z sha256:abc"),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertEqual(
+            facts.container_image_ids,
+            {
+                ("erplibre-call-coturn", "docker", False): COTURN_ID,
+                ("erplibre-call-ntfy", "podman", True): NTFY_ID,
+            },
+        )
+        self.assertEqual(
+            facts.image_ids,
+            {
+                ("docker", False, COTURN_REF): COTURN_ID,
+                ("podman", True, NTFY_REF): NTFY_ID,
+            },
+        )
+        self.assertEqual(len(facts.containers), 5)
+        self.assertIn(("podman", False, NTFY_REF), facts.images)
+
+    def test_listing_failures(self):
+        pairs = [
+            (
+                "ENGINE_LIST_FAILED",
+                "podman 1 cannot chdir to /home/invente: Permission denied",
+            ),
+            ("ENGINE_LIST_FAILED", "docker 0"),
+            ("ENGINE_LIST_FAILED", "lxc 0 x"),
+            ("ENGINE_LIST_FAILED", "podman 2 x"),
+            ("ENGINE_LIST_FAILED", "podman"),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertEqual(
+            facts.listing_failed,
+            {
+                (
+                    "podman",
+                    True,
+                ): "cannot chdir to /home/invente: Permission denied",
+                ("docker", False): "-",
+            },
+        )
+        self.assertEqual(cc.parse_engine_lines([]).listing_failed, {})
+
+    def test_image_id_forms(self):
+        self.assertEqual(cc.image_id("sha256:" + COTURN_ID), COTURN_ID)
+        self.assertEqual(cc.image_id(COTURN_ID + "\n"), COTURN_ID)
+        for text in (
+            "-",
+            "",
+            None,
+            "sha256:" + COTURN_ID[:-1],
+            "sha512:" + COTURN_ID,
+            COTURN_ID.upper(),
+            COTURN_REF,
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(cc.image_id(text))
+
+    def test_defaults_without_markers(self):
+        facts = cc.parse_engine_lines([])
+        self.assertEqual(facts.engines, {})
+        self.assertEqual(facts.compose, {})
+        self.assertIsNone(facts.docker_service)
+        self.assertIsNone(facts.podman_restart)
+        self.assertEqual(facts.unpriv_port_start, 1024)
+        self.assertEqual(facts.accounts, {})
+        self.assertIsNone(facts.rootless)
+        self.assertFalse(facts.newuidmap)
+        self.assertFalse(facts.user_bus)
+        self.assertEqual(facts.containers, ())
+        self.assertEqual(facts.images, ())
+        self.assertIsNone(facts.ntfy_host_version)
+        self.assertFalse(facts.sqlite3)
+        self.assertEqual(facts.compose_text, "")
+
+    def test_malformed_lines_are_dropped(self):
+        pairs = [
+            ("ENGINE", "lxc 1.0"),
+            ("ENGINE", "docker not-a-version;"),
+            ("COMPOSE", "podman podman compose"),
+            ("COMPOSE", "docker rm -rf"),
+            ("UNPRIV_PORT", "abc"),
+            ("ACCOUNT", "intrus 1000 1000"),
+            ("ACCOUNT", "ntfy x 997"),
+            ("CONTAINER", "erplibre-call-coturn lxc 0 running x"),
+            ("CONTAINER", "erplibre-call-coturn docker 2 running x"),
+            ("IMAGE", "docker 0 docker.io/autre/image:1"),
+            ("NTFY_HOST", "$(id)"),
+            ("SQLITE", "oui"),
+            ("COMPOSE_FILE", "pas du base64 !"),
+            ("DOCKER_SERVICE", "active"),
+            ("PODMAN_RESTART", "en marche;"),
+            ("USER_BUS", "oui"),
+        ]
+        facts = cc.parse_engine_lines(pairs)
+        self.assertFalse(facts.user_bus)
+        self.assertEqual(facts.engines, {})
+        self.assertEqual(facts.compose, {})
+        self.assertEqual(facts.unpriv_port_start, 1024)
+        self.assertEqual(facts.accounts, {})
+        self.assertEqual(facts.containers, ())
+        self.assertEqual(facts.images, ())
+        self.assertIsNone(facts.ntfy_host_version)
+        self.assertFalse(facts.sqlite3)
+        self.assertEqual(facts.compose_text, "")
+        self.assertIsNone(facts.docker_service)
+        self.assertIsNone(facts.podman_restart)
+
+    def test_first_compose_provider_wins(self):
+        facts = cc.parse_engine_lines(
+            [
+                ("COMPOSE", "docker docker-compose"),
+                ("COMPOSE", "docker docker compose"),
+            ]
+        )
+        self.assertEqual(facts.compose, {"docker": ("docker-compose",)})
+
+
+class TestComposeText(unittest.TestCase):
+    def test_rootful_both_services(self):
+        text = cc.compose_text(
+            ("coturn", "ntfy"), "/etc/turnserver.conf", False
+        )
+        self.assertEqual(text.splitlines()[0], "# erplibre-call: managed")
+        self.assertEqual(text.count("network_mode: host"), 2)
+        self.assertEqual(text.count("restart: always"), 2)
+        self.assertIn("image: " + COTURN_REF, text)
+        self.assertIn("image: " + NTFY_REF, text)
+        self.assertIn('user: "@USER_COTURN@"', text)
+        self.assertIn('user: "@USER_NTFY@"', text)
+        self.assertIn("container_name: erplibre-call-coturn", text)
+        self.assertIn("container_name: erplibre-call-ntfy", text)
+        self.assertNotIn("keep-id", text)
+        self.assertNotIn("no-new-privileges", text)
+        self.assertNotIn("ports:", text)
+        self.assertIn('command: ["-c", "/etc/turnserver.conf"]', text)
+        self.assertIn('command: ["serve"]', text)
+        for mount in (
+            "/var/lib/erplibre-call:/var/lib/erplibre-call",
+            "/etc/erplibre-call/tls:/etc/erplibre-call/tls:ro",
+            "/etc/turnserver.conf:/etc/turnserver.conf:ro",
+            "/etc/ntfy:/etc/ntfy:ro",
+            "/var/cache/ntfy:/var/cache/ntfy",
+            "/var/lib/ntfy:/var/lib/ntfy",
+        ):
+            self.assertIn("      - " + mount + "\n", text)
+        # podman-compose met chaque conteneur dans un pod par défaut, et
+        # Podman refuse alors --userns comme le réseau de l'hôte.
+        self.assertIn("x-podman:\n  in_pod: false\n", text)
+
+    def test_rootless_adds_keep_id_on_both(self):
+        text = cc.compose_text(
+            ("coturn", "ntfy"), "/etc/turnserver.conf", True
+        )
+        self.assertEqual(text.count("userns_mode: keep-id"), 2)
+
+    def test_one_service_and_arch_config(self):
+        text = cc.compose_text(
+            ("coturn",), "/etc/turnserver/turnserver.conf", False
+        )
+        self.assertNotIn("ntfy", text)
+        self.assertIn(
+            "/etc/turnserver/turnserver.conf:/etc/turnserver/turnserver.conf:ro",
+            text,
+        )
+        text = cc.compose_text(("ntfy",), "/etc/turnserver.conf", False)
+        self.assertNotIn("coturn", text)
+
+    def test_order_does_not_depend_on_the_argument(self):
+        self.assertEqual(
+            cc.compose_text(("ntfy", "coturn"), "/etc/turnserver.conf", False),
+            cc.compose_text(("coturn", "ntfy"), "/etc/turnserver.conf", False),
+        )
+
+    def test_bad_arguments(self):
+        with self.assertRaises(ValueError):
+            cc.compose_text(("nginx",), "/etc/turnserver.conf", False)
+        with self.assertRaises(ValueError):
+            cc.compose_text((), "/etc/turnserver.conf", False)
+        with self.assertRaises(ValueError):
+            cc.compose_text(("coturn",), "etc/turnserver.conf", False)
+        with self.assertRaises(ValueError):
+            cc.compose_text(("coturn",), "/etc/a b.conf", False)
+
+    def test_resolved(self):
+        template = cc.compose_text(
+            ("coturn", "ntfy"), "/etc/turnserver.conf", False
+        )
+        text = cc.compose_resolved(
+            template, {"coturn": "998:998", "ntfy": "997:997"}
+        )
+        self.assertIn('user: "998:998"', text)
+        self.assertIn('user: "997:997"', text)
+        self.assertNotIn("@USER_", text)
+
+    def test_resolved_refuses_missing_or_bad_users(self):
+        template = cc.compose_text(
+            ("coturn", "ntfy"), "/etc/turnserver.conf", False
+        )
+        with self.assertRaises(ValueError):
+            cc.compose_resolved(template, {"coturn": "998:998"})
+        with self.assertRaises(ValueError):
+            cc.compose_resolved(
+                template, {"coturn": "998:998", "ntfy": "root"}
+            )
+        with self.assertRaises(ValueError):
+            cc.compose_resolved(template, {"coturn": "0:0", "ntfy": "997:997"})
+
+
+class TestArgv(unittest.TestCase):
+    def test_rootless_prefix(self):
+        self.assertEqual(
+            cc.rootless_prefix("erplibre-call", 990),
+            [
+                "runuser",
+                "-u",
+                "erplibre-call",
+                "--",
+                "env",
+                "-C",
+                "/",
+                "XDG_RUNTIME_DIR=/run/user/990",
+                "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus",
+            ],
+        )
+
+    def test_rootless_prefix_sh_is_the_same_words(self):
+        # Le texte `sh` rend les mêmes mots, l'uid pris à la variable.
+        done = subprocess.run(
+            [
+                "sh",
+                "-c",
+                "U=990; for a in "
+                + cc.rootless_prefix_sh("erplibre-call", "U")
+                + '; do printf "%s\\n" "$a"; done',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(
+            done.stdout.splitlines(), cc.rootless_prefix("erplibre-call", 990)
+        )
+
+    def test_compose_argv_rootless(self):
+        argv = cc.compose_argv(rootless_block())
+        prefix = cc.rootless_prefix("erplibre-call", 990)
+        self.assertEqual(argv[: len(prefix)], prefix)
+        self.assertEqual(
+            argv[len(prefix) :],
+            ["podman-compose", "-f", cc.COMPOSE_FILE, "-p", cc.PROJECT],
+        )
+
+    def test_compose_argv_rootful(self):
+        self.assertEqual(
+            cc.compose_argv(rootful_block()),
+            ["docker", "compose", "-f", cc.COMPOSE_FILE, "-p", cc.PROJECT],
+        )
+        self.assertEqual(
+            cc.compose_argv(rootful_block(compose=["docker-compose"])),
+            ["docker-compose", "-f", cc.COMPOSE_FILE, "-p", cc.PROJECT],
+        )
+
+    def test_engine_argv(self):
+        self.assertEqual(cc.engine_argv(rootful_block()), ["docker"])
+        self.assertEqual(
+            cc.engine_argv(rootless_block()),
+            cc.rootless_prefix("erplibre-call", 990) + ["podman"],
+        )
+
+    def test_argv_refuses_a_tampered_block(self):
+        for block in (
+            rootful_block(engine="sh"),
+            rootful_block(compose=["sh", "-c"]),
+            rootless_block(account="root"),
+            rootless_block(uid=0),
+        ):
+            with self.assertRaises(ValueError):
+                cc.engine_argv(block)
+            with self.assertRaises(ValueError):
+                cc.compose_argv(block)
+
+
+class TestContainerBlockProblem(unittest.TestCase):
+    def test_valid_states(self):
+        self.assertIsNone(cc.container_block_problem(container_state()))
+        state = container_state(
+            rootless_block(),
+            coturn={"account": "erplibre-call", "uid": 990, "gid": 990},
+            ntfy={"account": "erplibre-call", "uid": 990, "gid": 990},
+        )
+        self.assertIsNone(cc.container_block_problem(state))
+        state = container_state(rootful_block(compose=["docker-compose"]))
+        self.assertIsNone(cc.container_block_problem(state))
+        del state["services"]["ntfy"]
+        self.assertIsNone(cc.container_block_problem(state))
+
+    def test_first_invalid_field_is_named(self):
+        cases = [
+            (container_state(rootful_block(engine="lxc")), "engine"),
+            (container_state(rootful_block(rootless="no")), "rootless"),
+            (container_state(rootful_block(rootless=True)), "rootless"),
+            (container_state(rootless_block(account="root")), "account"),
+            (container_state(rootless_block(account="A;b")), "account"),
+            (container_state(rootless_block(uid=0)), "uid"),
+            (container_state(rootless_block(uid=True)), "uid"),
+            (container_state(rootless_block(uid=2**31)), "uid"),
+            (container_state(rootless_block(uid="990")), "uid"),
+            (container_state(rootful_block(account="ntfy")), "account"),
+            (container_state(rootful_block(uid=997)), "uid"),
+            (
+                container_state(rootful_block(compose=["podman-compose"])),
+                "compose",
+            ),
+            (
+                container_state(rootful_block(compose="docker compose")),
+                "compose",
+            ),
+            (
+                container_state(rootless_block(compose=["docker", "compose"])),
+                "compose",
+            ),
+            (
+                container_state(rootful_block(compose_file="/tmp/x.yml")),
+                "compose_file",
+            ),
+            (container_state(rootful_block(project="autre")), "project"),
+            (
+                container_state(coturn={"container": "--privileged"}),
+                "services.coturn.container",
+            ),
+            (
+                container_state(ntfy={"container": "erplibre-call-coturn"}),
+                "services.ntfy.container",
+            ),
+            (
+                container_state(coturn={"account": "root"}),
+                "services.coturn.account",
+            ),
+            (container_state(ntfy={"uid": -1}), "services.ntfy.uid"),
+            (container_state(ntfy={"gid": None}), "services.ntfy.gid"),
+            (
+                container_state(rootless_block(account="erplibre-call\n")),
+                "account",
+            ),
+            (
+                container_state(coturn={"account": "turnserver\n"}),
+                "services.coturn.account",
+            ),
+        ]
+        for state, field in cases:
+            with self.subTest(field=field, state=state):
+                self.assertEqual(cc.container_block_problem(state), field)
+
+    def test_missing_or_wrong_shapes(self):
+        self.assertEqual(cc.container_block_problem({}), "container")
+        self.assertEqual(
+            cc.container_block_problem({"container": []}), "container"
+        )
+        state = container_state()
+        state["services"] = []
+        self.assertEqual(cc.container_block_problem(state), "services")
+        state = container_state()
+        state["services"]["nginx"] = {}
+        self.assertEqual(cc.container_block_problem(state), "services.nginx")
+        state = container_state()
+        state["services"]["coturn"] = "x"
+        self.assertEqual(cc.container_block_problem(state), "services.coturn")
+
+
+class TestEnginePackages(unittest.TestCase):
+    NONE = cc.EngineFacts()
+
+    def test_per_distribution(self):
+        # (os_id, famille, version, moteur, rootless) → paquets.
+        cases = [
+            (
+                ("ubuntu", "debian", "24.04", "docker", False),
+                ("docker.io", "docker-compose-v2"),
+            ),
+            (
+                ("debian", "debian", "12", "docker", False),
+                ("docker.io", "docker-compose"),
+            ),
+            (
+                ("debian", "debian", "13", "docker", False),
+                ("docker.io", "docker-cli", "docker-compose"),
+            ),
+            (
+                ("arch", "arch", "", "docker", False),
+                ("docker", "docker-compose"),
+            ),
+            (
+                ("debian", "debian", "13", "podman", False),
+                ("podman", "podman-compose"),
+            ),
+            (
+                ("arch", "arch", "", "podman", False),
+                ("podman", "podman-compose"),
+            ),
+            (
+                ("debian", "debian", "13", "podman", True),
+                ("podman", "podman-compose", "uidmap", "dbus-user-session"),
+            ),
+            (
+                ("ubuntu", "debian", "24.04", "podman", True),
+                ("podman", "podman-compose", "uidmap", "dbus-user-session"),
+            ),
+            (
+                ("arch", "arch", "", "podman", True),
+                ("podman", "podman-compose"),
+            ),
+        ]
+        for (os_id, family, version, engine, rootless), expected in cases:
+            with self.subTest(os_id=os_id, version=version, engine=engine):
+                self.assertEqual(
+                    cc.engine_packages(
+                        os_id,
+                        family,
+                        engine,
+                        rootless,
+                        self.NONE,
+                        os_version=version,
+                    ),
+                    expected,
+                )
+
+    def test_docker_cli_package_follows_the_debian_release(self):
+        # Debian 13 sépare le client (/usr/bin/docker) dans docker-cli, que
+        # docker.io ne fait que recommander ; Debian 12 et Ubuntu le
+        # gardent dans docker.io et n'ont aucun paquet docker-cli. Testing
+        # et sid n'ont pas de VERSION_ID.
+        for version, split in (
+            ("11", False),
+            ("12", False),
+            ("13", True),
+            ("14", True),
+            ("", True),
+        ):
+            with self.subTest(version=version):
+                packages = cc.engine_packages(
+                    "debian",
+                    "debian",
+                    "docker",
+                    False,
+                    None,
+                    os_version=version,
+                )
+                self.assertEqual("docker-cli" in packages, split)
+        for os_id, version in (("ubuntu", "24.04"), ("linuxmint", "22")):
+            with self.subTest(os_id=os_id):
+                self.assertNotIn(
+                    "docker-cli",
+                    cc.engine_packages(
+                        os_id,
+                        "debian",
+                        "docker",
+                        False,
+                        None,
+                        os_version=version,
+                    ),
+                )
+
+    def test_docker_cli_package_follows_raspbian_like_debian(self):
+        # Raspbian (ID=raspbian) reconstruit les paquets de Debian sous le
+        # même VERSION_ID : à partir de 13, son docker.io ne porte plus le
+        # client non plus.
+        for version, split in (("12", False), ("13", True), ("14", True)):
+            with self.subTest(version=version):
+                packages = cc.engine_packages(
+                    "raspbian",
+                    "debian",
+                    "docker",
+                    False,
+                    None,
+                    os_version=version,
+                )
+                self.assertEqual("docker-cli" in packages, split)
+
+    def test_user_bus_package_only_without_its_unit(self):
+        # podman recommande dbus-user-session sans en dépendre : le
+        # rootless le demande tant que l'unité du bus manque.
+        def packages(pairs, os_id="debian", family="debian"):
+            return cc.engine_packages(
+                os_id,
+                family,
+                "podman",
+                True,
+                cc.parse_engine_lines(pairs),
+                os_version="13",
+            )
+
+        present = [("ENGINE", "podman 5.4.2"), ("ROOTLESS", "0 0 0 1 -")]
+        present.append(("COMPOSE", "podman podman-compose"))
+        self.assertEqual(packages(present), ("dbus-user-session",))
+        self.assertEqual(
+            packages(present + [("USER_BUS", "0")]), ("dbus-user-session",)
+        )
+        self.assertEqual(packages(present + [("USER_BUS", "1")]), ())
+        self.assertEqual(packages(present, "arch", "arch"), ())
+        # Rien de tel sans rootless.
+        self.assertNotIn(
+            "dbus-user-session",
+            cc.engine_packages(
+                "debian", "debian", "podman", False, None, os_version="13"
+            ),
+        )
+
+    def test_none_facts_means_nothing_present(self):
+        self.assertEqual(
+            cc.engine_packages(
+                "ubuntu", "debian", "docker", False, None, os_version="24.04"
+            ),
+            ("docker.io", "docker-compose-v2"),
+        )
+
+    def test_only_what_is_missing(self):
+        facts = cc.parse_engine_lines(PROBE_PAIRS)
+        self.assertEqual(
+            cc.engine_packages(
+                "debian", "debian", "docker", False, facts, os_version="13"
+            ),
+            (),
+        )
+        self.assertEqual(
+            cc.engine_packages(
+                "debian", "debian", "podman", True, facts, os_version="13"
+            ),
+            (),
+        )
+        facts = cc.parse_engine_lines(
+            [("ENGINE", "docker 26.1.5"), ("DOCKER_SERVICE", "active enabled")]
+        )
+        self.assertEqual(
+            cc.engine_packages(
+                "debian", "debian", "docker", False, facts, os_version="13"
+            ),
+            ("docker-compose",),
+        )
+
+    def test_docker_client_without_its_daemon_unit_is_not_an_engine(self):
+        # Le client seul parle à un démon d'ailleurs : le paquet du moteur
+        # est proposé, comme sur un hôte sans Docker.
+        for service in ("inactive -", "inactive not-found", None):
+            with self.subTest(service=service):
+                pairs = [("ENGINE", "docker 26.1.5")]
+                if service:
+                    pairs.append(("DOCKER_SERVICE", service))
+                pairs.append(("COMPOSE", "docker docker compose"))
+                facts = cc.parse_engine_lines(pairs)
+                self.assertFalse(cc.engine_present(facts, "docker"))
+                self.assertEqual(
+                    cc.engine_packages(
+                        "debian",
+                        "debian",
+                        "docker",
+                        False,
+                        facts,
+                        os_version="13",
+                    ),
+                    ("docker.io", "docker-cli"),
+                )
+        facts = cc.parse_engine_lines(
+            [
+                ("ENGINE", "docker 26.1.5"),
+                ("DOCKER_SERVICE", "inactive disabled"),
+            ]
+        )
+        self.assertTrue(cc.engine_present(facts, "docker"))
+        self.assertTrue(
+            cc.engine_present(
+                cc.parse_engine_lines([("ENGINE", "podman 5.4.2")]), "podman"
+            )
+        )
+
+    def test_unknown_engine_or_family(self):
+        with self.assertRaises(ValueError):
+            cc.engine_packages(
+                "debian", "debian", "lxc", False, self.NONE, os_version="13"
+            )
+        with self.assertRaises(ValueError):
+            cc.engine_packages(
+                "fedora", None, "docker", False, self.NONE, os_version="41"
+            )
+        with self.assertRaises(ValueError):
+            cc.engine_packages(
+                "debian", "debian", "docker", True, self.NONE, os_version="13"
+            )
+
+
+class TestSmallRules(unittest.TestCase):
+    def test_classify_pull(self):
+        self.assertEqual(
+            cc.classify_pull(
+                "toomanyrequests: You have reached your pull rate limit."
+            ),
+            "rate-limit",
+        )
+        self.assertEqual(
+            cc.classify_pull("Error response from daemon: TOOMANYREQUESTS"),
+            "rate-limit",
+        )
+        self.assertEqual(
+            cc.classify_pull("reading manifest: received 429 Too Many"),
+            "rate-limit",
+        )
+        self.assertEqual(
+            cc.classify_pull("dial tcp: lookup registry: no such host"),
+            "failed",
+        )
+        self.assertEqual(cc.classify_pull("size 14290 bytes"), "failed")
+        self.assertEqual(cc.classify_pull(""), "failed")
+
+    def test_version_older(self):
+        self.assertTrue(cc.version_older("2.11.0", "2.36.0"))
+        self.assertFalse(cc.version_older("2.36.0", "2.36.0"))
+        self.assertFalse(cc.version_older("v2.37.1", "2.36.0"))
+        self.assertTrue(cc.version_older("2.34", "2.36.0"))
+        self.assertFalse(cc.version_older("26.1.5+dfsg1", "26.1.5"))
+        self.assertFalse(cc.version_older("10.0.0", "9.99.99"))
+        # Une version illisible compte pour plus ancienne : le doute ne
+        # laisse pas passer une base que le binaire ne relirait pas.
+        self.assertTrue(cc.version_older("inconnue", "2.36.0"))
+        with self.assertRaises(ValueError):
+            cc.version_older("2.0", "x")
+
+    def test_foreign_containers(self):
+        facts = cc.parse_engine_lines(
+            [
+                (
+                    "CONTAINER",
+                    "erplibre-call-coturn docker 0 running " + COTURN_REF,
+                ),
+                (
+                    "CONTAINER",
+                    "erplibre-call-ntfy docker 0 exited " + NTFY_REF,
+                ),
+                ("CONTAINER", "mon-ntfy podman 1 running " + NTFY_REF),
+            ]
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, None),
+            ("erplibre-call-coturn", "erplibre-call-ntfy", "mon-ntfy"),
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, {"version": 1, "services": {}}),
+            ("erplibre-call-coturn", "erplibre-call-ntfy", "mon-ntfy"),
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, container_state()), ("mon-ntfy",)
+        )
+        # Les mêmes noms sous un autre moteur ne sont pas les nôtres.
+        state = container_state(
+            rootless_block(),
+            coturn={"account": "erplibre-call", "uid": 990, "gid": 990},
+            ntfy={"account": "erplibre-call", "uid": 990, "gid": 990},
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, state),
+            ("erplibre-call-coturn", "erplibre-call-ntfy", "mon-ntfy"),
+        )
+        # Un service que l'état ne consigne pas n'a pas de conteneur à nous.
+        state = container_state()
+        del state["services"]["ntfy"]
+        self.assertEqual(
+            cc.foreign_containers(facts, state),
+            ("erplibre-call-ntfy", "mon-ntfy"),
+        )
+        self.assertEqual(cc.foreign_containers(None, None), ())
+
+    def test_pending_containers_are_ours_in_the_engine_form(self):
+        # Podman rend l'image sans étiquette : la fiche d'une installation
+        # coupée reconnaît quand même ses conteneurs, pas une autre image.
+        digest = COTURN_REF.split("@")[1]
+        facts = cc.parse_engine_lines(
+            [
+                (
+                    "CONTAINER",
+                    "erplibre-call-coturn podman 0 running"
+                    f" docker.io/coturn/coturn@{digest}",
+                ),
+                (
+                    "CONTAINER",
+                    "erplibre-call-ntfy podman 0 running"
+                    " docker.io/binwiederhier/ntfy@sha256:" + "0" * 64,
+                ),
+            ]
+        )
+        self.assertEqual(
+            cc.foreign_containers(facts, None, ("podman", False)),
+            ("erplibre-call-ntfy",),
+        )
+
+
+class TestSameImage(unittest.TestCase):
+    DIGEST = COTURN_REF.split("@")[1]
+
+    def test_engine_forms_of_the_pinned_image(self):
+        # Toute forme du même dépôt qui porte le même condensat, avec ou
+        # sans registre ni étiquette ; Podman, en root comme en rootless,
+        # rend la référence sans étiquette.
+        for found in (
+            COTURN_REF,
+            f"docker.io/coturn/coturn@{self.DIGEST}",
+            f"coturn/coturn:4.18.0@{self.DIGEST}",
+            f"coturn/coturn@{self.DIGEST}",
+            f"index.docker.io/coturn/coturn:4.18.0@{self.DIGEST}",
+        ):
+            with self.subTest(found=found):
+                self.assertTrue(cc.same_image(found, COTURN_REF))
+
+    def test_other_or_unproven_images(self):
+        for found in (
+            "docker.io/coturn/coturn@sha256:" + "0" * 64,
+            f"docker.io/autre/coturn@{self.DIGEST}",
+            f"ghcr.io/coturn/coturn@{self.DIGEST}",
+            "docker.io/coturn/coturn:4.18.0",
+            # La forme que rend le ps de Docker : sans condensat, elle ne
+            # prouve rien, et seul l'identifiant d'image la reconnaît.
+            "coturn/coturn:4.18.0",
+            # Un identifiant d'image seul : rien ne le relie au condensat.
+            self.DIGEST,
+            self.DIGEST.split(":")[1],
+            f"docker.io/coturn/coturn@{self.DIGEST[:-1]}",
+            "",
+            None,
+        ):
+            with self.subTest(found=found):
+                self.assertFalse(cc.same_image(found, COTURN_REF))
+
+    def test_identity(self):
+        self.assertEqual(
+            cc.image_identity(COTURN_REF),
+            ("docker.io/coturn/coturn", self.DIGEST),
+        )
+        self.assertEqual(
+            cc.image_identity(f"debian@{self.DIGEST}"),
+            ("docker.io/library/debian", self.DIGEST),
+        )
+        self.assertEqual(
+            cc.image_identity(f"localhost:5000/coturn:1@{self.DIGEST}"),
+            ("localhost:5000/coturn", self.DIGEST),
+        )
+        self.assertIsNone(cc.image_identity("docker.io/coturn/coturn:4.18.0"))
+
+
+class TestRunsPinned(unittest.TestCase):
+    """L'image d'un conteneur comparée à l'image épinglée, sous la forme
+    que chaque moteur rend vraiment."""
+
+    DIGEST = COTURN_REF.split("@")[1]
+
+    def facts(self, container, container_id=None, local_id=None):
+        name, engine, rootless = container[:3]
+        return cc.EngineFacts(
+            containers=(container,),
+            container_image_ids=(
+                {(name, engine, rootless): container_id}
+                if container_id
+                else {}
+            ),
+            image_ids=(
+                {(engine, rootless, COTURN_REF): local_id} if local_id else {}
+            ),
+        )
+
+    def test_engine_forms_match_by_image_id(self):
+        cases = (
+            # Docker : ni registre ni condensat dans `ps`.
+            ("docker", False, "coturn/coturn:4.18.0"),
+            # Podman, en root comme en rootless : sans étiquette.
+            ("podman", False, f"docker.io/coturn/coturn@{self.DIGEST}"),
+            ("podman", True, f"docker.io/coturn/coturn@{self.DIGEST}"),
+        )
+        for engine, rootless, shown in cases:
+            container = (
+                "erplibre-call-coturn",
+                engine,
+                rootless,
+                "running",
+                shown,
+            )
+            with self.subTest(engine=engine, rootless=rootless):
+                facts = self.facts(container, COTURN_ID, COTURN_ID)
+                self.assertTrue(cc.runs_pinned(facts, container, "coturn"))
+                facts = self.facts(container, OTHER_ID, COTURN_ID)
+                self.assertFalse(cc.runs_pinned(facts, container, "coturn"))
+
+    def test_name_form_without_an_id(self):
+        docker = (
+            "erplibre-call-coturn",
+            "docker",
+            False,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        podman = (
+            "erplibre-call-coturn",
+            "podman",
+            True,
+            "running",
+            f"docker.io/coturn/coturn@{self.DIGEST}",
+        )
+        for ids in ((None, None), (COTURN_ID, None), (None, COTURN_ID)):
+            with self.subTest(ids=ids):
+                # Le nom de Docker ne prouve rien ; celui de Podman porte
+                # le dépôt et le condensat.
+                facts = self.facts(docker, *ids)
+                self.assertFalse(cc.runs_pinned(facts, docker, "coturn"))
+                facts = self.facts(podman, *ids)
+                self.assertTrue(cc.runs_pinned(facts, podman, "coturn"))
+
+    def test_ids_of_another_engine_or_mode_do_not_count(self):
+        container = (
+            "erplibre-call-coturn",
+            "podman",
+            True,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        facts = cc.EngineFacts(
+            containers=(container,),
+            container_image_ids={
+                ("erplibre-call-coturn", "podman", True): COTURN_ID
+            },
+            image_ids={("podman", False, COTURN_REF): COTURN_ID},
+        )
+        self.assertFalse(cc.runs_pinned(facts, container, "coturn"))
+
+    def test_pending_container_in_the_docker_form_is_ours(self):
+        container = (
+            "erplibre-call-coturn",
+            "docker",
+            False,
+            "running",
+            "coturn/coturn:4.18.0",
+        )
+        facts = self.facts(container, COTURN_ID, COTURN_ID)
+        self.assertEqual(
+            cc.foreign_containers(facts, {}, ("docker", False)), ()
+        )
+        facts = self.facts(container, OTHER_ID, COTURN_ID)
+        self.assertEqual(
+            cc.foreign_containers(facts, {}, ("docker", False)),
+            ("erplibre-call-coturn",),
+        )
+
+
+# Outils réels que la sonde emploie ; tout le reste est un bouchon ou absent.
+BASE_TOOLS = (
+    "sh",
+    "awk",
+    "sed",
+    "grep",
+    "base64",
+    "cat",
+    "head",
+    "env",
+    "tr",
+    "basename",
+)
+
+# Toute commande qu'un bouchon reçoit est notée, une ligne par appel.
+LOGGER = '#!/bin/sh\nprintf "%s\\n" "$(basename "$0") $*" >> "$LOG"\n'
+# Podman lancé sous un compte (FAKE_AS, posé par `runuser`) depuis un autre
+# dossier que « / » s'arrête, comme Podman rootless devant un dossier
+# courant que le compte ne peut pas ouvrir ; la sonde est lancée depuis un
+# dossier temporaire.
+CWD_GUARD = (
+    'if [ -n "${FAKE_AS:-}" ] && [ "$(pwd -P)" != / ]; then\n'
+    '  echo "cannot chdir to $(pwd -P): Permission denied" >&2; exit 125\n'
+    "fi\n"
+)
+
+PASSWD = {
+    "turnserver": "turnserver:x:998:998::/var/lib/turnserver:/bin/false",
+    "ntfy": "ntfy:x:997:997::/var/lib/ntfy:/usr/sbin/nologin",
+    "erplibre-call": (
+        "erplibre-call:x:990:990::/var/lib/erplibre-call-podman:/bin/sh"
+    ),
+}
+
+
+def write(path, text, mode=0o755):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as handle:
+        handle.write(text)
+    os.chmod(path, mode)
+
+
+def engine_stubs(
+    stubs, docker_active=True, rootless=True, absent=(), rootless_ps_error=""
+):
+    """Bouchons de chaque commande que la sonde peut lancer. `absent` : noms
+    à ne pas poser, la sonde doit alors les dire absents.
+    `rootless_ps_error` : le message sur lequel `podman ps` échoue sous le
+    compte rootless (FAKE_AS)."""
+    ps = (
+        "erplibre-call-coturn running %s\n"
+        "autre-chose running docker.io/library/nginx:1\n"
+        "mon-ntfy exited docker.io/binwiederhier/ntfy:v2.30.0\n" % COTURN_REF
+    )
+    scripts = {
+        "docker": LOGGER + 'case "$1" in\n'
+        "  --version) echo 'Docker version 26.1.5+dfsg1, build a72d7cd' ;;\n"
+        '  compose) [ "$2" = version ] && echo \'Docker Compose version'
+        " 2.26.1' ;;\n"
+        "  ps) cat <<'EOF'\n" + ps + "EOF\n;;\n"
+        "  container) echo sha256:" + COTURN_ID + " ;;\n"
+        '  image) [ "$5" = ' + COTURN_REF + " ] || exit 1\n"
+        "    echo sha256:" + COTURN_ID + " ;;\n"
+        "  *) exit 64 ;;\n"
+        "esac\n",
+        "podman": LOGGER
+        + CWD_GUARD
+        + (
+            'if [ -n "${FAKE_AS:-}" ] && [ "$1" = ps ]; then\n'
+            "  echo '%s' >&2; exit 125\n"
+            "fi\n" % rootless_ps_error
+            if rootless_ps_error
+            else ""
+        )
+        + 'case "$1" in\n'
+        "  --version) echo 'podman version 5.4.2' ;;\n"
+        "  ps) echo 'erplibre-call-ntfy running " + NTFY_REF + "' ;;\n"
+        "  container) echo " + NTFY_ID + " ;;\n"
+        '  image) [ "$5" = ' + NTFY_REF + " ] || exit 1\n"
+        "    echo " + NTFY_ID + " ;;\n"
+        "  *) exit 64 ;;\n"
+        "esac\n",
+        "docker-compose": LOGGER,
+        "podman-compose": LOGGER,
+        "newuidmap": LOGGER,
+        "sqlite3": LOGGER,
+        "ntfy": LOGGER
+        + "[ \"$1\" = --version ] && echo 'ntfy 2.11.0 (2.11.0-2), runtime go'\n",
+        "timeout": LOGGER + 'shift\nexec "$@"\n',
+        # runuser saute ses options jusqu'à « -- » puis lance le reste,
+        # sous le compte (FAKE_AS).
+        "runuser": LOGGER
+        + 'while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done\n'
+        'FAKE_AS=1; export FAKE_AS; shift\nexec "$@"\n',
+        "getent": LOGGER
+        + 'case "$2" in\n'
+        + "".join(
+            "  %s) echo '%s' ;;\n" % (name, line)
+            for name, line in PASSWD.items()
+            if rootless or name != "erplibre-call"
+        )
+        + "  *) exit 2 ;;\n"
+        "esac\n",
+        "systemctl": LOGGER + 'case "$*" in\n'
+        "  'is-active docker.service') echo %s ;;\n"
+        "  'is-enabled docker.service') echo enabled ;;\n"
+        "  'is-enabled podman-restart.service') echo disabled ;;\n"
+        "  '--user is-enabled podman-restart.service') echo enabled ;;\n"
+        "  *) exit 3 ;;\n"
+        "esac\n" % ("active" if docker_active else "inactive"),
+    }
+    for name in (
+        "loginctl",
+        "useradd",
+        "usermod",
+        "userdel",
+        "apt-get",
+        "pacman",
+        "sudo",
+    ):
+        scripts[name] = LOGGER + "exit 99\n"
+    for name, text in scripts.items():
+        if name not in absent:
+            write(os.path.join(stubs, name), text)
+
+
+class TestEngineProbeRun(unittest.TestCase):
+    """La section de sonde jouée pour de vrai, PATH fermé sur les bouchons."""
+
+    def run_probe(self, root_files=(), **stub_options):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "root")
+            stubs = os.path.join(tmp, "stubs")
+            tools = os.path.join(tmp, "tools")
+            log = os.path.join(tmp, "argv.log")
+            os.makedirs(root)
+            os.makedirs(tools)
+            for name in BASE_TOOLS:
+                os.symlink(shutil.which(name), os.path.join(tools, name))
+            engine_stubs(stubs, **stub_options)
+            for path, text in root_files:
+                if text is None:
+                    os.makedirs(os.path.join(root, path.lstrip("/")))
+                else:
+                    write(os.path.join(root, path.lstrip("/")), text, 0o644)
+            done = subprocess.run(
+                [
+                    os.path.join(tools, "sh"),
+                    "-c",
+                    "\n".join(cc.engine_probe_lines(root)),
+                ],
+                capture_output=True,
+                text=True,
+                env={"PATH": stubs + ":" + tools, "LOG": log, "LC_ALL": "C"},
+                timeout=30,
+                cwd=tmp,
+            )
+            calls = []
+            if os.path.exists(log):
+                with open(log) as handle:
+                    calls = handle.read().splitlines()
+            return done, calls
+
+    FULL_ROOT = (
+        ("/proc/sys/net/ipv4/ip_unprivileged_port_start", "80\n"),
+        ("/etc/subuid", "erplibre-call:100000:65536\n"),
+        ("/etc/subgid", "autre:100000:65536\n"),
+        ("/var/lib/systemd/linger/erplibre-call", ""),
+        ("/run/user/990", None),
+        ("/var/lib/containers/storage", None),
+        (
+            "/var/lib/erplibre-call-podman/.local/share/containers/storage",
+            None,
+        ),
+        ("/etc/erplibre-call/compose.yml", "# erplibre-call: managed\nx: 1\n"),
+        ("/usr/lib/systemd/user/dbus.socket", ""),
+    )
+
+    def assert_read_only(self, calls):
+        for call in calls:
+            words = call.split()
+            for forbidden in (
+                "pull",
+                "run",
+                "rm",
+                "rmi",
+                "create",
+                "start",
+                "stop",
+                "up",
+                "down",
+                "kill",
+                "exec",
+                "info",
+                "enable",
+                "enable-linger",
+            ):
+                self.assertNotIn(forbidden, words[1:], call)
+            self.assertNotIn(
+                words[0],
+                (
+                    "loginctl",
+                    "useradd",
+                    "usermod",
+                    "userdel",
+                    "apt-get",
+                    "pacman",
+                    "sudo",
+                    "docker-compose",
+                    "podman-compose",
+                    "sqlite3",
+                    "newuidmap",
+                ),
+                call,
+            )
+
+    def test_full_host(self):
+        done, calls = self.run_probe(self.FULL_ROOT)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(
+            facts.engines, {"docker": "26.1.5+dfsg1", "podman": "5.4.2"}
+        )
+        self.assertEqual(
+            facts.compose,
+            {"docker": ("docker", "compose"), "podman": ("podman-compose",)},
+        )
+        self.assertEqual(facts.docker_service, ("active", "enabled"))
+        self.assertEqual(facts.podman_restart, "disabled")
+        self.assertEqual(facts.unpriv_port_start, 80)
+        self.assertEqual(
+            facts.accounts,
+            {
+                "turnserver": (998, 998),
+                "ntfy": (997, 997),
+                "erplibre-call": (990, 990),
+            },
+        )
+        self.assertEqual(
+            facts.rootless,
+            {
+                "subuid": True,
+                "subgid": False,
+                "linger": True,
+                "newuidmap": True,
+                "user_restart": "enabled",
+            },
+        )
+        self.assertEqual(
+            set(facts.containers),
+            {
+                (
+                    "erplibre-call-coturn",
+                    "docker",
+                    False,
+                    "running",
+                    COTURN_REF,
+                ),
+                (
+                    "mon-ntfy",
+                    "docker",
+                    False,
+                    "exited",
+                    "docker.io/binwiederhier/ntfy:v2.30.0",
+                ),
+                ("erplibre-call-ntfy", "podman", False, "running", NTFY_REF),
+                ("erplibre-call-ntfy", "podman", True, "running", NTFY_REF),
+            },
+        )
+        self.assertIn(("docker", False, COTURN_REF), facts.images)
+        self.assertIn(("podman", True, NTFY_REF), facts.images)
+        self.assertNotIn(("docker", False, NTFY_REF), facts.images)
+        # Chaque conteneur listé, et chaque image épinglée présente, a son
+        # identifiant d'image, lu sous le même moteur et mode.
+        self.assertEqual(
+            facts.container_image_ids,
+            {
+                ("erplibre-call-coturn", "docker", False): COTURN_ID,
+                ("mon-ntfy", "docker", False): COTURN_ID,
+                ("erplibre-call-ntfy", "podman", False): NTFY_ID,
+                ("erplibre-call-ntfy", "podman", True): NTFY_ID,
+            },
+        )
+        self.assertEqual(
+            facts.image_ids,
+            {
+                ("docker", False, COTURN_REF): COTURN_ID,
+                ("podman", False, NTFY_REF): NTFY_ID,
+                ("podman", True, NTFY_REF): NTFY_ID,
+            },
+        )
+        self.assertIn(
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/990"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman"
+            " container inspect --format {{.Image}} erplibre-call-ntfy",
+            calls,
+        )
+        self.assertEqual(facts.ntfy_host_version, "2.11.0")
+        self.assertTrue(facts.sqlite3)
+        self.assertTrue(facts.user_bus)
+        self.assertEqual(
+            facts.compose_text, "# erplibre-call: managed\nx: 1\n"
+        )
+        self.assert_read_only(calls)
+        # Chaque appel d'un moteur passe par « timeout 20 ».
+        for call in calls:
+            if call.split()[0] in ("docker", "podman"):
+                self.assertTrue(
+                    any(
+                        c.startswith("timeout 20 ") and c.endswith(call)
+                        for c in calls
+                    ),
+                    call,
+                )
+        # Le moteur rootless passe par runuser, avec l'environnement du compte.
+        self.assertIn(
+            "runuser -u erplibre-call -- env -C / XDG_RUNTIME_DIR=/run/user/990"
+            " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/990/bus podman ps"
+            " -a --format {{.Names}} {{.State}} {{.Image}}",
+            calls,
+        )
+
+    def test_rootless_listing_refused_is_said(self):
+        # `ps` refusé sous le compte rootless : la sonde le dit, et ne rend
+        # pour ce mode ni conteneur ni image ; les autres modes restent lus.
+        done, calls = self.run_probe(
+            self.FULL_ROOT,
+            rootless_ps_error="Error: cannot chdir to /home/invente:"
+            " Permission denied",
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(
+            "@@ENGINE_LIST_FAILED podman 1 Error: cannot chdir to"
+            " /home/invente: Permission denied",
+            done.stdout.splitlines(),
+        )
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(
+            facts.listing_failed,
+            {
+                (
+                    "podman",
+                    True,
+                ): "Error: cannot chdir to /home/invente: Permission denied"
+            },
+        )
+        self.assertFalse([c for c in facts.containers if c[2]])
+        self.assertFalse([i for i in facts.images if i[1]])
+        self.assertIn(
+            ("erplibre-call-ntfy", "podman", False, "running", NTFY_REF),
+            facts.containers,
+        )
+
+    def test_nothing_installed(self):
+        done, calls = self.run_probe(
+            absent=(
+                "docker",
+                "podman",
+                "docker-compose",
+                "podman-compose",
+                "newuidmap",
+                "sqlite3",
+                "ntfy",
+            ),
+            rootless=False,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("@@ENGINE", done.stdout)
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(facts.engines, {})
+        self.assertEqual(facts.compose, {})
+        self.assertIsNone(facts.docker_service)
+        self.assertIsNone(facts.podman_restart)
+        self.assertEqual(facts.unpriv_port_start, 1024)
+        self.assertIsNone(facts.rootless)
+        self.assertFalse(facts.newuidmap)
+        self.assertFalse(facts.user_bus)
+        self.assertIn("@@USER_BUS 0", done.stdout)
+        self.assertFalse(facts.sqlite3)
+        self.assertIsNone(facts.ntfy_host_version)
+        self.assertEqual(facts.compose_text, "")
+        self.assertFalse([c for c in calls if c.startswith("runuser")])
+
+    def test_inactive_docker_is_not_woken(self):
+        # Une socket active démarrerait dockerd au premier « docker ps » :
+        # la sonde ne parle au démon que s'il tourne déjà.
+        done, calls = self.run_probe(self.FULL_ROOT, docker_active=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(facts.engines["docker"], "26.1.5+dfsg1")
+        self.assertEqual(facts.docker_service, ("inactive", "enabled"))
+        docker_calls = [c.split()[1] for c in calls if c.startswith("docker ")]
+        self.assertEqual(sorted(set(docker_calls)), ["--version", "compose"])
+        self.assertFalse([c for c in facts.containers if c[1] == "docker"])
+
+    def test_podman_without_storage_is_not_asked(self):
+        # Sans stockage, « podman ps » le créerait ; sans /run/user/<uid>, le
+        # compte rootless n'a pas de session à interroger.
+        done, calls = self.run_probe(
+            (("/etc/subuid", "erplibre-call:100000:65536\n"),)
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        podman_calls = [c.split()[1] for c in calls if c.startswith("podman ")]
+        self.assertEqual(podman_calls, ["--version"])
+        self.assertFalse([c for c in calls if c.startswith("runuser")])
+        facts = cc.parse_engine_lines(ci.marker_lines(done.stdout))
+        self.assertEqual(facts.rootless["user_restart"], None)
+        self.assertTrue(facts.rootless["subuid"])
+
+    def test_probe_text_writes_nothing(self):
+        script = "\n".join(cc.engine_probe_lines())
+        stripped = script.replace("2>/dev/null", "").replace(">/dev/null", "")
+        stripped = stripped.replace("2>&1", "")
+        self.assertNotIn(">", stripped)
+        for word in ("pull", " run ", " rm ", "rmi", " up ", "loginctl"):
+            self.assertNotIn(word, script)
+
+
+class TestStdlibOnly(unittest.TestCase):
+    def test_module_imports_only_stdlib(self):
+        path = os.path.join(REPO, "script", "todo", "call_infra_container.py")
+        with open(path) as handle:
+            tree = ast.parse(handle.read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    self.assertIn(
+                        alias.name.split(".")[0], sys.stdlib_module_names
+                    )
+            elif isinstance(node, ast.ImportFrom):
+                self.assertTrue(node.module, "import relatif")
+                self.assertIn(
+                    node.module.split(".")[0], sys.stdlib_module_names
+                )
+
+    def test_module_runs_nothing_locally(self):
+        path = os.path.join(REPO, "script", "todo", "call_infra_container.py")
+        with open(path) as handle:
+            text = handle.read()
+        self.assertNotIn("subprocess", text)
+        self.assertNotIn("os.system", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

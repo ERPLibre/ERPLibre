@@ -80,13 +80,24 @@ class Repli(unittest.TestCase):
     def _lancer(self, gpu="auto", sortie=SORTIE_EGL, code=1):
         """Rend (commandes lancées, SystemExit ou None)."""
         lances = []
+        self.drapeaux = []
+        drapeaux = self.drapeaux
 
         class FauxRunner:
             dry_run = False
             use_sudo = False
 
-            def run(self, cmd, *, privileged=False, check=True, capture=False):
+            def run(
+                self,
+                cmd,
+                *,
+                privileged=False,
+                libvirt=False,
+                check=True,
+                capture=False,
+            ):
                 lances.append(list(cmd))
+                drapeaux.append((privileged, libvirt))
                 if capture:
                     return (code, sortie)
                 return None
@@ -112,6 +123,34 @@ class Repli(unittest.TestCase):
                 except SystemExit as exc:
                     sortie_exc = exc
         return lances, sortie_exc, buf.getvalue()
+
+    def test_libvirt_commands_never_ask_for_root(self):
+        """virt-install et le virsh du repli passent par la socket : sudo
+        n'y vient que si elle refuse (libvirt=True), jamais d'office."""
+        lances, _, _ = self._lancer()
+        self.assertGreater(len(lances), 1)
+        self.assertEqual([(False, True)] * len(lances), self.drapeaux)
+
+    def test_virt_install_runs_with_a_path_free_of_venvs(self):
+        """Lancé depuis un venv, virt-install y trouverait un python3 sans
+        PyGObject et mourrait sur « No module named 'gi' »."""
+        venv = "/depot/.venv.erplibre/bin"
+        chemin = DQ.system_path(f"{venv}:/opt/outils:/opt/autres")
+        self.assertEqual("/opt/outils:/opt/autres", chemin)
+
+    def test_virt_install_runs_with_a_path_free_of_user_dirs(self):
+        """Un « python3 » posé chez l'utilisateur (~/.local/bin par uv,
+        ~/.pyenv/shims) passerait avant /usr/bin, et virt-install y mourrait
+        de même. Le secure_path de sudo les écartait aussi."""
+        with mock.patch.dict(DQ.os.environ, {"HOME": "/home/u"}):
+            chemin = DQ.system_path(
+                "/home/u/.local/bin:/usr/bin:/home/u/.pyenv/shims:/opt/outils"
+            )
+        self.assertEqual("/usr/bin:/opt/outils", chemin)
+
+    def test_a_root_home_filters_nothing_more(self):
+        with mock.patch.dict(DQ.os.environ, {"HOME": "/"}):
+            self.assertEqual("/usr/bin:/bin", DQ.system_path("/usr/bin:/bin"))
 
     def test_the_first_attempt_carries_the_3d(self):
         lances, _, _ = self._lancer()
@@ -162,7 +201,15 @@ class Repli(unittest.TestCase):
             dry_run = False
             use_sudo = False
 
-            def run(self, cmd, *, privileged=False, check=True, capture=False):
+            def run(
+                self,
+                cmd,
+                *,
+                privileged=False,
+                libvirt=False,
+                check=True,
+                capture=False,
+            ):
                 lances.append(list(cmd))
                 return resultat if capture else None
 

@@ -1,0 +1,793 @@
+#!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Installe coturn (serveur STUN/TURN) par les paquets du systeme, sous
+# systemd, pour l'infrastructure d'appel ERPLibre. Avec
+# TURN_TARGET=container, prepare seulement ce que monte le conteneur coturn
+# lance par l'appelant (voir configure_container).
+# Supporte : Debian, Ubuntu, Arch Linux (et derives). Tout autre systeme
+# arrete le script avant qu'il ne touche a quoi que ce soit.
+#
+# Usage, deja root, les variables exportees par le script appelant :
+#   export TURN_REALM=turn.exemple.test
+#   bash install_coturn.sh
+#
+# Entrees (environnement) :
+#   TURN_REALM            obligatoire : nom public du service, realm TURN
+#   TURN_PORT             3478, udp et tcp
+#   TURN_TLS_PORT         5349, tcp, ecoute seulement avec un certificat
+#   TURN_ALT_TLS_PORT     optionnel, seulement avec un certificat : TLS
+#                         ecoute sur ce port AU LIEU de TURN_TLS_PORT
+#                         (coturn ne sert TLS que sur un port). Sous 1024,
+#                         un fragment de l'unite donne a coturn le droit
+#                         de l'ouvrir (voir write_dropin).
+#   TURN_MIN_PORT         49152 } plage udp des relais
+#   TURN_MAX_PORT         49252 }
+#   TURN_CERT_FILE        certificat et cle, les deux ou aucun ; copies dans
+#   TURN_KEY_FILE         /etc/erplibre-call/tls, lisibles du compte coturn
+#   TURN_EXTERNAL_IP      optionnel : adresse publique, derriere un NAT
+#   TURN_CHECK_PASSWORD   facultatif : mot de passe du compte de controle
+#                         « erplibre-check », qui remplace la cle en place.
+#                         Lu de l'environnement, jamais d'un argument ; main
+#                         le retire de l'environnement des commandes lancees
+#                         ensuite. Absent, la cle en place pour ce realm est
+#                         gardee, ou nait sur l'hote (voir ensure_check_user) :
+#                         aucun secret ne voyage vers l'hote.
+#   TURN_GARDER_CONFIG=1  une configuration coturn deja en place, que ce
+#                         script n'a pas ecrite, est remplacee : l'appelant
+#                         en garde une copie et a fait accepter le
+#                         changement. Sans lui, elle arrete le script avant
+#                         toute installation.
+#   TURN_ALLOW_PRIVATE=1  le relais peut joindre les plages privees (reseau
+#                         local, boucle locale, lien local) : un usage de
+#                         developpement sur un reseau local. Sans lui, ces
+#                         plages sont refusees (denied-peer-ip), et le
+#                         relais ne sert pas de passerelle vers les voisins
+#                         de l'hote. Le script annonce quand il les permet.
+#   TURN_AUTH             fixed (defaut) ou secret : le mode
+#                         d'identification de coturn, un seul a la fois.
+#                         fixed : lt-cred-mech, des comptes long terme
+#                         (turnusers_lt), dont le compte de controle.
+#                         secret : use-auth-secret, des identifiants
+#                         temporaires signes par un secret de la table
+#                         turn_secret ; le compte de controle long terme
+#                         quitte la base (voir remove_check_user).
+#   TURN_TARGET           packages (defaut) ou container. container :
+#                         coturn vient de l'image, l'hote ne recoit que
+#                         sqlite3 ; ni unite, ni fragment, ni systemctl.
+#   TURN_SERVICE_USER     obligatoire avec container, refuse sinon : le
+#                         compte, deja cree, sous lequel tourne le conteneur
+#                         et qui possede la base. Jamais root.
+#
+# Les comptes et les secrets vivent dans la base SQLite de coturn (userdb),
+# jamais dans turnserver.conf : coturn la relit a chaque allocation, un
+# compte ou un secret ajoute ou retire prend effet sans redemarrage. Les
+# deux modes ne se melangent pas : avec use-auth-secret, coturn 4.6 refuse
+# tout compte long terme, meme quand la base ne contient aucun secret.
+#
+# Le compte de controle est ecrit par sqlite3, la requete sur l'entree
+# standard, et non par « turnadmin -p » : un argument se lit de tout compte
+# local (ps, /proc/<pid>/cmdline), le temps que la commande tourne.
+#
+# Sortie : « @@UNIT <unite> », « @@USER <compte> », « @@CONFIG <chemin> »,
+# puis en derniere ligne « @@ACTIVE coturn <etat> ». Code de sortie non nul
+# quand l'etat n'est pas « active ».
+# Avec TURN_TARGET=container : « @@RECREATE 1 » quand le conteneur doit
+# etre recree pour charger la configuration ou le certificat, sinon
+# « @@RECREATE 0 », puis en derniere ligne « @@CONFIGURED coturn », code 0.
+
+set -euo pipefail
+
+# Premiere ligne de toute configuration ecrite ici : une configuration qui
+# la porte se reecrit sans demander, une autre est etrangere.
+MARKER="# erplibre-call: managed"
+CALL_DIR="/etc/erplibre-call"
+TLS_DIR="/etc/erplibre-call/tls"
+DB_DIR="/var/lib/erplibre-call"
+DB_FILE="/var/lib/erplibre-call/turndb"
+CHECK_USER="erplibre-check"
+OS_RELEASE="/etc/os-release"
+# Chemins des paquets quand l'unite ne nomme pas sa configuration (-c).
+DEBIAN_CONF="/etc/turnserver.conf"
+ARCH_CONF="/etc/turnserver/turnserver.conf"
+DEFAULT_FILE="/etc/default/coturn"
+# Empreinte de la configuration et du certificat que coturn a charges, ecrite
+# seulement apres un redemarrage reussi (voir main) ; en cible conteneur,
+# par l'appelant qui a recree le conteneur (voir configure_container).
+APPLIED_FILE="/etc/erplibre-call/coturn.applied"
+# Cible conteneur : l'empreinte a charger, que l'appelant renomme en
+# APPLIED_FILE une fois le conteneur recree et en marche.
+PENDING_FILE="/etc/erplibre-call/coturn.applied.erplibre-pending"
+# Les fragments d'unite (<unite>.service.d/) que pose write_dropin.
+SYSTEMD_DIR="/etc/systemd/system"
+
+TURN_REALM="${TURN_REALM:-}"
+TURN_PORT="${TURN_PORT:-3478}"
+TURN_TLS_PORT="${TURN_TLS_PORT:-5349}"
+TURN_MIN_PORT="${TURN_MIN_PORT:-49152}"
+TURN_MAX_PORT="${TURN_MAX_PORT:-49252}"
+TURN_CERT_FILE="${TURN_CERT_FILE:-}"
+TURN_KEY_FILE="${TURN_KEY_FILE:-}"
+TURN_EXTERNAL_IP="${TURN_EXTERNAL_IP:-}"
+TURN_CHECK_PASSWORD="${TURN_CHECK_PASSWORD:-}"
+TURN_GARDER_CONFIG="${TURN_GARDER_CONFIG:-}"
+TURN_ALLOW_PRIVATE="${TURN_ALLOW_PRIVATE:-}"
+TURN_ALT_TLS_PORT="${TURN_ALT_TLS_PORT:-}"
+TURN_AUTH="${TURN_AUTH:-fixed}"
+TURN_TARGET="${TURN_TARGET:-packages}"
+TURN_SERVICE_USER="${TURN_SERVICE_USER:-}"
+
+# Plages refusees aux relais sans TURN_ALLOW_PRIVATE=1, au format de
+# denied-peer-ip (adresse seule, ou premiere-derniere). Aux plages privees
+# (RFC 1918, CGNAT 100.64/10, ULA fc00::/7), a la boucle locale et au lien
+# local s'ajoutent les formes qui y menent autrement : 0.0.0.0/8 et « :: »
+# joignent la machine elle-meme, ::ffff:0:0/96 et 64:ff9b::/96 portent une
+# adresse IPv4, privee comprise, dans une adresse IPv6.
+DENIED_PEER_RANGES=(
+    0.0.0.0-0.255.255.255
+    10.0.0.0-10.255.255.255
+    100.64.0.0-100.127.255.255
+    127.0.0.0-127.255.255.255
+    169.254.0.0-169.254.255.255
+    172.16.0.0-172.31.255.255
+    192.168.0.0-192.168.255.255
+    ::
+    ::1
+    ::ffff:0.0.0.0-::ffff:255.255.255.255
+    64:ff9b::-64:ff9b::ffff:ffff
+    fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+    fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+)
+
+log() { echo "[COTURN] $*"; }
+die() { echo "[COTURN] ERREUR : $*" >&2; exit 1; }
+
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        die "ce script doit tourner en root : sudo bash $0"
+    fi
+}
+
+# valid_port <valeur> : vrai pour un entier de 1 a 65535 ecrit en chiffres.
+valid_port() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "${#1}" -le 5 ] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+has_cert() {
+    [ -n "$TURN_CERT_FILE" ] && [ -n "$TURN_KEY_FILE" ]
+}
+
+# Chaque entree finit dans turnserver.conf ou dans une requete SQL : le
+# realm et l'adresse externe sont limites a des caracteres qui ne peuvent
+# ni ouvrir une ligne de configuration ni fermer une chaine SQL.
+check_inputs() {
+    [ -n "$TURN_REALM" ] || die "TURN_REALM manque (nom public du service)."
+    if ! [[ "$TURN_REALM" =~ ^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$ ]]; then
+        die "TURN_REALM invalide : lettres, chiffres, point, deux-points et tiret seulement."
+    fi
+    local port
+    for port in "$TURN_PORT" "$TURN_TLS_PORT" "$TURN_MIN_PORT" "$TURN_MAX_PORT"; do
+        valid_port "$port" || die "port invalide : ${port} (1 a 65535)."
+    done
+    [ "$TURN_MIN_PORT" -le "$TURN_MAX_PORT" ] \
+        || die "plage de relais inversee : ${TURN_MIN_PORT}-${TURN_MAX_PORT}."
+    if [ -n "$TURN_CERT_FILE" ] || [ -n "$TURN_KEY_FILE" ]; then
+        has_cert || die "TURN_CERT_FILE et TURN_KEY_FILE vont ensemble."
+        [ -f "$TURN_CERT_FILE" ] && [ -r "$TURN_CERT_FILE" ] \
+            || die "certificat illisible : ${TURN_CERT_FILE}"
+        [ -f "$TURN_KEY_FILE" ] && [ -r "$TURN_KEY_FILE" ] \
+            || die "cle illisible : ${TURN_KEY_FILE}"
+        [ "$TURN_PORT" != "$TURN_TLS_PORT" ] \
+            || die "TURN_PORT et TURN_TLS_PORT doivent differer."
+    fi
+    if [ -n "$TURN_ALT_TLS_PORT" ]; then
+        has_cert || die "TURN_ALT_TLS_PORT demande un certificat (TURN_CERT_FILE et TURN_KEY_FILE)."
+        valid_port "$TURN_ALT_TLS_PORT" \
+            || die "port invalide : ${TURN_ALT_TLS_PORT} (1 a 65535)."
+        [ "$TURN_ALT_TLS_PORT" != "$TURN_PORT" ] \
+            && [ "$TURN_ALT_TLS_PORT" != "$TURN_TLS_PORT" ] \
+            || die "TURN_ALT_TLS_PORT doit differer de TURN_PORT et de TURN_TLS_PORT."
+    fi
+    if [ -n "$TURN_EXTERNAL_IP" ] && ! [[ "$TURN_EXTERNAL_IP" =~ ^[0-9A-Fa-f:./]+$ ]]; then
+        die "TURN_EXTERNAL_IP invalide : ${TURN_EXTERNAL_IP}"
+    fi
+    case "$TURN_ALLOW_PRIVATE" in
+        ''|0|1) ;;
+        *) die "TURN_ALLOW_PRIVATE invalide : ${TURN_ALLOW_PRIVATE} (1, 0 ou vide)." ;;
+    esac
+    case "$TURN_AUTH" in
+        fixed|secret) ;;
+        *) die "TURN_AUTH invalide : ${TURN_AUTH} (fixed ou secret)." ;;
+    esac
+    # Lus avec une valeur par defaut : une fonction extraite seule tourne
+    # sans les lectures de l'environnement en tete du script.
+    local target="${TURN_TARGET-packages}" account="${TURN_SERVICE_USER:-}"
+    case "$target" in
+        packages)
+            [ -z "$account" ] \
+                || die "TURN_SERVICE_USER ne sert qu'avec TURN_TARGET=container : le paquet fixe le compte."
+            ;;
+        container)
+            [ -n "$account" ] \
+                || die "TURN_SERVICE_USER manque : le compte du conteneur coturn."
+            # Le nom finit dans des arguments de runuser, chown et install :
+            # la forme d'un compte systeme, et jamais root.
+            [[ "$account" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$account" != root ] \
+                || die "TURN_SERVICE_USER invalide : ${account} (compte systeme, jamais root)."
+            ;;
+        *) die "TURN_TARGET invalide : ${target} (packages ou container)." ;;
+    esac
+}
+
+# Lit ID et ID_LIKE dans un sous-shell : les autres variables d'os-release
+# (NAME, VERSION...) ne viennent pas remplacer celles du script.
+detect_os() {
+    [ -f "$OS_RELEASE" ] || die "systeme non identifie (pas de ${OS_RELEASE})."
+    OS=$(. "$OS_RELEASE" && echo "${ID:-}")
+    OS_LIKE=$(. "$OS_RELEASE" && echo "${ID_LIKE:-}")
+    log "Systeme detecte : ${OS}"
+}
+
+# Imprime debian ou arch d'apres OS et OS_LIKE ; tout autre systeme arrete
+# le script en nommant ce qui est supporte.
+family() {
+    case "$OS" in
+        debian|ubuntu|linuxmint|pop|raspbian) echo debian; return 0 ;;
+        arch|manjaro|endeavouros|artix|garuda) echo arch; return 0 ;;
+    esac
+    case " ${OS_LIKE} " in
+        *" debian "*|*" ubuntu "*) echo debian ;;
+        *" arch "*) echo arch ;;
+        *) die "systeme non supporte : ${OS:-inconnu} (supportes : Debian, Ubuntu, Arch Linux)." ;;
+    esac
+}
+
+unit_name() {
+    case "$FAMILY" in
+        debian) echo coturn ;;
+        arch) echo turnserver ;;
+    esac
+}
+
+# Texte de l'unite installee, fragments compris ; vide quand elle n'existe
+# pas encore.
+unit_text() {
+    systemctl cat "$UNIT" 2>/dev/null || true
+}
+
+# Debian cree le compte « turnserver » ; Arch le declare dans l'unite du
+# paquet (User=), relue pour suivre un changement de nom.
+service_user() {
+    local user=""
+    if [ "$FAMILY" = arch ]; then
+        user=$(unit_text | sed -n 's/^[[:space:]]*User=[[:space:]]*//p' | tail -n 1)
+    fi
+    echo "${user:-turnserver}"
+}
+
+# Le fichier que coturn lit : celui que l'unite passe en -c, sinon celui du
+# paquet de la famille.
+config_path() {
+    local path
+    path=$(unit_text | sed -n -E 's/^ExecStart=.*[[:space:]](-c|--conf-file)[[:space:]=]+([^[:space:]]+).*/\2/p' | tail -n 1)
+    if [ -z "$path" ]; then
+        case "$FAMILY" in
+            debian) path="$DEBIAN_CONF" ;;
+            arch) path="$ARCH_CONF" ;;
+        esac
+    fi
+    echo "$path"
+}
+
+# config_is_foreign <chemin> : vrai pour un fichier non vide dont la
+# premiere ligne n'est pas MARKER.
+config_is_foreign() {
+    [ -s "$1" ] && [ "$(head -n 1 "$1")" != "$MARKER" ]
+}
+
+# Vrai quand coturn et sqlite3 sont deja installes : rien n'est alors mis a
+# jour, une relance ne change pas la version en service (sur Arch, une mise
+# a jour isolee d'un paquet est une mise a jour partielle).
+packages_present() {
+    case "$FAMILY" in
+        debian)
+            [ "$(dpkg-query -W -f='${Status}\n' coturn sqlite3 2>/dev/null \
+                | grep -c 'install ok installed')" = 2 ]
+            ;;
+        arch)
+            pacman -Q coturn sqlite >/dev/null 2>&1
+            ;;
+    esac
+}
+
+# --force-confold : un fichier de configuration modifie ferait poser une
+# question a dpkg sur le terminal, sans reponse au bout d'un ssh.
+# Une operation dpkg coupee (ssh perdu pendant apt) laisse des paquets
+# deballes ou a moitie configures, et apt-get refuse alors toute
+# installation tant que « dpkg --configure -a » n'a pas tourne : il passe
+# d'abord, et ne fait rien quand rien n'est en attente. Un paquet a moitie
+# deballe est ensuite reinstalle par apt-get.
+install_packages() {
+    if packages_present; then
+        log "coturn et sqlite3 deja installes."
+        return 0
+    fi
+    case "$FAMILY" in
+        debian)
+            export DEBIAN_FRONTEND=noninteractive
+            dpkg --configure -a --force-confdef --force-confold
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+                -o Dpkg::Options::=--force-confdef \
+                -o Dpkg::Options::=--force-confold \
+                coturn sqlite3
+            ;;
+        arch)
+            pacman -S --noconfirm --needed coturn sqlite
+            ;;
+    esac
+}
+
+# Cible conteneur : coturn vient de l'image, et l'hote ne recoit que le
+# client SQLite qui ecrit la base (compte de controle, secrets) ; l'image
+# n'en porte pas. Memes reprise de dpkg et options qu'install_packages, et
+# rien n'est mis a jour quand il est deja installe.
+install_sqlite() {
+    case "$FAMILY" in
+        debian)
+            if dpkg-query -W -f='${Status}\n' sqlite3 2>/dev/null \
+                | grep -q 'install ok installed'; then
+                log "sqlite3 deja installe."
+                return 0
+            fi
+            export DEBIAN_FRONTEND=noninteractive
+            dpkg --configure -a --force-confdef --force-confold
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+                -o Dpkg::Options::=--force-confdef \
+                -o Dpkg::Options::=--force-confold \
+                sqlite3
+            ;;
+        arch)
+            if pacman -Q sqlite >/dev/null 2>&1; then
+                log "sqlite deja installe."
+                return 0
+            fi
+            pacman -S --noconfirm --needed sqlite
+            ;;
+    esac
+}
+
+# Copie certificat et cle dans TLS_DIR, root:<groupe coturn> 0640 : le
+# compte coturn ne lit ni /home (unite Debian) ni les cles de Let's Encrypt.
+# Sans certificat, les copies d'une installation precedente sont retirees.
+# CONFIG_CHANGED passe a 1 quand le contenu servi change.
+install_certificate() {
+    local crt="$TLS_DIR/turn.crt" key="$TLS_DIR/turn.key"
+    if ! has_cert; then
+        if [ -e "$crt" ] || [ -e "$key" ]; then
+            rm -f "$crt" "$key"
+            CONFIG_CHANGED=1
+        fi
+        return 0
+    fi
+    install -d -m 0755 -o root -g root "$CALL_DIR"
+    install -d -m 0750 -o root -g "$SERVICE_GROUP" "$TLS_DIR"
+    if ! cmp -s "$TURN_CERT_FILE" "$crt" || ! cmp -s "$TURN_KEY_FILE" "$key"; then
+        CONFIG_CHANGED=1
+    fi
+    install -m 0640 -o root -g "$SERVICE_GROUP" "$TURN_CERT_FILE" "$crt"
+    install -m 0640 -o root -g "$SERVICE_GROUP" "$TURN_KEY_FILE" "$key"
+}
+
+# refuse_linked_config <chemin> : arrete le script quand la configuration
+# est un lien symbolique. Le fichier vise n'est pas celui que l'outil gere,
+# et le renommage final remplacerait le lien sans toucher sa cible.
+refuse_linked_config() {
+    if [ -L "$1" ]; then
+        die "${1} est un lien symbolique ; rien n'est ecrit."
+    fi
+}
+
+# write_config <chemin> : ecrit la configuration complete, root:<groupe
+# coturn> 0640, par un fichier voisin renomme (coturn ne lit jamais un
+# fichier a moitie ecrit). Le voisin vient de mktemp : un nom neuf, cree en
+# exclusif et 0600, qu'aucun lien pose d'avance ne peut detourner vers un
+# autre fichier. CONFIG_CHANGED passe a 1 quand le contenu change.
+# Sans certificat, no-tls et no-dtls : aucun port TLS n'ecoute. Avec un
+# certificat, TLS ecoute sur TURN_ALT_TLS_PORT quand il est donne, sinon
+# sur TURN_TLS_PORT : deux lignes tls-listening-port, coturn ne garde que la
+# derniere, et alt-tls-listening-port reste inerte sous no-rfc5780. Sans
+# TURN_ALLOW_PRIVATE=1, une ligne denied-peer-ip par plage de
+# DENIED_PEER_RANGES. TURN_AUTH=secret ecrit use-auth-secret a la place de
+# lt-cred-mech. Les quatre dernieres lignes sont celles du fichier livre par Debian, qu'il remplace :
+# journal systeme, et pas de reponses STUN plus grosses que les requetes
+# (amplification).
+# Cible conteneur, pour coturn 4.18 : log-file=stdout a la place de
+# syslog, le moteur lit la sortie standard du conteneur ; ni no-dtls ni
+# no-stun-backward-compatibility, que 4.18 ne connait plus et signale a
+# chaque demarrage.
+write_config() {
+    local conf="$1" dir tmp container=0
+    [ "${TURN_TARGET-packages}" != container ] || container=1
+    refuse_linked_config "$conf"
+    dir=$(dirname "$conf")
+    mkdir -p "$dir"
+    tmp=$(mktemp "${dir}/.$(basename "$conf").XXXXXX")
+    {
+        echo "$MARKER"
+        echo "# Comptes dans userdb, pas ici. Ecrit par install_coturn.sh."
+        echo "listening-port=${TURN_PORT}"
+        if has_cert; then
+            echo "tls-listening-port=${TURN_ALT_TLS_PORT:-$TURN_TLS_PORT}"
+            echo "cert=${TLS_DIR}/turn.crt"
+            echo "pkey=${TLS_DIR}/turn.key"
+        else
+            echo "no-tls"
+            [ "$container" = 1 ] || echo "no-dtls"
+        fi
+        echo "min-port=${TURN_MIN_PORT}"
+        echo "max-port=${TURN_MAX_PORT}"
+        echo "fingerprint"
+        if [ "$TURN_AUTH" = secret ]; then
+            echo "use-auth-secret"
+        else
+            echo "lt-cred-mech"
+        fi
+        echo "realm=${TURN_REALM}"
+        echo "userdb=${DB_FILE}"
+        echo "no-cli"
+        echo "no-multicast-peers"
+        if [ "$TURN_ALLOW_PRIVATE" != 1 ]; then
+            printf 'denied-peer-ip=%s\n' "${DENIED_PEER_RANGES[@]}"
+        fi
+        if [ -n "$TURN_EXTERNAL_IP" ]; then
+            echo "external-ip=${TURN_EXTERNAL_IP}"
+        fi
+        if [ "$container" = 1 ]; then
+            echo "log-file=stdout"
+        else
+            echo "syslog"
+        fi
+        echo "no-rfc5780"
+        [ "$container" = 1 ] || echo "no-stun-backward-compatibility"
+        echo "response-origin-only-with-rfc5780"
+    } > "$tmp"
+    chown "root:${SERVICE_GROUP}" "$tmp"
+    chmod 0640 "$tmp"
+    if ! cmp -s "$tmp" "$conf"; then
+        CONFIG_CHANGED=1
+    fi
+    mv -f "$tmp" "$conf"
+    log "Configuration ecrite : ${conf}"
+}
+
+# write_dropin : avec TURN_ALT_TLS_PORT sous 1024, pose
+# <SYSTEMD_DIR>/<unite>.service.d/erplibre-call.conf, root 0644, qui donne
+# a coturn AmbientCapabilities=CAP_NET_BIND_SERVICE. Les unites des paquets
+# le lancent sous un compte sans ce droit : coturn qui ne peut ouvrir son
+# port TLS reessaie en boucle et cesse aussi de repondre sur listening-port.
+# Sans ce besoin, le fragment que ce script a pose (premiere ligne MARKER)
+# est retire ; un fichier etranger au meme nom est laisse. Ecriture par un
+# voisin de mktemp renomme, dont le nom ne finit pas par .conf : systemd ne
+# le lit pas. CONFIG_CHANGED passe a 1 quand le fragment change.
+write_dropin() {
+    local dir="${SYSTEMD_DIR}/${UNIT}.service.d" file tmp
+    file="${dir}/erplibre-call.conf"
+    refuse_linked_config "$file"
+    if [ -n "$TURN_ALT_TLS_PORT" ] && [ "$TURN_ALT_TLS_PORT" -lt 1024 ]; then
+        mkdir -p "$dir"
+        tmp=$(mktemp "${dir}/.erplibre-call.conf.XXXXXX")
+        printf '%s\n' "$MARKER" "[Service]" \
+            "AmbientCapabilities=CAP_NET_BIND_SERVICE" > "$tmp"
+        chmod 0644 "$tmp"
+        if ! cmp -s "$tmp" "$file"; then
+            CONFIG_CHANGED=1
+        fi
+        mv -f "$tmp" "$file"
+        log "Fragment d'unite ecrit : ${file}"
+    elif [ -f "$file" ] && [ "$(head -n 1 "$file")" = "$MARKER" ]; then
+        rm -f "$file"
+        rmdir "$dir" 2>/dev/null || true
+        CONFIG_CHANGED=1
+        log "Fragment d'unite retire : ${file}"
+    fi
+}
+
+# L'ancien script d'init Debian ne demarre coturn qu'avec cette ligne ;
+# l'unite systemd l'ignore, la poser garde les deux d'accord.
+enable_default() {
+    [ "$FAMILY" = debian ] || return 0
+    [ -f "$DEFAULT_FILE" ] || return 0
+    if grep -qE '^[[:space:]]*#?[[:space:]]*TURNSERVER_ENABLED=' "$DEFAULT_FILE"; then
+        sed -i -E 's/^[[:space:]]*#?[[:space:]]*TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' "$DEFAULT_FILE"
+    else
+        echo "TURNSERVER_ENABLED=1" >> "$DEFAULT_FILE"
+    fi
+}
+
+# Le dossier de la base appartient au compte coturn : SQLite y cree son
+# journal, et un lecteur qui trouve un journal laisse par une ecriture
+# interrompue doit pouvoir y ecrire. Ce compte peut donc y poser un lien :
+# une base qui est un lien est refusee, et chown -h ne suit rien.
+prepare_database() {
+    install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$DB_DIR"
+    if [ -L "$DB_FILE" ] || { [ -e "$DB_FILE" ] && [ ! -f "$DB_FILE" ]; }; then
+        die "${DB_FILE} n'est pas un fichier ordinaire ; rien n'est ecrit."
+    fi
+    if [ -f "$DB_FILE" ]; then
+        chown -h "${SERVICE_USER}:${SERVICE_GROUP}" "$DB_FILE"
+    fi
+}
+
+# Imprime le schema que coturn 4.6 cree lui-meme dans sa base SQLite ;
+# IF NOT EXISTS laisse en place une base deja creee par coturn.
+schema_sql() {
+    cat <<'EOF'
+CREATE TABLE IF NOT EXISTS turnusers_lt ( realm varchar(127) default '', name varchar(512), hmackey char(128), PRIMARY KEY (realm,name));
+CREATE TABLE IF NOT EXISTS turn_secret (realm varchar(127) default '', value varchar(127), primary key (realm,value));
+CREATE TABLE IF NOT EXISTS allowed_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
+CREATE TABLE IF NOT EXISTS denied_peer_ip (realm varchar(127) default '', ip_range varchar(256), primary key (realm,ip_range));
+CREATE TABLE IF NOT EXISTS turn_origin_to_realm (origin varchar(127),realm varchar(127),primary key (origin));
+CREATE TABLE IF NOT EXISTS turn_realm_option (realm varchar(127) default '', opt varchar(32), value varchar(128), primary key (realm,opt));
+CREATE TABLE IF NOT EXISTS oauth_key (kid varchar(128),ikm_key varchar(256),timestamp bigint default 0,lifetime integer default 0,as_rs_alg varchar(64) default '',realm varchar(127) default '',primary key (kid));
+CREATE TABLE IF NOT EXISTS admin_user (name varchar(32), realm varchar(127), password varchar(127), primary key (name));
+EOF
+}
+
+# Pose le compte de controle, idempotent, dans une transaction. Avec
+# TURN_CHECK_PASSWORD, la ligne de CHECK_USER est effacee (quel que soit
+# son realm) puis recreee avec la cle de ce mot de passe. Sans lui, le mot
+# de passe est tire de /dev/urandom sur l'hote, jamais affiche ni garde :
+# seules les lignes d'un autre realm sont effacees, et INSERT OR IGNORE
+# laisse en place la cle deja posee pour ce realm. La verification lit
+# cette cle dans la base, le mot de passe ne lui sert a rien.
+# hmackey = MD5 hex de « utilisateur:realm:mot de passe », la cle long
+# terme que turnadmin -a ecrirait. printf est une commande interne : le
+# mot de passe n'atteint md5sum que par le tube. La requete passe sur
+# l'entree standard de sqlite3, lance sous le compte coturn (runuser) :
+# root n'ouvre aucun fichier du dossier de ce compte. Sa sortie et ses
+# erreurs passent en retrait : ce compte possede la base, et rien de ce
+# qu'il imprime ne commence une ligne par « @@ », que l'appelant lit comme
+# un marqueur. Le schema est celui de schema_sql.
+ensure_check_user() {
+    local key password="$TURN_CHECK_PASSWORD" keep=""
+    if [ -z "$password" ]; then
+        password=$(head -c 24 /dev/urandom | base64 | tr -d '/+=\n')
+        keep=" AND realm<>'${TURN_REALM}'"
+    fi
+    key=$(printf '%s:%s:%s' "$CHECK_USER" "$TURN_REALM" "$password" | md5sum | cut -d ' ' -f 1)
+    password=""
+    [[ "$key" =~ ^[0-9a-f]{32}$ ]] || die "cle du compte de controle non calculee."
+    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF 2>&1 | sed 's/^/  /'
+.timeout 5000
+$(schema_sql)
+BEGIN;
+DELETE FROM turnusers_lt WHERE name='${CHECK_USER}'${keep};
+INSERT OR IGNORE INTO turnusers_lt (realm, name, hmackey) VALUES ('${TURN_REALM}', '${CHECK_USER}', '${key}');
+COMMIT;
+EOF
+    log "Compte de controle ${CHECK_USER} pose dans ${DB_FILE} (realm ${TURN_REALM})."
+}
+
+# Mode secret : retire le compte de controle long terme, de tout realm, que
+# use-auth-secret refuserait de toute facon. Les secrets de turn_secret
+# restent : l'appelant y pose le secret de controle et celui de chaque base
+# Odoo. Ceux d'un autre realm passent a TURN_REALM, comme ensure_check_user
+# repose le compte de controle : apres un changement de nom public, coturn
+# ne lit que les secrets du nouveau realm, et le secret de controle reste
+# sinon sous l'ancien, hors d'atteinte. Un secret deja present sous
+# TURN_REALM garde sa ligne, le doublon part. Meme schema, meme compte de
+# service qu'ensure_check_user.
+remove_check_user() {
+    runuser -u "$SERVICE_USER" -- sqlite3 -bail -init /dev/null "$DB_FILE" <<EOF 2>&1 | sed 's/^/  /'
+.timeout 5000
+$(schema_sql)
+BEGIN;
+DELETE FROM turnusers_lt WHERE name='${CHECK_USER}';
+UPDATE OR IGNORE turn_secret SET realm='${TURN_REALM}' WHERE realm<>'${TURN_REALM}';
+DELETE FROM turn_secret WHERE realm<>'${TURN_REALM}';
+COMMIT;
+EOF
+    log "Mode secret : compte de controle ${CHECK_USER} retire de ${DB_FILE}."
+}
+
+# applied_digest <chemin> : imprime l'empreinte sha256 de ce que coturn
+# charge au demarrage, la configuration puis, quand TLS_DIR porte une copie,
+# le certificat et la cle copies ; une ligne par fichier. Il ne lit que son
+# argument et TLS_DIR : erplibre_call_deploy_hook.sh en porte la meme copie,
+# au caractere pres, pour ecrire APPLIED_FILE apres un renouvellement. Dans
+# main, install_certificate a deja pose les deux copies ou retire les deux.
+applied_digest() {
+    if [ -e "$TLS_DIR/turn.crt" ] || [ -e "$TLS_DIR/turn.key" ]; then
+        sha256sum "$1" "$TLS_DIR/turn.crt" "$TLS_DIR/turn.key"
+    else
+        sha256sum "$1"
+    fi
+}
+
+# record_applied <empreinte> [fichier] : ecrit le fichier, APPLIED_FILE par
+# defaut, root 0600, par un fichier voisin renomme ; le dossier appartient a
+# root, aucun autre compte n'y pose de lien.
+record_applied() {
+    local file="${2:-$APPLIED_FILE}"
+    install -d -m 0755 -o root -g root "$CALL_DIR"
+    (
+        umask 077
+        printf '%s\n' "$1" > "$file.erplibre-new"
+    )
+    mv -f "$file.erplibre-new" "$file"
+}
+
+# Redemarre seulement quand CONFIG_CHANGED vaut 1 : un redemarrage coupe les
+# appels en cours, et un compte change dans la base n'en demande pas. Sinon
+# « start », sans effet sur un service actif. Un echec n'arrete pas le
+# script : service_state dit ensuite l'etat reel. Tout redemarrage suit un
+# daemon-reload : systemd ne relit un fragment d'unite qu'ainsi, y compris
+# celui qu'un passage interrompu a pose sans le faire relire.
+enable_service() {
+    systemctl enable "$UNIT" || log "AVERTISSEMENT : systemctl enable ${UNIT} a echoue."
+    if [ "$CONFIG_CHANGED" = 1 ]; then
+        systemctl daemon-reload || log "AVERTISSEMENT : systemctl daemon-reload a echoue."
+        systemctl restart "$UNIT" || log "AVERTISSEMENT : systemctl restart ${UNIT} a echoue."
+    else
+        log "Configuration inchangee : ${UNIT} n'est pas redemarre."
+        systemctl start "$UNIT" || log "AVERTISSEMENT : systemctl start ${UNIT} a echoue."
+    fi
+    sleep 1
+}
+
+# Imprime l'etat systemd de l'unite (active, failed, inactive...). Un etat
+# transitoire (activating, reloading) est relu chaque seconde, dix fois au
+# plus : un service qui plante et que systemd relance reste « activating »
+# et finit rendu tel quel, donc en echec.
+service_state() {
+    local state tries=0
+    while :; do
+        state=$(systemctl is-active "$UNIT" 2>/dev/null) || true
+        case "$state" in
+            activating|reloading) ;;
+            *) break ;;
+        esac
+        tries=$((tries + 1))
+        if [ "$tries" -ge 10 ]; then
+            break
+        fi
+        sleep 1
+    done
+    echo "${state:-unknown}"
+}
+
+# Cible conteneur : prepare ce que monte le conteneur coturn, lance par le
+# fichier compose de l'appelant sous TURN_SERVICE_USER. La configuration va
+# au chemin du paquet de la famille, qu'aucune unite ne nomme ici ; copies
+# TLS, base et compte de controle sont ceux de la cible paquets. Le compte
+# est verifie avant toute ecriture : l'appelant le cree, ce script non.
+# Rien ne redemarre : quand l'empreinte de ce que coturn chargerait differe
+# de APPLIED_FILE, elle est ecrite dans PENDING_FILE et « @@RECREATE 1 » le
+# dit ; APPLIED_FILE reste tel quel, l'appelant le remplace une fois le
+# conteneur recree et en marche. Sinon « @@RECREATE 0 », et un PENDING_FILE
+# laisse par un passage interrompu est retire : il ne decrit plus rien a
+# appliquer.
+configure_container() {
+    local conf applied
+    case "$FAMILY" in
+        debian) conf="$DEBIAN_CONF" ;;
+        arch) conf="$ARCH_CONF" ;;
+    esac
+    refuse_linked_config "$conf"
+    if config_is_foreign "$conf" && [ "$TURN_GARDER_CONFIG" != 1 ]; then
+        die "${conf} existe et n'a pas ete ecrit par erplibre-call ; le garder de cote puis relancer avec TURN_GARDER_CONFIG=1."
+    fi
+    SERVICE_USER="$TURN_SERVICE_USER"
+    id -u "$SERVICE_USER" >/dev/null 2>&1 \
+        || die "compte de service introuvable : ${SERVICE_USER}"
+    SERVICE_GROUP=$(id -gn "$SERVICE_USER")
+
+    install_sqlite
+    CONFIG_CHANGED=0
+    install_certificate
+    if [ "$TURN_ALLOW_PRIVATE" = 1 ]; then
+        log "TURN_ALLOW_PRIVATE=1 : plages privees permises aux relais (reseau local, developpement)."
+    fi
+    write_config "$conf"
+    prepare_database
+    if [ "$TURN_AUTH" = secret ]; then
+        remove_check_user
+    else
+        ensure_check_user
+    fi
+
+    applied=$(applied_digest "$conf")
+    if [ "$(cat "$APPLIED_FILE" 2>/dev/null)" != "$applied" ]; then
+        record_applied "$applied" "$PENDING_FILE"
+        echo "@@RECREATE 1"
+    else
+        rm -f "$PENDING_FILE"
+        echo "@@RECREATE 0"
+    fi
+    # Derniere ligne : l'appelant distant ne lit que ca.
+    echo "@@CONFIGURED coturn"
+}
+
+main() {
+    # Le mot de passe reste une variable du shell : aucune commande lancee
+    # ensuite ne le recoit dans son environnement.
+    export -n TURN_CHECK_PASSWORD
+    check_root
+    check_inputs
+    detect_os
+    FAMILY=$(family)
+    if [ "${TURN_TARGET-packages}" = container ]; then
+        configure_container
+        return 0
+    fi
+    UNIT=$(unit_name)
+
+    local conf state
+    conf=$(config_path)
+    refuse_linked_config "$conf"
+    if config_is_foreign "$conf" && [ "$TURN_GARDER_CONFIG" != 1 ]; then
+        die "${conf} existe et n'a pas ete ecrit par erplibre-call ; le garder de cote puis relancer avec TURN_GARDER_CONFIG=1."
+    fi
+
+    install_packages
+    SERVICE_USER=$(service_user)
+    id -u "$SERVICE_USER" >/dev/null 2>&1 \
+        || die "compte de service introuvable : ${SERVICE_USER}"
+    SERVICE_GROUP=$(id -gn "$SERVICE_USER")
+    # L'unite du paquet existe maintenant : elle dit quel fichier coturn lit.
+    conf=$(config_path)
+
+    CONFIG_CHANGED=0
+    install_certificate
+    if [ "$TURN_ALLOW_PRIVATE" = 1 ]; then
+        log "TURN_ALLOW_PRIVATE=1 : plages privees permises aux relais (reseau local, developpement)."
+    fi
+    write_config "$conf"
+    write_dropin
+    enable_default
+    # Le compte AVANT le demarrage : le service lit une base deja prete.
+    prepare_database
+    if [ "$TURN_AUTH" = secret ]; then
+        remove_check_user
+    else
+        ensure_check_user
+    fi
+
+    # Le fichier sur disque n'est pas forcement celui que coturn a charge : un
+    # passage interrompu entre write_config et le redemarrage laisse la
+    # nouvelle configuration en place et coturn sur l'ancienne. APPLIED_FILE
+    # n'existe, avec l'empreinte du disque, qu'apres un redemarrage suivi de
+    # l'etat « active » ; tout ecart redemarre. Il est retire AVANT le
+    # redemarrage : une coupure pendant celui-ci ne laisse aucune empreinte.
+    local applied
+    applied=$(applied_digest "$conf")
+    if [ "$(cat "$APPLIED_FILE" 2>/dev/null)" != "$applied" ]; then
+        CONFIG_CHANGED=1
+    fi
+    if [ "$CONFIG_CHANGED" = 1 ]; then
+        rm -f "$APPLIED_FILE"
+    fi
+    enable_service
+    state=$(service_state)
+    if [ "$state" = active ] && [ "$CONFIG_CHANGED" = 1 ]; then
+        record_applied "$applied"
+    fi
+
+    echo "@@UNIT ${UNIT}"
+    echo "@@USER ${SERVICE_USER}"
+    echo "@@CONFIG ${conf}"
+    if [ "$state" != active ]; then
+        log "coturn installe mais non demarre (${state}) : systemctl status ${UNIT} ; journalctl -u ${UNIT} -n 30"
+    fi
+    # Derniere ligne et code de sortie : l'appelant distant ne lit que ca.
+    echo "@@ACTIVE coturn ${state}"
+    [ "$state" = active ]
+}
+
+main "$@"

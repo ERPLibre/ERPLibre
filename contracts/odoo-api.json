@@ -87,7 +87,7 @@
     },
 
     "notes.pull": {
-      "description": "Pull todos modified since last sync",
+      "description": "Pull the records linked on this server modified since last sync: tasks (any project) as below, and in the same way crm.lead (name, description, tag_ids, date_deadline), account.move (narration) and mail.activity (summary, note, date_deadline, active on 17+); one pull cursor per model (tasks keep the server's own); nothing linked, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -97,25 +97,26 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
-              ["write_date", ">", "{last_synced_at_iso}"]
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
+              ["write_date", ">=", "{pull_cursor or oldest link last_synced_at}"]
             ],
             "fields": [
-              "id", "name", "description", "priority", "active",
-              "state", "tag_ids", "date_deadline",
-              "geo_task_point", "write_date", "attachment_ids"
+              "id", "name", "priority", "active",
+              "tag_ids", "date_deadline", "write_date",
+              "state (Odoo 17+ only)"
             ],
             "limit": 100,
-            "offset": 0,
-            "order": "write_date asc"
+            "offset": "{page * 100} — pages until fewer than 100 rows, at most 50 pages",
+            "order": "write_date asc, id asc",
+            "context": { "active_test": false }
           }
         }
       },
-      "notes": "project_id=False = project_todo personal tasks. geo_task_point requires erplibre_mobile_todo installed."
+      "notes": "Filtered by linked ids, not project_id: a task created in a project, or moved to one on the server, keeps syncing. Tag names are read from project.tags / crm.tag; the note keeps the app's own tag of each name (created when missing), and pushes send the names of its tags, never the app's ids. Each row is merged into its note three ways against the link's base (note_links.params.base, the note's and the record's values at their last exchange): a field changed on the server only is copied into the note (text: the record's paragraphs replace the note's text entries, app lines and the marker skipped), except the date (date_deadline, an activity's included), kept as note_links.params.dateProposal {to} for the user to take into the note's first date entry or refuse (the base's remote date then moves to it, so that day is not proposed again), one changed in the app only waits for the push, one changed on both sides to different values is kept as note_links.params.conflict and the server turns 'conflict'. An activity archived on 17+ turns its link 'done'. A link with no base takes the server's values unless the note waits for that server. geo_task_point requires erplibre_mobile_todo installed."
     },
 
     "notes.poll": {
-      "description": "Lightweight poll — fetch only IDs and write_date to detect changes",
+      "description": "Lightweight poll — fetch only IDs and write_date of the linked tasks to detect changes; no linked task, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -125,7 +126,7 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
               ["write_date", ">", "{last_synced_at_iso}"]
             ],
             "fields": ["id", "write_date"],
@@ -146,21 +147,334 @@
           "args": [
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
-              "project_id": false,
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "project_id": "{outbox.params.projectId} — the project chosen for this server, or false (personal task)",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
               "tag_ids": [[6, 0, ["{tag_id_1}", "{tag_id_2}"]]],
               "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "integer — Odoo task ID → store as odoo_id in mobile SQLite",
-      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string."
+      "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id, client_uuid)",
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all) on create; writes send the tags added and removed (see notes.update). The link starts with a base of the values sent. geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first. With a project, projects.check runs just before. AccessError, ValidationError, UserError or MissingError on create blocks the row as refused (no retry, createSentAt cleared since the server answered) until the user chooses again. A task deleted on the server is recreated only through the picker: choosing its project queues this create. project_id is sent by create only: notes.update never sends it."
+    },
+
+    "projects.list": {
+      "description": "Projects offered for a new task on one server, cached in remote_records_cache (replaced on each read) for offline choices",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": { "domain": [], "fields": ["id", "name"], "order": "name asc", "limit": 500 }
+        }
+      },
+      "response": "active projects the user can read; 500 rows means the list may be cut"
+    },
+
+    "leads.create": {
+      "description": "Push a note as a CRM opportunity (lead.create row of sync_outbox, same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "create",
+          "args": [
+            {
+              "name": "{note.title}",
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "type": "opportunity",
+              "partner_id": "{outbox.params.partnerId} — omitted when none chosen",
+              "expected_revenue": "{outbox.params.expectedRevenue} — omitted when none typed",
+              "tag_ids": [[6, 0, ["{crm.tag ids, found or created by name}"]]],
+              "date_deadline": "{first date entry, local day YYYY-MM-DD} — false when the note has no date",
+              "active": "not note.archived — create only"
+            }
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "integer — crm.lead id → note_links (note, server config id, crm.lead, id, client_uuid)",
+      "notes": "Team and salesperson are the server's defaults. done and pinned are not sent. Before create, a chosen partner is checked with res.partner search_read [('id','=',partnerId)] (active only): none or AccessError blocks the row as partner_missing. Refused create: as notes.create."
+    },
+
+    "leads.update": {
+      "description": "Push changes to a linked opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "name": "…", "description": "…", "tag_ids": "…", "date_deadline": "… only when the note has a date" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "type, partner_id, expected_revenue and active are never written: they belong to the server once created (writing active would revive an opportunity marked lost). MissingError marks the link deleted; the server leaves the note's queue only when no other kind of the note is live there. Leads are not pulled back yet; a pulled task change queues the note's opportunity on the same server."
+    },
+
+    "invoices.create": {
+      "description": "Draft a note's invoice (invoice.create row of sync_outbox, one per note and server; same marker in narration, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "account.move",
+          "method": "create",
+          "args": [
+            {
+              "move_type": "{outbox.params.moveType} — out_invoice or in_invoice",
+              "partner_id": "{outbox.params.partnerId} — omitted when none (allowed on a draft)",
+              "invoice_date": "{outbox.params.invoiceDate} — omitted: the server's",
+              "ref": "{outbox.params.ref} — omitted when empty",
+              "invoice_line_ids": [[0, 0, { "name": "{line.name}", "quantity": "{line.quantity}", "price_unit": "{line.priceUnit} — omitted when none typed: the server computes the product's", "product_id": "{line.productId} — omitted when none" }]],
+              "narration": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "{extra field}": "{outbox.params.extra[field]} — each required field the form asked",
+              "{tie field}": "{note's task or opportunity id} — when account.move has a settable many2one to it"
+            }
+          ],
+          "kwargs": { "context": { "default_move_type": "{outbox.params.moveType}" } }
+        }
+      },
+      "response": "integer — account.move id → note_links (kind create)",
+      "notes": "Before create, a chosen partner is checked (partner_missing). The tie (outbox.params.linkKind task|lead) uses the note's live link of that kind on the server; the tie field is a many2one of account.move to its model, not readonly, without depends (capabilities.probe fields). Without one, after the create, a logged note is posted on the invoice and on the task or opportunity, each linking to the other (<a data-oe-model data-oe-id>); a failure there is kept in note_links.params (crossLinked false, crossError), the invoice staying created. An invoice tied to a task or opportunity whose creation is still in the outbox waits for it (not due, not sent, a tap reports it as incomplete; depends_on set when queued after it): the tie is set at creation only. An invoice found again by its marker, or adopted, gets each cross message only when its chatter lacks it (mail.message search_count on the anchor). Refused create: as notes.create, plus builtins.ValueError and TypeError (a malformed extra value). A datetime extra value is sent as YYYY-MM-DD HH:MM:SS in UTC. tags, done, pinned, archived are not mapped."
+    },
+
+    "invoices.update": {
+      "description": "Push changes to a note's linked invoice",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "account.move", "method": "write", "args": [["{note_links.res_id}"], { "narration": "{same as invoices.create}" }], "kwargs": {} } },
+      "notes": "narration only: type, partner, date, reference, lines and extra fields belong to accounting once drafted. MissingError: as notes.update."
+    },
+
+    "invoices.form": {
+      "description": "Required fields a new invoice of one type needs beyond the form's own",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "account.move", "method": "fields_get + default_get", "args": [], "kwargs": { "attributes": ["type", "string", "required", "readonly", "relation", "selection", "depends"], "context": { "default_move_type": "{moveType}" } } }
+      },
+      "response": "fields required, not readonly, with empty depends (not computed or related), absent from default_get and not the form's own (move_type, partner_id, invoice_date, ref, invoice_line_ids, line_ids, narration). char, text, integer, float, monetary, date, datetime, boolean, selection and many2one (name_search on its relation) are asked; other types are listed as unsupported. Kept per server and type in sync_target_prefs (kind invoice.form.{moveType}) for offline."
+    },
+
+    "calendar.read": {
+      "description": "Activities of the activity calendar, per server: the connected user's and those of the users chosen, kept in activities_cache (replaced on each read, local changes still pending kept)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["user_id", "in", ["{uid}", "{chosen user ids}"]], ["date_deadline", ">=", "{today}"], ["date_deadline", "<=", "{today + 90 days}"]],
+            "fields": ["res_model", "res_id", "res_name", "activity_type_id", "summary", "date_deadline", "user_id"],
+            "order": "date_deadline asc, id asc",
+            "limit": 500
+          }
+        }
+      },
+      "notes": "A second read gets the overdue ones ([('date_deadline','<',today)], order date_deadline desc, own limit of 500), so a long backlog never hides what is coming; a read returning its limit flags the calendar as truncated. On Odoo 17+ a third read gets those done since today - 30 days: domain + [('active','=',False),('date_done','>=',…)], context active_test false, fields date_done and write_date; a done one sits on the local day of write_date (16 deletes done activities). uid comes from /web/session/get_session_info (auth user), read once per server and kept in sync_target_prefs (kind calendar.uid) to tell the user's activities apart offline. Chosen users are kept per server in sync_target_prefs (kind calendar.users); the sales team shortcut reads crm.team [('member_ids','in',[uid])] member_ids, then res.users names (none without the CRM: KeyError)."
+    },
+
+    "calendar.done": {
+      "description": "Mark an activity done from the calendar (calendar.done row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{activityId}"]], "kwargs": { "feedback": false } } },
+      "notes": "Applied to the cache at once (done, pending), sent at once online, else by the next sync. On 17+ the activity's active flag is read first: archived means done already, no second call. MissingError or no row drops it from the cache. A note_links row of kind activity for that id turns 'done'. A newer change of the same kind for the same activity replaces the queued one. AccessError, ValidationError or UserError is final: the operation is dropped, the cached activity back to its state before the change (kept in params.before), with the reason (lastError)."
+    },
+
+    "calendar.reschedule": {
+      "description": "Give an activity a new deadline from the calendar (calendar.reschedule row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "write", "args": [["{activityId}"], { "date_deadline": "{YYYY-MM-DD}" }], "kwargs": {} } },
+      "notes": "Same queueing as calendar.done. Once written, the deadline goes into the base (remote date) of the note link of that activity, if any: the next pull proposes nothing, and the note keeps its own date. Local reminders (hour, days before, off by default) of the user's open activities are rescheduled after each calendar read and at the app's start, from the cache."
+    },
+
+    "partners.search": {
+      "description": "Client search for a new opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "name_search",
+          "args": [],
+          "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 }
+        }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server) for offline search"
+    },
+
+    "activities.create": {
+      "description": "Schedule one of a note's activities on a chosen record (activity.create row of sync_outbox; a note can have several per server; same marker, retry search in note, and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "create",
+          "args": [
+            {
+              "res_id": "{outbox.params.resId}",
+              "summary": "{note.title}",
+              "note": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "activity_type_id": "{outbox.params.typeId} — omitted: the server's default type",
+              "date_deadline": "{outbox.params.deadline} YYYY-MM-DD — none chosen: the device's day, fixed once in params.defaultDeadline",
+              "user_id": "{outbox.params.userId} — omitted: the connected user"
+            }
+          ],
+          "kwargs": { "context": { "default_res_model": "{outbox.params.resModel}" } }
+        }
+      },
+      "response": "integer — mail.activity id → note_links (kind activity, params_json: resModel, resId, resName, typeId, typeName, deadline, userId, userName)",
+      "notes": "res_model_id is resolved by mail.activity.default_get from default_res_model, so ir.model (admin only on 17 and 18) is never read. Before create, the record's model is probed (capabilities.probe, cached a day): missing, or without activity_ids, blocks the row as model_unusable; builtins.AttributeError on create (a model without mail.activity.mixin) blocks it as refused. Then the record (active_test false), the type and the user are each checked with search_read [('id','=',…)]: none, AccessError or KeyError (no such model) blocks the row as record_missing, type_missing or user_missing. A row without resId (chosen offline, no record in the cache) is incomplete and sends nothing. Refused create: as notes.create. The server checks the user's right on the record."
+    },
+
+    "activities.update": {
+      "description": "Push changes to a live activity of the note",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "summary": "{note.title}", "note": "{note.html_description} + marker" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "The record, type, deadline and user are create only. On Odoo 17+ the activity's active flag is read first (search_read [('id','=',…)], fields active, active_test false): archived (done on the server, its type keeping done activities) turns the link 'done' with no write; no row counts as MissingError. MissingError (the activity was done or cancelled on the server) marks the link deleted without raising; the server leaves the note's queue only when nothing else of the note lives there."
+    },
+
+    "activities.done": {
+      "description": "The note is done: mark its live activities done",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{note_links.res_id}"]], "kwargs": { "feedback": false } }
+      },
+      "notes": "Replaces activities.update for a done note, after the same active check (an archived activity is not marked done again). The server removes the activity, or archives it when its type keeps done activities; the link turns remote_state 'done' and is never written again, even if the note is undone. An activity created for a note already done is marked done in the same push."
+    },
+
+    "messages.post": {
+      "description": "Post a note in a chosen record's chatter (message.post row of sync_outbox; several per server; same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "{outbox.params.resModel}",
+          "method": "message_post",
+          "args": [["{outbox.params.resId}"]],
+          "kwargs": {
+            "body": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+            "body_is_html": "true — Odoo 17+ only",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note"
+          }
+        }
+      },
+      "response": "integer — mail.message id → note_links (kind message, params_json: resModel, resId, resName, bodyHash)",
+      "notes": "A logged note, the only kind the edit route accepts on 16. Before posting, the model is probed (missing or without message_ids: model_unusable) and the record checked (active_test false): none, AccessError or KeyError blocks as record_missing; builtins.AttributeError blocks as refused. The retry search reads mail.message [('model','=',resModel),('res_id','=',resId),('body','ilike',marker)]. Posting needs write access on most models, read on those whose _mail_post_access is read (account.move)."
+    },
+
+    "messages.update": {
+      "description": "Push a change of the note's text to its posted message",
+      "method": "POST",
+      "path": "/mail/message/update_content",
+      "request": { "params": { "message_id": "{note_links.res_id}", "body": "{same body as messages.post}", "attachment_ids": [] } },
+      "notes": "The web client's edit route (type json, auth public), on Odoo 16, 17 and 18; only the author (or an admin) of a comment without tracking may edit, and 16 only a logged note. Sent only when the body's hash differs from note_links.params.bodyHash. The message is read first through call_kw (mail.message search_read [('id','=',…)], fields body, attachment_ids): a stale session there answers code 100 and is renewed, where the public route would answer NotFound; no row, or an emptied body without attachments (deleted in the chatter), marks the link deleted; its attachment_ids are sent back, since the route replaces the list. A message found again by its marker with the hash it was posted with is linked without an edit."
+    },
+
+    "activity_types.list": {
+      "description": "Activity types offered for a new activity, cached in remote_records_cache (replaced on each read)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity.type",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [],
+            "fields": ["id", "name", "res_model", "delay_count", "delay_unit", "delay_from"],
+            "order": "sequence asc, id asc",
+            "limit": 200
+          }
+        }
+      },
+      "response": "active types; a type with res_model is offered only on that model. The default deadline is the note's first date, else today plus delay_count delay_unit, as the server computes it for an activity with no previous one (whatever delay_from)."
+    },
+
+    "records.search": {
+      "description": "Record an activity goes on, or the user it is assigned to: same as partners.search, on the chosen model (res.partner, crm.lead, project.task, project.project, sale.order, account.move, purchase.order, or a technical name typed) or on res.users",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "{model}", "method": "name_search", "args": [], "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 } }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server and model). The fixed models are probed (capabilities.probe: read right and activity_ids) and greyed where missing."
+    },
+
+    "projects.check": {
+      "description": "Before creating a task in a project: the project still exists, is active (as projects.list offers it) and the user sees it",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["id", "=", "{outbox.params.projectId}"]],
+            "fields": ["id"],
+            "limit": 1
+          }
+        }
+      },
+      "response": "1 row → create; 0 rows (gone, archived, hidden) or AccessError → the outbox row turns blocked as project_missing, no create sent, sync_target_prefs stops offering that project, and the next tap asks for a project again"
+    },
+
+    "notes.find_created": {
+      "description": "Before retrying a create whose answer may have been lost: find the task an earlier attempt created, by its marker. Runs no earlier than 3 minutes after the last create was sent (stored in params.createSentAt before sending): longer than the 30 s read timeout plus Odoo's default limit_time_real (120 s), so an uncommitted create cannot be missed",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["description", "ilike", "erplibre-mobile:{outbox.client_uuid}"]],
+            "fields": ["id"],
+            "limit": 5,
+            "order": "id asc",
+            "context": { "active_test": false }
+          }
+        }
+      },
+      "response": "0 rows → create; 1 row → adopt it (notes.update with the current content, then link); several rows (a copy made on the server carries the marker too, archived or not) → the outbox row turns blocked as ambiguous with the ids as candidates, and the app asks the user which task to link"
+    },
+
+    "capabilities.probe": {
+      "description": "What a server allows on a model, cached in server_capabilities; never reads ir.model (not readable by an ordinary internal user on 17 and 18)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "calls": [
+        "{model}.fields_get([], attributes=[type, string, required, readonly, relation, selection]) — an unknown model answers KeyError: exists=false; AccessError: exists, no right; any other error leaves the cache unchanged",
+        "Odoo 18: {model}.has_access([], 'read'|'create'|'write'); refused, or Odoo 16-17: {model}.check_access_rights('read'|'create'|'write', raise_exception=False); neither answering → null (not blocking)",
+        "activity_ids / message_ids among the fields → activities / chatter available"
+      ]
     },
 
     "notes.update": {
@@ -172,22 +486,24 @@
           "model": "project.task",
           "method": "write",
           "args": [
-            ["{note.odoo_id}"],
+            ["{note_links.res_id for this server}"],
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
+              "description": "{note.html_description} (+ the marker when the link has a client_uuid)",
+              "project_id": "never sent: a task moved to another project on the server stays there",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
-              "tag_ids": [[6, 0, ["{tag_id_1}"]]],
-              "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only) — only when done changed in the app",
+              "tag_ids": [[4, "{tag added in the app}"], [3, "{tag removed in the app}"]],
+              "date_deadline": "{first date entry: its local day YYYY-MM-DD on Odoo 16 (Date), its UTC instant YYYY-MM-DD HH:MM:SS on 17+ (Datetime); false for none}",
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "true on success"
+      "response": "true on success",
+      "notes": "The task is read and merged first (see notes.pull); a conflict stops the push (nothing written; a background push leaves it to the user). Only the fields changed in the app since the base are sent: name (title), description (text: the user's paragraphs; media: the lines the app writes from photos, audio, video, date and position, sent but never read back) and geo_task_point, tag_ids (tags, as commands 4 and 3 so tags others set stay), date_deadline (date), state (done), active (archived), priority (pinned); none changed, no write. The same applies to crm.lead (name, description, tag_ids, date_deadline), account.move (narration for title or text) and mail.activity (summary, note; its deadline is pulled, never written). A record not read back is written in full, so the server says whether it is deleted (MissingError). A link with no base yet is written in full as before, then gets one."
     },
 
     "attachments.list": {
@@ -202,7 +518,7 @@
           "kwargs": {
             "domain": [
               ["res_model", "=", "project.task"],
-              ["res_id", "in", ["{odoo_id_1}", "{odoo_id_2}"]]
+              ["res_id", "in", ["{note_links.res_id_1}", "{note_links.res_id_2}"]]
             ],
             "fields": ["id", "name", "mimetype", "file_size", "create_date", "res_id"]
           }
@@ -217,7 +533,7 @@
       "content_type": "multipart/form-data",
       "request_fields": {
         "model": "project.task",
-        "id": "{note.odoo_id}",
+        "id": "{note_links.res_id for this server}",
         "ufile": "<binary file content>"
       },
       "response_fields": {
@@ -225,36 +541,1323 @@
         "name": "string — filename"
       },
       "notes": "Upload only on WiFi option recommended for video files. Requires valid session cookie."
+    },
+    "chat.data": {
+      "description": "Load the Discuss store of the account: self partner, member channels with their last message, counters and the bus id they are as of",
+      "method": "POST",
+      "path": "/mail/data",
+      "request": {
+        "params": {
+          "init_messaging": {},
+          "channels_as_member": true
+        }
+      },
+      "response": "{Store: {discuss.channel[], mail.message[], res.partner[], discuss.channel.member[], inbox: {counter_bus_id}}} — read by the app's Store parser; unknown keys are ignored",
+      "notes": "Preceded by /web/session/get_session_info for the partner id, is_system and websocket_worker_version. Counters are authoritative as of Store.inbox.counter_bus_id; a bus notification older than that mark is not applied over them. A cached channel the answer no longer lists is dropped, unless pinned locally or holding a queued post. Odoo 18 only."
+    },
+    "chat.messages": {
+      "description": "One page of a channel's history",
+      "method": "POST",
+      "path": "/discuss/channel/messages",
+      "request": {
+        "params": {
+          "channel_id": "{discuss.channel id}",
+          "around": "{oldest loaded message id - 1, or last message id + 1 for the first page}",
+          "limit": "2 x the page size"
+        }
+      },
+      "response": "{data: Store} — messages above `around` are discarded by the app, those below are upserted",
+      "notes": "Only `around` is sent, never `before` or `after`: the answer is a window on both sides of it. A page shorter than the page size marks the history complete."
+    },
+    "chat.post": {
+      "description": "Post a message in a channel; queued in sync_outbox (kind chat.post) and made idempotent",
+      "method": "POST",
+      "path": "/mail/message/post",
+      "request": {
+        "params": {
+          "thread_model": "discuss.channel",
+          "thread_id": "{channel id}",
+          "post_data": {
+            "body": "{escaped text}<!-- erplibre-mobile:{client uuid} -->",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_comment",
+            "erplibre_client_uuid": "{client uuid} — only when the erplibre_mobile_chat module is installed",
+            "attachment_ids": "[attachment ids] — only when the message has files; the ids of the chat.upload answers, in pick order",
+            "partner_ids": "[partner ids] — only when the text mentions people (the partners picked in the composer whose @Name is still in the text)",
+            "special_mentions": "[\"everyone\"] — only when the text holds @everyone",
+            "parent_id": "{server id of the message answered} — only for a reply, read when the post is sent; a reply to a message still queued waits for its post"
+          },
+          "attachment_tokens": "[false, …] — only with attachment_ids, same length: an internal user's pending attachments carry no token",
+          "context": {
+            "temporary_id": "{client uuid}"
+          }
+        }
+      },
+      "body_rules": "The body is what the browser composer of Odoo 18 posts for the same text (prettifyMessageContent of mail/static/src/utils/common/format.js): the text escaped (& < > ' \" and the backtick), trimmed, a run of two line ends or more as two <br>, any other line end as one <br>, URLs as <a href target=\"_blank\" rel=\"noreferrer noopener\">, emoji shortcodes and emoticons converted as the picker does, the first @Name of a picked person as <a href=\"/odoo/res.partner/{id}\" class=\"o_mail_redirect\" data-oe-id=\"{id}\" data-oe-model=\"res.partner\" target=\"_blank\">@Name</a>, a picked channel as an o_channel_redirect link, @everyone as a special mention. A body that starts with a mention is stored by Odoo's sanitizer wrapped in <span> rather than <p>. Goldens produced by Odoo's own formatter in a headless browser pin the output byte for byte (long_test/mobile_sync_composer.py).",
+      "response": "{\"mail.message\": [{id, ...}], ...Store} — the id settles the pending bubble; an answer without an id is an error and the retry searches before posting",
+      "idempotency": "Every body ends with the hidden comment `<!-- erplibre-mobile:<uuid> -->`; with the module the uuid also travels in the field `erplibre_client_uuid` of mail.message. A send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then runs mail.message search_read [model = discuss.channel, res_id = channel, author_id = the session partner, body ilike the marker] with limit 2, keeps the hits whose body holds the exact comment, and adopts the one found instead of posting again. Two hits block the op as ambiguous. Search by author, so another member's message that quotes the uuid is never taken for the post.",
+      "notes": "A reply whose parent the server drops answers parentMessage false: the message stays a plain message, no error; a post found again after a lost answer reads parent_id from the server. A channel mention (#) notifies only a partner with an email address and inbox notifications. Posts of one channel go out in order: each op depends on the previous unfinished one, so a failed post holds the ones after it. AccessError, ValidationError, UserError, MissingError, NotFound and Forbidden mark the bubble failed and block the op; anything else retries (30 s doubled per attempt, 1 h max). After a post the channel is marked read for its author unless a newer message is known. With files: the post waits until every file of the message is uploaded; a refused file is left out; with no text and no file left the message fails. A refusal of the post, before any re-upload, asks the server which attachment ids it still holds (ir.attachment search_read on the ids) and uploads the missing ones again once."
+    },
+    "chat.upload": {
+      "description": "Upload one file of a message as a pending attachment of a channel (no message yet); queued in sync_outbox (kind chat.upload, one lane apart from the posts) and sent by the native layer as a streamed multipart request",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/attachment/upload (module 1.2; on a record thread, 1.4) or /mail/attachment/upload (Odoo, otherwise)",
+      "content_type": "multipart/form-data",
+      "request_fields": {
+        "csrf_token": "{token of chat.csrf} — required by both routes",
+        "thread_model": "discuss.channel, or the record's model for a reply on a record (chat.record_post)",
+        "thread_id": "{channel id, or the record's id}",
+        "is_pending": "true — the attachment is created on mail.compose.message / res_id 0 until a post claims it",
+        "voice": "true — only for a voice file; Odoo reads any value as true",
+        "client_uuid": "{local uuid of the file} — module route only",
+        "ufile": "<binary file content>"
+      },
+      "response": "{\"data\": Store} — the ir.attachment record is in data[\"ir.attachment\"]; {\"error\": text} is a refusal (not allowed to upload there)",
+      "idempotency": "On the module route a request repeating the client_uuid of the same user returns the attachment already created, without a second one and without replaying the voice metadata, even if the thread or the file differ (unique index on create_uid + erplibre_client_uuid, advisory lock per uuid). The module route also keeps the original of an image (image_no_postprocess), where Odoo's route reduces it on save. Only an internal user is served: the public user (expired session) and a portal user read 404; a missing client_uuid reads 400. On Odoo's route nothing makes the upload idempotent: a retry after a lost answer first searches (chat.upload_find), and a retry that finds nothing sends again.",
+      "notes": "The body is a one-shot stream: the transfer is never resent by the HTTP stack, a retry is the outbox's. A first 404, or a 400 whose text names the CSRF token, forgets the token and re-authenticates once (callWithAuth), then calls again with a new session and token; a second 404 refuses the file for good (not_found). 413 refuses it as too big. Any other 400 retries later: a retry overlapping the first request on the module route meets the unique index and answers 400, and the next retry finds the attachment. The size limit is session_info max_file_upload_size; a file fits when its size + 65536 bytes of envelope does not exceed it. A file is uploaded after its predecessor of the same post and before the post. For a reply on a record (chat.record_post) the module route (1.4) accepts any non-abstract mail.thread model, and the post access of Odoo's own upload check applies (a model that is not a mail.thread reads 404); Odoo's route takes thread_model = the record's model and the record's id. A route refusal of a record file blocks its reply instead of posting without it."
+    },
+    "chat.csrf": {
+      "description": "Read the CSRF token the upload routes require",
+      "method": "GET",
+      "path": "/web/login",
+      "request": "Cookie session_id only, no redirect parameter: the login page is rendered, with its token, even for a logged-in session",
+      "response": "HTML — the token is the value of the hidden input csrf_token, else the csrf_token of the layout's odoo object",
+      "notes": "No JSON route returns the token. It derives from the session id: one fetch per session, shared by concurrent requests, forgotten when the server refuses it, never reused for a new session. A 3xx answer (session gone, or a database selector) is SessionExpiredError and the call re-authenticates once; another non-2xx or a page without a token is an error to retry later."
+    },
+    "chat.upload_find": {
+      "description": "Look for the pending attachment of an upload whose answer was lost, on Odoo's route",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "ir.attachment",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "res_model",
+                "=",
+                "mail.compose.message"
+              ],
+              [
+                "res_id",
+                "=",
+                0
+              ],
+              [
+                "create_uid",
+                "=",
+                "{session uid}"
+              ],
+              [
+                "name",
+                "=",
+                "{file name}"
+              ],
+              [
+                "file_size",
+                "=",
+                "{size} — left out for png, jpeg, bmp and tiff"
+              ],
+              [
+                "create_date",
+                ">=",
+                "{upload sent at minus a clock skew}"
+              ],
+              [
+                "create_date",
+                "<=",
+                "{upload ended at, or now, plus a clock skew}"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "id",
+              "name",
+              "mimetype",
+              "file_size",
+              "checksum"
+            ],
+            "order": "id asc",
+            "limit": "1 + the number of attachment ids this phone already holds for the account"
+          }
+        }
+      },
+      "response": "[{id, name, mimetype, file_size, checksum}]",
+      "notes": "Runs before a repeated upload once the quiet window of the first send is over. Odoo's route resizes and re-encodes png, jpeg, bmp and tiff past 1920 px (ir.attachment._postprocess_contents, base.image_autoresize_extensions), so their stored size is not the size sent and the size term is left out for them. Uploads this search cannot tell apart (the same name, and the same size unless either one is png, jpeg, bmp or tiff) are ordered by the phone, one at a time: two of them are never in doubt at once. The hits the phone already holds (state uploaded) are dropped, the oldest left is adopted. Not used on the module route, which answers the repeat itself. A file of a reply on a record is found by the same search: the pending attachment sits on mail.compose.message / 0 whatever the thread, so the criteria are unchanged."
+    },
+    "chat.attachment_preview": {
+      "description": "Download the preview of an image or video attachment",
+      "method": "GET",
+      "path": "/web/image/{attachment id}/512x512?unique={checksum}&download=true",
+      "response": "the image resized to 512x512 at most, written to the cache directory of the phone",
+      "notes": "Previews download whatever the network. `unique` busts Odoo's cache when the file changes; `download=true` turns an error into a 404 instead of a placeholder image. The session cookie is sent; a 404 reads as an expired session and re-authenticates once."
+    },
+    "chat.attachment_download": {
+      "description": "Download the original of an attachment, to the cache or to open it",
+      "method": "GET",
+      "path": "/web/content/{attachment id}?unique={checksum}&download=true",
+      "response": "the file, streamed by the native layer to its path under Directory.Data",
+      "notes": "Starts when the user opens the file (or taps to download). With « Wi-Fi only » on and the phone off Wi-Fi, the original (a voice message included) waits for Wi-Fi, and « download anyway » takes that one file now; previews never wait. The route is auth=public: an expired session reads 404, handled as for chat.upload."
+    },
+    "chat.attachment_delete_bus": {
+      "description": "Bus notification that an attachment was deleted on the server",
+      "method": "WEBSOCKET",
+      "path": "/websocket (channel of the partner)",
+      "response": "{type: \"ir.attachment/delete\", payload: {id}}",
+      "notes": "The phone removes the row and its cached files, the thumbnail and the original, and refreshes the conversation."
+    },
+    "chat.reaction": {
+      "description": "Add or remove the user's reaction to a message; queued in sync_outbox (kind chat.reaction) as a target state per message and emoji",
+      "method": "POST",
+      "path": "/mail/message/reaction",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "content": "{emoji, the exact string: U+2764 U+FE0F for the heart}",
+          "action": "add | remove — always explicit, never a toggle"
+        }
+      },
+      "response": "{\"mail.message\": [{id, reactions}], \"MessageReactions\": [{content, count, sequence, personas, message}], ...Store}. When reactions remain, reactions is [[\"ADD\", [{message, content}]]] and personas lists the whole group each time. When the last one is removed, reactions is [[\"DELETE\", {message, content}]]: the DELETE value is a single object, not a list, and the parser accepts both forms.",
+      "idempotency": "The route is idempotent per action: adding a reaction already held, or removing one not held, changes nothing. The outbox keeps one op per (message, emoji) holding the last wanted action and the state the server held when it was first queued (base); a state equal to base cancels the op before it is sent, so no request goes out. An op that may have been sent (sentAt) is never cancelled, a toggle back after a lost answer is sent. A reaction on a message still queued depends on its post and resolves the message by the post's client uuid.",
+      "notes": "A message that no longer exists (MissingError, NotFound) drops the op with a notice and shows the reaction as the server held it. Reactions create no notification. Deleting a message does not remove its reactions, which the thread hides with the message."
+    },
+    "chat.edit": {
+      "description": "Edit the body of the user's own message; queued in sync_outbox (kind chat.edit), refused rather than overwriting a message that changed",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/message/update_content (module 1.3) or /mail/message/update_content (Odoo, otherwise)",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "body": "{the composer's HTML, as chat.post}",
+          "partner_ids": "[partner ids of the mentions in the body]",
+          "attachment_ids": "null — the attachments stay (both routes treat null as unchanged); [] removes them all",
+            "expected_fingerprint": "{sha256 hex of the UTF-8 body as Store returned it; empty or false reads as the empty string} — module route only"
+        }
+      },
+      "response": "Odoo's own answer (a Store holding the message). The module route answers {\"erplibre_conflict\": \"changed\" | \"deleted\", ...Store of the message as it is} and writes nothing when the fingerprint differs from the message's erplibre_body_fingerprint, or when an emptied message would receive a non-empty body (deleted).",
+      "idempotency": "A route is chosen by the module level 1.3 (field erplibre_body_fingerprint on mail.message, readable by any user). With it, the fingerprint of the body the edit was made against (baseBody) is sent and the route locks the row (SELECT … FOR UPDATE, after the access checks) before comparing, so two concurrent edits cannot both pass; the loser fails in serialization and Odoo replays the request. Without it, the app re-reads body and attachments just before Odoo's route and refuses an emptied message (deleted) or a body other than baseBody (changed). In both cases a server body that reads as the text this edit sends (the edited span, the paragraph and sanitizer wrapping ignored) counts as this edit already written, an answer lost: the op is done without a write. A new edit of a message whose edit may have been sent (sentAt, its answer lost) waits behind it instead of replacing its text; once the replay is done, its base is the server's answer. A second refused edit is a notice of its own: every refused text keeps its « Reprendre ».",
+      "notes": "Only an internal user is served by the module route; a non-numeric message_id, a missing or unreadable message or one the user may not edit reads 404 without taking the lock. A plain 404 of the module route probes the module and retries on the route the probe leaves. A refused edit keeps its text: the notice offers « Reprendre », which puts the text back in the composer (as a new message when the original was deleted). The edited message shows « (modifié) » from the span o-mail-Message-edited Odoo adds to the stored body. Editing a message still queued rewrites its post and sends no update. A mention added by an edit notifies no one (Odoo's behaviour)."
+    },
+    "chat.delete": {
+      "description": "Delete the user's own message, as Odoo's Discuss does: an edit that empties it; queued in sync_outbox (kind chat.delete)",
+      "method": "POST",
+      "path": "/mail/message/update_content",
+      "request": {
+        "params": {
+          "message_id": "{server message id}",
+          "body": "\"\"",
+          "attachment_ids": "[]",
+          "attachment_tokens": "[]",
+          "subject": "\"\""
+        }
+      },
+      "response": "Odoo's own answer; the message stays on the server with an empty body and no attachment, and the bus event mail.record/insert tells the other clients.",
+      "idempotency": "Replaying an emptying leaves the message empty. A delete meeting a message already empty, or a vanished one, counts as done. Deleting a message still queued cancels its post and its uploads.",
+      "notes": "The thread hides a message with no text and no file, and a reply quoting it shows « message d'origine supprimé ». Its reactions are kept by the server and hidden with it."
+    },
+    "chat.mention_suggestions": {
+      "description": "People and channels offered while typing @ or # in the composer",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "@": {
+            "model": "res.partner",
+            "method": "get_mention_suggestions_from_channel",
+            "kwargs": {
+              "channel_id": "{channel id}",
+              "search": "{term folded}",
+              "limit": 8
+            }
+          },
+          "#": {
+            "model": "discuss.channel",
+            "method": "get_mention_suggestions",
+            "kwargs": {
+              "search": "{term folded}",
+              "limit": 8
+            }
+          }
+        }
+      },
+      "response": "@: a Store of the matching members and users of the channel (res.partner records). #: a list of channel rows.",
+      "notes": "Online only: offline, or after a request that was not sent, the suggestions come from the cached members (and the people cache in a public channel). In a chat, a group and a restricted channel the @ list offers members only, as the browser does. Never blocks typing."
+    },
+    "chat.message_delete_bus": {
+      "description": "Bus notification that messages were deleted on the server",
+      "method": "WEBSOCKET",
+      "path": "/websocket (channel of the partner)",
+      "response": "{type: \"mail.message/delete\", payload: {message_ids: [ids]}}",
+      "notes": "Sent by mail.message.unlink to the partners it notified; a delete made in Discuss is an emptying edit and arrives as mail.record/insert instead. The phone removes the chat messages and mailbox rows it holds and refreshes the conversation. As the browser does (mail_core_web_service.js), a notification above the stored counter bus id lowers the inbox counter per row shown in the inbox and the starred counter per message shown starred; a replay counts nothing."
+    },
+    "chat.read": {
+      "description": "Mark a channel read up to its last known message; queued in sync_outbox (kind chat.read), one op per channel whose message id only rises",
+      "method": "POST",
+      "path": "/discuss/channel/mark_as_read",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "last_message_id": "{last known message id}"
+        }
+      },
+      "response": "null",
+      "notes": "When the channel has mentions, mail.message mark_all_as_read via /web/dataset/call_kw with args [[[model = discuss.channel], [res_id = channel id]]] follows. A refused error is swallowed: a channel the user cannot reach any more has nothing left to mark. With the option to send read receipts off, nothing is sent. Local counters change only when the server reports them back (/mail/data or the bus)."
+    },
+    "chat.typing": {
+      "description": "Typing indicator, never queued",
+      "method": "POST",
+      "path": "/discuss/channel/notify_typing",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "is_typing": "true | false"
+        }
+      },
+      "response": "null",
+      "notes": "Sent only online, with the option on and in a channel the user is a member of (Odoo would make them one). true at most once per 50 s while keystrokes continue; false 5 s after the last keystroke, or at once on an explicit stop, and only after a true. A failed call is dropped."
+    },
+    "chat.fetched": {
+      "description": "Tell a direct chat its messages were delivered to this device",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_fetched",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "Only for channels of type chat, after a read; a courtesy whose failure is ignored."
+    },
+    "chat.create_dm": {
+      "description": "Open or create the direct message with one person; queued in sync_outbox (kind chat.create, mode dm)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_get",
+          "args": [],
+          "kwargs": {
+            "partners_to": [
+              "{partner id}"
+            ]
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel — its id replaces the temporary id the conversation was shown under",
+      "notes": "Odoo returns the existing chat, so a repeat is safe and no uuid is needed. The conversation is cached at once under a temporary negative channel id (the negative of the clock in ms), with placeholder members (self, then the person), and the pair is kept in chat_temp_ids when the real id arrives. Showing a hidden direct message again queues the same op on its real id and cancels a hide still waiting. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.create_group": {
+      "description": "Create a group of people; queued in sync_outbox (kind chat.create, mode group)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "create_group",
+          "args": [],
+          "kwargs": {
+            "partners_to": [
+              "{partner id}"
+            ],
+            "name": "{name, only when given}",
+            "context": {
+              "erplibre_client_uuid": "{op client uuid} — only when the module 1.1 is installed (state installed, option chat module mode auto); an outdated module (1.0) creates without it"
+            }
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "idempotency": "With the module 1.1 the server creates one group per (create_uid, erplibre_client_uuid): an advisory transaction lock serialises two requests, a partial unique index guarantees, and the repeat gets the first group back. Without it, a send stamps createSentAt; a retry first waits out the quiet window (3 minutes), then searches discuss.channel [create_uid = uid, channel_type = group, create_date within createSentAt - 5 min and createSentAt + quiet window + 5 min, is_member, name = the op's name when it has one], drops the conversations another create of this phone already settled on, keeps those whose members are exactly the op's people plus self, and adopts the one found (read through /discuss/channel/info). Two matches block the op as ambiguous.",
+      "notes": "Cached at once under a temporary negative channel id with placeholder members, so a group without a name shows their names. A refusal marks the cached conversation create_failed (kept until dismissed) and cancels the op and what waits for it. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.create_channel": {
+      "description": "Create a channel restricted to an access group or open to everyone; queued in sync_outbox (kind chat.create, mode channel)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_create",
+          "args": [
+            "{name}",
+            "{res.groups id, or false for everyone}"
+          ],
+          "kwargs": {
+            "context": {
+              "erplibre_client_uuid": "{op client uuid} — only when the module 1.1 is installed (state installed, option chat module mode auto)"
+            }
+          }
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "idempotency": "As chat.create_group: the module 1.1 dedupes by (create_uid, erplibre_client_uuid); without it the fingerprint search runs on channel_type = channel and the name, with no member check.",
+      "notes": "The access groups offered come from chat.access_groups. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.join": {
+      "description": "Join a public channel; queued in sync_outbox (kind chat.join)",
+      "method": "POST",
+      "path": "/discuss/channel/join",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}"
+        }
+      },
+      "response": "{Store} with the discuss.channel",
+      "notes": "Adds self only when missing, so a repeat is safe. The cached row (written from the channel's name when missing) turns member at once and carries the op as create_op_id, so posts written meanwhile wait for the join. A channel the user cannot reach gives the join up like a refused create."
+    },
+    "chat.invite": {
+      "description": "Add people to a group or channel; queued in sync_outbox (kind chat.invite)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "add_members",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "partner_ids": [
+              "{partner id}"
+            ]
+          }
+        }
+      },
+      "response": "null",
+      "notes": "Sent only for a member of a real conversation (a chat takes a new group instead). A conversation gone, created on the phone only, refused or no longer the user's gives the op up as vanished. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.rename": {
+      "description": "Rename a group or channel, or give a direct message the user's own label; queued in sync_outbox (kind chat.rename)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_rename | channel_set_custom_name",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "name": "{name}"
+          }
+        }
+      },
+      "response": "null",
+      "notes": "channel_set_custom_name for channel_type chat, channel_rename otherwise. A target state: a later rename of the same conversation replaces a waiting one, and the value sent is the last one written into the op. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.describe": {
+      "description": "Set the description of a channel; queued in sync_outbox (kind chat.describe)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_change_description",
+          "args": [
+            [
+              "{channel id}"
+            ]
+          ],
+          "kwargs": {
+            "description": "{text}"
+          }
+        }
+      },
+      "response": "null",
+      "notes": "A target state, as chat.rename."
+    },
+    "chat.leave": {
+      "description": "Leave a conversation; queued in sync_outbox (kind chat.leave)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "action_unfollow",
+          "args": [
+            "{channel id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "The conversation turns non-member at once. Posts, renames, invites and mutes still queued for it are dropped (a post's bubble fails), and a conversation left while its create is queued is left right after the create runs. A create given up while the user leaves does not block: the channel is flagged left_unsent and the leave runs. A refused leave clears left_unsent, so the next load shows the membership the server kept. Refused errors (AccessError, ValidationError, UserError, MissingError, NotFound, Forbidden) give the op up as a notice blocked in the outbox until dismissed; anything else retries (30 s doubled per attempt, 1 h max)."
+    },
+    "chat.hide": {
+      "description": "Hide a direct message (unpin it on the server); queued in sync_outbox (kind chat.hide)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "channel_pin",
+          "args": [
+            "{channel id}"
+          ],
+          "kwargs": {
+            "pinned": false
+          }
+        }
+      },
+      "response": "null",
+      "notes": "The row stays cached as is_pinned = 0 and is not listed. A load keeps it hidden unless the server says it is pinned again; a new message, announced by the bus, shows it again. Showing it from the new conversation screen queues chat.create on its real id and cancels a hide still waiting."
+    },
+    "chat.mute": {
+      "description": "Mute a conversation for a duration, for good, or turn the mute off; queued in sync_outbox (kind chat.mute)",
+      "method": "POST",
+      "path": "/discuss/settings/mute",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "minutes": "{minutes | -1 for good | false for no mute}"
+        }
+      },
+      "response": "null",
+      "notes": "The op stores an absolute end (an ISO date, \"forever\" or null); the minutes are computed when the request leaves, rounded up, so a mute queued past its end sends false and unmutes. The offered durations are 15 min, 1 h, 3 h, 8 h, 24 h and for good. The route would join a non-member, so it is sent only for a member."
+    },
+    "chat.global_mute": {
+      "description": "Mute every conversation of the account, or turn it off; queued in sync_outbox (kind chat.global_mute)",
+      "method": "POST",
+      "path": "/discuss/settings/mute",
+      "request": {
+        "params": {
+          "minutes": "{minutes | -1 for good | false for no mute}"
+        }
+      },
+      "response": "null",
+      "notes": "As chat.mute without channel_id, set from Options › Chat per server. The state is read from Store.settings.mute_until_dt of /web/session/get_session_info (fresh at each load) and from the bus; chat_sources.global_mute_at keeps when the phone last wrote it, so a load that began earlier does not overwrite a newer change."
+    },
+    "chat.settings.notify": {
+      "description": "Odoo's notification setting, for the account's channels (general) or for one channel; queued in sync_outbox (kinds chat.global_notify and chat.notify)",
+      "method": "POST",
+      "path": "/discuss/settings/custom_notifications",
+      "request": {
+        "general": {
+          "custom_notifications": "\"all\" | false | \"no_notif\" (the app's « mentions » is sent as false)"
+        },
+        "channel": {
+          "custom_notifications": "\"all\" | \"mentions\" | \"no_notif\" | false (false: the general setting applies)",
+          "channel_id": "{channel id}"
+        }
+      },
+      "response": "{jsonrpc, id} without a result key, for both forms",
+      "bus": {
+        "res.users.settings": "{type: \"res.users.settings\", payload: {id, channel_notifications}}: the general setting changed by any session of the user (Odoo sends the changed fields and the id only)",
+        "mail.record/insert": "{\"discuss.channel\": [{id, custom_notifications}]}: a channel's setting changed by another session of the user"
+      },
+      "notes": "General (no channel_id): res.users.settings.channel_notifications, a selection all | no_notif whose empty value (false) means mentions. Odoo applies it to channels only: chats and groups are pushed whatever it says, only a mute stops them, so the app shows it in Options › Chat per server as « Canaux (réglage d'Odoo) », with « Tous les messages », « Mentions seulement », « Rien » and the line « Les discussions et les groupes sonnent toujours ; pour les faire taire, utilisez la sourdine ». \"mentions\" is an invalid selection value there (JSON-RPC error ValueError, the value unchanged, no bus notification), hence false. The general value is read from /web/session/get_session_info (storeData.Store.settings.channel_notifications) at each load, since /mail/data does not carry it, and followed on the bus res.users.settings independently of mute_until_dt; chat_sources.channel_notifications_at keeps when the phone last wrote it, so a load that began earlier does not overwrite a newer change (as global_mute_at). A value the app cannot read is kept as null and shown as Odoo's default. Per channel: the member's custom_notifications, carried by /mail/data for each member channel; offered in the conversation's info screen for a channel only, since Odoo ignores it for chats and groups, which offer the mute only (« Par défaut ({value}) » names the general value). The route finds or creates the caller's member, so it would join a non-member: it is sent only for a member. Both ops are applied locally at once and coalesced per target. The phone's own summary follows them as Odoo's push domain does: a channel whose member value is no_notif, or false while the general value is no_notif, counts nothing; the general value reaches native code as the per-account mirror key channelNotifications. Odoo 18 only."
+    },
+    "chat.remove": {
+      "description": "Remove another member from a group or channel; queued in sync_outbox (kind chat.remove); administrators only",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "erplibre_remove_member",
+          "args": [
+            [
+              "{channel id}"
+            ],
+            "{partner id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "null",
+      "notes": "A method of the erplibre_mobile_chat module 1.1: AccessError unless the caller is a system user, UserError for a chat or a person who is not a member. Goes through Odoo's own leave path, so the removed person receives discuss.channel/leave on the bus and the thread says they left. An older or missing module answers AttributeError: the op is given up as refused and the module state is probed again. Offered only to a system user on a server whose module is installed. The member row is dropped locally when the call succeeds."
+    },
+    "chat.members": {
+      "description": "Members of a conversation, page by page",
+      "method": "POST",
+      "path": "/discuss/channel/members",
+      "request": {
+        "params": {
+          "channel_id": "{channel id}",
+          "known_member_ids": [
+            "{cached member ids, ascending}"
+          ]
+        }
+      },
+      "response": "{Store} with discuss.channel.member and res.partner rows not in known_member_ids, at most 100, and the channel's member_count",
+      "notes": "Repeated until the cache holds member_count members or a page brings nobody new. The placeholder members written for a conversation created offline (negative ids) give way to the server's. Offline, or for a conversation only the phone knows, the cached members answer."
+    },
+    "chat.people": {
+      "description": "Internal users to start a conversation with, by name",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "im_search",
+          "args": [
+            "{term}",
+            20,
+            []
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "{Store} of res.partner rows (the caller is never returned), merged into chat_partners",
+      "notes": "Offline, or when the request never left, the cached partners whose name contains the term (case and accents ignored) answer instead, the correspondents of recent chats first."
+    },
+    "chat.joinable": {
+      "description": "Public channels the user can join",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "parent_channel_id",
+                "=",
+                false
+              ],
+              [
+                "channel_type",
+                "=",
+                "channel"
+              ],
+              [
+                "is_member",
+                "=",
+                false
+              ],
+              [
+                "name",
+                "ilike",
+                "{term}"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "name",
+              "description",
+              "member_count",
+              "group_public_id"
+            ],
+            "limit": 50,
+            "order": "name"
+          }
+        }
+      },
+      "response": "[{id, name, description, member_count, group_public_id: [id, full name] | false}]",
+      "notes": "Not cached: the user is not a member, so none is a conversation yet. Offline: none, flagged offline."
+    },
+    "chat.invite_candidates": {
+      "description": "People who can be added to a channel",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "search_for_channel_invite",
+          "args": [
+            "{term}",
+            "{channel id}"
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "{count, data: Store} — count is the number of matches on the server, which may exceed the partners returned; the partners are merged into chat_partners",
+      "notes": "Name or email contains the term, not members yet, and in the channel's group when it has one. Offline: none, flagged offline."
+    },
+    "chat.access_groups": {
+      "description": "Access groups a new channel can be restricted to",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.groups",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "share",
+                "=",
+                false
+              ],
+              [
+                "users",
+                "in",
+                [
+                  "{uid}"
+                ]
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "full_name"
+            ]
+          }
+        }
+      },
+      "response": "[{id, full_name}]",
+      "notes": "The user's own non-portal groups by full name, then « everyone » (group id false) last. The default, the internal users group, comes from Store.internalUserGroupId (kept in chat_sources.internal_user_group_id) and is offered first even if the search does not list it. Offline: that default, when known, and everyone."
+    },
+    "chat.websocket": {
+      "description": "Odoo 18 bus over a websocket: messages, counters, typing and presence in real time",
+      "method": "GET (upgrade)",
+      "path": "/websocket?version={websocket_worker_version of the session, 18.0-7 if absent}",
+      "request": {
+        "headers": {
+          "Origin": "the server origin",
+          "Cookie": "session_id={session}"
+        },
+        "frames": [
+          {
+            "event_name": "subscribe",
+            "data": {
+              "channels": [
+                "odoo-presence-res.partner_{id} of each chat correspondent"
+              ],
+              "last": "{last bus id applied, 0 if none}"
+            }
+          },
+          {
+            "event_name": "update_presence",
+            "data": {
+              "inactivity_period": 0,
+              "im_status_ids_by_model": {}
+            }
+          }
+        ]
+      },
+      "response": "JSON arrays of notifications [{id, type, payload}] — each frame is applied, then its highest id saved",
+      "close_codes": {
+        "1000 OUTDATED_VERSION": "stop for good",
+        "4001": "re-authenticate, then reconnect",
+        "4002": "reconnect at once",
+        "other": "exponential backoff, 1 s doubled up to 120 s plus up to 30 s of jitter, reset after a connection open for 60 s"
+      },
+      "notes": "Member channels are implicit in the subscription. last=0 only replays about the last 50 s, so with no saved id a store loaded longer ago than that is reloaded first; a saved id seen more than 24 h ago is stale (the server's rows are gone) and also reloads, then subscribes from 0. A ws:// address follows the same rule as http://. Keepalive every 60 s is the transport's."
+    },
+    "chat.search": {
+      "description": "Search the user's conversations on the server for a term, over body, subject and attachment names; read only, paged by id descending with a count",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/message/search (module 1.4) or /web/dataset/call_kw search_read on mail.message (otherwise)",
+      "request": {
+        "params": {
+          "search_term": "{the term as typed, trimmed} — module route",
+          "before": "{smallest id of the page already shown, or null} — bounds the page to lower ids; count ignores it",
+          "limit": "{page size, 30 by default; clamped to 1..100; null reads as 30}"
+        }
+      },
+      "response": "Module route: {count, messages: [ids, newest first], data: Store}; a blank term answers {count: 0, messages: [], data: {}}. Fallback: the rows of search_read [id, body, date, author_id, res_id, attachment_ids, subject] and a search_count of the same domain.",
+      "fallback_domain": "[model = discuss.channel, res_id in <the user's member channel ids>, message_type != user_notification, (body ilike <html term> | subject ilike <raw term> | attachment_ids.name ilike <raw term>)] with a limit of 30 and order id desc. The member ids are read fresh just before (search_read discuss.channel [is_member = true] [id]); with none, nothing is asked.",
+      "escaping": "The raw term (subject, file names) escapes backslash, % and _, then turns each space into %. The HTML term (body) first turns & < > into the entities Odoo stores (a quote is stored as is), then escapes like the raw term. The module applies the same two rules server side.",
+      "membership": "Only the channels the user is a member of are searched, as the user: a public channel the user has not joined and other people's private chats are never returned, an administrator included.",
+      "reads": "Neither route marks anything read. The app never calls /mail/thread/messages or /discuss/channel/messages without `around` for a search, because they mark their result read.",
+      "notes": "Only an internal user is served by the module route; a non-numeric before or limit reads 404. A plain 404 of the module route probes the module again and the search falls back, but any other error does not. Hits are shown from the answer and never written to chat_messages; only the authors' names reach chat_partners. The phone searches its own cache first (chat_messages.search_text, folded for case and accents; FTS5 trigram index chat_search_fts when the phone's SQLite has it, LIKE otherwise and for terms under 3 characters) and merges the server's hits in when online. Both routes match the stored HTML, so the client marker comment and a link's address can hold the term: the phone keeps a server message only when its shown text, one of its files' names or its subject holds it. The next page is bounded by the smallest id of the page as answered (the messages left out included), and the server's count is shown only while no loaded page left one out. A hit opens its conversation at the message, loading older pages with `around` until it is cached; reaching the bottom while it loads marks nothing read."
+    },
+    "chat.pin": {
+      "description": "Pin or unpin a message of a conversation, and list a conversation's pinned messages; the pin is queued in sync_outbox (kind chat.pin) as a target state per message",
+      "method": "POST",
+      "path": "/web/dataset/call_kw (discuss.channel set_message_pin) and /discuss/channel/pinned_messages",
+      "request": {
+        "params": {
+          "model": "discuss.channel",
+          "method": "set_message_pin",
+          "args": [
+            "[[channel id]]"
+          ],
+          "kwargs": {
+            "message_id": "{server message id}",
+            "pinned": "true | false — always explicit, never a toggle"
+          }
+        },
+        "list": "/discuss/channel/pinned_messages {channel_id}"
+      },
+      "response": "set_message_pin: null (the bus carries pinned_at and the notice). pinned_messages: a Store whose mail.message rows carry pinned_at, in no meaningful order; the app rebuilds the order from pinned_at (newest first, the unread ones first).",
+      "idempotency": "set_message_pin is idempotent per target: pinning a pinned message or unpinning a free one changes nothing. The outbox keeps one op per message holding the last wanted value and the value the server held when it was first queued (base); a value equal to base cancels the op before it is sent. An op that may have been sent (sentAt) is never cancelled. A message emptied or gone before the send is given up as vanished, because Odoo would pin an emptied message.",
+      "pin_notice": "Pinning posts a notification message whose body holds a link <a data-oe-type=\"highlight\" data-oe-id=\"{message id}\"> to the pinned message and one <a data-oe-type=\"pin-menu\"> to the pinned list. The app shows it as a system line: the first link scrolls to the message (loading older pages when needed), the second opens « Messages épinglés ». A hit older than the loaded history is paged in with `around`.",
+      "notes": "Deleting or emptying a message clears its pinned_at on the server, so a delete queued behind a pin restores the pin's base. The app offers Pin on a sent comment of a writable conversation. Unpinned messages of a channel the answer does not list are unpinned in the cache. The pinned list of a conversation offline is the cached rows. Pinned conversations (« Épinglées d'abord ») are a different thing: local to the phone, table chat_on_top, never sent."
+    },
+    "chat.star": {
+      "description": "Star or unstar a message, and list the starred messages; queued in sync_outbox (kind chat.star) as a target state per message",
+      "method": "POST",
+      "path": "/web/dataset/call_kw erplibre_set_starred on mail.message (module 1.4) or toggle_message_starred (otherwise); list at /mail/starred/messages",
+      "request": {
+        "params": {
+          "model": "mail.message",
+          "method": "erplibre_set_starred | toggle_message_starred",
+          "args": [
+            "[message id]",
+            "true | false — positional, module method only"
+          ]
+        },
+        "list": "/mail/starred/messages {limit: 30, before: {smallest id shown}}"
+      },
+      "response": "erplibre_set_starred [[id], true|false] and toggle_message_starred [[id]]: a Store of the message with starred. The list: {messages, data: Store} sorted by id; it carries no mail.box record: the starred counter comes from init_messaging (/mail/data Store.starred.counter) and the bus.",
+      "idempotency": "Odoo's toggle is not idempotent, so a toggle replayed after a lost answer would undo itself. With the module, erplibre_set_starred sets the wanted state, writes only when it differs, and sends the bus notification mail.message/toggle_star {message_ids, starred} only when something changed. Without it the app reads starred_partner_ids of the message (search_read, starred) before every attempt, including the retries, and sends the toggle only when the server's state differs from the target; nothing is awaited between that read and the toggle. The outbox keeps one op per message with the last target and the base; a target equal to base cancels it.",
+      "bus": "mail.message/toggle_star {message_ids, starred} moves the cached flags and the counter (init_messaging Store.starred.counter, kept in chat_sources.starred_counter) by the ids whose shown state changed. A delete that empties a message sends the mail.box/starred record with its counter and a DELETE of the message.",
+      "notes": "A message cached in neither the mailbox nor a conversation cannot be starred from the app. A message gone is given up as vanished. A page of the list unstars the cached rows it proves are no longer starred (the id range it covers, without a waiting star); only a complete first page (no before, shorter than its limit) sets the counter, to the starred rows left with the waiting stars laid over them. A replayed mail.message/toggle_star (at or below the counter bus id) sets the flags and counts nothing. Starred messages are listed in the Starred box (« Favoris » in French) and searched locally with the inbox."
+    },
+    "chat.inbox": {
+      "description": "The inbox (channel mentions, followed records, assignments), its history, and marking items read",
+      "method": "POST",
+      "path": "/mail/inbox/messages, /mail/history/messages; set_message_done and mark_all_as_read via /web/dataset/call_kw",
+      "request": {
+        "params": {
+          "list": "{limit: 30, before: {smallest id shown}} on /mail/inbox/messages or /mail/history/messages",
+          "mark_one": "mail.message set_message_done [[message ids]]",
+          "mark_all": "mail.message mark_all_as_read [[[needaction, =, true], [id, <=, {largest id shown}]]]"
+        }
+      },
+      "response": "{messages, data: Store} with each message's thread (channel or record), record name, author, body, date; it carries no counter: the inbox counter comes from init_messaging (/mail/data Store.inbox.counter) and the bus. set_message_done answers null; mark_all_as_read with a domain answers the ids it marked done (mail_message.py mark_all_as_read).",
+      "kinds": "channel mention (thread discuss.channel, opens the conversation at the message), followed record comment (a message on any other model, mentions of the user in a record included), assignment (message_type user_notification on a record; no reply is offered, as in the browser). The kind is derived from the thread model and message type.",
+      "idempotency": "Marking done is idempotent. The outbox keeps chat.inbox_done (union of ids) and chat.inbox_all (the larger bound), each remembering the rows it cleared so a refused op puts them back. Mark all is bounded by the largest id the user saw: a mention that arrives after the tap stays unread. A done item and its bus echo lower the count once. An op that was sent forgets the ids from the others and the account is loaded again, because set_message_done on an item already read sends no bus notification.",
+      "reading": "Opening an item marks nothing read. A mention opens its conversation at the message (/chat/<account>/<channel>?m=<id>); a record item opens the app's note when a live note link binds that record, else /mail/message/<id> in the web view (http policy kept). The inbox delivery of the bus that a load overtook is read from the first inbox page (read only), so a followed record's comment still appears.",
+      "notes": "Rows are cached in chat_mailbox with the flags needaction, starred and history; a page proves a range, so an unlisted row of that range moves to history unless an inbox op covers it. Offline the cache is shown. The history tab pages with before and is read only."
+    },
+    "chat.record_post": {
+      "description": "Reply in the chatter of a record (any mail.thread model) from the inbox; queued in sync_outbox (kind chat.record_post), with files, voice and mentions",
+      "method": "POST",
+      "path": "/mail/message/post",
+      "request": {
+        "params": {
+          "thread_model": "{the record's model}",
+          "thread_id": "{the record's id}",
+          "post_data": {
+            "body": "{escaped text}<!-- erplibre-mobile:{client uuid} -->, composed as chat.post",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note (internal note, the default) | mail.mt_comment (message to the followers, after a confirmation)",
+            "erplibre_client_uuid": "{client uuid} — only with module 1.4",
+            "attachment_ids": "[attachment ids] — only with files; the ids of the chat.upload answers on the record's thread",
+            "partner_ids": "[partner ids] — only with mentions",
+            "parent_id": "{message answered} — sent as the browser does; Odoo 18 drops it on a record thread, so it changes nothing server side",
+            "email_add_signature": "true — sent for a note and a message alike, as the browser"
+          },
+          "attachment_tokens": "[false, …] — only with attachment_ids",
+          "context": {
+            "temporary_id": "{client uuid}",
+            "mail_post_autofollow": "true only for a message"
+          }
+        }
+      },
+      "response": "{\"mail.message\": [{id, ...}], ...Store}; an answer without an id is an error and the retry searches before posting",
+      "idempotency": "With module 1.4 the uuid dedup of mail.thread.message_post covers every mail.thread model: a repeated erplibre_client_uuid of the same user on the same record returns the first message (advisory lock per uuid, post access checked on the hit), without a second message, notification or email. Without the module the marker search of chat.post runs on the record: mail.message search_read [model = {record model}, res_id = {record id}, author_id = the session partner, body ilike the marker], limit 2, after the quiet window. Replies on one record go out in order.",
+      "notes": "A note notifies no one by email and creates no mail.mail; a message does for each follower notified by email (verified by counting mail.mail in the long tests). The files of the reply travel on chat.upload with the record's thread_model and thread_id and are sent before the reply; a refused file blocks the reply with a notice. The text, the files and the mentions of a reply are kept as a draft per record (chat_drafts with thread_model and thread_id). A sent reply drops its rows and local copies."
+    },
+    "chat.notification_type": {
+      "description": "Read the user's own notification preference, and switch it to the Odoo inbox so the inbox box receives their notifications",
+      "method": "POST",
+      "path": "/web/session/get_session_info (read) and /web/dataset/call_kw res.users write (switch)",
+      "request": {
+        "params": {
+          "model": "res.users",
+          "method": "write",
+          "args": [
+            "[[session uid]]",
+            {
+              "notification_type": "inbox"
+            }
+          ]
+        }
+      },
+      "response": "read: storeData[\"res.partner\"] row of the session partner, field notification_preference (email | inbox), stored in chat_sources.notification_type. write: true.",
+      "self_write": "notification_type is in mail's SELF_WRITEABLE_FIELDS for res.users, so a user writes their own with no administrator right (base res.users.write runs the write under sudo for self-writeable keys). The inverse puts the user in the inbox notification group. Verified on a real Odoo 18 in the long tests. A portal user is refused by the SQL constraint (notification_type = email unless internal).",
+      "notes": "A user notified by email has an empty inbox: the inbox box explains it and offers « Recevoir mes notifications dans Odoo ». Online only. After the write the preference is read again and the notice goes away only if it reads inbox; any Odoo error (access, constraint) is a refusal that offers the user's preferences in the web view instead. Only new notifications arrive in the inbox; past emails do not."
+    },
+    "chat.avatar": {
+      "description": "Avatar of a message's author, shown on others' bubbles in groups and channels",
+      "method": "GET",
+      "path": "/web/image/res.partner/{partner id}/avatar_128?unique={write_date}&download=true",
+      "request": {
+        "headers": {
+          "Cookie": "session_id={session}"
+        }
+      },
+      "response": "The image (a photo, or Odoo's SVG placeholder for a partner without one)",
+      "notes": "The cache key is the partner's write_date, which the Store sends with avatar_128 for an author (chat_partners.write_date); a new key is a new file name. download=true makes an expired session answer 404 instead of a placeholder that would be cached; a 404 re-authenticates once. Fetched when the author is on screen, two at a time, Wi-Fi or not, newest first, cached on disk per account (chat/<account directory>/avatars/<partner id>_<key><extension>) with its bytes in chat_avatars; counted by the chat cache space and cleared with it; initials on a colour from the partner id show meanwhile, offline or on failure. Odoo's isSquashed rule decides which bubbles show it: a run of messages by the same partner, in the same thread, less than 5 minutes apart, after a message that is neither a notification nor emptied, and not a note, shows the avatar and name only on its first bubble. Never on own bubbles, in a direct chat or on system lines."
+    },
+    "chat.module": {
+      "description": "State of the optional erplibre_mobile_chat module; installed from the app by a system user",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "ir.module.module",
+          "method": "search_read",
+          "args": [
+            [
+              [
+                "name",
+                "=",
+                "erplibre_mobile_chat"
+              ]
+            ]
+          ],
+          "kwargs": {
+            "fields": [
+              "state"
+            ]
+          }
+        }
+      },
+      "response": "[{id, state}]",
+      "notes": "The level is read from fields_get (readable by any user; cached), highest first: erplibre_chat_level on mail.message, whose last selection key is the level (1.6, 1.5, else 1.4), erplibre_body_fingerprint on mail.message = 1.3, erplibre_client_uuid on ir.attachment = 1.2, on discuss.channel = 1.1, on mail.message only = 1.0. installed = level 1.6, or a system user sees the row installed before the registry exposes any field; outdated = level 1.0 to 1.5 (an older module's row reads installed until upgraded, so the level decides) or a system user sees the row « to upgrade » (button_immediate_upgrade, offered to a system user, probed fresh afterwards like an install); available / absent = a system user sees the row not installed / no row; unknown = not a system user or offline without a cached capability. Installing calls ir.module.module button_immediate_install [[id]]; a response lost to a timeout is not a failure, the probe tells the outcome, and an AccessError returns the probed state. Without the module the app posts with the marker alone and finds a lost create by fingerprint; creates carry the uuid in the context only when installed (an outdated 1.0 takes the fingerprint path), message posts carry it for installed and outdated alike, and chat.remove needs the 1.1. Module 1.2 is recognised by erplibre_client_uuid on ir.attachment (level 1.2, above 1.1 on discuss.channel and 1.0 on mail.message); it adds the idempotent upload route of chat.upload. Module 1.3 is recognised by erplibre_body_fingerprint on mail.message (level 1.3); it adds the guarded edit route of chat.edit. Without it, files go to Odoo's route and a lost answer is found with chat.upload_find. Module 1.4 adds the field erplibre_chat_level on mail.message (a computed Selection whose last key is the level; readable by any internal user through fields_get, which is why it is the marker). Module 1.5 appends the key \"1.5\" to it; it adds the route and the marks of chat.push.module, and the app reads it as the flag appPush, true from 1.5 on. Module 1.6 appends the key \"1.6\" and is the highest level: installed = level 1.6; levels 1.0 to 1.5 are outdated. 1.6 adds the browser mode and the payload v 2 of chat.push.module, read as the flag pushFlags, true at 1.6. It adds the search route of chat.search (serverSearch), erplibre_set_starred of chat.star (idempotentStar), the uuid dedup of mail.thread.message_post on every mail.thread model and the record thread on the upload route (idempotentRecordPost). Each of the three flags is true from 1.4 on; a server at 1.3 keeps the guarded edit and the fallbacks of those calls."
+    },
+    "chat.push.register": {
+      "description": "Registration of the phone's Web Push subscription with Odoo 18, so that Odoo publishes chat pushes to the account's secret ntfy topic; run once per account per foreground session, through call_kw on mail.push.device as the account's user",
+      "method": "POST",
+      "path": "/web/dataset/call_kw/mail.push.device/{method}",
+      "request": {
+        "calls": [
+          {
+            "method": "get_web_push_vapid_public_key",
+            "kwargs": {},
+            "returns": "the VAPID public key of the server (65 bytes, base64url); drawn on first use"
+          },
+          {
+            "method": "register_devices",
+            "kwargs": {
+              "endpoint": "{ntfy url as Odoo reaches it}/{topic} — the topic is the account's secret (prefix up + 8 chars, 10 in all, + 22 random)",
+              "keys": {
+                "p256dh": "{subscription public key}",
+                "auth": "{subscription auth secret}"
+              },
+              "vapid_public_key": "{the key just read}",
+              "expirationTime": null
+            }
+          },
+          {
+            "method": "unregister_devices",
+            "kwargs": {
+              "endpoint": "{endpoint}"
+            }
+          }
+        ]
+      },
+      "response": "register_devices and unregister_devices answer nothing the app reads; a JSON-RPC error marks the registration refused for the session, a network failure offline (retried next session)",
+      "notes": "A known endpoint is never updated: register_devices called again with the endpoint Odoo holds changes nothing, and a different p256dh or auth for it is ignored, so keys never change for a topic and new keys come with a new topic, hence a new endpoint. When Odoo's VAPID keys are drawn again the rows it held under the old key are wiped, and the same call then creates a new row; the app sends the key it just read, so the registration is renewed by the next session. unregister_devices deletes the row of the endpoint without checking that it belongs to the calling partner, so the secret topic is the only credential; the app unregisters the endpoints it replaced, and native code unregisters those of an account removed while Odoo could not be told. Revoking the phone in todo.py deletes its ntfy user, so its token stops reading; Odoo keeps its devices and goes on publishing to their topics until the app removes the account or applies a new link. The private key of the subscription and the ntfy token stay in native code; only the public key and the auth secret reach JS and the database (chat_push). Odoo 18 only; works with erplibre_mobile_chat 1.4 or without the module. With module 1.5 or 1.6 the app then marks the device through chat.push.module."
+    },
+    "chat.push.payload": {
+      "description": "What Odoo publishes to the ntfy topic and what the phone reads: an RFC 8291 (aes128gcm) Web Push body, base64 in the ntfy message, decrypted on the phone with the subscription keys",
+      "method": "POST (Odoo to ntfy, anonymous, VAPID header)",
+      "path": "{ntfy url}/{topic}",
+      "response": {
+        "chat": "{title: \"{author}\", options: {icon: \"/web/image/res.partner/{author partner}/avatar_128\", data: {model: \"discuss.channel\", res_id, action: \"mail.action_discuss\"}, body: \"{text}\"}} — a direct chat; the title is the author's name",
+        "group": "same shape; the title is \"{conversation} - {author}\"",
+        "channel_mention": "same shape; the title is \"#{channel} - {author}\", pushed only for a message that mentions the user",
+        "record_comment": "{title: \"{author}: {record name}\", options: {icon, data: {model: \"{record model}\", res_id}, body}} — a comment on a followed record: data holds no action",
+        "module_1_5": "any of the four above sent to a device marked by a 1.5 app carries options.data.erplibre = {v: 1, message_id, channel_type}; channel_type is null on a record comment",
+        "module_1_6": "any of the four above sent to a device marked with browser_mode carries options.data.erplibre = {v: 2, message_id, channel_type, mentioned, browser_online}, e.g. a channel post that mentions the user {v: 2, message_id: 22, channel_type: \"channel\", mentioned: true, browser_online: false}; a record comment has channel_type null and mentioned true when it mentions the user; browser_online true only for a wait or quiet device while a browser of the user is active",
+        "read": "{erplibre: {v: 1, type: \"read\", channel_id, last_message_id}} — silent, to marked devices only: the phone trims the conversation's notification up to that message",
+        "inbox_done": "{erplibre: {v: 1, type: \"inbox_done\", threads: [[model, res_id], ...]}} — silent, to marked devices only: the phone removes the inbox notifications of those records (threads null: every inbox notification of the account)"
+      },
+      "notes": "Without module 1.5 the payload carries no message id and no channel type: the phone tells the shapes apart by data.model and the title, and de-duplicates by the ntfy message id (SeenIds), then asks nothing more of Odoo. Odoo encodes the JSON with ensure_ascii and the body is html2plaintext of the message (a space stays after a mention link). Odoo expects ntfy to answer 201 and ntfy answers 200: without erplibre_mobile_chat 1.5 each successful push logs an Odoo warning that carries the endpoint, which is the secret topic, so an Odoo log is as sensitive as the topic (module 1.5 fixes it for the app's marked devices; see chat.push.module). Odoo publishes synchronously inside the request that posts the message and only when fewer than 5 devices are among the recipients: a device whose ntfy accepts the connection and never answers costs up to 5 s more per device, a closed port fails at once. Odoo never retries a push. Whether a message is pushed follows Odoo's own notification rules: the general setting (all, mentions, nothing), which governs channels only, a channel's own setting (chat.settings.notify) and a conversation's mute; chat and group pushes ignore both settings, only a mute stops them. The phone parses v 1 and v 2 as the message object, the flags only from v 2; an object of another v is ignored as unknown, and the control pushes (read, inbox_done) still require v 1. On the phone, per server, after the control pushes and the foreground check: the filter « Tout ce qu'Odoo envoie » passes everything, « Rien de ce serveur » drops every chat push (the registration stays: Odoo still pushes), and « Mentions et messages directs » passes a chat or a group always and a channel only when mentioned; without a v 2 object (no 1.6) or with an unknown channel type the push passes (fail open). The inbox switch off drops every record and activity push, a mention included, unless « Sonner quand même si on me mentionne dans un enregistrement » is on and the v 2 object says mentioned (without 1.6 such a push is dropped). Under the phone's browser setting « Attendre 10 s » (and « Ne pas envoyer au téléphone » while the server's mark lags), a chat push whose v 2 object says browser_online and carries a message_id is held 10 s and dropped when a read push of that conversation with last_message_id >= the held id arrives; the held entry is the ntfy message with its ciphertext, never the decrypted payload, and survives the process. Inside the server's quiet hours a notification is posted silently, never dropped."
+    },
+    "chat.push.actions": {
+      "description": "What the phone's native code sends to Odoo 18 for an action taken in a chat notification (reply, mark read, mute 1 h, 👍), as the account's user with the session copied to native code (Cookie: session_id only, no CSRF token), and what it makes of each answer",
+      "method": "POST",
+      "path": "/web/session/get_session_info, /mail/message/post, /discuss/channel/mark_as_read, /web/dataset/call_kw/mail.message/{method}, /discuss/settings/mute, /mail/message/reaction",
+      "request": {
+        "alive": "/web/session/get_session_info {}, run before every attempt; auth=user, so a dead session answers HTTP 200 with JSON-RPC error code 100 (odoo.http.SessionExpiredException), or HTTP 401; the answer's partner id is the author the marker search needs",
+        "reply": "/mail/message/post {thread_model: \"discuss.channel\", thread_id, post_data: {body: \"{html}<!-- erplibre-mobile:{uuid} -->\", message_type: \"comment\", subtype_xmlid: \"mail.mt_comment\", erplibre_client_uuid: \"{uuid}\" (only with the module)}, context: {temporary_id: \"{uuid}\"}}; the body is the app's own composeBody of a text without mentions (escaped, compacted, links made, marker last); the answer is a Store whose mail.message[0].id is the message",
+        "find_sent": "call_kw mail.message search_read, domain [[model = discuss.channel], [res_id = {channel}], [author_id = {self partner}], [body ilike erplibre-mobile:{uuid}]], fields id, body, parent_id, limit 2; a row counts only if its body holds the whole marker comment",
+        "latest_message": "call_kw mail.message search, domain [[model = discuss.channel], [res_id = {channel}], [date <= {UTC YYYY-MM-DD HH:MM:SS of the newest push}]], order id desc, limit 1; an ORM search, never a fetch route, because those mark messages read",
+        "mark_read": "/discuss/channel/mark_as_read {channel_id, last_message_id}, then call_kw mail.message mark_all_as_read with the domain [[model = discuss.channel], [res_id = {channel}], [id <= {last_message_id}]]",
+        "mute": "/discuss/settings/mute {channel_id, minutes}; minutes is what is left of the hour counted from the tap, 0 lifts the mute",
+        "react": "/mail/message/reaction {message_id, content: \"👍\", action: \"add\"}"
+      },
+      "response": {
+        "alive": "{result: Store} with the self partner, or the dead-session error above",
+        "reply": "{result: {\"mail.message\": [{id, ...}], ...}}; an answer without a message id is a transient failure, since Odoo may have posted",
+        "find_sent": "[{id, body, parent_id}]: none, one, or two (ambiguous)",
+        "latest_message": "[id] or []",
+        "mark_read": "mark_as_read answers {jsonrpc, id} without a result key when the session is alive; mark_all_as_read answers the ids it cleared",
+        "mute": "no result key",
+        "react": "{result: {MessageReactions: [...], \"mail.message\": [{id, reactions: [[\"ADD\", [...]]]}]}}"
+      },
+      "notes": "Once only. Every action is sealed in a local store (a client uuid drawn by the receiver) and committed before any network call. A reply is idempotent: with erplibre_mobile_chat the module returns the first message for a repeated erplibre_client_uuid (the same answer, the same id); without it the phone waits a 3-minute quiet window after a send that may have reached Odoo, then looks the marker up and posts only when none is found, which also covers a send that went out without the module; two marker hits hand the action to the app. Mark read, mute and 👍 are target states: a repeat changes nothing (a reaction added twice is one reaction). Dead-session trap: /mail/message/post, /discuss/channel/mark_as_read and /mail/message/reaction are auth=public, so with a dead session mark_as_read answers success while doing nothing, and post and reaction answer a JSON-RPC 404 (werkzeug NotFound) without writing; hence the alive check before every action, and a 404 on an action route is checked again before it is taken for a refusal. Mark read without the module finds its message with latest_message, from the time of the newest push, and does nothing when no message is found; with the module it uses the message id of the push. The bounded mark_all_as_read clears that conversation's @mentions from the Inbox up to that message and nothing else, and the app's own read does the same. It runs whatever the sending of « read » is set to, since it is an explicit gesture. 👍 is offered only with a message id (module 1.5): a reaction found by time could land on another message. Failures: a network failure, HTTP 408, 429 or 5xx is retried after 30 s, doubling up to 1 h. After 24 h, a JSON-RPC error other than code 100, HTTP 4xx other than 401, 408 and 429, two marker hits, or a dead session (the session copy is marked expired), the action is handed to the app (reasons stale, refused, ambiguous, session_expired). The handoff is one notification per server, « Ouvrez l'app pour terminer une action — {server} » (tag handoff:{config}, no message content), since Android forbids opening the app from a background action; a tap opens /chat, and the app, at its next start, sends the action once through its own outbox (a reply is composed again as the app composes, and found by its marker first when the phone may have sent it) and acknowledges it to native code. An action that cannot be recorded shows « Action non envoyée — {server} ». The phone shows three buttons at most: reply and mark read always, then 👍 with a message id, else mute 1 h; they are offered in every lock-screen mode, never shown included, and not on inbox notifications. Odoo 18 only."
+    },
+    "chat.push.module": {
+      "description": "What erplibre_mobile_chat 1.5 and 1.6 add for the phone's notifications: the app's devices are marked with a mode for the time a browser of the user is active, their pushes carry the message id and channel type (and, with 1.6, per recipient, whether the user is mentioned and whether a browser of theirs is active), and a read elsewhere removes the notification",
+      "method": "POST",
+      "path": "/erplibre_mobile_chat/push/device",
+      "request": {
+        "authentication": "a logged-in user (JSON-RPC)",
+        "params": {
+          "endpoint": "the ntfy url and topic of a mail.push.device of the caller's partner, as registered with register_devices",
+          "browser_mode": "\"ring\" | \"wait\" | \"quiet\", absent by default (module 1.6): the device's mode while a browser of its user is active; given, the device gets payload v 2",
+          "quiet_while_online": "boolean, false by default: the 1.5 alias, read only when browser_mode is absent; true marks the device quiet, false ring, with payload v 1"
+        },
+        "called": "after each register_devices, after each new session, and for every account at 1.5 or 1.6 when the phone's browser setting changes; the argument follows the module level the app holds: 1.6 sends browser_mode (the setting), 1.5 sends quiet_while_online = (setting == quiet), and without the module nothing is sent"
+      },
+      "response": "{\"ok\": true}, or {\"ok\": false} when the caller's partner has no device with that endpoint (another partner's device is left alone) or when browser_mode is none of the three modes (nothing is written)",
+      "push_shapes": {
+        "message_v1": "to a device marked without browser_mode (a 1.5 app): the payload of chat.push.payload with options.data.erplibre = {v: 1, message_id, channel_type: \"chat\" | \"group\" | \"channel\" | null} (null on a record thread), byte for byte as module 1.5",
+        "message_v2": "to a device marked with browser_mode (module 1.6): options.data.erplibre = {v: 2, message_id, channel_type, mentioned, browser_online}; see chat.push.payload",
+        "read": "{erplibre: {v: 1, type: \"read\", channel_id, last_message_id}}, sent when a member's last seen message advances (mark as read, or the member's own post): one push per device, channel and transaction, with the largest id; v 1 for every device",
+        "inbox_done": "{erplibre: {v: 1, type: \"inbox_done\", threads: [[model, res_id], ...]}}, sent by set_message_done and mark_all_as_read for the record threads of the messages marked (channels left out, sorted); threads is null above 40 threads, and nothing is sent when no thread remains; v 1 for every device"
+      },
+      "notes": "The mark is four fields on mail.push.device: erplibre_app, erplibre_browser_mode (ring | wait | quiet, ring by default), erplibre_payload_v (1 or 2, 1 by default) and erplibre_session_hash (the SHA-256 of the calling session's id); a register_devices that gives the endpoint to another partner resets them (unmarked, ring, v 1, no hash). The upgrade from 1.5 to 1.6 gives quiet to the devices marked erplibre_quiet_while_online and ring to the others, then drops that column, which a downgrade cannot read back. Odoo 18 ignores a route argument it does not know (it logs it and runs the route): a 1.5 server would accept browser_mode, answer ok and mark the device ring, so the app chooses the argument by the module level it holds, never by the answer. Only marked devices receive the module's pushes and the read and inbox_done pushes; any other device, a browser or the app without the module, gets Odoo's unchanged push (a read push shown by Odoo's service worker would be an empty notification). Pushes to marked devices go out after the transaction commits (cr.postcommit), so nothing leaves for a rolled-back post, each waiting 2 s at most; with five or more devices the rows wait for Odoo's mail cron, which the module serves first for its devices, one run never taking more rows than its batch; Odoo's own direct-or-queue threshold counts unmarked devices only. The payload is truncated to fit 4096 encrypted bytes, once per version: v 1 as module 1.5, v 2 with both flags false, whose flags are then set per device (true is shorter than false, so no variant outgrows the record). ntfy's answer 200 is a success as is 201, a 404 or 410 deletes the device, and the log names only a device id, never the endpoint, which holds the secret topic. mentioned is true when the recipient's partner is among the message's partner_ids, where @everyone puts every member of the channel. browser_online is true only for a wait or quiet device when a browser of its user is active: its last poll under 65 s old (Odoo's delay for offline) and its last activity under 5 min old (the module's BROWSER_ACTIVE_S; the status Odoo displays keeps its 30-min away delay); a ring device always gets false, and nothing is written or read for a user without a wait or quiet device. A quiet device receives no message push while a browser of its user is active (under 1.5 the activity delay is Odoo's 30 min); a wait device always receives it, with browser_online, and the phone holds it (chat.push.payload). The read and inbox_done pushes pass in every mode, since they remove notifications. Browser presence is held in three fields of bus.presence (erplibre_browser_poll, erplibre_browser_presence, and erplibre_browser_user_id, the user whose browser wrote them, on which the decision rests: any user may change a presence row's user_id), written by the websocket's presence update for any bus session except the one that marked an app device of that user, and only for a user with a wait or quiet app device, readable and writable by the administrator only, through a private method that takes the user from the websocket and cannot be called by RPC, so no user can silence another's devices. Without the module: no 👍, a read is found by date, no read push (a notification goes at the next check or when the app opens), nothing is sent for the browser setting (every push rings), and Odoo logs a warning for each push that ntfy answers with 200. Odoo 18 only."
+    },
+    "chat.push.summary": {
+      "description": "The unread summary the phone computes itself when it has no push to read (an account without ntfy, or a phone silent longer than the ntfy cache); one notification per server",
+      "method": "POST",
+      "path": "/web/session/get_session_info then /mail/data",
+      "request": {
+        "routes": [
+          "/web/session/get_session_info (the self partner and the account-wide mute)",
+          "/mail/data with params {init_messaging: {}, channels_as_member: true}"
+        ]
+      },
+      "response": "counted as the app's own list: a chat or group counts its unread messages, a channel only the ones that mention the user, a muted conversation counts nothing, the inbox counter is added once minus the mentions the channels already count; a channel whose Odoo setting is no_notif (its own, or false under a general no_notif) counts nothing, as Odoo pushes nothing for it (the app's badge still counts it); the phone filter « Rien de ce serveur » draws no summary, and the inbox switch off counts the chat share only",
+      "notes": "Both routes are read-only and nothing marks anything read: the summary \"{n} nouveaux messages — {server}\" stays until the user opens the app. The call carries the session cookie copied to native code (encrypted with a Keystore key; never the password); an expired session shows \"open the app\" instead. An account with ntfy is checked through ntfy at levels 3 and 4, an account without ntfy every 15 minutes at levels 1 to 4."
+    },
+    "chat.push.ntfy": {
+      "description": "What the phone asks of the user's ntfy server: one read-only token per phone, one secret topic per Odoo account",
+      "method": "GET (phone), POST (Odoo)",
+      "path": "{ntfy url}/{topic}/json[?poll=1&since=...]",
+      "request": {
+        "access": {
+          "up*": "anonymous write-only: Odoo publishes without an account",
+          "<prefix>*": "the phone's user, read-only, with its token (Authorization: Bearer); the prefix is up + 8 chars (10 in all), one per phone",
+          "other": "no access"
+        },
+        "read": "a streaming GET of /{topic}/json, or poll=1 with since={last ntfy message id} for a check at an interval"
+      },
+      "response": "ntfy message events whose message is the Web Push body in base64 (encoding: base64)",
+      "notes": "A token reads only its own prefix: another phone's topic answers 403, as does an anonymous read. The phone de-duplicates by ntfy message id (since plus SeenIds), so a stream and a poll over the same messages ring once. ntfy keeps messages for its cache duration (set up with the link); a phone silent longer gets the Odoo-direct summary of chat.push.summary instead. keepalive-interval is never written. The setup link erplibre-ntfy:setup?v=1&... carries the ntfy url, the token, the prefix, the cache duration and, when Odoo reaches ntfy at another address than the phone does, a second url. Tables: migration 2026102801 creates chat_push (see sqlite_tables_added)."
     }
   },
 
+  "attachments": {
+    "create": "ir.attachment create {name (file name), datas (base64), res_model, res_id, mimetype} for each photo, audio or video entry with a file not sent yet to that record, after each create or write of the note's task, opportunity or invoice (on it) and of each of its messages (on the message's record, then /mail/message/update_content with the message's attachment_ids plus the new ones). Activities take none.",
+    "limits": "Options › Odoo sync (localStorage options.sync.attachments): wifiOnly holds files on a mobile network (the server stays pending until a push on Wi-Fi); maxMb, and always 90 MB (base64 must stay under the server's request limit), leave a larger file out. note_links.params.attachments maps entry id → {id, path}: each file goes once per record, a replaced one (another path) again, a removed one stays on the server; a file already sent to the same record by another link of the note is reused. params.attachmentsSkipped notes a file too big, missing or refused (the round goes on), named on the note until sent, as are the files held for Wi-Fi while off it; going onto Wi-Fi from another link syncs the servers with due work, retry delays kept; params.attachmentsInFlight marks a create sent, so an unanswered one is looked for first (ir.attachment search on res_model, res_id, name); params.attachmentsUnlinked keeps ids a message could not take yet. Never fails the push.",
+    "paths": "An entry's file is read through Filesystem: a web view URL (http://localhost/_capacitor_file_/…) as its native file, an absolute path or file:// as is, a relative path (a recording) under Directory.Data."
+  },
+
+  "companies": {
+    "read": "/web/session/get_session_info (auth user): uid and user_companies (current_company, allowed_companies id → {id, name}); kept per server in sync_target_prefs (kind companies), the one last chosen in kind company.",
+    "refresh": "The kept list is read again from the session once per app run, so a company the user lost is no longer sent.",
+    "scope": "For a user of several companies, every call_kw to that server carries context allowed_company_ids = all of them (current first) unless the call names its own, so records of each company are read and written. A creation carries the company chosen in the picker first (outbox params.companyId), the one the record is created in. A user of one company gets no such context."
+  },
+
+  "transport_policy": {
+    "http": "An http:// url is refused before any request (InsecureHttpError) unless the user turned on « Autoriser http (non chiffré) » in Options › Synchronisation Odoo (localStorage options.sync.allowHttp). The same rule refuses opening an application or a note's record in the web view, whose login script types the password. https is always allowed."
+  },
+
   "re_auth_strategy": {
-    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401",
+    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401 — never the error message text",
     "steps": [
       "1. Retrieve credentials from SecureStorage key 'odoo_sync_credentials_{app_url}'",
       "2. Call auth.login with retrieved credentials",
-      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{app_url}'",
+      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{base64(app_url|username|database)}'",
       "4. Retry original request once",
-      "5. If still failing — set sync_status='error', notify user"
+      "5. If still failing — mark this server 'error' in sync_per_server_status (the note's sync_status is derived), notify user"
     ]
   },
 
   "sync_status_values": {
-    "local": "Note exists only on device — never pushed",
-    "pending": "Modified since last sync — push needed",
-    "synced": "In sync with Odoo — write_date matches",
-    "conflict": "Both mobile and Odoo modified since last sync (v1: Odoo wins)",
-    "error": "Last sync attempt failed — show error to user"
+    "notes": "Per server in sync_per_server_status (synced | pending | error | conflict); the note's sync_status is derived from the entries of live applications: conflict, then error, then pending, then synced; none left → synced if a live link remains, else local.",
+    "local": "Note bound to no live server",
+    "pending": "Some server still has to receive the note (queued offline, edited, or edited during its push); syncAll pushes it",
+    "synced": "Every live server received the latest pushed content",
+    "conflict": "A record of the note changed in the app and on the server, the same field to different values (note_links.params.conflict: per field mine and theirs). Nothing is pushed there and syncAll skips the note until the user keeps, per field, the app's version (sent by the next push) or the server's (copied into the note).",
+    "error": "Last push to some server failed; syncAll retries it",
+    "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted'; the server leaves the note's queue only when no other kind of the note is live there (a background push next to a live kind skips the deleted one). The record is recreated only when the user chooses it again in the picker; unchecking it there marks the link 'dismissed': kept as history, never pushed nor asked again"
   },
 
   "sqlite_columns_added": {
     "table": "notes",
     "migration": "2026032901",
     "columns": {
-      "odoo_id": "INTEGER — Odoo project.task id, null if never pushed",
-      "odoo_url": "TEXT — Base URL of the Odoo instance used for sync",
-      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values",
+      "odoo_id": "INTEGER — legacy single binding, no longer written; migration 2026102201 copies it to note_links",
+      "odoo_url": "TEXT — legacy, no longer written",
+      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values; derived from sync_per_server_status",
       "last_synced_at": "TEXT — ISO 8601 datetime of last successful sync"
+    }
+  },
+
+  "sqlite_tables_added": {
+    "migration": "2026102201",
+    "note_links": {
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed|done)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)", "params_json (migration 2026102301)"],
+      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. kind 'create': the note's task or opportunity, one per model and server; kind 'activity': a mail.activity, several per server, its choices in params_json; kind 'message': a mail.message posted in a record's chatter, several per server, its record and bodyHash in params_json; remote_state 'done': an activity the app marked done. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
+    },
+    "sync_pull_cursors": {
+      "columns": ["scope (sync config id)", "write_date"],
+      "notes": "Highest task write_date already pulled; next pull starts there (>=). Pages by write_date >= last read, excluding the ids already read at it (search_read truncates write_date to the second). Without a cursor: one day before the oldest link's last sync (device clock vs server clock)."
+    },
+    "sync_outbox": {
+      "migration": "2026102202",
+      "columns": ["id", "client_uuid", "note_id", "config_id", "kind (task.create, …)", "params_json", "status (queued|running|failed|blocked|incomplete)", "attempts", "next_attempt_at", "last_error", "depends_on", "created_at", "updated_at"],
+      "notes": "One row per operation of a note on one server. attempts and running are stored before the server is contacted; success deletes the row; failure retries after 30 s doubled per attempt (1 h max); a handler may postpone a row to params.notBefore without counting an attempt, honoured even by a forced sync; blocked and incomplete wait for the user; running rows of a killed app turn failed at startup."
+    },
+    "server_capabilities": {
+      "migration": "2026102202",
+      "columns": ["id (config_id#model)", "config_id", "model", "exists_flag", "can_read", "can_create", "can_write", "has_activities", "has_chatter", "fields_json", "odoo_version", "probed_at", "error"],
+      "notes": "Result of capabilities.probe per server and model, used offline; probed again after one day when online."
+    },
+    "remote_records_cache": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#model#res_id)", "config_id", "model", "res_id", "display_name", "extra_json", "fetched_at"],
+      "notes": "Records of a server kept for offline choices. projects.list replaces the project rows of that server as a whole; partners.search adds or refreshes the partners found and keeps the 200 most recently fetched per server."
+    },
+    "activities_cache": {
+      "migration": "2026102302",
+      "columns": ["id (config_id#res_id)", "config_id", "res_id", "deadline", "data_json", "fetched_at"],
+      "notes": "The activity calendar's activities per server (see calendar.read): record, type, summary, deadline, user, done/dateDone, pending (a local change waiting in the outbox)."
+    },
+    "sync_target_prefs": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
+      "notes": "invoice.form.out_invoice / invoice.form.in_invoice: the extra required fields of invoices.form, kept for offline. Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
+    },
+    "chat_channels": {
+      "migration": "2026102501",
+      "columns": [
+        "id (config_id#channel_id)",
+        "config_id",
+        "channel_id",
+        "channel_type (chat|group|channel)",
+        "name",
+        "description",
+        "last_interest_dt",
+        "unread_counter",
+        "needaction_counter",
+        "new_message_separator",
+        "seen_message_id",
+        "mute_until_dt",
+        "custom_notifications",
+        "is_member",
+        "local_pinned",
+        "last_message_id",
+        "oldest_loaded_id",
+        "history_complete",
+        "correspondent_partner_id",
+        "updated_at",
+        "unread_counter_bus_id",
+        "needaction_counter_bus_id",
+        "is_pinned (migration 2026102601; 0 for a hidden direct message)",
+        "is_editable (2026102601)",
+        "custom_channel_name (2026102601)",
+        "member_count (2026102601)",
+        "group_public_id (2026102601)",
+        "authorized_group_full_name (2026102601)",
+        "create_uid (2026102601)",
+        "group_based_subscription (2026102601)",
+        "parent_channel_id (2026102601)",
+        "create_op_id (2026102601; the queued create or join the row waits for)",
+        "create_failed (migration 2026102602; a refused create, kept until dismissed)",
+        "left_unsent (migration 2026102603; left while texts were still queued)"
+      ],
+      "notes": "One row per conversation. The two *_bus_id columns are the bus id each counter is as of: a bus notification with a lower id does not overwrite it. oldest_loaded_id and history_complete drive history paging (chat.messages); local_pinned keeps a conversation the server stopped listing. Index idx_chat_channels_cfg. A conversation created on the phone has a negative temporary id until chat.create settles it."
+    },
+    "chat_messages": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "channel_id",
+        "message_id (null while pending)",
+        "client_uuid",
+        "author_partner_id",
+        "body",
+        "date",
+        "message_type",
+        "status (pending|sent|failed)",
+        "outbox_op_id",
+        "write_date",
+        "parent_id (migration 2026102607; the server id of the message answered)",
+        "parent_client_uuid (2026102607; the answered message while it is still queued)",
+        "recipient_ids (2026102607; JSON list of the partners mentioned)",
+        "search_text (migration 2026102701; the body as plain text folded for case and accents, filled lazily after start for rows cached before)",
+        "pinned_at (2026102701; Odoo's date of the pin, null when not pinned)",
+        "starred (2026102701; 1 when the user starred the message)",
+        "is_note (migration 2026102705; the message is an internal note, which Odoo's isSquashed never squashes)"
+      ],
+      "notes": "A queued post is stored as a pending row before any request, settled with its server id by chat.post. Indexes chat_messages_channel and idx_chat_messages_cfg (config_id, channel_id). Migration 2026102701 adds search_text, pinned_at and starred and creates the chat_search_fts index (see that table); migration 2026102705 adds is_note. Columns are added only when PRAGMA table_info does not list them."
+    },
+    "chat_members": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "channel_id",
+        "member_id",
+        "partner_id",
+        "seen_message_id",
+        "fetched_message_id",
+        "is_typing",
+        "typing_at",
+        "create_date (migration 2026102601)"
+      ],
+      "notes": "discuss.channel.member rows: read and delivery marks of each member, and who is typing."
+    },
+    "chat_partners": {
+      "migration": "2026102501",
+      "columns": [
+        "id",
+        "config_id",
+        "partner_id",
+        "name",
+        "im_status",
+        "write_date (migration 2026102705; the avatar cache key, kept only when the Store sends it)"
+      ],
+      "notes": "Authors and correspondents named by the Store."
+    },
+    "chat_sources": {
+      "migration": "2026102501",
+      "columns": [
+        "config_id",
+        "self_partner_id",
+        "last_bus_id",
+        "bus_seen_at",
+        "ws_version",
+        "is_system",
+        "module_state (installed|available|absent|unknown)",
+        "inbox_counter",
+        "loaded_at",
+        "counter_bus_id",
+        "internal_user_group_id (migration 2026102601)",
+        "global_mute_until (2026102601; end of the account-wide mute)",
+        "global_mute_at (2026102601; when the phone last wrote it)",
+        "is_internal_user (2026102601)",
+        "file_dir (2026102604; directory of the cached files of the server)",
+        "module_level (2026102604; 1.0 to 1.6, null without the module)",
+        "starred_counter (migration 2026102701; the starred messages counter)",
+        "notification_type (migration 2026102702; the user's notification_preference, email|inbox, null while unknown)",
+        "channel_notifications (migration 2026103001; Odoo's general channel setting, all|mentions|no_notif, null while unknown)",
+        "channel_notifications_at (2026103001; when the phone last wrote it)"
+      ],
+      "notes": "One row per server: the session facts, the last bus id applied and when it was seen, the module state (installed|outdated|available|absent|unknown), the bus id the inbox counter is as of, the default access group of new channels and the account-wide mute."
+    },
+    "chat_temp_ids": {
+      "migration": "2026102602",
+      "columns": [
+        "id (config_id#temp_id)",
+        "config_id",
+        "temp_id",
+        "real_id"
+      ],
+      "notes": "The server id each conversation created on the phone was given, by its temporary id: a screen or route still naming the temporary id finds the conversation, and a fingerprint search never adopts a conversation another create already took."
+    },
+    "chat_attachments": {
+      "migration": "2026102604",
+      "columns": [
+        "id (config_id#a<attachment id> or config_id#l<local uuid>)",
+        "config_id",
+        "channel_id",
+        "message_id",
+        "attachment_id",
+        "local_uuid",
+        "post_client_uuid",
+        "seq",
+        "name",
+        "mimetype",
+        "size",
+        "checksum",
+        "voice",
+        "thumb_path",
+        "thumb_bytes",
+        "original_path",
+        "original_bytes",
+        "state (draft|queued|uploaded|posted|refused)",
+        "error",
+        "last_opened_at",
+        "created_at",
+        "origin (migration 2026102606; where a draft file was taken: camera, gallery, file, voice)",
+        "thread_model (migration 2026102704; the record's model for a file of a reply on a record, null for a conversation)",
+        "thread_id (2026102704; the record's id)"
+      ],
+      "notes": "One row per file of a message. The paths and byte counts describe the files cached on the phone; the purge (off by default, 2048 MB, a warning at 80 %) deletes the oldest-opened cached files and keeps the row."
+    },
+    "chat_drafts": {
+      "migration": "2026102605",
+      "columns": [
+        "id (config_id#channel_id)",
+        "config_id",
+        "channel_id",
+        "text",
+        "updated_at",
+        "reply_to (migration 2026102608; JSON target of the message answered)",
+        "edit_of (2026102608; JSON target of the message being edited)",
+        "edit_text (2026102608; the edit's text)",
+        "mentions (2026102608; JSON people and channels picked in either text)",
+        "thread_model (migration 2026102704; set for the draft of a reply on a record, stored under config_id#r<model>#<id> with channel_id 0)",
+        "thread_id (2026102704)"
+      ],
+      "notes": "One draft text per conversation, kept across restarts. The reply target, the edit in progress and the mention picks are kept with it. Its files are the conversation's chat_attachments rows in the draft state."
+    },
+    "chat_reactions": {
+      "migration": "2026102607",
+      "columns": [
+        "id (config_id#message_key#content)",
+        "config_id",
+        "channel_id",
+        "message_key (m{message id}, or u{client uuid} for a message still queued)",
+        "message_id",
+        "content",
+        "count",
+        "self_reacted",
+        "partner_ids (JSON list in the server's order)",
+        "guest_count",
+        "sequence"
+      ],
+      "notes": "One row per reaction group of a message; guests are only counted. Index chat_reactions_channel (config_id, channel_id). Migrations 2026102607 (reactions, chat_messages.parent_id, parent_client_uuid and recipient_ids) and 2026102608 (chat_drafts reply, edit and mentions) add columns only when PRAGMA table_info does not list them, so a fresh install and a second run change nothing."
+    },
+    "chat_mailbox": {
+      "migration": "2026102702",
+      "columns": [
+        "id (config_id#m<message id>)",
+        "config_id",
+        "message_id",
+        "thread_model",
+        "thread_id",
+        "record_name",
+        "author_partner_id",
+        "body",
+        "date",
+        "message_type",
+        "needaction (the message is in the inbox)",
+        "starred (the message is starred)",
+        "history (the message is in the history)",
+        "search_text (folded record name and body)"
+      ],
+      "notes": "One row per message the inbox, history and starred boxes show, of any model, a channel mention included. Indexes idx_chat_mailbox_needaction and idx_chat_mailbox_starred (config_id, flag). A message of an uncached thread gets a row only when a flag is set. The rows of a dropped channel stay, as Odoo keeps the mention history. Migration 2026102702 also adds chat_sources.notification_type."
+    },
+    "chat_on_top": {
+      "migration": "2026102703",
+      "columns": ["id (config_id#channel_id)", "config_id", "channel_id", "since"],
+      "notes": "The conversations the user keeps on top, local to the phone and never sent to the server (Odoo's is_pinned means shown in the sidebar, a different thing). Index idx_chat_on_top_config. Kept through a temporary id swap and a rename, removed when the server drops or the user leaves the conversation, and by dropping the account. The list order setting « Ordre de la liste » chooses between « Épinglées d'abord » (conversations on top first; the default) and « Non lues d'abord » (unread conversations first)."
+    },
+    "chat_search_fts": {
+      "migration": "2026102701",
+      "columns": ["search_text (external content of chat_messages, trigram tokenizer)"],
+      "notes": "An FTS5 virtual table over chat_messages.search_text, created only when the phone's SQLite has FTS5, kept by four triggers (before insert, after insert, after delete, after update of search_text; the before-insert one removes the old entry because INSERT OR REPLACE fires no delete trigger). Every part is dropped on any failure, so the engine reads fts5 only for a complete index, else the search runs LIKE. A trigram index finds no term under 3 characters, which take LIKE too."
+    },
+    "chat_avatars": {
+      "migration": "2026102705",
+      "columns": ["id (config_id#p<partner id>)", "config_id", "partner_id", "unique_key (the write_date the file was fetched with)", "path", "bytes", "fetched_at"],
+      "notes": "The cached avatar files of authors, one row per partner and account. Index idx_chat_avatars_config. Counted in the chat cache space and removed by « Retirer tous les fichiers téléchargés » and by dropping the account; a rename re-keys the rows."
+    },
+    "chat_push": {
+      "migration": "2026102801",
+      "columns": ["config_id (primary key)", "ntfy_url", "odoo_ntfy_url (only when Odoo reaches ntfy at another address)", "prefix", "topic", "endpoint (odoo_ntfy_url or ntfy_url, then /topic)", "p256dh", "auth", "vapid_key", "registered_at", "stale_endpoints (JSON array of endpoints to unregister)", "lock_screen (hidden_locked | never | always; default hidden_locked)", "phone_filter (migration 2026103001; all | mentions_dm | none; default all)", "inbox_notify (2026103001; 1 rings record and activity pushes; default 1)", "inbox_mentions (2026103001; 1 lets a record @mention ring while inbox_notify is 0; default 0)", "quiet_on (2026103001; quiet hours on; default 0)", "quiet_from, quiet_to (2026103001; minutes from local midnight, the window crossing midnight when from > to; defaults 1320 and 420)"],
+      "notes": "The closed-app notifications of each account, empty until a link is applied. The private key of the subscription and the ntfy token are not here: they stay in native code, encrypted with a Keystore key. Dropped with the account."
     }
   }
 }

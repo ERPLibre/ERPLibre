@@ -4878,7 +4878,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
-    # NTFY section
     # Services VoIP : erplibre_sip_go et Asterisk
     "voip_announce_other": {
         "fr": "Un autre fichier...",
@@ -6234,37 +6233,1491 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'installation d'Asterisk : ",
         "en": "Error installing Asterisk: ",
     },
-    "Deploy - Install NTFY notification server": {
-        "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
-        "en": "🔔 Deploy - Install NTFY notification server",
+    # NTFY for ERPLibre mobile
+    "Deploy - Prepare ntfy for ERPLibre mobile": {
+        "fr": "📱 Déployer - Préparer ntfy pour ERPLibre mobile",
+        "en": "📱 Deploy - Prepare ntfy for ERPLibre mobile",
     },
-    "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
-        "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
-        "en": "Deploy a local NTFY push notification server (Ubuntu/Arch)",
+    "Run on this machine or over ssh?": {
+        "fr": "Sur cette machine ou par ssh ?",
+        "en": "Run on this machine or over ssh?",
     },
-    "NTFY server port (default: 8080): ": {
-        "fr": "Port du serveur NTFY (défaut : 8080) : ",
-        "en": "NTFY server port (default: 8080): ",
+    "This machine": {
+        "fr": "Cette machine",
+        "en": "This machine",
     },
-    "NTFY base URL": {
-        "fr": "URL de base NTFY",
-        "en": "NTFY base URL",
+    "Over ssh": {
+        "fr": "Par ssh",
+        "en": "Over ssh",
     },
-    "Installing NTFY server (requires sudo)...": {
-        "fr": "Installation du serveur NTFY (sudo requis)...",
-        "en": "Installing NTFY server (requires sudo)...",
+    "Prepare a phone": {
+        "fr": "Préparer un téléphone",
+        "en": "Prepare a phone",
     },
-    "NTFY server installed and started successfully!": {
-        "fr": "Serveur NTFY installé et démarré avec succès!",
-        "en": "NTFY server installed and started successfully!",
+    "List the prepared phones": {
+        "fr": "Lister les téléphones préparés",
+        "en": "List the prepared phones",
     },
-    "Error installing NTFY server: ": {
-        "fr": "Erreur lors de l'installation du serveur NTFY : ",
-        "en": "Error installing NTFY server: ",
+    "Revoke a phone": {
+        "fr": "Révoquer un téléphone",
+        "en": "Revoke a phone",
     },
-    "NTFY install script not found: ": {
-        "fr": "Script d'installation NTFY introuvable : ",
-        "en": "NTFY install script not found: ",
+    "ntfy configuration file": {
+        "fr": "Fichier de configuration de ntfy",
+        "en": "ntfy configuration file",
+    },
+    "The ntfy configuration could not be read.": {
+        "fr": "La configuration de ntfy n'a pas pu être lue.",
+        "en": "The ntfy configuration could not be read.",
+    },
+    "The owner of the ntfy auth file is unknown.": {
+        "fr": "Le propriétaire du fichier d'authentification de ntfy est inconnu.",
+        "en": "The owner of the ntfy auth file is unknown.",
+    },
+    "ntfy_mobile_no_auth_file": {
+        "fr": "Le serveur ntfy n'a pas de fichier d'authentification (auth-file) : les accès par téléphone ne peuvent pas être créés.",
+        "en": "The ntfy server has no auth-file: phone access cannot be created.",
+    },
+    "ntfy_mobile_not_deny_all": {
+        "fr": "Le serveur ntfy n'est pas en refus par défaut (auth-default-access: deny-all) : n'importe qui lirait les sujets.",
+        "en": "The ntfy server is not deny-by-default (auth-default-access: deny-all): anyone could read the topics.",
+    },
+    "ntfy_mobile_subscriber_rate_limiting": {
+        "fr": "La limitation par abonné (visitor-subscriber-rate-limiting) est active : elle fait perdre des notifications à un téléphone qui se reconnecte.",
+        "en": "Subscriber rate limiting (visitor-subscriber-rate-limiting) is on: it drops notifications for a phone that reconnects.",
+    },
+    "Fix this with: Deploy - Call infrastructure - Install on a host (coturn, ntfy).": {
+        "fr": "À corriger par : Déployer - Infrastructure d'appel - Installer sur un hôte (coturn, ntfy).",
+        "en": "Fix this with: Deploy - Call infrastructure - Install on a host (coturn, ntfy).",
+    },
+    "Odoo server source addresses to exempt from rate limits, comma separated": {
+        "fr": "Adresses sources du serveur Odoo à exempter des limites, séparées par des virgules",
+        "en": "Odoo server source addresses to exempt from rate limits, comma separated",
+    },
+    "No address exempted: a busy Odoo server hits HTTP 429 and loses pushes.": {
+        "fr": "Aucune adresse exemptée : un serveur Odoo occupé reçoit des HTTP 429 et perd des notifications.",
+        "en": "No address exempted: a busy Odoo server hits HTTP 429 and loses pushes.",
+    },
+    "Proposed changes to the ntfy configuration:": {
+        "fr": "Changements proposés à la configuration de ntfy :",
+        "en": "Proposed changes to the ntfy configuration:",
+    },
+    "Write this configuration (a backup copy is kept)? (y/N): ": {
+        "fr": "Écrire cette configuration (une copie de sauvegarde est gardée) ? (y/N) : ",
+        "en": "Write this configuration (a backup copy is kept)? (y/N): ",
+    },
+    "Configuration left unchanged, not applied:": {
+        "fr": "Configuration laissée telle quelle, non appliqué :",
+        "en": "Configuration left unchanged, not applied:",
+    },
+    "Configuration written.": {
+        "fr": "Configuration écrite.",
+        "en": "Configuration written.",
+    },
+    "The configuration could not be written.": {
+        "fr": "La configuration n'a pas pu être écrite.",
+        "en": "The configuration could not be written.",
+    },
+    "Restart ntfy now to apply it? (y/N): ": {
+        "fr": "Redémarrer ntfy maintenant pour l'appliquer ? (y/N) : ",
+        "en": "Restart ntfy now to apply it? (y/N): ",
+    },
+    "Not restarted: the change applies at the next ntfy restart.": {
+        "fr": "Non redémarré : le changement s'appliquera au prochain redémarrage de ntfy.",
+        "en": "Not restarted: the change applies at the next ntfy restart.",
+    },
+    "ntfy restarted and active.": {
+        "fr": "ntfy redémarré et actif.",
+        "en": "ntfy restarted and active.",
+    },
+    "ntfy is not active after the restart:": {
+        "fr": "ntfy n'est pas actif après le redémarrage :",
+        "en": "ntfy is not active after the restart:",
+    },
+    "Phone name (e.g. Alice's phone): ": {
+        "fr": "Nom du téléphone (ex. : téléphone d'Alice) : ",
+        "en": "Phone name (e.g. Alice's phone): ",
+    },
+    "This name has no usable character.": {
+        "fr": "Ce nom ne contient aucun caractère utilisable.",
+        "en": "This name has no usable character.",
+    },
+    "The phone access could not be created.": {
+        "fr": "L'accès du téléphone n'a pas pu être créé.",
+        "en": "The phone access could not be created.",
+    },
+    "URL the phone reaches ntfy at": {
+        "fr": "URL par laquelle le téléphone joint ntfy",
+        "en": "URL the phone reaches ntfy at",
+    },
+    "URL the Odoo server publishes to (Enter: same)": {
+        "fr": "URL par laquelle le serveur Odoo publie (Entrée : la même)",
+        "en": "URL the Odoo server publishes to (Enter: same)",
+    },
+    "Phone access ready:": {
+        "fr": "Accès du téléphone prêt :",
+        "en": "Phone access ready:",
+    },
+    "Scan this code with the ERPLibre mobile app:": {
+        "fr": "Scannez ce code avec l'application ERPLibre mobile :",
+        "en": "Scan this code with the ERPLibre mobile app:",
+    },
+    "QR code unavailable, install it with:": {
+        "fr": "Code QR indisponible, l'installer par :",
+        "en": "QR code unavailable, install it with:",
+    },
+    "This link gives access to the notifications of this phone: do not share it.": {
+        "fr": "Ce lien donne accès aux notifications de ce téléphone : ne le partagez pas.",
+        "en": "This link gives access to the notifications of this phone: do not share it.",
+    },
+    "No phone prepared.": {
+        "fr": "Aucun téléphone préparé.",
+        "en": "No phone prepared.",
+    },
+    "Phone to revoke (number): ": {
+        "fr": "Téléphone à révoquer (numéro) : ",
+        "en": "Phone to revoke (number): ",
+    },
+    "The prepared phones could not be read.": {
+        "fr": "Les téléphones préparés n'ont pas pu être lus.",
+        "en": "The prepared phones could not be read.",
+    },
+    "A phone is already prepared under this name:": {
+        "fr": "Un téléphone est déjà préparé sous ce nom :",
+        "en": "A phone is already prepared under this name:",
+    },
+    "Choose another name": {
+        "fr": "Choisir un autre nom",
+        "en": "Choose another name",
+    },
+    "Revoke it and prepare it again": {
+        "fr": "Le révoquer et le préparer de nouveau",
+        "en": "Revoke it and prepare it again",
+    },
+    "Your choice (1/2, Enter: cancel): ": {
+        "fr": "Votre choix (1/2, Entrée : annuler) : ",
+        "en": "Your choice (1/2, Enter: cancel): ",
+    },
+    "No systemd service named ntfy here:": {
+        "fr": "Aucun service systemd nommé ntfy ici :",
+        "en": "No systemd service named ntfy here:",
+    },
+    "restart ntfy yourself once the configuration is written.": {
+        "fr": "redémarrez ntfy vous-même une fois la configuration écrite.",
+        "en": "restart ntfy yourself once the configuration is written.",
+    },
+    "Backup of the configuration:": {
+        "fr": "Copie de sauvegarde de la configuration :",
+        "en": "Backup of the configuration:",
+    },
+    "To put it back, run as root:": {
+        "fr": "Pour la remettre, lancez en root :",
+        "en": "To put it back, run as root:",
+    },
+    "Revoke the access of this phone? (y/N): ": {
+        "fr": "Révoquer l'accès de ce téléphone ? (y/N) : ",
+        "en": "Revoke the access of this phone? (y/N): ",
+    },
+    "Access revoked.": {
+        "fr": "Accès révoqué.",
+        "en": "Access revoked.",
+    },
+    "The revocation failed.": {
+        "fr": "La révocation a échoué.",
+        "en": "The revocation failed.",
+    },
+    # Call infrastructure
+    "Deploy - Call infrastructure": {
+        "fr": "📞 Déployer - Infrastructure d'appel",
+        "en": "📞 Deploy - Call infrastructure",
+    },
+    "Call infra - Install on a host (coturn, ntfy)": {
+        "fr": "Installer sur un hôte (coturn, ntfy)",
+        "en": "Install on a host (coturn, ntfy)",
+    },
+    "Call infra - Add an Odoo server": {
+        "fr": "Ajouter un serveur Odoo",
+        "en": "Add an Odoo server",
+    },
+    "Call infra - Remove an Odoo server": {
+        "fr": "Retirer un serveur Odoo",
+        "en": "Remove an Odoo server",
+    },
+    "Call infra - Prepare ntfy for ERPLibre mobile": {
+        "fr": "Préparer ntfy pour ERPLibre mobile",
+        "en": "Prepare ntfy for ERPLibre mobile",
+    },
+    "Call infra - Check": {
+        "fr": "Vérifier",
+        "en": "Check",
+    },
+    "Call infra - Uninstall": {
+        "fr": "Désinstaller",
+        "en": "Uninstall",
+    },
+    "call_infra_local_ntfy_adopted": {
+        "fr": "Un ntfy est déjà installé sur cette machine (port 8080 par défaut) : il sera ADOPTÉ, pas remplacé. Sa configuration est montrée en diff et sauvée avant tout changement ; ses utilisateurs et jetons restent.",
+        "en": "A ntfy is already installed on this machine (port 8080 by default): it will be ADOPTED, not replaced. Its configuration is shown as a diff and backed up before any change; its users and tokens stay.",
+    },
+    "call_infra_sudo_refused": {
+        "fr": "sudo refusé sur l'hôte (mot de passe erroné, ou demandé sans terminal) : rien n'est touché.",
+        "en": "sudo refused on the host (wrong password, or asked without a terminal): nothing is touched.",
+    },
+    "Services to install:": {
+        "fr": "Services à installer :",
+        "en": "Services to install:",
+    },
+    "coturn and ntfy": {
+        "fr": "coturn et ntfy",
+        "en": "coturn and ntfy",
+    },
+    "coturn only": {
+        "fr": "coturn seulement",
+        "en": "coturn only",
+    },
+    "ntfy only": {
+        "fr": "ntfy seulement",
+        "en": "ntfy only",
+    },
+    "Your choice (1/2)": {
+        "fr": "Votre choix (1/2)",
+        "en": "Your choice (1/2)",
+    },
+    "Your choice (1/2/3)": {
+        "fr": "Votre choix (1/2/3)",
+        "en": "Your choice (1/2/3)",
+    },
+    "Certificate:": {
+        "fr": "Certificat :",
+        "en": "Certificate:",
+    },
+    "call_infra_tls_none": {
+        "fr": "Aucun : http et TURN sans TLS, réseau local seulement",
+        "en": "None: http and TURN without TLS, local network only",
+    },
+    "Supplied: certificate and key files of this machine": {
+        "fr": "Fourni : fichiers du certificat et de la clé, sur cette machine",
+        "en": "Supplied: certificate and key files of this machine",
+    },
+    "Certificate file (PEM)": {
+        "fr": "Fichier du certificat (PEM)",
+        "en": "Certificate file (PEM)",
+    },
+    "Private key file (PEM)": {
+        "fr": "Fichier de la clé privée (PEM)",
+        "en": "Private key file (PEM)",
+    },
+    "A file is required.": {
+        "fr": "Un fichier est requis.",
+        "en": "A file is required.",
+    },
+    "The file could not be read:": {
+        "fr": "Le fichier n'a pas pu être lu :",
+        "en": "The file could not be read:",
+    },
+    "Public name of the host (name or address)": {
+        "fr": "Nom public de l'hôte (nom ou adresse)",
+        "en": "Public name of the host (name or address)",
+    },
+    "TURN port (udp and tcp)": {
+        "fr": "Port TURN (udp et tcp)",
+        "en": "TURN port (udp and tcp)",
+    },
+    "TURNS port (tcp, TLS)": {
+        "fr": "Port TURNS (tcp, TLS)",
+        "en": "TURNS port (tcp, TLS)",
+    },
+    "Media relay port range (udp)": {
+        "fr": "Plage de ports des relais média (udp)",
+        "en": "Media relay port range (udp)",
+    },
+    "ntfy port (tcp)": {
+        "fr": "Port de ntfy (tcp)",
+        "en": "ntfy port (tcp)",
+    },
+    "Not a number:": {
+        "fr": "Pas un nombre :",
+        "en": "Not a number:",
+    },
+    "Not a port range:": {
+        "fr": "Pas une plage de ports (début-fin) :",
+        "en": "Not a port range (low-high):",
+    },
+    "Services:": {
+        "fr": "Services :",
+        "en": "Services:",
+    },
+    "Mode:": {
+        "fr": "Mode :",
+        "en": "Mode:",
+    },
+    "development": {
+        "fr": "développement",
+        "en": "development",
+    },
+    "TLS:": {
+        "fr": "TLS :",
+        "en": "TLS:",
+    },
+    "supplied certificate": {
+        "fr": "certificat fourni",
+        "en": "supplied certificate",
+    },
+    "Public name:": {
+        "fr": "Nom public :",
+        "en": "Public name:",
+    },
+    "Ports:": {
+        "fr": "Ports :",
+        "en": "Ports:",
+    },
+    "call_infra_private_ranges_allowed": {
+        "fr": "Développement : coturn relaie aussi vers les adresses privées (réseau local) ; la production les refusera.",
+        "en": "Development: coturn also relays to private addresses (local network); production will deny them.",
+    },
+    "call_infra_adopted": {
+        "fr": "{service} a déjà une configuration écrite par quelqu'un d'autre ({config}) : elle est sauvée (copie .bak-<date>) puis ADOPTÉE, et la désinstallation la remettra.",
+        "en": "{service} already has a configuration written by someone else ({config}): it is backed up (.bak-<date> copy) then ADOPTED, and uninstalling puts it back.",
+    },
+    "Changes to": {
+        "fr": "Changements à",
+        "en": "Changes to",
+    },
+    "Nothing installed.": {
+        "fr": "Rien d'installé.",
+        "en": "Nothing installed.",
+    },
+    "call_infra_nothing_to_change": {
+        "fr": "Rien à changer : l'hôte tourne déjà avec ces réglages.",
+        "en": "Nothing to change: the host already runs with these settings.",
+    },
+    "call_infra_admin_password": {
+        "fr": "Compte administrateur de ntfy créé ; son mot de passe, affiché une seule fois et écrit nulle part :",
+        "en": "ntfy administrator account created; its password, shown once and written nowhere:",
+    },
+    "Step failed:": {
+        "fr": "Étape en échec :",
+        "en": "Step failed:",
+    },
+    "call_infra_install_failed": {
+        "fr": "L'installation n'a pas abouti : l'état de l'hôte n'est pas écrit. Relancez-la : elle reprend là où elle s'est arrêtée.",
+        "en": "The install did not complete: the host state is not written. Run it again: it resumes where it stopped.",
+    },
+    "call_infra_installed": {
+        "fr": "Installé : l'état de l'hôte est écrit.",
+        "en": "Installed: the host state is written.",
+    },
+    "Firewall": {
+        "fr": "Pare-feu",
+        "en": "Firewall",
+    },
+    "call_infra_firewall_preview": {
+        "fr": "règles à ajouter ; rien d'autre n'est changé, et la règle de ssh n'est jamais touchée :",
+        "en": "rules to add; nothing else is changed, and the ssh rule is never touched:",
+    },
+    "Add these rules? (y/N): ": {
+        "fr": "Ajouter ces règles ? (o/N) : ",
+        "en": "Add these rules? (y/N): ",
+    },
+    "No firewall rule added.": {
+        "fr": "Aucune règle de pare-feu ajoutée.",
+        "en": "No firewall rule added.",
+    },
+    "call_infra_firewall_manual": {
+        "fr": "nftables : pas exactement une chaîne d'entrée en refus par défaut, aucune règle n'est ajoutée ; ouvrez vous-même les ports du résumé.",
+        "en": "nftables: not exactly one default-drop input chain, no rule is added; open the ports of the summary yourself.",
+    },
+    "call_infra_firewall_failed": {
+        "fr": "Des règles n'ont pas pu être ajoutées : seules celles en place sont consignées.",
+        "en": "Some rules could not be added: only those in place are recorded.",
+    },
+    "call_infra_firewall_none": {
+        "fr": "Aucun pare-feu actif sur l'hôte (ni ufw, ni nftables en refus par défaut) : aucune règle à ajouter.",
+        "en": "No active firewall on the host (neither ufw nor a default-drop nftables): no rule to add.",
+    },
+    "call_infra_firewall_unknown": {
+        "fr": "Pare-feu non reconnu (firewalld, iptables...) : aucune règle n'est ajoutée ; ouvrez vous-même les ports du résumé.",
+        "en": "Unrecognised firewall (firewalld, iptables...): no rule is added; open the ports of the summary yourself.",
+    },
+    "call_infra_cloud_firewall": {
+        "fr": "Le pare-feu du fournisseur infonuagique, s'il y en a un, ne se voit pas d'ici : ouvrez-y aussi les ports du résumé.",
+        "en": "The cloud provider's firewall, if any, cannot be seen from here: open the ports of the summary there too.",
+    },
+    "call_infra_state_not_saved": {
+        "fr": "Les règles du pare-feu n'ont pas pu être consignées dans l'état de l'hôte : la désinstallation ne les retirera pas.",
+        "en": "The firewall rules could not be recorded in the host state: uninstalling will not remove them.",
+    },
+    "Address that reaches the host from this machine": {
+        "fr": "Adresse qui joint l'hôte depuis cette machine",
+        "en": "Address that reaches the host from this machine",
+    },
+    "call_infra_ask_cafile": {
+        "fr": "Autorité du certificat à vérifier (fichier de cette machine ; Entrée : celles du système)",
+        "en": "Certificate authority to verify against (file on this machine; Enter: the system ones)",
+    },
+    "TURN over UDP": {
+        "fr": "TURN sur UDP",
+        "en": "TURN over UDP",
+    },
+    "TURN over TCP": {
+        "fr": "TURN sur TCP",
+        "en": "TURN over TCP",
+    },
+    "TURN over TLS": {
+        "fr": "TURN sur TLS",
+        "en": "TURN over TLS",
+    },
+    "ntfy health": {
+        "fr": "Santé de ntfy",
+        "en": "ntfy health",
+    },
+    "Certificate expiry": {
+        "fr": "Expiration du certificat",
+        "en": "Certificate expiry",
+    },
+    "Firewall rules": {
+        "fr": "Règles du pare-feu",
+        "en": "Firewall rules",
+    },
+    "Host state": {
+        "fr": "État de l'hôte",
+        "en": "Host state",
+    },
+    "Nothing to uninstall.": {
+        "fr": "Rien à désinstaller.",
+        "en": "Nothing to uninstall.",
+    },
+    "call_infra_pending_left": {
+        "fr": "{service} : une installation interrompue a laissé sa fiche sur l'hôte ; relancez l'installation pour la terminer.",
+        "en": "{service}: an interrupted install left its record on the host; run the install again to finish it.",
+    },
+    "Recorded on the host:": {
+        "fr": "Consigné sur l'hôte :",
+        "en": "Recorded on the host:",
+    },
+    "call_infra_uninstall_restores": {
+        "fr": "configuration d'origine remise ({backup} → {config}) ; le paquet reste",
+        "en": "original configuration put back ({backup} → {config}); the package stays",
+    },
+    "call_infra_uninstall_purges": {
+        "fr": "arrêté et retiré, paquet compris",
+        "en": "stopped and removed, package included",
+    },
+    "call_infra_uninstall_keeps_package": {
+        "fr": "arrêté, configuration de l'outil retirée ; le paquet, là avant l'outil, reste",
+        "en": "stopped, the tool's configuration removed; the package, there before the tool, stays",
+    },
+    "Firewall rules removed:": {
+        "fr": "Règles du pare-feu retirées :",
+        "en": "Firewall rules removed:",
+    },
+    "call_infra_ask_remove_data": {
+        "fr": "Supprimer aussi les certificats et la base des comptes de ntfy ? (o/N) : ",
+        "en": "Also remove the certificates and ntfy's account database? (y/N): ",
+    },
+    "Uninstall now? (y/N): ": {
+        "fr": "Désinstaller maintenant ? (o/N) : ",
+        "en": "Uninstall now? (y/N): ",
+    },
+    "call_infra_uninstalled": {
+        "fr": "Désinstallé : l'état de l'hôte est retiré.",
+        "en": "Uninstalled: the host state is removed.",
+    },
+    "call_infra_backup_lost": {
+        "fr": "{service} : la copie d'origine {backup} est absente ; le paquet est retiré, sa configuration d'origine ne peut pas être remise.",
+        "en": "{service}: the original copy {backup} is missing; the package is removed, its original configuration cannot be put back.",
+    },
+    "call_infra_backup_missing": {
+        "fr": "{service} : la copie d'origine {backup} est absente ; le service reste tel que l'outil l'a configuré. Remettez votre configuration d'origine, puis relancez la désinstallation.",
+        "en": "{service}: the original copy {backup} is missing; the service stays as the tool configured it. Put your original configuration back, then run the uninstall again.",
+    },
+    "call_infra_uninstall_failed": {
+        "fr": "La désinstallation n'a pas abouti : l'état de l'hôte reste. Relancez-la : chaque étape déjà faite est sautée.",
+        "en": "The uninstall did not complete: the host state stays. Run it again: every step already done is skipped.",
+    },
+    "call_infra_unsupported_os": {
+        "fr": "Système « {os} » non pris en charge : {supported} seulement.",
+        "en": "Unsupported system \"{os}\": {supported} only.",
+    },
+    "call_infra_no_systemd": {
+        "fr": "systemd absent sur l'hôte : l'installation par paquets et services systemd l'exige.",
+        "en": "No systemd on the host: the install by packages and systemd services needs it.",
+    },
+    "call_infra_state_version": {
+        "fr": "L'état de l'hôte est de la version {found}, cet outil lit les versions {expected} : rien n'est touché.",
+        "en": "The host state is version {found}, this tool reads versions {expected}: nothing is touched.",
+    },
+    "call_infra_state_invalid": {
+        "fr": "L'état de l'hôte porte une fiche {service} qu'on ne peut pas suivre : rien n'est touché.",
+        "en": "The host state holds a {service} record that cannot be followed: nothing is touched.",
+    },
+    "call_infra_engine_unreadable": {
+        "fr": "{engine} refuse de lister ses conteneurs ({detail}) : l'outil ne sait pas ce qui tourne et ne touche à rien. Corrigez ce que le moteur répond, puis relancez.",
+        "en": "{engine} refuses to list its containers ({detail}): the tool cannot tell what runs and touches nothing. Fix what the engine answers, then run again.",
+    },
+    "call_infra_foreign_container": {
+        "fr": "Des conteneurs que l'état de l'outil ne consigne pas portent ses noms ou ses images : {names}. Retirez-les, ou désinstallez d'abord : rien n'est touché.",
+        "en": "Containers that the tool's state does not record carry its names or images: {names}. Remove them, or uninstall first: nothing is touched.",
+    },
+    "call_infra_method_partial": {
+        "fr": "La méthode d'installation vaut pour tout l'hôte : en changer migre chaque service consigné. Choisissez aussi {service}.",
+        "en": "The install method applies to the whole host: changing it migrates every recorded service. Choose {service} too.",
+    },
+    "call_infra_unsafe_tree": {
+        "fr": "{path} porte un fichier à plusieurs liens physiques, est un lien, ou traverse un autre système de fichiers : root n'y a rien changé de propriétaire ni rien copié. Vérifiez-le, puis relancez.",
+        "en": "{path} holds a file with several hard links, is a link, or crosses another filesystem: root changed no owner there and copied nothing. Check it, then run again.",
+    },
+    "call_infra_backup_kept": {
+        "fr": "Copies des bases prises par les migrations gardées sous {path} : secrets de coturn et comptes de ntfy. Retirez-les quand elles ne servent plus.",
+        "en": "Database copies taken by the migrations kept under {path}: coturn's secrets and ntfy's accounts. Remove them once they are no longer needed.",
+    },
+    "call_infra_method_added": {
+        "fr": "Le retour aux paquets ne déplace que les services de l'état : revenez d'abord aux paquets sans {service}, puis ajoutez-le par une nouvelle installation.",
+        "en": "The return to packages moves only the services of the state: return to packages without {service} first, then add it with a new install.",
+    },
+    "call_infra_container_over_packages": {
+        "fr": "{service} tourne déjà par paquets sur cet hôte, sans état de l'outil. Installez-le d'abord par paquets (l'outil l'adopte), puis passez aux conteneurs : la migration arrête son unité et garde ses données.",
+        "en": "{service} already runs from packages on this host, with no state of the tool. Install it from packages first (the tool adopts it), then move to containers: the migration stops its unit and keeps its data.",
+    },
+    "call_infra_ntfy_downgrade": {
+        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : il ne pourrait plus la lire. Mettez à jour ntfy sur l'hôte, ou gardez les conteneurs.",
+        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: it could no longer read it. Upgrade ntfy on the host, or keep the containers.",
+    },
+    "call_infra_uninstall_ntfy_disabled": {
+        "fr": "Le ntfy de l'hôte ({host}) est plus ancien que celui de l'image ({image}), qui a mis à jour la base des comptes : l'unité {unit} reste désactivée et arrêtée. Mettez à jour ntfy sur l'hôte, puis rendez-lui son état d'avant l'outil (systemctl {action} {unit}).",
+        "en": "The host's ntfy ({host}) is older than the image's ({image}), which upgraded the user database: the {unit} unit stays disabled and stopped. Upgrade ntfy on the host, then give it back its state from before the tool (systemctl {action} {unit}).",
+    },
+    "call_infra_engine_switch": {
+        "fr": "Les conteneurs tournent sous {old} : passer à {new} demande d'abord de désinstaller, ou de revenir aux paquets.",
+        "en": "The containers run under {old}: moving to {new} first needs an uninstall, or a return to packages.",
+    },
+    "call_infra_engine_missing": {
+        "fr": "{engine} demande des paquets absents de l'hôte : {packages}. Acceptez leur installation, ou installez-les vous-même.",
+        "en": "{engine} needs packages the host lacks: {packages}. Accept their installation, or install them yourself.",
+    },
+    "call_infra_container_port": {
+        "fr": "Le port {port} est sous {start}, le premier port qu'un compte sans privilège peut ouvrir sur cet hôte, et ce conteneur ne tourne pas en root : choisissez un port d'au moins {start}, {alt} par exemple.",
+        "en": "Port {port} is below {start}, the first port an unprivileged account can open on this host, and this container does not run as root: choose a port of at least {start}, {alt} for instance.",
+    },
+    "call_infra_install_method": {
+        "fr": "Méthode d'installation :",
+        "en": "Install method:",
+    },
+    "call_infra_method_packages": {
+        "fr": "Paquets du système (systemd)",
+        "en": "System packages (systemd)",
+    },
+    "call_infra_method_container": {
+        "fr": "Conteneurs (Docker ou Podman)",
+        "en": "Containers (Docker or Podman)",
+    },
+    "call_infra_choice_method": {
+        "fr": "Méthode (1/2)",
+        "en": "Method (1/2)",
+    },
+    "call_infra_engine": {
+        "fr": "Moteur de conteneurs :",
+        "en": "Container engine:",
+    },
+    "call_infra_choice_engine": {
+        "fr": "Moteur (1/2)",
+        "en": "Engine (1/2)",
+    },
+    "call_infra_engine_none": {
+        "fr": "Ni Docker ni Podman sur l'hôte : le moteur choisi y sera installé, après accord.",
+        "en": "Neither Docker nor Podman on the host: the chosen engine is installed there, once agreed.",
+    },
+    "call_infra_engine_found": {
+        "fr": "{engine} est sur l'hôte : les conteneurs tourneront sous lui.",
+        "en": "{engine} is on the host: the containers will run under it.",
+    },
+    "call_infra_podman_mode": {
+        "fr": "Podman :",
+        "en": "Podman:",
+    },
+    "call_infra_podman_root": {
+        "fr": "En root",
+        "en": "As root",
+    },
+    "call_infra_podman_rootless": {
+        "fr": "Sans root (compte erplibre-call)",
+        "en": "Rootless (erplibre-call account)",
+    },
+    "call_infra_choice_podman": {
+        "fr": "Mode de Podman (1/2)",
+        "en": "Podman mode (1/2)",
+    },
+    "call_infra_engine_offer": {
+        "fr": "Paquets à installer sur l'hôte pour {engine} : {packages}",
+        "en": "Packages to install on the host for {engine}: {packages}",
+    },
+    "call_infra_ask_install_engine": {
+        "fr": "Les installer ?",
+        "en": "Install them?",
+    },
+    "call_infra_rootless_no_443": {
+        "fr": "Podman sans root : coturn tourne sous un compte sans privilège, qui ne peut pas ouvrir 443 ; TURN sur TLS garde son propre port ({port} proposé).",
+        "en": "Rootless Podman: coturn runs under an unprivileged account, which cannot open 443; TURN over TLS keeps its own port ({port} proposed).",
+    },
+    "call_infra_by_packages": {
+        "fr": "paquets du système",
+        "en": "system packages",
+    },
+    "call_infra_by_containers": {
+        "fr": "conteneurs",
+        "en": "containers",
+    },
+    "call_infra_migration_notice": {
+        "fr": "Passage de la méthode « {old} » à « {new} » pour {services} : chaque service s'arrête sous l'ancienne méthode et repart sous la nouvelle, avec sa configuration, ses secrets, la base de coturn et les comptes de ntfy. Ces bases sont d'abord copiées dans {backup}/<horodatage>/ ; le cache de ntfy peut être perdu. Si la nouvelle méthode ne démarre pas, l'ancienne revient. Les serveurs Odoo branchés ne sont pas touchés et gardent leurs identifiants.",
+        "en": "Moving from the \"{old}\" method to \"{new}\" for {services}: each service stops under the old method and starts again under the new one, with its configuration, its secrets, coturn's database and ntfy's accounts. Those databases are first copied into {backup}/<timestamp>/; ntfy's cache may be lost. If the new method does not start, the old one comes back. Plugged Odoo servers are not touched and keep their credentials.",
+    },
+    "call_infra_ask_migrate": {
+        "fr": "Migrer maintenant ?",
+        "en": "Migrate now?",
+    },
+    "Method:": {
+        "fr": "Méthode :",
+        "en": "Method:",
+    },
+    "Images:": {
+        "fr": "Images :",
+        "en": "Images:",
+    },
+    "Packages to install:": {
+        "fr": "Paquets à installer :",
+        "en": "Packages to install:",
+    },
+    "call_infra_summary_rootful": {
+        "fr": "conteneurs sous {engine} (moteur en root)",
+        "en": "containers under {engine} (engine as root)",
+    },
+    "call_infra_summary_rootless": {
+        "fr": "conteneurs sous Podman sans root (compte {account})",
+        "en": "containers under rootless Podman ({account} account)",
+    },
+    "call_infra_docker_forward_note": {
+        "fr": "Docker passe la politique FORWARD d'iptables à DROP en démarrant : sur un hôte qui route pour d'autres (VM en pont, conteneurs d'un autre outil), ce trafic peut être coupé.",
+        "en": "Docker sets iptables' FORWARD policy to DROP when it starts: on a host that routes for others (bridged VMs, another tool's containers), that traffic can be cut.",
+    },
+    "call_infra_registry_limit": {
+        "fr": "Limite du registre atteinte (Docker Hub) : réessayer plus tard.",
+        "en": "Registry limit reached (Docker Hub): try again later.",
+    },
+    "call_infra_pull_failed": {
+        "fr": "Le téléchargement de l'image de {service} a échoué : aucun service n'est arrêté, l'état de l'hôte n'est pas écrit.",
+        "en": "Downloading the {service} image failed: no service is stopped, the host state is not written.",
+    },
+    "call_infra_migration_rolled_back": {
+        "fr": "La nouvelle méthode n'a pas démarré : l'hôte est revenu à la précédente et son état n'a pas changé. Copies des bases : {backups}",
+        "en": "The new method did not start: the host went back to the previous one and its state did not change. Copies of the databases: {backups}",
+    },
+    "call_infra_migration_rollback_failed": {
+        "fr": "La nouvelle méthode n'a pas démarré, et le retour à la précédente a échoué ({steps}) : l'état de l'hôte reste celui d'avant. Copies des bases : {backups}. Relancez l'installation, ou remettez les services à la main.",
+        "en": "The new method did not start, and going back to the previous one failed ({steps}): the host state stays as it was. Copies of the databases: {backups}. Run the install again, or put the services back by hand.",
+    },
+    "call_infra_migration_backups": {
+        "fr": "Copies des bases d'avant la migration : {backups}",
+        "en": "Copies of the databases from before the migration: {backups}",
+    },
+    "call_infra_image_kept": {
+        "fr": "Image gardée, le moteur refuse de la retirer (encore utilisée ?) : {image}",
+        "en": "Image kept, the engine refuses to remove it (still in use?): {image}",
+    },
+    "call_infra_engine_kept": {
+        "fr": "Paquets du moteur gardés : {packages}",
+        "en": "Engine packages kept: {packages}",
+    },
+    "call_infra_account_kept": {
+        "fr": "Compte gardé sur l'hôte : {account}",
+        "en": "Account kept on the host: {account}",
+    },
+    "call_infra_ntfy_admin_kept": {
+        "fr": "Le compte {account} de ntfy n'a pas pu être vérifié, son conteneur ne tournant pas : il peut rester dans la base des comptes de ntfy.",
+        "en": "ntfy's {account} account could not be checked, its container not running: it may remain in ntfy's user database.",
+    },
+    "call_infra_ask_remove_engine": {
+        "fr": "Retirer aussi ce que l'outil a ajouté pour les conteneurs ({added}) ? (o/N) : ",
+        "en": "Also remove what the tool added for the containers ({added})? (y/N): ",
+    },
+    "call_infra_uninstall_containers": {
+        "fr": "conteneurs arrêtés et retirés, avec le fichier compose",
+        "en": "containers stopped and removed, with the compose file",
+    },
+    "call_infra_uninstall_container": {
+        "fr": "conteneur retiré, configuration de l'outil retirée",
+        "en": "container removed, the tool's configuration removed",
+    },
+    "call_infra_uninstall_images": {
+        "fr": "Images tirées par l'outil, retirées quand le moteur l'accepte :",
+        "en": "Images the tool pulled, removed when the engine accepts:",
+    },
+    "call_infra_bad_value": {
+        "fr": "Valeur refusée pour {name} : {value}",
+        "en": "Value refused for {name}: {value}",
+    },
+    "call_infra_port_busy": {
+        "fr": "Le port {port}/{proto} est déjà pris sur l'hôte par « {process} » : libérez-le ou choisissez un autre port.",
+        "en": "Port {port}/{proto} is already taken on the host by \"{process}\": free it or choose another port.",
+    },
+    "call_infra_cert_unreadable": {
+        "fr": "Certificat illisible : {reason}",
+        "en": "Unreadable certificate: {reason}",
+    },
+    "call_infra_cert_key_mismatch": {
+        "fr": "Le certificat et la clé fournis ne vont pas ensemble.",
+        "en": "The supplied certificate and key do not match.",
+    },
+    "call_infra_cert_expired": {
+        "fr": "Le certificat fourni a expiré le {date}.",
+        "en": "The supplied certificate expired on {date}.",
+    },
+    "call_infra_cert_name_missing": {
+        "fr": "Le certificat ne couvre pas le nom « {name} » (il couvre : {names}).",
+        "en": "The certificate does not cover the name \"{name}\" (it covers: {names}).",
+    },
+    "call_infra_prod_needs_tls": {
+        "fr": "La production exige un certificat : Let's Encrypt ou un certificat fourni.",
+        "en": "Production needs a certificate: Let's Encrypt or a supplied one.",
+    },
+    "call_infra_prod_needs_nginx": {
+        "fr": "En production, ntfy passe par nginx : choisissez un nginx existant ou à installer.",
+        "en": "In production, ntfy runs behind nginx: choose an existing nginx or one to install.",
+    },
+    "call_infra_acme_method": {
+        "fr": "Le défi Let's Encrypt « {method} » ne convient pas ici : certbot seul exige le port 80 libre de nginx, le webroot exige nginx.",
+        "en": "The Let's Encrypt challenge \"{method}\" does not fit here: standalone certbot needs port 80 free of nginx, webroot needs nginx.",
+    },
+    "call_infra_dns_plugin": {
+        "fr": "Défi DNS : greffon « {plugin} » inconnu ou fichier d'identifiants vide.",
+        "en": "DNS challenge: unknown plugin \"{plugin}\" or empty credentials file.",
+    },
+    "call_infra_nginx_name_taken": {
+        "fr": "nginx sert déjà « {name} » dans {file}, un site que l'outil n'a pas écrit : rien n'est touché. Retirez ce nom de ce site ou choisissez-en un autre.",
+        "en": "nginx already serves \"{name}\" in {file}, a site the tool did not write: nothing is touched. Remove that name from the site or choose another one.",
+    },
+    "call_infra_turns_443": {
+        "fr": "Le port 443 est pris par « {holder} » : coturn garde TLS sur le port {port}.",
+        "en": "Port 443 is taken by \"{holder}\": coturn keeps TLS on port {port}.",
+    },
+    "call_infra_probe_incomplete": {
+        "fr": "La lecture de l'hôte est incomplète (connexion coupée, sudo refusé ?) : rien n'est touché.",
+        "en": "Reading the host came back incomplete (connection cut, sudo refused?): nothing is touched.",
+    },
+    "call_infra_check_no_state": {
+        "fr": "aucun état sur l'hôte : rien d'installé par l'outil",
+        "en": "no state on the host: nothing installed by the tool",
+    },
+    "call_infra_check_active": {
+        "fr": "{state}",
+        "en": "{state}",
+    },
+    "call_infra_check_relayed": {
+        "fr": "relais {relayed}",
+        "en": "relay {relayed}",
+    },
+    "call_infra_check_open_relay": {
+        "fr": "relais OUVERT : alloue sans authentification",
+        "en": "OPEN relay: allocates without authentication",
+    },
+    "call_infra_check_turn_error": {
+        "fr": "{error}",
+        "en": "{error}",
+    },
+    "call_infra_check_no_key": {
+        "fr": "compte de contrôle introuvable dans la base de coturn",
+        "en": "check account not found in coturn's database",
+    },
+    "call_infra_check_healthy": {
+        "fr": "répond",
+        "en": "answers",
+    },
+    "call_infra_check_unhealthy": {
+        "fr": "statut {status}",
+        "en": "status {status}",
+    },
+    "call_infra_check_http_error": {
+        "fr": "{error}",
+        "en": "{error}",
+    },
+    "call_infra_check_cert_unverified": {
+        "fr": "certificat non vérifié",
+        "en": "certificate not verified",
+    },
+    "call_infra_check_cert_days": {
+        "fr": "{days} jours (jusqu'au {date})",
+        "en": "{days} days (until {date})",
+    },
+    "call_infra_check_cert_missing": {
+        "fr": "certificat absent ({service})",
+        "en": "certificate missing ({service})",
+    },
+    "call_infra_check_cert_unreadable": {
+        "fr": "certificat illisible : {reason}",
+        "en": "unreadable certificate: {reason}",
+    },
+    "call_infra_check_cert_issuer": {
+        "fr": "émis par {issuer}",
+        "en": "issued by {issuer}",
+    },
+    "call_infra_check_cert_staging": {
+        "fr": "certificat de TEST de Let's Encrypt ({issuer}) : aucun client"
+        " ne le reconnaît",
+        "en": "Let's Encrypt TEST certificate ({issuer}): no client"
+        " trusts it",
+    },
+    "call_infra_check_renewal_ok": {
+        "fr": "crochet en place, minuteur {timer} actif",
+        "en": "hook in place, timer {timer} active",
+    },
+    "call_infra_check_renewal_no_hook": {
+        "fr": "crochet de déploiement absent ou non exécutable : {path}",
+        "en": "deploy hook missing or not executable: {path}",
+    },
+    "call_infra_check_renewal_held": {
+        "fr": "fichier de renouvellement absent ou mis de côté : {path}",
+        "en": "renewal file missing or held: {path}",
+    },
+    "call_infra_check_renewal_timer": {
+        "fr": "minuteur {timer} : {state}",
+        "en": "timer {timer}: {state}",
+    },
+    "call_infra_check_private_denied": {
+        "fr": "relais refusé vers le réseau privé ({peer})",
+        "en": "relay refused toward the private network ({peer})",
+    },
+    "call_infra_check_private_open": {
+        "fr": "relais ouvert vers le réseau privé ({peer})",
+        "en": "relay open toward the private network ({peer})",
+    },
+    "call_infra_check_private_unknown": {
+        "fr": "plages privées non vérifiées : {error}",
+        "en": "private ranges not checked: {error}",
+    },
+    "call_infra_check_firewall_none": {
+        "fr": "aucune règle consignée ({kind})",
+        "en": "no rule recorded ({kind})",
+    },
+    "call_infra_check_firewall_ok": {
+        "fr": "{count} règles en place",
+        "en": "{count} rules in place",
+    },
+    "call_infra_check_firewall_missing": {
+        "fr": "manquantes : {rules}",
+        "en": "missing: {rules}",
+    },
+    "call_infra_check_no_secret": {
+        "fr": "secret de contrôle introuvable dans la base de coturn",
+        "en": "check secret not found in coturn's database",
+    },
+    # Vérification par serveur Odoo branché (lignes odoo-<n>)
+    "call_infra_check_odoo_relayed": {
+        "fr": "{odoo} : relais {relayed}",
+        "en": "{odoo}: relay {relayed}",
+    },
+    "call_infra_check_odoo_error": {
+        "fr": "{odoo} : {error}",
+        "en": "{odoo}: {error}",
+    },
+    "call_infra_check_odoo_no_secret": {
+        "fr": "{odoo} : son secret manque dans la base de coturn ; ajoutez de nouveau ce serveur Odoo",
+        "en": "{odoo}: its secret is missing from coturn's database; add this Odoo server again",
+    },
+    "call_infra_check_odoo_no_user": {
+        "fr": "{odoo} : son compte {user} manque dans la base de coturn ; ajoutez de nouveau ce serveur Odoo",
+        "en": "{odoo}: its account {user} is missing from coturn's database; add this Odoo server again",
+    },
+    # Vérification par la liste ICE qu'Odoo remet (lignes odoo-ice-<url>)
+    "call_infra_check_ice_relayed": {
+        "fr": "{url} : relais {relayed}",
+        "en": "{url}: relay {relayed}",
+    },
+    "call_infra_check_ice_error": {
+        "fr": "{url} : {error}",
+        "en": "{url}: {error}",
+    },
+    "call_infra_check_ice_expired": {
+        "fr": "{url} : {error} ; identifiants expirés depuis {date} (horloge d'Odoo, ou durée des identifiants trop courte)",
+        "en": "{url}: {error}; credentials expired since {date} (Odoo's clock, or a credential lifetime too short)",
+    },
+    "call_infra_check_ice_no_credential": {
+        "fr": "{url} : Odoo la remet sans nom d'utilisateur ou sans mot de passe",
+        "en": "{url}: Odoo hands it without a username or a password",
+    },
+    "call_infra_check_ice_bad_url": {
+        "fr": "{url} : URL illisible ou transport non vérifiable",
+        "en": "{url}: unreadable URL or transport that cannot be checked",
+    },
+    "call_infra_check_ice_foreign": {
+        "fr": "{url} : un autre serveur que ce coturn, non vérifié",
+        "en": "{url}: a server other than this coturn, not checked",
+    },
+    "call_infra_check_ice_none": {
+        "fr": "Odoo ne remet aucune URL de TURN à l'appelant",
+        "en": "Odoo hands the caller no TURN URL",
+    },
+    "call_infra_check_engine_unreadable": {
+        "fr": "le moteur refuse de lister ses conteneurs : {detail}",
+        "en": "the engine refuses to list its containers: {detail}",
+    },
+    "call_infra_check_container_account": {
+        "fr": "le conteneur tourne sous l'uid {found}, l'état consigne {expected}",
+        "en": "the container runs as uid {found}, the state records {expected}",
+    },
+    # Infrastructure d'appel : questions et résumé de la production
+    "call_infra_mode_development": {
+        "fr": "Développement : cette machine ou un réseau local, sans nginx",
+        "en": "Development: this machine or a local network, without nginx",
+    },
+    "call_infra_mode_production": {
+        "fr": "Production : noms publics, nginx devant ntfy, certificat reconnu",
+        "en": "Production: public names, nginx in front of ntfy, a trusted certificate",
+    },
+    "call_infra_hint_yes": {
+        "fr": "(O/n)",
+        "en": "(Y/n)",
+    },
+    "call_infra_hint_no": {
+        "fr": "(o/N)",
+        "en": "(y/N)",
+    },
+    "call_infra_ask_domain": {
+        "fr": "Domaine (les noms ntfy.<domaine> et turn.<domaine> en découlent)",
+        "en": "Domain (the names ntfy.<domain> and turn.<domain> derive from it)",
+    },
+    "call_infra_domain_needed": {
+        "fr": "La production demande un nom de domaine (example.org), pas une adresse IP.",
+        "en": "Production needs a domain name (example.org), not an IP address.",
+    },
+    "call_infra_ask_ntfy_name": {
+        "fr": "Nom de ntfy (https)",
+        "en": "ntfy name (https)",
+    },
+    "call_infra_ask_turn_name": {
+        "fr": "Nom de TURN",
+        "en": "TURN name",
+    },
+    "call_infra_tls_letsencrypt": {
+        "fr": "Let's Encrypt : certbot l'obtient et le renouvelle",
+        "en": "Let's Encrypt: certbot obtains and renews it",
+    },
+    "call_infra_ask_challenge": {
+        "fr": "Défi Let's Encrypt :",
+        "en": "Let's Encrypt challenge:",
+    },
+    "call_infra_challenge_http": {
+        "fr": "HTTP (port 80)",
+        "en": "HTTP (port 80)",
+    },
+    "call_infra_challenge_dns": {
+        "fr": "DNS (clé d'API du fournisseur DNS)",
+        "en": "DNS (API key of the DNS provider)",
+    },
+    "call_infra_ask_http_way": {
+        "fr": "Port 80 pour le défi (coturn seul sur cet hôte) :",
+        "en": "Port 80 for the challenge (coturn alone on this host):",
+    },
+    "call_infra_http_standalone": {
+        "fr": "certbot seul sur le port 80, le temps du défi",
+        "en": "certbot alone on port 80, for the challenge only",
+    },
+    "call_infra_http_nginx": {
+        "fr": "nginx installé pour le défi",
+        "en": "nginx installed for the challenge",
+    },
+    "call_infra_nginx_serves_challenge": {
+        "fr": "nginx est déjà sur cet hôte : il répond au défi HTTP sur le port 80.",
+        "en": "nginx is already on this host: it answers the HTTP challenge on port 80.",
+    },
+    "call_infra_ask_dns_plugin": {
+        "fr": "Fournisseur DNS (greffon de certbot) :",
+        "en": "DNS provider (certbot plugin):",
+    },
+    "call_infra_dns_plugins_packaged": {
+        "fr": "Seuls les greffons que {os} fournit en paquet sont proposés.",
+        "en": "Only the plugins that {os} ships as packages are offered.",
+    },
+    "call_infra_choice_range": {
+        "fr": "Votre choix (1-{count})",
+        "en": "Your choice (1-{count})",
+    },
+    "call_infra_ask_dns_credentials": {
+        "fr": "Fichier d'identifiants du greffon (lu sur cette machine, jamais affiché)",
+        "en": "Plugin credentials file (read on this machine, never shown)",
+    },
+    "call_infra_ask_email": {
+        "fr": "Courriel pour Let's Encrypt (« - » : aucun)",
+        "en": "Email for Let's Encrypt (\"-\": none)",
+    },
+    "call_infra_email_none": {
+        "fr": "Sans courriel, Let's Encrypt ne pourra prévenir de rien : ni d'un renouvellement qui échoue, ni d'un problème de compte.",
+        "en": "Without an email, Let's Encrypt cannot warn you of anything: neither a failing renewal nor an account problem.",
+    },
+    "call_infra_nginx_existing": {
+        "fr": "nginx est présent (disposition {layout}) : l'outil y ajoute son site, sans toucher aux autres.",
+        "en": "nginx is present ({layout} layout): the tool adds its own site and touches no other.",
+    },
+    "call_infra_nginx_install": {
+        "fr": "nginx est absent : l'outil l'installe.",
+        "en": "nginx is absent: the tool installs it.",
+    },
+    "call_infra_ask_ntfy_web": {
+        "fr": "Interface web de ntfy sur son nom public ?",
+        "en": "ntfy web interface on its public name?",
+    },
+    "call_infra_ask_turns_443": {
+        "fr": "TURN sur TLS sur le port 443 au lieu de {port} ?",
+        "en": "TURN over TLS on port 443 instead of {port}?",
+    },
+    "call_infra_ask_ntfy_local_port": {
+        "fr": "Port de ntfy (tcp, sur 127.0.0.1, derrière nginx)",
+        "en": "ntfy port (tcp, on 127.0.0.1, behind nginx)",
+    },
+    "call_infra_turn_name_nat": {
+        "fr": "{name} pointe vers {address}, absente des interfaces de l'hôte : l'hôte est derrière un NAT.",
+        "en": "{name} points to {address}, which is not on the host's interfaces: the host is behind NAT.",
+    },
+    "call_infra_ask_public_ip": {
+        "fr": "IP publique {address} ? (Entrée pour confirmer, ou tapez la bonne) :",
+        "en": "Public IP {address}? (Enter to confirm, or type the right one):",
+    },
+    "call_infra_turn_name_unresolved": {
+        "fr": "{name} ne résout pas : coturn a besoin de l'IP publique de l'hôte.",
+        "en": "{name} does not resolve: coturn needs the host's public IP.",
+    },
+    "call_infra_ask_typed_ip": {
+        "fr": "IP publique de l'hôte",
+        "en": "Public IP of the host",
+    },
+    "call_infra_public_ip_required": {
+        "fr": "En production, l'IP publique est obligatoire.",
+        "en": "In production, the public IP is required.",
+    },
+    "production": {
+        "fr": "production",
+        "en": "production",
+    },
+    "Names:": {
+        "fr": "Noms :",
+        "en": "Names:",
+    },
+    "Challenge:": {
+        "fr": "Défi :",
+        "en": "Challenge:",
+    },
+    "Email:": {
+        "fr": "Courriel :",
+        "en": "Email:",
+    },
+    "External IP:": {
+        "fr": "IP publique :",
+        "en": "External IP:",
+    },
+    "ntfy web interface:": {
+        "fr": "Interface web de ntfy :",
+        "en": "ntfy web interface:",
+    },
+    "call_infra_cert_letsencrypt": {
+        "fr": "Let's Encrypt (un essai à blanc d'abord, renouvelé par certbot)",
+        "en": "Let's Encrypt (a dry run first, renewed by certbot)",
+    },
+    "call_infra_challenge_http_nginx": {
+        "fr": "HTTP par nginx (port 80)",
+        "en": "HTTP through nginx (port 80)",
+    },
+    "call_infra_challenge_http_standalone": {
+        "fr": "HTTP, certbot seul sur le port 80",
+        "en": "HTTP, certbot alone on port 80",
+    },
+    "call_infra_challenge_dns_plugin": {
+        "fr": "DNS par le greffon {plugin}",
+        "en": "DNS through the {plugin} plugin",
+    },
+    "call_infra_email_absent": {
+        "fr": "aucun",
+        "en": "none",
+    },
+    "call_infra_nginx_to_install": {
+        "fr": "installé par l'outil",
+        "en": "installed by the tool",
+    },
+    "call_infra_nginx_kept": {
+        "fr": "existant, son site ajouté",
+        "en": "existing, its site added",
+    },
+    "call_infra_web_on": {
+        "fr": "activée",
+        "en": "enabled",
+    },
+    "call_infra_web_off": {
+        "fr": "désactivée",
+        "en": "disabled",
+    },
+    "call_infra_private_ranges_denied": {
+        "fr": "coturn refuse de relayer vers les adresses privées, de bouclage et locales au lien.",
+        "en": "coturn refuses to relay toward private, loopback and link-local addresses.",
+    },
+    "call_infra_dns_elsewhere": {
+        "fr": "{name} pointe vers {found}, ni une adresse de l'hôte ni l'IP publique confirmée : les clients n'y joindraient pas l'hôte.",
+        "en": "{name} points to {found}, neither an address of the host nor the confirmed public IP: clients would not reach the host there.",
+    },
+    "call_infra_dns_unverifiable": {
+        "fr": "{name} pointe vers {found}, qui n'est pas une adresse de l'hôte : c'est attendu derrière un NAT, mais l'outil ne peut pas vérifier que cette adresse mène à l'hôte.",
+        "en": "{name} points to {found}, not an address of the host: expected behind a NAT, but the tool cannot check that this address leads to the host.",
+    },
+    "call_infra_dns_unresolved": {
+        "fr": "{name} ne résout pas encore : les clients n'y joindraient pas l'hôte.",
+        "en": "{name} does not resolve yet: clients would not reach the host there.",
+    },
+    "call_infra_dns_le_fails": {
+        "fr": "Le défi HTTP de Let's Encrypt échouerait : corrigez le DNS avant d'installer.",
+        "en": "The Let's Encrypt HTTP challenge would fail: fix the DNS before installing.",
+    },
+    "Private ranges denied": {
+        "fr": "Plages privées refusées",
+        "en": "Private ranges denied",
+    },
+    "Certificate issuer": {
+        "fr": "Émetteur du certificat",
+        "en": "Certificate issuer",
+    },
+    "Certificate renewal": {
+        "fr": "Renouvellement du certificat",
+        "en": "Certificate renewal",
+    },
+    "call_infra_uninstall_nginx_purges": {
+        "fr": "site de l'outil retiré ; nginx, installé par l'outil, purgé si aucun autre site ne s'en sert",
+        "en": "the tool's site removed; nginx, installed by the tool, purged unless another site uses it",
+    },
+    "call_infra_uninstall_nginx_keeps": {
+        "fr": "site de l'outil retiré ; nginx et ses autres sites gardés",
+        "en": "the tool's site removed; nginx and its other sites kept",
+    },
+    "call_infra_uninstall_certificate": {
+        "fr": "Certificat Let's Encrypt : gardé, son renouvellement suspendu ; supprimé seulement si vous supprimez aussi les certificats.",
+        "en": "Let's Encrypt certificate: kept, its renewal suspended; deleted only if you also remove the certificates.",
+    },
+    "call_infra_uninstall_hook": {
+        "fr": "Crochet de renouvellement, minuteur ajouté par l'outil et identifiants DNS : retirés.",
+        "en": "Renewal hook, the timer the tool added and the DNS credentials: removed.",
+    },
+    # Accès à une base Odoo (odoo_link.py) : refus d'OdooError
+    "call_infra_odoo_url": {
+        "fr": "L'URL d'Odoo doit avoir la forme http(s)://nom[:port], sans compte ni mot de passe.",
+        "en": "The Odoo URL must look like http(s)://name[:port], with no account or password.",
+    },
+    "call_infra_odoo_database": {
+        "fr": "Nom de base invalide : lettres, chiffres, « _ », « . » ou « - », deux caractères au moins, le premier une lettre ou un chiffre.",
+        "en": "Invalid database name: letters, digits, \"_\", \".\" or \"-\", at least two characters, the first a letter or a digit.",
+    },
+    "call_infra_odoo_version": {
+        "fr": "Cette base Odoo est en version {version} : seul Odoo 18 est pris en charge. Rien n'est touché.",
+        "en": "This Odoo database runs version {version}: only Odoo 18 is supported. Nothing is touched.",
+    },
+    "call_infra_odoo_login": {
+        "fr": "Connexion refusée à la base {database} : identifiant ou mot de passe faux, ou base inconnue. Un administrateur en double authentification se connecte par une clé d'API.",
+        "en": "Login refused on database {database}: wrong login or password, or unknown database. An administrator with two-factor authentication logs in with an API key.",
+    },
+    "call_infra_odoo_not_admin": {
+        "fr": "Le compte {login} n'est pas administrateur (groupe base.group_system) : il ne peut écrire ni les paramètres ni les serveurs ICE.",
+        "en": "The account {login} is not an administrator (group base.group_system): it can write neither the parameters nor the ICE servers.",
+    },
+    "call_infra_odoo_unreachable": {
+        "fr": "Odoo injoignable à {url} : {reason}.",
+        "en": "Odoo unreachable at {url}: {reason}.",
+    },
+    "call_infra_odoo_redirected": {
+        "fr": "Odoo à {url} redirige vers {target} : un appel JSON-RPC ne suit pas une redirection. Entrez {target} comme URL d'Odoo.",
+        "en": "Odoo at {url} redirects to {target}: a JSON-RPC call does not follow a redirection. Enter {target} as the Odoo URL.",
+    },
+    "call_infra_odoo_alias": {
+        "fr": "Cette base porte déjà l'identifiant du serveur Odoo {other} : c'est la même base sous une autre URL, ou une copie d'elle. Pour la même base, annulez et relancez avec l'URL de {other} : sinon, ses deux fiches se croisent, et retirer l'une débranche l'autre. Une copie (préproduction) reçoit ici son propre identifiant.",
+        "en": "This database already holds the credential of the Odoo server {other}: it is the same database under another URL, or a copy of it. For the same database, cancel and run again with the URL of {other}: otherwise its two records cross, and removing one unplugs the other. A copy (staging) gets its own credential here.",
+    },
+    "call_infra_odoo_rpc_error": {
+        "fr": "Odoo a refusé l'opération : {message}",
+        "en": "Odoo refused the operation: {message}",
+    },
+    "call_infra_odoo_install_failed": {
+        "fr": "Le module erplibre_turn n'est pas installé (état : {state}). « absent » : il n'est pas sur le chemin des addons de cette base, ou la liste des applications n'a pas été mise à jour.",
+        "en": "The erplibre_turn module is not installed (state: {state}). \"absent\": it is not on this database's addons path, or the apps list was not updated.",
+    },
+    "call_infra_odoo_dir": {
+        "fr": "Dossier ERPLibre invalide : {directory}. Il faut un chemin absolu, celui qui porte odoo_bin.sh.",
+        "en": "Invalid ERPLibre directory: {directory}. It must be an absolute path, the one that holds odoo_bin.sh.",
+    },
+    "call_infra_odoo_dir_owner": {
+        "fr": "Le dossier {directory} et son odoo_bin.sh n'appartiennent pas au même compte : odoo-bin shell n'est pas lancé. Rendez-les au compte qui fait tourner Odoo, ou passez par l'API web. Rien n'est touché.",
+        "en": "The directory {directory} and its odoo_bin.sh do not belong to the same account: odoo-bin shell is not started. Give them back to the account that runs Odoo, or use the web API. Nothing is touched.",
+    },
+    "call_infra_odoo_dir_root": {
+        "fr": "Le dossier ERPLibre {directory} appartient à root. odoo-bin shell tourne sous le compte propriétaire du dossier : indiquez le dossier ERPLibre du compte de service qui fait tourner Odoo, ou choisissez la méthode par l'API web. Rien n'est touché.",
+        "en": "The ERPLibre directory {directory} belongs to root. odoo-bin shell runs as the directory's owner: point to the ERPLibre directory of the service account that runs Odoo, or choose the web API method. Nothing is touched.",
+    },
+    "call_infra_odoo_shell_failed": {
+        "fr": "odoo-bin shell a échoué ; sa dernière ligne : {line}",
+        "en": "odoo-bin shell failed; its last line: {line}",
+    },
+    "call_infra_odoo_user_login": {
+        "fr": "Connexion refusée pour {login} : identifiant ou mot de passe faux. La vérification par Odoo entre comme un navigateur : ni clé d'API, ni compte en double authentification.",
+        "en": "Login refused for {login}: wrong login or password. The check through Odoo logs in like a browser: no API key, no account with two-factor authentication.",
+    },
+    "call_infra_odoo_invitation": {
+        "fr": "Lien d'invitation refusé : il doit être de la forme <URL de la base>/chat/<id>/<jeton>, sur la même base, et Odoo doit encore le connaître.",
+        "en": "Invitation link refused: it must look like <database URL>/chat/<id>/<token>, on the same database, and Odoo must still know it.",
+    },
+    "call_infra_turn_mode_mismatch": {
+        "fr": "Ce coturn sert ses serveurs Odoo en mode « {mode} » ({odoos}) : coturn 4.6 ne mélange pas les identifiants temporaires (module erplibre_turn, mode « secret ») et les comptes fixes (mode « fixed »). Ce serveur Odoo demande l'autre mode : donnez-lui le même (erplibre_turn installé pour « secret », sans lui pour « fixed »), ou retirez d'abord les serveurs Odoo branchés. Rien n'est touché.",
+        "en": "This coturn serves its Odoo servers in « {mode} » mode ({odoos}): coturn 4.6 does not mix temporary credentials (erplibre_turn module, « secret » mode) and fixed accounts (« fixed » mode). This Odoo server needs the other mode: give it the same one (erplibre_turn installed for « secret », without it for « fixed »), or first remove the plugged Odoo servers. Nothing is touched.",
+    },
+    "call_infra_odoo_exempt": {
+        "fr": "« {address} » ne peut pas être exemptée des limites de ntfy : donnez l'adresse IP publique d'où le serveur Odoo joint ntfy, une seule adresse et non un réseau, ni boucle locale, ni adresse non spécifiée, ni lien local (derrière nginx, ntfy voit chaque client en 127.0.0.1, et l'exempter exempterait tout le monde).",
+        "en": "« {address} » cannot be exempted from ntfy's limits: give the public IP address the Odoo server reaches ntfy from, a single address and not a network, neither loopback, unspecified nor link-local (behind nginx, ntfy sees every client as 127.0.0.1, and exempting it would exempt everyone).",
+    },
+    "call_infra_odoo_realm": {
+        "fr": "Le nom public {old} est le realm de coturn, celui des identifiants des serveurs Odoo branchés ({odoos}) : il ne peut pas devenir {new} tant qu'ils y sont. Retirez-les d'abord, puis ajoutez-les de nouveau après l'installation. Rien n'est touché.",
+        "en": "The public name {old} is coturn's realm, the one of the plugged Odoo servers' credentials ({odoos}): it cannot become {new} while they are plugged. Remove them first, then add them again after the install. Nothing is touched.",
+    },
+    "call_infra_odoo_readd": {
+        "fr": "Les URL de TURN changent (nom, ports ou TLS) : ajoutez de nouveau ces serveurs Odoo pour qu'ils les reçoivent : {odoos}.",
+        "en": "The TURN URLs change (name, ports or TLS): add these Odoo servers again so that they receive them: {odoos}.",
+    },
+    # Ajouter et retirer un serveur Odoo (plan_odoo_add, apply_odoo_*)
+    "call_infra_no_turns": {
+        "fr": "Sans le module erplibre_turn, Odoo reçoit un compte fixe en trois lignes (STUN, TURN en UDP et en TCP) : TURN sur TLS (turns:) n'est pas disponible, et un réseau qui ne laisse passer que le HTTPS bloquera les appels relayés.",
+        "en": "Without the erplibre_turn module, Odoo gets a fixed account in three rows (STUN, TURN over UDP and over TCP): TURN over TLS (turns:) is not available, and a network that lets only HTTPS through will block relayed calls.",
+    },
+    "call_infra_module_absent": {
+        "fr": "Le module erplibre_turn n'est pas sur le chemin des addons de cette base. Pour des identifiants temporaires et TURN sur TLS : ajoutez ERPLibre_erplibre_addons au chemin des addons d'Odoo, redémarrez Odoo, mettez à jour la liste des applications, puis relancez l'ajout. Sans lui, l'ajout pose un compte fixe.",
+        "en": "The erplibre_turn module is not on this database's addons path. For temporary credentials and TURN over TLS: add ERPLibre_erplibre_addons to Odoo's addons path, restart Odoo, update the apps list, then run the add again. Without it, the add sets a fixed account.",
+    },
+    "call_infra_ice_over_5": {
+        "fr": "{count} serveurs ICE au total : Odoo n'en envoie que cinq au navigateur. Avec le module erplibre_turn, ses entrées passent toujours en premier et les lignes mail.ice.server écrites à la main au-delà de la cinquième entrée sont écartées. Sans lui, les entrées au-delà de la cinquième sont ignorées : retirez des lignes écrites à la main pour garder celles de l'outil.",
+        "en": "{count} ICE servers in all: Odoo sends only five to the browser. With the erplibre_turn module, its entries always come first and the hand-written mail.ice.server rows past the fifth entry are dropped. Without it, the entries past the fifth are ignored: remove hand-written rows to keep the tool's.",
+    },
+    "call_infra_odoo_no_coturn": {
+        "fr": "Cet hôte ne porte aucun coturn installé par l'outil : installez d'abord l'infrastructure d'appel avec coturn, puis ajoutez le serveur Odoo. Rien n'est touché.",
+        "en": "This host carries no coturn installed by the tool: first install the call infrastructure with coturn, then add the Odoo server. Nothing is touched.",
+    },
+    "call_infra_odoo_host_failed": {
+        "fr": "Le script lancé sur l'hôte de coturn a échoué à l'étape « {step} ». Corrigez la cause, puis relancez l'opération.",
+        "en": "The script run on the coturn host failed at step « {step} ». Fix the cause, then run the operation again.",
+    },
+    "call_infra_odoo_write_failed": {
+        "fr": "L'écriture dans Odoo a échoué : l'identifiant posé sur coturn en est retiré, et l'état de l'hôte ne consigne pas ce serveur Odoo. Corrigez la cause, puis relancez l'ajout.",
+        "en": "Writing to Odoo failed: the credential set on coturn is removed again, and the host state does not record this Odoo server. Fix the cause, then run the add again.",
+    },
+    "call_infra_odoo_rollback_failed": {
+        "fr": "L'écriture dans Odoo a échoué ou a été interrompue, puis le retrait de l'identifiant posé sur coturn aussi (étape « {step} ») : cet identifiant reste valide sans que l'état le consigne. Un compte fixe est remplacé au prochain ajout de ce serveur Odoo ; un secret reste valide jusqu'à la désinstallation de coturn, qui efface sa base.",
+        "en": "Writing to Odoo failed or was interrupted, then removing the credential set on coturn failed too (step « {step} »): that credential stays valid without the state recording it. A fixed account is replaced by the next add of this Odoo server; a secret stays valid until coturn is uninstalled, which erases its database.",
+    },
+    "call_infra_odoo_state_failed": {
+        "fr": "coturn et Odoo sont écrits, mais l'état de l'hôte n'a pas pu l'être : il ne consigne pas ce serveur Odoo, que « Retirer » ne trouvera pas. Relancez l'ajout pour que l'état le consigne ; le secret de cet essai reste valide dans coturn jusqu'à sa désinstallation.",
+        "en": "coturn and Odoo are written, but the host state could not be: it does not record this Odoo server, which « Remove » will not find. Run the add again so that the state records it; this attempt's secret stays valid in coturn until it is uninstalled.",
+    },
+    "call_infra_odoo_remove_unreachable": {
+        "fr": "Odoo n'a pas pu être nettoyé : rien n'est révoqué sur l'hôte de coturn. Révoquer quand même laisse dans Odoo des paramètres ou des lignes ICE qui ne marchent plus.",
+        "en": "Odoo could not be cleaned: nothing is revoked on the coturn host. Revoking anyway leaves in Odoo parameters or ICE rows that no longer work.",
+    },
+    # Menu : ajouter, retirer, vérifier par Odoo (call_infra_menu.py)
+    "call_infra_odoo_method": {
+        "fr": "Accès à la base Odoo :",
+        "en": "Access to the Odoo database:",
+    },
+    "call_infra_odoo_method_webapi": {
+        "fr": "API web (compte admin)",
+        "en": "Web API (admin account)",
+    },
+    "call_infra_odoo_method_shell": {
+        "fr": "ssh et odoo-bin shell",
+        "en": "ssh and odoo-bin shell",
+    },
+    "call_infra_ask_odoo_url": {
+        "fr": "URL de la base Odoo, celle des navigateurs (https://nom[:port])",
+        "en": "URL of the Odoo database, the one browsers use (https://name[:port])",
+    },
+    "call_infra_ask_odoo_database": {
+        "fr": "Nom de la base",
+        "en": "Database name",
+    },
+    "call_infra_ask_odoo_login": {
+        "fr": "Identifiant d'un administrateur de la base",
+        "en": "Login of an administrator of the database",
+    },
+    "call_infra_ask_odoo_password": {
+        "fr": "Son mot de passe ou une clé d'API (non affiché ; clé d'API obligatoire en double authentification)",
+        "en": "Its password or an API key (not shown; an API key is required with two-factor authentication)",
+    },
+    "call_infra_ask_odoo_dir": {
+        "fr": "Dossier ERPLibre de l'hôte d'Odoo (celui qui porte odoo_bin.sh)",
+        "en": "ERPLibre directory on the Odoo host (the one that holds odoo_bin.sh)",
+    },
+    "call_infra_ask_install_module": {
+        "fr": "Le module erplibre_turn est sur le chemin des addons : l'installer dans la base, pour des identifiants temporaires et TURN sur TLS ?",
+        "en": "The erplibre_turn module is on the addons path: install it in the database, for temporary credentials and TURN over TLS?",
+    },
+    "call_infra_ask_fixed_fallback": {
+        "fr": "Continuer avec un compte fixe, sans TLS ?",
+        "en": "Continue with a fixed account, without TLS?",
+    },
+    "call_infra_odoo_rows": {
+        "fr": "Lignes mail.ice.server de la base (seules celles au nom de l'outil seront remplacées) :",
+        "en": "mail.ice.server rows of the database (only the tool's own will be replaced):",
+    },
+    "call_infra_odoo_rows_none": {
+        "fr": "Aucune ligne mail.ice.server dans la base.",
+        "en": "No mail.ice.server row in the database.",
+    },
+    "call_infra_odoo_row_owned": {
+        "fr": "(de l'outil)",
+        "en": "(the tool's)",
+    },
+    "call_infra_odoo_exempt_no_ntfy": {
+        "fr": "ntfy n'est pas sur cet hôte : aucune adresse n'est exemptée de ses limites ici. Exemptez ce serveur Odoo sur l'hôte de ntfy (« Préparer ntfy pour ERPLibre mobile »).",
+        "en": "ntfy is not on this host: no address is exempted from its limits here. Exempt this Odoo server on the ntfy host (« Prepare ntfy for ERPLibre mobile »).",
+    },
+    "call_infra_odoo_exempt_local": {
+        "fr": "L'URL d'Odoo résout vers {address}, une adresse locale que ntfy ne peut pas exempter : tapez l'adresse publique d'où ce serveur Odoo joint ntfy.",
+        "en": "The Odoo URL resolves to {address}, a local address ntfy cannot exempt: type the public address this Odoo server reaches ntfy from.",
+    },
+    "call_infra_ask_odoo_exempt": {
+        "fr": "Adresse IP d'où ce serveur Odoo joint ntfy, exemptée de ses limites (« - » : aucune)",
+        "en": "IP address this Odoo server reaches ntfy from, exempted from its limits (« - »: none)",
+    },
+    "call_infra_odoo_exempt_none": {
+        "fr": "aucune",
+        "en": "none",
+    },
+    "Odoo server:": {
+        "fr": "Serveur Odoo :",
+        "en": "Odoo server:",
+    },
+    "Credentials:": {
+        "fr": "Identifiants :",
+        "en": "Credentials:",
+    },
+    "ICE URLs:": {
+        "fr": "URL ICE :",
+        "en": "ICE URLs:",
+    },
+    "ICE rows:": {
+        "fr": "Lignes ICE :",
+        "en": "ICE rows:",
+    },
+    "ntfy exemption:": {
+        "fr": "Exemption ntfy :",
+        "en": "ntfy exemption:",
+    },
+    "call_infra_odoo_kind_secret": {
+        "fr": "identifiants temporaires (module erplibre_turn), un secret propre à cette base",
+        "en": "temporary credentials (erplibre_turn module), a secret of this database's own",
+    },
+    "call_infra_odoo_kind_user": {
+        "fr": "compte fixe propre à cette base, en trois lignes mail.ice.server (sans module)",
+        "en": "fixed account of this database's own, in three mail.ice.server rows (no module)",
+    },
+    "call_infra_odoo_install_first": {
+        "fr": "Le module erplibre_turn s'installe d'abord dans la base.",
+        "en": "The erplibre_turn module is installed in the database first.",
+    },
+    "Add this Odoo server now? (y/N): ": {
+        "fr": "Ajouter ce serveur Odoo maintenant ? (o/N) : ",
+        "en": "Add this Odoo server now? (y/N): ",
+    },
+    "Nothing added.": {
+        "fr": "Rien n'est ajouté.",
+        "en": "Nothing added.",
+    },
+    "call_infra_odoo_added": {
+        "fr": "Serveur Odoo {odoo} branché sur coturn.",
+        "en": "Odoo server {odoo} plugged into coturn.",
+    },
+    "call_infra_no_odoo": {
+        "fr": "Aucun serveur Odoo n'est branché sur ce coturn.",
+        "en": "No Odoo server is plugged into this coturn.",
+    },
+    "call_infra_ask_revoke_anyway": {
+        "fr": "Révoquer quand même sur coturn ?",
+        "en": "Revoke on coturn anyway?",
+    },
+    "Remove this Odoo server now? (y/N): ": {
+        "fr": "Retirer ce serveur Odoo maintenant ? (o/N) : ",
+        "en": "Remove this Odoo server now? (y/N): ",
+    },
+    "Nothing removed.": {
+        "fr": "Rien n'est retiré.",
+        "en": "Nothing removed.",
+    },
+    "call_infra_remove_revokes_secret": {
+        "fr": "chaque secret de ce serveur, anciens compris, révoqué sur coturn sans délai de grâce, et retiré d'Odoo : ses appels relayés échouent dès la prochaine entrée, jusqu'à un nouvel ajout",
+        "en": "every secret of this server, old ones included, revoked on coturn with no grace period, and removed from Odoo: its relayed calls fail from the next join on, until it is added again",
+    },
+    "call_infra_remove_deletes_user": {
+        "fr": "compte fixe {user} supprimé de coturn sur-le-champ, et ses lignes retirées d'Odoo : ses appels relayés échouent dès la prochaine entrée, jusqu'à un nouvel ajout",
+        "en": "fixed account {user} deleted from coturn at once, and its rows removed from Odoo: its relayed calls fail from the next join on, until it is added again",
+    },
+    "call_infra_remove_drops_exempt": {
+        "fr": "Exemption de ntfy : {exempt} retirée, ntfy redémarré.",
+        "en": "ntfy exemption: {exempt} removed, ntfy restarted.",
+    },
+    "call_infra_odoo_rotates_secret": {
+        "fr": "Déjà branché : son secret change. L'ancien reste valide une durée de vie ({hours} h), le temps que les participants d'un appel en cours le gardent.",
+        "en": "Already plugged: its secret changes. The old one stays valid for one lifetime ({hours} h), while participants in an ongoing call still hold it.",
+    },
+    "call_infra_odoo_rotates_user": {
+        "fr": "Déjà branché : le mot de passe de son compte fixe change sur-le-champ. Les participants d'un appel en cours ne relaient plus vers un nouvel arrivant avant d'être revenus dans l'appel.",
+        "en": "Already plugged: the password of its fixed account changes at once. Participants in an ongoing call can no longer relay toward a newcomer until they rejoin the call.",
+    },
+    "call_infra_odoo_http_clear": {
+        "fr": "{url} est en http vers une autre machine : le mot de passe ou la clé d'API de l'administrateur, puis le secret de TURN ou le mot de passe du compte fixe, y passent en clair, lisibles sur le chemin. Préférez https.",
+        "en": "{url} is plain http to another machine: the administrator's password or API key, then the TURN secret or the fixed account's password, travel in clear, readable along the path. Prefer https.",
+    },
+    "call_infra_ask_http_anyway": {
+        "fr": "Continuer en http quand même ?",
+        "en": "Continue over http anyway?",
+    },
+    "Nothing revoked.": {
+        "fr": "Rien n'est révoqué.",
+        "en": "Nothing revoked.",
+    },
+    "call_infra_odoo_removed": {
+        "fr": "Serveur Odoo {odoo} retiré : son identifiant est révoqué sur coturn.",
+        "en": "Odoo server {odoo} removed: its credential is revoked on coturn.",
+    },
+    "call_infra_check_odoo_notice": {
+        "fr": "La vérification par Odoo entre dans un appel sous un utilisateur de la base : Odoo laisse l'avis « a commencé une conférence en direct » dans la discussion de cet utilisateur avec lui-même, qu'il crée au besoin et épingle. Rien d'autre n'est écrit.",
+        "en": "The check through Odoo joins a call as a user of the database: Odoo leaves the notice « started a live conference » in that user's chat with themself, which it creates when needed and pins. Nothing else is written.",
+    },
+    "call_infra_ask_check_odoo": {
+        "fr": "Vérifier aussi par Odoo ?",
+        "en": "Also check through Odoo?",
+    },
+    "call_infra_ask_odoo_user": {
+        "fr": "Identifiant d'un utilisateur de la base",
+        "en": "Login of a user of the database",
+    },
+    "call_infra_ask_odoo_user_password": {
+        "fr": "Son mot de passe (non affiché ; ni clé d'API, ni compte en double authentification)",
+        "en": "Their password (not shown; no API key, no account with two-factor authentication)",
+    },
+    "Odoo server": {
+        "fr": "Serveur Odoo",
+        "en": "Odoo server",
+    },
+    "ICE handed out by Odoo": {
+        "fr": "ICE remis par Odoo",
+        "en": "ICE handed out by Odoo",
+    },
+    "call_infra_uninstall_odoos": {
+        "fr": "Serveurs Odoo branchés sur ce coturn : {odoos}",
+        "en": "Odoo servers plugged into this coturn: {odoos}",
+    },
+    "call_infra_ask_remove_odoo_first": {
+        "fr": "Retirer d'abord {odoo} (Odoo nettoyé, identifiant révoqué) ?",
+        "en": "First remove {odoo} (Odoo cleaned, credential revoked)?",
+    },
+    "call_infra_uninstall_odoos_kept": {
+        "fr": "Ces serveurs Odoo gardent les lignes mail.ice.server au nom erplibre-… ou les paramètres erplibre_turn.* de l'outil, qui pointeront vers un coturn désinstallé : {odoos}. Retirez-les dans Odoo à la main.",
+        "en": "These Odoo servers keep the tool's mail.ice.server rows named erplibre-… or erplibre_turn.* parameters, which will point at an uninstalled coturn: {odoos}. Remove them in Odoo by hand.",
     },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
@@ -6942,6 +8395,42 @@ TRANSLATIONS = {
     "Run this long test?": {
         "fr": "Lancer ce test long ?",
         "en": "Run this long test?",
+    },
+    "This drops the databases and the cache of the mobile sync test.": {
+        "fr": "Cela supprime les bases et le cache du test de synchro mobile.",
+        "en": "This drops the databases and the cache of the mobile sync test.",
+    },
+    "Drop the mobile sync test databases?": {
+        "fr": "Supprimer les bases du test de synchro mobile ?",
+        "en": "Drop the mobile sync test databases?",
+    },
+    "This creates throwaway Odoo databases and servers, and installs a test app on the plugged phone.": {
+        "fr": "Cela crée des bases et des serveurs Odoo jetables, et installe une app de test sur le téléphone branché.",
+        "en": "This creates throwaway Odoo databases and servers, and installs a test app on the plugged phone.",
+    },
+    "Run the mobile sync test, phone included?": {
+        "fr": "Lancer le test de synchro mobile, téléphone compris ?",
+        "en": "Run the mobile sync test, phone included?",
+    },
+    "This creates throwaway Odoo databases and servers, for a few minutes.": {
+        "fr": "Cela crée des bases et des serveurs Odoo jetables, pour quelques minutes.",
+        "en": "This creates throwaway Odoo databases and servers, for a few minutes.",
+    },
+    "Run the mobile sync test?": {
+        "fr": "Lancer le test de synchro mobile ?",
+        "en": "Run the mobile sync test?",
+    },
+    "Mobile sync on Odoo 16-18: plan only (dry-run)": {
+        "fr": "Synchro mobile sur Odoo 16-18 : le plan seulement (dry-run)",
+        "en": "Mobile sync on Odoo 16-18: plan only (dry-run)",
+    },
+    "Mobile sync on Odoo 16-18: run it": {
+        "fr": "Synchro mobile sur Odoo 16-18 : la lancer",
+        "en": "Mobile sync on Odoo 16-18: run it",
+    },
+    "Mobile sync on Odoo 16-18 and the plugged phone: run it": {
+        "fr": "Synchro mobile sur Odoo 16-18 et le téléphone branché : la lancer",
+        "en": "Mobile sync on Odoo 16-18 and the plugged phone: run it",
     },
     "Install the download cache shared by the QEMU VMs of this host": {
         "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
@@ -9746,6 +11235,48 @@ TRANSLATIONS = {
     "ERPLibre Home on every distribution: run it": {
         "fr": "ERPLibre Home sur chaque distribution : le lancer",
         "en": "ERPLibre Home on every distribution: run it",
+    },
+    "Call infrastructure on throwaway VMs: plan only (dry-run)": {
+        "fr": "Infrastructure d'appel sur des VM jetables : le plan seulement"
+        " (à blanc)",
+        "en": "Call infrastructure on throwaway VMs: plan only (dry-run)",
+    },
+    "Call infrastructure on throwaway VMs: run it": {
+        "fr": "Infrastructure d'appel sur des VM jetables : le lancer",
+        "en": "Call infrastructure on throwaway VMs: run it",
+    },
+    "This creates nine VMs one after the other (development, then production with nginx, on Debian and on Arch; then on Debian: Odoo servers on one coturn with three throwaway Odoo 18 databases on this machine, coturn and ntfy in containers under Docker, Podman and rootless Podman, and a migration from packages to containers with one more Odoo database) and installs coturn and ntfy on them. call_infra.py --scenario dev, prod, odoo, conteneur or migration runs only one, --moteur only one engine.": {
+        "fr": "Cela crée neuf VM l'une après l'autre (développement, puis"
+        " production avec nginx, sous Debian et sous Arch ; puis sous"
+        " Debian : des serveurs Odoo sur un même coturn avec trois bases"
+        " Odoo 18 jetables sur cette machine, coturn et ntfy en conteneurs"
+        " sous Docker, Podman et Podman sans root, et une migration des"
+        " paquets vers les conteneurs avec une base Odoo de plus), et y"
+        " installe coturn et ntfy. call_infra.py --scenario dev, prod, odoo,"
+        " conteneur ou migration n'en lance qu'un, --moteur un seul"
+        " moteur.",
+        "en": "This creates nine VMs one after the other (development, then"
+        " production with nginx, on Debian and on Arch; then on Debian: Odoo"
+        " servers on one coturn with three throwaway Odoo 18 databases on"
+        " this machine, coturn and ntfy in containers under Docker, Podman"
+        " and rootless Podman, and a migration from packages to containers"
+        " with one more Odoo database) and installs coturn and ntfy on them."
+        " call_infra.py --scenario dev, prod, odoo, conteneur or migration"
+        " runs only one, --moteur only one engine.",
+    },
+    "This destroys the machines of this test and their disks, stops its local Odoo servers and drops its call_infra_odoo_* databases.": {
+        "fr": "Cela détruit les machines de ce test et leurs disques, arrête"
+        " ses serveurs Odoo locaux et supprime ses bases call_infra_odoo_*.",
+        "en": "This destroys the machines of this test and their disks, stops"
+        " its local Odoo servers and drops its call_infra_odoo_* databases.",
+    },
+    "Destroy the machines and databases of this test?": {
+        "fr": "Détruire les machines et les bases de ce test ?",
+        "en": "Destroy the machines and databases of this test?",
+    },
+    "Run the call infrastructure test?": {
+        "fr": "Lancer le test de l'infrastructure d'appel ?",
+        "en": "Run the call infrastructure test?",
     },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",

@@ -328,13 +328,19 @@ chaque nom est unique, il dit donc quelle étape s'est arrêtée.
 ./long_test/install_erplibre_home.py --detruire      # défaire la dernière course
 ```
 
-Une course réelle a besoin de `sudo` du début à la fin : chaque VM est
-créée par `sudo deploy_qemu.py`, et détruite par `sudo -n virsh`. Soit
-`virsh` et `deploy_qemu.py` sont permis sans mot de passe, soit une session
-sudo reste ouverte toute la course. Une seule VM vit à la fois : quand une
-VM survit à son défaire, même après `sudo -v`, la course s'arrête, marque
-les systèmes restants `FAILED(previous-vm-still-up)` et rend 1 ;
-`--detruire` la défait. `--garder` laisse chaque VM tourner, 4 Gio chacune :
+Une course réelle n'a pas besoin de `sudo`, à condition que le groupe
+`libvirt` soit ACTIF dans la session (`virsh -c qemu:///system list` répond
+sans sudo ; après `usermod -aG libvirt`, rouvrir une session) et que les
+pools `default` et `iso` soient actifs. Chaque VM est créée par
+`deploy_qemu.py`, qui écrit le disque, le seed et le cache d'images par
+l'API des volumes de libvirt, et détruite par
+`virsh --connect qemu:///system`. Seule une commande qui exige vraiment
+root demande sudo, pour elle seule : un paquet ou un service manquant, ou
+l'exception nftables d'une VM `--cache-bypass`. Sans la socket, chaque
+`virsh` passe par sudo. Une seule VM vit à la fois : quand
+une VM survit à son défaire, même après `sudo -v` quand sudo est requis, la
+course s'arrête, marque les systèmes restants
+`FAILED(previous-vm-still-up)` et rend 1 ; `--detruire` la défait. `--garder` laisse chaque VM tourner, 4 Gio chacune :
 l'associer à `--only`.
 
 Le rapport porte une ligne par système, avec la version de GNOME attendue et
@@ -346,6 +352,610 @@ journal de chaque système — sortie de l'installateur, journal utilisateur,
 Il prouve chaque contrôle : une ligne `── contrôle <nom> : réussi` ou
 `ÉCHEC` par commande et par contrôle, suivie de chaque commande lancée, et,
 sur un échec, de la réponse brute de cette commande.
+
+## mobile_sync.py — l'app mobile se synchronise-t-elle avec Odoo 16, 17 et 18 ?
+
+Pas de VM ici : des bases et des serveurs Odoo jetables, et le téléphone
+quand il est branché. Le code de synchro de l'app (`mobile/erplibre_home_mobile`,
+par son kit de test versionné `src/testing/syncTestKit.ts`) tourne sous Vitest
+contre de vrais serveurs : tâches, conflits, opportunités, factures, activités,
+messages, dates proposées, deux sociétés, fichiers, réseau coupé ou réponse
+perdue, enregistrements supprimés, une note sur trois serveurs. Chaque scénario
+vérifie le résultat dans Odoo, et un proxy entre l'app et chaque serveur trace
+ce qui passe sur le fil.
+
+```
+./long_test/mobile_sync.py                     # 16, 17 et 18
+./long_test/mobile_sync.py --versions 18       # une seule version
+./long_test/mobile_sync.py --filtre conflit    # les tests dont le nom correspond
+./long_test/mobile_sync.py --dry-run           # le plan, rien de créé
+./long_test/mobile_sync.py --appareil          # aussi sur le téléphone branché
+./long_test/mobile_sync.py --appareil --toucher-volet  # téléphone de test vide seulement
+./long_test/mobile_sync.py --appareil --batterie-reelle  # téléphone de test vide seulement
+./long_test/mobile_sync.py --garder            # garder bases et serveurs
+./long_test/mobile_sync.py --detruire          # supprimer gabarits et cache
+```
+
+Elle vérifie d'abord le dépôt mobile — absent, sans `node_modules`, Node
+antérieur à 22, ou kit de test d'une autre API — et dit quoi faire. Le premier
+passage construit un gabarit par version (quelques minutes) ; les suivants le
+copient, et la suite entière prend une trentaine de secondes. Un rapport sans
+test, ou sans test pour une version, échoue : un chemin mal résolu ne doit pas
+passer pour une course verte.
+
+Le clavardage n'est testé que sur la 18, où Discuss et le bus websocket
+existent. Le gabarit de la 18 ajoute ce dont ces scénarios ont besoin : le
+module `erplibre_mobile_chat` des addons d'ERPLibre, un second utilisateur,
+`chat_user`, et un canal de groupe « ms chat » où lui et l'utilisateur de
+l'app se parlent, sans message non lu pour chat_user au départ. `chat.test.ts`
+couvre le chargement et ses compteurs, un envoi qui arrive une fois chez
+chat_user, une réponse perdue avec le module et avec le seul marqueur, la file
+hors ligne qui garde son ordre, la pagination de l'historique et la marque de
+lecture vue sur le serveur. `chatRealtime.test.ts` couvre le bus qui livre un
+message et la frappe de chat_user, les compteurs de la première connexion, et
+un socket coupé qui livre à la reconnexion. `chatManage.test.ts` couvre la
+gestion des conversations contre le vrai serveur, chaque résultat relu sur
+lui : un message direct créé une fois et réutilisé, un groupe créé hors ligne
+puis l'app relancée, la réponse de la création perdue (un seul groupe, ses
+messages une fois et dans l'ordre, avec le dédoublonnage par uuid du module
+et sans lui, par empreinte), les groupes d'accès d'un nouveau canal, une
+adhésion, une invitation, le renommage et la description, un départ avec un
+message encore en file, un message direct masqué qui réapparaît quand l'autre
+utilisateur écrit, une sourdine et la sourdine globale (celle mise en file
+au-delà de sa fin la lève), et un retrait par l'administrateur annoncé sur le
+bus du retiré, qu'un non-administrateur se voit refuser. Le scénario d'un
+groupe que chat_user crée et remplit tourne sous `mc_user`, l'utilisateur à
+deux sociétés, qu'aucune conversation d'un autre fichier n'implique : tout
+`/mail/data` de son proxy est le sien et les messages suivants doivent
+arriver par le bus sans rechargement. Chaque gabarit, ceux de la 16, de la
+17 et de la 18 pareillement, crée d'avance les réglages de chaque
+utilisateur interne (deux premières requêtes simultanées les créeraient
+toutes deux et buteraient sur l'unicité de `res.users.settings`), et le
+module de celui de la 18 est le 1.4, qui dédoublonne les créations et les
+téléversements, garde les modifications, cherche dans les canaux dont on est
+membre, pose un favori au lieu de le basculer et dédoublonne les envois sur
+tout enregistrement. `--appareil` ajoute l'écran
+« clavardage » et un groupe créé depuis le téléphone. Pour ne lancer que
+ceux-là :
+
+```
+./long_test/mobile_sync.py --versions 18 --filtre chat
+./long_test/mobile_sync.py --versions 18 --filtre chat --appareil
+```
+
+`chatAttachments.test.ts` couvre les fichiers d'un message contre le vrai
+serveur, chaque cas relu sur lui. Là où il dit « sur les deux routes », il
+tourne une fois sur la route du module et une fois en l'ignorant, sur celle
+d'Odoo. Une réponse de téléversement perdue laisse une seule pièce jointe
+dans un seul message (la route du module rend la première pour le même
+`client_uuid`, celle d'Odoo est cherchée et réutilisée, y compris une photo
+qu'elle a stockée redimensionnée à une autre taille) ; une réponse d'envoi
+perdue avec deux fichiers poste un message qui les porte tous deux ; un
+fichier vocal arrive en `audio/mpeg` avec ses métadonnées vocales ; et une
+session expirée répond 404 une fois, puis le téléversement passe. La route du
+module garde l'original d'une photo (même somme de contrôle que le fichier
+source) là où celle d'Odoo le réduit à 1920 px. Une limite abaissée avant que
+l'app la lise refuse le fichier à la mise en place, et abaissée après la mise
+en file le refuse par le 413 du serveur : le texte est posté sans lui et
+l'utilisateur en est averti une fois. Sur un réseau mobile rien ne part avant
+le retour du Wi-Fi. L'image d'un interlocuteur coûte une requête d'aperçu de
+512 px au plus et télécharge son original seulement à l'ouverture, et un
+historique de 20 pièces jointes ne fait aucune requête de fichier. Les cas qui
+abaissent la limite de téléversement du serveur bornent chaque requête du
+serveur partagé : ils vivent dans des fichiers `*.serial.test.ts`, lancés dans
+une seconde passe, un fichier à la fois, après la passe parallèle ; les deux
+rapports donnent un seul bilan. `--appareil` ajoute l'écran « pièces jointes
+du clavardage » : un fichier envoyé depuis la zone de saisie arrive une fois
+sur le serveur avec sa somme de contrôle d'origine, les boutons de pièce
+jointe et de micro sont au-dessus de la barre de navigation, un vrai appui
+enregistre un message vocal qui arrive en MP3, la photo d'un interlocuteur
+montre son aperçu et s'ouvre dans la visionneuse, et son message vocal se lit.
+La caméra et les sélecteurs du système sont des écrans du fabricant et restent
+hors de l'exécution. L'exécution sur appareil relève aussi la `lastUpdateTime` de
+l'app de l'utilisateur avant et après, et échoue si elle a changé ou ne se lit
+pas. Les contrôles du banc (les versions d'API du kit et du crochet d'appareil,
+la liste des scénarios) se lancent avec les tests unitaires de la plateforme ;
+le paquet `test` de la bibliothèque standard masque `test/`, d'où la
+découverte :
+
+```
+.venv.erplibre/bin/python -m unittest discover -s test -p test_mobile_sync_harness.py
+```
+
+`chatActions.test.ts` couvre les actions sur un message contre le vrai serveur,
+chaque résultat relu sur lui. Une réaction dont la réponse est perdue laisse
+une ligne après la reprise ; une réaction ajoutée puis retirée hors ligne
+n'envoie aucune requête ; et la réaction et la modification de chat_user
+arrivent à l'app par le bus sans rechargement. Là où il dit « sur les deux
+routes », la modification tourne une fois sur la route gardée du module et une
+fois en l'ignorant, sur celle d'Odoo : la modification d'un message à deux
+fichiers change le texte et garde les deux fichiers ; une modification dont la
+réponse est perdue, son corps ouvert par une mention qu'Odoo stocke enveloppée,
+compte comme faite à sa reprise, et une correction faite entre-temps la suit
+sans avis ; une modification tardive, faite après que chat_user a modifié ou
+supprimé le message dans le navigateur, est refusée, le texte de l'app gardé
+pour « Reprendre » et le corps du serveur intact ; une suppression vide le
+corps et retire les fichiers, masquée dans l'app et pour chat_user ; une
+réponse garde son parent sur le serveur, une réponse dont chat_user supprime le
+parent entre-temps est postée dessus et citée comme supprimée, et une réponse à
+un message d'une autre conversation est postée comme un message simple.
+`chatWriting.test.ts` couvre ce que l'app écrit : la mention de chat_user dans
+un canal lui donne une notification (seul un partenaire qui a un courriel et
+des notifications par boîte de réception est averti d'une mention de canal, le
+fichier lui donne donc les deux le temps de sa course), `@everyone` met chaque
+membre dans `partner_ids`, `#canal` est stocké comme le lien de canal d'Odoo,
+et un corps qui commence par une mention est stocké dans un `<span>`.
+L'aller-retour prend chaque cas des références du composeur, l'envoie, et fait
+réenregistrer par le navigateur de chat_user : le corps reste stocké tel qu'il
+était, au span « modifié » près.
+
+Les références sont produites par le formateur d'Odoo lui-même, non écrites à
+la main. `long_test/mobile_sync_composer.py` ouvre une session sur un Odoo 18
+dans un Chromium sans écran, charge Discuss, fait tourner
+`prettifyMessageContent` de `@mail/utils/common/format` sur chaque cas de
+`composer-cases.json` (avec les mentions que retient `getMentionsFromText`) et
+écrit `composer-golden.json` à côté, dans `src/__tests__/fixtures/` du dépôt
+mobile. Il refuse un serveur qui n'est pas un Odoo 18 ; la fonction tourne dans
+la page, tout Odoo 18 donne donc les mêmes corps.
+
+```
+./long_test/mobile_sync_composer.py http://127.0.0.1:8069 admin admin --base ma_base
+./long_test/mobile_sync.py --versions 18 --filtre chat
+```
+
+Le scénario « actions du clavardage » de `--appareil` tourne sur la 18, sur le
+téléphone : un appui long de 700 ms ouvre le menu du message et le clic qui le
+termine ne choisit rien, la sélection native du texte d'une bulle cède la place
+au menu, un appui sur une suggestion garde le clavier ouvert avec le champ de
+saisie visible, une citation défile jusqu'à son original, la marque
+« (modifié) » suit le texte, et la zone de saisie reste à 16 px au plus
+au-dessus de la barre de navigation dans chaque scénario du clavardage, clavier
+ouvert ou non.
+
+`chatFinding.test.ts` couvre la recherche contre le vrai serveur, sous
+l'utilisateur de l'app. Là où il est dit « le module et le module ignoré »,
+la recherche passe par la route du module et par le repli `search_read`. Une
+recherche serveur ne voit que les canaux dont l'utilisateur est membre, jamais
+un canal public non rejoint ni la conversation privée de chat_user avec un
+tiers, et ne marque rien lu ; un terme qui contient `&` ou `%` trouve les mêmes
+messages par le module, par le repli et par la recherche du téléphone ; ouvrir
+un résultat plus ancien que l'historique chargé ne charge les pages plus
+anciennes que par `around` et ne marque rien lu ; une épingle à réponse
+perdue laisse `pinned_at` posé et une seule notice d'épingle ; l'épingle de
+chat_user arrive dans la liste des épinglés ; un favori à réponse perdue n'est
+posé qu'une fois après la reprise, avec le module et sans lui ; et un favori
+posé dans le navigateur de l'utilisateur depuis le chargement, puis posé sur le
+téléphone, reste posé.
+
+`chatInbox.test.ts` couvre la boîte de réception contre le vrai serveur, sous
+`inbox_user`, un utilisateur que le gabarit crée pour cela : interne,
+utilisateur de projet, avec `notification_type` écrit explicitement à `inbox`
+(le groupe seul laisse un nouvel utilisateur sur le courriel), membre de
+« ms chat », et avec une adresse courriel, car une mention de canal ne notifie
+qu'un partenaire qui en a une. Ses tests s'exécutent dans l'ordre. Une mention,
+un commentaire sur une tâche suivie et une assignation remplissent les trois
+genres d'élément ; une recherche serveur du mot mentionné laisse la mention non
+lue ; un élément marqué lu est `is_read` sur le serveur ; « tout marquer lu »
+touché hors ligne pendant que chat_user mentionne de nouveau laisse la mention
+plus récente non lue ; une réponse en note avec une photo est une seule note
+qui porte la photo et n'envoie aucun courriel, une réponse en message est un
+seul commentaire et un courriel à l'abonné notifié par courriel (compté en
+`mail.mail`), et une réponse dont la réponse du téléversement, puis celle de
+l'envoi, sont perdues poste un seul message avec une seule pièce jointe, avec
+le module et sans lui ; deux commentaires et une mention arrivent dans la boîte
+ouverte par le bus, sans lire de page de conversation ; et un utilisateur
+notifié par courriel apprend pourquoi sa boîte est vide, passe à la boîte, et le
+serveur lit `inbox`. L'abonné notifié par courriel est un utilisateur que le
+fichier crée, car un autre fichier change la préférence de chat_user pour toute
+sa course.
+
+Le SMTP des serveurs d'essai pointe sur un port local fermé de la machine.
+Odoo envoie les courriels de notification juste après la validation, et l'hôte
+peut faire tourner un serveur de courrier : sans cela, un courriel d'essai
+quitterait la machine, et un courriel envoyé est supprimé, donc aucun
+`mail.mail` à compter. Avec cela, le courriel reste dans `mail.mail` à l'état
+`exception`, compté et jamais livré.
+
+Le scénario « recherche et boîte du clavardage » de `--appareil` tourne sur la
+18, sur le téléphone : un message est envoyé, modifié et supprimé, puis l'index
+de recherche passe une fois le contrôle d'intégrité de SQLite (ou le téléphone
+utilise le repli LIKE) ; une recherche depuis la liste ouvre la conversation au
+résultat, en surbrillance ; un appui long puis Épingler, confirmé dans la
+boîte de dialogue native, pose `pinned_at` sur le serveur ; Favori le met en
+favori ; la boîte d'un utilisateur notifié par courriel montre l'explication, le
+bouton écrit `inbox`, une mention de chat_user apparaît et « Marquer comme lu »
+la lit ; une réponse sur une tâche avec une photo l'envoie ; dans un groupe, la
+seconde bulle d'une suite de messages d'un même auteur ne montre ni nom ni
+avatar, alors que la première montre le nom et l'avatar de l'auteur (un contrôle
+de l'auteur sur les bulles affichées) ; et un vieux résultat, suivi de plus de
+messages non lus que le fil n'en rend d'abord, ouvre la conversation sur lui
+sans que le dernier message vu de l'utilisateur ne bouge sur le serveur.
+
+`--appareil` joue ses écrans sur le téléphone, contre les mêmes serveurs :
+le sélecteur de cibles, le bandeau d'une date changée sur le serveur, la saisie
+pendant un pull, la note datée créée depuis le calendrier et, sur la 18
+seulement, le clavardage (la tuile ouvre la liste en 2 s au plus, et la zone
+de saisie de « ms chat » en 2 s aussi, trois messages qui y sont tapés de
+suite arrivent chacun une fois sur le serveur, le clavier restant ouvert d'un
+envoi à l'autre, la réponse de chat_user
+s'affiche par le websocket natif) et un groupe créé depuis le téléphone avec
+chat_user, qui existe une fois sur le serveur sous son nom, dont la fiche
+nomme chat_user parmi les membres et où les messages passent dans les deux
+sens. Ils tournent
+dans une app à part, `ca.erplibre.home.synctest`, construite par `-PsyncTest`
+depuis un paquet de développement et effacée à chaque version ; l'app de
+l'utilisateur n'est jamais touchée. Le téléphone doit être déverrouillé, le
+débogage USB autorisé. Un échec garde une capture d'écran dans le répertoire
+de la course, `cache/mobile_sync/runs/`.
+
+Une course gardée par `--garder` est arrêtée et balayée par la course
+suivante, ou par `--detruire`. Codes de sortie : 0 tout vert, 1 des tests
+échouent, 2 un prérequis manque, 3 l'infrastructure a échoué.
+
+### Les tests du push du clavardage — notifications app fermée
+
+La course démarre son propre `ntfy serve`, sur `127.0.0.1` et un port libre,
+avec un `server.yml`, un fichier d'accès et un cache temporaires sous le
+répertoire de la course ; elle ne touche jamais au ntfy de la machine (chaque
+appel `ntfy` porte `--config`, placé avant la sous-commande pour `user` et
+`token`). L'accès du téléphone se crée comme ce menu le crée :
+`TODO › Déployer › Infrastructure d'appel › Préparer ntfy pour ERPLibre mobile`,
+anonyme en écriture seule sur `up*`, un utilisateur en lecture seule sur son
+préfixe, un jeton. Le ntfy s'arrête avec la course (gardé avec les serveurs par
+`--garder`).
+
+`--filtre push` joue les tests dont le nom correspond : les quatre formes de
+push déchiffrées depuis le cache de ntfy, une conversation en sourdine qui n'est
+pas poussée, un jeton qui ne lit que son préfixe, le désenregistrement quand un
+compte est retiré, le passage à un nouveau sujet quand un nouveau lien arrive
+et, seul dans un fichier en série, les clés VAPID retirées au sort, que le
+chargement suivant guérit.
+
+Deux autres fichiers jouent le deuxième lot des notifications.
+`chatPushModule.test.ts` joue le module 1.5 : un appareil marqué par
+`/erplibre_mobile_chat/push/device` reçoit l'identifiant du message et le type
+de canal, un appareil non marqué reçoit la charge propre d'Odoo, une lecture
+dans le navigateur ou la publication de l'auteur envoie un push « lu » aux
+seuls appareils de l'app, une lecture de la boîte de réception envoie
+`inbox_done` avec l'enregistrement, et un appareil marqué silencieux n'entend
+rien tant qu'un navigateur est en ligne. `chatPushActions.test.ts` joue ce que
+l'app fait d'une action que le téléphone lui a confiée : une réponse est
+publiée une fois, ou pas du tout quand Odoo la détient déjà, une lecture
+marque la conversation lue avec les accusés de lecture désactivés, une sourdine
+dure l'heure qui reste, et la réponse d'une réponse montre le message dans le
+cache.
+
+`chatPushPrefs.test.ts` joue le troisième lot, le module 1.6 sur l'Odoo de la
+course : le réglage général des canaux fixé dans l'app arrive à Odoo
+(« mentions » enregistré false), le réglage général et celui d'un canal changés
+dans le navigateur arrivent à l'app par le bus, un canal mis à mentions dans
+l'app ne pousse pas une publication simple alors qu'un groupe ignore ce
+réglage, le mode du navigateur fixé dans l'app marque l'appareil (mode et
+charge v 2), un appel de la route sous sa forme 1.5 marque silencieux et garde
+la charge v 1, et la charge v 2 dit si le destinataire est mentionné (une
+mention, `@everyone`) et si un de ses navigateurs est actif : un navigateur
+dont la dernière présence a plus de 65 s ne l'est pas, même son websocket
+encore ouvert. Le navigateur du test envoie l'`update_presence` du bus,
+l'événement que le client web d'Odoo 18 envoie à la connexion et, sous le
+correctif client du module 1.6, toutes les 60 s.
+
+Avec `--appareil`, le scénario des notifications tourne sur le téléphone, sur
+Odoo 18, contre ce ntfy renvoyé au téléphone par `adb reverse` : au niveau 1
+l'app est connectée et montre une notification permanente ; un message d'un
+autre utilisateur sonne en quelques secondes sous l'étiquette de sa
+conversation, son texte en clair et, pour l'écran verrouillé, seulement
+« Nouveau message — <serveur> » ou aucune version d'écran verrouillé, selon le
+réglage d'Android ; le processus tué (`am crash`, car SELinux refuse
+`run-as kill` sur Android 11), le service revient et le message suivant
+s'empile dans la même notification ; l'ouvrir comme le fait un toucher ouvre
+la conversation et l'efface ; au
+premier plan rien ne s'affiche ; avec « Jamais affiché » le texte n'est pas dans
+la notification ; le ntfy retiré, le sommaire direct d'Odoo dit « 2 nouveaux
+messages » et rien n'est marqué lu sur le serveur. Le scénario ne verrouille
+jamais le téléphone : la forme de l'écran verrouillé se lit dans
+`dumpsys notification --noredact`. Il remet en état ce qu'il change : le
+réglage `stay_on_while_plugged_in`, l'entrée d'optimisation de la batterie de
+l'app de test et les ports `adb reverse`.
+
+Un second scénario d'appareil, « actions du clavardage, app tuée », tourne avec
+le module sur l'Odoo de la course : l'app tuée, un message s'affiche avec trois
+boutons ; « Répondre » publie une fois et le push de lecture de l'auteur efface
+la notification ; « Marquer lu » lit la conversation
+jusqu'au message ; « 👍 » réagit et la notification reste, « Muet 1 h » prenant
+sa place pour une sourdine d'une heure ; une lecture dans le navigateur efface
+la notification ; avec « Jamais affiché » la notification dit seulement
+« Nouveau message », avec les mêmes boutons ; la copie de session du téléphone
+cassée, la réponse est confiée à l'app, qui la publie une fois quand on ouvre
+la notification de reprise ; un appareil que le module ne connaît pas reçoit la
+charge d'Odoo sans identifiant de message et « Muet 1 h » en troisième bouton.
+
+Un troisième scénario d'appareil, « préférences du clavardage, app fermée »,
+tourne avec le module 1.6, l'app à l'arrière-plan au niveau 1 et son appareil
+marqué « wait » en charge v 2. Il vérifie que « Rien de ce serveur »
+n'affiche aucun message ; que « Mentions et messages directs » masque une
+publication simple d'un canal que l'app a mis à « Tous les messages » et
+affiche une mention et un message de groupe ; que, la boîte de réception
+désactivée, un commentaire d'enregistrement ne s'affiche pas, sauf celui qui
+mentionne l'utilisateur une fois l'option des mentions d'enregistrement
+cochée ; qu'avec « Attendre 10 s » et un navigateur de l'utilisateur ouvert,
+un message lu dans le navigateur en moins de 5 s ne s'affiche jamais et un
+message non lu s'affiche entre 9 et 15 s ; qu'avec « Sonner tout de suite »,
+le navigateur toujours ouvert, un message s'affiche en 3 s ; que, revenu à
+« Attendre 10 s », une fois le navigateur fermé et muet depuis plus de 65 s,
+un message s'affiche en 3 s ; que pendant les heures calmes la
+notification s'affiche sans alerter, et alerte hors de la fenêtre
+(`GROUP_ALERT_ALL`). Le navigateur ouvert est imité par ce qu'envoie le
+correctif client du module 1.6 : une présence à l'ouverture, puis une toutes
+les 60 s depuis un fil tant qu'il reste ouvert, par la route HTTP du bus, qui
+mène au même code serveur que l'événement du websocket du client web. Il
+monte ensuite par la porte de test : 12 % sur batterie donne le niveau 3,
+raison `below_two`, la notification permanente retirée, la tâche de montée
+jamais en boucle ni planifiée (le téléphone reste sur l'USB) et la ligne
+« En ce moment » dans les options, capturée ; branché, le niveau 1 et le
+service revenu ; l'économiseur à 80 %, le niveau 3, raison `saver`.
+
+La batterie et l'alimentation sont simulées par défaut : la porte reçoit une
+diffusion de sorte `power` (`plugged`, `saver`, `pct`, ou `clear`) et écrit un
+état d'alimentation que seule la construction `-PsyncTest` lit à la place de
+celui d'Android ; le scénario l'efface à son début et à sa fin, car une course
+tuée le laisserait sinon. Rien ne change la batterie ni l'alimentation du
+téléphone entier. `--batterie-reelle` ajoute l'étape réelle, sur un téléphone
+de test vide seulement : elle refuse de démarrer quand l'app personnelle de
+l'utilisateur est installée, relève `low_power` et le délai d'extinction de
+l'écran, allonge ce délai (débranché, l'USB ne garde plus le téléphone
+éveillé), puis `dumpsys battery unplug` et le niveau 12 (niveau 3,
+`below_two`, la tâche de montée en attente) et l'économiseur à 80 % (niveau 3,
+`saver`). Elle rend, réussite ou échec et dans cet ordre, le mode d'économie
+et `low_power` aux valeurs relevées, la batterie (`dumpsys battery reset`) et
+le délai ; rebranché, le service permanent doit revenir par la tâche de
+montée, qui n'est plus planifiée ensuite. Les valeurs relevées sont écrites
+dans `cache/mobile_sync/batterie_notee.json` avant que rien ne soit touché :
+une course tuée avant sa remise laisse le fichier, et la course
+`--batterie-reelle` suivante le rend d'abord, puis l'efface, ou s'arrête
+quand une remise échoue. `--detruire` garde le fichier et le nomme, à blanc
+aussi ; une course sans `--batterie-reelle` le laisse et affiche une ligne
+qui le nomme. Chaque remise joue même quand une autre échoue ;
+celle qui échoue est affichée avec la commande à relancer à la main et compte
+pour un échec de plus.
+
+Par défaut, ces trois scénarios ne touchent jamais au volet des notifications :
+ils peuvent tourner sur un téléphone qui porte aussi les apps de son
+utilisateur. Les boutons d'une notification se lisent dans
+`dumpsys notification --noredact` (« Répondre », « Marquer lu », puis « 👍 » ou
+« Muet 1 h »), et chaque action est envoyée à l'app de test par sa porte de
+test : un récepteur que seule la construction `-PsyncTest` contient, joignable
+seulement avec la permission `DUMP`, que le shell adb tient et qu'une app n'a
+que si elle l'a reçue par `adb shell pm grant`. La porte retrouve la notification de l'app de test par son étiquette et
+envoie la PendingIntent même qu'enverrait un doigt (le texte de la réponse en
+résultat de son RemoteInput, l'intention de contenu pour une ouverture) : les
+récepteurs de l'app et le serveur voient une vraie action ; ce qui n'est pas
+exercé, c'est le geste lui-même, SystemUI qui dessine et reçoit le toucher, ni
+l'authentification de l'écran verrouillé qui conditionne les boutons
+(`setAuthenticationRequired`). Une ouverture passe par
+`contentIntent.send()`, qui s'appuie sur les règles de démarrage en
+arrière-plan d'Android 11 ; Android 14+ exige l'accord de l'expéditeur, à
+revoir pour un autre téléphone de test.
+
+`--toucher-volet` remet le doigt, sur un téléphone de test vide seulement :
+boutons, champ de réponse et envoi sont touchés dans le volet par `input tap`
+et la réponse tapée par `input text`. Sur Android 11, chaque nœud d'un relevé
+du volet appartient à SystemUI : le paquet ne dit rien de l'app, et la ligne se
+lie à l'app de test par le nom d'app de son en-tête (ou de celui de son
+groupe), « ERPLibre (test) », avec la ligne qu'elle doit afficher — le jeton
+unique de la course dans la plupart des étapes ; une seule ligne doit porter
+les deux, sinon rien n'est touché. Un toucher attend deux relevés de l'écran de
+suite, le second pris juste avant lui, qui s'accordent sur la ligne et le
+nœud ; une publication après le second relevé peut encore déplacer une ligne,
+d'où ce mode réservé à un téléphone dont le volet ne porte rien d'autre.
+
+## call_infra.py — coturn et ntfy s'installent-ils, se vérifient-ils et se désinstallent-ils sur de vraies machines ?
+
+Une VM par système, l'une après l'autre : `long-call-infra-debian` (Debian
+13) et `long-call-infra-arch` (Arch, l'image du jour), créées par
+`deploy_qemu.py` avec les drapeaux du cache de téléchargement. Chaque étape
+du produit est celle du menu `Déployer › Infrastructure d'appel`, sans ses
+questions : les réponses sont écrites dans le script, et la sonde, le plan,
+le script d'installation, le pare-feu, l'état de l'hôte, la vérification et
+la désinstallation viennent tous de `script/todo/call_infra.py`. Chaque
+étape du produit part dans sa propre session ssh, comme le menu lance
+chaque script par un appel à part.
+
+Debian couvre l'adoption et le pare-feu :
+
+1. ufw est installé, `22/tcp` autorisé, puis ufw activé ;
+2. ntfy est d'abord posé à l'ancienne, `install_ntfy.sh` lancé seul (une
+   configuration sans la marque de l'outil), et un compte de téléphone est
+   ajouté par `access_script` ;
+3. l'outil installe les deux services en mode développement, avec un
+   certificat d'une autorité locale (`local_cert`) pour l'adresse de la VM,
+   et ajoute ses règles de pare-feu : ntfy est ADOPTÉ ;
+4. la vérification, depuis cette machine : `turn-udp`, `turn-tcp`,
+   `turn-tls` (allocations réelles), `ntfy-health` (vérifié contre
+   l'autorité locale), `firewall` et les deux services doivent être verts,
+   et le compte du téléphone est toujours listé ;
+5. une seconde installation aux mêmes réponses ne change rien ;
+6. un secret REST est ajouté à la base de coturn par `turnadmin -s`, puis
+   une allocation REST et une sous le compte de contrôle sont tentées : le
+   résultat est rapporté `melange-ok` ou `melange-refuse`, en information,
+   jamais en échec ;
+7. la désinstallation, données comprises : plus d'unité coturn, plus de
+   `/etc/erplibre-call`, plus de règle ufw `erplibre-call`, le `server.yml`
+   adopté remis tel qu'il était, ntfy toujours actif avec son compte de
+   téléphone, et les ports de l'outil fermés vus d'ici ; une seconde
+   désinstallation ne trouve rien à faire.
+
+Arch couvre le chemin http sans pare-feu : la préparation pacman du menu,
+les deux services en http, la vérification (`turn-udp`, `turn-tcp`,
+`ntfy-health`), la désinstallation et ses ports, puis une seconde
+désinstallation.
+
+C'est le scénario de développement (`--scenario dev`). Le scénario de
+production (`--scenario prod`) tourne sur chaque système, sur une VM neuve
+du même nom :
+
+1. la VM, ssh et cloud-init (Arch : la préparation pacman ; Debian : ufw
+   activé après `ufw allow 22/tcp`) ;
+2. une autorité inventée (`local_cert`) émet un certificat pour
+   `ntfy.call.exemple.test`, `turn.call.exemple.test` et l'adresse de la
+   VM, puis un second, d'un autre numéro de série ;
+3. l'outil installe les deux services en production avec le premier
+   certificat comme certificat fourni, derrière un nginx qu'il installe
+   (Arch : sa ligne include adoptée dans `nginx.conf`), et ajoute ses
+   règles de pare-feu ;
+4. la vérification depuis cette machine avec l'autorité : `turn-udp`,
+   `turn-tcp`, `turn-tls` (nom `turn.call.exemple.test`),
+   `private-denied`, `ntfy-health` par nginx sur 443 (nom
+   `ntfy.call.exemple.test`), `cert-expiry`, `cert-issuer`, `firewall`
+   (Debian) et les deux services doivent être verts ;
+5. le crochet de déploiement du produit lancé à la main avec
+   `RENEWED_LINEAGE`, le second certificat posé en fausse lignée dans
+   `/etc/letsencrypt/live/erplibre-call/`. Aucune autorité ACME ne joint
+   une VM sous un nom inventé : l'installation garde donc un certificat
+   fourni, sous lequel le crochet laisse coturn tranquille et recharge
+   nginx. Le test inscrit ensuite coturn sous Let's Encrypt dans l'état,
+   la fiche qu'écrit une installation Let's Encrypt : le crochet copie la
+   lignée et coturn sert le nouveau numéro de série avec le même
+   `MainPID` (SIGUSR2, sans redémarrage). Le premier certificat revient
+   par le même chemin, puis l'état est remis et la fausse lignée retirée.
+   nginx sert toujours le certificat fourni : son site lit ce fichier, pas
+   la lignée. Chaque numéro de série est lu des deux certificats ;
+6. la vérification de nouveau, puis une seconde installation aux mêmes
+   réponses ne change rien ;
+7. la désinstallation, données comprises : plus de site, de lien ni de
+   ligne include de nginx, plus de crochet, plus de `/etc/erplibre-call`,
+   nginx purgé (l'outil l'avait installé), plus d'unité coturn, les ports
+   fermés vus d'ici ; une seconde désinstallation ne trouve rien à faire.
+
+Le scénario des serveurs Odoo (`--scenario odoo`) tourne sur Debian
+seulement. Il branche trois bases d'un Odoo 18 de cette machine sur un même
+coturn par les briques de `Ajouter un serveur Odoo` et `Retirer un serveur
+Odoo`, chaque base jointe par son API web. Les bases
+`call_infra_odoo_<course>_a`, `_b` et `_c` sont des copies du gabarit Odoo
+18 de `mobile_sync_odoo.py`, dont le chemin d'addons porte `erplibre_turn` ;
+chacune a son serveur sur des ports libres de 127.0.0.1. Chaque allocation
+part de cette machine vers la VM, sous les identifiants qu'Odoo remet à un
+utilisateur (`join_call_ice`) ou à un invité entré par un lien d'invitation
+(`join_call_ice_guest`) :
+
+1. la VM, ssh, cloud-init et ufw, puis le harnais : gabarit, trois bases,
+   trois serveurs. Chaque base entre au rapport avant d'exister ;
+2. coturn et ntfy en mode développement avec un certificat fourni pour
+   l'adresse de la VM. L'adresse exemptée de ntfy est celle de cette
+   machine telle que la VM la voit : la proposition du menu, l'adresse de
+   boucle locale d'un Odoo du harnais, tombe et l'adresse est tapée ;
+3. A, le module installable mais refusé : un compte fixe, trois lignes
+   `mail.ice.server`, coturn en `lt-cred-mech` ; les deux URL `turn:`
+   s'allouent. A retiré : lignes parties, adresse exemptée retirée, et les
+   identifiants remis avant reçoivent un 401 ;
+4. B, le module installé par l'outil : coturn bascule en `use-auth-secret`
+   et redémarre une fois (son `MainPID` change) ; un utilisateur et un
+   invité allouent tous deux `turn:` et `turns:` ;
+5. C, le module installé, sur le même coturn : aucun redémarrage (même
+   `MainPID`), B et C allouent tous deux ; puis la vérification du menu,
+   ses lignes `turn-*` sous le secret de contrôle et `odoo-1`, `odoo-2`
+   sous le secret de chaque Odoo ;
+6. B ajouté de nouveau : un secret neuf, B alloue sous ses identifiants
+   neufs, et ceux remis avant la rotation allouent encore (la grâce de
+   l'ancien secret), sans redémarrage ;
+7. C retiré : B alloue toujours, les identifiants de C reçoivent un 401 et
+   son secret a quitté la base de coturn, l'adresse exemptée que B partage
+   reste ;
+8. A sans le module de nouveau : refusé pour le mode, l'hôte inchangé ;
+9. B retiré (le module reste installé), la désinstallation, données
+   comprises ; les serveurs du harnais arrêtés et leurs bases supprimées
+   avec leur filestore, même après un échec. `--detruire` supprime les
+   bases `call_infra_odoo_*` qu'une course tuée a laissées dans son
+   rapport, puis détruit les VM ; quand plus aucun rapport ne nomme de VM,
+   il supprime les bases seules, après la même confirmation « OUI ».
+
+Le scénario des conteneurs (`--scenario conteneur`) tourne sur Debian
+seulement, une course par moteur, chacune sur une VM neuve : `docker`,
+`podman` (Podman en root) et `podman-rootless` (Podman sous le compte
+`erplibre-call`), les trois par défaut, un seul avec `--moteur
+docker|podman|podman-rootless`. Chaque course suit le chemin du menu avec
+la méthode « conteneurs » :
+
+1. la VM, ssh, cloud-init et ufw ; aucun moteur sur l'hôte, le menu propose
+   donc les paquets de la distribution (`engine_offer`), et le test
+   accepte ; l'installation les consigne dans l'état (`@@ENGINE_PACKAGE`) ;
+2. coturn et ntfy en mode développement dans leurs conteneurs, avec un
+   certificat fourni pour l'adresse de la VM, puis la vérification depuis
+   cette machine : de vraies allocations TURN en udp, tcp et TLS, la santé
+   de ntfy, et les deux conteneurs en marche sous l'uid que l'état
+   consigne. La base de coturn et celle des comptes de ntfy appartiennent
+   au compte de l'état, jamais à un uid subordonné d'un espace de noms ;
+3. Docker seulement : le rejeu du secret REST du scénario de
+   développement, coturn 4.18 encore en comptes fixes, en information ;
+4. un premier serveur Odoo inventé (seulement le côté coturn de « Ajouter
+   un serveur Odoo », par `odoo_add_script`) fait basculer coturn en mode
+   secret : le conteneur est recréé une fois, et une allocation REST sous
+   le secret de ce serveur aboutit. Un second ne recrée rien : la date de
+   démarrage du conteneur reste la même. Sous le premier secret, le relais
+   vers une adresse privée est accordé, comme le développement le veut ;
+5. le crochet de déploiement lancé à la main sur une fausse lignée, comme
+   en production : il envoie SIGUSR2 à `erplibre-call-coturn`, le
+   conteneur garde son PID, et coturn sert le nouveau certificat ;
+6. la VM redémarre : les deux conteneurs tournent de nouveau, relancés par
+   `docker.service`, par `podman-restart.service`, ou pour Podman sans
+   root par le `podman-restart.service` du compte et sa session
+   permanente (linger) ;
+7. une seconde installation ne change rien ; le conteneur de ntfy arrêté
+   à la main, une troisième passe par `up -d` sur les conteneurs déjà là
+   et ntfy tourne de nouveau ; la désinstallation, données et ajouts de
+   l'outil compris, ne laisse ni conteneur, ni image, ni volume,
+   ni fichier compose, ni compte, ni paquet du moteur, et les ports sont
+   fermés vus d'ici ;
+8. la course `podman` installe ensuite coturn seul en production sur la
+   même VM, avec un certificat fourni et TURN sur TLS en 443 : 443 est tenu
+   par `turnserver` sous un uid non root ; la vérification de production
+   (relais refusé vers une adresse privée compris), puis la
+   désinstallation.
+
+Le scénario de la migration (`--scenario migration`) tourne sur Debian
+seulement : coturn et ntfy par paquets en mode développement, une base d'un
+Odoo 18 de cette machine branchée avec `erplibre_turn` (son nom finit par
+`_a`, son identifiant de course est le sien, `--detruire` la supprime comme
+les autres) et un compte de téléphone. L'hôte passe ensuite aux conteneurs
+sous Podman en root : aucun serveur Odoo n'est à rebrancher, les lignes
+`turn_secret` sont identiques, la vérification est verte, l'Odoo relaie
+toujours par sa propre liste ICE, et le téléphone est toujours listé par la
+CLI du conteneur. Retour aux paquets : fait quand l'hôte n'a pas de binaire
+ntfy plus ancien que l'image, sinon refusé comme prévu
+(`call_infra_ntfy_downgrade`), et l'Odoo relaie toujours. L'Odoo est
+retiré, puis la désinstallation ; la base est supprimée même après un
+échec.
+
+Docker Hub limite les tirages anonymes. Une image refusée par cette limite
+(`@@PULL_FAILED <service> rate-limit`) arrête la course sous le verdict
+`limite-registre`, affiché « limite du registre, réessayer plus tard » : ce
+n'est ni un vert ni un échec, et le test sort par 2 quand rien d'autre n'a
+échoué.
+
+```
+./long_test/call_infra.py                  # Debian, puis Arch, chaque scénario
+./long_test/call_infra.py --distro arch    # un seul système
+./long_test/call_infra.py --scenario prod  # un seul scénario
+./long_test/call_infra.py --scenario odoo  # les serveurs Odoo, Debian
+./long_test/call_infra.py --scenario conteneur --moteur podman-rootless
+./long_test/call_infra.py --scenario migration   # paquets ↔ conteneurs
+./long_test/call_infra.py --dry-run        # le plan, rien de créé
+./long_test/call_infra.py --garder --scenario dev   # garder les VM
+./long_test/call_infra.py --detruire       # défaire la dernière course
+```
+
+Les noms des VM sont fixes : une VM gardée par `--garder` fait refuser la
+course suivante jusqu'au `--detruire`. Les courses d'un système prennent le
+même nom : `--garder` demande donc une seule course par système, un seul
+scénario et, pour les conteneurs, un seul `--moteur`.
+
+Le journal de chaque course est un `<scénario>-<système>.log` dans le
+sous-dossier de la course, `conteneur-<moteur>-debian.log` pour une course
+des conteneurs ; les secrets qu'impriment les scripts (le mot de passe
+administrateur de ntfy, la clé du compte de contrôle, le jeton ntfy du
+téléphone) y sont masqués. Le rapport donne un verdict par système et par
+scénario, `OK`, `ECHEC(<première étape en échec>)` ou `limite-registre`,
+avec chaque étape, les lignes de la vérification et, pour le crochet, les
+numéros de série attendus et servis.
 
 ## Partir d'un hôte qu'on possède déjà
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Version compatibility matrix — ERPLibre platform ↔ erplibre_mobile app",
-  "updated": "2026-03-29",
+  "updated": "2026-11-01",
   "matrix": [
     {
       "mobile": "2026.03.29.01",
@@ -35,6 +35,55 @@
       "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_todo",
       "depends": ["project_todo", "base_geoengine"],
       "custom_fields_on_project_task": ["geo_task_point"]
+    },
+    "erplibre_mobile_chat": {
+      "version": "18.0.1.6.0",
+      "description": "ERPLibre companion module of the mobile chat, optional: what each level adds is in levels, what the app does without it in without",
+      "levels": {
+        "1.0": "erplibre_client_uuid on mail.message: a chat post sent twice is stored once",
+        "1.1": "erplibre_client_uuid on discuss.channel: a create called twice with one uuid by one user makes one conversation; erplibre_remove_member, administrators only",
+        "1.2": "erplibre_client_uuid on ir.attachment and /erplibre_mobile_chat/attachment/upload: an upload idempotent by uuid that keeps an image's original",
+        "1.3": "erplibre_body_fingerprint on mail.message and /erplibre_mobile_chat/message/update_content: an edit written only over the body the app read, else erplibre_conflict",
+        "1.4": "/erplibre_mobile_chat/message/search (member channels, by body, subject and attachment name, paged, with a count); erplibre_set_starred; uuid dedup on every mail.thread model; upload open to record threads; erplibre_chat_level, whose last Selection key is the module level (fields_get)",
+        "1.5": "/erplibre_mobile_chat/push/device marks the app's devices: pushes with message id and channel type, sent after commit, no endpoint logged; silent read and inbox_done pushes; quiet while a browser is online (administrator-only fields of bus.presence)",
+        "1.6": "erplibre_browser_mode (ring, wait, quiet) and erplibre_payload_v on mail.push.device; payload v 2 adds mentioned (@everyone included) and browser_online (polled within 65 s, active within 5 minutes); a quiet device gets no message push while a browser is active; read and inbox_done pushes stay payload v 1; the upgrade from 1.5 gives quiet to the devices marked erplibre_quiet_while_online, ring to the others"
+      },
+      "without": {
+        "module": "a lost post or create is found by a marker comment or a fingerprint search, uploads use Odoo's route, no member removal; closed-app notifications through ntfy work",
+        "1.3": "the app re-reads the message before an edit and refuses it if it changed",
+        "1.4": "search_read over the member channels, starred re-read before each toggle, a lost record reply found by its marker comment",
+        "1.5": "no 👍 action (a 1 h mute instead), mark read by date, no read push, an Odoo warning for each push ntfy answers with 200",
+        "1.6": "the mentions filter lets channel messages through, « wait 10 s » rings at once, « do not send » only right after the browser opens; the app sends quiet_while_online, which a 1.5 server reads"
+      },
+      "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_chat",
+      "depends": ["mail"],
+      "optional": true,
+      "custom_fields_on_mail_message": ["erplibre_client_uuid", "erplibre_body_fingerprint"],
+      "custom_fields_on_mail_push_device": ["erplibre_app", "erplibre_browser_mode", "erplibre_payload_v", "erplibre_session_hash"],
+      "custom_fields_on_bus_presence": ["erplibre_browser_poll", "erplibre_browser_presence", "erplibre_browser_user_id"],
+      "custom_fields_on_discuss_channel": ["erplibre_client_uuid"],
+      "custom_fields_on_ir_attachment": ["erplibre_client_uuid"],
+      "custom_computed_fields_on_mail_message": ["erplibre_chat_level"],
+      "routes": ["/erplibre_mobile_chat/attachment/upload", "/erplibre_mobile_chat/message/update_content", "/erplibre_mobile_chat/message/search", "/erplibre_mobile_chat/push/device"],
+      "route_access": {
+        "/erplibre_mobile_chat/attachment/upload": "HTTP POST with the CSRF token, as Odoo's own upload route; internal users only, others get NotFound; client_uuid required",
+        "/erplibre_mobile_chat/message/update_content": "JSON, internal users only, others get NotFound",
+        "/erplibre_mobile_chat/message/search": "JSON, read-only, internal users only, others get NotFound",
+        "/erplibre_mobile_chat/push/device": "JSON: endpoint, then browser_mode (an app 1.6: the device gets payload v 2) or quiet_while_online (the 1.5 alias, quiet or ring: payload v 1); Odoo 18 ignores an argument it does not know"
+      },
+      "methods_on_discuss_channel": ["erplibre_remove_member"],
+      "methods_on_mail_message": ["erplibre_set_starred"]
+    },
+    "erplibre_turn": {
+      "version": "18.0.1.0.0",
+      "description": "ERPLibre module of the call infrastructure, optional: every call participant, guests included, gets TURN credentials signed by a secret shared with coturn (use-auth-secret), valid erplibre_turn.ttl_hours hours (24 by default), in the ICE list Odoo hands to the Discuss web client; the mobile app makes no call and reads none of it",
+      "system_parameters": ["erplibre_turn.secret", "erplibre_turn.urls", "erplibre_turn.ttl_hours"],
+      "without": {
+        "module": "Odoo hands out its own mail.ice.server rows: TODO › Deploy › Call infrastructure writes three of them (STUN, TURN over UDP and TCP) with a fixed coturn account, and TURN over TLS (turns:) is not available"
+      },
+      "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_turn",
+      "depends": ["mail"],
+      "optional": true
     }
   }
 }
