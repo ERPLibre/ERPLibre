@@ -242,6 +242,33 @@ class TestLesOptionsDuDeploiement(_Base):
                 self.assertIsNone(self.collect([""] * 5 + answers))
                 self.assertIsNone(self.todo._qemu_vm_secret)
 
+    def test_refusing_the_collisions_drops_the_secret(self):
+        """Un refus à « Continuer malgré ces collisions ? », ou aux disques
+        orphelins gardés, renonce : le clair part, rien n'est demandé
+        ensuite, ni le parallélisme ni « Déployer ? »."""
+        vms = [{"name": VM, "distro": "debian", "arch": "amd64"}]
+        # Sans réponse tapée : `input` (le parallélisme) lève s'il est lu.
+        call = lambda: self.todo._qemu_collect_options_cli(vms, "x1")  # noqa: E731
+        self.todo._qemu_list_domains = lambda: [VM]
+        self.todo._qemu_orphan_disks = lambda names: []
+        for answers in REFUS:
+            with self.subTest(answers=answers):
+                self.todo._qemu_vm_secret = SONDE
+                self.assertIsNone(self.play(call, [""] * 5 + answers))
+                self.assertIsNone(self.todo._qemu_vm_secret)
+                self.assertEqual(
+                    self.asked()[-1],
+                    (t("Continue despite these collisions?"), "n"),
+                )
+                self.assert_read(answers)
+        self.todo._qemu_offer_orphan_removal = lambda names: False
+        self.todo._qemu_list_domains = lambda: []
+        self.todo._qemu_orphan_disks = lambda names: [(VM, f"{VM}.qcow2")]
+        self.todo._qemu_vm_secret = SONDE
+        self.assertIsNone(self.play(call, [""] * 5))
+        self.assertIsNone(self.todo._qemu_vm_secret)
+        self.assertEqual(len(self.asked()), 5)
+
 
 class TestLaCleSSH(_Base):
     """`_qemu_collect_guest_cli` sans clé publique : « En générer une

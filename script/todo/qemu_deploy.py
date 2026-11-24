@@ -2804,10 +2804,12 @@ class QemuDeployMixin:
 
         # Collisions de noms : une VM déjà définie est ignorée (rien n'est
         # écrasé), mais un qcow2 orphelin fera ÉCHOUER deploy_qemu, qui refuse
-        # d'écraser sans --force. On le dit avant, pas après l'attente.
+        # d'écraser sans --force. On le dit avant, pas après l'attente. Un
+        # refus renonce : le clair ne survit pas, comme au refus final.
         if not self._qemu_confirm_collisions(
             existing, [vm["name"] for vm in pending]
         ):
+            self._qemu_set_vm_secret(None)
             print(t("Cancelled."))
             return None
         if not pending:
